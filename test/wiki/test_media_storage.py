@@ -240,3 +240,53 @@ def test_load_multimodal_knowledge_bundle_rejects_symlink(tmp_path):
 
     with pytest.raises(ValueError, match="stable regular file"):
         load_multimodal_knowledge_bundle(link)
+
+
+def test_bundle_publication_rejects_symlinked_parent(tmp_path):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    sentinel = outside / "multimodal-knowledge.json"
+    sentinel.write_text("unchanged")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".codenib").symlink_to(outside, target_is_directory=True)
+    with pytest.raises(OSError):
+        save_multimodal_knowledge_bundle(_bundle(), repo / ".codenib" / sentinel.name)
+    assert sentinel.read_text() == "unchanged"
+    assert list(outside.iterdir()) == [sentinel]
+
+
+def test_bundle_publication_cannot_follow_replaced_parent(tmp_path, monkeypatch):
+    import os
+
+    repo = tmp_path / "repo"
+    parent = repo / ".codenib"
+    parent.mkdir(parents=True)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    sentinel = outside / "multimodal-knowledge.json"
+    sentinel.write_text("unchanged")
+    retained = repo / "retained"
+    replace = os.replace
+
+    def swap(source, target, **kwargs):
+        parent.rename(retained)
+        parent.symlink_to(outside, target_is_directory=True)
+        replace(source, target, **kwargs)
+
+    monkeypatch.setattr(media_storage.os, "replace", swap)
+    with pytest.raises(OSError, match="parent changed"):
+        save_multimodal_knowledge_bundle(_bundle(), parent / sentinel.name)
+    assert sentinel.read_text() == "unchanged"
+    assert load_multimodal_knowledge_bundle(retained / sentinel.name) == _bundle()
+    assert len(list(retained.iterdir())) == 1
+
+
+def test_bundle_publication_rejects_unsupported_hosts_before_mutation(
+    tmp_path, monkeypatch
+):
+    target = tmp_path / "not-created" / "bundle.json"
+    monkeypatch.setattr(media_storage.os, "supports_dir_fd", set())
+    with pytest.raises(OSError, match="POSIX directory descriptors"):
+        save_multimodal_knowledge_bundle(_bundle(), target)
+    assert not target.parent.exists()

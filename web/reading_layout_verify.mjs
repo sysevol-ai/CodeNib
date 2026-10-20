@@ -58,7 +58,12 @@ try {
       const context = await browser.newContext({ viewport: { width, height: 900 }, reducedMotion: "reduce" });
       context.setDefaultTimeout(10000);
       const page = await context.newPage(), errors = [], unexpected = [];
-      if (stalled) await page.clock.install();
+      if (stalled) {
+        // Keep real-time ticks from racing a manual jump, including after reload
+        // when Playwright replays the clock command history in the new document.
+        await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
+        await page.clock.pauseAt(new Date("2026-01-01T01:00:00Z"));
+      }
       page.on("pageerror", error => errors.push(error.message));
       let turn = gate();
       await context.route("**/api/**", async route => {
@@ -95,23 +100,38 @@ try {
       });
 
       for (const navigation of ["open", "refresh"]) {
+        const heldStarted = page.waitForRequest(request => new URL(request.url()).pathname === held);
+        const proseLoaded = scenario === "page-late" ? null : page.waitForResponse(
+          response => new URL(response.url()).pathname === `${path}/wiki/${chapter}`,
+        ).then(response => response.finished());
         if (navigation === "open") await page.goto(`${base}/${repo.id}?p=${chapter}`, { waitUntil: "domcontentloaded" });
         else { turn = gate(); await page.reload({ waitUntil: "domcontentloaded" }); }
+        await heldStarted;
+        if (proseLoaded) await proseLoaded;
         await page.locator(".wiki-main").waitFor();
         await page.evaluate(() => document.fonts.ready);
         // Let the unheld page/visual response arrive while the other stays pending.
-        await page.waitForTimeout(180);
+        if (stalled) await page.clock.runFor(180);
+        else await page.waitForTimeout(180);
         assert.equal(await page.locator(".wiki-story").count(), 0, `${scenario}: prose painted before its leading visual settled`);
         const initial = await page.locator(".wiki-main").boundingBox();
         if (stalled) await page.clock.fastForward(6000);
         else turn.release();
-        await page.locator('.wiki-main[aria-busy="false"] .wiki-story').waitFor();
+        try { await page.locator('.wiki-main[aria-busy="false"] .wiki-story').waitFor(); }
+        catch (error) {
+          console.error("LAYOUT_FAILURE", { width, scenario, navigation, errors, unexpected,
+            body: (await page.locator("body").innerText()).slice(0, 2400),
+            frames: (await page.evaluate(() => window.readingFrames)).slice(-3),
+            now: await page.evaluate(() => Date.now()),
+          });
+          throw error;
+        }
         if (stalled) {
           assert.equal(await page.locator(".repo-poster").count(), 0);
           const paragraph = page.locator(".wiki-story .markdown p").first();
           const before = await paragraph.boundingBox();
           turn.release();
-          await page.waitForTimeout(250);
+          await page.clock.runFor(250);
           const after = await paragraph.boundingBox();
           assert.ok(Math.abs(before.y - after.y) < 1, `${scenario}: a late visual displaced readable prose`);
           if (overview) {
@@ -119,7 +139,8 @@ try {
             await page.locator(".repo-poster").waitFor();
           }
         }
-        await page.waitForTimeout(250);
+        if (stalled) await page.clock.runFor(250);
+        else await page.waitForTimeout(250);
         const final = await page.locator(".wiki-main").boundingBox();
         assert.ok(Math.abs(initial.width - final.width) < 1 && Math.abs(initial.x - final.x) < 1,
           `${scenario}: opening the page changed its reading column`);

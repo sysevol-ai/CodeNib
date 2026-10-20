@@ -13,8 +13,9 @@ import json
 import math
 import os
 import re
+import secrets
 import stat
-import tempfile
+from contextlib import contextmanager
 from hashlib import sha256
 from pathlib import Path
 from typing import Any, Mapping
@@ -72,15 +73,59 @@ def build_multimodal_knowledge_bundle(
     return validate_multimodal_knowledge_bundle(bundle)
 
 
+@contextmanager
+def _bundle_parent(destination: Path):
+    """Pin every parent without following links; create only missing directories.
+
+    The directory descriptor owns publication through the atomic replace below.
+    A concurrent rename cannot redirect the write through a replacement symlink.
+    Unsupported hosts fail before directory or file mutation.
+    """
+    if (
+        not hasattr(os, "O_NOFOLLOW")
+        or not hasattr(os, "O_DIRECTORY")
+        or os.open not in os.supports_dir_fd
+        or os.mkdir not in os.supports_dir_fd
+        or os.stat not in os.supports_dir_fd
+        or os.rename not in os.supports_dir_fd
+        or os.unlink not in os.supports_dir_fd
+    ):
+        raise OSError(
+            "secure visual-evidence publication requires POSIX directory descriptors"
+        )
+    parent = Path(os.path.abspath(destination.parent))
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    flags |= getattr(os, "O_CLOEXEC", 0)
+    descriptor = os.open(parent.anchor, flags)
+    try:
+        for part in parent.parts[1:]:
+            try:
+                child = os.open(part, flags, dir_fd=descriptor)
+            except FileNotFoundError:
+                try:
+                    os.mkdir(part, mode=0o700, dir_fd=descriptor)
+                except FileExistsError:
+                    pass
+                child = os.open(part, flags, dir_fd=descriptor)
+            os.close(descriptor)
+            descriptor = child
+        yield descriptor
+    finally:
+        os.close(descriptor)
+
+
 def save_multimodal_knowledge_bundle(
     bundle: Mapping[str, Any],
     path: str | Path,
 ) -> None:
-    """Atomically write a multimodal knowledge bundle as stable JSON."""
+    """Publish validated JSON in a pinned, link-free parent directory.
 
+    The directory-relative replace is the linearization point. Stages belong to
+    this call and are removed through the same descriptor on every ordinary exit.
+    No retained lock, lease, or external recovery owner is introduced.
+    """
     validated = validate_multimodal_knowledge_bundle(bundle)
-    destination = Path(path).expanduser()
-    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination = Path(os.path.abspath(Path(path).expanduser()))
     payload = (
         json.dumps(
             validated,
@@ -93,32 +138,42 @@ def save_multimodal_knowledge_bundle(
     )
     if len(payload) > _MAX_BUNDLE_BYTES:
         raise ValueError("multimodal knowledge bundle exceeds the byte limit")
-    try:
-        existing = os.stat(destination, follow_symlinks=False)
-    except FileNotFoundError:
-        existing_mode = None
-    else:
-        existing_mode = (
-            stat.S_IMODE(existing.st_mode) if stat.S_ISREG(existing.st_mode) else None
-        )
-    fd, temp_name = tempfile.mkstemp(
-        prefix=f".{destination.name}.",
-        suffix=".tmp",
-        dir=str(destination.parent),
-    )
-    try:
-        with os.fdopen(fd, "wb") as handle:
-            handle.write(payload)
-            handle.flush()
-            if existing_mode is not None:
-                os.fchmod(handle.fileno(), existing_mode)
-            os.fsync(handle.fileno())
-        os.replace(temp_name, destination)
-    finally:
+    with _bundle_parent(destination) as directory:
         try:
-            os.unlink(temp_name)
+            existing = os.stat(
+                destination.name, dir_fd=directory, follow_symlinks=False
+            )
         except FileNotFoundError:
-            pass
+            existing_mode = None
+        else:
+            existing_mode = (
+                stat.S_IMODE(existing.st_mode)
+                if stat.S_ISREG(existing.st_mode)
+                else None
+            )
+        temp_name = f".{destination.name}.{secrets.token_hex(12)}.tmp"
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
+        flags |= getattr(os, "O_CLOEXEC", 0)
+        descriptor = os.open(temp_name, flags, 0o600, dir_fd=directory)
+        try:
+            with os.fdopen(descriptor, "wb") as handle:
+                handle.write(payload)
+                handle.flush()
+                if existing_mode is not None:
+                    os.fchmod(handle.fileno(), existing_mode)
+                os.fsync(handle.fileno())
+            os.replace(
+                temp_name, destination.name, src_dir_fd=directory, dst_dir_fd=directory
+            )
+            current = os.stat(destination.parent, follow_symlinks=False)
+            opened = os.fstat(directory)
+            if (current.st_dev, current.st_ino) != (opened.st_dev, opened.st_ino):
+                raise OSError("visual-evidence parent changed during publication")
+        finally:
+            try:
+                os.unlink(temp_name, dir_fd=directory)
+            except FileNotFoundError:
+                pass
 
 
 def load_multimodal_knowledge_bundle(path: str | Path) -> dict[str, Any]:

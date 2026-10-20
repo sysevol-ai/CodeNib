@@ -408,3 +408,38 @@ def test_visual_fact_extractor_from_config_rejects_non_mapping_options():
 
     with pytest.raises(ValueError, match="options must be a mapping"):
         visual_fact_extractor_from_config(config)
+
+
+@pytest.mark.parametrize("recover", [True, False])
+def test_visual_provider_retries_incomplete_response_bodies(recover):
+    from http.client import IncompleteRead
+
+    calls = []
+    delays = []
+
+    class Interrupted:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self, _size):
+            raise IncompleteRead(b"partial", 20)
+
+    def urlopen(*args, **kwargs):
+        calls.append(1)
+        return _success_response() if recover and len(calls) == 3 else Interrupted()
+
+    extractor = OpenAICompatibleVisualFactExtractor(
+        model="fixture",
+        api_base="https://api.example/v1",
+        urlopen=urlopen,
+        sleep=delays.append,
+    )
+    if recover:
+        assert extractor.extract(_artifact())["claims"] == []
+    else:
+        with pytest.raises(RuntimeError, match="3 attempt"):
+            extractor.extract(_artifact())
+    assert len(calls) == 3 and delays == [0.25, 0.5]

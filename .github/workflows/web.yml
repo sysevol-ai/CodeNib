@@ -69,5 +69,8 @@ jobs:
       - name: Verify reading layout during open and refresh
         run: node reading_layout_verify.mjs
 
+      - name: Verify optional repository diagrams and late responses
+        run: node visual_evidence_verify.mjs
+
       - name: Verify homepage first paint with delayed and failed styles
         run: node landing_loading_verify.mjs
