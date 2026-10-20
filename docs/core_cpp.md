@@ -303,7 +303,7 @@ authenticated generation receipt and allowed-file proof.
 ### MCP and agent runtime selection
 
 `ServerContext` and compiler skill contexts select one runtime-only LSP
-provider. In 0.2.2 every manifest-bound context uses
+provider. Since 0.2.2, every manifest-bound context uses
 `persisted-symbol-graph-v1` with a deterministic fallback reason, including a
 source-verified local C/C++-only checkout. The runtime does not consume existing
 clangd shards because their generation is outside the authenticated manifest

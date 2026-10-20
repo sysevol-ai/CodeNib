@@ -49,8 +49,9 @@ headers when counting visible lines. A subsequent
 [offline range audit](../assets/grep_jev_range_audit.json) removed those header lines:
 173 of 1,747 candidate ranges shortened, and the frozen rankings' Recall@5
 remained 58.62% and 71.40%. That audit does not rerun candidate generation.
-The [product preview](../guides/grep-jev.md) uses corrected ranges and has not
-yet been evaluated end to end on this complete split.
+The [product preview](../guides/grep-jev.md) uses corrected ranges. Its fresh
+run on this complete split is reported
+[below](#does-the-product-preview-reproduce-these-candidates).
 
 The route does not need embeddings or a local GPU. It **does** use remote
 models: query text and selected source snippets leave the local machine.
@@ -79,7 +80,7 @@ For today's model-free agent setup, use [CodeGraph](../codegraph.md).
 For the source-checkout OpenRouter route, use [grep and Jev](../guides/grep-jev.md).
 For reproduced method contracts and scorer validation, use
 [agent integrations](../agent_integrations.md) and the
-[evaluation matrix](index.md).
+[method × benchmark matrix](index.md#method-benchmark-matrix).
 
 ## Does the product preview reproduce these candidates?
 

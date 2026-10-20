@@ -25,10 +25,13 @@ python -m pip install "codenib[graph,mcp]==0.2.4"
 codenib codegraph init /path/to/repository
 ```
 
-This keeps the checkout clean, uses each client CLI instead of editing its
-configuration directly, and enables `explore_context`,
-`dependency_subgraph`, BM25, regex, static definitions/references, and verified
-source reads. See [Agent-ready CodeGraph](codegraph.md) for the complete
+This keeps the checkout clean and uses each client CLI instead of editing its
+configuration directly. It builds the `bm25` and `symbol_graph` views and
+registers the full tool surface. `explore_context`, `search_context`,
+`search_bm25`, `search_regex`, `dependency_subgraph`, the three LSP tools,
+`read_source`, and `get_manifest` work. `search_semantic` and `search_zoekt`
+stay listed but report their views as unavailable until you build `vector` or
+`zoekt`. See [Agent-ready CodeGraph](codegraph.md) for the complete
 one-command lifecycle.
 
 For a custom MCP client or a retrieval-only setup, build and launch the server
@@ -85,6 +88,10 @@ fingerprint on every start; it does not rebuild or silently substitute a stale
 view. See [Publish With GitHub Pages](github_pages.md#reuse-the-artifact-through-mcp)
 for the trust boundary and Claude/generic configuration options.
 
+A portable artifact serves only its `bm25` and `vector` views. The graph,
+regex, dependency, and LSP tools are unavailable in artifact mode; index the
+checkout locally when you need them.
+
 Transport is stdio and logs go to stderr. A typical client configuration is:
 
 ```json
@@ -116,6 +123,15 @@ With `--tool-surface explore`, the server lists and accepts only
 Each stdio connection has its own runtime state, so reconnecting starts a fresh
 exploration ledger.
 
+### Retrieval Routes
+
+The default `--retrieval-route indexed` serves the views in the repository's
+manifest. `--retrieval-route grep-jev` needs no index: it plans ripgrep
+searches with an OpenRouter model over the live checkout and ranks the matches
+with Jev. That route always uses the `explore` surface. See
+[Search with grep and Jev](guides/grep-jev.md) for credentials, cost limits,
+and what leaves your machine.
+
 ### MCP Registry
 
 CodeNib publishes its local stdio server as `ai.codenib/codenib` in the
@@ -143,7 +159,7 @@ Only tools whose backing views are fresh and available can return results.
 | `search_context` | available `bm25`, `vector`, and `symbol_graph` views | file/symbol | Recommended planned ranked search; reports the selected route and source identity |
 | `search_semantic` | `vector` | file/symbol (L0/L2) | Natural-language or conceptual queries |
 | `search_bm25` | `bm25` | symbol | Exact names and keyword lookups |
-| `search_regex` | `symbol_graph` | file / symbol | Structural pattern matching |
+| `search_regex` | `regex_index`, derived from `symbol_graph` at load | file / symbol | Structural pattern matching |
 | `search_zoekt` | `zoekt` | file | Fast substring or regex search over files |
 | `dependency_subgraph` | `symbol_graph` | call graph | Caller impact, callee dependencies, or a one-hop neighborhood |
 | `lsp_definition` | runtime LSP provider or `symbol_graph` fallback | location | Static go-to-definition-shaped lookup |
@@ -198,7 +214,7 @@ is known. This best-effort fallback examines at most 10,000 graph nodes, retains
 at most 256 query matches and 512 expanded candidates, and stops after 100
 milliseconds.
 
-In 0.2.2 every manifest-bound C/C++ checkout uses the verified persisted
+Since 0.2.2, every manifest-bound C/C++ checkout uses the verified persisted
 symbol graph. Project-local clangd `.idx` files often live below the
 default-excluded `build/` tree and do not yet carry an authenticated generation
 receipt plus allowed-file proof, so the server does not reuse them directly.
@@ -258,7 +274,7 @@ command -v zoekt-git-index
 command -v zoekt-webserver
 ```
 
-In 0.2.2 authenticated `search_zoekt` serving is Linux-only. The runtime keeps
+Authenticated `search_zoekt` serving is Linux-only. The runtime keeps
 the verified shard generation open and gives `zoekt-webserver` a `/proc`
 descriptor path; macOS and Windows fail closed rather than reopen the mutable
 published directory.

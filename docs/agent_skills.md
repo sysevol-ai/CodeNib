@@ -21,8 +21,8 @@ A skill is a package directory containing:
   execution function. `context` is the typed op-context dataclass for the skill's
   type (`RetrieveContext` / `RerankContext` / `TransformContext` / `ExpandContext`);
   `custom` composer skills (`codenib_context`, `bm25_search`,
-  `crossencoder_rerank`) instead receive a typed `ComposerContexts` bundle
-  (`codenib/agent/skills/context.py`).
+  `crossencoder_rerank`, `repository_search`) instead receive a typed
+  `ComposerContexts` bundle (`codenib/agent/skills/context.py`).
 
 `SkillLoader.load_all(skills_dir, contexts)` scans the directory, parses each
 `config.yaml`, reads `skill.md`, imports the executor, and registers a `SkillMetadata`
@@ -66,6 +66,45 @@ runner = AgentRunner(
 result = runner.run("How does authentication work in this repo?")
 ```
 
+## Running the agent
+
+`query()` is the one-call entry point. Pass exactly one index source in
+`CodeNibAgentOptions`: `repo_path` builds the indexes inline, `manifest` loads
+a compiled `repo_manifest.json`, and `contexts` reuses objects you already
+constructed.
+
+```python
+from codenib.agent.runner import CodeNibAgentOptions, query
+
+result = query(
+    "Where is request retry behavior implemented?",
+    options=CodeNibAgentOptions(
+        manifest="/path/to/repo_manifest.json",
+        allowed_skills=["bm25_search", "find_callers"],
+        max_turns=10,
+    ),
+)
+```
+
+By default the agent pulls context through tools. The first prompt carries
+the task, the tool descriptions, and any missing-index warnings, but no
+retrieved code. These options change how context reaches the model:
+
+| Option | Where | Effect |
+| --- | --- | --- |
+| `allowed_skills` / `excluded_skills` (`allow_skills` / `exclude_skills` on `AgentRunner`), `compile_table` | both | Choose the skill set, directly or by a per-query scenario table |
+| `max_turns`, `max_context_tokens` | both | Bound the loop and the retained chat history |
+| `enable_lsp_route_context` and the `lsp_route_*` options | both | Add static LSP route anchors to the first prompt; the agent must still read source before answering |
+| `sandbox` | both | Replace `read`, `grep`, `glob`, and `bash` with container-backed tools; requires a revision-matched `manifest`. See [Isolated agent execution](sandbox.md) |
+| `default_tool_ids`, `include_default_tools` | `AgentRunner` | Narrow or withhold the four default tools |
+| `first_turn_tool_choice`, `force_first_turn_only` | `AgentRunner` | Force tool calls until the first successful `read`, or on turn 0 only |
+| `compact_after_read`, `compact_keep_reads` | `AgentRunner` | After the first successful read, shorten earlier bulky tool outputs in the history to references |
+| `force_final_answer`, `review_final_answer` | `AgentRunner` | Add a tool-free final-answer turn, or one evidence-review pass, for question-answering callers |
+
+[Context methods](concepts/methods.md#how-agents-receive-context) compares
+these mechanisms with MCP's `explore_context` and with the evaluation
+harness's pre-loaded context arms.
+
 ## Default tools vs skills
 
 The always-on filesystem primitives — **`read` / `grep` / `glob` / `bash`** — are a
@@ -89,7 +128,7 @@ exposed, or `include_default_tools=False` to withhold them).
 | `find_callees` | expand | Outgoing call-graph edges of a symbol (what X calls). |
 | `trace` | expand | Shortest call path between two symbols. |
 | `lsp_route` | expand | Symbol-name semantic navigation over the static symbol graph: ranks endpoint/bridge/provider/type route anchors for a query, optionally with one-hop neighbors. |
-| `lsp_definition` | expand | LSP-compatible go-to-definition for the identifier at an exact source position (repo-relative `file_path`, 1-based `line`, 0-based `character`), served by the runtime's selected semantic provider — static SCIP occurrences by default, live LSP when injected. |
+| `lsp_definition` | expand | LSP-compatible go-to-definition for the identifier at an exact source position (repo-relative `file_path`, 1-based `line`, 0-based `character`), served by the runtime's selected provider: an injected live LSP provider, otherwise SCIP occurrences persisted with the graph, otherwise symbol-graph heuristics. |
 | `lsp_references` | expand | LSP-compatible find-references at an exact source position, with optional `include_declaration`; same position contract and provider selection as `lsp_definition`. |
 | `llm_rerank` | rerank | High-precision LLM-judged reranking to refine top results. |
 | `crossencoder_rerank` | custom | Pairwise reranking that scores each query/candidate pair with a cross-encoder; requires a `CrossEncoderContext` in the runner's skill contexts. |

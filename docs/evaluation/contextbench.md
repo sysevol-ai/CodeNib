@@ -6,15 +6,35 @@ the pinned [ContextBench evaluator](https://github.com/EuniAI/ContextBench).
 It supports the full dataset and verified configuration, all eight dataset
 languages, and local JSON, JSONL, or Parquet inputs.
 
-See the [retrieval experiment results](contextbench-results.md) for the measured
-grep/decision/function-completion comparisons and subscription-backed Claude
-Agent SDK smoke. Those developer experiments are separate from this CLI's
-native OpenRouter runner and do not establish task-solving success.
+See the [experiment results](contextbench-results.md) for the measured search
+and resolution runs, including the 500-task search pair and its Pass@1. Those
+runs use separate research scripts (Claude Agent SDK search workers, a mini
+SWE-agent solver, and native graders), not this CLI's OpenRouter runner; the
+[harness list](harnesses.md#agent-context) names each one.
 
 The agent searches and reads source code. This workflow measures context
 retrieval; it does not generate patches or execute issue-resolution tests.
 External unified trajectories can include a `model_patch` for official EditLoc
 scoring. Reference patches and gold annotations are never supplied to the model.
+
+
+<!-- BEGIN CODENIB_SUPPORT_MATRIX:card:contextbench -->
+| Benchmark card | |
+| --- | --- |
+| Layer | L2 Agent context: every source span an agent viewed during its trajectory, and its final context |
+| Origin | External |
+| Task | Real issues; an agent explores, and everything it reads is scored |
+| Ground truth | Annotated gold context |
+| Granularity | File, symbol, byte span, line, trajectory |
+| Languages | C, C++, Go, Java, JavaScript, Python, Rust, TypeScript |
+| Size | 1,136 tasks; 500 in the verified configuration |
+| Pinned revisions | Evaluator `1436c28a`, dataset `c2855792` |
+| Scorer | Official evaluator in an isolated subprocess |
+| Setup | Evaluator checkout and a separate Python 3.10 or 3.11 environment |
+| CodeNib entry point | `codenib-contextbench` |
+| Evidence | [Measured](contextbench-results.md); 500 canonical tasks with a research route; leaderboard review pending |
+| Upstream | <https://github.com/EuniAI/ContextBench> |
+<!-- END CODENIB_SUPPORT_MATRIX:card:contextbench -->
 
 ## Preparing a leaderboard submission
 

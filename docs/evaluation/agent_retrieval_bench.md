@@ -18,6 +18,25 @@ Abstention/selective evaluation, line/block scores, interactive agent
 trajectories, and automatic leaderboard submission are outside this first
 adapter. The static BM25 route makes zero model API calls.
 
+
+<!-- BEGIN CODENIB_SUPPORT_MATRIX:card:arb -->
+| Benchmark card | |
+| --- | --- |
+| Layer | L1 Localization: the method's final ranked files, symbols, code blocks, or line regions |
+| Origin | External |
+| Task | Four static tasks; code→test, comment→context, trace→code, edit→ripple |
+| Ground truth | Released gold files |
+| Granularity | File |
+| Languages | Mixed; multi-language repositories |
+| Size | 345 positive samples |
+| Pinned revisions | Evaluator `07014c98`, dataset `5901e1ee` |
+| Scorer | Official functions called directly (Recall@k, MRR, BCY) |
+| Setup | ARB checkout and verified release download |
+| CodeNib entry point | `codenib-arb` |
+| Evidence | [Pinned](#validation); official scorer; 8-case smoke only |
+| Upstream | <https://github.com/eyuansu62/agent-retrieval-bench> |
+<!-- END CODENIB_SUPPORT_MATRIX:card:arb -->
+
 ## Pins and preparation
 
 | Input | Pinned revision |

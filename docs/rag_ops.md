@@ -15,13 +15,17 @@ The ops layer should stay simple. It should normalize, merge, filter, expand, or
 rerank candidates without deciding which retrieval strategy a query deserves.
 Strategy belongs in a planner or named pipeline.
 
+This page covers the one-shot retrieval methods. For how they compare with
+fixed LLM workflows and agent loops, see
+[context methods and support matrix](concepts/methods.md).
+
 ## Operator Surface
 
 | Module | Role | What belongs here |
 |--------|------|-------------------|
 | `ops.retrieve` | Candidate normalization and fusion | `RetrieveContext`, `to_queried_nodes`, node/file-level weighted RRF, stable dedup keys |
 | `ops.filter` | Explicit candidate predicates | span/content checks, symbol-only checks, include/exclude path filters, test-path dropping |
-| `ops.expand` | Compact graph neighborhood expansion | one-hop predecessor/successor expansion from existing seeds, edge-type filtering, optional span content loading |
+| `ops.expand` | Graph neighborhood expansion | one-hop predecessor/successor expansion and bounded k-hop BFS or personalized-PageRank regions from existing seeds, edge-type filtering, optional span content loading |
 | `ops.rerank` | Candidate-only reranking | online content embeddings or persisted index vectors over a provided candidate set; lazy LLM reranker context |
 | `ops.transform` | Query/code transforms | shared transform resources such as keyword extraction |
 
@@ -44,8 +48,10 @@ The current ops are enough to express the common CodeNib RAG paths:
 
 The current deliberate limits are:
 
-- `expand_graph_neighbors` performs one-hop neighbor expansion only; k-hop BFS
-  and PPR live in `SparseSeededGraphRetrievePipeline`.
+- `expand_graph_neighbors` performs one-hop neighbor expansion.
+  `expand_graph_region` runs bounded k-hop BFS or personalized PageRank and is
+  shared by `SparseSeededGraphRetrievePipeline` and the manifest-backed
+  runtimes, so both execute the same graph semantics.
 - `RetrieveRerankPipeline` executes dense/sparse stages and, when constructed
   with a loaded `code_graph`, consumes `GraphExpansionPlan` for structural
   queries selected by the planner.
@@ -83,6 +89,7 @@ quality sweep.
 | [Qwen3-Reranker-8B](https://huggingface.co/Qwen/Qwen3-Reranker-8B) | Pairwise yes/no scoring | 100 rows at candidate widths 30, 50, and 100 with SweRankEmbed-Small |
 | [mxbai-rerank-large-v2](https://huggingface.co/mixedbread-ai/mxbai-rerank-large-v2) | Sentence-Transformers cross-encoder | 100 rows at candidate width 30 with SweRankEmbed-Small |
 | [SweRankLLM-Small](https://huggingface.co/Salesforce/SweRankLLM-Small) | RankGPT-style listwise rerank | 100 rows with SweRankEmbed-Small retrieval |
+| [Jev](jev.md) (`typesafe/jev-1.13`) | Pointwise relevance decisions through OpenRouter, in batches of ten | 100 rows over BM25, hybrid, and model-planned grep candidates; [published results](evaluation/grep_jev.md) |
 
 The reproducible entry points are the
 [embedding sweep](https://github.com/sysevol-ai/CodeNib/blob/main/scripts/embeddings/eval_codenib_base_embeddings.sh)
@@ -124,6 +131,11 @@ The selected plan is declarative:
 
 `RetrieveRerankPipeline(retrieval_mode="auto")` wires the planner into query
 execution for dense, sparse, hybrid fusion, graph expansion, and rerank control.
+The planner chooses between `embedding` and `llm` reranking only; LLM rerank
+requires the `thorough` budget. It never selects the cross-encoder. When the
+pipeline is constructed with `rerank_strategy="decisions"`, the planner's `llm`
+choice runs Jev. MCP `search_context` and `RepositoryContextExplorer` use the
+same planner but never run an LLM reranker.
 It records the most recent `last_selected_plan` and `last_planner_trace`
 (`signals`, `budget`, `capabilities`, and `plan`) for evaluation/debugging.
 Use `SparseSeededGraphRetrievePipeline` or `DenseGraphExpandRerankPipeline` when

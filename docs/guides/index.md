@@ -30,6 +30,15 @@ retrieval and planning surface that answers the task.
 
     [Connect an MCP client →](../mcp.md)
 
+-   <span class="codenib-card-eyebrow">Search without an index</span>
+
+    **grep → Jev**
+
+    Let a model plan ripgrep searches over your checkout and rank the matches
+    with Jev, using your OpenRouter account.
+
+    [Set up grep and Jev →](grep-jev.md)
+
 -   <span class="codenib-card-eyebrow">Compose retrieval</span>
 
     **Agent skills**
@@ -43,8 +52,8 @@ retrieval and planning surface that answers the task.
 
     **Agent integrations**
 
-    Use the LocAgent and OrcaLoca adapters while preserving CodeNib's manifest
-    and source-location contracts.
+    Run pinned LocAgent, Agentless, CoSIL, OrcaLoca, and RepoNavigator
+    contracts over CodeNib's manifest-backed views.
 
     [Choose an integration →](../agent_integrations.md)
 
@@ -74,6 +83,7 @@ Use the [MCP Server](../mcp.md) for the standard agent-facing workflow. Reach
 for [Agent Skills](../agent_skills.md) when you need to compose a custom runtime,
 use [Isolated Agent Execution](../sandbox.md) before running repository code,
 and start from a [Reference Deployment](reference-deployments/index.md) when
-reproducing a complete local stack. The conceptual
+reproducing a complete local stack. To choose between these routes, start with
+[context methods and support matrix](../concepts/methods.md); the
 [RAG Ops And Planner](../rag_ops.md) reference defines retrieval policy and
 planning boundaries.

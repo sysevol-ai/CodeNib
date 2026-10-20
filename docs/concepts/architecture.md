@@ -43,6 +43,8 @@ with RepositoryContextExplorer.from_repository(
 
 Results carry source-validated evidence and the selected plan, capabilities,
 loaded views, fusion, graph, and reranking trace. See
+[context methods](methods.md) for how this explorer relates to the other
+retrieval, workflow, and agent methods,
 [RAG ops and planner](../rag_ops.md) for query planning,
 [CodeGraph](../codegraph.md) for setup and source policies, and
 [MCP](../mcp.md) for the tool contract.

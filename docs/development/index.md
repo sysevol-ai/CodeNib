@@ -59,17 +59,17 @@ surface at the right test tier, and keep evaluation artifacts reproducible.
 
 -   <span class="codenib-card-eyebrow">Measure</span>
 
-    **Evaluation workflows**
+    **Benchmarks**
 
-    Collect benchmark inputs, synthesize queries, extract ground-truth source
-    locations, and package reproducible result bundles.
+    Run the evaluation harnesses, prepare benchmark inputs, and package
+    reproducible result bundles.
 
-    [Open evaluation workflows →](../evaluation/index.md)
+    [Open Benchmarks →](../evaluation/index.md)
 
 </div>
 
 ## Project contracts
 
 Use [Naming](../branding.md) for project and package terminology. Evaluation
-inputs and outputs have their own reproducibility contracts; start with the
-[Evaluation Workflows](../evaluation/index.md) overview before running them.
+inputs and outputs have their own reproducibility contracts; read
+[Harnesses and metrics](../evaluation/harnesses.md) before running them.

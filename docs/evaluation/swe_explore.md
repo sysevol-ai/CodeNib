@@ -7,6 +7,25 @@ is the explicit `bm25` compatibility control, not CodeNib's native multi-view
 `auto` policy. It does not measure patch generation or SWE-bench issue
 resolution.
 
+
+<!-- BEGIN CODENIB_SUPPORT_MATRIX:card:swe_explore -->
+| Benchmark card | |
+| --- | --- |
+| Layer | L1 Localization: the method's final ranked files, symbols, code blocks, or line regions |
+| Origin | External |
+| Task | Rank the source regions an issue needs |
+| Ground truth | Released core and optional line regions |
+| Granularity | Line region, file |
+| Languages | Seven languages in the fixed 20-case set |
+| Size | 848 released rows; a fixed 20-case validation set |
+| Pinned revisions | Benchmark `3c12dc5a`, dataset `bdb0ae45` |
+| Scorer | Official 17 metrics, reproduced exactly |
+| Setup | Released JSONL and clean checkouts at joined base commits |
+| CodeNib entry point | `codenib-swe-explore-benchmark` |
+| Evidence | [Pinned](swe_explore.md); scorer agrees with the official evaluator |
+| Upstream | <https://github.com/Qiushao-E/SWE-Explore-Bench> |
+<!-- END CODENIB_SUPPORT_MATRIX:card:swe_explore -->
+
 ## Pinned Inputs
 
 | Input | Revision |
@@ -21,6 +40,12 @@ resolution.
 The released SWE-Explore rows omit `problem_statement` and `base_commit`.
 CodeNib joins all 848 rows to the three source datasets above. The join is
 complete: 451 Verified, 182 Multilingual, and 215 Pro rows resolve uniquely.
+
+`codenib-swe-explore-benchmark` reproduces this run; the command is in
+[Harnesses and metrics](harnesses.md#one-shot-retrieval). By default it
+rejects a `--bench` file whose SHA-256 differs from the pinned public release;
+`--bench-sha256` overrides the expected digest. `--planning-budget` and
+`--retrieval-level` configure the planner and the dense chunk level.
 
 ## Fixed Case Set
 
