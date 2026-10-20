@@ -47,6 +47,38 @@ rejects a `--bench` file whose SHA-256 differs from the pinned public release;
 `--bench-sha256` overrides the expected digest. `--planning-budget` and
 `--retrieval-level` configure the planner and the dense chunk level.
 
+## Run It From Python
+
+`CodeNibSWEExploreExplorer` wraps CodeNib's `RepositoryContextExplorer`, which
+plans the route, retrieves, expands over the graph, reranks, and validates the
+source. It converts the resulting 0-based evidence into the benchmark's
+repository-relative, 1-based inclusive `ContextRegion` records:
+
+```python
+from codenib.integrations.swe_explore import CodeNibSWEExploreExplorer
+
+explorer = CodeNibSWEExploreExplorer.from_repository(
+    "/path/to/checkout",
+    policy="auto",
+)
+results = explorer.explore(
+    instance_id="org__repo-123",
+    query="issue text",
+    top_k=20,
+)
+```
+
+`auto` plans against the views the index advertises (BM25, vector, and symbol
+graph) and loads only the route it picks. The fixed comparison policies are
+`bm25`, `dense`, `hybrid`, `hybrid_rerank`, and `graph`. Building the index is a
+separate step; the strict runner builds and records exactly the views the
+chosen policy needs.
+
+Two cutoffs stay separate. `top_k` limits how many ranked regions the explorer
+returns, while Recall and nDCG at 100, 300, or 500 cap the accumulated source
+lines in the evaluator. The upstream SWE-Explore runner can also call CodeNib
+with `--explorers codenib`.
+
 ## Fixed Case Set
 
 The checked-in [case set](../assets/swe_explore_cases.json) fixes 20 cases before

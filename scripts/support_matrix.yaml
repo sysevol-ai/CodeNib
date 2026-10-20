@@ -8,7 +8,8 @@
 #   python scripts/support_matrix.py --write
 #
 # Links are relative to docs/ and are rewritten for each page that embeds a
-# table. Cell levels must be one of `evidence_levels`; `—` means no harness
+# table. Reproduced methods also carry an `agent` block for their card and the
+# reproduced-agents table on docs/agent_integrations.md. Cell levels must be one of `evidence_levels`; `—` means no harness
 # accepts the pair. Research arms (one-off experiment configurations) do not
 # belong here: list them on their benchmark's results page, and add a method
 # only once it is a supported CodeNib surface or a reproduced published method.
@@ -370,9 +371,26 @@ methods:
     surfaces: Python
     contract:
       level: Pinned
-      note: Upstream v1.5.0 prompts.
+      note: The three vendored prompts match upstream byte for byte.
       label: upstream prompts
       link: agent_integrations.md#agentless
+    agent:
+      summary: >-
+        Localizes an issue in three fixed LLM stages: rank files, pick classes
+        and functions from file skeletons, then choose edit lines.
+      upstream:
+        label: Agentless v1.5.0
+        url: https://github.com/OpenAutoCoder/Agentless/tree/b150f28465a77a81a7f4776384957a4271f5bd69
+        revision: b150f28
+      scope: The three localization stages
+      excluded: Repair and patch validation
+      provides: >-
+        The filtered Python project tree, symbol skeletons, and numbered source
+        windows, all from `symbol_graph`
+      entry:
+        - python: codenib/clients/agentless_agent.py:AgentlessAgent
+        - path: examples/agentless_loc_agent.py
+      page: agent_integrations.md#agentless
     modules:
       - codenib/eval/benchmarks/agentless.py
     cells:
@@ -444,16 +462,42 @@ methods:
     surfaces: Python
     contract:
       level: Pinned
-      note: Vendored upstream prompts and loop.
+      note: >-
+        Vendored prompts and function schemas, checked against the upstream Git
+        objects.
       label: upstream prompts and loop
       link: agent_integrations.md#locagent
+    agent:
+      summary: >-
+        An LLM agent that searches a code graph and a BM25 index with three
+        tools until it names the locations to edit.
+      upstream:
+        label: LocAgent
+        url: https://github.com/gersteinlab/LocAgent/tree/ef170542a5cca88a1bd8463335ec43de222ed5f9
+        revision: ef17054
+      scope: The localization loop, with upstream prompts and function schemas
+      excluded: LocAgent's own index builder, and its nDCG and MAP reports
+      provides: >-
+        `search_code_snippets`, `get_entity_contents`, and
+        `explore_tree_structure`, over `bm25` and `symbol_graph`
+      paired: true
+      entry:
+        - python: codenib/clients/locagent_agent.py:LocAgentAgent
+        - path: examples/locagent_loc_agent.py
+      results:
+        text: "SWE-bench Lite, 50 cases, one run: file Acc@1 0.78"
+        link: agent_integrations.md#locagent-on-swe-bench-lite
+      page: agent_integrations.md#locagent
     modules:
       - codenib/eval/benchmarks/locagent.py
     cells:
       codenib_base: {level: Runnable}
       swebench_lite:
         level: Pinned
-        link: agent_integrations.md#paired-provider-compatibility
+        note: >-
+          One complete run on a fixed 50-case selection, with the CodeNib
+          backend only and no native comparison arm.
+        link: agent_integrations.md#locagent-on-swe-bench-lite
       locbench_v1: {level: Runnable}
 
   - id: cosil
@@ -465,9 +509,28 @@ methods:
     surfaces: Python
     contract:
       level: Pinned
-      note: Vendored upstream prompts and loop.
+      note: >-
+        Vendored prompts, tool schemas, and loop, checked against the upstream
+        tree.
       label: upstream prompts and loop
       link: agent_integrations.md#cosil
+    agent:
+      summary: >-
+        Ranks files, checks that ranking against their imports, then inspects
+        candidate classes and functions with four tools.
+      upstream:
+        label: CoSIL
+        url: https://github.com/ZhonghaoJiang/CoSIL/tree/0568e423735b399d5b089996961fea9ae142e4c7/CoSIL/fl
+        revision: 0568e42
+      scope: File and function localization, the paper's RQ1 path
+      excluded: Line localization, patch generation, and test validation
+      provides: >-
+        `get_code_of_class`, `get_code_of_class_function`,
+        `get_code_of_file_function`, and `exit`, over `symbol_graph`
+      entry:
+        - python: codenib/clients/cosil_agent.py:CoSILAgent
+        - path: examples/cosil_loc_agent.py
+      page: agent_integrations.md#cosil
     modules:
       - codenib/eval/benchmarks/cosil.py
     cells:
@@ -484,9 +547,34 @@ methods:
     surfaces: Python
     contract:
       level: Pinned
-      note: Upstream `SearchAgent` driven through CodeNib views.
+      note: >-
+        Tool signatures and the private hooks the agent calls, checked by an
+        upstream probe.
       label: upstream agent
       link: agent_integrations.md#orcaloca
+    agent:
+      summary: >-
+        OrcaLoca's own search agent, unchanged: it decomposes search actions,
+        schedules them by priority, and decodes the final locations.
+      upstream:
+        label: OrcaLoca
+        url: https://github.com/fishmingyu/OrcaLoca/tree/37db289be2dc3b7432183fe08b3f06becce87c27
+        revision: 37db289
+      scope: "`SearchAgent`, with upstream sampling"
+      excluded: >-
+        Trace analysis: the agent receives an empty trace, so this is not the
+        published end-to-end pipeline
+      provides: >-
+        Six search tools and the private hooks `SearchWorker` calls, over
+        `symbol_graph`
+      paired: true
+      entry:
+        - python: codenib/clients/orcaloca_agent.py:OrcaLocaAgent
+        - path: examples/orcaloca_loc_agent.py
+      results:
+        text: "SWE-bench Lite, 4-case paired smoke: both backends matched 4/4"
+        link: agent_integrations.md#orcaloca-paired-smoke
+      page: agent_integrations.md#orcaloca
     modules:
       - codenib/eval/benchmarks/orcaloca.py
     cells:
@@ -505,9 +593,23 @@ methods:
     surfaces: Python
     contract:
       level: Pinned
-      note: Upstream tool contract.
+      note: The `jump` signature published in the paper; no upstream code exists.
       label: upstream tool contract
       link: agent_integrations.md#reponavigator
+    agent:
+      summary: >-
+        One `jump` tool that resolves a symbol occurrence to the source of its
+        definition. The caller brings the agent.
+      upstream:
+        label: RepoNavigator paper
+        url: https://arxiv.org/abs/2512.20957v6
+        revision: arXiv v6
+      scope: The paper's `jump` tool
+      excluded: The agent loop, prompts, training, and reported scores
+      provides: "`jump`, over `symbol_graph` and persisted LSP occurrences"
+      entry:
+        - python: codenib/integrations/reponavigator.py:RepoNavigatorRepositoryProvider
+      page: agent_integrations.md#reponavigator
 
   - id: no_codenib
     name: Claude / Codex without CodeNib

@@ -134,6 +134,19 @@ exposed, or `include_default_tools=False` to withhold them).
 | `crossencoder_rerank` | custom | Pairwise reranking that scores each query/candidate pair with a cross-encoder; requires a `CrossEncoderContext` in the runner's skill contexts. |
 | `code_to_query` | transform | Packs retrieved code nodes into a reusable follow-up search query. |
 
+## Navigation skills and the LSP provider
+
+The definition, reference, and route skills all use the same LSP-shaped
+navigation provider, injected into `ExpandContext`. Since 0.2.2, a context bound
+to an index, including a C/C++-only build, answers them from the verified
+persisted symbol graph. Native clangd fact-query postings are benchmarked
+separately, but their project-local `.idx` files change in place and carry no
+source-selection receipt or allowed-file proof yet, so the agent runtime does
+not use them. Portable artifacts and mixed-language contexts take the same
+persisted route. Each result keeps its backend, fallback, capability, and
+snapshot metadata, so an agent trace can explain the route without changing the
+location shape the agent sees.
+
 ## Line-numbering at the agent boundary
 
 Retrieval and graph representations used by skills are **0-based** — BM25

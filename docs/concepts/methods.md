@@ -42,7 +42,7 @@ role:
 | Role | Means |
 | --- | --- |
 | CodeNib | A CodeNib method: CodeNib owns the pipeline, workflow, or agent loop |
-| Reproduced | A published method reimplemented or vendored on top of CodeNib's views, with its upstream contract pinned |
+| Reproduced | A published method reimplemented or vendored on top of CodeNib's views, with its upstream contract pinned; see [Reproduced agents](../agent_integrations.md) |
 | Client | An external agent that owns its loop and reaches CodeNib through MCP |
 | Control | An agent run without any CodeNib tool, to show how far file tools alone get on the same cases |
 
@@ -71,7 +71,7 @@ breaks this down per benchmark.
 | CodeNib agent | C · CodeNib | per enabled skill | chat LLM | Python | [Measured](../evaluation/contextbench-results.md#historical-post-run-24-task-results) · ContextBench (L2) |
 | Claude Code or Codex over MCP | C · Client | `bm25`, `symbol_graph` | the client's own | MCP | Tested · test suite |
 | Claude Agent SDK with CodeNib source tools | C · Client | none; CodeNib's confined `read`, `grep`, `glob` | the SDK's Claude model | research scripts only | [Measured](../evaluation/contextbench-results.md) · ContextBench Pass@1 (L3) |
-| LocAgent | C · Reproduced | `bm25`, `symbol_graph` | chat LLM | Python | [Pinned](../agent_integrations.md#paired-provider-compatibility) · SWE-bench Lite |
+| LocAgent | C · Reproduced | `bm25`, `symbol_graph` | chat LLM | Python | [Pinned](../agent_integrations.md#locagent-on-swe-bench-lite) · SWE-bench Lite |
 | CoSIL | C · Reproduced | `symbol_graph` | chat LLM | Python | [Pinned](../agent_integrations.md#cosil) · upstream prompts and loop |
 | OrcaLoca SearchAgent | C · Reproduced | `symbol_graph` | chat LLM | Python | [Pinned](../agent_integrations.md#paired-provider-compatibility) · SWE-bench Lite |
 | RepoNavigator `jump` | C · Reproduced | `symbol_graph`, SCIP occurrences | the caller's | Python | [Pinned](../agent_integrations.md#reponavigator) · upstream tool contract |
@@ -224,5 +224,5 @@ as checkout source.
 | An OpenRouter key and no index | [Model-planned grep → Jev](../guides/grep-jev.md) |
 | Your own pipeline that needs ranked regions | `RepositoryContextExplorer` with `policy="auto"`, or a fixed policy for an ablation |
 | A question about callers, impact, or dependencies | MCP `dependency_subgraph`, or the `graph` policy |
-| A published localization agent to reproduce | [Agent integrations](../agent_integrations.md) |
+| A published localization agent to reproduce, or to run on CodeNib's index | [Reproduced agents](../agent_integrations.md) |
 | Your own agent loop | [Agent skills](../agent_skills.md) and `AgentRunner` |

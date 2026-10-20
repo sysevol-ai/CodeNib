@@ -90,7 +90,9 @@ Numbered notes follow each table.
 
 ### Localization (L1)
 
-<!-- BEGIN CODENIB_SUPPORT_MATRIX:grid:L1 -->
+#### CodeNib methods
+
+<!-- BEGIN CODENIB_SUPPORT_MATRIX:grid:L1:CodeNib -->
 | Method | Base | Synthesis | SWE-bench Lite | Loc-Bench | SWE-Explore | ARB |
 | --- | --- | --- | --- | --- | --- | --- |
 | A · BM25 | [Runnable](grep_jev.md#what-was-measured)<sup>1</sup> | Runnable<sup>2</sup> | Runnable | Runnable | [Runnable](swe_explore.md#localization-summary)<sup>3</sup> | [Runnable](agent_retrieval_bench.md#validation)<sup>4</sup> |
@@ -100,12 +102,7 @@ Numbered notes follow each table.
 | A · Retrieve → rerank | [Measured](grep_jev.md#what-was-measured)<sup>7</sup> | — | Runnable | Runnable | Runnable | — |
 | A · Planner `auto` | Runnable | — | Runnable | Runnable | Runnable | — |
 | B · Model-planned grep → Jev | [Measured](grep_jev.md) | — | — | — | — | — |
-| B · Agentless v1.5.0 | Runnable<sup>8</sup> | — | Runnable | Runnable | — | — |
 | C · CodeNib agent | Runnable | Runnable | Runnable | Runnable | — | — |
-| C · LocAgent | Runnable | — | [Pinned](../agent_integrations.md#paired-provider-compatibility) | Runnable | — | — |
-| C · CoSIL | Runnable | — | Runnable | Runnable | — | — |
-| C · OrcaLoca SearchAgent | Runnable | — | [Pinned](../agent_integrations.md#paired-provider-compatibility) | Runnable | — | — |
-| C · Claude / Codex without CodeNib | Runnable | — | Runnable | Runnable | — | — |
 
 1. **BM25 × Base.** Scored only as the first stage of BM25 → Jev.
 2. **BM25 × Synthesis.** BM25 and Dense run through `examples/eval_synthesized_queries.py` on rows exported to JSON, scored on file and symbol names only.
@@ -114,17 +111,37 @@ Numbered notes follow each table.
 5. **Dense × Base.** Scored only as the first stage of dense → Qwen3-Reranker-4B.
 6. **Hybrid (RRF) × Base.** Scored only as the first stage of hybrid → Jev and hybrid → Qwen3-Reranker-4B.
 7. **Retrieve → rerank × Base.** Measured through the frozen-candidate research scripts `benchmark_jev_base.py` and `benchmark_jev_dense.py`, not through `RetrieveRerankPipeline`.
-8. **Agentless v1.5.0 × Base.** Upstream's Python-only file filter limits it to the Python issues.
-<!-- END CODENIB_SUPPORT_MATRIX:grid:L1 -->
-
-Runnable means the harness accepts the pair, not that the method was designed
-for it. Agentless, LocAgent, CoSIL, and OrcaLoca are pinned to upstream
-policies validated on Python repositories.
+<!-- END CODENIB_SUPPORT_MATRIX:grid:L1:CodeNib -->
 
 The embedding-model and reranker sweeps on CodeNib Base have complete
 retained artifacts. They are listed as evidence for the
 [validated models](../rag_ops.md#validated-models), but their scores are not
 published on this site, so those cells stay at Runnable.
+
+#### Reproduced agents and controls
+
+These rows run published localization agents, and agents with no CodeNib tool
+at all, through the same harness, labels, and scorer as CodeNib's methods.
+[Reproduced agents](../agent_integrations.md) explains what each agent
+reproduces, how closely it follows upstream, and whether its own backend can be
+swapped for CodeNib's.
+
+<!-- BEGIN CODENIB_SUPPORT_MATRIX:grid:L1:Reproduced+Control -->
+| Method | Base | SWE-bench Lite | Loc-Bench |
+| --- | --- | --- | --- |
+| B · Agentless v1.5.0 | Runnable<sup>1</sup> | Runnable | Runnable |
+| C · LocAgent | Runnable | [Pinned](../agent_integrations.md#locagent-on-swe-bench-lite)<sup>2</sup> | Runnable |
+| C · CoSIL | Runnable | Runnable | Runnable |
+| C · OrcaLoca SearchAgent | Runnable | [Pinned](../agent_integrations.md#paired-provider-compatibility) | Runnable |
+| C · Claude / Codex without CodeNib | Runnable | Runnable | Runnable |
+
+1. **Agentless v1.5.0 × Base.** Upstream's Python-only file filter limits it to the Python issues.
+2. **LocAgent × SWE-bench Lite.** One complete run on a fixed 50-case selection, with the CodeNib backend only and no native comparison arm.
+<!-- END CODENIB_SUPPORT_MATRIX:grid:L1:Reproduced+Control -->
+
+Runnable means the harness accepts the pair, not that the agent was designed
+for it. The reproduced agents follow upstream policies built for Python
+repositories.
 
 ### Agent context and resolution (L2, L3)
 

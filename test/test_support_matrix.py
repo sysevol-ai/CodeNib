@@ -17,6 +17,7 @@ from scripts.support_matrix import (
     _relative,
     load_data,
     pages_with_blocks,
+    render_grid,
     render_page,
     validate,
 )
@@ -56,6 +57,33 @@ def test_unknown_cell_level_is_reported():
     assert any("unknown level Great" in error for error in errors)
 
 
+def test_role_filtered_grid_keeps_only_those_roles():
+    data = load_data()
+    roles = {method["name"]: method["role"] for method in data["methods"]}
+
+    grid = render_grid(data, "evaluation/index.md", {"L1"}, {"Reproduced", "Control"})
+    rows = [
+        line for line in grid.splitlines() if line.startswith("| ") and " · " in line
+    ]
+
+    assert rows
+    for row in rows:
+        name = row.split(" | ")[0].removeprefix("| ").split(" · ", 1)[1]
+        assert roles[name] in {"Reproduced", "Control"}
+
+
+def test_reproduced_agent_without_card_fields_is_reported():
+    data = copy.deepcopy(load_data())
+    method = next(item for item in data["methods"] if item["role"] == "Reproduced")
+    del method["agent"]["scope"]
+
+    errors = validate(data)
+
+    assert any(
+        f"method {method['id']}: reproduced agent lacks scope" in e for e in errors
+    )
+
+
 def test_links_are_rewritten_per_page():
     link = "evaluation/grep_jev.md#what-was-measured"
 
@@ -71,7 +99,9 @@ def test_links_are_rewritten_per_page():
     "page,kind,mutation",
     [
         ("concepts/methods.md", "methods", "remove"),
-        ("evaluation/index.md", "grid:L1", "remove"),
+        ("evaluation/index.md", "grid:L1:CodeNib", "remove"),
+        ("evaluation/index.md", "grid:L1:Reproduced+Control", "remove"),
+        ("agent_integrations.md", "agents", "remove"),
         ("evaluation/index.md", "grid:L2+L3", "remove"),
         ("evaluation/index.md", "grid:L2+L3", "mismatch"),
         ("evaluation/index.md", "benchmarks", "duplicate"),

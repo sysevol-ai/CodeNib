@@ -85,6 +85,7 @@ def test_mkdocs_navigation_tabs_contract():
     # Evaluation is a first-class tab, with guides and results at that layer.
     evaluation = sections["Benchmarks"]
     assert evaluation[0] == "evaluation/index.md"
+    assert {"Reproduced Agents": "agent_integrations.md"} in evaluation
     assert {"ContextBench Experiments": "evaluation/contextbench-results.md"} in next(
         item["Results"]
         for item in evaluation
