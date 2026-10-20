@@ -11,7 +11,8 @@
     "build:landing": "vite build --config vite.landing.config.ts",
     "capture:landing-maps": "node scripts/capture-landing-maps.mjs",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:visual-evidence": "node visual_evidence_verify.mjs"
   },
   "dependencies": {
     "cytoscape": "^3.33.4",

@@ -68,6 +68,7 @@ try {
         let data;
         if (url.pathname === "/api/repos") data = [repo];
         else if (url.pathname === `${path}/commits`) data = { available: false, commits: [] };
+        else if (url.pathname === `${path}/visual-evidence`) return route.fulfill({ status: 404, json: { detail: "No visual evidence in this layout fixture" } });
         else if (url.pathname === `${path}/wiki`) data = tree;
         else if (url.pathname === `${path}/wiki-map`) data = scenario === "map-unavailable"
           ? { available: false, reason: "graph_unavailable", areas: [], links: [] } : map;

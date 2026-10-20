@@ -414,6 +414,41 @@ export interface WikiVisualQuality {
   }>;
 }
 
+export interface WikiVisualEvidenceFact {
+  artifact_path: string;
+  artifact_sha256?: string;
+  extractor: string;
+  entities: Array<{ name: string; type: string; confidence: number }>;
+  relations: Array<{ source: string; target: string; relation: string }>;
+  claims: Array<{ text: string; confidence: number }>;
+  context?: {
+    caption: string;
+    references: Array<{ file: string; line: number; title: string; section: string; excerpt: string }>;
+    source_paths: string[];
+  };
+}
+
+export interface WikiVisualEvidenceBinding {
+  artifact_path: string;
+  entity_name: string;
+  source_path: string;
+  symbol: string;
+  line: number;
+  score: number;
+  evidence: string;
+}
+
+export interface WikiVisualEvidence {
+  state: "ready" | "stale";
+  source_commit: string;
+  indexed_commit: string;
+  artifact_count: number;
+  fact_count: number;
+  binding_count: number;
+  facts: WikiVisualEvidenceFact[];
+  bindings: WikiVisualEvidenceBinding[];
+}
+
 /**
  * Planned media slots are internal generation metadata, not reader content.
  * Asset previews require materialization. The native SystemArchitecture reader
@@ -531,6 +566,33 @@ export async function fetchWikiPage(
     }
     throw error;
   }
+}
+
+export async function fetchWikiVisualEvidence(
+  repoId: string,
+  opts: { signal?: AbortSignal } = {},
+): Promise<WikiVisualEvidence | null> {
+  if (isStaticRuntime()) return null;
+  const response = await fetch(
+    `${API_BASE}/api/repos/${encodeURIComponent(repoId)}/visual-evidence`,
+    { signal: opts.signal },
+  );
+  if (response.status === 404) return null;
+  if (!response.ok) {
+    throw await responseError(response, "Failed to load repository visual evidence");
+  }
+  return response.json();
+}
+
+export function wikiVisualEvidenceMediaUrl(
+  repoId: string,
+  commit: string,
+  file: string,
+  sha256?: string,
+): string {
+  const params = new URLSearchParams({ commit, file });
+  if (sha256) params.set("sha256", sha256);
+  return `${API_BASE}/api/repos/${encodeURIComponent(repoId)}/visual-evidence/media?${params}`;
 }
 
 export async function fetchSource(

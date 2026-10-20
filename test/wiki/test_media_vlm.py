@@ -5,8 +5,10 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 from types import SimpleNamespace
+from urllib.error import HTTPError, URLError
 
 import pytest
 
@@ -266,6 +268,106 @@ def test_visual_fact_extractor_rejects_non_json_content():
 
     with pytest.raises(json.JSONDecodeError):
         extractor.extract(_artifact())
+
+
+def _success_response():
+    return _Response(
+        {
+            "choices": [
+                {
+                    "message": {
+                        "content": json.dumps(
+                            {"entities": [], "relations": [], "claims": []}
+                        )
+                    }
+                }
+            ]
+        }
+    )
+
+
+def _http_error(status, message):
+    return HTTPError(
+        "https://api.example/v1/chat/completions",
+        status,
+        "provider failure",
+        hdrs=None,
+        fp=io.BytesIO(json.dumps({"error": {"message": message}}).encode()),
+    )
+
+
+def test_visual_fact_extractor_retries_transient_provider_failure():
+    calls = 0
+    delays = []
+
+    def fake_urlopen(_request, timeout):
+        nonlocal calls
+        assert timeout == 120
+        calls += 1
+        if calls == 1:
+            raise _http_error(503, "temporary capacity")
+        return _success_response()
+
+    extractor = OpenAICompatibleVisualFactExtractor(
+        model="gemini-flash",
+        api_base="https://api.example/v1",
+        urlopen=fake_urlopen,
+        sleep=delays.append,
+    )
+
+    facts = extractor.extract(_artifact())
+
+    assert calls == 2
+    assert delays == [0.25]
+    assert facts["extractor"] == "openai-compatible"
+
+
+def test_visual_fact_extractor_does_not_retry_invalid_request_and_redacts_key():
+    calls = 0
+
+    def fake_urlopen(_request, timeout):
+        assert timeout == 120
+        nonlocal calls
+        calls += 1
+        raise _http_error(400, "Missing header Bearer AIza123456789012345678901234")
+
+    extractor = OpenAICompatibleVisualFactExtractor(
+        model="gemini-flash",
+        api_base="https://api.example/v1",
+        urlopen=fake_urlopen,
+        sleep=lambda _delay: pytest.fail("400 responses must not be retried"),
+    )
+
+    with pytest.raises(RuntimeError, match="HTTP 400") as failure:
+        extractor.extract(_artifact())
+
+    assert calls == 1
+    assert "AIza" not in str(failure.value)
+    assert "[redacted]" in str(failure.value)
+
+
+def test_visual_fact_extractor_retries_network_errors_then_reports_them():
+    calls = 0
+    delays = []
+
+    def fake_urlopen(_request, timeout):
+        assert timeout == 120
+        nonlocal calls
+        calls += 1
+        raise URLError("TLS connection interrupted")
+
+    extractor = OpenAICompatibleVisualFactExtractor(
+        model="gemini-flash",
+        api_base="https://api.example/v1",
+        urlopen=fake_urlopen,
+        sleep=delays.append,
+    )
+
+    with pytest.raises(RuntimeError, match="TLS connection interrupted"):
+        extractor.extract(_artifact())
+
+    assert calls == 3
+    assert delays == [0.25, 0.5]
 
 
 def test_visual_fact_extractor_from_config_returns_none_when_disabled():

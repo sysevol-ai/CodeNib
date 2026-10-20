@@ -12,6 +12,8 @@ import json
 import math
 import re
 import stat
+import time
+import urllib.error
 import urllib.request
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Mapping
@@ -27,6 +29,12 @@ _MAX_TIMEOUT_SECONDS = 600.0
 _MAX_REQUEST_BYTES = 24 * 1024 * 1024
 _MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 _MAX_IMAGE_BYTES = 16 * 1024 * 1024
+_MAX_PROVIDER_ERROR_BYTES = 4096
+_MAX_PROVIDER_ATTEMPTS = 3
+_RETRY_DELAY_SECONDS = 0.25
+_PROVIDER_SECRET_RE = re.compile(
+    r"\b(?:AIza[\w-]{12,}|sk-[\w-]{12,}|Bearer\s+\S+)", re.I
+)
 _SUPPORTED_MIME_TYPES = frozenset(
     {
         "image/jpeg",
@@ -48,6 +56,7 @@ class OpenAICompatibleVisualFactExtractor:
         api_key: str | None = None,
         timeout: float = 120.0,
         urlopen: Callable[..., Any] | None = None,
+        sleep: Callable[[float], None] | None = None,
         provider: str = "openai-compatible",
         repo_path: str | Path | None = None,
     ) -> None:
@@ -60,6 +69,7 @@ class OpenAICompatibleVisualFactExtractor:
             Path(repo_path).expanduser().resolve() if repo_path is not None else None
         )
         self._urlopen = urlopen or urllib.request.urlopen
+        self._sleep = sleep or time.sleep
         if not self.model:
             raise ValueError("visual fact model is required")
         if len(self.model) > _MAX_MODEL_LENGTH:
@@ -139,14 +149,35 @@ class OpenAICompatibleVisualFactExtractor:
             headers=headers,
             method="POST",
         )
-        with self._urlopen(request, timeout=self.timeout) as response:
-            raw = response.read(_MAX_RESPONSE_BYTES + 1)
+        raw = self._post_with_retries(request)
         if len(raw) > _MAX_RESPONSE_BYTES:
             raise ValueError("visual fact response exceeds the byte limit")
         data = json.loads(raw.decode("utf-8"))
         if not isinstance(data, dict):
             raise ValueError("visual fact response must be a JSON object")
         return data
+
+    def _post_with_retries(self, request: urllib.request.Request) -> bytes:
+        """Read a bounded provider response, retrying transient failures only."""
+
+        for attempt in range(1, _MAX_PROVIDER_ATTEMPTS + 1):
+            try:
+                with self._urlopen(request, timeout=self.timeout) as response:
+                    return response.read(_MAX_RESPONSE_BYTES + 1)
+            except urllib.error.HTTPError as exc:
+                if _retryable_status(exc.code) and attempt < _MAX_PROVIDER_ATTEMPTS:
+                    self._sleep(_RETRY_DELAY_SECONDS * attempt)
+                    continue
+                raise _provider_http_error(exc, attempts=attempt) from exc
+            except (urllib.error.URLError, OSError) as exc:
+                if attempt < _MAX_PROVIDER_ATTEMPTS:
+                    self._sleep(_RETRY_DELAY_SECONDS * attempt)
+                    continue
+                raise RuntimeError(
+                    "visual fact provider request failed after "
+                    f"{attempt} attempt(s): {_bounded_network_error(exc)}"
+                ) from exc
+        raise AssertionError("visual fact provider retry loop exhausted")
 
 
 def visual_fact_extractor_from_config(
@@ -257,6 +288,61 @@ def _validated_timeout(value: Any) -> float:
             f"visual fact timeout must be between 0 and {_MAX_TIMEOUT_SECONDS:g} seconds"
         )
     return timeout
+
+
+def _retryable_status(status: Any) -> bool:
+    try:
+        code = int(status)
+    except (TypeError, ValueError):
+        return False
+    return code == 429 or 500 <= code <= 599
+
+
+def _provider_http_error(exc: urllib.error.HTTPError, *, attempts: int) -> RuntimeError:
+    reason = _bounded_text(exc.reason)
+    detail = _provider_error_detail(exc)
+    message = f"HTTP {exc.code}"
+    if reason:
+        message = f"{message} {reason}"
+    if detail:
+        message = f"{message}: {detail}"
+    return RuntimeError(
+        f"visual fact provider request failed after {attempts} attempt(s): {message}"
+    )
+
+
+def _provider_error_detail(exc: urllib.error.HTTPError) -> str:
+    try:
+        raw = exc.read(_MAX_PROVIDER_ERROR_BYTES + 1)
+    except OSError:
+        return ""
+    if len(raw) > _MAX_PROVIDER_ERROR_BYTES:
+        return "provider returned an oversized error body"
+    try:
+        parsed = json.loads(raw.decode("utf-8", errors="strict"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return "provider returned an invalid error body"
+    if isinstance(parsed, list) and len(parsed) == 1:
+        parsed = parsed[0]
+    if not isinstance(parsed, Mapping):
+        return "provider returned an invalid error body"
+    error = parsed.get("error")
+    if not isinstance(error, Mapping):
+        return "provider returned an invalid error body"
+    return _bounded_text(error.get("message"))
+
+
+def _bounded_network_error(exc: BaseException) -> str:
+    detail = _bounded_text(getattr(exc, "reason", None) or str(exc))
+    return detail or type(exc).__name__
+
+
+def _bounded_text(value: Any) -> str:
+    text = str(value or "").strip()
+    text = " ".join(text.split())
+    text = _PROVIDER_SECRET_RE.sub("[redacted]", text)
+    raw = text.encode("utf-8", errors="ignore")[:_MAX_PROVIDER_ERROR_BYTES]
+    return raw.decode("utf-8", errors="ignore").rstrip()
 
 
 def _validated_api_key(value: Any) -> str | None:
