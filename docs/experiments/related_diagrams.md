@@ -131,3 +131,11 @@ stale, empty or failed optional evidence, plus failed image loading. It creates 
 recordings and does not use the user's browser profile or call a model.
 This verifies frontend interactions; backend route tests and a real local
 repository smoke check remain separate evidence.
+
+Publication rejects symlinked parent components and uses POSIX directory-relative
+atomic replacement. Hosts without those primitives fail before creating output;
+this does not change the Wiki database boundary. A same-commit source-selection
+change makes the prior evidence stale. Optional evidence that arrives after prose
+reveal or its wait deadline is ignored, and incomplete provider response bodies
+use the existing bounded retry policy. Browser acceptance uses the production
+build and includes the delayed-evidence regression.

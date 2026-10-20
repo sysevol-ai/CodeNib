@@ -123,7 +123,11 @@ def test_area_map_works_before_pages_or_evidence_are_generated(monkeypatch):
 
 def test_visual_evidence_summary_hides_stale_facts_and_keeps_ready_bindings():
     persisted = {
-        "media_manifest": {"commit": "a" * 40, "artifact_count": 1},
+        "media_manifest": {
+            "commit": "a" * 40,
+            "artifact_count": 1,
+            "source_selection_digest": "sha256:" + "c" * 64,
+        },
         "visual_facts_manifest": {
             "fact_count": 1,
             "facts": [
@@ -164,17 +168,27 @@ def test_visual_evidence_summary_hides_stale_facts_and_keeps_ready_bindings():
             ],
         },
     }
-    current = SimpleNamespace(entry=SimpleNamespace(base_commit="a" * 40))
+    current = SimpleNamespace(
+        entry=SimpleNamespace(base_commit="a" * 40),
+        manifest=SimpleNamespace(source_selection_digest="sha256:" + "c" * 64),
+    )
 
     ready = web_app._summarize_wiki_visual_evidence(persisted, current)
 
     assert ready["state"] == "ready"
     assert ready["facts"][0]["entities"][0]["name"] == "WikiService"
     assert len(ready["bindings"]) == 2
+    current.manifest.source_selection_digest = "sha256:" + "d" * 64
+    changed_selection = web_app._summarize_wiki_visual_evidence(persisted, current)
+    assert changed_selection["state"] == "stale"
+    assert changed_selection["facts"] == [] and changed_selection["bindings"] == []
 
     stale = web_app._summarize_wiki_visual_evidence(
         persisted,
-        SimpleNamespace(entry=SimpleNamespace(base_commit="b" * 40)),
+        SimpleNamespace(
+            entry=SimpleNamespace(base_commit="b" * 40),
+            manifest=SimpleNamespace(source_selection_digest="sha256:" + "c" * 64),
+        ),
     )
 
     assert stale["state"] == "stale"
@@ -183,9 +197,16 @@ def test_visual_evidence_summary_hides_stale_facts_and_keeps_ready_bindings():
 
 
 def test_visual_evidence_endpoint_reads_a_pinned_repository_generation(monkeypatch):
-    bundle = SimpleNamespace(entry=SimpleNamespace(base_commit="a" * 40))
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(base_commit="a" * 40),
+        manifest=SimpleNamespace(source_selection_digest="sha256:" + "c" * 64),
+    )
     persisted = {
-        "media_manifest": {"commit": "a" * 40, "artifact_count": 0},
+        "media_manifest": {
+            "commit": "a" * 40,
+            "artifact_count": 0,
+            "source_selection_digest": "sha256:" + "c" * 64,
+        },
         "visual_facts_manifest": {"fact_count": 0, "facts": []},
         "grounding_manifest": {"binding_count": 0, "bindings": []},
     }
@@ -230,10 +251,15 @@ def test_visual_evidence_media_serves_only_current_manifest_artifacts(
 
     bundle = SimpleNamespace(
         entry=SimpleNamespace(base_commit="a" * 40),
+        manifest=SimpleNamespace(source_selection_digest="sha256:" + "c" * 64),
         source_reader=SourceReader(),
     )
     persisted = {
-        "media_manifest": {"commit": "a" * 40, "artifact_count": 1},
+        "media_manifest": {
+            "commit": "a" * 40,
+            "artifact_count": 1,
+            "source_selection_digest": "sha256:" + "c" * 64,
+        },
         "visual_facts_manifest": {
             "fact_count": 1,
             "facts": [

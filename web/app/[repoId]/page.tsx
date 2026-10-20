@@ -514,6 +514,7 @@ export default function WikiPageView({
 
   useEffect(() => {
     let cancelled = false;
+    const visualDeadline = Date.now() + LEADING_VISUAL_WAIT_MS;
     setCommits([]);
     setSelectedCommit(undefined);
     setVisualEvidence(null);
@@ -534,7 +535,10 @@ export default function WikiPageView({
       .catch(() => {});
     fetchWikiVisualEvidence(repoId)
       .then((evidence) => {
-        if (!cancelled) setVisualEvidence(evidence);
+        if (!cancelled && Date.now() <= visualDeadline &&
+            !contentRef.current?.querySelector(".wiki-story")) {
+          setVisualEvidence(evidence);
+        }
       })
       .catch(() => {
         if (!cancelled) {

@@ -508,7 +508,17 @@ def _summarize_wiki_visual_evidence(persisted: Mapping, bundle) -> dict:
     indexed_commit = str(
         getattr(getattr(bundle, "entry", None), "base_commit", "") or ""
     )
-    state = "ready" if _same_commit(source_commit, indexed_commit) else "stale"
+    selection_digest = getattr(
+        getattr(bundle, "manifest", None), "source_selection_digest", None
+    )
+    same_selection = bool(selection_digest) and (
+        media.get("source_selection_digest") == selection_digest
+    )
+    state = (
+        "ready"
+        if _same_commit(source_commit, indexed_commit) and same_selection
+        else "stale"
+    )
     visible_facts = facts["facts"][:64] if state == "ready" else []
     visible_paths = {str(fact["artifact_path"]) for fact in visible_facts}
     binding_counts: dict[str, int] = {}

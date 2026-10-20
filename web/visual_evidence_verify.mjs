@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
-import { createServer } from "vite";
+import { preview } from "vite";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
 const commit = "a".repeat(40);
@@ -31,7 +31,7 @@ const visual = (path, entity, source) => ({
 const facts = [visual("queue.svg", "QueueWorker", queue), visual("queue.png", "QueueWorker", queue), visual("storage.svg", "StorageIndex", storage)];
 const evidence = { state: "ready", source_commit: commit, indexed_commit: commit, artifact_count: 3, fact_count: 3, binding_count: 0, facts, bindings: [] };
 const repo = { id: "acceptance", name: "Example", repo: "example/repo", base_commit: commit, commit_short: commit.slice(0, 8), language: "python", languages: ["python"], description: "Acceptance fixture", problem_statement: "", file_count: 2, capabilities: { sparse_search: true, chat: false, codemap: false } };
-const server = await createServer({ root, server: { host: "127.0.0.1", port: 0, open: false }, logLevel: "error" });
+const server = await preview({ root, preview: { host: "127.0.0.1", port: 0, open: false }, logLevel: "error" });
 let browser;
 const results = [];
 
@@ -41,6 +41,8 @@ async function scenario(mode, width = 1280) {
   page.setDefaultTimeout(8000);
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
+  let releaseVisual;
+  const visualGate = new Promise(resolve => { releaseVisual = resolve; });
   const base = `http://127.0.0.1:${server.httpServer.address().port}`;
   await context.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
@@ -52,6 +54,7 @@ async function scenario(mode, width = 1280) {
       headers: { "Content-Security-Policy": "default-src 'none'; sandbox", "X-Content-Type-Options": "nosniff" },
     });
     if (path.endsWith("/visual-evidence")) {
+      if (mode === "late") await visualGate;
       if (mode === "missing") return json({ detail: "No evidence" }, 404);
       if (mode === "failed") return json({ detail: "Unavailable" }, 500);
       return json({ ...evidence, state: mode === "stale" ? "stale" : "ready", facts: mode === "empty" ? [] : facts });
@@ -64,9 +67,15 @@ async function scenario(mode, width = 1280) {
     return json({ nodes: [], edges: [], areas: [], links: [], available: false });
   });
   try {
-    await page.goto(`${base}/acceptance`, { waitUntil: "networkidle" });
+    await page.goto(`${base}/acceptance`, { waitUntil: mode === "late" ? "domcontentloaded" : "networkidle" });
     await page.getByRole("heading", { name: "Overview", exact: true }).waitFor();
     assert.equal(await page.locator(".page-load-error").count(), 0);
+    if (mode === "late") {
+      const response = page.waitForResponse(url => url.url().endsWith("/visual-evidence"));
+      releaseVisual();
+      await response;
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    }
     const details = page.locator(".related-visuals");
     if (mode === "image-failed") {
       await details.waitFor();
@@ -137,11 +146,10 @@ async function scenario(mode, width = 1280) {
 }
 
 try {
-  await server.listen();
   browser = await chromium.launch({ headless: true, channel: process.env.CODENIB_TEST_BROWSER || undefined });
   await scenario("ready");
   await scenario("ready", 390);
-  for (const mode of ["missing", "stale", "empty", "failed", "image-failed"]) await scenario(mode);
+  for (const mode of ["missing", "stale", "empty", "failed", "image-failed", "late"]) await scenario(mode);
   console.log(JSON.stringify({ passed: results.length, screenshots: false, recordings: false, results }));
 } finally {
   await browser?.close();

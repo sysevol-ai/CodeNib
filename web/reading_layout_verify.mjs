@@ -95,8 +95,14 @@ try {
       });
 
       for (const navigation of ["open", "refresh"]) {
+        const heldStarted = page.waitForRequest(request => new URL(request.url()).pathname === held);
+        const proseLoaded = scenario === "page-late" ? null : page.waitForResponse(
+          response => new URL(response.url()).pathname === `${path}/wiki/${chapter}`,
+        ).then(response => response.finished());
         if (navigation === "open") await page.goto(`${base}/${repo.id}?p=${chapter}`, { waitUntil: "domcontentloaded" });
         else { turn = gate(); await page.reload({ waitUntil: "domcontentloaded" }); }
+        await heldStarted;
+        if (proseLoaded) await proseLoaded;
         await page.locator(".wiki-main").waitFor();
         await page.evaluate(() => document.fonts.ready);
         // Let the unheld page/visual response arrive while the other stays pending.
@@ -105,7 +111,15 @@ try {
         const initial = await page.locator(".wiki-main").boundingBox();
         if (stalled) await page.clock.fastForward(6000);
         else turn.release();
-        await page.locator('.wiki-main[aria-busy="false"] .wiki-story').waitFor();
+        try { await page.locator('.wiki-main[aria-busy="false"] .wiki-story').waitFor(); }
+        catch (error) {
+          console.error("LAYOUT_FAILURE", { width, scenario, navigation, errors, unexpected,
+            body: (await page.locator("body").innerText()).slice(0, 2400),
+            frames: (await page.evaluate(() => window.readingFrames)).slice(-3),
+            now: await page.evaluate(() => Date.now()),
+          });
+          throw error;
+        }
         if (stalled) {
           assert.equal(await page.locator(".repo-poster").count(), 0);
           const paragraph = page.locator(".wiki-story .markdown p").first();

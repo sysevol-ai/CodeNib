@@ -15,6 +15,7 @@ import stat
 import time
 import urllib.error
 import urllib.request
+from http.client import IncompleteRead
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Mapping
 from urllib.parse import urlsplit
@@ -169,7 +170,7 @@ class OpenAICompatibleVisualFactExtractor:
                     self._sleep(_RETRY_DELAY_SECONDS * attempt)
                     continue
                 raise _provider_http_error(exc, attempts=attempt) from exc
-            except (urllib.error.URLError, OSError) as exc:
+            except (urllib.error.URLError, OSError, IncompleteRead) as exc:
                 if attempt < _MAX_PROVIDER_ATTEMPTS:
                     self._sleep(_RETRY_DELAY_SECONDS * attempt)
                     continue
