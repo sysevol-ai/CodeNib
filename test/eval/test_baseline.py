@@ -439,3 +439,64 @@ def test_run_agent_baseline_resume_skips_processing_done_instances(
         "demo__repo-1",
         "demo__repo-2",
     ]
+
+
+@pytest.mark.parametrize(
+    ("dataset", "expected"),
+    [
+        ("codenib_base", ""),
+        ("swebench_lite", "swebench_lite_test_gt.json"),
+        ("locbench_v1", "locbench_v1_test_gt.json"),
+    ],
+)
+def test_run_agent_baseline_defaults_annotations_per_dataset(
+    monkeypatch, tmp_path, dataset, expected
+):
+    requested = []
+
+    class FakeDataset:
+        simplified_symbols = True
+
+        def load(self):
+            return [{"instance_id": "demo__repo-1", "repo": "demo/repo"}]
+
+        def load_eval_metadata(self, path):
+            requested.append(path)
+            return {}
+
+        def process_instance(self, _instance):
+            return None
+
+        def get_repo_path(self, _instance):
+            return "/repos/demo"
+
+    class FakeAgent:
+        async def locate_code(self, query_text, repo_path, context):
+            return _success_result()
+
+    monkeypatch.setattr(
+        "codenib.eval.agent_runner.loc_baseline.build_dataset",
+        lambda _args: FakeDataset(),
+    )
+    monkeypatch.setattr(
+        "codenib.eval.agent_runner.loc_baseline.user_state_dir", lambda: tmp_path
+    )
+    args = SimpleNamespace(
+        dataset=dataset,
+        split="test",
+        filter_instance=".*",
+        repo_cache_dir="",
+        result_path=str(tmp_path / "baseline.jsonl"),
+        resume=False,
+        limit=None,
+        eval_instances="",
+        metrics_k=[1],
+    )
+
+    asyncio.run(
+        run_agent_baseline(
+            args, agent_factory=FakeAgent, agent_name="fake", model_label="m"
+        )
+    )
+
+    assert requested == [str(tmp_path / expected) if expected else ""]

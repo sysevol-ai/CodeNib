@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import subprocess
@@ -237,6 +238,49 @@ class LocbenchDataset(DatasetBase):
             logger.info(f"Successfully checked out {repo_name} at commit {base_commit}")
         finally:
             os.chdir(original_dir)
+
+    def default_eval_metadata_path(self) -> str:
+        """Per-split annotation file in the dataset cache."""
+        return os.path.join(self.processed_dir, f"locbench_v1_{self.split}_gt.json")
+
+    def load_eval_metadata(self, path: str = "") -> Dict[str, Any]:
+        """Load Loc-Bench annotations, deriving any missing ones from the patch.
+
+        Loc-Bench rows carry the golden ``patch``, so the GT locator derives
+        the same file, symbol, and code-block labels as for SWE-bench. The
+        release's ``edit_functions`` and ``added_functions`` are not used.
+        Instances loaded now but absent from the file are located and appended,
+        so a filtered first run does not leave later runs unscored. An empty
+        ``path`` uses :meth:`default_eval_metadata_path`.
+        """
+        resolved = Path(
+            os.path.expanduser(path or self.default_eval_metadata_path())
+        ).resolve()
+        records = []
+        if resolved.exists():
+            with open(resolved, "r", encoding="utf-8") as fh:
+                records = json.load(fh)
+            if not isinstance(records, list):
+                return super().load_eval_metadata(str(resolved))
+        known = {entry.get("instance_id") for entry in records}
+        missing = [row for row in self.load() if row["instance_id"] not in known]
+        if missing:
+            from .gt_locate import build_gt_metadata
+
+            logger.info(
+                "Locating ground truth for %d Loc-Bench instance(s) into %s",
+                len(missing),
+                resolved,
+            )
+            records.extend(
+                build_gt_metadata(
+                    dataset=missing, work_dir=self.repo_root, keep_repos=True
+                )
+            )
+            resolved.parent.mkdir(parents=True, exist_ok=True)
+            with open(resolved, "w", encoding="utf-8") as fh:
+                json.dump(records, fh, indent=2, ensure_ascii=True)
+        return super().load_eval_metadata(str(resolved))
 
     def process(self) -> Any:
         self._data = self._load_dataset()

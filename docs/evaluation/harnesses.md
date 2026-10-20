@@ -187,7 +187,7 @@ produced the published numbers.
 | --- | --- | --- |
 | `examples/{locagent,cosil,orcaloca,claude,codex}_loc_agent.py` | One agent policy, scored with the shared file and symbol metrics | `codenib_base`, `swebench_lite`, `locbench_v1` |
 | `scripts/analysis/compare_agent_integrations.py` | LocAgent or OrcaLoca with the same model and cases, swapping the `native` and `codenib` repository provider | Prepared SWE-bench Lite cases |
-| `examples/skill_agent_eval.py` | The CodeNib agent with any subset of skills | SWE-bench (Lite by default) |
+| `examples/skill_agent_eval.py` | The CodeNib agent with any subset of skills | SWE-bench (Lite by default), or Loc-Bench with `--dataset czlll/Loc-Bench_V1`; needs `--eval-instances` |
 | `scripts/agent_compile/run_sweep.py`, `run_synthesis_sweep.py` | CodeNib agent arms from a YAML configuration: skill subsets and pre-loaded context | CodeNib Base, CodeNib Synthesis |
 
 ```bash

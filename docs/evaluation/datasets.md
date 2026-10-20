@@ -100,11 +100,11 @@ their labels were generated and checked.
 <!-- END CODENIB_SUPPORT_MATRIX:card:swebench_lite -->
 
 `SwebenchDataset` loads Lite by default, and runner CLIs select it as
-`swebench_lite`. Ground truth is files, functions, and code blocks derived from
-the golden patch. `load_eval_metadata(path)` generates a missing annotation
-file at `path` with `build_gt_metadata`, which clones each repository. The BM25,
-graph, and retrieve → rerank baselines pass such a default path; the agent
-runners and the embedding baseline need `--eval-instances`.
+`swebench_lite`. Ground truth is the files, functions, and code blocks that the
+golden patch changes. Harnesses build the annotation file the first time they
+need it, at `~/.codenib/swebench_lite_<split>_gt.json`; this clones every
+repository, so the first run is slow. `examples/skill_agent_eval.py` is the
+exception: pass it an existing file with `--eval-instances`.
 
 The [paired policy cases](../agent_integrations.md#fixed-swe-bench-lite-coverage)
 pin the dataset revision and a seeded, repository-balanced 50-case selection.
@@ -116,23 +116,40 @@ pin the dataset revision and a seeded, repository-balanced 50-case selection.
 | --- | --- |
 | Layer | L1 Localization: the method's final ranked files, symbols, code blocks, or line regions |
 | Origin | External |
-| Task | Real issues with edited and added functions |
-| Ground truth | An annotation file supplied with `--eval-instances` |
-| Granularity | File, symbol |
+| Task | Real issues, including features, performance, and security; find the code the golden patch changed |
+| Ground truth | Derived from golden patches by the GT locator |
+| Granularity | File, function, code block |
 | Languages | Python |
-| Size | Full release |
+| Size | 560 issues from 165 repositories |
 | Pinned revisions | None in the loader |
 | Scorer | CodeNib shared retrieval metrics |
-| Setup | Repository clones and an annotation file |
+| Setup | Repository clones; annotation file built on first use |
 | CodeNib entry point | `LocbenchDataset` |
 | Evidence | Runnable |
 | Upstream | <https://huggingface.co/datasets/czlll/Loc-Bench_V1> |
 <!-- END CODENIB_SUPPORT_MATRIX:card:locbench_v1 -->
 
-The dataset's `edit_functions` and `added_functions` columns are loaded but not
-scored. No shipped command builds the annotation file for Loc-Bench (the GT
-locator CLI covers SWE-bench Verified and Lite). No aggregate result is
-published.
+Loc-Bench was released with the LocAgent paper. Its 560 Python issues include
+feature requests, performance problems, and security fixes as well as bug
+reports, so it tests localization beyond bug fixing.
+
+CodeNib labels Loc-Bench the same way as SWE-bench Lite: the
+[GT locator](../gt_locator.md) reads each golden patch and records the files,
+functions, and code blocks it changes. Harnesses build the annotation file the
+first time they need it, at `~/.codenib/locbench_v1_<split>_gt.json`, or you can
+build it ahead of time:
+
+```bash
+python -m codenib.dataset.gt_locate --dataset locbench --keep-repos
+```
+
+The release also lists the functions each fix edits and adds. CodeNib does not
+score against that list, so its numbers can differ slightly from results
+reported against it.
+
+Every CodeNib retrieval route, the CodeNib agent, and the reproduced agents run
+on Loc-Bench (see the [matrix](index.md#method-benchmark-matrix)). No full run
+has been published yet.
 
 ### SWE-Explore and Agent Retrieval Bench
 
@@ -175,6 +192,8 @@ as a benchmark on its own.
 - Use **CodeNib Synthesis** for query types that issues rarely contain, such as
   multi-hop traversal questions.
 - Use **SWE-bench Lite** to compare with published Python localization agents.
+- Use **Loc-Bench** for Python issues beyond bug fixes: feature requests,
+  performance problems, and security fixes.
 - Use **SWE-Explore** when you need the benchmark's official region metrics,
   including line-budgeted recall and nDCG.
 - Use **Agent Retrieval Bench** for tasks other than issue localization:

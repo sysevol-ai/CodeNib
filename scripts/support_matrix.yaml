@@ -97,14 +97,16 @@ benchmarks:
     url: https://huggingface.co/datasets/czlll/Loc-Bench_V1
     layer: L1
     origin: External
-    task: Real issues with edited and added functions
-    ground_truth: An annotation file supplied with `--eval-instances`
-    granularity: File, symbol
+    task: >-
+      Real issues, including features, performance, and security; find the
+      code the golden patch changed
+    ground_truth: Derived from golden patches by the GT locator
+    granularity: File, function, code block
     languages: Python
-    size: Full release
+    size: 560 issues from 165 repositories
     pins: None in the loader
     scorer: CodeNib shared retrieval metrics
-    setup: Repository clones and an annotation file
+    setup: Repository clones; annotation file built on first use
     entry:
       - python: codenib/dataset/locbench.py:LocbenchDataset
     level: Runnable
@@ -391,6 +393,7 @@ methods:
       codenib_base: {level: Runnable}
       codenib_synthesis: {level: Runnable}
       swebench_lite: {level: Runnable}
+      locbench_v1: {level: Runnable}
       contextbench:
         level: Measured
         note: >-
