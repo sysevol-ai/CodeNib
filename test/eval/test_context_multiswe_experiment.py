@@ -80,6 +80,7 @@ def test_multi_task_identity_and_source_remain_bound(tmp_path, repo, number):
         ({"native_test_workers": 4}, "ponylang/ponyc", "workers"),
         ({"native_test_workers": 2}, "fmtlib/fmt", "only for Ponyc"),
         ({"native_cpu_count": 8}, "fmtlib/fmt", "CPU count"),
+        ({"native_pids_limit": 0}, "fmtlib/fmt", "process limit"),
     ],
 )
 def test_native_resources_reject_before_container_or_output(
@@ -187,6 +188,7 @@ def test_native_grader_replaces_reference_before_running_and_removes_owner(
         args.native_network = "bridge"
         args.native_test_workers = 2
         args.native_cpu_count = 2
+        args.native_pids_limit = 1024
         monkeypatch.setattr(multi.os, "sched_getaffinity", lambda pid: {7, 9, 12})
     monkeypatch.setattr(multi, "native_environment", lambda: multi.HARNESS_HASHES)
     scripts = {
@@ -213,7 +215,9 @@ def test_native_grader_replaces_reference_before_running_and_removes_owner(
             )
             assert cmd[cmd.index("--memory") + 1] == ("8g" if native_profile else "3g")
             assert cmd[cmd.index("--cpus") + 1] == "2"
-            assert cmd[cmd.index("--pids-limit") + 1] == "256"
+            assert cmd[cmd.index("--pids-limit") + 1] == (
+                "1024" if native_profile else "256"
+            )
             if native_profile:
                 assert cmd[cmd.index("--env") + 1] == "MAKEFLAGS=num_cores=2"
                 assert cmd[cmd.index("--cpuset-cpus") + 1] == "7,9"
@@ -225,7 +229,7 @@ def test_native_grader_replaces_reference_before_running_and_removes_owner(
                 "memory_gib": 8 if native_profile else 3,
                 "cpu_quota": 2,
                 "cpu_affinity": "7,9" if native_profile else None,
-                "pids_limit": 256,
+                "pids_limit": 1024 if native_profile else 256,
                 "network": "bridge" if native_profile else "none",
                 "test_workers": 2 if native_profile else None,
                 "environment": {"MAKEFLAGS": "num_cores=2"} if native_profile else {},

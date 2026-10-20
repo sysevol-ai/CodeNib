@@ -938,6 +938,9 @@ def main():
         parser.add_argument("--native-test-workers", type=int, choices=(2,))
         parser.add_argument("--native-cpu-count", type=int, choices=(2,))
         parser.add_argument(
+            "--native-pids-limit", type=int, choices=(256, 1024), default=256
+        )
+        parser.add_argument(
             "--native-upstream",
             type=Path,
             help="Poly: pinned official harness checkout",
