@@ -61,7 +61,7 @@ async function scenario(mode, width = 1280) {
     if (path.endsWith("/wiki")) return json({ repo: repo.repo, pages: Object.values(pages).map(({ id, title }) => ({ id, title, children: [] })) });
     if (path.endsWith("/source")) return json({ file: url.searchParams.get("file"), start_line: Number(url.searchParams.get("start")), end_line: Number(url.searchParams.get("end")), content: "ACCEPTANCE_SOURCE_CONTENT\nQueue delivery context\n" });
     if (path.includes("/wiki/") && pages[path.split("/").pop()]) return json(pages[path.split("/").pop()]);
-    return json({ nodes: [], edges: [], available: false });
+    return json({ nodes: [], edges: [], areas: [], links: [], available: false });
   });
   try {
     await page.goto(`${base}/acceptance`, { waitUntil: "networkidle" });
