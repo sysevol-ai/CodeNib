@@ -93,8 +93,9 @@ results = build_gt_metadata(dataset, work_dir="/data/repos", keep_repos=True)
 `SwebenchDataset.load_eval_metadata()` and `LocbenchDataset.load_eval_metadata()`
 call `build_gt_metadata` themselves when the annotation file does not exist
 yet, so retrieval and agent harnesses can run on SWE-bench and Loc-Bench without
-a separate preparation step. `LocbenchDataset` also locates any loaded instance
-that an existing file lacks. The first run clones
+a separate preparation step. `LocbenchDataset` also locates the instances a
+run needs that an existing file lacks or failed on, holding a file lock beside
+the annotation file so concurrent runs do not locate into the same checkouts. The first run clones
 every repository and is slow.
 
 ## Command Line

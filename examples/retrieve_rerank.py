@@ -323,8 +323,9 @@ def parse_args():
         help=(
             "Path to JSON file containing evaluation annotations "
             "(target_files, symbols_*). Defaults to "
-            "~/.codenib/<dataset>_<split>_gt.json; codenib_base reads its "
-            "in-dataset labels instead. For SWE-bench Lite and Loc-Bench, "
+            "~/.codenib/<dataset>_<split>_gt.json for the split actually loaded "
+            "(dev for SWE-bench Lite, test for Loc-Bench); codenib_base reads "
+            "its in-dataset labels instead. For SWE-bench Lite and Loc-Bench, "
             "missing annotations are generated."
         ),
     )
@@ -549,7 +550,7 @@ def run_pipeline(args):
         eval_path = (
             ""
             if args.dataset == "codenib_base"
-            else str(user_state_dir() / f"{args.dataset}_{args.split}_gt.json")
+            else str(user_state_dir() / f"{args.dataset}_{dataset_split}_gt.json")
         )
     eval_metadata = dataset_obj.load_eval_metadata(eval_path)
     retrieve_plan = build_retrieve_plan(args.retrieval_mode)

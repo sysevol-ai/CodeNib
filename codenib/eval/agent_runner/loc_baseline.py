@@ -239,7 +239,14 @@ async def run_agent_baseline(
         if args.dataset == "codenib_base"
         else str(user_state_dir() / f"{args.dataset}_{args.split}_gt.json")
     )
-    eval_metadata = dataset_obj.load_eval_metadata(eval_path)
+    if isinstance(dataset_obj, LocbenchDataset):
+        # Label only the rows this run scores, so --limit also bounds the
+        # first-use GT locator run.
+        eval_metadata = dataset_obj.load_eval_metadata(
+            eval_path, instances=instance_rows
+        )
+    else:
+        eval_metadata = dataset_obj.load_eval_metadata(eval_path)
     simplified_symbols = getattr(dataset_obj, "simplified_symbols", True)
     metrics_k = list(args.metrics_k)
 

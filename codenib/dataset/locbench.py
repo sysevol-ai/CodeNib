@@ -10,12 +10,13 @@ import os
 import re
 import subprocess
 from pathlib import Path
-from typing import Any, Dict, Optional, Sequence, Union
+from typing import Any, Dict, Iterable, Optional, Sequence, Union
 
 import datasets
 from datasets import Features
 from datasets import Sequence as Seq
 from datasets import Value
+from filelock import FileLock
 
 from ..log_utils import get_logger
 from .base import DatasetBase
@@ -243,44 +244,85 @@ class LocbenchDataset(DatasetBase):
         """Per-split annotation file in the dataset cache."""
         return os.path.join(self.processed_dir, f"locbench_v1_{self.split}_gt.json")
 
-    def load_eval_metadata(self, path: str = "") -> Dict[str, Any]:
+    def load_eval_metadata(
+        self,
+        path: str = "",
+        instances: Optional[Iterable[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
         """Load Loc-Bench annotations, deriving any missing ones from the patch.
 
         Loc-Bench rows carry the golden ``patch``, so the GT locator derives
         the same file, symbol, and code-block labels as for SWE-bench. The
         release's ``edit_functions`` and ``added_functions`` are not used.
-        Instances loaded now but absent from the file are located and appended,
-        so a filtered first run does not leave later runs unscored. An empty
-        ``path`` uses :meth:`default_eval_metadata_path`.
+
+        ``instances`` are the rows a run will score, by default every loaded
+        row. Each one without a successful record is located and merged into
+        the file, so a filtered or limited first run neither leaves later runs
+        unscored nor labels rows it will not use. Failed records are retried;
+        records that still fail are left out of the result, so their instances
+        are not scored against empty targets. An empty ``path`` uses
+        :meth:`default_eval_metadata_path`.
+
+        Concurrency: a file lock beside the annotation file covers the read,
+        the GT locator run, and the write, so two processes never locate into
+        the same repository checkouts at once or merge from a stale read. The
+        file is replaced atomically while the lock is held; that replace is the
+        linearization point, so a reader sees the previous or the merged file,
+        never a partial one.
         """
         resolved = Path(
             os.path.expanduser(path or self.default_eval_metadata_path())
         ).resolve()
-        records = []
-        if resolved.exists():
-            with open(resolved, "r", encoding="utf-8") as fh:
-                records = json.load(fh)
-            if not isinstance(records, list):
-                return super().load_eval_metadata(str(resolved))
-        known = {entry.get("instance_id") for entry in records}
-        missing = [row for row in self.load() if row["instance_id"] not in known]
-        if missing:
-            from .gt_locate import build_gt_metadata
+        rows = list(self.load() if instances is None else instances)
+        resolved.parent.mkdir(parents=True, exist_ok=True)
+        with FileLock(f"{resolved}.lock"):
+            payload: Any = []
+            if resolved.exists():
+                with open(resolved, "r", encoding="utf-8") as fh:
+                    payload = json.load(fh)
+            wrapped = isinstance(payload, dict) and "instances" in payload
+            records = payload["instances"] if wrapped else payload
+            if isinstance(records, dict):
+                records = [records]
+            located = {
+                entry.get("instance_id") for entry in records if not entry.get("error")
+            }
+            missing = [row for row in rows if row["instance_id"] not in located]
+            if missing:
+                from .gt_locate import build_gt_metadata
 
-            logger.info(
-                "Locating ground truth for %d Loc-Bench instance(s) into %s",
-                len(missing),
-                resolved,
-            )
-            records.extend(
-                build_gt_metadata(
+                logger.info(
+                    "Locating ground truth for %d Loc-Bench instance(s) into %s",
+                    len(missing),
+                    resolved,
+                )
+                fresh = build_gt_metadata(
                     dataset=missing, work_dir=self.repo_root, keep_repos=True
                 )
+                retried = {row["instance_id"] for row in missing}
+                records = [
+                    entry
+                    for entry in records
+                    if entry.get("instance_id") not in retried
+                ] + fresh
+                if wrapped:
+                    payload["instances"] = records
+                else:
+                    payload = records
+                staging = resolved.with_name(f".{resolved.name}.{os.getpid()}.tmp")
+                with open(staging, "w", encoding="utf-8") as fh:
+                    json.dump(payload, fh, indent=2, ensure_ascii=True)
+                os.replace(staging, resolved)
+        metadata = super().load_eval_metadata(str(resolved))
+        failed = sorted(iid for iid, entry in metadata.items() if entry.get("error"))
+        if failed:
+            logger.warning(
+                "No ground truth for %d Loc-Bench instance(s); they are not "
+                "scored: %s",
+                len(failed),
+                ", ".join(failed[:10]),
             )
-            resolved.parent.mkdir(parents=True, exist_ok=True)
-            with open(resolved, "w", encoding="utf-8") as fh:
-                json.dump(records, fh, indent=2, ensure_ascii=True)
-        return super().load_eval_metadata(str(resolved))
+        return {iid: entry for iid, entry in metadata.items() if not entry.get("error")}
 
     def process(self) -> Any:
         self._data = self._load_dataset()
