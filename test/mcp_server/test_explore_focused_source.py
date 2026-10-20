@@ -22,6 +22,10 @@ def source(tmp_path, monkeypatch, request):
     lines[259] = "    groupedOptions = groupBy(items).reduce()"
     if getattr(request, "param", None) == "long_line":
         lines[259] = "    groupedOptions = '" + "x" * 20000 + "'"
+    if getattr(request, "param", None) in ("late_single", "late_multi"):
+        size = 8000 if request.param == "late_single" else 3000
+        lines[259] = "x" * size + " groupedOptions reduce"
+        lines[99] = "    groupedOptions = True"
     lines += ["# outside"] * 9 + [
         "def outside():",
         "    return 'groupBy groupedOptions reduce externalOnly'",
@@ -186,3 +190,30 @@ def test_focus_does_not_select_matches_beyond_character_delivery_limit():
     assert query_focus_line(
         ["groupedOptionsSuffix"], "groupedOptions", max_line_chars=len("groupedOptions")
     ) == (0, 0)
+
+
+@pytest.mark.parametrize("source", ["late_single", "late_multi"], indirect=True)
+def test_explore_focus_uses_the_final_per_context_projection_budget(source, request):
+    ctx, _, rows = source
+    multi = request.node.callspec.params["source"] == "late_multi"
+    if multi:
+        for line in (20, 150, 300):
+            rows.append(
+                {
+                    "file": "long.py",
+                    "node_name": f"other{line}",
+                    "type": NODE_TYPE_FUNCTION,
+                    "start_line": line,
+                    "end_line": line + 1,
+                }
+            )
+    result = explore_context_impl(
+        ctx, query="groupedOptions reduce", budget="fast", include_dependencies=False
+    )
+    context = result["files"][0]["contexts"][0]
+    assert context["start_line"] == 100
+    assert context["content"].startswith("    groupedOptions = True")
+    selection = context["source_projection"]["selection"]
+    assert selection["matched_query_terms"] == 1
+    assert selection["delivery_char_limit"] == (2000 if multi else 4800)
+    assert len(context["content"]) <= selection["delivery_char_limit"]

@@ -577,3 +577,87 @@ def test_only_verified_requested_definition_precedes_ranked_hits(
     assert files[0] == ("src/target.py" if verified else "src/ranked.py")
     if not verified:
         assert "RANKED_SOURCE_BODY" in result["files"][0]["contexts"][0]["content"]
+
+
+def test_unquoted_calls_are_inferred_and_aggregate_aliases_stay_in_bounds():
+    from codenib.mcp.tools._validation import MAX_LSP_ROUTE_TEXT_CHARS
+    from codenib.mcp.tools.explore import _query_symbol_seeds
+    from codenib.mcp.tools.lsp import normalize_lsp_route_symbols
+
+    names = {f"sym_{i}": f"{i}_" + "x" * 510 for i in range(32)}
+    info = {
+        name: {"type": NODE_TYPE_FUNCTION, "has_definition": True, "unified_name": seed}
+        for seed, name in names.items()
+    }
+    ctx = SimpleNamespace(
+        symbol_graph=SimpleNamespace(
+            resolve_symbol_candidates=lambda seed, _limit: [names[seed]],
+            get_node_info_by_name=info.get,
+        )
+    )
+    inferred = _query_symbol_seeds(ctx, " ".join(names))
+    assert len(inferred) == 31
+    assert sum(map(len, inferred)) <= MAX_LSP_ROUTE_TEXT_CHARS
+    assert normalize_lsp_route_symbols(inferred) == inferred
+    ctx.symbol_graph = SimpleNamespace(
+        resolve_symbol_candidates=lambda *_args: ["decode"],
+        get_node_info_by_name=lambda _name: {
+            "type": NODE_TYPE_FUNCTION,
+            "has_definition": True,
+        },
+    )
+    assert _query_symbol_seeds(ctx, "fix decode() behavior") == ["decode"]
+
+
+def test_explicit_display_alias_prioritizes_merged_canonical_retrieval(
+    tmp_path, monkeypatch
+):
+    ctx = _context(tmp_path)
+    canonical = "canonical_target"
+    alias = "src/target.py:target()"
+    ctx.symbol_graph = SimpleNamespace(
+        resolve_symbol_candidates=lambda *_args: [canonical],
+        get_node_info_by_name=lambda _name: {
+            "type": NODE_TYPE_FUNCTION,
+            "has_definition": True,
+            "unified_name": alias,
+        },
+    )
+    rows = []
+    for i in range(5):
+        path = f"src/ranked{i}.py"
+        _write_source(tmp_path, path, f"ranked{i}")
+        rows.append(
+            {
+                "node_name": f"ranked{i}",
+                "type": NODE_TYPE_FUNCTION,
+                "file": path,
+                "start_line": 21,
+                "end_line": 22,
+            }
+        )
+    _write_source(tmp_path, "src/target.py", "target")
+    target = {
+        "node_name": canonical,
+        "type": NODE_TYPE_FUNCTION,
+        "file": "src/target.py",
+        "start_line": 21,
+        "end_line": 22,
+    }
+    rows.append(target)
+    monkeypatch.setattr(
+        "codenib.mcp.tools.explore.search_context_impl",
+        lambda *_args, **_kwargs: {"results": rows},
+    )
+    monkeypatch.setattr(
+        "codenib.mcp.tools.explore.lsp_route_impl",
+        lambda *_args, **_kwargs: [{**target, "node_name": alias}],
+    )
+    result = explore_context_impl(
+        ctx,
+        query="fix target",
+        symbols=[alias],
+        budget="fast",
+        include_dependencies=False,
+    )
+    assert result["files"][0]["file"] == "src/target.py"

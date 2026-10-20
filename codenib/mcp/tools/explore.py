@@ -24,6 +24,7 @@ from ...types import is_symbol_node, node_has_definition
 from ..explore_bounds import MAX_EXPLORE_PAYLOAD_BYTES, bound_explore_response
 from ._validation import (
     MAX_EXPLORE_WINDOWS,
+    MAX_LSP_ROUTE_TEXT_CHARS,
     MAX_LSP_SYMBOL_CHARS,
     MAX_ROUTE_SYMBOLS,
     MAX_SEARCH_QUERY_CHARS,
@@ -84,7 +85,7 @@ _BUDGETS = {
 _DIRECTIONS = frozenset({"impact", "dependencies", "both"})
 _MERGE_GAP_LINES = 8
 _IDENTIFIER = r"[A-Za-z_][A-Za-z0-9_]*(?:(?:::|\.)[A-Za-z_][A-Za-z0-9_]*)*"
-_QUERY_IDENTIFIERS = re.compile(rf"`({_IDENTIFIER})(?:\(\))?`|({_IDENTIFIER})")
+_QUERY_IDENTIFIERS = re.compile(rf"`({_IDENTIFIER})(?:\(\))?`|({_IDENTIFIER})(\(\))?")
 
 
 def _query_symbol_seeds(ctx: Any, query: str) -> list[str]:
@@ -99,11 +100,12 @@ def _query_symbol_seeds(ctx: Any, query: str) -> list[str]:
     if not callable(info_for):
         return []
     seeds: list[str] = []
+    seed_chars = 0
     examined: set[str] = set()
     for match in _QUERY_IDENTIFIERS.finditer(query):
-        quoted, bare = match.groups()
+        quoted, bare, call = match.groups()
         seed = quoted or bare
-        if not quoted and not re.search(r"[_:.]|[a-z0-9][A-Z]", seed):
+        if not quoted and not call and not re.search(r"[_:.]|[a-z0-9][A-Z]", seed):
             continue
         if len(seed) > MAX_LSP_SYMBOL_CHARS or seed in examined:
             continue
@@ -120,7 +122,10 @@ def _query_symbol_seeds(ctx: Any, query: str) -> list[str]:
                 # Concrete names keep ambiguous leaf matches usable by the
                 # dependency tool, whose fast budget admits only one seed.
                 if len(name) <= MAX_LSP_SYMBOL_CHARS and name not in seeds:
+                    if seed_chars + len(name) > MAX_LSP_ROUTE_TEXT_CHARS:
+                        continue
                     seeds.append(name)
+                    seed_chars += len(name)
                 if len(seeds) >= MAX_ROUTE_SYMBOLS:
                     return seeds
     return seeds
@@ -612,6 +617,7 @@ def explore_context_impl(
     if graph is not None:
         for symbol in route_symbols:
             for name in resolve_symbol_candidates(graph, symbol, limit=4):
+                requested_labels.add(name.rstrip("()"))
                 requested_labels.add(str(display_name(graph, name)).rstrip("()"))
     delivery_anchors = sorted(
         anchors,
@@ -627,6 +633,10 @@ def explore_context_impl(
         window_lines=profile.source_window_lines,
     )
     contexts: list[dict[str, Any]] = []
+    # The final projector divides its budget among nonempty contexts. Using
+    # every admitted window gives a conservative lower bound for each share,
+    # so no later projection can remove a match selected by a live-source read.
+    source_char_limit = min(4_800, profile.total_content_chars // max(1, len(windows)))
     for window in windows:
         if source_identity["verified"]:
             try:
@@ -638,6 +648,7 @@ def explore_context_impl(
                         int(window["focus_end_line"]),
                         query=normalized_query,
                         window_lines=profile.source_window_lines,
+                        max_content_chars=source_char_limit,
                     )
                 else:
                     payload = read_source_impl(
