@@ -15,7 +15,7 @@ import os
 import pickle
 import sys
 import tempfile
-from collections.abc import Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -179,11 +179,10 @@ def _atomic_json_dump(target: Path, value: object) -> None:
     _atomic_replace(target, _write)
 
 
-def _atomic_canonical_document_dump(
-    target: Path,
-    documents: List["_Document"],
-) -> None:
-    """Atomically stream one bounded canonical document array."""
+def _bounded_canonical_document_chunks(
+    documents: Iterable["_Document"],
+) -> Iterator[bytes]:
+    """Share the exact document encoding and limit between admission and save."""
 
     def values():
         for document in documents:
@@ -192,16 +191,26 @@ def _atomic_canonical_document_dump(
                 "metadata": dict(document.metadata),
             }
 
+    size = 0
+    for chunk in canonical_json_array_chunks(values()):
+        size += len(chunk)
+        if size > _MAX_PORTABLE_DOCUMENTS_JSON_BYTES:
+            raise ValueError(
+                "canonical vector documents exceed their "
+                f"{_MAX_PORTABLE_DOCUMENTS_JSON_BYTES}-byte limit"
+            )
+        yield chunk
+
+
+def _atomic_canonical_document_dump(
+    target: Path,
+    documents: List["_Document"],
+) -> None:
+    """Atomically stream one bounded canonical document array."""
+
     def _write(path: Path) -> None:
-        size = 0
         with path.open("wb") as handle:
-            for chunk in canonical_json_array_chunks(values()):
-                size += len(chunk)
-                if size > _MAX_PORTABLE_DOCUMENTS_JSON_BYTES:
-                    raise ValueError(
-                        "canonical vector documents exceed their "
-                        f"{_MAX_PORTABLE_DOCUMENTS_JSON_BYTES}-byte limit"
-                    )
+            for chunk in _bounded_canonical_document_chunks(documents):
                 handle.write(chunk)
 
     _atomic_replace(target, _write)
@@ -270,6 +279,48 @@ class _Document:
     def __repr__(self) -> str:
         name = self.metadata.get("name", "")
         return f"_Document(name={name!r}, len={len(self.page_content)})"
+
+
+def _code_chunk_documents(
+    code_chunks: Iterable[Dict[str, Any]],
+    *,
+    level: Level,
+    start_index: int = 0,
+) -> Iterator[_Document]:
+    """Construct identical ordered documents for preflight and materialization."""
+    for i, chunk in enumerate(code_chunks):
+        content = chunk.get("content", "")
+        content_hash = hashlib.md5(
+            content.encode("utf-8", errors="replace")
+        ).hexdigest()
+        metadata = {
+            "chunk_id": start_index + i,
+            "chunk_type": chunk.get("chunk_type", "unknown"),
+            "name": chunk.get("name", f"chunk_{i}"),
+            "file": chunk.get("file", ""),
+            "start_line": chunk.get("start_line", 0),
+            "end_line": chunk.get("end_line", 0),
+            "node_id": chunk.get("node_id", ""),
+            "level": level,
+            "content_hash": content_hash,
+        }
+        for key, value in chunk.items():
+            if key != "content" and key not in metadata:
+                metadata[key] = value
+        yield _Document(page_content=content, metadata=metadata)
+
+
+def _validate_schema_8_code_chunks(
+    code_chunks: Iterable[Dict[str, Any]], *, level: Level
+) -> int:
+    """Reject oversized full-build documents before allocating an embedding model.
+
+    Stream the same metadata and canonical bytes that save will write. A full
+    builder checks every requested level before any level is embedded; save
+    retains its own check. No document list or second encoded payload is retained.
+    """
+    documents = _code_chunk_documents(code_chunks, level=level)
+    return sum(len(chunk) for chunk in _bounded_canonical_document_chunks(documents))
 
 
 @dataclass(slots=True)
@@ -1508,28 +1559,11 @@ class CodeVectorStore:
         logger.info(f"Adding {len(code_chunks)} code chunks to {level} vector store")
 
         # Convert chunks to _Document objects
-        documents: List[_Document] = []
-        for i, chunk in enumerate(code_chunks):
-            content = chunk.get("content", "")
-            content_hash = hashlib.md5(
-                content.encode("utf-8", errors="replace")
-            ).hexdigest()
-            metadata = {
-                "chunk_id": len(documents_list) + i,
-                "chunk_type": chunk.get("chunk_type", "unknown"),
-                "name": chunk.get("name", f"chunk_{i}"),
-                "file": chunk.get("file", ""),
-                "start_line": chunk.get("start_line", 0),
-                "end_line": chunk.get("end_line", 0),
-                "node_id": chunk.get("node_id", ""),
-                "level": level,
-                "content_hash": content_hash,
-            }
-            for key, value in chunk.items():
-                if key not in ["content"] and key not in metadata:
-                    metadata[key] = value
-
-            documents.append(_Document(page_content=content, metadata=metadata))
+        documents = list(
+            _code_chunk_documents(
+                code_chunks, level=level, start_index=len(documents_list)
+            )
+        )
 
         # Store documents
         documents_list.extend(documents)
