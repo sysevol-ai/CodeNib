@@ -941,6 +941,9 @@ def main():
             "--native-pids-limit", type=int, choices=(256, 1024), default=256
         )
         parser.add_argument(
+            "--native-log-streams", choices=("merged", "separate"), default="merged"
+        )
+        parser.add_argument(
             "--native-upstream",
             type=Path,
             help="Poly: pinned official harness checkout",
