@@ -637,11 +637,11 @@ Ordinary agent source tools remain the working baseline, with embedding/graph
 optional only for a concrete failure and measured benefit. Earlier indexed-four
 positive evidence, all source gates/costs and the two unknown failed-session fees
 remain separate. New16 Max sessions report$3.2396939 nominal, with zero new
-API-key/repair usage. Fresh default-only validation, candidate500, native outcomes
-and submission evidence remain open.
+API-key/repair usage. At this screen the later validation and native/submission stages had not run;
+the completed system milestone is recorded below.
 
 Current ContextBench agent milestone: implementation and frozen evidence are
-provided by [#834](https://github.com/sysevol-ai/CodeNib/pull/834), retaining the
+provided by merged [#834](https://github.com/sysevol-ai/CodeNib/pull/834), retaining the
 `labs` lifecycle. CodeNib owns the native source tools, agent execution, context
 delivery and routing. The selected policy uses complementary Haiku searches and
 an adapted mini SWE-agent with Opus repair; it does not select embeddings, graph
@@ -695,9 +695,31 @@ Production corrections are merged independently:
 pre-admission, and [#838](https://github.com/sysevol-ai/CodeNib/pull/838)
 query-focused source delivery. Their executed unit CI and71 combined local
 regressions pass. This establishes delivery correctness, not causal ranking
-gains. The native environment follow-ups retain the explicit dependency order
-#834 → #839 → #840 → #841 → #842; each dependent must follow its merged parent
-and pass checks against its new base. Draft unit skips do not satisfy that gate.
+gains. The native environment corrections are delivered through
+[#839](https://github.com/sysevol-ai/CodeNib/pull/839),
+[#840](https://github.com/sysevol-ai/CodeNib/pull/840),
+[#841](https://github.com/sysevol-ai/CodeNib/pull/841), and
+[#842](https://github.com/sysevol-ai/CodeNib/pull/842): explicit resource ceilings,
+allowed CPU affinity, process limits and separately authenticated raw log streams.
+The first three follow their merged #834 parent; the final capture correction
+retains the same adapter/test blobs as the frozen native runtime. These changes
+add no candidate score or policy retry. The complete pre-merge combination passes
+8,548 unit tests with24 optional skips, five native executables,242 rebuilt-core
+regressions,191 frontend tests and36 reading-layout scenarios. The review follow-up [#843](https://github.com/sysevol-ai/CodeNib/pull/843)
+corrects inferred definition routing and source-projection boundaries;331 shared
+MCP/LSP/delivery tests pass. Unified grading now forwards the native options and
+rejects incompatible benchmark sources, with31 entry-point regressions. These
+correctness fixes do not change the frozen score. Original per-PR
+failures and subsequent fixes remain in the merge audit; draft skips are never
+counted as executed tests.
+
+Original source objects remain publicly reachable through the non-release tags
+`contextbench/2026-10-19/inference`, `contextbench/2026-10-19/poly-native`, and
+`contextbench/2026-10-19/multi-native`. They preserve the inference commit and
+all seven recorded runtime heads while implementation branches are restacked.
+No paid experiment is rerun for this merge program. External ContextBench
+publication/comparability review is the remaining result-publication gate.
+
 
 ```text
 source and manifest contracts

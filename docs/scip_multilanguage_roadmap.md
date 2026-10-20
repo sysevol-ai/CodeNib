@@ -55,7 +55,7 @@ cover these boundaries; this does not promote a backend or regenerate hosted
 graph artifacts.
 
 Assigned JavaScript function selection in the existing LSP route is corrected
-in [#834](https://github.com/sysevol-ai/CodeNib/pull/834). When
+in merged [#834](https://github.com/sysevol-ai/CodeNib/pull/834). When
 `typescript-language-server` drops a compiler name span before its initializer,
 reference lookup otherwise queries the function body and can return no results.
 The shared LSP client recovers only an unambiguous TypeScript `navtree` name span
