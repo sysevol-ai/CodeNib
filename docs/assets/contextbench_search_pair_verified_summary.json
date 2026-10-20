@@ -1,0 +1,110 @@
+{
+  "scope": "CodeNib metadata-seeded complementary Haiku pair on the SAME known canonical verified500. Unchanged primary passes independent32. Full500 is not fresh independent validation or an official submission. Native control retains its original failed-zero position, unknown fee and prior122 annotation-timing disclosure.",
+  "population": 500,
+  "runtime_commit": "71e489e5875ca19d73bd15c417b339fb43225439",
+  "protocol_sha256": "3e20eb647e1b23b1c4fa2550ce38976c409d73da75954721a3925f8e7cd26a40",
+  "analysis_sha256": "420d06c9898bb1ce997d338398ace1462dc5c4baa353e31e202e8cfa23974346",
+  "source_seal_sha256": "9158126bde5235026c513282694ee6a15c0b35559a54de45e725802e7f8dfd20",
+  "annotation_access_sha256": "77dc5bfbc716bde263f1ba7bf1abc290cf182724ffc349e70ca0ca88d9265f06",
+  "actual_worker_sessions": 1000,
+  "candidate_macro": {
+    "file": {
+      "recall": 0.8778819951358517,
+      "precision": 0.1882682366698341,
+      "f1": 0.2790931071256489
+    },
+    "symbol": {
+      "recall": 0.8479549336448242,
+      "precision": 0.1433431234560971,
+      "f1": 0.21682881233805656
+    },
+    "line": {
+      "recall": 0.7706906156843804,
+      "precision": 0.2051765587068771,
+      "f1": 0.28161839002407457
+    }
+  },
+  "candidate_official_valid_cases": 500,
+  "frozen_native500_macro": {
+    "file": {
+      "recall": 0.8483165253582222,
+      "precision": 0.356555890770511,
+      "f1": 0.4557723098880106
+    },
+    "symbol": {
+      "recall": 0.8129699537198422,
+      "precision": 0.23364508685325722,
+      "f1": 0.3147158008327643
+    },
+    "line": {
+      "recall": 0.7283145593663874,
+      "precision": 0.27968358733887005,
+      "f1": 0.3394640418322295
+    }
+  },
+  "baseline_original_failed_zero_positions": 1,
+  "baseline_known_Max_nominal_fee_sum_usd": 91.15588979999998,
+  "baseline_unknown_fee_cases": [
+    "SWE-Bench-Verified__python__maintenance__bugfix__768d44e5"
+  ],
+  "baseline_fees_complete": false,
+  "baseline_prior122_annotation_timing_disclosed": true,
+  "paired_differences_vs_frozen_native500": {
+    "recall": {
+      "difference": 0.04237605631799292,
+      "paired_repo_alias_percentile95": [
+        0.0159124857000494,
+        0.06414009800292984
+      ]
+    },
+    "precision": {
+      "difference": -0.07450702863199293,
+      "paired_repo_alias_percentile95": [
+        -0.09146428689636515,
+        -0.056011087160019644
+      ]
+    },
+    "f1": {
+      "difference": -0.05784565180815488,
+      "paired_repo_alias_percentile95": [
+        -0.07211303775142604,
+        -0.0421866237788673
+      ]
+    }
+  },
+  "bootstrap": {
+    "clusters": 57,
+    "resamples": 10000,
+    "seed": 20261020,
+    "interval": "percentile95unadjusted",
+    "independent_generalization_claim": false
+  },
+  "known_new_API_usage_decimal": "5.6807717450000000351",
+  "known_program_API_usage_after_usd": 81.01150498,
+  "remaining_API_allowance_usd": 18.98849502,
+  "cash_invoice_or_credit_balance_reconciled": false,
+  "fresh_independent_sample": false,
+  "matched_model_billing_or_cache_ablation": false,
+  "metadata_alone_causal_gain_established": false,
+  "Pass_at_1_evaluated": false,
+  "official_submission_ready": false,
+  "source_bodies_issues_Gold_provider_IDs_local_paths_exported": false,
+  "repair_calls": 0,
+  "Jev_requests": 0,
+  "csv_sha256": "4c9ad164471a354c6777c296115b2abaa3b67990ee955b16ea864115fa739605",
+  "cost_scope": "context_search_only",
+  "downstream_repair_and_native_grading_included": false,
+  "complete_resolution_cost_evaluated": false,
+  "compute_cost_included": false,
+  "source_boundary_audit": {
+    "status": "observed_git_metadata_outside_source_fingerprint",
+    "audit_sha256": "fb566c377d713b08c803f4c6d572ddfc7c6baca584b0643e1d7fc80bc95ea901",
+    "candidate_cases": 6,
+    "predicted_non_source_lines": 7,
+    "direct_line_recall_hits": 0,
+    "covered_by_source_fingerprint": false,
+    "original_predictions_and_metrics_preserved": true,
+    "fresh_clone_entire_trace_replay_proven": false
+  },
+  "raw_publication_ready": false
+}

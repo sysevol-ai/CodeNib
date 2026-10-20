@@ -670,10 +670,12 @@ def _grep_ripgrep(
         # Python's fallback counts matching lines, not every match on a line.
         command.append("--count")
 
-    for skipped_dir in sorted(_SKIP_DIR_PREFIXES):
-        command.extend(("--glob", f"!**/{skipped_dir}/**"))
     if glob:
         command.extend(("--glob", glob))
+    # ripgrep gives later globs precedence. Caller filters must not undo the
+    # documented recursive exclusions, including local VCS metadata.
+    for skipped_dir in sorted(_SKIP_DIR_PREFIXES):
+        command.extend(("--glob", f"!**/{skipped_dir}/**"))
     normalized_type = (type_ or "").lower()
     if not root.is_file() and normalized_type in _TYPE_EXTENSIONS:
         # Define our own type instead of using rg's broader built-ins (for

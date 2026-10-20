@@ -256,6 +256,7 @@ class LSPClient:
         # Track the last error from _request so callers can decide whether
         # to retry (transient errors like -32801) or not (permanent errors).
         self._last_error: Optional[dict] = None
+        self._typescript_navtree_supported = False
 
     # ── Lifecycle ─────────────────────────────────────────────
 
@@ -320,6 +321,18 @@ class LSPClient:
 
         result = self._request("initialize", params, timeout=120)
         self._notify("initialized", {})
+
+        commands = (
+            (result or {})
+            .get("capabilities", {})
+            .get("executeCommandProvider", {})
+            .get("commands", [])
+        )
+        self._typescript_navtree_supported = (
+            normalize_graph_language(self.language) == "ts"
+            and isinstance(commands, list)
+            and "typescript.tsserverRequest" in commands
+        )
 
         # Extract semantic tokens legend from server capabilities
         if result:
@@ -463,6 +476,25 @@ class LSPClient:
                 timeout=10,  # longest non-empty observed: 138ms
             )
             if result is not None:
+                if self._typescript_navtree_supported:
+                    from .typescript_symbols import (
+                        needs_typescript_name_spans,
+                        restore_typescript_name_spans,
+                    )
+
+                    if needs_typescript_name_spans(result):
+                        compiler = self._request(
+                            "workspace/executeCommand",
+                            {
+                                "command": "typescript.tsserverRequest",
+                                "arguments": ["navtree", {"file": abs_path}, {}],
+                            },
+                            timeout=10,
+                        )
+                        if isinstance(compiler, dict):
+                            result = restore_typescript_name_spans(
+                                result, compiler.get("body")
+                            )
                 _profile_log(
                     "documentSymbol",
                     file_path,

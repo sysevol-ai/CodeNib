@@ -1,0 +1,113 @@
+{
+  "scope": "All500 canonical first attempts: final selected-context metrics under the confirmed-delivery/source-version contract. Arbitrary shell attribution remains partial; this is not an accepted leaderboard entry.",
+  "cases": 500,
+  "official_valid_cases": 500,
+  "macro": {
+    "file": {
+      "recall": 0.8798819951358517,
+      "precision": 0.18802957419728297,
+      "f1": 0.27875712215810766
+    },
+    "block": {
+      "recall": 0.8518213268660295,
+      "precision": 0.14268197833970264,
+      "f1": 0.21608170129657342
+    },
+    "line": {
+      "recall": 0.7789821260975378,
+      "precision": 0.20394093240076408,
+      "f1": 0.28111030793467
+    }
+  },
+  "resolved": 388,
+  "unresolved": 112,
+  "native_pass_at_1": 0.776,
+  "modeled_search_plus_repair_usage_usd": 338.876600645,
+  "modeled_usage_per_case_usd": 0.67775320129,
+  "metered_sessions": 5514,
+  "search_sessions": 1000,
+  "repair_sessions": 4514,
+  "failed_and_unresolved_cases_retained": true,
+  "per_case_F1_then_macro_mean": true,
+  "retrospective_selection_cases": 3,
+  "arbitrary_shell_source_attribution": "partial",
+  "reference_material_supplied_to_model": false,
+  "evaluator_commit": "1436c28a8eb95496da4ea69ad458b9f8a8eb7d61",
+  "input_sha256": "257da78d6cde2b25012eac60a8b884cb563e117323e53d00f1fbdc8a3798c6da",
+  "raw_index_verification_sha256": "a01625e25a8cbca9a789bcd9af7d61a85b7b6ee05b5f168b9502a4f23d74c2a8",
+  "official_metrics_sha256": "10531aceb2b4f7448e44a656b590837dcff51deb782bbcf965990f1059cc961b",
+  "production_results_sha256": "9e3dfd9ceafdd542ea540909b1d124b63001ed4882527ab92348b4b9dff28642",
+  "same500_search_reference_macro": {
+    "file": {
+      "recall": 0.8778819951358517,
+      "precision": 0.1882682366698341,
+      "f1": 0.2790931071256489
+    },
+    "block": {
+      "recall": 0.8479549336448242,
+      "precision": 0.1433431234560971,
+      "f1": 0.21682881233805654
+    },
+    "line": {
+      "recall": 0.7706906156843804,
+      "precision": 0.2051765587068771,
+      "f1": 0.28161839002407457
+    }
+  },
+  "same500_reference_is_not_a_strict_causal_ablation": true,
+  "same_ID_descriptive_delta_audit": {
+    "file": {
+      "recall_higher": 1,
+      "recall_equal": 499,
+      "recall_lower": 0,
+      "F1_higher": 1,
+      "F1_equal": 482,
+      "F1_lower": 17
+    },
+    "block": {
+      "recall_higher": 11,
+      "recall_equal": 489,
+      "recall_lower": 0,
+      "F1_higher": 9,
+      "F1_equal": 430,
+      "F1_lower": 61
+    },
+    "line": {
+      "recall_higher": 35,
+      "recall_equal": 465,
+      "recall_lower": 0,
+      "F1_higher": 23,
+      "F1_equal": 377,
+      "F1_lower": 100
+    }
+  },
+  "source_counts": {
+    "SWE-Bench-Verified": 174,
+    "SWE-Bench-Pro": 54,
+    "SWE-PolyBench": 116,
+    "Multi-SWE-Bench": 156
+  },
+  "source_native_outcomes": {
+    "SWE-Bench-Verified": {
+      "cases": 174,
+      "resolved": 152
+    },
+    "SWE-Bench-Pro": {
+      "cases": 54,
+      "resolved": 34
+    },
+    "SWE-PolyBench": {
+      "cases": 116,
+      "resolved": 92
+    },
+    "Multi-SWE-Bench": {
+      "cases": 156,
+      "resolved": 110
+    }
+  },
+  "same500_search_reference_metrics_sha256": "f423199b8357f2f7f01c72dc66d7b4693c600c934b927079a06eccc62a5dd7dc",
+  "formal_submission_ready": false,
+  "new_model_calls": 0,
+  "native_tests_rerun": 0,
+  "financial_mutations": 0
+}

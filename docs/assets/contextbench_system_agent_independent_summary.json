@@ -1,0 +1,334 @@
+{
+  "schema_version": 1,
+  "scope": "CodeNib SYSTEM agent configurations, fresh independentdefault-only32 outsideverified500.4tasks/language,23repository-aliasclusters,allselecteddenominators/failure0. All96sourceoutcomes sealedbefore selectedGold; no officialrank or repairclaim.",
+  "runtime_commit": "0fc02a85d6188d72d35ae03ed5bb1c9d99628d76",
+  "protocol_sha256": "63d57a66b4f875db412263e76fbe7bcefd89de9f1edfeaa06327cb82ce20dfb0",
+  "source_seal_sha256": "64b5eac1638b6e10b23d2258b707c7d315bc4983a6ca38574328e4f60ee3b575",
+  "analysis_sha256": "e4d4bb3e73cfbeb0ad813e10370800e3e675320a05e7e15ac34f2cdf8310c434",
+  "cost_audit_sha256": "09bd865ee9170589fae81fb5d055e69a17a7da9d8b758bf488e60a3520f905c1",
+  "dataset_sha256": "2f56535bdc73eb8a68bf4ebb49789d8e9cd4f219ea60df6290b85278aee61ca8",
+  "required_SDK_version": "0.2.165",
+  "required_CLI_version": "2.1.301",
+  "configured_worker_effort": "medium",
+  "configured_max_turns": 20,
+  "requested_max_output_tokens": 4096,
+  "worker_SDK_guards_usd": {
+    "claude-haiku-5-5": 0.08,
+    "claude-opus-5-5": 0.75
+  },
+  "router": {
+    "model": "claude-haiku-5-5",
+    "thinking": "adaptive",
+    "effort": "low",
+    "max_output_tokens": 768,
+    "request_budget_usd": 0.01,
+    "tools": [],
+    "input": "original issue only, no ID/repo/language/gold/outcomes/source",
+    "routing_criterion": "search anchors and navigation ambiguity, not repair difficulty or language-specific manual rules",
+    "paid_requests_max": 1,
+    "count_requests_max": 1,
+    "retries": 0,
+    "follow_redirects": false,
+    "timeout_seconds": 60,
+    "known_fee_invalid_or_capped_fallback": "Haiku, no second classifier or worker retry",
+    "integrity_failure": "Unknown actual model/usage/auth/response envelope/fee overflow rejects before worker dispatch",
+    "metadata_source_credit": 0,
+    "worker_original_prompt_preserved": true
+  },
+  "primary_metric": "task-macro line Recall,32fixeddenominator",
+  "summary": {
+    "haiku_native": {
+      "population": 32,
+      "valid": 32,
+      "line_macro": {
+        "recall": 0.4517373718621072,
+        "precision": 0.276630820214747,
+        "f1": 0.28633111431624614
+      },
+      "all_model_nominal_usd": 0.25289290500000006,
+      "known_only_nominal_usd": 0.25289290500000006,
+      "unknown_fee_cases": 0,
+      "router_paid_requests": 0,
+      "SDK_loop_seconds_mean": 31.819625,
+      "SDK_loop_seconds_median": 30.512999999999998,
+      "SDK_loop_seconds_known": 32,
+      "input_reconciled_cases": 0,
+      "main_input_incomplete_cases": 32,
+      "per_language": {
+        "c": {
+          "recall": 0.19640144313853908,
+          "precision": 0.2819464480360492,
+          "f1": 0.2300426772925706
+        },
+        "cpp": {
+          "recall": 0.14966652022844362,
+          "precision": 0.042272691918799093,
+          "f1": 0.06287731571447078
+        },
+        "go": {
+          "recall": 0.4157364835982874,
+          "precision": 0.41057282151354424,
+          "f1": 0.3728322665768029
+        },
+        "java": {
+          "recall": 0.4574125687735495,
+          "precision": 0.3873877592239162,
+          "f1": 0.39033957702091154
+        },
+        "javascript": {
+          "recall": 0.6610573557086226,
+          "precision": 0.2091447150054306,
+          "f1": 0.3043325543979282
+        },
+        "python": {
+          "recall": 0.7459620661824051,
+          "precision": 0.25981555040766047,
+          "f1": 0.3747503518523516
+        },
+        "rust": {
+          "recall": 0.3671355828107469,
+          "precision": 0.4127954621813789,
+          "f1": 0.3148557057118656
+        },
+        "typescript": {
+          "recall": 0.6205269544562635,
+          "precision": 0.20911111343119734,
+          "f1": 0.24061846596306788
+        }
+      }
+    },
+    "opus_native": {
+      "population": 32,
+      "valid": 32,
+      "line_macro": {
+        "recall": 0.49855326230931335,
+        "precision": 0.3215023165234486,
+        "f1": 0.3358265575523519
+      },
+      "all_model_nominal_usd": 6.218777900000001,
+      "known_only_nominal_usd": 6.218777900000001,
+      "unknown_fee_cases": 0,
+      "router_paid_requests": 0,
+      "SDK_loop_seconds_mean": 39.2205,
+      "SDK_loop_seconds_median": 41.303,
+      "SDK_loop_seconds_known": 32,
+      "input_reconciled_cases": 32,
+      "main_input_incomplete_cases": 0,
+      "per_language": {
+        "c": {
+          "recall": 0.28118520272413705,
+          "precision": 0.3439354998191959,
+          "f1": 0.30521476721278257
+        },
+        "cpp": {
+          "recall": 0.15695514996605295,
+          "precision": 0.05320103390083951,
+          "f1": 0.05489848533677087
+        },
+        "go": {
+          "recall": 0.5029959712546436,
+          "precision": 0.5067467014518621,
+          "f1": 0.4281476499738294
+        },
+        "java": {
+          "recall": 0.5637837904885036,
+          "precision": 0.475435007523494,
+          "f1": 0.5122202023006859
+        },
+        "javascript": {
+          "recall": 0.6555778814274029,
+          "precision": 0.21556292305849556,
+          "f1": 0.31166290727911855
+        },
+        "python": {
+          "recall": 0.8662033898305085,
+          "precision": 0.3448098102482492,
+          "f1": 0.4808618787115785
+        },
+        "rust": {
+          "recall": 0.3313297968906386,
+          "precision": 0.38883060440661765,
+          "f1": 0.2892362748572652
+        },
+        "typescript": {
+          "recall": 0.6303949158926195,
+          "precision": 0.24349695177883462,
+          "f1": 0.30437029474678445
+        }
+      }
+    },
+    "worker_router": {
+      "population": 32,
+      "valid": 32,
+      "line_macro": {
+        "recall": 0.4411383185236702,
+        "precision": 0.2694313357916783,
+        "f1": 0.284021512859414
+      },
+      "all_model_nominal_usd": 0.898562665,
+      "known_only_nominal_usd": 0.898562665,
+      "unknown_fee_cases": 0,
+      "router_paid_requests": 32,
+      "SDK_loop_seconds_mean": 32.1370625,
+      "SDK_loop_seconds_median": 28.848,
+      "SDK_loop_seconds_known": 32,
+      "input_reconciled_cases": 3,
+      "main_input_incomplete_cases": 29,
+      "per_language": {
+        "c": {
+          "recall": 0.15363849633700813,
+          "precision": 0.24436372787088648,
+          "f1": 0.18822924121015228
+        },
+        "cpp": {
+          "recall": 0.14966652022844362,
+          "precision": 0.04261829652996845,
+          "f1": 0.057621461855568046
+        },
+        "go": {
+          "recall": 0.44696585602985367,
+          "precision": 0.3481534107399358,
+          "f1": 0.3478578873313677
+        },
+        "java": {
+          "recall": 0.449153526032889,
+          "precision": 0.41458536232389215,
+          "f1": 0.41775857400412497
+        },
+        "javascript": {
+          "recall": 0.6163603860116529,
+          "precision": 0.18624476858753683,
+          "f1": 0.2772771861171068
+        },
+        "python": {
+          "recall": 0.7606430589184827,
+          "precision": 0.3311686941121582,
+          "f1": 0.4461327284207325
+        },
+        "rust": {
+          "recall": 0.35711173158548803,
+          "precision": 0.39499308522009047,
+          "f1": 0.3242765000841137
+        },
+        "typescript": {
+          "recall": 0.5955669730455437,
+          "precision": 0.19332334094895787,
+          "f1": 0.21301852385214598
+        }
+      }
+    }
+  },
+  "latency_and_source_descriptive": {
+    "haiku_native": {
+      "measured_case_seconds_known": 32,
+      "measured_case_seconds_mean": 36.233637077875755,
+      "measured_case_seconds_median": 32.76828094449593,
+      "source_preparation_seconds_known": 32,
+      "source_preparation_seconds_mean": 2.279611451402161,
+      "sum_per_case_unique_observed_source_lines": 24724
+    },
+    "opus_native": {
+      "measured_case_seconds_known": 32,
+      "measured_case_seconds_mean": 43.373290765066486,
+      "measured_case_seconds_median": 42.92834987351671,
+      "source_preparation_seconds_known": 32,
+      "source_preparation_seconds_mean": 2.1473870327281475,
+      "sum_per_case_unique_observed_source_lines": 23537
+    },
+    "worker_router": {
+      "measured_case_seconds_known": 32,
+      "measured_case_seconds_mean": 38.174407629743655,
+      "measured_case_seconds_median": 34.10487682902021,
+      "source_preparation_seconds_known": 32,
+      "source_preparation_seconds_mean": 2.2552767324013985,
+      "sum_per_case_unique_observed_source_lines": 23829
+    }
+  },
+  "actual_router_worker_counts": {
+    "claude-haiku-5-5": 29,
+    "claude-opus-5-5": 3
+  },
+  "routing_non_degenerate": true,
+  "gates": {
+    "all96_valid_and_fee_known": true,
+    "quality_candidate_Haiku": false,
+    "low_cost_candidate_Haiku_within2pp": false,
+    "mixed_router_screen": false
+  },
+  "point_estimate_Pareto_among_three": [
+    "haiku_native",
+    "opus_native"
+  ],
+  "paired_differences": {
+    "haiku_native-minus-opus_native": {
+      "recall": {
+        "task_macro_difference": -0.04681589044720612,
+        "paired_repository_cluster_percentile95": [
+          -0.0966808740071963,
+          -0.004157867742840607
+        ]
+      },
+      "f1": {
+        "task_macro_difference": -0.04949544323610578,
+        "paired_repository_cluster_percentile95": [
+          -0.08858711768987422,
+          -0.015971421632098016
+        ]
+      }
+    },
+    "worker_router-minus-haiku_native": {
+      "recall": {
+        "task_macro_difference": -0.01059905333843701,
+        "paired_repository_cluster_percentile95": [
+          -0.03487943545177456,
+          0.01706279265181936
+        ]
+      },
+      "f1": {
+        "task_macro_difference": -0.0023096014568321525,
+        "paired_repository_cluster_percentile95": [
+          -0.020601835746101853,
+          0.01904964472338005
+        ]
+      }
+    },
+    "worker_router-minus-opus_native": {
+      "recall": {
+        "task_macro_difference": -0.05741494378564313,
+        "paired_repository_cluster_percentile95": [
+          -0.09364834035808763,
+          -0.023675435387318106
+        ]
+      },
+      "f1": {
+        "task_macro_difference": -0.05180504469293794,
+        "paired_repository_cluster_percentile95": [
+          -0.0869755943705177,
+          -0.017476088429962688
+        ]
+      }
+    }
+  },
+  "bootstrap": {
+    "kind": "paired repository-alias cluster",
+    "clusters": 23,
+    "resamples": 10000,
+    "seed": 20261018,
+    "interval": "percentile95",
+    "point_estimate_is_significance": false
+  },
+  "known_new_API_usage_decimal": "7.37023347000000004320",
+  "unknown_worker_terminal_fees": 0,
+  "unknown_router_terminal_fees": 0,
+  "program_known_API_usage_after_usd": 66.914800665,
+  "remaining_program_API_allowance_usd": 33.085199335,
+  "API_ceiling_usd": 100,
+  "cost_is_reconciled_cash_bill": false,
+  "latency_measurement_bounds": "Measuredcaseincludes snapshot/sourcecapture, modelwork andfinalsourcechecks; excludesPythonimports/initialCLIversion+auth. SDKloop isCLIterminalduration. No controlledcoldstart/physical-costcausalclaim.",
+  "main_input_completeness": "Same-modelCLIauxiliariesmaypreventcomplete mainresponseinputreconciliation. Retain terminalallmodelcosts; do not interpretlowerfees ascontextcompression.",
+  "official_submission_ready": false,
+  "pass_at_1_evaluated": false,
+  "repair_calls": 0,
+  "csv_sha256": "04eda07b9371b08ac51df2274d8cbb4718c564cba8cff8fff270f65cd855d4cb",
+  "source_bodies_Gold_issues_provider_IDs_local_paths_exported": false
+}

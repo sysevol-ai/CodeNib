@@ -224,6 +224,13 @@ Black or isort can produce changes that fail the release all-files check.
 - New tests default to unit scope. Add heavier markers only when the test really
   needs external repos, SCIP indexing, LLM calls, GPU embeddings, or serial
   mutation.
+- Native benchmark readiness must show that the empty control collects and
+  executes the intended tests, as well as failing where the reference passes.
+  A reference-only production dependency can otherwise conceal a collection
+  failure. Record collection errors and model/native test-patch conflicts
+  separately from behavioral failures; retain all original selected outcomes.
+  Change grading methodology only in a separate, explicit protocol, and keep
+  reference material and grading feedback outside model inputs.
 
 ## Critical Code Conventions
 
@@ -238,6 +245,41 @@ Black or isort can produce changes that fail the release all-files check.
   `codenib/graph/code_graph.py` and checking C++ decoder parity under `core/`.
 - New languages should flow through the language registry instead of adding
   isolated dispatch maps.
+- ContextBench source-overlap diagnostics must use the pinned official
+  `Gold.line_spans_init()` normalization (available as `gold_line_spans` in
+  evaluator reports), not raw annotation path strings. Container-prefixed
+  `/workspace/<repo>/` or `/testbed/` annotations otherwise silently lose credit
+  in auxiliary counts even when official scores are correct. Preserve frozen
+  results and label any retrospective diagnostic correction explicitly.
+  If canonical annotations do not resolve in the pinned source, retain official
+  paths and denominators and report evaluation-only `gold_source_issues`;
+  do not silently remap paths or discard unavailable annotation lines.
+- Solver source credit requires a version-bound execution receipt and an exact
+  observation in a confirmed model input. Requested shell ranges, assistant
+  summaries, elided output and undelivered submission diffs are not read evidence.
+  Keep arbitrary shell output and modified-file coordinates explicitly
+  unattributed until their original-source mapping is verified; partial coverage
+  must not be presented as a complete ContextBench score.
+  Multi-file search observations must bind each complete visible match to its
+  file and captured version; a shared line number/text is not file identity.
+  Report scan/output caps and skipped files rather than implying full coverage.
+- ContextBench grep audits must validate the captured original reply and its
+  actual model delivery against source-version receipts. Re-executing ripgrep
+  is not a byte-for-byte oracle: traversal order and capped hit subsets may
+  change on an unchanged checkout. Preserve recorded inputs and scores when a
+  diagnostic rerun differs; do not replace observations with the rerun.
+- Preserve prospective benchmark tasks by reading raw dataset READMEs and
+  metadata-only columns instead of HTML dataset viewers, which may automatically
+  render gold contexts and reference patches. Record any exposed preview task
+  IDs and exclude them from future unseen validation. Keep completed cohorts and
+  their timing intact rather than retroactively changing their outcomes.
+- Before freezing a paid model experiment, verify the selected model's current
+  thinking, tool-choice and output-limit constraints in official documentation.
+  Requested CLI flags do not prove effective behavior. Distinguish main assistant
+  models, auxiliary models in terminal usage, SDK turns and HTTP request counts.
+  For source-only delivery checks, define accepted capped-response outcomes
+  prospectively; do not change an earlier protocol's terminal-status or source
+  credit rules after seeing its failures.
 
 ## Directory-Specific Rules
 

@@ -1,0 +1,160 @@
+{
+  "scope": "CodeNib SYSTEM live two-worker policy, SAME8 exposed development only, four configurations with common first-worker receipt. Not independent32/verified500/rank/repair or specific Jev gain. Every actualworker executes and observes source; no hypothetical union or mandatoryparent reread. All32workers source-sealed before known8Gold reopens; all8/failure0/no qualityretries/replacement. No new independentissues/annotations.",
+  "runtime_commit": "71e489e5875ca19d73bd15c417b339fb43225439",
+  "protocol_sha256": "f2bba747ef8f00821359b0184491847abfaa6133f679430a54278a2470e8083c",
+  "source_seal_sha256": "bad3cab95805d4102ac309f70a213af350661de207ea4d51067783596aa5374f",
+  "analysis_sha256": "d8e11c239a41556c8fd59d3e3d37636eae8d95dc088cf5ee38ccb4416188f0be",
+  "effort": "medium",
+  "max_turns_per_worker": 20,
+  "requested_output_tokens": 4096,
+  "navigation_token_budget": 2048,
+  "navigation_is_source_body_budget": false,
+  "fresh_worker_sessions": 32,
+  "common_first_reused_across_paired_configurations": true,
+  "program_usage_is_actual_sessions_not_sum_of_configuration_costs": true,
+  "summary": {
+    "haiku_native": {
+      "population": 8,
+      "valid": 8,
+      "macro": {
+        "file": {
+          "recall": 0.9375,
+          "precision": 0.16277107699805068,
+          "f1": 0.2612222919750067
+        },
+        "symbol": {
+          "recall": 0.8232216356152828,
+          "precision": 0.20324222541094272,
+          "f1": 0.2996004918038849
+        },
+        "line": {
+          "recall": 0.6883243847895796,
+          "precision": 0.25479286380208893,
+          "f1": 0.3226167667198924
+        }
+      },
+      "all_model_nominal_usd": 0.046606145
+    },
+    "haiku_repeat_pair": {
+      "population": 8,
+      "valid": 8,
+      "macro": {
+        "file": {
+          "recall": 0.984375,
+          "precision": 0.12138181661600131,
+          "f1": 0.20725108225108227
+        },
+        "symbol": {
+          "recall": 0.8377565193362131,
+          "precision": 0.18246668656432002,
+          "f1": 0.27535714848728393
+        },
+        "line": {
+          "recall": 0.7078638548687893,
+          "precision": 0.23027290537389253,
+          "f1": 0.3017290035217279
+        }
+      },
+      "all_model_nominal_usd": 0.08515386
+    },
+    "haiku_scout_pair": {
+      "population": 8,
+      "valid": 8,
+      "macro": {
+        "file": {
+          "recall": 0.96875,
+          "precision": 0.09712036023224009,
+          "f1": 0.1703287260969817
+        },
+        "symbol": {
+          "recall": 0.831942565847841,
+          "precision": 0.16327284971305686,
+          "f1": 0.2530116873586435
+        },
+        "line": {
+          "recall": 0.7161987395912817,
+          "precision": 0.2210401512973371,
+          "f1": 0.2928827368734945
+        }
+      },
+      "all_model_nominal_usd": 0.100641385
+    },
+    "opus_native": {
+      "population": 8,
+      "valid": 8,
+      "macro": {
+        "file": {
+          "recall": 0.86875,
+          "precision": 0.20601076555023923,
+          "f1": 0.31993071527955247
+        },
+        "symbol": {
+          "recall": 0.8310244775077447,
+          "precision": 0.2774507486879117,
+          "f1": 0.38026379805589317
+        },
+        "line": {
+          "recall": 0.7055502494209381,
+          "precision": 0.3575486358041936,
+          "f1": 0.39691605685931025
+        }
+      },
+      "all_model_nominal_usd": 1.1196683
+    }
+  },
+  "paired_differences": {
+    "haiku_repeat_pair-minus-haiku_native": {
+      "Recall_difference": 0.019539470079209698,
+      "paired_repo_percentile95": [
+        0.0,
+        0.05467185297126673
+      ]
+    },
+    "haiku_scout_pair-minus-haiku_repeat_pair": {
+      "Recall_difference": 0.008334884722492372,
+      "paired_repo_percentile95": [
+        -0.03688914112462201,
+        0.05258653108703182
+      ]
+    },
+    "haiku_scout_pair-minus-opus_native": {
+      "Recall_difference": 0.010648490170343573,
+      "paired_repo_percentile95": [
+        -0.04507284500202349,
+        0.06652817956327817
+      ]
+    },
+    "haiku_repeat_pair-minus-opus_native": {
+      "Recall_difference": 0.0023136054478512004,
+      "paired_repo_percentile95": [
+        -0.05607670587015871,
+        0.04927006803855955
+      ]
+    }
+  },
+  "bootstrap": "paired8repo/10000resamples/seed20261018; exploratorydevelopment/noindependentsignificanceclaim",
+  "gates": {
+    "all32_worker_sessions_and32_config_positions_valid": true,
+    "independent_pair_low_cost_target": true,
+    "scout_pair_low_cost_target": true,
+    "metadata_scout_incremental_Recall_screen": true
+  },
+  "actual_new_API_usage_decimal": "1.2588574000000000010",
+  "program_known_API_usage_after_usd": 68.173658065,
+  "remaining_API_allowance_usd": 31.826341935,
+  "unknown_worker_fees": 0,
+  "main_input_reconciliation": {
+    "first": 0,
+    "repeat": 0,
+    "scout": 0,
+    "opus": 8
+  },
+  "latency_limitations": "Worker SDKloopdurations retained; declaredworkersteporderisnotglobalturnorder. No ensembleAUC, controlledcoldcache or compressionclaim.",
+  "Jev_requests": 0,
+  "repair_calls": 0,
+  "independent_validation": false,
+  "official_submission_ready": false,
+  "cash_bill_reconciled": false,
+  "source_bodies_and_Gold_exported": false,
+  "csv_sha256": "09cbea6ec484c774ab7be7a9c1d67c2bff9da2574c567734849719302d0f4733"
+}

@@ -14,7 +14,9 @@ from __future__ import annotations
 import argparse
 import copy
 import json
+import math
 import os
+import random
 import re
 import sys
 import threading
@@ -33,11 +35,14 @@ import tiktoken
 from litellm import ModelResponse
 
 from codenib.agent.agent_types import ToolCallRecord
-from codenib.agent.runner import AgentRunner
+from codenib.agent.runner import _MAX_RESULT_CHARS, AgentRunner
 from codenib.agent.skills.registry import SkillRegistry
 from codenib.code_chunker import CodeChunker
 from codenib.dataset.contextbench import load_contextbench_cases
-from codenib.eval.benchmarks.contextbench import contextbench_prediction
+from codenib.eval.benchmarks.contextbench import (
+    _visible_json_nodes,
+    contextbench_prediction,
+)
 from codenib.eval.benchmarks.contextbench_runner import (
     _bind_source_tool,
     audit_contextbench_snapshot,
@@ -55,6 +60,13 @@ from scripts.benchmark_decision_loop import (
 )
 from scripts.benchmark_graph_decisions import pack_context, prediction, strict_rerank
 from scripts.benchmark_jev_base import digest, write_json
+from scripts.contextbench_graph_navigation import (
+    GRAPH_QUERY_POLICIES,
+    graph_arguments,
+    graph_options,
+    load_graph_records,
+    load_navigation,
+)
 
 SYSTEM = """You are a repository context-retrieval agent helping an engineer fix
 the supplied issue. Build a complete, grounded understanding of its execution
@@ -68,7 +80,6 @@ uncertainties about the issue. Search new identifiers learned from actual reads;
 revise an unproductive search instead of repeating it. Include error handling and
 behavioral constraints when relevant. Use targeted ranges, often 200-400 lines,
 and continue a truncated read at its indicated offset when more is needed.
-
 You have up to 20 model turns and can make several independent tool calls in one
 turn. There is no 4K final-context or ten-chunk limit. Avoid reading unrelated
 files just to accumulate volume. Before stopping, check that you have inspected
@@ -77,6 +88,62 @@ understand a plausible fix. Use further tools for any material missing evidence.
 Finish with a concise handoff naming the relevant paths/ranges, how they connect,
 and any unresolved uncertainty. Do not edit files or claim to have run tests.
 """
+
+
+GRAPH_INSTRUCTIONS = """\
+If graph_neighbors is available, make one early reference query: after the first
+source-tool reply showing a function or method, your next tool call must be
+graph_neighbors, before any further read, grep or glob. Function source appended
+to a grep result counts too. Choose a callable from that reply that helps explain
+the issue, using an actually returned source file and line inside it.
+Choose incoming references for callers or outgoing references for dependencies.
+This first hop is required; further graph queries should resolve an uncertainty.
+Do not repeat it just because a later read also shows a function. In the SDK
+the tool is named mcp__source__graph_neighbors. The tool may omit previously
+observed lines; combine missing lines with the source already in this conversation.
+If its graph is unavailable, do not retry that graph. If no unseen neighbors
+remain, continue with a new relevant source search instead of repeating the hop.
+Inspect returned definitions only when they resolve an uncertainty about the issue."""
+
+
+LATE_GRAPH_INSTRUCTIONS = """\
+If graph_neighbors is available, first use ordinary source search and reads to
+understand the issue's primary implementation and a plausible fix. Do not query
+the graph just because the first function appeared. Before your final handoff,
+perform one relationship check: name a concrete question whose answer could
+change the fix or its validation, then query a function or method you actually
+read that directly bears on that question. Use its returned file and a 1-based
+source line. Choose incoming references to check caller assumptions or tests;
+choose outgoing references to check a helper's behavior or contract. Select the
+anchor by the issue's behavior, not merely a name match or the first search hit.
+This check must happen after the initial investigation and before the final
+handoff, so its returned source can still inform your reasoning. Use at most
+two graph calls: if the first reports no unseen/returned neighbors and the
+opposite direction would answer the question, you may check that direction once.
+Do not repeat an unavailable graph, a missing definition, or an identical query.
+Use further read/grep calls only for material uncertainty left by the result.
+In the SDK the tool is named mcp__source__graph_neighbors. Only returned numbered
+source is evidence; combine omitted previously observed lines with earlier
+source in the conversation. Finish by explaining the relationship you verified
+and any remaining uncertainty. Do not treat compiler references as runtime traces."""
+
+
+def retrieval_system_prompt(
+    max_turns, *, graph_enabled=False, graph_query_policy=GRAPH_QUERY_POLICIES[0]
+):
+    """Describe only tools registered for this experimental arm."""
+    if graph_query_policy not in GRAPH_QUERY_POLICIES:
+        raise ValueError("Unknown graph query policy")
+    instructions = (
+        GRAPH_INSTRUCTIONS
+        if graph_query_policy == GRAPH_QUERY_POLICIES[0]
+        else LATE_GRAPH_INSTRUCTIONS
+    )
+    guidance = instructions + "\n\n" if graph_enabled else ""
+    return SYSTEM.replace(
+        "You have up to 20 model turns",
+        guidance + f"You have up to {max_turns} model turns",
+    )
 
 
 def message_key(message):
@@ -215,7 +282,18 @@ class OpenRouterToolChat:
         return result
 
 
-def retrieve(*, repo, query, chat, max_turns=20):
+def retrieve(
+    *,
+    repo,
+    query,
+    chat,
+    max_turns=20,
+    source_policy="native",
+    completion_tokens=2048,
+    completion_source_policy="definitions",
+    graph_tool=None,
+    graph_query_policy=GRAPH_QUERY_POLICIES[0],
+):
     """Only source tools and the original issue enter the shared native loop."""
     registry = SkillRegistry()
     runner = AgentRunner(
@@ -223,7 +301,11 @@ def retrieve(*, repo, query, chat, max_turns=20):
         registry=registry,
         exclude_skills=set(registry.list_skills()),
         default_tool_ids={"read", "grep", "glob"},
-        system_prompt=SYSTEM.replace("20 model turns", f"{max_turns} model turns"),
+        system_prompt=retrieval_system_prompt(
+            max_turns,
+            graph_enabled=graph_tool is not None,
+            graph_query_policy=graph_query_policy,
+        ),
         max_turns=max_turns,
         max_context_tokens=None,
         compact_after_read=False,
@@ -232,15 +314,23 @@ def retrieve(*, repo, query, chat, max_turns=20):
         # Opus 5.5 endpoints support auto/none but reject forced tool_choice.
         first_turn_tool_choice="auto",
     )
-    for tool_id, argument in (
-        ("read", "file_path"),
-        ("grep", "path"),
-        ("glob", "path"),
-    ):
+    for tool_id in ("read", "grep", "glob"):
         tool = runner.tool_registry.get(tool_id)
-        tool.executor_fn = _bind_source_tool(
-            tool.executor_fn, repo=repo.resolve(), path_argument=argument
+        tool.executor_fn = bind_context_source_tool(
+            tool.executor_fn,
+            repo=repo.resolve(),
+            tool_id=tool_id,
+            source_policy=source_policy,
+            completion_tokens=completion_tokens,
+            completion_source_policy=completion_source_policy,
+            observed_source=lambda: observed_nodes(
+                tuple(chat.delivered_messages), repo
+            ),
         )
+    if graph_tool is not None:
+        runner.tool_registry.register(graph_tool)
+        runner._default_ids.add(graph_tool.tool_id)
+        runner.tools = runner._tools_for(runner._base_allow)
     execute = runner._execute_tool_call
 
     def replay_or_execute(call, *, allowed_tool_ids):
@@ -284,6 +374,8 @@ def observed_nodes(messages, repo):
         if message.get("role") != "tool":
             continue
         call = calls[message["tool_call_id"]]
+        if call.get("unavailable") or message.get("is_error"):
+            continue
         try:
             args = json.loads(call.get("arguments") or "{}")
         except ValueError:
@@ -291,13 +383,23 @@ def observed_nodes(messages, repo):
         text = str(message.get("content") or "")
         if text.startswith("Error"):
             continue
-        for line in text.splitlines():
-            if call["name"] == "read":
+        segments = [(args.get("file_path", ""), text)]
+        if call["name"] == "graph_neighbors":
+            segments = [
+                (node["file"], node["content"])
+                for node in _visible_json_nodes(text)
+                if isinstance(node.get("file"), str)
+                and isinstance(node.get("content"), str)
+            ]
+        for raw, line in (
+            (file, line) for file, block in segments for line in block.splitlines()
+        ):
+            if call["name"] in {"read", "graph_neighbors"}:
                 match = re.match(r"^\s*(\d+)\s*\| ?(.*)$", line)
                 if not match:
                     continue
                 raw, number, content = (
-                    args.get("file_path", ""),
+                    raw,
                     int(match[1]),
                     match[2],
                 )
@@ -448,6 +550,170 @@ def complete_observed_functions(nodes, repo, max_function_lines=1500):
     return additions, skipped
 
 
+def bind_context_source_tool(
+    execute,
+    *,
+    repo,
+    tool_id,
+    source_policy="native",
+    completion_tokens=2048,
+    completion_source_policy="definitions",
+    observed_source=None,
+):
+    """Complete touched callables inside a real tool response, before inference.
+
+    Keep original observations first. Add only exact, novel physical lines from
+    callables touched by this response; never recursively expand additions. Each
+    callable's missing lines must fit both the extra-token budget and the native
+    runner's response limit in full. No annotation or reference patch is read.
+    Under ``unseen``, omit lines verified in the delivered conversation snapshot;
+    earlier source plus this reply must still complete each selected callable.
+    Preserve the historical callable selection and its budget reservations before
+    omitting prior source. Freed space cannot select another callable or change
+    downstream packing on fixed tool trajectories.
+    Only the current response selects callables. Old observations cannot trigger
+    expansion in other files or functions. The caller supplies verified NodeInfo
+    ranges, as for graph navigation, never requested or declared-only ranges.
+    No mutable ledger or lock is kept here. Parallel calls may conservatively
+    repeat source absent from their snapshots, but cannot hide unreturned source.
+    The original ``definitions`` policy remains available for matched controls.
+    """
+    if source_policy not in {"native", "functions"}:
+        raise ValueError("Unknown source policy")
+    if not 1 <= completion_tokens <= 8192:
+        raise ValueError("completion_tokens must be in [1, 8192]")
+    if completion_source_policy not in {"definitions", "unseen"}:
+        raise ValueError("Unknown completion source policy")
+    if (
+        source_policy == "functions"
+        and completion_source_policy == "unseen"
+        and not callable(observed_source)
+    ):
+        raise ValueError("Unseen function completion requires observed source receipts")
+    confined = _bind_source_tool(
+        execute,
+        repo=repo.resolve(),
+        path_argument="file_path" if tool_id == "read" else "path",
+    )
+    if source_policy == "native" or tool_id == "glob":
+        return confined
+    encoder = tiktoken.get_encoding("cl100k_base")
+
+    def completed(**arguments):
+        original = confined(**arguments)
+        if (
+            original.lstrip().startswith("Error")
+            or len(original) >= _MAX_RESULT_CHARS
+            or (
+                tool_id == "grep"
+                and arguments.get("output_mode", "content") != "content"
+            )
+        ):
+            return original
+        messages = [
+            {
+                "role": "assistant",
+                "tool_calls": [
+                    {
+                        "id": "source",
+                        "function": {
+                            "name": tool_id,
+                            "arguments": json.dumps(arguments),
+                        },
+                    }
+                ],
+            },
+            {"role": "tool", "tool_call_id": "source", "content": original},
+        ]
+        nodes = observed_nodes(messages, repo)
+        try:
+            additions, skipped = complete_observed_functions(nodes, repo)
+        except Exception as exc:
+            notice = f"\n[CodeNib completion unavailable: {type(exc).__name__}]"
+            return (
+                original + notice
+                if len(original + notice) <= _MAX_RESULT_CHARS
+                else original
+            )
+        seen = {
+            (node.file, line)
+            for node in nodes
+            for line in range(node.start_line, node.end_line + 1)
+        }
+        observed = set()
+        if completion_source_policy == "unseen":
+            observed.update(
+                (node.file, line)
+                for node in observed_source()
+                for line in range(node.start_line, node.end_line + 1)
+            )
+        extra = reserved = ""
+        for node in additions:
+            lines, missing = [], []
+            novel = set()
+            for number, content in enumerate(
+                node.content.splitlines(), node.start_line
+            ):
+                if (node.file, number) in seen:
+                    continue
+                prefix = (
+                    f"{number + 1:6d} | "
+                    if tool_id == "read"
+                    else f"{node.file}:{number + 1}: "
+                )
+                lines.append(prefix + content)
+                if (node.file, number) not in observed:
+                    missing.append(prefix + content)
+                novel.add((node.file, number))
+            if not lines:
+                continue
+            marker = "\n[CodeNib function completion]\n"
+            candidate = reserved + marker + "\n".join(lines)
+            if (
+                len(encoder.encode(candidate, disallowed_special=()))
+                > completion_tokens
+                or len(original + candidate) > _MAX_RESULT_CHARS - 100
+            ):
+                skipped.append({"file": node.file})
+                continue
+            reserved = candidate
+            seen.update(novel)
+            if missing:
+                extra += marker + "\n".join(missing)
+                # Tokenization is not strictly monotone under text removal.
+                # The already-bounded historical reply is a coverage-preserving
+                # fallback if removing lines changes token boundaries adversely.
+                if (
+                    len(encoder.encode(extra, disallowed_special=()))
+                    > completion_tokens
+                ):
+                    extra = reserved
+        if skipped:
+            notice = (
+                f"\n[CodeNib: {len(skipped)} callable(s) not completed "
+                "within source/output limits.]"
+            )
+            if len(original + reserved + notice) <= _MAX_RESULT_CHARS:
+                extra += notice
+        return original + extra
+
+    return completed
+
+
+def source_policy_arguments(parser):
+    parser.add_argument(
+        "--source-policy", choices=("native", "functions"), default="native"
+    )
+    parser.add_argument("--completion-tokens", type=int, default=2048)
+    parser.add_argument(
+        "--completion-source-policy",
+        choices=("definitions", "unseen"),
+        default="definitions",
+        help="Optionally omit completion lines already verified in model inputs",
+    )
+    graph_arguments(parser)
+
+
 def refine(args):
     """Paired serving-only refinement of a fixed, complete native trajectory."""
     decisions = args.method in {"decisions", "functions_decisions"}
@@ -564,6 +830,13 @@ def freeze(output):
     names = [
         "scripts/benchmark_context_agent.py",
         "scripts/benchmark_context_claude.py",
+        "scripts/contextbench_grep_rerank.py",
+        "scripts/contextbench_file_map.py",
+        "scripts/contextbench_file_source.py",
+        "scripts/contextbench_graph_navigation.py",
+        "scripts/benchmark_context_serving.py",
+        "codenib/graph/code_graph.py",
+        "codenib/graph/traverse_graph.py",
         "scripts/benchmark_decision_loop.py",
         "scripts/benchmark_graph_decisions.py",
         "codenib/agent/runner.py",
@@ -574,6 +847,7 @@ def freeze(output):
         "codenib/agent/tool_schema.py",
         "codenib/eval/benchmarks/contextbench.py",
         "codenib/eval/benchmarks/contextbench_runner.py",
+        "codenib/eval/benchmarks/_contextbench_evaluate.py",
         "codenib/types.py",
         "codenib/agent/rerank_agent.py",
         "codenib/agent/decision_rerank.py",
@@ -599,10 +873,11 @@ def prepare(args):
     cases = load_contextbench_cases(args.cases)
     args.output.mkdir(parents=True, exist_ok=False)
     (args.output / "selected.jsonl").write_bytes(args.cases.read_bytes())
+    repos_root = getattr(args, "repos_root", None) or args.output / "repos"
     entries = []
     for case in cases:
         try:
-            repo = prepare_contextbench_repo(case, args.output / "repos")
+            repo = prepare_contextbench_repo(case, repos_root)
             source = {
                 "status": "ok",
                 "repo": str(repo.resolve()),
@@ -634,6 +909,7 @@ def prepare(args):
             "cases": entries,
             "implementation": freeze(args.output),
             "cohort": str(args.output.resolve()),
+            "repos_root": str(repos_root.resolve()),
             "scope": (
                 "Frozen selected source snapshots; no chunk corpus, graph, embeddings, "
                 "cached grep seed or model calls. Failed preparation stays selected."
@@ -671,7 +947,17 @@ def run(args):
         raise ValueError("max_turns must be in [1, 40]")
     if not 1 <= args.workers <= 4:
         raise ValueError("workers must be in [1, 4]")
+    source_policy = getattr(args, "source_policy", "native")
+    completion_tokens = getattr(args, "completion_tokens", 2048)
+    completion_source_policy = getattr(args, "completion_source_policy", "definitions")
+    if (
+        source_policy not in {"native", "functions"}
+        or not 1 <= completion_tokens <= 8192
+        or completion_source_policy not in {"definitions", "unseen"}
+    ):
+        raise ValueError("Invalid source policy or completion token budget")
     manifest, cases = load_inputs(args.prepared)
+    graph_records, graph_config = graph_options(args, cases)
     # Each lane owns a disjoint budget and processes tasks serially. No shared
     # mutable cost counter or lock spans model calls. Unknown usage signals all
     # lanes to stop at their next call boundary; in-flight calls may complete.
@@ -694,6 +980,11 @@ def run(args):
             parent["manifest_sha256"] != digest(args.prepared / "manifest.json")
             or parent["parameters"] != parameters
             or parent["max_turns"] != args.max_turns
+            or parent.get("source_policy", "native") != source_policy
+            or parent.get("completion_tokens", 2048) != completion_tokens
+            or parent.get("completion_source_policy", "definitions")
+            != completion_source_policy
+            or parent.get("graph", {**graph_config, "enabled": False}) != graph_config
         ):
             raise ValueError("Resume configuration differs from original model policy")
         resume = {
@@ -749,6 +1040,10 @@ def run(args):
             "implementation": freeze(args.output),
             "parameters": parameters,
             "max_turns": args.max_turns,
+            "source_policy": source_policy,
+            "completion_tokens": completion_tokens,
+            "completion_source_policy": completion_source_policy,
+            "graph": graph_config,
             "context_safety_tokens": 120000,
             "max_cost_usd": args.max_cost_usd,
             "case_cost_usd": args.case_cost_usd,
@@ -822,11 +1117,31 @@ def run(args):
                 raise ValueError(f"Source preparation failed: {source['error']}")
             repo = Path(source["repo"]).resolve()
             row["snapshot_before"] = audit_contextbench_snapshot(repo, case.base_commit)
+            graph_tool = None
+            if graph_config["enabled"]:
+                graph_record = graph_records[case.instance_id]
+                graph_tool = load_navigation(
+                    graph_record,
+                    args.graphs,
+                    repo,
+                    token_budget=graph_config["tokens"],
+                    source_policy=graph_config["source_policy"],
+                    empty_fallback=graph_config.get("empty_fallback", False),
+                    observed_source=lambda: observed_nodes(
+                        tuple(chat.delivered_messages), repo
+                    ),
+                ).tool_spec()
+                row["graph_available"] = graph_record["available"]
             result = retrieve(
                 repo=repo,
                 query=case.problem_statement,
                 chat=chat,
                 max_turns=args.max_turns,
+                source_policy=source_policy,
+                completion_tokens=completion_tokens,
+                completion_source_policy=completion_source_policy,
+                graph_tool=graph_tool,
+                graph_query_policy=graph_config["policy"],
             )
             messages = result.messages
             row.update(
@@ -929,7 +1244,9 @@ def evaluate(args):
         report = evaluate_contextbench(
             cases=list(cases.values()),
             predictions=predictions,
-            repos_root=Path(manifest["cohort"]) / "repos",
+            repos_root=Path(
+                manifest.get("repos_root", Path(manifest["cohort"]) / "repos")
+            ),
             output=output,
             command=command,
             timeout=1800,
@@ -955,6 +1272,218 @@ def evaluate(args):
     print(json.dumps(summary, indent=2))
 
 
+def compare(args):
+    """Compare fresh matched runs without dropping failures or mixing runtimes."""
+    runs = []
+    for directory in (args.baseline, args.candidate):
+        config = json.loads((directory / "config.json").read_text())
+        if config.get("resume") or config.get("offline_repack") or "method" in config:
+            raise ValueError("Paired comparison requires fresh online agent runs")
+        prepared = Path(config["prepared"])
+        manifest, cases = load_inputs(prepared)
+        if digest(prepared / "manifest.json") != config["manifest_sha256"]:
+            raise ValueError("Run manifest changed")
+        graph_config = config.get("graph", {})
+        if graph_config.get("prepared"):
+            graphs = Path(graph_config["prepared"])
+            if digest(graphs / "manifest.json") != graph_config["manifest_sha256"]:
+                raise ValueError("Run graph manifest changed")
+            load_graph_records(graphs, prepared, cases)
+        for name, sha in config["implementation"].items():
+            if digest(directory / "implementation" / name) != sha:
+                raise ValueError("Archived agent implementation changed")
+        report = json.loads(
+            (directory / "evaluation" / "trajectory" / "metrics.json").read_text()
+        )
+        scores = {row["instance_id"]: row for row in report["cases"]}
+        if len(scores) != len(report["cases"]) or set(scores) != set(cases):
+            raise ValueError("Official score identities differ from selected tasks")
+        values, models, statuses = {}, set(), Counter()
+        for key in cases:
+            record = json.loads((directory / f"{key}.json").read_text())
+            if record["instance_id"] != key:
+                raise ValueError("Agent result identity differs")
+            statuses[record["status"]] += 1
+            models.update(
+                call["model"] for call in record["calls"] if call.get("model")
+            )
+            for event in record.get("sdk_events", []):
+                if event["kind"] == "AssistantMessage" and event["data"].get("model"):
+                    models.add(event["data"]["model"])
+            score = scores[key]
+            if "error" in score:
+                recall = precision = 0.0
+            else:
+                line = score["final"]["line"]
+                recall, precision = float(line["coverage"]), float(line["precision"])
+                if not all(
+                    math.isfinite(v) and 0 <= v <= 1 for v in (recall, precision)
+                ):
+                    raise ValueError("Invalid official line metric")
+            values[key] = {
+                "recall": recall,
+                "precision": precision,
+                "f1": (
+                    2 * recall * precision / (recall + precision)
+                    if recall + precision
+                    else 0
+                ),
+            }
+        if len(models) != 1:
+            raise ValueError("Expected one measured model identity per arm")
+        runs.append(
+            {
+                "directory": str(directory.resolve()),
+                "config": config,
+                "values": values,
+                "models": sorted(models),
+                "statuses": dict(statuses),
+                "scoring_failures": sum("error" in row for row in scores.values()),
+                "usage": json.loads((directory / "usage.json").read_text()),
+            }
+        )
+    left, right = runs
+    for key in (
+        "manifest_sha256",
+        "implementation",
+        "backend",
+        "parameters",
+        "model_requested",
+        "max_turns",
+        "completion_tokens",
+        "context_safety_tokens",
+        "max_cost_usd",
+        "case_cost_usd",
+        "workers",
+        "sdk_version",
+        "cli_version",
+        "max_meter_usd",
+        "case_meter_usd",
+        "case_timeout",
+    ):
+        if left["config"].get(key) != right["config"].get(key):
+            raise ValueError(f"Paired policies differ in {key}")
+    if left["models"] != right["models"]:
+        raise ValueError("Actual model identities differ between arms")
+    left_graph = left["config"].get("graph", {"enabled": False})
+    right_graph = right["config"].get("graph", {"enabled": False})
+    policies = tuple(run["config"].get("source_policy", "native") for run in runs)
+    completion_policies = tuple(
+        run["config"].get("completion_source_policy", "definitions") for run in runs
+    )
+    completion_contrast = (
+        policies == ("functions", "functions")
+        and completion_policies == ("definitions", "unseen")
+        and left_graph == right_graph
+    )
+    empty_fallback_contrast = (
+        not left_graph.get("empty_fallback", False)
+        and right_graph.get("empty_fallback") is True
+        and right_graph.get("policy") == "late_issue_reference_hop"
+        and right_graph.get("source_policy") == "unseen"
+        and {**left_graph, "enabled": True, "empty_fallback": True} == right_graph
+    )
+    if completion_policies[0] != completion_policies[1] and not completion_contrast:
+        raise ValueError("Paired policies differ in completion_source_policy")
+    if completion_contrast:
+        contrast = "unseen_function_source_over_definitions"
+        if left["config"].get("tools") != right["config"].get("tools"):
+            raise ValueError("Paired policies differ in tools")
+    elif (
+        policies == ("native", "functions")
+        and left_graph == right_graph
+        and not left_graph["enabled"]
+    ):
+        contrast = "online_function_completion"
+        if left["config"].get("tools") != right["config"].get("tools"):
+            raise ValueError("Paired policies differ in tools")
+    elif (
+        policies == ("functions", "functions")
+        and left_graph["enabled"]
+        and right_graph["enabled"]
+        and left_graph.get("policy") == GRAPH_QUERY_POLICIES[0]
+        and {**left_graph, "policy": GRAPH_QUERY_POLICIES[1]} == right_graph
+    ):
+        contrast = "late_graph_query_over_first_source"
+        if left["config"].get("tools") != right["config"].get("tools"):
+            raise ValueError("Paired policies differ in tools")
+    elif (
+        policies == ("functions", "functions")
+        and left_graph["enabled"]
+        and right_graph["enabled"]
+        and left_graph.get("source_policy") == "definitions"
+        and {**left_graph, "source_policy": "unseen"} == right_graph
+    ):
+        contrast = "unseen_graph_source_over_definitions"
+        if left["config"].get("tools") != right["config"].get("tools"):
+            raise ValueError("Paired policies differ in tools")
+    elif (
+        policies in {("functions", "functions"), ("native", "functions")}
+        and not left_graph["enabled"]
+        and right_graph["enabled"]
+        and ({**left_graph, "enabled": True} == right_graph or empty_fallback_contrast)
+    ):
+        contrast = (
+            "directed_graph_over_function_completion"
+            if policies[0] == "functions"
+            else "functions_and_directed_graph_over_native"
+        )
+        if empty_fallback_contrast:
+            contrast = (
+                "late_empty_graph_over_function_completion"
+                if policies[0] == "functions"
+                else "functions_and_late_empty_graph_over_native"
+            )
+        if left["config"].get("backend") == "claude-agent-sdk" and (
+            right["config"].get("tools")
+            != left["config"].get("tools", []) + ["mcp__source__graph_neighbors"]
+        ):
+            raise ValueError("Only graph_neighbors may differ between paired tools")
+    else:
+        raise ValueError(
+            "Expected native/functions, functions/directed-graph, or graph-source controls"
+        )
+    ids = sorted(left["values"])
+    comparisons = {}
+    for metric in ("recall", "precision", "f1"):
+        differences = [
+            right["values"][i][metric] - left["values"][i][metric] for i in ids
+        ]
+        generator = random.Random(20261016)
+        boot = (
+            sorted(
+                mean(generator.choices(differences, k=len(ids))) for _ in range(10000)
+            )
+            if len(ids) > 1
+            else None
+        )
+        comparisons[metric] = {
+            "baseline": mean(left["values"][i][metric] for i in ids),
+            "candidate": mean(right["values"][i][metric] for i in ids),
+            "difference": mean(differences),
+            "paired_bootstrap_95_interval": [boot[249], boot[9749]] if boot else None,
+        }
+    result = {
+        "n": len(ids),
+        "contrast": contrast,
+        "instance_ids": ids,
+        "population": "All selected tasks; scoring failures contribute zero",
+        "metric_scope": "Official cumulative observed trajectory; no Pass@1",
+        "bootstrap": {
+            "draws": 10000 if len(ids) > 1 else 0,
+            "seed": 20261016,
+            "unit": "task",
+        },
+        "metrics": comparisons,
+        "arms": [{k: v for k, v in run.items() if k != "config"} for run in runs],
+    }
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    with args.output.open("x") as stream:
+        json.dump(result, stream, indent=2)
+        stream.write("\n")
+    print(json.dumps({"n": len(ids), "metrics": comparisons}, indent=2))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -963,6 +1492,9 @@ def main():
     )
     p.add_argument("--cases", type=Path, required=True)
     p.add_argument("--output", type=Path, required=True)
+    p.add_argument(
+        "--repos-root", type=Path, help="Reuse audited immutable task checkouts"
+    )
     p = sub.add_parser("run")
     p.add_argument("--prepared", type=Path, required=True)
     p.add_argument("--output", type=Path, required=True)
@@ -972,6 +1504,13 @@ def main():
     p.add_argument("--max-cost-usd", type=float, default=30)
     p.add_argument("--case-cost-usd", type=float, default=3)
     p.add_argument("--live", action="store_true")
+    source_policy_arguments(p)
+    p = sub.add_parser(
+        "compare", help="Paired online native/functions trajectory metrics"
+    )
+    p.add_argument("--baseline", type=Path, required=True)
+    p.add_argument("--candidate", type=Path, required=True)
+    p.add_argument("--output", type=Path, required=True)
     p = sub.add_parser(
         "repack", help="Repack complete saved trajectories without API calls"
     )
@@ -980,6 +1519,7 @@ def main():
     p.add_argument("--resume-from", type=Path, required=True)
     p.add_argument("--max-turns", type=int, default=20)
     p.set_defaults(workers=4, max_cost_usd=1, case_cost_usd=1, live=False)
+    source_policy_arguments(p)
     p = sub.add_parser("evaluate")
     p.add_argument("--output", type=Path, required=True)
     p.add_argument("--upstream", type=Path, required=True)
@@ -1004,6 +1544,7 @@ def main():
         "repack": run,
         "refine": refine,
         "evaluate": evaluate,
+        "compare": compare,
     }[args.command](args)
 
 

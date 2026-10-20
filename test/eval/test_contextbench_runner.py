@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -15,7 +16,123 @@ from filelock import FileLock
 
 from codenib.dataset.contextbench import ContextBenchCase
 from codenib.eval.benchmarks import contextbench_runner as runner
-from codenib.eval.benchmarks._contextbench_evaluate import validate_symbol_extraction
+from codenib.eval.benchmarks._contextbench_evaluate import (
+    audit_gold_source_locations,
+    validate_symbol_extraction,
+)
+
+
+def test_gold_source_audit_retains_missing_paths_and_reports_only_unreadable_lines(
+    tmp_path,
+):
+    (tmp_path / "a.py").write_text("def f():\n    return 1\n")
+    spans = {"a.py": [[1, 3]], "repo/a.py": [[1, 2]]}
+
+    assert audit_gold_source_locations(tmp_path, spans) == [
+        {
+            "file": "a.py",
+            "reason": "line_outside_source",
+            "source_line_count": 2,
+            "unavailable_line_spans": [[3, 3]],
+        },
+        {
+            "file": "repo/a.py",
+            "reason": "path_missing",
+            "unavailable_line_spans": [[1, 2]],
+        },
+    ]
+    # A real suffix is not permission to rewrite the official denominator.
+    assert spans == {"a.py": [[1, 3]], "repo/a.py": [[1, 2]]}
+    assert audit_gold_source_locations(tmp_path, {"a.py": [[1, 2]]}) == []
+
+
+def test_gold_source_audit_does_not_read_outside_checkout(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (tmp_path / "outside.py").write_text("value = 1\n")
+    (repo / "linked.py").symlink_to(tmp_path / "outside.py")
+    assert audit_gold_source_locations(repo, {"linked.py": [[1, 1]]}) == [
+        {
+            "file": "linked.py",
+            "reason": "outside_source_root",
+            "unavailable_line_spans": [[1, 1]],
+        }
+    ]
+
+
+def test_gold_source_audit_handles_unresolvable_paths(tmp_path):
+    (tmp_path / "loop.py").symlink_to("loop.py")
+    assert audit_gold_source_locations(tmp_path, {"loop.py": [[1, 1]]}) == [
+        {
+            "file": "loop.py",
+            "reason": "source_unreadable",
+            "unavailable_line_spans": [[1, 1]],
+        }
+    ]
+
+
+@pytest.mark.integration
+def test_official_annotation_issues_leave_scores_and_denominator_unchanged(
+    checkout, tmp_path
+):
+    upstream = os.environ.get("CONTEXTBENCH_CHECKOUT")
+    if not upstream:
+        pytest.skip("set CONTEXTBENCH_CHECKOUT to the pinned official checkout")
+    repo, commit = checkout
+    case = ContextBenchCase.from_mapping(
+        {
+            **task(commit).to_record(),
+            "gold_context": [
+                {"file": "a.py", "start_line": 1, "end_line": 3},
+                {"file": "repo/a.py", "start_line": 1, "end_line": 2},
+            ],
+        }
+    )
+    repos = tmp_path / "repos"
+    repos.mkdir()
+    repo.rename(repos / case.instance_id)
+    prediction = {
+        "instance_id": case.original_inst_id,
+        "traj_data": {
+            "pred_files": ["a.py"],
+            "pred_spans": {"a.py": [{"start": 1, "end": 2}]},
+        },
+    }
+
+    report = runner.evaluate_contextbench(
+        cases=[case],
+        predictions=[prediction],
+        repos_root=repos,
+        output=tmp_path,
+        command=runner.contextbench_evaluator_command(
+            Path(upstream),
+            os.environ.get("CONTEXTBENCH_EVALUATOR_PYTHON", sys.executable),
+        ),
+    )
+
+    result = report["cases"][0]
+    assert report["summary"]["num_valid"] == 1
+    assert result["final"]["line"] == {
+        "coverage": 0.4,
+        "precision": 1.0,
+        "intersection": 2,
+        "gold_size": 5,
+        "pred_size": 2,
+    }
+    assert result["gold_source_issues"] == [
+        {
+            "file": "a.py",
+            "reason": "line_outside_source",
+            "source_line_count": 2,
+            "unavailable_line_spans": [[3, 3]],
+        },
+        {
+            "file": "repo/a.py",
+            "reason": "path_missing",
+            "unavailable_line_spans": [[1, 2]],
+        },
+    ]
+    assert "gold_source_issues" not in prediction
 
 
 def test_symbol_probe_rejects_silently_empty_parser_results():
@@ -118,6 +235,33 @@ def test_bound_tool_does_not_change_cwd_or_allow_escape(checkout):
     assert calls == [{"file_path": str(repo / "a.py"), "limit": 2}]
     with pytest.raises(ValueError, match="escapes"):
         bound(file_path="../secret")
+
+
+@pytest.mark.parametrize("argument", ["path", "file_path"])
+@pytest.mark.parametrize("metadata", [".git/logs/HEAD", ".hg/store", ".svn/entries"])
+def test_source_tool_rejects_vcs_metadata_before_execution(
+    checkout, argument, metadata
+):
+    repo, _ = checkout
+    calls = []
+    bound = runner._bind_source_tool(
+        lambda **kwargs: calls.append(kwargs), repo=repo, path_argument=argument
+    )
+    with pytest.raises(ValueError, match="VCS metadata"):
+        bound(**{argument: metadata})
+    assert not calls
+
+
+def test_source_tool_blocks_git_symlink_but_keeps_public_dotfiles(checkout):
+    repo, _ = checkout
+    (repo / "metadata-link").symlink_to(repo / ".git", target_is_directory=True)
+    bound = runner._bind_source_tool(
+        lambda **kwargs: kwargs, repo=repo, path_argument="file_path"
+    )
+    with pytest.raises(ValueError, match="VCS metadata"):
+        bound(file_path="metadata-link/HEAD")
+    for name in [".gitignore", ".github/workflows/test.yml"]:
+        assert bound(file_path=name)["file_path"] == str(repo / name)
 
 
 def test_search_subdirectory_returns_repository_relative_paths(checkout):
@@ -277,7 +421,10 @@ def test_native_agent_pipeline_keeps_gold_out_of_prompts(
 
 @pytest.mark.integration
 @pytest.mark.parametrize("with_patch", [False, True])
-def test_official_evaluator_scores_native_trajectory(checkout, tmp_path, with_patch):
+@pytest.mark.parametrize("gold_prefix", ["", "/testbed/", "/workspace/owner__repo/"])
+def test_official_evaluator_scores_native_trajectory(
+    checkout, tmp_path, with_patch, gold_prefix
+):
     import sys
     from pathlib import Path
 
@@ -286,6 +433,14 @@ def test_official_evaluator_scores_native_trajectory(checkout, tmp_path, with_pa
         pytest.skip("set CONTEXTBENCH_CHECKOUT to the pinned official checkout")
     repo, commit = checkout
     case = task(commit)
+    case = ContextBenchCase.from_mapping(
+        {
+            **case.to_record(),
+            "gold_context": [
+                {"file": gold_prefix + "a.py", "start_line": 1, "end_line": 2}
+            ],
+        }
+    )
     root = tmp_path / "repos"
     root.mkdir()
     repo.rename(root / case.instance_id)
@@ -316,6 +471,12 @@ def test_official_evaluator_scores_native_trajectory(checkout, tmp_path, with_pa
         ),
     )
     assert report["summary"]["num_valid"] == 1
+    # The historical raw string intersection missed container-prefixed gold,
+    # despite the official scorer correctly crediting those same source lines.
+    assert report["cases"][0]["gold_line_spans"] == {"a.py": [[1, 2]]}
+    assert report["cases"][0]["gold_source_issues"] == []
+    assert "gold_line_spans" not in prediction
+    assert "gold_source_issues" not in prediction
     assert report["cases"][0]["final"]["symbol"]["gold_size"] == 1
     assert report["cases"][0]["final"]["symbol"]["pred_size"] == 1
     for granularity in ("file", "symbol", "span", "line"):

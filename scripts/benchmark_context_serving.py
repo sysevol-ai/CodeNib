@@ -251,14 +251,26 @@ def complete_nodes(chunks, sources, max_chars=3000, max_lines=100):
 def graph_worker(args):
     from codenib.ls_router import build_graph_for_languages_with_report
 
+    preparation = getattr(args, "allow_project_preparation", False)
+    head_command = ["git", "rev-parse", "HEAD"]
+    before = (
+        subprocess.check_output(head_command, cwd=args.repo) if preparation else None
+    )
     result = build_graph_for_languages_with_report(
         args.repo,
         args.output,
         languages=[args.language],
         project_name="contextbench",
         allow_partial=True,
-        allow_project_preparation=False,
+        allow_project_preparation=preparation,
     )
+    if preparation and (
+        subprocess.check_output(head_command, cwd=args.repo) != before
+        or subprocess.run(
+            ["git", "diff", "--quiet", "HEAD", "--"], cwd=args.repo, check=False
+        ).returncode
+    ):
+        raise ValueError("Graph preparation changed tracked source")
     record = {
         "available": result.graph is not None,
         "failed_languages": result.failed_languages,
@@ -289,7 +301,7 @@ def stop_graph_worker(process):
         process.wait()
 
 
-def bounded_graph(repo, language, output, timeout):
+def bounded_graph(repo, language, output, timeout, *, allow_project_preparation=False):
     """Only the owner launches/cleans its private build copy and process group.
 
     No checkout is shared with indexing. Timeout cancellation first unwinds the
@@ -297,10 +309,16 @@ def bounded_graph(repo, language, output, timeout):
     then kills/reaps the outer group before removing the private workspace.
     Reaping is the completion point that permits workspace deletion; the creating
     call owns recovery and there is no shared lock or retained owner.
+    Optional project preparation may write generated build files in that copy.
+    The worker rejects changes to HEAD or tracked source before publishing a graph.
     """
     output.mkdir(parents=True, exist_ok=False)
     started = time.perf_counter()
-    record = {"available": False, "language": language}
+    record = {
+        "available": False,
+        "language": language,
+        "allow_project_preparation": allow_project_preparation,
+    }
     # Keep ancestor CodeNib pyproject/package configuration outside this build.
     with tempfile.TemporaryDirectory(prefix="codenib-contextbench-build-") as directory:
         scratch = Path(directory) / "repo"
@@ -321,6 +339,8 @@ def bounded_graph(repo, language, output, timeout):
             "--output",
             str(output),
         ]
+        if allow_project_preparation:
+            command.append("--allow-project-preparation")
         with (output / "build.log").open("w") as log:
             process = subprocess.Popen(
                 command, stdout=log, stderr=subprocess.STDOUT, start_new_session=True
@@ -730,6 +750,7 @@ def main():
     p.add_argument("--repo", type=Path, required=True)
     p.add_argument("--output", type=Path, required=True)
     p.add_argument("--language", required=True)
+    p.add_argument("--allow-project-preparation", action="store_true")
     p = sub.add_parser("run")
     p.add_argument("--cohort", type=Path, required=True)
     p.add_argument("--output", type=Path, required=True)

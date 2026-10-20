@@ -47,25 +47,104 @@ def _git(repo: Path, *args: str) -> str:
     ).rstrip("\r\n")
 
 
+def _submodule_layout(repo: Path):
+    """Keep unmapped gitlinks opaque; their source is not in the parent tree."""
+    links = {}
+    for entry in _git(repo, "ls-files", "--stage", "-z").split("\0"):
+        if not entry:
+            continue
+        metadata, _, path = entry.partition("\t")
+        mode, commit, stage = metadata.split()
+        if mode == "160000":
+            if stage != "0":
+                raise ValueError("snapshot audit failed: unmerged gitlink")
+            links[path] = commit
+    if not links:
+        return {}, []
+    try:
+        configuration = _git(
+            repo,
+            "config",
+            "--file",
+            ".gitmodules",
+            "--null",
+            "--get-regexp",
+            r"^submodule\..*\.path$",
+        )
+    except subprocess.CalledProcessError as exc:
+        if exc.returncode != 1:
+            raise
+        configuration = ""
+    declared = {
+        entry.partition("\n")[2] for entry in configuration.split("\0") if entry
+    }
+    registered, unavailable = {}, []
+    for path, commit in links.items():
+        target = (repo / path).resolve()
+        if not target.is_relative_to(repo.resolve()):
+            raise ValueError("submodule path escapes checkout")
+        if path in declared:
+            registered[path] = commit
+        else:
+            # Git does not track files beneath a gitlink. Do not let arbitrary
+            # injected files there become trusted source from this parent SHA.
+            if target.exists() and (not target.is_dir() or any(target.iterdir())):
+                raise ValueError("snapshot audit failed: files in unavailable gitlink")
+            unavailable.append(
+                {"path": path, "commit": commit, "reason": "unregistered_gitlink"}
+            )
+    return registered, unavailable
+
+
+def prepare_contextbench_submodules(repo: Path) -> None:
+    """Initialize declared modules; never invent a URL for an unmapped gitlink."""
+    registered, _ = _submodule_layout(repo)
+    if registered:
+        _git(
+            repo,
+            "-c",
+            "submodule.recurse=false",
+            "submodule",
+            "update",
+            "--init",
+            "--depth",
+            "1",
+            "--",
+            *registered,
+        )
+        for path in registered:
+            prepare_contextbench_submodules(repo / path)
+
+
 def audit_contextbench_snapshot(repo: Path, commit: str) -> dict[str, Any]:
-    """Reject revision drift or modified/untracked input, including ignored files."""
+    """Reject source drift; explicitly report empty gitlinks without URL mappings.
+
+    Clean means the parent and declared module contents match their pinned SHAs.
+    An unregistered gitlink supplies a SHA but no retrievable source location;
+    keep its directory empty and return unavailable_gitlinks instead of treating
+    invented child files as verified source or claiming complete availability.
+    """
     observed = _git(repo, "rev-parse", "HEAD")
     status = _git(repo, "status", "--porcelain", "--untracked-files=all")
     ignored = _git(repo, "ls-files", "--others", "--ignored", "--exclude-standard")
     flags = _git(repo, "ls-files", "-v")
     hidden = [line for line in flags.splitlines() if line and line[0] != "H"]
-    submodules = _git(repo, "submodule", "status")
     if observed != commit or status or ignored or hidden:
         raise ValueError("snapshot audit failed: wrong revision or dirty/hidden files")
-    for line in submodules.splitlines():
-        if not line.startswith(" "):
-            raise ValueError("snapshot audit failed: unprepared or modified submodule")
-        sha, _, suffix = line.strip().partition(" ")
-        subpath = (repo / suffix.split(" (", 1)[0]).resolve()
-        if not subpath.is_relative_to(repo.resolve()):
-            raise ValueError("submodule path escapes checkout")
-        audit_contextbench_snapshot(subpath, sha)
-    return {"commit": observed, "clean": True}
+    registered, unavailable = _submodule_layout(repo)
+    for path, sha in registered.items():
+        subpath = (repo / path).resolve()
+        if Path(_git(subpath, "rev-parse", "--show-toplevel")).resolve() != subpath:
+            raise ValueError("snapshot audit failed: unprepared submodule")
+        snapshot = audit_contextbench_snapshot(subpath, sha)
+        unavailable.extend(
+            {**entry, "path": str(Path(path) / entry["path"])}
+            for entry in snapshot.get("unavailable_gitlinks", [])
+        )
+    snapshot = {"commit": observed, "clean": True}
+    if unavailable:
+        snapshot["unavailable_gitlinks"] = unavailable
+    return snapshot
 
 
 def prepare_contextbench_repo(case: ContextBenchCase, repos_root: Path) -> Path:
@@ -79,15 +158,8 @@ def prepare_contextbench_repo(case: ContextBenchCase, repos_root: Path) -> Path:
             _git(temporary, "remote", "add", "origin", case.repo_url)
             _git(temporary, "fetch", "--depth", "1", "origin", case.base_commit)
             _git(temporary, "checkout", "--detach", case.base_commit)
-            _git(
-                temporary,
-                "submodule",
-                "update",
-                "--init",
-                "--recursive",
-                "--depth",
-                "1",
-            )
+            prepare_contextbench_submodules(temporary)
+            audit_contextbench_snapshot(temporary, case.base_commit)
             temporary.rename(repo)
         finally:
             if temporary.exists():
@@ -102,6 +174,10 @@ def _bind_source_tool(execute, *, repo: Path, path_argument: str):
         target = (repo / raw).resolve()
         if not target.is_relative_to(repo):
             raise ValueError("tool path escapes benchmark checkout")
+        if any(
+            part in {".git", ".hg", ".svn"} for part in target.relative_to(repo).parts
+        ):
+            raise ValueError("VCS metadata is outside the benchmark source view")
         kwargs[path_argument] = str(target)
         result = execute(**kwargs)
         if path_argument == "path" and target != repo:

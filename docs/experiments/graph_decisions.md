@@ -17,10 +17,13 @@ The native search/read control retains the full tool trajectory and separately
 packs 16K/32K delivery from actually observed source. None of these retrieval-only
 experiments supplies patches, test outcomes or Pass@1.
 
-## Closed experiment and gates for resuming
+## Active follow-up and quality gates
 
-The user closed this iteration on 2026-10-11 and requested a results summary and
-push. No further model experiment is running or scheduled. The earlier objective
+The October 11 development iteration is complete and retained through merged
+[#827](https://github.com/sysevol-ai/CodeNib/pull/827). On October 16 the user
+resumed work on online context completion, matched controls and a complete
+issue-resolution evaluation in draft
+[#834](https://github.com/sysevol-ai/CodeNib/pull/834). The earlier objective
 of **ContextBench retrieval SOTA** was not achieved; the completed development
 experiments and their limitations are retained here and in the public
 [results report](../evaluation/contextbench-results.md).
@@ -30,7 +33,29 @@ verified population. Recall is the primary target, with F1 at least as high as
 that same reference under a matched protocol; reading unrelated source alone
 cannot establish a useful quality improvement.
 
-The following gates apply only if this research is resumed:
+The user clarified the current ordering on October 17: improve ContextBench
+cumulative source Recall/Precision/F1 first. The mini SWE-agent repair loop and
+its optional model choice are downstream checks, not the current iteration
+surface. Native-test collection and patch-application issues remain recorded;
+they do not block source-only retrieval evaluation. Stop new repair/harness
+batches until a supported context policy passes retrieval gates.
+
+The current milestones and remaining gates are:
+
+| Milestone | Current outcome | Open gate |
+| --- | --- | --- |
+| Online source completion | Function-only completion has no demonstrated gain: independent-32 Recall/F1 is 68.56%/28.22% versus native 69.64%/29.01%; the latest separate development eight is 72.14%/32.95% versus native 77.90%/33.67%. Conversation-aware completion removes duplicate delivery while preserving fixed-trace source. The bounded file-remainder replay remains rejected by its F1 gate. A canonical fixed-trace grep-only ablation loses 219/ten annotated lines in the first-source 24/latest eight, including 150/seven absent from native, and fails its preservation gate. | Retain useful grep and read completion; do not remove read completion wholesale from the early raw-path attribution counts. Do not ship the rejected file-remainder policy or advance it to model calls. Prioritize relevant source selection and fresh matched validation over more automatic source volume. |
+| Evaluation source diagnostics | All 72 development predictions and official line totals/intersections reproduce. The 24-task source audit finds 303 missing-path and 28 out-of-range annotated lines across nine tasks. Evaluation-only `gold_source_issues` reports these without remapping paths or changing scores; future archives include the evaluator bridge. | Preserve official paths and denominators. Do not treat nonexistent annotation locations as recoverable retrieval omissions or use diagnostic alternatives for source credit. |
+| Matched experiment | The latest eight-task native/chunks/Jev comparison completes 24/24 sessions with actual Opus 5.5 on the explicitly authorized Anthropic API route. All usage, runtime/source hashes and delivered replies verify. The quality gate fails. The independent 32 remains complete and negative; earlier interrupted attempts remain preserved. | Retain every failed gate and selected task. Completion establishes reliability, not a policy effect. Keep independent 32 sealed and require a new protocol and untouched task IDs after a useful development result. |
+| Directed graph navigation | The late-only eight-task comparison completes all 24 runs and scores, but fails its mechanism gate and both primary intervals include zero. Disabling fallback reproduces every reply. Source-bound C++ callable fixes and TypeScript/Java preparation raise available graphs from five to seven; the same eight queries add 146 physical lines and zero annotated lines. C correctly fails on seven tracked submodule build-helper changes. Prior quality gates remain failed. | Keep the compiler correctness fixes without claiming retrieval gains. Do not retry or promote the policy from availability alone. Relevant source selection, active SCIP assigned-function coverage and explicit treatment of tracked build overlays remain open. Nearby-anchor windows and earlier omitted-neighbor audits do not justify more source budget. Preserve canonical paths, sealed independent 32 and full-500 gates. |
+| Sparse discovery | The current production BM25 probe completes all 24 disclosed tasks with every corpus node source-checked. A frozen 2K source union adds 38 annotated lines but reduces F1 from 31.18% to 26.62%; the overlapping latest eight add none. Both static-injection and selective-discovery opportunity gates fail. | Do not add this injection policy or a BM25 agent tool, or advance it to paid comparisons. Preserve source-bound evidence and investigate a separately supported selection hypothesis. |
+| Candidate reranking | Fixed-pool ranking gains remain separate from online transfer. Both eight-task online grep/Jev variants fail. Hit-preserving physical neighborhoods have a positive eight-task development screen, but their fresh seven-language independent32 fails its frozen Recall gate: 65.52% → 68.93%, difference +3.42 points, 95% interval [-2.27, +10.08]. F1 falls 26.12% → 23.30%; F1 is reported, not a veto. All 64 sessions, official scores and source/model/route/usage/delivery audits pass; API SDK usage is $12.63056860, with zero repairs. | Do not promote these unchanged policies into a product default, repairs or official500. Preserve both validation cohorts sealed. Research materially new context selection only on 105 development tasks; do not recycle validation failures for tuning. At sealing 331 untouched verified tasks lacked C++ and Java; preview quarantine and the broader CodeNib Base source-identity audit leave 324. The 623 additional default-config candidates have pinned-file/schema readiness; selected sources and a separate population protocol remain open. Formal board publication also requires real native issue-resolution outcomes. |
+| First-read file source | The unchanged first-read source-window policy fails its complete 24-task development stability gate. Recall 58.39% → 63.91%, F1 31.97% → 27.94%; repository-cluster 95% Recall interval [-2.76, +12.52] points across 24 repository clusters. All 48 selected SDK sessions are retained for $9.86110630, with no repairs. Independent and official500 gains remain unestablished. Wider fixed-call 24 replay raises Recall 53.35% → 62.32%, F1 31.18% → 27.59%, for zero new model calls; do not treat cached opportunity as online gain. The two new Jev ranking probes fail their practical one-point screens and cost $0.045063648 in total. | Keep the optional source-view in labs. Recall first with F1/cost reporting, 2K extra tokens and explicit 32K-character read replies; no runtime ranker, repairs or official500. Do not send this unchanged policy to independent validation. Study late source delivery only on development tasks first; both old 32 cohorts stay sealed. |
+| Late physical-source packet | Direct-Messages complete 24 source-delivery engineering gate passes: shared-prefix Recall 58.39% → 65.18%, F1 31.97% → 26.26%; descriptive repository 95% Recall interval[+3.23,+11.36] points. New48 paid requests cost $4.25474400 under $8; source packets unchanged. All104 local tests and 24-case construction parity pass. Opus 5.5 requires adaptive thinking; replace the 512-output CLI loop with one 2048-cap API request,free token preflight and no retries. Earlier SDK budget/mode/overall gates remain failed, costs retained. | Keep compiler/consumer in labs. Known source opportunity was already scored: this is component delivery, not independent quality or fresh paired adaptive-agent behavior. Freeze an untouched independent source-only population,exact source,runtime and budget before new task calls. Both old 32 cohorts stay sealed; no repairs/full500. |
+| Complete solver | Both online native/Jev repair checks tie at 1/2 selected tasks; the preserved-grep pair does not reproduce the earlier single-task C++ saving. The completed notes handoff on Pylint/ponyc/fmt resolves source 1/3 versus notes 0/3, costing $4.043244/$5.015131 in Max SDK estimates (24.0% more with notes). All six native reports and source/prompt/hash/container audits are available; both C budget errors remain errors with captured patches. Failure diagnosis finds Pylint collection errors in both arms and native test-patch conflicts in both Multi notes arms; those reports do not establish behavioral repair failures. Reject promotion of notes forwarding. The explicit API/no-initial-context controls pass 86 local solver/source/SDK tests, including pinned-upstream integrations, and pinned hooks. All six Haiku repairs and native reports finish for $0.26029216 against the $1 reservation. Issue-only/source tie at 1/3 each, with 35/20 SDK queries; C fails 11/seven of 1,017 tests but neither resolves, and Pylint collection fails in both. New repair cost is $0.130250/$0.130042; allocating prior Opus retrieval makes pipeline usage $0.130250/$0.683119. | Retain every failure and the sealed independent32. Haiku actual model/route, source-only prompt contrast, usage, frozen hashes and owned-container absence all verify. No resolution or allocated pipeline-cost gain is established. Defer further repair/native-harness iteration until a context strategy passes retrieval gates. Native readiness and patch-conflict qualification apply before future repair claims, not before ContextBench source-line scoring. Report repair cost separately from the reused Opus retrieval cost. Any gain requires replication and independent validation; no official500 advancement. Arbitrary shell attribution remains partial. |
+| Leaderboard submission | Official artifact and population requirements are documented. The current candidate is rejected before full-scale execution. | A new independently validated policy, verified 500, measured resolution outcomes, complete artifacts and a separate measured budget decision. |
+
+The evaluation sequence remains:
 
 1. Diagnose and iterate on the disclosed 100 development IDs plus the earlier
    five pilot IDs. The 24-task multilingual subset remains development data.
@@ -40,8 +65,25 @@ The following gates apply only if this research is resumed:
    development IDs. Its SHA-256 is
    `49e0370ff0f384aed1691cb8dd3f071cf900c9020fadd3608d3f1955912be64a`.
    Selection uses only metadata and a fixed seed; no reference scores or labels
-   were inspected for selection. It is currently unrun, task-held-out rather
-   than repository-held-out, and not a population-weighted 500-task estimate.
+   were inspected for selection. Its frozen three-arm validation is complete
+   and fails the independent quality gate. It is
+   task-held-out rather than repository-held-out, and not a population-weighted
+   500-task estimate.
+   Source preparation has 31 ready cases and one unconfigured Git submodule
+   failure. Before held-out model calls or scoring, `4152c23d` fixes batch
+   accounting so that this known preparation failure remains zero without
+   cancelling unrelated cases. The retrieval prompt and graph policy remain
+   byte-identical to `3f04993f`; snapshot checks are not weakened. All 32 tasks
+   remain in every arm. Eleven cases have an available compiler graph.
+   The 32 tasks now remain a completed validation record. Development diagnosis
+   returns to the disclosed 105 IDs; a revised candidate requires new independent
+   task IDs and a new protocol before inference.
+   A metadata-only inventory leaves 363 untouched tasks, including zero C++ and
+   four Java tasks. All ten C++ tasks in this pinned 500-task release are already
+   in development (six) or the completed validation (four). A second independent
+   four-per-language selection is therefore impossible on this release. Define
+   a new sampling protocol or obtain new untouched tasks before another quality
+   validation; do not reuse the completed 32 to preserve the old quota.
 3. For a SOTA claim, freeze implementation, model and evaluator versions and run
    the official verified 500. Recheck the then-current leaderboard and denominator
    conventions (the current leader has 499 valid retrieval records). Report
@@ -50,13 +92,945 @@ The following gates apply only if this research is resumed:
 4. Keep retrieval SOTA separate from task-solving SOTA. Pass@1 and promotion to
    the product context route require actual downstream solver evaluation.
 
-The paired decision-selection and touched-function controls below are complete.
-Their development evidence prioritizes missing source over another final rerank.
+The paired offline decision-selection and touched-function controls below are complete.
+Reranking already improves the fixed 4K development payload, while reordering
+the much larger already-observed 16K/32K native payload changes little. The subsequent online source-block comparison tests ranking before delivery
+and fails its quality gate; its paired repair outcomes also establish no success-rate
+gain. The next candidate must address actual search intent and repair failures.
+Graph expansion is not required. Historical Jev results on CodeNib Base and Perplexity
+decision results on ContextBench remain distinct; neither establishes an online
+agent improvement. Keep the completed independent 32 sealed.
 The requested Claude subscription alternative is implemented through the official
 Agent SDK and passes an Opus 5.5 smoke with the logged-in Max account. Its follow-up
 batch was stopped at the user's request. There is no automatic paid API fallback.
 The SDK's metered dollar estimate is not a paid receipt, and subscription limits
-still apply.
+still apply. The current online controls start fresh SDK sessions in both arms;
+they do not compare the SDK's quality directly with the earlier native runner.
+
+### Current execution and cost envelope
+
+Prefer the existing Claude Max login. The user authorized at most **$100 in new
+API spending** for development and small-sample validation; a verified-500 run
+is a later budget decision. The SDK runner has no automatic API fallback.
+SDK dollar metering and account billing remain separate. Meter guards and a
+per-case timeout stop new work when a run reaches its limit; an in-flight call
+can exceed an observed guard. Unknown or invalid metering stops later cases.
+
+Completed batches through nearby-source development and independent32 report **$112.50185560**
+in Claude Max SDK estimates and **$28.36277826** in direct Anthropic SDK
+estimates, or **$140.86463386** across main-model routes. The same two historical attempts
+remain unmetered. Actual account charges and credit balance remain unverified.
+All Haiku model calls and native reports are complete; its quality gates fail.
+
+The two eight-task API retrieval controls complete 48 sessions; the four-task
+file-map comparison adds eight retrieval sessions for $1.496507; the nearby-source
+pilot adds eight for $1.76050270 and its terminal replication adds eight for
+$1.88522710. The independent32 adds 64 SDK sessions for
+$12.63056860; its operational/receipt gates are reported separately from quality. Their separately
+metered Jev decisions plus the two fixed-pool controls total 281 requests for
+**$0.053198712**. Known API usage value, including Haiku, file-map and nearby-source retrieval, is **$28.415976972**, within the
+additional $100 cash ceiling. Session and individual decision-request counts are
+different units. The latest read-hint batch costs $4.848424762 against its $10
+reservation, with no missing usage or fallback. Its four Max repair attempts
+add $6.03557620. All four submit normally; both C patches fail native resolution and both fmt patches pass.
+
+The distinct notes handoff ablation reuses frozen native retrieval on Pylint,
+ponyc and fmt. Six fresh Max attempts complete for $9.058375 against the $17 SDK reservation,
+with source 1/3 and notes 0/3. Notes add input but no source credit and cost 24.0%
+more in repair usage; reject this handoff. There is no new API-key inference or
+summary call. Native readiness and
+reference controls make no model calls, and reference material never enters a
+solver. Keep these repeated development cases separate from independent quality
+and full-500 authorization.
+
+The historical native search average is $0.9911/task (24 cases; median $0.690554,
+maximum $4.07134). At that unchanged mean, 32 tasks in two arms cost **$63.43**
+for search alone; 500 tasks cost **$495.55 per arm**, or **$991.10 for two arms**.
+These are arithmetic projections, not current quotes or solver measurements.
+The provisional complete-agent planning range is **$1,500–3,000 for two 500-task
+arms**, assuming $1.50–3.00 per task including search and solving. Recalibrate
+that assumption with measured solver cases before authorizing the large run.
+These figures exclude extra cloud compute and any separate subscription charge.
+
+Development starts with the first CSV-ordered task per language from the
+disclosed 24-task cohort: eight tasks, selected without consulting their scores.
+A one-task smoke uses the first of those tasks. Artifacts are retained under
+`verification/contextbench-online-20261016/`. The independent 32-task selection
+is not used to tune the policy. The first native/functions comparison does not
+pass the development selection gate. The subsequent targeted-hop trial passes
+that gate and advances unchanged to independent validation. The 32-task protocol
+retains native, functions and functions-plus-graph arms, with $20/arm SDK-meter
+guards; all use the same $3/case guard and 600-second timeout. The primary contrast
+is the complete graph-enabled route against native source tools; the other two
+contrasts are explanatory ablations. A positive lower paired Recall interval and
+non-decreasing F1 point estimate are required on that primary contrast before
+further quality claims. Secondary intervals are exploratory, with no adjusted
+multiple-comparison significance claim.
+
+### Independent 32-task outcome
+
+All three arms finish with 31 `ok` cases and one `preparation_failed` case, with
+31 valid official scores and the failed preparation retained as zero. There are
+no SDK batch errors or missing usage records. Runtime `4152c23d` preserves the
+selected `3f04993f` policy; all 38 archived implementation hashes match in every
+arm. The selected population contains 23 Multi, five Poly, three Pro and one
+Verified task, so its native solver coverage is limited to one task.
+
+| Cumulative observed trajectory | Recall | Precision | F1 | SDK dollar estimate |
+| --- | ---: | ---: | ---: | ---: |
+| Native source tools | 69.64% | 29.01% | 29.01% | $6.740282 |
+| Online function completion | 68.56% | 24.50% | 28.22% | $8.055923 |
+| Function completion + targeted graph tool | 68.76% | 23.58% | 26.16% | $8.876974 |
+
+The primary whole-route contrast changes Recall by -0.88 points, paired 95%
+interval [-5.73, +3.59], and F1 by -2.84, interval [-4.78, -1.02]. The declared
+gate fails. The secondary graph-over-functions contrast changes Recall by only
++0.19 points and F1 by -2.05; its exploratory intervals are [-1.41, +1.62] and
+[-3.81, -0.48]. Do not infer a quality improvement from the earlier development
+gate or compare these retrieval-only scores directly with the full leaderboard.
+
+The candidate makes 35 graph calls across all 31 prepared tasks, including all
+eleven graph-available tasks. Six tasks receive source, totaling 14 source
+records. Four model calls to the tool have invalid arguments and return errors;
+these remain in the trajectories. Other explicit outcomes include unavailable
+graphs, missing definitions and source that does not fit the response budget.
+
+The one independent Verified case, `scikit-learn__scikit-learn-13142`, resolves
+in each of the two solver arms: **1/1 each**, with one attempt, five model calls,
+16K context limit, 30-step limit and $3 SDK-meter guard per arm. Native grading
+passes two required regression tests and 54 preservation tests. Both solvers
+and graders use the exact same clean source tree and pinned derived image. Its
+official parent had identical tracked content but changed file modes; a local
+no-network image layer resets only to the selected source commit. This keeps the
+strict tree check intact. The separate reference-patch check passes without
+model calls and is excluded from agent scores. Solver SDK estimates are
+$0.359556 for native and $0.468446 for the candidate. One successful independent
+task does not establish comparative Pass@1 or complete the full-agent boundary.
+
+The sanitized [32-task CSV](../assets/contextbench_independent_32.csv) and
+[protocol and summary](../assets/contextbench_independent_summary.json) preserve
+the failure, uncertainty, implementation hashes and image provenance. Local
+receipts remain in `verification/context-agent-holdout-32/`. The next development
+diagnosis uses only development IDs. No new model batch or policy is selected
+from the held-out results.
+
+### Development source-attribution diagnosis
+
+An offline audit of the same eight development tasks separates original tool
+output from automatic completion and counts each physical source line at its
+first observation. It makes no model calls and does not inspect held-out labels.
+The targeted-hop candidate's three source-returning graph calls contain 220
+physical lines, **all already observed**. Successful calls alone did not establish
+additional coverage. The next development gate must measure previously unobserved,
+relevant source before spending another independent validation selection.
+The annotation counts below include the retrospective official-path correction;
+the original raw-path receipts remain archived with the correction record.
+
+| Existing eight-task trace | New grep-completion lines / annotated | New read-completion lines / annotated |
+| --- | ---: | ---: |
+| Initial function-completion arm | 1,901 / 381 | 584 / 108 |
+| Targeted-hop function control | 1,931 / 335 | 640 / 102 |
+| Targeted-hop graph candidate | 2,123 / 278 | 382 / 115 |
+
+Grep completion supplies 75–85% of completion's new physical lines, but also most
+of its newly observed annotated lines. Disabling it may lose useful coverage;
+these counts do not establish that read-only completion would improve quality.
+Annotation overlap includes physical blank/comment lines, is not the official
+score, and does not make unannotated source useless to a solver. This audit
+attributes observations in recorded traces; it cannot predict how an online
+agent would react to changed outputs. The next bounded development hypotheses
+are selecting which matched callable to complete and avoiding graph responses
+that only repeat known source. Receipts are in
+`verification/contextbench-online-20261016/development-source-attribution.json`;
+sanitized counts accompany the existing development summary.
+
+### Early graph navigation and unseen-source development gate
+
+The source-checkout graph tool accepts `--graph-source-policy definitions|unseen`.
+`unseen` derives known lines from actual source-checked observations, skips fully
+known neighbors without spending the result limit, and returns all missing lines
+of a partly known definition only when they fit. It keeps the existing raw-edge,
+definition-size, output and source-token limits. Each call snapshots prior
+messages; there is no shared mutable ledger or retained lock. Parallel tool calls
+may conservatively return overlapping source. Metadata alone never marks a line
+observed. Both the native and SDK runners bind this observer to their own case.
+
+The eight-call development replay checks that `definitions` output still equals
+the original recorded output. `unseen` removes all 220 repeated physical lines
+but adds none. Consequently the next model-facing policy requests a graph hop
+as soon as a central callable is found and a caller/dependency/test remains
+unclear, before broadening manual reads. All arms use the same new shared prompt;
+old runs are not reused as controls.
+
+Before inference, freeze the next development trial on the same disclosed eight
+IDs with fresh native, function-completion and functions-plus-unseen-graph arms.
+Use actual Opus 5.5, 20 turns, 600 seconds, $3/case and $10/arm SDK-meter guards,
+2,048 completion/graph source tokens, the same prepared snapshots and graph
+manifest, and no API fallback. The primary contrast is the complete graph route
+against native. Report both adjacent ablations as exploratory.
+
+The gate requires all selected tasks to finish and score, at least one graph
+response to supply previously unseen annotated source, a positive macro Recall
+point difference and non-decreasing F1 for the primary contrast. Annotation
+overlap is computed only after inference, never supplied to graph navigation or
+the model. Report paired intervals even if they cross zero; passing this small
+development gate is candidate selection, not an independent improvement claim.
+The prior 32 tasks stay sealed against tuning. Local receipts live under
+`verification/contextbench-early-unseen-20261016/`.
+
+The frozen trial at `768785a4` completes and officially scores all eight tasks in
+every arm, with no SDK errors or missing metering:
+
+| Cumulative observed trajectory | Recall | Precision | F1 | SDK dollar estimate |
+| --- | ---: | ---: | ---: | ---: |
+| Native source tools | 39.15% | 35.74% | 34.27% | $2.010707 |
+| Function completion | 43.97% | 31.57% | 34.02% | $2.666574 |
+| Function completion + early/unseen graph tool | 44.03% | 36.41% | 36.60% | $2.588926 |
+
+Primary Recall changes +4.88 points, paired 95% interval [-0.11, +10.45]; F1
+changes +2.33 points, interval [-6.44, +11.03]. The graph-enabled arm makes
+**zero graph calls on all eight tasks**, including the five with graphs. Its
+new annotated source count is therefore zero and the predeclared gate fails.
+The point differences do not establish a graph-source benefit. No new independent
+selection is consumed. Before another quality cohort, verify tool adoption and
+new relevant source in a small mechanism check; advisory wording alone has now
+failed twice. Keep such probes out of quality scores and avoid repeating another
+full cohort merely to discover that the tool was unused.
+
+The parallel solver-accounting change records the exact serialized model request
+before inference and confirms its input when an assistant response arrives.
+`model-observations.json` exports confirmed, rendered histories rather than raw
+shell stdout or the solver's terminal message list. A pinned native-loop test
+proves that middle output elided by the 10,000-character renderer and an unrequested
+submission diff are absent. Unknown delivery and missing historical input receipts
+remain explicit. This is the raw full-agent observation boundary; source-line
+attribution and the other native harnesses are still required. It changes no
+retrieval runtime file used by the concurrent frozen development experiment.
+Its live paired check at `54a8f15f` uses the same first development Verified task,
+pinned image, model, 16K context limit, 30-step limit and $3 SDK-meter guard. Both
+patches are **0/1 resolved** under native grading. All seven native-context model
+inputs and eleven candidate-context inputs are confirmed and exported, with no
+missing usage; SDK estimates are $0.485857 and $0.881937. Both owned containers
+are removed. This revisits one development task, not two new independent tasks.
+The public development summary retains this complete trial and its failed gate.
+
+The October 17 source-receipt follow-up adds a single controlled reader at that
+existing environment boundary. `codenib-read PATH START END` records a bounded
+UTF-8 byte snapshot and its original blob digest, then binds the native rendered
+output to its input position. Initial delivered source is validated separately.
+Only complete lines in confirmed inputs and unchanged base-file versions receive
+base coordinates. Ordinary shell observations, missing receipts, partial lines,
+changed-file coordinates and undelivered submission output remain explicit.
+The same reader instructions apply to both arms; their addition changes the
+solver protocol and needs a fresh matched run, not retrospective rescoring.
+
+The no-inference verification is retained at
+`verification/contextbench-solver-source-receipts-20261017/` with protocol hash
+`4c519cd6a84dd00b995379e5ef4555d4f53ce021840bf5b064a52f4c2e194853`.
+It preserves ten historical fmt model inputs and validates 411/375 initial
+source lines, without assigning any of the eight unreceipted shell observations.
+A scripted loop in the exact source-only image verifies native truncation,
+current-file edits and terminal exclusion; all hashes match and its one owned
+container is removed. These simulated replies add no model calls, usage,
+resolution result or official score. The public aggregate identifies the
+scripted scope and partial-coverage limitations.
+
+The predeclared real adoption check at
+`verification/contextbench-solver-reader-adoption-20261017/` reuses the native
+fmt 16K context, actual Opus 5.5, 12 turns and a $2 SDK-meter guard. Protocol hash
+`18a526e32ca402b62bc00c169b262945df64ce717bdcc02404e38a779741ab87`
+pins implementation `0a153397`. Five actual calls cost $0.695992 in SDK estimates.
+The first action chains two readers after `cd`, receives command-not-found, and
+falls back to `sed`: controlled-reader adoption fails, with zero confirmed
+controlled reads. All four delivered shell observations have execution receipts
+but remain unattributed; only 411 initial source lines receive partial coverage.
+The production patch resolves the same development task with 18 native tests;
+this supplies no comparative gain. Both owned containers are removed and frozen
+runtime/input hashes match after grading. No retry or follow-on model batch is
+part of this protocol.
+
+The old command-not-found behavior is reproduced locally before fixing the
+existing environment adapter. Compound command-position attempts now explain
+that the reader is available as a standalone action; quoted shell mentions are
+unchanged. The fix passes 29 related unit and two native-loop integration tests.
+A separately frozen corrected-feedback check at
+`verification/contextbench-solver-reader-adoption-v2-20261017/` uses implementation
+`0b2b5964` and protocol
+`3a5fa6cab44908dd4a92ffeac7f57080eb7faffb0f99947b453964756d8fa3c1`.
+The same source, native 16K context, model and limits yield eight confirmed model
+inputs at $0.932850 in SDK estimates, with `apiKeySource=none` throughout. After
+one explicit usage error, two standalone reads reach the model. Adoption passes
+and the patch passes all 18 native tests. Both reads were already in the initial
+context: zero new original lines, 411 total partial-coverage lines and four
+unattributed shell observations. Both containers are removed and frozen hashes
+match after grading. This closes the corrected-interface mechanism gate without
+establishing a quality gain. Fresh matched runs, arbitrary shell attribution and
+broader native harnesses remain open.
+
+### First-callable graph mechanism check
+
+Before another model cohort, freeze a source-only diagnostic on the same eight
+development traces. Select the first actual `read` response intersecting a
+compiler function/method, then the callable with the most returned physical lines
+(smallest span and lexical name break ties). Query its earliest observed line.
+Both reference directions use that identical prefix independently, with five
+results and 2,048 tokens per call. Annotation overlap is measured only after
+selection and source retrieval. Three unavailable graphs remain explicit.
+
+The TypeScript and Go outgoing responses fill all five slots with fields/types.
+The revised tool prioritizes functions and methods within the same 1,000-raw-edge
+scan; it preserves edge order within each group, reference direction and source
+budgets. The replay holds every anchor and observed prefix fixed:
+
+| Development language | Outgoing new physical lines, before → after | Annotated overlap, before → after |
+| --- | ---: | ---: |
+| Python | 59 → 64 | 0 → 0 |
+| TypeScript | 5 → 128 | 0 → 0 |
+| Go | 5 → 101 | 1 → 16 |
+| JavaScript | 25 → 25 | 0 → 0 |
+| Rust | 114 → 46 | 0 → 0 |
+
+Incoming output is unchanged. Taking the union of both directions per task,
+new physical source changes from 256 to 412 lines, with annotated overlap from
+1 to 16 lines. The original annotated Go field line is displaced; the 16 returned
+annotated lines are different source. Counts include physical blank/comment lines
+and are not official Recall/F1 or a counterfactual online quality score. The
+other available queries with zero annotated overlap remain
+reported. No inference is used for this diagnostic.
+
+The first original-issue Go probe calls the graph after function completion in
+`grep`, before its first `read`. The response supplies 132 previously unseen
+annotated physical lines and reaches a subsequent assistant turn, but the literal
+predeclared **after-first-read** timing gate fails. Its $0.201015 SDK estimate and
+failed timing gate remain recorded. This is useful early navigation, not a reason
+to silently redefine that probe's gate.
+
+The revised shared prompt explicitly counts callable source delivered through
+either read or grep completion, and requires the next tool call to be the graph
+query. It avoids requiring another hop just because a later `read` occurs. A
+second version of the same original-issue probe freezes this source-observation
+rule before inference. Each version has one attempt, eight turns, 180 seconds and
+a $1 SDK-meter guard; neither supplies a selected source anchor or annotations to
+the model. Both remain outside quality evaluation. Raw receipts and the frozen
+implementations are under
+`verification/contextbench-graph-mechanism-20261016/`; sanitized counts accompany
+the existing public development summary.
+
+The second version passes its predeclared timing and unseen-source gate: its
+first callable-bearing reply is grep completion, its next tool call is the graph,
+and a subsequent assistant turn confirms delivery of 132 newly observed annotated
+physical lines. It reports $0.126101 in SDK metering. Both versions finish without
+SDK errors or missing metering and use actual Opus 5.5. The first version's timing
+failure remains reported; the two versions are not independent tasks. This
+establishes working tool adoption and source delivery on one development issue,
+not a quality improvement attributable to ordering or prompting. The next gate
+was the frozen 24-task development comparison below. Its failed quality gate
+does not advance to a new independent selection or full-500 run; the prior
+negative validation and native-solver gates remain unchanged.
+
+### First-source 24-task development outcome
+
+Runtime `63e035eb` tests all disclosed 24 tasks, three per language, including
+the eight earlier pilot IDs. Selection SHA-256 is
+`122a70d4c61abcea5c27f87781fc204db768d933dd0d3bb7516e20117866f513`.
+All three fresh arms use actual Opus 5.5, the same 20-turn / 600-second limits,
+$3/case and $12/arm SDK-meter guards and 2,048-token completion/graph budgets.
+Source preparation succeeds on all tasks; eleven graphs are available.
+
+The primary native and graph-enabled arms both finish and score 24/24 tasks.
+Recall changes 53.35% → 54.02%, paired difference +0.66 points, 95% interval
+[-4.11, +5.59]. F1 changes 31.18% → 30.15%, difference -1.03, interval
+[-3.71, +1.56]. The graph arm makes exactly 24 calls, including every available
+graph. Six tasks receive 358 newly observed physical lines; 139 overlap
+annotations on one Go and two Rust tasks. Each response reaches a later assistant
+turn. Adoption and two-language novelty pass, but F1 fails the declared gate.
+
+The function-only arm finishes four cases and aborts on C case `b8c88ac8` after
+requesting the unregistered graph tool. The normalizer throws before terminal
+SDK metering, so the next 19 cases remain `not_run`. The four complete traces
+and the partial error trace receive five valid official scores; all 24 positions
+remain in the macro denominator, with the other 19 zero. These incomplete
+ablations cannot estimate completion or marginal graph benefit. The full declared
+three-arm completion gate fails independently of the F1 failure.
+
+Fix `25e5e31e`, developed separately while the frozen experiment ran, retains
+unavailable attempts and SDK error feedback until terminal usage. Error outputs
+earn no source credit; an unexpected advertised tool inventory remains fatal.
+Only graph-enabled arms receive graph instructions, and their prompt is unchanged.
+A separate C-task smoke at eight turns / 180 seconds / $1 SDK-meter guard passes
+all receipt and isolation checks, with a $0.426619 estimate. No quality score is
+assigned and no original record is replaced. Offline event replay preserves the
+old unsupported attempt but cannot recover a terminal result that was never read.
+
+Known retrieval estimates are $5.493784 native, $0.961724 function-only and
+$6.375578 graph-enabled; one retrieval case remains unmetered. All 38 runtime
+hashes match the frozen commit through official scoring. Raw receipts are under
+`verification/contextbench-first-source-24-20261016/`; the existing public
+development summary contains every selected task, gate and separate smoke.
+
+An offline metadata-selected C++ probe diagnoses a preparation constraint:
+`fmtlib__fmt-2394` needs a compilation database, but the benchmark worker disables
+project preparation even inside its private clone. Under the same 300-second
+bound, the control returns no graph in 4.16 seconds; enabling preparation builds
+8,247 nodes / 39,953 edges in 18.18 seconds. The original checkout stays clean.
+This uses no model calls or label-based selection and does not replace any frozen
+artifact. The broader preparation outcome is recorded below; a new matched
+quality candidate remains open. The completed independent 32 is not used for tuning.
+The source-checkout graph preparer now accepts explicit
+`--allow-project-preparation` for fresh private-clone builds and records the
+policy/timeout. It rejects reuse with this option and rejects a prepared graph
+if HEAD or tracked source changed. Generated build files may remain only within
+the owned temporary clone; the existing bounded worker owns their cleanup.
+
+A post-hoc final-source comparison retains every one of the 24 tasks. Of the
+139 annotated graph lines new at delivery, 90 are also read by the native control
+and only 49 are absent from it, all on one Go task. Candidate final source adds
+5,151 physical lines and omits 4,204 native-read lines, including 472 added and
+464 omitted annotated lines after canonical path normalization. These physical
+counts are not official macro
+scores; the interrupted function-only arm prevents causal decomposition. The
+next hypothesis should emphasize selective navigation and coverage beyond the
+matched native trajectory, rather than advancing on graph availability alone.
+No new model calls or quality scores are produced by this diagnostic.
+
+### Conversation-aware completion and fixed-query follow-up
+
+Source attribution on all 24 existing candidate trajectories finds 894 annotated
+lines first exposed by grep completion. Removing grep completion while holding
+all later tool calls fixed would lose 635 annotated physical lines, so a blanket
+grep-completion removal is not a supported next policy. Function completion also
+repeats 726 previously delivered physical lines: 310 in grep additions and 416
+in read additions. These counts include physical blank/comment lines and are
+not official line scores or causal effects on subsequent agent choices.
+
+Both source runners now accept `--completion-source-policy definitions|unseen`.
+The historical `definitions` policy stays the default. The opt-in `unseen`
+policy derives prior source from verified conversation text, preserves original
+tool replies and appends only the remaining lines of currently touched
+callables. Retain the historical selection and budget reservations before
+omitting duplicates; freed space cannot select another function. Prior reads
+cannot select unrelated functions. No shared mutable seen-set is introduced.
+Concurrent calls may conservatively repeat source from the same model turn.
+Configuration and resume checks retain the policy; a paired completion-source
+contrast requires matching graph configuration and tools.
+
+A frozen replay holds every actual tool call and original source reply fixed,
+using the previous assistant-confirmed prefix for each parallel call batch.
+The control reproduces all 234 source replies exactly. The new policy changes
+20 replies, reduces repeated completion-line deliveries 726 → 0 and reply
+characters 1,008,050 → 971,508 (3.63%), with identical cumulative physical source.
+An initial implementation refilled the saved budget and added 63 non-annotated
+lines, displacing 14 other non-annotated lines in 16K delivery. Both initial
+replays remain recorded. The current implementation preserves callable
+selection before removing duplicates to avoid changing downstream content.
+Recomputing every candidate payload at 16K and 32K confirms exact equality of
+context bytes, token counts and source predictions with the archived historical
+payloads. The separate input/runtime hashes also match through this check.
+This is delivery behavior, not a new quality score or measured model-token cost.
+All input/runtime hashes match; no model calls occur. Native-loop and SDK-stream
+regressions verify delivery, original-reply retention and rejection of unobserved
+or truncated source. A deterministic small-budget regression reproduces the
+unselected-function refill and verifies its rejection; comparison tests reject
+a simultaneous graph-policy change.
+
+The actual-query graph replay uses the same 24 old candidate queries and
+prefixes for both prior and composed artifacts. All old responses reproduce
+exactly. With 19 available graphs instead of eleven, new physical source rises
+358 → 932 and canonical annotated source at delivery rises 139 → 356. Annotated
+source absent from the complete native trajectory rises 49 → 194 lines, with
+145 on C and 49 on Go. The earlier 49 → 49 claim missed container-prefixed
+annotations and is withdrawn. This is useful offline source evidence, while
+query timing/selection and fresh agent quality still require measurement. Private diagnostics,
+hashes and source-bearing replay outputs remain under
+`verification/contextbench-completion-source-diagnostic/`; sanitized counts are
+in the existing public development asset. The independent 32 remains sealed and
+both failed quality gates remain in force.
+
+### Late issue-directed graph development control
+
+The offline 24-task anchor probe preserves all source snapshots and the composed
+19-graph inputs. For each available graph it queries incoming and outgoing
+references, at five results, 2,048 tokens and 1,000 raw edges per direction.
+Anchors and replies are fixed before annotations are checked. The first anchor
+comes from the first native read intersecting a callable, with ties by observed
+line count, shorter span and lexical node ID. A late-same control uses that anchor
+with the full native prefix. A late-issue diagnostic ranks all actually observed
+callables with the existing code-tokenized BM25 over symbol/file names.
+
+All three policies make 38 queries. Annotated source absent from the full native
+trajectory is 80 lines for both early-first and late-same, versus 50 for BM25;
+the latter loses 30 Python lines and keeps only Go coverage. This is a negative
+result for delay alone and this static ranking, not an online quality estimate.
+All frozen input/runtime hashes match. Private source-bearing responses stay in
+`verification/contextbench-late-graph-probe-20261016/`.
+
+Runtime `5b91323c` adds an explicit `late_issue_reference_hop` prompt policy to
+both runners, preserving the previous default and common non-graph prompt.
+The model must investigate first, state a concrete unresolved relationship,
+choose a previously observed callable by issue behavior, and query before its
+final handoff. It may make at most two graph calls by prompt; the analysis audits
+that limit rather than implying a hard quota. The model does not use the probe's
+BM25 ranking. Configuration, resume validation and direct timing comparisons
+retain the option and reject confounding source/budget/tool changes. Native and
+SDK regressions verify the actual received prompt, tool inventory and unchanged
+source receipts. The related unit tier has 165 passing tests; four pinned
+integration tests also pass.
+
+The new protocol selects the first task per language in the unchanged 24-task
+development order, with no substitution and no overlap with the sealed 32.
+All eight source records and seven available graphs are authenticated projections
+of existing inputs. Three fresh arms share Opus 5.5, 20 turns, 600 seconds,
+2,048-token completion/graph limits, conversation-aware completion, and $2/case
+and $6/arm SDK-meter guards. The total observed-meter stop threshold is $18;
+this is not an account bill or an exact cap on an in-flight turn. Existing Max
+remains the route, without API fallback. The primary comparison is graph plus
+completion against native; completion/native and graph/completion are separate
+exploratory contrasts. Runtime, source, graph, selection and analysis hashes are
+frozen before inference under `verification/contextbench-late-graph-8-20261016/`.
+
+The predeclared development gate requires all selected tasks to finish and score,
+known terminal metering, use of every available graph, at most two graph calls
+per task, observed anchors after at least two source replies, and confirmed
+delivery. At least two languages must receive annotated graph source absent from
+the complete matched native trajectory. Primary Recall must increase and F1 must
+not decrease. Passing would only select a development candidate; a new independent
+protocol and broader native solver evidence would still be required.
+
+All three arms complete and officially score 8/8, with known terminal usage,
+actual `claude-opus-5-5`, eight Max-authenticated sessions per arm and no API-key
+source or unavailable tool attempts. Native/function/graph Recall is
+39.85%/40.40%/41.62%; F1 is 32.85%/31.38%/35.29%. The primary Recall difference
+is +1.77 points, interval [-4.36, +8.23], and F1 +2.45, interval [-1.06, +7.06].
+The secondary graph/functions F1 difference is +3.91 points, interval
+[+0.33, +8.92], without multiplicity adjustment. This is development evidence.
+
+Nine graph calls respect the count/timing/observed-anchor gates and cover all
+seven available graphs. They return 220 new physical lines: 200 C and 20 Rust.
+Canonical annotation overlap is 200 C lines, 197 absent from the matched native
+trace, and zero on Rust. The two-language gate fails; the point-score gates pass.
+Python/Go report no unseen neighbors, TypeScript/C++ have oversized source,
+Java has no graph, and JavaScript has two missing-definition responses. The
+completed mechanism diagnosis is recorded below; it does not change this gate.
+
+The fixed-trajectory source-removal audit reproduces all eight original
+predictions. Removing graph replies while preserving every later call changes
+Recall 41.62% → 39.80% and F1 35.29% → 34.00%; all Recall loss belongs to C.
+This establishes direct source-score contribution only, not a counterfactual
+agent outcome. Runtime and input hashes match through scoring and the audit.
+SDK estimates total $6.796707 ($2.038043 native, $2.433953 functions, $2.324711
+graph), below the $18 stop threshold. Actual subscription billing remains unknown.
+
+The source-removal check exposed an auxiliary diagnostic bug: ten of the 24
+development tasks have container-prefixed annotations. Raw string intersection
+missed them, although official scoring already normalized them. The evaluator
+bridge now emits `Gold.line_spans_init()` as `gold_line_spans`; six native
+integration variants cover relative, `/testbed/` and `/workspace/<repo>/` paths,
+with and without a model patch. A zero-model audit corrects the saved 8/24-task
+source diagnostics using the same pinned normalizer, without rebuilding source,
+rerunning models or changing official metrics. It retains the original frozen
+results and publishes explicit amendments in
+`docs/assets/contextbench_annotation_correction.json`. The late pilot remains
+rejected under its original two-language criterion. Independent validation and
+official-500 gates remain closed.
+
+The zero-model diagnosis in
+`verification/contextbench-graph-range-diagnostic-20261016/` reproduces all nine
+old graph replies and all three C++ graphs from unchanged cached clangd shards.
+Its protocol hash is
+`0e34596e4799ee11710da7713eb1173bebb850d23255b768d88cd096cb9ce34f`.
+The range materializer previously chose the first containing tree-sitter chunk,
+assigning several distinct methods the same macro-confused 520-line span. It now
+chooses the smallest containing range; missing chunks retain the compiler point.
+The three graphs change 33, five and zero ranges, respectively. Every compiler
+identity, selection point and edge remains exact, and every changed span still
+contains its definition point. At `include/fmt/color.h:411`, the seed changes
+from an unrelated `rgb` constructor to the observed `ansi_color_escape` overload.
+The corrected incoming query has no returned neighbors, and the other eight
+replies remain identical. There is no added physical or annotated source and no
+new online result. Historical graphs and scores stay frozen.
+
+Reference-anchor windows provide zero unseen C++ lines through radius 64; the
+TypeScript anchor provides zero through radius 16, five at 32 and 37 at 64.
+Do not introduce a window-delivery policy on this evidence alone. The JavaScript
+file has 36 field definitions and 42 file-owned references. Raw SCIP emits its
+assigned property names as local references without callable definitions or
+enclosing ranges; assignment-function syntax is already supported by the
+chunker. Do not invent compiler-defined callables or call edges to hide the
+provider gap. This patch changes no graph schema or native query contract; full
+graph construction is shared by the Python and native-provider routes. The
+regression first fails on the old range choice, then passes for both chunk
+orders; 41 related tests and 48 compiled native-query tests pass. Useful graph
+delivery across languages, provider definition coverage and revised matched
+quality evidence remain the open gates. This diagnosis uses no model calls or
+additional API spend.
+
+### Broader offline graph preparation outcome
+
+The complete 24-task check at `64f07462` freezes runtime hashes and enables
+private-clone preparation with a 300-second bound. Fourteen graphs are available:
+eight new successes and five losses versus the previous eleven. Six Go/Java
+failures come from missing managed tools on this invocation PATH, two TypeScript
+builds time out, and two builds change tracked source and are rejected. The
+managed tools are installed; the doctor still reports unrelated missing tools.
+All original source snapshots remain clean. Policy, timeout and environment
+changes prevent a causal preparation-policy claim.
+
+A fixed-prefix replay chooses anchors without annotations and tests both edge
+directions before checking annotation overlap. New physical lines change
+687 → 890; canonical annotated lines change 177 → 44, including the lost Go coverage.
+It makes zero model calls and does not measure online agent adoption or quality.
+A separate future input uses fresh available graphs and otherwise authenticated
+same-source prior artifacts, producing 19/24 available graphs. It retains all
+cases and both build histories; no scores or annotations select artifacts and
+no previous result is overwritten. The next candidate still requires a frozen
+matched protocol and meaningful new-source evidence.
+
+### Multi-SWE-bench native environment readiness
+
+On the development C++ task `fmtlib__fmt-2394`, the original Multi harness at
+`24f493f8a103e72312ded4f6b9c89f081d69cb09` rejects the test-only control and accepts
+the reference repair. Its native grader verifies all 18 required tests, with no
+failures. Both stages use the same pinned official image, exact selected source
+tree and native patch hashes. They run the original test scripts with no network
+or host mounts, bounded resources, and remove their owned containers afterward.
+No model calls occur and neither result is an agent score.
+
+The original grading image contains the reference and test patches. A separate
+solver image removes those artifacts and their test/prepare scripts, replaces
+Git history with one selected-source commit, and passes the same tree and clean
+checkout checks. Its tree remains
+`c793e859f77f2ef96bcc8f1b1804f06ebce087aa`. Native grading continues to use the
+original image. The source-checkout solver now accepts the `fmtlib/fmt` pilot,
+checks source-only history/reference isolation before model work, and records the
+source family and container working directory. The separate native adapter
+checks installed harness hashes and source/patch identity, replaces the reference
+production patch with the exact solver patch, and invokes the original native
+script and resolution grader. Every owned container has bounded lifetime and
+synchronous cleanup; errors remain explicit. This does not establish that
+CodeNib resolves the issue or supports other Multi repositories.
+
+The new adapter's unchanged-issue control is correctly unresolved. Two initial
+reference checks time out during Docker creation at the 60-second bound, before
+tests begin, and both owned containers are removed. A separate create/start
+probe succeeds, with creation taking 31.83 seconds amid high host I/O pressure.
+The adapter now allows a bounded 180 seconds for container startup, records that
+limit, and retains its test and cleanup bounds. Fresh native validation at
+`fe4cbb72` completes with unchanged runtime hashes: the unchanged-issue control
+is unresolved and the reference repair passes all 18 tests. Both containers are
+removed. All these checks make zero model calls; prior failures remain recorded.
+The bounded C++ solver pair at the same frozen commit reuses the previous
+native and graph-configured 16K contexts. Both arms submit production-only fixes
+and resolve this one unique development task, 1/1 each, passing all 18 tests.
+Both use Opus 5.5 through Max, the same source-only image, 20 turns and a $2 SDK
+meter guard. Each makes five calls, all ten exact model inputs are confirmed,
+and all terminal usage is present: $0.734907 native and $0.586895 candidate,
+$1.321802 total. Every solver/grader container is removed, and frozen runtime
+and input hashes match through grading. No new retrieval or independent
+validation occurs. The graph was unavailable in that task's original retrieval;
+these matched repairs do not establish a graph-source or comparative Pass@1 gain.
+
+Pinned native dataset revision, image IDs, module hashes and reports are retained
+under `verification/contextbench-multiswe-native-20261016/` and summarized in the
+existing public development artifact.
+
+The disclosed Java development task `google__gson-1391` now passes the corresponding
+gates. Native protocol
+`0ddc4234dc8f136cdb76d9ed1c9a816086ca29d849c18c75a04c68f5330e9cc9`
+rejects the test-only control and accepts the reference patch: one required
+regression class changes from failing to passing, and all 95 preservation classes
+pass in both stages. Both Maven exits are 1 because `DefaultDateTypeAdapterTest`
+also fails in the pinned dataset. Full parser sets match its original outcomes;
+do not call the entire test suite green or count classes as individual assertions.
+
+The source-only Gson image removes reference files and history while retaining
+the exact clean tree. Python 3.10.12 runs the controlled reader successfully.
+Adapter protocol
+`c4bb87f172c152ed8896ee14944c2aed1dc87c597d58c5c7dfafec157c9bc3be`
+rejects a behavior-preserving comment and accepts the reference production patch
+through the implemented native grader. These are synthetic grading fixtures,
+not solver attempts. The adapter binds repository/task/source identity and all
+three native entrypoint hashes before patch execution; the new checks also match
+the existing fmt image. All owned containers are removed and frozen hashes match.
+Receipts are under `verification/contextbench-multiswe-java-readiness-20261017/`;
+the public development artifact retains provenance, the source-only Dockerfile,
+both controls and parser parity. All Java readiness checks make zero model calls.
+
+Jackson-databind is deferred because its pinned preparation script rewrites a
+tracked POM, conflicting with exact clean-source validation. This is a source
+inspection, not a failed runtime probe.
+
+The fresh Gson solver pair at frozen `0039b2a2` is complete under protocol
+`3e42a546571c16b1ebc33b27eff275156807b3b28348b66d21be6a9c59aa35f2`,
+with artifacts at `verification/contextbench-multiswe-gson-solver-pair-20261017/`.
+Both arms submit production-only fixes and resolve 1/1 task, passing all 96
+required test classes. The known always-failing class remains present. Source,
+image, Opus 5.5/medium, reader instructions, 16K context limit, 20 steps and $2
+SDK guards match. All eleven input receipts are confirmed, every SDK init uses
+`apiKeySource=none`, and usage is complete: $0.500642 native, $0.587861 candidate,
+$1.088503 total. All four owned containers are removed and frozen hashes match
+after grading. The separate native results never enter either solver.
+
+Each arm adopts one controlled read after an explicit usage error. Source coverage
+changes 318 → 318 and 293 → 294 lines; two/three delivered shell observations
+remain unattributed. Original retrieval had no available graph. This expands
+native pipeline coverage but shows no comparative repair or graph-source gain.
+Other Multi repositories, Poly/Pro harnesses, complete solver-source attribution
+and broader matched outcomes remain open.
+
+The next native pilot uses disclosed C task `ponylang__ponyc-2205`. Its selection
+is informed by the earlier development graph contribution, not an independent
+sample: all 200 graph-returned lines remain in the candidate's fixed 16K payload,
+197 absent from native. No solver result or reference-patch content selects a
+new task. Reference/control protocol
+`a7a21664742a4d07ca15b24076d2195be7b1affdf445ed2d2d8f05bb0da75ecd`
+preserves 1,010 tests and fails seven regressions in the control; the reference
+passes all 1,057 required tests. All native parser sets match the pinned dataset.
+Both native exits remain 2. The reference reaches a standard-library link failure
+for missing `crypto`, `pcre2-8` and `ssl`; a separate unmodified-source check
+reproduces it after 1,045 passing baseline tests. Required-label success must not
+be described as a green full standard-library suite.
+
+The original grader image lacks the Python 3 interpreter required by the reader.
+A private source-only image adds the
+hash-verified CPython 3.11.14 standalone archive and removes reference artifacts
+and Git history. Its warm variant builds only unmodified source, keeping model
+test commands within the existing time bounds. Warm source/reader protocol
+`ea72f3722cf7f170abcf75664a93487512171c8f19765ce21c44c3d8c06599af`
+passes, source remains clean after baseline testing and all owned containers are
+removed. Native grading still uses the original image. The existing adapter adds
+only this validated repository and its pinned native module; no registry or new
+product route is introduced. Related unit tests pass 197 cases and pinned
+integration tests pass ten. All readiness checks make zero model calls.
+Artifacts are under `verification/contextbench-multiswe-pony-readiness-20261017/`.
+The frozen C solver protocol
+`ea199d9940f8bc77a2cdaaba917117af1e8349fd2e9bf1cf85e6ec7bf33d26c1`
+at `6c1585b8` is now complete: native/functions both submit production patches,
+then fail original grading with 1,005/1,006 passing and 12/11 failing tests. They
+fix zero/one of seven required regressions and both break five preservation tests.
+The graph arm reaches its SDK budget error, supplies no prediction and remains
+zero; no retry or native report substitutes for it. The three arms make 9/9/11
+calls, all 29 inputs are confirmed and every subscription initializer reports
+`apiKeySource=none`. Controlled reads add 0/191/0 original lines, with partial
+coverage of 1,025/1,677/1,393. All five owned containers are removed and confirmed
+absent, and frozen hashes match after grading.
+
+The function-only payload already covers the earlier graph response. Relative to
+it, the graph payload adds 190 and removes 283 other initial lines; this is not a
+controlled graph-only source intervention. No comparative repair gain follows.
+SDK estimates reconcile to $2.134897/$2.684968/$3.295746, totaling $8.115611.
+Amendment `955db06b47399b76fec281ab182e7c17d77cb48cb2c67e519487b7941ad9694e`
+recovers the graph call's $0.321885 from its preserved terminal event without
+changing any original run, patch or outcome. A ResultMessage followed by an SDK
+iterator exception bypassed post-loop accounting. The reproduced regression now
+passes: terminal usage is persisted before the next iteration, while errors and
+the exhausted-budget stop remain. This correction makes no model calls.
+The per-call SDK guard is not a hard billing cap; the terminating call can exceed
+its remainder. Two historical attempts still have no terminal usage.
+Artifacts are under
+`verification/contextbench-multiswe-pony-solver-three-arm-20261017/`.
+Use the retained required/preservation failures and source redundancy to improve
+selection before another paid comparison. Independent quality, broader native
+coverage and full-500 gates remain open; the sealed 32 is unchanged.
+
+### Fixed-query opportunity and failed opposite-hop replay
+
+The no-model audit at
+`verification/contextbench-graph-opportunity-audit-20261017/` freezes original
+anchors, compiler artifacts and preceding messages under protocol
+`6bd6e9e95bce2ec542321859ddd68c0870a1d05cf220f0574e1462c06cfd3fb9`.
+All 33 graph replies reproduce across the 24 early and overlapping eight late
+traces. With 1,000 raw edges per direction and the existing source bounds,
+individually fitting original-direction omissions add canonical annotated source
+absent from both completed trajectories only in Rust. This fails the
+multi-language opportunity gate for source ranking. Opposite-direction unions
+have opportunity in C/Go/TypeScript, but are non-deliverable upper bounds, not
+retrieval credit or quality scores.
+
+Protocol `61fc2c4b8fec90aa5495507759e6978d9cf05c3565817aaaa067e9ccdfe73691`
+then freezes a general empty-response fallback: at most once per task, use the
+same anchor in the opposite direction only after no source is returned. Keep
+existing ordering, original source, the original definition limit and a shared
+2K reply bound, and record both requested and actual directions. Later messages
+stay fixed. All 32 original predictions reproduce and source loss is zero.
+Five changed replies add 1/90 physical lines to early/late cohorts. The late
+additions include 71 annotated lines and 59 absent from matched native in Go/TS.
+Early Recall stays 54.017%, F1 falls 30.148% → 30.143%; late Recall rises
+41.621% → 45.659% and F1 35.292% → 36.591%. The predeclared requirement for higher
+Recall and non-decreasing F1 in both cohorts fails. No runtime option or model
+run is added for this general fallback. The first scoring step failed because
+its output directory was absent; scoring-only follow-up protocol
+`32073d075b4b41002ef469d2fe06ece9aee96b8bfbdd1298989752b3a53f2f55`
+uses every unchanged frozen prediction and the unchanged gate. All input/runtime
+hashes match after scoring; no model calls or new API charges occur.
+
+The separate C failure diagnostic, protocol
+`495511f28b27f83f922e11de2d7b6f50c3e1a039b36cbfe8b877a6838ee80b4f`,
+uses the already disclosed development task only; it is not independent validation.
+Five failing preservation cases are new test-patch declarations in a file absent
+from base source. Six native preservation labels are absent from baseline labels,
+while both submitted solvers execute and pass 1,005 base compiler tests. Their
+initial contexts, and the graph arm's, already contain all 25 lines of
+`cast_ffi_arg` and all 91 lines of `gen_ffi`. The evidence does not justify another
+source expansion of those functions. Grading-only test identities are diagnostic
+metadata, never retrieval/solver input; reference patches are not interpreted.
+
+The distinct late-only hypothesis has a completed fresh matched development
+comparison under `verification/contextbench-late-opposite-followup-8-20261017/`.
+The eight tasks are the first remaining per language in the 24-task file order,
+excluding the earlier late eight without score or availability filters. Selection
+SHA-256 is `fa7fb9cd3cc93b39387e936df67d3da0dd1ccc68c577305800508488cec5ec06`;
+these are already disclosed development tasks. Runtime `cf86e0a7`, source and
+five available graph snapshots, analysis and all three controls were frozen under
+protocol `953888b85c63227641b90a92181fb1ece67d3bd246e102d0a6fc8a4b2f217f1a`.
+The selected C++ graph uses the already verified range correction, with original
+compiler identities and edges preserved.
+
+All arms use actual `claude-opus-5-5`, medium effort, 20 turns, 600 seconds,
+2K unseen function/graph replies and $3/case, $6/arm SDK stop thresholds.
+Only the candidate enables `--graph-empty-fallback`, permitted with late unseen
+graph navigation. It checks the opposite direction once per empty
+available-anchor query, sharing the same
+observed-source snapshot and 2K/16,000-character reply bound; each direction
+retains 1,000 raw edges. It preserves actual/requested direction, source ordering
+and whole missing spans. The two-call prompt limit is audited, not an executor
+quota. This per-call policy differs from the rejected general replay. The
+comparator explicitly labels the complete graph-package contrast and continues
+to reject mismatched source, tools, timing and budgets.
+
+All 24 runs finish `ok`, all 24 official scores and terminal usage are complete,
+and every SDK initializer reports `apiKeySource=none`. Native/functions/graph
+Recall is 77.90%/72.14%/80.57%; F1 is 33.67%/32.95%/37.55%. Primary Recall changes
++2.67 points (95% interval [-14.86, +20.23]); F1 changes +3.88
+([-7.61, +14.89]). **The declared gate fails**: no opposite fallback returns
+source, and zero annotated graph lines are absent from complete matched native.
+The ordinary graph adds 42 physical lines, including five annotated Rust lines
+already covered by native. A frozen zero-model replay reproduces all eight
+replies exactly with and without fallback; only JavaScript and Go qualify for
+an opposite scan and neither adds source. This rules out attributing the point
+increase to additional fallback source, while changed guidance/search remains
+confounded. All frozen runtime/input hashes match.
+
+SDK estimates are $1.660950/$1.713277/$1.713029, totaling $5.087257. These are
+not invoice amounts. A mechanical retrieval-only 500-task projection is about
+$104–107 per route or $211 for native plus candidate, excluding solver/grading,
+retries and quota waits; it is not authorization for a full run. The SDK terminal
+metering regression is reproduced against the prior retrieval implementation,
+then fixed before inference. Current verification is 209 related unit tests and
+10 pinned integration tests. The checkout-only option is retained for
+reproduction, with no product/default promotion or additional online retry.
+The source-bound follow-up now repairs C++ callable extraction and maps clangd
+conversion kind 24 to methods in Python and native queries. Normalization v4
+rejects old native interpretations. Rebuilding all three disclosed C++ graphs
+at `1edb2a68` corrects 2,127 ranges and 101 conversion kinds, while preserving
+all compiler IDs, file identities, selection points and edges. The missing
+conversion anchor now covers its body. Thirteen pre-fix regression cases reproduce;
+198 related unit tests and three C++ integration tests pass after rebuilding
+the native binding.
+
+Existing tools also recover TypeScript in 268.17 seconds within the original
+300-second bound, and Gson Java in 22.28 seconds using explicit Maven and a
+command-line Java 8 override. No tracked Java POM or source bytes change.
+These readiness diagnostics are not controlled acceleration comparisons. The C
+probe confirms seven actual tracked changes inside the pinned oniguruma
+submodule; its rejection remains correct and the source guard is unchanged.
+Earlier failed probes remain recorded, as does the initial C++ assertion that
+mistook the expected callable display suffix for a changed compiler identity.
+
+Under combined replay protocol
+`40bc54186d31d819d67c2e2503a4d1f1555fde27e99324c60f06432a90e5eafe`,
+all eight queries, preceding source and reply budgets remain fixed. Availability
+rises five to seven, but the additional 108 TypeScript, 37 Java and one C++
+physical lines contain zero annotated lines. Replies are frozen before canonical
+annotation analysis; no revised agent outcome is inferred. There are still zero
+languages with annotated graph source absent from matched native, so another
+online batch is unsupported. All follow-up checks make zero model calls and
+leave costs unchanged. The failed general gate, sealed independent 32 and
+full-500 requirements stand.
+
+### October 16 online development result
+
+The eight tasks are the first CSV-ordered task per language in the disclosed
+24-task development selection. Both arms use actual `claude-opus-5-5`, SDK
+0.2.165, CLI 2.1.301, a 20-turn SDK limit, 600-second case timeout, $3/case and
+$15/arm SDK-meter guards. Function completion adds at most 2,048 source tokens
+per response. Both arms have eight `ok` results and eight valid official scores.
+The same implementation and input-manifest hashes were checked by `compare`.
+
+| Cumulative observed trajectory | Recall | Precision | F1 | SDK dollar estimate |
+| --- | ---: | ---: | ---: | ---: |
+| Native source tools | 41.13% | 33.94% | 33.67% | $2.153231 |
+| Online function completion | 41.67% | 29.33% | 31.91% | $2.406782 |
+
+The paired Recall difference is +0.53 percentage points, with a 95% bootstrap
+interval of [-2.03, +3.36]. F1 changes by -1.76 points, interval [-4.94, +1.04].
+These task-level macro scores do not demonstrate an improvement. The offline
+24-task gain cannot be transferred to this online policy or this SDK harness.
+Artifacts and per-task values are in
+`verification/contextbench-online-20261016/development-comparison.json`.
+
+The first completed downstream solver attempt uses the one-task development
+smoke's function-completed 16K context, the pinned upstream mini SWE-agent loop,
+and the same actual Opus model. Its patch applies, but native required tests do
+not pass: **0/1 resolved**, without a comparative or population claim. Generation
+reports $0.555974 in SDK metering. Preliminary aborted attempts are also retained;
+one returned no usage, so total metering and actual billing must not be presented
+as fully known. The adapter checks the image's clean Git tree against the selected
+base tree, allowing the official image's synthetic preparation commit. The native
+dataset is pinned to revision `c104f840cc67f8b6eec6f759ebc8b2693d585d4a`.
+Only the issue and observed retrieval payload enter the solver; reference patches
+and required-test annotations are isolated to the native grading stage.
+
+A fresh paired solver check uses the targeted-hop trial's Python case, the same
+16K delivery limit, implementation `3f04993f`, pinned image, actual model,
+30-step limit and $3 SDK-meter guard. Both patches apply, but both arms are
+**0/1 resolved**. Native test collection fails because the generated production
+patches omit `IS_PYPY`, which the reference test patch imports. The official
+reference production patch passes in the exact same image and native harness;
+that separate grading-only check makes no model calls and is excluded from agent
+scores. Solver SDK estimates are $0.826470 for the control and $0.442726 for the
+graph candidate. This revisits one disclosed development task, not two new
+independent tasks or a population Pass@1 estimate. No reference-test feedback or
+reference production patch is sent to either solver.
+
+Directed graph controls use a new shared implementation freeze. Their source
+tools retain function completion in both arms; only the candidate receives
+`graph_neighbors`. Both arms receive the same graph manifest, per-response graph
+budget, runtime, model and case limits. Unavailable graphs remain selected.
+Do not compare a new graph run directly with the earlier frozen eight-task arm
+and attribute all differences to the graph tool.
+
+Before scoring the targeted-hop trial, freeze the development-to-validation gate:
+both fresh arms must finish and score every selected task; the candidate must
+actually call the graph tool on every graph-available task and receive source on
+at least one; its macro Recall must increase without a lower macro F1. This is a
+candidate-selection gate, not proof of an improvement. Report both paired
+intervals even when they cross zero. Only a passing candidate advances unchanged
+to the independent 32 tasks; promotion still requires independent quality and
+downstream outcomes. Do not select individual best task runs or tune on the 32.
+
+The first optional-graph trial, frozen at `359357a2`, completes and officially
+scores all eight tasks in both arms. Its function-only control has 40.23% Recall,
+28.19% precision and 31.11% F1; the graph-enabled candidate has 44.56%, 32.14%
+and 34.28%. The paired Recall difference is +4.34 points, 95% interval
+[-0.06, +11.88]; F1 is +3.17 points, interval [-0.81, +7.46]. However, the
+candidate makes **zero graph calls on all eight tasks**. These differences
+cannot establish a benefit from graph-returned source. Combined SDK metering is
+$5.165080, not a paid receipt. A separate explicit-call integration probe makes
+one successful graph call ($0.028054 SDK estimate); its synthetic instruction is
+excluded from quality scores. The next development trial requires a targeted hop
+before handoff and fixes local-symbol selection hiding enclosing callables.
+It uses two fresh arms under the same new implementation, not an old control.
+
+That targeted-hop trial is complete at `3f04993f`, with all eight tasks valid in
+both arms. The function control scores 37.43% Recall, 28.40% precision and 30.18%
+F1 ($2.497661 SDK estimate); the graph candidate scores 41.29%, 32.16% and 32.85%
+($2.702899). Recall changes +3.86 points, paired 95% interval [-0.51, +11.82];
+F1 changes +2.67 points, interval [-1.11, +6.84]. Each task makes one graph call:
+Python, Go and Rust receive source; TypeScript's definition exceeds the response
+budget; JavaScript has no definition at the queried line; C, C++ and Java report
+unavailable graphs. All remain in the scores. The declared development gate
+passes, but the intervals do not establish a reliable gain. The policy advances
+unchanged to the independent 32 tasks; no product or leaderboard claim follows.
 
 ## Graph-free feedback and context-budget diagnosis
 
@@ -386,9 +1360,10 @@ Promotion remains gated on a frozen held-out comparison and actual downstream
 task outcomes, with all explored development IDs disclosed. Establish the strong
 search/read reference before distilling actions or stopping into a cheaper
 decision controller. This work introduces no product retrieval route or
-persistence boundary. Implementation and recorded results are retained through
-[#827](https://github.com/sysevol-ai/CodeNib/pull/827); the research iteration
-remains closed and the promotion gates remain open.
+persistence boundary. The historical implementation and results were merged in
+[#827](https://github.com/sysevol-ai/CodeNib/pull/827). The online follow-up above
+is active in [#834](https://github.com/sysevol-ai/CodeNib/pull/834); the promotion
+gates remain open.
 
 ## Earlier graph and fixed-payload evidence
 

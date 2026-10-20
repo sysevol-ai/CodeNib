@@ -50,6 +50,48 @@ def validate_symbol_extraction(extract_defs) -> None:
                 )
 
 
+def audit_gold_source_locations(repo: Path, line_spans: dict) -> list[dict]:
+    """Describe annotation locations unavailable in the pinned source reader.
+
+    Keep the official normalizer's paths and inclusive intervals unchanged.
+    A plausible suffix match must never silently replace an annotation or gain
+    retrieval credit. This is evaluation-only metadata, not a scoring filter.
+    """
+    repo = repo.resolve()
+    issues = []
+    for file, spans in line_spans.items():
+        issue = {"file": file, "unavailable_line_spans": spans}
+        try:
+            path = (repo / file).resolve()
+            if not path.is_relative_to(repo):
+                issues.append({**issue, "reason": "outside_source_root"})
+                continue
+            if not path.is_file():
+                issues.append({**issue, "reason": "path_missing"})
+                continue
+            size = len(path.read_text(errors="replace").splitlines())
+        except (OSError, RuntimeError):
+            # Diagnostics must not invalidate a score for an unreadable path.
+            issues.append({**issue, "reason": "source_unreadable"})
+            continue
+        unavailable = []
+        for start, end in spans:
+            if start < 1:
+                unavailable.append([start, min(end, 0)])
+            if end > size:
+                unavailable.append([max(start, size + 1), end])
+        if unavailable:
+            issues.append(
+                {
+                    "file": file,
+                    "reason": "line_outside_source",
+                    "source_line_count": size,
+                    "unavailable_line_spans": unavailable,
+                }
+            )
+    return issues
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--upstream", type=Path, required=True)
@@ -106,11 +148,18 @@ def main() -> int:
             prediction = dict(item["prediction"])
             prediction["repo_url"] = str(repo)
             prediction["commit"] = expected
-            results.append(
-                evaluate.evaluate_instance(
-                    instance_id, Gold(gold), prediction, str(repo)
-                )
+            official_gold = Gold(gold)
+            result = evaluate.evaluate_instance(
+                instance_id, official_gold, prediction, str(repo)
             )
+            # Auxiliary source-overlap audits must use the same path normalization
+            # as scoring: raw annotations may contain /workspace/<repo>/ prefixes.
+            # Keep this evaluation-only metadata out of model-facing predictions.
+            result["gold_line_spans"] = official_gold.line_spans_init()
+            result["gold_source_issues"] = audit_gold_source_locations(
+                repo, result["gold_line_spans"]
+            )
+            results.append(result)
         except Exception as exc:
             results.append(
                 {
