@@ -203,6 +203,37 @@ Black or isort can produce changes that fail the release all-files check.
   full 40-character commit SHA, with the exact release tag retained in a
   trailing comment. Local actions under `./` do not need a commit pin.
 
+## Documentation Writing
+
+Public pages (`README.md` and the published `docs/` site) are read by people
+deciding whether CodeNib fits their problem and how to use it. Write for that
+reader. A page is not a record of how the work was done.
+
+- Lead with the point. Open each page and section with what it is for and
+  what the reader should take away, in one or two plain sentences. Then
+  explain the concept, then how to use it, and only then the reference detail:
+  flags, paths, field names, and edge cases.
+- Explain concepts before code names. Define each term in plain words where it
+  first appears, and then use it consistently. A reader should be able to follow
+  the explanation without knowing class names, module paths, run IDs, or
+  experiment-arm labels.
+- Keep only what the reader needs. Cut internal history, and cut caveats that
+  do not change what the reader would do. Move implementation detail to the
+  reference or harness page where it belongs. Do not paste lab-notebook prose
+  into user-facing pages.
+- Keep pages current. Replace an outdated statement in place; do not append
+  "update" notes or a chronology. Experiment logs belong in the excluded
+  `docs/experiments/` tree or in the PR.
+- Scope every claim. A result names the benchmark and what it scores, the method
+  and its setup, and the sample size, and it links to the evidence. Do not
+  present a research-script result as product behavior.
+- Use short paragraphs with one idea each. Use a table to compare items with the
+  same fields, and prose to explain why. Avoid chains of footnotes and stacked
+  qualifiers.
+- Before committing, reread each changed page from the top as a newcomer would.
+  After the first screen, the reader should know what the page is for and what
+  to do next.
+
 ## Testing Guidance
 
 - Dependency and optional-extra changes in `pyproject.toml` must update
@@ -213,6 +244,12 @@ Black or isort can produce changes that fail the release all-files check.
   documents, including through GitHub URLs.
   When excluding a new internal document, add it to both `REQUIRED_EXCLUSIONS`
   and `FORBIDDEN_PUBLIC_PREFIXES` in `scripts/check_public_docs.py`.
+  A change to the `mkdocs.yml` navigation also requires
+  `pytest test/scripts/test_check_public_docs.py`, which pins the tab order.
+  A change to benchmark or method docs, or to `codenib/eval/benchmarks/`,
+  requires `python scripts/support_matrix.py --check`. Edit
+  `scripts/support_matrix.yaml` and regenerate the tables with `--write`;
+  do not hand-edit the generated blocks.
 - Unit tier: `pytest -m "not slow and not integration and not integration_serial and not integration_serial_consumer" -x --tb=short`
 - Integration tier: `pytest -m integration --tb=short`
 - Serial integration tier: `pytest -m integration_serial -v --tb=short`
