@@ -158,3 +158,31 @@ def test_excerpt_cannot_bypass_the_source_line_cap(source, limit):
         read_source_excerpt_impl(
             ctx, "long.py", 1, 300, query="groupedOptions", window_lines=limit
         )
+
+
+def test_focus_projection_marks_omitted_scope_lines(source):
+    ctx, _, _ = source
+    result = read_source_excerpt_impl(
+        ctx, "long.py", 11, 310, query="groupedOptions reduce", window_lines=40
+    )
+    projection = result["content_projection"]
+    assert projection["truncated"] is True
+    assert projection["strategy"] == "query_window"
+    assert projection["selection"]["omitted_before_lines"] > 0
+
+
+def test_focus_does_not_select_matches_beyond_character_delivery_limit():
+    from codenib.context_delivery import query_focus_line
+
+    invisible = "x" * 16001 + " groupedOptions reduce"
+    visible = "return groupedOptions"
+    assert query_focus_line(
+        [invisible, visible], "groupedOptions reduce", max_line_chars=16000
+    ) == (1, 1)
+    assert query_focus_line(
+        [invisible], "groupedOptions reduce", max_line_chars=16000
+    ) == (0, 0)
+    # A character cut must not fabricate an exact token from an identifier prefix.
+    assert query_focus_line(
+        ["groupedOptionsSuffix"], "groupedOptions", max_line_chars=len("groupedOptions")
+    ) == (0, 0)

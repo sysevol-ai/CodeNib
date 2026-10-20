@@ -196,6 +196,9 @@ Black or isort can produce changes that fail the release all-files check.
 - Before merging, confirm the PR is not draft, is mergeable, has no failing
   required checks, and has all dependent changes merged or explicitly accounted
   for. Treat cancelled checks as incomplete, not green.
+  Inspect unresolved review threads as well as check statuses. Resolve valid
+  findings; verify provider-protocol findings against current official schemas
+  and record the evidence before resolving a false positive.
 - Pin every external GitHub Action in workflows and composite actions to a
   full 40-character commit SHA, with the exact release tag retained in a
   trailing comment. Local actions under `./` do not need a commit pin.

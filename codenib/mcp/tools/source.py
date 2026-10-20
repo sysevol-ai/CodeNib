@@ -176,7 +176,9 @@ def _read_source_window(
     selected = all_lines[first - 1 : last]
     selection = None
     if window_lines is not None:
-        offset, matches = query_focus_line(selected, query)
+        offset, matches = query_focus_line(
+            selected, query, max_line_chars=MAX_SOURCE_CONTENT_CHARS
+        )
         selection = {
             "strategy": "query_window" if matches else "scope_head",
             "scope_start_line": first,
@@ -201,7 +203,12 @@ def _read_source_window(
         selection["omitted_after_lines"] = max(
             0, selection["inspected_end_line"] - payload["end_line"]
         )
-        payload["content_projection"]["selection"] = selection
+        projection = payload["content_projection"]
+        if selection["omitted_before_lines"] or selection["omitted_after_lines"]:
+            if not projection["truncated"]:
+                projection["strategy"] = selection["strategy"]
+            projection["truncated"] = True
+        projection["selection"] = selection
     artifact = ctx.artifact if isinstance(ctx.artifact, Mapping) else {}
     payload["source"] = {
         "repository": artifact.get("repository") or ctx.manifest.repo_path,

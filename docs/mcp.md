@@ -166,11 +166,20 @@ dependency, or source providers degrade independently and add bounded
 instead of being presented as checkout source.
 
 When no explicit symbol seeds are supplied, code-shaped or backtick-quoted
-identifiers in the query may become seeds after an exact indexed-symbol match.
-The route plan reports these as `inferred_symbols`. Named routes receive source
-windows before semantic matches can exhaust the window budget; ordinary prose
-keeps the retrieval-first fallback. Symbol inference checks at most 32 distinct
-candidates and preserves the existing query, symbol and response bounds.
+identifiers in the query (including calls such as `decode()`) may become seeds
+after an exact match with a repository definition. The route plan reports
+concrete names as `inferred_symbols`, including distinct definitions of an
+ambiguous leaf name. Inferred routes return definitions; the bounded dependency
+phase supplies related symbols. Only requested definitions with verified source
+receive priority over ranked hits. Other route neighbors and unverified locations
+retain the ranked order. Symbol inference checks at most 32 distinct candidates
+and retains at most 32 concrete seeds within the existing response bounds.
+
+Focused source selection scores only matches that fit the character delivery
+limit. Its projection marks omitted scope lines as truncated, even when the
+selected text fits the character cap. `original_chars` and `returned_chars`
+describe character projection of the selected window; `selection` records its
+original scope and omitted lines.
 
 Each complete serialized `explore_context` MCP `CallToolResult` has a hard
 256 KiB (262,144-byte) ceiling. Accounting includes the structured and text
