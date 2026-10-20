@@ -936,6 +936,7 @@ def main():
             "--native-network", choices=("none", "bridge"), default="none"
         )
         parser.add_argument("--native-test-workers", type=int, choices=(2,))
+        parser.add_argument("--native-cpu-count", type=int, choices=(2,))
         parser.add_argument(
             "--native-upstream",
             type=Path,

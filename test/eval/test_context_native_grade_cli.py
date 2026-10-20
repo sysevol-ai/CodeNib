@@ -15,6 +15,7 @@ CASES = [
     ("--native-memory-gib", "8", "native_memory_gib", 8),
     ("--native-network", "bridge", "native_network", "bridge"),
     ("--native-test-workers", "2", "native_test_workers", 2),
+    ("--native-cpu-count", "2", "native_cpu_count", 2),
     # Additional native options are covered by their owning stack PR.
 ]
 
