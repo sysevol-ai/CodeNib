@@ -865,6 +865,19 @@ def run(args):
 def grade(args):
     """Use the selected benchmark's native test script and resolution grader."""
     config = json.loads((args.solver_run / "config.json").read_text())
+    multi_defaults = {
+        "native_memory_gib": 3,
+        "native_network": "none",
+        "native_test_workers": None,
+        "native_cpu_count": None,
+        "native_pids_limit": 256,
+        "native_log_streams": "merged",
+    }
+    if config.get("source", "Verified") != "Multi" and any(
+        getattr(args, name, default) != default
+        for name, default in multi_defaults.items()
+    ):
+        raise ValueError("Native Multi resource/capture options require a Multi run")
     if config.get("source") == "Pro":
         from scripts.contextbench_pro import grade_pro
 
@@ -918,6 +931,11 @@ def main():
             "--native-image",
             help="Multi/Poly: separate, pinned local native grading image",
         )
+        parser.add_argument("--native-memory-gib", type=int, choices=(3, 8), default=3)
+        parser.add_argument(
+            "--native-network", choices=("none", "bridge"), default="none"
+        )
+        parser.add_argument("--native-test-workers", type=int, choices=(2,))
         parser.add_argument(
             "--native-upstream",
             type=Path,

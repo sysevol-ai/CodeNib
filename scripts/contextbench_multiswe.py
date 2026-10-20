@@ -257,19 +257,31 @@ def command(args, *, timeout=60, **kwargs):
 def grade_multi(args):
     """Own one fresh native grader; remove it synchronously on every exit.
 
-    Only this invocation owns the recorded container; it has no host mounts or
-    network. The finally block's successful removal is the completion boundary.
+    Only this invocation owns the recorded container; it has no host mounts.
+    Networking requires an explicit native-only option. The finally block's
+    successful removal is the completion boundary.
     A bounded container sleep also ends an orphan after an abrupt owner death.
     The reference production patch is authenticated, then replaced by the exact
     solver patch before the original native test script can execute.
     """
     if not 1 <= args.timeout <= 3600:
         raise ValueError("Native Multi timeout must be between 1 and 3600 seconds")
+    memory_gib = getattr(args, "native_memory_gib", 3)
+    if memory_gib not in (3, 8):
+        raise ValueError("Native Multi memory must be 3 or 8 GiB")
+    network = getattr(args, "native_network", "none")
+    if network not in ("none", "bridge"):
+        raise ValueError("Native Multi network must be none or bridge")
+    test_workers = getattr(args, "native_test_workers", None)
+    if test_workers not in (None, 2):
+        raise ValueError("Native Ponyc test workers must be 2")
     image = getattr(args, "native_image", None)
     if not image or not re.fullmatch(r"(?:sha256:|.+@sha256:)[a-f0-9]{64}", image):
         raise ValueError("Multi grading needs a separate pinned --native-image")
     hashes = native_environment()
     config = json.loads((args.solver_run / "config.json").read_text())
+    if test_workers is not None and config["repo"] != "ponylang/ponyc":
+        raise ValueError("Native test workers are supported only for Ponyc")
     solver = json.loads((args.solver_run / "solver.json").read_text())
     predictions = json.loads((args.solver_run / "predictions.json").read_text())
     if (
@@ -315,6 +327,16 @@ def grade_multi(args):
             "source_tree": config["source_tree"],
             "solver_cwd": cwd,
             "native_script_sha256": scripts,
+            "native_resources": {
+                "memory_gib": memory_gib,
+                "cpu_quota": 2,
+                "pids_limit": 256,
+                "network": network,
+                "test_workers": test_workers,
+                "environment": (
+                    {"MAKEFLAGS": "num_cores=2"} if test_workers is not None else {}
+                ),
+            },
             "scope": "Native Multi development grading only; no model calls",
         },
     )
@@ -338,13 +360,18 @@ def grade_multi(args):
                 "--name",
                 container,
                 "--network",
-                "none",
+                network,
                 "--memory",
-                "3g",
+                f"{memory_gib}g",
                 "--cpus",
                 "2",
                 "--pids-limit",
                 "256",
+                *(
+                    ["--env", "MAKEFLAGS=num_cores=2"]
+                    if test_workers is not None
+                    else []
+                ),
                 metadata["Id"],
                 "sleep",
                 str(args.timeout + 240),
@@ -468,6 +495,14 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--native-image", required=True)
     parser.add_argument("--timeout", type=int, default=900)
+    parser.add_argument("--native-memory-gib", type=int, choices=(3, 8), default=3)
+    parser.add_argument("--native-network", choices=("none", "bridge"), default="none")
+    parser.add_argument(
+        "--native-test-workers",
+        type=int,
+        choices=(2,),
+        help="Bound Ponyc full-program parallelism; keep native test selectors",
+    )
     grade_multi(parser.parse_args())
 
 
