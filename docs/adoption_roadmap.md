@@ -84,12 +84,14 @@ all first-screen links work; quickstart remains exactly two commands.
 
 #### ContextBench result publication
 
-Status: a reader-facing English article and its homepage/blog-index entries
-are prepared in `landing/`; static publication remains pending. Local browser
-acceptance passes at 1440/820/390/320 pixels, including keyboard access,
-scrollable tables/charts, metadata, source metrics and exact asset hashes.
-The existing six-width marketing and delayed/failed-style opening/refresh
-regressions pass, as do strict MkDocs, public-doc boundaries and support tables.
+Status: the [English article](https://codenib.ai/blogs/contextbench-500-tasks/)
+and its homepage/blog-index entries are published on 2026-10-21 UTC from
+`9d33b817`, tracked in [#852](https://github.com/sysevol-ai/CodeNib/pull/852).
+Local and public browser acceptance passes at 1440/820/390/320 pixels,
+including keyboard access, scrollable tables/charts, metadata, source metrics
+and exact asset hashes. The six-width marketing and delayed/failed-style
+opening/refresh regressions pass locally and publicly. Strict MkDocs,
+public-doc boundaries, support tables and pinned pre-commit checks pass.
 The article reports 388/500 native positives (77.60%), 77.90% line recall,
 28.11% line F1 and $0.6778 recorded search-plus-repair model usage per task.
 Claims link to the pinned submission report and
@@ -99,9 +101,8 @@ three reused development repairs, partial shell-source attribution and cost
 scope remain explicit. The measured Haiku search/Opus repair route is kept
 separate from shipping CodeGraph and experimental Jev/graph claims.
 
-Open gates: publication of the static article and homepage feature, public
-browser acceptance, and maintainer review of the ContextBench submission.
-Website publication does not close the external leaderboard gate.
+Open gates: CodeNib PR #852 review/CI and maintainer review of the ContextBench
+submission. Website publication does not close the external leaderboard gate.
 
 #### First-visit activation
 
