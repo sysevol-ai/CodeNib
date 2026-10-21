@@ -177,6 +177,11 @@ To publish a blog post, add `landing/blogs/<slug>/index.html`, add its card to
 featured article, and copy its public images into `landing/assets/blogs/`.
 Follow the existing article template for the canonical URL, language,
 publication date, social metadata, and JSON-LD.
+Benchmark articles should explain the measured mechanism: what each role
+receives, how it chooses its next action, and what reaches the next role.
+Distinguish search-only coverage from repair outcomes, and fixed role routing
+from dynamic model selection. Tie the explanation to the executed policy and
+separate design rationale from gains established by a controlled comparison.
 Use public documentation URLs and pinned source links; do not link directly
 to documents excluded from the public documentation site.
 

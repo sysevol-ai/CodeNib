@@ -78,6 +78,62 @@
   margin: 26px 0;
 }
 
+.search-workflow {
+  margin: 28px 0;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--subtle);
+  padding: 22px;
+}
+
+.search-workflow figcaption {
+  margin-bottom: 18px;
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.search-workflow ol {
+  margin: 0;
+  padding-left: 24px;
+}
+
+.search-workflow li {
+  margin: 0;
+  padding: 0 0 15px 7px;
+}
+
+.search-workflow li + li {
+  border-top: 1px solid var(--line);
+  padding-top: 15px;
+}
+
+.search-workflow li:last-child {
+  padding-bottom: 0;
+}
+
+.search-workflow li::marker {
+  color: var(--accent-dark);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.search-workflow strong,
+.search-workflow span {
+  display: block;
+}
+
+.search-workflow strong {
+  font-size: 15px;
+}
+
+.search-workflow span {
+  margin-top: 5px;
+  color: var(--ink-2);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
 .agent-stages li {
   margin-block: 20px;
   padding-left: 7px;
