@@ -86,14 +86,21 @@ all first-screen links work; quickstart remains exactly two commands.
 
 Status: the [English article](https://codenib.ai/blogs/contextbench-500-tasks/)
 and its homepage/blog-index entries are published on 2026-10-21 UTC from
-`9d33b817`, tracked in [#852](https://github.com/sysevol-ai/CodeNib/pull/852).
+`57862c69`, tracked in [#852](https://github.com/sysevol-ai/CodeNib/pull/852).
 Local and public browser acceptance passes at 1440/820/390/320 pixels,
 including keyboard access, scrollable tables/charts, metadata, source metrics
-and exact asset hashes. The six-width marketing and delayed/failed-style
-opening/refresh regressions pass locally and publicly. Strict MkDocs,
+and exact asset hashes. Delayed/failed-style opening/refresh regressions pass
+locally and publicly at 1440/390/320 pixels. Strict MkDocs,
 public-doc boundaries, support tables and pinned pre-commit checks pass.
-The article reports 388/500 native positives (77.60%), 77.90% line recall,
-28.11% line F1 and $0.6778 recorded search-plus-repair model usage per task.
+The article leads with 77.07% search-only line recall and the 0.83-point
+increase to 77.90% after confirmed repair reads. It explains the fixed
+first-search/scout/repair roles, iterative source-tool loop, observed-source
+union and bounded navigation handoff, distinguishing role routing from
+dynamic model selection and navigation metadata from source bodies.
+The separate 32-task comparison retains uncertainty about the complementary
+policy's gain over a simple repeat. The complete-system result remains
+388/500 native positives (77.60%), 28.11% final line F1 and $0.6778 recorded
+search-plus-repair model usage per task; search-only model usage is $0.0114.
 Claims link to the pinned submission report and
 [official review PR #4](https://github.com/ContextBench/contextbench.github.io/pull/4),
 which remains open; no official rank is claimed. Known annotation exposure,
