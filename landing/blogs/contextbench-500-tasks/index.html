@@ -1,0 +1,184 @@
+<!doctype html>
+<!--
+SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
+SPDX-License-Identifier: Apache-2.0
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CodeNib on ContextBench: 388 of 500 Issues Resolved — CodeNib</title>
+  <meta name="description" content="CodeNib's 500-task ContextBench submission: 77.6% native Pass@1, 77.9% line recall, and $0.68 in recorded model usage per task. How the agent works and what the results mean.">
+  <meta name="author" content="CodeNib Team">
+  <meta property="og:title" content="CodeNib on ContextBench: 388 of 500 Issues Resolved">
+  <meta property="og:description" content="Two search workers, source on demand, and an Opus repair agent. Results from 500 ContextBench tasks; leaderboard review pending.">
+  <meta property="og:image" content="https://codenib.ai/assets/blogs/contextbench-500-tasks.png">
+  <meta property="og:image:width" content="1600">
+  <meta property="og:image:height" content="840">
+  <meta property="og:image:alt" content="CodeNib's submitted ContextBench results: 388 of 500 tasks resolved, 77.9% line recall, 28.1% line F1, and $0.68 recorded model usage per task. Under review.">
+  <meta property="og:type" content="article">
+  <meta property="og:locale" content="en_US">
+  <meta property="og:url" content="https://codenib.ai/blogs/contextbench-500-tasks/">
+  <meta property="article:published_time" content="2026-10-21T20:00:00Z">
+  <meta property="article:modified_time" content="2026-10-21T20:00:00Z">
+  <meta property="article:section" content="Coding agents">
+  <meta property="article:tag" content="ContextBench">
+  <meta property="article:tag" content="Code retrieval">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="CodeNib on ContextBench: 388 of 500 Issues Resolved">
+  <meta name="twitter:description" content="77.6% native Pass@1 on 500 submitted tasks. The search, source handoff, repair loop, and evidence behind the result. Leaderboard review pending.">
+  <meta name="twitter:image" content="https://codenib.ai/assets/blogs/contextbench-500-tasks.png">
+  <meta name="twitter:image:alt" content="CodeNib's submitted ContextBench results: 388 of 500 tasks resolved, 77.9% line recall, 28.1% line F1, and $0.68 recorded model usage per task. Under review.">
+  <link rel="canonical" href="https://codenib.ai/blogs/contextbench-500-tasks/">
+  <link rel="icon" href="/assets/codenib-icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/assets/blogs.css">
+  <link rel="stylesheet" href="/assets/blogs/contextbench-results.css">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BlogPosting",
+    "headline": "CodeNib on ContextBench: 388 of 500 Issues Resolved",
+    "description": "CodeNib's 500-task ContextBench submission: 77.6% native Pass@1, 77.9% line recall, and $0.68 in recorded model usage per task. Leaderboard review pending.",
+    "image": "https://codenib.ai/assets/blogs/contextbench-500-tasks.png",
+    "datePublished": "2026-10-21T20:00:00Z",
+    "dateModified": "2026-10-21T20:00:00Z",
+    "inLanguage": "en",
+    "mainEntityOfPage": "https://codenib.ai/blogs/contextbench-500-tasks/",
+    "author": { "@type": "Organization", "name": "CodeNib Team", "url": "https://codenib.ai/" },
+    "publisher": {
+      "@type": "Organization", "name": "CodeNib", "url": "https://codenib.ai/",
+      "logo": { "@type": "ImageObject", "url": "https://codenib.ai/assets/codenib-icon.svg" }
+    }
+  }
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <header class="site-header">
+    <div class="wrap nav">
+      <a class="brand" href="/" aria-label="CodeNib home"><img src="/assets/codenib-logo.svg" alt="CodeNib"></a>
+      <a class="nav-link" href="/blogs/" aria-current="page">Blog</a>
+      <a class="nav-link nav-docs" href="https://docs.codenib.ai/">Docs</a>
+      <a class="nav-link nav-github" href="https://github.com/sysevol-ai/CodeNib">GitHub</a>
+      <a class="btn" href="https://demo.codenib.ai/">Open the demo</a>
+    </div>
+  </header>
+
+  <main id="main-content">
+    <article aria-labelledby="article-title">
+      <header class="article-head wrap">
+        <a class="back" href="/blogs/"><span aria-hidden="true">←</span> All posts</a>
+        <div class="post-meta">
+          <span class="tag">Coding agents</span>
+          <time datetime="2026-10-21">October 21, 2026</time>
+          <span>7 min read</span>
+        </div>
+        <h1 id="article-title">CodeNib on ContextBench: 388 of 500 Issues Resolved</h1>
+        <p class="deck">A complementary search pair, source on demand, and a repair agent—evaluated together on 500 repository issues across eight languages.</p>
+      </header>
+
+      <div class="article-body">
+        <p>A coding agent needs to find the right code and turn that understanding into a working fix. In our ContextBench run, CodeNib resolved <strong>388 of 500 tasks</strong>, with <strong>77.90% line recall</strong> and an average of <strong>$0.68 in recorded model usage per task</strong>, including unsuccessful attempts.</p>
+
+        <p class="submission-status"><a href="https://github.com/ContextBench/contextbench.github.io/pull/4">Submitted · Leaderboard review pending</a><span>These are our submitted results; an official ranking has not been assigned.</span></p>
+
+        <dl class="result-metrics" aria-label="Results on all 500 submitted tasks">
+          <div><dt>Native Pass@1</dt><dd>77.60%<span>388 / 500 resolved</span></dd></div>
+          <div><dt>Line recall</dt><dd>77.90%<span>Annotated code covered</span></dd></div>
+          <div><dt>Line F1</dt><dd>28.11%<span>Recall and precision</span></dd></div>
+          <div><dt>Model usage / task</dt><dd>$0.68<span>Search + repair</span></dd></div>
+        </dl>
+
+        <p>The system pairs two Claude Haiku5.5 search workers with Claude Opus5.5 in an adapted mini SWE-agent repair loop. The <a href="https://github.com/sysevol-ai/contextbench.github.io/blob/e317010f0268eb765dc4dc4452ea3da3d3275dce/submissions/2026-10-19_codenib-agent-haiku55-opus55/README.md">public submission</a> contains the configuration, scores and raw trajectories. The evaluation set was exposed during development, so this is a result on that known population, rather than an estimate of performance on unseen issues.</p>
+
+        <nav class="article-contents" aria-label="In this article">
+          <a href="#what-is-measured">What the scores measure</a>
+          <a href="#how-it-works">How the agent works</a>
+          <a href="#results">Results by task source</a>
+          <a href="#cost">Where the cost goes</a>
+          <a href="#scope">Scope and evidence</a>
+        </nav>
+
+        <h2 id="what-is-measured">A fix and the code behind it</h2>
+        <p><a href="https://contextbench.github.io/">ContextBench</a> evaluates how coding agents find and use repository context while resolving issues. Alongside the final patch, it scores overlap with human-annotated relevant code at file, block and line levels. That makes it possible to ask two separate questions: did the fix satisfy the task's test criteria, and how much of the relevant implementation did the agent find?</p>
+        <p>Our submission uses the <strong>500-task verified split</strong>. It contains tasks from SWE-Bench-Verified, SWE-Bench-Pro, SWE-PolyBench and Multi-SWE-Bench, covering C, C++, Go, Java, JavaScript, Python, Rust and TypeScript. The larger ContextBench dataset contains 1,136 tasks; the numbers in this article describe only our submitted 500.</p>
+        <p><strong>Native Pass@1</strong> is the fraction of attempts whose final patch passed the pinned task-specific grading criteria. It does not mean every test in each repository passed. <strong>Line recall</strong> measures how much annotated relevant code appears in the selected source context; precision measures how much selected code overlaps those annotations. F1 balances the two, calculated per task and then averaged.</p>
+
+        <div class="data-table compact" role="region" tabindex="0" aria-label="Final selected context metrics for all 500 tasks">
+          <table>
+            <caption class="sr-only">Final selected context metrics, macro averaged over all 500 tasks</caption>
+            <thead><tr><th scope="col">Context level</th><th scope="col">Recall</th><th scope="col">Precision</th><th scope="col">F1</th></tr></thead>
+            <tbody>
+              <tr><th scope="row">File</th><td>87.99%</td><td>18.80%</td><td>27.88%</td></tr>
+              <tr><th scope="row">Block / symbol</th><td>85.18%</td><td>14.27%</td><td>21.61%</td></tr>
+              <tr><th scope="row">Line</th><td>77.90%</td><td>20.39%</td><td>28.11%</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="scope-note">Source: <a href="https://github.com/sysevol-ai/contextbench.github.io/blob/e317010f0268eb765dc4dc4452ea3da3d3275dce/submissions/2026-10-19_codenib-agent-haiku55-opus55/README.md#evaluation-setup-and-metric-definitions">submitted metrics and evaluation definitions</a>. All 500 tasks contribute to the averages, including the 112 unresolved attempts.</p>
+
+        <h2 id="how-it-works">Search broadly, carry locations, read on demand</h2>
+        <p>The core design is to pass source locations between models and fetch the actual code when the next model needs it. A compact handoff can point to a relevant implementation without filling the repair agent's initial context with every search result.</p>
+        <ol class="agent-stages">
+          <li><h3>Find an initial path</h3><p>A Haiku worker reads the issue and searches the pinned repository with CodeNib's file discovery, grep and source-reading tools.</p></li>
+          <li><h3>Look for what the first search missed</h3><p>A second Haiku worker receives the issue and bounded navigation metadata from the first worker. In its own context window, it inspects complementary entry points, callers, tests and configuration.</p></li>
+          <li><h3>Hand over locations, then repair</h3><p>CodeNib combines the observed ranges into at most 2,048 tokens of navigation metadata, with source identity and explicit omissions. Opus uses source-reading tools to inspect the code it needs, then edits and runs self-tests through the mini SWE-agent container shell.</p></li>
+          <li><h3>Grade the patch and account for the reads</h3><p>The native evaluator grades the unchanged final candidate patch. CodeNib assembles selected context from search observations and confirmed reads of the original source, and includes model usage from every attempt.</p></li>
+        </ol>
+        <p>The 2,048-token limit applies to the initial navigation, rather than all later source reads. Source locations bind to a repository version, so the receiving agent can request the intended code. For evaluation, a location or generated summary alone earns no source-read credit: the source must appear in a confirmed model input.</p>
+        <p>This run evaluates that <a href="https://github.com/sysevol-ai/contextbench.github.io/blob/e317010f0268eb765dc4dc4452ea3da3d3275dce/submissions/2026-10-19_codenib-agent-haiku55-opus55/README.md#system-and-context-strategy">complete agent and model combination</a>. Embeddings, Jev reranking and graph expansion were outside the measured route. The result therefore does not establish an isolated gain from any of those CodeNib capabilities.</p>
+
+        <h2 id="results">388 resolved, with all 500 attempts counted</h2>
+        <p>The overall resolution rate is <strong>77.60%</strong>. The source groups show where the outcome varies: 152 of 174 SWE-Bench-Verified tasks were resolved, compared with 34 of 54 SWE-Bench-Pro tasks. These groups have different repository, language and grading compositions; their differences describe this run rather than isolate a benchmark or language effect.</p>
+        <figure class="cohort-figure">
+          <div class="cohort-scroll" role="region" tabindex="0" aria-label="Resolution rates by task source; scroll horizontally on small screens">
+            <img src="/assets/blogs/contextbench-task-sources.svg" width="1200" height="680" loading="lazy" alt="Resolved tasks by source: SWE-Bench-Verified 152 of 174, 87.36%; SWE-Bench-Pro 34 of 54, 62.96%; SWE-PolyBench 92 of 116, 79.31%; Multi-SWE-Bench 110 of 156, 70.51%. All unresolved attempts remain included.">
+          </div>
+          <figcaption>Task-source slices from the submitted run. <a href="/assets/blogs/contextbench-task-sources.svg">Open the full-size chart</a>.</figcaption>
+        </figure>
+        <div class="data-table compact" role="region" tabindex="0" aria-label="Native outcomes by task source">
+          <table>
+            <caption class="sr-only">Native outcomes and recorded model usage by task source</caption>
+            <thead><tr><th scope="col">Task source</th><th scope="col">Resolved</th><th scope="col">Pass@1</th><th scope="col">Model USD/task</th></tr></thead>
+            <tbody>
+              <tr><th scope="row">SWE-Bench-Verified</th><td>152 / 174</td><td>87.36%</td><td>$0.3910</td></tr>
+              <tr><th scope="row">SWE-Bench-Pro</th><td>34 / 54</td><td>62.96%</td><td>$1.3289</td></tr>
+              <tr><th scope="row">SWE-PolyBench</th><td>92 / 116</td><td>79.31%</td><td>$0.6486</td></tr>
+              <tr><th scope="row">Multi-SWE-Bench</th><td>110 / 156</td><td>70.51%</td><td>$0.7939</td></tr>
+              <tr><th scope="row">All tasks</th><td><strong>388 / 500</strong></td><td><strong>77.60%</strong></td><td><strong>$0.6778</strong></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="scope-note">Source: <a href="https://github.com/sysevol-ai/contextbench.github.io/blob/e317010f0268eb765dc4dc4452ea3da3d3275dce/submissions/2026-10-19_codenib-agent-haiku55-opus55/RESULTS.md">frozen result breakdown</a>, which also includes all eight language slices and their sample sizes.</p>
+
+        <p>The context scores expose a tradeoff that the resolution rate alone would hide. Final line recall is high at <strong>77.90%</strong>, while line precision is <strong>20.39%</strong>. The agent found much of the annotated code, but its selected context also extended well beyond those annotations. F1 remains <strong>28.11%</strong>; useful surrounding code may be unannotated, but broad reading is still a reason to inspect precision alongside recall.</p>
+        <p>The search pair had already reached 77.07% line recall before repair. Adding confirmed repair reads raised it to 77.90%, while F1 moved from 28.16% to 28.11%. This <a href="https://github.com/sysevol-ai/contextbench.github.io/blob/e317010f0268eb765dc4dc4452ea3da3d3275dce/submissions/2026-10-19_codenib-agent-haiku55-opus55/RESULTS.md#search-stage-and-final-selected-context-on-the-same-500-ids">comparison of stages</a> shows that the search workers found most of the eventually covered annotated source. It does not tell us how many fixes a different search strategy would have produced.</p>
+
+        <h2 id="cost">Almost all model usage goes into repair</h2>
+        <p>Recorded search-plus-repair model usage totals <strong>$338.88</strong>, or <strong>$0.6778 per task</strong>. The two search workers account for $5.68 across the run; repair accounts for $333.20, or <strong>98.32%</strong> of recorded model usage. Failures and stopped attempts stay in both the cost and outcome totals.</p>
+        <p>In this configuration, making search cheaper on its own would affect a small part of the total. A more useful next question is whether better source selection can reduce the repair work while preserving resolution quality. That needs a controlled repair comparison; these results do not answer it yet.</p>
+        <p class="scope-note">The <a href="https://github.com/sysevol-ai/contextbench.github.io/blob/e317010f0268eb765dc4dc4452ea3da3d3275dce/submissions/2026-10-19_codenib-agent-haiku55-opus55/README.md#complete-system-model-usage">cost accounting</a> uses recorded SDK model-usage values, including caching. It excludes compute, native-test containers and earlier strategy development, and is not a reconciled cash invoice.</p>
+
+        <h2 id="scope">How to read and verify this result</h2>
+        <p>The submission is under review in the <a href="https://github.com/ContextBench/contextbench.github.io/pull/4">official ContextBench repository</a>. Its format checks, aggregation from public inputs and replay of recorded inputs pass. Maintainers still need to review task coverage, source attribution and native-grading comparability before leaderboard publication. We are reporting the submitted measurements here without assigning CodeNib an official rank.</p>
+        <p>All 500 task annotations had been exposed during development. Three original development repairs are reused, with their selected-context exports assembled retrospectively; the other 497 retain their first repair executions. Reference fixes, native test patches and grading feedback stayed outside model inputs. Arbitrary shell-output source attribution remains partial, so the context scores describe the selected source supported by the submission's delivery evidence, rather than a complete inventory of everything the solver may have read.</p>
+        <p>The public package includes the exact task list, pinned evaluator and implementation versions, outcome records, usage receipts, and raw search and repair trajectories. Its aggregation and report checks run without model keys or Docker. Replaying those records verifies the submitted accounting; it does not rerun inference or the native tests. See the <a href="https://github.com/sysevol-ai/contextbench.github.io/blob/e317010f0268eb765dc4dc4452ea3da3d3275dce/submissions/2026-10-19_codenib-agent-haiku55-opus55/REPRODUCE.md">reproduction guide</a> and <a href="https://github.com/sysevol-ai/contextbench.github.io/blob/e317010f0268eb765dc4dc4452ea3da3d3275dce/submissions/2026-10-19_codenib-agent-haiku55-opus55/REVIEW_NOTES.md">review notes</a> for the full protocol and limitations.</p>
+
+        <h2 id="try-codenib">Explore CodeNib</h2>
+        <p>CodeNib provides repository context and typed code navigation for coding agents. To see source-linked explanations in the browser, <a href="https://demo.codenib.ai/">open the Wiki demo</a>. To connect the released CodeGraph tools to Claude Code or Codex, follow the <a href="https://docs.codenib.ai/quickstart/">quickstart</a>. The ContextBench agent configuration described here is a separate benchmark setup, available in the submission evidence.</p>
+      </div>
+    </article>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-row">
+      <a class="footer-brand" href="/" aria-label="CodeNib home"><img src="/assets/codenib-icon.svg" alt=""><span>codenib.ai</span></a>
+      <a href="/blogs/">Blog</a>
+      <a href="https://docs.codenib.ai/">Docs</a>
+      <a href="https://demo.codenib.ai/">Demo</a>
+      <a href="https://github.com/sysevol-ai/CodeNib">GitHub</a>
+      <span>© 2026 CodeNib</span>
+    </div>
+  </footer>
+</body>
+</html>

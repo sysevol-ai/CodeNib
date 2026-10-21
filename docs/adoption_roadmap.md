@@ -82,6 +82,27 @@ Acceptance: strict docs build and public-link audit; published claims traced
 to committed results; desktop/mobile inspection of the actual landing page;
 all first-screen links work; quickstart remains exactly two commands.
 
+#### ContextBench result publication
+
+Status: a reader-facing English article and its homepage/blog-index entries
+are prepared in `landing/`; static publication remains pending. Local browser
+acceptance passes at 1440/820/390/320 pixels, including keyboard access,
+scrollable tables/charts, metadata, source metrics and exact asset hashes.
+The existing six-width marketing and delayed/failed-style opening/refresh
+regressions pass, as do strict MkDocs, public-doc boundaries and support tables.
+The article reports 388/500 native positives (77.60%), 77.90% line recall,
+28.11% line F1 and $0.6778 recorded search-plus-repair model usage per task.
+Claims link to the pinned submission report and
+[official review PR #4](https://github.com/ContextBench/contextbench.github.io/pull/4),
+which remains open; no official rank is claimed. Known annotation exposure,
+three reused development repairs, partial shell-source attribution and cost
+scope remain explicit. The measured Haiku search/Opus repair route is kept
+separate from shipping CodeGraph and experimental Jev/graph claims.
+
+Open gates: publication of the static article and homepage feature, public
+browser acceptance, and maintainer review of the ContextBench submission.
+Website publication does not close the external leaderboard gate.
+
 #### First-visit activation
 
 Status: the shared first-visit surface is merged in
