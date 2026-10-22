@@ -193,7 +193,7 @@
       "task_type": "edit2ripple"
     }
   ],
-  "codenib_implementation_commit": "453614e2be8ff7b33a25faafb35bf555ce7affe8",
+  "codenib_implementation_commit": "912a75631ebae4184001febac6540b4fc1ae8c3c",
   "dataset_source": {
     "expected_revision": "5901e1ee3aff048290db72edf9c63bc498b79ea3",
     "note": "Local hashes bind inputs; use verified release downloads.",
@@ -212,10 +212,10 @@
   },
   "implementation": {
     "files": {
-      "dataset/agent_retrieval_bench.py": "7d61d1e430fe2c5c92b9c5d1ca8b7630e95b415b6a6d6b8a0b171e7add13afa0",
+      "dataset/agent_retrieval_bench.py": "7f15334eb8e6e634208569639713944b1ca2e32f6dfd264302f7f6148dc6b76d",
       "eval/benchmarks/_arb_evaluate.py": "91e2e85d1e79a8ad606879c934148b6f58486cdb16fb77c46a051c6538d902ff",
-      "eval/benchmarks/agent_retrieval_bench.py": "6371b510408653d5eb3ce802aca604a5c178c57029ef794d4f7ff4b4e4f73dea",
-      "eval/benchmarks/agent_retrieval_bench_runner.py": "9acaee91ffa1e8383f0c409defb63d8896ecfc7bd26dfb80be64aaecc03cc9f3",
+      "eval/benchmarks/agent_retrieval_bench.py": "eb2f51e9efd23017b4764a511128e3ddb456247b825587ad6da6125a3ab0b832",
+      "eval/benchmarks/agent_retrieval_bench_runner.py": "bf67cebe2c9400841fc131b3534b8ce8360a92d0ce449e707bb5ade3a66f9e9f",
       "index/sparse_idx/bm25_index.py": "b7ade7b01787faf3c341380ea09a6461998efcafcf52c8f60ff90358a05954c0"
     },
     "packages": {

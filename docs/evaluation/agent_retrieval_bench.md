@@ -200,12 +200,19 @@ this release:
 
 Before comparing agent strategies, fix the model, tool permissions, query
 budget, and final context budget. Report index build time and size separately
-from query latency and model cost. Full-source graph or Zoekt experiments need
-pinned repository checkouts and a declared source-access track: a full source
-snapshot exposes more information than the released truncated corpus.
+from query latency and model cost.
 
-Useful upstream discussion topics for ARB and ContextBench are custom retrieval
-tool adapters, separate cold-build and serving accounting, and matched-model
-ablations of iterative search with and without graph expansion. ARB's current
-closed-tool diagnostic is a separate protocol from its static retrieval
-scores; confirm the intended comparison track before proposing submissions.
+Code-graph indexes usually need the full repository, which shows more than the
+released corpus because the corpus builder truncates long files. The ARB
+maintainers asked that such runs be reported as a separate condition
+([issue #2 reply](https://github.com/eyuansu62/agent-retrieval-bench/issues/2#issuecomment-6334640769)).
+The native baseline reads only the released corpus. A full-source run may index
+a clean working tree at each sample's `base_commit`, without later history. It
+must be labeled as full source, keep gold labels and resolving changes out of
+retrieval inputs, score only files in the released candidate set, and compute
+canonical BCY on the released text.
+
+An indexed-interactive comparison, where an agent searches iteratively with
+and without graph expansion under a fixed model and budget, is a follow-up
+track. It is separate from ARB's closed-tool diagnostic and from the static
+scores on this page.
