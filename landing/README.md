@@ -185,6 +185,14 @@ separate design rationale from gains established by a controlled comparison.
 Use public documentation URLs and pinned source links; do not link directly
 to documents excluded from the public documentation site.
 
+An SVG loaded through `<img>` cannot use the page's web fonts, so a figure
+without an embedded font falls back to the reader's system font. Embed a Geist
+subset in each figure, give wide figures a narrow `<picture>` variant for
+phones, and render the sharing PNG from the same SVG with
+`node scripts/render_svg_png.mjs <in.svg> <out.png>`.
+`scripts/render_contextbench_blog_figures.py` does this for the ContextBench
+article.
+
 Serve `landing/` locally and check the index link, article title, images,
 internal anchors, tables, and desktop/mobile layout. Run `mkdocs build --strict`
 and `python scripts/check_public_docs.py` for the documentation boundary.

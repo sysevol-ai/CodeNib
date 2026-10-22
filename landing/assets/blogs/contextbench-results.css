@@ -78,62 +78,6 @@
   margin: 26px 0;
 }
 
-.search-workflow {
-  margin: 28px 0;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: var(--subtle);
-  padding: 22px;
-}
-
-.search-workflow figcaption {
-  margin-bottom: 18px;
-  color: var(--ink);
-  font-size: 16px;
-  font-weight: 600;
-}
-
-.search-workflow ol {
-  margin: 0;
-  padding-left: 24px;
-}
-
-.search-workflow li {
-  margin: 0;
-  padding: 0 0 15px 7px;
-}
-
-.search-workflow li + li {
-  border-top: 1px solid var(--line);
-  padding-top: 15px;
-}
-
-.search-workflow li:last-child {
-  padding-bottom: 0;
-}
-
-.search-workflow li::marker {
-  color: var(--accent-dark);
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.search-workflow strong,
-.search-workflow span {
-  display: block;
-}
-
-.search-workflow strong {
-  font-size: 15px;
-}
-
-.search-workflow span {
-  margin-top: 5px;
-  color: var(--ink-2);
-  font-size: 14px;
-  line-height: 1.65;
-}
-
 .agent-stages li {
   margin-block: 20px;
   padding-left: 7px;
@@ -153,35 +97,79 @@
   font-size: 16px;
 }
 
-.cohort-figure {
-  margin: 28px 0;
+.article-body.before-figure {
+  padding-bottom: 40px;
 }
 
-.cohort-scroll {
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
-  border: 1px solid var(--line);
-  border-radius: 13px;
-  background: #fff;
+.hero-figure.in-article {
+  margin-bottom: 48px;
 }
 
-.cohort-scroll:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 3px;
-}
-
-.cohort-scroll img {
+.responsive-figure picture {
   display: block;
-  width: 100%;
-  min-width: 680px;
-  height: auto;
 }
 
-.cohort-figure figcaption {
+@media (max-width: 900px) {
+  .responsive-figure img {
+    max-width: 640px;
+    margin-inline: auto;
+  }
+}
+
+.cost-split {
+  margin: 26px 0 30px;
+}
+
+.cost-bar {
+  display: flex;
+  height: 22px;
+  overflow: hidden;
+  border-radius: 6px;
+  background: var(--line);
+}
+
+.cost-bar .cost-search {
+  background: var(--accent);
+}
+
+.cost-bar .cost-repair {
+  background: #0d9488;
+  border-left: 2px solid #fff;
+}
+
+.cost-split figcaption {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 26px;
   margin-top: 12px;
   color: var(--ink-2);
-  font-size: 13px;
-  line-height: 1.6;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.cost-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cost-key i {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+}
+
+.cost-key .cost-search {
+  background: var(--accent);
+}
+
+.cost-key .cost-repair {
+  background: #0d9488;
+}
+
+.cost-split strong {
+  color: var(--ink);
+  font-weight: 600;
 }
 
 @media (max-width: 420px) {
