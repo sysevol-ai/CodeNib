@@ -744,9 +744,9 @@ the installed package, not another product runtime.
 ### Agent Retrieval Bench labs boundary
 
 Status: merged in
-[PR #831](https://github.com/sysevol-ai/CodeNib/pull/831); upstream
-docs/example contribution scoped in
-[ARB issue #2](https://github.com/eyuansu62/agent-retrieval-bench/issues/2).
+[PR #831](https://github.com/sysevol-ai/CodeNib/pull/831); the ARB owner
+scoped an upstream docs/example contribution in
+[their issue #2 reply](https://github.com/eyuansu62/agent-retrieval-bench/issues/2#issuecomment-6334640769).
 Owner: retrieval and evaluation maintainers. Lifecycle: `labs`; no stable
 package re-export or product-route dependency.
 
@@ -769,8 +769,9 @@ Complete-release counts are enforced before selection; native recovery verifies
 an atomic checkpoint receipt and rebuilds exported predictions. CLI upstream
 failures use a concise exit code, and hidden evaluator edits are rejected.
 
-Open gates: the upstream docs/example PR agreed in ARB issue #2 (runnable
-example, smoke receipt, reporting contract) is pending review. A full 345-case
+Open gates: the upstream docs/example PR that the ARB owner requested in that
+reply (runnable example, smoke receipt, reporting contract) is not yet merged
+upstream. A full 345-case
 retrieval measurement, selective/abstention, interactive trajectories, and
 graph/Zoekt/vector adapters remain subsequent scope decisions. An
 indexed-interactive comparison holds the agent model and budgets fixed and tests

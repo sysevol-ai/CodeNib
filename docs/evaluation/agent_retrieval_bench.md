@@ -203,9 +203,9 @@ budget, and final context budget. Report index build time and size separately
 from query latency and model cost.
 
 Code-graph indexes usually need the full repository, which shows more than the
-released corpus because the corpus builder truncates long files. ARB treats
-such runs as a separate condition
-([issue #2](https://github.com/eyuansu62/agent-retrieval-bench/issues/2)).
+released corpus because the corpus builder truncates long files. The ARB
+maintainers asked that such runs be reported as a separate condition
+([issue #2 reply](https://github.com/eyuansu62/agent-retrieval-bench/issues/2#issuecomment-6334640769)).
 The native baseline reads only the released corpus. A full-source run may index
 a clean working tree at each sample's `base_commit`, without later history. It
 must be labeled as full source, keep gold labels and resolving changes out of
