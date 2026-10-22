@@ -743,8 +743,10 @@ the installed package, not another product runtime.
 
 ### Agent Retrieval Bench labs boundary
 
-Status: implemented and locally verified in
-[PR #831](https://github.com/sysevol-ai/CodeNib/pull/831).
+Status: merged in
+[PR #831](https://github.com/sysevol-ai/CodeNib/pull/831); upstream
+docs/example contribution scoped in
+[ARB issue #2](https://github.com/eyuansu62/agent-retrieval-bench/issues/2).
 Owner: retrieval and evaluation maintainers. Lifecycle: `labs`; no stable
 package re-export or product-route dependency.
 
@@ -760,18 +762,22 @@ Outcomes: 345/345 samples and 294 release/snapshot pairs pass preparation;
 and packing details matching offline rescoring. With both benchmark adapters
 present, the related unit tier passes 1,062 tests and ten integration tests run
 against the pinned ARB and ContextBench evaluators. Public documentation records
-the protocol, scope, and reproducible smoke receipt.
+the protocol, scope, and reproducible smoke receipt. The receipt is bound to the
+merged implementation: a rerun at `912a7563` reproduced all 64 metric cells.
 
 Complete-release counts are enforced before selection; native recovery verifies
 an atomic checkpoint receipt and rebuilds exported predictions. CLI upstream
 failures use a concise exit code, and hidden evaluator edits are rejected.
 
-Open research gates: a full 345-case retrieval measurement,
-selective/abstention, interactive trajectories, graph/Zoekt/vector adapters,
-and upstream submissions remain subsequent scope decisions. The next proposed
-comparison holds the agent model and budgets fixed and tests iterative search with and without
-graph expansion; full-source access must be distinguished from corpus-only
-retrieval.
+Open gates: the upstream docs/example PR agreed in ARB issue #2 (runnable
+example, smoke receipt, reporting contract) is pending review. A full 345-case
+retrieval measurement, selective/abstention, interactive trajectories, and
+graph/Zoekt/vector adapters remain subsequent scope decisions. An
+indexed-interactive comparison holds the agent model and budgets fixed and tests
+iterative search with and without graph expansion, separately from ARB's
+closed-tool diagnostic. A full-source run is a separately labeled condition: it
+keeps gold labels and resolving changes out of retrieval inputs, scores only
+released candidate files, and computes canonical BCY on released text.
 
 ### S0: High-confidence subtraction
 
