@@ -316,10 +316,13 @@ def execute(
                             index_build_seconds=index.build_seconds,
                             index_size=index.size,
                         )
-                    queried = time.perf_counter()
-                    prediction["ranked_files"] = index.rank(case.query_text)
-                    prediction["query_seconds"] = time.perf_counter() - queried
+                    # A failed search is still an attempted call with latency.
                     prediction["tool_calls"] = 1
+                    queried = time.perf_counter()
+                    try:
+                        prediction["ranked_files"] = index.rank(case.query_text)
+                    finally:
+                        prediction["query_seconds"] = time.perf_counter() - queried
                     prediction["status"] = "ok"
                 except Exception as exc:
                     prediction["error"] = f"{type(exc).__name__}: {exc}"

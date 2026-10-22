@@ -546,10 +546,12 @@ def test_failed_retrieval_checkpoint_is_not_silently_retried(
     assert result["summary"]["overall"]["failed"] == 4
     runner.execute(path, output, tmp_path, resume=True)
     assert len(calls) == 4
-    assert all(
-        "retrieval unavailable" in row["error"]
-        for row in runner.load_predictions(output / "predictions.json")
-    )
+    rows = runner.load_predictions(output / "predictions.json")
+    assert all("retrieval unavailable" in row["error"] for row in rows)
+    # Failed searches still count as attempted calls with measured latency.
+    assert all(row["tool_calls"] == 1 and row["query_seconds"] >= 0 for row in rows)
+    assert result["retrieval_usage"]["tool_calls"]["total"] == 4
+    assert result["retrieval_usage"]["query_seconds"]["count"] == 4
 
 
 @pytest.mark.parametrize(
