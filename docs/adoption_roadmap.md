@@ -85,11 +85,14 @@ all first-screen links work; quickstart remains exactly two commands.
 #### ContextBench result publication
 
 Status: the [English article](https://codenib.ai/blogs/contextbench-500-tasks/)
-and its homepage/blog-index entries are published on 2026-10-21 UTC from
-`57862c69`, tracked in [#852](https://github.com/sysevol-ai/CodeNib/pull/852).
-Local and public browser acceptance passes at 1440/820/390/320 pixels,
-including keyboard access, scrollable tables/charts, metadata, source metrics
-and exact asset hashes. Delayed/failed-style opening/refresh regressions pass
+and its homepage/blog-index entries are published on 2026-10-22 UTC from
+`940859fd`, tracked in [#852](https://github.com/sysevol-ai/CodeNib/pull/852).
+Its figures follow the other posts: a Geist-embedded mechanism diagram serves
+as both hero and sharing image, with a narrow variant for phones, and the
+task-source chart adds model usage per task. Local and public browser
+acceptance passes at 1440/820/390/320 pixels, including metadata, figure
+variant selection, no overflow and exact asset hashes. Earlier checks of
+keyboard access and delayed/failed-style opening/refresh regressions pass
 locally and publicly at 1440/390/320 pixels. Strict MkDocs,
 public-doc boundaries, support tables and pinned pre-commit checks pass.
 The article leads with 77.07% search-only line recall and the 0.83-point
