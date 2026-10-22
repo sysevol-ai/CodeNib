@@ -768,6 +768,9 @@ merged implementation: a rerun at `912a7563` reproduced all 64 metric cells.
 Complete-release counts are enforced before selection; native recovery verifies
 an atomic checkpoint receipt and rebuilds exported predictions. CLI upstream
 failures use a concise exit code, and hidden evaluator edits are rejected.
+Native runs index each corpus snapshot once and record cold-build time and
+index size apart from per-sample query time, tool calls, and model usage; every
+report also carries the shared dev/held-out split.
 
 Open gates: the upstream docs/example PR that the ARB owner requested in that
 reply (runnable example, smoke receipt, reporting contract) is not yet merged

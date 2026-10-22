@@ -390,6 +390,16 @@ class BM25Retriever:
     ) -> BM25Retriever:
         return cls(documents, k=k)
 
+    def size(self) -> dict[str, int]:
+        """Indexed documents, tokens, and distinct terms."""
+        if self._index is None:
+            return {"documents": 0, "tokens": 0, "vocabulary": 0}
+        return {
+            "documents": self._index.corpus_size,
+            "tokens": int(sum(self._index.doc_len)),
+            "vocabulary": len(self._index.idf),
+        }
+
     def invoke(self, query: str) -> List[Document]:
         if self._index is None:
             return []

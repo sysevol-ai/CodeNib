@@ -5,6 +5,7 @@
 """ARB boundaries: query isolation, corpus identity, scoring, and recovery."""
 
 import copy
+import hashlib
 import json
 import os
 import subprocess
@@ -107,6 +108,22 @@ def prepared_file(root, tmp_path):
     path = tmp_path / "prepared.json"
     path.write_text(json.dumps(prepared))
     return path, prepared
+
+
+def fake_index(rank):
+    """BM25CorpusIndex stand-in that delegates each query to ``rank``."""
+
+    class Index:
+        build_seconds = 0.5
+        size = {"documents": 2, "tokens": 6, "vocabulary": 3, "indexed_text_bytes": 9}
+
+        def __init__(self, corpus):
+            self.corpus = corpus
+
+        def rank(self, query):
+            return rank(query, self.corpus)
+
+    return Index
 
 
 def predictions(prepared):
@@ -239,6 +256,11 @@ def test_chunk_dedup_before_file_cutoff_and_line_conversion(released_data, monke
     ]
 
     class Index:
+        retriever = SimpleNamespace(
+            size=lambda: {"documents": 0, "tokens": 0, "vocabulary": 0},
+            documents=[],
+        )
+
         def __init__(self, *, chunks, max_k):
             assert max_k == len(corpus)
             assert chunks[0].start_line == chunks[0].end_line == 0
@@ -254,6 +276,36 @@ def test_chunk_dedup_before_file_cutoff_and_line_conversion(released_data, monke
     ranked = arb.rank_bm25("query only", corpus)
     assert ranked[:3] == ["LICENSE", "tests/check.py", "src/target.py"]
     assert len(ranked) == len(corpus)
+
+
+def test_corpus_index_reports_size_and_matches_one_shot_ranking(released_data):
+    path = corpus_manifest(released_data, "v2_code2test")[(REPO, COMMIT)]
+    corpus = load_corpus(path, REPO, COMMIT)
+    index = arb.BM25CorpusIndex(corpus)
+    assert index.size["documents"] == len(corpus)
+    assert index.size["tokens"] >= index.size["vocabulary"] > 0
+    assert index.size["indexed_text_bytes"] > 0
+    assert index.build_seconds >= 0
+    query = "needle important regression"
+    assert index.rank(query) == arb.rank_bm25(query, corpus)
+
+
+def test_sample_split_uses_first_digest_byte():
+    for sample_id in ("0a4b3f17ec58d3405b1c9a47", "code2test", "trace2code"):
+        even = hashlib.sha256(sample_id.encode()).digest()[0] % 2 == 0
+        assert arb.sample_split(sample_id) == ("dev" if even else "heldout")
+
+
+def test_cases_grouped_by_corpus_in_first_appearance_order():
+    cases = [
+        {"sample": {"id": "a"}, "corpus": {"sha256": "x"}},
+        {"sample": {"id": "b"}, "corpus": {"sha256": "y"}},
+        {"sample": {"id": "c"}, "corpus": {"error": "missing"}},
+        {"sample": {"id": "d"}, "corpus": {"sha256": "x"}},
+        {"sample": {"id": "e"}, "corpus": {"error": "missing"}},
+    ]
+    order = [record["sample"]["id"] for record in runner.by_corpus(cases)]
+    assert order == ["a", "d", "b", "c", "e"]
 
 
 def test_input_drift_and_prediction_identity(released_data):
@@ -329,7 +381,7 @@ def test_interrupted_run_resume_and_drift(
             raise KeyboardInterrupt
         return [row["path"] for row in corpus]
 
-    monkeypatch.setattr(runner, "rank_bm25", rank)
+    monkeypatch.setattr(runner, "BM25CorpusIndex", fake_index(rank))
     output = tmp_path / "run"
     with pytest.raises(KeyboardInterrupt):
         runner.execute(path, output, tmp_path)
@@ -368,7 +420,9 @@ def test_resume_rebuilds_edited_export_from_native_checkpoint(
     modified[0][field] = value
     (output / "predictions.json").write_text(json.dumps(modified))
     monkeypatch.setattr(
-        runner, "rank_bm25", lambda *args: pytest.fail("completed retrieval rerun")
+        runner,
+        "BM25CorpusIndex",
+        lambda *args: pytest.fail("completed retrieval rerun"),
     )
     result = runner.execute(path, output, tmp_path, resume=True)
     assert result["summary"]["overall"]["valid"] == 4
@@ -406,7 +460,7 @@ def test_checkpoint_survives_interrupted_public_export(
         calls.append(query)
         return [row["path"] for row in corpus]
 
-    monkeypatch.setattr(runner, "rank_bm25", rank)
+    monkeypatch.setattr(runner, "BM25CorpusIndex", fake_index(rank))
     monkeypatch.setattr(runner, "write_json_atomic", interrupt_export)
     with pytest.raises(KeyboardInterrupt):
         runner.execute(path, output, tmp_path)
@@ -443,6 +497,39 @@ def test_cli_invalid_upstream_exits_without_traceback(
     assert "Traceback" not in error
 
 
+def test_shared_snapshot_built_once_with_separate_costs(
+    released_data, tmp_path, fake_evaluator, monkeypatch
+):
+    path, _prepared = prepared_file(released_data, tmp_path)
+    builds = []
+
+    class Index(fake_index(lambda query, corpus: [row["path"] for row in corpus])):
+        def __init__(self, corpus):
+            builds.append(len(corpus))
+            super().__init__(corpus)
+
+    monkeypatch.setattr(runner, "BM25CorpusIndex", Index)
+    result = runner.execute(path, tmp_path / "run", tmp_path)
+    rows = runner.load_predictions(tmp_path / "run" / "predictions.json")
+    # The four synthetic releases carry byte-identical corpora.
+    assert len(builds) == 1
+    assert [row["index_built"] for row in rows] == [True, False, False, False]
+    assert rows[0]["index_build_seconds"] == 0.5
+    assert rows[0]["index_size"]["documents"] == 2
+    assert all("index_size" not in row for row in rows[1:])
+    assert all(row["tool_calls"] == 1 and row["query_seconds"] >= 0 for row in rows)
+    usage = result["retrieval_usage"]
+    assert usage["index_builds"] == 1
+    assert usage["index_build_seconds"]["total"] == 0.5
+    assert usage["index_size"]["tokens"]["max"] == 6
+    assert usage["query_seconds"]["count"] == 4
+    assert usage["model_calls"] == 0
+    assert result["environment"]["cpu_count"] >= 1
+    splits = result["summary"]["by_split"]
+    assert sum(group["selected"] for group in splits.values()) == 4
+    assert {row["split"] for row in result["cases"]} == set(splits)
+
+
 def test_failed_retrieval_checkpoint_is_not_silently_retried(
     released_data, tmp_path, fake_evaluator, monkeypatch
 ):
@@ -453,7 +540,7 @@ def test_failed_retrieval_checkpoint_is_not_silently_retried(
         calls.append(query)
         raise RuntimeError("retrieval unavailable")
 
-    monkeypatch.setattr(runner, "rank_bm25", fail)
+    monkeypatch.setattr(runner, "BM25CorpusIndex", fake_index(fail))
     output = tmp_path / "run"
     result = runner.execute(path, output, tmp_path)
     assert result["summary"]["overall"]["failed"] == 4
@@ -534,7 +621,9 @@ def test_offline_evaluation_no_retrieval_and_no_stale_report(
     pred = tmp_path / "external.jsonl"
     write_rows(pred, predictions(prepared))
     monkeypatch.setattr(
-        runner, "rank_bm25", lambda *args: pytest.fail("offline rescore retrieved")
+        runner,
+        "BM25CorpusIndex",
+        lambda *args: pytest.fail("offline rescore retrieved"),
     )
     output = tmp_path / "rescore"
     runner.execute(path, output, tmp_path, pred_path=pred)

@@ -31,10 +31,13 @@ from codenib.dataset.agent_retrieval_bench import (
 
 from .agent_retrieval_bench import (
     ARB_UPSTREAM_REVISION,
+    BM25CorpusIndex,
     evaluate_official,
     implementation_receipt,
     json_digest,
-    rank_bm25,
+    retrieval_usage,
+    run_environment,
+    sample_split,
     summarize,
     validate_upstream,
 )
@@ -184,6 +187,8 @@ def evaluate(
             job["error"] = f"{type(exc).__name__}: {exc}"
         jobs.append(job)
     rows = evaluate_official(jobs, upstream, python)
+    for row in rows:
+        row["split"] = sample_split(row["sample_id"])
     return {
         "schema_version": 1,
         "evaluator_revision": ARB_UPSTREAM_REVISION,
@@ -196,10 +201,20 @@ def evaluate(
             "bcy_tokenizer": "regex_code_tokenizer_v1",
             "bcy_text": "released kind=file chunks",
             "denominator": "all selected samples; errors contribute zero",
+            "split": "dev when the first byte of sha256(sample_id) is even",
         },
         "summary": summarize(rows),
         "cases": rows,
     }
+
+
+def by_corpus(cases: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Group cases by corpus snapshot, in first-appearance order."""
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for position, record in enumerate(cases):
+        key = record["corpus"].get("sha256") or f"unprepared:{position}"
+        groups.setdefault(key, []).append(record)
+    return [record for group in groups.values() for record in group]
 
 
 def execute(
@@ -271,7 +286,8 @@ def execute(
             elif predictions_path.exists():
                 raise ValueError("native predictions have no recovery checkpoint")
             completed = prediction_map(predictions, prepared)
-            for record in prepared["cases"]:
+            index_key, index = None, None
+            for record in by_corpus(prepared["cases"]):
                 case = ARBCase.from_record(record["release"], record["sample"])
                 if case.sample_id in completed:
                     continue
@@ -281,11 +297,29 @@ def execute(
                     "base_commit": case.sample["base_commit"],
                     "status": "error",
                     "ranked_files": [],
+                    "index_built": False,
+                    "tool_calls": 0,
                 }
                 started = time.perf_counter()
                 try:
-                    _path, corpus = checked_corpus(prepared, record)
-                    prediction["ranked_files"] = rank_bm25(case.query_text, corpus)
+                    key = record["corpus"].get("sha256")
+                    if index is None or key != index_key:
+                        # Release the previous snapshot before the next cold build.
+                        index_key, index = None, None
+                        _path, corpus = checked_corpus(prepared, record)
+                        loaded = time.perf_counter()
+                        index = BM25CorpusIndex(corpus)
+                        index_key = key
+                        prediction.update(
+                            index_built=True,
+                            corpus_load_seconds=loaded - started,
+                            index_build_seconds=index.build_seconds,
+                            index_size=index.size,
+                        )
+                    queried = time.perf_counter()
+                    prediction["ranked_files"] = index.rank(case.query_text)
+                    prediction["query_seconds"] = time.perf_counter() - queried
+                    prediction["tool_calls"] = 1
                     prediction["status"] = "ok"
                 except Exception as exc:
                     prediction["error"] = f"{type(exc).__name__}: {exc}"
@@ -306,7 +340,8 @@ def execute(
         result = evaluate(prepared, predictions, upstream, evaluator_python)
         result["provenance"] = config
         if external is None:
-            result["retrieval_usage"] = {"model_calls": 0, "api_cost_usd": 0.0}
+            result["retrieval_usage"] = retrieval_usage(predictions)
+            result["environment"] = run_environment()
         write_json_atomic(result_path, result)
     return result
 
