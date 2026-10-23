@@ -205,13 +205,14 @@ class Reranker:
         from codenib.index.rerank.cross_encoder import build_reranker
 
         started = time.perf_counter()
+        options = {"max_length": config["max_length"]} if config["max_length"] else {}
         self.model = build_reranker(
             config["model"],
             revision=config["revision"],
-            max_length=config["max_length"],
             batch_size=config["batch_size"],
             device=config["device"],
             torch_dtype=config["dtype"],
+            **options,
         )
         self.load_seconds = time.perf_counter() - started
 

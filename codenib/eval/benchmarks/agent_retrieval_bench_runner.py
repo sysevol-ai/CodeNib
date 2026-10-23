@@ -396,12 +396,16 @@ def method_config(
             "model": methods.RERANK_MODEL,
             "revision": methods.RERANK_REVISION,
             "top_k": methods.RERANK_TOP_K,
-            "max_length": methods.RERANK_MAX_LENGTH,
+            "max_length": None,
             "batch_size": methods.RERANK_BATCH_SIZE,
             **{
                 key: value for key, value in (rerank or {}).items() if value is not None
             },
         }
+        qwen = "Qwen3-Reranker" in str(options["model"])
+        # Other cross-encoders keep their own positional limit unless given one.
+        if options["max_length"] is None and qwen:
+            options["max_length"] = methods.RERANK_MAX_LENGTH
         base = options.pop("base", None)
         loaded = options.pop("base_run", None)
         if base is None:
@@ -411,6 +415,8 @@ def method_config(
             raise ValueError("--rerank-revision must be a 40-character commit SHA")
         for key in ("top_k", "max_length", "batch_size"):
             value = options[key]
+            if key == "max_length" and value is None:
+                continue
             if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
                 raise ValueError(f"rerank {key} must be a positive integer")
         resolved, dtype = methods.dense_precision(device)
@@ -418,11 +424,7 @@ def method_config(
             **options,
             "device": resolved,
             "dtype": dtype,
-            "instruction": (
-                _QWEN_DEFAULT_INSTRUCTION
-                if "Qwen3-Reranker" in str(options["model"])
-                else None
-            ),
+            "instruction": _QWEN_DEFAULT_INSTRUCTION if qwen else None,
             "document": "file path, newline, released file text",
             "fusion": (
                 "file-level RRF of the base and reranked orders over the top "
@@ -735,6 +737,12 @@ def execute(
                     "index_built": False,
                     "tool_calls": 0,
                 }
+                base = None
+                if base_rankings is not None:
+                    base = base_rankings.get(case.sample_id) or {"status": "missing"}
+                    # Known before any build or check can fail; unknown for an
+                    # external base, never assumed to be 0.
+                    prediction["base_tool_calls"] = base.get("tool_calls")
                 started = time.perf_counter()
                 try:
                     key = record["corpus"].get("sha256")
@@ -758,15 +766,8 @@ def execute(
                             prediction["model_load_seconds"] = index.model_load_seconds
                     # A failed search is still an attempted call with latency.
                     prediction["tool_calls"] = 1
-                    base = None
-                    if base_rankings is not None:
-                        base = base_rankings.get(case.sample_id)
-                        if not base or base.get("status") != "ok":
-                            raise ValueError(
-                                "the base run has no ranking for this case"
-                            )
-                        # Unknown for an external base; never assumed to be 0.
-                        prediction["base_tool_calls"] = base.get("tool_calls")
+                    if base is not None and base.get("status") != "ok":
+                        raise ValueError("the base run has no ranking for this case")
                     queried = time.perf_counter()
                     try:
                         if base is None:
@@ -898,7 +899,8 @@ def main(argv: list[str] | None = None) -> int:
             command.add_argument(
                 "--rerank-max-length",
                 type=int,
-                help="rerank: token limit per query and file (default: 8192)",
+                help="rerank: token limit per query and file (default: 8192 for "
+                "Qwen3-Reranker, the model's own limit otherwise)",
             )
             command.add_argument(
                 "--rerank-batch-size",

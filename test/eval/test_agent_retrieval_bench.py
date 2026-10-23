@@ -875,7 +875,10 @@ def test_rerank_reorders_a_completed_base_run(
     )
     # An external base records no tool calls; they stay unknown, not zero.
     external = tmp_path / "external.json"
-    external.write_text(json.dumps(predictions(_prepared)))
+    rows = predictions(_prepared)
+    # A failed base record can still report the calls it made.
+    rows[0].update(status="error", ranked_files=[], tool_calls=2)
+    external.write_text(json.dumps(rows))
     runner.execute(path, tmp_path / "ext", tmp_path, pred_path=external)
     result = runner.execute(
         path,
@@ -884,14 +887,13 @@ def test_rerank_reorders_a_completed_base_run(
         method="rerank",
         rerank={"base": tmp_path / "ext"},
     )
-    assert result["retrieval_usage"]["base_tool_calls"] == {
-        "known": None,
-        "unknown_samples": 4,
-    }
+    usage = result["retrieval_usage"]["base_tool_calls"]
+    assert (usage["known"]["total"], usage["unknown_samples"]) == (2, 3)
+    reranked = runner.load_predictions(tmp_path / "ext-rerank" / "predictions.json")
+    assert [row["status"] for row in reranked].count("error") == 1
     # The partial external rankings stay partial.
     assert all(
-        len(row["ranked_files"]) == 3
-        for row in runner.load_predictions(tmp_path / "ext-rerank" / "predictions.json")
+        len(row["ranked_files"]) == 3 for row in reranked if row["status"] == "ok"
     )
     # A base over other prepared cases is refused.
     other = json.loads(path.read_text())

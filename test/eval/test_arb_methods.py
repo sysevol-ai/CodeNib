@@ -598,6 +598,13 @@ def test_rerank_receipt_names_its_base_run(monkeypatch, tmp_path):
     assert config["base"]["method"] == "codenib-dense"
     assert config["base"]["config_sha256"] == runner.json_digest(receipt)
     assert config["instruction"].startswith("Given a github issue")
+    assert config["max_length"] == methods.RERANK_MAX_LENGTH
+    # Another cross-encoder keeps its own positional limit and takes no instruction.
+    other = runner.method_config(
+        "rerank",
+        rerank={"base": base, "model": "BAAI/bge-reranker-base", "revision": "0" * 40},
+    )
+    assert (other["max_length"], other["instruction"]) == (None, None)
     with pytest.raises(ValueError, match="needs --rerank-revision"):
         runner.rerank_options(
             argparse.Namespace(rerank_model="other/reranker", rerank_revision=None)

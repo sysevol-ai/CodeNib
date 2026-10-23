@@ -255,14 +255,16 @@ run's output directory; it must have written its final report and ranked the
 same prepared cases with released-corpus access, and a run still in progress is
 refused. The model scores each of the top files as its path and released text,
 truncated with the query to 8,192 tokens, under CodeNib's default reranker
+instruction; another cross-encoder keeps its own length limit and takes no
 instruction. It never sees gold labels. A file it cannot score within GPU
 memory fails the case rather than scoring zero. `--rerank-model` with
 `--rerank-revision`, `--rerank-top-k`, `--rerank-max-length`, and
-`--rerank-batch-size` change the model and its limits. The receipt records
-them with digests of the base run's receipt and predictions. The output holds
+`--rerank-batch-size` change the model and its limits. The receipt records them
+with digests of the base run's receipt and predictions. The output holds
 exactly the base ranking's files, duplicates removed. `tool_calls` counts the
-stage's one scoring call, and `base_tool_calls` the base run's, left empty when
-the base did not record it. It needs the `semantic` extra.
+stage's one scoring call, and `base_tool_calls` the base run's, recorded even
+when the base failed that case and left empty when the base did not record it.
+It needs the `semantic` extra.
 
 The Zoekt method takes its terms from the query's string values: file names,
 backticked spans, and identifiers written with `_`, camelCase, or capitals, up
