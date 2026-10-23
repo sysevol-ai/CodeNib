@@ -134,8 +134,11 @@ class CodeNibToolProvider:
     def _reusable(self, receipt: dict | None) -> bool:
         if receipt is None or receipt.get("identity") != self._identity:
             return False
-        # A snapshot without graph languages has nothing to retry.
-        failed = not receipt.get("graph") and receipt.get("languages")
+        # A snapshot without graph languages has nothing to retry; a graph
+        # missing one of its languages counts as a failed build.
+        failed = receipt.get("languages") and (
+            not receipt.get("graph") or receipt.get("failed")
+        )
         return not (failed and self.retry_failed)
 
     def _build(
@@ -274,9 +277,15 @@ class _SnapshotIndex:
                     key = (other, relation)
                     counts[key] = counts.get(key, 0) + 1
                     # File-scope references have no symbol span; keep the
-                    # first line where the reference occurs instead.
-                    line = g.es[edge].attributes().get("anchor_line")
-                    if isinstance(line, int) and line >= 0:
+                    # first line where the reference occurs, when that site
+                    # is in the hit's own file.
+                    edge_attributes = g.es[edge].attributes()
+                    line = edge_attributes.get("anchor_line")
+                    if (
+                        edge_attributes.get("anchor_file") == other_path
+                        and isinstance(line, int)
+                        and line >= 0
+                    ):
                         anchors[key] = min(anchors.get(key, line), line)
         ranked = sorted(
             counts,

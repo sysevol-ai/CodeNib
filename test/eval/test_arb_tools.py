@@ -53,6 +53,12 @@ def _graph():
     # A module-level reference starts at the file vertex, on 0-based line 11.
     graph.current_scope = "pkg/app.py"
     graph.add_symbol_reference("pkg/config.py:Config", anchor_line=11)
+    # An outgoing reference to an unresolved name in another file: its anchor
+    # is the use site in config.py, not a line of util.py.
+    graph.current_file, graph.current_scope = "pkg/config.py", "pkg/config.py:Config"
+    graph.add_symbol_reference(
+        "pkg/util.py:missing", module_path="pkg/util.py", anchor_line=4
+    )
     graph.current_file, graph.current_scope = "vendor/lib.py", "vendor/lib.py:lib"
     graph.add_symbol_reference("pkg/config.py:Config")
     return graph
@@ -130,8 +136,11 @@ def test_references_follow_contained_symbols_to_other_released_files(builds, tmp
     assert [(hit["path"], hit["symbol"], hit["relation"]) for hit in hits] == [
         ("pkg/app.py", "main", "uses symbol, 2 refs"),
         ("pkg/app.py", "", "uses symbol, 1 refs"),
+        ("pkg/util.py", "missing", "used by symbol, 1 refs"),
         ("pkg/util.py", "helper", "used by symbol, 1 refs"),
     ]
+    # An anchor from another file never becomes the hit's line.
+    assert "start_line" not in hits[2]
     assert hits[0]["start_line"] == 3 and hits[0]["end_line"] == 7
     # The file-scope reference reports the line where it occurs.
     assert hits[1]["start_line"] == hits[1]["end_line"] == 12
@@ -200,3 +209,23 @@ def test_cache_must_not_alias_the_workspace(tmp_path):
         tools.CodeNibToolProvider(str(tmp_path), str(tmp_path / "."))
     with pytest.raises(ValueError, match="true or false"):
         tools.CodeNibToolProvider(str(tmp_path / "ws"), retry_failed="maybe")
+
+
+def test_partial_graphs_are_retried(builds, monkeypatch, tmp_path):
+    saved = tmp_path / "fixture-graph.pkl"
+    outcomes = [{"rust": "toolchain missing"}, {}]
+
+    def partial(checkout, output, languages):
+        builds.append(languages)
+        (output / "arb_graph.pkl").write_bytes(saved.read_bytes())
+        return {
+            "available_languages": ["python"],
+            "failed_languages": outcomes.pop(0),
+            "graph": str(output / "arb_graph.pkl"),
+        }
+
+    monkeypatch.setattr(methods, "build_graph", partial)
+    first = _provider(tmp_path)[1]
+    second = _provider(tmp_path)[1]
+    assert first["failed"] and not second["cached"] and "failed" not in second
+    assert _provider(tmp_path)[1]["cached"] and len(builds) == 2
