@@ -256,6 +256,8 @@ class QwenRerankerWrapper:
         self.max_length = max_length
         self.batch_size = batch_size
         self.instruction = instruction
+        # Documents that still ran out of memory alone and scored 0.0.
+        self.oom_fallbacks = 0
 
         load_kwargs = _model_load_kwargs(
             model_name,
@@ -381,6 +383,7 @@ class QwenRerankerWrapper:
                         len(docs[i]) if i < len(docs) else 0,
                     )
                     out.append(0.0)
+                    self.oom_fallbacks += 1
                     i += 1
         return out
 

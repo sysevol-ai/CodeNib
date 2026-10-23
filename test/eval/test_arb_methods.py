@@ -541,6 +541,20 @@ def test_rerank_fuses_the_rescored_top_files_with_the_base_order():
         "b.py",
         "d.py",
     ]
+
+    # A file the model could not score fails the case instead of scoring 0.
+    class Exhausted(Model):
+        oom_fallbacks = 0
+
+        def score(self, query, docs):
+            self.oom_fallbacks += 1
+            return [0.0] * len(docs)
+
+    exhausted = methods.RerankCorpusIndex(
+        corpus, SimpleNamespace(model=Exhausted()), top_k=3
+    )
+    with pytest.raises(RuntimeError, match="out of memory on 1 files"):
+        exhausted.rerank("q", ["a.py", "b.py", "c.py", "d.py"])
     # Each top file is scored as its path and released text.
     assert seen == [
         ("q", [f"{path}\ntext of {path}" for path in ("a.py", "b.py", "c.py")])
@@ -555,6 +569,15 @@ def test_rerank_receipt_names_its_base_run(monkeypatch, tmp_path):
     base.mkdir()
     (base / "predictions.json").write_text("[]")
     (base / "config.json").write_text(json.dumps({"source_access": "full-source"}))
+    # A run without its final report is still running or was interrupted.
+    with pytest.raises(ValueError, match="not a completed run"):
+        runner.method_config("rerank", rerank={"base": base})
+    (base / "results.json").write_text("{}")
+    from filelock import FileLock
+
+    with FileLock(str(base / ".run.lock")):
+        with pytest.raises(ValueError, match="still running"):
+            runner.method_config("rerank", rerank={"base": base})
     with pytest.raises(ValueError, match="released-corpus"):
         runner.method_config("rerank", rerank={"base": base})
     receipt = {"source_access": "released-corpus", "method": "codenib-dense"}

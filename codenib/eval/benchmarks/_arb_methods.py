@@ -244,9 +244,15 @@ class RerankCorpusIndex:
         from codenib.types import QueriedNode
 
         head = base[: self._top_k]
-        scores = self._reranker.model.score(
+        model = self._reranker.model
+        before = getattr(model, "oom_fallbacks", 0)
+        scores = model.score(
             query_text, [f"{path}\n{self._texts.get(path, '')}" for path in head]
         )
+        # A file the model could not score is a failed case, not a zero score.
+        unscored = getattr(model, "oom_fallbacks", 0) - before
+        if unscored:
+            raise RuntimeError(f"the reranker ran out of memory on {unscored} files")
         order = [
             head[i] for i in sorted(range(len(head)), key=lambda i: (-scores[i], i))
         ]

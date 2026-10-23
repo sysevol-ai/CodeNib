@@ -251,10 +251,12 @@ how many chunks a build encoded and how many it reused. Dense methods need the
 `semantic` extra; a missing extra stops the run before any case.
 
 `rerank` is a second stage over a completed run. `--rerank-base` names that
-run's output directory; it must have ranked the same prepared cases with
-released-corpus access. The model scores each of the top files as its path and
-released text, truncated with the query to 8,192 tokens, under CodeNib's
-default reranker instruction. It never sees gold labels. `--rerank-model` with
+run's output directory; it must have written its final report and ranked the
+same prepared cases with released-corpus access, and a run still in progress is
+refused. The model scores each of the top files as its path and released text,
+truncated with the query to 8,192 tokens, under CodeNib's default reranker
+instruction. It never sees gold labels. A file it cannot score within GPU
+memory fails the case rather than scoring zero. `--rerank-model` with
 `--rerank-revision`, `--rerank-top-k`, `--rerank-max-length`, and
 `--rerank-batch-size` change the model and its limits. The receipt records
 them with digests of the base run's receipt and predictions. A sample's tool

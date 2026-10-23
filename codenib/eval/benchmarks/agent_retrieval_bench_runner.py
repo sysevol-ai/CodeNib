@@ -403,9 +403,10 @@ def method_config(
             },
         }
         base = options.pop("base", None)
+        loaded = options.pop("base_run", None)
         if base is None:
             raise ValueError("rerank needs --rerank-base, a completed run to rerank")
-        base_config, base_predictions = load_rerank_base(Path(base))
+        base_config, base_predictions = loaded or load_rerank_base(Path(base))
         if not re.fullmatch(r"[0-9a-f]{40}", str(options["revision"])):
             raise ValueError("--rerank-revision must be a 40-character commit SHA")
         for key in ("top_k", "max_length", "batch_size"):
@@ -465,14 +466,29 @@ def method_config(
 
 
 def load_rerank_base(base: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-    """The receipt and rankings of the completed run that ``rerank`` reorders."""
-    config_path, predictions_path = base / "config.json", base / "predictions.json"
-    if not (config_path.is_file() and predictions_path.is_file()):
-        raise ValueError(f"--rerank-base {base} is not a completed run")
-    config = json.loads(config_path.read_text(encoding="utf-8"))
+    """The receipt and rankings of the completed run that ``rerank`` reorders.
+
+    Read once, under the base run's lock, and only after its final report
+    exists, so a run still being written is never reranked.
+    """
+    try:
+        lock = FileLock(str(base / ".run.lock"), timeout=0)
+        lock.acquire()
+    except Timeout as exc:
+        raise ValueError(f"--rerank-base {base} is still running") from exc
+    except OSError:
+        lock = None  # A read-only directory has no writer to wait for.
+    try:
+        if not (base / "results.json").is_file():
+            raise ValueError(f"--rerank-base {base} is not a completed run")
+        config = json.loads((base / "config.json").read_text(encoding="utf-8"))
+        predictions = load_predictions(base / "predictions.json")
+    finally:
+        if lock is not None:
+            lock.release()
     if config.get("source_access") != "released-corpus":
         raise ValueError("--rerank-base must be a released-corpus run")
-    return config, load_predictions(predictions_path)
+    return config, predictions
 
 
 def method_indexer(
@@ -628,6 +644,11 @@ def execute(
     external = load_predictions(pred_path) if pred_path else None
     if external is not None:
         prediction_map(external, prepared)
+    base_run = None
+    if method == "rerank" and pred_path is None and (rerank or {}).get("base"):
+        # One read of the base serves both its receipt and its rankings.
+        base_run = load_rerank_base(Path(rerank["base"]))
+        rerank = {**rerank, "base_run": base_run}
     config = {
         "prepared_sha256": json_digest(prepared),
         "method": "external-file-ranking" if pred_path else f"codenib-{method}",
@@ -651,8 +672,8 @@ def execute(
         "external_predictions_sha256": json_digest(external) if pred_path else None,
     }
     base_rankings = None
-    if method == "rerank" and pred_path is None:
-        base_config, base_predictions = load_rerank_base(Path(rerank["base"]))
+    if base_run is not None:
+        base_config, base_predictions = base_run
         # The base must rank these exact cases, so both runs score the same input.
         if base_config.get("prepared_sha256") != config["prepared_sha256"]:
             raise ValueError("--rerank-base ranked other prepared cases")
