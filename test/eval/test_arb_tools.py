@@ -162,7 +162,14 @@ def test_snapshot_without_a_graph_is_unavailable(builds, monkeypatch, tmp_path):
     assert not status["available"] and "indexer crashed" in status["reason"]
     with pytest.raises(RuntimeError):
         _call(provider, "symbol_search", symbol="parse")
-    receipt = tmp_path / "cache" / "owner__repo" / ("b" * 40) / "provider_receipt.json"
+    receipt = (
+        tmp_path
+        / "cache"
+        / "graphs"
+        / "owner__repo"
+        / ("b" * 40)
+        / "provider_receipt.json"
+    )
     assert json.loads(receipt.read_text())["graph"] is False
 
 
@@ -206,8 +213,9 @@ def test_failed_builds_retry_unless_disabled(
 
 
 def test_cache_must_not_alias_the_workspace(tmp_path):
-    with pytest.raises(ValueError, match="cache must differ"):
-        tools.CodeNibToolProvider(str(tmp_path), str(tmp_path / "."))
+    for workspace in (tmp_path, tmp_path / "graphs"):
+        with pytest.raises(ValueError, match="workspace must differ"):
+            tools.CodeNibToolProvider(str(workspace), str(tmp_path / "."))
     with pytest.raises(ValueError, match="true or false"):
         tools.CodeNibToolProvider(str(tmp_path / "ws"), retry_failed="maybe")
 
@@ -264,7 +272,9 @@ def test_graph_loads_while_the_snapshot_lock_is_held(builds, monkeypatch, tmp_pa
     held = []
 
     def checked_load(path):
-        lock = FileLock(str(tmp_path / "cache" / "owner__repo" / COMMIT) + ".lock")
+        lock = FileLock(
+            str(tmp_path / "cache" / "graphs" / "owner__repo" / COMMIT) + ".lock"
+        )
         try:
             lock.acquire(timeout=0)
         except Timeout:
@@ -279,7 +289,9 @@ def test_graph_loads_while_the_snapshot_lock_is_held(builds, monkeypatch, tmp_pa
     assert held == [True]
 
 
-def test_providers_with_swapped_roots_do_not_deadlock(builds, monkeypatch, tmp_path):
+def test_providers_with_swapped_roots_neither_deadlock_nor_collide(
+    builds, monkeypatch, tmp_path
+):
     import threading
 
     first = tools.CodeNibToolProvider(str(tmp_path / "a"), str(tmp_path / "b"))
@@ -309,6 +321,11 @@ def test_providers_with_swapped_roots_do_not_deadlock(builds, monkeypatch, tmp_p
     for worker in workers:
         worker.join(timeout=20)
     assert not any(worker.is_alive() for worker in workers)
+    # Each provider's graph sits apart from the other's checkout directory.
+    for root in ("a", "b"):
+        graph = tmp_path / root / "graphs" / "owner__repo" / COMMIT / "arb_graph.pkl"
+        assert graph.is_file()
+        assert not (tmp_path / root / "owner__repo" / COMMIT).exists()
 
 
 def test_a_failed_retry_keeps_the_usable_partial_graph(builds, monkeypatch, tmp_path):
@@ -333,7 +350,12 @@ def test_a_failed_retry_keeps_the_usable_partial_graph(builds, monkeypatch, tmp_
     assert status["available"] and status["failed"] == {"rust": "toolchain missing"}
     receipt = json.loads(
         (
-            tmp_path / "cache" / "owner__repo" / COMMIT / "provider_receipt.json"
+            tmp_path
+            / "cache"
+            / "graphs"
+            / "owner__repo"
+            / COMMIT
+            / "provider_receipt.json"
         ).read_text()
     )
     assert "indexer crashed" in receipt["last_retry"]["error"]
@@ -389,7 +411,7 @@ def test_receipts_are_replaced_atomically(tmp_path):
 
 def test_an_interrupted_swap_restores_the_retired_graph(builds, tmp_path):
     _provider(tmp_path)
-    directory = tmp_path / "cache" / "owner__repo" / COMMIT
+    directory = tmp_path / "cache" / "graphs" / "owner__repo" / COMMIT
     # The swap stopped after retiring the live graph, before installing
     # its replacement.
     directory.rename(directory.with_name(COMMIT + ".previous"))

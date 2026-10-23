@@ -64,9 +64,12 @@ class CodeNibToolProvider:
     ):
         self.workspace = Path(workspace).resolve()
         self.cache = Path(cache).resolve() if cache else self.workspace / "tool-graphs"
-        if self.cache == self.workspace:
-            # Both roots hold one lock per snapshot; sharing them would deadlock.
-            raise ValueError("cache must differ from workspace")
+        # Graphs live below cache/graphs and checkouts directly below the
+        # workspace, so a graph directory is never another provider's checkout,
+        # even when two providers swap their roots.
+        self._graphs = self.cache / "graphs"
+        if self.workspace in (self.cache, self._graphs):
+            raise ValueError("workspace must differ from cache and from cache/graphs")
         self.retry_failed = _flag(retry_failed)
         self._snapshots: dict[tuple[str, str], _SnapshotIndex | None] = {}
         implementation = implementation_receipt()
@@ -91,13 +94,13 @@ class CodeNibToolProvider:
 
     def prepare(self, *, repo: str, base_commit: str, paths: list[str]) -> dict:
         released = set(paths)
-        directory = methods.snapshot_path(repo, base_commit, self.cache)
+        directory = methods.snapshot_path(repo, base_commit, self._graphs)
         directory.parent.mkdir(parents=True, exist_ok=True)
         checkout = methods.snapshot_path(repo, base_commit, self.workspace)
         checkout.parent.mkdir(parents=True, exist_ok=True)
         with contextlib.ExitStack() as held:
-            # Both snapshot locks, in one global order, so providers whose
-            # workspace and cache roots are swapped cannot deadlock.
+            # Both snapshot locks, in one global order, so no two providers
+            # can each hold one and wait for the other.
             for lock in sorted(
                 (methods.snapshot_lock(directory), methods.snapshot_lock(checkout)),
                 key=lambda lock: lock.lock_file,

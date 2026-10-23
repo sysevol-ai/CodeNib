@@ -405,17 +405,17 @@ as `run(String)` are ignored when matching names. The graph is built as for
 [full-source graph expansion](#full-source-graph-expansion), so these runs are
 full-source runs. Hits are limited to released files.
 
-Graphs are cached per snapshot under `cache`, which must differ from
-`workspace`. A later run reuses a build, and reports its original build and
-checkout-fetch times with `cached: true`, only when the build matches: the
-CodeNib sources, Python and package versions, each graph backend's command and
-executable, and the graph settings. A backend that its launcher loads
-indirectly, such as `python -m`, `npx`, or `rustup run`, is identified only by
-its command, so use a new cache after upgrading one. A failed or partial build
-is retried on the next run, and a retry that covers fewer languages keeps the
-earlier graph; set `--tool-provider-option retry_failed=false` to keep
-failures, so that arms sharing a prebuilt cache see the same index
-availability.
+Graphs are cached per snapshot under `cache/graphs`, apart from the checkouts
+under `workspace`; `workspace` must be neither `cache` nor `cache/graphs`. A
+later run reuses a build, and reports its original build and checkout-fetch
+times with `cached: true`, only when the build matches: the CodeNib sources,
+Python and package versions, each graph backend's command and executable, and
+the graph settings. A backend that its launcher loads indirectly, such as
+`python -m`, `npx`, or `rustup run`, is identified only by its command, so use
+a new cache after upgrading one. A failed or partial build is retried on the
+next run, and a retry that covers fewer languages keeps the earlier graph; set
+`--tool-provider-option retry_failed=false` to keep failures, so that arms
+sharing a prebuilt cache see the same index availability.
 
 Each snapshot's status reports `released_source_files`, the released files in
 the graph's languages, and `covered_source_files`, how many of them the graph
