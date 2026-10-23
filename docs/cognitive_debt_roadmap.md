@@ -781,10 +781,15 @@ rankings published for offline rescoring. Graph expansion lowered Recall@20
 against BM25 on the samples with a graph; CodeNib BM25 trails ARB's BM25 because
 of a tokenizer gap (#856).
 
-Open gates: the CodeNib community-result submission to ARB, an
-indexed-interactive comparison that holds the agent model and budgets fixed and
-stays separate from ARB's closed-tool diagnostic, and selective/abstention
-evaluation. Line/span scores remain out of scope.
+ARB merged the results as a community result (eyuansu62/agent-retrieval-bench#10)
+after rescoring all 13,800 per-sample cells and documenting that dense and
+hybrid cut 124 queries at the encoder's 512-token limit.
+
+Open gates: the indexed-interactive comparison proposed in
+eyuansu62/agent-retrieval-bench#11, which holds the agent model and budgets
+fixed and stays separate from ARB's closed-tool diagnostic; the BM25 tokenizer
+fix (#856); and selective/abstention evaluation. Line/span scores remain out of
+scope.
 
 ### S0: High-confidence subtraction
 

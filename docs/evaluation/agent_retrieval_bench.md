@@ -118,8 +118,11 @@ method's configuration, per-sample metrics, ranking depths, and costs; the
 full rankings are published at [`sysevol-ai/codenib-arb-rankings`](https://huggingface.co/datasets/sysevol-ai/codenib-arb-rankings/tree/8be160b7258a803bc7e6d21a7f3ef0f981bdd382) with checksums for offline
 rescoring.
 
-An earlier eight-sample compatibility check, which ARB's maintainers reproduced
-independently, is kept in the [smoke receipt](../assets/arb_smoke.json).
+ARB lists these results, with the rankings and rescoring instructions, under
+its [community results](https://github.com/eyuansu62/agent-retrieval-bench/blob/main/docs/community_results.md#codenib);
+its maintainers rescored all five methods independently. An earlier
+eight-sample compatibility check is kept in the
+[smoke receipt](../assets/arb_smoke.json).
 
 ## Pins and preparation
 
@@ -232,9 +235,12 @@ condition described below.
 | `zoekt` | Zoekt trigram index of every file and symbol chunk | One Zoekt query per code-like term in the query; files ordered by matched terms, then first match |
 | `graph_expansion` | BM25 as above, plus a CodeNib code graph of the full source | The top five BM25 files, then up to 15 files connected to them by code references, then the rest in BM25 order |
 
-The dense model embeds chunks truncated to 512 tokens, with no query or
-document instruction, which matches ARB's own embedding baseline. On a GPU it
-runs in bfloat16. Each distinct chunk text is embedded once per run, because
+The dense model uses no query or document instruction, as ARB's own embedding
+baseline does, and applies a 512-token limit to queries as well as chunks.
+With the pinned tokenizer, 124 of the 345 queries are longer and are cut: 15 of
+106 code2test, 2 of 80 comment2context, 52 of 101 trace2code, and 55 of 58
+edit2ripple. BM25 and graph expansion read the full query, and `hybrid` cuts
+it only in its dense branch. On a GPU the model runs in bfloat16. Each distinct chunk text is embedded once per run, because
 snapshots of the same repository share most files, and `index_size` records
 how many chunks a build encoded and how many it reused. Dense methods need the
 `semantic` extra; a missing extra stops the run before any case.
