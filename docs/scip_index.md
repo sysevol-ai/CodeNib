@@ -70,9 +70,12 @@ without launching the live server after construction.
 
 Go graphs include `_test.go` files. A repository with nested `go.mod` files is
 indexed one module at a time; the modules are merged into one graph, with each
-package named by its directory and references resolved across modules. Each module
-is indexed with any `go.work` disabled, and a nested module that fails to index
-is skipped with a warning. A repository needs a root `go.mod`; a workspace with
+package named by its directory and references resolved across modules. The root
+run keeps the repository's `go.work`, so a nested module it already indexes is
+not indexed again. Every other nested module is indexed with `go.work`
+disabled, and one that fails to index is skipped with a warning. A module path
+declared in several directories keeps each copy under its own directory;
+references to it from other modules stay unresolved. A repository needs a root `go.mod`; a workspace with
 only a root `go.work` is not indexed. Directories the `go` command ignores (`vendor`,
 `testdata`, and names starting with `.` or `_`) are not searched for modules.
 Incremental patches query `gopls` in the edited file's own module, so patching

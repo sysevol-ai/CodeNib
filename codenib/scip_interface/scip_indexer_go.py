@@ -89,49 +89,68 @@ def rename_module_symbol(
     return " ".join(parts)
 
 
-def merge_module_indexes(root, nested, root_module: str, directories: dict):
+def merge_module_indexes(root, nested, root_module: str, modules=()):
     """Merge per-module SCIP indexes into ``root`` (``scip_pb2.Index`` objects).
 
-    ``nested`` holds ``(directory, index)`` pairs. Every symbol of a module in
-    ``directories`` is renamed, in the root index as well, so references
-    across modules meet the definitions.
+    ``nested`` holds ``(module path, directory, index)`` for each module
+    indexed on its own; ``modules`` lists ``(module path, directory)`` for
+    nested modules the root index already covers. Symbols of a module whose
+    path names one directory are renamed everywhere, the root index included,
+    so references across modules meet the definitions. A module path declared
+    in several directories is renamed only inside its own index; references
+    to it from elsewhere stay unresolved rather than pick a directory.
     """
+    declared = [(module, directory) for module, directory, _ in nested]
+    declared += list(modules)
+    counts: dict = {}
+    for module, _directory in declared:
+        counts[module] = counts.get(module, 0) + 1
+    unique = {
+        module: directory
+        for module, directory in declared
+        if counts[module] == 1 and module != root_module
+    }
 
     # The root module's own version, else the first nested module's, so the
     # choice is deterministic even when the root holds no Go sources.
     version = _module_version(root, root_module)
-    modules = {directory: module for module, directory in directories.items()}
-    for directory, index in nested:
-        if version is None and directory in modules:
-            version = _module_version(index, modules[directory])
+    for module, _directory, index in nested:
+        version = version or _module_version(index, module)
 
-    def rename(value: str) -> str:
-        return rename_module_symbol(value, root_module, directories, version)
+    def renamer(directories: dict):
+        def rename(value: str) -> str:
+            return rename_module_symbol(value, root_module, directories, version)
 
-    def rename_information(information) -> None:
+        return rename
+
+    def rename_information(information, rename) -> None:
         information.symbol = rename(information.symbol)
         information.enclosing_symbol = rename(information.enclosing_symbol)
         for relationship in information.relationships:
             relationship.symbol = rename(relationship.symbol)
 
-    def rename_document(document) -> None:
+    def rename_document(document, rename) -> None:
         for occurrence in document.occurrences:
             occurrence.symbol = rename(occurrence.symbol)
         for information in document.symbols:
-            rename_information(information)
+            rename_information(information, rename)
 
+    shared = renamer(unique)
     for document in root.documents:
-        rename_document(document)
+        rename_document(document, shared)
     for information in root.external_symbols:
-        rename_information(information)
+        rename_information(information, shared)
     known = {information.symbol for information in root.external_symbols}
-    for directory, index in nested:
+    for module, directory, index in nested:
+        own = renamer(
+            {**unique, module: directory} if module != root_module else unique
+        )
         for document in index.documents:
-            rename_document(document)
+            rename_document(document, own)
             document.relative_path = f"{directory}/{document.relative_path}"
             root.documents.append(document)
         for information in index.external_symbols:
-            rename_information(information)
+            rename_information(information, own)
             if information.symbol not in known:
                 known.add(information.symbol)
                 root.external_symbols.append(information)
@@ -151,8 +170,8 @@ def _module_version(index, module: str) -> Optional[str]:
 def _without_workspace() -> dict:
     """The environment with any enclosing ``go.work`` disabled.
 
-    Each module is indexed on its own, so a workspace file that lists only
-    some modules must not apply.
+    A nested module is indexed on its own, so a workspace file that lists
+    only some modules must not apply to it.
     """
     return {**os.environ, "GOWORK": "off"}
 
@@ -234,9 +253,6 @@ class SCIPGoIndexer(SCIPIndexerBase):
 
         logger.debug(f"Running command: {' '.join(cmd)}")
 
-        # With nested modules, each module (the root included) is indexed on
-        # its own; a go.work would otherwise pull nested modules into ./...
-        options = {"env": _without_workspace()} if nested else {}
         with self.profiler.section("generate_index") as section:
             try:
                 subprocess.run(
@@ -245,7 +261,6 @@ class SCIPGoIndexer(SCIPIndexerBase):
                     cwd=self.project_root,
                     capture_output=True,
                     text=True,
-                    **options,
                 )
                 success = True
             except subprocess.CalledProcessError as e:
@@ -294,9 +309,19 @@ class SCIPGoIndexer(SCIPIndexerBase):
             return True
         root = Index()
         root.ParseFromString(self.index_file.read_bytes())
+        # A root go.work can already pull nested modules into the root run.
+        covered = [
+            (module, directory)
+            for module, directory in nested
+            if any(
+                document.relative_path.startswith(directory + "/")
+                for document in root.documents
+            )
+        ]
+        pending = [entry for entry in nested if entry not in covered]
         indexes = []
         with tempfile.TemporaryDirectory(dir=self.output_dir) as scratch:
-            for number, (module, directory) in enumerate(nested):
+            for number, (module, directory) in enumerate(pending):
                 output = Path(scratch) / f"module-{number}.scip"
                 try:
                     subprocess.run(
@@ -314,16 +339,14 @@ class SCIPGoIndexer(SCIPIndexerBase):
                         f"Skipping Go module {module} at {directory}: {error}"
                     )
                     continue
-                indexes.append((directory, index))
-        directories = {
-            module: directory for module, directory in nested if module != root_module
-        }
-        merge_module_indexes(root, indexes, root_module, directories)
+                indexes.append((module, directory, index))
+        merge_module_indexes(root, indexes, root_module, covered)
         staging = self.index_file.with_name(self.index_file.name + ".merging")
         staging.write_bytes(root.SerializeToString())
         staging.replace(self.index_file)
         logger.info(
-            f"Merged {len(indexes)} of {len(nested)} nested Go modules into the index"
+            f"Merged {len(indexes)} of {len(pending)} nested Go modules into the "
+            f"index; the root run covered {len(covered)}"
         )
         return True
 

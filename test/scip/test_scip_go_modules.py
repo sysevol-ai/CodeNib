@@ -116,7 +116,7 @@ def _decode(tmp_path: Path, index: Index):
 
 def test_merged_graph_names_packages_by_directory_and_links_modules(tmp_path):
     merged = go.merge_module_indexes(
-        _root_index(), [("server", _server_index())], ROOT, {SERVER: "server"}
+        _root_index(), [(SERVER, "server", _server_index())], ROOT
     )
     assert [d.relative_path for d in merged.documents] == [
         "lib/lib.go",
@@ -158,8 +158,11 @@ def test_generate_index_merges_modules_and_skips_failures(tmp_path, monkeypatch)
     def run(command, **kwargs):
         cwd = Path(kwargs["cwd"])
         calls.append(cwd.relative_to(repository).as_posix())
-        # A repository go.work listing only some modules must not apply.
-        assert kwargs["env"]["GOWORK"] == "off"
+        # The root keeps any go.work; nested modules run without one.
+        if cwd == repository:
+            assert "env" not in kwargs
+        else:
+            assert kwargs["env"]["GOWORK"] == "off"
         output = Path(command[command.index("--output") + 1])
         if cwd == repository / "tools/gen":
             raise subprocess.CalledProcessError(1, command)
@@ -222,10 +225,7 @@ def test_versions_are_canonical_when_the_root_has_no_sources():
         [(2, _symbol(client, f"{client}/api", "Call().", "abc123"), 1)],
     )
     merged = go.merge_module_indexes(
-        Index(),
-        [("server", server), ("client", client_index)],
-        ROOT,
-        {SERVER: "server", client: "client"},
+        Index(), [(SERVER, "server", server), (client, "client", client_index)], ROOT
     )
     calls = {
         occurrence.symbol
@@ -234,3 +234,57 @@ def test_versions_are_canonical_when_the_root_has_no_sources():
         if "Call()" in occurrence.symbol
     }
     assert calls == {_symbol(ROOT, f"{ROOT}/client/api", "Call().", "abc123")}
+
+
+def test_duplicate_module_paths_keep_their_own_directories():
+    dup = "example.test/dup"
+    root = Index()
+    _document(root, "main.go", [(1, _symbol(dup, dup, "Thing#"), 0)])
+
+    def copy(line):
+        index = Index()
+        _document(index, "thing.go", [(line, _symbol(dup, dup, "Thing#"), 1)])
+        return index
+
+    merged = go.merge_module_indexes(
+        root, [(dup, "examples/a", copy(1)), (dup, "examples/b", copy(2))], ROOT
+    )
+    symbols = [d.occurrences[0].symbol for d in merged.documents]
+    assert symbols == [
+        _symbol(dup, dup, "Thing#"),
+        _symbol(ROOT, f"{ROOT}/examples/a", "Thing#"),
+        _symbol(ROOT, f"{ROOT}/examples/b", "Thing#"),
+    ]
+
+
+def test_modules_the_root_run_already_indexed_are_not_rerun(tmp_path, monkeypatch):
+    repository = tmp_path / "repository"
+    _write_modules(repository)
+    indexer = go.SCIPGoIndexer(repository, output_dir=tmp_path / "state")
+    monkeypatch.setattr(indexer, "_check_indexer_available", lambda: True)
+    calls = []
+
+    def run(command, **kwargs):
+        cwd = Path(kwargs["cwd"])
+        calls.append(cwd.relative_to(repository).as_posix())
+        index = _root_index()
+        if cwd == repository:
+            # A root go.work pulled the server module into ./...
+            for document in _server_index().documents:
+                document.relative_path = f"server/{document.relative_path}"
+                index.documents.append(document)
+        Path(command[command.index("--output") + 1]).write_bytes(
+            index.SerializeToString()
+        )
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(subprocess, "run", run)
+    assert indexer.generate_index() is True
+    assert calls == [".", "tools/gen"]
+    merged = Index()
+    merged.ParseFromString(indexer.index_file.read_bytes())
+    server = [d for d in merged.documents if d.relative_path.startswith("server/")]
+    assert [d.relative_path for d in server] == ["server/auth/auth.go"]
+    assert server[0].occurrences[0].symbol == _symbol(
+        ROOT, f"{ROOT}/server/auth", "Check()."
+    )
