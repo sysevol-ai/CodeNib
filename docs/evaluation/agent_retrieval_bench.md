@@ -157,9 +157,36 @@ keys. Gold, fix commits, and hard-negative annotations never enter retrieval.
 
 Primary aggregates are per-sample means over **all selected cases**, with
 failures contributing zero. The report also includes valid-only means,
-per-task summaries, failure IDs, and per-case errors. Commands exit nonzero on
-failure. Always report coverage and the selected case set with a score;
-truncated external rankings can lower MRR relative to a complete ranking.
+per-task and per-split summaries, failure IDs, and per-case errors. Commands
+exit nonzero on failure. Always report coverage and the selected case set with
+a score; truncated external rankings can lower MRR relative to a complete
+ranking.
+
+The split assigns each sample to `dev` when the first byte of
+`sha256(sample_id)` is even and to `heldout` otherwise: 164 and 181 of the 345
+samples. ARB community results use the same rule, so a method tuned on `dev`
+can report `heldout` separately.
+
+## Cost accounting
+
+A native run separates the cost of building an index from the cost of using
+it. Each corpus snapshot is indexed once in memory, and samples that share the
+snapshot reuse that index. The 345 samples use 218 distinct corpora.
+
+| Quantity | Where it is recorded |
+| --- | --- |
+| Cold index build | `index_build_seconds` and `index_size` (documents, tokens, vocabulary, indexed text bytes) on the sample that triggered the build; `corpus_load_seconds` separately |
+| Query latency | `query_seconds` on every sample |
+| Tool calls | `tool_calls`: one BM25 search per sample |
+| Model usage | None; `model_calls` is 0 |
+| Context budget | Not applicable: the route returns a file ranking, and BCY packs released text at its fixed budgets |
+
+`results.json` summarizes these under `retrieval_usage` (count, total, median,
+p95, and maximum) and records the CPU, core count, and peak memory under
+`environment`. A resumed run keeps the timings recorded before the
+interruption, and its peak memory covers only the final process. Offline
+rescoring reports no cost, because it cannot observe how external rankings
+were produced.
 
 ## Validation
 

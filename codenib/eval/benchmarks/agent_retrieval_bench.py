@@ -9,9 +9,13 @@ from __future__ import annotations
 import hashlib
 import importlib.metadata
 import json
+import math
+import os
 import platform
+import statistics
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -23,37 +27,73 @@ METRICS = ("Recall@5", "Recall@10", "Recall@20", "MRR") + tuple(
 )
 
 
-def rank_bm25(query_text: str, corpus: list[dict[str, Any]]) -> list[str]:
-    """All released chunks -> full chunk ranking -> first-hit file ranking.
+class BM25CorpusIndex:
+    """One in-memory BM25 index over every chunk of a released corpus snapshot.
 
-    The only task input is query_text. In particular this function cannot use
-    gold, fix commits, hard negatives, or given-file annotations as filters.
+    Construction is the cold index build; ``rank`` is one query. Samples that
+    share a snapshot reuse the index, so build and query costs stay separable.
     """
-    from codenib.code_chunking.base import CodeChunk
-    from codenib.index.sparse_idx.bm25_index import BM25CodeIndexer
-    from codenib.types import NODE_TYPE_FILE, NODE_TYPE_SYMBOL
 
-    chunks = [
-        CodeChunk(
-            content=row["text"],
-            start_line=row["start_line"] - 1,
-            end_line=row["end_line"] - 1,
-            chunk_type=NODE_TYPE_FILE if row["kind"] == "file" else NODE_TYPE_SYMBOL,
-            name=row.get("symbol") or row["path"],
-            file=row["path"],
-            # A colon keeps extensionless paths from being treated as directories.
-            node_id=f"{row['path']}:{row.get('symbol') or ''}:{number}",
+    def __init__(self, corpus: list[dict[str, Any]]):
+        from codenib.code_chunking.base import CodeChunk
+        from codenib.index.sparse_idx.bm25_index import BM25CodeIndexer
+        from codenib.types import NODE_TYPE_FILE, NODE_TYPE_SYMBOL
+
+        started = time.perf_counter()
+        chunks = [
+            CodeChunk(
+                content=row["text"],
+                start_line=row["start_line"] - 1,
+                end_line=row["end_line"] - 1,
+                chunk_type=(
+                    NODE_TYPE_FILE if row["kind"] == "file" else NODE_TYPE_SYMBOL
+                ),
+                name=row.get("symbol") or row["path"],
+                file=row["path"],
+                # A colon keeps extensionless paths from being treated as directories.
+                node_id=f"{row['path']}:{row.get('symbol') or ''}:{number}",
+            )
+            for number, row in enumerate(corpus)
+        ]
+        self._paths = {row["path"] for row in corpus}
+        self._top_k = len(chunks)
+        self._index = BM25CodeIndexer(chunks=chunks, max_k=self._top_k)
+        self.build_seconds = time.perf_counter() - started
+        retriever = self._index.retriever
+        self.size = {
+            **retriever.size(),
+            "indexed_text_bytes": sum(
+                len(document.page_content.encode("utf-8"))
+                for document in retriever.documents
+            ),
+        }
+
+    def rank(self, query_text: str) -> list[str]:
+        """Full chunk ranking -> first-hit file ranking over the whole corpus.
+
+        The only task input is query_text. In particular this cannot use gold,
+        fix commits, hard negatives, or given-file annotations as filters.
+        """
+        nodes = self._index.search(
+            query_text,
+            top_k=self._top_k,
+            filter_test=False,
+            return_code_content=False,
         )
-        for number, row in enumerate(corpus)
-    ]
-    index = BM25CodeIndexer(chunks=chunks, max_k=len(chunks))
-    nodes = index.search(
-        query_text, top_k=len(chunks), filter_test=False, return_code_content=False
-    )
-    ranked = list(dict.fromkeys(node.file for node in nodes))
-    if set(ranked) != {row["path"] for row in corpus}:
-        raise ValueError("BM25 did not return the complete corpus file ranking")
-    return ranked
+        ranked = list(dict.fromkeys(node.file for node in nodes))
+        if set(ranked) != self._paths:
+            raise ValueError("BM25 did not return the complete corpus file ranking")
+        return ranked
+
+
+def rank_bm25(query_text: str, corpus: list[dict[str, Any]]) -> list[str]:
+    return BM25CorpusIndex(corpus).rank(query_text)
+
+
+def sample_split(sample_id: str) -> str:
+    """Deterministic half split, shared with ARB community results."""
+    digest = hashlib.sha256(sample_id.encode("utf-8")).digest()
+    return "dev" if digest[0] % 2 == 0 else "heldout"
 
 
 def implementation_receipt() -> dict[str, Any]:
@@ -158,7 +198,81 @@ def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
             task: group([row for row in rows if row["task_type"] == task])
             for task in sorted({row["task_type"] for row in rows})
         },
+        "by_split": {
+            split: group([row for row in rows if row["split"] == split])
+            for split in sorted({row["split"] for row in rows})
+        },
     }
+
+
+def _distribution(values: list[float]) -> dict[str, float] | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    return {
+        "count": len(ordered),
+        "total": sum(ordered),
+        "median": statistics.median(ordered),
+        "p95": ordered[math.ceil(0.95 * len(ordered)) - 1],
+        "max": ordered[-1],
+    }
+
+
+def retrieval_usage(predictions: list[dict[str, Any]]) -> dict[str, Any]:
+    """Cold index builds, per-sample queries, and calls, never folded together.
+
+    A resumed run keeps the timings recorded before the interruption, so a
+    snapshot whose samples straddle it can count more than one build.
+    """
+    built = [row for row in predictions if row.get("index_built")]
+    queried = [row for row in predictions if "query_seconds" in row]
+    return {
+        "index_builds": len(built),
+        "corpus_load_seconds": _distribution(
+            [row["corpus_load_seconds"] for row in built]
+        ),
+        "index_build_seconds": _distribution(
+            [row["index_build_seconds"] for row in built]
+        ),
+        "index_size": {
+            field: _distribution([row["index_size"][field] for row in built])
+            for field in ("documents", "tokens", "vocabulary", "indexed_text_bytes")
+        },
+        "query_seconds": _distribution([row["query_seconds"] for row in queried]),
+        "tool_calls": _distribution([row.get("tool_calls", 0) for row in predictions]),
+        "model_calls": 0,
+        "api_cost_usd": 0.0,
+    }
+
+
+def run_environment() -> dict[str, Any]:
+    cpu = platform.processor() or platform.machine()
+    try:
+        with open("/proc/cpuinfo", encoding="utf-8") as handle:
+            cpu = next(
+                line.split(":", 1)[1].strip()
+                for line in handle
+                if line.startswith("model name")
+            )
+    except (OSError, StopIteration):
+        pass
+    environment: dict[str, Any] = {
+        "platform": platform.platform(),
+        "cpu": cpu,
+        "cpu_count": os.cpu_count(),
+        "index_location": "in memory; nothing persisted",
+    }
+    try:
+        import resource
+    except ImportError:  # pragma: no cover - Windows
+        return environment
+    # ru_maxrss is kilobytes on Linux and bytes on macOS. It covers only the
+    # final process of a resumed run.
+    scale = 1 if sys.platform == "darwin" else 1024
+    environment["peak_rss_bytes"] = (
+        resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * scale
+    )
+    return environment
 
 
 def json_digest(value: Any) -> str:
