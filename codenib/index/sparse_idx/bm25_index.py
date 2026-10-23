@@ -364,6 +364,10 @@ def _split_source_lines(source_text: str) -> List[str]:
     return lines
 
 
+# Lower-to-upper (getUser) and acronym-to-word (HTTPServer) boundaries.
+_CAMEL_BOUNDARY = re.compile(r"(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
+
+
 @dataclass(slots=True)
 class Document:
     """Minimal document shape shared with existing retrieval consumers."""
@@ -851,8 +855,14 @@ class BM25CodeIndexer:
             processed_tokens = []
             for token in tokens:
                 if token:
-                    # Lowercase all tokens for better matching
+                    # Keep the whole identifier for exact matches, then add its
+                    # camelCase parts so prose like "user name" finds
+                    # getUserName. Indexes built before the parts existed still
+                    # match on the whole token.
                     processed_tokens.append(token.lower())
+                    parts = _CAMEL_BOUNDARY.split(token)
+                    if len(parts) > 1:
+                        processed_tokens.extend(part.lower() for part in parts if part)
 
             # Join with spaces to create searchable terms
             return " ".join(filter(None, processed_tokens))
