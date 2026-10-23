@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -89,7 +90,7 @@ def test_nested_modules_skip_vendored_testdata_and_hidden_trees(tmp_path):
 
 
 def test_rename_moves_nested_packages_under_the_root_module():
-    directories = {SERVER: ("server", None)}
+    directories = {SERVER: {None: "server"}}
     rename = gm.rename_module_symbol
     assert rename(_symbol(SERVER, f"{SERVER}/auth", "Check()."), ROOT, directories) == (
         _symbol(ROOT, f"{ROOT}/server/auth", "Check().")
@@ -157,6 +158,8 @@ def test_generate_index_merges_modules_and_skips_failures(tmp_path, monkeypatch)
     calls = []
 
     def run(command, **kwargs):
+        if command[:2] == ["go", "env"]:
+            return subprocess.CompletedProcess(command, 0, "\n", "")
         cwd = Path(kwargs["cwd"])
         calls.append(cwd.relative_to(repository).as_posix())
         # The root keeps any go.work; nested modules run without one.
@@ -192,6 +195,8 @@ def test_single_module_repository_runs_scip_go_once(tmp_path, monkeypatch):
     calls = []
 
     def run(command, **kwargs):
+        if command[:2] == ["go", "env"]:
+            return subprocess.CompletedProcess(command, 0, "\n", "")
         calls.append(command)
         assert "env" not in kwargs
         indexer.index_file.write_bytes(_root_index().SerializeToString())
@@ -266,6 +271,8 @@ def test_modules_the_root_run_already_indexed_are_not_rerun(tmp_path, monkeypatc
     calls = []
 
     def run(command, **kwargs):
+        if command[:2] == ["go", "env"]:
+            return subprocess.CompletedProcess(command, 0, "\n", "")
         cwd = Path(kwargs["cwd"])
         calls.append(cwd.relative_to(repository).as_posix())
         index = _root_index()
@@ -394,6 +401,8 @@ def test_covered_modules_are_the_deepest_directories(tmp_path, monkeypatch):
     calls = []
 
     def run(command, **kwargs):
+        if command[:2] == ["go", "env"]:
+            return subprocess.CompletedProcess(command, 0, "\n", "")
         cwd = Path(kwargs["cwd"])
         calls.append(cwd.relative_to(repository).as_posix())
         index = _root_index()
@@ -429,13 +438,17 @@ def test_go_files_follow_the_module_grammar(tmp_path):
 
 
 def test_versioned_replacements_apply_only_to_their_version():
-    mapping = {"example.com/dep": ("local", "v1.0.0")}
+    mapping = {"example.com/dep": {"v1.0.0": "local", "v1.2.0": "other"}}
     pinned = _symbol("example.com/dep", "example.com/dep/x", "Run().", "v1.0.0")
     other = _symbol("example.com/dep", "example.com/dep/x", "Run().", "v1.1.0")
     assert gm.rename_module_symbol(pinned, ROOT, mapping) == _symbol(
         ROOT, f"{ROOT}/local/x", "Run().", "v1.0.0"
     )
     assert gm.rename_module_symbol(other, ROOT, mapping) == other
+    newer = _symbol("example.com/dep", "example.com/dep/x", "Run().", "v1.2.0")
+    assert gm.rename_module_symbol(newer, ROOT, mapping) == _symbol(
+        ROOT, f"{ROOT}/other/x", "Run().", "v1.2.0"
+    )
 
 
 def test_workspace_and_covered_module_replacements_apply_in_the_root_run():
@@ -459,9 +472,26 @@ def test_workspace_and_covered_module_replacements_apply_in_the_root_run():
     ]
 
 
-def test_active_workspace_honors_gowork(tmp_path, monkeypatch):
-    (tmp_path / "go.work").write_text("go 1.22\nuse ./server\n", encoding="utf-8")
-    monkeypatch.delenv("GOWORK", raising=False)
-    assert gm.active_workspace(tmp_path) == tmp_path / "go.work"
+@pytest.mark.parametrize("go_available", [True, False])
+def test_active_workspace_follows_the_go_command(tmp_path, monkeypatch, go_available):
+    (tmp_path / "go.work").write_text("go 1.22\nuse ./repo\n", encoding="utf-8")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    def go_env(command, **kwargs):
+        if not go_available:
+            raise FileNotFoundError(command[0])
+        setting = os.environ.get("GOWORK", "")
+        found = "off" if setting == "off" else str(tmp_path / "go.work")
+        return subprocess.CompletedProcess(command, 0, found + "\n", "")
+
+    monkeypatch.setattr(gm.subprocess, "run", go_env)
+    for setting in (None, "auto"):
+        if setting is None:
+            monkeypatch.delenv("GOWORK", raising=False)
+        else:
+            monkeypatch.setenv("GOWORK", setting)
+        # The enclosing directory's go.work applies to the repository.
+        assert gm.active_workspace(repo) == tmp_path / "go.work"
     monkeypatch.setenv("GOWORK", "off")
-    assert gm.active_workspace(tmp_path) is None
+    assert gm.active_workspace(repo) is None

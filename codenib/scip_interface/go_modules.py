@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
@@ -139,17 +140,48 @@ def local_replacements(go_file: Path, project_root: Path) -> List[Replacement]:
 
 
 def active_workspace(project_root: Path) -> Optional[Path]:
-    """The go.work file the root scip-go run uses, honoring ``GOWORK``."""
-    setting = os.environ.get("GOWORK")
+    """The go.work file a go command run in ``project_root`` would use.
+
+    Asks ``go env GOWORK``; without a go command, applies its rule: ``GOWORK``
+    names the file or ``off``, and unset or ``auto`` searches the directory
+    and its parents.
+    """
+    try:
+        result = subprocess.run(
+            ["go", "env", "GOWORK"],
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=True,
+        )
+        setting = result.stdout.strip()
+        return Path(setting) if setting and setting != "off" else None
+    except (OSError, subprocess.SubprocessError):
+        pass
+    setting = os.environ.get("GOWORK", "")
     if setting == "off":
         return None
-    candidate = Path(setting) if setting else project_root / "go.work"
-    return candidate if candidate.is_file() else None
+    if setting and setting != "auto":
+        return Path(setting) if Path(setting).is_file() else None
+    for directory in [project_root, *project_root.resolve().parents]:
+        if (directory / "go.work").is_file():
+            return directory / "go.work"
+    return None
 
 
-# A mapping entry: (directory, required version or None). Directory "" is the
-# root module itself, whose symbols keep their packages.
-_Mapping = Dict[str, Tuple[str, Optional[str]]]
+# Module path -> {required version (None for any) -> directory}. Directory ""
+# is the root module itself, whose symbols keep their packages.
+_Mapping = Dict[str, Dict[Optional[str], str]]
+
+
+def _merged(*mappings: _Mapping) -> _Mapping:
+    """Later mappings override earlier ones per module path and version."""
+    result: _Mapping = {}
+    for mapping in mappings:
+        for module, versions in mapping.items():
+            result[module] = {**result.get(module, {}), **versions}
+    return result
 
 
 def rename_module_symbol(
@@ -158,17 +190,18 @@ def rename_module_symbol(
     """Rename a module's scip-go symbol into the root module's namespace.
 
     ``version``, when given, replaces the symbol's version, so a reference to
-    a required release meets the checked-out definition. An entry with a
-    required version applies only to symbols at that version.
+    a required release meets the checked-out definition. A version-specific
+    entry applies only to symbols at that version and takes precedence over
+    an entry for any version.
     """
     parts = symbol.split(" ", 4)
     if len(parts) < 5 or parts[:2] != ["scip-go", "gomod"]:
         return symbol
     module = parts[2]
-    entry = mapping.get(module)
-    if entry is None or (entry[1] is not None and entry[1] != parts[3]):
+    versions = mapping.get(module, {})
+    directory = versions.get(parts[3], versions.get(None))
+    if directory is None:
         return symbol
-    directory = entry[0]
 
     def package(match: re.Match) -> str:
         path = match.group(1)
@@ -185,7 +218,7 @@ def rename_module_symbol(
 
 
 def _replacing(replacements: Iterable[Replacement]) -> _Mapping:
-    return {r.path: (r.directory, r.version) for r in replacements}
+    return _merged(*({r.path: {r.version: r.directory}} for r in replacements))
 
 
 def merge_module_indexes(
@@ -202,9 +235,10 @@ def merge_module_indexes(
     indexed on its own, and ``modules`` the ``(module path, directory)`` of
     nested modules the root run already covered through a workspace.
     ``replacements`` maps each go.mod directory (``""`` for the root) to its
-    local replacements, which apply only to that module's documents;
-    ``workspace`` holds the active go.work replacements, which take
-    precedence in the root run, as in Go.
+    local replacements. A module indexed on its own uses only its own. The
+    root run's documents use those of the root and every covered workspace
+    module, with the active go.work's ``workspace`` replacements taking
+    precedence, as in a Go workspace build.
 
     A module path declared in one directory is renamed everywhere. A path
     declared in several directories is renamed only inside its own index, so
@@ -220,13 +254,12 @@ def merge_module_indexes(
         if module != root_module:
             places.setdefault(module, set()).add(directory)
     unique: _Mapping = {
-        module: (next(iter(directories)), None)
+        module: {None: next(iter(directories))}
         for module, directories in places.items()
         if len(directories) == 1
     }
-    unique[root_module] = ("", None)
-    work = _replacing(workspace)
-    covered = sorted({directory for _module, directory in modules}, key=len)
+    unique[root_module] = {None: ""}
+    covered = sorted({directory for _module, directory in modules})
 
     # The root module's own version, else the first nested module's, so the
     # choice is deterministic even when the root holds no Go sources.
@@ -252,30 +285,25 @@ def merge_module_indexes(
         for information in document.symbols:
             rename_information(information, rename)
 
-    # Root-run documents use the replacements of the module that holds them:
-    # the deepest covered module directory, else the root module.
-    root_renamers = {
-        directory: renamer(
-            {**unique, **_replacing(replacements.get(directory, ())), **work}
+    shared = renamer(
+        _merged(
+            unique,
+            *(_replacing(replacements.get(d, ())) for d in ["", *covered]),
+            _replacing(workspace),
         )
-        for directory in ["", *covered]
-    }
+    )
     for document in root.documents:
-        owner = ""
-        for directory in covered:
-            if document.relative_path.startswith(directory + "/"):
-                owner = directory
-        rename_document(document, root_renamers[owner])
+        rename_document(document, shared)
     for information in root.external_symbols:
-        rename_information(information, root_renamers[""])
+        rename_information(information, shared)
     known = {information.symbol for information in root.external_symbols}
     for module, directory, index in nested:
         own = renamer(
-            {
-                **unique,
-                **_replacing(replacements.get(directory, ())),
-                module: (directory, None),
-            }
+            _merged(
+                unique,
+                _replacing(replacements.get(directory, ())),
+                {module: {None: directory}},
+            )
         )
         for document in index.documents:
             rename_document(document, own)
