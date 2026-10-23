@@ -128,6 +128,71 @@ a failure. Duplicate file paths collapse at their first occurrence. Unknown or
 duplicate sample IDs reject the input. Snapshot mismatches and unknown file
 paths fail the corresponding case.
 
+## Retrieval methods
+
+`codenib-arb run --method` chooses how files are ranked. Every method reads
+only the released query, indexes each corpus snapshot once, and is scored by
+the same pinned evaluator. All methods except `graph_expansion` read only the
+released corpus; `graph_expansion` also reads the full source, a separate
+condition described below.
+
+| Method | Index per snapshot | Ranking |
+| --- | --- | --- |
+| `bm25` (default) | CodeNib BM25 over every released file and symbol chunk | Every chunk ranked; each file takes the rank of its first chunk |
+| `dense` | Exact inner-product search over Qwen3-Embedding-0.6B vectors of every chunk | Same first-hit file ranking |
+| `hybrid` | Both indexes above | CodeNib's file-level weighted RRF (k = 60) of the two file rankings |
+| `zoekt` | Zoekt trigram index of every file and symbol chunk | One Zoekt query per code-like term in the query; files ordered by matched terms, then first match |
+| `graph_expansion` | BM25 as above, plus a CodeNib code graph of the full source | The top five BM25 files, then up to 15 files connected to them by code references, then the rest in BM25 order |
+
+The dense model embeds chunks truncated to 512 tokens, with no query or
+document instruction, which matches ARB's own embedding baseline. On a GPU it
+runs in bfloat16. Each distinct chunk text is embedded once per run, because
+snapshots of the same repository share most files, and `index_size` records
+how many chunks a build encoded and how many it reused. Dense methods need the
+`semantic` extra; a missing extra stops the run before any case.
+
+The Zoekt method takes its terms from the query's string values: file names,
+backticked spans, and identifiers written with `_`, camelCase, or capitals, up
+to 32 per sample. Each term is one tool call. Files that match no term are not
+ranked, so its rankings can be shorter than the corpus. It needs `make
+zoekt-tool` or `--zoekt-bin-dir`.
+
+### Full-source graph expansion
+
+A code graph records which symbols reference which, as resolved by the
+language's compiler-grade indexer (SCIP, or a language server). The indexer
+needs the real repository, so `graph_expansion` fetches each sample's
+`base_commit` into `--workspace` and builds the graph from that checkout:
+
+```bash
+python -m pip install -e '.[datasets,graph]'
+make scip    # SCIP indexers for Python, TypeScript, Go, Rust, Java, and more
+codenib-arb run --method graph_expansion --workspace /tmp/arb-src \
+  --prepared /tmp/arb-prepared.json --upstream /tmp/arb --output /tmp/arb-graph
+```
+
+The rules for this condition follow the
+[ARB maintainers' reply](https://github.com/eyuansu62/agent-retrieval-bench/issues/2#issuecomment-6334640769):
+
+- The checkout is a depth-one fetch of `base_commit`, so neither the resolving
+  change nor any later commit is in its object store. Every use resets it to
+  that commit and removes untracked and ignored files; hidden Git index flags
+  are rejected.
+- Only the released query reaches retrieval; gold and annotations never do.
+- Graph neighbors outside the released candidate set are dropped and counted
+  in `removed_non_candidate_paths`. Scores and canonical BCY use released text.
+
+The graph covers each language holding at least 10% of the snapshot's source
+files and is built in a child process with a 30-minute limit. It never installs
+dependencies or runs project setup, but the Rust and Java indexers run the
+project's own build tooling. If no graph can be built, the sample is ranked by
+BM25 and recorded with `graph_used: false`. Fetching source is reported as
+`source_fetch_seconds`, apart from the build. CodeNib's Go graph omits
+`_test.go` files, so expansion cannot propose Go tests.
+
+Rankings produced elsewhere from the full source can be scored under the same
+rule with `codenib-arb evaluate --source-access full-source`.
+
 ## Metric contract
 
 CodeNib calls upstream `target_gold_files`, `query_has_leakage`, `recall_at`,
@@ -170,16 +235,21 @@ can report `heldout` separately.
 ## Cost accounting
 
 A native run separates the cost of building an index from the cost of using
-it. Each corpus snapshot is indexed once in memory, and samples that share the
-snapshot reuse that index. The 345 samples use 218 distinct corpora.
+it. Each corpus snapshot is indexed once, and samples that share the snapshot
+reuse that index. The 345 samples use 218 distinct corpora.
 
 | Quantity | Where it is recorded |
 | --- | --- |
-| Cold index build | `index_build_seconds` and `index_size` (documents, tokens, vocabulary, indexed text bytes) on the sample that triggered the build; `corpus_load_seconds` separately |
+| Cold index build | `index_build_seconds` and `index_size` on the sample that triggered the build; `corpus_load_seconds` and, for `graph_expansion`, `source_fetch_seconds` separately |
 | Query latency | `query_seconds` on every sample |
-| Tool calls | `tool_calls`: one BM25 search per sample |
-| Model usage | None; `model_calls` is 0 |
-| Context budget | Not applicable: the route returns a file ranking, and BCY packs released text at its fixed budgets |
+| Tool calls | `tool_calls` per sample: one search for `bm25` and `dense`, two for `hybrid` and for `graph_expansion` with a graph, one per term for `zoekt` |
+| Model usage | No API calls (`model_calls` is 0). `dense` and `hybrid` run a local embedding model; `retrieval_usage.embedding` records its revision, loads, and encoded and reused chunks |
+| Context budget | Not applicable: every method returns a file ranking, and BCY packs released text at its fixed budgets |
+
+`index_size` depends on the method: BM25 documents, tokens, vocabulary, and
+indexed text bytes; dense documents, dimension, and vector bytes; the Zoekt
+index's documents and bytes on disk; and the code graph's vertices, edges,
+reference edges, and build time.
 
 `results.json` summarizes these under `retrieval_usage` (count, total, median,
 p95, and maximum) and records the CPU, core count, and peak memory under
@@ -215,29 +285,20 @@ all 345 samples remains a separate measurement.
 ## Extending retrieval experiments
 
 The imported-ranking boundary can score additional methods on the same cases.
-These routes are candidates for later adapters, not measured ARB support in
-this release:
+These routes are candidates for later adapters:
 
 | Existing CodeNib capability | Proposed comparison |
 | --- | --- |
-| Zoekt trigram and regex search | Multi-round exact symbol, path, and trace search |
-| FAISS vector retrieval | Semantic recall control on the same released text |
-| CodeGraph relationships | Search seeds plus definition/reference/call expansion |
-| Hybrid retrieval and reranking | Candidate fusion and ordering at fixed budgets |
+| Zoekt and graph tools inside an agent loop | Multi-round exact symbol, path, trace, and relationship search |
+| Retrieve → rerank | Candidate ordering with a model at fixed budgets |
 
 Before comparing agent strategies, fix the model, tool permissions, query
 budget, and final context budget. Report index build time and size separately
 from query latency and model cost.
 
-Code-graph indexes usually need the full repository, which shows more than the
-released corpus because the corpus builder truncates long files. The ARB
-maintainers asked that such runs be reported as a separate condition
-([issue #2 reply](https://github.com/eyuansu62/agent-retrieval-bench/issues/2#issuecomment-6334640769)).
-The native baseline reads only the released corpus. A full-source run may index
-a clean working tree at each sample's `base_commit`, without later history. It
-must be labeled as full source, keep gold labels and resolving changes out of
-retrieval inputs, score only files in the released candidate set, and compute
-canonical BCY on the released text.
+Full-source results are a separate condition from released-corpus results;
+report them in separate rows, as the [graph expansion rules](#full-source-graph-expansion)
+describe.
 
 An indexed-interactive comparison, where an agent searches iteratively with
 and without graph expansion under a fixed model and budget, is a follow-up

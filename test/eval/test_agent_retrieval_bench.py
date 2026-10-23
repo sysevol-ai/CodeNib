@@ -115,6 +115,7 @@ def fake_index(rank):
 
     class Index:
         build_seconds = 0.5
+        tool_calls = 1
         size = {"documents": 2, "tokens": 6, "vocabulary": 3, "indexed_text_bytes": 9}
 
         def __init__(self, corpus):
@@ -712,3 +713,58 @@ def test_canonical_bcy_content_boundary_and_file_dedup(released_data, upstream):
     assert row["metrics"]["BCY@4000"] == 0
     assert row["metrics"]["BCY@8000"] == 1
     assert row["packed"]["4000"]["used_tokens"] == 4000
+
+
+def test_full_source_access_reaches_scorer_and_report(
+    released_data, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(runner, "validate_upstream", lambda path: path)
+    seen = []
+
+    def score(jobs, *args):
+        seen.extend(job["restrict_to_candidates"] for job in jobs)
+        return [
+            {
+                "sample_id": job["sample"]["id"],
+                "task_type": job["sample"]["task_type"],
+                "status": "ok",
+                "metrics": dict.fromkeys(arb.METRICS, 1.0),
+            }
+            for job in jobs
+        ]
+
+    monkeypatch.setattr(runner, "evaluate_official", score)
+    prepared = runner.prepare(released_data)
+    result = runner.evaluate(
+        prepared, predictions(prepared), tmp_path, sys.executable, "full-source"
+    )
+    assert seen == [True] * 4
+    assert result["protocol"]["source_access"] == "full-source"
+    with pytest.raises(ValueError, match="source access"):
+        runner.evaluate(prepared, [], tmp_path, sys.executable, "checkout")
+
+
+def test_native_method_fixes_its_source_access(released_data, tmp_path, monkeypatch):
+    monkeypatch.setattr(runner, "validate_upstream", lambda path: path)
+    path, _prepared = prepared_file(released_data, tmp_path)
+    with pytest.raises(ValueError, match="released-corpus"):
+        runner.execute(path, tmp_path / "run", tmp_path, access="full-source")
+    with pytest.raises(ValueError, match="--workspace"):
+        runner.method_indexer("graph_expansion", {})
+
+
+@pytest.mark.integration
+def test_official_full_source_scores_only_released_files(released_data, upstream):
+    prepared = runner.prepare(released_data)
+    pred = predictions(prepared)
+    pred[0]["ranked_files"] = ["vendor/full_source_only.py"] + pred[0]["ranked_files"]
+    strict = runner.evaluate(prepared, pred, upstream, sys.executable)
+    assert strict["cases"][0]["status"] == "error"
+    full = runner.evaluate(prepared, pred, upstream, sys.executable, "full-source")
+    reference = runner.evaluate(
+        prepared, predictions(prepared), upstream, sys.executable
+    )
+    assert full["cases"][0]["status"] == "ok"
+    assert full["cases"][0]["removed_non_candidate_paths"] == 1
+    # The dropped file consumes no rank before cutoffs.
+    assert full["cases"][0]["metrics"] == reference["cases"][0]["metrics"]

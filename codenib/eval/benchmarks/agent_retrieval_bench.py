@@ -27,6 +27,33 @@ METRICS = ("Recall@5", "Recall@10", "Recall@20", "MRR") + tuple(
 )
 
 
+def corpus_chunks(corpus: list[dict[str, Any]]) -> list[Any]:
+    """Every released row as a CodeChunk; identities stay unique per row."""
+    from codenib.code_chunking.base import CodeChunk
+    from codenib.types import NODE_TYPE_FILE, NODE_TYPE_SYMBOL
+
+    return [
+        CodeChunk(
+            content=row["text"],
+            start_line=row["start_line"] - 1,
+            end_line=row["end_line"] - 1,
+            chunk_type=NODE_TYPE_FILE if row["kind"] == "file" else NODE_TYPE_SYMBOL,
+            name=row.get("symbol") or row["path"],
+            file=row["path"],
+            # A colon keeps extensionless paths from being treated as directories.
+            node_id=f"{row['path']}:{row.get('symbol') or ''}:{number}",
+        )
+        for number, row in enumerate(corpus)
+    ]
+
+
+def complete_file_ranking(files: Any, corpus_paths: set[str]) -> list[str]:
+    ranked = list(dict.fromkeys(files))
+    if set(ranked) != corpus_paths:
+        raise ValueError("retrieval did not return the complete corpus file ranking")
+    return ranked
+
+
 class BM25CorpusIndex:
     """One in-memory BM25 index over every chunk of a released corpus snapshot.
 
@@ -34,27 +61,13 @@ class BM25CorpusIndex:
     share a snapshot reuse the index, so build and query costs stay separable.
     """
 
+    tool_calls = 1
+
     def __init__(self, corpus: list[dict[str, Any]]):
-        from codenib.code_chunking.base import CodeChunk
         from codenib.index.sparse_idx.bm25_index import BM25CodeIndexer
-        from codenib.types import NODE_TYPE_FILE, NODE_TYPE_SYMBOL
 
         started = time.perf_counter()
-        chunks = [
-            CodeChunk(
-                content=row["text"],
-                start_line=row["start_line"] - 1,
-                end_line=row["end_line"] - 1,
-                chunk_type=(
-                    NODE_TYPE_FILE if row["kind"] == "file" else NODE_TYPE_SYMBOL
-                ),
-                name=row.get("symbol") or row["path"],
-                file=row["path"],
-                # A colon keeps extensionless paths from being treated as directories.
-                node_id=f"{row['path']}:{row.get('symbol') or ''}:{number}",
-            )
-            for number, row in enumerate(corpus)
-        ]
+        chunks = corpus_chunks(corpus)
         self._paths = {row["path"] for row in corpus}
         self._top_k = len(chunks)
         self._index = BM25CodeIndexer(chunks=chunks, max_k=self._top_k)
@@ -80,10 +93,7 @@ class BM25CorpusIndex:
             filter_test=False,
             return_code_content=False,
         )
-        ranked = list(dict.fromkeys(node.file for node in nodes))
-        if set(ranked) != self._paths:
-            raise ValueError("BM25 did not return the complete corpus file ranking")
-        return ranked
+        return complete_file_ranking((node.file for node in nodes), self._paths)
 
 
 def rank_bm25(query_text: str, corpus: list[dict[str, Any]]) -> list[str]:
@@ -104,20 +114,45 @@ def implementation_receipt() -> dict[str, Any]:
         Path(__file__),
         Path(__file__).with_name("agent_retrieval_bench_runner.py"),
         Path(__file__).with_name("_arb_evaluate.py"),
+        Path(__file__).with_name("_arb_methods.py"),
         Path(dataset.__file__),
         Path(bm25.__file__),
     ]
     package_root = Path(__file__).resolve().parents[2]
+    # Methods delegate to vector, fusion, and graph code across the package,
+    # so the receipt also binds every CodeNib source file.
+    sources = hashlib.sha256()
+    for path in sorted(package_root.rglob("*.py")):
+        sources.update(str(path.relative_to(package_root)).encode("utf-8"))
+        sources.update(sha256_file(path).encode("ascii"))
     return {
         "files": {
             str(path.resolve().relative_to(package_root)): sha256_file(path)
             for path in files
         },
+        "codenib_sources_sha256": sources.hexdigest(),
         "python": platform.python_version(),
-        "packages": {
-            name: importlib.metadata.version(name) for name in ("rank-bm25", "numpy")
-        },
+        "packages": {name: _version(name) for name in RECEIPT_PACKAGES},
     }
+
+
+RECEIPT_PACKAGES = (
+    "rank-bm25",
+    "numpy",
+    "torch",
+    "transformers",
+    "sentence-transformers",
+    "faiss-cpu",
+    "igraph",
+    "protobuf",
+)
+
+
+def _version(name: str) -> str | None:
+    try:
+        return importlib.metadata.version(name)
+    except importlib.metadata.PackageNotFoundError:
+        return None
 
 
 def validate_upstream(checkout: Path) -> Path:
@@ -205,7 +240,7 @@ def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _distribution(values: list[float]) -> dict[str, float] | None:
+def distribution(values: list[float]) -> dict[str, float] | None:
     if not values:
         return None
     ordered = sorted(values)
@@ -218,6 +253,20 @@ def _distribution(values: list[float]) -> dict[str, float] | None:
     }
 
 
+def _flatten(value: dict[str, Any], prefix: str = "") -> dict[str, float]:
+    """Nested numeric sizes, e.g. a hybrid's ``dense.documents``.
+
+    Descriptive fields such as graph languages or errors are not sizes.
+    """
+    flat: dict[str, float] = {}
+    for key, item in value.items():
+        if isinstance(item, dict):
+            flat.update(_flatten(item, f"{prefix}{key}."))
+        elif isinstance(item, (int, float)) and not isinstance(item, bool):
+            flat[f"{prefix}{key}"] = item
+    return flat
+
+
 def retrieval_usage(predictions: list[dict[str, Any]]) -> dict[str, Any]:
     """Cold index builds, per-sample queries, and calls, never folded together.
 
@@ -226,20 +275,25 @@ def retrieval_usage(predictions: list[dict[str, Any]]) -> dict[str, Any]:
     """
     built = [row for row in predictions if row.get("index_built")]
     queried = [row for row in predictions if "query_seconds" in row]
+    index_sizes = [_flatten(row["index_size"]) for row in built]
     return {
         "index_builds": len(built),
-        "corpus_load_seconds": _distribution(
+        "corpus_load_seconds": distribution(
             [row["corpus_load_seconds"] for row in built]
         ),
-        "index_build_seconds": _distribution(
+        "index_build_seconds": distribution(
             [row["index_build_seconds"] for row in built]
         ),
         "index_size": {
-            field: _distribution([row["index_size"][field] for row in built])
-            for field in ("documents", "tokens", "vocabulary", "indexed_text_bytes")
+            field: distribution(
+                [sizes[field] for sizes in index_sizes if field in sizes]
+            )
+            for field in dict.fromkeys(
+                field for sizes in index_sizes for field in sizes
+            )
         },
-        "query_seconds": _distribution([row["query_seconds"] for row in queried]),
-        "tool_calls": _distribution([row.get("tool_calls", 0) for row in predictions]),
+        "query_seconds": distribution([row["query_seconds"] for row in queried]),
+        "tool_calls": distribution([row.get("tool_calls", 0) for row in predictions]),
         "model_calls": 0,
         "api_cost_usd": 0.0,
     }
@@ -260,7 +314,6 @@ def run_environment() -> dict[str, Any]:
         "platform": platform.platform(),
         "cpu": cpu,
         "cpu_count": os.cpu_count(),
-        "index_location": "in memory; nothing persisted",
     }
     try:
         import resource
