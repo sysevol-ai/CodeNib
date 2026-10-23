@@ -127,6 +127,10 @@ class CodeNibToolProvider:
             )
             if key in receipt
         }
+        if not cached and "last_retry" in receipt:
+            # This run paid for the retry, not for the build it kept.
+            for key in ("build_seconds", "fetch_seconds"):
+                status[key] = receipt["last_retry"].get(key, status.get(key))
         status.update(cached=cached, available=index is not None)
         if index is not None:
             status["size"] = index.size
@@ -199,15 +203,21 @@ class CodeNibToolProvider:
         # Fetching source is acquisition, not index construction.
         receipt["build_seconds"] = time.perf_counter() - started - fetch_seconds
         receipt["fetch_seconds"] = fetch_seconds
-        retry_lost_graph = (
-            not receipt["graph"]
-            and previous is not None
+        usable = (
+            previous is not None
             and previous.get("graph")
             and previous.get("identity") == self._identity
             and previous.get("languages") == languages
         )
-        if retry_lost_graph:
-            # A failed retry keeps the usable partial graph and records itself.
+        # A retry replaces a usable graph only if it covers every language
+        # the old one did; otherwise the old graph stays.
+        retry_lost_coverage = usable and (
+            not receipt["graph"]
+            or not set(previous.get("available") or [])
+            <= set(receipt.get("available") or [])
+        )
+        if retry_lost_coverage:
+            # The kept graph records the attempt that did not replace it.
             shutil.rmtree(staging, ignore_errors=True)
             kept = {**previous, "last_retry": receipt}
             (directory / _RECEIPT).write_text(json.dumps(kept) + "\n", encoding="utf-8")

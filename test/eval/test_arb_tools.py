@@ -305,6 +305,20 @@ def test_a_failed_retry_keeps_the_usable_partial_graph(builds, monkeypatch, tmp_
         ).read_text()
     )
     assert "indexer crashed" in receipt["last_retry"]["error"]
+    assert status["build_seconds"] == receipt["last_retry"]["build_seconds"]
+
+    # A retry that covers other languages but loses python keeps the old graph.
+    def other_subset(checkout, output, languages):
+        (output / "arb_graph.pkl").write_bytes(saved.read_bytes())
+        return {
+            "available_languages": ["rust"],
+            "failed_languages": {"python": "timeout"},
+            "graph": str(output / "arb_graph.pkl"),
+        }
+
+    monkeypatch.setattr(methods, "build_graph", other_subset)
+    status = _provider(tmp_path)[1]
+    assert status["available"] and status["failed"] == {"rust": "toolchain missing"}
 
 
 def test_identity_includes_runtime_and_graph_tools(tmp_path):
