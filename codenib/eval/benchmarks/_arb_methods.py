@@ -109,13 +109,17 @@ class DenseEncoder:
             "index_type": "flat",
             "index_metric": "ip",
         }
+        # A prompt name, if the run selects one, resolves in the pinned model.
+        prompt_name = config.get("query_prompt_name")
         template = CodeVectorStore(
             **self.store_options,
             device=config["device"],
             default_batch_size=config["batch_size"],
             max_seq_length=config["max_seq_length"],
-            # ARB's embedding baseline uses no query or document instruction.
-            query_prompt="",
+            # No document instruction, as in ARB's embedding baseline; the
+            # query instruction is empty unless a run selects one.
+            query_prompt=None if prompt_name else config.get("query_prompt", ""),
+            query_prompt_name=prompt_name,
             document_prompt="",
             encode_kwargs={"normalize_embeddings": True},
         )
