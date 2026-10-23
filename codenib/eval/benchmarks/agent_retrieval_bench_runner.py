@@ -34,6 +34,7 @@ from codenib.dataset.agent_retrieval_bench import (
 from .agent_retrieval_bench import (
     ARB_UPSTREAM_REVISION,
     BM25CorpusIndex,
+    distribution,
     evaluate_official,
     implementation_receipt,
     json_digest,
@@ -176,12 +177,25 @@ def evaluate(
     predictions: list[dict[str, Any]],
     upstream: Path,
     python: str,
+    access: str = "released-corpus",
 ) -> dict[str, Any]:
+    """Score with the pinned evaluator.
+
+    Full-source rankings may name files outside the released candidate set;
+    those are dropped before cutoffs and counted. Released-corpus rankings
+    must name only released files.
+    """
+    if access not in SOURCE_ACCESS:
+        raise ValueError(f"unknown source access: {access}")
     by_id = prediction_map(predictions, prepared)
     jobs = []
     for record in prepared["cases"]:
         sample = record["sample"]
-        job = {"sample": sample, "prediction": by_id.get(sample["id"])}
+        job = {
+            "sample": sample,
+            "prediction": by_id.get(sample["id"]),
+            "restrict_to_candidates": access == "full-source",
+        }
         try:
             path, _rows = checked_corpus(prepared, record)
             job.update(corpus_path=str(path), corpus_sha256=record["corpus"]["sha256"])
@@ -196,6 +210,7 @@ def evaluate(
         "evaluator_revision": ARB_UPSTREAM_REVISION,
         "protocol": {
             "mode": "static-positive",
+            "source_access": access,
             "candidate_filter": "all_files",
             "mrr_ranking": "full supplied file ranking; see per-case ranking_depth",
             "bcy_rank_depth": 20,
@@ -210,7 +225,15 @@ def evaluate(
     }
 
 
-METHODS = ("bm25", "dense", "hybrid", "zoekt")
+METHODS = ("bm25", "dense", "hybrid", "zoekt", "graph_expansion")
+SOURCE_ACCESS = ("released-corpus", "full-source")
+GRAPH_TOOLS = (
+    "scip-python",
+    "scip-go",
+    "scip-typescript",
+    "rust-analyzer",
+    "scip-java",
+)
 
 
 def zoekt_bin_dir(explicit: Path | None) -> Path:
@@ -226,6 +249,10 @@ def zoekt_bin_dir(explicit: Path | None) -> Path:
         if all((directory / name).is_file() for name in ("zoekt-index", "zoekt")):
             return directory.resolve()
     raise ValueError("zoekt-index and zoekt not found; run `make zoekt-tool`")
+
+
+def source_access(method: str) -> str:
+    return "full-source" if method == "graph_expansion" else "released-corpus"
 
 
 def method_config(method: str, *, zoekt_bin: Path | None = None) -> dict[str, Any]:
@@ -253,11 +280,26 @@ def method_config(method: str, *, zoekt_bin: Path | None = None) -> dict[str, An
             },
             "max_terms": methods.ZOEKT_MAX_TERMS,
         }
+    if method == "graph_expansion":
+        tools = {name: shutil.which(name) for name in GRAPH_TOOLS}
+        return {
+            "seed_files": methods.GRAPH_SEED_FILES,
+            "neighbor_files": methods.GRAPH_NEIGHBOR_FILES,
+            "build_timeout_seconds": methods.GRAPH_BUILD_TIMEOUT,
+            "min_language_share": methods.GRAPH_MIN_LANGUAGE_SHARE,
+            "toolchain_sha256": {
+                name: sha256_file(Path(path)) for name, path in tools.items() if path
+            },
+        }
     return {}
 
 
 def method_indexer(
-    method: str, *, zoekt_bin: Path | None = None, device: str | None = None
+    method: str,
+    *,
+    zoekt_bin: Path | None = None,
+    device: str | None = None,
+    workspace: Path | None = None,
 ) -> tuple[Callable[[list[dict[str, Any]]], Any], Callable[[], dict[str, Any]]]:
     """(build one snapshot index, run-level usage) for a native method.
 
@@ -270,6 +312,21 @@ def method_indexer(
     if method == "zoekt":
         directory = zoekt_bin_dir(zoekt_bin)
         return (lambda corpus: methods.ZoektCorpusIndex(corpus, directory)), dict
+    if method == "graph_expansion":
+        if workspace is None:
+            raise ValueError("graph_expansion needs --workspace for source checkouts")
+        root = workspace.resolve()
+        root.mkdir(parents=True, exist_ok=True)
+
+        def build_graph(corpus: list[dict[str, Any]]) -> Any:
+            return methods.GraphExpansionIndex(
+                corpus,
+                repo=corpus[0]["repo"],
+                base_commit=corpus[0]["base_commit"],
+                workspace=root,
+            )
+
+        return build_graph, dict
     encoders: list[Any] = []
 
     def build(corpus: list[dict[str, Any]]) -> Any:
@@ -295,6 +352,22 @@ def by_corpus(cases: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [record for group in groups.values() for record in group]
 
 
+def graph_usage(predictions: list[dict[str, Any]]) -> dict[str, Any]:
+    built = [row for row in predictions if row.get("index_built")]
+    return {
+        "samples_with_graph": sum(row.get("graph_used") is True for row in predictions),
+        "snapshots_with_graph": sum(
+            bool(row["index_size"]["graph"].get("vertices")) for row in built
+        ),
+        "removed_non_candidate_paths": sum(
+            row.get("removed_non_candidate_paths", 0) for row in predictions
+        ),
+        "source_fetch_seconds": distribution(
+            [row["source_fetch_seconds"] for row in built]
+        ),
+    }
+
+
 def close_index(index: Any) -> None:
     close = getattr(index, "close", None)
     if close is not None:
@@ -312,6 +385,8 @@ def execute(
     method: str = "bm25",
     zoekt_bin: Path | None = None,
     device: str | None = None,
+    workspace: Path | None = None,
+    access: str | None = None,
 ) -> dict[str, Any]:
     """One writer per output directory; completed cases survive interruption.
 
@@ -324,6 +399,11 @@ def execute(
     """
     prepared = load_prepared(prepared_path)
     upstream = validate_upstream(upstream)
+    if pred_path is None:
+        if access not in (None, source_access(method)):
+            raise ValueError(f"{method} reads {source_access(method)} source")
+        access = source_access(method)
+    access = access or "released-corpus"
     external = load_predictions(pred_path) if pred_path else None
     if external is not None:
         prediction_map(external, prepared)
@@ -334,6 +414,7 @@ def execute(
             None if pred_path else method_config(method, zoekt_bin=zoekt_bin)
         ),
         "candidate_filter": "all_files",
+        "source_access": access,
         "upstream_revision": ARB_UPSTREAM_REVISION,
         "implementation": implementation_receipt(),
         "evaluator_python": evaluator_python,
@@ -377,7 +458,7 @@ def execute(
                 raise ValueError("native predictions have no recovery checkpoint")
             completed = prediction_map(predictions, prepared)
             build_index, method_usage = method_indexer(
-                method, zoekt_bin=zoekt_bin, device=device
+                method, zoekt_bin=zoekt_bin, device=device, workspace=workspace
             )
             index_key, index = None, None
             for record in by_corpus(prepared["cases"]):
@@ -410,6 +491,8 @@ def execute(
                             index_build_seconds=index.build_seconds,
                             index_size=index.size,
                         )
+                        if hasattr(index, "fetch_seconds"):
+                            prediction["source_fetch_seconds"] = index.fetch_seconds
                     # A failed search is still an attempted call with latency.
                     prediction["tool_calls"] = 1
                     queried = time.perf_counter()
@@ -418,6 +501,11 @@ def execute(
                     finally:
                         prediction["query_seconds"] = time.perf_counter() - queried
                         prediction["tool_calls"] = index.tool_calls
+                        if hasattr(index, "graph_used"):
+                            prediction["graph_used"] = index.graph_used
+                            prediction["removed_non_candidate_paths"] = (
+                                index.removed_non_candidate_paths
+                            )
                     prediction["status"] = "ok"
                 except Exception as exc:
                     prediction["error"] = f"{type(exc).__name__}: {exc}"
@@ -436,13 +524,15 @@ def execute(
             close_index(index)
             # Recreate a missing, stale or edited public export from the checkpoint.
             write_json_atomic(predictions_path, predictions)
-        result = evaluate(prepared, predictions, upstream, evaluator_python)
+        result = evaluate(prepared, predictions, upstream, evaluator_python, access)
         result["provenance"] = config
         if external is None:
             result["retrieval_usage"] = {
                 **retrieval_usage(predictions),
                 **method_usage(),
             }
+            if method == "graph_expansion":
+                result["retrieval_usage"]["graph"] = graph_usage(predictions)
             result["environment"] = run_environment()
         write_json_atomic(result_path, result)
     return result
@@ -473,6 +563,18 @@ def main(argv: list[str] | None = None) -> int:
                 "then $CODENIB_SCIP_TOOLS_DIR/go-tools/bin)",
             )
             command.add_argument("--device", help="dense model device (default: auto)")
+            command.add_argument(
+                "--workspace",
+                type=Path,
+                help="graph_expansion: directory for base-commit source checkouts",
+            )
+        else:
+            command.add_argument(
+                "--source-access",
+                choices=SOURCE_ACCESS,
+                default="released-corpus",
+                help="full-source drops ranked files outside the released set",
+            )
         if name == "evaluate":
             command.add_argument("--pred", type=Path, required=True)
     args = parser.parse_args(argv)
@@ -502,6 +604,8 @@ def main(argv: list[str] | None = None) -> int:
             method=getattr(args, "method", "bm25"),
             zoekt_bin=getattr(args, "zoekt_bin_dir", None),
             device=getattr(args, "device", None),
+            workspace=getattr(args, "workspace", None),
+            access=getattr(args, "source_access", None),
         )
         print(json.dumps(result["summary"], indent=2))
         return 1 if result["summary"]["overall"]["failed"] else 0

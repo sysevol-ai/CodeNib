@@ -216,7 +216,7 @@ def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _distribution(values: list[float]) -> dict[str, float] | None:
+def distribution(values: list[float]) -> dict[str, float] | None:
     if not values:
         return None
     ordered = sorted(values)
@@ -230,12 +230,15 @@ def _distribution(values: list[float]) -> dict[str, float] | None:
 
 
 def _flatten(value: dict[str, Any], prefix: str = "") -> dict[str, float]:
-    """Nested numeric sizes, e.g. a hybrid's ``dense.documents``."""
+    """Nested numeric sizes, e.g. a hybrid's ``dense.documents``.
+
+    Descriptive fields such as graph languages or errors are not sizes.
+    """
     flat: dict[str, float] = {}
     for key, item in value.items():
         if isinstance(item, dict):
             flat.update(_flatten(item, f"{prefix}{key}."))
-        else:
+        elif isinstance(item, (int, float)) and not isinstance(item, bool):
             flat[f"{prefix}{key}"] = item
     return flat
 
@@ -251,20 +254,22 @@ def retrieval_usage(predictions: list[dict[str, Any]]) -> dict[str, Any]:
     index_sizes = [_flatten(row["index_size"]) for row in built]
     return {
         "index_builds": len(built),
-        "corpus_load_seconds": _distribution(
+        "corpus_load_seconds": distribution(
             [row["corpus_load_seconds"] for row in built]
         ),
-        "index_build_seconds": _distribution(
+        "index_build_seconds": distribution(
             [row["index_build_seconds"] for row in built]
         ),
         "index_size": {
-            field: _distribution([sizes[field] for sizes in index_sizes])
+            field: distribution(
+                [sizes[field] for sizes in index_sizes if field in sizes]
+            )
             for field in dict.fromkeys(
                 field for sizes in index_sizes for field in sizes
             )
         },
-        "query_seconds": _distribution([row["query_seconds"] for row in queried]),
-        "tool_calls": _distribution([row.get("tool_calls", 0) for row in predictions]),
+        "query_seconds": distribution([row["query_seconds"] for row in queried]),
+        "tool_calls": distribution([row.get("tool_calls", 0) for row in predictions]),
         "model_calls": 0,
         "api_cost_usd": 0.0,
     }

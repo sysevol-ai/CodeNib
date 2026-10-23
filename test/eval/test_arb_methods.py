@@ -7,6 +7,7 @@
 import json
 import os
 import shutil
+import subprocess
 from pathlib import Path
 
 import numpy as np
@@ -167,3 +168,134 @@ def test_zoekt_ranks_symbol_rows_by_their_file_and_counts_calls():
         assert index.tool_calls == 0
     finally:
         index.close()
+
+
+def _git(cwd, *args):
+    return subprocess.run(
+        ["git", "-C", str(cwd), *args], check=True, capture_output=True, text=True
+    ).stdout.strip()
+
+
+def test_snapshot_checkout_has_no_later_history(tmp_path):
+    source = tmp_path / "source"
+    source.mkdir()
+    _git(source, "init", "-q")
+    _git(source, "config", "user.email", "t@example.com")
+    _git(source, "config", "user.name", "t")
+    _git(source, "config", "uploadpack.allowAnySHA1InWant", "true")
+    (source / "a.py").write_text("base\n")
+    _git(source, "add", "a.py")
+    _git(source, "commit", "-qm", "base")
+    base = _git(source, "rev-parse", "HEAD")
+    (source / "a.py").write_text("fix\n")
+    _git(source, "commit", "-qam", "resolving change")
+    fix = _git(source, "rev-parse", "HEAD")
+
+    root = tmp_path / "workspace"
+    root.mkdir()
+    remote = source.resolve().as_uri()
+    checkout = methods.fetch_snapshot("owner/repo", base, root, remote=remote)
+    assert (checkout / "a.py").read_text() == "base\n"
+    assert _git(checkout, "rev-list", "--count", "--all") == "1"
+    with pytest.raises(subprocess.CalledProcessError):
+        _git(checkout, "cat-file", "-e", fix)
+    # A reused checkout is revalidated.
+    assert methods.fetch_snapshot("owner/repo", base, root) == checkout
+    (checkout / "a.py").write_text("edited\n")
+    with pytest.raises(ValueError, match="local changes"):
+        methods.fetch_snapshot("owner/repo", base, root)
+    with pytest.raises(ValueError, match="invalid"):
+        methods.fetch_snapshot("owner/repo;rm", base, root)
+
+
+def test_snapshot_languages_keep_major_source_languages():
+    corpus = rows(
+        *[(f"src/m{i}.py", "file", "", "") for i in range(8)],
+        ("web/app.ts", "file", "", ""),
+        ("web/app.js", "file", "", ""),
+        ("README.md", "file", "", ""),
+        ("src/m0.py", "function", "f", ""),
+    )
+    assert methods.snapshot_languages(corpus) == ["python", "typescript"]
+    assert methods.snapshot_languages(rows(("README", "file", "", ""))) == []
+
+
+def _graph_index(monkeypatch, tmp_path, graph, bm25_order):
+    class Ranked:
+        build_seconds = 0.1
+        size = {"documents": len(bm25_order)}
+
+        def __init__(self, corpus):
+            pass
+
+        def rank(self, query):
+            return list(bm25_order)
+
+    monkeypatch.setattr(methods, "BM25CorpusIndex", Ranked)
+    monkeypatch.setattr(methods, "fetch_snapshot", lambda *args: tmp_path)
+    saved = tmp_path / "graph.pkl"
+    if graph is not None:
+        graph.save_graph(str(saved))
+
+    def build(checkout, output, languages):
+        report = {"available_languages": languages, "graph": None}
+        if graph is not None:
+            report["graph"] = str(saved)
+        return report
+
+    monkeypatch.setattr(methods, "build_graph", build)
+    return methods.GraphExpansionIndex(
+        rows(*[(path, "file", "", "") for path in bm25_order]),
+        repo="owner/repo",
+        base_commit="a" * 40,
+        workspace=tmp_path,
+    )
+
+
+def _reference_graph():
+    from codenib.graph.code_graph import CodeGraph
+
+    graph = CodeGraph("/repo")
+    graph.add_root_node("/repo")
+    for path, symbol in [
+        ("seed.py", "seed.py:run"),
+        ("callee.py", "callee.py:helper"),
+        ("caller.py", "caller.py:main"),
+        ("vendor.py", "vendor.py:lib"),
+    ]:
+        graph.add_file_node(path)
+        graph.add_symbol_node(symbol, 1, 1, 5, "function")
+        graph.add_containment_edge(symbol)
+    graph.current_file, graph.current_scope = "seed.py", "seed.py:run"
+    graph.add_symbol_reference("callee.py:helper")
+    graph.add_symbol_reference("vendor.py:lib")
+    graph.current_file, graph.current_scope = "caller.py", "caller.py:main"
+    graph.add_symbol_reference("seed.py:run")
+    graph.add_symbol_reference("seed.py:run")
+    graph.current_file, graph.current_scope = "callee.py", "callee.py:helper"
+    graph.add_symbol_reference("seed.py:run")
+    return graph
+
+
+def test_graph_expansion_promotes_referenced_files(monkeypatch, tmp_path):
+    order = (
+        ["seed.py"] + [f"other{i}.py" for i in range(30)] + ["caller.py", "callee.py"]
+    )
+    monkeypatch.setattr(methods, "GRAPH_SEED_FILES", 1)
+    index = _graph_index(monkeypatch, tmp_path, _reference_graph(), order)
+    ranked = index.rank("q")
+    # caller.py (2 references) and callee.py (2) jump ahead of BM25's tail;
+    # vendor.py is not a released candidate, so it is dropped and counted.
+    assert ranked[:3] == ["seed.py", "callee.py", "caller.py"]
+    assert sorted(ranked) == sorted(order)
+    assert index.graph_used and index.tool_calls == 2
+    assert index.removed_non_candidate_paths == 1
+    assert index.size["graph"]["reference_edges"] > 0
+    index.close()
+
+
+def test_graph_expansion_without_graph_is_bm25(monkeypatch, tmp_path):
+    order = ["a.py", "b.py", "c.py"]
+    index = _graph_index(monkeypatch, tmp_path, None, order)
+    assert index.rank("q") == order
+    assert not index.graph_used and index.tool_calls == 1
