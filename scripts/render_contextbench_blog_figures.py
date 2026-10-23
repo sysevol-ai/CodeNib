@@ -71,6 +71,12 @@ TASK_SOURCES = [
 ]
 ALL_RESOLVED, ALL_TASKS, ALL_USD = 388, 500, 0.6778
 
+# Official Agent systems leaderboard, verified against the published score file.
+# ContextBench/contextbench.github.io src/data/agent_results.json
+# at 4f979971e04a1fe0a743fbe45e60fa8edf79440d.
+LEADERBOARD_DATE = "2026-10-23 UTC"
+LEADERBOARD_STATUS = f"Full agent #1 · line recall & Pass@1 · {LEADERBOARD_DATE}"
+
 
 class FontFace:
     """Measures text with a variable font and records the glyphs it needs."""
@@ -392,12 +398,13 @@ DIAGRAM_DESC = (
     "tools, edits and self-tests; 388 of 500 tasks are resolved, 77.60% native "
     "Pass@1. Adding confirmed repair reads gives 77.90% final line recall. Search "
     "costs $0.0114 of model usage per task; repair accounts for 98.32% of model "
-    "usage. Submitted results; leaderboard review pending."
+    "usage. On the official ContextBench Agent systems leaderboard as of "
+    f"{LEADERBOARD_DATE}, the complete agent ranks first in line recall and Pass@1."
 )
 
 
 def status_pill(fig, x_right, y_mid, s=1.0, x_left=None):
-    label = "Submitted · leaderboard review pending"
+    label = LEADERBOARD_STATUS
     w = fig.measure(label, "status") + 40 * s
     h = 34 * s
     x = x_left if x_left is not None else x_right - w
@@ -522,7 +529,7 @@ def down_arrow(fig, x, y0, y1, label, color, marker, s, side="right"):
 def search_handoff_wide() -> str:
     fig = Figure(1600, 840, DIAGRAM_STYLES)
     left, right = 56, 1544
-    fig.text(left, 60, "CODENIB ON CONTEXTBENCH · 500 TASKS", "kicker")
+    fig.text(left, 60, "CODENIB · CONTEXTBENCH · AGENT SYSTEMS", "kicker")
     fig.text(left, 106, HEADLINE, "head")
     status_pill(fig, right, 52)
 
@@ -615,7 +622,7 @@ def search_handoff_narrow() -> str:
     inner = W - 2 * left
     fig = Figure(W, 100, styles)
     y = 62
-    fig.text(left, y, "CODENIB ON CONTEXTBENCH", "kicker")
+    fig.text(left, y, "CODENIB · CONTEXTBENCH · AGENT SYSTEMS", "kicker")
     head_lines = fig.wrap(HEADLINE, "head", inner)
     fig.lines(left, y + 56, head_lines, "head", 48)
     y += 56 + 48 * (len(head_lines) - 1) + 44
