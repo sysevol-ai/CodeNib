@@ -338,6 +338,14 @@ def test_a_graph_never_replaces_a_checkout_at_its_path(builds, tmp_path):
         provider.prepare(repo=REPO, base_commit=COMMIT, paths=RELEASED)
     assert sorted(path.name for path in checkout.iterdir()) == [".git", "a.py"]
     assert not checkout.with_name(COMMIT + ".partial").exists()
+    # A graph retired by an interrupted swap survives a foreign live path.
+    retired = checkout.with_name(COMMIT + ".previous")
+    retired.mkdir()
+    (retired / "provider_receipt.json").write_text('{"graph": true}\n')
+    with pytest.raises(ValueError, match="holds no tool graph"):
+        provider.prepare(repo=REPO, base_commit=COMMIT, paths=RELEASED)
+    assert (retired / "provider_receipt.json").is_file()
+    assert sorted(path.name for path in checkout.iterdir()) == [".git", "a.py"]
 
 
 def test_a_failed_retry_keeps_the_usable_partial_graph(builds, monkeypatch, tmp_path):

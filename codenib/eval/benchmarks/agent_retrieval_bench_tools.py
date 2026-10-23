@@ -234,16 +234,15 @@ class CodeNibToolProvider:
         (staging / _RECEIPT).write_text(json.dumps(receipt) + "\n", encoding="utf-8")
         # Retire the live graph rather than delete it, so an interrupted swap
         # leaves a graph for _finish_swap to restore.
+        # Only a graph this provider published is replaced, never, say, a
+        # checkout of a workspace that shares the root; nothing is removed
+        # before that is known.
+        if directory.exists() and not (directory / _RECEIPT).is_file():
+            shutil.rmtree(staging, ignore_errors=True)
+            raise ValueError(f"{directory} holds no tool graph; refusing to replace it")
         retired = _retired(directory)
         shutil.rmtree(retired, ignore_errors=True)
         if directory.exists():
-            # Only a graph this provider published is replaced, never, say, a
-            # checkout of a workspace that shares the root.
-            if not (directory / _RECEIPT).is_file():
-                shutil.rmtree(staging, ignore_errors=True)
-                raise ValueError(
-                    f"{directory} holds no tool graph; refusing to replace it"
-                )
             directory.rename(retired)
         staging.rename(directory)
         shutil.rmtree(retired, ignore_errors=True)
@@ -520,9 +519,13 @@ def _retired(directory: Path) -> Path:
 def _finish_swap(directory: Path) -> None:
     """Settle a graph swap that stopped between its two renames."""
     retired = _retired(directory)
-    if retired.is_dir() and not directory.exists():
+    if not retired.is_dir():
+        return
+    if not directory.exists():
         retired.rename(directory)
-    shutil.rmtree(retired, ignore_errors=True)
+    elif (directory / _RECEIPT).is_file():
+        shutil.rmtree(retired, ignore_errors=True)
+    # Anything else at the live path is not ours; the retired graph stays.
 
 
 def _write_atomically(path: Path, value: dict) -> None:
