@@ -828,6 +828,88 @@ def test_native_method_fixes_its_source_access(released_data, tmp_path, monkeypa
         runner.method_indexer("graph_expansion", {})
 
 
+def test_rerank_reorders_a_completed_base_run(
+    released_data, tmp_path, fake_evaluator, monkeypatch
+):
+    from codenib.eval.benchmarks import _arb_methods as methods
+
+    path, _prepared = prepared_file(released_data, tmp_path)
+    base = tmp_path / "base"
+    runner.execute(path, base, tmp_path)
+    base_rows = {
+        row["sample_id"]: row
+        for row in runner.load_predictions(base / "predictions.json")
+    }
+    scored = []
+
+    class Reranker:
+        load_seconds = 0.1
+
+        def __init__(self, config):
+            self.model = self
+
+        def score(self, query, docs):
+            scored.append((query, docs))
+            return [float(doc.startswith("src/anchor.py\n")) for doc in docs]
+
+    monkeypatch.setattr(methods, "Reranker", Reranker)
+    monkeypatch.setattr(methods, "dense_precision", lambda device: ("cpu", "float32"))
+    output = tmp_path / "rerank"
+    result = runner.execute(
+        path, output, tmp_path, method="rerank", rerank={"base": base, "top_k": 5}
+    )
+    assert result["summary"]["overall"]["valid"] == 4
+    assert result["retrieval_usage"]["base_tool_calls"]["unknown_samples"] == 0
+    for row in runner.load_predictions(output / "predictions.json"):
+        prior = base_rows[row["sample_id"]]
+        assert set(row["ranked_files"][:5]) == set(prior["ranked_files"][:5])
+        assert row["ranked_files"][5:] == prior["ranked_files"][5:]
+        assert (row["tool_calls"], row["base_tool_calls"]) == (1, prior["tool_calls"])
+    # The reranker sees the query text and released file text, never gold.
+    assert all(
+        len(docs) == 5 and "PRIVATE_GOLD" not in str(docs) for _q, docs in scored
+    )
+    receipt = json.loads((output / "config.json").read_text())["method_config"]
+    assert receipt["base"]["predictions_sha256"] == runner.json_digest(
+        runner.load_predictions(base / "predictions.json")
+    )
+    # An external base records no tool calls; they stay unknown, not zero.
+    external = tmp_path / "external.json"
+    rows = predictions(_prepared)
+    # A failed base record can still report the calls it made.
+    rows[0].update(status="error", ranked_files=[], tool_calls=2)
+    external.write_text(json.dumps(rows))
+    runner.execute(path, tmp_path / "ext", tmp_path, pred_path=external)
+    result = runner.execute(
+        path,
+        tmp_path / "ext-rerank",
+        tmp_path,
+        method="rerank",
+        rerank={"base": tmp_path / "ext"},
+    )
+    usage = result["retrieval_usage"]["base_tool_calls"]
+    assert (usage["known"]["total"], usage["unknown_samples"]) == (2, 3)
+    reranked = runner.load_predictions(tmp_path / "ext-rerank" / "predictions.json")
+    assert [row["status"] for row in reranked].count("error") == 1
+    # The rejected case made no rerank call and built nothing.
+    failed = next(row for row in reranked if row["status"] == "error")
+    assert (failed["tool_calls"], failed["index_built"]) == (0, False)
+    assert failed["base_tool_calls"] == 2
+    # The partial external rankings stay partial.
+    assert all(
+        len(row["ranked_files"]) == 3 for row in reranked if row["status"] == "ok"
+    )
+    # A base over other prepared cases is refused.
+    other = json.loads(path.read_text())
+    other["cases"] = other["cases"][:1]
+    other_path = tmp_path / "other.json"
+    other_path.write_text(json.dumps(other))
+    with pytest.raises(ValueError, match="other prepared cases"):
+        runner.execute(
+            other_path, tmp_path / "x", tmp_path, method="rerank", rerank={"base": base}
+        )
+
+
 @pytest.mark.integration
 def test_official_full_source_scores_only_released_files(released_data, upstream):
     prepared = runner.prepare(released_data)

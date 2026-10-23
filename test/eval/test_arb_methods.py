@@ -4,6 +4,7 @@
 
 """ARB dense, hybrid, and Zoekt rankers: inputs, caching, fusion, and calls."""
 
+import argparse
 import json
 import os
 import shutil
@@ -515,3 +516,96 @@ def test_graph_expansion_without_graph_is_bm25(monkeypatch, tmp_path):
     index = _graph_index(monkeypatch, tmp_path, None, order)
     assert index.rank("q") == order
     assert not index.graph_used and index.tool_calls == 1
+
+
+def test_rerank_fuses_the_rescored_top_files_with_the_base_order():
+    from types import SimpleNamespace
+
+    corpus = [
+        {"path": path, "kind": "file", "text": f"text of {path}"}
+        for path in ("a.py", "b.py", "c.py", "d.py")
+    ]
+    seen = []
+
+    class Model:
+        def score(self, query, docs):
+            seen.append((query, docs))
+            return [0.1, 0.0, 0.9]
+
+    index = methods.RerankCorpusIndex(corpus, SimpleNamespace(model=Model()), top_k=3)
+    # The reranker orders c, a, b; RRF with the base order a, b, c gives a, c, b,
+    # and d, below top_k, keeps its base place.
+    assert index.rerank("q", ["a.py", "b.py", "c.py", "d.py"]) == [
+        "a.py",
+        "c.py",
+        "b.py",
+        "d.py",
+    ]
+
+    # A file the model could not score fails the case instead of scoring 0.
+    class Exhausted(Model):
+        oom_fallbacks = 0
+
+        def score(self, query, docs):
+            self.oom_fallbacks += 1
+            return [0.0] * len(docs)
+
+    exhausted = methods.RerankCorpusIndex(
+        corpus, SimpleNamespace(model=Exhausted()), top_k=3
+    )
+    with pytest.raises(RuntimeError, match="out of memory on 1 files"):
+        exhausted.rerank("q", ["a.py", "b.py", "c.py", "d.py"])
+    # Duplicates collapse to their first place, and a partial base ranking
+    # stays partial.
+    seen.clear()
+    assert index.rerank("q", ["a.py", "a.py", "b.py", "c.py"]) == [
+        "a.py",
+        "c.py",
+        "b.py",
+    ]
+    assert [doc.split("\n")[0] for doc in seen[0][1]] == ["a.py", "b.py", "c.py"]
+    seen.clear()
+    index.rerank("q", ["a.py", "b.py", "c.py", "d.py"])
+    # Each top file is scored as its path and released text.
+    assert seen == [
+        ("q", [f"{path}\ntext of {path}" for path in ("a.py", "b.py", "c.py")])
+    ]
+
+
+def test_rerank_receipt_names_its_base_run(monkeypatch, tmp_path):
+    monkeypatch.setattr(methods, "dense_precision", lambda device: ("cpu", "float32"))
+    with pytest.raises(ValueError, match="needs --rerank-base"):
+        runner.method_config("rerank")
+    base = tmp_path / "base"
+    base.mkdir()
+    (base / "predictions.json").write_text("[]")
+    (base / "config.json").write_text(json.dumps({"source_access": "full-source"}))
+    # A run without its final report is still running or was interrupted.
+    with pytest.raises(ValueError, match="not a completed run"):
+        runner.method_config("rerank", rerank={"base": base})
+    (base / "results.json").write_text("{}")
+    from filelock import FileLock
+
+    with FileLock(str(base / ".run.lock")):
+        with pytest.raises(ValueError, match="still running"):
+            runner.method_config("rerank", rerank={"base": base})
+    with pytest.raises(ValueError, match="released-corpus"):
+        runner.method_config("rerank", rerank={"base": base})
+    receipt = {"source_access": "released-corpus", "method": "codenib-dense"}
+    (base / "config.json").write_text(json.dumps(receipt))
+    config = runner.method_config("rerank", rerank={"base": base, "top_k": 20})
+    assert (config["model"], config["top_k"]) == (methods.RERANK_MODEL, 20)
+    assert config["base"]["method"] == "codenib-dense"
+    assert config["base"]["config_sha256"] == runner.json_digest(receipt)
+    assert config["instruction"].startswith("Given a github issue")
+    assert config["max_length"] == methods.RERANK_MAX_LENGTH
+    # Another cross-encoder keeps its own positional limit and takes no instruction.
+    other = runner.method_config(
+        "rerank",
+        rerank={"base": base, "model": "BAAI/bge-reranker-base", "revision": "0" * 40},
+    )
+    assert (other["max_length"], other["instruction"]) == (None, None)
+    with pytest.raises(ValueError, match="needs --rerank-revision"):
+        runner.rerank_options(
+            argparse.Namespace(rerank_model="other/reranker", rerank_revision=None)
+        )

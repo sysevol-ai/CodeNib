@@ -235,6 +235,7 @@ condition described below.
 | `hybrid` | Both indexes above | CodeNib's file-level weighted RRF (k = 60) of the two file rankings |
 | `zoekt` | Zoekt trigram index of every file and symbol chunk | One Zoekt query per code-like term in the query; files ordered by matched terms, then first match |
 | `graph_expansion` | BM25 as above, plus a CodeNib code graph of the full source | The top five BM25 files, then up to 15 files connected to them by code references, then the rest in BM25 order |
+| `rerank` | None; it reads a completed run | The base run's top 50 files rescored by Qwen3-Reranker-4B and fused with the base order by file-level RRF (k = 60); the other files keep the base order |
 
 The dense model uses no query or document instruction, as ARB's own embedding
 baseline does, and applies a 512-token limit to queries as well as chunks.
@@ -248,6 +249,22 @@ change the token limit and batch size; each run records them. `--query-prompt re
 snapshots of the same repository share most files, and `index_size` records
 how many chunks a build encoded and how many it reused. Dense methods need the
 `semantic` extra; a missing extra stops the run before any case.
+
+`rerank` is a second stage over a completed run. `--rerank-base` names that
+run's output directory; it must have written its final report and ranked the
+same prepared cases with released-corpus access, and a run still in progress is
+refused. The model scores each of the top files as its path and released text,
+truncated with the query to 8,192 tokens, under CodeNib's default reranker
+instruction; another cross-encoder keeps its own length limit and takes no
+instruction. It never sees gold labels. A file it cannot score within GPU
+memory fails the case rather than scoring zero. `--rerank-model` with
+`--rerank-revision`, `--rerank-top-k`, `--rerank-max-length`, and
+`--rerank-batch-size` change the model and its limits. The receipt records them
+with digests of the base run's receipt and predictions. The output holds
+exactly the base ranking's files, duplicates removed. `tool_calls` counts the
+stage's one scoring call, and `base_tool_calls` the base run's, recorded even
+when the base failed that case and left empty when the base did not record it.
+It needs the `semantic` extra.
 
 The Zoekt method takes its terms from the query's string values: file names,
 backticked spans, and identifiers written with `_`, camelCase, or capitals, up
