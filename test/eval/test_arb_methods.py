@@ -181,17 +181,54 @@ def test_query_prompt_is_none_or_codenibs_registered_instruction(monkeypatch):
         config["query_prompt"] == resolve_prompts(methods.DENSE_MODEL)["query_prompt"]
     )
     assert config["query_prompt"].startswith("Instruct:")
-    with pytest.raises(ValueError, match="registers no query instruction"):
-        runner.method_config(
+
+    def registered(model):
+        return runner.method_config(
             "dense",
             embedding={
-                "model": "example/unregistered",
+                "model": model,
                 "revision": "0" * 40,
                 "query_prompt": "registry",
             },
         )
+
+    # A registry entry may name one of the model's own prompts instead.
+    config = registered("Salesforce/SweRankEmbed-Small")
+    assert config["query_prompt_name"] == "query" and "query_prompt" not in config
+    with pytest.raises(ValueError, match="document instruction"):
+        registered("jinaai/jina-code-embeddings-0.5b")
+    with pytest.raises(ValueError, match="registers no query instruction"):
+        registered("example/unregistered")
     with pytest.raises(ValueError, match="--query-prompt must be"):
         runner.method_config("dense", embedding={"query_prompt": "custom"})
+
+
+def test_dense_encoder_passes_a_prompt_name_to_the_model(monkeypatch):
+    pytest.importorskip("torch")
+    import codenib.index.embedding as embedding
+
+    seen = {}
+
+    class Store:
+        def __init__(self, **kwargs):
+            seen.update(kwargs)
+            self.embedding = None
+
+    monkeypatch.setattr(embedding, "CodeVectorStore", Store, raising=False)
+    config = {
+        "model": "example/model",
+        "revision": "0" * 40,
+        "device": "cpu",
+        "dtype": "float32",
+        "batch_size": 1,
+        "max_seq_length": 8,
+    }
+    methods.DenseEncoder({**config, "query_prompt_name": "query"})
+    # Text would take precedence over the name, so none is sent with it.
+    assert (seen["query_prompt"], seen["query_prompt_name"]) == (None, "query")
+    methods.DenseEncoder({**config, "query_prompt": ""})
+    assert (seen["query_prompt"], seen["query_prompt_name"]) == ("", None)
+    assert seen["document_prompt"] == ""
 
 
 def test_dense_precision_checks_the_selected_device(monkeypatch):

@@ -262,23 +262,33 @@ def embedding_options(args: argparse.Namespace) -> dict[str, Any] | None:
 QUERY_PROMPTS = ("none", "registry")
 
 
-def dense_query_prompt(source: str, model: str) -> str:
-    """The instruction prepended to dense queries.
+def dense_query_prompt(source: str, model: str) -> dict[str, str]:
+    """The instruction prepended to dense queries, as encoder options.
 
     ``none`` matches ARB's embedding baseline. ``registry`` uses the query
-    instruction CodeNib registers for the model, so the run reflects CodeNib's
-    own configuration rather than one tuned on ARB.
+    instruction CodeNib registers for the model, as text or as the name of one
+    of the model's own prompts, so the run reflects CodeNib's own
+    configuration rather than one tuned on ARB.
     """
     if source == "none":
-        return ""
+        return {"query_prompt": ""}
     if source != "registry":
         raise ValueError(f"--query-prompt must be one of {QUERY_PROMPTS}")
     from codenib.index.embedding.prompt_registry import resolve_prompts
 
-    prompt = resolve_prompts(model).get("query_prompt")
-    if not prompt:
-        raise ValueError(f"CodeNib registers no query instruction for {model}")
-    return prompt
+    registered = resolve_prompts(model)
+    # ARB's dense methods embed chunks without an instruction; a model that
+    # also expects one on documents would see only half of its pair.
+    if registered.get("document_prompt") or registered.get("document_prompt_name"):
+        raise ValueError(
+            f"CodeNib registers a document instruction for {model} too, "
+            "and ARB dense runs embed chunks without one"
+        )
+    # The registry lets text take precedence over a prompt name.
+    for key in ("query_prompt", "query_prompt_name"):
+        if registered.get(key):
+            return {key: str(registered[key])}
+    raise ValueError(f"CodeNib registers no query instruction for {model}")
 
 
 def zoekt_bin_dir(explicit: Path | None) -> Path:
@@ -355,7 +365,7 @@ def method_config(
             **options,
             "device": resolved,
             "dtype": dtype,
-            "query_prompt": prompt,
+            **prompt,
             "index_location": "memory",
         }
         if method == "hybrid":
