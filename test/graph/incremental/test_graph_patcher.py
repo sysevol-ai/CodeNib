@@ -807,10 +807,8 @@ class TestSWEBenchGo:
         assert stats["vertices_created"] > 0
 
         unames_after = _get_unified_names(g)
-        # Modified files' symbols should exist (SCIP-Go skips _test.go).
+        # Modified files' symbols should exist, test files included.
         for f in changed["modified"]:
-            if f.endswith("_test.go"):
-                continue
             file_syms = [u for u in unames_after if u.startswith(f + ":")]
             assert len(file_syms) > 0, f"Modified file {f} should have symbols"
 

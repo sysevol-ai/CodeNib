@@ -554,6 +554,74 @@ def test_core_go_structural_collision_parity(tmp_path):
     assert node["has_definition"] is True
 
 
+_GO_TEST_FILE_INDEX = """
+documents {
+  relative_path: "lib/lib.go"
+  occurrences {
+    range: 2
+    range: 5
+    range: 11
+    symbol: "scip-go gomod example.com/repo v0 `example.com/repo/lib`/Helper()."
+    symbol_roles: 1
+  }
+}
+documents {
+  relative_path: "lib/lib_test.go"
+  occurrences {
+    range: 4
+    range: 5
+    range: 15
+    symbol: "scip-go gomod example.com/repo v0 `example.com/repo/lib`/TestHelper()."
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 5
+    range: 1
+    range: 7
+    symbol: "scip-go gomod example.com/repo v0 `example.com/repo/lib`/Helper()."
+  }
+}
+documents {
+  relative_path: "server/auth/auth.go"
+  occurrences {
+    range: 3
+    range: 5
+    range: 10
+    symbol: "scip-go gomod example.com/repo v0 `example.com/repo/server/auth`/Check()."
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 4
+    range: 1
+    range: 7
+    symbol: "scip-go gomod example.com/repo v0 `example.com/repo/lib`/Helper()."
+  }
+}
+""".strip()
+
+
+def test_core_go_test_files_and_merged_modules_parity(tmp_path):
+    """Both decoders keep ``_test.go`` files and merged nested-module paths."""
+    (tmp_path / "go.mod").write_text("module example.com/repo\n", encoding="utf-8")
+    index = tmp_path / "index.decoded"
+    index.write_text(_GO_TEST_FILE_INDEX, encoding="utf-8")
+
+    from codenib.scip_interface.scip_decode_core import SCIPDecoderCore
+    from codenib.scip_interface.scip_decode_go import SCIPGoGraphDecoder
+
+    serial_graph = SCIPGoGraphDecoder(str(index), project_root=str(tmp_path)).decode()
+    core_graph = SCIPDecoderCore(
+        str(index),
+        project_root=str(tmp_path),
+        language="go",
+    ).decode()
+
+    _assert_graph_parity(serial_graph, core_graph, "go-test-files")
+    assert {"lib/lib_test.go", "lib/TestHelper", "server/auth/Check"} <= set(
+        serial_graph.name_to_vertex
+    )
+
+
 def test_core_typescript_schema_v5_fixture_parity():
     fixture_root = Path(__file__).parent / "fixtures" / "typescript_schema_v5"
     index = fixture_root / "index.decoded"

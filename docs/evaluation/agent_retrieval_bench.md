@@ -89,7 +89,8 @@ one numpy snapshot also produced none. Those samples rank by BM25. On the 290 sa
 lowered Recall@20 by 0.047 against BM25 (95% bootstrap interval −0.085 to
 −0.007). MRR fell by 0.002 (−0.005 to +0.002), and BCY@8k showed no net change
 (−0.016 to +0.014). It helped trace2code (0.416 against
-0.391) and hurt code2test, partly because CodeNib's Go graph omits test files.
+0.391) and hurt code2test, partly because the Go graphs in this run omitted
+test files.
 Adding 15 reference neighbors after five BM25 seeds displaces better BM25
 candidates; deciding when to follow references is left to an interactive
 agent.
@@ -284,8 +285,9 @@ files and is built in a child process with a 30-minute limit. It never installs
 dependencies or runs project setup, but the Rust and Java indexers run the
 project's own build tooling. If no graph can be built, the sample is ranked by
 BM25 and recorded with `graph_used: false`. Fetching source is reported as
-`source_fetch_seconds`, apart from the build. CodeNib's Go graph omits
-`_test.go` files, so expansion cannot propose Go tests.
+`source_fetch_seconds`, apart from the build. The results above were
+measured when CodeNib's Go graph omitted `_test.go` files, so expansion there
+could not propose Go tests; Go graphs now include them.
 
 Rankings produced elsewhere from the full source can be scored under the same
 rule with `codenib-arb evaluate --source-access full-source`.
