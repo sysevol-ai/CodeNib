@@ -698,3 +698,38 @@ def test_nested_runs_keep_their_replacements_of_the_root_path():
     assert merged.documents[-1].occurrences[0].symbol == _symbol(
         ROOT, f"{ROOT}/copy/lib", "Helper()."
     )
+
+
+def test_workspace_members_stay_at_their_own_directories():
+    # go.work uses the root, b and c (outside the checkout); the root go.mod
+    # replaces both b and c, but Go ignores replacements of main modules.
+    b, c = "example.test/b", "example.test/c"
+    root = _root_index()
+    _document(
+        root,
+        "main.go",
+        [
+            (1, _symbol(b, f"{b}/x", "Run()."), 0),
+            (2, _symbol(c, f"{c}/y", "Go()."), 0),
+        ],
+    )
+    sub = Index()
+    _document(sub, "x/x.go", [(2, _symbol(b, f"{b}/x", "Run()."), 1)])
+    merged = gm.merge_module_indexes(
+        root,
+        [(b, "b", sub)],
+        ROOT,
+        replacements={
+            "": [gm.Replacement(b, None, "copy"), gm.Replacement(c, None, "local")]
+        },
+        members=["", "b", "@/elsewhere/c"],
+        external=[c],
+    )
+    documents = {d.relative_path: d for d in merged.documents}
+    assert [o.symbol for o in documents["main.go"].occurrences] == [
+        _symbol(ROOT, f"{ROOT}/b/x", "Run()."),
+        _symbol(c, f"{c}/y", "Go()."),
+    ]
+    assert documents["b/x/x.go"].occurrences[0].symbol == _symbol(
+        ROOT, f"{ROOT}/b/x", "Run()."
+    )

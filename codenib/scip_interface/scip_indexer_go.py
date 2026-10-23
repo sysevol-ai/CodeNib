@@ -253,9 +253,11 @@ class SCIPGoIndexer(SCIPIndexerBase):
         # Members outside the checkout (an enclosing go.work) still apply
         # their replacements to workspace builds; keep those into this tree.
         inside = {(self.project_root / d).resolve() for d in directories}
+        external = []
         for member in workspace_uses(workspace_file) if workspace_file else []:
             if member in inside:
                 continue
+            external.append(go_module_path(member / "go.mod"))
             key = f"@{member}"
             replacements[key] = [
                 replacement
@@ -266,7 +268,14 @@ class SCIPGoIndexer(SCIPIndexerBase):
             ]
             members.add(key)
         merge_module_indexes(
-            root, indexes, root_module, covered, replacements, workspace, members
+            root,
+            indexes,
+            root_module,
+            covered,
+            replacements,
+            workspace,
+            members,
+            [module for module in external if module],
         )
         staging = self.index_file.with_name(self.index_file.name + ".merging")
         staging.write_bytes(root.SerializeToString())

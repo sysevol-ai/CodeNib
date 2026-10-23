@@ -288,6 +288,7 @@ def merge_module_indexes(
     replacements: Optional[Dict[str, List[Replacement]]] = None,
     workspace: Iterable[Replacement] = (),
     members: Iterable[str] = (),
+    external: Iterable[str] = (),
 ):
     """Merge per-module SCIP indexes into ``root`` (``scip_pb2.Index`` objects).
 
@@ -299,6 +300,9 @@ def merge_module_indexes(
     uses; their runs build under the workspace, so they see the replacements
     of every member with go.work's ``workspace`` replacements taking
     precedence, as Go applies them. Any other run sees only its own go.mod.
+    Every workspace member is a main module of those runs, so it stays at its
+    own directory; ``external`` names the module paths of members outside
+    the checkout, which those runs leave unrenamed.
 
     A module path declared in one directory is renamed everywhere. A path
     declared in several directories is renamed only inside its own index, so
@@ -357,17 +361,23 @@ def merge_module_indexes(
             else {**in_workspace.get(module, {}), **versions}
         )
 
+    # Go ignores a replacement of a main module. A workspace run's main
+    # modules are the workspace members; any other run's is its own module.
+    workspace_main: _Mapping = {
+        module: {None: directory}
+        for module, directory in pairs | {(root_module, "")}
+        if directory in members
+    }
+
     def effective(directory: str) -> _Mapping:
-        member = directory in members
-        mapping = (
-            in_workspace
-            if member
-            else _merged(unique, _replacing(replacements.get(directory, ())))
-        )
-        # Go ignores a replacement of a main module, so the root module stays
-        # at the root in runs where it is one: the root run, and workspace
-        # runs whose workspace uses the root. Elsewhere it is a dependency.
-        if directory == "" or (member and "" in members):
+        if directory in members:
+            mapping = {**in_workspace, **workspace_main}
+            for module in external:
+                mapping.pop(module, None)
+            return mapping
+        mapping = _merged(unique, _replacing(replacements.get(directory, ())))
+        # The root run's main module is the root; elsewhere it is a dependency.
+        if directory == "":
             mapping = {**mapping, root_module: {None: ""}}
         return mapping
 
