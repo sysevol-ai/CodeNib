@@ -407,10 +407,12 @@ full-source runs. Hits are limited to released files.
 
 Graphs are cached per snapshot under `cache`, which must differ from
 `workspace`. A later run reuses a build, and reports its original build and
-checkout-fetch times with `cached: true`, only when the CodeNib sources and
-graph settings match the ones that built it. A failed build is retried on the
-next run; set `--tool-provider-option retry_failed=false` to keep failures, so
-that arms sharing a prebuilt cache see the same index availability.
+checkout-fetch times with `cached: true`, only when the build matches: the
+CodeNib sources, Python and package versions, each graph backend's command and
+executable, and the graph settings. A failed or partial build is retried on the
+next run, and a retry that covers fewer languages keeps the earlier graph; set
+`--tool-provider-option retry_failed=false` to keep failures, so that arms
+sharing a prebuilt cache see the same index availability.
 
 Each snapshot's status reports `released_source_files`, the released files in
 the graph's languages, and `covered_source_files`, how many of them the graph
