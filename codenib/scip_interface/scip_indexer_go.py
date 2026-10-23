@@ -27,6 +27,7 @@ from .go_modules import (
     local_replacements,
     merge_module_indexes,
     nested_go_modules,
+    workspace_includes,
 )
 from .scip_indexer_base import SCIPIndexerBase
 
@@ -116,6 +117,13 @@ class SCIPGoIndexer(SCIPIndexerBase):
         cmd = self._build_index_command(**kwargs)
         self.index_file.unlink(missing_ok=True)
         nested = nested_go_modules(self.project_root)
+        # A go.work that omits the root module would make ./... fail.
+        workspace_file = active_workspace(self.project_root)
+        if workspace_file and not workspace_includes(workspace_file, self.project_root):
+            workspace_file = None
+            options = {"env": _without_workspace()}
+        else:
+            options = {}
 
         logger.debug(f"Running command: {' '.join(cmd)}")
 
@@ -127,6 +135,7 @@ class SCIPGoIndexer(SCIPIndexerBase):
                     cwd=self.project_root,
                     capture_output=True,
                     text=True,
+                    **options,
                 )
                 success = True
             except subprocess.CalledProcessError as e:
@@ -144,7 +153,7 @@ class SCIPGoIndexer(SCIPIndexerBase):
             indexed = self.index_file.is_file() and not self.index_file.is_symlink()
             if success and indexed and nested:
                 try:
-                    success = self._merge_nested_modules(go_mod, nested)
+                    success = self._merge_nested_modules(go_mod, nested, workspace_file)
                 except BaseException:
                     self.index_file.unlink(missing_ok=True)
                     raise
@@ -160,7 +169,7 @@ class SCIPGoIndexer(SCIPIndexerBase):
         return False
 
     def _merge_nested_modules(
-        self, go_mod: Path, nested: List[Tuple[str, str]]
+        self, go_mod: Path, nested: List[Tuple[str, str]], workspace_file=None
     ) -> bool:
         """Index each nested module and merge it into ``self.index_file``.
 
@@ -220,7 +229,6 @@ class SCIPGoIndexer(SCIPIndexerBase):
             ]
             for source in directories
         }
-        workspace_file = active_workspace(self.project_root)
         workspace = [
             replacement
             for replacement in (

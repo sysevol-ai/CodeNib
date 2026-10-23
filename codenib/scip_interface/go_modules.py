@@ -14,7 +14,7 @@ directory and references meet definitions across modules.
 
 from __future__ import annotations
 
-import json
+import ast
 import os
 import re
 import subprocess
@@ -46,9 +46,11 @@ def _tokens(line: str) -> List[str]:
         if token == "//":
             break
         if token.startswith('"'):
+            # Go's interpreted-string escapes (\x, \u, octal, ...) match
+            # Python's for the characters a path can hold.
             try:
-                token = json.loads(token)
-            except ValueError:
+                token = ast.literal_eval(token)
+            except (ValueError, SyntaxError):
                 token = token[1:-1]
         elif token.startswith("`"):
             token = token[1:-1]
@@ -142,10 +144,26 @@ def local_replacements(go_file: Path, project_root: Path) -> List[Replacement]:
 def active_workspace(project_root: Path) -> Optional[Path]:
     """The go.work file a go command run in ``project_root`` would use.
 
-    Asks ``go env GOWORK``; without a go command, applies its rule: ``GOWORK``
-    names the file or ``off``, and unset or ``auto`` searches the directory
-    and its parents.
+    ``GOWORK`` names the file or ``off``; unset or ``auto`` searches the
+    directory and its parents. When a candidate exists, ``go env GOWORK``
+    has the final word.
     """
+    setting = os.environ.get("GOWORK", "")
+    if setting == "off":
+        return None
+    if setting and setting != "auto":
+        candidate: Optional[Path] = Path(setting)
+    else:
+        candidate = next(
+            (
+                directory / "go.work"
+                for directory in [project_root, *project_root.resolve().parents]
+                if (directory / "go.work").is_file()
+            ),
+            None,
+        )
+    if candidate is None:
+        return None
     try:
         result = subprocess.run(
             ["go", "env", "GOWORK"],
@@ -155,19 +173,21 @@ def active_workspace(project_root: Path) -> Optional[Path]:
             timeout=60,
             check=True,
         )
-        setting = result.stdout.strip()
-        return Path(setting) if setting and setting != "off" else None
     except (OSError, subprocess.SubprocessError):
-        pass
-    setting = os.environ.get("GOWORK", "")
-    if setting == "off":
-        return None
-    if setting and setting != "auto":
-        return Path(setting) if Path(setting).is_file() else None
-    for directory in [project_root, *project_root.resolve().parents]:
-        if (directory / "go.work").is_file():
-            return directory / "go.work"
-    return None
+        return candidate if candidate.is_file() else None
+    found = result.stdout.strip()
+    return Path(found) if found and found != "off" else None
+
+
+def workspace_includes(go_work: Path, directory: Path) -> bool:
+    """Whether ``go_work`` lists ``directory`` in a ``use`` directive."""
+    target = directory.resolve()
+    return any(
+        (go_work.parent / argument).resolve() == target
+        for verb, arguments in go_directives(go_work)
+        if verb == "use"
+        for argument in arguments
+    )
 
 
 # Module path -> {required version (None for any) -> directory}. Directory ""
@@ -206,7 +226,9 @@ def rename_module_symbol(
     def package(match: re.Match) -> str:
         path = match.group(1)
         if path == module or path.startswith(module + "/"):
-            prefix = f"{root_module}/{directory}" if directory else root_module
+            prefix = (
+                f"{root_module}/{_escaped(directory)}" if directory else root_module
+            )
             path = prefix + path[len(module) :]
         return f"`{path}`"
 
@@ -215,6 +237,15 @@ def rename_module_symbol(
         parts[3] = version
     parts[4] = _PACKAGE.sub(package, parts[4])
     return " ".join(parts)
+
+
+def _escaped(directory: str) -> str:
+    """``directory`` with whitespace and backticks percent-encoded.
+
+    Both decoders split symbols on whitespace, and a backtick would end the
+    package descriptor; Go import paths contain neither.
+    """
+    return re.sub(r"[\s`%]", lambda match: f"%{ord(match.group()):02X}", directory)
 
 
 def _replacing(replacements: Iterable[Replacement]) -> _Mapping:
@@ -285,13 +316,16 @@ def merge_module_indexes(
         for information in document.symbols:
             rename_information(information, rename)
 
-    shared = renamer(
-        _merged(
-            unique,
-            *(_replacing(replacements.get(d, ())) for d in ["", *covered]),
-            _replacing(workspace),
-        )
+    base = _merged(
+        unique, *(_replacing(replacements.get(d, ())) for d in ["", *covered])
     )
+    for module, versions in _replacing(workspace).items():
+        # go.work takes precedence: an any-version entry replaces every
+        # module replacement of that path, a versioned one only its version.
+        base[module] = (
+            dict(versions) if None in versions else {**base.get(module, {}), **versions}
+        )
+    shared = renamer(base)
     for document in root.documents:
         rename_document(document, shared)
     for information in root.external_symbols:

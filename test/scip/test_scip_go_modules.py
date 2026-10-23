@@ -495,3 +495,74 @@ def test_active_workspace_follows_the_go_command(tmp_path, monkeypatch, go_avail
         assert gm.active_workspace(repo) == tmp_path / "go.work"
     monkeypatch.setenv("GOWORK", "off")
     assert gm.active_workspace(repo) is None
+
+
+def test_go_escapes_in_quoted_targets(tmp_path):
+    (tmp_path / "local module").mkdir()
+    (tmp_path / "go.mod").write_text(
+        'module example.test/repo\nreplace example.com/x => "./local\\x20module"\n',
+        encoding="utf-8",
+    )
+    assert gm.local_replacements(tmp_path / "go.mod", tmp_path) == [
+        gm.Replacement("example.com/x", None, "local module")
+    ]
+
+
+def test_workspace_any_version_replacement_wins_over_versioned_ones():
+    dep = "example.com/dep"
+    root = Index()
+    _document(root, "main.go", [(1, _symbol(dep, f"{dep}/x", "Run().", "v1.0.0"), 0)])
+    merged = gm.merge_module_indexes(
+        root,
+        [],
+        ROOT,
+        modules=[("example.test/one", "one"), ("example.test/two", "two")],
+        replacements={"": [gm.Replacement(dep, "v1.0.0", "one")]},
+        workspace=[gm.Replacement(dep, None, "two")],
+    )
+    # No root-module symbols here, so the version is left as recorded.
+    assert merged.documents[0].occurrences[0].symbol == _symbol(
+        ROOT, f"{ROOT}/two/x", "Run().", "v1.0.0"
+    )
+
+
+def test_module_directories_with_spaces_survive_decoding(tmp_path):
+    module = "example.test/spaced"
+    nested = Index()
+    _document(nested, "x/x.go", [(2, _symbol(module, f"{module}/x", "Run()."), 1)])
+    merged = gm.merge_module_indexes(Index(), [(module, "local module", nested)], ROOT)
+    graph = _decode(tmp_path, merged)
+    assert "local%20module/x/Run" in graph.name_to_vertex
+    assert graph.graph.vs[graph.name_to_vertex["local%20module/x/Run"]]["file"] == (
+        "local module/x/x.go"
+    )
+
+
+@pytest.mark.parametrize("uses_root", [True, False])
+def test_root_run_drops_a_workspace_that_omits_the_root(
+    tmp_path, monkeypatch, uses_root
+):
+    repository = tmp_path / "repository"
+    _write_modules(repository)
+    uses = "use (\n\t.\n\t./server\n)\n" if uses_root else "use ./server\n"
+    (repository / "go.work").write_text("go 1.22\n" + uses, encoding="utf-8")
+    monkeypatch.delenv("GOWORK", raising=False)
+    indexer = go.SCIPGoIndexer(repository, output_dir=tmp_path / "state")
+    monkeypatch.setattr(indexer, "_check_indexer_available", lambda: True)
+    environments = {}
+
+    def run(command, **kwargs):
+        if command[:2] == ["go", "env"]:
+            found = str(repository / "go.work")
+            return subprocess.CompletedProcess(command, 0, found + "\n", "")
+        cwd = Path(kwargs["cwd"]).relative_to(repository).as_posix()
+        environments[cwd] = (kwargs.get("env") or {}).get("GOWORK")
+        Path(command[command.index("--output") + 1]).write_bytes(
+            _root_index().SerializeToString()
+        )
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(subprocess, "run", run)
+    assert indexer.generate_index() is True
+    assert environments["."] == (None if uses_root else "off")
+    assert environments["server"] == "off"
