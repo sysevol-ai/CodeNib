@@ -255,7 +255,7 @@ def embedding_options(args: argparse.Namespace) -> dict[str, Any] | None:
         "max_seq_length": getattr(args, "max_seq_length", None),
         "batch_size": getattr(args, "embedding_batch_size", None),
     }
-    return {key: value for key, value in options.items() if value} or None
+    return {key: value for key, value in options.items() if value is not None} or None
 
 
 def zoekt_bin_dir(explicit: Path | None) -> Path:
@@ -313,10 +313,18 @@ def method_config(
             "revision": methods.DENSE_REVISION,
             "max_seq_length": methods.DENSE_MAX_SEQ_LENGTH,
             "batch_size": methods.DENSE_BATCH_SIZE,
-            **{key: value for key, value in (embedding or {}).items() if value},
+            **{
+                key: value
+                for key, value in (embedding or {}).items()
+                if value is not None
+            },
         }
         if not re.fullmatch(r"[0-9a-f]{40}", str(options["revision"])):
             raise ValueError("--embedding-revision must be a 40-character commit SHA")
+        for key in ("max_seq_length", "batch_size"):
+            value = options[key]
+            if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+                raise ValueError(f"dense {key} must be a positive integer")
         config: dict[str, Any] = {
             **options,
             "device": resolved,

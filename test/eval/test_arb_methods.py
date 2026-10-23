@@ -147,6 +147,10 @@ def test_dense_overrides_join_the_receipt_and_need_a_pinned_revision(monkeypatch
     assert {key: config[key] for key in larger} == larger
     with pytest.raises(ValueError, match="40-character"):
         runner.method_config("dense", embedding={**larger, "revision": "main"})
+    # Explicit zeros are rejected, never replaced by the defaults.
+    for key in ("max_seq_length", "batch_size"):
+        with pytest.raises(ValueError, match=f"{key} must be a positive"):
+            runner.method_config("dense", embedding={key: 0})
     args = argparse.Namespace(
         embedding_model="Qwen/Qwen3-Embedding-4B",
         embedding_revision=None,
@@ -157,6 +161,8 @@ def test_dense_overrides_join_the_receipt_and_need_a_pinned_revision(monkeypatch
         runner.embedding_options(args)
     args.embedding_model = None
     assert runner.embedding_options(args) is None
+    args.max_seq_length = 0
+    assert runner.embedding_options(args) == {"max_seq_length": 0}
 
 
 def test_dense_precision_checks_the_selected_device(monkeypatch):
