@@ -146,6 +146,9 @@ RECEIPT_PACKAGES = (
     "faiss-cpu",
     "igraph",
     "protobuf",
+    # The Java and PHP SCIP decoders parse sources with tree-sitter.
+    "tree-sitter",
+    "tree-sitter-language-pack",
 )
 
 

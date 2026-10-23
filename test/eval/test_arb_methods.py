@@ -401,6 +401,27 @@ def test_snapshot_checkout_has_no_later_history(tmp_path):
         methods.fetch_snapshot("owner/repo;rm", base, root)
 
 
+def test_snapshot_fetch_leaves_directories_that_are_not_checkouts(tmp_path):
+    # A graph directory where a checkout would go, as when a workspace
+    # overlaps a tool-graph cache.
+    target = methods.snapshot_path("owner/repo", "a" * 40, tmp_path)
+    target.mkdir(parents=True)
+    (target / "provider_receipt.json").write_text("{}\n")
+    # So is an ordinary Git checkout: .git alone does not show ownership.
+    other = methods.snapshot_path("owner/repo", "b" * 40, tmp_path)
+    (other / ".git").mkdir(parents=True)
+    (other / "a.py").write_text("work in progress\n")
+    for commit, kept in (
+        ("a" * 40, target / "provider_receipt.json"),
+        ("b" * 40, other / "a.py"),
+    ):
+        with pytest.raises(ValueError, match="not a snapshot checkout"):
+            methods.fetch_snapshot(
+                "owner/repo", commit, tmp_path, remote="file:///none"
+            )
+        assert kept.is_file()
+
+
 def test_snapshot_languages_keep_major_source_languages():
     corpus = rows(
         *[(f"src/m{i}.py", "file", "", "") for i in range(8)],

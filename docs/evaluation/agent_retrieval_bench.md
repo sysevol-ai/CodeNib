@@ -379,7 +379,10 @@ describe.
 
 ARB's `indexed_interactive` mode lets a policy call index lookups next to
 `list_dir`, `grep`, `read_file`, and `submit`, under the same budgets. CodeNib
-supplies the lookups as an ARB tool provider:
+supplies the lookups as an ARB tool provider. The mode is not in the ARB
+revision pinned above for static scores; it is proposed in
+[agent-retrieval-bench#12](https://github.com/eyuansu62/agent-retrieval-bench/pull/12),
+so run it from a checkout that includes that change:
 
 ```bash
 arb eval-closed-tool-llm ... --mode indexed_interactive \
@@ -395,11 +398,29 @@ arb eval-closed-tool-llm ... --mode indexed_interactive \
   are referenced by, that symbol or the symbols it contains, ordered by the
   number of connecting references.
 
-Both return paths with 1-based line ranges, never file content. The graph is
-built as for [full-source graph expansion](#full-source-graph-expansion), so
-these runs are full-source runs. Hits are limited to released files. Graphs
-are cached per snapshot under `cache`; a later run reuses a build and reports
-its original build time with `cached: true`.
+Both return paths with 1-based line ranges, never file content; a reference
+made at file scope reports the line where it occurs. Imports and other
+reference-only names are not returned as definitions, and parameter lists such
+as `run(String)` are ignored when matching names. The graph is built as for
+[full-source graph expansion](#full-source-graph-expansion), so these runs are
+full-source runs. Hits are limited to released files.
+
+Graphs are cached per snapshot under `cache/graphs`, apart from the checkouts
+under `workspace`; `workspace` must be neither `cache` nor `cache/graphs`. A
+checkout never replaces a directory it did not publish, such as a graph or
+another Git checkout, nor a graph a checkout, so roots that overlap across
+providers fail instead of deleting each other's data, and neither root may lie
+inside a published graph or checkout. A later run reuses a build, and reports
+its original build and checkout-fetch times with `cached: true`, only when the
+build matches: the CodeNib sources, Python and package versions, each graph
+backend's command and executable, and the graph settings. A backend that its
+launcher loads indirectly, such as `python -m`, `npx`, or `rustup run`, is
+identified only by its command, so use a new cache after upgrading one. A
+failed or partial build is retried on the next run, and a retry that covers
+fewer languages keeps the earlier graph, with the retry's cost and, under
+`retry`, its outcome in the status; set `--tool-provider-option
+retry_failed=false` to keep failures, so that arms sharing a prebuilt cache see
+the same index availability.
 
 Each snapshot's status reports `released_source_files`, the released files in
 the graph's languages, and `covered_source_files`, how many of them the graph

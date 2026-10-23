@@ -19,11 +19,16 @@ files and report 1-based, inclusive line ranges.
   ordered by the number of connecting references.
 
 Graphs are cached under ``cache`` per snapshot, so later runs reuse a build
-and report its original cost with ``cached: true``.
+and report its original cost with ``cached: true``. A cached graph is reused
+only when the CodeNib sources and graph settings that built it match the
+current ones. A failed build is retried on the next run unless
+``retry_failed`` is false, which keeps index availability fixed across
+arms that share a prebuilt cache.
 """
 
 from __future__ import annotations
 
+import contextlib
 import json
 import re
 import shutil
@@ -38,6 +43,7 @@ from codenib.types import (
     NODE_TYPE_FIELD,
     NODE_TYPE_FILE,
     is_symbol_node,
+    node_has_definition,
 )
 
 from . import _arb_methods as methods
@@ -45,52 +51,123 @@ from .agent_retrieval_bench import implementation_receipt
 
 _RECEIPT = "provider_receipt.json"
 _SEPARATORS = re.compile(r"::|[.#/]")
+# Parameter lists such as ``run(String)`` are not part of a lookup name.
+_PARAMETERS = re.compile(r"\([^()]*\)")
 
 
 class CodeNibToolProvider:
-    def __init__(self, workspace: str, cache: str | None = None):
+    def __init__(
+        self,
+        workspace: str,
+        cache: str | None = None,
+        retry_failed: bool | str = True,
+    ):
         self.workspace = Path(workspace).resolve()
         self.cache = Path(cache).resolve() if cache else self.workspace / "tool-graphs"
+        # Graphs live below cache/graphs and checkouts directly below the
+        # workspace, so a graph directory is never another provider's checkout,
+        # even when two providers swap their roots.
+        self._graphs = self.cache / "graphs"
+        if self.workspace in (self.cache, self._graphs):
+            raise ValueError("workspace must differ from cache and from cache/graphs")
+        self._check_roots()
+        self.retry_failed = _flag(retry_failed)
         self._snapshots: dict[tuple[str, str], _SnapshotIndex | None] = {}
-
-    def describe(self) -> dict[str, Any]:
-        receipt = implementation_receipt()
-        return {
-            "name": "codenib",
-            "commit": _git_commit(),
-            "codenib_sources_sha256": receipt["codenib_sources_sha256"],
-            "source_access": "full-source",
+        implementation = implementation_receipt()
+        self._identity = {
+            "codenib_sources_sha256": implementation["codenib_sources_sha256"],
+            "python": implementation["python"],
+            "packages": implementation["packages"],
+            "graph_tools_sha256": _graph_tools(),
             "graph_build_timeout_seconds": methods.GRAPH_BUILD_TIMEOUT,
             "scip_python_index_timeout_seconds": _scip_python_timeout(),
             "min_language_share": methods.GRAPH_MIN_LANGUAGE_SHARE,
         }
 
-    def prepare(self, *, repo: str, base_commit: str, paths: list[str]) -> dict:
-        released = set(paths)
-        directory = methods.snapshot_path(repo, base_commit, self.cache)
-        directory.parent.mkdir(parents=True, exist_ok=True)
-        with methods.snapshot_lock(directory):
-            receipt_path = directory / _RECEIPT
-            cached = receipt_path.is_file()
-            if not cached:
-                self._build(repo, base_commit, paths, directory)
-            receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
-        graph_path = directory / "arb_graph.pkl"
-        index = None
-        if receipt.get("graph") and graph_path.is_file():
-            from codenib.graph.code_graph import CodeGraph
+    def describe(self) -> dict[str, Any]:
+        return {
+            "name": "codenib",
+            "commit": _git_commit(),
+            "source_access": "full-source",
+            "retry_failed": self.retry_failed,
+            **self._identity,
+        }
 
-            index = _SnapshotIndex(
-                CodeGraph.load_graph(str(graph_path)),
-                released,
-                receipt.get("languages") or [],
+    def _check_roots(self) -> None:
+        """Neither root may sit inside a published graph or checkout, whose
+        replacement would take the nested root with it. Checked again before
+        each preparation, since another provider may publish one later."""
+        for root in (self.workspace, self.cache):
+            for parent in (root, *root.parents):
+                if (parent / _RECEIPT).is_file() or methods.is_snapshot_checkout(
+                    parent
+                ):
+                    raise ValueError(
+                        f"{root} is inside a tool graph or checkout ({parent})"
+                    )
+
+    def prepare(self, *, repo: str, base_commit: str, paths: list[str]) -> dict:
+        self._check_roots()
+        released = set(paths)
+        directory = methods.snapshot_path(repo, base_commit, self._graphs)
+        directory.parent.mkdir(parents=True, exist_ok=True)
+        checkout = methods.snapshot_path(repo, base_commit, self.workspace)
+        checkout.parent.mkdir(parents=True, exist_ok=True)
+        with contextlib.ExitStack() as held:
+            # Both snapshot locks, in one global order, so no two providers
+            # can each hold one and wait for the other.
+            for lock in sorted(
+                (methods.snapshot_lock(directory), methods.snapshot_lock(checkout)),
+                key=lambda lock: lock.lock_file,
+            ):
+                held.enter_context(lock)
+            _finish_swap(directory)
+            receipt_path = directory / _RECEIPT
+            receipt = _read_receipt(receipt_path)
+            languages = methods.snapshot_languages(
+                [{"path": path, "kind": "file"} for path in paths]
             )
+            cached = self._reusable(receipt, languages)
+            if not cached:
+                self._build(repo, base_commit, languages, directory, receipt)
+                receipt = _read_receipt(receipt_path)
+            # Load under the lock, so another provider cannot replace the
+            # directory between reading the receipt and loading its graph.
+            graph_path = directory / "arb_graph.pkl"
+            index = None
+            if receipt.get("graph") and graph_path.is_file():
+                from codenib.graph.code_graph import CodeGraph
+
+                index = _SnapshotIndex(
+                    CodeGraph.load_graph(str(graph_path)),
+                    released,
+                    receipt.get("languages") or [],
+                )
         self._snapshots[(repo, base_commit)] = index
         status = {
             key: receipt[key]
-            for key in ("languages", "available", "failed", "error", "build_seconds")
+            for key in (
+                "languages",
+                "available",
+                "failed",
+                "error",
+                "build_seconds",
+                "fetch_seconds",
+            )
             if key in receipt
         }
+        if not cached and "last_retry" in receipt:
+            retry = receipt["last_retry"]
+            # This run paid for a retry that did not replace the kept graph:
+            # the cost is the retry's, and its outcome is reported apart from
+            # the kept graph's failures.
+            for key in ("build_seconds", "fetch_seconds"):
+                status[key] = retry.get(key, status.get(key))
+            status["retry"] = {
+                key: retry[key]
+                for key in ("available", "failed", "error")
+                if key in retry
+            }
         status.update(cached=cached, available=index is not None)
         if index is not None:
             status["size"] = index.size
@@ -102,27 +179,47 @@ class CodeNibToolProvider:
             )
         return status
 
+    def _reusable(self, receipt: dict | None, languages: list[str]) -> bool:
+        if receipt is None or receipt.get("identity") != self._identity:
+            return False
+        # Another released file set can call for other graph languages.
+        if receipt.get("languages") != languages:
+            return False
+        # A snapshot without graph languages has nothing to retry; a graph
+        # missing one of its languages counts as a failed build.
+        failed = receipt.get("languages") and (
+            not receipt.get("graph") or receipt.get("failed")
+        )
+        return not (failed and self.retry_failed)
+
     def _build(
-        self, repo: str, base_commit: str, paths: list[str], directory: Path
+        self,
+        repo: str,
+        base_commit: str,
+        languages: list[str],
+        directory: Path,
+        previous: dict | None = None,
     ) -> None:
         started = time.perf_counter()
-        languages = methods.snapshot_languages(
-            [{"path": path, "kind": "file"} for path in paths]
-        )
         staging = directory.with_name(directory.name + ".partial")
         shutil.rmtree(staging, ignore_errors=True)
         staging.mkdir(parents=True)
-        receipt: dict[str, Any] = {"languages": languages, "graph": False}
+        receipt: dict[str, Any] = {
+            "identity": self._identity,
+            "languages": languages,
+            "graph": False,
+        }
         fetch_seconds = 0.0
         try:
             if languages:
-                with methods.snapshot_lock(
-                    methods.snapshot_path(repo, base_commit, self.workspace)
-                ):
-                    fetched = time.perf_counter()
+                # prepare() holds the checkout's snapshot lock.
+                fetched = time.perf_counter()
+                try:
                     checkout = methods.fetch_snapshot(repo, base_commit, self.workspace)
+                finally:
+                    # A failed fetch is still acquisition, not build time.
                     fetch_seconds = time.perf_counter() - fetched
-                    report = methods.build_graph(checkout, staging, languages)
+                report = methods.build_graph(checkout, staging, languages)
                 receipt["available"] = report.get("available_languages", [])
                 if report.get("failed_languages"):
                     receipt["failed"] = {
@@ -134,14 +231,44 @@ class CodeNibToolProvider:
                     if built != staging / "arb_graph.pkl":
                         shutil.move(str(built), staging / "arb_graph.pkl")
                     receipt["graph"] = True
-        except (OSError, RuntimeError, ValueError, subprocess.TimeoutExpired) as exc:
+        except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as exc:
             receipt["error"] = f"{type(exc).__name__}: {exc}"[:500]
         # Fetching source is acquisition, not index construction.
         receipt["build_seconds"] = time.perf_counter() - started - fetch_seconds
         receipt["fetch_seconds"] = fetch_seconds
+        usable = (
+            previous is not None
+            and previous.get("graph")
+            and previous.get("identity") == self._identity
+            and previous.get("languages") == languages
+        )
+        # A retry replaces a usable graph only if it covers every language
+        # the old one did; otherwise the old graph stays.
+        retry_lost_coverage = usable and (
+            not receipt["graph"]
+            or not set(previous.get("available") or [])
+            <= set(receipt.get("available") or [])
+        )
+        if retry_lost_coverage:
+            # The kept graph records the attempt that did not replace it.
+            shutil.rmtree(staging, ignore_errors=True)
+            _write_atomically(directory / _RECEIPT, {**previous, "last_retry": receipt})
+            return
         (staging / _RECEIPT).write_text(json.dumps(receipt) + "\n", encoding="utf-8")
-        shutil.rmtree(directory, ignore_errors=True)
+        # Retire the live graph rather than delete it, so an interrupted swap
+        # leaves a graph for _finish_swap to restore.
+        # Only a graph this provider published is replaced, never, say, a
+        # checkout of a workspace that shares the root; nothing is removed
+        # before that is known.
+        if directory.exists() and not (directory / _RECEIPT).is_file():
+            shutil.rmtree(staging, ignore_errors=True)
+            raise ValueError(f"{directory} holds no tool graph; refusing to replace it")
+        retired = _retired(directory)
+        shutil.rmtree(retired, ignore_errors=True)
+        if directory.exists():
+            directory.rename(retired)
         staging.rename(directory)
+        shutil.rmtree(retired, ignore_errors=True)
 
     def call(
         self,
@@ -185,9 +312,13 @@ class _SnapshotIndex:
             attributes = vertex.attributes()
             if not is_symbol_node(attributes.get("type")):
                 continue
+            # Reference-only vertices (imports, unresolved names) are not
+            # definitions, even when a decoder files them under the importer.
+            if not node_has_definition(attributes):
+                continue
             if attributes.get("file") not in released:
                 continue
-            self._by_name.setdefault(_bare(_qualified(attributes)).lower(), []).append(
+            self._by_name.setdefault(_bare(_lookup(attributes)).lower(), []).append(
                 vertex.index
             )
         self.size = {
@@ -215,6 +346,7 @@ class _SnapshotIndex:
         for root in roots:
             scope.update(self._contained(root))
         counts: dict[tuple[int, str], int] = {}
+        anchors: dict[tuple[int, str], int] = {}
         for vertex in scope:
             for mode, relation in (("in", "uses symbol"), ("out", "used by symbol")):
                 for edge in g.incident(vertex, mode=mode):
@@ -226,7 +358,19 @@ class _SnapshotIndex:
                         continue
                     if other_path not in self._released:
                         continue
-                    counts[(other, relation)] = counts.get((other, relation), 0) + 1
+                    key = (other, relation)
+                    counts[key] = counts.get(key, 0) + 1
+                    # File-scope references have no symbol span; keep the
+                    # first line where the reference occurs, when that site
+                    # is in the hit's own file.
+                    edge_attributes = g.es[edge].attributes()
+                    line = edge_attributes.get("anchor_line")
+                    if (
+                        edge_attributes.get("anchor_file") == other_path
+                        and isinstance(line, int)
+                        and line >= 0
+                    ):
+                        anchors[key] = min(anchors.get(key, line), line)
         ranked = sorted(
             counts,
             key=lambda key: (-counts[key], self._file(key[0]), self._start(key[0])),
@@ -234,12 +378,15 @@ class _SnapshotIndex:
         hits = []
         for vertex, relation in ranked[:limit]:
             hit = self._hit(vertex)
+            line = anchors.get((vertex, relation))
+            if "start_line" not in hit and line is not None:
+                hit["start_line"] = hit["end_line"] = line + 1
             hit["relation"] = f"{relation}, {counts[(vertex, relation)]} refs"
             hits.append(hit)
         return hits
 
     def _matching(self, symbol: str) -> list[int]:
-        query = symbol.strip().strip("`'\"").removesuffix("()")
+        query = _PARAMETERS.sub("", symbol.strip().strip("`'\""))
         parts = [part for part in _SEPARATORS.split(query) if part]
         if not parts:
             return []
@@ -247,7 +394,7 @@ class _SnapshotIndex:
         wanted = ".".join(parts)
 
         def qualified(vertex: int) -> str:
-            name = _qualified(self._graph.graph.vs[vertex].attributes())
+            name = _lookup(self._graph.graph.vs[vertex].attributes())
             return ".".join(part for part in _SEPARATORS.split(name) if part)
 
         def suffix(name: str, target: str) -> bool:
@@ -322,9 +469,100 @@ def _qualified(attributes: dict[str, Any]) -> str:
     return display.removesuffix("()")
 
 
+def _lookup(attributes: dict[str, Any]) -> str:
+    """The qualified name without parameter lists, for matching."""
+    return _PARAMETERS.sub("", _qualified(attributes))
+
+
 def _bare(name: str) -> str:
     parts = [part for part in _SEPARATORS.split(name) if part]
     return parts[-1] if parts else name
+
+
+def _flag(value: bool | str) -> bool:
+    """A provider option that may arrive as a command-line string."""
+    if isinstance(value, bool):
+        return value
+    if value.strip().lower() in {"1", "true", "yes"}:
+        return True
+    if value.strip().lower() in {"0", "false", "no"}:
+        return False
+    raise ValueError(f"expected true or false, got {value!r}")
+
+
+def _graph_tools() -> dict[str, dict[str, Any]]:
+    """Every graph backend command the language registry can run: each graph
+    language's SCIP and LSP command, with environment overrides applied, and
+    the SHA-256 of its executable and of any file its arguments name (such as
+    a launcher's JAR)."""
+    from codenib.languages import (
+        LANGUAGE_SPECS,
+        lsp_command_for_language,
+        scip_cold_start_command_for_language,
+    )
+    from codenib.toolchains import resolve_command
+
+    from .agent_retrieval_bench import sha256_file
+
+    backends: dict[str, dict[str, Any]] = {}
+    for spec in LANGUAGE_SPECS:
+        if not spec.graph_language:
+            continue
+        for kind, lookup in (
+            ("scip", scip_cold_start_command_for_language),
+            ("lsp", lsp_command_for_language),
+        ):
+            try:
+                command = lookup(spec.graph_language)
+            except Exception:  # A broken factory leaves that backend unhashed.
+                command = None
+            if not command:
+                continue
+            executable = resolve_command(command[0])
+            files = {
+                argument: sha256_file(Path(argument))
+                for argument in command[1:]
+                if Path(argument).is_file()
+            }
+            # Keyed by kind: SCIP and LSP may share a launcher such as java.
+            backends[f"{spec.graph_language}:{kind}"] = {
+                "command": list(command),
+                "executable_sha256": (
+                    sha256_file(Path(executable)) if executable else None
+                ),
+                "argument_files_sha256": files,
+            }
+    return backends
+
+
+def _retired(directory: Path) -> Path:
+    return directory.with_name(directory.name + ".previous")
+
+
+def _finish_swap(directory: Path) -> None:
+    """Settle a graph swap that stopped between its two renames."""
+    retired = _retired(directory)
+    if not retired.is_dir():
+        return
+    if not directory.exists():
+        retired.rename(directory)
+    elif (directory / _RECEIPT).is_file():
+        shutil.rmtree(retired, ignore_errors=True)
+    # Anything else at the live path is not ours; the retired graph stays.
+
+
+def _write_atomically(path: Path, value: dict) -> None:
+    """Replace ``path`` so readers see the old or the new receipt, never a part."""
+    staging = path.with_name(path.name + ".writing")
+    staging.write_text(json.dumps(value) + "\n", encoding="utf-8")
+    staging.replace(path)
+
+
+def _read_receipt(path: Path) -> dict | None:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
 
 
 def _scip_python_timeout() -> float:

@@ -415,6 +415,11 @@ def snapshot_lock(checkout: Path) -> Any:
     return FileLock(str(checkout) + ".lock")
 
 
+def is_snapshot_checkout(path: Path) -> bool:
+    """Whether ``path`` is a checkout that ``fetch_snapshot`` published."""
+    return (path / ".git" / _SNAPSHOT_RECEIPT).is_file()
+
+
 def fetch_snapshot(
     repo: str, base_commit: str, root: Path, *, remote: str | None = None
 ) -> Path:
@@ -429,6 +434,13 @@ def fetch_snapshot(
     target = snapshot_path(repo, base_commit, root)
     receipt = target / ".git" / _SNAPSHOT_RECEIPT
     if not receipt.is_file():
+        # Only a missing or empty target is replaced. A directory without the
+        # receipt, even a Git checkout, was not published here.
+        if target.is_dir() and any(target.iterdir()):
+            raise ValueError(
+                f"{target} is not a snapshot checkout published here; "
+                "remove it to fetch again"
+            )
         shutil.rmtree(target, ignore_errors=True)
         target.parent.mkdir(parents=True, exist_ok=True)
         staging = Path(tempfile.mkdtemp(prefix="fetch-", dir=target.parent))
