@@ -119,16 +119,40 @@ def implementation_receipt() -> dict[str, Any]:
         Path(bm25.__file__),
     ]
     package_root = Path(__file__).resolve().parents[2]
+    # Methods delegate to vector, fusion, and graph code across the package,
+    # so the receipt also binds every CodeNib source file.
+    sources = hashlib.sha256()
+    for path in sorted(package_root.rglob("*.py")):
+        sources.update(str(path.relative_to(package_root)).encode("utf-8"))
+        sources.update(sha256_file(path).encode("ascii"))
     return {
         "files": {
             str(path.resolve().relative_to(package_root)): sha256_file(path)
             for path in files
         },
+        "codenib_sources_sha256": sources.hexdigest(),
         "python": platform.python_version(),
-        "packages": {
-            name: importlib.metadata.version(name) for name in ("rank-bm25", "numpy")
-        },
+        "packages": {name: _version(name) for name in RECEIPT_PACKAGES},
     }
+
+
+RECEIPT_PACKAGES = (
+    "rank-bm25",
+    "numpy",
+    "torch",
+    "transformers",
+    "sentence-transformers",
+    "faiss-cpu",
+    "igraph",
+    "protobuf",
+)
+
+
+def _version(name: str) -> str | None:
+    try:
+        return importlib.metadata.version(name)
+    except importlib.metadata.PackageNotFoundError:
+        return None
 
 
 def validate_upstream(checkout: Path) -> Path:

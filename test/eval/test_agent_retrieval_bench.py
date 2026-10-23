@@ -750,7 +750,7 @@ def test_native_method_fixes_its_source_access(released_data, tmp_path, monkeypa
     with pytest.raises(ValueError, match="released-corpus"):
         runner.execute(path, tmp_path / "run", tmp_path, access="full-source")
     with pytest.raises(ValueError, match="--workspace"):
-        runner.method_indexer("graph_expansion")
+        runner.method_indexer("graph_expansion", {})
 
 
 @pytest.mark.integration

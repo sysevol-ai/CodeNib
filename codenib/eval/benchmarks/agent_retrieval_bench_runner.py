@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import os
 import shutil
@@ -255,15 +256,36 @@ def source_access(method: str) -> str:
     return "full-source" if method == "graph_expansion" else "released-corpus"
 
 
-def method_config(method: str, *, zoekt_bin: Path | None = None) -> dict[str, Any]:
-    """Static identity of a native method; part of the resume receipt."""
+def _require(module: str, extra: str, method: str) -> None:
+    try:
+        importlib.import_module(module)
+    except ImportError as exc:
+        raise ValueError(
+            f"{method} needs `pip install 'codenib[{extra}]'`: {exc}"
+        ) from exc
+
+
+def method_config(
+    method: str, *, zoekt_bin: Path | None = None, device: str | None = None
+) -> dict[str, Any]:
+    """Static identity of a native method; part of the resume receipt.
+
+    It also preflights optional dependencies, so a missing extra fails before
+    any case is attempted.
+    """
     if method not in METHODS:
         raise ValueError(f"unknown ARB method: {method}")
     from . import _arb_methods as methods
 
     if method in ("dense", "hybrid"):
+        for module in ("sentence_transformers", "faiss"):
+            _require(module, "semantic", method)
+        resolved, dtype = methods.dense_precision(device)
         config: dict[str, Any] = {
             "model": methods.DENSE_MODEL,
+            "revision": methods.DENSE_REVISION,
+            "device": resolved,
+            "dtype": dtype,
             "max_seq_length": methods.DENSE_MAX_SEQ_LENGTH,
             "batch_size": methods.DENSE_BATCH_SIZE,
             "query_prompt": "",
@@ -281,7 +303,11 @@ def method_config(method: str, *, zoekt_bin: Path | None = None) -> dict[str, An
             "max_terms": methods.ZOEKT_MAX_TERMS,
         }
     if method == "graph_expansion":
-        tools = {name: shutil.which(name) for name in GRAPH_TOOLS}
+        _require("igraph", "graph", method)
+        from codenib.toolchains import resolve_command
+
+        # Resolve as the graph builder does: managed toolchain first, then PATH.
+        tools = {name: resolve_command(name) for name in GRAPH_TOOLS}
         return {
             "seed_files": methods.GRAPH_SEED_FILES,
             "neighbor_files": methods.GRAPH_NEIGHBOR_FILES,
@@ -296,22 +322,23 @@ def method_config(method: str, *, zoekt_bin: Path | None = None) -> dict[str, An
 
 def method_indexer(
     method: str,
+    config: dict[str, Any],
     *,
     zoekt_bin: Path | None = None,
-    device: str | None = None,
     workspace: Path | None = None,
-) -> tuple[Callable[[list[dict[str, Any]]], Any], Callable[[], dict[str, Any]]]:
-    """(build one snapshot index, run-level usage) for a native method.
+) -> Callable[[list[dict[str, Any]]], Any]:
+    """Build one snapshot index for a native method.
 
-    Dense methods load their embedding model on the first build.
+    Dense methods load their embedding model on the first build of a process;
+    that build's index carries ``model_load_seconds``.
     """
     if method == "bm25":
-        return (lambda corpus: BM25CorpusIndex(corpus)), dict
+        return lambda corpus: BM25CorpusIndex(corpus)
     from . import _arb_methods as methods
 
     if method == "zoekt":
         directory = zoekt_bin_dir(zoekt_bin)
-        return (lambda corpus: methods.ZoektCorpusIndex(corpus, directory)), dict
+        return lambda corpus: methods.ZoektCorpusIndex(corpus, directory)
     if method == "graph_expansion":
         if workspace is None:
             raise ValueError("graph_expansion needs --workspace for source checkouts")
@@ -326,21 +353,45 @@ def method_indexer(
                 workspace=root,
             )
 
-        return build_graph, dict
+        return build_graph
     encoders: list[Any] = []
 
     def build(corpus: list[dict[str, Any]]) -> Any:
+        loaded = None
         if not encoders:
-            encoders.append(methods.DenseEncoder(device=device))
-        index = (
+            encoders.append(methods.DenseEncoder(config["device"], config["dtype"]))
+            loaded = encoders[0].load_seconds
+        index_type = (
             methods.DenseCorpusIndex if method == "dense" else methods.HybridCorpusIndex
         )
-        return index(corpus, encoders[0])
+        index = index_type(corpus, encoders[0])
+        index.model_load_seconds = loaded
+        return index
 
-    def usage() -> dict[str, Any]:
-        return {"embedding": encoders[0].usage()} if encoders else {}
+    return build
 
-    return build, usage
+
+def embedding_usage(
+    predictions: list[dict[str, Any]], config: dict[str, Any]
+) -> dict[str, Any]:
+    """Model use summed over checkpointed builds, so resumes keep earlier work."""
+    built = [row for row in predictions if row.get("index_built")]
+
+    def dense_size(row: dict[str, Any]) -> dict[str, Any]:
+        size = row["index_size"]
+        return size.get("dense", size)
+
+    loads = [
+        row["model_load_seconds"] for row in predictions if "model_load_seconds" in row
+    ]
+    return {
+        "model": config["model"],
+        "revision": config["revision"],
+        "model_loads": len(loads),
+        "model_load_seconds": distribution(loads),
+        "encoded_documents": sum(dense_size(row)["encoded_documents"] for row in built),
+        "reused_documents": sum(dense_size(row)["reused_documents"] for row in built),
+    }
 
 
 def by_corpus(cases: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -411,7 +462,9 @@ def execute(
         "prepared_sha256": json_digest(prepared),
         "method": "external-file-ranking" if pred_path else f"codenib-{method}",
         "method_config": (
-            None if pred_path else method_config(method, zoekt_bin=zoekt_bin)
+            None
+            if pred_path
+            else method_config(method, zoekt_bin=zoekt_bin, device=device)
         ),
         "candidate_filter": "all_files",
         "source_access": access,
@@ -457,8 +510,11 @@ def execute(
             elif predictions_path.exists():
                 raise ValueError("native predictions have no recovery checkpoint")
             completed = prediction_map(predictions, prepared)
-            build_index, method_usage = method_indexer(
-                method, zoekt_bin=zoekt_bin, device=device, workspace=workspace
+            build_index = method_indexer(
+                method,
+                config["method_config"],
+                zoekt_bin=zoekt_bin,
+                workspace=workspace,
             )
             index_key, index = None, None
             for record in by_corpus(prepared["cases"]):
@@ -493,6 +549,8 @@ def execute(
                         )
                         if hasattr(index, "fetch_seconds"):
                             prediction["source_fetch_seconds"] = index.fetch_seconds
+                        if getattr(index, "model_load_seconds", None) is not None:
+                            prediction["model_load_seconds"] = index.model_load_seconds
                     # A failed search is still an attempted call with latency.
                     prediction["tool_calls"] = 1
                     queried = time.perf_counter()
@@ -527,10 +585,11 @@ def execute(
         result = evaluate(prepared, predictions, upstream, evaluator_python, access)
         result["provenance"] = config
         if external is None:
-            result["retrieval_usage"] = {
-                **retrieval_usage(predictions),
-                **method_usage(),
-            }
+            result["retrieval_usage"] = retrieval_usage(predictions)
+            if method in ("dense", "hybrid"):
+                result["retrieval_usage"]["embedding"] = embedding_usage(
+                    predictions, config["method_config"]
+                )
             if method == "graph_expansion":
                 result["retrieval_usage"]["graph"] = graph_usage(predictions)
             result["environment"] = run_environment()

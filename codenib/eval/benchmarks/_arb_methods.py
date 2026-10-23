@@ -15,8 +15,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -31,6 +33,8 @@ from codenib.types import EDGE_TYPE_CONTAIN, EDGE_TYPE_REFERENCE, NODE_TYPE_FILE
 from .agent_retrieval_bench import BM25CorpusIndex, complete_file_ranking, corpus_chunks
 
 DENSE_MODEL = "Qwen/Qwen3-Embedding-0.6B"
+# Immutable Hugging Face commit; a mutable default branch could change weights.
+DENSE_REVISION = "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3"
 DENSE_DIMENSION = 1024
 DENSE_MAX_SEQ_LENGTH = 512
 DENSE_BATCH_SIZE = 64
@@ -75,19 +79,29 @@ class _CachedEmbedding:
         return getattr(self._embedding, name)
 
 
+def dense_precision(device: str | None = None) -> tuple[str, str]:
+    """(device, dtype) a dense run uses; part of its resume receipt."""
+    import torch
+
+    device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+    if device.startswith("cuda") and torch.cuda.is_bf16_supported():
+        return device, "bfloat16"
+    return device, "float32"
+
+
 class DenseEncoder:
     """One embedding model, loaded once and shared by every snapshot index."""
 
-    def __init__(self, model: str = DENSE_MODEL, device: str | None = None):
+    def __init__(self, device: str, dtype: str):
         import torch
 
         from codenib.index.embedding import CodeVectorStore
 
-        device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         started = time.perf_counter()
         self.store_options = {
-            "embedding_model": model,
+            "embedding_model": DENSE_MODEL,
             "embedding_provider": "huggingface",
+            "revision": DENSE_REVISION,
             "dimension": DENSE_DIMENSION,
             "index_type": "flat",
             "index_metric": "ip",
@@ -102,29 +116,10 @@ class DenseEncoder:
             document_prompt="",
             encode_kwargs={"normalize_embeddings": True},
         )
-        dtype = "float32"
-        if device.startswith("cuda"):
+        if dtype == "bfloat16":
             template.embedding.client.to(torch.bfloat16)
-            dtype = "bfloat16"
         self.embedding = _CachedEmbedding(template.embedding)
         self.load_seconds = time.perf_counter() - started
-        self.config = {
-            "model": model,
-            "device": device,
-            "dtype": dtype,
-            "max_seq_length": DENSE_MAX_SEQ_LENGTH,
-            "batch_size": DENSE_BATCH_SIZE,
-            "query_prompt": "",
-            "index": "exact inner product over normalized vectors",
-        }
-
-    def usage(self) -> dict[str, Any]:
-        return {
-            "embedding_model": self.config["model"],
-            "model_load_seconds": self.load_seconds,
-            "encoded_documents": self.embedding.encoded_documents,
-            "reused_documents": self.embedding.reused_documents,
-        }
 
 
 class DenseCorpusIndex:
@@ -407,36 +402,48 @@ def _git(checkout: Path, *args: str) -> str:
     ).stdout.strip()
 
 
+def snapshot_path(repo: str, base_commit: str, root: Path) -> Path:
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo) or not re.fullmatch(
+        r"[0-9a-f]{40}", base_commit
+    ):
+        raise ValueError(f"invalid snapshot identity: {repo}@{base_commit}")
+    return root / repo.replace("/", "__") / base_commit
+
+
+def snapshot_lock(checkout: Path) -> Any:
+    from filelock import FileLock
+
+    return FileLock(str(checkout) + ".lock")
+
+
 def fetch_snapshot(
     repo: str, base_commit: str, root: Path, *, remote: str | None = None
 ) -> Path:
     """A clean working tree at ``base_commit`` without later history.
 
-    A depth-1 fetch of the commit alone keeps the resolving change and every
-    later commit out of the object store. A reused checkout must still be
-    that single, clean commit.
+    The caller must hold ``snapshot_lock`` for the returned path while it
+    validates, cleans, and indexes the checkout. A depth-1 fetch of the commit
+    alone keeps the resolving change and every later commit out of the object
+    store. Every use revalidates that single commit and removes untracked and
+    ignored files, including earlier indexer output.
     """
-    if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo) or not re.fullmatch(
-        r"[0-9a-f]{40}", base_commit
-    ):
-        raise ValueError(f"invalid snapshot identity: {repo}@{base_commit}")
-    target = root / repo.replace("/", "__") / base_commit
-    if not (target / _SNAPSHOT_RECEIPT).is_file():
-        staging = Path(tempfile.mkdtemp(prefix="fetch-", dir=root))
+    target = snapshot_path(repo, base_commit, root)
+    receipt = target / ".git" / _SNAPSHOT_RECEIPT
+    if not receipt.is_file():
+        shutil.rmtree(target, ignore_errors=True)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        staging = Path(tempfile.mkdtemp(prefix="fetch-", dir=target.parent))
         try:
             _git(staging, "init", "-q")
             url = remote or f"https://github.com/{repo}.git"
             _git(staging, "remote", "add", "origin", url)
             _git(staging, "fetch", "-q", "--depth", "1", "origin", base_commit)
             _git(staging, "checkout", "-q", "--detach", "FETCH_HEAD")
-            (staging / ".git" / "info" / "exclude").write_text(
-                _SNAPSHOT_RECEIPT + "\n", encoding="utf-8"
-            )
-            (staging / _SNAPSHOT_RECEIPT).write_text(
+            (staging / ".git" / _SNAPSHOT_RECEIPT).write_text(
                 json.dumps({"repo": repo, "base_commit": base_commit}) + "\n",
                 encoding="utf-8",
             )
-            target.parent.mkdir(parents=True, exist_ok=True)
+            # The receipt is written last; a crash leaves no published checkout.
             staging.rename(target)
         finally:
             shutil.rmtree(staging, ignore_errors=True)
@@ -446,12 +453,17 @@ def fetch_snapshot(
         raise ValueError("checkout has history beyond the base commit")
     if _git(target, "status", "--porcelain", "--untracked-files=no"):
         raise ValueError("checkout has local changes")
+    _git(target, "clean", "-ffdxq")
     return target
 
 
 def build_graph(checkout: Path, output: Path, languages: list[str]) -> dict[str, Any]:
-    """Build a CodeNib graph in a child process, bounded by a timeout."""
-    process = subprocess.run(
+    """Build a CodeNib graph in a child process group, bounded by a timeout.
+
+    Indexers spawn compilers and build tools, so a timeout kills the whole
+    group rather than only the immediate child.
+    """
+    returncode, stderr = run_process_group(
         [
             sys.executable,
             "-m",
@@ -461,15 +473,30 @@ def build_graph(checkout: Path, output: Path, languages: list[str]) -> dict[str,
             str(output),
             ",".join(languages),
         ],
-        capture_output=True,
-        text=True,
-        timeout=GRAPH_BUILD_TIMEOUT,
-        check=False,
+        GRAPH_BUILD_TIMEOUT,
     )
     report_path = output / "arb_graph_report.json"
-    if process.returncode or not report_path.is_file():
-        raise RuntimeError(f"graph build failed: {process.stderr[-2000:]}")
+    if returncode or not report_path.is_file():
+        raise RuntimeError(f"graph build failed: {stderr[-2000:]}")
     return json.loads(report_path.read_text(encoding="utf-8"))
+
+
+def run_process_group(command: list[str], timeout: float) -> tuple[int, str]:
+    """Run ``command`` in a new session; on timeout kill its whole group."""
+    process = subprocess.Popen(
+        command,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+    )
+    try:
+        _stdout, stderr = process.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        os.killpg(process.pid, signal.SIGKILL)
+        process.communicate()
+        raise
+    return process.returncode, stderr
 
 
 def _build_graph_main(checkout: str, output: str, languages: str) -> int:
@@ -521,19 +548,47 @@ class GraphExpansionIndex:
         base_commit: str,
         workspace: Path,
     ):
-        from codenib.graph.code_graph import CodeGraph
-
         started = time.perf_counter()
         self._bm25 = BM25CorpusIndex(corpus)
         self._paths = {row["path"] for row in corpus}
-        fetched = time.perf_counter()
-        checkout = fetch_snapshot(repo, base_commit, workspace)
-        self.fetch_seconds = time.perf_counter() - fetched
-        built = time.perf_counter()
         languages = snapshot_languages(corpus)
         self._output = Path(tempfile.mkdtemp(prefix="graph-", dir=workspace))
         self._graph = None
         graph_size: dict[str, Any] = {"languages": languages, "available": []}
+        # Lock order: the run's output lock, then this snapshot's lock. The
+        # holder owns the checkout's working tree until the graph is built.
+        with snapshot_lock(snapshot_path(repo, base_commit, workspace)):
+            fetched = time.perf_counter()
+            checkout = fetch_snapshot(repo, base_commit, workspace)
+            self.fetch_seconds = time.perf_counter() - fetched
+            self._build(checkout, languages, graph_size)
+        self.graph_build_seconds = (
+            time.perf_counter()
+            - started
+            - self.fetch_seconds
+            - self._bm25.build_seconds
+        )
+        if self._graph is not None:
+            graph = self._graph.graph
+            graph_size.update(
+                vertices=graph.vcount(),
+                edges=graph.ecount(),
+                reference_edges=sum(
+                    edge["type"] == EDGE_TYPE_REFERENCE for edge in graph.es
+                ),
+            )
+        # Fetching source is acquisition, not index construction.
+        self.build_seconds = time.perf_counter() - started - self.fetch_seconds
+        graph_size["build_seconds"] = self.graph_build_seconds
+        self.size = {"bm25": self._bm25.size, "graph": graph_size}
+        self.graph_used = False
+        self.removed_non_candidate_paths = 0
+
+    def _build(
+        self, checkout: Path, languages: list[str], graph_size: dict[str, Any]
+    ) -> None:
+        from codenib.graph.code_graph import CodeGraph
+
         try:
             report = build_graph(checkout, self._output, languages) if languages else {}
             graph_size["available"] = report.get("available_languages", [])
@@ -546,21 +601,6 @@ class GraphExpansionIndex:
                 self._graph = CodeGraph.load_graph(report["graph"])
         except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
             graph_size["error"] = f"{type(exc).__name__}: {exc}"[:500]
-        self.graph_build_seconds = time.perf_counter() - built
-        if self._graph is not None:
-            graph = self._graph.graph
-            graph_size.update(
-                vertices=graph.vcount(),
-                edges=graph.ecount(),
-                reference_edges=sum(
-                    edge["type"] == EDGE_TYPE_REFERENCE for edge in graph.es
-                ),
-            )
-        # Fetching source is acquisition, not index construction.
-        self.build_seconds = time.perf_counter() - started - self.fetch_seconds
-        self.size = {"bm25": self._bm25.size, "graph": graph_size}
-        self.graph_used = False
-        self.removed_non_candidate_paths = 0
 
     def _adjacent(self, vertex: int, edge_type: str, mode: str) -> list[int]:
         graph = self._graph.graph
