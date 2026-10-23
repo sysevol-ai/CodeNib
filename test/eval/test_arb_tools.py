@@ -324,4 +324,6 @@ def test_a_failed_retry_keeps_the_usable_partial_graph(builds, monkeypatch, tmp_
 def test_identity_includes_runtime_and_graph_tools(tmp_path):
     described = tools.CodeNibToolProvider(str(tmp_path / "ws")).describe()
     assert described["python"] and "igraph" in described["packages"]
-    assert "scip-python" in described["graph_tools_sha256"]
+    backends = described["graph_tools_sha256"]
+    for key in ("python:scip-python", "go:scip-go", "cpp:clangd", "csharp:scip-dotnet"):
+        assert key in backends, key

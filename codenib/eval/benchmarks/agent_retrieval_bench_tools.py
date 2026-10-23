@@ -447,17 +447,33 @@ def _flag(value: bool | str) -> bool:
 
 
 def _graph_tools() -> dict[str, str | None]:
-    """SHA-256 of each graph indexer the build would run, as graph_expansion
-    records them."""
+    """SHA-256 of every graph backend executable the language registry can
+    run: each graph language's SCIP command and its LSP command, with any
+    environment overrides applied."""
+    from codenib.languages import (
+        LANGUAGE_SPECS,
+        lsp_command_for_language,
+        scip_cold_start_command_for_language,
+    )
     from codenib.toolchains import resolve_command
 
     from .agent_retrieval_bench import sha256_file
-    from .agent_retrieval_bench_runner import GRAPH_TOOLS
 
-    tools = {name: resolve_command(name) for name in GRAPH_TOOLS}
-    return {
-        name: sha256_file(Path(path)) if path else None for name, path in tools.items()
-    }
+    hashes: dict[str, str | None] = {}
+    for spec in LANGUAGE_SPECS:
+        if not spec.graph_language:
+            continue
+        for lookup in (scip_cold_start_command_for_language, lsp_command_for_language):
+            try:
+                command = lookup(spec.graph_language)
+            except Exception:  # A broken factory leaves that backend unhashed.
+                command = None
+            if not command:
+                continue
+            path = resolve_command(command[0])
+            key = f"{spec.graph_language}:{command[0]}"
+            hashes[key] = sha256_file(Path(path)) if path else None
+    return hashes
 
 
 def _read_receipt(path: Path) -> dict | None:
