@@ -267,9 +267,9 @@ class PatcherBase(SubgraphMgr):
     # ═══════════════════════════════════════════════════════════
 
     def _should_skip_path(self, path: str) -> bool:
-        """Override to exclude language-specific files (e.g. _test.go) so
-        the patcher mirrors the SCIP/clangd decoder's file scope. Default
-        keeps every file."""
+        """Override to exclude language-specific files so the patcher
+        mirrors the SCIP/clangd decoder's file scope. Default keeps every
+        file."""
         return False
 
     def _filter_changed_files(self, changed_files: dict) -> dict:
@@ -312,9 +312,7 @@ class PatcherBase(SubgraphMgr):
         """
         effective_later_commit = later_commit or "HEAD"
 
-        # Drop files the language excludes from indexing (e.g. _test.go for
-        # Go, where SCIP-go skips test files by design — see
-        # scip_decode_go.py).
+        # Drop files the language excludes from indexing.
         changed_files = self._filter_changed_files(changed_files)
 
         if changed_files["modified"] and not earlier_commit:

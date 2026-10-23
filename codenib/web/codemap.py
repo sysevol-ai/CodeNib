@@ -1050,11 +1050,20 @@ def _unmapped_citations_note(
             "graph snapshot. Rebuild the symbol graph from the same repository "
             "snapshot as the Wiki indexes."
         )
-    if len(test_files) == len(files):
-        return (
-            f"This page cites {cited}, all in test files, which the symbol "
-            "graph does not index."
+    # Graphs can hold test files (Go graphs do), so name what was missed.
+    indexed_tests = sum(1 for f in test_files if f in by_file)
+    if not indexed_tests:
+        tests = "test files, which the symbol graph does not index"
+    elif indexed_tests == len(test_files):
+        tests = "test files whose cited lines match no symbol the graph holds"
+    else:
+        tests = (
+            f"test files: {len(test_files) - indexed_tests} are not in the "
+            f"symbol graph, and the cited lines of {indexed_tests} match no "
+            "symbol it holds"
         )
+    if len(test_files) == len(files):
+        return f"This page cites {cited}, all in {tests}."
     graph_exts = sorted({os.path.splitext(f)[1] for f in by_file} - {""})
     cited_exts = sorted({os.path.splitext(f)[1] for f in files} - {""})
     if cited_exts and graph_exts and not set(cited_exts) & set(graph_exts):
@@ -1067,8 +1076,8 @@ def _unmapped_citations_note(
     if test_files:
         return (
             f"This page cites {cited}; {len(test_files)} of its {len(files)} "
-            "files are test files, which the symbol graph does not index, and "
-            f"the rest (e.g. {examples}) were not indexed either."
+            f"files are {tests}, and the rest (e.g. {examples}) were not "
+            "indexed."
         )
     return (
         f"This page cites {cited} in files the symbol graph did not index "

@@ -96,10 +96,6 @@ class SCIPGoGraphDecoder:
         if not file_path.endswith(".go"):
             return
 
-        # Skip test files
-        if file_path.endswith("_test.go"):
-            return
-
         # Add directory hierarchy
         dir_path = Path(file_path).parent
         while dir_path != dir_path.parent:

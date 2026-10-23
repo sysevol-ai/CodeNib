@@ -68,6 +68,27 @@ without launching the live server after construction.
 | Ruby | `scip-ruby`, with Ruby LSP fallback | `ruby-lsp` |
 | PHP | project-local `scip-php`, with Intelephense fallback | `intelephense` |
 
+Go graphs include `_test.go` files. A repository with nested `go.mod` files is
+indexed one module at a time; the modules are merged into one graph, with each
+package named by its directory and references resolved across modules. A
+repository needs a root `go.mod`; a workspace with only a root `go.work` is not
+indexed.
+
+The root module is indexed under the active `go.work` when that workspace uses
+the root, and without it otherwise. A nested module the root run already
+covered is not indexed again. Each remaining nested module keeps the workspace
+if it is a member and runs on its own `go.mod` if not; one that fails to index
+is skipped with a warning. Local `replace` directives, including those in
+`go.work`, map their paths to the module directories they point at. A module
+path declared in several directories keeps each copy under its own directory,
+and references to it from other modules stay unresolved. Directories the `go`
+command ignores (`vendor`, `testdata`, and names starting with `.` or `_`) are
+not searched for modules.
+
+Incremental patches query `gopls` in the edited file's own module, so patching
+a nested-module file can drop references that cross module boundaries; a full
+rebuild restores them.
+
 The manager handles pinned npm, Go, Rustup, .NET tool, and RubyGem providers
 when their host runtime is present. OS packages such as clangd, JDKs, and build
 tools remain explicit. Preview the exact operations without writing anything:
