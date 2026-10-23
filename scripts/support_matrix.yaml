@@ -153,9 +153,9 @@ benchmarks:
     setup: ARB checkout and verified release download
     entry:
       - cli: codenib-arb
-    level: Pinned
-    level_note: official scorer; 8-case smoke only
-    results: evaluation/agent_retrieval_bench.md#validation
+    level: Measured
+    level_note: five methods on all 345 samples
+    results: evaluation/agent_retrieval_bench.md#results
     page: evaluation/agent_retrieval_bench.md
     modules:
       - codenib/eval/benchmarks/agent_retrieval_bench.py
@@ -261,9 +261,11 @@ methods:
         note: Control scores on the 20 validation cases; not a quality claim.
         link: evaluation/swe_explore.md#localization-summary
       arb:
-        level: Runnable
-        note: The only native ARB route; validated on an 8-case smoke.
-        link: evaluation/agent_retrieval_bench.md#validation
+        level: Measured
+        note: >-
+          All 345 samples; trails ARB's own BM25 because CodeNib's tokenizer
+          does not split camelCase identifiers.
+        link: evaluation/agent_retrieval_bench.md#results
       contextbench:
         level: Runnable
         note: >-
@@ -287,6 +289,10 @@ methods:
       swebench_lite: {level: Runnable}
       locbench_v1: {level: Runnable}
       swe_explore: {level: Runnable}
+      arb:
+        level: Measured
+        note: All 345 samples; Qwen3-Embedding-0.6B with no instruction.
+        link: evaluation/agent_retrieval_bench.md#results
       contextbench: {level: Runnable}
 
   - id: hybrid
@@ -304,6 +310,10 @@ methods:
       swebench_lite: {level: Runnable}
       locbench_v1: {level: Runnable}
       swe_explore: {level: Runnable}
+      arb:
+        level: Measured
+        note: All 345 samples; file-level RRF of the BM25 and dense rankings.
+        link: evaluation/agent_retrieval_bench.md#results
 
   - id: graph_expansion
     name: Graph expansion
@@ -317,6 +327,12 @@ methods:
       swebench_lite: {level: Runnable}
       locbench_v1: {level: Runnable}
       swe_explore: {level: Runnable}
+      arb:
+        level: Measured
+        note: >-
+          All 345 samples, full-source condition; a graph for 190 of 218
+          snapshots; lower Recall@20 than BM25 on the samples with a graph.
+        link: evaluation/agent_retrieval_bench.md#results
       contextbench: {level: Runnable}
 
   - id: retrieve_rerank

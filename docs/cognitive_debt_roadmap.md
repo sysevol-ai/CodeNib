@@ -743,9 +743,10 @@ the installed package, not another product runtime.
 
 ### Agent Retrieval Bench labs boundary
 
-Status: merged in
-[PR #831](https://github.com/sysevol-ai/CodeNib/pull/831); the ARB owner
-scoped an upstream docs/example contribution in
+Status: adapter merged in
+[PR #831](https://github.com/sysevol-ai/CodeNib/pull/831); cost accounting,
+retrieval methods, and evaluator-revision checks in PRs #854, #855, and #857.
+The ARB owner set the full-source rules in
 [their issue #2 reply](https://github.com/eyuansu62/agent-retrieval-bench/issues/2#issuecomment-6334640769).
 Owner: retrieval and evaluation maintainers. Lifecycle: `labs`; no stable
 package re-export or product-route dependency.
@@ -772,16 +773,18 @@ Native runs index each corpus snapshot once and record cold-build time and
 index size apart from per-sample query time, tool calls, and model usage; every
 report also carries the shared dev/held-out split.
 
-Open gates: the upstream docs/example PR that the ARB owner requested in that
-reply (runnable example, smoke receipt, reporting contract) is not yet merged
-upstream. A full 345-case
-retrieval measurement, selective/abstention, interactive trajectories, and
-graph/Zoekt/vector adapters remain subsequent scope decisions. An
-indexed-interactive comparison holds the agent model and budgets fixed and tests
-iterative search with and without graph expansion, separately from ARB's
-closed-tool diagnostic. A full-source run is a separately labeled condition: it
-keeps gold labels and resolving changes out of retrieval inputs, scores only
-released candidate files, and computes canonical BCY on released text.
+Upstream ARB merged the docs/example contribution (eyuansu62/agent-retrieval-bench#9)
+and reproduced its smoke independently. Native runs now cover five methods on
+all 345 samples (`bm25`, `dense`, `hybrid`, `zoekt` on the released corpus;
+`graph_expansion` on full source), bound to tag `arb/2026-10-22/methods`, with
+rankings published for offline rescoring. Graph expansion lowered Recall@20
+against BM25 on the samples with a graph; CodeNib BM25 trails ARB's BM25 because
+of a tokenizer gap (#856).
+
+Open gates: the CodeNib community-result submission to ARB, an
+indexed-interactive comparison that holds the agent model and budgets fixed and
+stays separate from ARB's closed-tool diagnostic, and selective/abstention
+evaluation. Line/span scores remain out of scope.
 
 ### S0: High-confidence subtraction
 

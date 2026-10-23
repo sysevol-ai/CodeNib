@@ -91,6 +91,7 @@ ALLOWED_PUBLIC_STATIC_FILES = {
     "assets/contextbench_annotation_correction.json",
     "assets/contextbench_solver_source_summary.json",
     "assets/arb_smoke.json",
+    "assets/arb_full.json",
     "assets/grep_jev_range_audit.json",
     "assets/grep_jev_product_audit.json",
     "assets/grep_jev_product_live.json",
