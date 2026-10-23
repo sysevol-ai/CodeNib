@@ -133,6 +133,32 @@ def test_dense_identity_pins_weights_device_and_precision(monkeypatch):
     assert "RRF" in config["fusion"]
 
 
+def test_dense_overrides_join_the_receipt_and_need_a_pinned_revision(monkeypatch):
+    import argparse
+
+    monkeypatch.setattr(methods, "dense_precision", lambda device: ("cpu", "float32"))
+    larger = {
+        "model": "Qwen/Qwen3-Embedding-4B",
+        "revision": "5cf2132abc99cad020ac570b19d031efec650f2b",
+        "max_seq_length": 2048,
+        "batch_size": 16,
+    }
+    config = runner.method_config("dense", embedding=larger)
+    assert {key: config[key] for key in larger} == larger
+    with pytest.raises(ValueError, match="40-character"):
+        runner.method_config("dense", embedding={**larger, "revision": "main"})
+    args = argparse.Namespace(
+        embedding_model="Qwen/Qwen3-Embedding-4B",
+        embedding_revision=None,
+        max_seq_length=None,
+        embedding_batch_size=None,
+    )
+    with pytest.raises(ValueError, match="needs --embedding-revision"):
+        runner.embedding_options(args)
+    args.embedding_model = None
+    assert runner.embedding_options(args) is None
+
+
 def test_dense_precision_checks_the_selected_device(monkeypatch):
     import contextlib
 

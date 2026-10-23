@@ -10,6 +10,7 @@ import argparse
 import importlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -239,6 +240,24 @@ GRAPH_TOOLS = (
 )
 
 
+DEFAULT_EMBEDDING = "Qwen/Qwen3-Embedding-0.6B"
+
+
+def embedding_options(args: argparse.Namespace) -> dict[str, Any] | None:
+    """Dense overrides from the CLI; a non-default model needs its revision."""
+    model = getattr(args, "embedding_model", None)
+    revision = getattr(args, "embedding_revision", None)
+    if model and not revision:
+        raise ValueError("--embedding-model needs --embedding-revision")
+    options = {
+        "model": model,
+        "revision": revision,
+        "max_seq_length": getattr(args, "max_seq_length", None),
+        "batch_size": getattr(args, "embedding_batch_size", None),
+    }
+    return {key: value for key, value in options.items() if value} or None
+
+
 def zoekt_bin_dir(explicit: Path | None) -> Path:
     if explicit is not None:
         candidates = [explicit]
@@ -268,7 +287,11 @@ def _require(module: str, extra: str, method: str) -> None:
 
 
 def method_config(
-    method: str, *, zoekt_bin: Path | None = None, device: str | None = None
+    method: str,
+    *,
+    zoekt_bin: Path | None = None,
+    device: str | None = None,
+    embedding: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Static identity of a native method; part of the resume receipt.
 
@@ -285,13 +308,19 @@ def method_config(
         for module in ("sentence_transformers", "faiss"):
             _require(module, "semantic", method)
         resolved, dtype = methods.dense_precision(device)
-        config: dict[str, Any] = {
+        options = {
             "model": methods.DENSE_MODEL,
             "revision": methods.DENSE_REVISION,
-            "device": resolved,
-            "dtype": dtype,
             "max_seq_length": methods.DENSE_MAX_SEQ_LENGTH,
             "batch_size": methods.DENSE_BATCH_SIZE,
+            **{key: value for key, value in (embedding or {}).items() if value},
+        }
+        if not re.fullmatch(r"[0-9a-f]{40}", str(options["revision"])):
+            raise ValueError("--embedding-revision must be a 40-character commit SHA")
+        config: dict[str, Any] = {
+            **options,
+            "device": resolved,
+            "dtype": dtype,
             "query_prompt": "",
             "index_location": "memory",
         }
@@ -366,7 +395,7 @@ def method_indexer(
     def build(corpus: list[dict[str, Any]]) -> Any:
         loaded = None
         if not encoders:
-            encoders.append(methods.DenseEncoder(config["device"], config["dtype"]))
+            encoders.append(methods.DenseEncoder(config))
             loaded = encoders[0].load_seconds
         index_type = (
             methods.DenseCorpusIndex if method == "dense" else methods.HybridCorpusIndex
@@ -445,6 +474,7 @@ def execute(
     device: str | None = None,
     workspace: Path | None = None,
     access: str | None = None,
+    embedding: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """One writer per output directory; completed cases survive interruption.
 
@@ -471,7 +501,9 @@ def execute(
         "method_config": (
             None
             if pred_path
-            else method_config(method, zoekt_bin=zoekt_bin, device=device)
+            else method_config(
+                method, zoekt_bin=zoekt_bin, device=device, embedding=embedding
+            )
         ),
         "candidate_filter": "all_files",
         "source_access": access,
@@ -631,6 +663,24 @@ def main(argv: list[str] | None = None) -> int:
             )
             command.add_argument("--device", help="dense model device (default: auto)")
             command.add_argument(
+                "--embedding-model",
+                help=f"dense model on Hugging Face (default: {DEFAULT_EMBEDDING})",
+            )
+            command.add_argument(
+                "--embedding-revision",
+                help="40-character model commit; required with --embedding-model",
+            )
+            command.add_argument(
+                "--max-seq-length",
+                type=int,
+                help="dense token limit for queries and chunks (default: 512)",
+            )
+            command.add_argument(
+                "--embedding-batch-size",
+                type=int,
+                help="dense batch size (default: 64)",
+            )
+            command.add_argument(
                 "--workspace",
                 type=Path,
                 help="graph_expansion: directory for base-commit source checkouts",
@@ -673,6 +723,7 @@ def main(argv: list[str] | None = None) -> int:
             device=getattr(args, "device", None),
             workspace=getattr(args, "workspace", None),
             access=getattr(args, "source_access", None),
+            embedding=embedding_options(args),
         )
         print(json.dumps(result["summary"], indent=2))
         return 1 if result["summary"]["overall"]["failed"] else 0
