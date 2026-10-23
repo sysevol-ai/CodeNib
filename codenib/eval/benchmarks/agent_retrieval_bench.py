@@ -314,7 +314,6 @@ def run_environment() -> dict[str, Any]:
         "platform": platform.platform(),
         "cpu": cpu,
         "cpu_count": os.cpu_count(),
-        "index_location": "in memory; nothing persisted",
     }
     try:
         import resource

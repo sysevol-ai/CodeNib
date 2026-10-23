@@ -277,6 +277,8 @@ def method_config(
         raise ValueError(f"unknown ARB method: {method}")
     from . import _arb_methods as methods
 
+    temporary = "temporary directory, removed after each snapshot"
+
     if method in ("dense", "hybrid"):
         for module in ("sentence_transformers", "faiss"):
             _require(module, "semantic", method)
@@ -289,6 +291,7 @@ def method_config(
             "max_seq_length": methods.DENSE_MAX_SEQ_LENGTH,
             "batch_size": methods.DENSE_BATCH_SIZE,
             "query_prompt": "",
+            "index_location": "memory",
         }
         if method == "hybrid":
             config["fusion"] = f"file-level weighted RRF, k={methods.HYBRID_RRF_K}"
@@ -301,6 +304,7 @@ def method_config(
                 name: sha256_file(directory / name) for name in ("zoekt-index", "zoekt")
             },
             "max_terms": methods.ZOEKT_MAX_TERMS,
+            "index_location": temporary,
         }
     if method == "graph_expansion":
         _require("igraph", "graph", method)
@@ -316,8 +320,9 @@ def method_config(
             "toolchain_sha256": {
                 name: sha256_file(Path(path)) for name, path in tools.items() if path
             },
+            "index_location": f"{temporary}; source checkouts kept in --workspace",
         }
-    return {}
+    return {"index_location": "memory"}
 
 
 def method_indexer(

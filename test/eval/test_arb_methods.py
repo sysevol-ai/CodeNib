@@ -117,7 +117,7 @@ def test_hybrid_fuses_complete_file_rankings(monkeypatch):
 
 
 def test_bm25_method_needs_no_extra_configuration():
-    assert runner.method_config("bm25") == {}
+    assert runner.method_config("bm25") == {"index_location": "memory"}
     assert callable(runner.method_indexer("bm25", {}))
     with pytest.raises(ValueError, match="unknown"):
         runner.method_config("graph")
@@ -200,8 +200,16 @@ def test_timeout_kills_the_whole_process_group(tmp_path):
     with pytest.raises(subprocess.TimeoutExpired):
         methods.run_process_group([sys.executable, "-c", script], timeout=2)
     stat = Path(f"/proc/{int(marker.read_text())}/stat")
+
+    def running():
+        # The process may vanish between checks; a zombie has already exited.
+        try:
+            return stat.read_text().split()[2] != "Z"
+        except OSError:
+            return False
+
     deadline = time.time() + 5
-    while stat.exists() and stat.read_text().split()[2] != "Z":
+    while running():
         assert time.time() < deadline, "grandchild survived the timeout"
         time.sleep(0.1)
 
