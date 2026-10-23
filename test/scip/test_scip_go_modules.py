@@ -288,3 +288,71 @@ def test_modules_the_root_run_already_indexed_are_not_rerun(tmp_path, monkeypatc
     assert server[0].occurrences[0].symbol == _symbol(
         ROOT, f"{ROOT}/server/auth", "Check()."
     )
+
+
+def test_nested_references_to_root_releases_take_the_root_version():
+    server = Index()
+    _document(
+        server,
+        "auth/auth.go",
+        [(4, _symbol(ROOT, f"{ROOT}/lib", "Helper().", "v1.4.0"), 0)],
+    )
+    merged = go.merge_module_indexes(_root_index(), [(SERVER, "server", server)], ROOT)
+    helpers = {
+        occurrence.symbol
+        for document in merged.documents
+        for occurrence in document.occurrences
+        if occurrence.symbol.endswith("/Helper().")
+    }
+    assert helpers == {_symbol(ROOT, f"{ROOT}/lib", "Helper().")}
+
+
+def test_a_nested_copy_of_the_root_module_stays_under_its_directory():
+    copy = Index()
+    _document(copy, "lib/lib.go", [(2, _symbol(ROOT, f"{ROOT}/lib", "Helper()."), 1)])
+    merged = go.merge_module_indexes(
+        _root_index(), [(ROOT, "examples/copy", copy)], ROOT
+    )
+    definitions = [
+        (document.relative_path, document.occurrences[0].symbol)
+        for document in merged.documents
+        if document.relative_path.endswith("lib.go")
+    ]
+    assert definitions == [
+        ("lib/lib.go", _symbol(ROOT, f"{ROOT}/lib", "Helper().")),
+        (
+            "examples/copy/lib/lib.go",
+            _symbol(ROOT, f"{ROOT}/examples/copy/lib", "Helper()."),
+        ),
+    ]
+
+
+def test_local_replacements_resolve_inside_the_repository(tmp_path):
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "go.mod").write_text(
+        "module example.test/repo\n"
+        "replace example.com/new => ./sub // renamed\n"
+        "replace (\n"
+        "\texample.com/pinned v1.2.0 => ../outside\n"
+        "\texample.com/remote => example.com/fork v1.0.0\n"
+        '\t"example.com/quoted" v0.1.0 => ./sub\n'
+        ")\n",
+        encoding="utf-8",
+    )
+    assert go.local_replacements(tmp_path / "go.mod", tmp_path) == [
+        ("example.com/new", "sub"),
+        ("example.com/quoted", "sub"),
+    ]
+
+
+def test_replace_aliases_meet_the_nested_definition():
+    old, new = "example.com/old", "example.com/new"
+    root = Index()
+    _document(root, "main.go", [(1, _symbol(new, f"{new}/pkg", "Foo()."), 0)])
+    sub = Index()
+    _document(sub, "pkg/foo.go", [(2, _symbol(old, f"{old}/pkg", "Foo()."), 1)])
+    merged = go.merge_module_indexes(
+        root, [(old, "sub", sub)], ROOT, aliases=[(new, "sub")]
+    )
+    symbols = {d.occurrences[0].symbol for d in merged.documents}
+    assert symbols == {_symbol(ROOT, f"{ROOT}/sub/pkg", "Foo().")}
