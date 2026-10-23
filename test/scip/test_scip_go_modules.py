@@ -20,8 +20,8 @@ ROOT = "example.test/repo"
 SERVER = "example.test/repo/server/v2"
 
 
-def _symbol(module: str, package: str, descriptor: str) -> str:
-    return f"scip-go gomod {module} v0 `{package}`/{descriptor}"
+def _symbol(module: str, package: str, descriptor: str, version: str = "v0") -> str:
+    return f"scip-go gomod {module} {version} `{package}`/{descriptor}"
 
 
 def _document(index: Index, path: str, occurrences) -> None:
@@ -39,6 +39,8 @@ def _root_index() -> Index:
         [
             (4, _symbol(ROOT, f"{ROOT}/lib", "TestHelper()."), 1),
             (5, _symbol(ROOT, f"{ROOT}/lib", "Helper()."), 0),
+            # The root requires a released server version.
+            (6, _symbol(SERVER, f"{SERVER}/auth", "Check().", "v2.1.0"), 0),
         ],
     )
     return index
@@ -50,7 +52,7 @@ def _server_index() -> Index:
         index,
         "auth/auth.go",
         [
-            (3, _symbol(SERVER, f"{SERVER}/auth", "Check()."), 1),
+            (3, _symbol(SERVER, f"{SERVER}/auth", "Check().", "abc123"), 1),
             (4, _symbol(ROOT, f"{ROOT}/lib", "Helper()."), 0),
         ],
     )
@@ -69,8 +71,10 @@ def _write_modules(root: Path) -> None:
         ("tools/gen", "example.test/repo/tools/gen"),
     ]:
         (root / directory).mkdir(parents=True, exist_ok=True)
+        # Indented directives are valid go.mod syntax.
+        indent = "  " if directory == "tools/gen" else ""
         (root / directory / "go.mod").write_text(
-            f"// generated\nmodule {module}\n\ngo 1.22\n", encoding="utf-8"
+            f"// generated\n{indent}module {module}\n\ngo 1.22\n", encoding="utf-8"
         )
 
 
@@ -92,6 +96,9 @@ def test_rename_moves_nested_packages_under_the_root_module():
     assert rename(_symbol(SERVER, SERVER, "Run()."), ROOT, directories) == (
         _symbol(ROOT, f"{ROOT}/server", "Run().")
     )
+    assert rename(
+        _symbol(SERVER, SERVER, "Run().", "v2.1.0"), ROOT, directories, "v0"
+    ) == _symbol(ROOT, f"{ROOT}/server", "Run().")
     for unchanged in (
         _symbol(ROOT, f"{ROOT}/lib", "Helper()."),
         _symbol("golang.org/x/sync", "golang.org/x/sync/errgroup", "Group#"),
@@ -129,6 +136,16 @@ def test_merged_graph_names_packages_by_directory_and_links_modules(tmp_path):
     # Without enclosing ranges in this fixture, references start at the file.
     assert ("server/auth/auth.go", "lib/Helper") in references
     assert ("lib/lib_test.go", "lib/Helper") in references
+    assert ("lib/lib_test.go", "server/auth/Check") in references
+    # The root's reference to a released version and the checked-out
+    # definition share one symbol, as occurrence lookups require.
+    check = {
+        occurrence.symbol
+        for document in merged.documents
+        for occurrence in document.occurrences
+        if "Check()" in occurrence.symbol
+    }
+    assert check == {_symbol(ROOT, f"{ROOT}/server/auth", "Check().")}
 
 
 def test_generate_index_merges_modules_and_skips_failures(tmp_path, monkeypatch):
@@ -141,6 +158,8 @@ def test_generate_index_merges_modules_and_skips_failures(tmp_path, monkeypatch)
     def run(command, **kwargs):
         cwd = Path(kwargs["cwd"])
         calls.append(cwd.relative_to(repository).as_posix())
+        # A repository go.work listing only some modules must not apply.
+        assert kwargs["env"]["GOWORK"] == "off"
         output = Path(command[command.index("--output") + 1])
         if cwd == repository / "tools/gen":
             raise subprocess.CalledProcessError(1, command)
@@ -170,6 +189,7 @@ def test_single_module_repository_runs_scip_go_once(tmp_path, monkeypatch):
 
     def run(command, **kwargs):
         calls.append(command)
+        assert "env" not in kwargs
         indexer.index_file.write_bytes(_root_index().SerializeToString())
         return subprocess.CompletedProcess(command, 0, "", "")
 

@@ -70,10 +70,13 @@ without launching the live server after construction.
 
 Go graphs include `_test.go` files. A repository with nested `go.mod` files is
 indexed one module at a time; the modules are merged into one graph, with each
-package named by its directory and references resolved across modules. A
-nested module that fails to index is skipped with a warning. Directories the
-`go` command ignores (`vendor`, `testdata`, and names starting with `.` or
-`_`) are not searched for modules.
+package named by its directory and references resolved across modules. Each module
+is indexed with any `go.work` disabled, and a nested module that fails to index
+is skipped with a warning. Directories the `go` command ignores (`vendor`,
+`testdata`, and names starting with `.` or `_`) are not searched for modules.
+Incremental patches query `gopls` in the edited file's own module, so patching
+a nested-module file can drop references that cross module boundaries; a full
+rebuild restores them.
 
 The manager handles pinned npm, Go, Rustup, .NET tool, and RubyGem providers
 when their host runtime is present. OS packages such as clangd, JDKs, and build

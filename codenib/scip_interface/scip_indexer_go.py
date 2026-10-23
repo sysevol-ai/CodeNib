@@ -30,7 +30,7 @@ logger = get_logger("scip_go_indexer")
 
 # Directories the go command ignores, plus vendored and VCS trees.
 _SKIPPED_DIRS = {"vendor", "testdata", "node_modules"}
-_MODULE_LINE = re.compile(r"^module\s+(\S+)", re.MULTILINE)
+_MODULE_LINE = re.compile(r"^[ \t]*module[ \t]+(\S+)", re.MULTILINE)
 _PACKAGE = re.compile(r"`([^`]+)`")
 
 
@@ -60,8 +60,14 @@ def nested_go_modules(project_root: Path) -> List[Tuple[str, str]]:
     return modules
 
 
-def rename_module_symbol(symbol: str, root_module: str, directories: dict) -> str:
-    """Rename a nested module's scip-go symbol into the root module's namespace."""
+def rename_module_symbol(
+    symbol: str, root_module: str, directories: dict, version: Optional[str] = None
+) -> str:
+    """Rename a nested module's scip-go symbol into the root module's namespace.
+
+    ``version``, when given, replaces the symbol's version, so a root-side
+    reference to a required release meets the checked-out definition.
+    """
     parts = symbol.split(" ", 4)
     if len(parts) < 5 or parts[:2] != ["scip-go", "gomod"]:
         return symbol
@@ -77,6 +83,8 @@ def rename_module_symbol(symbol: str, root_module: str, directories: dict) -> st
         return f"`{path}`"
 
     parts[2] = root_module
+    if version:
+        parts[3] = version
     parts[4] = _PACKAGE.sub(package, parts[4])
     return " ".join(parts)
 
@@ -89,8 +97,10 @@ def merge_module_indexes(root, nested, root_module: str, directories: dict):
     across modules meet the definitions.
     """
 
+    version = _module_version(root, root_module)
+
     def rename(value: str) -> str:
-        return rename_module_symbol(value, root_module, directories)
+        return rename_module_symbol(value, root_module, directories, version)
 
     def rename_information(information) -> None:
         information.symbol = rename(information.symbol)
@@ -120,6 +130,25 @@ def merge_module_indexes(root, nested, root_module: str, directories: dict):
                 known.add(information.symbol)
                 root.external_symbols.append(information)
     return root
+
+
+def _module_version(index, module: str) -> Optional[str]:
+    """The version scip-go stamped on ``module``'s own symbols in ``index``."""
+    for document in index.documents:
+        for occurrence in document.occurrences:
+            parts = occurrence.symbol.split(" ", 4)
+            if len(parts) == 5 and parts[:3] == ["scip-go", "gomod", module]:
+                return parts[3]
+    return None
+
+
+def _without_workspace() -> dict:
+    """The environment with any enclosing ``go.work`` disabled.
+
+    Each module is indexed on its own, so a workspace file that lists only
+    some modules must not apply.
+    """
+    return {**os.environ, "GOWORK": "off"}
 
 
 class SCIPGoIndexer(SCIPIndexerBase):
@@ -199,6 +228,9 @@ class SCIPGoIndexer(SCIPIndexerBase):
 
         logger.debug(f"Running command: {' '.join(cmd)}")
 
+        # With nested modules, each module (the root included) is indexed on
+        # its own; a go.work would otherwise pull nested modules into ./...
+        options = {"env": _without_workspace()} if nested else {}
         with self.profiler.section("generate_index") as section:
             try:
                 subprocess.run(
@@ -207,6 +239,7 @@ class SCIPGoIndexer(SCIPIndexerBase):
                     cwd=self.project_root,
                     capture_output=True,
                     text=True,
+                    **options,
                 )
                 success = True
             except subprocess.CalledProcessError as e:
@@ -263,6 +296,7 @@ class SCIPGoIndexer(SCIPIndexerBase):
                         ["scip-go", "--output", str(output)],
                         check=True,
                         cwd=self.project_root / directory,
+                        env=_without_workspace(),
                         capture_output=True,
                         text=True,
                     )
