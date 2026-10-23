@@ -82,7 +82,8 @@ def local_replacements(go_mod: Path, project_root: Path) -> List[Tuple[str, str]
         if not (in_block or line.startswith("replace ")):
             continue
         match = _REPLACE.match(line)
-        if not match or not match.group(2).startswith(("./", "../")):
+        # Local targets are relative (./, ../) or absolute filesystem paths.
+        if not match or not match.group(2).startswith(("./", "../", "/")):
             continue
         target = (go_mod.parent / match.group(2)).resolve()
         try:

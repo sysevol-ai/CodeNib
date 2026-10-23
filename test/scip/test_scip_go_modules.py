@@ -336,12 +336,15 @@ def test_local_replacements_resolve_inside_the_repository(tmp_path):
         "\texample.com/pinned v1.2.0 => ../outside\n"
         "\texample.com/remote => example.com/fork v1.0.0\n"
         '\t"example.com/quoted" v0.1.0 => ./sub\n'
+        f"\texample.com/absolute => {tmp_path / 'sub'}\n"
+        "\texample.com/elsewhere => /opt/go/mod\n"
         ")\n",
         encoding="utf-8",
     )
     assert go.local_replacements(tmp_path / "go.mod", tmp_path) == [
         ("example.com/new", "sub"),
         ("example.com/quoted", "sub"),
+        ("example.com/absolute", "sub"),
     ]
 
 
