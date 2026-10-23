@@ -70,16 +70,7 @@ class CodeNibToolProvider:
         self._graphs = self.cache / "graphs"
         if self.workspace in (self.cache, self._graphs):
             raise ValueError("workspace must differ from cache and from cache/graphs")
-        # Neither root may sit inside a published graph or checkout, whose
-        # replacement would take the nested root with it.
-        for root in (self.workspace, self.cache):
-            for parent in (root, *root.parents):
-                if (parent / _RECEIPT).is_file() or methods.is_snapshot_checkout(
-                    parent
-                ):
-                    raise ValueError(
-                        f"{root} is inside a tool graph or checkout ({parent})"
-                    )
+        self._check_roots()
         self.retry_failed = _flag(retry_failed)
         self._snapshots: dict[tuple[str, str], _SnapshotIndex | None] = {}
         implementation = implementation_receipt()
@@ -102,7 +93,21 @@ class CodeNibToolProvider:
             **self._identity,
         }
 
+    def _check_roots(self) -> None:
+        """Neither root may sit inside a published graph or checkout, whose
+        replacement would take the nested root with it. Checked again before
+        each preparation, since another provider may publish one later."""
+        for root in (self.workspace, self.cache):
+            for parent in (root, *root.parents):
+                if (parent / _RECEIPT).is_file() or methods.is_snapshot_checkout(
+                    parent
+                ):
+                    raise ValueError(
+                        f"{root} is inside a tool graph or checkout ({parent})"
+                    )
+
     def prepare(self, *, repo: str, base_commit: str, paths: list[str]) -> dict:
+        self._check_roots()
         released = set(paths)
         directory = methods.snapshot_path(repo, base_commit, self._graphs)
         directory.parent.mkdir(parents=True, exist_ok=True)

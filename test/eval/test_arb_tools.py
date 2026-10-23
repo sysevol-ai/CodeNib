@@ -245,6 +245,13 @@ def test_cache_must_not_alias_the_workspace(tmp_path):
     ):
         with pytest.raises(ValueError, match="inside a tool graph or checkout"):
             tools.CodeNibToolProvider(str(workspace), str(cache))
+    # A graph published after construction is caught before the next prepare.
+    later = tmp_path / "later" / "graphs" / "owner__repo" / COMMIT
+    provider = tools.CodeNibToolProvider(str(later / "nested"), str(tmp_path / "c2"))
+    later.mkdir(parents=True)
+    (later / "provider_receipt.json").write_text("{}\n")
+    with pytest.raises(ValueError, match="inside a tool graph or checkout"):
+        provider.prepare(repo=REPO, base_commit=COMMIT, paths=RELEASED)
     with pytest.raises(ValueError, match="true or false"):
         tools.CodeNibToolProvider(str(tmp_path / "ws"), retry_failed="maybe")
 
