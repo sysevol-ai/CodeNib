@@ -325,17 +325,24 @@ def test_identity_includes_runtime_and_graph_tools(tmp_path):
     described = tools.CodeNibToolProvider(str(tmp_path / "ws")).describe()
     assert described["python"] and "igraph" in described["packages"]
     backends = described["graph_tools_sha256"]
-    for key in ("python:scip-python", "go:scip-go", "cpp:clangd", "csharp:scip-dotnet"):
-        assert backends[key]["command"][0] == key.split(":", 1)[1], key
+    for key, executable in {
+        "python:scip": "scip-python",
+        "go:scip": "scip-go",
+        "cpp:lsp": "clangd",
+        "csharp:scip": "scip-dotnet",
+    }.items():
+        assert backends[key]["command"][0] == executable, key
 
 
 def test_backend_identity_covers_launcher_arguments(monkeypatch, tmp_path):
     jar = tmp_path / "scip-java.jar"
     jar.write_bytes(b"v1")
     monkeypatch.setenv("CODENIB_JAVA_SCIP_CMD", f"java -jar {jar}")
-    first = tools._graph_tools()["java:java"]
+    # The LSP override shares the launcher; it must not hide the SCIP entry.
+    monkeypatch.setenv("CODENIB_JAVA_LSP_CMD", f"java -jar {tmp_path / 'jdtls.jar'}")
+    first = tools._graph_tools()["java:scip"]
     jar.write_bytes(b"v2")
-    second = tools._graph_tools()["java:java"]
+    second = tools._graph_tools()["java:scip"]
     assert first["command"] == ["java", "-jar", str(jar)]
     assert first["argument_files_sha256"] != second["argument_files_sha256"]
 

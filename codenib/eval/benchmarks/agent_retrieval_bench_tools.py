@@ -470,7 +470,10 @@ def _graph_tools() -> dict[str, dict[str, Any]]:
     for spec in LANGUAGE_SPECS:
         if not spec.graph_language:
             continue
-        for lookup in (scip_cold_start_command_for_language, lsp_command_for_language):
+        for kind, lookup in (
+            ("scip", scip_cold_start_command_for_language),
+            ("lsp", lsp_command_for_language),
+        ):
             try:
                 command = lookup(spec.graph_language)
             except Exception:  # A broken factory leaves that backend unhashed.
@@ -483,7 +486,8 @@ def _graph_tools() -> dict[str, dict[str, Any]]:
                 for argument in command[1:]
                 if Path(argument).is_file()
             }
-            backends[f"{spec.graph_language}:{command[0]}"] = {
+            # Keyed by kind: SCIP and LSP may share a launcher such as java.
+            backends[f"{spec.graph_language}:{kind}"] = {
                 "command": list(command),
                 "executable_sha256": (
                     sha256_file(Path(executable)) if executable else None
