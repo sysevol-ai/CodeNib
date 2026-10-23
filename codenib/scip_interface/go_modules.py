@@ -114,8 +114,9 @@ def nested_go_modules(project_root: Path) -> List[Tuple[str, str]]:
 def local_replacements(go_file: Path, project_root: Path) -> List[Replacement]:
     """Local ``replace`` directives in ``go_file`` that point inside the checkout.
 
-    A target is local when it starts with ``./``, ``../``, or ``/`` and has
-    no version; a version on the left limits the replacement to that version.
+    A target is local when it is ``.`` or ``..`` or starts with ``./``,
+    ``../``, or ``/``, and has no version. A version on the left limits the
+    replacement to that version.
     """
     root = project_root.resolve()
     found = []
@@ -124,7 +125,7 @@ def local_replacements(go_file: Path, project_root: Path) -> List[Replacement]:
             continue
         arrow = arguments.index("=>")
         old, new = arguments[:arrow], arguments[arrow + 1 :]
-        if not old or len(new) != 1 or not new[0].startswith(("./", "../", "/")):
+        if not old or len(new) != 1 or not _local_path(new[0]):
             continue
         try:
             target = (go_file.parent / new[0]).resolve().relative_to(root)
@@ -139,6 +140,11 @@ def local_replacements(go_file: Path, project_root: Path) -> List[Replacement]:
             )
         )
     return found
+
+
+def _local_path(target: str) -> bool:
+    """Whether a replacement target is a filesystem path, as Go decides."""
+    return target in {".", ".."} or target.startswith(("./", "../", "/"))
 
 
 def active_workspace(project_root: Path) -> Optional[Path]:

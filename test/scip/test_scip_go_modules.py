@@ -427,13 +427,15 @@ def test_go_files_follow_the_module_grammar(tmp_path):
         ")\n"
         'replace example.com/spaced => "./local module"\n'
         "replace example.com/pinned v1.0.0 => `./local module`\n"
-        "replace example.com/module => example.com/fork v1.2.0\n",
+        "replace example.com/module => example.com/fork v1.2.0\n"
+        "replace example.com/here => .\n",
         encoding="utf-8",
     )
     assert gm.go_module_path(tmp_path / "go.mod") == "example.test/blocky"
     assert gm.local_replacements(tmp_path / "go.mod", tmp_path) == [
         gm.Replacement("example.com/spaced", None, "local module"),
         gm.Replacement("example.com/pinned", "v1.0.0", "local module"),
+        gm.Replacement("example.com/here", None, ""),
     ]
 
 
@@ -565,4 +567,6 @@ def test_root_run_drops_a_workspace_that_omits_the_root(
     monkeypatch.setattr(subprocess, "run", run)
     assert indexer.generate_index() is True
     assert environments["."] == (None if uses_root else "off")
-    assert environments["server"] == "off"
+    # A workspace member keeps the workspace only when the root run used it.
+    assert environments["server"] == (None if uses_root else "off")
+    assert environments["tools/gen"] == "off"

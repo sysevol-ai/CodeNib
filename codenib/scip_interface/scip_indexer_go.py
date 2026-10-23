@@ -202,13 +202,18 @@ class SCIPGoIndexer(SCIPIndexerBase):
             for number, (module, directory) in enumerate(pending):
                 output = Path(scratch) / f"module-{number}.scip"
                 try:
+                    # A workspace member keeps the workspace that wires its
+                    # siblings; any other module runs on its own go.mod.
+                    member = workspace_file is not None and workspace_includes(
+                        workspace_file, self.project_root / directory
+                    )
                     subprocess.run(
                         ["scip-go", "--output", str(output)],
                         check=True,
                         cwd=self.project_root / directory,
-                        env=_without_workspace(),
                         capture_output=True,
                         text=True,
+                        **({} if member else {"env": _without_workspace()}),
                     )
                     index = Index()
                     index.ParseFromString(output.read_bytes())
