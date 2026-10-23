@@ -237,6 +237,13 @@ class CodeNibToolProvider:
         retired = _retired(directory)
         shutil.rmtree(retired, ignore_errors=True)
         if directory.exists():
+            # Only a graph this provider published is replaced, never, say, a
+            # checkout of a workspace that shares the root.
+            if not (directory / _RECEIPT).is_file():
+                shutil.rmtree(staging, ignore_errors=True)
+                raise ValueError(
+                    f"{directory} holds no tool graph; refusing to replace it"
+                )
             directory.rename(retired)
         staging.rename(directory)
         shutil.rmtree(retired, ignore_errors=True)

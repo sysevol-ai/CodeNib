@@ -407,6 +407,8 @@ full-source runs. Hits are limited to released files.
 
 Graphs are cached per snapshot under `cache/graphs`, apart from the checkouts
 under `workspace`; `workspace` must be neither `cache` nor `cache/graphs`. A
+checkout never replaces a graph directory, nor a graph a checkout, so roots
+that overlap across providers fail instead of deleting each other's data. A
 later run reuses a build, and reports its original build and checkout-fetch
 times with `cached: true`, only when the build matches: the CodeNib sources,
 Python and package versions, each graph backend's command and executable, and

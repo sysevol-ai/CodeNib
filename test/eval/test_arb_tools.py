@@ -328,6 +328,18 @@ def test_providers_with_swapped_roots_neither_deadlock_nor_collide(
         assert not (tmp_path / root / "owner__repo" / COMMIT).exists()
 
 
+def test_a_graph_never_replaces_a_checkout_at_its_path(builds, tmp_path):
+    # Another provider's workspace is this provider's graph root.
+    checkout = tmp_path / "cache" / "graphs" / "owner__repo" / COMMIT
+    (checkout / ".git").mkdir(parents=True)
+    (checkout / "a.py").write_text("source\n")
+    provider = tools.CodeNibToolProvider(str(tmp_path / "ws"), str(tmp_path / "cache"))
+    with pytest.raises(ValueError, match="holds no tool graph"):
+        provider.prepare(repo=REPO, base_commit=COMMIT, paths=RELEASED)
+    assert sorted(path.name for path in checkout.iterdir()) == [".git", "a.py"]
+    assert not checkout.with_name(COMMIT + ".partial").exists()
+
+
 def test_a_failed_retry_keeps_the_usable_partial_graph(builds, monkeypatch, tmp_path):
     saved = tmp_path / "fixture-graph.pkl"
 

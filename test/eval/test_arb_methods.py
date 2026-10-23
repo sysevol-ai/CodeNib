@@ -335,6 +335,17 @@ def test_snapshot_checkout_has_no_later_history(tmp_path):
         methods.fetch_snapshot("owner/repo;rm", base, root)
 
 
+def test_snapshot_fetch_leaves_directories_that_are_not_checkouts(tmp_path):
+    # A graph directory where a checkout would go, as when a workspace
+    # overlaps a tool-graph cache.
+    target = methods.snapshot_path("owner/repo", "a" * 40, tmp_path)
+    target.mkdir(parents=True)
+    (target / "provider_receipt.json").write_text("{}\n")
+    with pytest.raises(ValueError, match="not a snapshot checkout"):
+        methods.fetch_snapshot("owner/repo", "a" * 40, tmp_path, remote="file:///none")
+    assert (target / "provider_receipt.json").is_file()
+
+
 def test_snapshot_languages_keep_major_source_languages():
     corpus = rows(
         *[(f"src/m{i}.py", "file", "", "") for i in range(8)],
