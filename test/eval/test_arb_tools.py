@@ -229,3 +229,15 @@ def test_partial_graphs_are_retried(builds, monkeypatch, tmp_path):
     second = _provider(tmp_path)[1]
     assert first["failed"] and not second["cached"] and "failed" not in second
     assert _provider(tmp_path)[1]["cached"] and len(builds) == 2
+
+
+def test_cache_is_rebuilt_for_other_graph_languages(builds, tmp_path):
+    _provider(tmp_path)
+    provider = tools.CodeNibToolProvider(str(tmp_path / "ws"), str(tmp_path / "cache"))
+    status = provider.prepare(
+        repo=REPO,
+        base_commit=COMMIT,
+        paths=RELEASED + [f"src/m{i}.go" for i in range(9)],
+    )
+    assert not status["cached"] and status["languages"] == ["go", "python"]
+    assert builds == [["python"], ["go", "python"]]

@@ -93,9 +93,12 @@ class CodeNibToolProvider:
         with methods.snapshot_lock(directory):
             receipt_path = directory / _RECEIPT
             receipt = _read_receipt(receipt_path)
-            cached = self._reusable(receipt)
+            languages = methods.snapshot_languages(
+                [{"path": path, "kind": "file"} for path in paths]
+            )
+            cached = self._reusable(receipt, languages)
             if not cached:
-                self._build(repo, base_commit, paths, directory)
+                self._build(repo, base_commit, languages, directory)
                 receipt = _read_receipt(receipt_path)
         graph_path = directory / "arb_graph.pkl"
         index = None
@@ -131,8 +134,11 @@ class CodeNibToolProvider:
             )
         return status
 
-    def _reusable(self, receipt: dict | None) -> bool:
+    def _reusable(self, receipt: dict | None, languages: list[str]) -> bool:
         if receipt is None or receipt.get("identity") != self._identity:
+            return False
+        # Another released file set can call for other graph languages.
+        if receipt.get("languages") != languages:
             return False
         # A snapshot without graph languages has nothing to retry; a graph
         # missing one of its languages counts as a failed build.
@@ -142,12 +148,9 @@ class CodeNibToolProvider:
         return not (failed and self.retry_failed)
 
     def _build(
-        self, repo: str, base_commit: str, paths: list[str], directory: Path
+        self, repo: str, base_commit: str, languages: list[str], directory: Path
     ) -> None:
         started = time.perf_counter()
-        languages = methods.snapshot_languages(
-            [{"path": path, "kind": "file"} for path in paths]
-        )
         staging = directory.with_name(directory.name + ".partial")
         shutil.rmtree(staging, ignore_errors=True)
         staging.mkdir(parents=True)
