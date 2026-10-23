@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 from google.protobuf.text_format import MessageToString
 
+from codenib.scip_interface import go_modules as gm
 from codenib.scip_interface import scip_indexer_go as go
 from codenib.scip_interface.scip_decode_go import SCIPGoGraphDecoder
 from codenib.scip_interface.scip_pb2 import Index
@@ -80,16 +81,16 @@ def _write_modules(root: Path) -> None:
 
 def test_nested_modules_skip_vendored_testdata_and_hidden_trees(tmp_path):
     _write_modules(tmp_path)
-    assert go.nested_go_modules(tmp_path) == [
+    assert gm.nested_go_modules(tmp_path) == [
         (SERVER, "server"),
         ("example.test/repo/tools/gen", "tools/gen"),
     ]
-    assert go.go_module_path(tmp_path / "go.mod") == ROOT
+    assert gm.go_module_path(tmp_path / "go.mod") == ROOT
 
 
 def test_rename_moves_nested_packages_under_the_root_module():
-    directories = {SERVER: "server"}
-    rename = go.rename_module_symbol
+    directories = {SERVER: ("server", None)}
+    rename = gm.rename_module_symbol
     assert rename(_symbol(SERVER, f"{SERVER}/auth", "Check()."), ROOT, directories) == (
         _symbol(ROOT, f"{ROOT}/server/auth", "Check().")
     )
@@ -115,7 +116,7 @@ def _decode(tmp_path: Path, index: Index):
 
 
 def test_merged_graph_names_packages_by_directory_and_links_modules(tmp_path):
-    merged = go.merge_module_indexes(
+    merged = gm.merge_module_indexes(
         _root_index(), [(SERVER, "server", _server_index())], ROOT
     )
     assert [d.relative_path for d in merged.documents] == [
@@ -224,7 +225,7 @@ def test_versions_are_canonical_when_the_root_has_no_sources():
         "api/api.go",
         [(2, _symbol(client, f"{client}/api", "Call().", "abc123"), 1)],
     )
-    merged = go.merge_module_indexes(
+    merged = gm.merge_module_indexes(
         Index(), [(SERVER, "server", server), (client, "client", client_index)], ROOT
     )
     calls = {
@@ -246,7 +247,7 @@ def test_duplicate_module_paths_keep_their_own_directories():
         _document(index, "thing.go", [(line, _symbol(dup, dup, "Thing#"), 1)])
         return index
 
-    merged = go.merge_module_indexes(
+    merged = gm.merge_module_indexes(
         root, [(dup, "examples/a", copy(1)), (dup, "examples/b", copy(2))], ROOT
     )
     symbols = [d.occurrences[0].symbol for d in merged.documents]
@@ -297,7 +298,7 @@ def test_nested_references_to_root_releases_take_the_root_version():
         "auth/auth.go",
         [(4, _symbol(ROOT, f"{ROOT}/lib", "Helper().", "v1.4.0"), 0)],
     )
-    merged = go.merge_module_indexes(_root_index(), [(SERVER, "server", server)], ROOT)
+    merged = gm.merge_module_indexes(_root_index(), [(SERVER, "server", server)], ROOT)
     helpers = {
         occurrence.symbol
         for document in merged.documents
@@ -310,7 +311,7 @@ def test_nested_references_to_root_releases_take_the_root_version():
 def test_a_nested_copy_of_the_root_module_stays_under_its_directory():
     copy = Index()
     _document(copy, "lib/lib.go", [(2, _symbol(ROOT, f"{ROOT}/lib", "Helper()."), 1)])
-    merged = go.merge_module_indexes(
+    merged = gm.merge_module_indexes(
         _root_index(), [(ROOT, "examples/copy", copy)], ROOT
     )
     definitions = [
@@ -341,10 +342,10 @@ def test_local_replacements_resolve_inside_the_repository(tmp_path):
         ")\n",
         encoding="utf-8",
     )
-    assert go.local_replacements(tmp_path / "go.mod", tmp_path) == [
-        ("example.com/new", "sub"),
-        ("example.com/quoted", "sub"),
-        ("example.com/absolute", "sub"),
+    assert gm.local_replacements(tmp_path / "go.mod", tmp_path) == [
+        gm.Replacement("example.com/new", None, "sub"),
+        gm.Replacement("example.com/quoted", "v0.1.0", "sub"),
+        gm.Replacement("example.com/absolute", None, "sub"),
     ]
 
 
@@ -354,8 +355,11 @@ def test_replace_aliases_meet_the_nested_definition():
     _document(root, "main.go", [(1, _symbol(new, f"{new}/pkg", "Foo()."), 0)])
     sub = Index()
     _document(sub, "pkg/foo.go", [(2, _symbol(old, f"{old}/pkg", "Foo()."), 1)])
-    merged = go.merge_module_indexes(
-        root, [(old, "sub", sub)], ROOT, aliases={"": [(new, "sub")]}
+    merged = gm.merge_module_indexes(
+        root,
+        [(old, "sub", sub)],
+        ROOT,
+        replacements={"": [gm.Replacement(new, None, "sub")]},
     )
     symbols = {d.occurrences[0].symbol for d in merged.documents}
     assert symbols == {_symbol(ROOT, f"{ROOT}/sub/pkg", "Foo().")}
@@ -367,12 +371,12 @@ def test_replacements_apply_only_to_the_declaring_module():
     _document(root, "main.go", [(1, _symbol(dep, f"{dep}/x", "Run().", "v1.0.0"), 0)])
     a = Index()
     _document(a, "a.go", [(1, _symbol(dep, f"{dep}/x", "Run().", "v0"), 0)])
-    merged = go.merge_module_indexes(
+    merged = gm.merge_module_indexes(
         root,
         [("example.test/a", "a", a)],
         ROOT,
         modules=[(local, "local")],
-        aliases={"a": [(dep, "local")]},
+        replacements={"a": [gm.Replacement(dep, None, "local")]},
     )
     assert [d.occurrences[0].symbol for d in merged.documents] == [
         _symbol(dep, f"{dep}/x", "Run().", "v1.0.0"),
@@ -404,3 +408,60 @@ def test_covered_modules_are_the_deepest_directories(tmp_path, monkeypatch):
     monkeypatch.setattr(subprocess, "run", run)
     assert indexer.generate_index() is True
     assert calls == [".", "server"]
+
+
+def test_go_files_follow_the_module_grammar(tmp_path):
+    (tmp_path / "local module").mkdir()
+    (tmp_path / "go.mod").write_text(
+        "module (\n"
+        "\texample.test/blocky // a comment\n"
+        ")\n"
+        'replace example.com/spaced => "./local module"\n'
+        "replace example.com/pinned v1.0.0 => `./local module`\n"
+        "replace example.com/module => example.com/fork v1.2.0\n",
+        encoding="utf-8",
+    )
+    assert gm.go_module_path(tmp_path / "go.mod") == "example.test/blocky"
+    assert gm.local_replacements(tmp_path / "go.mod", tmp_path) == [
+        gm.Replacement("example.com/spaced", None, "local module"),
+        gm.Replacement("example.com/pinned", "v1.0.0", "local module"),
+    ]
+
+
+def test_versioned_replacements_apply_only_to_their_version():
+    mapping = {"example.com/dep": ("local", "v1.0.0")}
+    pinned = _symbol("example.com/dep", "example.com/dep/x", "Run().", "v1.0.0")
+    other = _symbol("example.com/dep", "example.com/dep/x", "Run().", "v1.1.0")
+    assert gm.rename_module_symbol(pinned, ROOT, mapping) == _symbol(
+        ROOT, f"{ROOT}/local/x", "Run().", "v1.0.0"
+    )
+    assert gm.rename_module_symbol(other, ROOT, mapping) == other
+
+
+def test_workspace_and_covered_module_replacements_apply_in_the_root_run():
+    dep, new = "example.com/dep", "example.com/new"
+    root = Index()
+    # The root module imports a workspace alias; the covered server module
+    # uses its own replacement.
+    _document(root, "main.go", [(1, _symbol(new, f"{new}/pkg", "Foo()."), 0)])
+    _document(root, "server/s.go", [(1, _symbol(dep, f"{dep}/x", "Run()."), 0)])
+    merged = gm.merge_module_indexes(
+        root,
+        [],
+        ROOT,
+        modules=[(SERVER, "server"), ("example.test/sub", "sub")],
+        replacements={"server": [gm.Replacement(dep, None, "local")]},
+        workspace=[gm.Replacement(new, None, "sub")],
+    )
+    assert [d.occurrences[0].symbol for d in merged.documents] == [
+        _symbol(ROOT, f"{ROOT}/sub/pkg", "Foo()."),
+        _symbol(ROOT, f"{ROOT}/local/x", "Run()."),
+    ]
+
+
+def test_active_workspace_honors_gowork(tmp_path, monkeypatch):
+    (tmp_path / "go.work").write_text("go 1.22\nuse ./server\n", encoding="utf-8")
+    monkeypatch.delenv("GOWORK", raising=False)
+    assert gm.active_workspace(tmp_path) == tmp_path / "go.work"
+    monkeypatch.setenv("GOWORK", "off")
+    assert gm.active_workspace(tmp_path) is None

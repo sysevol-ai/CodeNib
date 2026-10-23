@@ -9,14 +9,11 @@ SCIP indexer for Go projects using scip-go.
 
 scip-go indexes one module at a time, and ``./...`` at the repository root
 stops at nested ``go.mod`` files. Repositories split into nested modules are
-indexed module by module and merged into one index. The merge prefixes each
-document with its module's directory and renames the module's symbols into
-the root module's namespace, so ``go.etcd.io/etcd/server/v3/auth`` becomes
-``go.etcd.io/etcd/v3/server/auth``. The decoders then name every package by
-its directory and resolve references across modules.
+indexed module by module and merged into one index (see ``go_modules``), so
+``go.etcd.io/etcd/server/v3/auth`` becomes ``go.etcd.io/etcd/v3/server/auth``
+and the decoders name every package by its directory.
 """
 import os
-import re
 import subprocess
 import tempfile
 from pathlib import Path
@@ -24,190 +21,16 @@ from typing import List, Optional, Tuple, Union
 
 from ..log_utils import get_logger
 from ..profiler import Profiler
+from .go_modules import (
+    active_workspace,
+    go_module_path,
+    local_replacements,
+    merge_module_indexes,
+    nested_go_modules,
+)
 from .scip_indexer_base import SCIPIndexerBase
 
 logger = get_logger("scip_go_indexer")
-
-# Directories the go command ignores, plus vendored and VCS trees.
-_SKIPPED_DIRS = {"vendor", "testdata", "node_modules"}
-_MODULE_LINE = re.compile(r"^[ \t]*module[ \t]+(\S+)", re.MULTILINE)
-_PACKAGE = re.compile(r"`([^`]+)`")
-
-
-def go_module_path(go_mod: Path) -> Optional[str]:
-    """The module path declared in ``go_mod``, if any."""
-    try:
-        match = _MODULE_LINE.search(go_mod.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError):
-        return None
-    return match.group(1).strip('"') if match else None
-
-
-def nested_go_modules(project_root: Path) -> List[Tuple[str, str]]:
-    """``(module path, directory)`` of modules below the root, in path order."""
-    modules = []
-    for directory, subdirs, files in os.walk(project_root):
-        subdirs[:] = sorted(
-            name
-            for name in subdirs
-            if name not in _SKIPPED_DIRS and not name.startswith((".", "_"))
-        )
-        relative = Path(directory).relative_to(project_root)
-        if relative != Path(".") and "go.mod" in files:
-            module = go_module_path(Path(directory) / "go.mod")
-            if module:
-                modules.append((module, relative.as_posix()))
-    return modules
-
-
-_REPLACE = re.compile(r"^(?:replace\s+)?(\S+)(?:\s+\S+)?\s+=>\s+(\S+)")
-
-
-def local_replacements(go_mod: Path, project_root: Path) -> List[Tuple[str, str]]:
-    """``(module path, directory)`` for ``replace`` directives in ``go_mod``
-    that point at a directory inside ``project_root``."""
-    try:
-        text = go_mod.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
-        return []
-    found, in_block = [], False
-    for raw in text.splitlines():
-        line = raw.split("//", 1)[0].strip()
-        if re.fullmatch(r"replace\s*\(", line):
-            in_block = True
-            continue
-        if in_block and line == ")":
-            in_block = False
-            continue
-        if not (in_block or line.startswith("replace ")):
-            continue
-        match = _REPLACE.match(line)
-        # Local targets are relative (./, ../) or absolute filesystem paths.
-        if not match or not match.group(2).startswith(("./", "../", "/")):
-            continue
-        target = (go_mod.parent / match.group(2)).resolve()
-        try:
-            directory = target.relative_to(project_root.resolve()).as_posix()
-        except ValueError:
-            continue
-        found.append((match.group(1).strip('"'), "" if directory == "." else directory))
-    return found
-
-
-def rename_module_symbol(
-    symbol: str, root_module: str, directories: dict, version: Optional[str] = None
-) -> str:
-    """Rename a nested module's scip-go symbol into the root module's namespace.
-
-    ``directories`` maps module paths to directories; ``""`` means the root
-    module itself, whose symbols keep their packages. ``version``, when
-    given, replaces the symbol's version, so a reference to a required
-    release meets the checked-out definition.
-    """
-    parts = symbol.split(" ", 4)
-    if len(parts) < 5 or parts[:2] != ["scip-go", "gomod"]:
-        return symbol
-    module = parts[2]
-    directory = directories.get(module)
-    if directory is None:
-        return symbol
-
-    def package(match: re.Match) -> str:
-        path = match.group(1)
-        if path == module or path.startswith(module + "/"):
-            prefix = f"{root_module}/{directory}" if directory else root_module
-            path = prefix + path[len(module) :]
-        return f"`{path}`"
-
-    parts[2] = root_module
-    if version:
-        parts[3] = version
-    parts[4] = _PACKAGE.sub(package, parts[4])
-    return " ".join(parts)
-
-
-def merge_module_indexes(root, nested, root_module: str, modules=(), aliases=None):
-    """Merge per-module SCIP indexes into ``root`` (``scip_pb2.Index`` objects).
-
-    ``nested`` holds ``(module path, directory, index)`` for each module
-    indexed on its own; ``modules`` lists ``(module path, directory)`` for
-    nested modules the root index already covers. ``aliases`` maps the
-    directory of each ``go.mod`` (``""`` for the root) to its local
-    ``replace`` paths and their module directories; a module's replacements
-    apply only to its own index, as in Go.
-    Symbols of a path that names one directory are renamed everywhere, the
-    root index included, so references across modules meet the definitions.
-    A path declared in several directories is renamed only inside its own
-    index; references to it from elsewhere stay unresolved rather than pick a
-    directory. Root-module symbols keep their packages and take the canonical
-    version.
-    """
-    aliases = aliases or {}
-    pairs = {(module, directory) for module, directory, _ in nested}
-    pairs |= set(modules)
-    places: dict = {}
-    for module, directory in pairs:
-        if module != root_module:
-            places.setdefault(module, set()).add(directory)
-    unique = {
-        module: next(iter(directories))
-        for module, directories in places.items()
-        if len(directories) == 1
-    }
-    unique[root_module] = ""
-
-    # The root module's own version, else the first nested module's, so the
-    # choice is deterministic even when the root holds no Go sources.
-    version = _module_version(root, root_module)
-    for module, _directory, index in nested:
-        version = version or _module_version(index, module)
-
-    def renamer(directories: dict):
-        def rename(value: str) -> str:
-            return rename_module_symbol(value, root_module, directories, version)
-
-        return rename
-
-    def rename_information(information, rename) -> None:
-        information.symbol = rename(information.symbol)
-        information.enclosing_symbol = rename(information.enclosing_symbol)
-        for relationship in information.relationships:
-            relationship.symbol = rename(relationship.symbol)
-
-    def rename_document(document, rename) -> None:
-        for occurrence in document.occurrences:
-            occurrence.symbol = rename(occurrence.symbol)
-        for information in document.symbols:
-            rename_information(information, rename)
-
-    shared = renamer({**unique, **dict(aliases.get("", ()))})
-    for document in root.documents:
-        rename_document(document, shared)
-    for information in root.external_symbols:
-        rename_information(information, shared)
-    known = {information.symbol for information in root.external_symbols}
-    for module, directory, index in nested:
-        own = renamer({**unique, **dict(aliases.get(directory, ())), module: directory})
-        for document in index.documents:
-            rename_document(document, own)
-            document.relative_path = f"{directory}/{document.relative_path}"
-            root.documents.append(document)
-        for information in index.external_symbols:
-            rename_information(information, own)
-            if information.symbol not in known:
-                known.add(information.symbol)
-                root.external_symbols.append(information)
-    return root
-
-
-def _module_version(index, module: str) -> Optional[str]:
-    """The version scip-go stamped on ``module``'s own symbols in ``index``."""
-    for document in index.documents:
-        for occurrence in document.occurrences:
-            parts = occurrence.symbol.split(" ", 4)
-            if len(parts) == 5 and parts[:3] == ["scip-go", "gomod", module]:
-                return parts[3]
-    return None
 
 
 def _without_workspace() -> dict:
@@ -387,17 +210,29 @@ class SCIPGoIndexer(SCIPIndexerBase):
                     continue
                 indexes.append((module, directory, index))
         directories = {""} | {directory for _module, directory in nested}
-        aliases = {
+        replacements = {
             source: [
-                (alias, target)
-                for alias, target in local_replacements(
+                replacement
+                for replacement in local_replacements(
                     self.project_root / source / "go.mod", self.project_root
                 )
-                if target in directories
+                if replacement.directory in directories
             ]
             for source in directories
         }
-        merge_module_indexes(root, indexes, root_module, covered, aliases)
+        workspace_file = active_workspace(self.project_root)
+        workspace = [
+            replacement
+            for replacement in (
+                local_replacements(workspace_file, self.project_root)
+                if workspace_file
+                else []
+            )
+            if replacement.directory in directories
+        ]
+        merge_module_indexes(
+            root, indexes, root_module, covered, replacements, workspace
+        )
         staging = self.index_file.with_name(self.index_file.name + ".merging")
         staging.write_bytes(root.SerializeToString())
         staging.replace(self.index_file)
