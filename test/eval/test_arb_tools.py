@@ -216,6 +216,19 @@ def test_cache_must_not_alias_the_workspace(tmp_path):
     for workspace in (tmp_path, tmp_path / "graphs"):
         with pytest.raises(ValueError, match="workspace must differ"):
             tools.CodeNibToolProvider(str(workspace), str(tmp_path / "."))
+    # Neither root may nest inside a published graph or checkout.
+    graph = tmp_path / "other" / "graphs" / "owner__repo" / COMMIT
+    graph.mkdir(parents=True)
+    (graph / "provider_receipt.json").write_text("{}\n")
+    checkout = tmp_path / "ws" / "owner__repo" / COMMIT
+    (checkout / ".git").mkdir(parents=True)
+    (checkout / ".git" / ".codenib-arb-snapshot.json").write_text("{}\n")
+    for workspace, cache in (
+        (graph / "nested", tmp_path / "c"),
+        (tmp_path / "w", checkout / "c"),
+    ):
+        with pytest.raises(ValueError, match="inside a tool graph or checkout"):
+            tools.CodeNibToolProvider(str(workspace), str(cache))
     with pytest.raises(ValueError, match="true or false"):
         tools.CodeNibToolProvider(str(tmp_path / "ws"), retry_failed="maybe")
 
@@ -380,6 +393,9 @@ def test_a_failed_retry_keeps_the_usable_partial_graph(builds, monkeypatch, tmp_
     )
     assert "indexer crashed" in receipt["last_retry"]["error"]
     assert status["build_seconds"] == receipt["last_retry"]["build_seconds"]
+    # The retry's outcome is reported apart from the kept graph's failures.
+    assert "indexer crashed" in status["retry"]["error"]
+    assert "error" not in status
 
     # A retry that covers other languages but loses python keeps the old graph.
     def other_subset(checkout, output, languages):

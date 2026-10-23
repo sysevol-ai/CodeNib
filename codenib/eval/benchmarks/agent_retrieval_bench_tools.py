@@ -70,6 +70,16 @@ class CodeNibToolProvider:
         self._graphs = self.cache / "graphs"
         if self.workspace in (self.cache, self._graphs):
             raise ValueError("workspace must differ from cache and from cache/graphs")
+        # Neither root may sit inside a published graph or checkout, whose
+        # replacement would take the nested root with it.
+        for root in (self.workspace, self.cache):
+            for parent in (root, *root.parents):
+                if (parent / _RECEIPT).is_file() or methods.is_snapshot_checkout(
+                    parent
+                ):
+                    raise ValueError(
+                        f"{root} is inside a tool graph or checkout ({parent})"
+                    )
         self.retry_failed = _flag(retry_failed)
         self._snapshots: dict[tuple[str, str], _SnapshotIndex | None] = {}
         implementation = implementation_receipt()
@@ -142,9 +152,17 @@ class CodeNibToolProvider:
             if key in receipt
         }
         if not cached and "last_retry" in receipt:
-            # This run paid for the retry, not for the build it kept.
+            retry = receipt["last_retry"]
+            # This run paid for a retry that did not replace the kept graph:
+            # the cost is the retry's, and its outcome is reported apart from
+            # the kept graph's failures.
             for key in ("build_seconds", "fetch_seconds"):
-                status[key] = receipt["last_retry"].get(key, status.get(key))
+                status[key] = retry.get(key, status.get(key))
+            status["retry"] = {
+                key: retry[key]
+                for key in ("available", "failed", "error")
+                if key in retry
+            }
         status.update(cached=cached, available=index is not None)
         if index is not None:
             status["size"] = index.size

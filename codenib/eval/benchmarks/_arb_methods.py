@@ -411,6 +411,11 @@ def snapshot_lock(checkout: Path) -> Any:
     return FileLock(str(checkout) + ".lock")
 
 
+def is_snapshot_checkout(path: Path) -> bool:
+    """Whether ``path`` is a checkout that ``fetch_snapshot`` published."""
+    return (path / ".git" / _SNAPSHOT_RECEIPT).is_file()
+
+
 def fetch_snapshot(
     repo: str, base_commit: str, root: Path, *, remote: str | None = None
 ) -> Path:
