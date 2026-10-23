@@ -202,3 +202,35 @@ def test_single_module_repository_runs_scip_go_once(tmp_path, monkeypatch):
 def test_go_test_files_are_decoded(tmp_path, path):
     graph = _decode(tmp_path, _root_index())
     assert path in graph.name_to_vertex
+
+
+def test_versions_are_canonical_when_the_root_has_no_sources():
+    client = "example.test/repo/client/v2"
+    server = Index()
+    _document(
+        server,
+        "auth/auth.go",
+        [
+            (3, _symbol(SERVER, f"{SERVER}/auth", "Check().", "abc123"), 1),
+            (4, _symbol(client, f"{client}/api", "Call().", "v2.0.0"), 0),
+        ],
+    )
+    client_index = Index()
+    _document(
+        client_index,
+        "api/api.go",
+        [(2, _symbol(client, f"{client}/api", "Call().", "abc123"), 1)],
+    )
+    merged = go.merge_module_indexes(
+        Index(),
+        [("server", server), ("client", client_index)],
+        ROOT,
+        {SERVER: "server", client: "client"},
+    )
+    calls = {
+        occurrence.symbol
+        for document in merged.documents
+        for occurrence in document.occurrences
+        if "Call()" in occurrence.symbol
+    }
+    assert calls == {_symbol(ROOT, f"{ROOT}/client/api", "Call().", "abc123")}

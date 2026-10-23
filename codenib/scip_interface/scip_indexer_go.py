@@ -97,7 +97,13 @@ def merge_module_indexes(root, nested, root_module: str, directories: dict):
     across modules meet the definitions.
     """
 
+    # The root module's own version, else the first nested module's, so the
+    # choice is deterministic even when the root holds no Go sources.
     version = _module_version(root, root_module)
+    modules = {directory: module for module, directory in directories.items()}
+    for directory, index in nested:
+        if version is None and directory in modules:
+            version = _module_version(index, modules[directory])
 
     def rename(value: str) -> str:
         return rename_module_symbol(value, root_module, directories, version)
@@ -253,15 +259,16 @@ class SCIPGoIndexer(SCIPIndexerBase):
                 self.index_file.unlink(missing_ok=True)
                 raise
 
-        duration = section.duration
+            # Nested modules count toward the same generation time.
+            indexed = self.index_file.is_file() and not self.index_file.is_symlink()
+            if success and indexed and nested:
+                try:
+                    success = self._merge_nested_modules(go_mod, nested)
+                except BaseException:
+                    self.index_file.unlink(missing_ok=True)
+                    raise
 
-        indexed = self.index_file.is_file() and not self.index_file.is_symlink()
-        if success and indexed and nested:
-            try:
-                success = self._merge_nested_modules(go_mod, nested)
-            except BaseException:
-                self.index_file.unlink(missing_ok=True)
-                raise
+        duration = section.duration
 
         if success and not self.index_file.is_symlink() and self.index_file.is_file():
             logger.info(f"Successfully generated SCIP index at {self.index_file}")

@@ -72,7 +72,8 @@ Go graphs include `_test.go` files. A repository with nested `go.mod` files is
 indexed one module at a time; the modules are merged into one graph, with each
 package named by its directory and references resolved across modules. Each module
 is indexed with any `go.work` disabled, and a nested module that fails to index
-is skipped with a warning. Directories the `go` command ignores (`vendor`,
+is skipped with a warning. A repository needs a root `go.mod`; a workspace with
+only a root `go.work` is not indexed. Directories the `go` command ignores (`vendor`,
 `testdata`, and names starting with `.` or `_`) are not searched for modules.
 Incremental patches query `gopls` in the edited file's own module, so patching
 a nested-module file can drop references that cross module boundaries; a full
