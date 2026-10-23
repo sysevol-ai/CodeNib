@@ -115,6 +115,7 @@ def fake_index(rank):
 
     class Index:
         build_seconds = 0.5
+        tool_calls = 1
         size = {"documents": 2, "tokens": 6, "vocabulary": 3, "indexed_text_bytes": 9}
 
         def __init__(self, corpus):
