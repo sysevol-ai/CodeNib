@@ -352,7 +352,52 @@ def test_replace_aliases_meet_the_nested_definition():
     sub = Index()
     _document(sub, "pkg/foo.go", [(2, _symbol(old, f"{old}/pkg", "Foo()."), 1)])
     merged = go.merge_module_indexes(
-        root, [(old, "sub", sub)], ROOT, aliases=[(new, "sub")]
+        root, [(old, "sub", sub)], ROOT, aliases={"": [(new, "sub")]}
     )
     symbols = {d.occurrences[0].symbol for d in merged.documents}
     assert symbols == {_symbol(ROOT, f"{ROOT}/sub/pkg", "Foo().")}
+
+
+def test_replacements_apply_only_to_the_declaring_module():
+    dep, local = "example.com/dep", "example.test/local"
+    root = Index()
+    _document(root, "main.go", [(1, _symbol(dep, f"{dep}/x", "Run().", "v1.0.0"), 0)])
+    a = Index()
+    _document(a, "a.go", [(1, _symbol(dep, f"{dep}/x", "Run().", "v0"), 0)])
+    merged = go.merge_module_indexes(
+        root,
+        [("example.test/a", "a", a)],
+        ROOT,
+        modules=[(local, "local")],
+        aliases={"a": [(dep, "local")]},
+    )
+    assert [d.occurrences[0].symbol for d in merged.documents] == [
+        _symbol(dep, f"{dep}/x", "Run().", "v1.0.0"),
+        _symbol(ROOT, f"{ROOT}/local/x", "Run()."),
+    ]
+
+
+def test_covered_modules_are_the_deepest_directories(tmp_path, monkeypatch):
+    repository = tmp_path / "repository"
+    for directory, module in [(".", ROOT), ("server", SERVER), ("server/tools", "t")]:
+        (repository / directory).mkdir(parents=True, exist_ok=True)
+        (repository / directory / "go.mod").write_text(f"module {module}\n")
+    indexer = go.SCIPGoIndexer(repository, output_dir=tmp_path / "state")
+    monkeypatch.setattr(indexer, "_check_indexer_available", lambda: True)
+    calls = []
+
+    def run(command, **kwargs):
+        cwd = Path(kwargs["cwd"])
+        calls.append(cwd.relative_to(repository).as_posix())
+        index = _root_index()
+        if cwd == repository:
+            # The workspace pulled in only server/tools.
+            index.documents.add(relative_path="server/tools/gen.go")
+        Path(command[command.index("--output") + 1]).write_bytes(
+            index.SerializeToString()
+        )
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(subprocess, "run", run)
+    assert indexer.generate_index() is True
+    assert calls == [".", "server"]

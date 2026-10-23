@@ -125,13 +125,15 @@ def rename_module_symbol(
     return " ".join(parts)
 
 
-def merge_module_indexes(root, nested, root_module: str, modules=(), aliases=()):
+def merge_module_indexes(root, nested, root_module: str, modules=(), aliases=None):
     """Merge per-module SCIP indexes into ``root`` (``scip_pb2.Index`` objects).
 
     ``nested`` holds ``(module path, directory, index)`` for each module
     indexed on its own; ``modules`` lists ``(module path, directory)`` for
-    nested modules the root index already covers, and ``aliases`` the local
-    ``replace`` paths that point at a module directory (``""`` is the root).
+    nested modules the root index already covers. ``aliases`` maps the
+    directory of each ``go.mod`` (``""`` for the root) to its local
+    ``replace`` paths and their module directories; a module's replacements
+    apply only to its own index, as in Go.
     Symbols of a path that names one directory are renamed everywhere, the
     root index included, so references across modules meet the definitions.
     A path declared in several directories is renamed only inside its own
@@ -139,8 +141,9 @@ def merge_module_indexes(root, nested, root_module: str, modules=(), aliases=())
     directory. Root-module symbols keep their packages and take the canonical
     version.
     """
+    aliases = aliases or {}
     pairs = {(module, directory) for module, directory, _ in nested}
-    pairs |= set(modules) | set(aliases)
+    pairs |= set(modules)
     places: dict = {}
     for module, directory in pairs:
         if module != root_module:
@@ -176,14 +179,14 @@ def merge_module_indexes(root, nested, root_module: str, modules=(), aliases=())
         for information in document.symbols:
             rename_information(information, rename)
 
-    shared = renamer(unique)
+    shared = renamer({**unique, **dict(aliases.get("", ()))})
     for document in root.documents:
         rename_document(document, shared)
     for information in root.external_symbols:
         rename_information(information, shared)
     known = {information.symbol for information in root.external_symbols}
     for module, directory, index in nested:
-        own = renamer({**unique, module: directory})
+        own = renamer({**unique, **dict(aliases.get(directory, ())), module: directory})
         for document in index.documents:
             rename_document(document, own)
             document.relative_path = f"{directory}/{document.relative_path}"
@@ -349,14 +352,17 @@ class SCIPGoIndexer(SCIPIndexerBase):
         root = Index()
         root.ParseFromString(self.index_file.read_bytes())
         # A root go.work can already pull nested modules into the root run.
-        covered = [
-            (module, directory)
-            for module, directory in nested
-            if any(
-                document.relative_path.startswith(directory + "/")
-                for document in root.documents
-            )
-        ]
+        # Each document belongs to the deepest module directory holding it.
+        owners = set()
+        for document in root.documents:
+            holders = [
+                directory
+                for _module, directory in nested
+                if document.relative_path.startswith(directory + "/")
+            ]
+            if holders:
+                owners.add(max(holders, key=len))
+        covered = [entry for entry in nested if entry[1] in owners]
         pending = [entry for entry in nested if entry not in covered]
         indexes = []
         with tempfile.TemporaryDirectory(dir=self.output_dir) as scratch:
@@ -380,13 +386,16 @@ class SCIPGoIndexer(SCIPIndexerBase):
                     continue
                 indexes.append((module, directory, index))
         directories = {""} | {directory for _module, directory in nested}
-        aliases = [
-            (alias, directory)
-            for go_file in [go_mod]
-            + [self.project_root / directory / "go.mod" for _, directory in nested]
-            for alias, directory in local_replacements(go_file, self.project_root)
-            if directory in directories
-        ]
+        aliases = {
+            source: [
+                (alias, target)
+                for alias, target in local_replacements(
+                    self.project_root / source / "go.mod", self.project_root
+                )
+                if target in directories
+            ]
+            for source in directories
+        }
         merge_module_indexes(root, indexes, root_module, covered, aliases)
         staging = self.index_file.with_name(self.index_file.name + ".merging")
         staging.write_bytes(root.SerializeToString())
