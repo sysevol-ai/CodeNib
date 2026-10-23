@@ -19718,8 +19718,6 @@
  "environment": {
   "cpu": "Intel(R) Xeon(R) Gold 5416S",
   "cpu_count": 64,
-  "index_location": "in memory; nothing persisted",
-  "peak_rss_bytes": 2147803136,
   "platform": "Linux-6.9.9cxleak-x86_64-with-glibc2.39"
  },
  "evaluator": {
@@ -19814,6 +19812,7 @@
     }
    },
    "failure_ids": [],
+   "index_location": "memory",
    "method_config": {},
    "metrics_all_selected": {
     "BCY@16000": 0.276329,
@@ -19825,6 +19824,7 @@
     "Recall@20": 0.388889,
     "Recall@5": 0.154348
    },
+   "peak_rss_bytes": 2147803136,
    "retrieval_usage": {
     "api_cost_usd": 0.0,
     "corpus_load_seconds": {
@@ -19958,6 +19958,7 @@
     }
    },
    "failure_ids": [],
+   "index_location": "memory",
    "method_config": {
     "batch_size": 64,
     "device": "cuda",
@@ -19977,6 +19978,7 @@
     "Recall@20": 0.573575,
     "Recall@5": 0.293961
    },
+   "peak_rss_bytes": 9815912448,
    "retrieval_usage": {
     "api_cost_usd": 0.0,
     "corpus_load_seconds": {
@@ -20131,6 +20133,7 @@
     }
    },
    "failure_ids": [],
+   "index_location": "temporary directory, removed after each snapshot; source checkouts kept in the workspace",
    "method_config": {
     "build_timeout_seconds": 1800,
     "min_language_share": 0.1,
@@ -20338,6 +20341,7 @@
     }
    },
    "failure_ids": [],
+   "index_location": "memory",
    "method_config": {
     "batch_size": 64,
     "device": "cuda",
@@ -20358,6 +20362,7 @@
     "Recall@20": 0.597198,
     "Recall@5": 0.280435
    },
+   "peak_rss_bytes": 10226671616,
    "retrieval_usage": {
     "api_cost_usd": 0.0,
     "corpus_load_seconds": {
@@ -20540,6 +20545,7 @@
     }
    },
    "failure_ids": [],
+   "index_location": "temporary directory, removed after each snapshot",
    "method_config": {
     "binaries_sha256": {
      "zoekt": "0c1f7f2b03fdbac904dad730f7fe0598888d0e569752e82cd6edbaf0fe806629",
@@ -20557,6 +20563,7 @@
     "Recall@20": 0.440048,
     "Recall@5": 0.249758
    },
+   "peak_rss_bytes": 922075136,
    "retrieval_usage": {
     "api_cost_usd": 0.0,
     "corpus_load_seconds": {

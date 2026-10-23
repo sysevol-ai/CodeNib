@@ -87,7 +87,8 @@ CodeNib's 600-second scip-python limit; the Java indexer produced no graph for
 five spring-boot snapshots and one mockito snapshot; two scrapy, one gin, and
 one numpy snapshot also produced none. Those samples rank by BM25. On the 290 samples with a graph, it
 lowered Recall@20 by 0.047 against BM25 (95% bootstrap interval −0.085 to
-−0.007) and left MRR and BCY@8k unchanged. It helped trace2code (0.416 against
+−0.007). MRR fell by 0.002 (−0.005 to +0.002), and BCY@8k showed no net change
+(−0.016 to +0.014). It helped trace2code (0.416 against
 0.391) and hurt code2test, partly because CodeNib's Go graph omits test files.
 Adding 15 reference neighbors after five BM25 seeds displaces better BM25
 candidates; deciding when to follow references is left to an interactive
@@ -114,7 +115,7 @@ on one host (Intel Xeon Gold 5416S, 64 cores, one H100 shared with other jobs),
 with CPU and GPU methods running at the same time, so treat timings as
 indicative. The [results receipt](../assets/arb_full.json) holds every
 method's configuration, per-sample metrics, ranking depths, and costs; the
-full rankings are published at [`sysevol-ai/codenib-arb-rankings`](https://huggingface.co/datasets/sysevol-ai/codenib-arb-rankings/tree/5310148b0d10096fd8ca4d418ef0be510153cdfc) with checksums for offline
+full rankings are published at [`sysevol-ai/codenib-arb-rankings`](https://huggingface.co/datasets/sysevol-ai/codenib-arb-rankings/tree/8be160b7258a803bc7e6d21a7f3ef0f981bdd382) with checksums for offline
 rescoring.
 
 An earlier eight-sample compatibility check, which ARB's maintainers reproduced
