@@ -745,6 +745,9 @@ def execute(
                     prediction["base_tool_calls"] = base.get("tool_calls")
                 started = time.perf_counter()
                 try:
+                    if base is not None and base.get("status") != "ok":
+                        # Rejected before any build or call, so it costs none.
+                        raise ValueError("the base run has no ranking for this case")
                     key = record["corpus"].get("sha256")
                     if index is None or key != index_key:
                         # Release the previous snapshot before the next cold build.
@@ -766,8 +769,6 @@ def execute(
                             prediction["model_load_seconds"] = index.model_load_seconds
                     # A failed search is still an attempted call with latency.
                     prediction["tool_calls"] = 1
-                    if base is not None and base.get("status") != "ok":
-                        raise ValueError("the base run has no ranking for this case")
                     queried = time.perf_counter()
                     try:
                         if base is None:

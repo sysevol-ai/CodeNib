@@ -891,6 +891,10 @@ def test_rerank_reorders_a_completed_base_run(
     assert (usage["known"]["total"], usage["unknown_samples"]) == (2, 3)
     reranked = runner.load_predictions(tmp_path / "ext-rerank" / "predictions.json")
     assert [row["status"] for row in reranked].count("error") == 1
+    # The rejected case made no rerank call and built nothing.
+    failed = next(row for row in reranked if row["status"] == "error")
+    assert (failed["tool_calls"], failed["index_built"]) == (0, False)
+    assert failed["base_tool_calls"] == 2
     # The partial external rankings stay partial.
     assert all(
         len(row["ranked_files"]) == 3 for row in reranked if row["status"] == "ok"
