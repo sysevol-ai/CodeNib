@@ -346,6 +346,7 @@ def test_local_replacements_resolve_inside_the_repository(tmp_path):
         '\t"example.com/quoted" v0.1.0 => ./sub\n'
         f"\texample.com/absolute => {tmp_path / 'sub'}\n"
         "\texample.com/elsewhere => /opt/go/mod\n"
+        "\texample.com/tight => ./sub// a comment needs no space\n"
         ")\n",
         encoding="utf-8",
     )
@@ -353,6 +354,7 @@ def test_local_replacements_resolve_inside_the_repository(tmp_path):
         gm.Replacement("example.com/new", None, "sub"),
         gm.Replacement("example.com/quoted", "v0.1.0", "sub"),
         gm.Replacement("example.com/absolute", None, "sub"),
+        gm.Replacement("example.com/tight", None, "sub"),
     ]
 
 
@@ -662,3 +664,37 @@ def test_enclosing_workspace_members_outside_the_checkout_apply(tmp_path, monkey
         if "Check()" in occurrence.symbol
     }
     assert {s.split(" ", 4)[4] for s in checks} == {f"`{ROOT}/server/auth`/Check()."}
+
+
+@pytest.mark.parametrize(
+    "target, local",
+    [
+        (".\\sub", True),
+        ("..\\up", True),
+        ("\\rooted", True),
+        ("C:\\repo\\sub", True),
+        ("c:/repo", True),
+        ("example.com/fork", False),
+        ("1:x", False),
+    ],
+)
+def test_replacement_paths_follow_go_on_every_system(target, local):
+    assert gm._local_path(target) is local
+
+
+def test_nested_runs_keep_their_replacements_of_the_root_path():
+    # a/go.mod replaces the root path; a is the main module of its own run.
+    a = Index()
+    _document(a, "a.go", [(1, _symbol(ROOT, f"{ROOT}/lib", "Helper()."), 0)])
+    merged = gm.merge_module_indexes(
+        _root_index(),
+        [("example.test/a", "a", a)],
+        ROOT,
+        replacements={"a": [gm.Replacement(ROOT, None, "copy")]},
+    )
+    assert merged.documents[0].occurrences[0].symbol == _symbol(
+        ROOT, f"{ROOT}/lib", "Helper()."
+    )
+    assert merged.documents[-1].occurrences[0].symbol == _symbol(
+        ROOT, f"{ROOT}/copy/lib", "Helper()."
+    )

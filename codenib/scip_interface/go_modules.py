@@ -17,6 +17,7 @@ from __future__ import annotations
 import ast
 import os
 import re
+import string
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -25,8 +26,9 @@ from typing import Dict, Iterable, List, Optional, Tuple
 # Directories the go command ignores, plus vendored trees.
 _SKIPPED_DIRS = {"vendor", "testdata", "node_modules"}
 # Go lexical elements in go.mod and go.work: quoted and raw strings, the
-# replacement arrow, block parentheses, and bare words.
-_TOKEN = re.compile(r'"(?:[^"\\]|\\.)*"|`[^`]*`|//|=>|[()]|[^\s()"`]+')
+# replacement arrow, block parentheses, and bare words, which end where a
+# ``//`` comment begins.
+_TOKEN = re.compile(r'"(?:[^"\\]|\\.)*"|`[^`]*`|//|=>|[()]|(?:[^\s()"`/]|/(?!/))+')
 _PACKAGE = re.compile(r"`([^`]+)`")
 # SCIP simple identifiers: a descriptor may start with an unescaped package.
 _SIMPLE_PACKAGE = re.compile(r"([A-Za-z0-9_+$-]+)/")
@@ -145,8 +147,17 @@ def local_replacements(go_file: Path, project_root: Path) -> List[Replacement]:
 
 
 def _local_path(target: str) -> bool:
-    """Whether a replacement target is a filesystem path, as Go decides."""
-    return target in {".", ".."} or target.startswith(("./", "../", "/"))
+    """Whether a replacement target is a filesystem path, as Go decides.
+
+    Mirrors ``modfile.IsDirectoryPath``, which accepts Unix and Windows
+    syntax on every system, since go.mod files move between them.
+    """
+    drive = target[1:2] == ":" and target[:1] in string.ascii_letters
+    return (
+        target in {".", ".."}
+        or target.startswith(("./", ".\\", "../", "..\\", "/", "\\"))
+        or drive
+    )
 
 
 def active_workspace(project_root: Path) -> Optional[Path]:
@@ -347,13 +358,18 @@ def merge_module_indexes(
         )
 
     def effective(directory: str) -> _Mapping:
+        member = directory in members
         mapping = (
             in_workspace
-            if directory in members
+            if member
             else _merged(unique, _replacing(replacements.get(directory, ())))
         )
-        # The main module stays at the root; a self-replacement has no effect.
-        return {**mapping, root_module: {None: ""}}
+        # Go ignores a replacement of a main module, so the root module stays
+        # at the root in runs where it is one: the root run, and workspace
+        # runs whose workspace uses the root. Elsewhere it is a dependency.
+        if directory == "" or (member and "" in members):
+            mapping = {**mapping, root_module: {None: ""}}
+        return mapping
 
     shared = renamer(effective(""))
     for document in root.documents:
