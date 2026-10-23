@@ -246,8 +246,14 @@ def zoekt_terms(query_text: str, limit: int = ZOEKT_MAX_TERMS) -> list[str]:
 
 
 def _zoekt_literal(term: str) -> str:
-    # Bare Zoekt terms are RE2 patterns; escape them to match literally.
-    return _RE2_META.sub(r"\\\1", term)
+    """One literal Zoekt query term.
+
+    Zoekt terms are RE2 patterns, and bare words such as ``or``, ``file:x``,
+    or ``-name`` are operators. A quoted string is a single pattern whose
+    backslashes and quotes are string escapes, so escape for RE2 first.
+    """
+    pattern = _RE2_META.sub(r"\\\1", term)
+    return '"' + pattern.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
 class ZoektCorpusIndex:
@@ -313,6 +319,8 @@ class ZoektCorpusIndex:
                 "-index_dir",
                 str(self._index_dir),
                 "-l",
+                # Terms may start with "-"; never parse them as flags.
+                "--",
                 _zoekt_literal(term),
             ],
             capture_output=True,
