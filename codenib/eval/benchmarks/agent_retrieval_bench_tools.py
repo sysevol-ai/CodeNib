@@ -61,6 +61,7 @@ class CodeNibToolProvider:
             "codenib_sources_sha256": receipt["codenib_sources_sha256"],
             "source_access": "full-source",
             "graph_build_timeout_seconds": methods.GRAPH_BUILD_TIMEOUT,
+            "scip_python_index_timeout_seconds": _scip_python_timeout(),
             "min_language_share": methods.GRAPH_MIN_LANGUAGE_SHARE,
         }
 
@@ -324,6 +325,12 @@ def _qualified(attributes: dict[str, Any]) -> str:
 def _bare(name: str) -> str:
     parts = [part for part in _SEPARATORS.split(name) if part]
     return parts[-1] if parts else name
+
+
+def _scip_python_timeout() -> float:
+    from codenib.scip_interface.scip_indexer_python import _scip_python_index_timeout
+
+    return _scip_python_index_timeout()
 
 
 def _git_commit() -> str | None:

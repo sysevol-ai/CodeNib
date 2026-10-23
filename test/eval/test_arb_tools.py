@@ -142,3 +142,4 @@ def test_describe_binds_the_provider_build(tmp_path):
     assert described["name"] == "codenib"
     assert described["source_access"] == "full-source"
     assert len(described["codenib_sources_sha256"]) == 64
+    assert described["scip_python_index_timeout_seconds"] > 0
