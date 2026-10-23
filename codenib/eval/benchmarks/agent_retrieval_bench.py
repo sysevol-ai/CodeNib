@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import importlib.metadata
 import json
@@ -155,16 +156,73 @@ def _version(name: str) -> str | None:
         return None
 
 
+PACKAGE = "agent_retrieval_bench"
+_SCORER_ENTRY_POINTS = ("__init__.py", "baseline.py", "bcy_curve.py")
+
+
+def scoring_sources(checkout: Path, revision: str) -> list[str]:
+    """Evaluator files the scorer imports at ``revision``, transitively.
+
+    The scorer bridge imports ``baseline`` and ``bcy_curve``; this follows
+    every static import inside the package from those entry points, reading
+    the pinned revision so a later deletion still appears as a difference.
+    """
+    seen: set[str] = set()
+    pending = list(_SCORER_ENTRY_POINTS)
+    while pending:
+        name = pending.pop()
+        path = f"src/{PACKAGE}/{name}"
+        if name in seen:
+            continue
+        try:
+            text = _upstream_git(checkout, "show", f"{revision}:{path}")
+        except subprocess.CalledProcessError:
+            continue
+        seen.add(name)
+        try:
+            tree = ast.parse(text)
+        except SyntaxError as exc:
+            raise ValueError(f"cannot parse ARB scorer source {path}: {exc}") from exc
+        for node in ast.walk(tree):
+            modules: list[str] = []
+            if isinstance(node, ast.ImportFrom):
+                parts = (node.module or "").split(".")
+                if node.level == 1 or (node.level == 0 and parts[0] == PACKAGE):
+                    tail = parts[1:] if node.level == 0 else [p for p in parts if p]
+                    modules = [".".join(tail)] if tail else [a.name for a in node.names]
+            elif isinstance(node, ast.Import):
+                modules = [
+                    alias.name.split(".", 1)[1]
+                    for alias in node.names
+                    if alias.name.startswith(PACKAGE + ".")
+                ]
+            pending.extend(module.replace(".", "/") + ".py" for module in modules)
+    return sorted(f"src/{PACKAGE}/{name}" for name in seen)
+
+
+def _upstream_git(checkout: Path, *args: str) -> str:
+    return subprocess.check_output(
+        ["git", "-C", str(checkout), *args], text=True
+    ).strip()
+
+
+def upstream_revision(checkout: Path) -> str:
+    return _upstream_git(checkout, "rev-parse", "HEAD")
+
+
 def validate_upstream(checkout: Path) -> Path:
+    """Accept a clean checkout whose scoring code matches the pinned revision.
+
+    The pinned revision passes as is. A later revision passes when it descends
+    from the pinned commit and every file the scorer imports is unchanged,
+    so updates to unrelated evaluators do not block scoring. Reports record
+    both the checkout's revision and the pinned scoring revision.
+    """
     checkout = checkout.resolve()
 
     def git(*args: str) -> str:
-        return subprocess.check_output(
-            ["git", "-C", str(checkout), *args], text=True
-        ).strip()
+        return _upstream_git(checkout, *args)
 
-    if git("rev-parse", "HEAD") != ARB_UPSTREAM_REVISION:
-        raise ValueError(f"ARB evaluator must be pinned to {ARB_UPSTREAM_REVISION}")
     if git("status", "--porcelain", "--untracked-files=all", "--", "src"):
         raise ValueError("ARB evaluator source must be clean")
     if any(
@@ -174,6 +232,26 @@ def validate_upstream(checkout: Path) -> Path:
         raise ValueError("ARB evaluator source has hidden Git index flags")
     if not (checkout / "src/agent_retrieval_bench/bcy_curve.py").is_file():
         raise ValueError("ARB evaluator package is missing")
+    if git("rev-parse", "HEAD") != ARB_UPSTREAM_REVISION:
+        try:
+            git("merge-base", "--is-ancestor", ARB_UPSTREAM_REVISION, "HEAD")
+        except subprocess.CalledProcessError as exc:
+            raise ValueError(
+                f"ARB evaluator must be {ARB_UPSTREAM_REVISION} or descend from it"
+            ) from exc
+        changed = git(
+            "diff",
+            "--name-only",
+            ARB_UPSTREAM_REVISION,
+            "HEAD",
+            "--",
+            *scoring_sources(checkout, ARB_UPSTREAM_REVISION),
+        )
+        if changed:
+            raise ValueError(
+                f"ARB scoring code differs from {ARB_UPSTREAM_REVISION[:8]}: "
+                + ", ".join(changed.split())
+            )
     return checkout
 
 

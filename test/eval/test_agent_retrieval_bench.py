@@ -336,6 +336,7 @@ def test_adapter_changes_invalidate_receipt_despite_same_dataset_basename(monkey
 @pytest.fixture
 def fake_evaluator(monkeypatch):
     monkeypatch.setattr(runner, "validate_upstream", lambda path: path)
+    monkeypatch.setattr(runner, "upstream_revision", lambda path: "f" * 40)
     monkeypatch.setattr(runner, "implementation_receipt", lambda: {"implementation": 1})
 
     def score(jobs, *args):
@@ -555,22 +556,94 @@ def test_failed_retrieval_checkpoint_is_not_silently_retried(
     assert result["retrieval_usage"]["query_seconds"]["count"] == 4
 
 
+def _commit(checkout, files, message):
+    for name, text in files.items():
+        path = checkout / "src/agent_retrieval_bench" / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if text is None:
+            path.unlink()
+        else:
+            path.write_text(text)
+    subprocess.run(["git", "-C", str(checkout), "add", "-A"], check=True)
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(checkout),
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.com",
+            "commit",
+            "-qm",
+            message,
+        ],
+        check=True,
+    )
+    return subprocess.check_output(
+        ["git", "-C", str(checkout), "rev-parse", "HEAD"], text=True
+    ).strip()
+
+
 @pytest.mark.parametrize(
-    "revision,dirty",
+    "changed,accepted",
     [
-        ("b" * 40, ""),
-        (arb.ARB_UPSTREAM_REVISION, " M src/agent_retrieval_bench/baseline.py"),
+        ({"closed_tool_eval.py": "tool = 2\n"}, True),
+        ({"baseline.py": "from .io import read\nscore = 2\n"}, False),
+        # io.py is reached only through baseline's import.
+        ({"io.py": "def read():\n    return 2\n"}, False),
+        ({"io.py": None}, False),
+        ({"bcy_curve.py": "def broken(:\n"}, False),
     ],
 )
-def test_unpinned_or_modified_evaluator_rejected(
-    tmp_path, monkeypatch, revision, dirty
+def test_later_evaluator_accepted_only_with_identical_scoring_code(
+    tmp_path, monkeypatch, changed, accepted
 ):
-    def git(command, **kwargs):
-        return revision if "rev-parse" in command else dirty
+    checkout = tmp_path / "upstream"
+    subprocess.run(["git", "init", "-q", str(checkout)], check=True)
+    pinned = _commit(
+        checkout,
+        {
+            "__init__.py": "",
+            "baseline.py": "from .io import read\nscore = 1\n",
+            "bcy_curve.py": "from agent_retrieval_bench import baseline\n",
+            "io.py": "def read():\n    return 1\n",
+            "closed_tool_eval.py": "tool = 1\n",
+        },
+        "pinned",
+    )
+    monkeypatch.setattr(arb, "ARB_UPSTREAM_REVISION", pinned)
+    assert arb.scoring_sources(checkout, pinned) == [
+        f"src/agent_retrieval_bench/{name}"
+        for name in ("__init__.py", "baseline.py", "bcy_curve.py", "io.py")
+    ]
+    later = _commit(checkout, changed, "later")
+    if accepted:
+        assert arb.validate_upstream(checkout) == checkout
+        assert arb.upstream_revision(checkout) == later
+    else:
+        with pytest.raises(ValueError, match="scoring code differs"):
+            arb.validate_upstream(checkout)
 
-    monkeypatch.setattr(arb.subprocess, "check_output", git)
-    with pytest.raises(ValueError):
-        arb.validate_upstream(tmp_path)
+
+def test_evaluator_without_pinned_history_or_clean_source_rejected(
+    tmp_path, monkeypatch
+):
+    checkout = tmp_path / "upstream"
+    subprocess.run(["git", "init", "-q", str(checkout)], check=True)
+    first = _commit(checkout, {"__init__.py": "", "bcy_curve.py": ""}, "first")
+    _commit(checkout, {"bcy_curve.py": "x = 1\n"}, "later")
+    pinned = arb.upstream_revision(checkout)
+    # The pinned object exists, but HEAD on a side branch does not descend from it.
+    subprocess.run(["git", "-C", str(checkout), "checkout", "-q", first], check=True)
+    _commit(checkout, {"closed_tool_eval.py": ""}, "side branch")
+    monkeypatch.setattr(arb, "ARB_UPSTREAM_REVISION", pinned)
+    with pytest.raises(ValueError, match="descend from it"):
+        arb.validate_upstream(checkout)
+    monkeypatch.setattr(arb, "ARB_UPSTREAM_REVISION", arb.upstream_revision(checkout))
+    (checkout / "src/agent_retrieval_bench/bcy_curve.py").write_text("edited\n")
+    with pytest.raises(ValueError, match="clean"):
+        arb.validate_upstream(checkout)
 
 
 @pytest.mark.parametrize("flag", ["--skip-worktree", "--assume-unchanged"])
@@ -719,6 +792,7 @@ def test_full_source_access_reaches_scorer_and_report(
     released_data, tmp_path, monkeypatch
 ):
     monkeypatch.setattr(runner, "validate_upstream", lambda path: path)
+    monkeypatch.setattr(runner, "upstream_revision", lambda path: "f" * 40)
     seen = []
 
     def score(jobs, *args):
@@ -746,6 +820,7 @@ def test_full_source_access_reaches_scorer_and_report(
 
 def test_native_method_fixes_its_source_access(released_data, tmp_path, monkeypatch):
     monkeypatch.setattr(runner, "validate_upstream", lambda path: path)
+    monkeypatch.setattr(runner, "upstream_revision", lambda path: "f" * 40)
     path, _prepared = prepared_file(released_data, tmp_path)
     with pytest.raises(ValueError, match="released-corpus"):
         runner.execute(path, tmp_path / "run", tmp_path, access="full-source")
