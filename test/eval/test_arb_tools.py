@@ -326,4 +326,23 @@ def test_identity_includes_runtime_and_graph_tools(tmp_path):
     assert described["python"] and "igraph" in described["packages"]
     backends = described["graph_tools_sha256"]
     for key in ("python:scip-python", "go:scip-go", "cpp:clangd", "csharp:scip-dotnet"):
-        assert key in backends, key
+        assert backends[key]["command"][0] == key.split(":", 1)[1], key
+
+
+def test_backend_identity_covers_launcher_arguments(monkeypatch, tmp_path):
+    jar = tmp_path / "scip-java.jar"
+    jar.write_bytes(b"v1")
+    monkeypatch.setenv("CODENIB_JAVA_SCIP_CMD", f"java -jar {jar}")
+    first = tools._graph_tools()["java:java"]
+    jar.write_bytes(b"v2")
+    second = tools._graph_tools()["java:java"]
+    assert first["command"] == ["java", "-jar", str(jar)]
+    assert first["argument_files_sha256"] != second["argument_files_sha256"]
+
+
+def test_receipts_are_replaced_atomically(tmp_path):
+    receipt = tmp_path / "provider_receipt.json"
+    receipt.write_text('{"graph": true}\n')
+    tools._write_atomically(receipt, {"graph": True, "last_retry": {}})
+    assert json.loads(receipt.read_text())["last_retry"] == {}
+    assert not (tmp_path / "provider_receipt.json.writing").exists()

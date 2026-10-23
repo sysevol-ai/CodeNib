@@ -219,8 +219,7 @@ class CodeNibToolProvider:
         if retry_lost_coverage:
             # The kept graph records the attempt that did not replace it.
             shutil.rmtree(staging, ignore_errors=True)
-            kept = {**previous, "last_retry": receipt}
-            (directory / _RECEIPT).write_text(json.dumps(kept) + "\n", encoding="utf-8")
+            _write_atomically(directory / _RECEIPT, {**previous, "last_retry": receipt})
             return
         (staging / _RECEIPT).write_text(json.dumps(receipt) + "\n", encoding="utf-8")
         shutil.rmtree(directory, ignore_errors=True)
@@ -446,10 +445,11 @@ def _flag(value: bool | str) -> bool:
     raise ValueError(f"expected true or false, got {value!r}")
 
 
-def _graph_tools() -> dict[str, str | None]:
-    """SHA-256 of every graph backend executable the language registry can
-    run: each graph language's SCIP command and its LSP command, with any
-    environment overrides applied."""
+def _graph_tools() -> dict[str, dict[str, Any]]:
+    """Every graph backend command the language registry can run: each graph
+    language's SCIP and LSP command, with environment overrides applied, and
+    the SHA-256 of its executable and of any file its arguments name (such as
+    a launcher's JAR)."""
     from codenib.languages import (
         LANGUAGE_SPECS,
         lsp_command_for_language,
@@ -459,7 +459,7 @@ def _graph_tools() -> dict[str, str | None]:
 
     from .agent_retrieval_bench import sha256_file
 
-    hashes: dict[str, str | None] = {}
+    backends: dict[str, dict[str, Any]] = {}
     for spec in LANGUAGE_SPECS:
         if not spec.graph_language:
             continue
@@ -470,10 +470,27 @@ def _graph_tools() -> dict[str, str | None]:
                 command = None
             if not command:
                 continue
-            path = resolve_command(command[0])
-            key = f"{spec.graph_language}:{command[0]}"
-            hashes[key] = sha256_file(Path(path)) if path else None
-    return hashes
+            executable = resolve_command(command[0])
+            files = {
+                argument: sha256_file(Path(argument))
+                for argument in command[1:]
+                if Path(argument).is_file()
+            }
+            backends[f"{spec.graph_language}:{command[0]}"] = {
+                "command": list(command),
+                "executable_sha256": (
+                    sha256_file(Path(executable)) if executable else None
+                ),
+                "argument_files_sha256": files,
+            }
+    return backends
+
+
+def _write_atomically(path: Path, value: dict) -> None:
+    """Replace ``path`` so readers see the old or the new receipt, never a part."""
+    staging = path.with_name(path.name + ".writing")
+    staging.write_text(json.dumps(value) + "\n", encoding="utf-8")
+    staging.replace(path)
 
 
 def _read_receipt(path: Path) -> dict | None:
