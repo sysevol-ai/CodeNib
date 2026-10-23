@@ -346,3 +346,15 @@ def test_receipts_are_replaced_atomically(tmp_path):
     tools._write_atomically(receipt, {"graph": True, "last_retry": {}})
     assert json.loads(receipt.read_text())["last_retry"] == {}
     assert not (tmp_path / "provider_receipt.json.writing").exists()
+
+
+def test_an_interrupted_swap_restores_the_retired_graph(builds, tmp_path):
+    _provider(tmp_path)
+    directory = tmp_path / "cache" / "owner__repo" / COMMIT
+    # The swap stopped after retiring the live graph, before installing
+    # its replacement.
+    directory.rename(directory.with_name(COMMIT + ".previous"))
+    (directory.with_name(COMMIT + ".partial") / "arb_graph.pkl").parent.mkdir()
+    status = _provider(tmp_path)[1]
+    assert status["cached"] and status["available"] and len(builds) == 1
+    assert not directory.with_name(COMMIT + ".previous").exists()

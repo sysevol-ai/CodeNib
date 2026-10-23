@@ -93,6 +93,7 @@ class CodeNibToolProvider:
         directory = methods.snapshot_path(repo, base_commit, self.cache)
         directory.parent.mkdir(parents=True, exist_ok=True)
         with methods.snapshot_lock(directory):
+            _finish_swap(directory)
             receipt_path = directory / _RECEIPT
             receipt = _read_receipt(receipt_path)
             languages = methods.snapshot_languages(
@@ -222,8 +223,14 @@ class CodeNibToolProvider:
             _write_atomically(directory / _RECEIPT, {**previous, "last_retry": receipt})
             return
         (staging / _RECEIPT).write_text(json.dumps(receipt) + "\n", encoding="utf-8")
-        shutil.rmtree(directory, ignore_errors=True)
+        # Retire the live graph rather than delete it, so an interrupted swap
+        # leaves a graph for _finish_swap to restore.
+        retired = _retired(directory)
+        shutil.rmtree(retired, ignore_errors=True)
+        if directory.exists():
+            directory.rename(retired)
         staging.rename(directory)
+        shutil.rmtree(retired, ignore_errors=True)
 
     def call(
         self,
@@ -484,6 +491,18 @@ def _graph_tools() -> dict[str, dict[str, Any]]:
                 "argument_files_sha256": files,
             }
     return backends
+
+
+def _retired(directory: Path) -> Path:
+    return directory.with_name(directory.name + ".previous")
+
+
+def _finish_swap(directory: Path) -> None:
+    """Settle a graph swap that stopped between its two renames."""
+    retired = _retired(directory)
+    if retired.is_dir() and not directory.exists():
+        retired.rename(directory)
+    shutil.rmtree(retired, ignore_errors=True)
 
 
 def _write_atomically(path: Path, value: dict) -> None:
