@@ -35,7 +35,6 @@ from .agent_retrieval_bench import BM25CorpusIndex, complete_file_ranking, corpu
 DENSE_MODEL = "Qwen/Qwen3-Embedding-0.6B"
 # Immutable Hugging Face commit; a mutable default branch could change weights.
 DENSE_REVISION = "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3"
-DENSE_DIMENSION = 1024
 DENSE_MAX_SEQ_LENGTH = 512
 DENSE_BATCH_SIZE = 64
 HYBRID_RRF_K = 60
@@ -95,31 +94,32 @@ def dense_precision(device: str | None = None) -> tuple[str, str]:
 class DenseEncoder:
     """One embedding model, loaded once and shared by every snapshot index."""
 
-    def __init__(self, device: str, dtype: str):
+    def __init__(self, config: dict[str, Any]):
         import torch
 
         from codenib.index.embedding import CodeVectorStore
 
         started = time.perf_counter()
         self.store_options = {
-            "embedding_model": DENSE_MODEL,
+            "embedding_model": config["model"],
             "embedding_provider": "huggingface",
-            "revision": DENSE_REVISION,
-            "dimension": DENSE_DIMENSION,
+            "revision": config["revision"],
+            # Probed from the model, so any embedding size works.
+            "dimension": None,
             "index_type": "flat",
             "index_metric": "ip",
         }
         template = CodeVectorStore(
             **self.store_options,
-            device=device,
-            default_batch_size=DENSE_BATCH_SIZE,
-            max_seq_length=DENSE_MAX_SEQ_LENGTH,
+            device=config["device"],
+            default_batch_size=config["batch_size"],
+            max_seq_length=config["max_seq_length"],
             # ARB's embedding baseline uses no query or document instruction.
             query_prompt="",
             document_prompt="",
             encode_kwargs={"normalize_embeddings": True},
         )
-        if dtype == "bfloat16":
+        if config["dtype"] == "bfloat16":
             template.embedding.client.to(torch.bfloat16)
         self.embedding = _CachedEmbedding(template.embedding)
         self.load_seconds = time.perf_counter() - started
