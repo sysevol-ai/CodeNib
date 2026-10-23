@@ -43,6 +43,7 @@ from .agent_retrieval_bench import (
     run_environment,
     sample_split,
     summarize,
+    upstream_revision,
     validate_upstream,
 )
 from .policy_compat import write_json_atomic
@@ -208,7 +209,8 @@ def evaluate(
         row["split"] = sample_split(row["sample_id"])
     return {
         "schema_version": 1,
-        "evaluator_revision": ARB_UPSTREAM_REVISION,
+        "evaluator_revision": upstream_revision(upstream),
+        "scoring_revision": ARB_UPSTREAM_REVISION,
         "protocol": {
             "mode": "static-positive",
             "source_access": access,
@@ -473,7 +475,8 @@ def execute(
         ),
         "candidate_filter": "all_files",
         "source_access": access,
-        "upstream_revision": ARB_UPSTREAM_REVISION,
+        "upstream_revision": upstream_revision(upstream),
+        "scoring_revision": ARB_UPSTREAM_REVISION,
         "implementation": implementation_receipt(),
         "evaluator_python": evaluator_python,
         "external_predictions_sha256": json_digest(external) if pred_path else None,

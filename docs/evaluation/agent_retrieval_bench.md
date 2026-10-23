@@ -110,9 +110,13 @@ Preparation checks each selected release against its complete published sample
 count before applying sample IDs or limits, so truncated downloads cannot reduce
 the denominator silently.
 
-The evaluator runs in an isolated subprocess against the clean, pinned ARB
-checkout, rejecting hidden Git index flags as well as ordinary local changes.
-It needs no installation in CodeNib's environment. Optionally set
+The evaluator runs in an isolated subprocess against a clean ARB checkout,
+rejecting hidden Git index flags as well as ordinary local changes. The
+checkout can be the pinned revision or a later one that contains it, provided
+every file the scorer imports is unchanged from the pinned revision; changes to
+ARB's other evaluators do not matter. Results record both the checkout's
+revision and the pinned scoring revision. The evaluator needs no installation
+in CodeNib's environment. Optionally set
 `--evaluator-python /tmp/arb-env/bin/python`. Offline rescoring never reruns
 retrieval and does not infer the cost of externally produced predictions.
 
