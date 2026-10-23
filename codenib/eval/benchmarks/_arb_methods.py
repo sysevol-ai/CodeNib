@@ -430,11 +430,12 @@ def fetch_snapshot(
     target = snapshot_path(repo, base_commit, root)
     receipt = target / ".git" / _SNAPSHOT_RECEIPT
     if not receipt.is_file():
-        # Only a checkout, or an empty directory, is replaced. Anything else
-        # here, such as a graph cache sharing the root, is not ours to delete.
-        if target.is_dir() and not (target / ".git").exists() and any(target.iterdir()):
+        # Only a missing or empty target is replaced. A directory without the
+        # receipt, even a Git checkout, was not published here.
+        if target.is_dir() and any(target.iterdir()):
             raise ValueError(
-                f"{target} is not a snapshot checkout; refusing to replace it"
+                f"{target} is not a snapshot checkout published here; "
+                "remove it to fetch again"
             )
         shutil.rmtree(target, ignore_errors=True)
         target.parent.mkdir(parents=True, exist_ok=True)
