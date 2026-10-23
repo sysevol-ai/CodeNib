@@ -4112,7 +4112,10 @@ def _normalize_bm25_view(
     assert_no_secret_fields(metadata, source="portable BM25 metadata")
     if not set(metadata) <= {"project_root", "max_k", "language", "tokenizer"}:
         raise ValueError("portable BM25 metadata has an invalid shape")
-    if "tokenizer" in metadata and metadata["tokenizer"] not in BM25_TOKENIZERS:
+    if "tokenizer" in metadata and (
+        not isinstance(metadata["tokenizer"], str)
+        or metadata["tokenizer"] not in BM25_TOKENIZERS
+    ):
         raise ValueError("portable BM25 metadata tokenizer is invalid")
     max_k = metadata.get("max_k", 10)
     if isinstance(max_k, bool) or not isinstance(max_k, int) or max_k <= 0:
@@ -4527,7 +4530,8 @@ def _validate_portable_bm25_view(
     expected_keys = {"project_root", "max_k", "language"}
     if isinstance(metadata, Mapping) and "tokenizer" in metadata:
         expected_keys.add("tokenizer")
-        if metadata["tokenizer"] not in BM25_TOKENIZERS:
+        tokenizer = metadata["tokenizer"]
+        if not isinstance(tokenizer, str) or tokenizer not in BM25_TOKENIZERS:
             raise ValueError("portable BM25 metadata tokenizer is invalid")
     if not _mapping_has_exact_keys(
         metadata,

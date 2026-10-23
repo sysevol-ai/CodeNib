@@ -93,5 +93,6 @@ def test_saved_index_records_and_restores_its_tokenizer(tmp_path):
     assert loaded.tokenizer == BM25_TOKENIZER
     top = loaded.search("user name", top_k=1, return_code_content=False)[0]
     assert top.file == "src/users.py"
-    with pytest.raises(ValueError, match="tokenizer is not supported"):
-        BM25CodeIndexer().load_index_values([], {"tokenizer": "code-v9"})
+    for bad in ("code-v9", [], {}):
+        with pytest.raises(ValueError, match="tokenizer is not supported"):
+            BM25CodeIndexer().load_index_values([], {"tokenizer": bad})

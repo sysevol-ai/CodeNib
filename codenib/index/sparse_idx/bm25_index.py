@@ -1330,7 +1330,7 @@ class BM25CodeIndexer:
         if project_root is not None and not isinstance(project_root, str):
             raise ValueError("BM25 project_root must be a string or null")
         tokenizer = metadata.get("tokenizer", BM25_TOKENIZER_LEGACY)
-        if tokenizer not in BM25_TOKENIZERS:
+        if not isinstance(tokenizer, str) or tokenizer not in BM25_TOKENIZERS:
             raise ValueError(f"BM25 tokenizer is not supported: {tokenizer!r}")
         if source_mode not in _SOURCE_MODES:
             raise ValueError(f"unsupported BM25 source mode: {source_mode!r}")

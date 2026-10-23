@@ -206,7 +206,7 @@ class TestBM25IndexBuilder:
         assert status.metadata["file_count"] == 3
         assert status.metadata["chunk_count"] == 3
         assert status.metadata["source_file_count"] == 2
-        assert status.metadata["builder_schema"] == 8
+        assert status.metadata["builder_schema"] == 9
         assert status.metadata["chunking_failure_policy"] == "fail"
         assert status.metadata["include_header_epilogue"] is True
         assert status.metadata["max_k"] == 64
@@ -240,7 +240,7 @@ class TestBM25IndexBuilder:
             assert result == "result"
 
     def test_artifact_identity_tracks_source_body_indexing(self):
-        assert BM25IndexBuilder().artifact_identity()["builder_schema"] == 8
+        assert BM25IndexBuilder().artifact_identity()["builder_schema"] == 9
 
     @patch("codenib.index.sparse_idx.bm25_index.BM25CodeIndexer")
     @patch("codenib.code_chunker.CodeChunker")

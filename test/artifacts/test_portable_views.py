@@ -375,11 +375,12 @@ def test_normalize_bm25_keeps_known_tokenizer_and_rejects_unknown(
     metadata = json.loads((bm25 / "bm25_metadata.json").read_text(encoding="utf-8"))
     assert metadata["tokenizer"] == "code-v2"
 
-    repo, bm25 = _bm25_view(tmp_path / "unknown", metadata={"tokenizer": "code-v9"})
-    with pytest.raises(ValueError, match="tokenizer is invalid"):
-        normalize_owned_query_view(
-            bm25, repo_path=repo, view_type="bm25", view_config={}
-        )
+    for index, bad in enumerate(("code-v9", [], {})):
+        repo, bm25 = _bm25_view(tmp_path / f"bad{index}", metadata={"tokenizer": bad})
+        with pytest.raises(ValueError, match="tokenizer is invalid"):
+            normalize_owned_query_view(
+                bm25, repo_path=repo, view_type="bm25", view_config={}
+            )
 
 
 def test_normalize_bm25_rejects_unicode_escaped_secret_metadata(

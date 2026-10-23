@@ -554,6 +554,7 @@ def test_strict_bm25_rejects_source_receipt_projection_binding_mismatch(
     ("view_config", "message"),
     [
         ({"builder_schema": 8}, "requires a source selection digest"),
+        ({"builder_schema": 9}, "requires a source selection digest"),
         (
             {
                 "builder_schema": 8,
@@ -2481,7 +2482,7 @@ def test_strict_bm25_recording_propagates_lone_close_failure() -> None:
     assert caught.value is primary
 
 
-@pytest.mark.parametrize("tokenizer", ["code-v1", "code-v2", "code-v9"])
+@pytest.mark.parametrize("tokenizer", ["code-v1", "code-v2", "code-v9", []])
 def test_strict_bm25_keeps_known_tokenizer_and_rejects_unknown(
     tmp_path: Path, tokenizer: str
 ) -> None:
@@ -2498,7 +2499,7 @@ def test_strict_bm25_keeps_known_tokenizer_and_rejects_unknown(
     repository_source = capture_repository_source(repository)
     output_owner = PublishedWorkspaceReceiptOwner()
     try:
-        if tokenizer == "code-v9":
+        if tokenizer not in ("code-v1", "code-v2"):
             with pytest.raises(ValueError, match="tokenizer is invalid"):
                 plan_bm25_view_strict(
                     source_owner,

@@ -77,7 +77,8 @@ _JSON_READ_CHUNK_BYTES = 1024 * 1024
 _WINDOWS_DRIVE_PREFIX = tuple(
     f"{letter}:" for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 )
-_CURRENT_BM25_BUILDER_SCHEMA = 8
+# BM25 view configs carry a source selection digest from builder schema 8 on.
+_SELECTION_BM25_BUILDER_SCHEMA = 8
 _STRICT_BM25_PLAN_DOMAIN = b"codenib-portable-bm25-strict-workspace-v1"
 _STRICT_BM25_FILES = frozenset({"documents.json", "bm25_metadata.json"})
 
@@ -895,7 +896,10 @@ def _payloads(
     assert_no_secret_fields(metadata, source="portable BM25 metadata")
     if not set(metadata) <= {"project_root", "max_k", "language", "tokenizer"}:
         raise ValueError("portable BM25 metadata has an invalid shape")
-    if "tokenizer" in metadata and metadata["tokenizer"] not in BM25_TOKENIZERS:
+    if "tokenizer" in metadata and (
+        not isinstance(metadata["tokenizer"], str)
+        or metadata["tokenizer"] not in BM25_TOKENIZERS
+    ):
         raise ValueError("portable BM25 metadata tokenizer is invalid")
     max_k = metadata.get("max_k", 10)
     if isinstance(max_k, bool) or not isinstance(max_k, int) or max_k <= 0:
@@ -1123,7 +1127,7 @@ def _policy(
     has_selection_digest = "source_selection_digest" in view_config
     if (
         type(view_config.get("builder_schema")) is int
-        and view_config.get("builder_schema") == _CURRENT_BM25_BUILDER_SCHEMA
+        and view_config.get("builder_schema") >= _SELECTION_BM25_BUILDER_SCHEMA
         and not has_selection_digest
     ):
         raise ValueError("current BM25 view config requires a source selection digest")
