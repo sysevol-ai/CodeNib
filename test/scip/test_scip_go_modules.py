@@ -467,6 +467,7 @@ def test_workspace_and_covered_module_replacements_apply_in_the_root_run():
         modules=[(SERVER, "server"), ("example.test/sub", "sub")],
         replacements={"server": [gm.Replacement(dep, None, "local")]},
         workspace=[gm.Replacement(new, None, "sub")],
+        members=["", "server", "sub"],
     )
     assert [d.occurrences[0].symbol for d in merged.documents] == [
         _symbol(ROOT, f"{ROOT}/sub/pkg", "Foo()."),
@@ -521,6 +522,7 @@ def test_workspace_any_version_replacement_wins_over_versioned_ones():
         modules=[("example.test/one", "one"), ("example.test/two", "two")],
         replacements={"": [gm.Replacement(dep, "v1.0.0", "one")]},
         workspace=[gm.Replacement(dep, None, "two")],
+        members=[""],
     )
     # No root-module symbols here, so the version is left as recorded.
     assert merged.documents[0].occurrences[0].symbol == _symbol(
@@ -567,6 +569,29 @@ def test_root_run_drops_a_workspace_that_omits_the_root(
     monkeypatch.setattr(subprocess, "run", run)
     assert indexer.generate_index() is True
     assert environments["."] == (None if uses_root else "off")
-    # A workspace member keeps the workspace only when the root run used it.
-    assert environments["server"] == (None if uses_root else "off")
+    # A workspace member keeps the workspace even when the root cannot.
+    assert environments["server"] is None
     assert environments["tools/gen"] == "off"
+
+
+def test_every_workspace_member_shapes_workspace_runs():
+    alias, dep = "example.com/alias", "example.com/dep"
+    root = Index()
+    _document(root, "main.go", [(1, _symbol(alias, f"{alias}/x", "Run()."), 0)])
+    server = Index()
+    _document(server, "s.go", [(1, _symbol(dep, f"{dep}/y", "Go()."), 0)])
+    merged = gm.merge_module_indexes(
+        root,
+        [(SERVER, "server", server)],
+        ROOT,
+        modules=[("example.test/b", "b"), ("example.test/c", "c")],
+        # "policy" has no documents; its replacement still applies.
+        replacements={"policy": [gm.Replacement(alias, None, "b")]},
+        workspace=[gm.Replacement(dep, None, "c")],
+        members=["", "server", "policy"],
+    )
+    assert [d.occurrences[0].symbol for d in merged.documents] == [
+        _symbol(ROOT, f"{ROOT}/b/x", "Run()."),
+        # A member's own run sees go.work's replacements too.
+        _symbol(ROOT, f"{ROOT}/c/y", "Go()."),
+    ]

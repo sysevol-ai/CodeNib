@@ -117,13 +117,15 @@ class SCIPGoIndexer(SCIPIndexerBase):
         cmd = self._build_index_command(**kwargs)
         self.index_file.unlink(missing_ok=True)
         nested = nested_go_modules(self.project_root)
-        # A go.work that omits the root module would make ./... fail.
+        # A go.work that omits the root module would make ./... fail, so the
+        # root run drops it; nested members may still need it.
         workspace_file = active_workspace(self.project_root)
-        if workspace_file and not workspace_includes(workspace_file, self.project_root):
-            workspace_file = None
-            options = {"env": _without_workspace()}
-        else:
-            options = {}
+        root_member = workspace_file is not None and workspace_includes(
+            workspace_file, self.project_root
+        )
+        options = (
+            {"env": _without_workspace()} if workspace_file and not root_member else {}
+        )
 
         logger.debug(f"Running command: {' '.join(cmd)}")
 
@@ -184,6 +186,12 @@ class SCIPGoIndexer(SCIPIndexerBase):
             return True
         root = Index()
         root.ParseFromString(self.index_file.read_bytes())
+        members = {
+            directory
+            for directory in ["", *(directory for _module, directory in nested)]
+            if workspace_file is not None
+            and workspace_includes(workspace_file, self.project_root / directory)
+        }
         # A root go.work can already pull nested modules into the root run.
         # Each document belongs to the deepest module directory holding it.
         owners = set()
@@ -204,9 +212,7 @@ class SCIPGoIndexer(SCIPIndexerBase):
                 try:
                     # A workspace member keeps the workspace that wires its
                     # siblings; any other module runs on its own go.mod.
-                    member = workspace_file is not None and workspace_includes(
-                        workspace_file, self.project_root / directory
-                    )
+                    member = directory in members
                     subprocess.run(
                         ["scip-go", "--output", str(output)],
                         check=True,
@@ -244,7 +250,7 @@ class SCIPGoIndexer(SCIPIndexerBase):
             if replacement.directory in directories
         ]
         merge_module_indexes(
-            root, indexes, root_module, covered, replacements, workspace
+            root, indexes, root_module, covered, replacements, workspace, members
         )
         staging = self.index_file.with_name(self.index_file.name + ".merging")
         staging.write_bytes(root.SerializeToString())

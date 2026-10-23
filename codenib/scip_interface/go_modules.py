@@ -265,6 +265,7 @@ def merge_module_indexes(
     modules: Iterable[Tuple[str, str]] = (),
     replacements: Optional[Dict[str, List[Replacement]]] = None,
     workspace: Iterable[Replacement] = (),
+    members: Iterable[str] = (),
 ):
     """Merge per-module SCIP indexes into ``root`` (``scip_pb2.Index`` objects).
 
@@ -272,10 +273,10 @@ def merge_module_indexes(
     indexed on its own, and ``modules`` the ``(module path, directory)`` of
     nested modules the root run already covered through a workspace.
     ``replacements`` maps each go.mod directory (``""`` for the root) to its
-    local replacements. A module indexed on its own uses only its own. The
-    root run's documents use those of the root and every covered workspace
-    module, with the active go.work's ``workspace`` replacements taking
-    precedence, as in a Go workspace build.
+    local replacements. ``members`` lists the directories the active go.work
+    uses; their runs build under the workspace, so they see the replacements
+    of every member with go.work's ``workspace`` replacements taking
+    precedence, as Go applies them. Any other run sees only its own go.mod.
 
     A module path declared in one directory is renamed everywhere. A path
     declared in several directories is renamed only inside its own index, so
@@ -296,7 +297,7 @@ def merge_module_indexes(
         if len(directories) == 1
     }
     unique[root_module] = {None: ""}
-    covered = sorted({directory for _module, directory in modules})
+    members = set(members)
 
     # The root module's own version, else the first nested module's, so the
     # choice is deterministic even when the root holds no Go sources.
@@ -322,29 +323,31 @@ def merge_module_indexes(
         for information in document.symbols:
             rename_information(information, rename)
 
-    base = _merged(
-        unique, *(_replacing(replacements.get(d, ())) for d in ["", *covered])
+    in_workspace = _merged(
+        unique, *(_replacing(replacements.get(d, ())) for d in sorted(members))
     )
     for module, versions in _replacing(workspace).items():
         # go.work takes precedence: an any-version entry replaces every
         # module replacement of that path, a versioned one only its version.
-        base[module] = (
-            dict(versions) if None in versions else {**base.get(module, {}), **versions}
+        in_workspace[module] = (
+            dict(versions)
+            if None in versions
+            else {**in_workspace.get(module, {}), **versions}
         )
-    shared = renamer(base)
+
+    def effective(directory: str) -> _Mapping:
+        if directory in members:
+            return in_workspace
+        return _merged(unique, _replacing(replacements.get(directory, ())))
+
+    shared = renamer(effective(""))
     for document in root.documents:
         rename_document(document, shared)
     for information in root.external_symbols:
         rename_information(information, shared)
     known = {information.symbol for information in root.external_symbols}
     for module, directory, index in nested:
-        own = renamer(
-            _merged(
-                unique,
-                _replacing(replacements.get(directory, ())),
-                {module: {None: directory}},
-            )
-        )
+        own = renamer(_merged(effective(directory), {module: {None: directory}}))
         for document in index.documents:
             rename_document(document, own)
             document.relative_path = f"{directory}/{document.relative_path}"
