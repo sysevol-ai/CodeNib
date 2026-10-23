@@ -166,8 +166,13 @@ class CodeNibToolProvider:
                     methods.snapshot_path(repo, base_commit, self.workspace)
                 ):
                     fetched = time.perf_counter()
-                    checkout = methods.fetch_snapshot(repo, base_commit, self.workspace)
-                    fetch_seconds = time.perf_counter() - fetched
+                    try:
+                        checkout = methods.fetch_snapshot(
+                            repo, base_commit, self.workspace
+                        )
+                    finally:
+                        # A failed fetch is still acquisition, not build time.
+                        fetch_seconds = time.perf_counter() - fetched
                     report = methods.build_graph(checkout, staging, languages)
                 receipt["available"] = report.get("available_languages", [])
                 if report.get("failed_languages"):

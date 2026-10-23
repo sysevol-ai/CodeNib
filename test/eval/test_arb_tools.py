@@ -6,6 +6,7 @@
 
 import json
 import subprocess
+import time
 
 import pytest
 
@@ -241,3 +242,14 @@ def test_cache_is_rebuilt_for_other_graph_languages(builds, tmp_path):
     )
     assert not status["cached"] and status["languages"] == ["go", "python"]
     assert builds == [["python"], ["go", "python"]]
+
+
+def test_failed_checkout_time_counts_as_fetch(builds, monkeypatch, tmp_path):
+    def slow_failure(*args):
+        time.sleep(0.05)
+        raise subprocess.CalledProcessError(128, ["git", "fetch"])
+
+    monkeypatch.setattr(methods, "fetch_snapshot", slow_failure)
+    status = _provider(tmp_path)[1]
+    assert not status["available"] and "CalledProcessError" in status["reason"]
+    assert status["fetch_seconds"] >= 0.05 > status["build_seconds"]
