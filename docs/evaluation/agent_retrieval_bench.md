@@ -128,6 +128,32 @@ a failure. Duplicate file paths collapse at their first occurrence. Unknown or
 duplicate sample IDs reject the input. Snapshot mismatches and unknown file
 paths fail the corresponding case.
 
+## Retrieval methods
+
+`codenib-arb run --method` chooses how files are ranked. Every method reads
+only the released query and corpus, indexes each corpus snapshot once, and is
+scored by the same pinned evaluator.
+
+| Method | Index per snapshot | Ranking |
+| --- | --- | --- |
+| `bm25` (default) | CodeNib BM25 over every released file and symbol chunk | Every chunk ranked; each file takes the rank of its first chunk |
+| `dense` | Exact inner-product search over Qwen3-Embedding-0.6B vectors of every chunk | Same first-hit file ranking |
+| `hybrid` | Both indexes above | CodeNib's file-level weighted RRF (k = 60) of the two file rankings |
+| `zoekt` | Zoekt trigram index of every file and symbol chunk | One Zoekt query per code-like term in the query; files ordered by matched terms, then first match |
+
+The dense model embeds chunks truncated to 512 tokens, with no query or
+document instruction, which matches ARB's own embedding baseline. On a GPU it
+runs in bfloat16. Each distinct chunk text is embedded once per run, because
+snapshots of the same repository share most files, and `index_size` records
+how many chunks a build encoded and how many it reused. Dense methods need the
+`semantic` extra.
+
+The Zoekt method takes its terms from the query's string values: file names,
+backticked spans, and identifiers written with `_`, camelCase, or capitals, up
+to 32 per sample. Each term is one tool call. Files that match no term are not
+ranked, so its rankings can be shorter than the corpus. It needs `make
+zoekt-tool` or `--zoekt-bin-dir`.
+
 ## Metric contract
 
 CodeNib calls upstream `target_gold_files`, `query_has_leakage`, `recall_at`,
@@ -215,15 +241,13 @@ all 345 samples remains a separate measurement.
 ## Extending retrieval experiments
 
 The imported-ranking boundary can score additional methods on the same cases.
-These routes are candidates for later adapters, not measured ARB support in
-this release:
+These routes are candidates for later adapters:
 
 | Existing CodeNib capability | Proposed comparison |
 | --- | --- |
-| Zoekt trigram and regex search | Multi-round exact symbol, path, and trace search |
-| FAISS vector retrieval | Semantic recall control on the same released text |
 | CodeGraph relationships | Search seeds plus definition/reference/call expansion |
-| Hybrid retrieval and reranking | Candidate fusion and ordering at fixed budgets |
+| Zoekt inside an agent loop | Multi-round exact symbol, path, and trace search |
+| Retrieve → rerank | Candidate ordering with a model at fixed budgets |
 
 Before comparing agent strategies, fix the model, tool permissions, query
 budget, and final context budget. Report index build time and size separately

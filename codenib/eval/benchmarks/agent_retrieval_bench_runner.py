@@ -8,11 +8,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import shutil
 import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from filelock import FileLock, Timeout
 
@@ -208,6 +210,82 @@ def evaluate(
     }
 
 
+METHODS = ("bm25", "dense", "hybrid", "zoekt")
+
+
+def zoekt_bin_dir(explicit: Path | None) -> Path:
+    if explicit is not None:
+        candidates = [explicit]
+    else:
+        found = shutil.which("zoekt-index")
+        tools = os.environ.get("CODENIB_SCIP_TOOLS_DIR")
+        candidates = [Path(found).parent] if found else []
+        if tools:
+            candidates.append(Path(tools) / "go-tools" / "bin")
+    for directory in candidates:
+        if all((directory / name).is_file() for name in ("zoekt-index", "zoekt")):
+            return directory.resolve()
+    raise ValueError("zoekt-index and zoekt not found; run `make zoekt-tool`")
+
+
+def method_config(method: str, *, zoekt_bin: Path | None = None) -> dict[str, Any]:
+    """Static identity of a native method; part of the resume receipt."""
+    if method not in METHODS:
+        raise ValueError(f"unknown ARB method: {method}")
+    from . import _arb_methods as methods
+
+    if method in ("dense", "hybrid"):
+        config: dict[str, Any] = {
+            "model": methods.DENSE_MODEL,
+            "max_seq_length": methods.DENSE_MAX_SEQ_LENGTH,
+            "batch_size": methods.DENSE_BATCH_SIZE,
+            "query_prompt": "",
+        }
+        if method == "hybrid":
+            config["fusion"] = f"file-level weighted RRF, k={methods.HYBRID_RRF_K}"
+        return config
+    if method == "zoekt":
+        directory = zoekt_bin_dir(zoekt_bin)
+        # The binaries identify the build; their -version flag needs a path.
+        return {
+            "binaries_sha256": {
+                name: sha256_file(directory / name) for name in ("zoekt-index", "zoekt")
+            },
+            "max_terms": methods.ZOEKT_MAX_TERMS,
+        }
+    return {}
+
+
+def method_indexer(
+    method: str, *, zoekt_bin: Path | None = None, device: str | None = None
+) -> tuple[Callable[[list[dict[str, Any]]], Any], Callable[[], dict[str, Any]]]:
+    """(build one snapshot index, run-level usage) for a native method.
+
+    Dense methods load their embedding model on the first build.
+    """
+    if method == "bm25":
+        return (lambda corpus: BM25CorpusIndex(corpus)), dict
+    from . import _arb_methods as methods
+
+    if method == "zoekt":
+        directory = zoekt_bin_dir(zoekt_bin)
+        return (lambda corpus: methods.ZoektCorpusIndex(corpus, directory)), dict
+    encoders: list[Any] = []
+
+    def build(corpus: list[dict[str, Any]]) -> Any:
+        if not encoders:
+            encoders.append(methods.DenseEncoder(device=device))
+        index = (
+            methods.DenseCorpusIndex if method == "dense" else methods.HybridCorpusIndex
+        )
+        return index(corpus, encoders[0])
+
+    def usage() -> dict[str, Any]:
+        return {"embedding": encoders[0].usage()} if encoders else {}
+
+    return build, usage
+
+
 def by_corpus(cases: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Group cases by corpus snapshot, in first-appearance order."""
     groups: dict[str, list[dict[str, Any]]] = {}
@@ -215,6 +293,12 @@ def by_corpus(cases: list[dict[str, Any]]) -> list[dict[str, Any]]:
         key = record["corpus"].get("sha256") or f"unprepared:{position}"
         groups.setdefault(key, []).append(record)
     return [record for group in groups.values() for record in group]
+
+
+def close_index(index: Any) -> None:
+    close = getattr(index, "close", None)
+    if close is not None:
+        close()
 
 
 def execute(
@@ -225,6 +309,9 @@ def execute(
     pred_path: Path | None = None,
     resume: bool = False,
     evaluator_python: str = sys.executable,
+    method: str = "bm25",
+    zoekt_bin: Path | None = None,
+    device: str | None = None,
 ) -> dict[str, Any]:
     """One writer per output directory; completed cases survive interruption.
 
@@ -242,7 +329,10 @@ def execute(
         prediction_map(external, prepared)
     config = {
         "prepared_sha256": json_digest(prepared),
-        "method": "external-file-ranking" if pred_path else "codenib-bm25",
+        "method": "external-file-ranking" if pred_path else f"codenib-{method}",
+        "method_config": (
+            None if pred_path else method_config(method, zoekt_bin=zoekt_bin)
+        ),
         "candidate_filter": "all_files",
         "upstream_revision": ARB_UPSTREAM_REVISION,
         "implementation": implementation_receipt(),
@@ -286,6 +376,9 @@ def execute(
             elif predictions_path.exists():
                 raise ValueError("native predictions have no recovery checkpoint")
             completed = prediction_map(predictions, prepared)
+            build_index, method_usage = method_indexer(
+                method, zoekt_bin=zoekt_bin, device=device
+            )
             index_key, index = None, None
             for record in by_corpus(prepared["cases"]):
                 case = ARBCase.from_record(record["release"], record["sample"])
@@ -305,10 +398,11 @@ def execute(
                     key = record["corpus"].get("sha256")
                     if index is None or key != index_key:
                         # Release the previous snapshot before the next cold build.
+                        close_index(index)
                         index_key, index = None, None
                         _path, corpus = checked_corpus(prepared, record)
                         loaded = time.perf_counter()
-                        index = BM25CorpusIndex(corpus)
+                        index = build_index(corpus)
                         index_key = key
                         prediction.update(
                             index_built=True,
@@ -323,6 +417,7 @@ def execute(
                         prediction["ranked_files"] = index.rank(case.query_text)
                     finally:
                         prediction["query_seconds"] = time.perf_counter() - queried
+                        prediction["tool_calls"] = index.tool_calls
                     prediction["status"] = "ok"
                 except Exception as exc:
                     prediction["error"] = f"{type(exc).__name__}: {exc}"
@@ -338,12 +433,16 @@ def execute(
                 )
                 write_json_atomic(predictions_path, predictions)
                 print(f"{case.sample_id}: {prediction['status']}", file=sys.stderr)
+            close_index(index)
             # Recreate a missing, stale or edited public export from the checkpoint.
             write_json_atomic(predictions_path, predictions)
         result = evaluate(prepared, predictions, upstream, evaluator_python)
         result["provenance"] = config
         if external is None:
-            result["retrieval_usage"] = retrieval_usage(predictions)
+            result["retrieval_usage"] = {
+                **retrieval_usage(predictions),
+                **method_usage(),
+            }
             result["environment"] = run_environment()
         write_json_atomic(result_path, result)
     return result
@@ -365,6 +464,15 @@ def main(argv: list[str] | None = None) -> int:
         command.add_argument("--upstream", type=Path, required=True)
         command.add_argument("--evaluator-python", default=sys.executable)
         command.add_argument("--resume", action="store_true")
+        if name == "run":
+            command.add_argument("--method", choices=METHODS, default="bm25")
+            command.add_argument(
+                "--zoekt-bin-dir",
+                type=Path,
+                help="directory holding zoekt-index and zoekt (default: PATH, "
+                "then $CODENIB_SCIP_TOOLS_DIR/go-tools/bin)",
+            )
+            command.add_argument("--device", help="dense model device (default: auto)")
         if name == "evaluate":
             command.add_argument("--pred", type=Path, required=True)
     args = parser.parse_args(argv)
@@ -391,6 +499,9 @@ def main(argv: list[str] | None = None) -> int:
             pred_path=getattr(args, "pred", None),
             resume=args.resume,
             evaluator_python=args.evaluator_python,
+            method=getattr(args, "method", "bm25"),
+            zoekt_bin=getattr(args, "zoekt_bin_dir", None),
+            device=getattr(args, "device", None),
         )
         print(json.dumps(result["summary"], indent=2))
         return 1 if result["summary"]["overall"]["failed"] else 0

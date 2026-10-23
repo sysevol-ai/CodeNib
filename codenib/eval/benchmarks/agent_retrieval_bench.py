@@ -27,6 +27,33 @@ METRICS = ("Recall@5", "Recall@10", "Recall@20", "MRR") + tuple(
 )
 
 
+def corpus_chunks(corpus: list[dict[str, Any]]) -> list[Any]:
+    """Every released row as a CodeChunk; identities stay unique per row."""
+    from codenib.code_chunking.base import CodeChunk
+    from codenib.types import NODE_TYPE_FILE, NODE_TYPE_SYMBOL
+
+    return [
+        CodeChunk(
+            content=row["text"],
+            start_line=row["start_line"] - 1,
+            end_line=row["end_line"] - 1,
+            chunk_type=NODE_TYPE_FILE if row["kind"] == "file" else NODE_TYPE_SYMBOL,
+            name=row.get("symbol") or row["path"],
+            file=row["path"],
+            # A colon keeps extensionless paths from being treated as directories.
+            node_id=f"{row['path']}:{row.get('symbol') or ''}:{number}",
+        )
+        for number, row in enumerate(corpus)
+    ]
+
+
+def complete_file_ranking(files: Any, corpus_paths: set[str]) -> list[str]:
+    ranked = list(dict.fromkeys(files))
+    if set(ranked) != corpus_paths:
+        raise ValueError("retrieval did not return the complete corpus file ranking")
+    return ranked
+
+
 class BM25CorpusIndex:
     """One in-memory BM25 index over every chunk of a released corpus snapshot.
 
@@ -34,27 +61,13 @@ class BM25CorpusIndex:
     share a snapshot reuse the index, so build and query costs stay separable.
     """
 
+    tool_calls = 1
+
     def __init__(self, corpus: list[dict[str, Any]]):
-        from codenib.code_chunking.base import CodeChunk
         from codenib.index.sparse_idx.bm25_index import BM25CodeIndexer
-        from codenib.types import NODE_TYPE_FILE, NODE_TYPE_SYMBOL
 
         started = time.perf_counter()
-        chunks = [
-            CodeChunk(
-                content=row["text"],
-                start_line=row["start_line"] - 1,
-                end_line=row["end_line"] - 1,
-                chunk_type=(
-                    NODE_TYPE_FILE if row["kind"] == "file" else NODE_TYPE_SYMBOL
-                ),
-                name=row.get("symbol") or row["path"],
-                file=row["path"],
-                # A colon keeps extensionless paths from being treated as directories.
-                node_id=f"{row['path']}:{row.get('symbol') or ''}:{number}",
-            )
-            for number, row in enumerate(corpus)
-        ]
+        chunks = corpus_chunks(corpus)
         self._paths = {row["path"] for row in corpus}
         self._top_k = len(chunks)
         self._index = BM25CodeIndexer(chunks=chunks, max_k=self._top_k)
@@ -80,10 +93,7 @@ class BM25CorpusIndex:
             filter_test=False,
             return_code_content=False,
         )
-        ranked = list(dict.fromkeys(node.file for node in nodes))
-        if set(ranked) != self._paths:
-            raise ValueError("BM25 did not return the complete corpus file ranking")
-        return ranked
+        return complete_file_ranking((node.file for node in nodes), self._paths)
 
 
 def rank_bm25(query_text: str, corpus: list[dict[str, Any]]) -> list[str]:
@@ -104,6 +114,7 @@ def implementation_receipt() -> dict[str, Any]:
         Path(__file__),
         Path(__file__).with_name("agent_retrieval_bench_runner.py"),
         Path(__file__).with_name("_arb_evaluate.py"),
+        Path(__file__).with_name("_arb_methods.py"),
         Path(dataset.__file__),
         Path(bm25.__file__),
     ]
@@ -218,6 +229,17 @@ def _distribution(values: list[float]) -> dict[str, float] | None:
     }
 
 
+def _flatten(value: dict[str, Any], prefix: str = "") -> dict[str, float]:
+    """Nested numeric sizes, e.g. a hybrid's ``dense.documents``."""
+    flat: dict[str, float] = {}
+    for key, item in value.items():
+        if isinstance(item, dict):
+            flat.update(_flatten(item, f"{prefix}{key}."))
+        else:
+            flat[f"{prefix}{key}"] = item
+    return flat
+
+
 def retrieval_usage(predictions: list[dict[str, Any]]) -> dict[str, Any]:
     """Cold index builds, per-sample queries, and calls, never folded together.
 
@@ -226,6 +248,7 @@ def retrieval_usage(predictions: list[dict[str, Any]]) -> dict[str, Any]:
     """
     built = [row for row in predictions if row.get("index_built")]
     queried = [row for row in predictions if "query_seconds" in row]
+    index_sizes = [_flatten(row["index_size"]) for row in built]
     return {
         "index_builds": len(built),
         "corpus_load_seconds": _distribution(
@@ -235,8 +258,10 @@ def retrieval_usage(predictions: list[dict[str, Any]]) -> dict[str, Any]:
             [row["index_build_seconds"] for row in built]
         ),
         "index_size": {
-            field: _distribution([row["index_size"][field] for row in built])
-            for field in ("documents", "tokens", "vocabulary", "indexed_text_bytes")
+            field: _distribution([sizes[field] for sizes in index_sizes])
+            for field in dict.fromkeys(
+                field for sizes in index_sizes for field in sizes
+            )
         },
         "query_seconds": _distribution([row["query_seconds"] for row in queried]),
         "tool_calls": _distribution([row.get("tool_calls", 0) for row in predictions]),
