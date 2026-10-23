@@ -149,7 +149,7 @@ document instruction, which matches ARB's own embedding baseline. On a GPU it
 runs in bfloat16. Each distinct chunk text is embedded once per run, because
 snapshots of the same repository share most files, and `index_size` records
 how many chunks a build encoded and how many it reused. Dense methods need the
-`semantic` extra.
+`semantic` extra; a missing extra stops the run before any case.
 
 The Zoekt method takes its terms from the query's string values: file names,
 backticked spans, and identifiers written with `_`, camelCase, or capitals, up
@@ -165,6 +165,8 @@ needs the real repository, so `graph_expansion` fetches each sample's
 `base_commit` into `--workspace` and builds the graph from that checkout:
 
 ```bash
+python -m pip install -e '.[datasets,graph]'
+make scip    # SCIP indexers for Python, TypeScript, Go, Rust, Java, and more
 codenib-arb run --method graph_expansion --workspace /tmp/arb-src \
   --prepared /tmp/arb-prepared.json --upstream /tmp/arb --output /tmp/arb-graph
 ```
@@ -232,16 +234,21 @@ can report `heldout` separately.
 ## Cost accounting
 
 A native run separates the cost of building an index from the cost of using
-it. Each corpus snapshot is indexed once in memory, and samples that share the
-snapshot reuse that index. The 345 samples use 218 distinct corpora.
+it. Each corpus snapshot is indexed once, and samples that share the snapshot
+reuse that index. The 345 samples use 218 distinct corpora.
 
 | Quantity | Where it is recorded |
 | --- | --- |
-| Cold index build | `index_build_seconds` and `index_size` (documents, tokens, vocabulary, indexed text bytes) on the sample that triggered the build; `corpus_load_seconds` separately |
+| Cold index build | `index_build_seconds` and `index_size` on the sample that triggered the build; `corpus_load_seconds` and, for `graph_expansion`, `source_fetch_seconds` separately |
 | Query latency | `query_seconds` on every sample |
-| Tool calls | `tool_calls`: one BM25 search per sample |
-| Model usage | None; `model_calls` is 0 |
-| Context budget | Not applicable: the route returns a file ranking, and BCY packs released text at its fixed budgets |
+| Tool calls | `tool_calls` per sample: one search for `bm25` and `dense`, two for `hybrid` and for `graph_expansion` with a graph, one per term for `zoekt` |
+| Model usage | No API calls (`model_calls` is 0). `dense` and `hybrid` run a local embedding model; `retrieval_usage.embedding` records its revision, loads, and encoded and reused chunks |
+| Context budget | Not applicable: every method returns a file ranking, and BCY packs released text at its fixed budgets |
+
+`index_size` depends on the method: BM25 documents, tokens, vocabulary, and
+indexed text bytes; dense documents, dimension, and vector bytes; the Zoekt
+index's documents and bytes on disk; and the code graph's vertices, edges,
+reference edges, and build time.
 
 `results.json` summarizes these under `retrieval_usage` (count, total, median,
 p95, and maximum) and records the CPU, core count, and peak memory under

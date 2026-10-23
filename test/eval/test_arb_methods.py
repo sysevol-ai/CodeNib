@@ -8,6 +8,8 @@ import json
 import os
 import shutil
 import subprocess
+import sys
+import time
 from pathlib import Path
 
 import numpy as np
@@ -115,17 +117,79 @@ def test_hybrid_fuses_complete_file_rankings(monkeypatch):
 
 def test_bm25_method_needs_no_extra_configuration():
     assert runner.method_config("bm25") == {}
-    build, usage = runner.method_indexer("bm25")
-    assert usage() == {}
+    assert callable(runner.method_indexer("bm25", {}))
     with pytest.raises(ValueError, match="unknown"):
         runner.method_config("graph")
 
 
-def test_dense_method_identity_is_static():
+def test_dense_identity_pins_weights_device_and_precision(monkeypatch):
+    monkeypatch.setattr(methods, "dense_precision", lambda device: ("cpu", "float32"))
     config = runner.method_config("hybrid")
     assert config["model"] == methods.DENSE_MODEL
+    assert len(config["revision"]) == 40
+    assert (config["device"], config["dtype"]) == ("cpu", "float32")
     assert config["query_prompt"] == ""
     assert "RRF" in config["fusion"]
+
+
+def test_dense_precision_needs_bfloat16_support(monkeypatch):
+    import torch
+
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(torch.cuda, "is_bf16_supported", lambda: False)
+    assert methods.dense_precision(None) == ("cuda", "float32")
+    monkeypatch.setattr(torch.cuda, "is_bf16_supported", lambda: True)
+    assert methods.dense_precision("cuda:1") == ("cuda:1", "bfloat16")
+    assert methods.dense_precision("cpu") == ("cpu", "float32")
+
+
+def test_missing_optional_extra_fails_before_any_case(monkeypatch):
+    def missing(module):
+        raise ImportError(f"No module named {module!r}")
+
+    monkeypatch.setattr(runner.importlib, "import_module", missing)
+    with pytest.raises(ValueError, match=r"codenib\[graph\]"):
+        runner.method_config("graph_expansion")
+    with pytest.raises(ValueError, match=r"codenib\[semantic\]"):
+        runner.method_config("dense")
+
+
+def test_embedding_usage_sums_checkpointed_builds():
+    config = {"model": methods.DENSE_MODEL, "revision": methods.DENSE_REVISION}
+    rows = [
+        {
+            "index_built": True,
+            "model_load_seconds": 8.0,
+            "index_size": {"encoded_documents": 10, "reused_documents": 0},
+        },
+        {"index_built": False},
+        # A resumed process loads the model again; the hybrid nests dense sizes.
+        {
+            "index_built": True,
+            "model_load_seconds": 7.0,
+            "index_size": {"dense": {"encoded_documents": 3, "reused_documents": 7}},
+        },
+    ]
+    usage = runner.embedding_usage(rows, config)
+    assert usage["model_loads"] == 2 and usage["model_load_seconds"]["total"] == 15
+    assert (usage["encoded_documents"], usage["reused_documents"]) == (13, 7)
+
+
+def test_timeout_kills_the_whole_process_group(tmp_path):
+    marker = tmp_path / "grandchild.pid"
+    script = (
+        "import subprocess, time\n"
+        "child = subprocess.Popen(['sleep', '60'])\n"
+        f"open({str(marker)!r}, 'w').write(str(child.pid))\n"
+        "time.sleep(60)\n"
+    )
+    with pytest.raises(subprocess.TimeoutExpired):
+        methods.run_process_group([sys.executable, "-c", script], timeout=2)
+    stat = Path(f"/proc/{int(marker.read_text())}/stat")
+    deadline = time.time() + 5
+    while stat.exists() and stat.read_text().split()[2] != "Z":
+        assert time.time() < deadline, "grandchild survived the timeout"
+        time.sleep(0.1)
 
 
 def test_missing_zoekt_binaries_rejected(tmp_path):
@@ -199,8 +263,13 @@ def test_snapshot_checkout_has_no_later_history(tmp_path):
     assert _git(checkout, "rev-list", "--count", "--all") == "1"
     with pytest.raises(subprocess.CalledProcessError):
         _git(checkout, "cat-file", "-e", fix)
-    # A reused checkout is revalidated.
+    # A reused checkout is revalidated and loses untracked or ignored output.
+    (checkout / "stray.py").write_text("not at base\n")
+    (checkout / "build").mkdir()
+    (checkout / ".git" / "info" / "exclude").write_text("build/\n")
+    (checkout / "build" / "generated.py").write_text("indexer output\n")
     assert methods.fetch_snapshot("owner/repo", base, root) == checkout
+    assert sorted(path.name for path in checkout.iterdir()) == [".git", "a.py"]
     (checkout / "a.py").write_text("edited\n")
     with pytest.raises(ValueError, match="local changes"):
         methods.fetch_snapshot("owner/repo", base, root)
