@@ -79,6 +79,7 @@ class FakeEmbedding:
 def test_cached_embedding_encodes_each_text_once():
     cache = methods._CachedEmbedding(FakeEmbedding())
     first = cache.embed_documents(["a", "bb", "a"])
+    assert first[0].dtype == np.float32
     second = cache.embed_documents(["bb", "ccc"])
     assert cache._embedding.batches == [["a", "bb"], ["ccc"]]
     assert (cache.encoded_documents, cache.reused_documents) == (3, 2)
@@ -132,14 +133,27 @@ def test_dense_identity_pins_weights_device_and_precision(monkeypatch):
     assert "RRF" in config["fusion"]
 
 
-def test_dense_precision_needs_bfloat16_support(monkeypatch):
+def test_dense_precision_checks_the_selected_device(monkeypatch):
+    import contextlib
+
     import torch
 
+    selected = []
+
+    @contextlib.contextmanager
+    def select(device):
+        selected.append(str(device))
+        yield
+
+    supported = {"cuda": False, "cuda:1": True}
     monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
-    monkeypatch.setattr(torch.cuda, "is_bf16_supported", lambda: False)
+    monkeypatch.setattr(torch.cuda, "device", select)
+    monkeypatch.setattr(
+        torch.cuda, "is_bf16_supported", lambda: supported[selected[-1]]
+    )
     assert methods.dense_precision(None) == ("cuda", "float32")
-    monkeypatch.setattr(torch.cuda, "is_bf16_supported", lambda: True)
     assert methods.dense_precision("cuda:1") == ("cuda:1", "bfloat16")
+    assert selected == ["cuda", "cuda:1"]
     assert methods.dense_precision("cpu") == ("cpu", "float32")
 
 
@@ -270,8 +284,12 @@ def test_snapshot_checkout_has_no_later_history(tmp_path):
     (checkout / "build" / "generated.py").write_text("indexer output\n")
     assert methods.fetch_snapshot("owner/repo", base, root) == checkout
     assert sorted(path.name for path in checkout.iterdir()) == [".git", "a.py"]
+    # Edited tracked files are restored; hidden index flags are rejected.
     (checkout / "a.py").write_text("edited\n")
-    with pytest.raises(ValueError, match="local changes"):
+    methods.fetch_snapshot("owner/repo", base, root)
+    assert (checkout / "a.py").read_text() == "base\n"
+    _git(checkout, "update-index", "--skip-worktree", "a.py")
+    with pytest.raises(ValueError, match="hidden Git index flags"):
         methods.fetch_snapshot("owner/repo", base, root)
     with pytest.raises(ValueError, match="invalid"):
         methods.fetch_snapshot("owner/repo;rm", base, root)
@@ -285,7 +303,9 @@ def test_snapshot_languages_keep_major_source_languages():
         ("README.md", "file", "", ""),
         ("src/m0.py", "function", "f", ""),
     )
-    assert methods.snapshot_languages(corpus) == ["python", "typescript"]
+    # Routing comes from the language registry (.ts and .js share one backend).
+    assert methods.snapshot_languages(corpus) == ["python", "ts"]
+    assert methods.snapshot_languages(rows(("src/a.c", "file", "", ""))) == ["cpp"]
     assert methods.snapshot_languages(rows(("README", "file", "", ""))) == []
 
 

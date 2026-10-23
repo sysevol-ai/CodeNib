@@ -175,8 +175,9 @@ The rules for this condition follow the
 [ARB maintainers' reply](https://github.com/eyuansu62/agent-retrieval-bench/issues/2#issuecomment-6334640769):
 
 - The checkout is a depth-one fetch of `base_commit`, so neither the resolving
-  change nor any later commit is in its object store. A reused checkout must
-  still be that single, unmodified commit.
+  change nor any later commit is in its object store. Every use resets it to
+  that commit and removes untracked and ignored files; hidden Git index flags
+  are rejected.
 - Only the released query reaches retrieval; gold and annotations never do.
 - Graph neighbors outside the released candidate set are dropped and counted
   in `removed_non_candidate_paths`. Scores and canonical BCY use released text.

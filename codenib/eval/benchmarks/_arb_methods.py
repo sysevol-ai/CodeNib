@@ -66,11 +66,11 @@ class _CachedEmbedding:
         if missing:
             vectors = self._embedding.embed_documents(list(missing.values()))
             for key, vector in zip(missing, vectors, strict=True):
-                # Normalized vectors keep their ranking at half precision.
-                self._vectors[key] = np.asarray(vector, dtype=np.float16)
+                # Keep encoder output precision so near ties rank as encoded.
+                self._vectors[key] = np.asarray(vector, dtype=np.float32)
         self.encoded_documents += len(missing)
         self.reused_documents += len(texts) - len(missing)
-        return [self._vectors[key].astype(np.float32) for key in keys]
+        return [self._vectors[key] for key in keys]
 
     def embed_query(self, text: str) -> list[float]:
         return self._embedding.embed_query(text)
@@ -84,8 +84,11 @@ def dense_precision(device: str | None = None) -> tuple[str, str]:
     import torch
 
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
-    if device.startswith("cuda") and torch.cuda.is_bf16_supported():
-        return device, "bfloat16"
+    if device.startswith("cuda"):
+        # is_bf16_supported() checks the current device, so select ours first.
+        with torch.cuda.device(torch.device(device)):
+            if torch.cuda.is_bf16_supported():
+                return device, "bfloat16"
     return device, "float32"
 
 
@@ -360,30 +363,22 @@ GRAPH_SEED_FILES = 5
 GRAPH_NEIGHBOR_FILES = 15
 GRAPH_BUILD_TIMEOUT = 1800
 GRAPH_MIN_LANGUAGE_SHARE = 0.1
-_GRAPH_LANGUAGES = {
-    ".py": "python",
-    ".pyi": "python",
-    ".go": "go",
-    ".rs": "rust",
-    ".ts": "typescript",
-    ".tsx": "typescript",
-    ".mts": "typescript",
-    ".cts": "typescript",
-    ".js": "typescript",
-    ".jsx": "typescript",
-    ".mjs": "typescript",
-    ".cjs": "typescript",
-    ".java": "java",
-}
 _SNAPSHOT_RECEIPT = ".codenib-arb-snapshot.json"
 
 
 def snapshot_languages(corpus: list[dict[str, Any]]) -> list[str]:
-    """Graph languages holding at least 10% of the released source files."""
+    """Graph backends holding at least 10% of the released source files.
+
+    Extensions route through CodeNib's language registry, so every language
+    with a graph backend is eligible.
+    """
+    from codenib.languages import extension_to_language_map
+
+    routes = extension_to_language_map("graph")
     counts: dict[str, int] = {}
     for row in corpus:
         if row["kind"] == "file":
-            language = _GRAPH_LANGUAGES.get(PurePosixPath(row["path"]).suffix)
+            language = routes.get(PurePosixPath(row["path"]).suffix.lower())
             if language:
                 counts[language] = counts.get(language, 0) + 1
     total = sum(counts.values())
@@ -451,9 +446,16 @@ def fetch_snapshot(
         raise ValueError(f"checkout is not at {base_commit}")
     if _git(target, "rev-list", "--count", "--all") != "1":
         raise ValueError("checkout has history beyond the base commit")
-    if _git(target, "status", "--porcelain", "--untracked-files=no"):
-        raise ValueError("checkout has local changes")
+    # assume-unchanged or skip-worktree would hide edited tracked files.
+    if any(
+        not line.startswith("H ")
+        for line in _git(target, "ls-files", "-v").splitlines()
+    ):
+        raise ValueError("checkout has hidden Git index flags")
+    _git(target, "reset", "-q", "--hard", "HEAD")
     _git(target, "clean", "-ffdxq")
+    if _git(target, "status", "--porcelain", "--untracked-files=all", "--ignored"):
+        raise ValueError("checkout is not clean after reset")
     return target
 
 
