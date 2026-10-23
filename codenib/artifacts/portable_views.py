@@ -53,6 +53,7 @@ from ..index.embedding.model_policy import (
     resolve_embedding_artifact_load_policy_from_options,
     resolve_embedding_load_policy_from_options,
 )
+from ..index.sparse_idx.bm25_index import BM25_TOKENIZERS
 from ..native_index_authorization import (
     MissingNativeIndexAuthorizationError,
     NativeIndexAuthorization,
@@ -4109,8 +4110,10 @@ def _normalize_bm25_view(
         reader=reader,
     )
     assert_no_secret_fields(metadata, source="portable BM25 metadata")
-    if not set(metadata) <= {"project_root", "max_k", "language"}:
+    if not set(metadata) <= {"project_root", "max_k", "language", "tokenizer"}:
         raise ValueError("portable BM25 metadata has an invalid shape")
+    if "tokenizer" in metadata and metadata["tokenizer"] not in BM25_TOKENIZERS:
+        raise ValueError("portable BM25 metadata tokenizer is invalid")
     max_k = metadata.get("max_k", 10)
     if isinstance(max_k, bool) or not isinstance(max_k, int) or max_k <= 0:
         raise ValueError("portable BM25 metadata max_k must be positive")
@@ -4520,9 +4523,15 @@ def _validate_portable_bm25_view(
             label="portable BM25 metadata",
             check_cancelled=check_cancelled,
         )
+    # Indexes written before tokenizer versions omit the key (code-v1).
+    expected_keys = {"project_root", "max_k", "language"}
+    if isinstance(metadata, Mapping) and "tokenizer" in metadata:
+        expected_keys.add("tokenizer")
+        if metadata["tokenizer"] not in BM25_TOKENIZERS:
+            raise ValueError("portable BM25 metadata tokenizer is invalid")
     if not _mapping_has_exact_keys(
         metadata,
-        {"project_root", "max_k", "language"},
+        expected_keys,
         check_cancelled=check_cancelled,
     ):
         raise ValueError("portable BM25 metadata has an invalid normalized shape")

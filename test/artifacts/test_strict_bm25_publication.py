@@ -2479,3 +2479,55 @@ def test_strict_bm25_recording_propagates_lone_close_failure() -> None:
             max_bytes=128,
         )
     assert caught.value is primary
+
+
+@pytest.mark.parametrize("tokenizer", ["code-v1", "code-v2", "code-v9"])
+def test_strict_bm25_keeps_known_tokenizer_and_rejects_unknown(
+    tmp_path: Path, tokenizer: str
+) -> None:
+    repository = _repository(tmp_path)
+    metadata = _canonical_bytes(
+        {
+            "project_root": str(repository),
+            "max_k": 17,
+            "language": "english",
+            "tokenizer": tokenizer,
+        }
+    )
+    destination, source_owner = _publish_source(tmp_path, repository, metadata=metadata)
+    repository_source = capture_repository_source(repository)
+    output_owner = PublishedWorkspaceReceiptOwner()
+    try:
+        if tokenizer == "code-v9":
+            with pytest.raises(ValueError, match="tokenizer is invalid"):
+                plan_bm25_view_strict(
+                    source_owner,
+                    repository_source=repository_source,
+                    view_config={},
+                    environ={},
+                )
+            return
+        planned = plan_bm25_view_strict(
+            source_owner,
+            repository_source=repository_source,
+            view_config={},
+            environ={},
+        )
+        publish_planned_bm25_view_strict(
+            destination,
+            planned=planned,
+            source_generation=source_owner,
+            repository_source=repository_source,
+            workspace_provider=_TestWorkspaceProvider(),
+            output_receipt_owner=output_owner,
+            view_config={},
+            environ={},
+        )
+        output = json.loads(
+            (destination / "bm25_metadata.json").read_text(encoding="utf-8")
+        )
+        assert output["tokenizer"] == tokenizer
+    finally:
+        output_owner.close()
+        source_owner.close()
+        repository_source.close()
