@@ -60,10 +60,10 @@ breaks this down per benchmark.
 <!-- BEGIN CODENIB_SUPPORT_MATRIX:methods -->
 | Method | Type | Views read | Model at query time | Exposed through | Evidence |
 | --- | --- | --- | --- | --- | --- |
-| BM25 | A · CodeNib | `bm25` | none | Python, MCP | Runnable · 7 benchmarks |
-| Dense | A · CodeNib | `vector` | embedding model | Python, MCP | Runnable · 6 benchmarks |
-| Hybrid (RRF) | A · CodeNib | `bm25`, `vector` | embedding model | Python, MCP | Runnable · 4 benchmarks |
-| Graph expansion | A · CodeNib | `bm25` or `vector`, plus `symbol_graph` | embedding model for dense seeds; optional reranker | Python, MCP | Runnable · 5 benchmarks |
+| BM25 | A · CodeNib | `bm25` | none | Python, MCP | [Measured](../evaluation/agent_retrieval_bench.md#results) · ARB (L1) |
+| Dense | A · CodeNib | `vector` | embedding model | Python, MCP | [Measured](../evaluation/agent_retrieval_bench.md#results) · ARB (L1) |
+| Hybrid (RRF) | A · CodeNib | `bm25`, `vector` | embedding model | Python, MCP | [Measured](../evaluation/agent_retrieval_bench.md#results) · ARB (L1) |
+| Graph expansion | A · CodeNib | `bm25` or `vector`, plus `symbol_graph` | embedding model for dense seeds; optional reranker | Python, MCP | [Measured](../evaluation/agent_retrieval_bench.md#results) · ARB (L1) |
 | Retrieve → rerank | A · CodeNib | any first stage | a reranker | Python | [Measured](../evaluation/grep_jev.md#what-was-measured) · Base (L1) |
 | Planner `auto` | A · CodeNib | whatever is available | none to plan; the chosen route may need embeddings or a reranker | Python, MCP | Runnable · 4 benchmarks |
 | Model-planned grep → Jev | B · CodeNib | none; reads the checkout | planner LLM and Jev | CLI, MCP | [Measured](../evaluation/grep_jev.md) · Base (L1) |

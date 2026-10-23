@@ -56,6 +56,7 @@ web/*.tsbuildinfo
 !docs/experiments/jev_candidates_results.json
 !docs/assets/contextbench_development_summary.json
 !docs/assets/arb_smoke.json
+!docs/assets/arb_full.json
 .env.local
 web_before
 qa_config.local.yaml

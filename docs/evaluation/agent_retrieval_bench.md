@@ -1,10 +1,10 @@
 # Agent Retrieval Bench
 
-CodeNib supports the four positive static retrieval tasks in
 [Agent Retrieval Bench](https://github.com/eyuansu62/agent-retrieval-bench)
-through `codenib-arb`. This labs runner consumes released corpus chunks, runs
-CodeNib BM25, and calls the pinned upstream scoring functions. It also scores
-external file rankings without invoking a retriever or model.
+(ARB) asks a retriever to rank the files a coding agent needs next for four
+workflow signals. `codenib-arb` runs five CodeNib retrieval methods on all four
+positive tasks and scores their rankings with ARB's own evaluator. It can also
+score file rankings produced by any other tool.
 
 | Release | Task | Samples |
 | --- | --- | ---: |
@@ -14,9 +14,8 @@ external file rankings without invoking a retriever or model.
 | `v2_edit2ripple` | Find files affected by an anchor edit | 58 |
 | **Total** | | **345** |
 
-Abstention/selective evaluation, line/block scores, interactive agent
-trajectories, and automatic leaderboard submission are outside this first
-adapter. The static BM25 route makes zero model API calls.
+Selective (abstention) evaluation, line and block scores, and interactive
+agent trajectories are not covered. No method calls a model API.
 
 
 <!-- BEGIN CODENIB_SUPPORT_MATRIX:card:arb -->
@@ -33,9 +32,93 @@ adapter. The static BM25 route makes zero model API calls.
 | Scorer | Official functions called directly (Recall@k, MRR, BCY) |
 | Setup | ARB checkout and verified release download |
 | CodeNib entry point | `codenib-arb` |
-| Evidence | [Pinned](#validation); official scorer; 8-case smoke only |
+| Evidence | [Measured](#results); five methods on all 345 samples |
 | Upstream | <https://github.com/eyuansu62/agent-retrieval-bench> |
 <!-- END CODENIB_SUPPORT_MATRIX:card:arb -->
+
+## Results
+
+On all 345 positive samples, dense retrieval puts gold files earliest (the best
+Recall@5, MRR, and BCY), and fusing it with BM25 raises Recall@20 but lowers MRR. CodeNib's BM25 trails ARB's
+own BM25 baseline; the cause is a tokenizer gap
+([#856](https://github.com/sysevol-ai/CodeNib/issues/856)), not the protocol.
+
+| Method | Source | Recall@5 | Recall@20 | MRR | BCY@8k |
+| --- | --- | ---: | ---: | ---: | ---: |
+| `dense` | Released corpus | 0.2940 | 0.5736 | 0.2425 | 0.3355 |
+| `hybrid` | Released corpus | 0.2804 | 0.5972 | 0.2144 | 0.3101 |
+| `zoekt` | Released corpus | 0.2498 | 0.4400 | 0.1605 | 0.2569 |
+| `bm25` | Released corpus | 0.1543 | 0.3889 | 0.1211 | 0.1659 |
+| `graph_expansion` | Full source | 0.1543 | 0.3498 | 0.1197 | 0.1659 |
+| ARB BM25 (control) | Released corpus | 0.1899 | 0.4452 | 0.1520 | 0.2051 |
+
+Each row is one run of every sample with no failures; scores are means over all
+345 samples. Graph expansion ran as two concurrent shards of the same commit on
+disjoint snapshots, scored together with `codenib-arb evaluate --source-access
+full-source`. The control row reruns ARB's `eval-baseline --ranker bm25` on the
+same machine and reproduces ARB's published BM25 row. Graph expansion reads more
+than the released corpus, so it is a separate condition rather than a peer of
+the other rows.
+
+Recall@20 by task:
+
+| Method | code2test (106) | comment2context (80) | trace2code (101) | edit2ripple (58) |
+| --- | ---: | ---: | ---: | ---: |
+| `dense` | 0.690 | 0.550 | 0.480 | 0.556 |
+| `hybrid` | 0.607 | 0.627 | 0.561 | 0.601 |
+| `zoekt` | 0.304 | 0.325 | 0.607 | 0.556 |
+| `bm25` | 0.299 | 0.529 | 0.391 | 0.356 |
+| `graph_expansion` | 0.209 | 0.506 | 0.416 | 0.276 |
+
+No method was tuned on ARB. Recall@20 / MRR on the dev and held-out halves
+(164 and 181 samples, defined [below](#metric-contract)):
+
+| Method | Dev | Held-out |
+| --- | ---: | ---: |
+| `dense` | 0.5526 / 0.2340 | 0.5925 / 0.2502 |
+| `hybrid` | 0.6105 / 0.2342 | 0.5852 / 0.1964 |
+| `zoekt` | 0.4542 / 0.1589 | 0.4273 / 0.1619 |
+| `bm25` | 0.4233 / 0.1359 | 0.3577 / 0.1077 |
+| `graph_expansion` | 0.3704 / 0.1329 | 0.3310 / 0.1077 |
+
+Graph expansion built a code graph for 190 of the 218 snapshots, covering 290
+samples. Seventeen transformers snapshots and one diffusers snapshot hit
+CodeNib's 600-second scip-python limit; the Java indexer produced no graph for
+five spring-boot snapshots and one mockito snapshot; two scrapy, one gin, and
+one numpy snapshot also produced none. Those samples rank by BM25. On the 290 samples with a graph, it
+lowered Recall@20 by 0.047 against BM25 (95% bootstrap interval −0.085 to
+−0.007) and left MRR and BCY@8k unchanged. It helped trace2code (0.416 against
+0.391) and hurt code2test, partly because CodeNib's Go graph omits test files.
+Adding 15 reference neighbors after five BM25 seeds displaces better BM25
+candidates; deciding when to follow references is left to an interactive
+agent.
+
+Costs. Cold builds are the total over all 218 corpus snapshots; the largest
+index is the biggest single snapshot; query times are per sample:
+
+| Method | Cold builds, total | Largest index | Query median / p95 | Tool calls per sample |
+| --- | ---: | --- | --- | ---: |
+| `bm25` | 437 s | 160k chunks, 13.4M tokens, in memory | 0.40 s / 11.97 s | 1 |
+| `dense` | 4,035 s | 160k vectors, 665 MB, in memory | 0.15 s / 1.76 s | 1 |
+| `hybrid` | 4,365 s | both of the above | 0.55 s / 11.96 s | 2 |
+| `zoekt` | 1,315 s | 276 MB on disk (9.2 GB for all snapshots) | 0.67 s / 2.37 s | 14.4 |
+| `graph_expansion` | 22,541 s, plus 419 s fetching source | graph of 160k vertices, 343k reference edges | 0.33 s / 9.16 s | 1.8 |
+
+Dense builds embed each distinct chunk text once per run: 0.90M of the 6.2M
+released chunks were embedded and the rest reused, so a snapshot's cost depends
+on which snapshots of its repository came before it. No method made a model
+API call; dense and hybrid ran Qwen3-Embedding-0.6B locally.
+
+The runs used tag [`arb/2026-10-22/methods`](https://github.com/sysevol-ai/CodeNib/tree/arb/2026-10-22/methods)
+on one host (Intel Xeon Gold 5416S, 64 cores, one H100 shared with other jobs),
+with CPU and GPU methods running at the same time, so treat timings as
+indicative. The [results receipt](../assets/arb_full.json) holds every
+method's configuration, per-sample metrics, ranking depths, and costs; the
+full rankings are published at [`sysevol-ai/codenib-arb-rankings`](https://huggingface.co/datasets/sysevol-ai/codenib-arb-rankings/tree/5310148b0d10096fd8ca4d418ef0be510153cdfc) with checksums for offline
+rescoring.
+
+An earlier eight-sample compatibility check, which ARB's maintainers reproduced
+independently, is kept in the [smoke receipt](../assets/arb_smoke.json).
 
 ## Pins and preparation
 
@@ -261,30 +344,6 @@ p95, and maximum) and records the CPU, core count, and peak memory under
 interruption, and its peak memory covers only the final process. Offline
 rescoring reports no cost, because it cannot observe how external rankings
 were produced.
-
-## Validation
-
-All 345 positive samples and their 294 release/snapshot pairs passed corpus
-preparation. The deterministic smoke selection uses `--limit-per-task 2`,
-giving eight samples across the four tasks. Every case completed retrieval and
-official scoring; offline rescoring matched all 64 metric cells and all BCY
-packing details. See the [validation receipt](../assets/arb_smoke.json) for
-selected IDs, input hashes, per-case metrics, and implementation fingerprints.
-
-| Smoke-only metric | Mean over 8 selected cases |
-| --- | ---: |
-| Recall@5 | 0.2292 |
-| Recall@10 | 0.4375 |
-| Recall@20 | 0.6250 |
-| MRR | 0.1848 |
-| BCY@4000 | 0.1250 |
-| BCY@8000 | 0.2292 |
-| BCY@16000 | 0.5000 |
-| BCY@32000 | 0.6250 |
-
-These are integration smoke results, not a full benchmark result or a
-leaderboard comparison. No model API calls were made. A full retrieval run on
-all 345 samples remains a separate measurement.
 
 ## Extending retrieval experiments
 
