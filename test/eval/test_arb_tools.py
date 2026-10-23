@@ -279,6 +279,38 @@ def test_graph_loads_while_the_snapshot_lock_is_held(builds, monkeypatch, tmp_pa
     assert held == [True]
 
 
+def test_providers_with_swapped_roots_do_not_deadlock(builds, monkeypatch, tmp_path):
+    import threading
+
+    first = tools.CodeNibToolProvider(str(tmp_path / "a"), str(tmp_path / "b"))
+    second = tools.CodeNibToolProvider(str(tmp_path / "b"), str(tmp_path / "a"))
+    # Both providers reach the build while holding their first lock.
+    barrier = threading.Barrier(2)
+    languages = methods.snapshot_languages
+
+    def meet(rows):
+        try:
+            barrier.wait(timeout=1)
+        except threading.BrokenBarrierError:
+            pass
+        return languages(rows)
+
+    monkeypatch.setattr(methods, "snapshot_languages", meet)
+    workers = [
+        threading.Thread(
+            target=provider.prepare,
+            kwargs={"repo": REPO, "base_commit": COMMIT, "paths": RELEASED},
+            daemon=True,
+        )
+        for provider in (first, second)
+    ]
+    for worker in workers:
+        worker.start()
+    for worker in workers:
+        worker.join(timeout=20)
+    assert not any(worker.is_alive() for worker in workers)
+
+
 def test_a_failed_retry_keeps_the_usable_partial_graph(builds, monkeypatch, tmp_path):
     saved = tmp_path / "fixture-graph.pkl"
 

@@ -28,6 +28,7 @@ arms that share a prebuilt cache.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import re
 import shutil
@@ -92,7 +93,16 @@ class CodeNibToolProvider:
         released = set(paths)
         directory = methods.snapshot_path(repo, base_commit, self.cache)
         directory.parent.mkdir(parents=True, exist_ok=True)
-        with methods.snapshot_lock(directory):
+        checkout = methods.snapshot_path(repo, base_commit, self.workspace)
+        checkout.parent.mkdir(parents=True, exist_ok=True)
+        with contextlib.ExitStack() as held:
+            # Both snapshot locks, in one global order, so providers whose
+            # workspace and cache roots are swapped cannot deadlock.
+            for lock in sorted(
+                (methods.snapshot_lock(directory), methods.snapshot_lock(checkout)),
+                key=lambda lock: lock.lock_file,
+            ):
+                held.enter_context(lock)
             _finish_swap(directory)
             receipt_path = directory / _RECEIPT
             receipt = _read_receipt(receipt_path)
@@ -176,18 +186,14 @@ class CodeNibToolProvider:
         fetch_seconds = 0.0
         try:
             if languages:
-                with methods.snapshot_lock(
-                    methods.snapshot_path(repo, base_commit, self.workspace)
-                ):
-                    fetched = time.perf_counter()
-                    try:
-                        checkout = methods.fetch_snapshot(
-                            repo, base_commit, self.workspace
-                        )
-                    finally:
-                        # A failed fetch is still acquisition, not build time.
-                        fetch_seconds = time.perf_counter() - fetched
-                    report = methods.build_graph(checkout, staging, languages)
+                # prepare() holds the checkout's snapshot lock.
+                fetched = time.perf_counter()
+                try:
+                    checkout = methods.fetch_snapshot(repo, base_commit, self.workspace)
+                finally:
+                    # A failed fetch is still acquisition, not build time.
+                    fetch_seconds = time.perf_counter() - fetched
+                report = methods.build_graph(checkout, staging, languages)
                 receipt["available"] = report.get("available_languages", [])
                 if report.get("failed_languages"):
                     receipt["failed"] = {
