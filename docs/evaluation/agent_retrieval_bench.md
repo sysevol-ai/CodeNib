@@ -405,9 +405,10 @@ Each snapshot's status reports `released_source_files`, the released files in
 the graph's languages, and `covered_source_files`, how many of them the graph
 contains. Coverage is incomplete in known cases:
 
-- the Go graph leaves out `_test.go` files;
-- a Go repository with nested modules is indexed from its root module only;
-- Java snapshots build no graph, because project preparation is disabled.
+- Java snapshots build no graph, because project preparation is disabled;
+- a Go repository builds no graph without a root `go.mod`, and a nested Go
+  module that fails to index is left out (see
+  [the Go provider notes](../scip_index.md#language-provider-map)).
 
 A snapshot without a graph offers the policy only the minimal tools. ARB's
 [indexed tools guide](https://github.com/eyuansu62/agent-retrieval-bench/blob/main/docs/adapters/indexed_tools.md)
