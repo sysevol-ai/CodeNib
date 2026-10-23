@@ -189,6 +189,22 @@ def test_cache_is_rebuilt_when_the_provider_identity_changes(builds, tmp_path):
     assert not status["cached"] and len(builds) == 2
 
 
+def test_a_decoder_dependency_upgrade_rebuilds_the_graph(builds, monkeypatch, tmp_path):
+    import importlib.metadata
+
+    from codenib.eval.benchmarks import agent_retrieval_bench as arb
+
+    _provider(tmp_path)
+    real = importlib.metadata.version
+
+    def upgraded(name):
+        return "999.0" if name == "tree-sitter-language-pack" else real(name)
+
+    monkeypatch.setattr(arb.importlib.metadata, "version", upgraded)
+    status = _provider(tmp_path)[1]
+    assert not status["cached"] and len(builds) == 2
+
+
 @pytest.mark.parametrize("retry, expected_builds", [("true", 2), ("false", 1)])
 def test_failed_builds_retry_unless_disabled(
     builds, monkeypatch, tmp_path, retry, expected_builds
@@ -414,6 +430,8 @@ def test_a_failed_retry_keeps_the_usable_partial_graph(builds, monkeypatch, tmp_
 def test_identity_includes_runtime_and_graph_tools(tmp_path):
     described = tools.CodeNibToolProvider(str(tmp_path / "ws")).describe()
     assert described["python"] and "igraph" in described["packages"]
+    # Decoders that parse sources depend on tree-sitter and its grammars.
+    assert {"tree-sitter", "tree-sitter-language-pack"} <= set(described["packages"])
     backends = described["graph_tools_sha256"]
     for key, executable in {
         "python:scip": "scip-python",
