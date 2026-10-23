@@ -68,10 +68,12 @@ class CodeNibToolProvider:
             raise ValueError("cache must differ from workspace")
         self.retry_failed = _flag(retry_failed)
         self._snapshots: dict[tuple[str, str], _SnapshotIndex | None] = {}
+        implementation = implementation_receipt()
         self._identity = {
-            "codenib_sources_sha256": implementation_receipt()[
-                "codenib_sources_sha256"
-            ],
+            "codenib_sources_sha256": implementation["codenib_sources_sha256"],
+            "python": implementation["python"],
+            "packages": implementation["packages"],
+            "graph_tools_sha256": _graph_tools(),
             "graph_build_timeout_seconds": methods.GRAPH_BUILD_TIMEOUT,
             "scip_python_index_timeout_seconds": _scip_python_timeout(),
             "min_language_share": methods.GRAPH_MIN_LANGUAGE_SHARE,
@@ -98,18 +100,20 @@ class CodeNibToolProvider:
             )
             cached = self._reusable(receipt, languages)
             if not cached:
-                self._build(repo, base_commit, languages, directory)
+                self._build(repo, base_commit, languages, directory, receipt)
                 receipt = _read_receipt(receipt_path)
-        graph_path = directory / "arb_graph.pkl"
-        index = None
-        if receipt.get("graph") and graph_path.is_file():
-            from codenib.graph.code_graph import CodeGraph
+            # Load under the lock, so another provider cannot replace the
+            # directory between reading the receipt and loading its graph.
+            graph_path = directory / "arb_graph.pkl"
+            index = None
+            if receipt.get("graph") and graph_path.is_file():
+                from codenib.graph.code_graph import CodeGraph
 
-            index = _SnapshotIndex(
-                CodeGraph.load_graph(str(graph_path)),
-                released,
-                receipt.get("languages") or [],
-            )
+                index = _SnapshotIndex(
+                    CodeGraph.load_graph(str(graph_path)),
+                    released,
+                    receipt.get("languages") or [],
+                )
         self._snapshots[(repo, base_commit)] = index
         status = {
             key: receipt[key]
@@ -148,7 +152,12 @@ class CodeNibToolProvider:
         return not (failed and self.retry_failed)
 
     def _build(
-        self, repo: str, base_commit: str, languages: list[str], directory: Path
+        self,
+        repo: str,
+        base_commit: str,
+        languages: list[str],
+        directory: Path,
+        previous: dict | None = None,
     ) -> None:
         started = time.perf_counter()
         staging = directory.with_name(directory.name + ".partial")
@@ -190,6 +199,19 @@ class CodeNibToolProvider:
         # Fetching source is acquisition, not index construction.
         receipt["build_seconds"] = time.perf_counter() - started - fetch_seconds
         receipt["fetch_seconds"] = fetch_seconds
+        retry_lost_graph = (
+            not receipt["graph"]
+            and previous is not None
+            and previous.get("graph")
+            and previous.get("identity") == self._identity
+            and previous.get("languages") == languages
+        )
+        if retry_lost_graph:
+            # A failed retry keeps the usable partial graph and records itself.
+            shutil.rmtree(staging, ignore_errors=True)
+            kept = {**previous, "last_retry": receipt}
+            (directory / _RECEIPT).write_text(json.dumps(kept) + "\n", encoding="utf-8")
+            return
         (staging / _RECEIPT).write_text(json.dumps(receipt) + "\n", encoding="utf-8")
         shutil.rmtree(directory, ignore_errors=True)
         staging.rename(directory)
@@ -412,6 +434,20 @@ def _flag(value: bool | str) -> bool:
     if value.strip().lower() in {"0", "false", "no"}:
         return False
     raise ValueError(f"expected true or false, got {value!r}")
+
+
+def _graph_tools() -> dict[str, str | None]:
+    """SHA-256 of each graph indexer the build would run, as graph_expansion
+    records them."""
+    from codenib.toolchains import resolve_command
+
+    from .agent_retrieval_bench import sha256_file
+    from .agent_retrieval_bench_runner import GRAPH_TOOLS
+
+    tools = {name: resolve_command(name) for name in GRAPH_TOOLS}
+    return {
+        name: sha256_file(Path(path)) if path else None for name, path in tools.items()
+    }
 
 
 def _read_receipt(path: Path) -> dict | None:

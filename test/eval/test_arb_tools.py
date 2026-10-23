@@ -253,3 +253,61 @@ def test_failed_checkout_time_counts_as_fetch(builds, monkeypatch, tmp_path):
     status = _provider(tmp_path)[1]
     assert not status["available"] and "CalledProcessError" in status["reason"]
     assert status["fetch_seconds"] >= 0.05 > status["build_seconds"]
+
+
+def test_graph_loads_while_the_snapshot_lock_is_held(builds, monkeypatch, tmp_path):
+    from filelock import FileLock, Timeout
+
+    from codenib.graph.code_graph import CodeGraph
+
+    load = CodeGraph.load_graph
+    held = []
+
+    def checked_load(path):
+        lock = FileLock(str(tmp_path / "cache" / "owner__repo" / COMMIT) + ".lock")
+        try:
+            lock.acquire(timeout=0)
+        except Timeout:
+            held.append(True)
+        else:
+            lock.release()
+            held.append(False)
+        return load(path)
+
+    monkeypatch.setattr(CodeGraph, "load_graph", staticmethod(checked_load))
+    _provider(tmp_path)
+    assert held == [True]
+
+
+def test_a_failed_retry_keeps_the_usable_partial_graph(builds, monkeypatch, tmp_path):
+    saved = tmp_path / "fixture-graph.pkl"
+
+    def partial(checkout, output, languages):
+        (output / "arb_graph.pkl").write_bytes(saved.read_bytes())
+        return {
+            "available_languages": ["python"],
+            "failed_languages": {"rust": "toolchain missing"},
+            "graph": str(output / "arb_graph.pkl"),
+        }
+
+    monkeypatch.setattr(methods, "build_graph", partial)
+    assert _provider(tmp_path)[1]["available"]
+
+    def broken(*args):
+        raise RuntimeError("indexer crashed")
+
+    monkeypatch.setattr(methods, "build_graph", broken)
+    status = _provider(tmp_path)[1]
+    assert status["available"] and status["failed"] == {"rust": "toolchain missing"}
+    receipt = json.loads(
+        (
+            tmp_path / "cache" / "owner__repo" / COMMIT / "provider_receipt.json"
+        ).read_text()
+    )
+    assert "indexer crashed" in receipt["last_retry"]["error"]
+
+
+def test_identity_includes_runtime_and_graph_tools(tmp_path):
+    described = tools.CodeNibToolProvider(str(tmp_path / "ws")).describe()
+    assert described["python"] and "igraph" in described["packages"]
+    assert "scip-python" in described["graph_tools_sha256"]
