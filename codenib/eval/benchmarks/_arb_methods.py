@@ -114,8 +114,9 @@ class DenseEncoder:
             device=config["device"],
             default_batch_size=config["batch_size"],
             max_seq_length=config["max_seq_length"],
-            # ARB's embedding baseline uses no query or document instruction.
-            query_prompt="",
+            # No document instruction, as in ARB's embedding baseline; the
+            # query instruction is empty unless a run selects one.
+            query_prompt=config.get("query_prompt", ""),
             document_prompt="",
             encode_kwargs={"normalize_embeddings": True},
         )

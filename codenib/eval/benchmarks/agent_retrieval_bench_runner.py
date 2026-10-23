@@ -254,8 +254,31 @@ def embedding_options(args: argparse.Namespace) -> dict[str, Any] | None:
         "revision": revision,
         "max_seq_length": getattr(args, "max_seq_length", None),
         "batch_size": getattr(args, "embedding_batch_size", None),
+        "query_prompt": getattr(args, "query_prompt", None),
     }
     return {key: value for key, value in options.items() if value is not None} or None
+
+
+QUERY_PROMPTS = ("none", "registry")
+
+
+def dense_query_prompt(source: str, model: str) -> str:
+    """The instruction prepended to dense queries.
+
+    ``none`` matches ARB's embedding baseline. ``registry`` uses the query
+    instruction CodeNib registers for the model, so the run reflects CodeNib's
+    own configuration rather than one tuned on ARB.
+    """
+    if source == "none":
+        return ""
+    if source != "registry":
+        raise ValueError(f"--query-prompt must be one of {QUERY_PROMPTS}")
+    from codenib.index.embedding.prompt_registry import resolve_prompts
+
+    prompt = resolve_prompts(model).get("query_prompt")
+    if not prompt:
+        raise ValueError(f"CodeNib registers no query instruction for {model}")
+    return prompt
 
 
 def zoekt_bin_dir(explicit: Path | None) -> Path:
@@ -319,6 +342,9 @@ def method_config(
                 if value is not None
             },
         }
+        prompt = dense_query_prompt(
+            options.pop("query_prompt", "none"), str(options["model"])
+        )
         if not re.fullmatch(r"[0-9a-f]{40}", str(options["revision"])):
             raise ValueError("--embedding-revision must be a 40-character commit SHA")
         for key in ("max_seq_length", "batch_size"):
@@ -329,7 +355,7 @@ def method_config(
             **options,
             "device": resolved,
             "dtype": dtype,
-            "query_prompt": "",
+            "query_prompt": prompt,
             "index_location": "memory",
         }
         if method == "hybrid":
@@ -687,6 +713,12 @@ def main(argv: list[str] | None = None) -> int:
                 "--embedding-batch-size",
                 type=int,
                 help="dense batch size (default: 64)",
+            )
+            command.add_argument(
+                "--query-prompt",
+                choices=QUERY_PROMPTS,
+                help="dense query instruction: none, as ARB's embedding baseline "
+                "(default), or CodeNib's registered instruction for the model",
             )
             command.add_argument(
                 "--workspace",

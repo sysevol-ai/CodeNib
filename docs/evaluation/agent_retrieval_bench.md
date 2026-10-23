@@ -243,7 +243,7 @@ edit2ripple. BM25 and graph expansion read the full query, and `hybrid` cuts
 it only in its dense branch. On a GPU the model runs in bfloat16. `--embedding-model` with
 `--embedding-revision` (a 40-character commit) selects another
 SentenceTransformers model, and `--max-seq-length` and `--embedding-batch-size`
-change the token limit and batch size; each run records them. Each distinct chunk text is embedded once per run, because
+change the token limit and batch size; each run records them. `--query-prompt registry` prepends the query instruction that CodeNib registers for the model, and the run records the instruction it used. Each distinct chunk text is embedded once per run, because
 snapshots of the same repository share most files, and `index_size` records
 how many chunks a build encoded and how many it reused. Dense methods need the
 `semantic` extra; a missing extra stops the run before any case.

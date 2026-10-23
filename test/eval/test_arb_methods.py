@@ -160,9 +160,38 @@ def test_dense_overrides_join_the_receipt_and_need_a_pinned_revision(monkeypatch
     with pytest.raises(ValueError, match="needs --embedding-revision"):
         runner.embedding_options(args)
     args.embedding_model = None
+    args.query_prompt = None
     assert runner.embedding_options(args) is None
     args.max_seq_length = 0
     assert runner.embedding_options(args) == {"max_seq_length": 0}
+
+
+def test_query_prompt_is_none_or_codenibs_registered_instruction(monkeypatch):
+    from codenib.index.embedding.prompt_registry import resolve_prompts
+
+    monkeypatch.setattr(methods, "dense_precision", lambda device: ("cpu", "float32"))
+    assert (
+        runner.method_config("dense", embedding={"query_prompt": "none"})[
+            "query_prompt"
+        ]
+        == ""
+    )
+    config = runner.method_config("dense", embedding={"query_prompt": "registry"})
+    assert (
+        config["query_prompt"] == resolve_prompts(methods.DENSE_MODEL)["query_prompt"]
+    )
+    assert config["query_prompt"].startswith("Instruct:")
+    with pytest.raises(ValueError, match="registers no query instruction"):
+        runner.method_config(
+            "dense",
+            embedding={
+                "model": "example/unregistered",
+                "revision": "0" * 40,
+                "query_prompt": "registry",
+            },
+        )
+    with pytest.raises(ValueError, match="--query-prompt must be"):
+        runner.method_config("dense", embedding={"query_prompt": "custom"})
 
 
 def test_dense_precision_checks_the_selected_device(monkeypatch):
