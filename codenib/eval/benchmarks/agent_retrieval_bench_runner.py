@@ -229,7 +229,7 @@ def evaluate(
     }
 
 
-METHODS = ("bm25", "dense", "hybrid", "zoekt", "graph_expansion")
+METHODS = ("bm25", "dense", "hybrid", "zoekt", "graph_expansion", "rerank")
 SOURCE_ACCESS = ("released-corpus", "full-source")
 GRAPH_TOOLS = (
     "scip-python",
@@ -241,6 +241,22 @@ GRAPH_TOOLS = (
 
 
 DEFAULT_EMBEDDING = "Qwen/Qwen3-Embedding-0.6B"
+
+
+def rerank_options(args: argparse.Namespace) -> dict[str, Any] | None:
+    """Rerank stage inputs from the CLI; a non-default model needs its revision."""
+    model = getattr(args, "rerank_model", None)
+    if model and not getattr(args, "rerank_revision", None):
+        raise ValueError("--rerank-model needs --rerank-revision")
+    options = {
+        "base": getattr(args, "rerank_base", None),
+        "model": model,
+        "revision": getattr(args, "rerank_revision", None),
+        "top_k": getattr(args, "rerank_top_k", None),
+        "max_length": getattr(args, "rerank_max_length", None),
+        "batch_size": getattr(args, "rerank_batch_size", None),
+    }
+    return {key: value for key, value in options.items() if value is not None} or None
 
 
 def embedding_options(args: argparse.Namespace) -> dict[str, Any] | None:
@@ -325,6 +341,7 @@ def method_config(
     zoekt_bin: Path | None = None,
     device: str | None = None,
     embedding: dict[str, Any] | None = None,
+    rerank: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Static identity of a native method; part of the resume receipt.
 
@@ -371,6 +388,53 @@ def method_config(
         if method == "hybrid":
             config["fusion"] = f"file-level weighted RRF, k={methods.HYBRID_RRF_K}"
         return config
+    if method == "rerank":
+        _require("transformers", "semantic", method)
+        from codenib.index.rerank.cross_encoder import _QWEN_DEFAULT_INSTRUCTION
+
+        options = {
+            "model": methods.RERANK_MODEL,
+            "revision": methods.RERANK_REVISION,
+            "top_k": methods.RERANK_TOP_K,
+            "max_length": methods.RERANK_MAX_LENGTH,
+            "batch_size": methods.RERANK_BATCH_SIZE,
+            **{
+                key: value for key, value in (rerank or {}).items() if value is not None
+            },
+        }
+        base = options.pop("base", None)
+        if base is None:
+            raise ValueError("rerank needs --rerank-base, a completed run to rerank")
+        base_config, base_predictions = load_rerank_base(Path(base))
+        if not re.fullmatch(r"[0-9a-f]{40}", str(options["revision"])):
+            raise ValueError("--rerank-revision must be a 40-character commit SHA")
+        for key in ("top_k", "max_length", "batch_size"):
+            value = options[key]
+            if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+                raise ValueError(f"rerank {key} must be a positive integer")
+        resolved, dtype = methods.dense_precision(device)
+        return {
+            **options,
+            "device": resolved,
+            "dtype": dtype,
+            "instruction": (
+                _QWEN_DEFAULT_INSTRUCTION
+                if "Qwen3-Reranker" in str(options["model"])
+                else None
+            ),
+            "document": "file path, newline, released file text",
+            "fusion": (
+                "file-level RRF of the base and reranked orders over the top "
+                f"files, k={methods.HYBRID_RRF_K}"
+            ),
+            "base": {
+                "method": base_config.get("method"),
+                "method_config": base_config.get("method_config"),
+                "config_sha256": json_digest(base_config),
+                "predictions_sha256": json_digest(base_predictions),
+            },
+            "index_location": "memory",
+        }
     if method == "zoekt":
         directory = zoekt_bin_dir(zoekt_bin)
         # The binaries identify the build; their -version flag needs a path.
@@ -400,6 +464,17 @@ def method_config(
     return {"index_location": "memory"}
 
 
+def load_rerank_base(base: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """The receipt and rankings of the completed run that ``rerank`` reorders."""
+    config_path, predictions_path = base / "config.json", base / "predictions.json"
+    if not (config_path.is_file() and predictions_path.is_file()):
+        raise ValueError(f"--rerank-base {base} is not a completed run")
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    if config.get("source_access") != "released-corpus":
+        raise ValueError("--rerank-base must be a released-corpus run")
+    return config, load_predictions(predictions_path)
+
+
 def method_indexer(
     method: str,
     config: dict[str, Any],
@@ -419,6 +494,19 @@ def method_indexer(
     if method == "zoekt":
         directory = zoekt_bin_dir(zoekt_bin)
         return lambda corpus: methods.ZoektCorpusIndex(corpus, directory)
+    if method == "rerank":
+        rerankers: list[Any] = []
+
+        def build_rerank(corpus: list[dict[str, Any]]) -> Any:
+            loaded = None
+            if not rerankers:
+                rerankers.append(methods.Reranker(config))
+                loaded = rerankers[0].load_seconds
+            index = methods.RerankCorpusIndex(corpus, rerankers[0], config["top_k"])
+            index.model_load_seconds = loaded
+            return index
+
+        return build_rerank
     if method == "graph_expansion":
         if workspace is None:
             raise ValueError("graph_expansion needs --workspace for source checkouts")
@@ -519,6 +607,7 @@ def execute(
     workspace: Path | None = None,
     access: str | None = None,
     embedding: dict[str, Any] | None = None,
+    rerank: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """One writer per output directory; completed cases survive interruption.
 
@@ -546,7 +635,11 @@ def execute(
             None
             if pred_path
             else method_config(
-                method, zoekt_bin=zoekt_bin, device=device, embedding=embedding
+                method,
+                zoekt_bin=zoekt_bin,
+                device=device,
+                embedding=embedding,
+                rerank=rerank,
             )
         ),
         "candidate_filter": "all_files",
@@ -557,6 +650,13 @@ def execute(
         "evaluator_python": evaluator_python,
         "external_predictions_sha256": json_digest(external) if pred_path else None,
     }
+    base_rankings = None
+    if method == "rerank" and pred_path is None:
+        base_config, base_predictions = load_rerank_base(Path(rerank["base"]))
+        # The base must rank these exact cases, so both runs score the same input.
+        if base_config.get("prepared_sha256") != config["prepared_sha256"]:
+            raise ValueError("--rerank-base ranked other prepared cases")
+        base_rankings = prediction_map(base_predictions, prepared)
     output.mkdir(parents=True, exist_ok=True)
     with FileLock(str(output / ".run.lock"), timeout=0):
         config_path = output / "config.json"
@@ -637,12 +737,28 @@ def execute(
                             prediction["model_load_seconds"] = index.model_load_seconds
                     # A failed search is still an attempted call with latency.
                     prediction["tool_calls"] = 1
+                    base = None
+                    if base_rankings is not None:
+                        base = base_rankings.get(case.sample_id)
+                        if not base or base.get("status") != "ok":
+                            raise ValueError(
+                                "the base run has no ranking for this case"
+                            )
+                        prediction["base_tool_calls"] = base.get("tool_calls", 0)
                     queried = time.perf_counter()
                     try:
-                        prediction["ranked_files"] = index.rank(case.query_text)
+                        if base is None:
+                            prediction["ranked_files"] = index.rank(case.query_text)
+                        else:
+                            # The index sees the query and base ranking, never gold.
+                            prediction["ranked_files"] = index.rerank(
+                                case.query_text, base["ranked_files"]
+                            )
                     finally:
                         prediction["query_seconds"] = time.perf_counter() - queried
-                        prediction["tool_calls"] = index.tool_calls
+                        prediction["tool_calls"] = index.tool_calls + (
+                            prediction.get("base_tool_calls") or 0
+                        )
                         if hasattr(index, "graph_used"):
                             prediction["graph_used"] = index.graph_used
                             prediction["removed_non_candidate_paths"] = (
@@ -731,6 +847,34 @@ def main(argv: list[str] | None = None) -> int:
                 "(default), or CodeNib's registered instruction for the model",
             )
             command.add_argument(
+                "--rerank-base",
+                type=Path,
+                help="rerank: a completed released-corpus run whose rankings to rerank",
+            )
+            command.add_argument(
+                "--rerank-model",
+                help="rerank: cross-encoder model (default: Qwen/Qwen3-Reranker-4B)",
+            )
+            command.add_argument(
+                "--rerank-revision",
+                help="rerank: 40-character commit of --rerank-model (required with it)",
+            )
+            command.add_argument(
+                "--rerank-top-k",
+                type=int,
+                help="rerank: base files to rescore (default: 50)",
+            )
+            command.add_argument(
+                "--rerank-max-length",
+                type=int,
+                help="rerank: token limit per query and file (default: 8192)",
+            )
+            command.add_argument(
+                "--rerank-batch-size",
+                type=int,
+                help="rerank: pairs per forward pass (default: 4)",
+            )
+            command.add_argument(
                 "--workspace",
                 type=Path,
                 help="graph_expansion: directory for base-commit source checkouts",
@@ -774,6 +918,7 @@ def main(argv: list[str] | None = None) -> int:
             workspace=getattr(args, "workspace", None),
             access=getattr(args, "source_access", None),
             embedding=embedding_options(args),
+            rerank=rerank_options(args),
         )
         print(json.dumps(result["summary"], indent=2))
         return 1 if result["summary"]["overall"]["failed"] else 0

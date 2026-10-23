@@ -354,6 +354,10 @@ methods:
       swebench_lite: {level: Runnable}
       locbench_v1: {level: Runnable}
       swe_explore: {level: Runnable}
+      arb:
+        level: Runnable
+        note: "`--method rerank` over a completed released-corpus run."
+        link: evaluation/agent_retrieval_bench.md#retrieval-methods
 
   - id: planner_auto
     name: Planner `auto`

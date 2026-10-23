@@ -99,7 +99,7 @@ Numbered notes follow each table.
 | A · Dense | [Runnable](grep_jev.md#what-was-measured)<sup>5</sup> | Runnable | Runnable | Runnable | Runnable | [Measured](agent_retrieval_bench.md#results)<sup>6</sup> |
 | A · Hybrid (RRF) | [Runnable](grep_jev.md#what-was-measured)<sup>7</sup> | — | Runnable | Runnable | Runnable | [Measured](agent_retrieval_bench.md#results)<sup>8</sup> |
 | A · Graph expansion | Runnable | — | Runnable | Runnable | Runnable | [Measured](agent_retrieval_bench.md#results)<sup>9</sup> |
-| A · Retrieve → rerank | [Measured](grep_jev.md#what-was-measured)<sup>10</sup> | — | Runnable | Runnable | Runnable | — |
+| A · Retrieve → rerank | [Measured](grep_jev.md#what-was-measured)<sup>10</sup> | — | Runnable | Runnable | Runnable | [Runnable](agent_retrieval_bench.md#retrieval-methods)<sup>11</sup> |
 | A · Planner `auto` | Runnable | — | Runnable | Runnable | Runnable | — |
 | B · Model-planned grep → Jev | [Measured](grep_jev.md) | — | — | — | — | — |
 | C · CodeNib agent | Runnable | Runnable | Runnable | Runnable | — | — |
@@ -114,6 +114,7 @@ Numbered notes follow each table.
 8. **Hybrid (RRF) × ARB.** All 345 samples; file-level RRF of the BM25 and dense rankings.
 9. **Graph expansion × ARB.** All 345 samples, full-source condition; a graph for 190 of 218 snapshots; lower Recall@20 than BM25 on the samples with a graph.
 10. **Retrieve → rerank × Base.** Measured through the frozen-candidate research scripts `benchmark_jev_base.py` and `benchmark_jev_dense.py`, not through `RetrieveRerankPipeline`.
+11. **Retrieve → rerank × ARB.** `--method rerank` over a completed released-corpus run.
 <!-- END CODENIB_SUPPORT_MATRIX:grid:L1:CodeNib -->
 
 The embedding-model and reranker sweeps on CodeNib Base have complete
