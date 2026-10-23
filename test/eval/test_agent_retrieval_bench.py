@@ -560,8 +560,11 @@ def _commit(checkout, files, message):
     for name, text in files.items():
         path = checkout / "src/agent_retrieval_bench" / name
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text)
-    subprocess.run(["git", "-C", str(checkout), "add", "."], check=True)
+        if text is None:
+            path.unlink()
+        else:
+            path.write_text(text)
+    subprocess.run(["git", "-C", str(checkout), "add", "-A"], check=True)
     subprocess.run(
         [
             "git",
@@ -589,6 +592,8 @@ def _commit(checkout, files, message):
         ({"baseline.py": "from .io import read\nscore = 2\n"}, False),
         # io.py is reached only through baseline's import.
         ({"io.py": "def read():\n    return 2\n"}, False),
+        ({"io.py": None}, False),
+        ({"bcy_curve.py": "def broken(:\n"}, False),
     ],
 )
 def test_later_evaluator_accepted_only_with_identical_scoring_code(
@@ -608,7 +613,7 @@ def test_later_evaluator_accepted_only_with_identical_scoring_code(
         "pinned",
     )
     monkeypatch.setattr(arb, "ARB_UPSTREAM_REVISION", pinned)
-    assert arb.scoring_sources(checkout) == [
+    assert arb.scoring_sources(checkout, pinned) == [
         f"src/agent_retrieval_bench/{name}"
         for name in ("__init__.py", "baseline.py", "bcy_curve.py", "io.py")
     ]
@@ -626,8 +631,14 @@ def test_evaluator_without_pinned_history_or_clean_source_rejected(
 ):
     checkout = tmp_path / "upstream"
     subprocess.run(["git", "init", "-q", str(checkout)], check=True)
-    _commit(checkout, {"__init__.py": "", "bcy_curve.py": ""}, "unrelated")
-    with pytest.raises(ValueError, match="or contain it"):
+    first = _commit(checkout, {"__init__.py": "", "bcy_curve.py": ""}, "first")
+    _commit(checkout, {"bcy_curve.py": "x = 1\n"}, "later")
+    pinned = arb.upstream_revision(checkout)
+    # The pinned object exists, but HEAD on a side branch does not descend from it.
+    subprocess.run(["git", "-C", str(checkout), "checkout", "-q", first], check=True)
+    _commit(checkout, {"closed_tool_eval.py": ""}, "side branch")
+    monkeypatch.setattr(arb, "ARB_UPSTREAM_REVISION", pinned)
+    with pytest.raises(ValueError, match="descend from it"):
         arb.validate_upstream(checkout)
     monkeypatch.setattr(arb, "ARB_UPSTREAM_REVISION", arb.upstream_revision(checkout))
     (checkout / "src/agent_retrieval_bench/bcy_curve.py").write_text("edited\n")

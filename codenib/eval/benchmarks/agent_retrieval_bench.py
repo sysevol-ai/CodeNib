@@ -160,21 +160,29 @@ PACKAGE = "agent_retrieval_bench"
 _SCORER_ENTRY_POINTS = ("__init__.py", "baseline.py", "bcy_curve.py")
 
 
-def scoring_sources(checkout: Path) -> list[str]:
-    """Evaluator files the scorer imports, transitively, as checkout paths.
+def scoring_sources(checkout: Path, revision: str) -> list[str]:
+    """Evaluator files the scorer imports at ``revision``, transitively.
 
     The scorer bridge imports ``baseline`` and ``bcy_curve``; this follows
-    every static import inside the package from those entry points.
+    every static import inside the package from those entry points, reading
+    the pinned revision so a later deletion still appears as a difference.
     """
-    package = checkout / "src" / "agent_retrieval_bench"
     seen: set[str] = set()
     pending = list(_SCORER_ENTRY_POINTS)
     while pending:
         name = pending.pop()
-        if name in seen or not (package / name).is_file():
+        path = f"src/{PACKAGE}/{name}"
+        if name in seen:
+            continue
+        try:
+            text = _upstream_git(checkout, "show", f"{revision}:{path}")
+        except subprocess.CalledProcessError:
             continue
         seen.add(name)
-        tree = ast.parse((package / name).read_text(encoding="utf-8"))
+        try:
+            tree = ast.parse(text)
+        except SyntaxError as exc:
+            raise ValueError(f"cannot parse ARB scorer source {path}: {exc}") from exc
         for node in ast.walk(tree):
             modules: list[str] = []
             if isinstance(node, ast.ImportFrom):
@@ -205,8 +213,8 @@ def upstream_revision(checkout: Path) -> str:
 def validate_upstream(checkout: Path) -> Path:
     """Accept a clean checkout whose scoring code matches the pinned revision.
 
-    The pinned revision passes as is. A later revision passes when it contains
-    the pinned commit and every file the scorer imports is unchanged from it,
+    The pinned revision passes as is. A later revision passes when it descends
+    from the pinned commit and every file the scorer imports is unchanged,
     so updates to unrelated evaluators do not block scoring. Reports record
     both the checkout's revision and the pinned scoring revision.
     """
@@ -226,10 +234,10 @@ def validate_upstream(checkout: Path) -> Path:
         raise ValueError("ARB evaluator package is missing")
     if git("rev-parse", "HEAD") != ARB_UPSTREAM_REVISION:
         try:
-            git("cat-file", "-e", f"{ARB_UPSTREAM_REVISION}^{{commit}}")
+            git("merge-base", "--is-ancestor", ARB_UPSTREAM_REVISION, "HEAD")
         except subprocess.CalledProcessError as exc:
             raise ValueError(
-                f"ARB evaluator must be {ARB_UPSTREAM_REVISION} or contain it"
+                f"ARB evaluator must be {ARB_UPSTREAM_REVISION} or descend from it"
             ) from exc
         changed = git(
             "diff",
@@ -237,7 +245,7 @@ def validate_upstream(checkout: Path) -> Path:
             ARB_UPSTREAM_REVISION,
             "HEAD",
             "--",
-            *scoring_sources(checkout),
+            *scoring_sources(checkout, ARB_UPSTREAM_REVISION),
         )
         if changed:
             raise ValueError(
