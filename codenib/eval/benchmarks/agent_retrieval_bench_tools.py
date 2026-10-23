@@ -19,7 +19,11 @@ files and report 1-based, inclusive line ranges.
   ordered by the number of connecting references.
 
 Graphs are cached under ``cache`` per snapshot, so later runs reuse a build
-and report its original cost with ``cached: true``.
+and report its original cost with ``cached: true``. A cached graph is reused
+only when the CodeNib sources and graph settings that built it match the
+current ones. A failed build is retried on the next run unless
+``retry_failed`` is false, which keeps index availability fixed across
+arms that share a prebuilt cache.
 """
 
 from __future__ import annotations
@@ -38,6 +42,7 @@ from codenib.types import (
     NODE_TYPE_FIELD,
     NODE_TYPE_FILE,
     is_symbol_node,
+    node_has_definition,
 )
 
 from . import _arb_methods as methods
@@ -45,24 +50,40 @@ from .agent_retrieval_bench import implementation_receipt
 
 _RECEIPT = "provider_receipt.json"
 _SEPARATORS = re.compile(r"::|[.#/]")
+# Parameter lists such as ``run(String)`` are not part of a lookup name.
+_PARAMETERS = re.compile(r"\([^()]*\)")
 
 
 class CodeNibToolProvider:
-    def __init__(self, workspace: str, cache: str | None = None):
+    def __init__(
+        self,
+        workspace: str,
+        cache: str | None = None,
+        retry_failed: bool | str = True,
+    ):
         self.workspace = Path(workspace).resolve()
         self.cache = Path(cache).resolve() if cache else self.workspace / "tool-graphs"
+        if self.cache == self.workspace:
+            # Both roots hold one lock per snapshot; sharing them would deadlock.
+            raise ValueError("cache must differ from workspace")
+        self.retry_failed = _flag(retry_failed)
         self._snapshots: dict[tuple[str, str], _SnapshotIndex | None] = {}
-
-    def describe(self) -> dict[str, Any]:
-        receipt = implementation_receipt()
-        return {
-            "name": "codenib",
-            "commit": _git_commit(),
-            "codenib_sources_sha256": receipt["codenib_sources_sha256"],
-            "source_access": "full-source",
+        self._identity = {
+            "codenib_sources_sha256": implementation_receipt()[
+                "codenib_sources_sha256"
+            ],
             "graph_build_timeout_seconds": methods.GRAPH_BUILD_TIMEOUT,
             "scip_python_index_timeout_seconds": _scip_python_timeout(),
             "min_language_share": methods.GRAPH_MIN_LANGUAGE_SHARE,
+        }
+
+    def describe(self) -> dict[str, Any]:
+        return {
+            "name": "codenib",
+            "commit": _git_commit(),
+            "source_access": "full-source",
+            "retry_failed": self.retry_failed,
+            **self._identity,
         }
 
     def prepare(self, *, repo: str, base_commit: str, paths: list[str]) -> dict:
@@ -71,10 +92,11 @@ class CodeNibToolProvider:
         directory.parent.mkdir(parents=True, exist_ok=True)
         with methods.snapshot_lock(directory):
             receipt_path = directory / _RECEIPT
-            cached = receipt_path.is_file()
+            receipt = _read_receipt(receipt_path)
+            cached = self._reusable(receipt)
             if not cached:
                 self._build(repo, base_commit, paths, directory)
-            receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+                receipt = _read_receipt(receipt_path)
         graph_path = directory / "arb_graph.pkl"
         index = None
         if receipt.get("graph") and graph_path.is_file():
@@ -88,7 +110,14 @@ class CodeNibToolProvider:
         self._snapshots[(repo, base_commit)] = index
         status = {
             key: receipt[key]
-            for key in ("languages", "available", "failed", "error", "build_seconds")
+            for key in (
+                "languages",
+                "available",
+                "failed",
+                "error",
+                "build_seconds",
+                "fetch_seconds",
+            )
             if key in receipt
         }
         status.update(cached=cached, available=index is not None)
@@ -102,6 +131,13 @@ class CodeNibToolProvider:
             )
         return status
 
+    def _reusable(self, receipt: dict | None) -> bool:
+        if receipt is None or receipt.get("identity") != self._identity:
+            return False
+        # A snapshot without graph languages has nothing to retry.
+        failed = not receipt.get("graph") and receipt.get("languages")
+        return not (failed and self.retry_failed)
+
     def _build(
         self, repo: str, base_commit: str, paths: list[str], directory: Path
     ) -> None:
@@ -112,7 +148,11 @@ class CodeNibToolProvider:
         staging = directory.with_name(directory.name + ".partial")
         shutil.rmtree(staging, ignore_errors=True)
         staging.mkdir(parents=True)
-        receipt: dict[str, Any] = {"languages": languages, "graph": False}
+        receipt: dict[str, Any] = {
+            "identity": self._identity,
+            "languages": languages,
+            "graph": False,
+        }
         fetch_seconds = 0.0
         try:
             if languages:
@@ -134,7 +174,7 @@ class CodeNibToolProvider:
                     if built != staging / "arb_graph.pkl":
                         shutil.move(str(built), staging / "arb_graph.pkl")
                     receipt["graph"] = True
-        except (OSError, RuntimeError, ValueError, subprocess.TimeoutExpired) as exc:
+        except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as exc:
             receipt["error"] = f"{type(exc).__name__}: {exc}"[:500]
         # Fetching source is acquisition, not index construction.
         receipt["build_seconds"] = time.perf_counter() - started - fetch_seconds
@@ -185,9 +225,13 @@ class _SnapshotIndex:
             attributes = vertex.attributes()
             if not is_symbol_node(attributes.get("type")):
                 continue
+            # Reference-only vertices (imports, unresolved names) are not
+            # definitions, even when a decoder files them under the importer.
+            if not node_has_definition(attributes):
+                continue
             if attributes.get("file") not in released:
                 continue
-            self._by_name.setdefault(_bare(_qualified(attributes)).lower(), []).append(
+            self._by_name.setdefault(_bare(_lookup(attributes)).lower(), []).append(
                 vertex.index
             )
         self.size = {
@@ -215,6 +259,7 @@ class _SnapshotIndex:
         for root in roots:
             scope.update(self._contained(root))
         counts: dict[tuple[int, str], int] = {}
+        anchors: dict[tuple[int, str], int] = {}
         for vertex in scope:
             for mode, relation in (("in", "uses symbol"), ("out", "used by symbol")):
                 for edge in g.incident(vertex, mode=mode):
@@ -226,7 +271,13 @@ class _SnapshotIndex:
                         continue
                     if other_path not in self._released:
                         continue
-                    counts[(other, relation)] = counts.get((other, relation), 0) + 1
+                    key = (other, relation)
+                    counts[key] = counts.get(key, 0) + 1
+                    # File-scope references have no symbol span; keep the
+                    # first line where the reference occurs instead.
+                    line = g.es[edge].attributes().get("anchor_line")
+                    if isinstance(line, int) and line >= 0:
+                        anchors[key] = min(anchors.get(key, line), line)
         ranked = sorted(
             counts,
             key=lambda key: (-counts[key], self._file(key[0]), self._start(key[0])),
@@ -234,12 +285,15 @@ class _SnapshotIndex:
         hits = []
         for vertex, relation in ranked[:limit]:
             hit = self._hit(vertex)
+            line = anchors.get((vertex, relation))
+            if "start_line" not in hit and line is not None:
+                hit["start_line"] = hit["end_line"] = line + 1
             hit["relation"] = f"{relation}, {counts[(vertex, relation)]} refs"
             hits.append(hit)
         return hits
 
     def _matching(self, symbol: str) -> list[int]:
-        query = symbol.strip().strip("`'\"").removesuffix("()")
+        query = _PARAMETERS.sub("", symbol.strip().strip("`'\""))
         parts = [part for part in _SEPARATORS.split(query) if part]
         if not parts:
             return []
@@ -247,7 +301,7 @@ class _SnapshotIndex:
         wanted = ".".join(parts)
 
         def qualified(vertex: int) -> str:
-            name = _qualified(self._graph.graph.vs[vertex].attributes())
+            name = _lookup(self._graph.graph.vs[vertex].attributes())
             return ".".join(part for part in _SEPARATORS.split(name) if part)
 
         def suffix(name: str, target: str) -> bool:
@@ -322,9 +376,32 @@ def _qualified(attributes: dict[str, Any]) -> str:
     return display.removesuffix("()")
 
 
+def _lookup(attributes: dict[str, Any]) -> str:
+    """The qualified name without parameter lists, for matching."""
+    return _PARAMETERS.sub("", _qualified(attributes))
+
+
 def _bare(name: str) -> str:
     parts = [part for part in _SEPARATORS.split(name) if part]
     return parts[-1] if parts else name
+
+
+def _flag(value: bool | str) -> bool:
+    """A provider option that may arrive as a command-line string."""
+    if isinstance(value, bool):
+        return value
+    if value.strip().lower() in {"1", "true", "yes"}:
+        return True
+    if value.strip().lower() in {"0", "false", "no"}:
+        return False
+    raise ValueError(f"expected true or false, got {value!r}")
+
+
+def _read_receipt(path: Path) -> dict | None:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
 
 
 def _scip_python_timeout() -> float:
