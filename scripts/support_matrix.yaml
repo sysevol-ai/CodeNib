@@ -161,6 +161,7 @@ benchmarks:
       - codenib/eval/benchmarks/agent_retrieval_bench.py
       - codenib/eval/benchmarks/agent_retrieval_bench_runner.py
       - codenib/eval/benchmarks/_arb_evaluate.py
+      - codenib/eval/benchmarks/_arb_methods.py
 
   - id: contextbench
     name: ContextBench

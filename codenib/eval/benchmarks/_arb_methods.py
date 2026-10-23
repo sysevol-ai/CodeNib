@@ -2,12 +2,13 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Dense, hybrid, and Zoekt ARB rankers over the released corpus (labs).
+"""Dense, hybrid, Zoekt, and graph-expansion ARB rankers (labs).
 
 Each index is built once per corpus snapshot and exposes ``build_seconds``,
 ``size``, ``tool_calls`` (searches issued by the latest ``rank``), and
-``rank(query_text)``. Like BM25, they read only the released query text and
-corpus rows; gold, fix commits, and annotations never reach them.
+``rank(query_text)``. They read only the released query text and corpus rows,
+plus, for graph expansion, a clean checkout at the sample's base commit; gold,
+fix commits, and annotations never reach them.
 """
 
 from __future__ import annotations
@@ -17,12 +18,15 @@ import json
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 from pathlib import Path, PurePosixPath
 from typing import Any
 
 import numpy as np
+
+from codenib.types import EDGE_TYPE_CONTAIN, EDGE_TYPE_REFERENCE, NODE_TYPE_FILE
 
 from .agent_retrieval_bench import BM25CorpusIndex, complete_file_ranking, corpus_chunks
 
@@ -353,3 +357,277 @@ class ZoektCorpusIndex:
 
     def close(self) -> None:
         shutil.rmtree(self._workdir, ignore_errors=True)
+
+
+# Full-source code-graph expansion. Scores still use released text only.
+
+GRAPH_SEED_FILES = 5
+GRAPH_NEIGHBOR_FILES = 15
+GRAPH_BUILD_TIMEOUT = 1800
+GRAPH_MIN_LANGUAGE_SHARE = 0.1
+_GRAPH_LANGUAGES = {
+    ".py": "python",
+    ".pyi": "python",
+    ".go": "go",
+    ".rs": "rust",
+    ".ts": "typescript",
+    ".tsx": "typescript",
+    ".mts": "typescript",
+    ".cts": "typescript",
+    ".js": "typescript",
+    ".jsx": "typescript",
+    ".mjs": "typescript",
+    ".cjs": "typescript",
+    ".java": "java",
+}
+_SNAPSHOT_RECEIPT = ".codenib-arb-snapshot.json"
+
+
+def snapshot_languages(corpus: list[dict[str, Any]]) -> list[str]:
+    """Graph languages holding at least 10% of the released source files."""
+    counts: dict[str, int] = {}
+    for row in corpus:
+        if row["kind"] == "file":
+            language = _GRAPH_LANGUAGES.get(PurePosixPath(row["path"]).suffix)
+            if language:
+                counts[language] = counts.get(language, 0) + 1
+    total = sum(counts.values())
+    return sorted(
+        (lang for lang, n in counts.items() if n >= GRAPH_MIN_LANGUAGE_SHARE * total),
+        key=lambda lang: (-counts[lang], lang),
+    )
+
+
+def _git(checkout: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", "-C", str(checkout), *args],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+
+
+def fetch_snapshot(
+    repo: str, base_commit: str, root: Path, *, remote: str | None = None
+) -> Path:
+    """A clean working tree at ``base_commit`` without later history.
+
+    A depth-1 fetch of the commit alone keeps the resolving change and every
+    later commit out of the object store. A reused checkout must still be
+    that single, clean commit.
+    """
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo) or not re.fullmatch(
+        r"[0-9a-f]{40}", base_commit
+    ):
+        raise ValueError(f"invalid snapshot identity: {repo}@{base_commit}")
+    target = root / repo.replace("/", "__") / base_commit
+    if not (target / _SNAPSHOT_RECEIPT).is_file():
+        staging = Path(tempfile.mkdtemp(prefix="fetch-", dir=root))
+        try:
+            _git(staging, "init", "-q")
+            url = remote or f"https://github.com/{repo}.git"
+            _git(staging, "remote", "add", "origin", url)
+            _git(staging, "fetch", "-q", "--depth", "1", "origin", base_commit)
+            _git(staging, "checkout", "-q", "--detach", "FETCH_HEAD")
+            (staging / ".git" / "info" / "exclude").write_text(
+                _SNAPSHOT_RECEIPT + "\n", encoding="utf-8"
+            )
+            (staging / _SNAPSHOT_RECEIPT).write_text(
+                json.dumps({"repo": repo, "base_commit": base_commit}) + "\n",
+                encoding="utf-8",
+            )
+            target.parent.mkdir(parents=True, exist_ok=True)
+            staging.rename(target)
+        finally:
+            shutil.rmtree(staging, ignore_errors=True)
+    if _git(target, "rev-parse", "HEAD") != base_commit:
+        raise ValueError(f"checkout is not at {base_commit}")
+    if _git(target, "rev-list", "--count", "--all") != "1":
+        raise ValueError("checkout has history beyond the base commit")
+    if _git(target, "status", "--porcelain", "--untracked-files=no"):
+        raise ValueError("checkout has local changes")
+    return target
+
+
+def build_graph(checkout: Path, output: Path, languages: list[str]) -> dict[str, Any]:
+    """Build a CodeNib graph in a child process, bounded by a timeout."""
+    process = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "codenib.eval.benchmarks._arb_methods",
+            "build-graph",
+            str(checkout),
+            str(output),
+            ",".join(languages),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=GRAPH_BUILD_TIMEOUT,
+        check=False,
+    )
+    report_path = output / "arb_graph_report.json"
+    if process.returncode or not report_path.is_file():
+        raise RuntimeError(f"graph build failed: {process.stderr[-2000:]}")
+    return json.loads(report_path.read_text(encoding="utf-8"))
+
+
+def _build_graph_main(checkout: str, output: str, languages: str) -> int:
+    from codenib.ls_router import build_graph_for_languages_with_report
+
+    result = build_graph_for_languages_with_report(
+        checkout,
+        output,
+        languages=languages.split(","),
+        allow_partial=True,
+        # Never install dependencies or run project setup commands.
+        allow_project_preparation=False,
+    )
+    report = {
+        "requested_languages": list(result.requested_languages),
+        "available_languages": list(result.available_languages),
+        "failed_languages": dict(result.failed_languages),
+        "graph": None,
+    }
+    if result.graph is not None:
+        path = Path(output) / "arb_graph.pkl"
+        result.graph.save_graph(str(path))
+        report["graph"] = str(path)
+    (Path(output) / "arb_graph_report.json").write_text(
+        json.dumps(report), encoding="utf-8"
+    )
+    return 0
+
+
+class GraphExpansionIndex:
+    """BM25 seeds expanded over compiler-resolved references (full source).
+
+    The graph comes from SCIP/LSP indexing of a clean checkout at the
+    sample's ``base_commit``. ``rank`` keeps the top five BM25 files, then
+    adds up to 15 released files whose symbols reference, or are referenced
+    by, symbols in those seeds, ordered by connecting references. The
+    remaining files follow in BM25 order. Files outside the released
+    candidate set are dropped and counted. Without a graph, the ranking is
+    BM25.
+    """
+
+    tool_calls = 2
+
+    def __init__(
+        self,
+        corpus: list[dict[str, Any]],
+        *,
+        repo: str,
+        base_commit: str,
+        workspace: Path,
+    ):
+        from codenib.graph.code_graph import CodeGraph
+
+        started = time.perf_counter()
+        self._bm25 = BM25CorpusIndex(corpus)
+        self._paths = {row["path"] for row in corpus}
+        fetched = time.perf_counter()
+        checkout = fetch_snapshot(repo, base_commit, workspace)
+        self.fetch_seconds = time.perf_counter() - fetched
+        built = time.perf_counter()
+        languages = snapshot_languages(corpus)
+        self._output = Path(tempfile.mkdtemp(prefix="graph-", dir=workspace))
+        self._graph = None
+        graph_size: dict[str, Any] = {"languages": languages, "available": []}
+        try:
+            report = build_graph(checkout, self._output, languages) if languages else {}
+            graph_size["available"] = report.get("available_languages", [])
+            if report.get("failed_languages"):
+                graph_size["failed"] = {
+                    lang: str(reason)[:300]
+                    for lang, reason in report["failed_languages"].items()
+                }
+            if report.get("graph"):
+                self._graph = CodeGraph.load_graph(report["graph"])
+        except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
+            graph_size["error"] = f"{type(exc).__name__}: {exc}"[:500]
+        self.graph_build_seconds = time.perf_counter() - built
+        if self._graph is not None:
+            graph = self._graph.graph
+            graph_size.update(
+                vertices=graph.vcount(),
+                edges=graph.ecount(),
+                reference_edges=sum(
+                    edge["type"] == EDGE_TYPE_REFERENCE for edge in graph.es
+                ),
+            )
+        # Fetching source is acquisition, not index construction.
+        self.build_seconds = time.perf_counter() - started - self.fetch_seconds
+        self.size = {"bm25": self._bm25.size, "graph": graph_size}
+        self.graph_used = False
+        self.removed_non_candidate_paths = 0
+
+    def _adjacent(self, vertex: int, edge_type: str, mode: str) -> list[int]:
+        graph = self._graph.graph
+        return [
+            graph.es[edge].target if mode == "out" else graph.es[edge].source
+            for edge in graph.incident(vertex, mode=mode)
+            if graph.es[edge]["type"] == edge_type
+        ]
+
+    def _file_symbols(self, path: str) -> list[int]:
+        """The file vertex and every symbol it contains, transitively."""
+        start = self._graph.name_to_vertex.get(path)
+        if start is None:
+            return []
+        found, pending = [start], [start]
+        while pending:
+            for child in self._adjacent(pending.pop(), EDGE_TYPE_CONTAIN, "out"):
+                if self._graph.graph.vs[child]["type"] != NODE_TYPE_FILE:
+                    found.append(child)
+                    pending.append(child)
+        return found
+
+    def _vertex_file(self, vertex: int) -> str | None:
+        attributes = self._graph.graph.vs[vertex].attributes()
+        if attributes.get("type") == NODE_TYPE_FILE:
+            return attributes.get("name")
+        return attributes.get("file")
+
+    def rank(self, query_text: str) -> list[str]:
+        ranked = self._bm25.rank(query_text)
+        self.graph_used = self._graph is not None
+        self.tool_calls = 2 if self.graph_used else 1
+        self.removed_non_candidate_paths = 0
+        if self._graph is None:
+            return ranked
+        seeds = ranked[:GRAPH_SEED_FILES]
+        weights: dict[str, int] = {}
+        first: dict[str, int] = {}
+        removed: set[str] = set()
+        for seed_rank, seed in enumerate(seeds):
+            for symbol in self._file_symbols(seed):
+                for neighbor in self._adjacent(
+                    symbol, EDGE_TYPE_REFERENCE, "out"
+                ) + self._adjacent(symbol, EDGE_TYPE_REFERENCE, "in"):
+                    path = self._vertex_file(neighbor)
+                    if not path or path in seeds:
+                        continue
+                    if path not in self._paths:
+                        removed.add(path)
+                        continue
+                    weights[path] = weights.get(path, 0) + 1
+                    first.setdefault(path, seed_rank)
+        self.removed_non_candidate_paths = len(removed)
+        neighbors = sorted(
+            weights, key=lambda path: (-weights[path], first[path], path)
+        )
+        head = seeds + neighbors[:GRAPH_NEIGHBOR_FILES]
+        chosen = set(head)
+        return complete_file_ranking(
+            head + [path for path in ranked if path not in chosen], self._paths
+        )
+
+    def close(self) -> None:
+        shutil.rmtree(self._output, ignore_errors=True)
+
+
+if __name__ == "__main__":
+    if sys.argv[1:2] != ["build-graph"] or len(sys.argv) != 5:
+        raise SystemExit("usage: build-graph CHECKOUT OUTPUT LANGUAGES")
+    raise SystemExit(_build_graph_main(*sys.argv[2:]))

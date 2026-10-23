@@ -131,8 +131,10 @@ paths fail the corresponding case.
 ## Retrieval methods
 
 `codenib-arb run --method` chooses how files are ranked. Every method reads
-only the released query and corpus, indexes each corpus snapshot once, and is
-scored by the same pinned evaluator.
+only the released query, indexes each corpus snapshot once, and is scored by
+the same pinned evaluator. All methods except `graph_expansion` read only the
+released corpus; `graph_expansion` also reads the full source, a separate
+condition described below.
 
 | Method | Index per snapshot | Ranking |
 | --- | --- | --- |
@@ -140,6 +142,7 @@ scored by the same pinned evaluator.
 | `dense` | Exact inner-product search over Qwen3-Embedding-0.6B vectors of every chunk | Same first-hit file ranking |
 | `hybrid` | Both indexes above | CodeNib's file-level weighted RRF (k = 60) of the two file rankings |
 | `zoekt` | Zoekt trigram index of every file and symbol chunk | One Zoekt query per code-like term in the query; files ordered by matched terms, then first match |
+| `graph_expansion` | BM25 as above, plus a CodeNib code graph of the full source | The top five BM25 files, then up to 15 files connected to them by code references, then the rest in BM25 order |
 
 The dense model embeds chunks truncated to 512 tokens, with no query or
 document instruction, which matches ARB's own embedding baseline. On a GPU it
@@ -153,6 +156,39 @@ backticked spans, and identifiers written with `_`, camelCase, or capitals, up
 to 32 per sample. Each term is one tool call. Files that match no term are not
 ranked, so its rankings can be shorter than the corpus. It needs `make
 zoekt-tool` or `--zoekt-bin-dir`.
+
+### Full-source graph expansion
+
+A code graph records which symbols reference which, as resolved by the
+language's compiler-grade indexer (SCIP, or a language server). The indexer
+needs the real repository, so `graph_expansion` fetches each sample's
+`base_commit` into `--workspace` and builds the graph from that checkout:
+
+```bash
+codenib-arb run --method graph_expansion --workspace /tmp/arb-src \
+  --prepared /tmp/arb-prepared.json --upstream /tmp/arb --output /tmp/arb-graph
+```
+
+The rules for this condition follow the
+[ARB maintainers' reply](https://github.com/eyuansu62/agent-retrieval-bench/issues/2#issuecomment-6334640769):
+
+- The checkout is a depth-one fetch of `base_commit`, so neither the resolving
+  change nor any later commit is in its object store. A reused checkout must
+  still be that single, unmodified commit.
+- Only the released query reaches retrieval; gold and annotations never do.
+- Graph neighbors outside the released candidate set are dropped and counted
+  in `removed_non_candidate_paths`. Scores and canonical BCY use released text.
+
+The graph covers each language holding at least 10% of the snapshot's source
+files and is built in a child process with a 30-minute limit. It never installs
+dependencies or runs project setup, but the Rust and Java indexers run the
+project's own build tooling. If no graph can be built, the sample is ranked by
+BM25 and recorded with `graph_used: false`. Fetching source is reported as
+`source_fetch_seconds`, apart from the build. CodeNib's Go graph omits
+`_test.go` files, so expansion cannot propose Go tests.
+
+Rankings produced elsewhere from the full source can be scored under the same
+rule with `codenib-arb evaluate --source-access full-source`.
 
 ## Metric contract
 
@@ -245,23 +281,16 @@ These routes are candidates for later adapters:
 
 | Existing CodeNib capability | Proposed comparison |
 | --- | --- |
-| CodeGraph relationships | Search seeds plus definition/reference/call expansion |
-| Zoekt inside an agent loop | Multi-round exact symbol, path, and trace search |
+| Zoekt and graph tools inside an agent loop | Multi-round exact symbol, path, trace, and relationship search |
 | Retrieve → rerank | Candidate ordering with a model at fixed budgets |
 
 Before comparing agent strategies, fix the model, tool permissions, query
 budget, and final context budget. Report index build time and size separately
 from query latency and model cost.
 
-Code-graph indexes usually need the full repository, which shows more than the
-released corpus because the corpus builder truncates long files. The ARB
-maintainers asked that such runs be reported as a separate condition
-([issue #2 reply](https://github.com/eyuansu62/agent-retrieval-bench/issues/2#issuecomment-6334640769)).
-The native baseline reads only the released corpus. A full-source run may index
-a clean working tree at each sample's `base_commit`, without later history. It
-must be labeled as full source, keep gold labels and resolving changes out of
-retrieval inputs, score only files in the released candidate set, and compute
-canonical BCY on the released text.
+Full-source results are a separate condition from released-corpus results;
+report them in separate rows, as the [graph expansion rules](#full-source-graph-expansion)
+describe.
 
 An indexed-interactive comparison, where an agent searches iteratively with
 and without graph expansion under a fixed model and budget, is a follow-up
