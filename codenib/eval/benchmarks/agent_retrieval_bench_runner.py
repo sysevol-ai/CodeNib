@@ -765,7 +765,8 @@ def execute(
                             raise ValueError(
                                 "the base run has no ranking for this case"
                             )
-                        prediction["base_tool_calls"] = base.get("tool_calls", 0)
+                        # Unknown for an external base; never assumed to be 0.
+                        prediction["base_tool_calls"] = base.get("tool_calls")
                     queried = time.perf_counter()
                     try:
                         if base is None:
@@ -777,9 +778,7 @@ def execute(
                             )
                     finally:
                         prediction["query_seconds"] = time.perf_counter() - queried
-                        prediction["tool_calls"] = index.tool_calls + (
-                            prediction.get("base_tool_calls") or 0
-                        )
+                        prediction["tool_calls"] = index.tool_calls
                         if hasattr(index, "graph_used"):
                             prediction["graph_used"] = index.graph_used
                             prediction["removed_non_candidate_paths"] = (
@@ -813,6 +812,17 @@ def execute(
                 )
             if method == "graph_expansion":
                 result["retrieval_usage"]["graph"] = graph_usage(predictions)
+            if method == "rerank":
+                known = [
+                    row["base_tool_calls"]
+                    for row in predictions
+                    if row.get("base_tool_calls") is not None
+                ]
+                # tool_calls counts this stage; the base run's calls stay apart.
+                result["retrieval_usage"]["base_tool_calls"] = {
+                    "known": distribution(known),
+                    "unknown_samples": len(predictions) - len(known),
+                }
             result["environment"] = run_environment()
         write_json_atomic(result_path, result)
     return result

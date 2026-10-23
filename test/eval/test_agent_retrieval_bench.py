@@ -859,11 +859,12 @@ def test_rerank_reorders_a_completed_base_run(
         path, output, tmp_path, method="rerank", rerank={"base": base, "top_k": 5}
     )
     assert result["summary"]["overall"]["valid"] == 4
+    assert result["retrieval_usage"]["base_tool_calls"]["unknown_samples"] == 0
     for row in runner.load_predictions(output / "predictions.json"):
         prior = base_rows[row["sample_id"]]
         assert set(row["ranked_files"][:5]) == set(prior["ranked_files"][:5])
         assert row["ranked_files"][5:] == prior["ranked_files"][5:]
-        assert row["tool_calls"] == prior["tool_calls"] + 1
+        assert (row["tool_calls"], row["base_tool_calls"]) == (1, prior["tool_calls"])
     # The reranker sees the query text and released file text, never gold.
     assert all(
         len(docs) == 5 and "PRIVATE_GOLD" not in str(docs) for _q, docs in scored
@@ -871,6 +872,26 @@ def test_rerank_reorders_a_completed_base_run(
     receipt = json.loads((output / "config.json").read_text())["method_config"]
     assert receipt["base"]["predictions_sha256"] == runner.json_digest(
         runner.load_predictions(base / "predictions.json")
+    )
+    # An external base records no tool calls; they stay unknown, not zero.
+    external = tmp_path / "external.json"
+    external.write_text(json.dumps(predictions(_prepared)))
+    runner.execute(path, tmp_path / "ext", tmp_path, pred_path=external)
+    result = runner.execute(
+        path,
+        tmp_path / "ext-rerank",
+        tmp_path,
+        method="rerank",
+        rerank={"base": tmp_path / "ext"},
+    )
+    assert result["retrieval_usage"]["base_tool_calls"] == {
+        "known": None,
+        "unknown_samples": 4,
+    }
+    # The partial external rankings stay partial.
+    assert all(
+        len(row["ranked_files"]) == 3
+        for row in runner.load_predictions(tmp_path / "ext-rerank" / "predictions.json")
     )
     # A base over other prepared cases is refused.
     other = json.loads(path.read_text())

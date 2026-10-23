@@ -555,6 +555,17 @@ def test_rerank_fuses_the_rescored_top_files_with_the_base_order():
     )
     with pytest.raises(RuntimeError, match="out of memory on 1 files"):
         exhausted.rerank("q", ["a.py", "b.py", "c.py", "d.py"])
+    # Duplicates collapse to their first place, and a partial base ranking
+    # stays partial.
+    seen.clear()
+    assert index.rerank("q", ["a.py", "a.py", "b.py", "c.py"]) == [
+        "a.py",
+        "c.py",
+        "b.py",
+    ]
+    assert [doc.split("\n")[0] for doc in seen[0][1]] == ["a.py", "b.py", "c.py"]
+    seen.clear()
+    index.rerank("q", ["a.py", "b.py", "c.py", "d.py"])
     # Each top file is scored as its path and released text.
     assert seen == [
         ("q", [f"{path}\ntext of {path}" for path in ("a.py", "b.py", "c.py")])

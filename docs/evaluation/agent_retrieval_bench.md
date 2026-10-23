@@ -259,8 +259,10 @@ instruction. It never sees gold labels. A file it cannot score within GPU
 memory fails the case rather than scoring zero. `--rerank-model` with
 `--rerank-revision`, `--rerank-top-k`, `--rerank-max-length`, and
 `--rerank-batch-size` change the model and its limits. The receipt records
-them with digests of the base run's receipt and predictions. A sample's tool
-calls are the base run's plus one. It needs the `semantic` extra.
+them with digests of the base run's receipt and predictions. The output holds
+exactly the base ranking's files, duplicates removed. `tool_calls` counts the
+stage's one scoring call, and `base_tool_calls` the base run's, left empty when
+the base did not record it. It needs the `semantic` extra.
 
 The Zoekt method takes its terms from the query's string values: file names,
 backticked spans, and identifiers written with `_`, camelCase, or capitals, up

@@ -222,6 +222,7 @@ class RerankCorpusIndex:
     Each file is scored as its path and released text, which the model
     truncates to its length limit. The scored order is fused with the base
     order by file-level RRF, and files below ``top_k`` keep the base order.
+    The result holds exactly the base ranking's files.
     """
 
     tool_calls = 1
@@ -243,7 +244,9 @@ class RerankCorpusIndex:
         from codenib.ops.retrieve import merge_file_rankings
         from codenib.types import QueriedNode
 
-        head = base[: self._top_k]
+        # The evaluator keeps a path's first occurrence; so does the head.
+        ranking = list(dict.fromkeys(base))
+        head, tail = ranking[: self._top_k], ranking[self._top_k :]
         model = self._reranker.model
         before = getattr(model, "oom_fallbacks", 0)
         scores = model.score(
@@ -264,9 +267,11 @@ class RerankCorpusIndex:
             for ranking in (head, order)
         ]
         fused = merge_file_rankings(branches, rrf_k=HYBRID_RRF_K)
-        return complete_file_ranking(
-            [*(node.file for node in fused), *base[self._top_k :]], self._paths
-        )
+        reranked = [*(node.file for node in fused), *tail]
+        # Exactly the base's files, which may be fewer than the corpus.
+        if sorted(reranked) != sorted(ranking):
+            raise ValueError("reranking changed the base ranking's files")
+        return reranked
 
 
 _BACKTICK = re.compile(r"`([^`\n]{2,60})`")
