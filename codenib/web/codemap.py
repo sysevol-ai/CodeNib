@@ -1051,11 +1051,17 @@ def _unmapped_citations_note(
             "snapshot as the Wiki indexes."
         )
     # Graphs can hold test files (Go graphs do), so name what was missed.
-    tests = (
-        "test files, which the symbol graph does not index"
-        if not any(f in by_file for f in test_files)
-        else "test files whose cited lines match no symbol the graph holds"
-    )
+    indexed_tests = sum(1 for f in test_files if f in by_file)
+    if not indexed_tests:
+        tests = "test files, which the symbol graph does not index"
+    elif indexed_tests == len(test_files):
+        tests = "test files whose cited lines match no symbol the graph holds"
+    else:
+        tests = (
+            f"test files: {len(test_files) - indexed_tests} are not in the "
+            f"symbol graph, and the cited lines of {indexed_tests} match no "
+            "symbol it holds"
+        )
     if len(test_files) == len(files):
         return f"This page cites {cited}, all in {tests}."
     graph_exts = sorted({os.path.splitext(f)[1] for f in by_file} - {""})

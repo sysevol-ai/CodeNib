@@ -28,6 +28,7 @@ from .go_modules import (
     merge_module_indexes,
     nested_go_modules,
     workspace_includes,
+    workspace_uses,
 )
 from .scip_indexer_base import SCIPIndexerBase
 
@@ -249,6 +250,21 @@ class SCIPGoIndexer(SCIPIndexerBase):
             )
             if replacement.directory in directories
         ]
+        # Members outside the checkout (an enclosing go.work) still apply
+        # their replacements to workspace builds; keep those into this tree.
+        inside = {(self.project_root / d).resolve() for d in directories}
+        for member in workspace_uses(workspace_file) if workspace_file else []:
+            if member in inside:
+                continue
+            key = f"@{member}"
+            replacements[key] = [
+                replacement
+                for replacement in local_replacements(
+                    member / "go.mod", self.project_root
+                )
+                if replacement.directory in directories
+            ]
+            members.add(key)
         merge_module_indexes(
             root, indexes, root_module, covered, replacements, workspace, members
         )

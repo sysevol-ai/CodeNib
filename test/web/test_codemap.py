@@ -1128,6 +1128,18 @@ def test_page_subgraph_does_not_blame_the_snapshot_for_indexed_test_files():
         "This page cites 1 source location, all in test files whose cited lines "
         "match no symbol the graph holds."
     )
+    # A mix of indexed and missing test files names both.
+    result = build_page_subgraph(
+        graph,
+        [
+            {"file": "internal/pkg/run_test.go", "start_line": 5},
+            {"file": "internal/pkg/gone_test.go", "start_line": 5},
+        ],
+    )
+    assert result["note"] == (
+        "This page cites 2 source locations, all in test files: 1 are not in "
+        "the symbol graph, and the cited lines of 1 match no symbol it holds."
+    )
 
 
 def _boundary_graph() -> CodeGraph:

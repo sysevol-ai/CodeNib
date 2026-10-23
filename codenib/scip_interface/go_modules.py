@@ -28,6 +28,8 @@ _SKIPPED_DIRS = {"vendor", "testdata", "node_modules"}
 # replacement arrow, block parentheses, and bare words.
 _TOKEN = re.compile(r'"(?:[^"\\]|\\.)*"|`[^`]*`|//|=>|[()]|[^\s()"`]+')
 _PACKAGE = re.compile(r"`([^`]+)`")
+# SCIP simple identifiers: a descriptor may start with an unescaped package.
+_SIMPLE_PACKAGE = re.compile(r"([A-Za-z0-9_+$-]+)/")
 
 
 @dataclass(frozen=True)
@@ -185,15 +187,19 @@ def active_workspace(project_root: Path) -> Optional[Path]:
     return Path(found) if found and found != "off" else None
 
 
-def workspace_includes(go_work: Path, directory: Path) -> bool:
-    """Whether ``go_work`` lists ``directory`` in a ``use`` directive."""
-    target = directory.resolve()
-    return any(
-        (go_work.parent / argument).resolve() == target
+def workspace_uses(go_work: Path) -> List[Path]:
+    """The module directories a go.work file's ``use`` directives name."""
+    return [
+        (go_work.parent / argument).resolve()
         for verb, arguments in go_directives(go_work)
         if verb == "use"
         for argument in arguments
-    )
+    ]
+
+
+def workspace_includes(go_work: Path, directory: Path) -> bool:
+    """Whether ``go_work`` lists ``directory`` in a ``use`` directive."""
+    return directory.resolve() in workspace_uses(go_work)
 
 
 # Module path -> {required version (None for any) -> directory}. Directory ""
@@ -241,6 +247,11 @@ def rename_module_symbol(
     parts[2] = root_module
     if version:
         parts[3] = version
+    # A simple package name is emitted without backticks (``foo/Run().``);
+    # rewritten, it needs them, since the new path holds dots and slashes.
+    simple = _SIMPLE_PACKAGE.match(parts[4])
+    if simple and simple.group(1) == module:
+        parts[4] = f"`{module}`/" + parts[4][simple.end() :]
     parts[4] = _PACKAGE.sub(package, parts[4])
     return " ".join(parts)
 
@@ -336,9 +347,13 @@ def merge_module_indexes(
         )
 
     def effective(directory: str) -> _Mapping:
-        if directory in members:
-            return in_workspace
-        return _merged(unique, _replacing(replacements.get(directory, ())))
+        mapping = (
+            in_workspace
+            if directory in members
+            else _merged(unique, _replacing(replacements.get(directory, ())))
+        )
+        # The main module stays at the root; a self-replacement has no effect.
+        return {**mapping, root_module: {None: ""}}
 
     shared = renamer(effective(""))
     for document in root.documents:

@@ -595,3 +595,70 @@ def test_every_workspace_member_shapes_workspace_runs():
         # A member's own run sees go.work's replacements too.
         _symbol(ROOT, f"{ROOT}/c/y", "Go()."),
     ]
+
+
+def test_simple_package_descriptors_are_rewritten():
+    mapping = {"foo": {None: "tools/foo"}}
+    assert gm.rename_module_symbol(
+        "scip-go gomod foo v0 foo/Run().", ROOT, mapping
+    ) == _symbol(ROOT, f"{ROOT}/tools/foo", "Run().")
+
+
+def test_root_self_replacement_does_not_move_the_root_module():
+    merged = gm.merge_module_indexes(
+        _root_index(),
+        [],
+        ROOT,
+        replacements={"": [gm.Replacement(ROOT, None, "examples/copy")]},
+    )
+    assert merged.documents[0].occurrences[0].symbol == _symbol(
+        ROOT, f"{ROOT}/lib", "Helper()."
+    )
+
+
+def test_enclosing_workspace_members_outside_the_checkout_apply(tmp_path, monkeypatch):
+    repository = tmp_path / "repository"
+    _write_modules(repository)
+    sibling = tmp_path / "sibling"
+    sibling.mkdir()
+    (sibling / "go.mod").write_text(
+        "module example.test/sibling\n"
+        "replace example.com/alias => ../repository/server\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "go.work").write_text(
+        "go 1.22\nuse (\n\t./repository\n\t./sibling\n)\n", encoding="utf-8"
+    )
+    monkeypatch.delenv("GOWORK", raising=False)
+    indexer = go.SCIPGoIndexer(repository, output_dir=tmp_path / "state")
+    monkeypatch.setattr(indexer, "_check_indexer_available", lambda: True)
+
+    def run(command, **kwargs):
+        if command[:2] == ["go", "env"]:
+            return subprocess.CompletedProcess(
+                command, 0, str(tmp_path / "go.work") + "\n", ""
+            )
+        index = Index()
+        if Path(kwargs["cwd"]) == repository:
+            alias = "example.com/alias"
+            _document(
+                index, "main.go", [(1, _symbol(alias, f"{alias}/auth", "Check()."), 0)]
+            )
+        else:
+            index = _server_index()
+        Path(command[command.index("--output") + 1]).write_bytes(
+            index.SerializeToString()
+        )
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(subprocess, "run", run)
+    assert indexer.generate_index() is True
+    merged = Index()
+    merged.ParseFromString(indexer.index_file.read_bytes())
+    checks = {
+        occurrence.symbol
+        for document in merged.documents
+        for occurrence in document.occurrences
+        if "Check()" in occurrence.symbol
+    }
+    assert {s.split(" ", 4)[4] for s in checks} == {f"`{ROOT}/server/auth`/Check()."}
