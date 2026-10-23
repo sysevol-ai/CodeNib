@@ -55,8 +55,10 @@ def test_zoekt_terms_skip_noise_and_cap():
     assert not {"ERROR", "TODO", "ab"} & set(terms)
 
 
-def test_zoekt_literal_escapes_re2_metacharacters():
-    assert methods._zoekt_literal("c.JSON(x)[0]") == r"c\.JSON\(x\)\[0\]"
+def test_zoekt_literal_quotes_operators_and_escapes_re2():
+    assert methods._zoekt_literal("c.JSON(x)[0]") == r'"c\\.JSON\\(x\\)\\[0\\]"'
+    assert methods._zoekt_literal("or") == '"or"'
+    assert methods._zoekt_literal('a"b') == r'"a\"b"'
 
 
 class FakeEmbedding:
@@ -148,11 +150,15 @@ def test_zoekt_ranks_symbol_rows_by_their_file_and_counts_calls():
         # Released file text can stop before a symbol; its chunk still matches.
         ("src/router.go", "function", "handlePanic", "func handlePanic() {}"),
         ("src/router_test.go", "file", "", "func TestRoutePanic(t) { Route() }"),
+        ("src/ops.go", "file", "", "// or file:x -ctx.Done(c.JSON("),
         ("README", "file", "", "unrelated"),
     )
     index = methods.ZoektCorpusIndex(corpus, _zoekt_dir())
     try:
-        assert index.size["documents"] == 4 and index.size["index_bytes"] > 0
+        assert index.size["documents"] == 5 and index.size["index_bytes"] > 0
+        # Operators, flag-like terms, and RE2 metacharacters match literally.
+        for term in ("or", "file:x", "-ctx.Done", "c.JSON("):
+            assert index._files(term) == ["src/ops.go"]
         query = json.dumps({"failure_excerpt": "handlePanic in TestRoutePanic"})
         ranked = index.rank(query)
         assert index.tool_calls == 2
