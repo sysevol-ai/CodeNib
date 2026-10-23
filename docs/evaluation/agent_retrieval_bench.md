@@ -373,7 +373,40 @@ Full-source results are a separate condition from released-corpus results;
 report them in separate rows, as the [graph expansion rules](#full-source-graph-expansion)
 describe.
 
-An indexed-interactive comparison, where an agent searches iteratively with
-and without graph expansion under a fixed model and budget, is a follow-up
-track. It is separate from ARB's closed-tool diagnostic and from the static
-scores on this page.
+### Indexed tools in ARB's closed-tool loop
+
+ARB's `indexed_interactive` mode lets a policy call index lookups next to
+`list_dir`, `grep`, `read_file`, and `submit`, under the same budgets. CodeNib
+supplies the lookups as an ARB tool provider:
+
+```bash
+arb eval-closed-tool-llm ... --mode indexed_interactive \
+  --indexed-tools symbol_search,references \
+  --tool-provider codenib.eval.benchmarks.agent_retrieval_bench_tools:CodeNibToolProvider \
+  --tool-provider-option workspace=/path/to/checkouts \
+  --tool-provider-option cache=/path/to/tool-graphs
+```
+
+- `symbol_search(symbol)` returns definitions with that name. A dotted or
+  `::` name matches the end of the qualified name.
+- `references(path, symbol)` returns symbols in other files that reference, or
+  are referenced by, that symbol or the symbols it contains, ordered by the
+  number of connecting references.
+
+Both return paths with 1-based line ranges, never file content. The graph is
+built as for [full-source graph expansion](#full-source-graph-expansion), so
+these runs are full-source runs. Hits are limited to released files. Graphs
+are cached per snapshot under `cache`; a later run reuses a build and reports
+its original build time with `cached: true`.
+
+Each snapshot's status reports `released_source_files`, the released files in
+the graph's languages, and `covered_source_files`, how many of them the graph
+contains. Coverage is incomplete in known cases:
+
+- the Go graph leaves out `_test.go` files;
+- a Go repository with nested modules is indexed from its root module only;
+- Java snapshots build no graph, because project preparation is disabled.
+
+A snapshot without a graph offers the policy only the minimal tools. ARB's
+[indexed tools guide](https://github.com/eyuansu62/agent-retrieval-bench/blob/main/docs/adapters/indexed_tools.md)
+describes the provider interface and what the evaluator enforces.
