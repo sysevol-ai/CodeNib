@@ -711,16 +711,26 @@ class GraphExpansionIndex:
         ]
 
     def _file_symbols(self, path: str) -> list[int]:
-        """The file vertex and every symbol it contains, transitively."""
+        """The file vertex and every symbol it contains, transitively, once each.
+
+        Containment is not always a tree: nested definitions that share a
+        qualified name collapse into one vertex, which can then contain itself.
+        """
         start = self._graph.name_to_vertex.get(path)
         if start is None:
             return []
         found, pending = [start], [start]
+        seen = {start}
         while pending:
             for child in self._adjacent(pending.pop(), EDGE_TYPE_CONTAIN, "out"):
-                if self._graph.graph.vs[child]["type"] != NODE_TYPE_FILE:
-                    found.append(child)
-                    pending.append(child)
+                if (
+                    child in seen
+                    or self._graph.graph.vs[child]["type"] == NODE_TYPE_FILE
+                ):
+                    continue
+                seen.add(child)
+                found.append(child)
+                pending.append(child)
         return found
 
     def _vertex_file(self, vertex: int) -> str | None:

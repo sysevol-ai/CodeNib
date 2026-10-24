@@ -45,6 +45,9 @@ def _graph():
     graph.add_symbol_node("pkg/config.py:Config.parse", 2, 2, 5, "method")
     graph.add_containment_edge("pkg/config.py:Config.parse")
     graph.current_scope = "pkg/config.py:Config.parse"
+    # Nested definitions sharing a qualified name collapse into one vertex that
+    # contains itself, as IPython's ExecutionMagics.run does.
+    graph.add_containment_edge("pkg/config.py:Config.parse")
     graph.add_symbol_reference("pkg/util.py:helper")
     graph.current_file, graph.current_scope = "pkg/app.py", "pkg/app.py:main"
     graph.add_symbol_reference("pkg/config.py:Config.parse")

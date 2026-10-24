@@ -511,6 +511,29 @@ def test_graph_expansion_promotes_referenced_files(monkeypatch, tmp_path):
     index.close()
 
 
+def test_graph_expansion_survives_containment_cycles(monkeypatch, tmp_path):
+    # Nested definitions sharing a qualified name (IPython's
+    # ExecutionMagics.run defines inner run() functions) collapse into one
+    # vertex that contains itself; a second parent must not count it twice.
+    graph = _reference_graph()
+    graph.current_scope = "seed.py:run"
+    graph.add_containment_edge("seed.py:run")
+    graph.current_scope = "seed.py"
+    graph.add_symbol_node("seed.py:Runner", 1, 1, 9, "class")
+    graph.add_containment_edge("seed.py:Runner")
+    graph.current_scope = "seed.py:Runner"
+    graph.add_containment_edge("seed.py:run")
+    order = (
+        ["seed.py"] + [f"other{i}.py" for i in range(30)] + ["caller.py", "callee.py"]
+    )
+    monkeypatch.setattr(methods, "GRAPH_SEED_FILES", 1)
+    index = _graph_index(monkeypatch, tmp_path, graph, order)
+    symbols = index._file_symbols("seed.py")
+    assert len(symbols) == len(set(symbols)) == 3
+    assert index.rank("q")[:3] == ["seed.py", "callee.py", "caller.py"]
+    index.close()
+
+
 def test_graph_expansion_without_graph_is_bm25(monkeypatch, tmp_path):
     order = ["a.py", "b.py", "c.py"]
     index = _graph_index(monkeypatch, tmp_path, None, order)

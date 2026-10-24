@@ -420,13 +420,17 @@ class _SnapshotIndex:
     def _contained(self, root: int) -> list[int]:
         g = self._graph.graph
         found, pending = [root], [root]
+        # Same-named nested definitions share a vertex that can contain itself.
+        seen = {root}
         while pending:
             for edge in g.incident(pending.pop(), mode="out"):
                 child = g.es[edge].target
                 if (
                     g.es[edge]["type"] == EDGE_TYPE_CONTAIN
                     and g.vs[child]["type"] != NODE_TYPE_FILE
+                    and child not in seen
                 ):
+                    seen.add(child)
                     found.append(child)
                     pending.append(child)
         return found
