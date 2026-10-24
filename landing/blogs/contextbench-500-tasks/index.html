@@ -1,0 +1,224 @@
+<!doctype html>
+<!--
+SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
+SPDX-License-Identifier: Apache-2.0
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CodeNib on ContextBench: 77% Line Recall Before Repair — CodeNib</title>
+  <meta name="description" content="How CodeNib's complementary search agents reach 77.07% line recall before repair: fixed role routing, iterative source search, and a versioned navigation handoff on 500 ContextBench tasks.">
+  <meta name="author" content="CodeNib Team">
+  <meta property="og:title" content="CodeNib on ContextBench: 77% Line Recall Before Repair">
+  <meta property="og:description" content="How CodeNib searches before repair. Its complete agent is #1 for line recall and Pass@1 on ContextBench's Agent systems leaderboard as of October 23, 2026 (UTC).">
+  <meta property="og:image" content="https://codenib.ai/assets/blogs/contextbench-search-handoff.png">
+  <meta property="og:image:width" content="1600">
+  <meta property="og:image:height" content="840">
+  <meta property="og:image:alt" content="How CodeNib searches before repair on ContextBench: a first Haiku 5.5 search and a complementary Haiku scout each run their own glob, grep and read loop; the CodeNib coordinator passes navigation of locations only between them and unions the source both observed, reaching 77.07% line recall before repair. An Opus 5.5 repair window then resolves 388 of 500 tasks, and confirmed repair reads bring final line recall to 77.90%. On the official ContextBench Agent systems leaderboard as of October 23, 2026 (UTC), the complete agent ranks #1 in line recall and Pass@1.">
+  <meta property="og:type" content="article">
+  <meta property="og:locale" content="en_US">
+  <meta property="og:url" content="https://codenib.ai/blogs/contextbench-500-tasks/">
+  <meta property="article:published_time" content="2026-10-21T20:00:00Z">
+  <meta property="article:modified_time" content="2026-10-23T01:13:43Z">
+  <meta property="article:section" content="Coding agents">
+  <meta property="article:tag" content="ContextBench">
+  <meta property="article:tag" content="Code retrieval">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="CodeNib on ContextBench: 77% Line Recall Before Repair">
+  <meta name="twitter:description" content="How CodeNib searches before repair. Its complete agent is #1 for line recall and Pass@1 on ContextBench's Agent systems leaderboard as of October 23, 2026 (UTC).">
+  <meta name="twitter:image" content="https://codenib.ai/assets/blogs/contextbench-search-handoff.png">
+  <meta name="twitter:image:alt" content="How CodeNib searches before repair on ContextBench: a first Haiku 5.5 search and a complementary Haiku scout each run their own glob, grep and read loop; the CodeNib coordinator passes navigation of locations only between them and unions the source both observed, reaching 77.07% line recall before repair. An Opus 5.5 repair window then resolves 388 of 500 tasks, and confirmed repair reads bring final line recall to 77.90%. On the official ContextBench Agent systems leaderboard as of October 23, 2026 (UTC), the complete agent ranks #1 in line recall and Pass@1.">
+  <link rel="canonical" href="https://codenib.ai/blogs/contextbench-500-tasks/">
+  <link rel="icon" href="/assets/codenib-icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/assets/blogs.css">
+  <link rel="stylesheet" href="/assets/blogs/contextbench-results.css">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BlogPosting",
+    "headline": "CodeNib on ContextBench: 77% Line Recall Before Repair",
+    "description": "Search alone reaches 77.07% line recall. The complete CodeNib agent ranks #1 for line recall and Pass@1 on ContextBench's Agent systems leaderboard as of October 23, 2026 (UTC).",
+    "image": "https://codenib.ai/assets/blogs/contextbench-search-handoff.png",
+    "datePublished": "2026-10-21T20:00:00Z",
+    "dateModified": "2026-10-23T01:13:43Z",
+    "inLanguage": "en",
+    "mainEntityOfPage": "https://codenib.ai/blogs/contextbench-500-tasks/",
+    "author": { "@type": "Organization", "name": "CodeNib Team", "url": "https://codenib.ai/" },
+    "publisher": {
+      "@type": "Organization", "name": "CodeNib", "url": "https://codenib.ai/",
+      "logo": { "@type": "ImageObject", "url": "https://codenib.ai/assets/codenib-icon.svg" }
+    }
+  }
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <header class="site-header">
+    <div class="wrap nav">
+      <a class="brand" href="/" aria-label="CodeNib home"><img src="/assets/codenib-logo.svg" alt="CodeNib"></a>
+      <a class="nav-link" href="/blogs/" aria-current="page">Blog</a>
+      <a class="nav-link nav-docs" href="https://docs.codenib.ai/">Docs</a>
+      <a class="nav-link nav-github" href="https://github.com/sysevol-ai/CodeNib">GitHub</a>
+      <a class="btn" href="https://demo.codenib.ai/">Open the demo</a>
+    </div>
+  </header>
+
+  <main id="main-content">
+    <article aria-labelledby="article-title">
+      <header class="article-head wrap">
+        <a class="back" href="/blogs/"><span aria-hidden="true">←</span> All posts</a>
+        <div class="post-meta">
+          <span class="tag">Coding agents</span>
+          <time datetime="2026-10-21">October 21, 2026</time>
+          <span>9 min read</span>
+        </div>
+        <h1 id="article-title">CodeNib on ContextBench: 77% Line Recall Before Repair</h1>
+        <p class="deck">How two search agents find relevant code, how the coordinator routes their work, and how source locations become a handoff to a repair agent.</p>
+      </header>
+
+      <div class="article-body article-lead">
+        <p>CodeNib's search-only stage reached <strong>77.07% line recall on 500 ContextBench tasks</strong>, using two workers that explored source without editing code or running repairs. They used iterative file discovery, grep and source reads, with recorded search model usage of about <strong>$0.0114 per task</strong>. The complete search-and-repair system resolved <strong>388 of 500 tasks</strong>.</p>
+
+        <p class="submission-status"><a href="https://contextbench.github.io/">#1 in line recall and Pass@1 · Agent systems</a><span>Official ContextBench leaderboard, as of October 23, 2026 (UTC): 77.90% line recall and 77.60% Pass@1 for the complete agent.</span></p>
+
+        <dl class="result-metrics" aria-label="Search and repair results on all 500 submitted tasks">
+          <div><dt>Search line recall</dt><dd>77.07%<span>Before repair</span></dd></div>
+          <div><dt>Final line recall</dt><dd>77.90%<span>Including confirmed repair reads</span></dd></div>
+          <div><dt>Native Pass@1</dt><dd>77.60%<span>388 / 500 resolved</span></dd></div>
+          <div><dt>Search usage / task</dt><dd>$0.0114<span>Two Haiku workers; model usage only</span></dd></div>
+        </dl>
+
+        <p>The search workers use Claude Haiku 5.5; Claude Opus 5.5 handles repair through an adapted mini SWE-agent loop. The <a href="https://github.com/ContextBench/contextbench.github.io/blob/5fddce90e136f73a36ad0e16a5e15205cc18a375/submissions/2026-10-19_codenib-agent-haiku55-opus55/README.md">public submission</a> contains the configuration and evidence. All 500 task annotations had been exposed during development, so the result describes that known population.</p>
+      </div>
+
+      <figure class="hero-figure responsive-figure">
+        <picture>
+          <source media="(max-width: 900px)" srcset="/assets/blogs/contextbench-search-handoff-narrow.svg" width="640" height="2915">
+          <img src="/assets/blogs/contextbench-search-handoff.svg" width="1600" height="840" alt="How CodeNib searches before repair on ContextBench: a first Haiku 5.5 search and a complementary Haiku scout each run their own glob, grep and read loop; the CodeNib coordinator passes navigation of locations only between them and unions the source both observed, reaching 77.07% line recall before repair. An Opus 5.5 repair window then resolves 388 of 500 tasks, and confirmed repair reads bring final line recall to 77.90%. On the official ContextBench Agent systems leaderboard as of October 23, 2026 (UTC), the complete agent ranks #1 in line recall and Pass@1.">
+        </picture>
+        <figcaption>Each window reads the source it needs. Between windows, the coordinator passes only locations, and it keeps the union of everything both search windows observed. That union is what the 77.07% line recall scores.</figcaption>
+        <a class="diagram-open" href="/assets/blogs/contextbench-search-handoff.svg">Open the full-size diagram <span aria-hidden="true">↗</span></a>
+      </figure>
+
+      <div class="article-body before-figure">
+        <nav class="article-contents" aria-label="In this article">
+          <a href="#search-only">Search before repair</a>
+          <a href="#how-it-works">Routing and the search loop</a>
+          <a href="#why-search">Why this can cover more code</a>
+          <a href="#results">Results by task source</a>
+          <a href="#cost">Where the cost goes</a>
+          <a href="#scope">Scope and evidence</a>
+        </nav>
+
+        <h2 id="search-only">Most annotated coverage is found before repair</h2>
+        <p><a href="https://contextbench.github.io/">ContextBench</a> annotates source code relevant to repository issues. <strong>Line recall</strong> measures how much of that annotated code the system retrieves. Our 500-task verified split spans eight languages and four source benchmarks. We average each task's scores, keeping all 500 tasks in the denominator.</p>
+        <div class="data-table compact" role="region" tabindex="0" aria-label="Search-only and final context on the same 500 tasks">
+          <table>
+            <caption class="sr-only">Line-level context metrics before and after repair, macro averaged over the same 500 tasks</caption>
+            <thead><tr><th scope="col">Stage</th><th scope="col">Recall</th><th scope="col">Precision</th><th scope="col">F1</th></tr></thead>
+            <tbody>
+              <tr><th scope="row">Search pair, before repair</th><td>77.07%</td><td>20.52%</td><td>28.16%</td></tr>
+              <tr><th scope="row">Final selected context</th><td>77.90%</td><td>20.39%</td><td>28.11%</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Adding confirmed original-source reads from repair increases recall by <strong>0.83 percentage points</strong>. The search phase already supplies most of the eventually covered annotated code. This is a <a href="https://github.com/ContextBench/contextbench.github.io/blob/5fddce90e136f73a36ad0e16a5e15205cc18a375/submissions/2026-10-19_codenib-agent-haiku55-opus55/RESULTS.md#search-stage-and-final-selected-context-on-the-same-500-ids">comparison of stages in one pipeline</a>; there is no search-only Pass@1 result.</p>
+        <p>Search-only here means two agents repeatedly choosing where to search and what to read, before any patch generation. Its context is the union of source actually observed by either worker. That cumulative search context can be much larger than the compact navigation message passed to the repair model.</p>
+
+        <h2 id="how-it-works">Fixed role routing, adaptive search inside each worker</h2>
+        <p>CodeNib's coordinator decides which role runs next and what information crosses model windows. In this run, that routing is fixed: <strong>first Haiku search → complementary Haiku scout → Opus repair</strong>. Within each search, the model chooses its next tool call from the evidence it has just read. The steps below follow the diagram above from left to right.</p>
+        <p>This is role routing with two search workers on every task. The submitted system does not use an issue classifier to choose Haiku or Opus as the search model. The 500-task result therefore cannot establish a gain from dynamic model selection.</p>
+
+        <ol class="agent-stages">
+          <li><h3>The first worker follows evidence through the repository</h3><p>The issue supplies an initial hypothesis. <code>glob</code> finds likely files; <code>grep</code> locates names and uses; <code>read</code> exposes implementation behavior. New identifiers, called helpers and unanswered questions drive the next search. The prompt asks for relevant functions, callers, configuration, interfaces and validation tests, with up to 20 worker turns. The worker can revise an unproductive query and continue a truncated read.</p></li>
+          <li><h3>The coordinator creates a map of observed locations</h3><p>It merges duplicate or adjacent observed ranges and encodes file paths, line intervals and handles bound to the source version. At most 2,048 tokens of this navigation enter the scout's prompt, alongside the unchanged issue. Omitted intervals are counted explicitly. Source bodies and the first worker's generated explanation stay outside this handoff.</p></li>
+          <li><h3>The scout searches for missing evidence</h3><p>The scout gets a separate model window and an explicit complementary role: investigate connected entry points, callers or callees, alternate paths, tests and configuration that the first search may have missed. It reads source itself whenever it needs to understand behavior. Earlier locations are anchors; revisiting them is allowed, and the navigation is explicitly incomplete.</p></li>
+          <li><h3>The coordinator unions observations and hands off to repair</h3><p>After authenticating both workers against one source version, CodeNib unions their observed intervals. Overlapping lines count once. It creates another bounded navigation message from this combined search context for Opus. The repair agent then requests source through <code>codenib-read</code> and <code>codenib-grep</code>, edits code, and runs self-tests through the container shell.</p></li>
+        </ol>
+        <p>The navigation cap limits metadata at model boundaries. Source bodies read later have their own tool limits; they do not share a total 2,048-token source budget. For evaluation, a location or summary alone earns no source credit: the source must appear in a confirmed model input. The final selected context retains search observations and adds confirmed original-version repair reads. This is a system-wide record of observed source; Opus does not receive the whole union as an initial code dump.</p>
+        <p class="scope-note">Inspect the pinned <a href="https://github.com/sysevol-ai/CodeNib/blob/25d4580c1d5b0e1fd90bcd1483ba3e31e04a770d/scripts/benchmark_context_agent.py#L71-L90">search instructions</a>, <a href="https://github.com/sysevol-ai/CodeNib/blob/25d4580c1d5b0e1fd90bcd1483ba3e31e04a770d/scripts/contextbench_search_pair.py">scout navigation and source union</a>, and <a href="https://github.com/sysevol-ai/CodeNib/blob/25d4580c1d5b0e1fd90bcd1483ba3e31e04a770d/scripts/contextbench_search_pair_solver.py">repair handoff</a>.</p>
+
+        <div class="callout">
+          <p class="callout-label">An illustrative search</p>
+          <p>Suppose an issue says a retry setting is ignored. The first worker might find the setting's name, read the request path and follow the helper that consumes it. Given those locations, the scout might inspect configuration loading, alternate callers and tests that override the default. Each discovery changes the next query. This example explains the search policy; it is not a recorded benchmark trajectory.</p>
+        </div>
+
+        <h2 id="why-search">Why this can cover more relevant code</h2>
+        <p><strong>Search adapts to code that has actually been read.</strong> An issue may name a symptom while the relevant helper uses different vocabulary. Following identifiers, interfaces and call sites gives the model new search terms beyond the original issue text. Caller relationships in this route are investigated through source tools; no graph expansion is enabled.</p>
+        <p><strong>The second window has an explicit coverage task.</strong> Its job is to look for evidence missing from the first investigation. The coordinator preserves both workers' observed source, so an additional relevant span can add coverage without displacing an earlier one. Deduplication prevents double counting; it does not prevent workers from reading the same code.</p>
+        <p><strong>The search record retains cumulative reads.</strong> It has no fixed top-k chunk selection or 4K final-source cap. That supports broad coverage, with a visible precision tradeoff: search-only line precision is 20.52% and F1 is 28.16%. These scores measure overlap with annotations; they do not establish that every other line read was useless.</p>
+        <p>Those are design reasons to expect broader coverage. The full 500-task run evaluates them together. In a <a href="https://docs.codenib.ai/assets/contextbench_search_pair_independent_summary.json">separate 32-task search study</a>, one Haiku worker reached 33.98% line recall, two independent searches reached 38.82%, and the complementary pair reached 40.00%. The complementary pair's advantage over a plain repeat was +1.17 points, with a 95% repository-cluster interval of [−2.41, +5.12]. The study supports investigating a second search window; it does not establish a stable extra gain from the complementary policy or metadata alone. Those 32 tasks are a different population from the submitted 500.</p>
+        <p>The measured route uses file discovery, grep and reads throughout. Embeddings, Jev reranking and graph expansion were outside it. The result measures the <a href="https://github.com/ContextBench/contextbench.github.io/blob/5fddce90e136f73a36ad0e16a5e15205cc18a375/submissions/2026-10-19_codenib-agent-haiku55-opus55/README.md#system-and-context-strategy">complete search/repair configuration</a>, including its models, prompts and budgets.</p>
+
+        <h2 id="results">388 resolved, with all 500 attempts counted</h2>
+        <p><strong>Native Pass@1</strong> is the fraction of attempts whose final patch passed the pinned task-specific grading criteria. It does not mean every test in each repository passed. All 112 unresolved attempts remain included. The evaluated tasks span C, C++, Go, Java, JavaScript, Python, Rust and TypeScript.</p>
+        <p>The overall resolution rate is <strong>77.60%</strong>. The source groups show where the outcome varies: 152 of 174 SWE-Bench-Verified tasks were resolved, compared with 34 of 54 SWE-Bench-Pro tasks. These groups have different repository, language and grading compositions; their differences describe this run rather than isolate a benchmark or language effect.</p>
+      </div>
+
+      <figure class="hero-figure responsive-figure in-article">
+        <picture>
+          <source media="(max-width: 900px)" srcset="/assets/blogs/contextbench-task-sources-narrow.svg" width="640" height="1042">
+          <img src="/assets/blogs/contextbench-task-sources.svg" width="1600" height="728" loading="lazy" alt="Native Pass@1 and model usage by task source, sorted by Pass@1: SWE-Bench-Verified 152 of 174 resolved, 87.36%, $0.39 model usage per task; SWE-PolyBench 92 of 116, 79.31%, $0.65; Multi-SWE-Bench 110 of 156, 70.51%, $0.79; SWE-Bench-Pro 34 of 54, 62.96%, $1.33. All 500 tasks: 77.60% and $0.68 per task. All unresolved attempts remain included.">
+        </picture>
+        <figcaption>The source with the lowest resolution rate also used the most model usage: SWE-Bench-Pro resolved 62.96% of attempts at $1.33 per task. The dashed lines mark all 500 tasks.</figcaption>
+        <a class="diagram-open" href="/assets/blogs/contextbench-task-sources.svg">Open the full-size chart <span aria-hidden="true">↗</span></a>
+      </figure>
+
+      <div class="article-body">
+        <div class="data-table compact" role="region" tabindex="0" aria-label="Native outcomes by task source">
+          <table>
+            <caption class="sr-only">Native outcomes and recorded model usage by task source</caption>
+            <thead><tr><th scope="col">Task source</th><th scope="col">Resolved</th><th scope="col">Pass@1</th><th scope="col">Model USD/task</th></tr></thead>
+            <tbody>
+              <tr><th scope="row">SWE-Bench-Verified</th><td>152 / 174</td><td>87.36%</td><td>$0.3910</td></tr>
+              <tr><th scope="row">SWE-PolyBench</th><td>92 / 116</td><td>79.31%</td><td>$0.6486</td></tr>
+              <tr><th scope="row">Multi-SWE-Bench</th><td>110 / 156</td><td>70.51%</td><td>$0.7939</td></tr>
+              <tr><th scope="row">SWE-Bench-Pro</th><td>34 / 54</td><td>62.96%</td><td>$1.3289</td></tr>
+              <tr><th scope="row">All tasks</th><td><strong>388 / 500</strong></td><td><strong>77.60%</strong></td><td><strong>$0.6778</strong></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="scope-note">Source: <a href="https://github.com/ContextBench/contextbench.github.io/blob/5fddce90e136f73a36ad0e16a5e15205cc18a375/submissions/2026-10-19_codenib-agent-haiku55-opus55/RESULTS.md">frozen result breakdown</a>, which also includes all eight language slices and their sample sizes.</p>
+
+        <p>The context scores expose a tradeoff that the resolution rate alone would hide. Final line recall is high at <strong>77.90%</strong>, while line precision is <strong>20.39%</strong>. The agent found much of the annotated code, but its selected context also extended well beyond those annotations. F1 remains <strong>28.11%</strong>; useful surrounding code may be unannotated, but broad reading is still a reason to inspect precision alongside recall.</p>
+        <p>Precision measures the share of selected source overlapping the annotations. F1 balances recall and precision; all context means average per-task scores, including per-task F1. A high search recall and a high repair rate are distinct outcomes. Without a matched repair comparison, this run cannot assign the 77.60% resolution rate to one retrieval component.</p>
+
+        <h2 id="cost">Almost all model usage goes into repair</h2>
+        <p>Recorded search-plus-repair model usage totals <strong>$338.88</strong>, or <strong>$0.6778 per task</strong>. The two search workers account for $5.68 across the run; repair accounts for $333.20, or <strong>98.32%</strong> of recorded model usage. Failures and stopped attempts stay in both the cost and outcome totals.</p>
+        <figure class="cost-split">
+          <div class="cost-bar" role="img" aria-label="Recorded model usage across all 500 tasks: search $5.68, 1.68%; repair $333.20, 98.32%.">
+            <span class="cost-search" style="width: 1.68%"></span>
+            <span class="cost-repair" style="width: 98.32%"></span>
+          </div>
+          <figcaption>
+            <span class="cost-key"><i class="cost-search" aria-hidden="true"></i>Search, two Haiku windows <strong>$5.68</strong> · 1.68%</span>
+            <span class="cost-key"><i class="cost-repair" aria-hidden="true"></i>Repair, Opus <strong>$333.20</strong> · 98.32%</span>
+          </figcaption>
+        </figure>
+        <p>In this configuration, making search cheaper on its own would affect a small part of the total. A more useful next question is whether better source selection can reduce the repair work while preserving resolution quality. That needs a controlled repair comparison; these results do not answer it yet.</p>
+        <p class="scope-note">The <a href="https://github.com/ContextBench/contextbench.github.io/blob/5fddce90e136f73a36ad0e16a5e15205cc18a375/submissions/2026-10-19_codenib-agent-haiku55-opus55/README.md#complete-system-model-usage">cost accounting</a> uses recorded SDK model-usage values, including caching. It excludes compute, native-test containers and earlier strategy development, and is not a reconciled cash invoice.</p>
+
+        <h2 id="scope">How to read and verify this result</h2>
+        <p>ContextBench <a href="https://github.com/ContextBench/contextbench.github.io/pull/4">merged our submission on October 22, 2026 (UTC)</a> and published the complete agent on the <a href="https://contextbench.github.io/">official leaderboard</a>. As of October 23, 2026 (UTC), CodeNib ranks <strong>#1 in line recall (77.90%) and Pass@1 (77.60%) in Agent systems</strong>. Those ranks describe the complete search-and-repair agent; the 77.07% search-only result is a stage of that pipeline. The <a href="https://github.com/ContextBench/contextbench.github.io/blob/4f979971e04a1fe0a743fbe45e60fa8edf79440d/src/data/agent_results.json">published score snapshot</a> preserves the leaderboard values behind this dated comparison.</p>
+        <p>All 500 task annotations had been exposed during development. Three original development repairs are reused, with their selected-context exports assembled retrospectively; the other 497 retain their first repair executions. Reference fixes, native test patches and grading feedback stayed outside model inputs. Arbitrary shell-output source attribution remains partial, so the context scores describe the selected source supported by the submission's delivery evidence, rather than a complete inventory of everything the solver may have read.</p>
+        <p>The public package includes the exact task list, pinned evaluator and implementation versions, outcome records, usage receipts, and raw search and repair trajectories. Its aggregation and report checks run without model keys or Docker. Replaying those records verifies the submitted accounting; it does not rerun inference or the native tests. See the <a href="https://github.com/ContextBench/contextbench.github.io/blob/5fddce90e136f73a36ad0e16a5e15205cc18a375/submissions/2026-10-19_codenib-agent-haiku55-opus55/REPRODUCE.md">reproduction guide</a> and <a href="https://github.com/ContextBench/contextbench.github.io/blob/5fddce90e136f73a36ad0e16a5e15205cc18a375/submissions/2026-10-19_codenib-agent-haiku55-opus55/REVIEW_NOTES.md">review notes</a> for the full protocol and limitations.</p>
+
+        <h2 id="try-codenib">Explore CodeNib</h2>
+        <p>CodeNib provides repository context and typed code navigation for coding agents. To see source-linked explanations in the browser, <a href="https://demo.codenib.ai/">open the Wiki demo</a>. To connect the released CodeGraph tools to Claude Code or Codex, follow the <a href="https://docs.codenib.ai/quickstart/">quickstart</a>. The ContextBench agent configuration described here is a separate benchmark setup, available in the submission evidence.</p>
+      </div>
+    </article>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-row">
+      <a class="footer-brand" href="/" aria-label="CodeNib home"><img src="/assets/codenib-icon.svg" alt=""><span>codenib.ai</span></a>
+      <a href="/blogs/">Blog</a>
+      <a href="https://docs.codenib.ai/">Docs</a>
+      <a href="https://demo.codenib.ai/">Demo</a>
+      <a href="https://github.com/sysevol-ai/CodeNib">GitHub</a>
+      <span>© 2026 CodeNib</span>
+    </div>
+  </footer>
+</body>
+</html>
