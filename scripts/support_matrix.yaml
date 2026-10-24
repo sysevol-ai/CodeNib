@@ -154,7 +154,7 @@ benchmarks:
     entry:
       - cli: codenib-arb
     level: Measured
-    level_note: five methods on all 345 samples
+    level_note: six methods on all 345 samples
     results: evaluation/agent_retrieval_bench.md#results
     page: evaluation/agent_retrieval_bench.md
     modules:
