@@ -275,34 +275,87 @@ def _assert_dirty_reinitialization(
     env: dict[str, str],
     agent_state: Path,
 ) -> None:
-    """Rebuild edited source and query the new graph over a fresh MCP session."""
+    """Reject old-session facts and load the edited graph after reconnecting."""
 
-    source = repo / "calculator.py"
-    changed = source.read_text(encoding="utf-8").replace(
-        "release_sum", "release_sum_updated"
-    )
-    source.write_text(changed, encoding="utf-8")
-    status = _run(["git", "status", "--porcelain"], cwd=repo, env=env).stdout
-    if not status:
-        raise RuntimeError("dirty reinitialization fixture has no uncommitted edit")
-    registrations = json.loads(agent_state.read_text(encoding="utf-8"))
-    _run(
-        [executable, "codegraph", "init", str(repo), "--language", "python"],
-        cwd=root,
-        env=env,
-    )
-    if (
-        source.read_text(encoding="utf-8") != changed
-        or status != _run(["git", "status", "--porcelain"], cwd=repo, env=env).stdout
-    ):
-        raise RuntimeError("CodeGraph reinitialization changed the existing user edit")
-    if json.loads(agent_state.read_text(encoding="utf-8")).get(
-        "adds"
-    ) != registrations.get("adds"):
-        raise RuntimeError("dirty CodeGraph init rewrote an agent registration")
-    _assert_codegraph_mcp(
-        root, repo, executable=executable, env=env, callee="release_sum_updated"
-    )
+    from mcp import Client, StdioServerParameters
+    from mcp.client.stdio import stdio_client
+
+    async def verify() -> None:
+        parameters = StdioServerParameters(
+            command=executable,
+            args=["mcp", str(repo), "--tool-surface", "full"],
+            cwd=root,
+            env=env,
+        )
+        with (root / "codegraph-stale-mcp.log").open("w") as errors:
+            transport = stdio_client(parameters, errlog=errors)
+            async with Client(transport, mode="auto", cache=None) as client:
+                arguments = {
+                    "symbol": "release_workflow",
+                    "direction": "dependencies",
+                    "depth": 1,
+                    "max_nodes": 12,
+                    "max_edges": 24,
+                }
+                _structured_result(
+                    await client.call_tool("dependency_subgraph", arguments=arguments)
+                )
+
+                async def reject_old_facts() -> None:
+                    result = await client.call_tool(
+                        "dependency_subgraph", arguments=arguments
+                    )
+                    message = " ".join(
+                        getattr(part, "text", "") for part in result.content
+                    )
+                    if (
+                        not result.is_error
+                        or result.structured_content is not None
+                        or "codenib codegraph init" not in message
+                        or "restart" not in message
+                    ):
+                        raise RuntimeError(f"stale graph was not rejected: {result!r}")
+
+                source = repo / "calculator.py"
+                changed = source.read_text(encoding="utf-8").replace(
+                    "release_sum", "release_sum_updated"
+                )
+                source.write_text(changed, encoding="utf-8")
+                status = _run(
+                    ["git", "status", "--porcelain"], cwd=repo, env=env
+                ).stdout
+                if not status:
+                    raise RuntimeError("dirty fixture has no uncommitted edit")
+                await reject_old_facts()
+                registrations = json.loads(agent_state.read_text(encoding="utf-8"))
+                _run(
+                    [
+                        executable,
+                        "codegraph",
+                        "init",
+                        str(repo),
+                        "--language",
+                        "python",
+                    ],
+                    cwd=root,
+                    env=env,
+                )
+                if (
+                    source.read_text(encoding="utf-8") != changed
+                    or status
+                    != _run(["git", "status", "--porcelain"], cwd=repo, env=env).stdout
+                ):
+                    raise RuntimeError("CodeGraph init changed the existing user edit")
+                if json.loads(agent_state.read_text(encoding="utf-8")).get(
+                    "adds"
+                ) != registrations.get("adds"):
+                    raise RuntimeError("dirty init rewrote an agent registration")
+                await reject_old_facts()
+        await _assert_codegraph_mcp_async(
+            root, repo, executable=executable, env=env, callee="release_sum_updated"
+        )
+
+    asyncio.run(verify())
 
 
 _FAKE_AGENT_CLIENT = r"""#!/usr/bin/env python3

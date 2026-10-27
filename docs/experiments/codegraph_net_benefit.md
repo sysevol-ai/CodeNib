@@ -1,8 +1,8 @@
 # CodeGraph real-workflow net-benefit pilot
 
 Owner: CodeNib product and CodeGraph maintainers.
-Status: offline workflow reproduction and a dirty-initialization candidate
-verified; no pilot inference or external trial has run. Established 2026-10-26
+Status: dirty initialization merged and offline stale-query guard verified;
+no pilot inference or external trial has run. Established 2026-10-26
 (Pacific); target review 2026-11-09.
 Current outcomes and open gates belong to [adoption A0](../adoption_roadmap.md).
 Tracking issue: [#874](https://github.com/sysevol-ai/CodeNib/issues/874).
@@ -54,7 +54,8 @@ MCP replies. Source baseline `5f0b7e9d` completes clean cold/warm setup in
 can rebuild the dirty tree, and a fresh MCP session returns the renamed
 function. This is not a separately installed published-release control.
 
-The candidate accepts dirty first use and tracked edits, creates, deletes and
+The initialization fix merged in [#877](https://github.com/sysevol-ai/CodeNib/pull/877)
+accepts dirty first use and tracked edits, creates, deletes and
 renames; each 1.389-1.455 second initialization preserves visible file hashes
 and Git status. Fresh stdio sessions return the updated call target and file.
 The release smoke also verifies unchanged reuse, native registration reuse,
@@ -62,13 +63,22 @@ real graph/source MCP composition, Dependency Map serving and a dirty rebuild.
 Client CLIs are isolated stand-ins; no coding agent/model or external user ran.
 These small-fixture timings do not measure net task benefit.
 
-Admission remains blocked by [#876](https://github.com/sysevol-ai/CodeNib/issues/876):
-an existing MCP session returns `compute()` after the fixture source changes
-to `compute_v2`, including after successful index rebuilding. The response has
-no stale/source label even though `codegraph status` reports the old index's
-source mismatch. A fresh session returns `compute_v2()`. Fix this serving and
-lifecycle boundary before running a paid matched trial. Also retain #871's
-definition-identity gate; dirty initialization alone does not pass G1.
+The [2026-10-27 source-query guard receipts](codegraph_currentness_2026_10_27.json)
+address [#876](https://github.com/sysevol-ai/CodeNib/issues/876). The source
+baseline silently returned `compute()` from an existing session after editing
+and rebuilding `compute_v2`. The candidate instead returns an explicit MCP
+error with rebuild/restart instructions; a fresh session returns `compute_v2`.
+The same real fixture covers source-preserving create/delete/rename rebuilds.
+All eleven indexed tools are checked before and after their provider runs;
+mid-query edits discard the result. Ordinary provider failures/cancellation
+leave unchanged source usable, and context close waits for active queries.
+Portable snapshots and per-request grep/Jev source capture keep their existing
+contracts. The release graph/MCP/Dependency Map smoke passes.
+
+Admission still requires landing the guard and scoping #871's nested-definition
+identity bug. Full rebuilding and restarting the MCP server remain explicit
+workflow costs; automatic refresh is not implemented. A safe unavailable result
+does not establish convenient updates, task benefit or representative coverage.
 
 Use temporary repositories and isolated client profiles, without model calls.
 Record commands, installed/runtime versions, source identities, timings and

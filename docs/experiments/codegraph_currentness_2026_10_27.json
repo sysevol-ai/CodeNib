@@ -1,0 +1,613 @@
+{
+  "scope": "Offline source-query guard for #876; no coding model or user trial. This is source-candidate behavior, not a released package claim. Native clients are isolated registration stand-ins.",
+  "observed_date_pacific": "2026-10-27",
+  "baseline_receipts": "codegraph_workflow_2026_10_26.json",
+  "candidate": {
+    "base_main_commit": "d9c12cae5e6dd497c4124fe448942b8d281e5d96",
+    "branch": "fix/mcp-stale-codegraph-facts",
+    "files_sha256": {
+      "codenib/mcp/context.py": "bb1d3feda7b71ac704937ed613b63aeaff0e8a43fa3a1529198258f250eba69c",
+      "codenib/mcp/server.py": "770bd59d85dbbab13df7d6debdd7d7559df48fc47a878e468f7de463a037fabe",
+      "codenib/mcp/tools/search.py": "84002d05fc00fc42481e5f588bb763d255482af30270e47350e2b2f41061e484",
+      "scripts/smoke_release_graph.py": "0d8972832b7933ba8f5a9dbf3d20d45816ca6de5ddb30caa32ebec35e4c4a92b"
+    }
+  },
+  "runtime": {
+    "codenib_metadata": "0.2.4",
+    "python": "3.12",
+    "mcp": "2.0.0",
+    "scip_python": "0.6.6"
+  },
+  "workflow": [
+    {
+      "phase": "dirty-first-init",
+      "argv": [
+        "/home/zhongming/.venvs/codenib/bin/python",
+        "-m",
+        "codenib",
+        "codegraph",
+        "init",
+        "/tmp/codenib-codegraph-benefit-g0/guard-workflow/repository",
+        "--agent",
+        "codex",
+        "--language",
+        "python"
+      ],
+      "seconds": 1.397,
+      "returncode": 0,
+      "stdout": "Loading configuration file at /tmp/codenib-codegraph-benefit-g0/guard-workflow/repository/pyrightconfig.json\nAssuming Python version 3.12\nAssuming Python platform Linux\nNo include entries specified; assuming /tmp/codenib-codegraph-benefit-g0/guard-workflow/repository\n(00:09:26) Total Project Files 3\n(00:09:26) Indexing /tmp/codenib-codegraph-benefit-g0/guard-workflow/repository with version 0.0.0\n(00:09:26) Parse and search for dependencies\n(00:09:26) Index workspace and track project files\n(00:09:26) Analyze project and dependencies\n(00:09:26) Parse and emit SCIP\n(00:09:26) Writing external symbols to SCIP index\n(00:09:26) Sucessfully wrote SCIP index to /tmp/codenib-codegraph-benefit-g0/guard-workflow/state/repositories/repository-ab11f069103b/indexes/symbol_graph/index.scip\nRepository: /tmp/codenib-codegraph-benefit-g0/guard-workflow/repository\nLanguages:  python\nExcluded:   none\nManifest:   /tmp/codenib-codegraph-benefit-g0/guard-workflow/state/repositories/repository-ab11f069103b/indexes/repo_manifest.json\nViews:\n  bm25           fresh (0.09s)\n  symbol_graph   fresh (0.55s)\n\nCodeGraph is ready for coding agents.\nMCP server: codenib-repository-ab11f069103b\nClients:    codex\nExcluded:   none\nStatus:     codenib codegraph status /tmp/codenib-codegraph-benefit-g0/guard-workflow/repository\nTry asking your agent to use explore_context before editing and dependency_subgraph for impact analysis.\n",
+      "stderr": "INFO     Successfully loaded python language parser from                        \n         tree-sitter-language-pack                                              \nINFO     Chunking repository:                                                   \n         /tmp/codenib-codegraph-benefit-g0/guard-workflow/repository            \nINFO     Target languages: python                                               \nINFO     Found 3 files to process                                               \nINFO     Successfully processed 3/3 files                                       \nINFO     Generated 4 total chunks                                               \nINFO     Collected 2 unique nodes                                               \nINFO     Initialized LSIndexer for python at                                    \n         /tmp/codenib-codegraph-benefit-g0/guard-workflow/repository            \n         (route=active)                                                         \nINFO     Generating SCIP index                                                  \nINFO     Using scip-python from                                                 \n         /home/zhongming/.codenib/toolchains/node-tools/node_modules/.bin/scip-p\n         ython                                                                  \nINFO     Applying 44 temporary Pyright exclusions                               \nINFO     Successfully generated SCIP index at                                   \n         /tmp/codenib-codegraph-benefit-g0/guard-workflow/state/repositories/rep\n         ository-ab11f069103b/indexes/symbol_graph/index.scip                   \nINFO     Index generation took: 0.37 seconds                                    \nINFO     Decoding SCIP index                                                    \nINFO     Successfully decoded SCIP index to                                     \n         /tmp/codenib-codegraph-benefit-g0/guard-workflow/state/repositories/rep\n         ository-ab11f069103b/indexes/symbol_graph/index.decoded                \nINFO     \u23f1\ufe0f  Index decoding took: 0.00 seconds                                  \nINFO     Starting SCIP index processing (backend=serial)...                     \nINFO     Starting SCIP Python decode from                                       \n         /tmp/codenib-codegraph-benefit-g0/guard-workflow/state/repositories/rep\n         ository-ab11f069103b/indexes/symbol_graph/index.decoded                \nINFO     Saved processed SCIP index to                                          \n         /tmp/codenib-codegraph-benefit-g0/guard-workflow/state/repositories/rep\n         ository-ab11f069103b/indexes/symbol_graph/graph.pkl                    \nINFO     \u23f1\ufe0f  Graph saving took: 0.00 seconds                                    \nINFO     \u2705 Graph created successfully (7 nodes, 8 edges)                       \nINFO     \u23f1\ufe0f  Index processing took: 0.00 seconds                                \nINFO     \u2705 Graph created successfully (7 nodes, 8 edges)                       \nINFO     [scip_python_indexer] profiler summary: 0.367s total across 6          \n         section(s)                                                             \nINFO       generate_index                           total= 0.367s count=  1 avg=\n         0.367s min= 0.367s max= 0.367s                                         \nINFO       process_index.decode                     total= 0.001s count=  1 avg=\n         0.001s min= 0.001s max= 0.001s                                         \nINFO       process_index.build_lsp_occurrence_index total= 0.001s count=  1 avg=\n         0.001s min= 0.001s max= 0.001s                                         \nINFO       decode_index                             total= 0.000s count=  1 avg=\n         0.000s min= 0.000s max= 0.000s                                         \nINFO       process_index.save_graph                 total= 0.000s count=  1 avg=\n         0.000s min= 0.000s max= 0.000s                                         \nINFO       process_index.build_range_indexes        total= 0.000s count=  1 avg=\n         0.000s min= 0.000s max= 0.000s                                         \n"
+    },
+    {
+      "phase": "dirty-first-init-preservation",
+      "source_unchanged": true,
+      "files": {
+        "scratch.py": "8399e6c8354d1de92d124875c27de81fb54e1fc10d6af752c238ea7e9fd9dc54",
+        "engine.py": "67583d18bc33e40bf9b916f5e1dacd342ddf68c3382496f3fd19e41a0b80de52",
+        "main.py": "88420bd7995437645b249450d333050ee1f52748aee283f6bb9724b8b7273992",
+        "pyproject.toml": "279487974cee1a428ea079f04b295b716a002f4ef1c4b7fb73e07ffac8775a72"
+      },
+      "git_status": " M engine.py\u0000?? scratch.py\u0000"
+    },
+    {
+      "phase": "dirty-first-init-status",
+      "argv": [
+        "/home/zhongming/.venvs/codenib/bin/python",
+        "-m",
+        "codenib",
+        "codegraph",
+        "status",
+        "/tmp/codenib-codegraph-benefit-g0/guard-workflow/repository",
+        "--json"
+      ],
+      "seconds": 0.874,
+      "returncode": 0,
+      "stdout": "{\n  \"clients\": [\n    {\n      \"configured\": true,\n      \"detail\": \"configuration matches\",\n      \"installed\": true,\n      \"matches\": true,\n      \"name\": \"codex\",\n      \"receipt_state\": \"configured\",\n      \"scope\": \"user\"\n    }\n  ],\n  \"index\": {\n    \"bm25\": true,\n    \"bm25_artifact_matches\": true,\n    \"bm25_manifest_current\": true,\n    \"detail\": \"current\",\n    \"languages\": [\n      \"python\"\n    ],\n    \"manifest\": \"/tmp/codenib-codegraph-benefit-g0/guard-workflow/state/repositories/repository-ab11f069103b/indexes/repo_manifest.json\",\n    \"manifest_present\": true,\n    \"manifest_version\": \"1.2\",\n    \"ready\": true,\n    \"source_matches\": true,\n    \"source_selection\": {\n      \"digest\": \"sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4\",\n      \"exclude_subtrees\": [],\n      \"recorded\": true\n    },\n    \"symbol_graph\": true,\n    \"symbol_graph_artifact_matches\": true,\n    \"symbol_graph_complete\": true,\n    \"symbol_graph_manifest_current\": true\n  },\n  \"ready\": true,\n  \"receipt\": \"/tmp/codenib-codegraph-benefit-g0/guard-workflow/state/repositories/repository-ab11f069103b/codegraph/agent-integrations.json\",\n  \"repository\": \"/tmp/codenib-codegraph-benefit-g0/guard-workflow/repository\",\n  \"server\": {\n    \"args\": [\n      \"mcp\",\n      \"/tmp/codenib-codegraph-benefit-g0/guard-workflow/repository\",\n      \"--tool-surface\",\n      \"full\"\n    ],\n    \"command\": \"/home/zhongming/.venvs/codenib/bin/codenib\",\n    \"name\": \"codenib-repository-ab11f069103b\"\n  },\n  \"server_command\": {\n    \"detail\": \"codenib 0.2.4\",\n    \"ready\": true\n  },\n  \"toolchain\": {\n    \"languages\": [\n      \"python\"\n    ],\n    \"missing\": [],\n    \"notes\": [],\n    \"ready\": true\n  }\n}\n",
+      "stderr": ""
+    },
+    {
+      "phase": "live-initial",
+      "seconds": 0.022,
+      "nodes": [
+        {
+          "name": "engine.py:compute()",
+          "file": "engine.py",
+          "line": 1,
+          "kind": "function",
+          "depth": 1
+        }
+      ],
+      "result": {
+        "meta": {
+          "io.modelcontextprotocol/serverInfo": {
+            "name": "codenib",
+            "version": "0.2.4"
+          }
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"root\": \"main.py:main_workflow()\",\n  \"direction\": \"callees\",\n  \"nodes\": [\n    {\n      \"name\": \"engine.py:compute()\",\n      \"file\": \"engine.py\",\n      \"line\": 1,\n      \"kind\": \"function\",\n      \"depth\": 1\n    }\n  ],\n  \"edges\": [\n    {\n      \"source\": \"main.py:main_workflow()\",\n      \"target\": \"engine.py:compute()\",\n      \"type\": \"reference\"\n    }\n  ],\n  \"truncated\": false,\n  \"note\": \"\"\n}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "root": "main.py:main_workflow()",
+          "direction": "callees",
+          "nodes": [
+            {
+              "name": "engine.py:compute()",
+              "file": "engine.py",
+              "line": 1,
+              "kind": "function",
+              "depth": 1
+            }
+          ],
+          "edges": [
+            {
+              "source": "main.py:main_workflow()",
+              "target": "engine.py:compute()",
+              "type": "reference"
+            }
+          ],
+          "truncated": false,
+          "note": ""
+        },
+        "is_error": false,
+        "result_type": "complete"
+      }
+    },
+    {
+      "phase": "edited-old-index-status",
+      "argv": [
+        "/home/zhongming/.venvs/codenib/bin/python",
+        "-m",
+        "codenib",
+        "codegraph",
+        "status",
+        "/tmp/codenib-codegraph-benefit-g0/guard-workflow/repository",
+        "--json"
+      ],
+      "seconds": 0.907,
+      "returncode": 1,
+      "stdout": "{\n  \"clients\": [\n    {\n      \"configured\": true,\n      \"detail\": \"configuration matches\",\n      \"installed\": true,\n      \"matches\": true,\n      \"name\": \"codex\",\n      \"receipt_state\": \"configured\",\n      \"scope\": \"user\"\n    }\n  ],\n  \"index\": {\n    \"bm25\": true,\n    \"bm25_artifact_matches\": true,\n    \"bm25_manifest_current\": true,\n    \"detail\": \"repository source files do not match the indexed content. Rebuild the index for the current working tree before serving or publishing context.\",\n    \"languages\": [\n      \"python\"\n    ],\n    \"manifest\": \"/tmp/codenib-codegraph-benefit-g0/guard-workflow/state/repositories/repository-ab11f069103b/indexes/repo_manifest.json\",\n    \"manifest_present\": true,\n    \"manifest_version\": \"1.2\",\n    \"ready\": false,\n    \"source_matches\": false,\n    \"source_selection\": {\n      \"digest\": \"sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4\",\n      \"exclude_subtrees\": [],\n      \"recorded\": true\n    },\n    \"symbol_graph\": true,\n    \"symbol_graph_artifact_matches\": true,\n    \"symbol_graph_complete\": true,\n    \"symbol_graph_manifest_current\": true\n  },\n  \"ready\": false,\n  \"receipt\": \"/tmp/codenib-codegraph-benefit-g0/guard-workflow/state/repositories/repository-ab11f069103b/codegraph/agent-integrations.json\",\n  \"repository\": \"/tmp/codenib-codegraph-benefit-g0/guard-workflow/repository\",\n  \"server\": {\n    \"args\": [\n      \"mcp\",\n      \"/tmp/codenib-codegraph-benefit-g0/guard-workflow/repository\",\n      \"--tool-surface\",\n      \"full\"\n    ],\n    \"command\": \"/home/zhongming/.venvs/codenib/bin/codenib\",\n    \"name\": \"codenib-repository-ab11f069103b\"\n  },\n  \"server_command\": {\n    \"detail\": \"codenib 0.2.4\",\n    \"ready\": true\n  },\n  \"toolchain\": {\n    \"languages\": [\n      \"python\"\n    ],\n    \"missing\": [],\n    \"notes\": [],\n    \"ready\": true\n  }\n}\n",
+      "stderr": ""
+    },
+    {
+      "phase": "live-after-edit-before-rebuild",
+      "seconds": 0.002,
+      "nodes": null,
+      "result": {
+        "meta": {
+          "io.modelcontextprotocol/serverInfo": {
+            "name": "codenib",
+            "version": "0.2.4"
+          }
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "Error executing tool dependency_subgraph: Indexed source changed. Run `codenib codegraph init` for this repository and restart its CodeNib MCP server. repository source inventory changed",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": null,
+        "is_error": true,
+        "result_type": "complete"
+      }
+    },
+    {
+      "phase": "tracked-edit-init",
+      "argv": [
+        "/home/zhongming/.venvs/codenib/bin/python",
+        "-m",
+        "codenib",
+        "codegraph",
+        "init",
+        "/tmp/codenib-codegraph-benefit-g0/guard-workflow/repository",
+        "--agent",
+        "codex",
+        "--language",
+        "python"
+      ],
+      "seconds": 1.374,
+      "returncode": 0,
+      "stdout": "Loading configuration file at /tmp/codenib-codegraph-benefit-g0/guard-workflow/repository/pyrightconfig.json\nAssuming Python version 3.12\nAssuming Python platform Linux\nNo include entries specified; assuming /tmp/codenib-codegraph-benefit-g0/guard-workflow/repository\n(00:09:30) Total Project Files 3\n(00:09:30) Indexing /tmp/codenib-codegraph-benefit-g0/guard-workflow/repository with version 0.0.0\n(00:09:30) Parse and search for dependencies\n(00:09:30) Index workspace and track project files\n(00:09:30) Analyze project and dependencies\n(00:09:30) Parse and emit SCIP\n(00:09:30) Writing external symbols to SCIP index\n(00:09:30) Sucessfully wrote SCIP index to /tmp/codenib-codegraph-benefit-g0/guard-workflow/state/repositories/repository-ab11f069103b/indexes/symbol_graph/index.scip\nRepository: /tmp/codenib-codegraph-benefit-g0/guard-workflow/repository\nLanguages:  python\nExcluded:   none\nManifest:   /tmp/codenib-codegraph-benefit-g0/guard-workflow/state/repositories/repository-ab11f069103b/indexes/repo_manifest.json\nViews:\n  bm25           fresh (0.07s)\n  symbol_graph   fresh (0.55s)\n\nCodeGraph is ready for coding agents.\nMCP server: codenib-repository-ab11f069103b\nClients:    codex\nExcluded:   none\nStatus:     codenib codegraph status /tmp/codenib-codegraph-benefit-g0/guard-workflow/repository\nTry asking your agent to use explore_context before editing and dependency_subgraph for impact analysis.\n",
+      "stderr": "INFO     Successfully loaded python language parser from                        \n         tree-sitter-language-pack                                              \nINFO     Chunking repository:                                                   \n         /tmp/codenib-codegraph-benefit-g0/guard-workflow/repository            \nINFO     Target languages: python                                               \nINFO     Found 3 files to process                                               \nINFO     Successfully processed 3/3 files                                       \nINFO     Generated 4 total chunks                                               \nINFO     Collected 2 unique nodes                                               \nINFO     Initialized LSIndexer for python at                                    \n         /tmp/codenib-codegraph-benefit-g0/guard-workflow/repository            \n         (route=active)                                                         \nINFO     Generating SCIP index                                                  \nINFO     Removed pre-existing SCIP index before generation                      \nINFO     Using scip-python from                                                 \n         /home/zhongming/.codenib/toolchains/node-tools/node_modules/.bin/scip-p\n         ython                                                                  \nINFO     Applying 44 temporary Pyright exclusions                               \nINFO     Successfully generated SCIP index at                                   \n         /tmp/codenib-codegraph-benefit-g0/guard-workflow/state/repositories/rep\n         ository-ab11f069103b/indexes/symbol_graph/index.scip                   \nINFO     Index generation took: 0.37 seconds                                    \nINFO     Decoding SCIP index                                                    \nINFO     Successfully decoded SCIP index to                                     \n         /tmp/codenib-codegraph-benefit-g0/guard-workflow/state/repositories/rep\n         ository-ab11f069103b/indexes/symbol_graph/index.decoded                \nINFO     \u23f1\ufe0f  Index decoding took: 0.00 seconds                                  \nINFO     Starting SCIP index processing (backend=serial)...                     \nINFO     Starting SCIP Python decode from                                       \n         /tmp/codenib-codegraph-benefit-g0/guard-workflow/state/repositories/rep\n         ository-ab11f069103b/indexes/symbol_graph/index.decoded                \nINFO     Saved processed SCIP index to                                          \n         /tmp/codenib-codegraph-benefit-g0/guard-workflow/state/repositories/rep\n         ository-ab11f069103b/indexes/symbol_graph/graph.pkl                    \nINFO     \u23f1\ufe0f  Graph saving took: 0.00 seconds                                    \nINFO     \u2705 Graph created successfully (7 nodes, 8 edges)                       \nINFO     \u23f1\ufe0f  Index processing took: 0.00 seconds                                \nINFO     \u2705 Graph created successfully (7 nodes, 8 edges)                       \nINFO     [scip_python_indexer] profiler summary: 0.366s total across 6          \n         section(s)                                                             \nINFO       generate_index                           total= 0.366s count=  1 avg=\n         0.366s min= 0.366s max= 0.366s                                         \nINFO       process_index.decode                     total= 0.001s count=  1 avg=\n         0.001s min= 0.001s max= 0.001s                                         \nINFO       process_index.build_lsp_occurrence_index total= 0.001s count=  1 avg=\n         0.001s min= 0.001s max= 0.001s                                         \nINFO       process_index.save_graph                 total= 0.000s count=  1 avg=\n         0.000s min= 0.000s max= 0.000s                                         \nINFO       decode_index                             total= 0.000s count=  1 avg=\n         0.000s min= 0.000s max= 0.000s                                         \nINFO       process_index.build_range_indexes        total= 0.000s count=  1 avg=\n         0.000s min= 0.000s max= 0.000s                                         \n"
+    },
+    {
+      "phase": "tracked-edit-init-preservation",
+      "source_unchanged": true,
+      "files": {
+        "scratch.py": "8399e6c8354d1de92d124875c27de81fb54e1fc10d6af752c238ea7e9fd9dc54",
+        "engine.py": "c3daf03c99f61acf75b64b988a9d10fc280365b32d708f7f055c8d254fcd6392",
+        "main.py": "b38bbce3d69baea1688350662874044d3b4e953e815f70ceae26067b0c55ba71",
+        "pyproject.toml": "279487974cee1a428ea079f04b295b716a002f4ef1c4b7fb73e07ffac8775a72"
+      },
+      "git_status": " M engine.py\u0000 M main.py\u0000?? scratch.py\u0000"
+    },
+    {
+      "phase": "tracked-edit-init-status",
+      "argv": [
+        "/home/zhongming/.venvs/codenib/bin/python",
+        "-m",
+        "codenib",
+        "codegraph",
+        "status",
+        "/tmp/codenib-codegraph-benefit-g0/guard-workflow/repository",
+        "--json"
+      ],
+      "seconds": 0.856,
+      "returncode": 0,
+      "stdout": "{\n  \"clients\": [\n    {\n      \"configured\": true,\n      \"detail\": \"configuration matches\",\n      \"installed\": true,\n      \"matches\": true,\n      \"name\": \"codex\",\n      \"receipt_state\": \"configured\",\n      \"scope\": \"user\"\n    }\n  ],\n  \"index\": {\n    \"bm25\": true,\n    \"bm25_artifact_matches\": true,\n    \"bm25_manifest_current\": true,\n    \"detail\": \"current\",\n    \"languages\": [\n      \"python\"\n    ],\n    \"manifest\": \"/tmp/codenib-codegraph-benefit-g0/guard-workflow/state/repositories/repository-ab11f069103b/indexes/repo_manifest.json\",\n    \"manifest_present\": true,\n    \"manifest_version\": \"1.2\",\n    \"ready\": true,\n    \"source_matches\": true,\n    \"source_selection\": {\n      \"digest\": \"sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4\",\n      \"exclude_subtrees\": [],\n      \"recorded\": true\n    },\n    \"symbol_graph\": true,\n    \"symbol_graph_artifact_matches\": true,\n    \"symbol_graph_complete\": true,\n    \"symbol_graph_manifest_current\": true\n  },\n  \"ready\": true,\n  \"receipt\": \"/tmp/codenib-codegraph-benefit-g0/guard-workflow/state/repositories/repository-ab11f069103b/codegraph/agent-integrations.json\",\n  \"repository\": \"/tmp/codenib-codegraph-benefit-g0/guard-workflow/repository\",\n  \"server\": {\n    \"args\": [\n      \"mcp\",\n      \"/tmp/codenib-codegraph-benefit-g0/guard-workflow/repository\",\n      \"--tool-surface\",\n      \"full\"\n    ],\n    \"command\": \"/home/zhongming/.venvs/codenib/bin/codenib\",\n    \"name\": \"codenib-repository-ab11f069103b\"\n  },\n  \"server_command\": {\n    \"detail\": \"codenib 0.2.4\",\n    \"ready\": true\n  },\n  \"toolchain\": {\n    \"languages\": [\n      \"python\"\n    ],\n    \"missing\": [],\n    \"notes\": [],\n    \"ready\": true\n  }\n}\n",
+      "stderr": ""
+    },
+    {
+      "phase": "live-after-rebuild",
+      "seconds": 0.002,
+      "nodes": null,
+      "result": {
+        "meta": {
+          "io.modelcontextprotocol/serverInfo": {
+            "name": "codenib",
+            "version": "0.2.4"
+          }
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "Error executing tool dependency_subgraph: Indexed source changed. Run `codenib codegraph init` for this repository and restart its CodeNib MCP server. repository source inventory changed",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": null,
+        "is_error": true,
+        "result_type": "complete"
+      }
+    },
+    {
+      "phase": "fresh-after-edit",
+      "seconds": 0.006,
+      "nodes": [
+        {
+          "name": "engine.py:compute_v2()",
+          "file": "engine.py",
+          "line": 1,
+          "kind": "function",
+          "depth": 1
+        }
+      ],
+      "result": {
+        "meta": {
+          "io.modelcontextprotocol/serverInfo": {
+            "name": "codenib",
+            "version": "0.2.4"
+          }
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"root\": \"main.py:main_workflow()\",\n  \"direction\": \"callees\",\n  \"nodes\": [\n    {\n      \"name\": \"engine.py:compute_v2()\",\n      \"file\": \"engine.py\",\n      \"line\": 1,\n      \"kind\": \"function\",\n      \"depth\": 1\n    }\n  ],\n  \"edges\": [\n    {\n      \"source\": \"main.py:main_workflow()\",\n      \"target\": \"engine.py:compute_v2()\",\n      \"type\": \"reference\"\n    }\n  ],\n  \"truncated\": false,\n  \"note\": \"\"\n}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "root": "main.py:main_workflow()",
+          "direction": "callees",
+          "nodes": [
+            {
+              "name": "engine.py:compute_v2()",
+              "file": "engine.py",
+              "line": 1,
+              "kind": "function",
+              "depth": 1
+            }
+          ],
+          "edges": [
+            {
+              "source": "main.py:main_workflow()",
+              "target": "engine.py:compute_v2()",
+              "type": "reference"
+            }
+          ],
+          "truncated": false,
+          "note": ""
+        },
+        "is_error": false,
+        "result_type": "complete"
+      }
+    },
+    {
+      "phase": "created-file-init",
+      "argv": [
+        "/home/zhongming/.venvs/codenib/bin/python",
+        "-m",
+        "codenib",
+        "codegraph",
+        "init",
+        "/tmp/codenib-codegraph-benefit-g0/guard-workflow/repository",
+        "--agent",
+        "codex",
+        "--language",
+        "python"
+      ],
+      "seconds": 1.334,
+      "returncode": 0,
+      "stdout": "Loading configuration file at /tmp/codenib-codegraph-benefit-g0/guard-workflow/repository/pyrightconfig.json\nAssuming Python version 3.12\nAssuming Python platform Linux\nNo include entries specified; assuming /tmp/codenib-codegraph-benefit-g0/guard-workflow/repository\n(00:09:33) Total Project Files 4\n(00:09:33) Indexing /tmp/codenib-codegraph-benefit-g0/guard-workflow/repository with version 0.0.0\n(00:09:33) Parse and search for dependencies\n(00:09:33) Index workspace and track project files\n(00:09:33) Analyze project and dependencies\n(00:09:33) Parse and emit SCIP\n(00:09:33) Writing external symbols to SCIP index\n(00:09:33) Sucessfully wrote SCIP index to /tmp/codenib-codegraph-benefit-g0/guard-workflow/state/repositories/repository-ab11f069103b/indexes/symbol_graph/index.scip\nRepository: /tmp/codenib-codegraph-benefit-g0/guard-workflow/repository\nLanguages:  python\nExcluded:   none\nManifest:   /tmp/codenib-codegraph-benefit-g0/guard-workflow/state/repositories/repository-ab11f069103b/indexes/repo_manifest.json\nViews:\n  bm25           fresh (0.07s)\n  symbol_graph   fresh (0.56s)\n\nCodeGraph is ready for coding agents.\nMCP server: codenib-repository-ab11f069103b\nClients:    codex\nExcluded:   none\nStatus:     codenib codegraph status /tmp/codenib-codegraph-benefit-g0/guard-workflow/repository\nTry asking your agent to use explore_context before editing and dependency_subgraph for impact analysis.\n",
+      "stderr": "INFO     Successfully loaded python language parser from                        \n         tree-sitter-language-pack                                              \nINFO     Chunking repository:                                                   \n         /tmp/codenib-codegraph-benefit-g0/guard-workflow/repository            \nINFO     Target languages: python                                               \nINFO     Found 4 files to process                                               \nINFO     Successfully processed 4/4 files                                       \nINFO     Generated 5 total chunks                                               \nINFO     Collected 3 unique nodes                                               \nINFO     Initialized LSIndexer for python at                                    \n         /tmp/codenib-codegraph-benefit-g0/guard-workflow/repository            \n         (route=active)                                                         \nINFO     Generating SCIP index                                                  \nINFO     Removed pre-existing SCIP index before generation                      \nINFO     Using scip-python from                                                 \n         /home/zhongming/.codenib/toolchains/node-tools/node_modules/.bin/scip-p\n         ython                                                                  \nINFO     Applying 44 temporary Pyright exclusions                               \nINFO     Successfully generated SCIP index at                                   \n         /tmp/codenib-codegraph-benefit-g0/guard-workflow/state/repositories/rep\n         ository-ab11f069103b/indexes/symbol_graph/index.scip                   \nINFO     Index generation took: 0.37 seconds                                    \nINFO     Decoding SCIP index                                                    \nINFO     Successfully decoded SCIP index to                                     \n         /tmp/codenib-codegraph-benefit-g0/guard-workflow/state/repositories/rep\n         ository-ab11f069103b/indexes/symbol_graph/index.decoded                \nINFO     \u23f1\ufe0f  Index decoding took: 0.00 seconds                                  \nINFO     Starting SCIP index processing (backend=serial)...                     \nINFO     Starting SCIP Python decode from                                       \n         /tmp/codenib-codegraph-benefit-g0/guard-workflow/state/repositories/rep\n         ository-ab11f069103b/indexes/symbol_graph/index.decoded                \nINFO     Saved processed SCIP index to                                          \n         /tmp/codenib-codegraph-benefit-g0/guard-workflow/state/repositories/rep\n         ository-ab11f069103b/indexes/symbol_graph/graph.pkl                    \nINFO     \u23f1\ufe0f  Graph saving took: 0.00 seconds                                    \nINFO     \u2705 Graph created successfully (9 nodes, 10 edges)                      \nINFO     \u23f1\ufe0f  Index processing took: 0.00 seconds                                \nINFO     \u2705 Graph created successfully (9 nodes, 10 edges)                      \nINFO     [scip_python_indexer] profiler summary: 0.366s total across 6          \n         section(s)                                                             \nINFO       generate_index                           total= 0.366s count=  1 avg=\n         0.366s min= 0.366s max= 0.366s                                         \nINFO       process_index.decode                     total= 0.001s count=  1 avg=\n         0.001s min= 0.001s max= 0.001s                                         \nINFO       process_index.build_lsp_occurrence_index total= 0.001s count=  1 avg=\n         0.001s min= 0.001s max= 0.001s                                         \nINFO       decode_index                             total= 0.000s count=  1 avg=\n         0.000s min= 0.000s max= 0.000s                                         \nINFO       process_index.save_graph                 total= 0.000s count=  1 avg=\n         0.000s min= 0.000s max= 0.000s                                         \nINFO       process_index.build_range_indexes        total= 0.000s count=  1 avg=\n         0.000s min= 0.000s max= 0.000s                                         \n"
+    },
+    {
+      "phase": "created-file-init-preservation",
+      "source_unchanged": true,
+      "files": {
+        "scratch.py": "8399e6c8354d1de92d124875c27de81fb54e1fc10d6af752c238ea7e9fd9dc54",
+        "engine.py": "c3daf03c99f61acf75b64b988a9d10fc280365b32d708f7f055c8d254fcd6392",
+        "main.py": "4c3f5f11f70a613babd865b60537d4eaa237bcfc38cff37dbbca4a7af26f0087",
+        "pyproject.toml": "279487974cee1a428ea079f04b295b716a002f4ef1c4b7fb73e07ffac8775a72",
+        "helpers.py": "3b12d7bfe9916eabf84fcb829d8e0cf50b90d897c4c54872eb217fb23439291d"
+      },
+      "git_status": " M engine.py\u0000 M main.py\u0000?? helpers.py\u0000?? scratch.py\u0000"
+    },
+    {
+      "phase": "created-file-init-status",
+      "argv": [
+        "/home/zhongming/.venvs/codenib/bin/python",
+        "-m",
+        "codenib",
+        "codegraph",
+        "status",
+        "/tmp/codenib-codegraph-benefit-g0/guard-workflow/repository",
+        "--json"
+      ],
+      "seconds": 0.857,
+      "returncode": 0,
+      "stdout": "{\n  \"clients\": [\n    {\n      \"configured\": true,\n      \"detail\": \"configuration matches\",\n      \"installed\": true,\n      \"matches\": true,\n      \"name\": \"codex\",\n      \"receipt_state\": \"configured\",\n      \"scope\": \"user\"\n    }\n  ],\n  \"index\": {\n    \"bm25\": true,\n    \"bm25_artifact_matches\": true,\n    \"bm25_manifest_current\": true,\n    \"detail\": \"current\",\n    \"languages\": [\n      \"python\"\n    ],\n    \"manifest\": \"/tmp/codenib-codegraph-benefit-g0/guard-workflow/state/repositories/repository-ab11f069103b/indexes/repo_manifest.json\",\n    \"manifest_present\": true,\n    \"manifest_version\": \"1.2\",\n    \"ready\": true,\n    \"source_matches\": true,\n    \"source_selection\": {\n      \"digest\": \"sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4\",\n      \"exclude_subtrees\": [],\n      \"recorded\": true\n    },\n    \"symbol_graph\": true,\n    \"symbol_graph_artifact_matches\": true,\n    \"symbol_graph_complete\": true,\n    \"symbol_graph_manifest_current\": true\n  },\n  \"ready\": true,\n  \"receipt\": \"/tmp/codenib-codegraph-benefit-g0/guard-workflow/state/repositories/repository-ab11f069103b/codegraph/agent-integrations.json\",\n  \"repository\": \"/tmp/codenib-codegraph-benefit-g0/guard-workflow/repository\",\n  \"server\": {\n    \"args\": [\n      \"mcp\",\n      \"/tmp/codenib-codegraph-benefit-g0/guard-workflow/repository\",\n      \"--tool-surface\",\n      \"full\"\n    ],\n    \"command\": \"/home/zhongming/.venvs/codenib/bin/codenib\",\n    \"name\": \"codenib-repository-ab11f069103b\"\n  },\n  \"server_command\": {\n    \"detail\": \"codenib 0.2.4\",\n    \"ready\": true\n  },\n  \"toolchain\": {\n    \"languages\": [\n      \"python\"\n    ],\n    \"missing\": [],\n    \"notes\": [],\n    \"ready\": true\n  }\n}\n",
+      "stderr": ""
+    },
+    {
+      "phase": "fresh-after-create",
+      "seconds": 0.006,
+      "nodes": [
+        {
+          "name": "helpers.py:compute_v3()",
+          "file": "helpers.py",
+          "line": 1,
+          "kind": "function",
+          "depth": 1
+        }
+      ],
+      "result": {
+        "meta": {
+          "io.modelcontextprotocol/serverInfo": {
+            "name": "codenib",
+            "version": "0.2.4"
+          }
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"root\": \"main.py:main_workflow()\",\n  \"direction\": \"callees\",\n  \"nodes\": [\n    {\n      \"name\": \"helpers.py:compute_v3()\",\n      \"file\": \"helpers.py\",\n      \"line\": 1,\n      \"kind\": \"function\",\n      \"depth\": 1\n    }\n  ],\n  \"edges\": [\n    {\n      \"source\": \"main.py:main_workflow()\",\n      \"target\": \"helpers.py:compute_v3()\",\n      \"type\": \"reference\"\n    }\n  ],\n  \"truncated\": false,\n  \"note\": \"\"\n}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "root": "main.py:main_workflow()",
+          "direction": "callees",
+          "nodes": [
+            {
+              "name": "helpers.py:compute_v3()",
+              "file": "helpers.py",
+              "line": 1,
+              "kind": "function",
+              "depth": 1
+            }
+          ],
+          "edges": [
+            {
+              "source": "main.py:main_workflow()",
+              "target": "helpers.py:compute_v3()",
+              "type": "reference"
+            }
+          ],
+          "truncated": false,
+          "note": ""
+        },
+        "is_error": false,
+        "result_type": "complete"
+      }
+    },
+    {
+      "phase": "renamed-file-init",
+      "argv": [
+        "/home/zhongming/.venvs/codenib/bin/python",
+        "-m",
+        "codenib",
+        "codegraph",
+        "init",
+        "/tmp/codenib-codegraph-benefit-g0/guard-workflow/repository",
+        "--agent",
+        "codex",
+        "--language",
+        "python"
+      ],
+      "seconds": 1.374,
+      "returncode": 0,
+      "stdout": "Loading configuration file at /tmp/codenib-codegraph-benefit-g0/guard-workflow/repository/pyrightconfig.json\nAssuming Python version 3.12\nAssuming Python platform Linux\nNo include entries specified; assuming /tmp/codenib-codegraph-benefit-g0/guard-workflow/repository\n(00:09:36) Total Project Files 4\n(00:09:36) Indexing /tmp/codenib-codegraph-benefit-g0/guard-workflow/repository with version 0.0.0\n(00:09:36) Parse and search for dependencies\n(00:09:36) Index workspace and track project files\n(00:09:36) Analyze project and dependencies\n(00:09:36) Parse and emit SCIP\n(00:09:36) Writing external symbols to SCIP index\n(00:09:36) Sucessfully wrote SCIP index to /tmp/codenib-codegraph-benefit-g0/guard-workflow/state/repositories/repository-ab11f069103b/indexes/symbol_graph/index.scip\nRepository: /tmp/codenib-codegraph-benefit-g0/guard-workflow/repository\nLanguages:  python\nExcluded:   none\nManifest:   /tmp/codenib-codegraph-benefit-g0/guard-workflow/state/repositories/repository-ab11f069103b/indexes/repo_manifest.json\nViews:\n  bm25           fresh (0.12s)\n  symbol_graph   fresh (0.55s)\n\nCodeGraph is ready for coding agents.\nMCP server: codenib-repository-ab11f069103b\nClients:    codex\nExcluded:   none\nStatus:     codenib codegraph status /tmp/codenib-codegraph-benefit-g0/guard-workflow/repository\nTry asking your agent to use explore_context before editing and dependency_subgraph for impact analysis.\n",
+      "stderr": "INFO     Successfully loaded python language parser from                        \n         tree-sitter-language-pack                                              \nINFO     Chunking repository:                                                   \n         /tmp/codenib-codegraph-benefit-g0/guard-workflow/repository            \nINFO     Target languages: python                                               \nINFO     Found 4 files to process                                               \nINFO     Successfully processed 4/4 files                                       \nINFO     Generated 5 total chunks                                               \nINFO     Collected 3 unique nodes                                               \nINFO     Initialized LSIndexer for python at                                    \n         /tmp/codenib-codegraph-benefit-g0/guard-workflow/repository            \n         (route=active)                                                         \nINFO     Generating SCIP index                                                  \nINFO     Removed pre-existing SCIP index before generation                      \nINFO     Using scip-python from                                                 \n         /home/zhongming/.codenib/toolchains/node-tools/node_modules/.bin/scip-p\n         ython                                                                  \nINFO     Applying 44 temporary Pyright exclusions                               \nINFO     Successfully generated SCIP index at                                   \n         /tmp/codenib-codegraph-benefit-g0/guard-workflow/state/repositories/rep\n         ository-ab11f069103b/indexes/symbol_graph/index.scip                   \nINFO     Index generation took: 0.37 seconds                                    \nINFO     Decoding SCIP index                                                    \nINFO     Successfully decoded SCIP index to                                     \n         /tmp/codenib-codegraph-benefit-g0/guard-workflow/state/repositories/rep\n         ository-ab11f069103b/indexes/symbol_graph/index.decoded                \nINFO     \u23f1\ufe0f  Index decoding took: 0.00 seconds                                  \nINFO     Starting SCIP index processing (backend=serial)...                     \nINFO     Starting SCIP Python decode from                                       \n         /tmp/codenib-codegraph-benefit-g0/guard-workflow/state/repositories/rep\n         ository-ab11f069103b/indexes/symbol_graph/index.decoded                \nINFO     Saved processed SCIP index to                                          \n         /tmp/codenib-codegraph-benefit-g0/guard-workflow/state/repositories/rep\n         ository-ab11f069103b/indexes/symbol_graph/graph.pkl                    \nINFO     \u23f1\ufe0f  Graph saving took: 0.00 seconds                                    \nINFO     \u2705 Graph created successfully (9 nodes, 10 edges)                      \nINFO     \u23f1\ufe0f  Index processing took: 0.00 seconds                                \nINFO     \u2705 Graph created successfully (9 nodes, 10 edges)                      \nINFO     [scip_python_indexer] profiler summary: 0.367s total across 6          \n         section(s)                                                             \nINFO       generate_index                           total= 0.367s count=  1 avg=\n         0.367s min= 0.367s max= 0.367s                                         \nINFO       process_index.decode                     total= 0.001s count=  1 avg=\n         0.001s min= 0.001s max= 0.001s                                         \nINFO       process_index.build_lsp_occurrence_index total= 0.001s count=  1 avg=\n         0.001s min= 0.001s max= 0.001s                                         \nINFO       decode_index                             total= 0.000s count=  1 avg=\n         0.000s min= 0.000s max= 0.000s                                         \nINFO       process_index.save_graph                 total= 0.000s count=  1 avg=\n         0.000s min= 0.000s max= 0.000s                                         \nINFO       process_index.build_range_indexes        total= 0.000s count=  1 avg=\n         0.000s min= 0.000s max= 0.000s                                         \n"
+    },
+    {
+      "phase": "renamed-file-init-preservation",
+      "source_unchanged": true,
+      "files": {
+        "scratch.py": "8399e6c8354d1de92d124875c27de81fb54e1fc10d6af752c238ea7e9fd9dc54",
+        "engine.py": "c3daf03c99f61acf75b64b988a9d10fc280365b32d708f7f055c8d254fcd6392",
+        "pricing.py": "3b12d7bfe9916eabf84fcb829d8e0cf50b90d897c4c54872eb217fb23439291d",
+        "main.py": "29bbc1e5c513352c042913e82286609621c4a30bc81a6aa1006fa2f32de5607c",
+        "pyproject.toml": "279487974cee1a428ea079f04b295b716a002f4ef1c4b7fb73e07ffac8775a72"
+      },
+      "git_status": " M engine.py\u0000 M main.py\u0000?? pricing.py\u0000?? scratch.py\u0000"
+    },
+    {
+      "phase": "renamed-file-init-status",
+      "argv": [
+        "/home/zhongming/.venvs/codenib/bin/python",
+        "-m",
+        "codenib",
+        "codegraph",
+        "status",
+        "/tmp/codenib-codegraph-benefit-g0/guard-workflow/repository",
+        "--json"
+      ],
+      "seconds": 0.899,
+      "returncode": 0,
+      "stdout": "{\n  \"clients\": [\n    {\n      \"configured\": true,\n      \"detail\": \"configuration matches\",\n      \"installed\": true,\n      \"matches\": true,\n      \"name\": \"codex\",\n      \"receipt_state\": \"configured\",\n      \"scope\": \"user\"\n    }\n  ],\n  \"index\": {\n    \"bm25\": true,\n    \"bm25_artifact_matches\": true,\n    \"bm25_manifest_current\": true,\n    \"detail\": \"current\",\n    \"languages\": [\n      \"python\"\n    ],\n    \"manifest\": \"/tmp/codenib-codegraph-benefit-g0/guard-workflow/state/repositories/repository-ab11f069103b/indexes/repo_manifest.json\",\n    \"manifest_present\": true,\n    \"manifest_version\": \"1.2\",\n    \"ready\": true,\n    \"source_matches\": true,\n    \"source_selection\": {\n      \"digest\": \"sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4\",\n      \"exclude_subtrees\": [],\n      \"recorded\": true\n    },\n    \"symbol_graph\": true,\n    \"symbol_graph_artifact_matches\": true,\n    \"symbol_graph_complete\": true,\n    \"symbol_graph_manifest_current\": true\n  },\n  \"ready\": true,\n  \"receipt\": \"/tmp/codenib-codegraph-benefit-g0/guard-workflow/state/repositories/repository-ab11f069103b/codegraph/agent-integrations.json\",\n  \"repository\": \"/tmp/codenib-codegraph-benefit-g0/guard-workflow/repository\",\n  \"server\": {\n    \"args\": [\n      \"mcp\",\n      \"/tmp/codenib-codegraph-benefit-g0/guard-workflow/repository\",\n      \"--tool-surface\",\n      \"full\"\n    ],\n    \"command\": \"/home/zhongming/.venvs/codenib/bin/codenib\",\n    \"name\": \"codenib-repository-ab11f069103b\"\n  },\n  \"server_command\": {\n    \"detail\": \"codenib 0.2.4\",\n    \"ready\": true\n  },\n  \"toolchain\": {\n    \"languages\": [\n      \"python\"\n    ],\n    \"missing\": [],\n    \"notes\": [],\n    \"ready\": true\n  }\n}\n",
+      "stderr": ""
+    },
+    {
+      "phase": "fresh-after-rename",
+      "seconds": 0.007,
+      "nodes": [
+        {
+          "name": "pricing.py:compute_v3()",
+          "file": "pricing.py",
+          "line": 1,
+          "kind": "function",
+          "depth": 1
+        }
+      ],
+      "result": {
+        "meta": {
+          "io.modelcontextprotocol/serverInfo": {
+            "name": "codenib",
+            "version": "0.2.4"
+          }
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"root\": \"main.py:main_workflow()\",\n  \"direction\": \"callees\",\n  \"nodes\": [\n    {\n      \"name\": \"pricing.py:compute_v3()\",\n      \"file\": \"pricing.py\",\n      \"line\": 1,\n      \"kind\": \"function\",\n      \"depth\": 1\n    }\n  ],\n  \"edges\": [\n    {\n      \"source\": \"main.py:main_workflow()\",\n      \"target\": \"pricing.py:compute_v3()\",\n      \"type\": \"reference\"\n    }\n  ],\n  \"truncated\": false,\n  \"note\": \"\"\n}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "root": "main.py:main_workflow()",
+          "direction": "callees",
+          "nodes": [
+            {
+              "name": "pricing.py:compute_v3()",
+              "file": "pricing.py",
+              "line": 1,
+              "kind": "function",
+              "depth": 1
+            }
+          ],
+          "edges": [
+            {
+              "source": "main.py:main_workflow()",
+              "target": "pricing.py:compute_v3()",
+              "type": "reference"
+            }
+          ],
+          "truncated": false,
+          "note": ""
+        },
+        "is_error": false,
+        "result_type": "complete"
+      }
+    },
+    {
+      "phase": "deleted-file-init",
+      "argv": [
+        "/home/zhongming/.venvs/codenib/bin/python",
+        "-m",
+        "codenib",
+        "codegraph",
+        "init",
+        "/tmp/codenib-codegraph-benefit-g0/guard-workflow/repository",
+        "--agent",
+        "codex",
+        "--language",
+        "python"
+      ],
+      "seconds": 1.448,
+      "returncode": 0,
+      "stdout": "Loading configuration file at /tmp/codenib-codegraph-benefit-g0/guard-workflow/repository/pyrightconfig.json\nAssuming Python version 3.12\nAssuming Python platform Linux\nNo include entries specified; assuming /tmp/codenib-codegraph-benefit-g0/guard-workflow/repository\n(00:09:39) Total Project Files 3\n(00:09:39) Indexing /tmp/codenib-codegraph-benefit-g0/guard-workflow/repository with version 0.0.0\n(00:09:39) Parse and search for dependencies\n(00:09:39) Index workspace and track project files\n(00:09:39) Analyze project and dependencies\n(00:09:39) Parse and emit SCIP\n(00:09:39) Writing external symbols to SCIP index\n(00:09:39) Sucessfully wrote SCIP index to /tmp/codenib-codegraph-benefit-g0/guard-workflow/state/repositories/repository-ab11f069103b/indexes/symbol_graph/index.scip\nRepository: /tmp/codenib-codegraph-benefit-g0/guard-workflow/repository\nLanguages:  python\nExcluded:   none\nManifest:   /tmp/codenib-codegraph-benefit-g0/guard-workflow/state/repositories/repository-ab11f069103b/indexes/repo_manifest.json\nViews:\n  bm25           fresh (0.09s)\n  symbol_graph   fresh (0.60s)\n\nCodeGraph is ready for coding agents.\nMCP server: codenib-repository-ab11f069103b\nClients:    codex\nExcluded:   none\nStatus:     codenib codegraph status /tmp/codenib-codegraph-benefit-g0/guard-workflow/repository\nTry asking your agent to use explore_context before editing and dependency_subgraph for impact analysis.\n",
+      "stderr": "INFO     Successfully loaded python language parser from                        \n         tree-sitter-language-pack                                              \nINFO     Chunking repository:                                                   \n         /tmp/codenib-codegraph-benefit-g0/guard-workflow/repository            \nINFO     Target languages: python                                               \nINFO     Found 3 files to process                                               \nINFO     Successfully processed 3/3 files                                       \nINFO     Generated 4 total chunks                                               \nINFO     Collected 2 unique nodes                                               \nINFO     Initialized LSIndexer for python at                                    \n         /tmp/codenib-codegraph-benefit-g0/guard-workflow/repository            \n         (route=active)                                                         \nINFO     Generating SCIP index                                                  \nINFO     Removed pre-existing SCIP index before generation                      \nINFO     Using scip-python from                                                 \n         /home/zhongming/.codenib/toolchains/node-tools/node_modules/.bin/scip-p\n         ython                                                                  \nINFO     Applying 44 temporary Pyright exclusions                               \nINFO     Successfully generated SCIP index at                                   \n         /tmp/codenib-codegraph-benefit-g0/guard-workflow/state/repositories/rep\n         ository-ab11f069103b/indexes/symbol_graph/index.scip                   \nINFO     Index generation took: 0.42 seconds                                    \nINFO     Decoding SCIP index                                                    \nINFO     Successfully decoded SCIP index to                                     \n         /tmp/codenib-codegraph-benefit-g0/guard-workflow/state/repositories/rep\n         ository-ab11f069103b/indexes/symbol_graph/index.decoded                \nINFO     \u23f1\ufe0f  Index decoding took: 0.00 seconds                                  \nINFO     Starting SCIP index processing (backend=serial)...                     \nINFO     Starting SCIP Python decode from                                       \n         /tmp/codenib-codegraph-benefit-g0/guard-workflow/state/repositories/rep\n         ository-ab11f069103b/indexes/symbol_graph/index.decoded                \nINFO     Saved processed SCIP index to                                          \n         /tmp/codenib-codegraph-benefit-g0/guard-workflow/state/repositories/rep\n         ository-ab11f069103b/indexes/symbol_graph/graph.pkl                    \nINFO     \u23f1\ufe0f  Graph saving took: 0.00 seconds                                    \nINFO     \u2705 Graph created successfully (7 nodes, 8 edges)                       \nINFO     \u23f1\ufe0f  Index processing took: 0.00 seconds                                \nINFO     \u2705 Graph created successfully (7 nodes, 8 edges)                       \nINFO     [scip_python_indexer] profiler summary: 0.416s total across 6          \n         section(s)                                                             \nINFO       generate_index                           total= 0.416s count=  1 avg=\n         0.416s min= 0.416s max= 0.416s                                         \nINFO       process_index.decode                     total= 0.001s count=  1 avg=\n         0.001s min= 0.001s max= 0.001s                                         \nINFO       process_index.build_lsp_occurrence_index total= 0.001s count=  1 avg=\n         0.001s min= 0.001s max= 0.001s                                         \nINFO       process_index.save_graph                 total= 0.000s count=  1 avg=\n         0.000s min= 0.000s max= 0.000s                                         \nINFO       decode_index                             total= 0.000s count=  1 avg=\n         0.000s min= 0.000s max= 0.000s                                         \nINFO       process_index.build_range_indexes        total= 0.000s count=  1 avg=\n         0.000s min= 0.000s max= 0.000s                                         \n"
+    },
+    {
+      "phase": "deleted-file-init-preservation",
+      "source_unchanged": true,
+      "files": {
+        "scratch.py": "8399e6c8354d1de92d124875c27de81fb54e1fc10d6af752c238ea7e9fd9dc54",
+        "pricing.py": "a065de5d6a29d88c8b858395a3bc58e65a7cad2e5d24442fdaafa729ec559653",
+        "main.py": "33754c2402f258d7ecef017af5c84767e18657db441a49513d6c0d1ccef570ea",
+        "pyproject.toml": "279487974cee1a428ea079f04b295b716a002f4ef1c4b7fb73e07ffac8775a72"
+      },
+      "git_status": " D engine.py\u0000 M main.py\u0000?? pricing.py\u0000?? scratch.py\u0000"
+    },
+    {
+      "phase": "deleted-file-init-status",
+      "argv": [
+        "/home/zhongming/.venvs/codenib/bin/python",
+        "-m",
+        "codenib",
+        "codegraph",
+        "status",
+        "/tmp/codenib-codegraph-benefit-g0/guard-workflow/repository",
+        "--json"
+      ],
+      "seconds": 0.836,
+      "returncode": 0,
+      "stdout": "{\n  \"clients\": [\n    {\n      \"configured\": true,\n      \"detail\": \"configuration matches\",\n      \"installed\": true,\n      \"matches\": true,\n      \"name\": \"codex\",\n      \"receipt_state\": \"configured\",\n      \"scope\": \"user\"\n    }\n  ],\n  \"index\": {\n    \"bm25\": true,\n    \"bm25_artifact_matches\": true,\n    \"bm25_manifest_current\": true,\n    \"detail\": \"current\",\n    \"languages\": [\n      \"python\"\n    ],\n    \"manifest\": \"/tmp/codenib-codegraph-benefit-g0/guard-workflow/state/repositories/repository-ab11f069103b/indexes/repo_manifest.json\",\n    \"manifest_present\": true,\n    \"manifest_version\": \"1.2\",\n    \"ready\": true,\n    \"source_matches\": true,\n    \"source_selection\": {\n      \"digest\": \"sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4\",\n      \"exclude_subtrees\": [],\n      \"recorded\": true\n    },\n    \"symbol_graph\": true,\n    \"symbol_graph_artifact_matches\": true,\n    \"symbol_graph_complete\": true,\n    \"symbol_graph_manifest_current\": true\n  },\n  \"ready\": true,\n  \"receipt\": \"/tmp/codenib-codegraph-benefit-g0/guard-workflow/state/repositories/repository-ab11f069103b/codegraph/agent-integrations.json\",\n  \"repository\": \"/tmp/codenib-codegraph-benefit-g0/guard-workflow/repository\",\n  \"server\": {\n    \"args\": [\n      \"mcp\",\n      \"/tmp/codenib-codegraph-benefit-g0/guard-workflow/repository\",\n      \"--tool-surface\",\n      \"full\"\n    ],\n    \"command\": \"/home/zhongming/.venvs/codenib/bin/codenib\",\n    \"name\": \"codenib-repository-ab11f069103b\"\n  },\n  \"server_command\": {\n    \"detail\": \"codenib 0.2.4\",\n    \"ready\": true\n  },\n  \"toolchain\": {\n    \"languages\": [\n      \"python\"\n    ],\n    \"missing\": [],\n    \"notes\": [],\n    \"ready\": true\n  }\n}\n",
+      "stderr": ""
+    },
+    {
+      "phase": "fresh-after-delete",
+      "seconds": 0.005,
+      "nodes": [
+        {
+          "name": "pricing.py:final_compute()",
+          "file": "pricing.py",
+          "line": 1,
+          "kind": "function",
+          "depth": 1
+        }
+      ],
+      "result": {
+        "meta": {
+          "io.modelcontextprotocol/serverInfo": {
+            "name": "codenib",
+            "version": "0.2.4"
+          }
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"root\": \"main.py:main_workflow()\",\n  \"direction\": \"callees\",\n  \"nodes\": [\n    {\n      \"name\": \"pricing.py:final_compute()\",\n      \"file\": \"pricing.py\",\n      \"line\": 1,\n      \"kind\": \"function\",\n      \"depth\": 1\n    }\n  ],\n  \"edges\": [\n    {\n      \"source\": \"main.py:main_workflow()\",\n      \"target\": \"pricing.py:final_compute()\",\n      \"type\": \"reference\"\n    }\n  ],\n  \"truncated\": false,\n  \"note\": \"\"\n}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "root": "main.py:main_workflow()",
+          "direction": "callees",
+          "nodes": [
+            {
+              "name": "pricing.py:final_compute()",
+              "file": "pricing.py",
+              "line": 1,
+              "kind": "function",
+              "depth": 1
+            }
+          ],
+          "edges": [
+            {
+              "source": "main.py:main_workflow()",
+              "target": "pricing.py:final_compute()",
+              "type": "reference"
+            }
+          ],
+          "truncated": false,
+          "note": ""
+        },
+        "is_error": false,
+        "result_type": "complete"
+      }
+    }
+  ],
+  "exact_workflow_harness": "import asyncio\nimport hashlib\nimport json\nimport os\nimport subprocess\nimport time\nfrom pathlib import Path\nfrom mcp import Client, StdioServerParameters\nfrom mcp.client.stdio import stdio_client\n\nROOT = Path('/tmp/codenib-codegraph-benefit-g0/guard-workflow')\nREPO = ROOT / 'repository'\nSOURCE = Path('/home/zhongming/CodeNib-codegraph-benefit')\nPYTHON = '/home/zhongming/.venvs/codenib/bin/python'\nROOT.mkdir()\nREPO.mkdir()\nenv = dict(os.environ, CODENIB_HOME=str(ROOT / 'state'), CODENIB_TOOLCHAIN_DIR='/home/zhongming/.codenib/toolchains', CODENIB_FIXTURE_CLIENT_STATE=str(ROOT / 'clients.json'), PYTHONPATH=str(SOURCE))\nenv['PATH'] = '/tmp/codenib-codegraph-benefit-g0/bin:/home/zhongming/.venvs/codenib/bin:/home/zhongming/.local/bin:' + os.environ['PATH']\nrows = []\n\ndef save(row):\n    rows.append(row)\n    (ROOT / 'receipts.json').write_text(json.dumps(rows, indent=2))\n    print(json.dumps({k: row[k] for k in ('phase','returncode','seconds','nodes','source_unchanged') if k in row}), flush=True)\n\ndef snapshot():\n    return {str(p.relative_to(REPO)): hashlib.sha256(p.read_bytes()).hexdigest() for p in REPO.rglob('*') if p.is_file() and '.git' not in p.relative_to(REPO).parts}\n\ndef command(phase, arguments, *, check=True):\n    start = time.monotonic()\n    result = subprocess.run(arguments, cwd=REPO, env=env, text=True, capture_output=True, timeout=120)\n    save(dict(phase=phase, argv=arguments, seconds=round(time.monotonic()-start,3), returncode=result.returncode, stdout=result.stdout, stderr=result.stderr))\n    if check and result.returncode:\n        raise RuntimeError(result.stdout + result.stderr)\n    return result\n\nCLI = [PYTHON, '-m', 'codenib']\n\ndef init(phase):\n    before = snapshot()\n    status_before = subprocess.check_output(['git','status','--porcelain=v1','-z','-uall'], cwd=REPO)\n    result = command(phase, CLI+['codegraph','init',str(REPO),'--agent','codex','--language','python'])\n    after = snapshot()\n    assert before == after\n    assert status_before == subprocess.check_output(['git','status','--porcelain=v1','-z','-uall'], cwd=REPO)\n    save(dict(phase=phase+'-preservation', source_unchanged=True, files=after, git_status=status_before.decode()))\n    command(phase+'-status', CLI+['codegraph','status',str(REPO),'--json'])\n\nasync def query(client, phase):\n    start = time.monotonic()\n    result = await client.call_tool('dependency_subgraph', arguments={'symbol':'main_workflow','direction':'dependencies','depth':1,'max_nodes':12,'max_edges':24})\n    payload = result.model_dump(mode='json')\n    structured = payload.get('structured_content') or {}\n    if phase in ('live-after-edit-before-rebuild','live-after-rebuild'):\n        assert payload['is_error'] is True, payload\n        assert payload.get('structured_content') is None, payload\n        message = ' '.join(item.get('text','') for item in payload.get('content',[]))\n        assert 'codenib codegraph init' in message and 'restart' in message, payload\n    save(dict(phase=phase, seconds=round(time.monotonic()-start,3), nodes=structured.get('nodes'), result=payload))\n    return structured\n\nasync def fresh_query(phase, expected):\n    with (ROOT / (phase+'.stderr')).open('w') as errors:\n        async with Client(stdio_client(StdioServerParameters(command=PYTHON,args=['-m','codenib','mcp',str(REPO),'--tool-surface','full'], env=env, cwd=ROOT),errlog=errors),mode='auto',cache=None) as client:\n            result = await query(client,phase)\n            assert any(expected in n['name'] for n in result.get('nodes',[])), result\n\n(REPO/'pyproject.toml').write_text('[project]\\nname=\"workflow-fixture\"\\nversion=\"0.0.0\"\\n')\n(REPO/'engine.py').write_text('def compute(values):\\n    return sum(values)\\n')\n(REPO/'main.py').write_text('from engine import compute\\n\\ndef main_workflow(values):\\n    return compute(values)\\n')\nfor args in (['git','init','-q'],['git','config','user.name','Fixture'],['git','config','user.email','fixture@example.invalid'],['git','config','gc.auto','0'],['git','config','maintenance.auto','false'],['git','add','.'],['git','commit','-qm','fixture']):\n    subprocess.run(args,cwd=REPO,check=True,capture_output=True)\n(REPO/'engine.py').write_text('def compute(values):\\n    return sum(values) - 1\\n')\n(REPO/'scratch.py').write_text('unfinished = True\\n')\ninit('dirty-first-init')\n\nasync def main():\n    with (ROOT / 'live-session.stderr').open('w') as errors:\n        async with Client(stdio_client(StdioServerParameters(command=PYTHON,args=['-m','codenib','mcp',str(REPO),'--tool-surface','full'],env=env,cwd=ROOT),errlog=errors),mode='auto',cache=None) as client:\n            await query(client,'live-initial')\n            (REPO/'engine.py').write_text('def compute_v2(values):\\n    return sum(values) - 2\\n')\n            (REPO/'main.py').write_text('from engine import compute_v2\\n\\ndef main_workflow(values):\\n    return compute_v2(values)\\n')\n            command('edited-old-index-status', CLI+['codegraph','status',str(REPO),'--json'],check=False)\n            await query(client,'live-after-edit-before-rebuild')\n            init('tracked-edit-init')\n            await query(client,'live-after-rebuild')\n    await fresh_query('fresh-after-edit','compute_v2')\n    (REPO/'helpers.py').write_text('def compute_v3(values):\\n    return sum(values) - 3\\n')\n    (REPO/'main.py').write_text('from helpers import compute_v3\\n\\ndef main_workflow(values):\\n    return compute_v3(values)\\n')\n    init('created-file-init')\n    await fresh_query('fresh-after-create','helpers.py:compute_v3')\n    (REPO/'helpers.py').rename(REPO/'pricing.py')\n    (REPO/'main.py').write_text('from pricing import compute_v3\\n\\ndef main_workflow(values):\\n    return compute_v3(values)\\n')\n    init('renamed-file-init')\n    await fresh_query('fresh-after-rename','pricing.py:compute_v3')\n    (REPO/'engine.py').unlink()\n    (REPO/'pricing.py').write_text('def final_compute(values):\\n    return sum(values) - 4\\n')\n    (REPO/'main.py').write_text('from pricing import final_compute\\n\\ndef main_workflow(values):\\n    return final_compute(values)\\n')\n    init('deleted-file-init')\n    await fresh_query('fresh-after-delete','pricing.py:final_compute')\nasyncio.run(main())\n",
+  "client_registration_stand_in": "#!/home/zhongming/.venvs/codenib/bin/python\n\"\"\"Isolated registration stand-in: no agent process or real profile access.\"\"\"\nimport json\nimport os\nimport sys\nfrom pathlib import Path\nstate = Path(os.environ['CODENIB_FIXTURE_CLIENT_STATE'])\nrows = json.loads(state.read_text()) if state.exists() else {}\nargs = sys.argv[1:]\nif args[:2] == ['mcp', 'get']:\n    name = args[-1]\n    if name not in rows:\n        print('No MCP server named ' + name, file=sys.stderr)\n        sys.exit(1)\n    print(json.dumps(rows[name]))\nelif args[:2] == ['mcp', 'add']:\n    name = args[2]\n    command = args[args.index('--') + 1:]\n    rows[name] = {'name': name, 'enabled': True, 'transport': {'type': 'stdio', 'command': command[0], 'args': command[1:]}}\n    state.write_text(json.dumps(rows))\nelif args[:2] == ['mcp', 'remove']:\n    rows.pop(args[2], None)\n    state.write_text(json.dumps(rows))\nelse:\n    sys.exit('fixture only supports mcp get/add/remove')\n",
+  "workflow_invocation": "PYTHONPATH=/home/zhongming/CodeNib-codegraph-benefit /home/zhongming/.venvs/codenib/bin/python /tmp/codenib-codegraph-benefit-g0/guard-workflow.py",
+  "remaining_costs": [
+    "Explicit full index rebuilding after edits",
+    "MCP server restart to load the rebuilt index",
+    "Representative provider/repository correctness and #871 scope are still open",
+    "Matched agent task outcomes and five-user repeat use have not run"
+  ],
+  "release_smoke": {
+    "root": "/tmp/codenib-codegraph-benefit-g0/guard-release-2",
+    "command": "PYTHONPATH=/home/zhongming/CodeNib-codegraph-benefit CODENIB_TOOLCHAIN_DIR=/home/zhongming/.codenib/toolchains PATH=/home/zhongming/.venvs/codenib/bin:/home/zhongming/.local/bin:$PATH /home/zhongming/.venvs/codenib/bin/python scripts/smoke_release_graph.py --root /tmp/codenib-codegraph-benefit-g0/guard-release-2 --executable /home/zhongming/.venvs/codenib/bin/codenib",
+    "exit_code": 0,
+    "stdout": "+ git init --quiet\n+ git config user.email release-smoke@example.invalid\n+ git config user.name CodeNib Release Smoke\n+ git config gc.auto 0\n+ git config maintenance.auto false\n+ git add .\n+ git commit --quiet -m initial fixture\n+ /home/zhongming/.venvs/codenib/bin/codenib doctor /tmp/codenib-codegraph-benefit-g0/guard-release-2/graph-smoke-repository --require graph --language python\n+ /home/zhongming/.venvs/codenib/bin/codenib codegraph init /tmp/codenib-codegraph-benefit-g0/guard-release-2/graph-smoke-repository --language python --command /home/zhongming/.venvs/codenib/bin/codenib\n+ /home/zhongming/.venvs/codenib/bin/codenib codegraph status /tmp/codenib-codegraph-benefit-g0/guard-release-2/graph-smoke-repository --json\n+ /home/zhongming/.venvs/codenib/bin/codenib codegraph init /tmp/codenib-codegraph-benefit-g0/guard-release-2/graph-smoke-repository --language python\n+ git status --porcelain\n+ /home/zhongming/.venvs/codenib/bin/codenib mcp /tmp/codenib-codegraph-benefit-g0/guard-release-2/graph-smoke-repository --tool-surface full\n+ /home/zhongming/.venvs/codenib/bin/codenib wiki /tmp/codenib-codegraph-benefit-g0/guard-release-2/graph-smoke-repository --no-index --no-open --port 58257 --api-port 52845\n+ git status --porcelain\n+ /home/zhongming/.venvs/codenib/bin/codenib codegraph init /tmp/codenib-codegraph-benefit-g0/guard-release-2/graph-smoke-repository --language python\n+ git status --porcelain\n+ /home/zhongming/.venvs/codenib/bin/codenib codegraph uninstall /tmp/codenib-codegraph-benefit-g0/guard-release-2/graph-smoke-repository\nInstalled CodeGraph, agent onboarding, MCP, and Dependency Map smoke passed\n"
+  },
+  "unit_gate": {
+    "command": "python -m pytest test/mcp test/mcp_server test/artifacts -m 'not slow and not integration and not integration_serial and not integration_serial_consumer' -q -x --tb=short",
+    "passed": 914,
+    "skipped": 7,
+    "deselected": 7,
+    "seconds": 24.11,
+    "native_test_dependency": {
+      "source_commit": "741b70a02ec932f0dcdf655284f6eae594b056eb",
+      "github_actions_run": 40464105127,
+      "artifact_name": "python-build-wheel-aarch64",
+      "wheel_sha256": "0f621509c14210648daefc5de84d577fa4f9a5591173d5f619a47498633dd62a",
+      "note": "Local Python headers unavailable. The unchanged workspace-owner C source matches this pinned CI wheel; only its ABI3 extension was extracted into the isolated worktree for the artifact unit gate."
+    }
+  }
+}

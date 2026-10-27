@@ -18,6 +18,7 @@ import pytest
 from codenib.compiler.manifest import RepoManifest
 from codenib.mcp import server as server_mod
 from codenib.mcp.context import ServerContext
+from codenib.source_fingerprint import capture_repository_source
 from codenib.types import NodeInfo
 
 
@@ -72,6 +73,19 @@ def _empty_explore_response() -> dict:
         "relationships": [],
         "diagnostics": [],
     }
+
+
+@pytest.fixture
+def bound_context(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "sample.py").write_text("def sample():\n    return 1\n")
+    ctx = ServerContext(manifest=RepoManifest(repo_path=str(repo)))
+    ctx._install_repository_source(capture_repository_source(repo))
+    try:
+        yield ctx
+    finally:
+        ctx.close()
 
 
 def test_search_bm25_tool() -> None:
@@ -242,8 +256,10 @@ def test_mcp_lifespan_creates_and_discards_connection_runtime() -> None:
     asyncio.run(run_lifespan())
 
 
-def test_explore_context_serializes_calls_and_commits_in_order(monkeypatch) -> None:
-    ctx = ServerContext(manifest=RepoManifest(repo_path="/repo"))
+def test_explore_context_serializes_calls_and_commits_in_order(
+    monkeypatch, bound_context
+) -> None:
+    ctx = bound_context
     server_mod._ctx = ctx
     state_lock = threading.Lock()
     active = 0
@@ -275,8 +291,10 @@ def test_explore_context_serializes_calls_and_commits_in_order(monkeypatch) -> N
     assert ctx.explore_runtime.ledger.stats()["calls"] == 2
 
 
-def test_explore_context_failure_does_not_commit_ledger(monkeypatch) -> None:
-    ctx = ServerContext(manifest=RepoManifest(repo_path="/repo"))
+def test_explore_context_failure_does_not_commit_ledger(
+    monkeypatch, bound_context
+) -> None:
+    ctx = bound_context
     server_mod._ctx = ctx
 
     def fail(*_args, **_kwargs):
@@ -291,8 +309,10 @@ def test_explore_context_failure_does_not_commit_ledger(monkeypatch) -> None:
     assert ctx.explore_runtime.ledger.stats()["calls"] == 0
 
 
-def test_explore_context_cancellation_does_not_commit_ledger(monkeypatch) -> None:
-    ctx = ServerContext(manifest=RepoManifest(repo_path="/repo"))
+def test_explore_context_cancellation_does_not_commit_ledger(
+    monkeypatch, bound_context
+) -> None:
+    ctx = bound_context
     server_mod._ctx = ctx
     started = threading.Event()
     second_started = threading.Event()

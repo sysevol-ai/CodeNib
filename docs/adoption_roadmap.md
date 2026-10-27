@@ -1,7 +1,7 @@
 # Adoption and distribution roadmap
 
 Owner: CodeNib product, retrieval, and documentation maintainers.
-Reviewed: 2026-10-26 (Pacific). Status: active.
+Reviewed: 2026-10-27 (Pacific). Status: active.
 
 ## Outcome and product decision
 
@@ -49,8 +49,10 @@ Using the caller's agent to plan grep is a separate, unevaluated variant.
 Status: active; goal and pilot decision contract established on 2026-10-26
 (Pacific). Target decision review: 2026-11-09. The source-contract audit is
 complete and [#875](https://github.com/sysevol-ai/CodeNib/pull/875) is merged.
-Offline workflow reproduction and a dirty-initialization candidate are
-verified; long-running-session correctness, matched runs and external
+Offline workflow reproduction and dirty initialization are verified;
+[#877](https://github.com/sysevol-ai/CodeNib/pull/877) is merged. A source-query
+guard candidate rejects stale local facts, including mid-query edits.
+Automatic refresh, representative correctness, matched runs and external
 repeat-use observations remain open. This does not close the milestone.
 Tracking issue: [#874](https://github.com/sysevol-ai/CodeNib/issues/874).
 The detailed contract is [the internal pilot plan](experiments/codegraph_net_benefit.md).
@@ -64,7 +66,7 @@ Existing maintenance and the A1-A6 contracts remain in force.
 | Gate | Current outcome | Next acceptance |
 | --- | --- | --- |
 | G0: baseline | Real SCIP/BM25/MCP fixtures reproduce source-baseline clean/warm setup, dirty CLI rejection and successful dirty backend rebuilding. Candidate dirty-first-use and modified/created/deleted/renamed-file rebuilds preserve source and Git status and return updated facts in fresh sessions. Native client CLIs are stand-ins; no model ran. [Receipts](experiments/codegraph_workflow_2026_10_26.json). | Complete a separately installed release control and scope representative repository/provider coverage; synthetic fixture timings do not establish task benefit. |
-| G1: daily workflow | The candidate accepts dirty initialization and detects same-status source rewrites and checkout/commit replacement. The installed-path release smoke passes with real MCP and Dependency Map. A running MCP session still returns unlabeled old graph facts before and after rebuilding ([#876](https://github.com/sysevol-ai/CodeNib/issues/876)); admission is blocked on correctness. | Land the scoped initialization fix, then reject stale facts and reconcile running local-manifest sessions with updates. Preserve immutable artifact behavior and existing source authority; verify edit/rebuild/requery through one session. |
+| G1: daily workflow | Dirty initialization is merged in #877. The #876 candidate guards all eleven indexed MCP tools before and after execution; edited/created/deleted/renamed source becomes unavailable with rebuild/restart instructions. Real stdio receipts show the old session rejects edits before and after rebuilding, while a fresh session returns current facts. Immutable artifacts retain their admitted snapshot semantics. [Receipts](experiments/codegraph_currentness_2026_10_27.json). | Land the stale-fact guard and scope #871's nested-definition identity bug before admitting graph-dependent tasks. Explicit full rebuilding and MCP restart remain workflow costs; automatic refresh and representative provider/repository coverage are unverified. |
 | G2: matched benefit | No four-arm product result exists. | Freeze task acceptance, tool configurations, model/version, budgets and one primary endpoint; compare native agent, Serena, colbymchenry/codegraph and CodeNib with the same native tools available. Include cold setup, update costs and failures. |
 | G3: repeat use | No external cohort is enrolled. | Five consenting users attempt setup on their own repositories; observe a first successful source-linked query and seven days of actual use, targeting voluntary return by at least three. Missing observations remain explicit. |
 | G4: product decision | Open. | Decide promote, narrow, no-go or insufficient evidence from G1-G3. A 20% gain against the strongest eligible alternative on the frozen primary endpoint is a pilot decision gate, not a general efficacy claim. |
