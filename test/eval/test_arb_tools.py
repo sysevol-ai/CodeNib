@@ -45,9 +45,6 @@ def _graph():
     graph.add_symbol_node("pkg/config.py:Config.parse", 2, 2, 5, "method")
     graph.add_containment_edge("pkg/config.py:Config.parse")
     graph.current_scope = "pkg/config.py:Config.parse"
-    # Nested definitions sharing a qualified name collapse into one vertex that
-    # contains itself, as IPython's ExecutionMagics.run does.
-    graph.add_containment_edge("pkg/config.py:Config.parse")
     graph.add_symbol_reference("pkg/util.py:helper")
     graph.current_file, graph.current_scope = "pkg/app.py", "pkg/app.py:main"
     graph.add_symbol_reference("pkg/config.py:Config.parse")
@@ -112,6 +109,23 @@ def test_prepare_builds_once_and_reports_the_original_cost(builds, tmp_path):
     assert builds == [["python"]]
 
 
+def test_prepare_reports_invalid_graph_without_losing_the_sample(
+    builds, tmp_path, monkeypatch
+):
+    from codenib.graph.code_graph import CodeGraph
+
+    def reject_graph(_path):
+        raise ValueError("containment cycle detected")
+
+    monkeypatch.setattr(CodeGraph, "load_graph", reject_graph)
+    provider, status = _provider(tmp_path)
+
+    assert not status["available"]
+    assert status["error"] == "ValueError: containment cycle detected"
+    with pytest.raises(RuntimeError, match="no graph prepared"):
+        _call(provider, "symbol_search", symbol="parse")
+
+
 def test_symbol_search_ranks_exact_names_and_reports_one_based_lines(builds, tmp_path):
     provider, _ = _provider(tmp_path)
     hits = _call(provider, "symbol_search", symbol="parse")
@@ -149,6 +163,23 @@ def test_references_follow_contained_symbols_to_other_released_files(builds, tmp
     # The file-scope reference reports the line where it occurs.
     assert hits[1]["start_line"] == hits[1]["end_line"] == 12
     assert _call(provider, "references", path="pkg/app.py", symbol="Config") == []
+
+
+def test_references_walk_is_bounded_for_an_in_memory_cycle(builds, tmp_path):
+    provider, _ = _provider(tmp_path)
+    index = provider._snapshots[(REPO, COMMIT)]
+    graph = index._graph
+    graph.current_scope = "pkg/config.py:Config.parse"
+    graph.add_containment_edge("pkg/config.py:Config.parse")
+
+    hits = _call(provider, "references", path="pkg/config.py", symbol="Config")
+
+    assert [(hit["path"], hit["symbol"]) for hit in hits] == [
+        ("pkg/app.py", "main"),
+        ("pkg/app.py", ""),
+        ("pkg/util.py", "missing"),
+        ("pkg/util.py", "helper"),
+    ]
 
 
 def test_snapshot_without_a_graph_is_unavailable(builds, monkeypatch, tmp_path):

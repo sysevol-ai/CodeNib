@@ -1,0 +1,785 @@
+{
+  "scope": "Synthetic offline product-graph identity reproduction and artifact-integrity mitigation. No task-benefit score or external user trial. #871 remains open for accurate nested-definition/reference identity, including noncyclic collisions.",
+  "observed_date_pacific": "2026-10-27",
+  "baseline": {
+    "source_commit": "ee1cc9fff93d7f35715c03cb5063957a2cb29e02",
+    "equivalent_merged_main": "84ee5760fd3ba59ead8a8c7a0960c1dd1f2acca4",
+    "code_graph_sha256": "70b393a0218b17598e33df9727b6def9ee13325470a1bcd3f2a5e7d68c9f2a27",
+    "receipt": {
+      "source": "def left():\n    return 1\n\ndef right():\n    return 2\n\nclass Example:\n    def run(self, flag):\n        if flag:\n            def run():\n                return left()\n        else:\n            def run():\n                return right()\n        return run()\n",
+      "source_fingerprint": "sha256-v2:35b319f17c404c5f79f036cca4631032b3451bcdc47224cebacf46d06f284fa7",
+      "self_containment": [
+        [
+          5,
+          5
+        ]
+      ],
+      "nodes": [
+        {
+          "name": "nested.py:left()",
+          "type": "function",
+          "file": "nested.py",
+          "selection_line": 0,
+          "has_definition": true,
+          "start_line": 0,
+          "end_line": 1,
+          "unified_name": "nested.py:left()"
+        },
+        {
+          "name": "nested.py:right()",
+          "type": "function",
+          "file": "nested.py",
+          "selection_line": 3,
+          "has_definition": true,
+          "start_line": 3,
+          "end_line": 4,
+          "unified_name": "nested.py:right()"
+        },
+        {
+          "name": "nested.py:Example",
+          "type": "class",
+          "file": "nested.py",
+          "selection_line": 6,
+          "has_definition": true,
+          "start_line": 6,
+          "end_line": 14,
+          "unified_name": "nested.py:Example"
+        },
+        {
+          "name": "nested.py:Example.run()",
+          "type": "method",
+          "file": "nested.py",
+          "selection_line": 9,
+          "has_definition": true,
+          "start_line": 9,
+          "end_line": 10,
+          "unified_name": "nested.py:Example.run()"
+        }
+      ],
+      "edges": [
+        {
+          "source": null,
+          "target": "nested.py",
+          "type": "contain"
+        },
+        {
+          "source": "nested.py",
+          "target": "nested.py:left()",
+          "type": "contain"
+        },
+        {
+          "source": "nested.py",
+          "target": "nested.py:right()",
+          "type": "contain"
+        },
+        {
+          "source": "nested.py",
+          "target": "nested.py:Example",
+          "type": "contain"
+        },
+        {
+          "source": "nested.py:Example",
+          "target": "nested.py:Example.run()",
+          "type": "contain"
+        },
+        {
+          "source": "nested.py:Example.run()",
+          "target": "nested.py:Example.run()",
+          "type": "contain"
+        },
+        {
+          "source": "nested.py:Example.run()",
+          "target": "nested.py:left()",
+          "type": "reference"
+        },
+        {
+          "source": "nested.py:Example.run()",
+          "target": "nested.py:Example.run()",
+          "type": "reference"
+        },
+        {
+          "source": "nested.py:Example.run()",
+          "target": "nested.py:right()",
+          "type": "reference"
+        },
+        {
+          "source": "nested.py:Example.run()",
+          "target": "nested.py:Example.run()",
+          "type": "reference"
+        }
+      ],
+      "graph_entry": {
+        "index_type": "symbol_graph",
+        "path": "/tmp/codenib-codegraph-benefit-g0/nested-definition/state/repositories/repository-8dba0aa4002c/indexes/symbol_graph",
+        "built_at": "2026-10-27T07:18:24.940583+00:00",
+        "built_at_epoch": 1793085504.940583,
+        "status": "fresh",
+        "config": {
+          "builder_schema": 6,
+          "languages": [
+            "python"
+          ],
+          "graph_route": "active",
+          "exclude_patterns": [
+            "**/.codenib_cache/**",
+            "**/.env/**",
+            "**/.git/**",
+            "**/.hg/**",
+            "**/.mypy_cache/**",
+            "**/.next/**",
+            "**/.pytest_cache/**",
+            "**/.ruff_cache/**",
+            "**/.svn/**",
+            "**/.tox/**",
+            "**/.venv/**",
+            "**/__pycache__/**",
+            "**/build/**",
+            "**/dist/**",
+            "**/env/**",
+            "**/htmlcov/**",
+            "**/node_modules/**",
+            "**/site/**",
+            "**/target/**",
+            "**/third_party/**",
+            "**/vendor/**",
+            "**/venv/**",
+            ".codenib_cache/**",
+            ".env/**",
+            ".git/**",
+            ".hg/**",
+            ".mypy_cache/**",
+            ".next/**",
+            ".pytest_cache/**",
+            ".ruff_cache/**",
+            ".svn/**",
+            ".tox/**",
+            ".venv/**",
+            "__pycache__/**",
+            "build/**",
+            "dist/**",
+            "env/**",
+            "htmlcov/**",
+            "node_modules/**",
+            "site/**",
+            "target/**",
+            "third_party/**",
+            "vendor/**",
+            "venv/**"
+          ],
+          "allow_partial_languages": false,
+          "allow_partial_index": false,
+          "source_coverage_fallback": false,
+          "allow_project_preparation": false,
+          "target_dir": null,
+          "repository_filter_policy": 4,
+          "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+          "node_count": 6,
+          "edge_count": 10,
+          "language": "python",
+          "available_languages": [
+            "python"
+          ],
+          "compiler_available_languages": [
+            "python"
+          ],
+          "index_generation_reports": {
+            "python": {
+              "backend": "scip-python",
+              "status": "complete",
+              "complete": true,
+              "partial": false,
+              "document_count": 1
+            }
+          },
+          "scip_decoded_artifacts": {
+            "python": {
+              "relative_path": "index.decoded",
+              "size": 4662,
+              "sha256": "f236167576d9a830ea6320d898a9bfe93380a676466e580c602f123342e6732b"
+            }
+          },
+          "graph_artifact": {
+            "relative_path": "graph.pkl",
+            "size": 997,
+            "sha256": "766d8d6b4f340fd8c5c14750f9139ccb415f635988536251d664c8713605f806"
+          },
+          "lsp_occurrence_artifact": {
+            "relative_path": "lsp_index.pkl",
+            "size": 1203,
+            "sha256": "c42c61a6e8c1c24d57f6cecf9fb58b8b12f9118dbbd9de9ad27efd9af6d3ed08"
+          },
+          "query_surface_sha256": "8a3bac596662c61627f0eeceed2ca90bcff60157655cf028017527b70a7be9c8",
+          "update_mode": "full_rebuild",
+          "partial_index": false,
+          "failed_languages": {},
+          "partial": false,
+          "source_selection_report": {
+            "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+            "nodes_before": 6,
+            "nodes_after": 6,
+            "edges_before": 10,
+            "edges_after": 10,
+            "removed_excluded_path_count": 0,
+            "excluded_path_count_after": 0,
+            "invalid_path_count_before": 0,
+            "invalid_path_count_after": 0
+          }
+        },
+        "metadata": {
+          "builder_schema": 6,
+          "languages": [
+            "python"
+          ],
+          "graph_route": "active",
+          "exclude_patterns": [
+            "**/.codenib_cache/**",
+            "**/.env/**",
+            "**/.git/**",
+            "**/.hg/**",
+            "**/.mypy_cache/**",
+            "**/.next/**",
+            "**/.pytest_cache/**",
+            "**/.ruff_cache/**",
+            "**/.svn/**",
+            "**/.tox/**",
+            "**/.venv/**",
+            "**/__pycache__/**",
+            "**/build/**",
+            "**/dist/**",
+            "**/env/**",
+            "**/htmlcov/**",
+            "**/node_modules/**",
+            "**/site/**",
+            "**/target/**",
+            "**/third_party/**",
+            "**/vendor/**",
+            "**/venv/**",
+            ".codenib_cache/**",
+            ".env/**",
+            ".git/**",
+            ".hg/**",
+            ".mypy_cache/**",
+            ".next/**",
+            ".pytest_cache/**",
+            ".ruff_cache/**",
+            ".svn/**",
+            ".tox/**",
+            ".venv/**",
+            "__pycache__/**",
+            "build/**",
+            "dist/**",
+            "env/**",
+            "htmlcov/**",
+            "node_modules/**",
+            "site/**",
+            "target/**",
+            "third_party/**",
+            "vendor/**",
+            "venv/**"
+          ],
+          "allow_partial_languages": false,
+          "allow_partial_index": false,
+          "source_coverage_fallback": false,
+          "allow_project_preparation": false,
+          "target_dir": null,
+          "repository_filter_policy": 4,
+          "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+          "node_count": 6,
+          "edge_count": 10,
+          "language": "python",
+          "available_languages": [
+            "python"
+          ],
+          "compiler_available_languages": [
+            "python"
+          ],
+          "index_generation_reports": {
+            "python": {
+              "backend": "scip-python",
+              "status": "complete",
+              "complete": true,
+              "partial": false,
+              "document_count": 1
+            }
+          },
+          "scip_decoded_artifacts": {
+            "python": {
+              "relative_path": "index.decoded",
+              "size": 4662,
+              "sha256": "f236167576d9a830ea6320d898a9bfe93380a676466e580c602f123342e6732b"
+            }
+          },
+          "graph_artifact": {
+            "relative_path": "graph.pkl",
+            "size": 997,
+            "sha256": "766d8d6b4f340fd8c5c14750f9139ccb415f635988536251d664c8713605f806"
+          },
+          "lsp_occurrence_artifact": {
+            "relative_path": "lsp_index.pkl",
+            "size": 1203,
+            "sha256": "c42c61a6e8c1c24d57f6cecf9fb58b8b12f9118dbbd9de9ad27efd9af6d3ed08"
+          },
+          "query_surface_sha256": "8a3bac596662c61627f0eeceed2ca90bcff60157655cf028017527b70a7be9c8",
+          "update_mode": "full_rebuild",
+          "partial_index": false,
+          "failed_languages": {},
+          "partial": false,
+          "source_selection_report": {
+            "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+            "nodes_before": 6,
+            "nodes_after": 6,
+            "edges_before": 10,
+            "edges_after": 10,
+            "removed_excluded_path_count": 0,
+            "excluded_path_count_after": 0,
+            "invalid_path_count_before": 0,
+            "invalid_path_count_after": 0
+          },
+          "build_duration_seconds": 0.4
+        },
+        "commit": "995aefe27bb57b09add769581f22583643e1c67e",
+        "source_fingerprint": "sha256-v2:35b319f17c404c5f79f036cca4631032b3451bcdc47224cebacf46d06f284fa7",
+        "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4"
+      }
+    }
+  },
+  "runtime": {
+    "python": "3.12",
+    "scip_python": "0.6.6",
+    "codenib_metadata": "0.2.4",
+    "mcp": "2.0.0"
+  },
+  "pinned_provider_output": {
+    "fixture": "test/fixtures/scip_python_nested_collision.fixture",
+    "sha256": "f236167576d9a830ea6320d898a9bfe93380a676466e580c602f123342e6732b",
+    "text": "metadata {\n  tool_info {\n    name: \"scip-python\"\n    version: \"0.6.6\"\n  }\n  project_root: \"file:///tmp/codenib-codegraph-benefit-g0/nested-definition/repository\"\n  text_document_encoding: UTF8\n}\ndocuments {\n  relative_path: \"nested.py\"\n  occurrences {\n    range: 0\n    range: 0\n    range: 0\n    symbol: \"scip-python python repository 995aefe27bb57b09add769581f22583643e1c67e nested/__init__:\"\n    symbol_roles: 1\n  }\n  occurrences {\n    range: 0\n    range: 4\n    range: 8\n    symbol: \"scip-python python repository 995aefe27bb57b09add769581f22583643e1c67e nested/left().\"\n    symbol_roles: 1\n    enclosing_range: 0\n    enclosing_range: 0\n    enclosing_range: 1\n    enclosing_range: 12\n  }\n  occurrences {\n    range: 3\n    range: 4\n    range: 9\n    symbol: \"scip-python python repository 995aefe27bb57b09add769581f22583643e1c67e nested/right().\"\n    symbol_roles: 1\n    enclosing_range: 3\n    enclosing_range: 0\n    enclosing_range: 4\n    enclosing_range: 12\n  }\n  occurrences {\n    range: 6\n    range: 6\n    range: 13\n    symbol: \"scip-python python repository 995aefe27bb57b09add769581f22583643e1c67e nested/Example#\"\n    symbol_roles: 1\n    enclosing_range: 6\n    enclosing_range: 0\n    enclosing_range: 14\n    enclosing_range: 20\n  }\n  occurrences {\n    range: 7\n    range: 8\n    range: 11\n    symbol: \"scip-python python repository 995aefe27bb57b09add769581f22583643e1c67e nested/Example#run().\"\n    symbol_roles: 1\n    enclosing_range: 7\n    enclosing_range: 4\n    enclosing_range: 14\n    enclosing_range: 20\n  }\n  occurrences {\n    range: 7\n    range: 12\n    range: 16\n    symbol: \"scip-python python repository 995aefe27bb57b09add769581f22583643e1c67e nested/Example#run().(self)\"\n    symbol_roles: 1\n  }\n  occurrences {\n    range: 7\n    range: 18\n    range: 22\n    symbol: \"scip-python python repository 995aefe27bb57b09add769581f22583643e1c67e nested/Example#run().(flag)\"\n    symbol_roles: 1\n  }\n  occurrences {\n    range: 8\n    range: 11\n    range: 15\n    symbol: \"scip-python python repository 995aefe27bb57b09add769581f22583643e1c67e nested/Example#run().(flag)\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 9\n    range: 16\n    range: 19\n    symbol: \"scip-python python repository 995aefe27bb57b09add769581f22583643e1c67e nested/Example#run().\"\n    symbol_roles: 1\n    enclosing_range: 9\n    enclosing_range: 12\n    enclosing_range: 10\n    enclosing_range: 29\n  }\n  occurrences {\n    range: 10\n    range: 23\n    range: 27\n    symbol: \"scip-python python repository 995aefe27bb57b09add769581f22583643e1c67e nested/left().\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 12\n    range: 16\n    range: 19\n    symbol: \"scip-python python repository 995aefe27bb57b09add769581f22583643e1c67e nested/Example#run().\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 13\n    range: 23\n    range: 28\n    symbol: \"scip-python python repository 995aefe27bb57b09add769581f22583643e1c67e nested/right().\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 14\n    range: 15\n    range: 18\n    symbol: \"scip-python python repository 995aefe27bb57b09add769581f22583643e1c67e nested/Example#run().\"\n    symbol_roles: 8\n  }\n  symbols {\n    symbol: \"scip-python python repository 995aefe27bb57b09add769581f22583643e1c67e nested/__init__:\"\n    documentation: \"(module) nested\"\n  }\n  symbols {\n    symbol: \"scip-python python repository 995aefe27bb57b09add769581f22583643e1c67e nested/left().\"\n    documentation: \"```python\\ndef left(): # -> Literal[1]:\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python repository 995aefe27bb57b09add769581f22583643e1c67e nested/right().\"\n    documentation: \"```python\\ndef right(): # -> Literal[2]:\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python repository 995aefe27bb57b09add769581f22583643e1c67e nested/Example#\"\n    documentation: \"```python\\nclass Example:\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python repository 995aefe27bb57b09add769581f22583643e1c67e nested/Example#run().\"\n    documentation: \"```python\\ndef run(\\n  self,\\n  flag\\n): # -> Literal[1, 2]:\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python repository 995aefe27bb57b09add769581f22583643e1c67e nested/Example#run().(self)\"\n  }\n  symbols {\n    symbol: \"scip-python python repository 995aefe27bb57b09add769581f22583643e1c67e nested/Example#run().(flag)\"\n  }\n  symbols {\n    symbol: \"scip-python python repository 995aefe27bb57b09add769581f22583643e1c67e nested/Example#run().\"\n    documentation: \"```python\\ndef run(): # -> Literal[1]:\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python repository 995aefe27bb57b09add769581f22583643e1c67e nested/Example#run().\"\n    documentation: \"```python\\ndef run(): # -> Literal[2]:\\n```\"\n  }\n}\n"
+  },
+  "candidate": {
+    "branch": "fix/graph-containment-integrity",
+    "files_sha256": {
+      "codenib/graph/code_graph.py": "b475f4674fba0a8228d1eec6fd1ed3abcc6e5bb1642c7d057e45c810742f563b",
+      "codenib/compiler/index_builders.py": "0f07548944afc3d4378a929916be3504b42b63d7b4a2f294c0f694949c216578",
+      "codenib/eval/benchmarks/_arb_methods.py": "d118994ecc4dde74743890e09867bb0a1ef7bfd0e3b30f9c1ec5dd7ce5431ec1",
+      "codenib/eval/benchmarks/agent_retrieval_bench_tools.py": "fe43d5e32b3d0ad4701bcb25c90d87c968df97e8a0669b135194a7ebb08a4757"
+    },
+    "rebuild": {
+      "failed": [
+        "symbol_graph"
+      ],
+      "indexes": {
+        "bm25": {
+          "index_type": "bm25",
+          "path": "/tmp/codenib-codegraph-benefit-g0/nested-definition/state/repositories/repository-8dba0aa4002c/indexes/bm25",
+          "built_at": "2026-10-27T07:18:24.542991+00:00",
+          "built_at_epoch": 1793085504.542991,
+          "status": "fresh",
+          "config": {
+            "builder_schema": 9,
+            "languages": [
+              "python"
+            ],
+            "max_k": 128,
+            "max_lines_per_chunk": 300,
+            "chunking_failure_policy": "fail",
+            "include_header_epilogue": true,
+            "repository_filter_policy": 4,
+            "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+            "artifact_file_fingerprints": {
+              "documents.json": {
+                "size": 1115,
+                "sha256": "8d034ab9f3ec10ea9a42cd97e3b73bcd4eb524797896c9e948ca292fc365f4be"
+              },
+              "bm25_metadata.json": {
+                "size": 153,
+                "sha256": "2b4c7cdbd3baec43dd372ed693c2066fd2ebced42f97e326e9a1bdba42a1f09f"
+              }
+            },
+            "chunk_count": 3,
+            "source_file_count": 1,
+            "file_count": 3
+          },
+          "metadata": {
+            "builder_schema": 9,
+            "languages": [
+              "python"
+            ],
+            "max_k": 128,
+            "max_lines_per_chunk": 300,
+            "chunking_failure_policy": "fail",
+            "include_header_epilogue": true,
+            "repository_filter_policy": 4,
+            "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+            "artifact_file_fingerprints": {
+              "documents.json": {
+                "size": 1115,
+                "sha256": "8d034ab9f3ec10ea9a42cd97e3b73bcd4eb524797896c9e948ca292fc365f4be"
+              },
+              "bm25_metadata.json": {
+                "size": 153,
+                "sha256": "2b4c7cdbd3baec43dd372ed693c2066fd2ebced42f97e326e9a1bdba42a1f09f"
+              }
+            },
+            "chunk_count": 3,
+            "source_file_count": 1,
+            "file_count": 3,
+            "build_duration_seconds": 0.02
+          },
+          "commit": "995aefe27bb57b09add769581f22583643e1c67e",
+          "source_fingerprint": "sha256-v2:35b319f17c404c5f79f036cca4631032b3451bcdc47224cebacf46d06f284fa7",
+          "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4"
+        },
+        "symbol_graph": {
+          "index_type": "symbol_graph",
+          "path": "/tmp/codenib-codegraph-benefit-g0/nested-definition/state/repositories/repository-8dba0aa4002c/indexes/symbol_graph",
+          "built_at": "2026-10-27T22:44:06.293467+00:00",
+          "built_at_epoch": 1793141046.293467,
+          "status": "failed",
+          "config": {
+            "builder_schema": 6,
+            "languages": [
+              "python"
+            ],
+            "graph_route": "active",
+            "exclude_patterns": [
+              "**/.codenib_cache/**",
+              "**/.env/**",
+              "**/.git/**",
+              "**/.hg/**",
+              "**/.mypy_cache/**",
+              "**/.next/**",
+              "**/.pytest_cache/**",
+              "**/.ruff_cache/**",
+              "**/.svn/**",
+              "**/.tox/**",
+              "**/.venv/**",
+              "**/__pycache__/**",
+              "**/build/**",
+              "**/dist/**",
+              "**/env/**",
+              "**/htmlcov/**",
+              "**/node_modules/**",
+              "**/site/**",
+              "**/target/**",
+              "**/third_party/**",
+              "**/vendor/**",
+              "**/venv/**",
+              ".codenib_cache/**",
+              ".env/**",
+              ".git/**",
+              ".hg/**",
+              ".mypy_cache/**",
+              ".next/**",
+              ".pytest_cache/**",
+              ".ruff_cache/**",
+              ".svn/**",
+              ".tox/**",
+              ".venv/**",
+              "__pycache__/**",
+              "build/**",
+              "dist/**",
+              "env/**",
+              "htmlcov/**",
+              "node_modules/**",
+              "site/**",
+              "target/**",
+              "third_party/**",
+              "vendor/**",
+              "venv/**"
+            ],
+            "allow_partial_languages": false,
+            "allow_partial_index": false,
+            "source_coverage_fallback": false,
+            "allow_project_preparation": false,
+            "target_dir": null,
+            "repository_filter_policy": 4,
+            "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+            "node_count": 6,
+            "edge_count": 10,
+            "language": "python",
+            "available_languages": [
+              "python"
+            ],
+            "compiler_available_languages": [
+              "python"
+            ],
+            "index_generation_reports": {
+              "python": {
+                "backend": "scip-python",
+                "status": "complete",
+                "complete": true,
+                "partial": false,
+                "document_count": 1
+              }
+            },
+            "scip_decoded_artifacts": {
+              "python": {
+                "relative_path": "index.decoded",
+                "size": 4662,
+                "sha256": "f236167576d9a830ea6320d898a9bfe93380a676466e580c602f123342e6732b"
+              }
+            },
+            "graph_artifact": {
+              "relative_path": "graph.pkl",
+              "size": 997,
+              "sha256": "766d8d6b4f340fd8c5c14750f9139ccb415f635988536251d664c8713605f806"
+            },
+            "lsp_occurrence_artifact": {
+              "relative_path": "lsp_index.pkl",
+              "size": 1203,
+              "sha256": "c42c61a6e8c1c24d57f6cecf9fb58b8b12f9118dbbd9de9ad27efd9af6d3ed08"
+            },
+            "query_surface_sha256": "8a3bac596662c61627f0eeceed2ca90bcff60157655cf028017527b70a7be9c8",
+            "update_mode": "full_rebuild",
+            "partial_index": false,
+            "failed_languages": {},
+            "partial": false,
+            "source_selection_report": {
+              "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+              "nodes_before": 6,
+              "nodes_after": 6,
+              "edges_before": 10,
+              "edges_after": 10,
+              "removed_excluded_path_count": 0,
+              "excluded_path_count_after": 0,
+              "invalid_path_count_before": 0,
+              "invalid_path_count_after": 0
+            }
+          },
+          "metadata": {
+            "builder_schema": 6,
+            "languages": [
+              "python"
+            ],
+            "graph_route": "active",
+            "exclude_patterns": [
+              "**/.codenib_cache/**",
+              "**/.env/**",
+              "**/.git/**",
+              "**/.hg/**",
+              "**/.mypy_cache/**",
+              "**/.next/**",
+              "**/.pytest_cache/**",
+              "**/.ruff_cache/**",
+              "**/.svn/**",
+              "**/.tox/**",
+              "**/.venv/**",
+              "**/__pycache__/**",
+              "**/build/**",
+              "**/dist/**",
+              "**/env/**",
+              "**/htmlcov/**",
+              "**/node_modules/**",
+              "**/site/**",
+              "**/target/**",
+              "**/third_party/**",
+              "**/vendor/**",
+              "**/venv/**",
+              ".codenib_cache/**",
+              ".env/**",
+              ".git/**",
+              ".hg/**",
+              ".mypy_cache/**",
+              ".next/**",
+              ".pytest_cache/**",
+              ".ruff_cache/**",
+              ".svn/**",
+              ".tox/**",
+              ".venv/**",
+              "__pycache__/**",
+              "build/**",
+              "dist/**",
+              "env/**",
+              "htmlcov/**",
+              "node_modules/**",
+              "site/**",
+              "target/**",
+              "third_party/**",
+              "vendor/**",
+              "venv/**"
+            ],
+            "allow_partial_languages": false,
+            "allow_partial_index": false,
+            "source_coverage_fallback": false,
+            "allow_project_preparation": false,
+            "target_dir": null,
+            "repository_filter_policy": 4,
+            "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+            "node_count": 6,
+            "edge_count": 10,
+            "language": "python",
+            "available_languages": [
+              "python"
+            ],
+            "compiler_available_languages": [
+              "python"
+            ],
+            "index_generation_reports": {
+              "python": {
+                "backend": "scip-python",
+                "status": "complete",
+                "complete": true,
+                "partial": false,
+                "document_count": 1
+              }
+            },
+            "scip_decoded_artifacts": {
+              "python": {
+                "relative_path": "index.decoded",
+                "size": 4662,
+                "sha256": "f236167576d9a830ea6320d898a9bfe93380a676466e580c602f123342e6732b"
+              }
+            },
+            "graph_artifact": {
+              "relative_path": "graph.pkl",
+              "size": 997,
+              "sha256": "766d8d6b4f340fd8c5c14750f9139ccb415f635988536251d664c8713605f806"
+            },
+            "lsp_occurrence_artifact": {
+              "relative_path": "lsp_index.pkl",
+              "size": 1203,
+              "sha256": "c42c61a6e8c1c24d57f6cecf9fb58b8b12f9118dbbd9de9ad27efd9af6d3ed08"
+            },
+            "query_surface_sha256": "8a3bac596662c61627f0eeceed2ca90bcff60157655cf028017527b70a7be9c8",
+            "update_mode": "full_rebuild",
+            "partial_index": false,
+            "failed_languages": {},
+            "partial": false,
+            "source_selection_report": {
+              "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+              "nodes_before": 6,
+              "nodes_after": 6,
+              "edges_before": 10,
+              "edges_after": 10,
+              "removed_excluded_path_count": 0,
+              "excluded_path_count_after": 0,
+              "invalid_path_count_before": 0,
+              "invalid_path_count_after": 0
+            },
+            "build_duration_seconds": 0.71,
+            "error": "symbol graph builder returned no graph (python: indexer returned no graph)"
+          },
+          "commit": "995aefe27bb57b09add769581f22583643e1c67e",
+          "source_fingerprint": "sha256-v2:35b319f17c404c5f79f036cca4631032b3451bcdc47224cebacf46d06f284fa7",
+          "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4"
+        }
+      },
+      "source_fingerprint": "sha256-v2:35b319f17c404c5f79f036cca4631032b3451bcdc47224cebacf46d06f284fa7"
+    },
+    "rebuild_log": "INFO     Initialized LSIndexer for python at                                    \n         /tmp/codenib-codegraph-benefit-g0/nested-definition/repository         \n         (route=active)                                                         \nINFO     Generating SCIP index                                                  \nINFO     Removed pre-existing SCIP index before generation                      \nINFO     Using scip-python from                                                 \n         /home/zhongming/.codenib/toolchains/node-tools/node_modules/.bin/scip-p\n         ython                                                                  \nINFO     Applying 44 temporary Pyright exclusions                               \nLoading configuration file at /tmp/codenib-codegraph-benefit-g0/nested-definition/repository/pyrightconfig.json\nAssuming Python version 3.12\nAssuming Python platform Linux\nNo include entries specified; assuming /tmp/codenib-codegraph-benefit-g0/nested-definition/repository\n(15:44:06) Total Project Files 1\n(15:44:06) Indexing /tmp/codenib-codegraph-benefit-g0/nested-definition/repository with version 995aefe27bb57b09add769581f22583643e1c67e\n(15:44:06) Parse and search for dependencies\n(15:44:06) Index workspace and track project files\n(15:44:06) Analyze project and dependencies\n(15:44:06) Parse and emit SCIP\n(15:44:06) Writing external symbols to SCIP index\n(15:44:06) Sucessfully wrote SCIP index to /tmp/codenib-codegraph-benefit-g0/nested-definition/state/repositories/repository-8dba0aa4002c/indexes/symbol_graph/index.scip\nINFO     Successfully generated SCIP index at                                   \n         /tmp/codenib-codegraph-benefit-g0/nested-definition/state/repositories/\n         repository-8dba0aa4002c/indexes/symbol_graph/index.scip                \nINFO     Index generation took: 0.42 seconds                                    \nINFO     Decoding SCIP index                                                    \nINFO     Successfully decoded SCIP index to                                     \n         /tmp/codenib-codegraph-benefit-g0/nested-definition/state/repositories/\n         repository-8dba0aa4002c/indexes/symbol_graph/index.decoded             \nINFO     \u23f1\ufe0f  Index decoding took: 0.00 seconds                                  \nINFO     Starting SCIP index processing (backend=serial)...                     \nINFO     Starting SCIP Python decode from                                       \n         /tmp/codenib-codegraph-benefit-g0/nested-definition/state/repositories/\n         repository-8dba0aa4002c/indexes/symbol_graph/index.decoded             \nERROR    Error processing SCIP index: Cannot use symbol graph: containment cycle\n         detected; the provider's scope/definition identities need correction   \nINFO     [scip_python_indexer] profiler summary: 0.416s total across 6          \n         section(s)                                                             \nINFO       generate_index                           total= 0.416s count=  1 avg=\n         0.416s min= 0.416s max= 0.416s                                         \nINFO       process_index.decode                     total= 0.002s count=  1 avg=\n         0.002s min= 0.002s max= 0.002s                                         \nINFO       process_index.build_lsp_occurrence_index total= 0.001s count=  1 avg=\n         0.001s min= 0.001s max= 0.001s                                         \nINFO       decode_index                             total= 0.001s count=  1 avg=\n         0.001s min= 0.001s max= 0.001s                                         \nINFO       process_index.save_graph                 total= 0.000s count=  1 avg=\n         0.000s min= 0.000s max= 0.000s, errors=1                               \nINFO       process_index.build_range_indexes        total= 0.000s count=  1 avg=\n         0.000s min= 0.000s max= 0.000s                                         \nFailed to build symbol_graph: symbol graph builder returned no graph (python: indexer returned no graph)\nNot all indexes reached source 995aefe27bb5; last indexed identity was preserved\nCyclic graph unavailable; current BM25 preserved\n",
+    "mcp": {
+      "graph": {
+        "meta": {
+          "io.modelcontextprotocol/serverInfo": {
+            "name": "codenib",
+            "version": "0.2.4"
+          }
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"error\": \"symbol_graph index not available\"\n}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "error": "symbol_graph index not available"
+        },
+        "is_error": false,
+        "result_type": "complete"
+      },
+      "bm25": {
+        "meta": {
+          "io.modelcontextprotocol/serverInfo": {
+            "name": "codenib",
+            "version": "0.2.4"
+          }
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"node_name\": \"nested.py:right()\",\n  \"type\": \"function\",\n  \"file\": \"nested.py\",\n  \"node_id\": \"nested.py:right()\",\n  \"start_line\": 4,\n  \"end_line\": 5,\n  \"score\": 0.0,\n  \"content\": \"def right():\\n    return 2\\n\"\n}",
+            "annotations": null,
+            "meta": null
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"node_name\": \"nested.py:Example.run()\",\n  \"type\": \"method\",\n  \"file\": \"nested.py\",\n  \"node_id\": \"nested.py:Example.run()\",\n  \"start_line\": 8,\n  \"end_line\": 15,\n  \"score\": 0.0,\n  \"content\": \"    def run(self, flag):\\n        if flag:\\n            def run():\\n                return left()\\n        else:\\n            def run():\\n                return right()\\n        return run()\\n\"\n}",
+            "annotations": null,
+            "meta": null
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"node_name\": \"nested.py:left()\",\n  \"type\": \"function\",\n  \"file\": \"nested.py\",\n  \"node_id\": \"nested.py:left()\",\n  \"start_line\": 1,\n  \"end_line\": 2,\n  \"score\": 0.0,\n  \"content\": \"def left():\\n    return 1\\n\"\n}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "result": [
+            {
+              "node_name": "nested.py:right()",
+              "type": "function",
+              "file": "nested.py",
+              "node_id": "nested.py:right()",
+              "start_line": 4,
+              "end_line": 5,
+              "score": 0.0,
+              "content": "def right():\n    return 2\n"
+            },
+            {
+              "node_name": "nested.py:Example.run()",
+              "type": "method",
+              "file": "nested.py",
+              "node_id": "nested.py:Example.run()",
+              "start_line": 8,
+              "end_line": 15,
+              "score": 0.0,
+              "content": "    def run(self, flag):\n        if flag:\n            def run():\n                return left()\n        else:\n            def run():\n                return right()\n        return run()\n"
+            },
+            {
+              "node_name": "nested.py:left()",
+              "type": "function",
+              "file": "nested.py",
+              "node_id": "nested.py:left()",
+              "start_line": 1,
+              "end_line": 2,
+              "score": 0.0,
+              "content": "def left():\n    return 1\n"
+            }
+          ]
+        },
+        "is_error": false,
+        "result_type": "complete"
+      }
+    },
+    "source_fingerprint_preserved": true
+  },
+  "executed_harnesses": {
+    "nested-definition.py": "import json\nimport os\nimport subprocess\nfrom pathlib import Path\nROOT=Path('/tmp/codenib-codegraph-benefit-g0/nested-definition')\nREPO=ROOT/'repository'\nREPO.mkdir(parents=True)\n(REPO/'nested.py').write_text('''def left():\n    return 1\n\ndef right():\n    return 2\n\nclass Example:\n    def run(self, flag):\n        if flag:\n            def run():\n                return left()\n        else:\n            def run():\n                return right()\n        return run()\n''')\nfor args in (['git','init','-q'],['git','config','user.name','Fixture'],['git','config','user.email','fixture@example.invalid'],['git','config','gc.auto','0'],['git','config','maintenance.auto','false'],['git','add','.'],['git','commit','-qm','fixture']):\n    subprocess.run(args,cwd=REPO,check=True,capture_output=True)\nos.environ['CODENIB_HOME']=str(ROOT/'state')\nos.environ['CODENIB_TOOLCHAIN_DIR']='/home/zhongming/.codenib/toolchains'\nfrom codenib.cli import index_repository\nfrom codenib.graph.code_graph import CodeGraph\nfrom codenib.types import EDGE_TYPE_CONTAIN\nm,failed=index_repository(REPO,languages=('python',),views=('bm25','symbol_graph'),allow_graph_project_preparation=False,allow_partial_graph_languages=False)\nassert not failed, failed\nentry=m.indexes['symbol_graph']\nprint('entry',json.dumps(entry.to_dict()))\ng=CodeGraph.load_graph(str(Path(entry.path)/'graph.pkl'))\nself_edges=[e.tuple for e in g.graph.es if e['type']==EDGE_TYPE_CONTAIN and e.source==e.target]\nnodes=[v.attributes() for v in g.graph.vs if v.attributes().get('file')=='nested.py']\nedges=[{'source':g.graph.vs[e.source]['unified_name'],'target':g.graph.vs[e.target]['unified_name'],'type':e['type']} for e in g.graph.es]\nresult=dict(source=(REPO/'nested.py').read_text(), source_fingerprint=m.source_fingerprint, self_containment=self_edges,nodes=nodes,edges=edges,graph_entry=entry.to_dict())\n(ROOT/'receipt.json').write_text(json.dumps(result,indent=2))\nprint(json.dumps(result,indent=2))\n",
+    "nested-rebuild.py": "import json\nimport os\nfrom pathlib import Path\nROOT=Path('/tmp/codenib-codegraph-benefit-g0/nested-definition')\nos.environ['CODENIB_HOME']=str(ROOT/'state')\nos.environ['CODENIB_TOOLCHAIN_DIR']='/home/zhongming/.codenib/toolchains'\nfrom codenib.cli import index_repository\nm,failed=index_repository(ROOT/'repository',languages=('python',),views=('bm25','symbol_graph'),allow_graph_project_preparation=False,allow_partial_graph_languages=False)\nresult={'failed':failed,'indexes':{k:v.to_dict() for k,v in m.indexes.items()},'source_fingerprint':m.source_fingerprint}\n(ROOT/'rejection-receipt.json').write_text(json.dumps(result,indent=2))\nassert failed==['symbol_graph'],result\nassert m.indexes['bm25'].status=='fresh',result\nprint('Cyclic graph unavailable; current BM25 preserved')\n",
+    "nested-mcp.py": "import asyncio\nimport json\nimport os\nfrom pathlib import Path\nfrom mcp import Client, StdioServerParameters\nfrom mcp.client.stdio import stdio_client\nROOT=Path('/tmp/codenib-codegraph-benefit-g0/nested-definition')\nREPO=ROOT/'repository'\nenv=dict(os.environ,CODENIB_HOME=str(ROOT/'state'),CODENIB_TOOLCHAIN_DIR='/home/zhongming/.codenib/toolchains',PYTHONPATH='/home/zhongming/CodeNib-codegraph-benefit')\nasync def main():\n    with (ROOT/'candidate-mcp.stderr').open('w') as errors:\n        transport=stdio_client(StdioServerParameters(command='/home/zhongming/.venvs/codenib/bin/python',args=['-m','codenib','mcp',str(REPO),'--tool-surface','full'],env=env,cwd=ROOT),errlog=errors)\n        async with Client(transport,mode='auto',cache=None) as client:\n            graph=await client.call_tool('dependency_subgraph',arguments={'symbol':'Example.run','direction':'dependencies','depth':1})\n            search=await client.call_tool('search_bm25',arguments={'query':'left','top_k':4})\n            graph_payload=graph.model_dump(mode='json')\n            search_payload=search.model_dump(mode='json')\n            result={'graph':graph_payload,'bm25':search_payload}\n            (ROOT/'candidate-mcp.json').write_text(json.dumps(result,indent=2))\n            assert graph_payload['structured_content']=={'error':'symbol_graph index not available'},graph_payload\n            assert not search_payload['is_error'], search_payload\n            print('Graph unavailable; verified BM25 source remains usable')\nasyncio.run(main())\n"
+  },
+  "reproduction": "Use the project Python with PYTHONPATH pointing to the candidate checkout; the retained scripts pin their temporary fixture/state locations and reuse the managed SCIP 0.6.6 executable. The baseline script must run at the baseline source revision, before applying the integrity gate.",
+  "release_smoke": {
+    "root": "/tmp/codenib-codegraph-benefit-g0/containment-release",
+    "exit_code": 0,
+    "stdout": "+ git init --quiet\n+ git config user.email release-smoke@example.invalid\n+ git config user.name CodeNib Release Smoke\n+ git config gc.auto 0\n+ git config maintenance.auto false\n+ git add .\n+ git commit --quiet -m initial fixture\n+ /home/zhongming/.venvs/codenib/bin/codenib doctor /tmp/codenib-codegraph-benefit-g0/containment-release/graph-smoke-repository --require graph --language python\n+ /home/zhongming/.venvs/codenib/bin/codenib codegraph init /tmp/codenib-codegraph-benefit-g0/containment-release/graph-smoke-repository --language python --command /home/zhongming/.venvs/codenib/bin/codenib\n+ /home/zhongming/.venvs/codenib/bin/codenib codegraph status /tmp/codenib-codegraph-benefit-g0/containment-release/graph-smoke-repository --json\n+ /home/zhongming/.venvs/codenib/bin/codenib codegraph init /tmp/codenib-codegraph-benefit-g0/containment-release/graph-smoke-repository --language python\n+ git status --porcelain\n+ /home/zhongming/.venvs/codenib/bin/codenib mcp /tmp/codenib-codegraph-benefit-g0/containment-release/graph-smoke-repository --tool-surface full\n+ /home/zhongming/.venvs/codenib/bin/codenib wiki /tmp/codenib-codegraph-benefit-g0/containment-release/graph-smoke-repository --no-index --no-open --port 56755 --api-port 53383\n+ git status --porcelain\n+ /home/zhongming/.venvs/codenib/bin/codenib codegraph init /tmp/codenib-codegraph-benefit-g0/containment-release/graph-smoke-repository --language python\n+ git status --porcelain\n+ /home/zhongming/.venvs/codenib/bin/codenib codegraph uninstall /tmp/codenib-codegraph-benefit-g0/containment-release/graph-smoke-repository\nInstalled CodeGraph, agent onboarding, MCP, and Dependency Map smoke passed\n"
+  },
+  "targeted_unit_gate": {
+    "command": "pytest test/graph test/compiler test/scip -m 'not slow and not integration and not integration_serial and not integration_serial_consumer' -q -x --tb=short",
+    "passed": 874,
+    "skipped": 9,
+    "deselected": 97,
+    "seconds": 8.03
+  },
+  "full_unit_gate": {
+    "command": "umask 022; python -m pytest -m 'not slow and not integration and not integration_serial and not integration_serial_consumer' -q -x --tb=short",
+    "passed": 8656,
+    "skipped": 35,
+    "deselected": 212,
+    "warnings": 46,
+    "seconds": 131.11,
+    "environment_note": "The host defaults to umask 0002; an unchanged captured-directory test assumes 0644-created files and passes with the CI-style 0022 umask. Native workspace-owner support is the unchanged #877 pinned CI extension recorded in the earlier currentness receipt."
+  }
+}

@@ -699,7 +699,7 @@ class GraphExpansionIndex:
                 }
             if report.get("graph"):
                 self._graph = CodeGraph.load_graph(report["graph"])
-        except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
+        except (OSError, RuntimeError, ValueError, subprocess.TimeoutExpired) as exc:
             graph_size["error"] = f"{type(exc).__name__}: {exc}"[:500]
 
     def _adjacent(self, vertex: int, edge_type: str, mode: str) -> list[int]:

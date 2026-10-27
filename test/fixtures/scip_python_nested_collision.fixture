@@ -1,0 +1,156 @@
+metadata {
+  tool_info {
+    name: "scip-python"
+    version: "0.6.6"
+  }
+  project_root: "file:///tmp/codenib-codegraph-benefit-g0/nested-definition/repository"
+  text_document_encoding: UTF8
+}
+documents {
+  relative_path: "nested.py"
+  occurrences {
+    range: 0
+    range: 0
+    range: 0
+    symbol: "scip-python python repository 995aefe27bb57b09add769581f22583643e1c67e nested/__init__:"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 0
+    range: 4
+    range: 8
+    symbol: "scip-python python repository 995aefe27bb57b09add769581f22583643e1c67e nested/left()."
+    symbol_roles: 1
+    enclosing_range: 0
+    enclosing_range: 0
+    enclosing_range: 1
+    enclosing_range: 12
+  }
+  occurrences {
+    range: 3
+    range: 4
+    range: 9
+    symbol: "scip-python python repository 995aefe27bb57b09add769581f22583643e1c67e nested/right()."
+    symbol_roles: 1
+    enclosing_range: 3
+    enclosing_range: 0
+    enclosing_range: 4
+    enclosing_range: 12
+  }
+  occurrences {
+    range: 6
+    range: 6
+    range: 13
+    symbol: "scip-python python repository 995aefe27bb57b09add769581f22583643e1c67e nested/Example#"
+    symbol_roles: 1
+    enclosing_range: 6
+    enclosing_range: 0
+    enclosing_range: 14
+    enclosing_range: 20
+  }
+  occurrences {
+    range: 7
+    range: 8
+    range: 11
+    symbol: "scip-python python repository 995aefe27bb57b09add769581f22583643e1c67e nested/Example#run()."
+    symbol_roles: 1
+    enclosing_range: 7
+    enclosing_range: 4
+    enclosing_range: 14
+    enclosing_range: 20
+  }
+  occurrences {
+    range: 7
+    range: 12
+    range: 16
+    symbol: "scip-python python repository 995aefe27bb57b09add769581f22583643e1c67e nested/Example#run().(self)"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 7
+    range: 18
+    range: 22
+    symbol: "scip-python python repository 995aefe27bb57b09add769581f22583643e1c67e nested/Example#run().(flag)"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 8
+    range: 11
+    range: 15
+    symbol: "scip-python python repository 995aefe27bb57b09add769581f22583643e1c67e nested/Example#run().(flag)"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 9
+    range: 16
+    range: 19
+    symbol: "scip-python python repository 995aefe27bb57b09add769581f22583643e1c67e nested/Example#run()."
+    symbol_roles: 1
+    enclosing_range: 9
+    enclosing_range: 12
+    enclosing_range: 10
+    enclosing_range: 29
+  }
+  occurrences {
+    range: 10
+    range: 23
+    range: 27
+    symbol: "scip-python python repository 995aefe27bb57b09add769581f22583643e1c67e nested/left()."
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 12
+    range: 16
+    range: 19
+    symbol: "scip-python python repository 995aefe27bb57b09add769581f22583643e1c67e nested/Example#run()."
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 13
+    range: 23
+    range: 28
+    symbol: "scip-python python repository 995aefe27bb57b09add769581f22583643e1c67e nested/right()."
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 14
+    range: 15
+    range: 18
+    symbol: "scip-python python repository 995aefe27bb57b09add769581f22583643e1c67e nested/Example#run()."
+    symbol_roles: 8
+  }
+  symbols {
+    symbol: "scip-python python repository 995aefe27bb57b09add769581f22583643e1c67e nested/__init__:"
+    documentation: "(module) nested"
+  }
+  symbols {
+    symbol: "scip-python python repository 995aefe27bb57b09add769581f22583643e1c67e nested/left()."
+    documentation: "```python\ndef left(): # -> Literal[1]:\n```"
+  }
+  symbols {
+    symbol: "scip-python python repository 995aefe27bb57b09add769581f22583643e1c67e nested/right()."
+    documentation: "```python\ndef right(): # -> Literal[2]:\n```"
+  }
+  symbols {
+    symbol: "scip-python python repository 995aefe27bb57b09add769581f22583643e1c67e nested/Example#"
+    documentation: "```python\nclass Example:\n```"
+  }
+  symbols {
+    symbol: "scip-python python repository 995aefe27bb57b09add769581f22583643e1c67e nested/Example#run()."
+    documentation: "```python\ndef run(\n  self,\n  flag\n): # -> Literal[1, 2]:\n```"
+  }
+  symbols {
+    symbol: "scip-python python repository 995aefe27bb57b09add769581f22583643e1c67e nested/Example#run().(self)"
+  }
+  symbols {
+    symbol: "scip-python python repository 995aefe27bb57b09add769581f22583643e1c67e nested/Example#run().(flag)"
+  }
+  symbols {
+    symbol: "scip-python python repository 995aefe27bb57b09add769581f22583643e1c67e nested/Example#run()."
+    documentation: "```python\ndef run(): # -> Literal[1]:\n```"
+  }
+  symbols {
+    symbol: "scip-python python repository 995aefe27bb57b09add769581f22583643e1c67e nested/Example#run()."
+    documentation: "```python\ndef run(): # -> Literal[2]:\n```"
+  }
+}

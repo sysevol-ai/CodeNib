@@ -135,14 +135,18 @@ class CodeNibToolProvider:
             # directory between reading the receipt and loading its graph.
             graph_path = directory / "arb_graph.pkl"
             index = None
+            load_error = None
             if receipt.get("graph") and graph_path.is_file():
                 from codenib.graph.code_graph import CodeGraph
 
-                index = _SnapshotIndex(
-                    CodeGraph.load_graph(str(graph_path)),
-                    released,
-                    receipt.get("languages") or [],
-                )
+                try:
+                    index = _SnapshotIndex(
+                        CodeGraph.load_graph(str(graph_path)),
+                        released,
+                        receipt.get("languages") or [],
+                    )
+                except (OSError, RuntimeError, ValueError) as exc:
+                    load_error = f"{type(exc).__name__}: {exc}"[:500]
         self._snapshots[(repo, base_commit)] = index
         status = {
             key: receipt[key]
@@ -169,6 +173,8 @@ class CodeNibToolProvider:
                 if key in retry
             }
         status.update(cached=cached, available=index is not None)
+        if load_error is not None:
+            status["error"] = load_error
         if index is not None:
             status["size"] = index.size
         else:
