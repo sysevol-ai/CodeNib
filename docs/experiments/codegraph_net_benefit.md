@@ -168,6 +168,24 @@ no recruitment program. No invitation has been sent and no
 participant is claimed. Each of five participants attempts setup on their own
 repository and has a seven-day observation window after first use.
 
+Recruitment hand-off is prepared below; it has not been sent. Maintainers must
+confirm volunteers and consent before starting any observation window:
+
+> We are inviting five developers to try CodeNib on their own repository for
+> seven days. Use it only when it helps your normal work; no repeated-use quota
+> is required. Participation is voluntary and you can stop at any time. With
+> your consent, we will record setup time, whether your agent used the tool,
+> whether its answer helped, errors/help needed and later voluntary reuse.
+> Private source, credentials, prompts and identifiable repository paths are
+> excluded by default. Agree any additional shared evidence separately.
+
+For each consenting volunteer, keep an anonymous participant ID, consent/date,
+language and approximate repository size, first-use date and observation end.
+Retain unsuccessful setups and withdrawals with their stated reasons. Use the
+same short check-in fields for each observed work session: task category,
+actual tool call, accepted source-linked answer, help needed and later reuse
+without a reminder to invoke CodeNib. Do not infer use from installation alone.
+
 Record setup attempts/successes, time to the first accepted source-linked query,
 whether the agent actually called the tool, maintenance help needed and
 voluntary return on later work. Target at least three of five returning without
