@@ -34,8 +34,10 @@ CodeNib does not edit Codex TOML, Claude JSON, `.mcp.json`, `AGENTS.md`, or
 readable repository slug plus a path digest makes the server name unique, so
 several checkouts can coexist.
 
-Initialization requires a clean Git working tree and verifies the same status
-again after indexing and native client registration. CodeNib may install its
+Initialization accepts uncommitted edits, including new, deleted and renamed
+files. It indexes the current working tree and checks that visible source
+content, the Git commit and status remain unchanged through toolchain setup,
+indexing and native client registration. CodeNib may install its
 own pinned language provider below `CODENIB_SCIP_TOOLS_DIR`, but this product
 path does not run a repository package manager, generate a compilation
 database, or prepare project-local dependencies. If a graph provider needs an
@@ -150,7 +152,10 @@ the complete path is ready:
 codenib codegraph status /absolute/path/to/repository --json
 ```
 
-After source changes, rerun `init`. Views whose complete identities remain
+After source changes, rerun `init`; committing or stashing is unnecessary.
+Then restart the agent's CodeNib MCP server to load the rebuilt index. Running
+sessions retain their loaded indexes and do not automatically refresh them.
+Views whose complete identities remain
 current are reused; affected requested views rebuild atomically. File-level
 delta repair is currently disabled until it can use the same pinned source
 authority. Force a clean graph rebuild only when deliberately changing a
@@ -250,9 +255,10 @@ provider boundary.
   the environment that provides the `codenib` command.
 - **Manual graph prerequisite:** follow the reported provider instruction, run
   `codenib doctor . --require graph`, then rerun initialization.
-- **Dirty checkout:** commit or stash tracked and untracked files. CodeNib
-  checks again after each mutating phase and stops before reporting readiness
-  if a provider or client changes the checkout.
+- **Checkout changed during initialization:** inspect `git diff` and
+  `git status`. Initialization accepts existing edits, but stops if visible
+  source, the Git commit or status changes during setup. Retry after the
+  concurrent work has finished.
 - **Source identity mismatch:** rerun `codenib codegraph init .` for the current
   checkout rather than serving a stale graph.
 - **Generated subtree should be omitted:** rerun `init` with one or more exact
