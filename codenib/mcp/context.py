@@ -319,6 +319,7 @@ class ServerContext:
         default="local_source_not_verified", init=False, repr=False
     )
     _view_lock: RLock = field(default_factory=RLock, init=False, repr=False)
+    _query_lock: RLock = field(default_factory=RLock, init=False, repr=False)
     _native_index_authorization: Optional[NativeIndexAuthorization] = field(
         default=None,
         repr=False,
@@ -419,14 +420,17 @@ class ServerContext:
     def indexed_query(self) -> Iterator[None]:
         """Deliver local indexed facts only while their source remains current.
 
-        Lock order is the existing view lock, then each source verification.
-        Closing a context uses the same order. The final source check is the
-        query's acceptance point: a mid-query edit discards its
-        result. Portable artifacts retain their admitted snapshot semantics;
+        A query owns runtime resources until its final source check accepts
+        the result; close waits on the same query lock. Lock order is query,
+        then view (when needed), then source verification. Session bookkeeping
+        uses only the view lock, so workers must not retain it while calling
+        providers: that would block the MCP event loop on session lookup.
+        A mid-query edit discards the result. Portable artifacts retain snapshot
+        semantics;
         grep/Jev captures current source independently on each request.
         """
 
-        with self._view_lock:
+        with self._query_lock:
             if (
                 self.artifact is not None
                 or self._artifact_binding is not None
@@ -736,7 +740,7 @@ class ServerContext:
     def close(self) -> None:
         """Release runtime resources owned by this context."""
 
-        with self._view_lock:
+        with self._query_lock, self._view_lock:
             deferred: BaseException | None = None
             try:
                 self.end_explore_session()

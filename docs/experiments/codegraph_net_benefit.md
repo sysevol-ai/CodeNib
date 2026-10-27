@@ -72,6 +72,7 @@ The same real fixture covers source-preserving create/delete/rename rebuilds.
 All eleven indexed tools are checked before and after their provider runs;
 mid-query edits discard the result. Ordinary provider failures/cancellation
 leave unchanged source usable, and context close waits for active queries.
+Queued exploration and cancellation remain responsive while a provider runs.
 Portable snapshots and per-request grep/Jev source capture keep their existing
 contracts. The release graph/MCP/Dependency Map smoke passes.
 

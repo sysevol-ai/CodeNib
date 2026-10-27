@@ -145,11 +145,11 @@ def test_context_close_waits_for_an_active_query(local_context, monkeypatch):
         return "accepted"
 
     def close():
-        available = ctx._view_lock.acquire(blocking=False)
+        available = ctx._query_lock.acquire(blocking=False)
         if available:
-            ctx._view_lock.release()
+            ctx._query_lock.release()
         closing.set()
-        assert not available, "the active query must retain the context's view lock"
+        assert not available, "the active query must retain query ownership"
         ctx.close()
 
     with ThreadPoolExecutor(max_workers=2) as pool:
