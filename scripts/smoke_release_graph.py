@@ -50,6 +50,8 @@ def _fixture_repository(root: Path) -> Path:
     _run(["git", "init", "--quiet"], cwd=repo)
     _run(["git", "config", "user.email", "release-smoke@example.invalid"], cwd=repo)
     _run(["git", "config", "user.name", "CodeNib Release Smoke"], cwd=repo)
+    _run(["git", "config", "gc.auto", "0"], cwd=repo)
+    _run(["git", "config", "maintenance.auto", "false"], cwd=repo)
     _run(["git", "add", "."], cwd=repo)
     _run(["git", "commit", "--quiet", "-m", "initial fixture"], cwd=repo)
     return repo
@@ -153,6 +155,7 @@ async def _assert_codegraph_mcp_async(
     *,
     executable: str,
     env: dict[str, str],
+    callee: str = "release_sum",
 ) -> None:
     from mcp import Client, StdioServerParameters
     from mcp.client.stdio import stdio_client
@@ -192,7 +195,7 @@ async def _assert_codegraph_mcp_async(
                     str(node.get("name") or "")
                     for node in dependency_result.get("nodes", [])
                 }
-                if not any("release_sum" in name for name in node_names):
+                if not any(name.endswith(f":{callee}()") for name in node_names):
                     raise RuntimeError(
                         "CodeGraph MCP dependency traversal did not reach the "
                         f"callee: {dependency_result!r}"
@@ -250,6 +253,7 @@ def _assert_codegraph_mcp(
     *,
     executable: str,
     env: dict[str, str],
+    callee: str = "release_sum",
 ) -> None:
     print("+", executable, "mcp", str(repo), "--tool-surface", "full", flush=True)
     asyncio.run(
@@ -258,7 +262,46 @@ def _assert_codegraph_mcp(
             repo,
             executable=executable,
             env=env,
+            callee=callee,
         )
+    )
+
+
+def _assert_dirty_reinitialization(
+    root: Path,
+    repo: Path,
+    *,
+    executable: str,
+    env: dict[str, str],
+    agent_state: Path,
+) -> None:
+    """Rebuild edited source and query the new graph over a fresh MCP session."""
+
+    source = repo / "calculator.py"
+    changed = source.read_text(encoding="utf-8").replace(
+        "release_sum", "release_sum_updated"
+    )
+    source.write_text(changed, encoding="utf-8")
+    status = _run(["git", "status", "--porcelain"], cwd=repo, env=env).stdout
+    if not status:
+        raise RuntimeError("dirty reinitialization fixture has no uncommitted edit")
+    registrations = json.loads(agent_state.read_text(encoding="utf-8"))
+    _run(
+        [executable, "codegraph", "init", str(repo), "--language", "python"],
+        cwd=root,
+        env=env,
+    )
+    if (
+        source.read_text(encoding="utf-8") != changed
+        or status != _run(["git", "status", "--porcelain"], cwd=repo, env=env).stdout
+    ):
+        raise RuntimeError("CodeGraph reinitialization changed the existing user edit")
+    if json.loads(agent_state.read_text(encoding="utf-8")).get(
+        "adds"
+    ) != registrations.get("adds"):
+        raise RuntimeError("dirty CodeGraph init rewrote an agent registration")
+    _assert_codegraph_mcp(
+        root, repo, executable=executable, env=env, callee="release_sum_updated"
     )
 
 
@@ -406,6 +449,9 @@ def smoke(root: Path, *, executable: str = "codenib") -> None:
 
     _assert_codegraph_mcp(root, repo, executable=executable, env=env)
     _assert_codemap(root, repo, executable=executable, env=env)
+    _assert_dirty_reinitialization(
+        root, repo, executable=executable, env=env, agent_state=agent_state
+    )
     _run(
         [executable, "codegraph", "uninstall", str(repo)],
         cwd=root,
