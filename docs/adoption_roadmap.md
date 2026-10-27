@@ -1,7 +1,7 @@
 # Adoption and distribution roadmap
 
 Owner: CodeNib product, retrieval, and documentation maintainers.
-Reviewed: 2026-09-29. Status: active.
+Reviewed: 2026-10-26 (Pacific). Status: active.
 
 ## Outcome and product decision
 
@@ -10,12 +10,18 @@ source-linked output, and try it on their own repository. Public Wiki pages
 are a shareable preview and an acquisition channel. The primary activation
 event is a successful, source-linked agent query on the user's repository.
 
-The next retrieval path is model-planned grep followed by Jev reranking,
-using the user's OpenRouter account for both model operations. It must not
-require embeddings, a GPU, or a completed semantic graph before the first
-query. Typed graph navigation remains a separate strength, available when
-its language provider is ready. BM25 remains supported; it is not the new
-quality claim or the proposed default onboarding experience.
+The immediate product priority is A0: establish whether CodeGraph improves
+real coding tasks after setup, indexing and source-update costs are included.
+The pilot targets at least 20% improvement in a preselected task-time or
+model-usage endpoint with no reduction in task acceptance. It must support
+an evidence-based promotion, narrower product scope, or no-go decision.
+
+Model-planned grep followed by Jev remains a candidate retrieval path under
+A2/A3, using the user's OpenRouter account. It must not require embeddings,
+a GPU, or a completed graph before the first query. Typed graph navigation
+remains supported when its language provider is ready. Promoting an onboarding
+default requires its own matched product evidence; neither the grep/Jev
+research result nor graph-free ContextBench outcomes settle A0.
 
 The shipping `codegraph init` path and the experimental grep/Jev result must
 remain clearly distinguished until that route passes the product gates.
@@ -37,6 +43,40 @@ Using the caller's agent to plan grep is a separate, unevaluated variant.
 | Related work | #777/#778 improve the Jev blog evidence; #773 changes blog layout. | Preserve their ownership; do not duplicate their chart or hardware corrections. Merged #770/#752 supply optional Wiki image generation and contextual repository diagrams; they are independent of the visitor/adoption acceptance gates. |
 
 ## Delivery order and acceptance gates
+
+### A0 — Prove CodeGraph's net benefit in daily coding
+
+Status: active; goal and pilot decision contract established on 2026-10-26
+(Pacific). Target decision review: 2026-11-09. The source-contract audit is
+complete; workflow reproductions, fixes, matched runs and external repeat-use
+observations remain open. A planning PR does not close this milestone.
+Tracking issue: [#874](https://github.com/sysevol-ai/CodeNib/issues/874).
+The detailed contract is [the internal pilot plan](experiments/codegraph_net_benefit.md).
+
+Owner: CodeNib product and CodeGraph maintainers. Prioritize a useful first
+source-linked query, reliable queries after edits, and measurable task
+benefit. Admit new languages, backends or evaluation routes only when they
+remove a recorded pilot/user blocker or meet an existing explicit obligation.
+Existing maintenance and the A1-A6 contracts remain in force.
+
+| Gate | Current outcome | Next acceptance |
+| --- | --- | --- |
+| G0: baseline | Source/docs audit confirms clean-tree initialization, manual reinitialization after edits, and disabled file-level delta repair. The Requests recording is a capability demonstration. | Reproduce cold setup, unchanged reuse and edit/requery behavior in isolated, non-billed fixtures; record current release and candidate versions. |
+| G1: daily workflow | No new workflow fix is claimed. Source identity and graph coverage remain required. | Address the reproduced setup/update blockers without modifying user work, mislabeling stale graph facts or broadening storage. Verify dirty/modified/created/deleted/renamed-file cases and explicit degraded behavior. |
+| G2: matched benefit | No four-arm product result exists. | Freeze task acceptance, tool configurations, model/version, budgets and one primary endpoint; compare native agent, Serena, colbymchenry/codegraph and CodeNib with the same native tools available. Include cold setup, update costs and failures. |
+| G3: repeat use | No external cohort is enrolled. | Five consenting users attempt setup on their own repositories; observe a first successful source-linked query and seven days of actual use, targeting voluntary return by at least three. Missing observations remain explicit. |
+| G4: product decision | Open. | Decide promote, narrow, no-go or insufficient evidence from G1-G3. A 20% gain against the strongest eligible alternative on the frozen primary endpoint is a pilot decision gate, not a general efficacy claim. |
+
+Preserve task acceptance and record any additional serious correctness error
+as a promotion blocker. Retain complete denominators, actual costs and
+unavailable outcomes. Static ARB scores, graph-query speed, the Requests clip,
+ContextBench rank and website clicks cannot substitute for G2 or G3.
+
+Open execution gates: exact task/model/tool configuration, a hard paid-run
+budget with authorization, and participant recruitment/consent. These do not
+block offline reproduction and the workflow fixes. If the review date arrives
+before evidence is complete, report the open gates rather than treating an
+unrun trial as a performance failure or an achieved benefit.
 
 ### A1 — Make the existing product understandable
 
@@ -410,6 +450,10 @@ tests; redaction coverage at observable HTTP/log/export boundaries; private
 code disclosure; no automatic billed retry after budget exhaustion.
 
 ### A4 — Show the benefit on the user's own repository
+
+The matched task-benefit study and repeat-use decision now belong to A0 and
+its pilot contract. This recording remains a demonstration, with its original
+measurement limits; it is not a separate proof of the A0 outcome.
 
 Status: the actual CodeGraph/Claude Code recording and first-screen media are
 merged in [#788](https://github.com/sysevol-ai/CodeNib/pull/788) as `dc2b4df0`,

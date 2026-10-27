@@ -48,6 +48,14 @@ For the adoption, OpenRouter, and Wiki preview program, use
 `docs/adoption_roadmap.md` as the durable objective record. Keep shipping
 CodeGraph capabilities separate from experimental grep/Jev results, and
 update the relevant milestone when its acceptance gates or PR status change.
+The immediate CodeGraph product priority is the real-workflow net-benefit
+gate in A0 of that roadmap, with the pilot contract in
+`docs/experiments/codegraph_net_benefit.md`. Keep workflow acceptance,
+matched task outcomes, and observed repeat use separate from retrieval scores
+and demonstrations. Record a promotion, narrowed scope, or no-go decision;
+setting up the study does not complete the program. Preserve source-identity
+checks and the Storage Scope Guard while improving working-tree usability.
+
 The public repository entry must produce a navigable Repo Wiki through the
 existing Wiki pipeline. A source browser or a short AI explanation does not
 satisfy that outcome. Generation progress must reflect actual work; completed
