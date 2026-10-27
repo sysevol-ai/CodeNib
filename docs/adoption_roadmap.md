@@ -53,8 +53,10 @@ Offline workflow reproduction and dirty initialization are verified;
 [#877](https://github.com/sysevol-ai/CodeNib/pull/877) is merged. A source-query
 guard merged in [#878](https://github.com/sysevol-ai/CodeNib/pull/878) rejects
 stale local facts, including mid-query edits. The #871 reproduction confirms
-a Python provider identity collision; a shared graph-artifact guard candidate
-rejects cyclic containment instead of serving those facts.
+a Python provider identity collision; the shared graph-artifact guard merged
+in [#879](https://github.com/sysevol-ai/CodeNib/pull/879) rejects cyclic
+containment instead of serving those facts. These fixes are on `main`, not in
+the published 0.2.4 package.
 Automatic refresh, representative correctness, matched runs and external
 repeat-use observations remain open. This does not close the milestone.
 Tracking issue: [#874](https://github.com/sysevol-ai/CodeNib/issues/874).
@@ -69,9 +71,9 @@ Existing maintenance and the A1-A6 contracts remain in force.
 | Gate | Current outcome | Next acceptance |
 | --- | --- | --- |
 | G0: baseline | Real SCIP/BM25/MCP fixtures reproduce source-baseline clean/warm setup, dirty CLI rejection and successful dirty backend rebuilding. Candidate dirty-first-use and modified/created/deleted/renamed-file rebuilds preserve source and Git status and return updated facts in fresh sessions. Native client CLIs are stand-ins; no model ran. [Receipts](experiments/codegraph_workflow_2026_10_26.json). | Complete a separately installed release control and scope representative repository/provider coverage; synthetic fixture timings do not establish task benefit. |
-| G1: daily workflow | Dirty initialization (#877) and the eleven-tool stale-fact guard (#878, closing #876) are merged. Real stdio edit/rebuild/reconnect receipts pass; immutable snapshots keep their contract. A synthetic Python fixture reproduces #871 through the strict product indexer: SCIP 0.6.6 emits one ID for outer/nested `run`, and the old graph contains a self-edge. The integrity candidate rejects cyclic graph writes/loads, invalidates earlier builder receipts and leaves BM25 usable while graph facts are unavailable. [Workflow receipts](experiments/codegraph_currentness_2026_10_27.json), [identity receipts](experiments/codegraph_identity_2026_10_27.json). | Land the intrinsic graph-integrity guard; #871 remains open for accurate definition/reference recovery, including collisions without cycles. Keep graph-dependent admission gated on that scope and representative checks. Full rebuilding and MCP restart remain explicit costs; automatic refresh is unimplemented. |
-| G2: matched benefit | No four-arm product result exists. | Freeze task acceptance, tool configurations, model/version, budgets and one primary endpoint; compare native agent, Serena, colbymchenry/codegraph and CodeNib with the same native tools available. Include cold setup, update costs and failures. |
-| G3: repeat use | No external cohort is enrolled. | Five consenting users attempt setup on their own repositories; observe a first successful source-linked query and seven days of actual use, targeting voluntary return by at least three. Missing observations remain explicit. |
+| G1: daily workflow | Dirty initialization (#877), the eleven-tool stale-fact guard (#878, closing #876) and graph-integrity guard (#879) are merged. Real stdio edit/rebuild/reconnect receipts pass; immutable snapshots keep their contract. A synthetic Python fixture reproduces #871 through the strict product indexer: SCIP 0.6.6 emits one ID for outer/nested `run`, and the old graph contains a self-edge. The intrinsic check rejects cyclic graph writes/loads, invalidates earlier builder receipts and leaves BM25 usable while graph facts are unavailable. [Workflow receipts](experiments/codegraph_currentness_2026_10_27.json), [identity receipts](experiments/codegraph_identity_2026_10_27.json). | #871 remains open for accurate definition/reference recovery, including collisions without cycles. Keep graph-dependent admission gated on that scope and representative checks. Full rebuilding and MCP restart remain explicit costs; automatic refresh is unimplemented. |
+| G2: matched benefit | No four-arm product result exists. The user authorized a $500 API ceiling and prefers native account SDKs. Codex/ChatGPT and Claude/Max SDK probes each completed a real CodeNib MCP call without supplied API keys. [SDK contract and receipts](experiments/codegraph_sdk_route.md). Complete task wall time is the prospective primary endpoint; SDK estimates are not invoices. | Freeze tasks, peer versions/modes, one exact model per SDK cohort, limits and usage accounting. Compare native agent, Serena, colbymchenry/codegraph and CodeNib within the same client/model with native tools available. Retain cold setup, updates and failures. |
+| G3: repeat use | The user confirms no recruitment program is currently available; no external participant is enrolled. SDK probes are maintainer-operated connectivity checks. | Five consenting users attempt setup on their own repositories; observe a first successful source-linked query and seven days of actual use, targeting voluntary return by at least three. Prepare recruitment/consent hand-off and keep missing observations explicit. |
 | G4: product decision | Open. | Decide promote, narrow, no-go or insufficient evidence from G1-G3. A 20% gain against the strongest eligible alternative on the frozen primary endpoint is a pilot decision gate, not a general efficacy claim. |
 
 Preserve task acceptance and record any additional serious correctness error
@@ -79,9 +81,10 @@ as a promotion blocker. Retain complete denominators, actual costs and
 unavailable outcomes. Static ARB scores, graph-query speed, the Requests clip,
 ContextBench rank and website clicks cannot substitute for G2 or G3.
 
-Open execution gates: exact task/model/tool configuration, a hard paid-run
-budget with authorization, and participant recruitment/consent. These do not
-block offline reproduction and the workflow fixes. If the review date arrives
+The authorized API ceiling is $500; native account SDK/MCP connectivity is
+verified. Open execution gates are exact task/model/tool configuration,
+per-run limits and usage accounting, and participant recruitment/consent.
+These do not block offline reproduction and the workflow fixes. If the review date arrives
 before evidence is complete, report the open gates rather than treating an
 unrun trial as a performance failure or an achieved benefit.
 

@@ -2,8 +2,8 @@
 
 Owner: CodeNib product and CodeGraph maintainers.
 Status: dirty initialization and stale-query guard merged; provider-identity
-collision reproduced and graph-integrity guard verified offline;
-no pilot inference or external trial has run. Established 2026-10-26
+collision reproduced and graph-integrity guard merged;
+no matched-task or external trial has run. Established 2026-10-26
 (Pacific); target review 2026-11-09.
 Current outcomes and open gates belong to [adoption A0](../adoption_roadmap.md).
 Tracking issue: [#874](https://github.com/sysevol-ai/CodeNib/issues/874).
@@ -16,8 +16,8 @@ initial use case is cross-file execution-path and change-impact analysis.
 This pilot produces a promote, narrow, no-go or insufficient-evidence decision.
 It does not promise a positive result or establish population-wide efficacy.
 
-The pilot product gate is at least 20% improvement on one prospectively
-selected endpoint, complete task time or recorded model usage, against the
+The pilot product gate is at least 20% improvement on prospectively selected
+complete task wall time against the
 strongest eligible alternative. Task acceptance must not fall; any additional
 serious correctness error blocks promotion. Fixing a recorded issue or
 publishing this plan does not satisfy that gate.
@@ -83,7 +83,8 @@ The [#871 identity receipts](codegraph_identity_2026_10_27.json) reproduce the
 remaining issue through the strict Python product builder: SCIP 0.6.6 assigns
 the same symbol ID to an enclosing method and a same-named nested definition.
 The graph loses their separate ranges and includes a containment self-edge.
-The candidate refuses cyclic containment at common graph save/load boundaries
+The guard merged in [#879](https://github.com/sysevol-ai/CodeNib/pull/879)
+refuses cyclic containment at common graph save/load boundaries
 and advances graph builder identity so old receipts rebuild. In the actual
 fixture, graph rebuilding fails explicitly, BM25 stays fresh, and MCP returns
 graph-unavailable while BM25 source queries work. Reference recursion remains
@@ -140,7 +141,11 @@ framework is required by this goal. The manifest must specify:
   unknown; SDK usage is not a reconciled invoice. Do not infer source-read credit
   from requested ranges, generated summaries or elided replies.
 
-Select task time or model usage as the single primary endpoint before execution.
+Complete task wall time is the single primary endpoint, selected on 2026-10-27
+before matched-task execution. Native subscription billing does not establish
+comparable per-task cash charges. The [SDK route contract](codegraph_sdk_route.md)
+keeps recorded model usage secondary and requires its per-client normalization
+to be frozen in the run manifest.
 Compare it with the best cohort-level result among eligible alternatives that
 meet the acceptance gate; do not select a weaker baseline afterward. The other
 endpoint must not regress by more than 10%, and cold/update costs must remain
@@ -148,14 +153,18 @@ visible. Define timeout treatment and complete evidence requirements in the run
 manifest. Publish paired task outcomes and uncertainty; this small pilot does
 not demonstrate statistical non-inferiority on an unseen population.
 
-Admission remains open: tasks, acceptance fixtures, exact configurations and a
-hard authorized paid-run budget are not yet frozen. Work on offline reproduction
-and scoped fixes can proceed while these are prepared. A live experiment must
+The user authorized a $500 API ceiling and prefers existing Codex/Claude
+account SDKs. Both native SDK/MCP connectivity probes succeeded without
+supplied API keys; their forced-tool fixtures are excluded from task/adoption
+results. Admission remains open: tasks, acceptance fixtures, exact model/tool
+configurations, per-run limits and effective accounting are not yet frozen.
+Work on offline reproduction and scoped fixes can proceed. A live experiment must
 not silently substitute the graph-free search pair or grep/Jev for CodeGraph.
 
 ## G3: five-user repeat-use pilot
 
-Maintainers own recruitment and consent. No invitation has been sent and no
+Maintainers own recruitment and consent. The user confirms there is currently
+no recruitment program. No invitation has been sent and no
 participant is claimed. Each of five participants attempts setup on their own
 repository and has a seven-day observation window after first use.
 
