@@ -324,7 +324,7 @@ def test_explore_context_cancellation_does_not_commit_ledger(
         call_count += 1
         if call_count == 1:
             started.set()
-            release.wait(timeout=2)
+            assert release.wait(timeout=5)
         else:
             second_started.set()
         return _empty_explore_response()
@@ -340,6 +340,8 @@ def test_explore_context_cancellation_does_not_commit_ledger(
         next_task = asyncio.create_task(server_mod.explore_context("next"))
         await asyncio.sleep(0.02)
         assert not second_started.is_set()
+        manifest = await server_mod.get_manifest()
+        assert manifest["runtime"]["source_read"]["verified"] is True
         release.set()
         assert await asyncio.to_thread(second_started.wait, 0.5)
         result = await next_task
@@ -352,6 +354,38 @@ def test_explore_context_cancellation_does_not_commit_ledger(
 
     assert ctx.explore_runtime is not None
     assert ctx.explore_runtime.ledger.stats()["calls"] == 1
+
+
+def test_queued_exploration_does_not_block_event_loop(
+    monkeypatch, bound_context
+) -> None:
+    server_mod._ctx = bound_context
+    started = threading.Event()
+    release = threading.Event()
+
+    def implementation(*_args):
+        started.set()
+        assert release.wait(5), "the event loop must release the active worker"
+        return _empty_explore_response()
+
+    monkeypatch.setattr(server_mod, "explore_context_impl", implementation)
+
+    async def run_calls():
+        active = asyncio.create_task(server_mod.explore_context("first"))
+        try:
+            assert await asyncio.to_thread(started.wait, 5)
+            queued = asyncio.create_task(server_mod.explore_context("queued"))
+            await asyncio.sleep(0)
+            manifest = await server_mod.get_manifest()
+            assert manifest["runtime"]["source_read"]["verified"] is True
+            queued.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await queued
+        finally:
+            release.set()
+            await active
+
+    asyncio.run(run_calls())
 
 
 def test_search_bm25_raises_without_ctx() -> None:
