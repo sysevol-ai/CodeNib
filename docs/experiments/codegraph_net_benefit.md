@@ -1,7 +1,8 @@
 # CodeGraph real-workflow net-benefit pilot
 
 Owner: CodeNib product and CodeGraph maintainers.
-Status: dirty initialization merged and offline stale-query guard verified;
+Status: dirty initialization and stale-query guard merged; provider-identity
+collision reproduced and graph-integrity guard verified offline;
 no pilot inference or external trial has run. Established 2026-10-26
 (Pacific); target review 2026-11-09.
 Current outcomes and open gates belong to [adoption A0](../adoption_roadmap.md).
@@ -76,10 +77,25 @@ Queued exploration and cancellation remain responsive while a provider runs.
 Portable snapshots and per-request grep/Jev source capture keep their existing
 contracts. The release graph/MCP/Dependency Map smoke passes.
 
-Admission still requires landing the guard and scoping #871's nested-definition
-identity bug. Full rebuilding and restarting the MCP server remain explicit
-workflow costs; automatic refresh is not implemented. A safe unavailable result
-does not establish convenient updates, task benefit or representative coverage.
+The stale-query guard is merged in
+[#878](https://github.com/sysevol-ai/CodeNib/pull/878), closing #876.
+The [#871 identity receipts](codegraph_identity_2026_10_27.json) reproduce the
+remaining issue through the strict Python product builder: SCIP 0.6.6 assigns
+the same symbol ID to an enclosing method and a same-named nested definition.
+The graph loses their separate ranges and includes a containment self-edge.
+The candidate refuses cyclic containment at common graph save/load boundaries
+and advances graph builder identity so old receipts rebuild. In the actual
+fixture, graph rebuilding fails explicitly, BM25 stays fresh, and MCP returns
+graph-unavailable while BM25 source queries work. Reference recursion remains
+valid. The persisted graph field layout is unchanged; the shared Python
+artifact boundary applies to serial and native decoder outputs.
+
+This intrinsic check is a mitigation, not accurate identity recovery. #871
+remains open for ambiguous definitions/references, including collisions that
+do not create cycles. Graph-dependent admission remains gated on that scope
+and representative repository/provider checks. Full rebuilding and MCP
+restart remain explicit costs; automatic refresh is not implemented. A safe
+unavailable result does not establish convenient updates or net task benefit.
 
 Use temporary repositories and isolated client profiles, without model calls.
 Record commands, installed/runtime versions, source identities, timings and

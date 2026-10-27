@@ -511,7 +511,7 @@ def test_graph_expansion_promotes_referenced_files(monkeypatch, tmp_path):
     index.close()
 
 
-def test_graph_expansion_survives_containment_cycles(monkeypatch, tmp_path):
+def test_graph_walk_survives_an_in_memory_containment_cycle(monkeypatch, tmp_path):
     # Nested definitions sharing a qualified name (IPython's
     # ExecutionMagics.run defines inner run() functions) collapse into one
     # vertex that contains itself; a second parent must not count it twice.
@@ -527,10 +527,30 @@ def test_graph_expansion_survives_containment_cycles(monkeypatch, tmp_path):
         ["seed.py"] + [f"other{i}.py" for i in range(30)] + ["caller.py", "callee.py"]
     )
     monkeypatch.setattr(methods, "GRAPH_SEED_FILES", 1)
-    index = _graph_index(monkeypatch, tmp_path, graph, order)
+    # Artifact admission rejects cyclic containment. Retain #870's walk guard
+    # for a caller that supplies or mutates an in-memory graph after loading.
+    index = _graph_index(monkeypatch, tmp_path, _reference_graph(), order)
+    index._graph = graph
     symbols = index._file_symbols("seed.py")
     assert len(symbols) == len(set(symbols)) == 3
     assert index.rank("q")[:3] == ["seed.py", "callee.py", "caller.py"]
+    index.close()
+
+
+def test_graph_expansion_reports_invalid_artifact_and_keeps_bm25(monkeypatch, tmp_path):
+    from codenib.graph.code_graph import CodeGraph
+
+    def reject_graph(_path):
+        raise ValueError("containment cycle detected")
+
+    monkeypatch.setattr(CodeGraph, "load_graph", reject_graph)
+    order = ["a.py", "b.py", "c.py"]
+    index = _graph_index(monkeypatch, tmp_path, _reference_graph(), order)
+
+    assert index.rank("q") == order
+    assert not index.graph_used
+    assert index.tool_calls == 1
+    assert index.size["graph"]["error"] == "ValueError: containment cycle detected"
     index.close()
 
 

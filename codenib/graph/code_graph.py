@@ -806,6 +806,33 @@ class CodeGraph:
         """Add a directory node to the graph"""
         self._add_vertex(dir_path, {"type": NODE_TYPE_DIRECTORY})
 
+    def validate_containment(self) -> None:
+        """Reject impossible source containment without rejecting recursive calls.
+
+        The Python SCIP provider can emit one identity for an enclosing method
+        and its same-named nested definition (#871). Such a graph must not be
+        published or served as current source facts. This common boundary also
+        covers graphs constructed by the C++ decoder; serialized fields and
+        the decoder's source receipts remain unchanged.
+        """
+
+        if "type" not in self.graph.es.attributes():
+            return
+        containment = [
+            (edge.source, edge.target)
+            for edge in self.graph.es.select(type_eq=EDGE_TYPE_CONTAIN)
+        ]
+        if not containment:
+            return
+        # Do not copy source-bearing vertex attributes into this temporary
+        # graph. Only containment participates; reference cycles are valid.
+        hierarchy = ig.Graph(n=self.graph.vcount(), edges=containment, directed=True)
+        if not hierarchy.is_dag():
+            raise ValueError(
+                "Cannot use symbol graph: containment cycle detected; "
+                "the provider's scope/definition identities need correction"
+            )
+
     def save_graph(self, output_path):
         """
         Save the graph to a pickle file for fast serialization.
@@ -813,6 +840,7 @@ class CodeGraph:
         Args:
             output_path: Path to save the pickle file
         """
+        self.validate_containment()
         # Prepare data for pickling
         data = {
             "schema_version": _SCHEMA_VERSION,
@@ -872,6 +900,7 @@ class CodeGraph:
         graph_instance._file_edge_anchors = data.get("file_edge_anchors", {})
         graph_instance._unified_to_names = data.get("unified_to_names", {})
 
+        graph_instance.validate_containment()
         return graph_instance
 
     def get_graph(self):

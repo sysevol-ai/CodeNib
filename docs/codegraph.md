@@ -263,6 +263,11 @@ provider boundary.
   concurrent work has finished.
 - **Source identity mismatch:** rerun `codenib codegraph init .` for the current
   checkout rather than serving a stale graph.
+- **Containment cycle:** the language provider has reported an impossible
+  source hierarchy. SCIP Python 0.6.6 can merge an enclosing method and a
+  same-named nested function ([#871](https://github.com/sysevol-ai/CodeNib/issues/871)).
+  CodeNib rejects that graph. Use source search while definition identity is
+  unresolved; BM25 indexing can still succeed independently of the graph.
 - **Generated subtree should be omitted:** rerun `init` with one or more exact
   `--exclude-dir PATH` values. The values replace the persisted custom set;
   inspect them with `codegraph status` before serving the graph.

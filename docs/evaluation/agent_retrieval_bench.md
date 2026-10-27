@@ -306,6 +306,12 @@ BM25 and recorded with `graph_used: false`. Fetching source is reported as
 measured when CodeNib's Go graph omitted `_test.go` files, so expansion there
 could not propose Go tests; Go graphs now include them.
 
+Current graph loading also rejects cyclic source containment and records the
+failure before using BM25. A compiler provider can conflate nested definitions
+([#871](https://github.com/sysevol-ai/CodeNib/issues/871)); accepting its artifact
+does not establish correct symbol identity. The frozen scores above predate
+this integrity gate and have not been recomputed.
+
 Rankings produced elsewhere from the full source can be scored under the same
 rule with `codenib-arb evaluate --source-access full-source`.
 
