@@ -25,7 +25,7 @@ from mcp.types import LATEST_PROTOCOL_VERSION
 # Import server module components
 import codenib.mcp.server as server_module
 from codenib._version import package_version
-from codenib.compiler.manifest import IndexEntry, RepoManifest
+from codenib.compiler.manifest import RepoManifest
 from codenib.index.embedding.vector_store import CodeVectorStore
 from codenib.mcp.context import ServerContext
 from codenib.mcp.tools.lsp import (
@@ -35,7 +35,6 @@ from codenib.mcp.tools.lsp import (
 )
 from codenib.repository_source_selection import DEFAULT_REPOSITORY_SOURCE_SELECTION
 
-SOURCE_FINGERPRINT = "sha256-v2:" + ("a" * 64)
 SOURCE_SELECTION_DIGEST = DEFAULT_REPOSITORY_SOURCE_SELECTION.digest
 
 
@@ -148,38 +147,28 @@ def test_search_tool_schemas_publish_bounded_inputs() -> None:
 
 @pytest.fixture
 def mock_manifest(tmp_path: Path) -> Path:
-    """Create a mock manifest file."""
+    """Create mocked index metadata bound to real, isolated source."""
+    from codenib.source_fingerprint import fingerprint_repository
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "sample.py").write_text("def sample():\n    return 1\n")
+    source = fingerprint_repository(repo)
     commit = "a" * 40
     manifest = RepoManifest(
-        repo_path="/fake/repo",
+        repo_path=str(repo),
         commit=commit,
         last_indexed_commit=commit,
-        source_fingerprint=SOURCE_FINGERPRINT,
-        last_indexed_source_fingerprint=SOURCE_FINGERPRINT,
+        source_fingerprint=source.value,
+        last_indexed_source_fingerprint=source.value,
+        source_selection=DEFAULT_REPOSITORY_SOURCE_SELECTION,
         last_indexed_source_selection_digest=SOURCE_SELECTION_DIGEST,
         languages=["python"],
-        file_count=100,
+        file_count=source.file_count,
         capabilities={"vector_search": True},
         compiled_at="2026-04-20T12:00:00Z",
         compiled_at_epoch=1745323200.0,
-        indexes={
-            "vector": IndexEntry(
-                index_type="vector",
-                path=str(tmp_path / "vector"),
-                built_at="2026-04-20T12:00:00Z",
-                built_at_epoch=1745323200.0,
-                status="fresh",
-                config={
-                    "embedding_model": "text-embedding-3-small",
-                    "embedding_provider": "openai",
-                    "dimension": 1536,
-                    "index_metric": "ip",
-                },
-                commit=commit,
-                source_fingerprint=SOURCE_FINGERPRINT,
-                source_selection_digest=SOURCE_SELECTION_DIGEST,
-            )
-        },
+        indexes={},
     )
 
     manifest_path = tmp_path / "repo_manifest.json"

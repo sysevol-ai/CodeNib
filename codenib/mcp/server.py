@@ -26,7 +26,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, nullcontext
 from pathlib import Path
 from threading import Event
-from typing import TYPE_CHECKING, Annotated, Any, Literal, Optional
+from typing import TYPE_CHECKING, Annotated, Any, Callable, Literal, Optional
 
 from pydantic import Field
 
@@ -66,7 +66,7 @@ from .tools.dependency import dependency_subgraph_impl
 from .tools.explore import explore_context_impl
 from .tools.lsp import lsp_definition_impl, lsp_references_impl, lsp_route_impl
 from .tools.search import search_bm25_impl, search_context_impl, search_regex_impl
-from .tools.search import search_semantic as _search_semantic_impl
+from .tools.search import search_semantic_impl as _search_semantic_impl
 from .tools.search import search_zoekt_impl
 from .tools.source import read_source_impl
 
@@ -132,6 +132,13 @@ def get_context() -> ServerContext:
     if _ctx is None:
         raise RuntimeError("ServerContext not initialized. Call init_server() first.")
     return _ctx
+
+
+def _indexed_tool_call(function: Callable[..., Any], ctx: ServerContext, *args) -> Any:
+    """Hold existing context/source ownership until the result is accepted."""
+
+    with ctx.indexed_query():
+        return function(ctx, *args)
 
 
 # MCPServer configures the process-wide root logger while it is constructed.
@@ -246,6 +253,7 @@ async def explore_context(
             )
         else:
             work = asyncio.to_thread(
+                _indexed_tool_call,
                 explore_context_impl,
                 ctx,
                 query,
@@ -298,6 +306,7 @@ async def search_context(
     if _ctx is None:
         raise RuntimeError("Server not initialized")
     return await asyncio.to_thread(
+        _indexed_tool_call,
         search_context_impl,
         _ctx,
         query,
@@ -329,12 +338,14 @@ async def semantic_search(
     """
     if _ctx is None:
         raise RuntimeError("Server not initialized")
-    return await _search_semantic_impl(
-        ctx=_ctx,
-        query=query,
-        top_k=top_k,
-        level=level if level else "l2",
-        score_threshold=score_threshold if score_threshold > 0 else None,
+    return await asyncio.to_thread(
+        _indexed_tool_call,
+        _search_semantic_impl,
+        _ctx,
+        query,
+        top_k,
+        level if level else "l2",
+        score_threshold if score_threshold > 0 else None,
     )
 
 
@@ -356,7 +367,9 @@ async def search_bm25(
     """BM25 keyword search over indexed code symbols."""
     if _ctx is None:
         raise RuntimeError("Server not initialized")
-    return await asyncio.to_thread(search_bm25_impl, _ctx, query, top_k, filter_test)
+    return await asyncio.to_thread(
+        _indexed_tool_call, search_bm25_impl, _ctx, query, top_k, filter_test
+    )
 
 
 @mcp.tool(
@@ -381,6 +394,7 @@ async def search_regex(
     if _ctx is None:
         raise RuntimeError("Server not initialized")
     return await asyncio.to_thread(
+        _indexed_tool_call,
         search_regex_impl,
         _ctx,
         pattern,
@@ -411,6 +425,7 @@ async def search_zoekt(
     if _ctx is None:
         raise RuntimeError("Server not initialized")
     return await asyncio.to_thread(
+        _indexed_tool_call,
         search_zoekt_impl,
         _ctx,
         query,
@@ -444,6 +459,7 @@ async def dependency_subgraph(
     if _ctx is None:
         raise RuntimeError("Server not initialized")
     return await asyncio.to_thread(
+        _indexed_tool_call,
         dependency_subgraph_impl,
         _ctx,
         symbol,
@@ -474,6 +490,7 @@ async def lsp_definition(
     if _ctx is None:
         raise RuntimeError("Server not initialized")
     return await asyncio.to_thread(
+        _indexed_tool_call,
         lsp_definition_impl,
         _ctx,
         file_path,
@@ -505,6 +522,7 @@ async def lsp_references(
     if _ctx is None:
         raise RuntimeError("Server not initialized")
     return await asyncio.to_thread(
+        _indexed_tool_call,
         lsp_references_impl,
         _ctx,
         file_path,
@@ -536,6 +554,7 @@ async def lsp_route(
     if _ctx is None:
         raise RuntimeError("Server not initialized")
     return await asyncio.to_thread(
+        _indexed_tool_call,
         lsp_route_impl,
         _ctx,
         symbols,
@@ -563,6 +582,7 @@ async def read_source(
     if _ctx is None:
         raise RuntimeError("Server not initialized")
     return await asyncio.to_thread(
+        _indexed_tool_call,
         read_source_impl,
         _ctx,
         file_path,

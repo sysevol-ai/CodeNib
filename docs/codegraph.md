@@ -155,6 +155,8 @@ codenib codegraph status /absolute/path/to/repository --json
 After source changes, rerun `init`; committing or stashing is unnecessary.
 Then restart the agent's CodeNib MCP server to load the rebuilt index. Running
 sessions retain their loaded indexes and do not automatically refresh them.
+Indexed tools reject queries once their source changes and report the rebuild
+and restart steps.
 Views whose complete identities remain
 current are reused; affected requested views rebuild atomically. File-level
 delta repair is currently disabled until it can use the same pinned source

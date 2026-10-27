@@ -18,10 +18,11 @@ import logging
 import math
 import sys
 from collections.abc import Callable, Iterable
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from threading import RLock
-from typing import TYPE_CHECKING, Any, Dict, Mapping, Optional
+from typing import TYPE_CHECKING, Any, Dict, Iterator, Mapping, Optional
 
 from .._atomic_directory import (
     PublicationDirectoryReader,
@@ -413,6 +414,52 @@ class ServerContext:
             return False
         self.source_error = None
         return True
+
+    @contextmanager
+    def indexed_query(self) -> Iterator[None]:
+        """Deliver local indexed facts only while their source remains current.
+
+        Lock order is the existing view lock, then each source verification.
+        Closing a context uses the same order. The final source check is the
+        query's acceptance point: a mid-query edit discards its
+        result. Portable artifacts retain their admitted snapshot semantics;
+        grep/Jev captures current source independently on each request.
+        """
+
+        with self._view_lock:
+            if (
+                self.artifact is not None
+                or self._artifact_binding is not None
+                or self.grep_jev is not None
+            ):
+                yield
+                return
+            source = self._source_binding
+            if source is None:
+                raise RuntimeError(
+                    "Indexed source is unavailable. Run `codenib codegraph init` "
+                    "for this repository and restart its CodeNib MCP server. "
+                    + (self.source_error or "source binding is unverified")
+                )
+
+            def require_current_source() -> None:
+                try:
+                    source.verify_snapshot()
+                except (OSError, RuntimeError, ValueError) as exc:
+                    self.source_error = source.failure_reason or str(exc)
+                    raise RuntimeError(
+                        "Indexed source changed. Run `codenib codegraph init` for "
+                        "this repository and restart its CodeNib MCP server. "
+                        + self.source_error
+                    ) from exc
+
+            require_current_source()
+            try:
+                yield
+            finally:
+                # Verify on failure too, without poisoning unchanged source
+                # merely because a provider rejected a query or was cancelled.
+                require_current_source()
 
     @classmethod
     def load(
