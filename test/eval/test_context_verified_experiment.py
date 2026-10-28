@@ -161,8 +161,9 @@ def test_native_client_only_creates_its_owner_with_bounded_resources():
 @pytest.mark.parametrize(
     "outcome", [True, False, "incomplete", "exception", "cleanup", "isolation"]
 )
+@pytest.mark.parametrize("image_arch", ["amd64", "arm64"])
 def test_native_grader_records_real_status_and_exact_owner_cleanup(
-    monkeypatch, tmp_path, outcome
+    monkeypatch, tmp_path, outcome, image_arch
 ):
     run = tmp_path / "solver"
     run.mkdir()
@@ -229,7 +230,11 @@ def test_native_grader_records_real_status_and_exact_owner_cleanup(
         return actual
 
     client = EphemeralCollectionsClient(
-        images=SimpleNamespace(get=lambda name: image_id if name == image_id else None),
+        images=SimpleNamespace(
+            get=lambda name: SimpleNamespace(
+                attrs={"Os": "linux", "Architecture": image_arch}
+            )
+        ),
         api=SimpleNamespace(
             create_container=create,
             inspect_container=inspect_container,
@@ -240,6 +245,7 @@ def test_native_grader_records_real_status_and_exact_owner_cleanup(
     @dataclasses.dataclass
     class Spec:
         instance_id: str
+        arch: str
 
         @property
         def eval_script(self):
@@ -251,6 +257,7 @@ def test_native_grader_records_real_status_and_exact_owner_cleanup(
     def run_instance(spec, pred, rm, rebuild, actual_client, run_id, timeout):
         assert pred == prediction and not rm and not rebuild and timeout == 900
         assert spec.instance_image_key == image_id
+        assert spec.arch == ("x86_64" if image_arch == "amd64" else "arm64")
         actual_client.containers.create(name=spec.get_instance_container_name(run_id))
         if outcome == "exception":
             raise RuntimeError("fixture native failure")
@@ -287,7 +294,7 @@ def test_native_grader_records_real_status_and_exact_owner_cleanup(
         "swebench.harness.test_spec.test_spec",
         SimpleNamespace(
             TestSpec=Spec,
-            make_test_spec=lambda row, namespace: Spec(row["instance_id"]),
+            make_test_spec=lambda row, namespace, arch: Spec(row["instance_id"], arch),
         ),
     )
     args = SimpleNamespace(
@@ -299,6 +306,14 @@ def test_native_grader_records_real_status_and_exact_owner_cleanup(
         with pytest.raises(RuntimeError, match="incomplete"):
             verified.grade_verified(args)
     record = json.loads((args.output / "resolution.json").read_text())
+    grading_config = json.loads((args.output / "config.json").read_text())
+    assert grading_config["image_platform"] == {
+        "os": "linux",
+        "architecture": image_arch,
+    }
+    assert grading_config["native_architecture"] == (
+        "x86_64" if image_arch == "amd64" else "arm64"
+    )
     assert record["instance_id"] == "canonical"
     assert record["status"] == ("graded" if type(outcome) is bool else "error")
     assert record["resolved"] is (outcome is True)
