@@ -116,6 +116,17 @@ runs:
         fi
         pip install -e ".[${CODENIB_CI_PROJECT_EXTRAS}]"
 
+    - name: Install Python identity-recovery provider
+      shell: bash -l {0}
+      run: |
+        # SCIP identity normalization uses positional LSP evidence for collisions.
+        make python-lsp-tool
+        eval "$(make --no-print-directory active-scip-env | sed -n 's/^  export /export /p')"
+        echo "$CODENIB_SCIP_TOOLS_DIR/node-tools/node_modules/.bin" >> "$GITHUB_PATH"
+        echo "$CODENIB_SCIP_TOOLS_DIR" >> "$GITHUB_PATH"
+        basedpyright --version
+        command -v basedpyright-langserver
+
     - name: Install Rust toolchain + rust-analyzer
       if: inputs.install-rust == 'true'
       shell: bash -l {0}
