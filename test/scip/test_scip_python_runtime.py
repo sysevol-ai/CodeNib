@@ -4,6 +4,7 @@
 
 import json
 import signal
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -134,6 +135,36 @@ def test_scip_python_direct_run_preserves_node_heap(monkeypatch, tmp_path):
     assert indexer._run_direct(["/tools/scip-python", "index"], tmp_path)
     assert captured["cmd"][0] == "/tools/scip-python"
     assert captured["env"]["NODE_OPTIONS"] == "--max-old-space-size=16384"
+
+
+def test_scip_python_direct_run_hides_caller_site_packages(monkeypatch, tmp_path):
+    indexer = SCIPPythonIndexer(tmp_path, output_dir=tmp_path / "out")
+    probes = {}
+
+    def fake_run(_cmd, **kwargs):
+        # Pyright probes python3 first, then python, for its search paths.
+        for name in ("python3", "python"):
+            probe = subprocess.run(
+                [
+                    name,
+                    "-c",
+                    "import json, sys; "
+                    "print(json.dumps([sys.flags.no_site, sys.path]))",
+                ],
+                env=kwargs["env"],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            probes[name] = json.loads(probe.stdout)
+
+    monkeypatch.setattr(scip_indexer_python, "_run_checked_with_timeout", fake_run)
+
+    assert indexer._run_direct(["/tools/scip-python", "index"], tmp_path)
+    for no_site, search_paths in probes.values():
+        assert no_site == 1
+        assert not [path for path in search_paths if "-packages" in path]
+    assert list((tmp_path / "out").iterdir()) == []
 
 
 def test_scip_python_index_timeout_can_be_extended_for_large_repos(

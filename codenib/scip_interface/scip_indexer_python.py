@@ -9,9 +9,11 @@ import hashlib
 import json
 import math
 import os
+import shlex
 import shutil
 import signal
 import subprocess
+import sys
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
@@ -96,6 +98,39 @@ def _run_checked_with_timeout(cmd, *, timeout, **popen_kwargs):
                 retcode, cmd, output=stdout, stderr=stderr
             )
     return subprocess.CompletedProcess(proc.args, retcode, stdout, stderr)
+
+
+@contextmanager
+def _stdlib_only_python(
+    env: dict[str, str], shim_parent: Path
+) -> Iterator[dict[str, str]]:
+    """Expose only the standard library to scip-python's interpreter probe.
+
+    Pyright asks ``python3`` (then ``python``) on ``PATH`` for its import
+    search paths. Inheriting the caller's environment lets it type-evaluate the
+    repository against whatever that environment installs; on scikit-learn,
+    current numpy/scipy stubs turn a 36 s index into one that does not finish
+    in 25 minutes. Shims ahead of ``PATH`` run the caller's own interpreter
+    with ``-I -S``, so the probe reports the standard library only, like the
+    dependency-free interpreter of the managed Conda fallback.
+    """
+
+    if not sys.executable:
+        yield env
+        return
+    script = f'#!/bin/sh\nexec {shlex.quote(sys.executable)} -I -S "$@"\n'
+    with tempfile.TemporaryDirectory(
+        prefix="python-shims-", dir=shim_parent
+    ) as shim_dir:
+        for name in ("python3", "python"):
+            shim = Path(shim_dir) / name
+            shim.write_text(script, encoding="utf-8")
+            shim.chmod(0o755)
+        isolated = dict(env)
+        isolated["PATH"] = os.pathsep.join(
+            part for part in (shim_dir, env.get("PATH")) if part
+        )
+        yield isolated
 
 
 class SCIPPythonIndexer(SCIPIndexerBase):
@@ -502,13 +537,15 @@ class SCIPPythonIndexer(SCIPIndexerBase):
         """Run an explicitly resolved scip-python without creating an environment."""
 
         work_dir = Path(cwd if cwd else self.project_root).resolve()
+        self.output_dir.mkdir(parents=True, exist_ok=True)
         try:
-            _run_checked_with_timeout(
-                cmd,
-                cwd=work_dir,
-                env=self._subprocess_env(),
-                timeout=_scip_python_index_timeout(),
-            )
+            with _stdlib_only_python(self._subprocess_env(), self.output_dir) as env:
+                _run_checked_with_timeout(
+                    cmd,
+                    cwd=work_dir,
+                    env=env,
+                    timeout=_scip_python_index_timeout(),
+                )
             return True
         except subprocess.TimeoutExpired as exc:
             logger.error(
