@@ -29,8 +29,12 @@ Tracking issue: [#874](https://github.com/sysevol-ai/CodeNib/issues/874).
 ## Product question and decision
 
 Can a developer complete source-grounded coding tasks more effectively with
-CodeGraph after paying its setup, indexing and update costs? The intended
-initial use case is cross-file execution-path and change-impact analysis.
+CodeGraph after paying its setup, indexing and update costs? The supported
+initial scope is source-current definition/reference navigation and selecting
+related code for call-path or change-impact inspection. A static reference
+alone does not establish invocation or a complete runtime path. Public entry,
+comparison and MCP guidance reflect that scope, keep native exact search
+available, and distinguish a first connection check from ordinary tool choice.
 This pilot produces a promote, narrow, no-go or insufficient-evidence decision.
 It does not promise a positive result or establish population-wide efficacy.
 

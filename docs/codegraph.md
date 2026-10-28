@@ -12,6 +12,11 @@ local and model-free: it combines ranked BM25 retrieval with SCIP- or
 clangd-backed symbol relationships, definitions, references, dependencies, and
 bounded source reads.
 
+Use it for repeated definition, reference and cross-file navigation questions.
+Your agent's native text search and file reads can handle a known string or
+file directly. Include initial indexing and later rebuilds when assessing
+whether graph navigation helps your own workflow.
+
 ## One-command setup
 
 Install CodeNib 0.2.4 with the graph runtime and official MCP SDK:
@@ -113,17 +118,26 @@ another directory, device paths, and prefix lookalikes remain rejected.
 
 ## Use it from an agent
 
-Start broad questions with `explore_context`. It composes ranked retrieval,
-symbol routing, dependency expansion, and verified source windows under one
-response budget:
+Choose a question from the repository you are working on:
+
+| What you need | Start with |
+| --- | --- |
+| A known file, error string or identifier | Native file reads or text search |
+| A definition or its reference locations | `lsp_definition` or `lsp_references`, then inspect the source |
+| Related code for a broader question | `explore_context`, then follow relevant static references |
+
+For a first connection check, explicitly request `explore_context`. It composes
+ranked retrieval, symbol routing, dependency expansion and verified source
+windows under one response budget. This example assumes your repository
+implements request retries:
 
 > Use CodeNib's `explore_context` to explain where request retries are
 > implemented. Cite the returned source paths and lines before proposing an
 > edit.
 
-Use `dependency_subgraph` to follow indexed static references across symbols:
+Use a symbol returned by that lookup to follow indexed static references:
 
-> Use `dependency_subgraph` on `RetryPolicy.execute` with direction `impact`
+> Use `dependency_subgraph` on the symbol you found, with direction `impact`
 > and depth 2. Summarize incoming references and inspect their source call sites
 > before explaining which functions actually invoke it.
 
