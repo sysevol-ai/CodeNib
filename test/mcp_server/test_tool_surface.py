@@ -14,7 +14,7 @@ from mcp import Client
 
 from codenib.compiler.manifest import RepoManifest
 from codenib.mcp import server as server_mod
-from codenib.mcp.context import ServerContext
+from codenib.mcp.context import IndexedQueryError, ServerContext
 from codenib.mcp.explore_bounds import (
     MAX_EXPLORE_CALL_RESULT_BYTES,
     call_tool_result_bytes,
@@ -81,6 +81,31 @@ def test_tool_surface_normalization_rejects_unknown_value() -> None:
     assert normalize_tool_surface(" EXPLORE ") == "explore"
     with pytest.raises(ValueError, match="unknown MCP tool surface"):
         normalize_tool_surface("minimal")
+
+
+def test_recovery_reply_excludes_internal_diagnostics() -> None:
+    server = ToolSurfaceMCPServer("surface-test")
+
+    @server.tool()
+    def source_query() -> str:
+        raise IndexedQueryError("Rebuild and retry.", "private provider diagnostics")
+
+    response = asyncio.run(server.call_tool("source_query", {}))
+    assert response.is_error is True
+    assert response.structured_content is None
+    assert response.content[0].text == "Rebuild and retry."
+
+
+def test_unexpected_failure_keeps_the_sdk_error_path() -> None:
+    server = ToolSurfaceMCPServer("surface-test")
+
+    @server.tool()
+    def source_query() -> str:
+        raise RuntimeError("unexpected provider failure")
+
+    with pytest.raises(Exception) as caught:
+        asyncio.run(server.call_tool("source_query", {}))
+    assert isinstance(caught.value.__cause__, RuntimeError)
 
 
 @pytest.mark.parametrize("mode", ["auto", "legacy"])
