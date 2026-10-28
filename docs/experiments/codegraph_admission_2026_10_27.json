@@ -4860,5 +4860,1140 @@
       "An intermediate isolated root used basename unit-state instead of the namespace-contract-required .codenib."
     ],
     "note": "Original failure logs retained locally; neither doctor nor namespace product/tests were changed."
+  },
+  "offline_requests_admission": {
+    "recorded_utc": "2026-10-28T01:18:53.155149+00:00",
+    "scope": "Offline native-control environment only; no matched task inference, product benefit, or timing comparison. Original controls and their scores stay frozen.",
+    "instance_id": "psf__requests-1921",
+    "source_commit": "3c88e520da24ae6f736929a750876e7654accc3d",
+    "source_tree_at_rest": "cf441cdcaa76806a078893bffa79922351a92b0a",
+    "architecture": "amd64 (emulated on the arm64 controller; not comparative timing evidence)",
+    "matched_inference_admitted": false,
+    "grader_source_sha256": "d457ae6c9b94ac0db173f817d732de518780cf9519720d46e27f14a5c20e0ece",
+    "receipts": {
+      "offline-httpbin/dependency-receipt.json": {
+        "scope": "Dependency preparation only; no model, no reference material, no fixture admission.",
+        "base_image": "sha256:ef715951df0c8e5504514a14c03362da52774c57faa88f990965b8787512d171",
+        "owner": "8834797d0d5a",
+        "container_name": "codenib-httpbin-prep-8834797d0d5a",
+        "commands": [
+          {
+            "label": "create",
+            "argv": [
+              "docker",
+              "run",
+              "-d",
+              "--platform=linux/amd64",
+              "--name",
+              "codenib-httpbin-prep-8834797d0d5a",
+              "--label",
+              "codenib.pilot.owner=8834797d0d5a",
+              "--network=bridge",
+              "--memory=4g",
+              "--cpus=2",
+              "--pids-limit=256",
+              "--entrypoint",
+              "/bin/sleep",
+              "sha256:ef715951df0c8e5504514a14c03362da52774c57faa88f990965b8787512d171",
+              "1800"
+            ],
+            "returncode": 0,
+            "seconds": 0.1846123393625021,
+            "log": "create.log"
+          },
+          {
+            "label": "source-before",
+            "argv": [
+              "docker",
+              "exec",
+              "18bd7a2dea55116dc951c4be9d35bdf9678faddf61a4b8258d53d887861a1d0d",
+              "git",
+              "-C",
+              "/testbed",
+              "rev-parse",
+              "HEAD^{tree}"
+            ],
+            "returncode": 0,
+            "seconds": 0.09451087564229965,
+            "log": "source-before.log"
+          },
+          {
+            "label": "system-deps",
+            "argv": [
+              "docker",
+              "exec",
+              "18bd7a2dea55116dc951c4be9d35bdf9678faddf61a4b8258d53d887861a1d0d",
+              "/bin/bash",
+              "-lc",
+              "set -e\napt-get update -qq\nDEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libnss-wrapper openssl"
+            ],
+            "returncode": 0,
+            "seconds": 26.888922153040767,
+            "log": "system-deps.log"
+          },
+          {
+            "label": "httpbin-venv",
+            "argv": [
+              "docker",
+              "exec",
+              "18bd7a2dea55116dc951c4be9d35bdf9678faddf61a4b8258d53d887861a1d0d",
+              "/bin/bash",
+              "-lc",
+              "set -e\n/opt/miniconda3/envs/testbed/bin/python -m venv /opt/pilot-httpbin/venv\n/opt/pilot-httpbin/venv/bin/pip install --index-url https://pypi.org/simple httpbin==0.7.0 Flask==1.1.4 Werkzeug==1.0.1 Jinja2==2.11.3 MarkupSafe==2.0.1 itsdangerous==1.1.0 gunicorn==20.1.0"
+            ],
+            "returncode": 0,
+            "seconds": 63.10548279248178,
+            "log": "httpbin-venv.log"
+          },
+          {
+            "label": "pytest-compat",
+            "argv": [
+              "docker",
+              "exec",
+              "18bd7a2dea55116dc951c4be9d35bdf9678faddf61a4b8258d53d887861a1d0d",
+              "/opt/miniconda3/envs/testbed/bin/python",
+              "-m",
+              "pip",
+              "install",
+              "--index-url",
+              "https://pypi.org/simple",
+              "pytest==4.6.11",
+              "pluggy==0.13.1"
+            ],
+            "returncode": 0,
+            "seconds": 17.073830112814903,
+            "log": "pytest-compat.log"
+          },
+          {
+            "label": "server-packages",
+            "argv": [
+              "docker",
+              "exec",
+              "18bd7a2dea55116dc951c4be9d35bdf9678faddf61a4b8258d53d887861a1d0d",
+              "/opt/pilot-httpbin/venv/bin/pip",
+              "freeze"
+            ],
+            "returncode": 0,
+            "seconds": 2.820558376610279,
+            "log": "server-packages.log"
+          },
+          {
+            "label": "source-after",
+            "argv": [
+              "docker",
+              "exec",
+              "18bd7a2dea55116dc951c4be9d35bdf9678faddf61a4b8258d53d887861a1d0d",
+              "git",
+              "-C",
+              "/testbed",
+              "rev-parse",
+              "HEAD^{tree}"
+            ],
+            "returncode": 0,
+            "seconds": 0.11029658652842045,
+            "log": "source-after.log"
+          },
+          {
+            "label": "commit",
+            "argv": [
+              "docker",
+              "commit",
+              "--change",
+              "LABEL codenib.pilot.profile=requests-httpbin-dependencies-v1",
+              "18bd7a2dea55116dc951c4be9d35bdf9678faddf61a4b8258d53d887861a1d0d",
+              "codenib/pilot-requests-httpbin-deps:20261027-v1"
+            ],
+            "returncode": 0,
+            "seconds": 1.1994122322648764,
+            "log": "commit.log"
+          }
+        ],
+        "started_utc": "2026-10-28T00:47:51.491515+00:00",
+        "container_id": "18bd7a2dea55116dc951c4be9d35bdf9678faddf61a4b8258d53d887861a1d0d",
+        "source_tree_before": "cf441cdcaa76806a078893bffa79922351a92b0a",
+        "server_packages": "blinker==1.9.0\nbrotlipy==0.7.0\ncffi==2.0.0\nclick==7.1.2\ndecorator==5.3.1\nFlask==1.1.4\ngunicorn==20.1.0\nhttpbin==0.7.0\nitsdangerous==1.1.0\nJinja2==2.11.3\nMarkupSafe==2.0.1\npycparser==2.23\nraven==6.10.0\nsix==1.17.0\nWerkzeug==1.0.1\n",
+        "source_tree_after": "cf441cdcaa76806a078893bffa79922351a92b0a",
+        "dependency_image_id": "sha256:63e55f96f95936e11bb2be318b3b015386e3df101b6a8b5dc6b897e270abb1a7",
+        "fixture_admitted": false,
+        "container_removed": true
+      },
+      "offline-httpbin/fixture-build.json": {
+        "scope": "Offline test fixture construction; no model/reference/test patch; original sources unchanged. Not admitted until native controls pass.",
+        "base_image": "sha256:63e55f96f95936e11bb2be318b3b015386e3df101b6a8b5dc6b897e270abb1a7",
+        "owner": "c545bf0703cf",
+        "commands": [
+          {
+            "label": "fixture-create",
+            "argv": [
+              "docker",
+              "run",
+              "-d",
+              "--platform=linux/amd64",
+              "--name",
+              "codenib-httpbin-fixture-c545bf0703cf",
+              "--label",
+              "codenib.pilot.owner=c545bf0703cf",
+              "--network=none",
+              "--memory=4g",
+              "--cpus=2",
+              "--pids-limit=256",
+              "--entrypoint",
+              "/bin/sleep",
+              "sha256:63e55f96f95936e11bb2be318b3b015386e3df101b6a8b5dc6b897e270abb1a7",
+              "600"
+            ],
+            "returncode": 0,
+            "seconds": 0.18474114872515202,
+            "log": "fixture-create.log"
+          },
+          {
+            "label": "fixture-copy",
+            "argv": [
+              "docker",
+              "cp",
+              "/tmp/codenib-matched-pilot-20261027/offline-httpbin/pytest-launcher.py",
+              "7f22d63a3d9a16ea0f02f42a6073a996ee1cbb7ed651f7c9677ce5258327c63a:/opt/miniconda3/envs/testbed/bin/pytest"
+            ],
+            "returncode": 0,
+            "seconds": 0.026517610996961594,
+            "log": "fixture-copy.log"
+          },
+          {
+            "label": "fixture-setup",
+            "argv": [
+              "docker",
+              "exec",
+              "7f22d63a3d9a16ea0f02f42a6073a996ee1cbb7ed651f7c9677ce5258327c63a",
+              "/bin/bash",
+              "-lc",
+              "set -e\nchmod +x /opt/miniconda3/envs/testbed/bin/pytest\nprintf '127.0.0.1 localhost httpbin.org\n::1 localhost\n' > /opt/pilot-httpbin/hosts\nopenssl req -x509 -newkey rsa:2048 -nodes -keyout /opt/pilot-httpbin/ca.key -out /opt/pilot-httpbin/ca.pem -days 3650 -subj '/CN=CodeNib offline fixture CA'\nopenssl req -newkey rsa:2048 -nodes -keyout /opt/pilot-httpbin/server.key -out /opt/pilot-httpbin/server.csr -subj '/CN=httpbin.org'\nprintf 'subjectAltName=DNS:httpbin.org\nbasicConstraints=CA:FALSE\nkeyUsage=digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\n' > /opt/pilot-httpbin/server.ext\nopenssl x509 -req -in /opt/pilot-httpbin/server.csr -CA /opt/pilot-httpbin/ca.pem -CAkey /opt/pilot-httpbin/ca.key -CAcreateserial -out /opt/pilot-httpbin/server.pem -days 3650 -extfile /opt/pilot-httpbin/server.ext\n"
+            ],
+            "returncode": 0,
+            "seconds": 4.020938090980053,
+            "log": "fixture-setup.log"
+          },
+          {
+            "label": "fixture-tree",
+            "argv": [
+              "docker",
+              "exec",
+              "7f22d63a3d9a16ea0f02f42a6073a996ee1cbb7ed651f7c9677ce5258327c63a",
+              "git",
+              "-C",
+              "/testbed",
+              "rev-parse",
+              "HEAD^{tree}"
+            ],
+            "returncode": 0,
+            "seconds": 0.11730222217738628,
+            "log": "fixture-tree.log"
+          },
+          {
+            "label": "fixture-commit",
+            "argv": [
+              "docker",
+              "commit",
+              "--change",
+              "LABEL codenib.pilot.profile=requests-offline-httpbin-v1",
+              "7f22d63a3d9a16ea0f02f42a6073a996ee1cbb7ed651f7c9677ce5258327c63a",
+              "codenib/pilot-requests-offline:20261028-v1"
+            ],
+            "returncode": 0,
+            "seconds": 0.08994590677320957,
+            "log": "fixture-commit.log"
+          }
+        ],
+        "started_utc": "2026-10-28T01:01:42.608971+00:00",
+        "container_id": "7f22d63a3d9a16ea0f02f42a6073a996ee1cbb7ed651f7c9677ce5258327c63a",
+        "source_tree": "cf441cdcaa76806a078893bffa79922351a92b0a",
+        "launcher_sha256": "d9abb47653372b493120c29a9ce8cdb9dfa9fa4fd753e2062723f78805db2448",
+        "candidate_image_id": "sha256:a99a2c44976dcae4d6b3e16a655c5d3b8a44c250efd0633503874c6101875ce3",
+        "fixture_admitted": false,
+        "container_removed": true
+      },
+      "offline-httpbin/fixture-v2-build-v2.json": {
+        "scope": "Offline test fixture construction; no model/reference/test patch; original source tree unchanged at rest; runtime trust-store overlay is recorded and restored. Not admitted until native controls pass.",
+        "base_image": "sha256:a99a2c44976dcae4d6b3e16a655c5d3b8a44c250efd0633503874c6101875ce3",
+        "owner": "0c246bd71e90",
+        "commands": [
+          {
+            "label": "fixture-v2-create",
+            "argv": [
+              "docker",
+              "run",
+              "-d",
+              "--platform=linux/amd64",
+              "--name",
+              "codenib-httpbin-fixture-0c246bd71e90",
+              "--label",
+              "codenib.pilot.owner=0c246bd71e90",
+              "--network=none",
+              "--memory=4g",
+              "--cpus=2",
+              "--pids-limit=256",
+              "--entrypoint",
+              "/bin/sleep",
+              "sha256:a99a2c44976dcae4d6b3e16a655c5d3b8a44c250efd0633503874c6101875ce3",
+              "600"
+            ],
+            "returncode": 0,
+            "seconds": 0.17547361552715302,
+            "log": "fixture-v2-create.log"
+          },
+          {
+            "label": "fixture-v2-copy",
+            "argv": [
+              "docker",
+              "cp",
+              "/tmp/codenib-matched-pilot-20261027/offline-httpbin/pytest-launcher-v2.py",
+              "7dfa3d7875df1bcac5b79a760959655ed18f1d7c9a941e48383b7f3cb9e59d4a:/opt/miniconda3/envs/testbed/bin/pytest"
+            ],
+            "returncode": 0,
+            "seconds": 0.029667619615793228,
+            "log": "fixture-v2-copy.log"
+          },
+          {
+            "label": "fixture-v2-setup",
+            "argv": [
+              "docker",
+              "exec",
+              "7dfa3d7875df1bcac5b79a760959655ed18f1d7c9a941e48383b7f3cb9e59d4a",
+              "/bin/bash",
+              "-lc",
+              "chmod +x /opt/miniconda3/envs/testbed/bin/pytest"
+            ],
+            "returncode": 0,
+            "seconds": 1.183468857780099,
+            "log": "fixture-v2-setup.log"
+          },
+          {
+            "label": "fixture-v2-tree",
+            "argv": [
+              "docker",
+              "exec",
+              "7dfa3d7875df1bcac5b79a760959655ed18f1d7c9a941e48383b7f3cb9e59d4a",
+              "git",
+              "-C",
+              "/testbed",
+              "rev-parse",
+              "HEAD^{tree}"
+            ],
+            "returncode": 0,
+            "seconds": 0.10035653412342072,
+            "log": "fixture-v2-tree.log"
+          },
+          {
+            "label": "fixture-v2-commit",
+            "argv": [
+              "docker",
+              "commit",
+              "--change",
+              "LABEL codenib.pilot.profile=requests-offline-httpbin-v2",
+              "7dfa3d7875df1bcac5b79a760959655ed18f1d7c9a941e48383b7f3cb9e59d4a",
+              "codenib/pilot-requests-offline:20261028-v2"
+            ],
+            "returncode": 0,
+            "seconds": 0.09664574824273586,
+            "log": "fixture-v2-commit.log"
+          }
+        ],
+        "started_utc": "2026-10-28T01:15:37.817736+00:00",
+        "container_id": "7dfa3d7875df1bcac5b79a760959655ed18f1d7c9a941e48383b7f3cb9e59d4a",
+        "source_tree": "cf441cdcaa76806a078893bffa79922351a92b0a",
+        "launcher_sha256": "45b31e8d57cebc3d7e58215387f3b5c07edae3e079a54a7364c4cea0852bdf7f",
+        "candidate_image_id": "sha256:598363439cfd1c4a45b13bd6c63a217cef5c69b523a19426d99ac6e6bc06fe9e",
+        "fixture_admitted": false,
+        "container_removed": true
+      }
+    },
+    "profiles": {
+      "v1": {
+        "admitted_for_native_controls": false,
+        "controls": [
+          {
+            "kind": "empty-production",
+            "started_utc": "2026-10-28T01:06:54.761509+00:00",
+            "outcome": {
+              "instance_id": "psf__requests-1921",
+              "status": "graded",
+              "resolved": false,
+              "container": "sweb.eval.psf__requests-1921.codenib-4adb34506968",
+              "model_calls": 0,
+              "native_report": {
+                "psf__requests-1921": {
+                  "patch_is_None": false,
+                  "patch_exists": true,
+                  "patch_successfully_applied": true,
+                  "resolved": false,
+                  "tests_status": {
+                    "FAIL_TO_PASS": {
+                      "success": [
+                        "test_requests.py::RequestsTestCase::test_DIGESTAUTH_WRONG_HTTP_401_GET",
+                        "test_requests.py::RequestsTestCase::test_POSTBIN_GET_POST_FILES",
+                        "test_requests.py::RequestsTestCase::test_basicauth_with_netrc",
+                        "test_requests.py::RequestsTestCase::test_cookie_persists_via_api",
+                        "test_requests.py::RequestsTestCase::test_uppercase_scheme_redirect"
+                      ],
+                      "failure": [
+                        "test_requests.py::RequestsTestCase::test_headers_on_session_with_None_are_not_sent"
+                      ]
+                    },
+                    "PASS_TO_PASS": {
+                      "success": [
+                        "test_requests.py::RequestsTestCase::test_DIGESTAUTH_QUOTES_QOP_VALUE",
+                        "test_requests.py::RequestsTestCase::test_DIGEST_AUTH_RETURNS_COOKIE",
+                        "test_requests.py::RequestsTestCase::test_DIGEST_STREAM",
+                        "test_requests.py::RequestsTestCase::test_HTTP_200_OK_GET_WITH_MIXED_PARAMS",
+                        "test_requests.py::RequestsTestCase::test_HTTP_200_OK_GET_WITH_PARAMS",
+                        "test_requests.py::RequestsTestCase::test_HTTP_200_OK_HEAD",
+                        "test_requests.py::RequestsTestCase::test_HTTP_200_OK_PUT",
+                        "test_requests.py::RequestsTestCase::test_HTTP_302_ALLOW_REDIRECT_GET",
+                        "test_requests.py::RequestsTestCase::test_POSTBIN_GET_POST_FILES_WITH_DATA",
+                        "test_requests.py::RequestsTestCase::test_autoset_header_values_are_native",
+                        "test_requests.py::RequestsTestCase::test_basic_building",
+                        "test_requests.py::RequestsTestCase::test_can_send_nonstring_objects_with_files",
+                        "test_requests.py::RequestsTestCase::test_cannot_send_unprepared_requests",
+                        "test_requests.py::RequestsTestCase::test_cookie_as_dict_items",
+                        "test_requests.py::RequestsTestCase::test_cookie_as_dict_keeps_items",
+                        "test_requests.py::RequestsTestCase::test_cookie_as_dict_keeps_len",
+                        "test_requests.py::RequestsTestCase::test_cookie_as_dict_keys",
+                        "test_requests.py::RequestsTestCase::test_cookie_as_dict_values",
+                        "test_requests.py::RequestsTestCase::test_cookie_parameters",
+                        "test_requests.py::RequestsTestCase::test_cookie_quote_wrapped",
+                        "test_requests.py::RequestsTestCase::test_cookie_removed_on_expire",
+                        "test_requests.py::RequestsTestCase::test_custom_content_type",
+                        "test_requests.py::RequestsTestCase::test_decompress_gzip",
+                        "test_requests.py::RequestsTestCase::test_different_encodings_dont_break_post",
+                        "test_requests.py::RequestsTestCase::test_entry_points",
+                        "test_requests.py::RequestsTestCase::test_fixes_1329",
+                        "test_requests.py::RequestsTestCase::test_generic_cookiejar_works",
+                        "test_requests.py::RequestsTestCase::test_get_auth_from_url",
+                        "test_requests.py::RequestsTestCase::test_get_auth_from_url_encoded_hashes",
+                        "test_requests.py::RequestsTestCase::test_get_auth_from_url_encoded_spaces",
+                        "test_requests.py::RequestsTestCase::test_get_auth_from_url_not_encoded_spaces",
+                        "test_requests.py::RequestsTestCase::test_get_auth_from_url_percent_chars",
+                        "test_requests.py::RequestsTestCase::test_header_keys_are_native",
+                        "test_requests.py::RequestsTestCase::test_header_remove_is_case_insensitive",
+                        "test_requests.py::RequestsTestCase::test_hook_receives_request_arguments",
+                        "test_requests.py::RequestsTestCase::test_http_error",
+                        "test_requests.py::RequestsTestCase::test_invalid_url",
+                        "test_requests.py::RequestsTestCase::test_links",
+                        "test_requests.py::RequestsTestCase::test_long_authinfo_in_url",
+                        "test_requests.py::RequestsTestCase::test_no_content_length",
+                        "test_requests.py::RequestsTestCase::test_oddball_schemes_dont_check_URLs",
+                        "test_requests.py::RequestsTestCase::test_param_cookiejar_works",
+                        "test_requests.py::RequestsTestCase::test_params_are_added_before_fragment",
+                        "test_requests.py::RequestsTestCase::test_params_are_merged_case_sensitive",
+                        "test_requests.py::RequestsTestCase::test_path_is_not_double_encoded",
+                        "test_requests.py::RequestsTestCase::test_prepared_from_session",
+                        "test_requests.py::RequestsTestCase::test_prepared_request_hook",
+                        "test_requests.py::RequestsTestCase::test_pyopenssl_redirect",
+                        "test_requests.py::RequestsTestCase::test_request_and_response_are_pickleable",
+                        "test_requests.py::RequestsTestCase::test_request_cookie_overrides_session_cookie",
+                        "test_requests.py::RequestsTestCase::test_request_cookies_not_persisted",
+                        "test_requests.py::RequestsTestCase::test_request_ok_set",
+                        "test_requests.py::RequestsTestCase::test_requests_in_history_are_not_overridden",
+                        "test_requests.py::RequestsTestCase::test_response_is_iterable",
+                        "test_requests.py::RequestsTestCase::test_session_hooks_are_overriden_by_request_hooks",
+                        "test_requests.py::RequestsTestCase::test_session_hooks_are_used_with_no_request_hooks",
+                        "test_requests.py::RequestsTestCase::test_session_pickling",
+                        "test_requests.py::RequestsTestCase::test_set_cookie_on_301",
+                        "test_requests.py::RequestsTestCase::test_status_raising",
+                        "test_requests.py::RequestsTestCase::test_time_elapsed_blank",
+                        "test_requests.py::RequestsTestCase::test_transport_adapter_ordering",
+                        "test_requests.py::RequestsTestCase::test_unicode_get",
+                        "test_requests.py::RequestsTestCase::test_unicode_header_name",
+                        "test_requests.py::RequestsTestCase::test_unicode_method_name",
+                        "test_requests.py::RequestsTestCase::test_unicode_multipart_post",
+                        "test_requests.py::RequestsTestCase::test_unicode_multipart_post_fieldnames",
+                        "test_requests.py::RequestsTestCase::test_urlencoded_get_query_multivalued_param",
+                        "test_requests.py::RequestsTestCase::test_user_agent_transfers",
+                        "test_requests.py::TestContentEncodingDetection::test_html4_pragma",
+                        "test_requests.py::TestContentEncodingDetection::test_html_charset",
+                        "test_requests.py::TestContentEncodingDetection::test_none",
+                        "test_requests.py::TestContentEncodingDetection::test_precedence",
+                        "test_requests.py::TestContentEncodingDetection::test_xhtml_pragma",
+                        "test_requests.py::TestContentEncodingDetection::test_xml",
+                        "test_requests.py::TestCaseInsensitiveDict::test_contains",
+                        "test_requests.py::TestCaseInsensitiveDict::test_delitem",
+                        "test_requests.py::TestCaseInsensitiveDict::test_docstring_example",
+                        "test_requests.py::TestCaseInsensitiveDict::test_equality",
+                        "test_requests.py::TestCaseInsensitiveDict::test_fixes_649",
+                        "test_requests.py::TestCaseInsensitiveDict::test_get",
+                        "test_requests.py::TestCaseInsensitiveDict::test_getitem",
+                        "test_requests.py::TestCaseInsensitiveDict::test_iter",
+                        "test_requests.py::TestCaseInsensitiveDict::test_iterable_init",
+                        "test_requests.py::TestCaseInsensitiveDict::test_kwargs_init",
+                        "test_requests.py::TestCaseInsensitiveDict::test_len",
+                        "test_requests.py::TestCaseInsensitiveDict::test_lower_items",
+                        "test_requests.py::TestCaseInsensitiveDict::test_mapping_init",
+                        "test_requests.py::TestCaseInsensitiveDict::test_preserve_key_case",
+                        "test_requests.py::TestCaseInsensitiveDict::test_preserve_last_key_case",
+                        "test_requests.py::TestCaseInsensitiveDict::test_setdefault",
+                        "test_requests.py::TestCaseInsensitiveDict::test_update",
+                        "test_requests.py::TestCaseInsensitiveDict::test_update_retains_unchanged",
+                        "test_requests.py::UtilsTestCase::test_address_in_network",
+                        "test_requests.py::UtilsTestCase::test_dotted_netmask",
+                        "test_requests.py::UtilsTestCase::test_get_auth_from_url",
+                        "test_requests.py::UtilsTestCase::test_get_environ_proxies",
+                        "test_requests.py::UtilsTestCase::test_get_environ_proxies_ip_ranges",
+                        "test_requests.py::UtilsTestCase::test_is_ipv4_address",
+                        "test_requests.py::UtilsTestCase::test_is_valid_cidr",
+                        "test_requests.py::UtilsTestCase::test_super_len_io_streams",
+                        "test_requests.py::TestMorselToCookieExpires::test_expires_invalid_int",
+                        "test_requests.py::TestMorselToCookieExpires::test_expires_invalid_str",
+                        "test_requests.py::TestMorselToCookieExpires::test_expires_none",
+                        "test_requests.py::TestMorselToCookieExpires::test_expires_valid_str",
+                        "test_requests.py::TestMorselToCookieMaxAge::test_max_age_invalid_str",
+                        "test_requests.py::TestMorselToCookieMaxAge::test_max_age_valid_int"
+                      ],
+                      "failure": [
+                        "test_requests.py::RequestsTestCase::test_mixed_case_scheme_acceptable"
+                      ]
+                    },
+                    "FAIL_TO_FAIL": {
+                      "success": [],
+                      "failure": []
+                    },
+                    "PASS_TO_FAIL": {
+                      "success": [],
+                      "failure": []
+                    }
+                  }
+                }
+              },
+              "observed_container_limits": {
+                "name": "sweb.eval.psf__requests-1921.codenib-4adb34506968",
+                "network_disabled": true,
+                "network_mode": "none",
+                "entrypoint": [],
+                "memory_bytes": 4294967296,
+                "nano_cpus": 2000000000,
+                "pids_limit": 256
+              },
+              "owned_container_removed": true
+            },
+            "collected": 119,
+            "original_selected_ids_equal": true,
+            "test_summary": [
+              "============== 2 failed, 117 passed, 5 warnings in 10.46 seconds ==============="
+            ],
+            "fixture_receipts": [],
+            "raw_test_output": {
+              "path": "native-controls-offline-requests-v1/psf__requests-1921/empty-production/grade/logs/codenib-4adb34506968/pilot-control-empty-production/psf__requests-1921/test_output.txt",
+              "sha256": "0a0a3801876c6c2ab781f670517a23765e0f0caaae90342e364cdd7c0feb43e9"
+            }
+          },
+          {
+            "kind": "reference",
+            "started_utc": "2026-10-28T01:07:42.791219+00:00",
+            "outcome": {
+              "instance_id": "psf__requests-1921",
+              "status": "graded",
+              "resolved": false,
+              "container": "sweb.eval.psf__requests-1921.codenib-e5b2728c1ed2",
+              "model_calls": 0,
+              "native_report": {
+                "psf__requests-1921": {
+                  "patch_is_None": false,
+                  "patch_exists": true,
+                  "patch_successfully_applied": true,
+                  "resolved": false,
+                  "tests_status": {
+                    "FAIL_TO_PASS": {
+                      "success": [
+                        "test_requests.py::RequestsTestCase::test_DIGESTAUTH_WRONG_HTTP_401_GET",
+                        "test_requests.py::RequestsTestCase::test_POSTBIN_GET_POST_FILES",
+                        "test_requests.py::RequestsTestCase::test_basicauth_with_netrc",
+                        "test_requests.py::RequestsTestCase::test_cookie_persists_via_api",
+                        "test_requests.py::RequestsTestCase::test_headers_on_session_with_None_are_not_sent",
+                        "test_requests.py::RequestsTestCase::test_uppercase_scheme_redirect"
+                      ],
+                      "failure": []
+                    },
+                    "PASS_TO_PASS": {
+                      "success": [
+                        "test_requests.py::RequestsTestCase::test_DIGESTAUTH_QUOTES_QOP_VALUE",
+                        "test_requests.py::RequestsTestCase::test_DIGEST_AUTH_RETURNS_COOKIE",
+                        "test_requests.py::RequestsTestCase::test_DIGEST_STREAM",
+                        "test_requests.py::RequestsTestCase::test_HTTP_200_OK_GET_WITH_MIXED_PARAMS",
+                        "test_requests.py::RequestsTestCase::test_HTTP_200_OK_GET_WITH_PARAMS",
+                        "test_requests.py::RequestsTestCase::test_HTTP_200_OK_HEAD",
+                        "test_requests.py::RequestsTestCase::test_HTTP_200_OK_PUT",
+                        "test_requests.py::RequestsTestCase::test_HTTP_302_ALLOW_REDIRECT_GET",
+                        "test_requests.py::RequestsTestCase::test_POSTBIN_GET_POST_FILES_WITH_DATA",
+                        "test_requests.py::RequestsTestCase::test_autoset_header_values_are_native",
+                        "test_requests.py::RequestsTestCase::test_basic_building",
+                        "test_requests.py::RequestsTestCase::test_can_send_nonstring_objects_with_files",
+                        "test_requests.py::RequestsTestCase::test_cannot_send_unprepared_requests",
+                        "test_requests.py::RequestsTestCase::test_cookie_as_dict_items",
+                        "test_requests.py::RequestsTestCase::test_cookie_as_dict_keeps_items",
+                        "test_requests.py::RequestsTestCase::test_cookie_as_dict_keeps_len",
+                        "test_requests.py::RequestsTestCase::test_cookie_as_dict_keys",
+                        "test_requests.py::RequestsTestCase::test_cookie_as_dict_values",
+                        "test_requests.py::RequestsTestCase::test_cookie_parameters",
+                        "test_requests.py::RequestsTestCase::test_cookie_quote_wrapped",
+                        "test_requests.py::RequestsTestCase::test_cookie_removed_on_expire",
+                        "test_requests.py::RequestsTestCase::test_custom_content_type",
+                        "test_requests.py::RequestsTestCase::test_decompress_gzip",
+                        "test_requests.py::RequestsTestCase::test_different_encodings_dont_break_post",
+                        "test_requests.py::RequestsTestCase::test_entry_points",
+                        "test_requests.py::RequestsTestCase::test_fixes_1329",
+                        "test_requests.py::RequestsTestCase::test_generic_cookiejar_works",
+                        "test_requests.py::RequestsTestCase::test_get_auth_from_url",
+                        "test_requests.py::RequestsTestCase::test_get_auth_from_url_encoded_hashes",
+                        "test_requests.py::RequestsTestCase::test_get_auth_from_url_encoded_spaces",
+                        "test_requests.py::RequestsTestCase::test_get_auth_from_url_not_encoded_spaces",
+                        "test_requests.py::RequestsTestCase::test_get_auth_from_url_percent_chars",
+                        "test_requests.py::RequestsTestCase::test_header_keys_are_native",
+                        "test_requests.py::RequestsTestCase::test_header_remove_is_case_insensitive",
+                        "test_requests.py::RequestsTestCase::test_hook_receives_request_arguments",
+                        "test_requests.py::RequestsTestCase::test_http_error",
+                        "test_requests.py::RequestsTestCase::test_invalid_url",
+                        "test_requests.py::RequestsTestCase::test_links",
+                        "test_requests.py::RequestsTestCase::test_long_authinfo_in_url",
+                        "test_requests.py::RequestsTestCase::test_no_content_length",
+                        "test_requests.py::RequestsTestCase::test_oddball_schemes_dont_check_URLs",
+                        "test_requests.py::RequestsTestCase::test_param_cookiejar_works",
+                        "test_requests.py::RequestsTestCase::test_params_are_added_before_fragment",
+                        "test_requests.py::RequestsTestCase::test_params_are_merged_case_sensitive",
+                        "test_requests.py::RequestsTestCase::test_path_is_not_double_encoded",
+                        "test_requests.py::RequestsTestCase::test_prepared_from_session",
+                        "test_requests.py::RequestsTestCase::test_prepared_request_hook",
+                        "test_requests.py::RequestsTestCase::test_pyopenssl_redirect",
+                        "test_requests.py::RequestsTestCase::test_request_and_response_are_pickleable",
+                        "test_requests.py::RequestsTestCase::test_request_cookie_overrides_session_cookie",
+                        "test_requests.py::RequestsTestCase::test_request_cookies_not_persisted",
+                        "test_requests.py::RequestsTestCase::test_request_ok_set",
+                        "test_requests.py::RequestsTestCase::test_requests_in_history_are_not_overridden",
+                        "test_requests.py::RequestsTestCase::test_response_is_iterable",
+                        "test_requests.py::RequestsTestCase::test_session_hooks_are_overriden_by_request_hooks",
+                        "test_requests.py::RequestsTestCase::test_session_hooks_are_used_with_no_request_hooks",
+                        "test_requests.py::RequestsTestCase::test_session_pickling",
+                        "test_requests.py::RequestsTestCase::test_set_cookie_on_301",
+                        "test_requests.py::RequestsTestCase::test_status_raising",
+                        "test_requests.py::RequestsTestCase::test_time_elapsed_blank",
+                        "test_requests.py::RequestsTestCase::test_transport_adapter_ordering",
+                        "test_requests.py::RequestsTestCase::test_unicode_get",
+                        "test_requests.py::RequestsTestCase::test_unicode_header_name",
+                        "test_requests.py::RequestsTestCase::test_unicode_method_name",
+                        "test_requests.py::RequestsTestCase::test_unicode_multipart_post",
+                        "test_requests.py::RequestsTestCase::test_unicode_multipart_post_fieldnames",
+                        "test_requests.py::RequestsTestCase::test_urlencoded_get_query_multivalued_param",
+                        "test_requests.py::RequestsTestCase::test_user_agent_transfers",
+                        "test_requests.py::TestContentEncodingDetection::test_html4_pragma",
+                        "test_requests.py::TestContentEncodingDetection::test_html_charset",
+                        "test_requests.py::TestContentEncodingDetection::test_none",
+                        "test_requests.py::TestContentEncodingDetection::test_precedence",
+                        "test_requests.py::TestContentEncodingDetection::test_xhtml_pragma",
+                        "test_requests.py::TestContentEncodingDetection::test_xml",
+                        "test_requests.py::TestCaseInsensitiveDict::test_contains",
+                        "test_requests.py::TestCaseInsensitiveDict::test_delitem",
+                        "test_requests.py::TestCaseInsensitiveDict::test_docstring_example",
+                        "test_requests.py::TestCaseInsensitiveDict::test_equality",
+                        "test_requests.py::TestCaseInsensitiveDict::test_fixes_649",
+                        "test_requests.py::TestCaseInsensitiveDict::test_get",
+                        "test_requests.py::TestCaseInsensitiveDict::test_getitem",
+                        "test_requests.py::TestCaseInsensitiveDict::test_iter",
+                        "test_requests.py::TestCaseInsensitiveDict::test_iterable_init",
+                        "test_requests.py::TestCaseInsensitiveDict::test_kwargs_init",
+                        "test_requests.py::TestCaseInsensitiveDict::test_len",
+                        "test_requests.py::TestCaseInsensitiveDict::test_lower_items",
+                        "test_requests.py::TestCaseInsensitiveDict::test_mapping_init",
+                        "test_requests.py::TestCaseInsensitiveDict::test_preserve_key_case",
+                        "test_requests.py::TestCaseInsensitiveDict::test_preserve_last_key_case",
+                        "test_requests.py::TestCaseInsensitiveDict::test_setdefault",
+                        "test_requests.py::TestCaseInsensitiveDict::test_update",
+                        "test_requests.py::TestCaseInsensitiveDict::test_update_retains_unchanged",
+                        "test_requests.py::UtilsTestCase::test_address_in_network",
+                        "test_requests.py::UtilsTestCase::test_dotted_netmask",
+                        "test_requests.py::UtilsTestCase::test_get_auth_from_url",
+                        "test_requests.py::UtilsTestCase::test_get_environ_proxies",
+                        "test_requests.py::UtilsTestCase::test_get_environ_proxies_ip_ranges",
+                        "test_requests.py::UtilsTestCase::test_is_ipv4_address",
+                        "test_requests.py::UtilsTestCase::test_is_valid_cidr",
+                        "test_requests.py::UtilsTestCase::test_super_len_io_streams",
+                        "test_requests.py::TestMorselToCookieExpires::test_expires_invalid_int",
+                        "test_requests.py::TestMorselToCookieExpires::test_expires_invalid_str",
+                        "test_requests.py::TestMorselToCookieExpires::test_expires_none",
+                        "test_requests.py::TestMorselToCookieExpires::test_expires_valid_str",
+                        "test_requests.py::TestMorselToCookieMaxAge::test_max_age_invalid_str",
+                        "test_requests.py::TestMorselToCookieMaxAge::test_max_age_valid_int"
+                      ],
+                      "failure": [
+                        "test_requests.py::RequestsTestCase::test_mixed_case_scheme_acceptable"
+                      ]
+                    },
+                    "FAIL_TO_FAIL": {
+                      "success": [],
+                      "failure": []
+                    },
+                    "PASS_TO_FAIL": {
+                      "success": [],
+                      "failure": []
+                    }
+                  }
+                }
+              },
+              "observed_container_limits": {
+                "name": "sweb.eval.psf__requests-1921.codenib-e5b2728c1ed2",
+                "network_disabled": true,
+                "network_mode": "none",
+                "entrypoint": [],
+                "memory_bytes": 4294967296,
+                "nano_cpus": 2000000000,
+                "pids_limit": 256
+              },
+              "owned_container_removed": true
+            },
+            "collected": 119,
+            "original_selected_ids_equal": true,
+            "test_summary": [
+              "============== 1 failed, 118 passed, 5 warnings in 10.19 seconds ==============="
+            ],
+            "fixture_receipts": [],
+            "raw_test_output": {
+              "path": "native-controls-offline-requests-v1/psf__requests-1921/reference/grade/logs/codenib-e5b2728c1ed2/pilot-control-reference/psf__requests-1921/test_output.txt",
+              "sha256": "77230d21fc2edcd9096d17bc87cdb9004d68f5e1cdd3c361d51c9df558e84c8c"
+            }
+          }
+        ]
+      },
+      "v2": {
+        "admitted_for_native_controls": true,
+        "controls": [
+          {
+            "kind": "empty-production",
+            "started_utc": "2026-10-28T01:16:05.327458+00:00",
+            "outcome": {
+              "instance_id": "psf__requests-1921",
+              "status": "graded",
+              "resolved": false,
+              "container": "sweb.eval.psf__requests-1921.codenib-e8f558417724",
+              "model_calls": 0,
+              "native_report": {
+                "psf__requests-1921": {
+                  "patch_is_None": false,
+                  "patch_exists": true,
+                  "patch_successfully_applied": true,
+                  "resolved": false,
+                  "tests_status": {
+                    "FAIL_TO_PASS": {
+                      "success": [
+                        "test_requests.py::RequestsTestCase::test_DIGESTAUTH_WRONG_HTTP_401_GET",
+                        "test_requests.py::RequestsTestCase::test_POSTBIN_GET_POST_FILES",
+                        "test_requests.py::RequestsTestCase::test_basicauth_with_netrc",
+                        "test_requests.py::RequestsTestCase::test_cookie_persists_via_api",
+                        "test_requests.py::RequestsTestCase::test_uppercase_scheme_redirect"
+                      ],
+                      "failure": [
+                        "test_requests.py::RequestsTestCase::test_headers_on_session_with_None_are_not_sent"
+                      ]
+                    },
+                    "PASS_TO_PASS": {
+                      "success": [
+                        "test_requests.py::RequestsTestCase::test_DIGESTAUTH_QUOTES_QOP_VALUE",
+                        "test_requests.py::RequestsTestCase::test_DIGEST_AUTH_RETURNS_COOKIE",
+                        "test_requests.py::RequestsTestCase::test_DIGEST_STREAM",
+                        "test_requests.py::RequestsTestCase::test_HTTP_200_OK_GET_WITH_MIXED_PARAMS",
+                        "test_requests.py::RequestsTestCase::test_HTTP_200_OK_GET_WITH_PARAMS",
+                        "test_requests.py::RequestsTestCase::test_HTTP_200_OK_HEAD",
+                        "test_requests.py::RequestsTestCase::test_HTTP_200_OK_PUT",
+                        "test_requests.py::RequestsTestCase::test_HTTP_302_ALLOW_REDIRECT_GET",
+                        "test_requests.py::RequestsTestCase::test_POSTBIN_GET_POST_FILES_WITH_DATA",
+                        "test_requests.py::RequestsTestCase::test_autoset_header_values_are_native",
+                        "test_requests.py::RequestsTestCase::test_basic_building",
+                        "test_requests.py::RequestsTestCase::test_can_send_nonstring_objects_with_files",
+                        "test_requests.py::RequestsTestCase::test_cannot_send_unprepared_requests",
+                        "test_requests.py::RequestsTestCase::test_cookie_as_dict_items",
+                        "test_requests.py::RequestsTestCase::test_cookie_as_dict_keeps_items",
+                        "test_requests.py::RequestsTestCase::test_cookie_as_dict_keeps_len",
+                        "test_requests.py::RequestsTestCase::test_cookie_as_dict_keys",
+                        "test_requests.py::RequestsTestCase::test_cookie_as_dict_values",
+                        "test_requests.py::RequestsTestCase::test_cookie_parameters",
+                        "test_requests.py::RequestsTestCase::test_cookie_quote_wrapped",
+                        "test_requests.py::RequestsTestCase::test_cookie_removed_on_expire",
+                        "test_requests.py::RequestsTestCase::test_custom_content_type",
+                        "test_requests.py::RequestsTestCase::test_decompress_gzip",
+                        "test_requests.py::RequestsTestCase::test_different_encodings_dont_break_post",
+                        "test_requests.py::RequestsTestCase::test_entry_points",
+                        "test_requests.py::RequestsTestCase::test_fixes_1329",
+                        "test_requests.py::RequestsTestCase::test_generic_cookiejar_works",
+                        "test_requests.py::RequestsTestCase::test_get_auth_from_url",
+                        "test_requests.py::RequestsTestCase::test_get_auth_from_url_encoded_hashes",
+                        "test_requests.py::RequestsTestCase::test_get_auth_from_url_encoded_spaces",
+                        "test_requests.py::RequestsTestCase::test_get_auth_from_url_not_encoded_spaces",
+                        "test_requests.py::RequestsTestCase::test_get_auth_from_url_percent_chars",
+                        "test_requests.py::RequestsTestCase::test_header_keys_are_native",
+                        "test_requests.py::RequestsTestCase::test_header_remove_is_case_insensitive",
+                        "test_requests.py::RequestsTestCase::test_hook_receives_request_arguments",
+                        "test_requests.py::RequestsTestCase::test_http_error",
+                        "test_requests.py::RequestsTestCase::test_invalid_url",
+                        "test_requests.py::RequestsTestCase::test_links",
+                        "test_requests.py::RequestsTestCase::test_long_authinfo_in_url",
+                        "test_requests.py::RequestsTestCase::test_mixed_case_scheme_acceptable",
+                        "test_requests.py::RequestsTestCase::test_no_content_length",
+                        "test_requests.py::RequestsTestCase::test_oddball_schemes_dont_check_URLs",
+                        "test_requests.py::RequestsTestCase::test_param_cookiejar_works",
+                        "test_requests.py::RequestsTestCase::test_params_are_added_before_fragment",
+                        "test_requests.py::RequestsTestCase::test_params_are_merged_case_sensitive",
+                        "test_requests.py::RequestsTestCase::test_path_is_not_double_encoded",
+                        "test_requests.py::RequestsTestCase::test_prepared_from_session",
+                        "test_requests.py::RequestsTestCase::test_prepared_request_hook",
+                        "test_requests.py::RequestsTestCase::test_pyopenssl_redirect",
+                        "test_requests.py::RequestsTestCase::test_request_and_response_are_pickleable",
+                        "test_requests.py::RequestsTestCase::test_request_cookie_overrides_session_cookie",
+                        "test_requests.py::RequestsTestCase::test_request_cookies_not_persisted",
+                        "test_requests.py::RequestsTestCase::test_request_ok_set",
+                        "test_requests.py::RequestsTestCase::test_requests_in_history_are_not_overridden",
+                        "test_requests.py::RequestsTestCase::test_response_is_iterable",
+                        "test_requests.py::RequestsTestCase::test_session_hooks_are_overriden_by_request_hooks",
+                        "test_requests.py::RequestsTestCase::test_session_hooks_are_used_with_no_request_hooks",
+                        "test_requests.py::RequestsTestCase::test_session_pickling",
+                        "test_requests.py::RequestsTestCase::test_set_cookie_on_301",
+                        "test_requests.py::RequestsTestCase::test_status_raising",
+                        "test_requests.py::RequestsTestCase::test_time_elapsed_blank",
+                        "test_requests.py::RequestsTestCase::test_transport_adapter_ordering",
+                        "test_requests.py::RequestsTestCase::test_unicode_get",
+                        "test_requests.py::RequestsTestCase::test_unicode_header_name",
+                        "test_requests.py::RequestsTestCase::test_unicode_method_name",
+                        "test_requests.py::RequestsTestCase::test_unicode_multipart_post",
+                        "test_requests.py::RequestsTestCase::test_unicode_multipart_post_fieldnames",
+                        "test_requests.py::RequestsTestCase::test_urlencoded_get_query_multivalued_param",
+                        "test_requests.py::RequestsTestCase::test_user_agent_transfers",
+                        "test_requests.py::TestContentEncodingDetection::test_html4_pragma",
+                        "test_requests.py::TestContentEncodingDetection::test_html_charset",
+                        "test_requests.py::TestContentEncodingDetection::test_none",
+                        "test_requests.py::TestContentEncodingDetection::test_precedence",
+                        "test_requests.py::TestContentEncodingDetection::test_xhtml_pragma",
+                        "test_requests.py::TestContentEncodingDetection::test_xml",
+                        "test_requests.py::TestCaseInsensitiveDict::test_contains",
+                        "test_requests.py::TestCaseInsensitiveDict::test_delitem",
+                        "test_requests.py::TestCaseInsensitiveDict::test_docstring_example",
+                        "test_requests.py::TestCaseInsensitiveDict::test_equality",
+                        "test_requests.py::TestCaseInsensitiveDict::test_fixes_649",
+                        "test_requests.py::TestCaseInsensitiveDict::test_get",
+                        "test_requests.py::TestCaseInsensitiveDict::test_getitem",
+                        "test_requests.py::TestCaseInsensitiveDict::test_iter",
+                        "test_requests.py::TestCaseInsensitiveDict::test_iterable_init",
+                        "test_requests.py::TestCaseInsensitiveDict::test_kwargs_init",
+                        "test_requests.py::TestCaseInsensitiveDict::test_len",
+                        "test_requests.py::TestCaseInsensitiveDict::test_lower_items",
+                        "test_requests.py::TestCaseInsensitiveDict::test_mapping_init",
+                        "test_requests.py::TestCaseInsensitiveDict::test_preserve_key_case",
+                        "test_requests.py::TestCaseInsensitiveDict::test_preserve_last_key_case",
+                        "test_requests.py::TestCaseInsensitiveDict::test_setdefault",
+                        "test_requests.py::TestCaseInsensitiveDict::test_update",
+                        "test_requests.py::TestCaseInsensitiveDict::test_update_retains_unchanged",
+                        "test_requests.py::UtilsTestCase::test_address_in_network",
+                        "test_requests.py::UtilsTestCase::test_dotted_netmask",
+                        "test_requests.py::UtilsTestCase::test_get_auth_from_url",
+                        "test_requests.py::UtilsTestCase::test_get_environ_proxies",
+                        "test_requests.py::UtilsTestCase::test_get_environ_proxies_ip_ranges",
+                        "test_requests.py::UtilsTestCase::test_is_ipv4_address",
+                        "test_requests.py::UtilsTestCase::test_is_valid_cidr",
+                        "test_requests.py::UtilsTestCase::test_super_len_io_streams",
+                        "test_requests.py::TestMorselToCookieExpires::test_expires_invalid_int",
+                        "test_requests.py::TestMorselToCookieExpires::test_expires_invalid_str",
+                        "test_requests.py::TestMorselToCookieExpires::test_expires_none",
+                        "test_requests.py::TestMorselToCookieExpires::test_expires_valid_str",
+                        "test_requests.py::TestMorselToCookieMaxAge::test_max_age_invalid_str",
+                        "test_requests.py::TestMorselToCookieMaxAge::test_max_age_valid_int"
+                      ],
+                      "failure": []
+                    },
+                    "FAIL_TO_FAIL": {
+                      "success": [],
+                      "failure": []
+                    },
+                    "PASS_TO_FAIL": {
+                      "success": [],
+                      "failure": []
+                    }
+                  }
+                }
+              },
+              "observed_container_limits": {
+                "name": "sweb.eval.psf__requests-1921.codenib-e8f558417724",
+                "network_disabled": true,
+                "network_mode": "none",
+                "entrypoint": [],
+                "memory_bytes": 4294967296,
+                "nano_cpus": 2000000000,
+                "pids_limit": 256
+              },
+              "owned_container_removed": true
+            },
+            "collected": 119,
+            "original_selected_ids_equal": true,
+            "test_summary": [
+              "=============== 1 failed, 118 passed, 5 warnings in 8.94 seconds ==============="
+            ],
+            "fixture_receipts": [
+              {
+                "exit_code": 1,
+                "profile": "requests-offline-httpbin-v2",
+                "ready": true,
+                "server_pids": [
+                  104,
+                  107
+                ],
+                "server_returncodes": [
+                  0,
+                  0
+                ],
+                "trust_store_overlay": {
+                  "fixture_ca_sha256": "3a71a3f4cf76812500e24200b37f33c4053cd8bd1a97a983ce5a343d16779158",
+                  "original_sha256": "6a4eeafeaf28cc7750f5f7f6ed4f84d6f08dacb8ac151412332f732647694253",
+                  "path": "/testbed/requests/cacert.pem",
+                  "restored": true,
+                  "runtime_sha256": "691afc22c6fa0f713e81c4afdb8cc2be1b64f33b6e199e2ba29aaf8a346c9ccd"
+                }
+              }
+            ],
+            "raw_test_output": {
+              "path": "native-controls-offline-requests-v2/psf__requests-1921/empty-production/grade/logs/codenib-e8f558417724/pilot-control-empty-production/psf__requests-1921/test_output.txt",
+              "sha256": "ca8a8b708cd5387211fcd2e19dd6e23ff66f58ef61486c91c090cd296e591f27"
+            }
+          },
+          {
+            "kind": "reference",
+            "started_utc": "2026-10-28T01:16:51.916956+00:00",
+            "outcome": {
+              "instance_id": "psf__requests-1921",
+              "status": "graded",
+              "resolved": true,
+              "container": "sweb.eval.psf__requests-1921.codenib-da771ba371d1",
+              "model_calls": 0,
+              "native_report": {
+                "psf__requests-1921": {
+                  "patch_is_None": false,
+                  "patch_exists": true,
+                  "patch_successfully_applied": true,
+                  "resolved": true,
+                  "tests_status": {
+                    "FAIL_TO_PASS": {
+                      "success": [
+                        "test_requests.py::RequestsTestCase::test_DIGESTAUTH_WRONG_HTTP_401_GET",
+                        "test_requests.py::RequestsTestCase::test_POSTBIN_GET_POST_FILES",
+                        "test_requests.py::RequestsTestCase::test_basicauth_with_netrc",
+                        "test_requests.py::RequestsTestCase::test_cookie_persists_via_api",
+                        "test_requests.py::RequestsTestCase::test_headers_on_session_with_None_are_not_sent",
+                        "test_requests.py::RequestsTestCase::test_uppercase_scheme_redirect"
+                      ],
+                      "failure": []
+                    },
+                    "PASS_TO_PASS": {
+                      "success": [
+                        "test_requests.py::RequestsTestCase::test_DIGESTAUTH_QUOTES_QOP_VALUE",
+                        "test_requests.py::RequestsTestCase::test_DIGEST_AUTH_RETURNS_COOKIE",
+                        "test_requests.py::RequestsTestCase::test_DIGEST_STREAM",
+                        "test_requests.py::RequestsTestCase::test_HTTP_200_OK_GET_WITH_MIXED_PARAMS",
+                        "test_requests.py::RequestsTestCase::test_HTTP_200_OK_GET_WITH_PARAMS",
+                        "test_requests.py::RequestsTestCase::test_HTTP_200_OK_HEAD",
+                        "test_requests.py::RequestsTestCase::test_HTTP_200_OK_PUT",
+                        "test_requests.py::RequestsTestCase::test_HTTP_302_ALLOW_REDIRECT_GET",
+                        "test_requests.py::RequestsTestCase::test_POSTBIN_GET_POST_FILES_WITH_DATA",
+                        "test_requests.py::RequestsTestCase::test_autoset_header_values_are_native",
+                        "test_requests.py::RequestsTestCase::test_basic_building",
+                        "test_requests.py::RequestsTestCase::test_can_send_nonstring_objects_with_files",
+                        "test_requests.py::RequestsTestCase::test_cannot_send_unprepared_requests",
+                        "test_requests.py::RequestsTestCase::test_cookie_as_dict_items",
+                        "test_requests.py::RequestsTestCase::test_cookie_as_dict_keeps_items",
+                        "test_requests.py::RequestsTestCase::test_cookie_as_dict_keeps_len",
+                        "test_requests.py::RequestsTestCase::test_cookie_as_dict_keys",
+                        "test_requests.py::RequestsTestCase::test_cookie_as_dict_values",
+                        "test_requests.py::RequestsTestCase::test_cookie_parameters",
+                        "test_requests.py::RequestsTestCase::test_cookie_quote_wrapped",
+                        "test_requests.py::RequestsTestCase::test_cookie_removed_on_expire",
+                        "test_requests.py::RequestsTestCase::test_custom_content_type",
+                        "test_requests.py::RequestsTestCase::test_decompress_gzip",
+                        "test_requests.py::RequestsTestCase::test_different_encodings_dont_break_post",
+                        "test_requests.py::RequestsTestCase::test_entry_points",
+                        "test_requests.py::RequestsTestCase::test_fixes_1329",
+                        "test_requests.py::RequestsTestCase::test_generic_cookiejar_works",
+                        "test_requests.py::RequestsTestCase::test_get_auth_from_url",
+                        "test_requests.py::RequestsTestCase::test_get_auth_from_url_encoded_hashes",
+                        "test_requests.py::RequestsTestCase::test_get_auth_from_url_encoded_spaces",
+                        "test_requests.py::RequestsTestCase::test_get_auth_from_url_not_encoded_spaces",
+                        "test_requests.py::RequestsTestCase::test_get_auth_from_url_percent_chars",
+                        "test_requests.py::RequestsTestCase::test_header_keys_are_native",
+                        "test_requests.py::RequestsTestCase::test_header_remove_is_case_insensitive",
+                        "test_requests.py::RequestsTestCase::test_hook_receives_request_arguments",
+                        "test_requests.py::RequestsTestCase::test_http_error",
+                        "test_requests.py::RequestsTestCase::test_invalid_url",
+                        "test_requests.py::RequestsTestCase::test_links",
+                        "test_requests.py::RequestsTestCase::test_long_authinfo_in_url",
+                        "test_requests.py::RequestsTestCase::test_mixed_case_scheme_acceptable",
+                        "test_requests.py::RequestsTestCase::test_no_content_length",
+                        "test_requests.py::RequestsTestCase::test_oddball_schemes_dont_check_URLs",
+                        "test_requests.py::RequestsTestCase::test_param_cookiejar_works",
+                        "test_requests.py::RequestsTestCase::test_params_are_added_before_fragment",
+                        "test_requests.py::RequestsTestCase::test_params_are_merged_case_sensitive",
+                        "test_requests.py::RequestsTestCase::test_path_is_not_double_encoded",
+                        "test_requests.py::RequestsTestCase::test_prepared_from_session",
+                        "test_requests.py::RequestsTestCase::test_prepared_request_hook",
+                        "test_requests.py::RequestsTestCase::test_pyopenssl_redirect",
+                        "test_requests.py::RequestsTestCase::test_request_and_response_are_pickleable",
+                        "test_requests.py::RequestsTestCase::test_request_cookie_overrides_session_cookie",
+                        "test_requests.py::RequestsTestCase::test_request_cookies_not_persisted",
+                        "test_requests.py::RequestsTestCase::test_request_ok_set",
+                        "test_requests.py::RequestsTestCase::test_requests_in_history_are_not_overridden",
+                        "test_requests.py::RequestsTestCase::test_response_is_iterable",
+                        "test_requests.py::RequestsTestCase::test_session_hooks_are_overriden_by_request_hooks",
+                        "test_requests.py::RequestsTestCase::test_session_hooks_are_used_with_no_request_hooks",
+                        "test_requests.py::RequestsTestCase::test_session_pickling",
+                        "test_requests.py::RequestsTestCase::test_set_cookie_on_301",
+                        "test_requests.py::RequestsTestCase::test_status_raising",
+                        "test_requests.py::RequestsTestCase::test_time_elapsed_blank",
+                        "test_requests.py::RequestsTestCase::test_transport_adapter_ordering",
+                        "test_requests.py::RequestsTestCase::test_unicode_get",
+                        "test_requests.py::RequestsTestCase::test_unicode_header_name",
+                        "test_requests.py::RequestsTestCase::test_unicode_method_name",
+                        "test_requests.py::RequestsTestCase::test_unicode_multipart_post",
+                        "test_requests.py::RequestsTestCase::test_unicode_multipart_post_fieldnames",
+                        "test_requests.py::RequestsTestCase::test_urlencoded_get_query_multivalued_param",
+                        "test_requests.py::RequestsTestCase::test_user_agent_transfers",
+                        "test_requests.py::TestContentEncodingDetection::test_html4_pragma",
+                        "test_requests.py::TestContentEncodingDetection::test_html_charset",
+                        "test_requests.py::TestContentEncodingDetection::test_none",
+                        "test_requests.py::TestContentEncodingDetection::test_precedence",
+                        "test_requests.py::TestContentEncodingDetection::test_xhtml_pragma",
+                        "test_requests.py::TestContentEncodingDetection::test_xml",
+                        "test_requests.py::TestCaseInsensitiveDict::test_contains",
+                        "test_requests.py::TestCaseInsensitiveDict::test_delitem",
+                        "test_requests.py::TestCaseInsensitiveDict::test_docstring_example",
+                        "test_requests.py::TestCaseInsensitiveDict::test_equality",
+                        "test_requests.py::TestCaseInsensitiveDict::test_fixes_649",
+                        "test_requests.py::TestCaseInsensitiveDict::test_get",
+                        "test_requests.py::TestCaseInsensitiveDict::test_getitem",
+                        "test_requests.py::TestCaseInsensitiveDict::test_iter",
+                        "test_requests.py::TestCaseInsensitiveDict::test_iterable_init",
+                        "test_requests.py::TestCaseInsensitiveDict::test_kwargs_init",
+                        "test_requests.py::TestCaseInsensitiveDict::test_len",
+                        "test_requests.py::TestCaseInsensitiveDict::test_lower_items",
+                        "test_requests.py::TestCaseInsensitiveDict::test_mapping_init",
+                        "test_requests.py::TestCaseInsensitiveDict::test_preserve_key_case",
+                        "test_requests.py::TestCaseInsensitiveDict::test_preserve_last_key_case",
+                        "test_requests.py::TestCaseInsensitiveDict::test_setdefault",
+                        "test_requests.py::TestCaseInsensitiveDict::test_update",
+                        "test_requests.py::TestCaseInsensitiveDict::test_update_retains_unchanged",
+                        "test_requests.py::UtilsTestCase::test_address_in_network",
+                        "test_requests.py::UtilsTestCase::test_dotted_netmask",
+                        "test_requests.py::UtilsTestCase::test_get_auth_from_url",
+                        "test_requests.py::UtilsTestCase::test_get_environ_proxies",
+                        "test_requests.py::UtilsTestCase::test_get_environ_proxies_ip_ranges",
+                        "test_requests.py::UtilsTestCase::test_is_ipv4_address",
+                        "test_requests.py::UtilsTestCase::test_is_valid_cidr",
+                        "test_requests.py::UtilsTestCase::test_super_len_io_streams",
+                        "test_requests.py::TestMorselToCookieExpires::test_expires_invalid_int",
+                        "test_requests.py::TestMorselToCookieExpires::test_expires_invalid_str",
+                        "test_requests.py::TestMorselToCookieExpires::test_expires_none",
+                        "test_requests.py::TestMorselToCookieExpires::test_expires_valid_str",
+                        "test_requests.py::TestMorselToCookieMaxAge::test_max_age_invalid_str",
+                        "test_requests.py::TestMorselToCookieMaxAge::test_max_age_valid_int"
+                      ],
+                      "failure": []
+                    },
+                    "FAIL_TO_FAIL": {
+                      "success": [],
+                      "failure": []
+                    },
+                    "PASS_TO_FAIL": {
+                      "success": [],
+                      "failure": []
+                    }
+                  }
+                }
+              },
+              "observed_container_limits": {
+                "name": "sweb.eval.psf__requests-1921.codenib-da771ba371d1",
+                "network_disabled": true,
+                "network_mode": "none",
+                "entrypoint": [],
+                "memory_bytes": 4294967296,
+                "nano_cpus": 2000000000,
+                "pids_limit": 256
+              },
+              "owned_container_removed": true
+            },
+            "collected": 119,
+            "original_selected_ids_equal": true,
+            "test_summary": [
+              "==================== 119 passed, 5 warnings in 8.44 seconds ===================="
+            ],
+            "fixture_receipts": [
+              {
+                "exit_code": 0,
+                "profile": "requests-offline-httpbin-v2",
+                "ready": true,
+                "server_pids": [
+                  104,
+                  107
+                ],
+                "server_returncodes": [
+                  0,
+                  0
+                ],
+                "trust_store_overlay": {
+                  "fixture_ca_sha256": "3a71a3f4cf76812500e24200b37f33c4053cd8bd1a97a983ce5a343d16779158",
+                  "original_sha256": "6a4eeafeaf28cc7750f5f7f6ed4f84d6f08dacb8ac151412332f732647694253",
+                  "path": "/testbed/requests/cacert.pem",
+                  "restored": true,
+                  "runtime_sha256": "691afc22c6fa0f713e81c4afdb8cc2be1b64f33b6e199e2ba29aaf8a346c9ccd"
+                }
+              }
+            ],
+            "raw_test_output": {
+              "path": "native-controls-offline-requests-v2/psf__requests-1921/reference/grade/logs/codenib-da771ba371d1/pilot-control-reference/psf__requests-1921/test_output.txt",
+              "sha256": "29c93ccf17f1abe205aab924d291351dce3a3beb45623813bc9a34c676fc9a47"
+            }
+          }
+        ]
+      }
+    },
+    "harnesses": {
+      "offline-httpbin/prepare-dependencies.py": {
+        "sha256": "33d1880022228b1fab1f64db61ad89acfee2610a340ee713d4fb432bef4ffc14",
+        "source": "\"\"\"Prepare arm-neutral offline test dependencies; never start a model.\n\nThis call owns one uniquely labeled container by returned ID. Docker creation\nestablishes ownership; only that ID is removed in finally, after label checks.\nA committed dependency image is retained for the next fixture step. It is not\nan admitted native image or a product benchmark result. No source/test patch or\nhost credential is mounted. Network is intentionally available for preparation;\nactual grading remains subject to the enforced network-none API guard.\n\"\"\"\nimport datetime, json, subprocess, time, traceback, uuid\nfrom pathlib import Path\nROOT=Path('/tmp/codenib-matched-pilot-20261027/offline-httpbin')\nBASE='sha256:ef715951df0c8e5504514a14c03362da52774c57faa88f990965b8787512d171'\nOWNER=uuid.uuid4().hex[:12];NAME='codenib-httpbin-prep-'+OWNER\nrecord={'scope':'Dependency preparation only; no model, no reference material, no fixture admission.','base_image':BASE,'owner':OWNER,'container_name':NAME,'commands':[],'started_utc':datetime.datetime.now(datetime.timezone.utc).isoformat()}\ncontainer=None\n\ndef save(): (ROOT/'dependency-receipt.json').write_text(json.dumps(record,indent=2)+'\\n')\ndef run(label,argv,timeout=300):\n    start=time.monotonic();p=subprocess.run(argv,text=True,capture_output=True,timeout=timeout)\n    (ROOT/(label+'.log')).write_text(p.stdout+p.stderr)\n    record['commands'].append({'label':label,'argv':argv,'returncode':p.returncode,'seconds':time.monotonic()-start,'log':label+'.log'})\n    save();print(label,p.returncode,round(record['commands'][-1]['seconds'],3),flush=True)\n    if p.returncode: raise RuntimeError(label+' failed; inspect retained log')\n    return p.stdout\ntry:\n    container=run('create',['docker','run','-d','--platform=linux/amd64','--name',NAME,'--label','codenib.pilot.owner='+OWNER,'--network=bridge','--memory=4g','--cpus=2','--pids-limit=256','--entrypoint','/bin/sleep',BASE,'1800']).strip()\n    record['container_id']=container;save()\n    record['source_tree_before']=run('source-before',['docker','exec',container,'git','-C','/testbed','rev-parse','HEAD^{tree}']).strip()\n    run('system-deps',['docker','exec',container,'/bin/bash','-lc','set -e\\napt-get update -qq\\nDEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libnss-wrapper openssl'])\n    run('httpbin-venv',['docker','exec',container,'/bin/bash','-lc','set -e\\n/opt/miniconda3/envs/testbed/bin/python -m venv /opt/pilot-httpbin/venv\\n/opt/pilot-httpbin/venv/bin/pip install --index-url https://pypi.org/simple httpbin==0.7.0 Flask==1.1.4 Werkzeug==1.0.1 Jinja2==2.11.3 MarkupSafe==2.0.1 itsdangerous==1.1.0 gunicorn==20.1.0'])\n    run('pytest-compat',['docker','exec',container,'/opt/miniconda3/envs/testbed/bin/python','-m','pip','install','--index-url','https://pypi.org/simple','pytest==4.6.11','pluggy==0.13.1'])\n    record['server_packages']=run('server-packages',['docker','exec',container,'/opt/pilot-httpbin/venv/bin/pip','freeze'])\n    record['source_tree_after']=run('source-after',['docker','exec',container,'git','-C','/testbed','rev-parse','HEAD^{tree}']).strip()\n    assert record['source_tree_before']==record['source_tree_after']\n    record['dependency_image_id']=run('commit',['docker','commit','--change','LABEL codenib.pilot.profile=requests-httpbin-dependencies-v1',container,'codenib/pilot-requests-httpbin-deps:20261027-v1']).strip()\n    record['fixture_admitted']=False\nexcept Exception as exc:\n    record['error']={'type':type(exc).__name__,'message':str(exc),'traceback':traceback.format_exc()}\nfinally:\n    if container:\n        actual=json.loads(subprocess.check_output(['docker','inspect',container],text=True))[0]\n        assert actual['Config']['Labels']['codenib.pilot.owner']==OWNER\n        cleanup=subprocess.run(['docker','rm','-f',container],text=True,capture_output=True)\n        check=subprocess.run(['docker','inspect',container],text=True,capture_output=True)\n        record['container_removed']=cleanup.returncode==0 and check.returncode!=0\n    save();print(json.dumps({k:record.get(k) for k in ('dependency_image_id','error','container_removed','fixture_admitted')},indent=2))\n"
+      },
+      "offline-httpbin/build-fixture.py": {
+        "sha256": "b9454223f5aa8262e3fc9739fabe3493478a0df64db54741603e95207f67c926",
+        "source": "import datetime, hashlib, json, subprocess, time, traceback, uuid\nfrom pathlib import Path\nROOT=Path('/tmp/codenib-matched-pilot-20261027/offline-httpbin')\nBASE='sha256:63e55f96f95936e11bb2be318b3b015386e3df101b6a8b5dc6b897e270abb1a7'\nOWNER=uuid.uuid4().hex[:12];NAME='codenib-httpbin-fixture-'+OWNER\nrecord={'scope':'Offline test fixture construction; no model/reference/test patch; original sources unchanged. Not admitted until native controls pass.','base_image':BASE,'owner':OWNER,'commands':[],'started_utc':datetime.datetime.now(datetime.timezone.utc).isoformat()}\ncontainer=None\n\ndef save(): (ROOT/'fixture-build.json').write_text(json.dumps(record,indent=2)+'\\n')\ndef run(label,argv,timeout=120):\n    start=time.monotonic();p=subprocess.run(argv,text=True,capture_output=True,timeout=timeout)\n    (ROOT/(label+'.log')).write_text(p.stdout+p.stderr)\n    record['commands'].append({'label':label,'argv':argv,'returncode':p.returncode,'seconds':time.monotonic()-start,'log':label+'.log'})\n    save();print(label,p.returncode,flush=True)\n    if p.returncode:raise RuntimeError(label+' failed; inspect log')\n    return p.stdout\ntry:\n    container=run('fixture-create',['docker','run','-d','--platform=linux/amd64','--name',NAME,'--label','codenib.pilot.owner='+OWNER,'--network=none','--memory=4g','--cpus=2','--pids-limit=256','--entrypoint','/bin/sleep',BASE,'600']).strip();record['container_id']=container;save()\n    run('fixture-copy',['docker','cp',str(ROOT/'pytest-launcher.py'),container+':/opt/miniconda3/envs/testbed/bin/pytest'])\n    setup=\"\"\"set -e\nchmod +x /opt/miniconda3/envs/testbed/bin/pytest\nprintf '127.0.0.1 localhost httpbin.org\\n::1 localhost\\n' > /opt/pilot-httpbin/hosts\nopenssl req -x509 -newkey rsa:2048 -nodes -keyout /opt/pilot-httpbin/ca.key -out /opt/pilot-httpbin/ca.pem -days 3650 -subj '/CN=CodeNib offline fixture CA'\nopenssl req -newkey rsa:2048 -nodes -keyout /opt/pilot-httpbin/server.key -out /opt/pilot-httpbin/server.csr -subj '/CN=httpbin.org'\nprintf 'subjectAltName=DNS:httpbin.org\\nbasicConstraints=CA:FALSE\\nkeyUsage=digitalSignature,keyEncipherment\\nextendedKeyUsage=serverAuth\\n' > /opt/pilot-httpbin/server.ext\nopenssl x509 -req -in /opt/pilot-httpbin/server.csr -CA /opt/pilot-httpbin/ca.pem -CAkey /opt/pilot-httpbin/ca.key -CAcreateserial -out /opt/pilot-httpbin/server.pem -days 3650 -extfile /opt/pilot-httpbin/server.ext\n\"\"\"\n    run('fixture-setup',['docker','exec',container,'/bin/bash','-lc',setup])\n    record['source_tree']=run('fixture-tree',['docker','exec',container,'git','-C','/testbed','rev-parse','HEAD^{tree}']).strip()\n    assert record['source_tree']=='cf441cdcaa76806a078893bffa79922351a92b0a'\n    record['launcher_sha256']=hashlib.sha256((ROOT/'pytest-launcher.py').read_bytes()).hexdigest()\n    record['candidate_image_id']=run('fixture-commit',['docker','commit','--change','LABEL codenib.pilot.profile=requests-offline-httpbin-v1',container,'codenib/pilot-requests-offline:20261028-v1']).strip()\n    record['fixture_admitted']=False\nexcept Exception as exc:record['error']={'type':type(exc).__name__,'message':str(exc),'traceback':traceback.format_exc()}\nfinally:\n    if container:\n        actual=json.loads(subprocess.check_output(['docker','inspect',container],text=True))[0];assert actual['Config']['Labels']['codenib.pilot.owner']==OWNER\n        subprocess.run(['docker','rm','-f',container],check=True,capture_output=True)\n        record['container_removed']=subprocess.run(['docker','inspect',container],capture_output=True).returncode!=0\n    save();print(json.dumps({k:record.get(k) for k in ('candidate_image_id','error','container_removed')},indent=2))\n"
+      },
+      "offline-httpbin/build-fixture-v2.py": {
+        "sha256": "809bca8dd4c591469a73fe1aea3abfc129807bae4e6b05c469d150d97838c017",
+        "source": "import datetime, hashlib, json, subprocess, time, traceback, uuid\nfrom pathlib import Path\nROOT=Path('/tmp/codenib-matched-pilot-20261027/offline-httpbin')\nBASE='sha256:a99a2c44976dcae4d6b3e16a655c5d3b8a44c250efd0633503874c6101875ce3'\nOWNER=uuid.uuid4().hex[:12];NAME='codenib-httpbin-fixture-'+OWNER\nrecord={'scope':'Offline test fixture construction; no model/reference/test patch; original source tree unchanged at rest; runtime trust-store overlay is recorded and restored. Not admitted until native controls pass.','base_image':BASE,'owner':OWNER,'commands':[],'started_utc':datetime.datetime.now(datetime.timezone.utc).isoformat()}\ncontainer=None\n\ndef save(): (ROOT/'fixture-v2-build-v2.json').write_text(json.dumps(record,indent=2)+'\\n')\ndef run(label,argv,timeout=120):\n    start=time.monotonic();p=subprocess.run(argv,text=True,capture_output=True,timeout=timeout)\n    (ROOT/(label+'.log')).write_text(p.stdout+p.stderr)\n    record['commands'].append({'label':label,'argv':argv,'returncode':p.returncode,'seconds':time.monotonic()-start,'log':label+'.log'})\n    save();print(label,p.returncode,flush=True)\n    if p.returncode:raise RuntimeError(label+' failed; inspect log')\n    return p.stdout\ntry:\n    container=run('fixture-v2-create',['docker','run','-d','--platform=linux/amd64','--name',NAME,'--label','codenib.pilot.owner='+OWNER,'--network=none','--memory=4g','--cpus=2','--pids-limit=256','--entrypoint','/bin/sleep',BASE,'600']).strip();record['container_id']=container;save()\n    run('fixture-v2-copy',['docker','cp',str(ROOT/'pytest-launcher-v2.py'),container+':/opt/miniconda3/envs/testbed/bin/pytest'])\n    setup=\"chmod +x /opt/miniconda3/envs/testbed/bin/pytest\"\n    run('fixture-v2-setup',['docker','exec',container,'/bin/bash','-lc',setup])\n    record['source_tree']=run('fixture-v2-tree',['docker','exec',container,'git','-C','/testbed','rev-parse','HEAD^{tree}']).strip()\n    assert record['source_tree']=='cf441cdcaa76806a078893bffa79922351a92b0a'\n    record['launcher_sha256']=hashlib.sha256((ROOT/'pytest-launcher-v2.py').read_bytes()).hexdigest()\n    record['candidate_image_id']=run('fixture-v2-commit',['docker','commit','--change','LABEL codenib.pilot.profile=requests-offline-httpbin-v2',container,'codenib/pilot-requests-offline:20261028-v2']).strip()\n    record['fixture_admitted']=False\nexcept Exception as exc:record['error']={'type':type(exc).__name__,'message':str(exc),'traceback':traceback.format_exc()}\nfinally:\n    if container:\n        actual=json.loads(subprocess.check_output(['docker','inspect',container],text=True))[0];assert actual['Config']['Labels']['codenib.pilot.owner']==OWNER\n        subprocess.run(['docker','rm','-f',container],check=True,capture_output=True)\n        record['container_removed']=subprocess.run(['docker','inspect',container],capture_output=True).returncode!=0\n    save();print(json.dumps({k:record.get(k) for k in ('candidate_image_id','error','container_removed')},indent=2))\n"
+      },
+      "offline-httpbin/pytest-launcher.py": {
+        "sha256": "d9abb47653372b493120c29a9ce8cdb9dfa9fa4fd753e2062723f78805db2448",
+        "source": "#!/opt/miniconda3/envs/testbed/bin/python\n\"\"\"Run the unchanged Requests tests with real, offline HTTPbin services.\n\nThis invocation owns both listeners before starting workers: successful kernel\nbind is the linearization point, and a competing invocation fails without using\nor terminating another server. Only newly created process groups are stopped.\nThe enclosing owned Docker container is the final recovery boundary.\n\"\"\"\n\nimport json\nimport os\nimport signal\nimport socket\nimport ssl\nimport subprocess\nimport sys\nimport tempfile\nimport time\nimport urllib.request\nfrom pathlib import Path\n\nROOT = Path(\"/opt/pilot-httpbin\")\nprocesses = []\nlisteners = []\nlog_handles = []\nlogdir = Path(tempfile.mkdtemp(prefix=\"pilot-httpbin-\"))\nrecord = {\"profile\": \"requests-offline-httpbin-v1\", \"server_pids\": []}\nexit_code = 2\ntry:\n    # Acquire both ports first, so startup cannot silently reuse another server.\n    for port in (80, 443):\n        listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)\n        listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)\n        listener.bind((\"127.0.0.1\", port))\n        listener.listen(128)\n        listeners.append(listener)\n    for port, listener in zip((80, 443), listeners):\n        command = [\n            str(ROOT / \"venv/bin/gunicorn\"),\n            \"--bind\", \"fd://\" + str(listener.fileno()),\n            \"--workers\", \"1\", \"--threads\", \"4\",\n            \"--timeout\", \"30\",\n            \"--error-logfile\", \"-\",\n        ]\n        if port == 443:\n            command += [\n                \"--certfile\", str(ROOT / \"server.pem\"),\n                \"--keyfile\", str(ROOT / \"server.key\"),\n            ]\n        command += [\"httpbin:app\"]\n        log = (logdir / (\"server-\" + str(port) + \".log\")).open(\"wb\")\n        log_handles.append(log)\n        process = subprocess.Popen(\n            command,\n            pass_fds=(listener.fileno(),),\n            start_new_session=True,\n            stdout=log,\n            stderr=subprocess.STDOUT,\n        )\n        processes.append(process)\n        record[\"server_pids\"].append(process.pid)\n    for listener in listeners:\n        listener.close()\n    context = ssl.create_default_context(cafile=str(ROOT / \"ca.pem\"))\n    deadline = time.monotonic() + 30\n    while True:\n        if any(process.poll() is not None for process in processes):\n            raise RuntimeError(\"Offline HTTPbin worker exited; inspect \" + str(logdir))\n        try:\n            with urllib.request.urlopen(\n                \"http://127.0.0.1/status/204\", timeout=0.5\n            ) as response:\n                assert response.status == 204\n            with socket.create_connection((\"127.0.0.1\", 443), timeout=0.5) as connection:\n                with context.wrap_socket(connection, server_hostname=\"httpbin.org\"):\n                    pass\n            break\n        except (OSError, AssertionError):\n            if time.monotonic() >= deadline:\n                raise RuntimeError(\"Offline HTTPbin readiness timed out\")\n            time.sleep(0.1)\n    env = os.environ.copy()\n    env.update(\n        REQUESTS_CA_BUNDLE=str(ROOT / \"ca.pem\"),\n        CURL_CA_BUNDLE=str(ROOT / \"ca.pem\"),\n        SSL_CERT_FILE=str(ROOT / \"ca.pem\"),\n        LD_PRELOAD=\"/usr/lib/x86_64-linux-gnu/libnss_wrapper.so\",\n        NSS_WRAPPER_HOSTS=str(ROOT / \"hosts\"),\n        PYTEST_DISABLE_PLUGIN_AUTOLOAD=\"1\",\n    )\n    record[\"ready\"] = True\n    exit_code = subprocess.call(\n        [sys.executable, \"-m\", \"pytest\", *sys.argv[1:]], env=env\n    )\nfinally:\n    for listener in listeners:\n        listener.close()\n    for process in processes:\n        if process.poll() is None:\n            os.killpg(process.pid, signal.SIGTERM)\n            try:\n                process.wait(timeout=5)\n            except subprocess.TimeoutExpired:\n                os.killpg(process.pid, signal.SIGKILL)\n                process.wait(timeout=5)\n    for log in log_handles:\n        log.close()\n    record[\"exit_code\"] = exit_code\n    record[\"server_returncodes\"] = [process.returncode for process in processes]\n    (logdir / \"receipt.json\").write_text(json.dumps(record, indent=2))\nsys.exit(exit_code)\n"
+      },
+      "offline-httpbin/pytest-launcher-v2.py": {
+        "sha256": "45b31e8d57cebc3d7e58215387f3b5c07edae3e079a54a7364c4cea0852bdf7f",
+        "source": "#!/opt/miniconda3/envs/testbed/bin/python\n\"\"\"Run the unchanged Requests tests with real, offline HTTPbin services.\n\nThis invocation owns both listeners before starting workers: successful kernel\nbind is the linearization point, and a competing invocation fails without using\nor terminating another server. Only newly created process groups are stopped.\nThe enclosing owned Docker container is the final recovery boundary.\n\"\"\"\n\nimport hashlib\nimport json\nimport os\nimport signal\nimport socket\nimport ssl\nimport subprocess\nimport sys\nimport tempfile\nimport time\nimport urllib.request\nfrom pathlib import Path\n\nROOT = Path(\"/opt/pilot-httpbin\")\nprocesses = []\nlisteners = []\nlog_handles = []\nlogdir = Path(tempfile.mkdtemp(prefix=\"pilot-httpbin-\"))\nrecord = {\"profile\": \"requests-offline-httpbin-v2\", \"server_pids\": []}\nexit_code = 2\nca_path = Path(\"/testbed/requests/cacert.pem\")\noriginal_ca = None\ntry:\n    # Acquire both ports first, so startup cannot silently reuse another server.\n    for port in (80, 443):\n        listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)\n        listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)\n        listener.bind((\"127.0.0.1\", port))\n        listener.listen(128)\n        listeners.append(listener)\n    for port, listener in zip((80, 443), listeners):\n        command = [\n            str(ROOT / \"venv/bin/gunicorn\"),\n            \"--bind\", \"fd://\" + str(listener.fileno()),\n            \"--workers\", \"1\", \"--threads\", \"4\",\n            \"--timeout\", \"30\",\n            \"--error-logfile\", \"-\",\n        ]\n        if port == 443:\n            command += [\n                \"--certfile\", str(ROOT / \"server.pem\"),\n                \"--keyfile\", str(ROOT / \"server.key\"),\n            ]\n        command += [\"httpbin:app\"]\n        log = (logdir / (\"server-\" + str(port) + \".log\")).open(\"wb\")\n        log_handles.append(log)\n        process = subprocess.Popen(\n            command,\n            pass_fds=(listener.fileno(),),\n            start_new_session=True,\n            stdout=log,\n            stderr=subprocess.STDOUT,\n        )\n        processes.append(process)\n        record[\"server_pids\"].append(process.pid)\n    for listener in listeners:\n        listener.close()\n    context = ssl.create_default_context(cafile=str(ROOT / \"ca.pem\"))\n    deadline = time.monotonic() + 30\n    while True:\n        if any(process.poll() is not None for process in processes):\n            raise RuntimeError(\"Offline HTTPbin worker exited; inspect \" + str(logdir))\n        try:\n            with urllib.request.urlopen(\n                \"http://127.0.0.1/status/204\", timeout=0.5\n            ) as response:\n                assert response.status == 204\n            with socket.create_connection((\"127.0.0.1\", 443), timeout=0.5) as connection:\n                with context.wrap_socket(connection, server_hostname=\"httpbin.org\"):\n                    pass\n            break\n        except (OSError, AssertionError):\n            if time.monotonic() >= deadline:\n                raise RuntimeError(\"Offline HTTPbin readiness timed out\")\n            time.sleep(0.1)\n    env = os.environ.copy()\n    env.update(\n        REQUESTS_CA_BUNDLE=str(ROOT / \"ca.pem\"),\n        CURL_CA_BUNDLE=str(ROOT / \"ca.pem\"),\n        SSL_CERT_FILE=str(ROOT / \"ca.pem\"),\n        LD_PRELOAD=\"/usr/lib/x86_64-linux-gnu/libnss_wrapper.so\",\n        NSS_WRAPPER_HOSTS=str(ROOT / \"hosts\"),\n        PYTEST_DISABLE_PLUGIN_AUTOLOAD=\"1\",\n    )\n    # Session.send() uses the bundled CA file directly instead of merging the\n    # REQUESTS_CA_BUNDLE environment setting. Extend only that trust-store data\n    # for this offline invocation; restore the exact input bytes in finally.\n    # This is an explicit fixture adaptation, not an unchanged-source claim.\n    if ca_path.is_symlink() or not ca_path.is_file():\n        raise RuntimeError(\"Expected the original Requests regular-file CA bundle\")\n    original_ca = ca_path.read_bytes()\n    fixture_ca = (ROOT / \"ca.pem\").read_bytes()\n    runtime_ca = original_ca + b\"\\n\" + fixture_ca\n    record[\"trust_store_overlay\"] = {\n        \"path\": str(ca_path),\n        \"original_sha256\": hashlib.sha256(original_ca).hexdigest(),\n        \"runtime_sha256\": hashlib.sha256(runtime_ca).hexdigest(),\n        \"fixture_ca_sha256\": hashlib.sha256(fixture_ca).hexdigest(),\n    }\n    ca_path.write_bytes(runtime_ca)\n    record[\"ready\"] = True\n    exit_code = subprocess.call(\n        [sys.executable, \"-m\", \"pytest\", *sys.argv[1:]], env=env\n    )\nfinally:\n    for listener in listeners:\n        listener.close()\n    for process in processes:\n        if process.poll() is None:\n            os.killpg(process.pid, signal.SIGTERM)\n            try:\n                process.wait(timeout=5)\n            except subprocess.TimeoutExpired:\n                os.killpg(process.pid, signal.SIGKILL)\n                process.wait(timeout=5)\n    for log in log_handles:\n        log.close()\n    if original_ca is not None:\n        ca_path.write_bytes(original_ca)\n        record[\"trust_store_overlay\"][\"restored\"] = ca_path.read_bytes() == original_ca\n    record[\"exit_code\"] = exit_code\n    record[\"server_returncodes\"] = [process.returncode for process in processes]\n    (logdir / \"receipt.json\").write_text(json.dumps(record, indent=2))\n    print(\"OFFLINE_HTTPBIN_RECEIPT \" + json.dumps(record, sort_keys=True), flush=True)\nsys.exit(exit_code)\n"
+      },
+      "native-controls-offline-requests-v1.py": {
+        "sha256": "048bc9a0ad5728297e9d720b39a6bc0e51d6995a5e5e121962edd6374a2f26d7",
+        "source": "import argparse, datetime, json, sys, traceback\nfrom pathlib import Path\nsys.path.insert(0,'/home/zhongming/CodeNib-codegraph-benefit')\nfrom scripts.contextbench_verified import grade_verified\nROOT=Path('/tmp/codenib-matched-pilot-20261027')\nrows={r['instance_id']:r for r in json.loads((ROOT/'controller-native-cases.json').read_text())}\nselected=json.loads((ROOT/'cohort-selection.json').read_text())['selection']['selected']\n# Nonempty carrier required by native patch application. This is an empty\n# production change, not a patch/test methodology change.\nempty='diff --git a/.codenib_empty_control.txt b/.codenib_empty_control.txt\\nnew file mode 100644\\nindex 0000000..b32edc1\\n--- /dev/null\\n+++ b/.codenib_empty_control.txt\\n@@ -0,0 +1 @@\\n+No production changes.\\n'\n(ROOT/'empty-control.patch').write_text(empty)\nrecords=[]\nfor selected_row in selected:\n    if selected_row['instance_id'] != 'psf__requests-1921': continue\n    row=rows[selected_row['instance_id']]\n    selected_row={**selected_row,'local_native_image_id':'sha256:a99a2c44976dcae4d6b3e16a655c5d3b8a44c250efd0633503874c6101875ce3'}\n    for kind in ('empty-production','reference'):\n        case=ROOT/'native-controls-offline-requests-v1'/row['instance_id']/kind\n        case.mkdir(parents=True,exist_ok=False)\n        patch=empty if kind=='empty-production' else row['patch']\n        config={'repo':row['repo'],'source':'Verified','source_commit':row['base_commit'],'implementation':{},'image_id':selected_row['local_native_image_id']}\n        solver={'instance_id':row['instance_id'],'original_inst_id':row['instance_id'],'model_patch':patch}\n        pred=[{'instance_id':row['instance_id'],'model_patch':patch,'model_name_or_path':'pilot-control-'+kind}]\n        for name,data in (('config.json',config),('solver.json',solver),('predictions.json',pred)):\n            (case/name).write_text(json.dumps(data,indent=2))\n        record={'instance_id':row['instance_id'],'kind':kind,'started_utc':datetime.datetime.now(datetime.timezone.utc).isoformat()}\n        print('START',record['instance_id'],kind,flush=True)\n        try:\n            grade_verified(argparse.Namespace(solver_run=case,dataset=ROOT/'controller-native-cases.json',output=case/'grade',timeout=300))\n            record['outcome']=json.loads((case/'grade'/'resolution.json').read_text())\n        except Exception as exc:\n            record['error']={'type':type(exc).__name__,'message':str(exc),'traceback':traceback.format_exc()}\n        records.append(record)\n        (ROOT/'native-controls-offline-requests-v1-summary.json').write_text(json.dumps(records,indent=2))\n        # Native files retain all output; console emits metadata only.\n        print('END',record['instance_id'],kind,'result',record.get('outcome',{}).get('resolved'),'error',record.get('error',{}).get('type'),flush=True)\n"
+      },
+      "native-controls-offline-requests-v2.py": {
+        "sha256": "628c35d2cb32acbb619be22f0eec9dfced849118ee8009da43cbd0d7708762e4",
+        "source": "import argparse, datetime, json, sys, traceback\nfrom pathlib import Path\nsys.path.insert(0,'/home/zhongming/CodeNib-codegraph-benefit')\nfrom scripts.contextbench_verified import grade_verified\nROOT=Path('/tmp/codenib-matched-pilot-20261027')\nrows={r['instance_id']:r for r in json.loads((ROOT/'controller-native-cases.json').read_text())}\nselected=json.loads((ROOT/'cohort-selection.json').read_text())['selection']['selected']\n# Nonempty carrier required by native patch application. This is an empty\n# production change, not a patch/test methodology change.\nempty='diff --git a/.codenib_empty_control.txt b/.codenib_empty_control.txt\\nnew file mode 100644\\nindex 0000000..b32edc1\\n--- /dev/null\\n+++ b/.codenib_empty_control.txt\\n@@ -0,0 +1 @@\\n+No production changes.\\n'\n(ROOT/'empty-control.patch').write_text(empty)\nrecords=[]\nfor selected_row in selected:\n    if selected_row['instance_id'] != 'psf__requests-1921': continue\n    row=rows[selected_row['instance_id']]\n    selected_row={**selected_row,'local_native_image_id':json.loads((ROOT/'offline-httpbin/fixture-v2-build-v2.json').read_text())['candidate_image_id']}\n    for kind in ('empty-production','reference'):\n        case=ROOT/'native-controls-offline-requests-v2'/row['instance_id']/kind\n        case.mkdir(parents=True,exist_ok=False)\n        patch=empty if kind=='empty-production' else row['patch']\n        config={'repo':row['repo'],'source':'Verified','source_commit':row['base_commit'],'implementation':{},'image_id':selected_row['local_native_image_id']}\n        solver={'instance_id':row['instance_id'],'original_inst_id':row['instance_id'],'model_patch':patch}\n        pred=[{'instance_id':row['instance_id'],'model_patch':patch,'model_name_or_path':'pilot-control-'+kind}]\n        for name,data in (('config.json',config),('solver.json',solver),('predictions.json',pred)):\n            (case/name).write_text(json.dumps(data,indent=2))\n        record={'instance_id':row['instance_id'],'kind':kind,'started_utc':datetime.datetime.now(datetime.timezone.utc).isoformat()}\n        print('START',record['instance_id'],kind,flush=True)\n        try:\n            grade_verified(argparse.Namespace(solver_run=case,dataset=ROOT/'controller-native-cases.json',output=case/'grade',timeout=300))\n            record['outcome']=json.loads((case/'grade'/'resolution.json').read_text())\n        except Exception as exc:\n            record['error']={'type':type(exc).__name__,'message':str(exc),'traceback':traceback.format_exc()}\n        records.append(record)\n        (ROOT/'native-controls-offline-requests-v2-summary.json').write_text(json.dumps(records,indent=2))\n        # Native files retain all output; console emits metadata only.\n        print('END',record['instance_id'],kind,'result',record.get('outcome',{}).get('resolved'),'error',record.get('error',{}).get('type'),flush=True)\n"
+      }
+    },
+    "controller_first_error": {
+      "path": "native-controls-offline-requests-v2-controller-first.log",
+      "sha256": "26ca5c858547de2364942fbd08485c9b2c590929539f5e3bbc5ec76d072faa30",
+      "outcome": "Wrong build-receipt filename; failed before creating any grade directory or container. Corrected controller used the actual retained receipt."
+    },
+    "environment_adaptations": [
+      "Real local HTTPbin 0.7.0 serves HTTP and HTTPS on owned loopback listeners; network none, 4 GiB, 2 CPUs and 256 PIDs are inspected by the corrected native adapter.",
+      "Legacy test API compatibility uses pytest 4.6.11 and pluggy 0.13.1 with external pytest plugin autoload disabled. Test code, selected IDs, native parser and grading rules are unchanged; all 119 items collect in both controls.",
+      "v1 environment CA variables leave Session.send using the bundled CA file; reference still fails the mixed-scheme regression. That failed profile is retained.",
+      "v2 temporarily appends the synthetic fixture CA to requests/cacert.pem only during grading. This changes trust-store data during tests; original bytes, runtime bytes and CA hashes are recorded, and exact restoration is observed for both failing empty and passing reference controls. Other source/test code is unchanged by the fixture.",
+      "Kernel bind of both ports establishes listener ownership before workers start. Only owned process groups are terminated. The uniquely owned grading container is the recovery boundary and is removed after each control.",
+      "Preparing this environment is shared controller work, not a model-arm task outcome. Per-arm installation, indexing and post-edit costs remain to be measured."
+    ]
   }
 }

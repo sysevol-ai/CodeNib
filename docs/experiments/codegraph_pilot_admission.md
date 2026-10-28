@@ -19,7 +19,7 @@ These historical benchmark cases are already exposed; no unseen-task claim appli
 
 | Repository / selected case | Strict CodeNib source-index outcome | Native admission with corrected isolation |
 | --- | --- | --- |
-| Requests / `psf__requests-1921` | BM25 and graph fresh; source preserved | Open: needs an offline HTTPbin fixture |
+| Requests / `psf__requests-1921` | BM25 and graph fresh; source preserved | Offline HTTPbin v2: empty production change fails one target; reference passes all 119 collected tests |
 | Flask / `pallets__flask-5014` | BM25 and graph fresh; source preserved | Empty production change fails one target; reference passes all 60 collected tests |
 | pytest / `pytest-dev__pytest-5809` | BM25 fresh; graph rejected for cyclic containment; source preserved | Empty production change fails one target; reference passes all four selected native tests |
 
@@ -73,9 +73,25 @@ but fails two selected regression tests with HTTPS certificate errors; another
 unselected test has an existing pytest compatibility failure. Flask and pytest
 were rerun in new directories after the fix: both collect and execute the intended
 tests, empty production changes fail, and references pass. Every new report
-records enforced limits and successful removal. Requests remains explicitly
-unrun under the corrected protocol until its offline fixture is ready. Test IDs,
-test patches, native parser and grading rules stay unchanged. No historical
+records enforced limits and successful removal.
+
+Requests now passes native admission with real HTTP and HTTPS HTTPbin services
+on loopback inside the network-isolated container. Both controls collect and
+execute all 119 tests. The empty production change fails the intended header
+defect while all 107 selected regression targets pass; the reference passes all
+119 tests. The legacy test environment uses pytest 4.6.11 and pluggy 0.13.1 with
+external plugin autoload disabled. Test IDs, test code, native parser and grading
+rules stay unchanged.
+
+The first offline profile still fails the mixed-case HTTPS regression because
+direct `Session.send()` uses the bundled CA file instead of the environment CA
+setting. Its failure is retained. The admitted v2 profile temporarily extends
+only that trust-store data with the fixture CA; hashes and exact restoration
+are observed after both controls. This is an explicit test-environment
+adaptation, not an unchanged-source claim during execution. Only owned listeners
+and worker process groups are stopped; the uniquely owned container remains the
+recovery boundary and is removed. These amd64 controls run through emulation on
+the arm64 controller and do not establish comparative task timing. No historical
 score is overwritten.
 
 The original controller also looked for the wrong result filename after grading.
@@ -107,6 +123,6 @@ SDK turns are not HTTP-request counts. Successful scope and corrected cap probes
 confirm included-only rate events. SDK dollar estimates remain separate from
 unreconciled invoices; the first failed cap observer has missing usage.
 
-Still open: Requests' offline environment, full task/model/tool manifest and
-usage normalization, peer isolation/default daemon, matched inference and the
-five-user observation gate.
+Still open: task-container architecture and usable per-arm tool runtimes, the
+full task/model/tool manifest and usage normalization, peer isolation/default
+daemon, matched inference and the five-user observation gate.
