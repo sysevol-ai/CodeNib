@@ -1,13 +1,15 @@
 # CodeGraph real-workflow net-benefit pilot
 
 Owner: CodeNib product and CodeGraph maintainers.
-Status: dirty initialization and stale-query guard merged; provider-identity
-collision reproduced and graph-integrity guard merged; all twelve matched
-workflows execute and their repairs pass the selected original native grading.
-Source review is complete with four protocol-unassessable observations; the
-frozen outcome is insufficient evidence and promotion is held. Local MCP sessions
-recover after an explicit rebuild without reconnecting. Provider identity
-recovery, automatic source-driven rebuilding and external trials remain open.
+Status: dirty initialization, stale-query protection, scoped Python identity
+recovery and source-current same-session reloading are merged. All twelve
+original matched workflows execute and their repairs pass the selected native
+grading. Source review retains four protocol-unassessable observations; the
+frozen outcome is insufficient evidence and promotion is held. Separate
+model-free peer controls now pass the original lookup on all three sources.
+Common-runtime and cold/update admission, a corrected prospective benefit
+protocol, broader provider coverage, automatic rebuilding and external trials
+remain open.
 Established 2026-10-26
 (Pacific); target review 2026-11-09.
 Current outcomes and open gates belong to [adoption A0](../adoption_roadmap.md).
@@ -183,6 +185,11 @@ repairs. The [source assessment](codegraph_matched_assessment_v1.md) reviews all
 every alternative. The frozen policy therefore admits no eligible complete
 comparison. A separate retrospective correction preserves the original wording
 and cannot establish a prospective gain.
+The separate [peer source-admission controls](codegraph_peer_source_admission.md)
+retain unattended configuration and first lookup on all three pinned sources,
+including their preparation/controller failures and bounded source omissions.
+They use preinstalled warm runtimes and do not replace the original failed
+setups or complete installation/cold/update admission for a future cohort.
 Work on offline reproduction and scoped fixes can proceed. A live experiment must
 not silently substitute the graph-free search pair or grep/Jev for CodeGraph.
 
