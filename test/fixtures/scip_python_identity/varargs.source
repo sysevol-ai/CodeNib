@@ -1,0 +1,9 @@
+class Example:
+    def first(self):
+        def match(*args, **kwargs):
+            return args[0], kwargs
+        return match(1)
+    def second(self):
+        def match(*args, **kwargs):
+            return args[0], kwargs
+        return match(2)

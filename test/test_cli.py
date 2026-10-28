@@ -408,7 +408,15 @@ def test_doctor_parser_accepts_repository_graph_context() -> None:
     ("tools", "expected_code", "expected_status"),
     [
         ({"scip-go": "/tools/scip-go"}, 1, "[MISSING] Python (python)"),
-        ({"scip-python": "/tools/scip-python"}, 0, "[OK     ] Python (python)"),
+        ({"scip-python": "/tools/scip-python"}, 1, "[MISSING] Python (python)"),
+        (
+            {
+                "scip-python": "/tools/scip-python",
+                "basedpyright-langserver": "/tools/basedpyright-langserver",
+            },
+            0,
+            "[OK     ] Python (python)",
+        ),
     ],
 )
 def test_doctor_requires_the_repository_language_provider(

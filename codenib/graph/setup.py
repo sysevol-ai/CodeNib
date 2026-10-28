@@ -27,6 +27,10 @@ CommandResolver = Callable[[str], str | None]
 ModuleChecker = Callable[[str], bool]
 
 _TOOL_HINTS = {
+    "basedpyright-langserver": (
+        "Install the managed Python LSP provider for SCIP identity recovery "
+        "with `codenib toolchain install`."
+    ),
     "bear": "Install Bear to generate compile_commands.json for Make projects.",
     "bundle": "Install Bundler, or provide a ruby-lsp fallback.",
     "clangd": "Install clangd from LLVM.",
@@ -609,7 +613,17 @@ def _language_setup(
         )
 
     extras = []
-    if spec.key == "go":
+    if spec.key == "python":
+        command = lsp_command_for_language("python") or []
+        if command:
+            extras.append(
+                _command_prerequisite(
+                    command[0],
+                    repository=repository,
+                    command_resolver=command_resolver,
+                )
+            )
+    elif spec.key == "go":
         marker = repository / "go.mod"
         extras.append(
             _project_prerequisite(

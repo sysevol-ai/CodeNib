@@ -1,0 +1,257 @@
+metadata {
+  tool_info {
+    name: "scip-python"
+    version: "0.6.6"
+  }
+  project_root: "file:///tmp/codenib-python-identity-20261027/captured-regressions1/parameters/repo"
+  text_document_encoding: UTF8
+}
+documents {
+  relative_path: "nested.py"
+  occurrences {
+    range: 0
+    range: 0
+    range: 0
+    symbol: "scip-python python identity 3e1afd8a83f53784efd0d1ecf03589483c91804b nested/__init__:"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 0
+    range: 6
+    range: 13
+    symbol: "scip-python python identity 3e1afd8a83f53784efd0d1ecf03589483c91804b nested/Example#"
+    symbol_roles: 1
+    enclosing_range: 0
+    enclosing_range: 0
+    enclosing_range: 14
+    enclosing_range: 25
+  }
+  occurrences {
+    range: 1
+    range: 8
+    range: 13
+    symbol: "scip-python python identity 3e1afd8a83f53784efd0d1ecf03589483c91804b nested/Example#outer()."
+    symbol_roles: 1
+    enclosing_range: 1
+    enclosing_range: 4
+    enclosing_range: 14
+    enclosing_range: 25
+  }
+  occurrences {
+    range: 1
+    range: 14
+    range: 18
+    symbol: "scip-python python identity 3e1afd8a83f53784efd0d1ecf03589483c91804b nested/Example#outer().(self)"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 1
+    range: 20
+    range: 24
+    symbol: "scip-python python identity 3e1afd8a83f53784efd0d1ecf03589483c91804b nested/Example#outer().(flag)"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 2
+    range: 11
+    range: 15
+    symbol: "scip-python python identity 3e1afd8a83f53784efd0d1ecf03589483c91804b nested/Example#outer().(flag)"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 3
+    range: 16
+    range: 23
+    symbol: "scip-python python identity 3e1afd8a83f53784efd0d1ecf03589483c91804b nested/Example#convert()."
+    symbol_roles: 1
+    enclosing_range: 3
+    enclosing_range: 12
+    enclosing_range: 5
+    enclosing_range: 24
+  }
+  occurrences {
+    range: 3
+    range: 24
+    range: 25
+    symbol: "scip-python python identity 3e1afd8a83f53784efd0d1ecf03589483c91804b nested/Example#convert().(v)"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 4
+    range: 16
+    range: 17
+    symbol: "scip-python python identity 3e1afd8a83f53784efd0d1ecf03589483c91804b nested/Example#convert().(v)"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 4
+    range: 20
+    range: 23
+    symbol: "scip-python python python-stdlib 3.11 builtins/str#"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 4
+    range: 24
+    range: 25
+    symbol: "scip-python python identity 3e1afd8a83f53784efd0d1ecf03589483c91804b nested/Example#convert().(v)"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 5
+    range: 23
+    range: 24
+    symbol: "scip-python python identity 3e1afd8a83f53784efd0d1ecf03589483c91804b nested/Example#convert().(v)"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 7
+    range: 16
+    range: 23
+    symbol: "scip-python python identity 3e1afd8a83f53784efd0d1ecf03589483c91804b nested/Example#convert()."
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 7
+    range: 24
+    range: 25
+    symbol: "scip-python python identity 3e1afd8a83f53784efd0d1ecf03589483c91804b nested/Example#convert().(v)"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 8
+    range: 16
+    range: 17
+    symbol: "scip-python python identity 3e1afd8a83f53784efd0d1ecf03589483c91804b nested/Example#convert().(v)"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 8
+    range: 20
+    range: 24
+    symbol: "local 0"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 8
+    range: 25
+    range: 26
+    symbol: "scip-python python identity 3e1afd8a83f53784efd0d1ecf03589483c91804b nested/Example#convert().(v)"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 9
+    range: 20
+    range: 25
+    symbol: "scip-python python identity 3e1afd8a83f53784efd0d1ecf03589483c91804b nested/Example#child()."
+    symbol_roles: 1
+    enclosing_range: 9
+    enclosing_range: 16
+    enclosing_range: 12
+    enclosing_range: 28
+  }
+  occurrences {
+    range: 10
+    range: 29
+    range: 30
+    symbol: "scip-python python identity 3e1afd8a83f53784efd0d1ecf03589483c91804b nested/Example#convert().(v)"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 11
+    range: 20
+    range: 21
+    symbol: "scip-python python identity 3e1afd8a83f53784efd0d1ecf03589483c91804b nested/Example#convert().(v)"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 11
+    range: 24
+    range: 28
+    symbol: "local 1"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 11
+    range: 29
+    range: 30
+    symbol: "scip-python python identity 3e1afd8a83f53784efd0d1ecf03589483c91804b nested/Example#convert().(v)"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 12
+    range: 27
+    range: 28
+    symbol: "scip-python python identity 3e1afd8a83f53784efd0d1ecf03589483c91804b nested/Example#convert().(v)"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 13
+    range: 23
+    range: 28
+    symbol: "scip-python python identity 3e1afd8a83f53784efd0d1ecf03589483c91804b nested/Example#child()."
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 13
+    range: 33
+    range: 34
+    symbol: "scip-python python identity 3e1afd8a83f53784efd0d1ecf03589483c91804b nested/Example#convert().(v)"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 14
+    range: 15
+    range: 22
+    symbol: "scip-python python identity 3e1afd8a83f53784efd0d1ecf03589483c91804b nested/Example#convert()."
+    symbol_roles: 8
+  }
+  symbols {
+    symbol: "scip-python python identity 3e1afd8a83f53784efd0d1ecf03589483c91804b nested/__init__:"
+    documentation: "(module) nested"
+  }
+  symbols {
+    symbol: "scip-python python identity 3e1afd8a83f53784efd0d1ecf03589483c91804b nested/Example#"
+    documentation: "```python\nclass Example:\n```"
+  }
+  symbols {
+    symbol: "scip-python python identity 3e1afd8a83f53784efd0d1ecf03589483c91804b nested/Example#outer()."
+    documentation: "```python\ndef outer(\n  self,\n  flag\n): # -> str:\n```"
+  }
+  symbols {
+    symbol: "scip-python python identity 3e1afd8a83f53784efd0d1ecf03589483c91804b nested/Example#outer().(self)"
+  }
+  symbols {
+    symbol: "scip-python python identity 3e1afd8a83f53784efd0d1ecf03589483c91804b nested/Example#outer().(flag)"
+  }
+  symbols {
+    symbol: "scip-python python identity 3e1afd8a83f53784efd0d1ecf03589483c91804b nested/Example#convert()."
+    documentation: "```python\ndef convert(\n  v\n): # -> str:\n```"
+  }
+  symbols {
+    symbol: "scip-python python identity 3e1afd8a83f53784efd0d1ecf03589483c91804b nested/Example#convert().(v)"
+  }
+  symbols {
+    symbol: "scip-python python identity 3e1afd8a83f53784efd0d1ecf03589483c91804b nested/Example#convert()."
+    documentation: "```python\ndef convert(\n  v\n): # -> str:\n```"
+  }
+  symbols {
+    symbol: "scip-python python identity 3e1afd8a83f53784efd0d1ecf03589483c91804b nested/Example#convert().(v)"
+  }
+  symbols {
+    symbol: "scip-python python identity 3e1afd8a83f53784efd0d1ecf03589483c91804b nested/Example#child()."
+    documentation: "```python\ndef child(): # -> str:\n```"
+  }
+}
+external_symbols {
+  symbol: "scip-python python python-stdlib 3.11 builtins/str#"
+  documentation: "```python\nclass str(object: object = ...): ...\n\nclass str(\n    object: ReadableBuffer,\n    encoding: str = ...,\n    errors: str = ...\n): ...\n\n\n```"
+}
+external_symbols {
+  symbol: "local 0"
+  documentation: "```python\n(function) def repr(\n    __obj: object,\n    /\n) -> str\n```"
+}
+external_symbols {
+  symbol: "local 1"
+  documentation: "```python\n(function) def repr(\n    __obj: object,\n    /\n) -> str\n```"
+}

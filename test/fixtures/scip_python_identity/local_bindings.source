@@ -1,0 +1,13 @@
+def example():
+    handler = object()
+    def handler(value):
+        return value
+    first = handler(1)
+    for key in ["HOME"]:
+        first = key
+    class key:
+        def enter(self):
+            return 1
+    def _(value):
+        return value
+    return first, key(), _(1)

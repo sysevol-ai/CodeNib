@@ -133,3 +133,42 @@ def test_occurrence_index_loads_from_caller_owned_stream(tmp_path):
     assert loaded.occurrence_at("pkg/reader.go", 3, 6).is_definition
     assert len(loaded.occurrences) == 6
     assert not stream.closed
+
+
+def test_enclosing_range_does_not_replace_the_selection_range():
+    decoded = _DECODED.replace(
+        'symbol: "local 0"\n    symbol_roles: 1',
+        'symbol: "local 0"\n    symbol_roles: 1\n'
+        "    enclosing_range: 2\n    enclosing_range: 0\n"
+        "    enclosing_range: 7\n    enclosing_range: 0",
+        1,
+    )
+    index = SCIPOccurrenceIndex.from_decoded_text(decoded)
+
+    definitions = index.definitions(file_path="pkg/reader.go", line=4, character=1)
+
+    assert [
+        (row.start_line, row.start_character, row.end_character) for row in definitions
+    ] == [(3, 6, 7)]
+
+
+def test_one_selection_can_resolve_multiple_conditional_definitions():
+    decoded = _DECODED.replace(
+        "    range: 5\n    range: 1\n    range: 6\n    range: 2",
+        "    range: 4\n    range: 1\n    range: 2",
+    ).replace(
+        "  occurrences {\n    range: 8",
+        "  occurrences {\n    range: 10\n    range: 6\n    range: 7\n"
+        '    symbol: "local 1"\n    symbol_roles: 1\n  }\n'
+        "  occurrences {\n    range: 4\n    range: 1\n    range: 2\n"
+        '    symbol: "local 1"\n    symbol_roles: 8\n  }\n'
+        "  occurrences {\n    range: 8",
+    )
+    index = SCIPOccurrenceIndex.from_decoded_text(decoded)
+
+    definitions = index.definitions(file_path="pkg/reader.go", line=4, character=1)
+    references = index.references(file_path="pkg/reader.go", line=4, character=1)
+
+    assert {row.start_line for row in definitions} == {3, 10}
+    assert {row.start_line for row in references} == {3, 4, 10}
+    assert len(references) == 3

@@ -18,7 +18,7 @@ from .scip_indexer_base import extract_scip_blocks, extract_symbol
 
 LSP_OCCURRENCE_INDEX_SCHEMA_VERSION = 1
 _DEFINITION_ROLE = 1
-_RANGE_RE = re.compile(r"range:\s*(\d+)")
+_RANGE_RE = re.compile(r"(?<![A-Za-z0-9_])range:\s*(\d+)")
 _SYMBOL_ROLES_RE = re.compile(r"symbol_roles:\s*(\d+)")
 
 
@@ -212,9 +212,10 @@ class SCIPOccurrenceIndex:
         character: int,
         top_k: int = 8,
     ) -> list[SCIPLocation]:
-        occurrence = self._require_occurrence(file_path, line, character)
+        occurrences = self._require_occurrences(file_path, line, character)
         matches = [
             self.occurrences[index]
+            for occurrence in occurrences
             for index in self._by_symbol.get(
                 self._symbol_key(occurrence.file_path, occurrence.symbol), ()
             )
@@ -231,9 +232,10 @@ class SCIPOccurrenceIndex:
         include_declaration: bool = True,
         top_k: int = 40,
     ) -> list[SCIPLocation]:
-        occurrence = self._require_occurrence(file_path, line, character)
+        occurrences = self._require_occurrences(file_path, line, character)
         matches = [
             self.occurrences[index]
+            for occurrence in occurrences
             for index in self._by_symbol.get(
                 self._symbol_key(occurrence.file_path, occurrence.symbol), ()
             )
@@ -251,6 +253,29 @@ class SCIPOccurrenceIndex:
                 f"{_normalize_path(file_path)}:{int(line) + 1}:{int(character)}"
             )
         return occurrence
+
+    def _require_occurrences(
+        self, file_path: str, line: int, character: int
+    ) -> list[SCIPOccurrence]:
+        occurrence = self._require_occurrence(file_path, line, character)
+        span = (
+            occurrence.start_line,
+            occurrence.start_character,
+            occurrence.end_line,
+            occurrence.end_character,
+        )
+        return [
+            candidate
+            for index in self._by_file.get(_normalize_path(file_path), ())
+            if (candidate := self.occurrences[index]).contains(line, character)
+            and (
+                candidate.start_line,
+                candidate.start_character,
+                candidate.end_line,
+                candidate.end_character,
+            )
+            == span
+        ]
 
     @staticmethod
     def _symbol_key(file_path: str, symbol: str) -> tuple[str, str]:

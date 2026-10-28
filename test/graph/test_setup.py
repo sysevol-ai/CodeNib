@@ -31,7 +31,7 @@ def test_python_setup_does_not_accept_an_unrelated_graph_tool(tmp_path: Path) ->
     assert report.partial_ready is False
     assert report.unavailable_languages == ["python"]
     assert report.languages[0].backend == "scip"
-    assert report.languages[0].missing == ["scip-python"]
+    assert report.languages[0].missing == ["scip-python", "basedpyright-langserver"]
 
 
 def test_unsupported_language_does_not_hide_ready_partial_coverage(
@@ -43,6 +43,7 @@ def test_unsupported_language_does_not_hide_ready_partial_coverage(
         command_resolver=_resolver(
             {
                 "scip-python": "/tools/scip-python",
+                "basedpyright-langserver": "/tools/basedpyright-langserver",
             }
         ),
         module_checker=lambda name: name in {"igraph", "google.protobuf"},

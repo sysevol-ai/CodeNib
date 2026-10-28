@@ -1,0 +1,16 @@
+def example():
+    class Rep:
+        when = "call"
+    first = Rep
+    class Rep:
+        when = "setup"
+    return first.when, Rep.when
+class Outer:
+    def one(self):
+        class Config:
+            value = 1
+        return Config.value
+    def two(self):
+        class Config:
+            value = 2
+        return Config.value

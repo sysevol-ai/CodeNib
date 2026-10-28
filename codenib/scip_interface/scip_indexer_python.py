@@ -5,12 +5,14 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """SCIP indexer for Python projects using scip-python."""
+import hashlib
 import json
 import math
 import os
 import shutil
 import signal
 import subprocess
+import tempfile
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator, List, Optional, Union
@@ -385,6 +387,74 @@ class SCIPPythonIndexer(SCIPIndexerBase):
         except (OSError, DecodeError, ValueError):
             return 0
         return sum(bool(document.relative_path) for document in index.documents)
+
+    def process_index(self, output_file: Optional[str] = None):
+        """Recover identities before serial/core share the decoded input.
+
+        The compiler owns publication of the output directory. Do not replace
+        a decoded input that changed during recovery; the derived-file publish
+        point is the final atomic replace, before the shared consumer seals it.
+        """
+
+        from google.protobuf.text_format import MessageToString, Parse
+
+        from .python_identity import normalize_python_index
+        from .scip_pb2 import Index
+
+        self.decoded_input_receipt = None
+        self.graph_output_receipt = None
+        temporary = None
+        try:
+            from ..compiler.artifact_fingerprints import regular_file_fingerprint
+
+            before = regular_file_fingerprint(self.decoded_file)
+            payload = self.decoded_file.read_bytes()
+            if before != {
+                "size": len(payload),
+                "sha256": hashlib.sha256(payload).hexdigest(),
+            }:
+                raise RuntimeError(
+                    "decoded SCIP input changed before identity recovery"
+                )
+            index = Parse(payload.decode("utf-8"), Index())
+            del payload
+            with self.profiler.section("process_index.python_identity"):
+                report = normalize_python_index(
+                    index,
+                    self.project_root,
+                    path_allowed=self._path_allowed,
+                )
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=self.decoded_file.parent,
+                prefix=".python-identity-",
+                delete=False,
+            ) as handle:
+                temporary = Path(handle.name)
+                handle.write(MessageToString(index, as_utf8=True))
+            if regular_file_fingerprint(self.decoded_file) != before:
+                raise RuntimeError(
+                    "decoded SCIP input changed during identity recovery"
+                )
+            os.replace(temporary, self.decoded_file)
+            if self.index_generation_report is not None:
+                self.index_generation_report["identity_recovery"] = {
+                    "status": "complete",
+                    **report,
+                }
+        except Exception as exc:
+            logger.error("Python SCIP identity recovery failed: %s", exc)
+            if self.index_generation_report is not None:
+                self.index_generation_report["identity_recovery"] = {
+                    "status": "failed",
+                    "error": str(exc),
+                }
+            return None
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
+        return super().process_index(output_file)
 
     def run_pipeline(
         self,
