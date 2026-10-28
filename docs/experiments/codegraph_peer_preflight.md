@@ -43,11 +43,11 @@ selected product in each container; the host-only canary is absent. These are
 readiness checks, not matched task timings. Neither peer's client-registration
 installer ran against the user's real profile.
 
-## Pilot admission remains open
+## Matched execution
 
-Use these package versions and modes as candidates, not a frozen cohort.
-Verify representative repositories and provider correctness, including #871,
-before inference. Capture each product's actual instructions and discovered
+The frozen policy uses these package versions and modes. Retain representative
+source checks and degraded provider outcomes, including #871, in the cohort.
+Capture each product's actual instructions and discovered
 tools; Serena's recommended context contains explicit tool preferences.
 Native read/search/edit/shell must remain available in every arm, and the
 study prompt must not require CodeNib use.
@@ -55,8 +55,11 @@ study prompt must not require CodeNib use.
 The [task document](codegraph_matched_tasks_v1.json) and
 [execution policy](codegraph_matched_policy_v3.json) now freeze membership,
 acceptance, model/settings, ordering, limits, timeouts and usage/setup accounting
-before matched inference. Executable driver/source binding and representative
-query checks remain open. Small-fixture setup numbers and corrected warm retries
+before matched inference. The [execution archive](codegraph_execution_2026_10_27.json)
+binds the executable/runtime and retains representative query checks. The
+[formal execution record](codegraph_matched_run_v1.md) now retains all twelve
+workflows and native repair outcomes. Broader provider correctness and source
+explanation acceptance remain open. Small-fixture setup numbers and corrected warm retries
 are not cold-start product evidence. The five external users
 and seven-day observations remain separate gates in the
 [pilot contract](codegraph_net_benefit.md).

@@ -1,14 +1,20 @@
 # CodeGraph pilot admission
 
 Fifteen tasks and their execution policy are frozen across three source snapshots.
-Matched inference still needs its executable driver/source binding and representative
-query checks. Runtime checks retain the native-grading isolation defect, failed
+The executable/runtime binding and bounded representative source checks are complete.
+All twelve formal workflows execute; the selected original native grader resolves
+all twelve captured repairs. Source-explanation acceptance remains open. Runtime
+checks retain the native-grading isolation defect, failed
 environment profiles and Python graph failure instead of replacing difficult cases. The
 [retained receipts](codegraph_admission_2026_10_27.json) contain the selection,
 original and corrected controls, exact harnesses, source identities and SDK
 configuration probes. The [runtime receipts](codegraph_runtime_2026_10_27.json)
 add actual arm64 tool/container checks and the new native controls. Reference
-production and test patches are excluded.
+production and test patches are excluded. The
+[execution archive](codegraph_execution_2026_10_27.json) retains the exact driver,
+native scope, pre-inference binding, source queries and no-model checks.
+The [formal execution record](codegraph_matched_run_v1.md) links all workflow
+observations, original native outcomes and the remaining acceptance gates.
 
 ## Fixed source cohort
 
@@ -44,7 +50,8 @@ indexing, both session startups and updates. Failed or unattempted tasks retain
 their denominator and the frozen timeout penalty. Usage sums final cumulative
 per-model counters once per session, including auxiliary models and cache tokens;
 SDK estimates remain separate from invoices. The executable driver and final
-runtime/source manifest remain an admission gate, not an implementation claim.
+runtime/source manifest are bound before the first formal query. Completed SDK
+execution remains pending source-checked acceptance and native repair grading.
 
 Strict provider probes use the CLI policy: project preparation and partial
 language admission are disabled. An earlier Requests probe enabled preparation;
@@ -52,7 +59,7 @@ it is retained separately. The pytest failure reproduces #871 in a real project.
 SCIP Python 0.6.8 also fails this check; its release notes describe container
 updates. No provider upgrade or identity-recovery claim follows. Successful
 artifact construction is not a complete correctness audit: relevant query
-targets in Requests and Flask still need source checks.
+targets in Requests and Flask now have bounded source checks, described below.
 
 ## Installed public-release control
 
@@ -188,9 +195,34 @@ All four selected native tests execute: empty fails the intended target with
 three regression passes, and reference passes all four. Earlier raw failures
 and every amd64 result remain unchanged.
 
-Still open: executable driver/source binding, representative query/source checks,
-matched inference and the five-user observation gate. Frozen policy v1's duplicate
+Still open: complete source-explanation acceptance, broader provider correctness
+and the five-user observation gate. Frozen policy v1's duplicate
 workflow labels were corrected in v2 before inference; arm order and experimental
 settings did not change. Policy v3 restores ordinary Read/Grep/Bash access to
 owned SDK output files after a single oversized line exposed a delivery failure;
 the actual marker delivery is checked, not just the hook permission.
+
+## Executable binding and representative queries
+
+Before the first matched query, the execution binding records SHA-256 identities
+for the executable, native scope, task/policy files, CLI binary, candidate wheel,
+controller helpers and readiness evidence. It pins all three arm64 task images.
+Each workflow verifies those identities before starting. The actual prepare-only
+run verifies fresh Serena install/index, network isolation, a container-created
+file edited by native host tools, and owned-container cleanup. It uses the retained
+draft executable; focused no-model checks bind the final executable and verify
+committed-change capture and missing-latest-query usage accounting.
+
+Fifteen observations check five Requests/Flask definitions through exact names
+and source positions, plus bounded graph roots and selected callees. Graph nodes
+without source locations remain explicit. The earlier short names `Session.send`
+and `HTTPAdapter.send` return ambiguity payloads; exact symbol names resolve.
+Those failures are retained, and formal task retries keep their time cost.
+These checks do not establish complete graph accuracy or product benefit.
+
+Formal execution follows the frozen twelve-workflow order with automatic tool
+choice and no controller retries. All sixty tasks complete their SDK execution.
+An available optional tool that the model does not use remains an outcome.
+Native repair grading runs after model execution and resolves all twelve captured
+repairs. No grading feedback or reference patch enters a later model input.
+The 48 explanation tasks still require source-rubric review before benefit scoring.

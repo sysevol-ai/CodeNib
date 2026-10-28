@@ -1,0 +1,167 @@
+{
+  "scope": "Post-run read-only identity/denominator/cleanup audit; no model calls or score changes.",
+  "implementation": {
+    "sha256": "9f2cd89e50251530a9d0cfedb686033d0b652aa3a543774e12eeeea627582862",
+    "text": "\"\"\"Check captured identities, original native denominators and owned cleanup.\"\"\"\nimport hashlib\nimport json\nfrom pathlib import Path\nimport docker\nROOT = Path('/tmp/codenib-matched-pilot-20261027')\nDEST = Path('/home/zhongming/CodeNib-codegraph-benefit/docs/experiments')\ndef sha(p):\n    return hashlib.sha256(p.read_bytes()).hexdigest()\nsummary = json.loads((DEST / 'codegraph_matched_execution_v1.json').read_text())\nbinding = json.loads((ROOT / 'execution-binding-v1.json').read_text())\nexpected_adapter = binding['files']['/home/zhongming/CodeNib-codegraph-benefit/scripts/contextbench_verified.py']\nrecords = []\nclient = docker.from_env(timeout=120)\nabsent = []\nfor item in summary['workflows']:\n    row = item['workflow']\n    index, case, arm = row['workflow_index'], row['instance_id'], row['arm']\n    folder = ROOT / 'matched-runs-v1' / f'{index:02d}-{case}-{arm}'\n    run = json.loads((folder / 'receipt.json').read_text())\n    assert all(c['removed'] for c in run['cleanup'])\n    for c in run['cleanup']:\n        try:\n            client.containers.get(c['id'])\n        except docker.errors.NotFound:\n            absent.append(c['id'])\n        else:\n            raise AssertionError('Owned workflow container still exists')\n    target = ROOT / 'matched-native-grades-v1' / folder.name / 'grade'\n    config = json.loads((target / 'config.json').read_text())\n    result = json.loads((target / 'resolution.json').read_text())\n    assert config['adapter_sha256'] == expected_adapter\n    assert config['native_architecture'] == 'arm64'\n    assert result['owned_container_removed']\n    observed = result['observed_container_limits']\n    assert observed['network_disabled'] is True and observed['network_mode'] == 'none'\n    assert observed['memory_bytes'] == 4 * 1024**3\n    assert observed['nano_cpus'] == 2_000_000_000 and observed['pids_limit'] == 256\n    try:\n        client.containers.get(result['container'])\n    except docker.errors.NotFound:\n        absent.append(result['container'])\n    else:\n        raise AssertionError('Owned native grading container still exists')\n    if case == 'pytest-dev__pytest-5809':\n        control = ROOT / 'native-controls-arm64-pytest-v3' / case / 'reference/grade/resolution.json'\n    else:\n        control = ROOT / 'native-controls-arm64-v1' / case / 'reference/grade/resolution.json'\n    original = json.loads(control.read_text())['native_report'][case]['tests_status']\n    current = result['native_report'][case]['tests_status']\n    denominators = {}\n    for group in original:\n        expected = set(original[group]['success']) | set(original[group]['failure'])\n        actual = set(current[group]['success']) | set(current[group]['failure'])\n        assert actual == expected, (index, group)\n        denominators[group] = len(actual)\n    records.append({'workflow_index': index, 'native_adapter_sha256': config['adapter_sha256'],\n                    'image_id': config['image_id'], 'original_selected_denominators': denominators,\n                    'observed_limits_verified': True, 'owned_cleanup_verified': True})\nclient.close()\nassert len(absent) == len(set(absent)) == 36\nvalue = {'scope': 'Post-run read-only identity/denominator/cleanup audit; no model calls or score changes.',\n         'implementation': {'sha256': sha(Path(__file__)), 'text': Path(__file__).read_text()},\n         'workflows': records, 'all_36_owned_containers_absent': True,\n         'explanation_acceptance': 'Pending full frozen source-rubric review.'}\nout = DEST / 'codegraph_matched_validation_v1.json'\nassert not out.exists()\nout.write_text(json.dumps(value, indent=2) + '\\n')\nprint('All 12 native adapters/limits/original selected denominators match; all 36 owned containers are absent.')\n"
+  },
+  "workflows": [
+    {
+      "workflow_index": 0,
+      "native_adapter_sha256": "405156e613d2a7fd78cb8fcdca7b1ca119928b044a6058cb7ac4c3905832a536",
+      "image_id": "sha256:827cc6d68ffa2db970c9e7360aed47d4523260c0d9b611dd8b0211d561d22594",
+      "original_selected_denominators": {
+        "FAIL_TO_PASS": 6,
+        "PASS_TO_PASS": 107,
+        "FAIL_TO_FAIL": 0,
+        "PASS_TO_FAIL": 0
+      },
+      "observed_limits_verified": true,
+      "owned_cleanup_verified": true
+    },
+    {
+      "workflow_index": 1,
+      "native_adapter_sha256": "405156e613d2a7fd78cb8fcdca7b1ca119928b044a6058cb7ac4c3905832a536",
+      "image_id": "sha256:827cc6d68ffa2db970c9e7360aed47d4523260c0d9b611dd8b0211d561d22594",
+      "original_selected_denominators": {
+        "FAIL_TO_PASS": 6,
+        "PASS_TO_PASS": 107,
+        "FAIL_TO_FAIL": 0,
+        "PASS_TO_FAIL": 0
+      },
+      "observed_limits_verified": true,
+      "owned_cleanup_verified": true
+    },
+    {
+      "workflow_index": 2,
+      "native_adapter_sha256": "405156e613d2a7fd78cb8fcdca7b1ca119928b044a6058cb7ac4c3905832a536",
+      "image_id": "sha256:827cc6d68ffa2db970c9e7360aed47d4523260c0d9b611dd8b0211d561d22594",
+      "original_selected_denominators": {
+        "FAIL_TO_PASS": 6,
+        "PASS_TO_PASS": 107,
+        "FAIL_TO_FAIL": 0,
+        "PASS_TO_FAIL": 0
+      },
+      "observed_limits_verified": true,
+      "owned_cleanup_verified": true
+    },
+    {
+      "workflow_index": 3,
+      "native_adapter_sha256": "405156e613d2a7fd78cb8fcdca7b1ca119928b044a6058cb7ac4c3905832a536",
+      "image_id": "sha256:827cc6d68ffa2db970c9e7360aed47d4523260c0d9b611dd8b0211d561d22594",
+      "original_selected_denominators": {
+        "FAIL_TO_PASS": 6,
+        "PASS_TO_PASS": 107,
+        "FAIL_TO_FAIL": 0,
+        "PASS_TO_FAIL": 0
+      },
+      "observed_limits_verified": true,
+      "owned_cleanup_verified": true
+    },
+    {
+      "workflow_index": 4,
+      "native_adapter_sha256": "405156e613d2a7fd78cb8fcdca7b1ca119928b044a6058cb7ac4c3905832a536",
+      "image_id": "sha256:59ff7bb5c0259b48764aeefce0099158d2096bc59e1fba72b70d9587e34bfcf1",
+      "original_selected_denominators": {
+        "FAIL_TO_PASS": 1,
+        "PASS_TO_PASS": 59,
+        "FAIL_TO_FAIL": 0,
+        "PASS_TO_FAIL": 0
+      },
+      "observed_limits_verified": true,
+      "owned_cleanup_verified": true
+    },
+    {
+      "workflow_index": 5,
+      "native_adapter_sha256": "405156e613d2a7fd78cb8fcdca7b1ca119928b044a6058cb7ac4c3905832a536",
+      "image_id": "sha256:59ff7bb5c0259b48764aeefce0099158d2096bc59e1fba72b70d9587e34bfcf1",
+      "original_selected_denominators": {
+        "FAIL_TO_PASS": 1,
+        "PASS_TO_PASS": 59,
+        "FAIL_TO_FAIL": 0,
+        "PASS_TO_FAIL": 0
+      },
+      "observed_limits_verified": true,
+      "owned_cleanup_verified": true
+    },
+    {
+      "workflow_index": 6,
+      "native_adapter_sha256": "405156e613d2a7fd78cb8fcdca7b1ca119928b044a6058cb7ac4c3905832a536",
+      "image_id": "sha256:59ff7bb5c0259b48764aeefce0099158d2096bc59e1fba72b70d9587e34bfcf1",
+      "original_selected_denominators": {
+        "FAIL_TO_PASS": 1,
+        "PASS_TO_PASS": 59,
+        "FAIL_TO_FAIL": 0,
+        "PASS_TO_FAIL": 0
+      },
+      "observed_limits_verified": true,
+      "owned_cleanup_verified": true
+    },
+    {
+      "workflow_index": 7,
+      "native_adapter_sha256": "405156e613d2a7fd78cb8fcdca7b1ca119928b044a6058cb7ac4c3905832a536",
+      "image_id": "sha256:59ff7bb5c0259b48764aeefce0099158d2096bc59e1fba72b70d9587e34bfcf1",
+      "original_selected_denominators": {
+        "FAIL_TO_PASS": 1,
+        "PASS_TO_PASS": 59,
+        "FAIL_TO_FAIL": 0,
+        "PASS_TO_FAIL": 0
+      },
+      "observed_limits_verified": true,
+      "owned_cleanup_verified": true
+    },
+    {
+      "workflow_index": 8,
+      "native_adapter_sha256": "405156e613d2a7fd78cb8fcdca7b1ca119928b044a6058cb7ac4c3905832a536",
+      "image_id": "sha256:5b464afbad93f2f7c71294e528159c6629bbda9625bad92324b31f5892745e49",
+      "original_selected_denominators": {
+        "FAIL_TO_PASS": 1,
+        "PASS_TO_PASS": 3,
+        "FAIL_TO_FAIL": 0,
+        "PASS_TO_FAIL": 0
+      },
+      "observed_limits_verified": true,
+      "owned_cleanup_verified": true
+    },
+    {
+      "workflow_index": 9,
+      "native_adapter_sha256": "405156e613d2a7fd78cb8fcdca7b1ca119928b044a6058cb7ac4c3905832a536",
+      "image_id": "sha256:5b464afbad93f2f7c71294e528159c6629bbda9625bad92324b31f5892745e49",
+      "original_selected_denominators": {
+        "FAIL_TO_PASS": 1,
+        "PASS_TO_PASS": 3,
+        "FAIL_TO_FAIL": 0,
+        "PASS_TO_FAIL": 0
+      },
+      "observed_limits_verified": true,
+      "owned_cleanup_verified": true
+    },
+    {
+      "workflow_index": 10,
+      "native_adapter_sha256": "405156e613d2a7fd78cb8fcdca7b1ca119928b044a6058cb7ac4c3905832a536",
+      "image_id": "sha256:5b464afbad93f2f7c71294e528159c6629bbda9625bad92324b31f5892745e49",
+      "original_selected_denominators": {
+        "FAIL_TO_PASS": 1,
+        "PASS_TO_PASS": 3,
+        "FAIL_TO_FAIL": 0,
+        "PASS_TO_FAIL": 0
+      },
+      "observed_limits_verified": true,
+      "owned_cleanup_verified": true
+    },
+    {
+      "workflow_index": 11,
+      "native_adapter_sha256": "405156e613d2a7fd78cb8fcdca7b1ca119928b044a6058cb7ac4c3905832a536",
+      "image_id": "sha256:5b464afbad93f2f7c71294e528159c6629bbda9625bad92324b31f5892745e49",
+      "original_selected_denominators": {
+        "FAIL_TO_PASS": 1,
+        "PASS_TO_PASS": 3,
+        "FAIL_TO_FAIL": 0,
+        "PASS_TO_FAIL": 0
+      },
+      "observed_limits_verified": true,
+      "owned_cleanup_verified": true
+    }
+  ],
+  "all_36_owned_containers_absent": true,
+  "explanation_acceptance": "Pending full frozen source-rubric review."
+}
