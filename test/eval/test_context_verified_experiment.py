@@ -13,6 +13,28 @@ import pytest
 from scripts import contextbench_verified as verified
 
 
+class EphemeralCollectionsClient(SimpleNamespace):
+    """Match DockerClient's fresh facade and stable API creation boundary."""
+
+    @property
+    def containers(self):
+        return SimpleNamespace(
+            create=lambda **kwargs: self.api.create_container(**kwargs),
+            get=getattr(self, "get_container", None),
+        )
+
+
+def inspected_creation(kwargs):
+    return {
+        "Name": "/" + kwargs["name"],
+        "Config": {
+            "NetworkDisabled": kwargs.get("network_disabled", False),
+            "Entrypoint": kwargs.get("entrypoint"),
+        },
+        "HostConfig": dict(kwargs.get("host_config", {})),
+    }
+
+
 @pytest.mark.parametrize("suffix", [".json", ".jsonl"])
 def test_verified_native_identity_requires_repo_commit_and_unique_task(
     tmp_path, suffix
@@ -83,27 +105,62 @@ def test_unified_grade_delegates_verified_and_joins_search_usage(monkeypatch, tm
 
 def test_native_client_only_creates_its_owner_with_bounded_resources():
     calls = []
-    client = SimpleNamespace(
-        containers=SimpleNamespace(create=lambda **kw: calls.append(kw))
+
+    def create(**kwargs):
+        calls.append(kwargs)
+        return {"Id": "created"}
+
+    client = EphemeralCollectionsClient(
+        api=SimpleNamespace(
+            create_container=create,
+            inspect_container=lambda identity: inspected_creation(calls[-1]),
+        ),
     )
-    verified.owned_native_client(client, "owned")
-    with pytest.raises(ValueError, match="owner"):
-        client.containers.create(name="other")
+    cached_collection = client.containers
+    assert cached_collection is not client.containers
+    observed = {}
+    verified.owned_native_client(client, "owned", observed=observed)
+    for collection in (cached_collection, client.containers):
+        with pytest.raises(ValueError, match="owner"):
+            collection.create(name="other")
     assert not calls
-    client.containers.create(name="owned", entrypoint=["sleep"], network_disabled=False)
+    original_host_config = {"Binds": ["source:/testbed:ro"], "Memory": 1}
+    cached_collection.create(
+        name="owned",
+        entrypoint=["sleep"],
+        network_disabled=False,
+        host_config=original_host_config,
+        networking_config={"bridge": {}},
+    )
     assert calls == [
         {
             "name": "owned",
             "entrypoint": [],
             "network_disabled": True,
-            "mem_limit": "4g",
-            "nano_cpus": 2_000_000_000,
-            "pids_limit": 256,
+            "host_config": {
+                "Binds": ["source:/testbed:ro"],
+                "NetworkMode": "none",
+                "Memory": 4 * 1024**3,
+                "NanoCpus": 2_000_000_000,
+                "PidsLimit": 256,
+            },
         }
     ]
+    assert original_host_config == {"Binds": ["source:/testbed:ro"], "Memory": 1}
+    assert observed == {
+        "name": "owned",
+        "network_disabled": True,
+        "network_mode": "none",
+        "entrypoint": [],
+        "memory_bytes": 4 * 1024**3,
+        "nano_cpus": 2_000_000_000,
+        "pids_limit": 256,
+    }
 
 
-@pytest.mark.parametrize("outcome", [True, False, "incomplete", "exception", "cleanup"])
+@pytest.mark.parametrize(
+    "outcome", [True, False, "incomplete", "exception", "cleanup", "isolation"]
+)
 def test_native_grader_records_real_status_and_exact_owner_cleanup(
     monkeypatch, tmp_path, outcome
 ):
@@ -157,16 +214,27 @@ def test_native_grader_records_real_status_and_exact_owner_cleanup(
 
         live[name] = SimpleNamespace(remove=remove)
         created.append(kwargs)
-        return live[name]
+        return {"Id": name}
 
     def get(name):
         if name not in live:
             raise NotFound(name)
         return live[name]
 
-    client = SimpleNamespace(
+    def inspect_container(identity):
+        assert identity == created[-1]["name"]
+        actual = inspected_creation(created[-1])
+        if outcome == "isolation":
+            actual["HostConfig"]["NetworkMode"] = "bridge"
+        return actual
+
+    client = EphemeralCollectionsClient(
         images=SimpleNamespace(get=lambda name: image_id if name == image_id else None),
-        containers=SimpleNamespace(create=create, get=get),
+        api=SimpleNamespace(
+            create_container=create,
+            inspect_container=inspect_container,
+        ),
+        get_container=get,
     )
 
     @dataclasses.dataclass
@@ -237,4 +305,10 @@ def test_native_grader_records_real_status_and_exact_owner_cleanup(
     assert record["owned_container_removed"] is (outcome != "cleanup")
     assert created[0]["name"] == record["container"]
     assert created[0]["entrypoint"] == [] and created[0]["network_disabled"]
+    observed = record["observed_container_limits"]
+    assert observed["name"] == record["container"]
+    assert observed["network_mode"] == ("bridge" if outcome == "isolation" else "none")
+    if outcome == "isolation":
+        assert record["error_class"] == "RuntimeError"
+        assert "isolation was not applied" in record["error"]
     assert bool(live) is (outcome == "cleanup")

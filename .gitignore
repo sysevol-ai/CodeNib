@@ -59,6 +59,7 @@ web/*.tsbuildinfo
 !docs/experiments/codegraph_identity_2026_10_27.json
 !docs/experiments/codegraph_sdk_2026_10_27.json
 !docs/experiments/codegraph_peers_2026_10_27.json
+!docs/experiments/codegraph_admission_2026_10_27.json
 !docs/assets/contextbench_development_summary.json
 !docs/assets/arb_smoke.json
 !docs/assets/arb_full.json
