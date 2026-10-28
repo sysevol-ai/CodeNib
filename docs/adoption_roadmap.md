@@ -69,7 +69,8 @@ four observations with an ambiguous original criterion and finds no complete
 eligible alternative under the frozen material-error rule. Promotion is held.
 Local manifest sessions now reload explicitly rebuilt indexes without a new
 connection; a real SCIP/BM25 fixture verifies edits, creates, deletes and renames.
-The [recovery-error delivery fix](experiments/codegraph_mcp_recovery.md) keeps
+The [recovery-error delivery fix](experiments/codegraph_mcp_recovery.md)
+([#890](https://github.com/sysevol-ai/CodeNib/pull/890)) keeps
 rebuild/retry instructions visible through MCP 2.3 exception masking. Real
 Requests, Flask and pytest controls retain stale rejection and source-current
 queries after explicit rebuilding in the same process; no agent inference ran.
