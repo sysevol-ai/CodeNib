@@ -5,8 +5,9 @@ Status: dirty initialization and stale-query guard merged; provider-identity
 collision reproduced and graph-integrity guard merged; all twelve matched
 workflows execute and their repairs pass the selected original native grading.
 Source review is complete with four protocol-unassessable observations; the
-frozen outcome is insufficient evidence and promotion is held. Provider recovery
-and external trials remain open.
+frozen outcome is insufficient evidence and promotion is held. Local MCP sessions
+recover after an explicit rebuild without reconnecting. Provider identity
+recovery, automatic source-driven rebuilding and external trials remain open.
 Established 2026-10-26
 (Pacific); target review 2026-11-09.
 Current outcomes and open gates belong to [adoption A0](../adoption_roadmap.md).
@@ -98,9 +99,18 @@ artifact boundary applies to serial and native decoder outputs.
 This intrinsic check is a mitigation, not accurate identity recovery. #871
 remains open for ambiguous definitions/references, including collisions that
 do not create cycles. Graph-dependent admission remains gated on that scope
-and representative repository/provider checks. Full rebuilding and MCP
-restart remain explicit costs; automatic refresh is not implemented. A safe
-unavailable result does not establish convenient updates or net task benefit.
+and representative repository/provider checks. Full rebuilding remains an
+explicit cost. Local manifest sessions now reload
+published indexes in the same connection after authenticating current source.
+The [reload receipts](codegraph_reload_2026_10_27.json) retain one real SCIP/BM25
+stdio process across edits, creates, renames and deletes, with eight expected
+stale-query rejections and thirty successful calls. Every build preserves the
+visible source hashes and Git status. Deterministic checks cover queued queries,
+compiler contention, responsive session/status lookup, preserved delivery
+history and retryable cleanup. Portable snapshots retain their selected source;
+queries do not trigger indexing. Automatic source-driven rebuilding remains
+unimplemented. This synthetic developer regression does not establish net task
+benefit or change any frozen matched-pilot outcome.
 
 Use temporary repositories and isolated client profiles, without model calls.
 Record commands, installed/runtime versions, source identities, timings and

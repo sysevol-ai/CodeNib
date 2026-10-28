@@ -337,6 +337,7 @@ class ServerContext:
         init=False,
         repr=False,
     )
+    _local_manifest_path: Path | None = field(default=None, init=False, repr=False)
 
     def _install_zoekt_snapshot(self, snapshot: ZoektShardSnapshot) -> None:
         """Publish snapshot ownership before a cancellation can escape."""
@@ -406,12 +407,13 @@ class ServerContext:
     def verify_source_status(self) -> bool:
         """Refresh whole-tree source truth before publishing verified status."""
 
-        if self._source_binding is None:
+        source = self._source_binding
+        if source is None:
             return False
         try:
-            self._source_binding.authenticated_identity_snapshot()
+            source.authenticated_identity_snapshot()
         except Exception as exc:
-            self.source_error = self._source_binding.failure_reason or str(exc)
+            self.source_error = source.failure_reason or str(exc)
             return False
         self.source_error = None
         return True
@@ -439,10 +441,17 @@ class ServerContext:
                 yield
                 return
             source = self._source_binding
+            recovery = (
+                "Run `codenib codegraph init` for this repository and retry; "
+                "this MCP connection reloads rebuilt indexes. "
+                if self._local_manifest_path is not None
+                else "Run `codenib codegraph init` for this repository and "
+                "restart its CodeNib MCP server. "
+            )
             if source is None:
                 raise RuntimeError(
-                    "Indexed source is unavailable. Run `codenib codegraph init` "
-                    "for this repository and restart its CodeNib MCP server. "
+                    "Indexed source is unavailable. "
+                    + recovery
                     + (self.source_error or "source binding is unverified")
                 )
 
@@ -452,9 +461,7 @@ class ServerContext:
                 except (OSError, RuntimeError, ValueError) as exc:
                     self.source_error = source.failure_reason or str(exc)
                     raise RuntimeError(
-                        "Indexed source changed. Run `codenib codegraph init` for "
-                        "this repository and restart its CodeNib MCP server. "
-                        + self.source_error
+                        "Indexed source changed. " + recovery + self.source_error
                     ) from exc
 
             require_current_source()
@@ -737,15 +744,21 @@ class ServerContext:
                 if getattr(self, view, None) is None
             }
 
-    def close(self) -> None:
-        """Release runtime resources owned by this context."""
+    def close(self, *, _preserve_explore_session: bool = False) -> None:
+        """Release runtime resources owned by this context.
+
+        Only the serialized MCP reloader preserves a connection runtime; it
+        transfers that ledger/barrier to the replacement after cleanup succeeds.
+        Normal close still ends the session and releases every resource.
+        """
 
         with self._query_lock, self._view_lock:
             deferred: BaseException | None = None
-            try:
-                self.end_explore_session()
-            except BaseException as exc:  # noqa: B036 - visit every runtime owner
-                deferred = exc
+            if not _preserve_explore_session:
+                try:
+                    self.end_explore_session()
+                except BaseException as exc:  # noqa: B036 - visit every runtime owner
+                    deferred = exc
             self.lsp_provider = None
             if self.zoekt is not None:
                 try:
@@ -815,13 +828,15 @@ class ServerContext:
                 previous.close()
             return runtime
 
-    def ensure_explore_session(self) -> ExploreSessionRuntime:
+    def ensure_explore_session(
+        self, *, _loop: asyncio.AbstractEventLoop | None = None
+    ) -> ExploreSessionRuntime:
         """Return the connection runtime, creating one for direct embeddings."""
 
         from .explore_session import ExploreSessionRuntime
 
         with self._view_lock:
-            loop = _running_event_loop()
+            loop = _loop if _loop is not None else _running_event_loop()
             if self.explore_runtime is None or (
                 loop is not None
                 and self._explore_loop is not None

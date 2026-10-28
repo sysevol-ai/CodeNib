@@ -3,7 +3,11 @@
 Both selected peers can return current source after an external disk edit in
 a small Python fixture without restarting MCP. This confirms an update-workflow
 gap worth measuring: CodeNib's merged guard rejects stale sessions, but users
-must still rebuild and reconnect. These checks do not establish task benefit.
+required rebuilding and reconnecting in those original checks. The later
+[same-session reload regression](codegraph_reload_2026_10_27.json) recovers after
+an explicit rebuild without reconnecting; automatic source-driven rebuilding
+remains unimplemented. Original peer checks and matched-pilot observations are
+unchanged. These checks do not establish task benefit.
 
 The [retained receipts](codegraph_peers_2026_10_27.json) contain exact harnesses,
 package identities, tool schemas, source hashes, setup failures, controller

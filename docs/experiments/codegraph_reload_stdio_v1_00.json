@@ -1,0 +1,504 @@
+{
+  "scope": "Synthetic source-checkout developer regression, warm managed SCIP 0.6.6 and BM25. One real stdio MCP process/connection; no model/SDK inference, external users or task-benefit claim.",
+  "observed_at_utc": "2026-10-28T06:15:54.811607+00:00",
+  "base_commit": "c77f022ca9b3de8996c9f9e45349b0572a00f432",
+  "changed_source_sha256": {
+    "codenib/mcp/server.py": "39df2b32e1985af9084ba3beac55d03746638666ad4d742c4d584dd8f3a62a77",
+    "codenib/mcp/context.py": "f8bdcaf4d604b0eccf23a4e4946bd8ec3fbd5c6d55e076fa51a1db1e6e662b67"
+  },
+  "builds": [
+    {
+      "stage": "initial",
+      "elapsed_seconds": 0.738297400996089,
+      "failed": [],
+      "manifest": {
+        "version": "1.2",
+        "repo": {
+          "path": "/tmp/codenib-mcp-reload-20261027-v1/attempt1/repository",
+          "commit": "779a8ad895bcb27c71bcc68b6d40e4782fd12c4c",
+          "last_indexed_commit": "779a8ad895bcb27c71bcc68b6d40e4782fd12c4c",
+          "source_fingerprint": "sha256-v2:1c9d7709f3bf9f50350a5cefeadaeec96f3fa3226b836619f9b9cd751286f52d",
+          "last_indexed_source_fingerprint": "sha256-v2:1c9d7709f3bf9f50350a5cefeadaeec96f3fa3226b836619f9b9cd751286f52d",
+          "languages": [
+            "python"
+          ],
+          "file_count": 1,
+          "source_selection": {
+            "schema": "codenib.repository-source-selection.v1",
+            "repository_filter_policy": 4,
+            "exclude_subtrees": []
+          },
+          "last_indexed_source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4"
+        },
+        "indexes": {
+          "bm25": {
+            "index_type": "bm25",
+            "path": "/tmp/codenib-mcp-reload-20261027-v1/attempt1/.codenib/repositories/repository-07dab2b1fae4/indexes/bm25",
+            "built_at": "2026-10-28T06:15:54.890959+00:00",
+            "built_at_epoch": 1793168154.890959,
+            "status": "fresh",
+            "config": {
+              "builder_schema": 9,
+              "languages": [
+                "python"
+              ],
+              "max_k": 128,
+              "max_lines_per_chunk": 300,
+              "chunking_failure_policy": "fail",
+              "include_header_epilogue": true,
+              "repository_filter_policy": 4,
+              "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+              "artifact_file_fingerprints": {
+                "documents.json": {
+                  "size": 688,
+                  "sha256": "099607a8d18e701b6015c7513fa36c6565b81d35c3cccee5e5f0b73a0da18c63"
+                },
+                "bm25_metadata.json": {
+                  "size": 146,
+                  "sha256": "71e26423332d9d2081c2636a8c750fed33ee18f71b936cb1b6a67a9a59eae807"
+                }
+              },
+              "chunk_count": 2,
+              "source_file_count": 1,
+              "file_count": 2
+            },
+            "metadata": {
+              "builder_schema": 9,
+              "languages": [
+                "python"
+              ],
+              "max_k": 128,
+              "max_lines_per_chunk": 300,
+              "chunking_failure_policy": "fail",
+              "include_header_epilogue": true,
+              "repository_filter_policy": 4,
+              "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+              "artifact_file_fingerprints": {
+                "documents.json": {
+                  "size": 688,
+                  "sha256": "099607a8d18e701b6015c7513fa36c6565b81d35c3cccee5e5f0b73a0da18c63"
+                },
+                "bm25_metadata.json": {
+                  "size": 146,
+                  "sha256": "71e26423332d9d2081c2636a8c750fed33ee18f71b936cb1b6a67a9a59eae807"
+                }
+              },
+              "chunk_count": 2,
+              "source_file_count": 1,
+              "file_count": 2,
+              "build_duration_seconds": 0.04
+            },
+            "commit": "779a8ad895bcb27c71bcc68b6d40e4782fd12c4c",
+            "source_fingerprint": "sha256-v2:1c9d7709f3bf9f50350a5cefeadaeec96f3fa3226b836619f9b9cd751286f52d",
+            "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4"
+          },
+          "symbol_graph": {
+            "index_type": "symbol_graph",
+            "path": "/tmp/codenib-mcp-reload-20261027-v1/attempt1/.codenib/repositories/repository-07dab2b1fae4/indexes/symbol_graph",
+            "built_at": "2026-10-28T06:15:55.565872+00:00",
+            "built_at_epoch": 1793168155.565872,
+            "status": "fresh",
+            "config": {
+              "builder_schema": 7,
+              "languages": [
+                "python"
+              ],
+              "graph_route": "active",
+              "exclude_patterns": [
+                "**/.codenib_cache/**",
+                "**/.env/**",
+                "**/.git/**",
+                "**/.hg/**",
+                "**/.mypy_cache/**",
+                "**/.next/**",
+                "**/.pytest_cache/**",
+                "**/.ruff_cache/**",
+                "**/.svn/**",
+                "**/.tox/**",
+                "**/.venv/**",
+                "**/__pycache__/**",
+                "**/build/**",
+                "**/dist/**",
+                "**/env/**",
+                "**/htmlcov/**",
+                "**/node_modules/**",
+                "**/site/**",
+                "**/target/**",
+                "**/third_party/**",
+                "**/vendor/**",
+                "**/venv/**",
+                ".codenib_cache/**",
+                ".env/**",
+                ".git/**",
+                ".hg/**",
+                ".mypy_cache/**",
+                ".next/**",
+                ".pytest_cache/**",
+                ".ruff_cache/**",
+                ".svn/**",
+                ".tox/**",
+                ".venv/**",
+                "__pycache__/**",
+                "build/**",
+                "dist/**",
+                "env/**",
+                "htmlcov/**",
+                "node_modules/**",
+                "site/**",
+                "target/**",
+                "third_party/**",
+                "vendor/**",
+                "venv/**"
+              ],
+              "allow_partial_languages": false,
+              "allow_partial_index": false,
+              "source_coverage_fallback": false,
+              "allow_project_preparation": false,
+              "target_dir": null,
+              "repository_filter_policy": 4,
+              "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+              "node_count": 4,
+              "edge_count": 4,
+              "language": "python",
+              "available_languages": [
+                "python"
+              ],
+              "compiler_available_languages": [
+                "python"
+              ],
+              "index_generation_reports": {
+                "python": {
+                  "backend": "scip-python",
+                  "status": "complete",
+                  "complete": true,
+                  "partial": false,
+                  "document_count": 1
+                }
+              },
+              "scip_decoded_artifacts": {
+                "python": {
+                  "relative_path": "index.decoded",
+                  "size": 1667,
+                  "sha256": "1ee11037f88afa711ac10414941176cda22222dc71293502220bcba778cb9c01"
+                }
+              },
+              "graph_artifact": {
+                "relative_path": "graph.pkl",
+                "size": 728,
+                "sha256": "e8c6ff3311cd76a5c3c605074d2ebf9efab95c1b453347e6db1caf70675db285"
+              },
+              "lsp_occurrence_artifact": {
+                "relative_path": "lsp_index.pkl",
+                "size": 432,
+                "sha256": "ace85cba2ec385ea26035dbcde3d7c2a3f55d2d22d5ba5cdd3d7a743b56eb9d0"
+              },
+              "query_surface_sha256": "8d2fc12123f2b1b070435ca7e08c06a40b57e23a8bbef839bdfa4169a6decc82",
+              "update_mode": "full_rebuild",
+              "partial_index": false,
+              "failed_languages": {},
+              "partial": false,
+              "source_selection_report": {
+                "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+                "nodes_before": 4,
+                "nodes_after": 4,
+                "edges_before": 4,
+                "edges_after": 4,
+                "removed_excluded_path_count": 0,
+                "excluded_path_count_after": 0,
+                "invalid_path_count_before": 0,
+                "invalid_path_count_after": 0
+              }
+            },
+            "metadata": {
+              "builder_schema": 7,
+              "languages": [
+                "python"
+              ],
+              "graph_route": "active",
+              "exclude_patterns": [
+                "**/.codenib_cache/**",
+                "**/.env/**",
+                "**/.git/**",
+                "**/.hg/**",
+                "**/.mypy_cache/**",
+                "**/.next/**",
+                "**/.pytest_cache/**",
+                "**/.ruff_cache/**",
+                "**/.svn/**",
+                "**/.tox/**",
+                "**/.venv/**",
+                "**/__pycache__/**",
+                "**/build/**",
+                "**/dist/**",
+                "**/env/**",
+                "**/htmlcov/**",
+                "**/node_modules/**",
+                "**/site/**",
+                "**/target/**",
+                "**/third_party/**",
+                "**/vendor/**",
+                "**/venv/**",
+                ".codenib_cache/**",
+                ".env/**",
+                ".git/**",
+                ".hg/**",
+                ".mypy_cache/**",
+                ".next/**",
+                ".pytest_cache/**",
+                ".ruff_cache/**",
+                ".svn/**",
+                ".tox/**",
+                ".venv/**",
+                "__pycache__/**",
+                "build/**",
+                "dist/**",
+                "env/**",
+                "htmlcov/**",
+                "node_modules/**",
+                "site/**",
+                "target/**",
+                "third_party/**",
+                "vendor/**",
+                "venv/**"
+              ],
+              "allow_partial_languages": false,
+              "allow_partial_index": false,
+              "source_coverage_fallback": false,
+              "allow_project_preparation": false,
+              "target_dir": null,
+              "repository_filter_policy": 4,
+              "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+              "node_count": 4,
+              "edge_count": 4,
+              "language": "python",
+              "available_languages": [
+                "python"
+              ],
+              "compiler_available_languages": [
+                "python"
+              ],
+              "index_generation_reports": {
+                "python": {
+                  "backend": "scip-python",
+                  "status": "complete",
+                  "complete": true,
+                  "partial": false,
+                  "document_count": 1
+                }
+              },
+              "scip_decoded_artifacts": {
+                "python": {
+                  "relative_path": "index.decoded",
+                  "size": 1667,
+                  "sha256": "1ee11037f88afa711ac10414941176cda22222dc71293502220bcba778cb9c01"
+                }
+              },
+              "graph_artifact": {
+                "relative_path": "graph.pkl",
+                "size": 728,
+                "sha256": "e8c6ff3311cd76a5c3c605074d2ebf9efab95c1b453347e6db1caf70675db285"
+              },
+              "lsp_occurrence_artifact": {
+                "relative_path": "lsp_index.pkl",
+                "size": 432,
+                "sha256": "ace85cba2ec385ea26035dbcde3d7c2a3f55d2d22d5ba5cdd3d7a743b56eb9d0"
+              },
+              "query_surface_sha256": "8d2fc12123f2b1b070435ca7e08c06a40b57e23a8bbef839bdfa4169a6decc82",
+              "update_mode": "full_rebuild",
+              "partial_index": false,
+              "failed_languages": {},
+              "partial": false,
+              "source_selection_report": {
+                "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+                "nodes_before": 4,
+                "nodes_after": 4,
+                "edges_before": 4,
+                "edges_after": 4,
+                "removed_excluded_path_count": 0,
+                "excluded_path_count_after": 0,
+                "invalid_path_count_before": 0,
+                "invalid_path_count_after": 0
+              },
+              "build_duration_seconds": 0.67
+            },
+            "commit": "779a8ad895bcb27c71bcc68b6d40e4782fd12c4c",
+            "source_fingerprint": "sha256-v2:1c9d7709f3bf9f50350a5cefeadaeec96f3fa3226b836619f9b9cd751286f52d",
+            "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4"
+          }
+        },
+        "capabilities": {
+          "sparse_search": true,
+          "dense_search": false,
+          "hybrid_search": false,
+          "symbol_navigation": true
+        },
+        "compiled_at": "2026-10-28T06:15:55.569298+00:00",
+        "compiled_at_epoch": 1793168155.569298
+      },
+      "before": {
+        "files": {
+          "sample.py": "907c5904b212899d3975779609f09238b04774acfd8783f9ff049b6a79696741"
+        },
+        "git_status": ""
+      },
+      "after": {
+        "files": {
+          "sample.py": "907c5904b212899d3975779609f09238b04774acfd8783f9ff049b6a79696741"
+        },
+        "git_status": ""
+      }
+    }
+  ],
+  "calls": [
+    {
+      "stage": "initial",
+      "name": "search_bm25",
+      "arguments": {
+        "query": "alpha",
+        "top_k": 6
+      },
+      "payload": {
+        "meta": {
+          "io.modelcontextprotocol/serverInfo": {
+            "name": "codenib",
+            "version": "0.2.4"
+          }
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"node_name\": \"sample.py:caller()\",\n  \"type\": \"function\",\n  \"file\": \"sample.py\",\n  \"node_id\": \"sample.py:caller()\",\n  \"start_line\": 4,\n  \"end_line\": 5,\n  \"score\": 0.0,\n  \"content\": \"def caller():\\n    return alpha()\\n\"\n}",
+            "annotations": null,
+            "meta": null
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"node_name\": \"sample.py:alpha()\",\n  \"type\": \"function\",\n  \"file\": \"sample.py\",\n  \"node_id\": \"sample.py:alpha()\",\n  \"start_line\": 1,\n  \"end_line\": 2,\n  \"score\": 0.0,\n  \"content\": \"def alpha():\\n    return 1\\n\"\n}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "result": [
+            {
+              "node_name": "sample.py:caller()",
+              "type": "function",
+              "file": "sample.py",
+              "node_id": "sample.py:caller()",
+              "start_line": 4,
+              "end_line": 5,
+              "score": 0.0,
+              "content": "def caller():\n    return alpha()\n"
+            },
+            {
+              "node_name": "sample.py:alpha()",
+              "type": "function",
+              "file": "sample.py",
+              "node_id": "sample.py:alpha()",
+              "start_line": 1,
+              "end_line": 2,
+              "score": 0.0,
+              "content": "def alpha():\n    return 1\n"
+            }
+          ]
+        },
+        "is_error": false,
+        "result_type": "complete"
+      },
+      "elapsed_seconds": 0.02231159247457981
+    },
+    {
+      "stage": "initial",
+      "name": "read_source",
+      "arguments": {
+        "file_path": "sample.py",
+        "start_line": 1,
+        "end_line": 5
+      },
+      "payload": {
+        "meta": {
+          "io.modelcontextprotocol/serverInfo": {
+            "name": "codenib",
+            "version": "0.2.4"
+          }
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"sample.py\",\n  \"start_line\": 1,\n  \"end_line\": 5,\n  \"content\": \"def alpha():\\n    return 1\\n\\ndef caller():\\n    return alpha()\\n\",\n  \"content_projection\": {\n    \"truncated\": false,\n    \"original_chars\": 60,\n    \"returned_chars\": 60,\n    \"strategy\": \"complete\"\n  },\n  \"source\": {\n    \"repository\": \"/tmp/codenib-mcp-reload-20261027-v1/attempt1/repository\",\n    \"commit\": \"779a8ad895bcb27c71bcc68b6d40e4782fd12c4c\",\n    \"source_fingerprint\": \"sha256-v2:1c9d7709f3bf9f50350a5cefeadaeec96f3fa3226b836619f9b9cd751286f52d\",\n    \"verified\": true,\n    \"verification_scope\": \"content-bytes\",\n    \"commit_verified\": false,\n    \"checkout_state\": \"not-attested\"\n  }\n}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "file": "sample.py",
+          "start_line": 1,
+          "end_line": 5,
+          "content": "def alpha():\n    return 1\n\ndef caller():\n    return alpha()\n",
+          "content_projection": {
+            "truncated": false,
+            "original_chars": 60,
+            "returned_chars": 60,
+            "strategy": "complete"
+          },
+          "source": {
+            "repository": "/tmp/codenib-mcp-reload-20261027-v1/attempt1/repository",
+            "commit": "779a8ad895bcb27c71bcc68b6d40e4782fd12c4c",
+            "source_fingerprint": "sha256-v2:1c9d7709f3bf9f50350a5cefeadaeec96f3fa3226b836619f9b9cd751286f52d",
+            "verified": true,
+            "verification_scope": "content-bytes",
+            "commit_verified": false,
+            "checkout_state": "not-attested"
+          }
+        },
+        "is_error": false,
+        "result_type": "complete"
+      },
+      "elapsed_seconds": 0.00358385406434536
+    },
+    {
+      "stage": "initial",
+      "name": "dependency_subgraph",
+      "arguments": {
+        "symbol": "alpha",
+        "direction": "dependencies",
+        "depth": 1
+      },
+      "payload": {
+        "meta": {
+          "io.modelcontextprotocol/serverInfo": {
+            "name": "codenib",
+            "version": "0.2.4"
+          }
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"root\": \"sample.py:alpha()\",\n  \"direction\": \"callees\",\n  \"nodes\": [],\n  \"edges\": [],\n  \"truncated\": false,\n  \"note\": \"\"\n}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "root": "sample.py:alpha()",
+          "direction": "callees",
+          "nodes": [],
+          "edges": [],
+          "truncated": false,
+          "note": ""
+        },
+        "is_error": false,
+        "result_type": "complete"
+      },
+      "elapsed_seconds": 0.0037834234535694122
+    }
+  ],
+  "checks": [],
+  "stdio_connection_count": 1,
+  "server_pid": 4086730,
+  "status": "failed",
+  "failure": {
+    "type": "ExceptionGroup",
+    "message": "unhandled errors in a TaskGroup (1 sub-exception)"
+  }
+}
