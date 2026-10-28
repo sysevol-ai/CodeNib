@@ -226,8 +226,12 @@ def test_ci_reuses_versioned_toolchains_and_serializes_consumers() -> None:
     assert (
         'SCIP_PYTHON_SHA="$(git -C third_party/scip-python rev-parse HEAD)"' in action
     )
-    assert 'MARKER="$TOOLCHAIN_CACHE/scip-python.sha"' in action
-    assert 'grep -qx "$SCIP_PYTHON_SHA" "$MARKER"' in action
+    assert (
+        'SCIP_PYTHON_PREFIX="$TOOLCHAIN_CACHE/scip-python/$SCIP_PYTHON_SHA"' in action
+    )
+    assert 'if [ -x "$SCIP_PYTHON_BIN" ]; then' in action
+    assert 'echo "$SCIP_PYTHON_PREFIX/bin" >> "$GITHUB_PATH"' in action
+    assert 'if [ "$actual" != "$CODENIB_CI_SCIP_PYTHON" ]; then' in action
     assert 'export CARGO_HOME="$TOOLCHAIN_CACHE/cargo"' in action
     assert 'export RUSTUP_HOME="$TOOLCHAIN_CACHE/rustup"' in action
     assert 'RUSTUP="$CARGO_HOME/bin/rustup"' in action
