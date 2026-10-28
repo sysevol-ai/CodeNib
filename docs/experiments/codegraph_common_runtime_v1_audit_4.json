@@ -1,0 +1,28 @@
+{
+  "original_file": "runtime-audit-initial.json",
+  "original_file_sha256": "9c0d0051e73a2984ed3d134d60616af84dc11a924c5ced3bf483a75f33820e40",
+  "record_index": 4,
+  "receipt": {
+    "case": "flask",
+    "arm": "codegraph",
+    "prepared_image": "sha256:d806fe55e41107c5a424b56dfbc994e477496be01a57ccadc0a1ea85f3808529",
+    "owner": "8212f988c2bd473e91af26a69474b07a",
+    "controller_sha256": "c1d8e0ad2b8895ef9a06f97203b248f7f05db22c04ff743218848ff220b00dff",
+    "container_id": "62fc1f1600c87be579b1ee4e9db2066892b9373d25cfba51d414ed9dc966fa27",
+    "argv": [
+      "node",
+      "-e",
+      "const fs=require(\"fs\"),path=require(\"path\"),crypto=require(\"crypto\");let base=\"/opt/pilot-tools/codegraph-runtime\",files={};function walk(p){for(const e of fs.readdirSync(p,{withFileTypes:true})){let q=path.join(p,e.name);if(e.isDirectory())walk(q);else if(e.isFile())files[q]=crypto.createHash(\"sha256\").update(fs.readFileSync(q)).digest(\"hex\")}}walk(base);console.log(JSON.stringify({node:process.version,package:require(\"/opt/pilot-tools/npm/lib/node_modules/@colbymchenry/codegraph/package.json\").version,runtime_files:files}))"
+    ],
+    "returncode": 1,
+    "stdout": "",
+    "stderr": "node:fs:1590\n  const result = binding.readdir(\n                         ^\n\nError: ENOENT: no such file or directory, scandir '/opt/pilot-tools/codegraph-runtime'\n    at Object.readdirSync (node:fs:1590:26)\n    at walk ([eval]:1:171)\n    at [eval]:1:359\n    at [eval]:1:546\n    at runScriptInThisContext (node:internal/vm:209:10)\n    at node:internal/process/execution:446:12\n    at [eval]-wrapper:6:24\n    at runScriptInContext (node:internal/process/execution:444:60)\n    at evalFunction (node:internal/process/execution:279:30)\n    at evalTypeScript (node:internal/process/execution:291:3) {\n  errno: -2,\n  code: 'ENOENT',\n  syscall: 'scandir',\n  path: '/opt/pilot-tools/codegraph-runtime'\n}\n\nNode.js v22.23.1\n",
+    "status": "failed",
+    "failure": {
+      "type": "AssertionError",
+      "message": "('flask', 'codegraph', \"node:fs:1590\\n  const result = binding.readdir(\\n                         ^\\n\\nError: ENOENT: no such file or directory, scandir '/opt/pilot-tools/codegraph-runtime'\\n    at Object.readdirSync (node:fs:1590:26)\\n    at walk ([eval]:1:171)\\n    at [eval]:1:359\\n    at [eval]:1:546\\n    at runScriptInThisContext (node:internal/vm:209:10)\\n    at node:internal/process/execution:446:12\\n    at [eval]-wrapper:6:24\\n    at runScriptInContext (node:internal/process/execution:444:60)\\n    at evalFunction (node:internal/process/execution:279:30)\\n    at evalTypeScript (node:internal/process/execution:291:3) {\\n  errno: -2,\\n  code: 'ENOENT',\\n  syscall: 'scandir',\\n  path: '/opt/pilot-tools/codegraph-runtime'\\n}\\n\\nNode.js v22.23.1\\n\")"
+    },
+    "container_removed": true
+  },
+  "identity_is_exact_json_parse_of_stdout": false
+}

@@ -7,9 +7,11 @@ original matched workflows execute and their repairs pass the selected native
 grading. Source review retains four protocol-unassessable observations; the
 frozen outcome is insufficient evidence and promotion is held. Separate
 model-free peer controls now pass the original lookup on all three sources.
-Common-runtime and cold/update admission, a corrected prospective benefit
-protocol, broader provider coverage, automatic rebuilding and external trials
-remain open.
+Separate common-runtime controls retain all four arms' actual installation,
+source lookup and source-addition update costs, including Codegraph's pending
+replies and bounded retry. A full corrected source rubric, prospective benefit
+protocol, broader provider coverage, representative workflows beyond these
+controls, automatic rebuilding and external trials remain open.
 Established 2026-10-26
 (Pacific); target review 2026-11-09.
 Current outcomes and open gates belong to [adoption A0](../adoption_roadmap.md).
@@ -189,7 +191,10 @@ The separate [peer source-admission controls](codegraph_peer_source_admission.md
 retain unattended configuration and first lookup on all three pinned sources,
 including their preparation/controller failures and bounded source omissions.
 They use preinstalled warm runtimes and do not replace the original failed
-setups or complete installation/cold/update admission for a future cohort.
+setups. The [common-runtime controls](codegraph_common_runtime_admission.md)
+separately bind every arm to the same project environment and retain actual
+installation and source-addition update costs. They do not freeze the next
+model protocol or establish a whole-task benefit.
 Work on offline reproduction and scoped fixes can proceed. A live experiment must
 not silently substitute the graph-free search pair or grep/Jev for CodeGraph.
 

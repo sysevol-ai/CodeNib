@@ -1,0 +1,879 @@
+{
+  "attempt": "requests-codegraph-watcher1",
+  "original_receipt_sha256": "9877cd1e676d5fec14d913fa8e0151933023cb6074d0769575390a66b592bf22",
+  "receipt": {
+    "scope": "Separate model-free pending-sync recovery with a prospectively declared one-second wait and at most one same-session retry. Preserve the original immediate-query control and every reply/cost; no model benefit or update-latency benchmark.",
+    "case": "requests",
+    "arm": "codegraph",
+    "instance_id": "psf__requests-1921",
+    "owner": "94cd0ebfcf5142889c8fcd091c4325da",
+    "started_utc": "2026-10-28T13:17:19.822063+00:00",
+    "controller_sha256": "7f21c7ca14ad20b9b1f0ae128b92ef65a4a8bdf2f53bf2a4574e9bf9ff9c8e91",
+    "source_commit": "733343e8e1f8ada6ed74ddf8860ac65754a897a5",
+    "base_image": "sha256:ac3aeb4416832db7147d67ee205a1e1da97f5f13d73a587e0cd4457af5acb791",
+    "commands": [
+      {
+        "label": "common-directories",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-common-admission-20261028/requests-codegraph-watcher1/workspace",
+          "e9af56f1fb509984c0d688dfb7bc3e223e507b226d8a60daa4f14d478578c04e",
+          "mkdir",
+          "-p",
+          "/opt/pilot-tools/bin",
+          "/opt/pilot-state",
+          "/opt/pilot-inputs"
+        ],
+        "returncode": 0,
+        "seconds": 0.05225010961294174,
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "output": ""
+      },
+      {
+        "label": "common-git",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-common-admission-20261028/requests-codegraph-watcher1/workspace",
+          "e9af56f1fb509984c0d688dfb7bc3e223e507b226d8a60daa4f14d478578c04e",
+          "git",
+          "config",
+          "--global",
+          "--add",
+          "safe.directory",
+          "/tmp/codenib-common-admission-20261028/requests-codegraph-watcher1/workspace"
+        ],
+        "returncode": 0,
+        "seconds": 0.05077521130442619,
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "output": ""
+      },
+      {
+        "label": "neutral-boundary",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-common-admission-20261028/requests-codegraph-watcher1/workspace",
+          "e9af56f1fb509984c0d688dfb7bc3e223e507b226d8a60daa4f14d478578c04e",
+          "/opt/pilot-runtimes/python/bin/python3.13",
+          "-c",
+          "import json,shutil;from pathlib import Path;print(json.dumps({\"testbed_files\":sorted(p.name for p in Path(\"/testbed\").iterdir()),\"optional_clis\":{n:shutil.which(n) for n in [\"serena\",\"codegraph\",\"codenib\"]}}))"
+        ],
+        "returncode": 0,
+        "seconds": 0.07820872589945793,
+        "log_sha256": "423972e1042dc505563384f1a519413a8796cfc27bd098fc5a1e4739616db494",
+        "output": "{\"testbed_files\": [], \"optional_clis\": {\"serena\": null, \"codegraph\": null, \"codenib\": null}}\n"
+      },
+      {
+        "label": "common-project",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-common-admission-20261028/requests-codegraph-watcher1/workspace",
+          "e9af56f1fb509984c0d688dfb7bc3e223e507b226d8a60daa4f14d478578c04e",
+          "/opt/miniconda3/envs/testbed/bin/python",
+          "-m",
+          "pip",
+          "install",
+          "."
+        ],
+        "returncode": 0,
+        "seconds": 1.1274850592017174,
+        "log_sha256": "1f6483b185f84d5304959da0e7ff67cc5af84efbec925c0998f5273a8781772d",
+        "output": "Processing ./.\n  Installing build dependencies: started\n  Installing build dependencies: finished with status 'done'\n  Getting requirements to build wheel: started\n  Getting requirements to build wheel: finished with status 'done'\n  Preparing metadata (pyproject.toml): started\n  Preparing metadata (pyproject.toml): finished with status 'done'\nBuilding wheels for collected packages: requests\n  Building wheel for requests (pyproject.toml): started\n  Building wheel for requests (pyproject.toml): finished with status 'done'\n  Created wheel for requests: filename=requests-2.3.0-py2.py3-none-any.whl size=441521 sha256=16aa274b25bb9c86207fcd422f564d7e6c20d92c33a53daa6460a08bb633fb7e\n  Stored in directory: /tmp/pip-ephem-wheel-cache-ej2a61z7/wheels/2d/30/45/e11d89992782290317693140e936a91f9c7d855f2b42c26bac\nSuccessfully built requests\nInstalling collected packages: requests\nSuccessfully installed requests-2.3.0\nWARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your system unusable. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv. Use the --root-user-action option if you know what you are doing and want to suppress this warning.\n"
+      },
+      {
+        "label": "common-packages",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-common-admission-20261028/requests-codegraph-watcher1/workspace",
+          "e9af56f1fb509984c0d688dfb7bc3e223e507b226d8a60daa4f14d478578c04e",
+          "/opt/miniconda3/envs/testbed/bin/python",
+          "-c",
+          "import importlib.metadata as m,json,sys;print(json.dumps({\"python\":sys.version,\"packages\":sorted({(d.metadata[\"Name\"],d.version) for d in m.distributions()})}))"
+        ],
+        "returncode": 0,
+        "seconds": 0.09997768513858318,
+        "log_sha256": "6e24a3c019355251755ba80a035af2b0ee0b6a0ca641e60c2ca35eea1fd59a7d",
+        "output": "{\"python\": \"3.9.25 (main, Nov  3 2025, 22:33:42) \\n[GCC 11.2.0]\", \"packages\": [[\"Pygments\", \"2.19.1\"], [\"atomicwrites\", \"1.4.1\"], [\"attrs\", \"26.1.0\"], [\"exceptiongroup\", \"1.3.0\"], [\"iniconfig\", \"2.1.0\"], [\"more-itertools\", \"10.8.0\"], [\"packaging\", \"25.0\"], [\"pip\", \"26.0.1\"], [\"pluggy\", \"0.13.1\"], [\"py\", \"1.11.0\"], [\"pytest\", \"4.6.11\"], [\"requests\", \"2.3.0\"], [\"setuptools\", \"80.9.0\"], [\"six\", \"1.17.0\"], [\"tomli\", \"2.2.1\"], [\"typing_extensions\", \"4.15.0\"], [\"wcwidth\", \"0.9.4\"], [\"wheel\", \"0.45.1\"]]}\n"
+      },
+      {
+        "label": "common-runtimes",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-common-admission-20261028/requests-codegraph-watcher1/workspace",
+          "e9af56f1fb509984c0d688dfb7bc3e223e507b226d8a60daa4f14d478578c04e",
+          "/bin/bash",
+          "-lc",
+          "python --version\nnode --version\nuv --version\nclaude --version\nrg --version"
+        ],
+        "returncode": 0,
+        "seconds": 0.14244535006582737,
+        "log_sha256": "6f38bf3c870cf120860496144345ac4eca1940131560a2b79b1720b01bccd036",
+        "output": "Python 3.9.25\nv22.23.1\nuv 0.13.6 (aarch64-unknown-linux-gnu)\n2.1.310 (Claude Code)\nripgrep 13.0.0\n-SIMD -AVX (compiled)\n"
+      },
+      {
+        "label": "install-product",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-common-admission-20261028/requests-codegraph-watcher1/workspace",
+          "e9af56f1fb509984c0d688dfb7bc3e223e507b226d8a60daa4f14d478578c04e",
+          "npm",
+          "install",
+          "--global",
+          "--prefix",
+          "/opt/pilot-tools/npm",
+          "@colbymchenry/codegraph@1.6.2"
+        ],
+        "returncode": 0,
+        "seconds": 5.525091778486967,
+        "log_sha256": "fabb28d6da92ffd83b8b184d0fd0befb3e32dc4ea794f0a12ccc673e2ffe0819",
+        "output": "\nadded 2 packages in 5s\nnpm notice\nnpm notice New major version of npm available! 10.9.8 -> 12.2.1\nnpm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.1\nnpm notice To update run: npm install -g npm@12.2.1\nnpm notice\n"
+      },
+      {
+        "label": "product-launcher",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-common-admission-20261028/requests-codegraph-watcher1/workspace",
+          "e9af56f1fb509984c0d688dfb7bc3e223e507b226d8a60daa4f14d478578c04e",
+          "ln",
+          "-s",
+          "/opt/pilot-tools/npm/bin/codegraph",
+          "/opt/pilot-tools/bin/codegraph"
+        ],
+        "returncode": 0,
+        "seconds": 0.05575990676879883,
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "output": ""
+      },
+      {
+        "label": "prepare-bundle",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-common-admission-20261028/requests-codegraph-watcher1/workspace",
+          "e9af56f1fb509984c0d688dfb7bc3e223e507b226d8a60daa4f14d478578c04e",
+          "codegraph",
+          "--version"
+        ],
+        "returncode": 0,
+        "seconds": 0.14606074802577496,
+        "log_sha256": "a2d5e268fe70979caccd895156b3d33bd61a3cc7e660ab7a5b07066849b3e248",
+        "output": "1.6.2\n"
+      },
+      {
+        "label": "initialize-product",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-common-admission-20261028/requests-codegraph-watcher1/workspace",
+          "e9af56f1fb509984c0d688dfb7bc3e223e507b226d8a60daa4f14d478578c04e",
+          "codegraph",
+          "init",
+          "--yes",
+          "/tmp/codenib-common-admission-20261028/requests-codegraph-watcher1/workspace"
+        ],
+        "returncode": 0,
+        "seconds": 0.9707342218607664,
+        "log_sha256": "88f2d16c9227fd46f7a072074fe771935a37f0588350ab8b2f1e5620003c52d9",
+        "output": "\u250c  Initializing CodeGraph\n\u2502\n\u25c6  Initialized in /tmp/codenib-common-admission-20261028/requests-codegraph-watcher1/workspace\n\u2502\nScanning files...\nParsing code...\nResolving refs...\nLinking dynamic dispatch...\n\u2502\n\u25c6  Indexed 76 files\n\u2502\n\u25cf  1,488 nodes, 3,182 edges in 337ms\n\u2502\n\u2514  Done\n\n"
+      },
+      {
+        "label": "workspace-owner-before-isolation",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-common-admission-20261028/requests-codegraph-watcher1/workspace",
+          "e9af56f1fb509984c0d688dfb7bc3e223e507b226d8a60daa4f14d478578c04e",
+          "chown",
+          "-R",
+          "1001:1001",
+          "/tmp/codenib-common-admission-20261028/requests-codegraph-watcher1/workspace"
+        ],
+        "returncode": 0,
+        "seconds": 0.05407528020441532,
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "output": ""
+      },
+      {
+        "label": "final-workspace-owner",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-common-admission-20261028/requests-codegraph-watcher1/workspace",
+          "300aaf1a776498bde31c0fb8ba055406b1e70bc64985e26cdfa8426a54c0b0ad",
+          "chown",
+          "-R",
+          "1001:1001",
+          "/tmp/codenib-common-admission-20261028/requests-codegraph-watcher1/workspace"
+        ],
+        "returncode": 0,
+        "seconds": 0.051549309864640236,
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "output": ""
+      }
+    ],
+    "calls": [
+      {
+        "name": "codegraph_explore",
+        "arguments": {
+          "query": "prepare_request requests/sessions.py"
+        },
+        "seconds": 0.358337227255106,
+        "reply": {
+          "meta": null,
+          "content": [
+            {
+              "type": "text",
+              "text": "**Exploration: prepare_request requests/sessions.py**\n\nFound 53 symbols across 3 files. 1 file pinned from the query.\n\n**Blast radius \u2014 what depends on these (update/verify before editing)**\n\n- `prepare_request` (requests/sessions.py:260) \u2014 4 callers in `requests/sessions.py`; tests: `test_requests.py`\n- `prepare` (requests/models.py:289) \u2014 2 callers in `requests/models.py`, `requests/sessions.py`; tested via callers: `test_requests.py`\n- `request` (requests/api.py:17) \u2014 9 callers in `requests/api.py`, `requests/__init__.py`; tests: `test_requests.py`\n\n**Source Code**\n\n> The code below is the **verbatim, current on-disk source** of these files \u2014 re-read from disk on this call and line-numbered, byte-for-byte identical to what the Read tool returns. It is NOT a summary, outline, or stale cache. Treat each block as a Read you have already performed: do not Read a file shown here.\n\n**`requests/sessions.py`** \u2014 merge_setting(calls), calls(calls), setdefault(calls), instantiates(instantiates), merge_cookies(calls), +54 more\n\n```python\n205\t        #: A case-insensitive dictionary of headers to be sent on each\n206\t        #: :class:`Request <Request>` sent from this\n207\t        #: :class:`Session <Session>`.\n208\t        self.headers = default_headers()\n209\t\n210\t        #: Default Authentication tuple or object to attach to\n211\t        #: :class:`Request <Request>`.\n\n... (gap) ...\n\n257\t    def __exit__(self, *args):\n258\t        self.close()\n259\t\n260\t    def prepare_request(self, request):\n261\t        \"\"\"Constructs a :class:`PreparedRequest <PreparedRequest>` for\n262\t        transmission and returns it. The :class:`PreparedRequest` has settings\n263\t        merged from the :class:`Request <Request>` instance and those of the\n264\t        :class:`Session`.\n265\t\n266\t        :param request: :class:`Request` instance to prepare with this\n267\t            session's settings.\n268\t        \"\"\"\n269\t        cookies = request.cookies or {}\n270\t\n271\t        # Bootstrap CookieJar.\n272\t        if not isinstance(cookies, cookielib.CookieJar):\n273\t            cookies = cookiejar_from_dict(cookies)\n274\t\n275\t        # Merge with session cookies\n276\t        merged_cookies = merge_cookies(\n277\t            merge_cookies(RequestsCookieJar(), self.cookies), cookies)\n278\t\n279\t\n280\t        # Set environment's basic authentication if not explicitly set.\n281\t        auth = request.auth\n282\t        if self.trust_env and not auth and not self.auth:\n283\t            auth = get_netrc_auth(request.url)\n284\t\n285\t        p = PreparedRequest()\n286\t        p.prepare(\n287\t            method=request.method.upper(),\n288\t            url=request.url,\n289\t            files=request.files,\n290\t            data=request.data,\n291\t            headers=merge_setting(request.headers, self.headers, dict_class=CaseInsensitiveDict),\n292\t            params=merge_setting(request.params, self.params),\n293\t            auth=merge_setting(auth, self.auth),\n294\t            cookies=merged_cookies,\n295\t            hooks=merge_hooks(request.hooks, self.hooks),\n296\t        )\n297\t        return p\n298\t\n299\t    def request(self, method, url,\n300\t        params=None,\n\n... (gap) ...\n\n392\t\n393\t        return resp\n394\t\n395\t    def get(self, url, **kwargs):\n396\t        \"\"\"Sends a GET request. Returns :class:`Response` object.\n397\t\n398\t        :param url: URL for the new :class:`Request` object.\n399\t        :param \\*\\*kwargs: Optional arguments that ``request`` takes.\n400\t        \"\"\"\n401\t\n402\t        kwargs.setdefault('allow_redirects', True)\n403\t        return self.request('GET', url, **kwargs)\n404\t\n405\t    def options(self, url, **kwargs):\n406\t        \"\"\"Sends a OPTIONS request. Returns :class:`Response` object.\n407\t\n408\t        :param url: URL for the new :class:`Request` object.\n409\t        :param \\*\\*kwargs: Optional arguments that ``request`` takes.\n410\t        \"\"\"\n411\t\n412\t        kwargs.setdefault('allow_redirects', True)\n413\t        return self.request('OPTIONS', url, **kwargs)\n414\t\n415\t    def head(self, url, **kwargs):\n416\t        \"\"\"Sends a HEAD request. Returns :class:`Response` object.\n417\t\n418\t        :param url: URL for the new :class:`Request` object.\n419\t        :param \\*\\*kwargs: Optional arguments that ``request`` takes.\n420\t        \"\"\"\n421\t\n422\t        kwargs.setdefault('allow_redirects', False)\n423\t        return self.request('HEAD', url, **kwargs)\n424\t\n425\t    def post(self, url, data=None, **kwargs):\n426\t        \"\"\"Sends a POST request. Returns :class:`Response` object.\n427\t\n428\t        :param url: URL for the new :class:`Request` object.\n429\t        :param data: (optional) Dictionary, bytes, or file-like object to send in the body of the :class:`Request`.\n430\t        :param \\*\\*kwargs: Optional arguments that ``request`` takes.\n431\t        \"\"\"\n432\t\n433\t        return self.request('POST', url, data=data, **kwargs)\n434\t\n435\t    def put(self, url, data=None, **kwargs):\n436\t        \"\"\"Sends a PUT request. Returns :class:`Response` object.\n437\t\n438\t        :param url: URL for the new :class:`Request` object.\n439\t        :param data: (optional) Dictionary, bytes, or file-like object to send in the body of the :class:`Request`.\n440\t        :param \\*\\*kwargs: Optional arguments that ``request`` takes.\n441\t        \"\"\"\n442\t\n443\t        return self.request('PUT', url, data=data, **kwargs)\n444\t\n445\t    def patch(self, url, data=None, **kwargs):\n446\t        \"\"\"Sends a PATCH request. Returns :class:`Response` object.\n447\t\n448\t        :param url: URL for the new :class:`Request` object.\n449\t        :param data: (optional) Dictionary, bytes, or file-like object to send in the body of the :class:`Request`.\n450\t        :param \\*\\*kwargs: Optional arguments that ``request`` takes.\n451\t        \"\"\"\n452\t\n453\t        return self.request('PATCH', url,  data=data, **kwargs)\n454\t\n455\t    def delete(self, url, **kwargs):\n456\t        \"\"\"Sends a DELETE request. Returns :class:`Response` object.\n457\t\n458\t        :param url: URL for the new :class:`Request` object.\n459\t        :param \\*\\*kwargs: Optional arguments that ``request`` takes.\n460\t        \"\"\"\n461\t\n462\t        return self.request('DELETE', url, **kwargs)\n463\t\n464\t    def send(self, request, **kwargs):\n465\t        \"\"\"Send a given PreparedRequest.\"\"\"\n\n... (gap) ...\n\n566\tdef session():\n567\t    \"\"\"Returns a :class:`Session` for context-management.\"\"\"\n568\t\n569\t    return Session()\n570\t\n```\n\n**`requests/models.py`** \u2014 instantiates(instantiates), builtin_str(calls), _encode_params(calls), RequestHooksMixin(extends), register_hook(calls), +37 more\n\n```python\n82\t            return data\n83\t        elif hasattr(data, '__iter__'):\n84\t            result = []\n85\t            for k, vs in to_key_val_list(data):\n86\t                if isinstance(vs, basestring) or not hasattr(vs, '__iter__'):\n87\t                    vs = [vs]\n88\t                for v in vs:\n\n... (gap) ...\n\n109\t            raise ValueError(\"Data must not be a string.\")\n110\t\n111\t        new_fields = []\n112\t        fields = to_key_val_list(data or {})\n113\t        files = to_key_val_list(files or {})\n114\t\n115\t        for field, val in fields:\n116\t            if isinstance(val, basestring) or not hasattr(val, '__iter__'):\n\n... (gap) ...\n\n178\t            return False\n179\t\n180\t\n181\tclass Request(RequestHooksMixin):\n182\t    \"\"\"A user-created :class:`Request <Request>` object.\n183\t\n184\t    Used to prepare a :class:`PreparedRequest <PreparedRequest>`, which is sent to the server.\n185\t\n186\t    :param method: HTTP method to use.\n187\t    :param url: URL to send.\n188\t    :param headers: dictionary of headers to send.\n189\t    :param files: dictionary of {filename: fileobject} files to multipart upload.\n190\t    :param data: the body to attach the request. If a dictionary is provided, form-encoding will take place.\n191\t    :param params: dictionary of URL parameters to append to the URL.\n192\t    :param auth: Auth handler or (user, pass) tuple.\n193\t    :param cookies: dictionary or CookieJar of cookies to attach to this request.\n194\t    :param hooks: dictionary of callback hooks, for internal usage.\n195\t\n196\t    Usage::\n197\t\n198\t      >>> import requests\n199\t      >>> req = requests.Request('GET', 'http://httpbin.org/get')\n200\t      >>> req.prepare()\n201\t      <PreparedRequest [GET]>\n202\t\n203\t    \"\"\"\n204\t    def __init__(self,\n205\t        method=None,\n206\t        url=None,\n207\t        headers=None,\n208\t        files=None,\n209\t        data=None,\n210\t        params=None,\n211\t        auth=None,\n212\t        cookies=None,\n213\t        hooks=None):\n214\t\n215\t        # Default empty dicts for dict params.\n216\t        data = [] if data is None else data\n217\t        files = [] if files is None else files\n218\t        headers = {} if headers is None else headers\n219\t        params = {} if params is None else params\n220\t        hooks = {} if hooks is None else hooks\n221\t\n222\t        self.hooks = default_hooks()\n223\t        for (k, v) in list(hooks.items()):\n224\t            self.register_hook(event=k, hook=v)\n225\t\n226\t        self.method = method\n227\t        self.url = url\n228\t        self.headers = headers\n229\t        self.files = files\n230\t        self.data = data\n231\t        self.params = params\n232\t        self.auth = auth\n233\t        self.cookies = cookies\n234\t\n235\t    def __repr__(self):\n236\t        return '<Request [%s]>' % (self.method)\n237\t\n238\t    def prepare(self):\n239\t        \"\"\"Constructs a :class:`PreparedRequest <PreparedRequest>` for transmission and returns it.\"\"\"\n240\t        p = PreparedRequest()\n241\t        p.prepare(\n242\t            method=self.method,\n243\t            url=self.url,\n244\t            headers=self.headers,\n245\t            files=self.files,\n246\t            data=self.data,\n247\t            params=self.params,\n248\t            auth=self.auth,\n249\t            cookies=self.cookies,\n250\t            hooks=self.hooks,\n251\t        )\n252\t        return p\n253\t\n254\t\n255\tclass PreparedRequest(RequestEncodingMixin, RequestHooksMixin):\n\n... (gap) ...\n\n286\t        #: dictionary of callback hooks, for internal usage.\n287\t        self.hooks = default_hooks()\n288\t\n289\t    def prepare(self, method=None, url=None, headers=None, files=None,\n290\t                data=None, params=None, auth=None, cookies=None, hooks=None):\n291\t        \"\"\"Prepares the entire request with the given parameters.\"\"\"\n292\t\n293\t        self.prepare_method(method)\n294\t        self.prepare_url(url, params)\n295\t        self.prepare_headers(headers)\n296\t        self.prepare_cookies(cookies)\n297\t        self.prepare_body(data, files)\n298\t        self.prepare_auth(auth, url)\n299\t        # Note that prepare_auth must be last to enable authentication schemes\n300\t        # such as OAuth to work on a fully prepared request.\n301\t\n302\t        # This MUST go after prepare_auth. Authenticators could add a hook\n303\t        self.prepare_hooks(hooks)\n304\t\n305\t    def __repr__(self):\n306\t        return '<PreparedRequest [%s]>' % (self.method)\n\n... (gap) ...\n\n315\t        p.hooks = self.hooks\n316\t        return p\n317\t\n318\t    def prepare_method(self, method):\n319\t        \"\"\"Prepares the given HTTP method.\"\"\"\n320\t        self.method = method\n321\t        if self.method is not None:\n322\t            self.method = self.method.upper()\n323\t\n324\t    def prepare_url(self, url, params):\n325\t        \"\"\"Prepares the given HTTP URL.\"\"\"\n\n... (gap) ...\n\n387\t        url = requote_uri(urlunparse([scheme, netloc, path, None, query, fragment]))\n388\t        self.url = url\n389\t\n390\t    def prepare_headers(self, headers):\n391\t        \"\"\"Prepares the given HTTP headers.\"\"\"\n392\t\n393\t        if headers:\n394\t            self.headers = CaseInsensitiveDict((to_native_string(name), value) for name, value in headers.items())\n395\t        else:\n396\t            self.headers = CaseInsensitiveDict()\n397\t\n398\t    def prepare_body(self, data, files):\n399\t        \"\"\"Prepares the given HTTP body data.\"\"\"\n\n... (gap) ...\n\n482\t            # Recompute Content-Length\n483\t            self.prepare_content_length(self.body)\n484\t\n485\t    def prepare_cookies(self, cookies):\n486\t        \"\"\"Prepares the given HTTP cookie data.\"\"\"\n487\t\n488\t        if isinstance(cookies, cookielib.CookieJar):\n489\t            self._cookies = cookies\n490\t        else:\n491\t            self._cookies = cookiejar_from_dict(cookies)\n492\t\n493\t        cookie_header = get_cookie_header(self._cookies, self)\n494\t        if cookie_header is not None:\n495\t            self.headers['Cookie'] = cookie_header\n496\t\n497\t    def prepare_hooks(self, hooks):\n498\t        \"\"\"Prepares the given hooks.\"\"\"\n499\t        for event in hooks:\n500\t            self.register_hook(event, hooks[event])\n501\t\n502\t\n503\tclass Response(object):\n```\n\n**`requests/packages/urllib3/request.py`** \u2014 encode_multipart_formdata(calls), urlopen(calls), __init__(method), request_encode_body(calls), request_encode_body(method), +4 more\n\n```python\n46\t\n47\t    _encode_url_methods = set(['DELETE', 'GET', 'HEAD', 'OPTIONS'])\n48\t\n49\t    def __init__(self, headers=None):\n50\t        self.headers = headers or {}\n51\t\n52\t    def urlopen(self, method, url, body=None, headers=None,\n53\t                encode_multipart=True, multipart_boundary=None,\n54\t                **kw): # Abstract\n55\t        raise NotImplemented(\"Classes extending RequestMethods must implement \"\n56\t                             \"their own ``urlopen`` method.\")\n57\t\n58\t    def request(self, method, url, fields=None, headers=None, **urlopen_kw):\n59\t        \"\"\"\n60\t        Make a request using :meth:`urlopen` with the appropriate encoding of\n61\t        ``fields`` based on the ``method`` used.\n62\t\n63\t        This is a convenience method that requires the least amount of manual\n64\t        effort. It can be used in most situations, while still having the option\n65\t        to drop down to more specific methods when necessary, such as\n66\t        :meth:`request_encode_url`, :meth:`request_encode_body`,\n67\t        or even the lowest level :meth:`urlopen`.\n68\t        \"\"\"\n69\t        method = method.upper()\n70\t\n71\t        if method in self._encode_url_methods:\n72\t            return self.request_encode_url(method, url, fields=fields,\n73\t                                            headers=headers,\n74\t                                            **urlopen_kw)\n75\t        else:\n76\t            return self.request_encode_body(method, url, fields=fields,\n77\t                                             headers=headers,\n78\t                                             **urlopen_kw)\n79\t\n80\t    def request_encode_url(self, method, url, fields=None, **urlopen_kw):\n81\t        \"\"\"\n82\t        Make a request using :meth:`urlopen` with the ``fields`` encoded in\n83\t        the url. This is useful for request methods like GET, HEAD, DELETE, etc.\n84\t        \"\"\"\n85\t        if fields:\n86\t            url += '?' + urlencode(fields)\n87\t        return self.urlopen(method, url, **urlopen_kw)\n88\t\n89\t    def request_encode_body(self, method, url, fields=None, headers=None,\n90\t                            encode_multipart=True, multipart_boundary=None,\n```\n\n**Not shown above \u2014 explore these names for their source**\n\n- requests/structures.py: CaseInsensitiveDict:37\n- requests/api.py: request:17, put:91, get:47, options:58, post:80, head:69, +2 more\n- requests/cookies.py: merge_cookies:435, cookiejar_from_dict:415, RequestsCookieJar:159, get_cookie_header:131\n- requests/packages/urllib3/poolmanager.py: PoolManager:35, __init__:65, connection_from_host:97, urlopen:135, _new_pool:71, connection_from_url:123, +3 more\n- requests/packages/urllib3/connectionpool.py: HTTPConnectionPool:80, __init__:136, _make_request:260, is_same_host:363, _new_conn:165, _put_conn:219, +4 more\n- requests/utils.py: get_netrc_auth:68, super_len:48, get_environ_proxies:469\n- requests/packages/urllib3/packages/ordered_dict.py: setdefault:191\n- requests/packages/urllib3/filepost.py: encode_multipart_formdata:65\n- requests/adapters.py: init_poolmanager:104\n- requests/compat.py: builtin_str:95\n\n> Some file sections were trimmed for size. Elided symbols are named inside gap markers as `name (file:line)` and preferred in the file header \u2014 run another `codegraph_explore` (or `codegraph_node`) with those exact names for their source.",
+              "annotations": null,
+              "meta": null
+            }
+          ],
+          "structured_content": null,
+          "is_error": false,
+          "result_type": "complete"
+        }
+      },
+      {
+        "name": "codegraph_explore",
+        "arguments": {
+          "query": "prepare_probe_request requests/_pilot_post_edit.py"
+        },
+        "seconds": 0.11708872020244598,
+        "reply": {
+          "meta": null,
+          "content": [
+            {
+              "type": "text",
+              "text": "\u26a0\ufe0f Some files referenced below were edited since the last index sync \u2014 their codegraph entries may be stale:\n  - requests/_pilot_post_edit.py (edited 115ms ago, pending sync)\nFor accurate content of those specific files, Read them directly. The rest of this response is fresh.\n\n**Exploration: prepare_probe_request requests/_pilot_post_edit.py**\n\nFound 57 symbols across 4 files. No indexed file uniquely matches `requests/_pilot_post_edit.py`.\n\n**Blast radius \u2014 what depends on these (update/verify before editing)**\n\n- `prepare` (requests/models.py:289) \u2014 2 callers in `requests/models.py`, `requests/sessions.py`; tested via callers: `test_requests.py`\n- `request` (requests/api.py:17) \u2014 9 callers in `requests/api.py`, `requests/__init__.py`; tests: `test_requests.py`\n- `request` (requests/sessions.py:299) \u2014 8 callers in `requests/api.py`, `requests/sessions.py`; tested via callers: `test_requests.py`\n\n**Source Code**\n\n> The code below is the **verbatim, current on-disk source** of these files \u2014 re-read from disk on this call and line-numbered, byte-for-byte identical to what the Read tool returns. It is NOT a summary, outline, or stale cache. Treat each block as a Read you have already performed: do not Read a file shown here.\n\n**`requests/models.py`** \u2014 instantiates(instantiates), builtin_str(calls), _encode_params(calls), RequestHooksMixin(extends), register_hook(calls), +36 more\n\n```python\n82\t            return data\n83\t        elif hasattr(data, '__iter__'):\n84\t            result = []\n85\t            for k, vs in to_key_val_list(data):\n86\t                if isinstance(vs, basestring) or not hasattr(vs, '__iter__'):\n87\t                    vs = [vs]\n88\t                for v in vs:\n\n... (gap) ...\n\n178\t            return False\n179\t\n180\t\n181\tclass Request(RequestHooksMixin):\n182\t    \"\"\"A user-created :class:`Request <Request>` object.\n183\t\n184\t    Used to prepare a :class:`PreparedRequest <PreparedRequest>`, which is sent to the server.\n185\t\n186\t    :param method: HTTP method to use.\n187\t    :param url: URL to send.\n188\t    :param headers: dictionary of headers to send.\n189\t    :param files: dictionary of {filename: fileobject} files to multipart upload.\n190\t    :param data: the body to attach the request. If a dictionary is provided, form-encoding will take place.\n191\t    :param params: dictionary of URL parameters to append to the URL.\n192\t    :param auth: Auth handler or (user, pass) tuple.\n193\t    :param cookies: dictionary or CookieJar of cookies to attach to this request.\n194\t    :param hooks: dictionary of callback hooks, for internal usage.\n195\t\n196\t    Usage::\n197\t\n198\t      >>> import requests\n199\t      >>> req = requests.Request('GET', 'http://httpbin.org/get')\n200\t      >>> req.prepare()\n201\t      <PreparedRequest [GET]>\n202\t\n203\t    \"\"\"\n204\t    def __init__(self,\n205\t        method=None,\n206\t        url=None,\n207\t        headers=None,\n208\t        files=None,\n209\t        data=None,\n210\t        params=None,\n211\t        auth=None,\n212\t        cookies=None,\n213\t        hooks=None):\n214\t\n215\t        # Default empty dicts for dict params.\n216\t        data = [] if data is None else data\n217\t        files = [] if files is None else files\n218\t        headers = {} if headers is None else headers\n219\t        params = {} if params is None else params\n220\t        hooks = {} if hooks is None else hooks\n221\t\n222\t        self.hooks = default_hooks()\n223\t        for (k, v) in list(hooks.items()):\n224\t            self.register_hook(event=k, hook=v)\n225\t\n226\t        self.method = method\n227\t        self.url = url\n228\t        self.headers = headers\n229\t        self.files = files\n230\t        self.data = data\n231\t        self.params = params\n232\t        self.auth = auth\n233\t        self.cookies = cookies\n234\t\n235\t    def __repr__(self):\n236\t        return '<Request [%s]>' % (self.method)\n237\t\n238\t    def prepare(self):\n239\t        \"\"\"Constructs a :class:`PreparedRequest <PreparedRequest>` for transmission and returns it.\"\"\"\n240\t        p = PreparedRequest()\n241\t        p.prepare(\n242\t            method=self.method,\n243\t            url=self.url,\n244\t            headers=self.headers,\n245\t            files=self.files,\n246\t            data=self.data,\n247\t            params=self.params,\n248\t            auth=self.auth,\n249\t            cookies=self.cookies,\n250\t            hooks=self.hooks,\n251\t        )\n252\t        return p\n253\t\n254\t\n255\tclass PreparedRequest(RequestEncodingMixin, RequestHooksMixin):\n\n... (gap) ...\n\n286\t        #: dictionary of callback hooks, for internal usage.\n287\t        self.hooks = default_hooks()\n288\t\n289\t    def prepare(self, method=None, url=None, headers=None, files=None,\n290\t                data=None, params=None, auth=None, cookies=None, hooks=None):\n291\t        \"\"\"Prepares the entire request with the given parameters.\"\"\"\n292\t\n293\t        self.prepare_method(method)\n294\t        self.prepare_url(url, params)\n295\t        self.prepare_headers(headers)\n296\t        self.prepare_cookies(cookies)\n297\t        self.prepare_body(data, files)\n298\t        self.prepare_auth(auth, url)\n299\t        # Note that prepare_auth must be last to enable authentication schemes\n300\t        # such as OAuth to work on a fully prepared request.\n301\t\n302\t        # This MUST go after prepare_auth. Authenticators could add a hook\n303\t        self.prepare_hooks(hooks)\n304\t\n305\t    def __repr__(self):\n306\t        return '<PreparedRequest [%s]>' % (self.method)\n\n... (gap) ...\n\n315\t        p.hooks = self.hooks\n316\t        return p\n317\t\n318\t    def prepare_method(self, method):\n319\t        \"\"\"Prepares the given HTTP method.\"\"\"\n320\t        self.method = method\n321\t        if self.method is not None:\n322\t            self.method = self.method.upper()\n323\t\n324\t    def prepare_url(self, url, params):\n325\t        \"\"\"Prepares the given HTTP URL.\"\"\"\n\n... (gap) ...\n\n494\t        if cookie_header is not None:\n495\t            self.headers['Cookie'] = cookie_header\n496\t\n497\t    def prepare_hooks(self, hooks):\n498\t        \"\"\"Prepares the given hooks.\"\"\"\n499\t        for event in hooks:\n500\t            self.register_hook(event, hooks[event])\n501\t\n502\t\n503\tclass Response(object):\n```\n\n**`requests/packages/urllib3/request.py`** \u2014 encode_multipart_formdata(calls), urlopen(calls), __init__(method), request_encode_body(calls), request_encode_body(method), +4 more\n\n```python\n46\t\n47\t    _encode_url_methods = set(['DELETE', 'GET', 'HEAD', 'OPTIONS'])\n48\t\n49\t    def __init__(self, headers=None):\n50\t        self.headers = headers or {}\n51\t\n52\t    def urlopen(self, method, url, body=None, headers=None,\n53\t                encode_multipart=True, multipart_boundary=None,\n54\t                **kw): # Abstract\n55\t        raise NotImplemented(\"Classes extending RequestMethods must implement \"\n56\t                             \"their own ``urlopen`` method.\")\n57\t\n58\t    def request(self, method, url, fields=None, headers=None, **urlopen_kw):\n59\t        \"\"\"\n60\t        Make a request using :meth:`urlopen` with the appropriate encoding of\n61\t        ``fields`` based on the ``method`` used.\n62\t\n63\t        This is a convenience method that requires the least amount of manual\n64\t        effort. It can be used in most situations, while still having the option\n65\t        to drop down to more specific methods when necessary, such as\n66\t        :meth:`request_encode_url`, :meth:`request_encode_body`,\n67\t        or even the lowest level :meth:`urlopen`.\n68\t        \"\"\"\n69\t        method = method.upper()\n70\t\n71\t        if method in self._encode_url_methods:\n72\t            return self.request_encode_url(method, url, fields=fields,\n73\t                                            headers=headers,\n74\t                                            **urlopen_kw)\n75\t        else:\n76\t            return self.request_encode_body(method, url, fields=fields,\n77\t                                             headers=headers,\n78\t                                             **urlopen_kw)\n79\t\n80\t    def request_encode_url(self, method, url, fields=None, **urlopen_kw):\n81\t        \"\"\"\n82\t        Make a request using :meth:`urlopen` with the ``fields`` encoded in\n83\t        the url. This is useful for request methods like GET, HEAD, DELETE, etc.\n84\t        \"\"\"\n85\t        if fields:\n86\t            url += '?' + urlencode(fields)\n87\t        return self.urlopen(method, url, **urlopen_kw)\n88\t\n89\t    def request_encode_body(self, method, url, fields=None, headers=None,\n90\t                            encode_multipart=True, multipart_boundary=None,\n\n... (gap) ...\n\n137\t        headers_ = {'Content-Type': content_type}\n138\t        headers_.update(headers)\n139\t\n140\t        return self.urlopen(method, url, body=body, headers=headers_,\n141\t                            **urlopen_kw)\n142\t\n```\n\n**`requests/sessions.py`** \u2014 calls(calls), merge_setting(calls), instantiates(instantiates), cookiejar_from_dict(calls), mount(calls), +39 more\n\n```python\n296\t        )\n297\t        return p\n298\t\n299\t    def request(self, method, url,\n300\t        params=None,\n301\t        data=None,\n302\t        headers=None,\n303\t        cookies=None,\n304\t        files=None,\n305\t        auth=None,\n306\t        timeout=None,\n307\t        allow_redirects=True,\n308\t        proxies=None,\n309\t        hooks=None,\n310\t        stream=None,\n311\t        verify=None,\n312\t        cert=None):\n313\t        \"\"\"Constructs a :class:`Request <Request>`, prepares it and sends it.\n314\t        Returns :class:`Response <Response>` object.\n315\t\n316\t        :param method: method for the new :class:`Request` object.\n317\t        :param url: URL for the new :class:`Request` object.\n318\t        :param params: (optional) Dictionary or bytes to be sent in the query\n319\t            string for the :class:`Request`.\n320\t        :param data: (optional) Dictionary or bytes to send in the body of the\n321\t            :class:`Request`.\n322\t        :param headers: (optional) Dictionary of HTTP Headers to send with the\n323\t            :class:`Request`.\n324\t        :param cookies: (optional) Dict or CookieJar object to send with the\n325\t            :class:`Request`.\n326\t        :param files: (optional) Dictionary of 'filename': file-like-objects\n327\t            for multipart encoding upload.\n328\t        :param auth: (optional) Auth tuple or callable to enable\n329\t            Basic/Digest/Custom HTTP Auth.\n330\t        :param timeout: (optional) Float describing the timeout of the\n331\t            request.\n332\t        :param allow_redirects: (optional) Boolean. Set to True by default.\n333\t        :param proxies: (optional) Dictionary mapping protocol to the URL of\n334\t            the proxy.\n335\t        :param stream: (optional) whether to immediately download the response\n336\t            content. Defaults to ``False``.\n337\t        :param verify: (optional) if ``True``, the SSL cert will be verified.\n338\t            A CA_BUNDLE path can also be provided.\n339\t        :param cert: (optional) if String, path to ssl client cert file (.pem).\n340\t            If Tuple, ('cert', 'key') pair.\n341\t        \"\"\"\n342\t\n343\t        method = builtin_str(method)\n344\t\n345\t        # Create the Request.\n346\t        req = Request(\n347\t            method = method.upper(),\n348\t            url = url,\n349\t            headers = headers,\n350\t            files = files,\n351\t            data = data or {},\n352\t            params = params or {},\n353\t            auth = auth,\n354\t            cookies = cookies,\n355\t            hooks = hooks,\n356\t        )\n357\t        prep = self.prepare_request(req)\n358\t\n359\t        proxies = proxies or {}\n360\t\n361\t        # Gather clues from the surrounding environment.\n362\t        if self.trust_env:\n363\t            # Set environment's proxies.\n364\t            env_proxies = get_environ_proxies(url) or {}\n365\t            for (k, v) in env_proxies.items():\n366\t                proxies.setdefault(k, v)\n367\t\n368\t            # Look for configuration.\n369\t            if not verify and verify is not False:\n370\t                verify = os.environ.get('REQUESTS_CA_BUNDLE')\n371\t\n372\t            # Curl compatibility.\n373\t            if not verify and verify is not False:\n374\t                verify = os.environ.get('CURL_CA_BUNDLE')\n375\t\n376\t        # Merge all the kwargs.\n377\t        proxies = merge_setting(proxies, self.proxies)\n378\t        stream = merge_setting(stream, self.stream)\n379\t        verify = merge_setting(verify, self.verify)\n380\t        cert = merge_setting(cert, self.cert)\n381\t\n382\t        # Send the request.\n383\t        send_kwargs = {\n384\t            'stream': stream,\n385\t            'timeout': timeout,\n386\t            'verify': verify,\n387\t            'cert': cert,\n388\t            'proxies': proxies,\n389\t            'allow_redirects': allow_redirects,\n390\t        }\n391\t        resp = self.send(prep, **send_kwargs)\n392\t\n393\t        return resp\n394\t\n395\t    def get(self, url, **kwargs):\n396\t        \"\"\"Sends a GET request. Returns :class:`Response` object.\n```\n\n**`requests/api.py`** \u2014 post(function), put(function), patch(function), request(calls), delete(function), +5 more\n\n```python\n14\tfrom . import sessions\n15\t\n16\t\n17\tdef request(method, url, **kwargs):\n18\t    \"\"\"Constructs and sends a :class:`Request <Request>`.\n19\t    Returns :class:`Response <Response>` object.\n20\t\n21\t    :param method: method for the new :class:`Request` object.\n22\t    :param url: URL for the new :class:`Request` object.\n23\t    :param params: (optional) Dictionary or bytes to be sent in the query string for the :class:`Request`.\n24\t    :param data: (optional) Dictionary, bytes, or file-like object to send in the body of the :class:`Request`.\n25\t    :param headers: (optional) Dictionary of HTTP Headers to send with the :class:`Request`.\n26\t    :param cookies: (optional) Dict or CookieJar object to send with the :class:`Request`.\n27\t    :param files: (optional) Dictionary of 'name': file-like-objects (or {'name': ('filename', fileobj)}) for multipart encoding upload.\n28\t    :param auth: (optional) Auth tuple to enable Basic/Digest/Custom HTTP Auth.\n29\t    :param timeout: (optional) Float describing the timeout of the request.\n30\t    :param allow_redirects: (optional) Boolean. Set to True if POST/PUT/DELETE redirect following is allowed.\n31\t    :param proxies: (optional) Dictionary mapping protocol to the URL of the proxy.\n32\t    :param verify: (optional) if ``True``, the SSL cert will be verified. A CA_BUNDLE path can also be provided.\n33\t    :param stream: (optional) if ``False``, the response content will be immediately downloaded.\n34\t    :param cert: (optional) if String, path to ssl client cert file (.pem). If Tuple, ('cert', 'key') pair.\n35\t\n36\t    Usage::\n37\t\n38\t      >>> import requests\n39\t      >>> req = requests.request('GET', 'http://httpbin.org/get')\n40\t      <Response [200]>\n41\t    \"\"\"\n42\t\n43\t    session = sessions.Session()\n44\t    return session.request(method=method, url=url, **kwargs)\n45\t\n46\t\n47\tdef get(url, **kwargs):\n\n... (gap) ...\n\n52\t    \"\"\"\n53\t\n54\t    kwargs.setdefault('allow_redirects', True)\n55\t    return request('get', url, **kwargs)\n56\t\n57\t\n58\tdef options(url, **kwargs):\n\n... (gap) ...\n\n63\t    \"\"\"\n64\t\n65\t    kwargs.setdefault('allow_redirects', True)\n66\t    return request('options', url, **kwargs)\n67\t\n68\t\n69\tdef head(url, **kwargs):\n\n... (gap) ...\n\n110\t    return request('patch', url,  data=data, **kwargs)\n111\t\n112\t\n113\tdef delete(url, **kwargs):\n114\t    \"\"\"Sends a DELETE request. Returns :class:`Response` object.\n115\t\n116\t    :param url: URL for the new :class:`Request` object.\n117\t    :param \\*\\*kwargs: Optional arguments that ``request`` takes.\n118\t    \"\"\"\n119\t\n120\t    return request('delete', url, **kwargs)\n121\t\n```\n\n\n> Some file sections were trimmed for size. Elided symbols are named inside gap markers as `name (file:line)` and preferred in the file header \u2014 run another `codegraph_explore` (or `codegraph_node`) with those exact names for their source.",
+              "annotations": null,
+              "meta": null
+            }
+          ],
+          "structured_content": null,
+          "is_error": false,
+          "result_type": "complete"
+        }
+      },
+      {
+        "name": "codegraph_explore",
+        "arguments": {
+          "query": "prepare_probe_request requests/_pilot_post_edit.py"
+        },
+        "seconds": 0.023089859634637833,
+        "reply": {
+          "meta": null,
+          "content": [
+            {
+              "type": "text",
+              "text": "**Exploration: prepare_probe_request requests/_pilot_post_edit.py**\n\nFound 51 symbols across 4 files. 1 file pinned from the query.\n\n**Blast radius \u2014 what depends on these (update/verify before editing)**\n\n- `prepare` (requests/models.py:289) \u2014 2 callers in `requests/models.py`, `requests/sessions.py`; tested via callers: `test_requests.py`\n- `request` (requests/api.py:17) \u2014 9 callers in `requests/api.py`, `requests/__init__.py`; tests: `test_requests.py`\n\n**Source Code**\n\n> The code below is the **verbatim, current on-disk source** of these files \u2014 re-read from disk on this call and line-numbered, byte-for-byte identical to what the Read tool returns. It is NOT a summary, outline, or stale cache. Treat each block as a Read you have already performed: do not Read a file shown here.\n\n**`requests/_pilot_post_edit.py`** \u2014 prepare_probe_request(function), _pilot_post_edit.py(file)\n\n```python\n1\tfrom .models import Request\n2\tfrom .sessions import Session\n3\t\n4\tdef prepare_probe_request(url: str):\n5\t    return Session().prepare_request(Request(\"GET\", url))\n```\n\n**`requests/models.py`** \u2014 calls(calls), instantiates(instantiates), builtin_str(calls), _encode_params(calls), super_len(calls), +36 more\n\n```python\n154\t        return body, content_type\n155\t\n156\t\n157\tclass RequestHooksMixin(object):\n158\t    def register_hook(self, event, hook):\n159\t        \"\"\"Properly register a hook.\"\"\"\n160\t\n161\t        if event not in self.hooks:\n162\t            raise ValueError('Unsupported event specified, with event name \"%s\"' % (event))\n163\t\n164\t        if isinstance(hook, collections.Callable):\n165\t            self.hooks[event].append(hook)\n166\t        elif hasattr(hook, '__iter__'):\n167\t            self.hooks[event].extend(h for h in hook if isinstance(h, collections.Callable))\n168\t\n169\t    def deregister_hook(self, event, hook):\n170\t        \"\"\"Deregister a previously registered hook.\n171\t        Returns True if the hook existed, False if not.\n172\t        \"\"\"\n173\t\n174\t        try:\n175\t            self.hooks[event].remove(hook)\n176\t            return True\n177\t        except ValueError:\n178\t            return False\n179\t\n180\t\n181\tclass Request(RequestHooksMixin):\n182\t    \"\"\"A user-created :class:`Request <Request>` object.\n183\t\n184\t    Used to prepare a :class:`PreparedRequest <PreparedRequest>`, which is sent to the server.\n185\t\n186\t    :param method: HTTP method to use.\n187\t    :param url: URL to send.\n188\t    :param headers: dictionary of headers to send.\n189\t    :param files: dictionary of {filename: fileobject} files to multipart upload.\n190\t    :param data: the body to attach the request. If a dictionary is provided, form-encoding will take place.\n191\t    :param params: dictionary of URL parameters to append to the URL.\n192\t    :param auth: Auth handler or (user, pass) tuple.\n193\t    :param cookies: dictionary or CookieJar of cookies to attach to this request.\n194\t    :param hooks: dictionary of callback hooks, for internal usage.\n195\t\n196\t    Usage::\n197\t\n198\t      >>> import requests\n199\t      >>> req = requests.Request('GET', 'http://httpbin.org/get')\n200\t      >>> req.prepare()\n201\t      <PreparedRequest [GET]>\n202\t\n203\t    \"\"\"\n204\t    def __init__(self,\n205\t        method=None,\n206\t        url=None,\n207\t        headers=None,\n208\t        files=None,\n209\t        data=None,\n210\t        params=None,\n211\t        auth=None,\n212\t        cookies=None,\n213\t        hooks=None):\n214\t\n215\t        # Default empty dicts for dict params.\n216\t        data = [] if data is None else data\n217\t        files = [] if files is None else files\n218\t        headers = {} if headers is None else headers\n219\t        params = {} if params is None else params\n220\t        hooks = {} if hooks is None else hooks\n221\t\n222\t        self.hooks = default_hooks()\n223\t        for (k, v) in list(hooks.items()):\n224\t            self.register_hook(event=k, hook=v)\n225\t\n226\t        self.method = method\n227\t        self.url = url\n228\t        self.headers = headers\n229\t        self.files = files\n230\t        self.data = data\n231\t        self.params = params\n232\t        self.auth = auth\n233\t        self.cookies = cookies\n234\t\n235\t    def __repr__(self):\n236\t        return '<Request [%s]>' % (self.method)\n237\t\n238\t    def prepare(self):\n239\t        \"\"\"Constructs a :class:`PreparedRequest <PreparedRequest>` for transmission and returns it.\"\"\"\n240\t        p = PreparedRequest()\n241\t        p.prepare(\n242\t            method=self.method,\n243\t            url=self.url,\n244\t            headers=self.headers,\n245\t            files=self.files,\n246\t            data=self.data,\n247\t            params=self.params,\n248\t            auth=self.auth,\n249\t            cookies=self.cookies,\n250\t            hooks=self.hooks,\n251\t        )\n252\t        return p\n253\t\n254\t\n255\tclass PreparedRequest(RequestEncodingMixin, RequestHooksMixin):\n\n... (gap) ...\n\n286\t        #: dictionary of callback hooks, for internal usage.\n287\t        self.hooks = default_hooks()\n288\t\n289\t    def prepare(self, method=None, url=None, headers=None, files=None,\n290\t                data=None, params=None, auth=None, cookies=None, hooks=None):\n291\t        \"\"\"Prepares the entire request with the given parameters.\"\"\"\n292\t\n293\t        self.prepare_method(method)\n294\t        self.prepare_url(url, params)\n295\t        self.prepare_headers(headers)\n296\t        self.prepare_cookies(cookies)\n297\t        self.prepare_body(data, files)\n298\t        self.prepare_auth(auth, url)\n299\t        # Note that prepare_auth must be last to enable authentication schemes\n300\t        # such as OAuth to work on a fully prepared request.\n301\t\n302\t        # This MUST go after prepare_auth. Authenticators could add a hook\n303\t        self.prepare_hooks(hooks)\n304\t\n305\t    def __repr__(self):\n306\t        return '<PreparedRequest [%s]>' % (self.method)\n\n... (gap) ...\n\n315\t        p.hooks = self.hooks\n316\t        return p\n317\t\n318\t    def prepare_method(self, method):\n319\t        \"\"\"Prepares the given HTTP method.\"\"\"\n320\t        self.method = method\n321\t        if self.method is not None:\n322\t            self.method = self.method.upper()\n323\t\n324\t    def prepare_url(self, url, params):\n325\t        \"\"\"Prepares the given HTTP URL.\"\"\"\n\n... (gap) ...\n\n387\t        url = requote_uri(urlunparse([scheme, netloc, path, None, query, fragment]))\n388\t        self.url = url\n389\t\n390\t    def prepare_headers(self, headers):\n391\t        \"\"\"Prepares the given HTTP headers.\"\"\"\n392\t\n393\t        if headers:\n394\t            self.headers = CaseInsensitiveDict((to_native_string(name), value) for name, value in headers.items())\n395\t        else:\n396\t            self.headers = CaseInsensitiveDict()\n397\t\n398\t    def prepare_body(self, data, files):\n399\t        \"\"\"Prepares the given HTTP body data.\"\"\"\n\n... (gap) ...\n\n460\t        elif self.method not in ('GET', 'HEAD'):\n461\t            self.headers['Content-Length'] = '0'\n462\t\n463\t    def prepare_auth(self, auth, url=''):\n464\t        \"\"\"Prepares the given HTTP auth data.\"\"\"\n465\t\n466\t        # If no Auth is explicitly provided, extract it from the URL first.\n467\t        if auth is None:\n468\t            url_auth = get_auth_from_url(self.url)\n469\t            auth = url_auth if any(url_auth) else None\n470\t\n471\t        if auth:\n472\t            if isinstance(auth, tuple) and len(auth) == 2:\n473\t                # special-case basic HTTP auth\n474\t                auth = HTTPBasicAuth(*auth)\n475\t\n476\t            # Allow auth to make its changes.\n477\t            r = auth(self)\n478\t\n479\t            # Update self to reflect the auth changes.\n480\t            self.__dict__.update(r.__dict__)\n481\t\n482\t            # Recompute Content-Length\n483\t            self.prepare_content_length(self.body)\n484\t\n485\t    def prepare_cookies(self, cookies):\n486\t        \"\"\"Prepares the given HTTP cookie data.\"\"\"\n487\t\n488\t        if isinstance(cookies, cookielib.CookieJar):\n489\t            self._cookies = cookies\n490\t        else:\n491\t            self._cookies = cookiejar_from_dict(cookies)\n492\t\n493\t        cookie_header = get_cookie_header(self._cookies, self)\n494\t        if cookie_header is not None:\n495\t            self.headers['Cookie'] = cookie_header\n496\t\n497\t    def prepare_hooks(self, hooks):\n498\t        \"\"\"Prepares the given hooks.\"\"\"\n499\t        for event in hooks:\n500\t            self.register_hook(event, hooks[event])\n501\t\n502\t\n503\tclass Response(object):\n```\n\n**`requests/sessions.py`** \u2014 calls(calls), merge_setting(calls), instantiates(instantiates), cookiejar_from_dict(calls), mount(calls), +39 more\n\n```python\n296\t        )\n297\t        return p\n298\t\n299\t    def request(self, method, url,\n300\t        params=None,\n301\t        data=None,\n302\t        headers=None,\n303\t        cookies=None,\n304\t        files=None,\n305\t        auth=None,\n306\t        timeout=None,\n307\t        allow_redirects=True,\n308\t        proxies=None,\n309\t        hooks=None,\n310\t        stream=None,\n311\t        verify=None,\n312\t        cert=None):\n313\t        \"\"\"Constructs a :class:`Request <Request>`, prepares it and sends it.\n314\t        Returns :class:`Response <Response>` object.\n315\t\n316\t        :param method: method for the new :class:`Request` object.\n317\t        :param url: URL for the new :class:`Request` object.\n318\t        :param params: (optional) Dictionary or bytes to be sent in the query\n319\t            string for the :class:`Request`.\n320\t        :param data: (optional) Dictionary or bytes to send in the body of the\n321\t            :class:`Request`.\n322\t        :param headers: (optional) Dictionary of HTTP Headers to send with the\n323\t            :class:`Request`.\n324\t        :param cookies: (optional) Dict or CookieJar object to send with the\n325\t            :class:`Request`.\n326\t        :param files: (optional) Dictionary of 'filename': file-like-objects\n327\t            for multipart encoding upload.\n328\t        :param auth: (optional) Auth tuple or callable to enable\n329\t            Basic/Digest/Custom HTTP Auth.\n330\t        :param timeout: (optional) Float describing the timeout of the\n331\t            request.\n332\t        :param allow_redirects: (optional) Boolean. Set to True by default.\n333\t        :param proxies: (optional) Dictionary mapping protocol to the URL of\n334\t            the proxy.\n335\t        :param stream: (optional) whether to immediately download the response\n336\t            content. Defaults to ``False``.\n337\t        :param verify: (optional) if ``True``, the SSL cert will be verified.\n338\t            A CA_BUNDLE path can also be provided.\n339\t        :param cert: (optional) if String, path to ssl client cert file (.pem).\n340\t            If Tuple, ('cert', 'key') pair.\n341\t        \"\"\"\n342\t\n343\t        method = builtin_str(method)\n344\t\n345\t        # Create the Request.\n346\t        req = Request(\n347\t            method = method.upper(),\n348\t            url = url,\n349\t            headers = headers,\n350\t            files = files,\n351\t            data = data or {},\n352\t            params = params or {},\n353\t            auth = auth,\n354\t            cookies = cookies,\n355\t            hooks = hooks,\n356\t        )\n357\t        prep = self.prepare_request(req)\n358\t\n359\t        proxies = proxies or {}\n360\t\n361\t        # Gather clues from the surrounding environment.\n362\t        if self.trust_env:\n363\t            # Set environment's proxies.\n364\t            env_proxies = get_environ_proxies(url) or {}\n365\t            for (k, v) in env_proxies.items():\n366\t                proxies.setdefault(k, v)\n367\t\n368\t            # Look for configuration.\n369\t            if not verify and verify is not False:\n370\t                verify = os.environ.get('REQUESTS_CA_BUNDLE')\n371\t\n372\t            # Curl compatibility.\n373\t            if not verify and verify is not False:\n374\t                verify = os.environ.get('CURL_CA_BUNDLE')\n375\t\n376\t        # Merge all the kwargs.\n377\t        proxies = merge_setting(proxies, self.proxies)\n378\t        stream = merge_setting(stream, self.stream)\n379\t        verify = merge_setting(verify, self.verify)\n380\t        cert = merge_setting(cert, self.cert)\n381\t\n382\t        # Send the request.\n383\t        send_kwargs = {\n384\t            'stream': stream,\n385\t            'timeout': timeout,\n386\t            'verify': verify,\n387\t            'cert': cert,\n388\t            'proxies': proxies,\n389\t            'allow_redirects': allow_redirects,\n390\t        }\n391\t        resp = self.send(prep, **send_kwargs)\n392\t\n393\t        return resp\n394\t\n395\t    def get(self, url, **kwargs):\n396\t        \"\"\"Sends a GET request. Returns :class:`Response` object.\n```\n\n**`requests/packages/urllib3/request.py`** \u2014 encode_multipart_formdata(calls), urlopen(calls), __init__(method), request_encode_body(calls), request_encode_body(method), +4 more\n\n```python\n46\t\n47\t    _encode_url_methods = set(['DELETE', 'GET', 'HEAD', 'OPTIONS'])\n48\t\n49\t    def __init__(self, headers=None):\n50\t        self.headers = headers or {}\n51\t\n52\t    def urlopen(self, method, url, body=None, headers=None,\n53\t                encode_multipart=True, multipart_boundary=None,\n54\t                **kw): # Abstract\n55\t        raise NotImplemented(\"Classes extending RequestMethods must implement \"\n56\t                             \"their own ``urlopen`` method.\")\n57\t\n58\t    def request(self, method, url, fields=None, headers=None, **urlopen_kw):\n59\t        \"\"\"\n60\t        Make a request using :meth:`urlopen` with the appropriate encoding of\n61\t        ``fields`` based on the ``method`` used.\n62\t\n63\t        This is a convenience method that requires the least amount of manual\n64\t        effort. It can be used in most situations, while still having the option\n65\t        to drop down to more specific methods when necessary, such as\n66\t        :meth:`request_encode_url`, :meth:`request_encode_body`,\n67\t        or even the lowest level :meth:`urlopen`.\n68\t        \"\"\"\n69\t        method = method.upper()\n70\t\n71\t        if method in self._encode_url_methods:\n72\t            return self.request_encode_url(method, url, fields=fields,\n73\t                                            headers=headers,\n74\t                                            **urlopen_kw)\n75\t        else:\n76\t            return self.request_encode_body(method, url, fields=fields,\n77\t                                             headers=headers,\n78\t                                             **urlopen_kw)\n79\t\n80\t    def request_encode_url(self, method, url, fields=None, **urlopen_kw):\n81\t        \"\"\"\n82\t        Make a request using :meth:`urlopen` with the ``fields`` encoded in\n83\t        the url. This is useful for request methods like GET, HEAD, DELETE, etc.\n84\t        \"\"\"\n85\t        if fields:\n86\t            url += '?' + urlencode(fields)\n87\t        return self.urlopen(method, url, **urlopen_kw)\n88\t\n89\t    def request_encode_body(self, method, url, fields=None, headers=None,\n90\t                            encode_multipart=True, multipart_boundary=None,\n\n... (gap) ...\n\n137\t        headers_ = {'Content-Type': content_type}\n138\t        headers_.update(headers)\n139\t\n140\t        return self.urlopen(method, url, body=body, headers=headers_,\n141\t                            **urlopen_kw)\n142\t\n```\n\n**Not shown above \u2014 explore these names for their source**\n\n- requests/api.py: request:17, put:91, get:47, options:58, post:80, head:69, +2 more\n- requests/packages/urllib3/poolmanager.py: PoolManager:35, __init__:65, connection_from_host:97, urlopen:135, _new_pool:71, connection_from_url:123, +3 more\n- requests/packages/urllib3/connectionpool.py: HTTPConnectionPool:80, __init__:136, _make_request:260, is_same_host:363, _new_conn:165, _put_conn:219, +4 more\n- requests/utils.py: super_len:48, get_environ_proxies:469\n- requests/packages/urllib3/packages/ordered_dict.py: setdefault:191\n- requests/cookies.py: get_cookie_header:131, cookiejar_from_dict:415\n- requests/packages/urllib3/filepost.py: encode_multipart_formdata:65\n- requests/adapters.py: init_poolmanager:104\n- requests/compat.py: builtin_str:95\n\n> Some file sections were trimmed for size. Elided symbols are named inside gap markers as `name (file:line)` and preferred in the file header \u2014 run another `codegraph_explore` (or `codegraph_node`) with those exact names for their source.",
+              "annotations": null,
+              "meta": null
+            }
+          ],
+          "structured_content": null,
+          "is_error": false,
+          "result_type": "complete"
+        }
+      }
+    ],
+    "owned_containers": [
+      "e9af56f1fb509984c0d688dfb7bc3e223e507b226d8a60daa4f14d478578c04e",
+      "300aaf1a776498bde31c0fb8ba055406b1e70bc64985e26cdfa8426a54c0b0ad"
+    ],
+    "checks": [
+      {
+        "file": "requests/sessions.py",
+        "symbol": "Session/prepare_request",
+        "file_sha256": "32e30eadf91367b3aefb90e8541cf3fc20d3d950a16828c0101f4232d36a78a9",
+        "start_line_1based": 260,
+        "end_line_1based": 297,
+        "mode": "codegraph",
+        "visible_line_counts": {
+          "requests/sessions.py": 129,
+          "requests/models.py": 160,
+          "requests/packages/urllib3/request.py": 45
+        },
+        "non_source_final_empty_rows": [
+          {
+            "file": "requests/sessions.py",
+            "rendered_line": 570,
+            "source_credit": false
+          }
+        ],
+        "missing_body_lines": [],
+        "body_matches_captured_source": true
+      },
+      {
+        "file": "requests/_pilot_post_edit.py",
+        "symbol": "prepare_probe_request",
+        "file_sha256": "91ae1a3d5561b96db5590260d4e20b68db8a3a693c19965d2c92cb3e062d087e",
+        "start_line_1based": 4,
+        "end_line_1based": 5,
+        "mode": "codegraph",
+        "visible_line_counts": {
+          "requests/_pilot_post_edit.py": 5,
+          "requests/models.py": 191,
+          "requests/sessions.py": 101,
+          "requests/packages/urllib3/request.py": 50
+        },
+        "non_source_final_empty_rows": [
+          {
+            "file": "requests/packages/urllib3/request.py",
+            "rendered_line": 142,
+            "source_credit": false
+          }
+        ],
+        "missing_body_lines": [],
+        "body_matches_captured_source": true
+      }
+    ],
+    "model_inference_sessions": 0,
+    "wrapper_sha256": "213df1d45a1cee2c3b815d6b04ff206dd2cf2a437a32396950aa7e759372b780",
+    "recovery_rule": "Only an explicit pending sync reply to the newly added source permits one one-second wait and one identical query in the same MCP connection. Other omissions/errors fail without retry.",
+    "source_original": {
+      "head": "3c88e520da24ae6f736929a750876e7654accc3d",
+      "tracked": {
+        ".gitignore": "cad5fe62e70ddb73af88feb33f5a5169d5af491879b3830616bf21a04cdbdf28",
+        "AUTHORS.rst": "28487561897eb533c0b3dacf5717a645b63bb779eeb3a17bb136ea33707759be",
+        "HISTORY.rst": "241974d3f1fc22a8439a440bfa388f0e231f85e9a08370d56a23cdcee5c6c874",
+        "LICENSE": "89478f1915fbb6b6585a685d071bf006ba5649d2615fab787f66e9693c622ae4",
+        "MANIFEST.in": "588abc6c5050b10ef1629e67ca79e7eb57febb26c41bb995d6224828f8ca0bc1",
+        "Makefile": "c6d89b7c95ea8535803d6b961ff78fd164804eacdaf49badf60a13b553ee315a",
+        "NOTICE": "548eb62c9f5f5f7a121d15f26bb0d6a5ebb0cf7260584e0529ad65c56b39e83d",
+        "README.rst": "fb7ad6162349f0548c822b7ab3ac75129b8dd8ab27dfc45b7e39529335b740e4",
+        "docs/MANIFEST.in": "293a8936089ee64bb0728018eee77ad422bb92be40e1ea70c1361a0ea53b1d16",
+        "docs/Makefile": "612c28d4c5ccb2731ba2386e358ba0c50d4564f94409cfb0cafd507cb7216c1c",
+        "docs/_static/requests-sidebar.png": "5321117037e924e82d22ba484fa19f9ee64d95cab1b650958ec5d94f9aff68e1",
+        "docs/_templates/sidebarintro.html": "bc5d196bba888bcb5bcaa8e39efd56e4a4d3ae030daf4f4fdc3bf22db3dd9e90",
+        "docs/_templates/sidebarlogo.html": "56a7487ed201d4c0dba22a9722552ec43555cc7bc6176e57aded0c3f37da6c32",
+        "docs/_themes/.gitignore": "f27660c4ec6efa86aac4d61036c5f495e9438805a6f63be44f17db003979a06f",
+        "docs/_themes/LICENSE": "6afc9d58f919ab52f4806a895a37aefe4d263f8e52278e6a1e87c5d7ec82299c",
+        "docs/_themes/README.rst": "7e91e1410eb502112c2b346a248104bbdc68ee4dad1e382517ef14a563610197",
+        "docs/_themes/flask_theme_support.py": "bba3677c6eeb99f678e808e90142a025b798b7658bac1ab4632591df8441d209",
+        "docs/_themes/kr/layout.html": "1aeb7715214e019a8bd27b01a423cefaaa0ec5ccbc9a28aaa401530814185ea7",
+        "docs/_themes/kr/relations.html": "e64e488e5cd09c680a5968e6c72d03b1b15f81631577c122b00bbbee94a79f92",
+        "docs/_themes/kr/static/flasky.css_t": "d0587869c6049f67fe5163b1b5ad64f35f385279201eb7277daaadb1e5617f82",
+        "docs/_themes/kr/theme.conf": "6f9423779600222e465f99360c0ee9e8b87de6523c2ddcbd6b5d39edb4b4726d",
+        "docs/_themes/kr_small/layout.html": "c0d6e1bbfc53181ec280327f7f4bd66f0899eaaee0e42640666311c6eb0ea9f3",
+        "docs/_themes/kr_small/static/flasky.css_t": "6f8dd4dcaa0df7966b9d48ec80b4d2563b68d7408d3017f7de70a7ca5ec94fde",
+        "docs/_themes/kr_small/theme.conf": "e2202373ab211e1c5a2552d99fba96cc70cc90e0865c6954c16fcd0253312ecf",
+        "docs/api.rst": "754f7d7bc0d876a11be7ac0bb3eff54197eba46125714c80f809c292074a153c",
+        "docs/community/faq.rst": "ff4bc4dae77e701b19938a275ed70b3b4f3b1e3812ea04a75735a81ca490932b",
+        "docs/community/out-there.rst": "c81acb873203d8c849834ea674436fa49494ce726d50aa921ce2891004b08166",
+        "docs/community/support.rst": "10a4926d22ad0898546ddd5eff2eb1f37d96091d51fcf0a13b8b755de2cf0981",
+        "docs/community/updates.rst": "db473c9143a593f0a042e29bb5a3c0b81eebb26a088c4cae6030003b686618e0",
+        "docs/conf.py": "ac552c9e83906e8547f6c3a53bbd164ab04dcd384de164f7096e3fade202a6e5",
+        "docs/dev/authors.rst": "fca9beca6d06486a750884fc0dd3befccdb3293f3c1e54ca7a8fb5dca4bef8b5",
+        "docs/dev/internals.rst": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "docs/dev/philosophy.rst": "a29b5e1650f8895655e37766fdddcefe0e9655e9c0ccd46fd58b2d589b7c7d0b",
+        "docs/dev/todo.rst": "821bc6e29a87dc0b036e88932d6f49dbfd2d95ff08f97dfcac84554b9f49cd00",
+        "docs/index.rst": "980fa4d51ee8710ed8f9b03197797fd2f91a8489944adeefcfaef6603a02d436",
+        "docs/make.bat": "4016647c49f700d4fe8ddbd6d5be5b0b7e65d465d60414e7541f0f1970c9b025",
+        "docs/requirements.txt": "eacd39a02669d178c5a3e4b35b2ffa04951ddf82864f3058ddbb96c67b7e8205",
+        "docs/user/advanced.rst": "5eb89c59647744ae4d54646886b059d9e95c14afc5aefddb905eb9bd4b0e38a9",
+        "docs/user/authentication.rst": "9161a54d57f8b91a153543b43468e29089230def4ba420e887a50ca05984c61a",
+        "docs/user/install.rst": "bcc7a4f5607e465aee67383c923b83c6aa974271e3a05fb8a6aef71749b89466",
+        "docs/user/intro.rst": "53bd32e686ac7cd0a941708309c2c03988100f35b8fdd3e118d79d52839b577d",
+        "docs/user/quickstart.rst": "a0b3110df2489919c30ebb216bf59a767c1aabd80ca9736fb07b83f07d94ecf7",
+        "ext/requests-logo.ai": "1eb6f876f90f2092675e717bf615a6f3f0eb595fdce3309327835e9a395d8a2b",
+        "requests/__init__.py": "465e36de457e3014c50e24ed10e2623fd0ae6ae6c54a2f2b1daab3ab5281374c",
+        "requests/adapters.py": "4002f9ad2c04ceeaece4fe2ac23148cc74086de515f0eb1498a06f796e2bf899",
+        "requests/api.py": "46295d2e64e1951dc134523a0b76d2d5bbf15791bae5e84256b0469181de8c3b",
+        "requests/auth.py": "c766c5a872b72e46e6eea3d4ca1fdd02a60b4c34e8b418bed736bd12909d0345",
+        "requests/cacert.pem": "6a4eeafeaf28cc7750f5f7f6ed4f84d6f08dacb8ac151412332f732647694253",
+        "requests/certs.py": "c126aa8523680748a0a7a0dafa15b0d23b5720229705b2fc692f6cc2d865b79d",
+        "requests/compat.py": "246ac93d5d9819ab73c2b7b197d912b7c67c42d9856e84591fdcb0b0b2bf30c0",
+        "requests/cookies.py": "06330ab6b23c4d7403e68415793a18b64441175e3d788f395215ac046c2c25a7",
+        "requests/exceptions.py": "cfedd0a6271a7cab4887ce5b30468294bd8ea4d3ddb1ce933fff3729cb1587c6",
+        "requests/hooks.py": "f6f362ba244745de50cba057ff4a751f736c5330e8d4cfc76854760052f8d538",
+        "requests/models.py": "91153287286b3bc2018f8739e40dbaaee4c23cf5d7ca95b6ac661e0ac2ca9c33",
+        "requests/packages/README.rst": "6184621991b784af0fa9fa860be44bcf322622c18864f3ae134244abe74c7f14",
+        "requests/packages/__init__.py": "69791b3428ccfd686bc91068704e00680fe9efe093c4be4b3aeb58ed7cca9b8b",
+        "requests/packages/chardet/__init__.py": "f3edfd0e0daa12ea1de4334ded131d9f665838ef73154ddf15f684f348835867",
+        "requests/packages/chardet/big5freq.py": "0fca13773f8633b260f13b1a5890e6eb9bccfce2c70b7c6e6faa94277ace82c4",
+        "requests/packages/chardet/big5prober.py": "5d7f7a0befba58a616dfa98bfb3ee925202d735ebd67c648981c823f8a4437d0",
+        "requests/packages/chardet/chardetect.py": "f20f9d45203dedb484e8cdb94ea7b5ae828ab65dd71d2327aa2eaf4f3a47355d",
+        "requests/packages/chardet/chardistribution.py": "714011405af5a132d778908342b0d19143fbefc02f48cce14829c6f152c2579f",
+        "requests/packages/chardet/charsetgroupprober.py": "d252a4ed5139d7a7e0330d75f6d35e7c5a8b3b129f204f567dd929213ebd38a5",
+        "requests/packages/chardet/charsetprober.py": "678f28d8a88e8f6dc536a607f05ab3847e66d6a766deb23c0dc4e6d98aad9258",
+        "requests/packages/chardet/codingstatemachine.py": "13ce6b6211d5330f710c4255822421a743a72c6afa8b6afcffb40e58c2931f4f",
+        "requests/packages/chardet/compat.py": "e669bacab1f079fd49106e4ec643c9952ab99648cb56910687788f805064a643",
+        "requests/packages/chardet/constants.py": "f949d8f14ec43fbcfd7d3c9dd3dcaadf9044912144014022bfda217750d6d6ce",
+        "requests/packages/chardet/cp949prober.py": "14cbdd2f207b7de8cf5d1b136dc6bb2cad4fdd152fbecb268d43726847f3f336",
+        "requests/packages/chardet/escprober.py": "ab94dc40a795ab7d56c6b5bb4aff328e96648c4a1a1cef12f7610967d868772b",
+        "requests/packages/chardet/escsm.py": "ee296310a37c9574e1f091573d44b09626cc9e8e91ea4b2ae1ebcbc5b9337eba",
+        "requests/packages/chardet/eucjpprober.py": "e48a5f4848c06fb87785c18c77a76453cd0ef74d02d8deb192edbcadd6052ae7",
+        "requests/packages/chardet/euckrfreq.py": "4f9b1a2b99889b2486e728103edb29ea8dae2ae968b82c189b61253b216426a5",
+        "requests/packages/chardet/euckrprober.py": "5a8edd9d9e44af0fe70781fe9b96a53223b13ae2549861e5c0249a1aa1310d90",
+        "requests/packages/chardet/euctwfreq.py": "1bf234056f62d70d0e35e794c0862a57bfd4d3d6ee20776a87ec0d1d56aa97b2",
+        "requests/packages/chardet/euctwprober.py": "ba94b63fa1ae4f9ba33b15d8c3e4492dc4fb0383d3ba8dbb28650a538519a484",
+        "requests/packages/chardet/gb2312freq.py": "336805768fea43f06c952b44721acf5b90ab3c464469c0b4bb20cbc38a24fa46",
+        "requests/packages/chardet/gb2312prober.py": "5569e3a116bcdd8e95ea873331ac7252bd2ecb8f220a70b69f393dcdf1084477",
+        "requests/packages/chardet/hebrewprober.py": "f2976851fb155dffcbe019c975efc17b04ba1f6c889d5e7af3c7aed271612c76",
+        "requests/packages/chardet/jisfreq.py": "65c2f84797a41c76cfd8a09819a915301b222aa659640001ce1c22fae4643a9b",
+        "requests/packages/chardet/jpcntx.py": "f5f27da12d0151aadc7593724b09b3551b93d37b18742952985c170e3df254d8",
+        "requests/packages/chardet/langbulgarianmodel.py": "6723ec03bf7a31256161d7d684c0a0296724ba900a0272aa59c1370a5dde8faa",
+        "requests/packages/chardet/langcyrillicmodel.py": "7e471de4ebe8814a7e1ab34358064f82462c491083da89a8b4012faa39662ca1",
+        "requests/packages/chardet/langgreekmodel.py": "407332df5087fe8b7aed40ad9aeac210aa8ac765b0a1a2abc3660261804ad8bc",
+        "requests/packages/chardet/langhebrewmodel.py": "e004a5e6fcca24f9e0e07dbbf151cab51602d374e94297a79474dcb26647d6b1",
+        "requests/packages/chardet/langhungarianmodel.py": "497c2e533878f7f70178c5e1b2144776b865933d13f3fa59595fe976a04a3459",
+        "requests/packages/chardet/langthaimodel.py": "fa4edd8e1ddd18a9e00069eddd67eea0937b69c0dc59c98700fa2385a51deeae",
+        "requests/packages/chardet/latin1prober.py": "83aee0a99db3f3d2d43a547b059100878fa9e5ad72196b2cf675b2f0508d9bc4",
+        "requests/packages/chardet/mbcharsetprober.py": "f6b3828c356c992329e9eeeadaccaa6a4db68fb96b6d466126131e7b681b54bd",
+        "requests/packages/chardet/mbcsgroupprober.py": "48747334f2e90d77cc24b03ca61087554d1682a6e00c23710d03289465ffef29",
+        "requests/packages/chardet/mbcssm.py": "52e880e0873cbc47345e94ca0e77aa672887d93c06b85559c4ec5625ea775ffe",
+        "requests/packages/chardet/sbcharsetprober.py": "5ead25383a899c3831825062408e01a931623db9fadfed1ae57340e7e855bbb5",
+        "requests/packages/chardet/sbcsgroupprober.py": "f212f21fc4401be6a8841a3ba3f29c896560468e36644ff312db8d1b524c4582",
+        "requests/packages/chardet/sjisprober.py": "d518e94362d4da0be8101ff83bcdfdc434157215b1d9f1bf0bbfef5e1e763f92",
+        "requests/packages/chardet/universaldetector.py": "1a465dc0dc8d7db1560bc235baa9f3ca139417b7dabd60aa08e2aa750971ea04",
+        "requests/packages/chardet/utf8prober.py": "eed74d646ac963b8d95010f8f3718632488fd13c7c169f9c1af587a00b229478",
+        "requests/packages/urllib3/__init__.py": "b0b20abfd7462630e5a225575010635c3596abc6cceba91cbd31f6494fd664a8",
+        "requests/packages/urllib3/_collections.py": "611616dfcaacea619583d2b0ff2fdeb4fd278784911ab2ccea4be922b5f73f0a",
+        "requests/packages/urllib3/connection.py": "5af01865997b6e8c0265603bb75051830fa2d7f57b37555f89f61215f14c16c6",
+        "requests/packages/urllib3/connectionpool.py": "faeab17e36f3139609bb8a0506e53c174c48cc77c6c9d69c1026233d6cf4ef32",
+        "requests/packages/urllib3/contrib/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "requests/packages/urllib3/contrib/ntlmpool.py": "549f868f1a58213c528f8503297d22aaf1f069ab72836440dcf693ca6e56a7ac",
+        "requests/packages/urllib3/contrib/pyopenssl.py": "f011a1d9173bdc86dc16f0b025929422768c5e42d9d71b0b6996ee3928251df1",
+        "requests/packages/urllib3/exceptions.py": "dc4af7e589b8c6b7f9c4d7533d520000d45d45551fe35bae32c342e2ca4f9347",
+        "requests/packages/urllib3/fields.py": "52eb88dc819fc47c0ea0a71bc39152e98b98ddfe32b82bd02edba649a22282be",
+        "requests/packages/urllib3/filepost.py": "b563d8df71e714cfd13e9114f4f1eff43df89faef0f1946df34652b1622fd0a9",
+        "requests/packages/urllib3/packages/__init__.py": "10a09300e8d9b4f47f1c2e747bb5fc852e63e1b90590df3b5d9393f967697eeb",
+        "requests/packages/urllib3/packages/ordered_dict.py": "1ed1e986d4ad265a2bcd0aa821ab7ccd41f496a2e7b38d7a81f48ef72fda4804",
+        "requests/packages/urllib3/packages/six.py": "53eacef9606b152f0fc4779a99297aa242828ea3c5d7c3618996f4a8f67aed73",
+        "requests/packages/urllib3/packages/ssl_match_hostname/__init__.py": "0ecb345326fef8f57f22eeccfd2d74c78afe6d6a6e766e6621124d88e2772b4a",
+        "requests/packages/urllib3/packages/ssl_match_hostname/_implementation.py": "7cadbc937ee12fbf83efdbfd88cd9f1e034af50d4fc3433ba9544be2b91f1634",
+        "requests/packages/urllib3/poolmanager.py": "6cc60774d6952393b862b247af54fab44d9160710ccccdbf2b4713cbbbb35f63",
+        "requests/packages/urllib3/request.py": "7174dcaebf5de7446ddb5dd95cb8027f9dca356c5ee0b43c971495d470586bd1",
+        "requests/packages/urllib3/response.py": "69a0b04bdd5fe69daa8c08d18abf41f1b093420c8fd59abb5f861d9c74eafbcc",
+        "requests/packages/urllib3/util.py": "87ca3f11220369c7292d62062af1ce80f0d4fe67c71061408ddf766c0c8db676",
+        "requests/sessions.py": "32e30eadf91367b3aefb90e8541cf3fc20d3d950a16828c0101f4232d36a78a9",
+        "requests/status_codes.py": "2d8a6a2efe0010ab933dbcbe412be097f808edf7159540ea481727748c17f908",
+        "requests/structures.py": "9fb92004e5099d05d64c9a518744b36b892e5a1b963249f7593678236e7f0119",
+        "requests/utils.py": "c38f1858cb796264436c06185e957437dba5f89ad3c54c9176c8515236d3fd0f",
+        "requirements.txt": "878c487bab1e59dc96e58d6268f03aeb70a644b1c549b11a087f7ae06e9ad57f",
+        "setup.cfg": "13fb77272894ca43a3edcf58f4eb59d606a8c3a42331b8a56fde94ec606a4159",
+        "setup.py": "4264d70db4af18d3ac44519037a5855d300cd2d24318ecf838f6bb84de1546f4",
+        "test_requests.py": "37ef77c0f9c3bddee646e2e3fd496e1a114daf6e8b05d3e47897ebc2e0d7630e"
+      },
+      "git_status": ""
+    },
+    "common_runtime_packages": {
+      "python": "3.9.25 (main, Nov  3 2025, 22:33:42) \n[GCC 11.2.0]",
+      "packages": [
+        [
+          "Pygments",
+          "2.19.1"
+        ],
+        [
+          "atomicwrites",
+          "1.4.1"
+        ],
+        [
+          "attrs",
+          "26.1.0"
+        ],
+        [
+          "exceptiongroup",
+          "1.3.0"
+        ],
+        [
+          "iniconfig",
+          "2.1.0"
+        ],
+        [
+          "more-itertools",
+          "10.8.0"
+        ],
+        [
+          "packaging",
+          "25.0"
+        ],
+        [
+          "pip",
+          "26.0.1"
+        ],
+        [
+          "pluggy",
+          "0.13.1"
+        ],
+        [
+          "py",
+          "1.11.0"
+        ],
+        [
+          "pytest",
+          "4.6.11"
+        ],
+        [
+          "requests",
+          "2.3.0"
+        ],
+        [
+          "setuptools",
+          "80.9.0"
+        ],
+        [
+          "six",
+          "1.17.0"
+        ],
+        [
+          "tomli",
+          "2.2.1"
+        ],
+        [
+          "typing_extensions",
+          "4.15.0"
+        ],
+        [
+          "wcwidth",
+          "0.9.4"
+        ],
+        [
+          "wheel",
+          "0.45.1"
+        ]
+      ]
+    },
+    "common_prepare_seconds": 1.7212251760065556,
+    "source_before_product": {
+      "head": "3c88e520da24ae6f736929a750876e7654accc3d",
+      "tracked": {
+        ".gitignore": "cad5fe62e70ddb73af88feb33f5a5169d5af491879b3830616bf21a04cdbdf28",
+        "AUTHORS.rst": "28487561897eb533c0b3dacf5717a645b63bb779eeb3a17bb136ea33707759be",
+        "HISTORY.rst": "241974d3f1fc22a8439a440bfa388f0e231f85e9a08370d56a23cdcee5c6c874",
+        "LICENSE": "89478f1915fbb6b6585a685d071bf006ba5649d2615fab787f66e9693c622ae4",
+        "MANIFEST.in": "588abc6c5050b10ef1629e67ca79e7eb57febb26c41bb995d6224828f8ca0bc1",
+        "Makefile": "c6d89b7c95ea8535803d6b961ff78fd164804eacdaf49badf60a13b553ee315a",
+        "NOTICE": "548eb62c9f5f5f7a121d15f26bb0d6a5ebb0cf7260584e0529ad65c56b39e83d",
+        "README.rst": "fb7ad6162349f0548c822b7ab3ac75129b8dd8ab27dfc45b7e39529335b740e4",
+        "docs/MANIFEST.in": "293a8936089ee64bb0728018eee77ad422bb92be40e1ea70c1361a0ea53b1d16",
+        "docs/Makefile": "612c28d4c5ccb2731ba2386e358ba0c50d4564f94409cfb0cafd507cb7216c1c",
+        "docs/_static/requests-sidebar.png": "5321117037e924e82d22ba484fa19f9ee64d95cab1b650958ec5d94f9aff68e1",
+        "docs/_templates/sidebarintro.html": "bc5d196bba888bcb5bcaa8e39efd56e4a4d3ae030daf4f4fdc3bf22db3dd9e90",
+        "docs/_templates/sidebarlogo.html": "56a7487ed201d4c0dba22a9722552ec43555cc7bc6176e57aded0c3f37da6c32",
+        "docs/_themes/.gitignore": "f27660c4ec6efa86aac4d61036c5f495e9438805a6f63be44f17db003979a06f",
+        "docs/_themes/LICENSE": "6afc9d58f919ab52f4806a895a37aefe4d263f8e52278e6a1e87c5d7ec82299c",
+        "docs/_themes/README.rst": "7e91e1410eb502112c2b346a248104bbdc68ee4dad1e382517ef14a563610197",
+        "docs/_themes/flask_theme_support.py": "bba3677c6eeb99f678e808e90142a025b798b7658bac1ab4632591df8441d209",
+        "docs/_themes/kr/layout.html": "1aeb7715214e019a8bd27b01a423cefaaa0ec5ccbc9a28aaa401530814185ea7",
+        "docs/_themes/kr/relations.html": "e64e488e5cd09c680a5968e6c72d03b1b15f81631577c122b00bbbee94a79f92",
+        "docs/_themes/kr/static/flasky.css_t": "d0587869c6049f67fe5163b1b5ad64f35f385279201eb7277daaadb1e5617f82",
+        "docs/_themes/kr/theme.conf": "6f9423779600222e465f99360c0ee9e8b87de6523c2ddcbd6b5d39edb4b4726d",
+        "docs/_themes/kr_small/layout.html": "c0d6e1bbfc53181ec280327f7f4bd66f0899eaaee0e42640666311c6eb0ea9f3",
+        "docs/_themes/kr_small/static/flasky.css_t": "6f8dd4dcaa0df7966b9d48ec80b4d2563b68d7408d3017f7de70a7ca5ec94fde",
+        "docs/_themes/kr_small/theme.conf": "e2202373ab211e1c5a2552d99fba96cc70cc90e0865c6954c16fcd0253312ecf",
+        "docs/api.rst": "754f7d7bc0d876a11be7ac0bb3eff54197eba46125714c80f809c292074a153c",
+        "docs/community/faq.rst": "ff4bc4dae77e701b19938a275ed70b3b4f3b1e3812ea04a75735a81ca490932b",
+        "docs/community/out-there.rst": "c81acb873203d8c849834ea674436fa49494ce726d50aa921ce2891004b08166",
+        "docs/community/support.rst": "10a4926d22ad0898546ddd5eff2eb1f37d96091d51fcf0a13b8b755de2cf0981",
+        "docs/community/updates.rst": "db473c9143a593f0a042e29bb5a3c0b81eebb26a088c4cae6030003b686618e0",
+        "docs/conf.py": "ac552c9e83906e8547f6c3a53bbd164ab04dcd384de164f7096e3fade202a6e5",
+        "docs/dev/authors.rst": "fca9beca6d06486a750884fc0dd3befccdb3293f3c1e54ca7a8fb5dca4bef8b5",
+        "docs/dev/internals.rst": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "docs/dev/philosophy.rst": "a29b5e1650f8895655e37766fdddcefe0e9655e9c0ccd46fd58b2d589b7c7d0b",
+        "docs/dev/todo.rst": "821bc6e29a87dc0b036e88932d6f49dbfd2d95ff08f97dfcac84554b9f49cd00",
+        "docs/index.rst": "980fa4d51ee8710ed8f9b03197797fd2f91a8489944adeefcfaef6603a02d436",
+        "docs/make.bat": "4016647c49f700d4fe8ddbd6d5be5b0b7e65d465d60414e7541f0f1970c9b025",
+        "docs/requirements.txt": "eacd39a02669d178c5a3e4b35b2ffa04951ddf82864f3058ddbb96c67b7e8205",
+        "docs/user/advanced.rst": "5eb89c59647744ae4d54646886b059d9e95c14afc5aefddb905eb9bd4b0e38a9",
+        "docs/user/authentication.rst": "9161a54d57f8b91a153543b43468e29089230def4ba420e887a50ca05984c61a",
+        "docs/user/install.rst": "bcc7a4f5607e465aee67383c923b83c6aa974271e3a05fb8a6aef71749b89466",
+        "docs/user/intro.rst": "53bd32e686ac7cd0a941708309c2c03988100f35b8fdd3e118d79d52839b577d",
+        "docs/user/quickstart.rst": "a0b3110df2489919c30ebb216bf59a767c1aabd80ca9736fb07b83f07d94ecf7",
+        "ext/requests-logo.ai": "1eb6f876f90f2092675e717bf615a6f3f0eb595fdce3309327835e9a395d8a2b",
+        "requests/__init__.py": "465e36de457e3014c50e24ed10e2623fd0ae6ae6c54a2f2b1daab3ab5281374c",
+        "requests/adapters.py": "4002f9ad2c04ceeaece4fe2ac23148cc74086de515f0eb1498a06f796e2bf899",
+        "requests/api.py": "46295d2e64e1951dc134523a0b76d2d5bbf15791bae5e84256b0469181de8c3b",
+        "requests/auth.py": "c766c5a872b72e46e6eea3d4ca1fdd02a60b4c34e8b418bed736bd12909d0345",
+        "requests/cacert.pem": "6a4eeafeaf28cc7750f5f7f6ed4f84d6f08dacb8ac151412332f732647694253",
+        "requests/certs.py": "c126aa8523680748a0a7a0dafa15b0d23b5720229705b2fc692f6cc2d865b79d",
+        "requests/compat.py": "246ac93d5d9819ab73c2b7b197d912b7c67c42d9856e84591fdcb0b0b2bf30c0",
+        "requests/cookies.py": "06330ab6b23c4d7403e68415793a18b64441175e3d788f395215ac046c2c25a7",
+        "requests/exceptions.py": "cfedd0a6271a7cab4887ce5b30468294bd8ea4d3ddb1ce933fff3729cb1587c6",
+        "requests/hooks.py": "f6f362ba244745de50cba057ff4a751f736c5330e8d4cfc76854760052f8d538",
+        "requests/models.py": "91153287286b3bc2018f8739e40dbaaee4c23cf5d7ca95b6ac661e0ac2ca9c33",
+        "requests/packages/README.rst": "6184621991b784af0fa9fa860be44bcf322622c18864f3ae134244abe74c7f14",
+        "requests/packages/__init__.py": "69791b3428ccfd686bc91068704e00680fe9efe093c4be4b3aeb58ed7cca9b8b",
+        "requests/packages/chardet/__init__.py": "f3edfd0e0daa12ea1de4334ded131d9f665838ef73154ddf15f684f348835867",
+        "requests/packages/chardet/big5freq.py": "0fca13773f8633b260f13b1a5890e6eb9bccfce2c70b7c6e6faa94277ace82c4",
+        "requests/packages/chardet/big5prober.py": "5d7f7a0befba58a616dfa98bfb3ee925202d735ebd67c648981c823f8a4437d0",
+        "requests/packages/chardet/chardetect.py": "f20f9d45203dedb484e8cdb94ea7b5ae828ab65dd71d2327aa2eaf4f3a47355d",
+        "requests/packages/chardet/chardistribution.py": "714011405af5a132d778908342b0d19143fbefc02f48cce14829c6f152c2579f",
+        "requests/packages/chardet/charsetgroupprober.py": "d252a4ed5139d7a7e0330d75f6d35e7c5a8b3b129f204f567dd929213ebd38a5",
+        "requests/packages/chardet/charsetprober.py": "678f28d8a88e8f6dc536a607f05ab3847e66d6a766deb23c0dc4e6d98aad9258",
+        "requests/packages/chardet/codingstatemachine.py": "13ce6b6211d5330f710c4255822421a743a72c6afa8b6afcffb40e58c2931f4f",
+        "requests/packages/chardet/compat.py": "e669bacab1f079fd49106e4ec643c9952ab99648cb56910687788f805064a643",
+        "requests/packages/chardet/constants.py": "f949d8f14ec43fbcfd7d3c9dd3dcaadf9044912144014022bfda217750d6d6ce",
+        "requests/packages/chardet/cp949prober.py": "14cbdd2f207b7de8cf5d1b136dc6bb2cad4fdd152fbecb268d43726847f3f336",
+        "requests/packages/chardet/escprober.py": "ab94dc40a795ab7d56c6b5bb4aff328e96648c4a1a1cef12f7610967d868772b",
+        "requests/packages/chardet/escsm.py": "ee296310a37c9574e1f091573d44b09626cc9e8e91ea4b2ae1ebcbc5b9337eba",
+        "requests/packages/chardet/eucjpprober.py": "e48a5f4848c06fb87785c18c77a76453cd0ef74d02d8deb192edbcadd6052ae7",
+        "requests/packages/chardet/euckrfreq.py": "4f9b1a2b99889b2486e728103edb29ea8dae2ae968b82c189b61253b216426a5",
+        "requests/packages/chardet/euckrprober.py": "5a8edd9d9e44af0fe70781fe9b96a53223b13ae2549861e5c0249a1aa1310d90",
+        "requests/packages/chardet/euctwfreq.py": "1bf234056f62d70d0e35e794c0862a57bfd4d3d6ee20776a87ec0d1d56aa97b2",
+        "requests/packages/chardet/euctwprober.py": "ba94b63fa1ae4f9ba33b15d8c3e4492dc4fb0383d3ba8dbb28650a538519a484",
+        "requests/packages/chardet/gb2312freq.py": "336805768fea43f06c952b44721acf5b90ab3c464469c0b4bb20cbc38a24fa46",
+        "requests/packages/chardet/gb2312prober.py": "5569e3a116bcdd8e95ea873331ac7252bd2ecb8f220a70b69f393dcdf1084477",
+        "requests/packages/chardet/hebrewprober.py": "f2976851fb155dffcbe019c975efc17b04ba1f6c889d5e7af3c7aed271612c76",
+        "requests/packages/chardet/jisfreq.py": "65c2f84797a41c76cfd8a09819a915301b222aa659640001ce1c22fae4643a9b",
+        "requests/packages/chardet/jpcntx.py": "f5f27da12d0151aadc7593724b09b3551b93d37b18742952985c170e3df254d8",
+        "requests/packages/chardet/langbulgarianmodel.py": "6723ec03bf7a31256161d7d684c0a0296724ba900a0272aa59c1370a5dde8faa",
+        "requests/packages/chardet/langcyrillicmodel.py": "7e471de4ebe8814a7e1ab34358064f82462c491083da89a8b4012faa39662ca1",
+        "requests/packages/chardet/langgreekmodel.py": "407332df5087fe8b7aed40ad9aeac210aa8ac765b0a1a2abc3660261804ad8bc",
+        "requests/packages/chardet/langhebrewmodel.py": "e004a5e6fcca24f9e0e07dbbf151cab51602d374e94297a79474dcb26647d6b1",
+        "requests/packages/chardet/langhungarianmodel.py": "497c2e533878f7f70178c5e1b2144776b865933d13f3fa59595fe976a04a3459",
+        "requests/packages/chardet/langthaimodel.py": "fa4edd8e1ddd18a9e00069eddd67eea0937b69c0dc59c98700fa2385a51deeae",
+        "requests/packages/chardet/latin1prober.py": "83aee0a99db3f3d2d43a547b059100878fa9e5ad72196b2cf675b2f0508d9bc4",
+        "requests/packages/chardet/mbcharsetprober.py": "f6b3828c356c992329e9eeeadaccaa6a4db68fb96b6d466126131e7b681b54bd",
+        "requests/packages/chardet/mbcsgroupprober.py": "48747334f2e90d77cc24b03ca61087554d1682a6e00c23710d03289465ffef29",
+        "requests/packages/chardet/mbcssm.py": "52e880e0873cbc47345e94ca0e77aa672887d93c06b85559c4ec5625ea775ffe",
+        "requests/packages/chardet/sbcharsetprober.py": "5ead25383a899c3831825062408e01a931623db9fadfed1ae57340e7e855bbb5",
+        "requests/packages/chardet/sbcsgroupprober.py": "f212f21fc4401be6a8841a3ba3f29c896560468e36644ff312db8d1b524c4582",
+        "requests/packages/chardet/sjisprober.py": "d518e94362d4da0be8101ff83bcdfdc434157215b1d9f1bf0bbfef5e1e763f92",
+        "requests/packages/chardet/universaldetector.py": "1a465dc0dc8d7db1560bc235baa9f3ca139417b7dabd60aa08e2aa750971ea04",
+        "requests/packages/chardet/utf8prober.py": "eed74d646ac963b8d95010f8f3718632488fd13c7c169f9c1af587a00b229478",
+        "requests/packages/urllib3/__init__.py": "b0b20abfd7462630e5a225575010635c3596abc6cceba91cbd31f6494fd664a8",
+        "requests/packages/urllib3/_collections.py": "611616dfcaacea619583d2b0ff2fdeb4fd278784911ab2ccea4be922b5f73f0a",
+        "requests/packages/urllib3/connection.py": "5af01865997b6e8c0265603bb75051830fa2d7f57b37555f89f61215f14c16c6",
+        "requests/packages/urllib3/connectionpool.py": "faeab17e36f3139609bb8a0506e53c174c48cc77c6c9d69c1026233d6cf4ef32",
+        "requests/packages/urllib3/contrib/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "requests/packages/urllib3/contrib/ntlmpool.py": "549f868f1a58213c528f8503297d22aaf1f069ab72836440dcf693ca6e56a7ac",
+        "requests/packages/urllib3/contrib/pyopenssl.py": "f011a1d9173bdc86dc16f0b025929422768c5e42d9d71b0b6996ee3928251df1",
+        "requests/packages/urllib3/exceptions.py": "dc4af7e589b8c6b7f9c4d7533d520000d45d45551fe35bae32c342e2ca4f9347",
+        "requests/packages/urllib3/fields.py": "52eb88dc819fc47c0ea0a71bc39152e98b98ddfe32b82bd02edba649a22282be",
+        "requests/packages/urllib3/filepost.py": "b563d8df71e714cfd13e9114f4f1eff43df89faef0f1946df34652b1622fd0a9",
+        "requests/packages/urllib3/packages/__init__.py": "10a09300e8d9b4f47f1c2e747bb5fc852e63e1b90590df3b5d9393f967697eeb",
+        "requests/packages/urllib3/packages/ordered_dict.py": "1ed1e986d4ad265a2bcd0aa821ab7ccd41f496a2e7b38d7a81f48ef72fda4804",
+        "requests/packages/urllib3/packages/six.py": "53eacef9606b152f0fc4779a99297aa242828ea3c5d7c3618996f4a8f67aed73",
+        "requests/packages/urllib3/packages/ssl_match_hostname/__init__.py": "0ecb345326fef8f57f22eeccfd2d74c78afe6d6a6e766e6621124d88e2772b4a",
+        "requests/packages/urllib3/packages/ssl_match_hostname/_implementation.py": "7cadbc937ee12fbf83efdbfd88cd9f1e034af50d4fc3433ba9544be2b91f1634",
+        "requests/packages/urllib3/poolmanager.py": "6cc60774d6952393b862b247af54fab44d9160710ccccdbf2b4713cbbbb35f63",
+        "requests/packages/urllib3/request.py": "7174dcaebf5de7446ddb5dd95cb8027f9dca356c5ee0b43c971495d470586bd1",
+        "requests/packages/urllib3/response.py": "69a0b04bdd5fe69daa8c08d18abf41f1b093420c8fd59abb5f861d9c74eafbcc",
+        "requests/packages/urllib3/util.py": "87ca3f11220369c7292d62062af1ce80f0d4fe67c71061408ddf766c0c8db676",
+        "requests/sessions.py": "32e30eadf91367b3aefb90e8541cf3fc20d3d950a16828c0101f4232d36a78a9",
+        "requests/status_codes.py": "2d8a6a2efe0010ab933dbcbe412be097f808edf7159540ea481727748c17f908",
+        "requests/structures.py": "9fb92004e5099d05d64c9a518744b36b892e5a1b963249f7593678236e7f0119",
+        "requests/utils.py": "c38f1858cb796264436c06185e957437dba5f89ad3c54c9176c8515236d3fd0f",
+        "requirements.txt": "878c487bab1e59dc96e58d6268f03aeb70a644b1c549b11a087f7ae06e9ad57f",
+        "setup.cfg": "13fb77272894ca43a3edcf58f4eb59d606a8c3a42331b8a56fde94ec606a4159",
+        "setup.py": "4264d70db4af18d3ac44519037a5855d300cd2d24318ecf838f6bb84de1546f4",
+        "test_requests.py": "37ef77c0f9c3bddee646e2e3fd496e1a114daf6e8b05d3e47897ebc2e0d7630e"
+      },
+      "git_status": ""
+    },
+    "product_install_initialize_seconds": 6.699862642213702,
+    "prepared_image": "sha256:9bee992de5fdf7837644f616fa5511db5efb9fd27b2864092dc1ee0cd275df72",
+    "isolated_runtime": {
+      "container_id": "300aaf1a776498bde31c0fb8ba055406b1e70bc64985e26cdfa8426a54c0b0ad",
+      "image_id": "sha256:9bee992de5fdf7837644f616fa5511db5efb9fd27b2864092dc1ee0cd275df72",
+      "mounts": [
+        {
+          "Type": "bind",
+          "Source": "/tmp/codenib-common-admission-20261028/requests-codegraph-watcher1/workspace",
+          "Destination": "/tmp/codenib-common-admission-20261028/requests-codegraph-watcher1/workspace",
+          "Mode": "rw",
+          "RW": true,
+          "Propagation": "rprivate"
+        }
+      ],
+      "network": "none",
+      "network_disabled": true,
+      "memory": 4294967296,
+      "nano_cpus": 2000000000,
+      "pids_limit": 256
+    },
+    "server_argv": [
+      "docker",
+      "exec",
+      "-i",
+      "-w",
+      "/tmp/codenib-common-admission-20261028/requests-codegraph-watcher1/workspace",
+      "300aaf1a776498bde31c0fb8ba055406b1e70bc64985e26cdfa8426a54c0b0ad",
+      "codegraph",
+      "serve",
+      "--mcp",
+      "--path",
+      "/tmp/codenib-common-admission-20261028/requests-codegraph-watcher1/workspace"
+    ],
+    "controlled_edit": {
+      "apply_before": "psf__requests-1921-post_edit",
+      "path": "requests/_pilot_post_edit.py",
+      "source": "from .models import Request\nfrom .sessions import Session\n\ndef prepare_probe_request(url: str):\n    return Session().prepare_request(Request(\"GET\", url))\n",
+      "sha256": "91ae1a3d5561b96db5590260d4e20b68db8a3a693c19965d2c92cb3e062d087e",
+      "classification": "identical controlled synthetic source addition in every arm; no task outcome or runtime-benefit claim from the edit alone",
+      "rule": "Capture the repair patch before adding this file. Never overwrite an existing file; an unexpected collision is a recorded controller failure. Keep the same return-session MCP connection for the follow-up."
+    },
+    "watcher_wait": {
+      "requested_seconds": 1.0,
+      "observed_seconds": 1.0019006058573723,
+      "reason": "Explicit pending sync in the retained original reply",
+      "same_mcp_client": true,
+      "retry_limit": 1
+    },
+    "lookup_update_checks_seconds": 1.7645921520888805,
+    "status": "passed",
+    "cleanup": [
+      {
+        "container_id": "300aaf1a776498bde31c0fb8ba055406b1e70bc64985e26cdfa8426a54c0b0ad",
+        "confirmed_absent": true
+      },
+      {
+        "container_id": "e9af56f1fb509984c0d688dfb7bc3e223e507b226d8a60daa4f14d478578c04e",
+        "confirmed_absent": true
+      }
+    ],
+    "source_final": {
+      "head": "3c88e520da24ae6f736929a750876e7654accc3d",
+      "tracked": {
+        ".gitignore": "cad5fe62e70ddb73af88feb33f5a5169d5af491879b3830616bf21a04cdbdf28",
+        "AUTHORS.rst": "28487561897eb533c0b3dacf5717a645b63bb779eeb3a17bb136ea33707759be",
+        "HISTORY.rst": "241974d3f1fc22a8439a440bfa388f0e231f85e9a08370d56a23cdcee5c6c874",
+        "LICENSE": "89478f1915fbb6b6585a685d071bf006ba5649d2615fab787f66e9693c622ae4",
+        "MANIFEST.in": "588abc6c5050b10ef1629e67ca79e7eb57febb26c41bb995d6224828f8ca0bc1",
+        "Makefile": "c6d89b7c95ea8535803d6b961ff78fd164804eacdaf49badf60a13b553ee315a",
+        "NOTICE": "548eb62c9f5f5f7a121d15f26bb0d6a5ebb0cf7260584e0529ad65c56b39e83d",
+        "README.rst": "fb7ad6162349f0548c822b7ab3ac75129b8dd8ab27dfc45b7e39529335b740e4",
+        "docs/MANIFEST.in": "293a8936089ee64bb0728018eee77ad422bb92be40e1ea70c1361a0ea53b1d16",
+        "docs/Makefile": "612c28d4c5ccb2731ba2386e358ba0c50d4564f94409cfb0cafd507cb7216c1c",
+        "docs/_static/requests-sidebar.png": "5321117037e924e82d22ba484fa19f9ee64d95cab1b650958ec5d94f9aff68e1",
+        "docs/_templates/sidebarintro.html": "bc5d196bba888bcb5bcaa8e39efd56e4a4d3ae030daf4f4fdc3bf22db3dd9e90",
+        "docs/_templates/sidebarlogo.html": "56a7487ed201d4c0dba22a9722552ec43555cc7bc6176e57aded0c3f37da6c32",
+        "docs/_themes/.gitignore": "f27660c4ec6efa86aac4d61036c5f495e9438805a6f63be44f17db003979a06f",
+        "docs/_themes/LICENSE": "6afc9d58f919ab52f4806a895a37aefe4d263f8e52278e6a1e87c5d7ec82299c",
+        "docs/_themes/README.rst": "7e91e1410eb502112c2b346a248104bbdc68ee4dad1e382517ef14a563610197",
+        "docs/_themes/flask_theme_support.py": "bba3677c6eeb99f678e808e90142a025b798b7658bac1ab4632591df8441d209",
+        "docs/_themes/kr/layout.html": "1aeb7715214e019a8bd27b01a423cefaaa0ec5ccbc9a28aaa401530814185ea7",
+        "docs/_themes/kr/relations.html": "e64e488e5cd09c680a5968e6c72d03b1b15f81631577c122b00bbbee94a79f92",
+        "docs/_themes/kr/static/flasky.css_t": "d0587869c6049f67fe5163b1b5ad64f35f385279201eb7277daaadb1e5617f82",
+        "docs/_themes/kr/theme.conf": "6f9423779600222e465f99360c0ee9e8b87de6523c2ddcbd6b5d39edb4b4726d",
+        "docs/_themes/kr_small/layout.html": "c0d6e1bbfc53181ec280327f7f4bd66f0899eaaee0e42640666311c6eb0ea9f3",
+        "docs/_themes/kr_small/static/flasky.css_t": "6f8dd4dcaa0df7966b9d48ec80b4d2563b68d7408d3017f7de70a7ca5ec94fde",
+        "docs/_themes/kr_small/theme.conf": "e2202373ab211e1c5a2552d99fba96cc70cc90e0865c6954c16fcd0253312ecf",
+        "docs/api.rst": "754f7d7bc0d876a11be7ac0bb3eff54197eba46125714c80f809c292074a153c",
+        "docs/community/faq.rst": "ff4bc4dae77e701b19938a275ed70b3b4f3b1e3812ea04a75735a81ca490932b",
+        "docs/community/out-there.rst": "c81acb873203d8c849834ea674436fa49494ce726d50aa921ce2891004b08166",
+        "docs/community/support.rst": "10a4926d22ad0898546ddd5eff2eb1f37d96091d51fcf0a13b8b755de2cf0981",
+        "docs/community/updates.rst": "db473c9143a593f0a042e29bb5a3c0b81eebb26a088c4cae6030003b686618e0",
+        "docs/conf.py": "ac552c9e83906e8547f6c3a53bbd164ab04dcd384de164f7096e3fade202a6e5",
+        "docs/dev/authors.rst": "fca9beca6d06486a750884fc0dd3befccdb3293f3c1e54ca7a8fb5dca4bef8b5",
+        "docs/dev/internals.rst": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "docs/dev/philosophy.rst": "a29b5e1650f8895655e37766fdddcefe0e9655e9c0ccd46fd58b2d589b7c7d0b",
+        "docs/dev/todo.rst": "821bc6e29a87dc0b036e88932d6f49dbfd2d95ff08f97dfcac84554b9f49cd00",
+        "docs/index.rst": "980fa4d51ee8710ed8f9b03197797fd2f91a8489944adeefcfaef6603a02d436",
+        "docs/make.bat": "4016647c49f700d4fe8ddbd6d5be5b0b7e65d465d60414e7541f0f1970c9b025",
+        "docs/requirements.txt": "eacd39a02669d178c5a3e4b35b2ffa04951ddf82864f3058ddbb96c67b7e8205",
+        "docs/user/advanced.rst": "5eb89c59647744ae4d54646886b059d9e95c14afc5aefddb905eb9bd4b0e38a9",
+        "docs/user/authentication.rst": "9161a54d57f8b91a153543b43468e29089230def4ba420e887a50ca05984c61a",
+        "docs/user/install.rst": "bcc7a4f5607e465aee67383c923b83c6aa974271e3a05fb8a6aef71749b89466",
+        "docs/user/intro.rst": "53bd32e686ac7cd0a941708309c2c03988100f35b8fdd3e118d79d52839b577d",
+        "docs/user/quickstart.rst": "a0b3110df2489919c30ebb216bf59a767c1aabd80ca9736fb07b83f07d94ecf7",
+        "ext/requests-logo.ai": "1eb6f876f90f2092675e717bf615a6f3f0eb595fdce3309327835e9a395d8a2b",
+        "requests/__init__.py": "465e36de457e3014c50e24ed10e2623fd0ae6ae6c54a2f2b1daab3ab5281374c",
+        "requests/adapters.py": "4002f9ad2c04ceeaece4fe2ac23148cc74086de515f0eb1498a06f796e2bf899",
+        "requests/api.py": "46295d2e64e1951dc134523a0b76d2d5bbf15791bae5e84256b0469181de8c3b",
+        "requests/auth.py": "c766c5a872b72e46e6eea3d4ca1fdd02a60b4c34e8b418bed736bd12909d0345",
+        "requests/cacert.pem": "6a4eeafeaf28cc7750f5f7f6ed4f84d6f08dacb8ac151412332f732647694253",
+        "requests/certs.py": "c126aa8523680748a0a7a0dafa15b0d23b5720229705b2fc692f6cc2d865b79d",
+        "requests/compat.py": "246ac93d5d9819ab73c2b7b197d912b7c67c42d9856e84591fdcb0b0b2bf30c0",
+        "requests/cookies.py": "06330ab6b23c4d7403e68415793a18b64441175e3d788f395215ac046c2c25a7",
+        "requests/exceptions.py": "cfedd0a6271a7cab4887ce5b30468294bd8ea4d3ddb1ce933fff3729cb1587c6",
+        "requests/hooks.py": "f6f362ba244745de50cba057ff4a751f736c5330e8d4cfc76854760052f8d538",
+        "requests/models.py": "91153287286b3bc2018f8739e40dbaaee4c23cf5d7ca95b6ac661e0ac2ca9c33",
+        "requests/packages/README.rst": "6184621991b784af0fa9fa860be44bcf322622c18864f3ae134244abe74c7f14",
+        "requests/packages/__init__.py": "69791b3428ccfd686bc91068704e00680fe9efe093c4be4b3aeb58ed7cca9b8b",
+        "requests/packages/chardet/__init__.py": "f3edfd0e0daa12ea1de4334ded131d9f665838ef73154ddf15f684f348835867",
+        "requests/packages/chardet/big5freq.py": "0fca13773f8633b260f13b1a5890e6eb9bccfce2c70b7c6e6faa94277ace82c4",
+        "requests/packages/chardet/big5prober.py": "5d7f7a0befba58a616dfa98bfb3ee925202d735ebd67c648981c823f8a4437d0",
+        "requests/packages/chardet/chardetect.py": "f20f9d45203dedb484e8cdb94ea7b5ae828ab65dd71d2327aa2eaf4f3a47355d",
+        "requests/packages/chardet/chardistribution.py": "714011405af5a132d778908342b0d19143fbefc02f48cce14829c6f152c2579f",
+        "requests/packages/chardet/charsetgroupprober.py": "d252a4ed5139d7a7e0330d75f6d35e7c5a8b3b129f204f567dd929213ebd38a5",
+        "requests/packages/chardet/charsetprober.py": "678f28d8a88e8f6dc536a607f05ab3847e66d6a766deb23c0dc4e6d98aad9258",
+        "requests/packages/chardet/codingstatemachine.py": "13ce6b6211d5330f710c4255822421a743a72c6afa8b6afcffb40e58c2931f4f",
+        "requests/packages/chardet/compat.py": "e669bacab1f079fd49106e4ec643c9952ab99648cb56910687788f805064a643",
+        "requests/packages/chardet/constants.py": "f949d8f14ec43fbcfd7d3c9dd3dcaadf9044912144014022bfda217750d6d6ce",
+        "requests/packages/chardet/cp949prober.py": "14cbdd2f207b7de8cf5d1b136dc6bb2cad4fdd152fbecb268d43726847f3f336",
+        "requests/packages/chardet/escprober.py": "ab94dc40a795ab7d56c6b5bb4aff328e96648c4a1a1cef12f7610967d868772b",
+        "requests/packages/chardet/escsm.py": "ee296310a37c9574e1f091573d44b09626cc9e8e91ea4b2ae1ebcbc5b9337eba",
+        "requests/packages/chardet/eucjpprober.py": "e48a5f4848c06fb87785c18c77a76453cd0ef74d02d8deb192edbcadd6052ae7",
+        "requests/packages/chardet/euckrfreq.py": "4f9b1a2b99889b2486e728103edb29ea8dae2ae968b82c189b61253b216426a5",
+        "requests/packages/chardet/euckrprober.py": "5a8edd9d9e44af0fe70781fe9b96a53223b13ae2549861e5c0249a1aa1310d90",
+        "requests/packages/chardet/euctwfreq.py": "1bf234056f62d70d0e35e794c0862a57bfd4d3d6ee20776a87ec0d1d56aa97b2",
+        "requests/packages/chardet/euctwprober.py": "ba94b63fa1ae4f9ba33b15d8c3e4492dc4fb0383d3ba8dbb28650a538519a484",
+        "requests/packages/chardet/gb2312freq.py": "336805768fea43f06c952b44721acf5b90ab3c464469c0b4bb20cbc38a24fa46",
+        "requests/packages/chardet/gb2312prober.py": "5569e3a116bcdd8e95ea873331ac7252bd2ecb8f220a70b69f393dcdf1084477",
+        "requests/packages/chardet/hebrewprober.py": "f2976851fb155dffcbe019c975efc17b04ba1f6c889d5e7af3c7aed271612c76",
+        "requests/packages/chardet/jisfreq.py": "65c2f84797a41c76cfd8a09819a915301b222aa659640001ce1c22fae4643a9b",
+        "requests/packages/chardet/jpcntx.py": "f5f27da12d0151aadc7593724b09b3551b93d37b18742952985c170e3df254d8",
+        "requests/packages/chardet/langbulgarianmodel.py": "6723ec03bf7a31256161d7d684c0a0296724ba900a0272aa59c1370a5dde8faa",
+        "requests/packages/chardet/langcyrillicmodel.py": "7e471de4ebe8814a7e1ab34358064f82462c491083da89a8b4012faa39662ca1",
+        "requests/packages/chardet/langgreekmodel.py": "407332df5087fe8b7aed40ad9aeac210aa8ac765b0a1a2abc3660261804ad8bc",
+        "requests/packages/chardet/langhebrewmodel.py": "e004a5e6fcca24f9e0e07dbbf151cab51602d374e94297a79474dcb26647d6b1",
+        "requests/packages/chardet/langhungarianmodel.py": "497c2e533878f7f70178c5e1b2144776b865933d13f3fa59595fe976a04a3459",
+        "requests/packages/chardet/langthaimodel.py": "fa4edd8e1ddd18a9e00069eddd67eea0937b69c0dc59c98700fa2385a51deeae",
+        "requests/packages/chardet/latin1prober.py": "83aee0a99db3f3d2d43a547b059100878fa9e5ad72196b2cf675b2f0508d9bc4",
+        "requests/packages/chardet/mbcharsetprober.py": "f6b3828c356c992329e9eeeadaccaa6a4db68fb96b6d466126131e7b681b54bd",
+        "requests/packages/chardet/mbcsgroupprober.py": "48747334f2e90d77cc24b03ca61087554d1682a6e00c23710d03289465ffef29",
+        "requests/packages/chardet/mbcssm.py": "52e880e0873cbc47345e94ca0e77aa672887d93c06b85559c4ec5625ea775ffe",
+        "requests/packages/chardet/sbcharsetprober.py": "5ead25383a899c3831825062408e01a931623db9fadfed1ae57340e7e855bbb5",
+        "requests/packages/chardet/sbcsgroupprober.py": "f212f21fc4401be6a8841a3ba3f29c896560468e36644ff312db8d1b524c4582",
+        "requests/packages/chardet/sjisprober.py": "d518e94362d4da0be8101ff83bcdfdc434157215b1d9f1bf0bbfef5e1e763f92",
+        "requests/packages/chardet/universaldetector.py": "1a465dc0dc8d7db1560bc235baa9f3ca139417b7dabd60aa08e2aa750971ea04",
+        "requests/packages/chardet/utf8prober.py": "eed74d646ac963b8d95010f8f3718632488fd13c7c169f9c1af587a00b229478",
+        "requests/packages/urllib3/__init__.py": "b0b20abfd7462630e5a225575010635c3596abc6cceba91cbd31f6494fd664a8",
+        "requests/packages/urllib3/_collections.py": "611616dfcaacea619583d2b0ff2fdeb4fd278784911ab2ccea4be922b5f73f0a",
+        "requests/packages/urllib3/connection.py": "5af01865997b6e8c0265603bb75051830fa2d7f57b37555f89f61215f14c16c6",
+        "requests/packages/urllib3/connectionpool.py": "faeab17e36f3139609bb8a0506e53c174c48cc77c6c9d69c1026233d6cf4ef32",
+        "requests/packages/urllib3/contrib/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "requests/packages/urllib3/contrib/ntlmpool.py": "549f868f1a58213c528f8503297d22aaf1f069ab72836440dcf693ca6e56a7ac",
+        "requests/packages/urllib3/contrib/pyopenssl.py": "f011a1d9173bdc86dc16f0b025929422768c5e42d9d71b0b6996ee3928251df1",
+        "requests/packages/urllib3/exceptions.py": "dc4af7e589b8c6b7f9c4d7533d520000d45d45551fe35bae32c342e2ca4f9347",
+        "requests/packages/urllib3/fields.py": "52eb88dc819fc47c0ea0a71bc39152e98b98ddfe32b82bd02edba649a22282be",
+        "requests/packages/urllib3/filepost.py": "b563d8df71e714cfd13e9114f4f1eff43df89faef0f1946df34652b1622fd0a9",
+        "requests/packages/urllib3/packages/__init__.py": "10a09300e8d9b4f47f1c2e747bb5fc852e63e1b90590df3b5d9393f967697eeb",
+        "requests/packages/urllib3/packages/ordered_dict.py": "1ed1e986d4ad265a2bcd0aa821ab7ccd41f496a2e7b38d7a81f48ef72fda4804",
+        "requests/packages/urllib3/packages/six.py": "53eacef9606b152f0fc4779a99297aa242828ea3c5d7c3618996f4a8f67aed73",
+        "requests/packages/urllib3/packages/ssl_match_hostname/__init__.py": "0ecb345326fef8f57f22eeccfd2d74c78afe6d6a6e766e6621124d88e2772b4a",
+        "requests/packages/urllib3/packages/ssl_match_hostname/_implementation.py": "7cadbc937ee12fbf83efdbfd88cd9f1e034af50d4fc3433ba9544be2b91f1634",
+        "requests/packages/urllib3/poolmanager.py": "6cc60774d6952393b862b247af54fab44d9160710ccccdbf2b4713cbbbb35f63",
+        "requests/packages/urllib3/request.py": "7174dcaebf5de7446ddb5dd95cb8027f9dca356c5ee0b43c971495d470586bd1",
+        "requests/packages/urllib3/response.py": "69a0b04bdd5fe69daa8c08d18abf41f1b093420c8fd59abb5f861d9c74eafbcc",
+        "requests/packages/urllib3/util.py": "87ca3f11220369c7292d62062af1ce80f0d4fe67c71061408ddf766c0c8db676",
+        "requests/sessions.py": "32e30eadf91367b3aefb90e8541cf3fc20d3d950a16828c0101f4232d36a78a9",
+        "requests/status_codes.py": "2d8a6a2efe0010ab933dbcbe412be097f808edf7159540ea481727748c17f908",
+        "requests/structures.py": "9fb92004e5099d05d64c9a518744b36b892e5a1b963249f7593678236e7f0119",
+        "requests/utils.py": "c38f1858cb796264436c06185e957437dba5f89ad3c54c9176c8515236d3fd0f",
+        "requirements.txt": "878c487bab1e59dc96e58d6268f03aeb70a644b1c549b11a087f7ae06e9ad57f",
+        "setup.cfg": "13fb77272894ca43a3edcf58f4eb59d606a8c3a42331b8a56fde94ec606a4159",
+        "setup.py": "4264d70db4af18d3ac44519037a5855d300cd2d24318ecf838f6bb84de1546f4",
+        "test_requests.py": "37ef77c0f9c3bddee646e2e3fd496e1a114daf6e8b05d3e47897ebc2e0d7630e"
+      },
+      "git_status": "?? .codegraph/.gitignore\n?? requests/_pilot_post_edit.py\n"
+    },
+    "changed_tracked_files": [],
+    "finished_utc": "2026-10-28T13:17:32.552559+00:00"
+  },
+  "retained_mcp_stderr": {
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "text": ""
+  }
+}

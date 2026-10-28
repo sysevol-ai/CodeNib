@@ -279,6 +279,11 @@ reader. A page is not a record of how the work was done.
   separately from behavioral failures; retain all original selected outcomes.
   Change grading methodology only in a separate, explicit protocol, and keep
   reference material and grading feedback outside model inputs.
+- A committed Docker image can retain bind destinations in `Config.Volumes`.
+  Bind the active workspace once and mask only other inherited destinations;
+  masking the active bind again causes a duplicate-mount failure. Record each
+  returned container identity before startup or inspection, verify its owner
+  label before removal, and clean up only that invocation's identities.
 
 ## Critical Code Conventions
 

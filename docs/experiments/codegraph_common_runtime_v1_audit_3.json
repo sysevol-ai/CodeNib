@@ -1,0 +1,24 @@
+{
+  "original_file": "runtime-audit-initial.json",
+  "original_file_sha256": "9c0d0051e73a2984ed3d134d60616af84dc11a924c5ced3bf483a75f33820e40",
+  "record_index": 3,
+  "receipt": {
+    "case": "flask",
+    "arm": "serena",
+    "prepared_image": "sha256:d366a0b8d31bf3855bf4f91429d86ad4d9c2f08e0e45a1e312c1a2aea3ffb39a",
+    "owner": "e8530048770d482788f85073a9598c65",
+    "controller_sha256": "c1d8e0ad2b8895ef9a06f97203b248f7f05db22c04ff743218848ff220b00dff",
+    "container_id": "9121ab30ef3ebf6b52881f37a9164cd1a3efbbe350cf3e35e444257bb8063754",
+    "argv": [
+      "/opt/pilot-tools/uv/serena-agent/bin/python",
+      "-c",
+      "import importlib.metadata as m,json,sys;from pathlib import Path;result={\"python\":sys.version,\"packages\":dict(sorted((d.metadata[\"Name\"],d.version) for d in m.distributions()))};print(json.dumps(result))"
+    ],
+    "returncode": 0,
+    "stdout": "{\"python\": \"3.13.18 (main, Oct 26 2026, 14:07:20) [Clang 23.1.3 ]\", \"packages\": {\"Flask\": \"3.1.3\", \"Jinja2\": \"3.1.6\", \"MarkupSafe\": \"3.0.4\", \"PyJWT\": \"2.15.1\", \"PyYAML\": \"6.0.2\", \"Werkzeug\": \"3.1.7\", \"annotated-types\": \"0.8.0\", \"anthropic\": \"0.117.0\", \"anyio\": \"4.15.1\", \"attrs\": \"26.1.0\", \"beautifulsoup4\": \"4.14.2\", \"blinker\": \"1.9.0\", \"bottle\": \"0.13.4\", \"cattrs\": \"26.2.1\", \"certifi\": \"2026.10.23\", \"cffi\": \"2.1.1\", \"charset-normalizer\": \"3.5.2\", \"click\": \"8.3.1\", \"cryptography\": \"50.0.0\", \"distro\": \"1.9.0\", \"docstring_parser\": \"0.17.0\", \"filelock\": \"3.25.2\", \"h11\": \"0.16.0\", \"httpcore\": \"1.0.9\", \"httpcore2\": \"2.16.0\", \"httpx\": \"0.28.1\", \"httpx2\": \"2.16.0\", \"idna\": \"3.20\", \"itsdangerous\": \"2.2.0\", \"jiter\": \"0.18.0\", \"joblib\": \"1.5.1\", \"jsonschema\": \"4.26.0\", \"jsonschema-specifications\": \"2025.9.1\", \"lsprotocol\": \"2025.0.0\", \"mcp\": \"2.2.0\", \"mcp-types\": \"2.2.0\", \"mslex\": \"1.3.0\", \"nodeenv\": \"1.11.0\", \"opentelemetry-api\": \"1.45.1\", \"oslex\": \"2.0.0\", \"overrides\": \"7.7.0\", \"pathspec\": \"0.12.1\", \"pillow\": \"13.0.0\", \"proxy_tools\": \"0.1.0\", \"psutil\": \"7.0.0\", \"pycparser\": \"3.12\", \"pydantic\": \"2.12.5\", \"pydantic_core\": \"2.41.5\", \"pygls\": \"2.1.1\", \"pyright\": \"1.1.403\", \"pystray\": \"0.19.5\", \"python-dotenv\": \"1.2.2\", \"python-multipart\": \"0.0.31\", \"python-xlib\": \"0.33\", \"pywebview\": \"6.2\", \"referencing\": \"0.37.0\", \"regex\": \"2026.2.28\", \"requests\": \"2.33.0\", \"rpds-py\": \"2026.9.1\", \"ruamel.yaml\": \"0.18.14\", \"ruamel.yaml.clib\": \"0.2.15\", \"sensai-utils\": \"1.5.0\", \"serena-agent\": \"2.1.0\", \"six\": \"1.17.0\", \"sniffio\": \"1.3.1\", \"soupsieve\": \"3.0.4\", \"sse-starlette\": \"3.6.0\", \"starlette\": \"1.3.1\", \"tiktoken\": \"0.12.0\", \"tqdm\": \"4.67.1\", \"truststore\": \"0.10.5\", \"types-PyYAML\": \"6.0.12.20250516\", \"typing-inspection\": \"0.4.4\", \"typing_extensions\": \"4.16.0\", \"urllib3\": \"2.8.0\", \"uvicorn\": \"0.54.0\"}}\n",
+    "stderr": "",
+    "status": "passed",
+    "container_removed": true
+  },
+  "identity_is_exact_json_parse_of_stdout": true
+}
