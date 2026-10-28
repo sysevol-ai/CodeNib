@@ -32,11 +32,16 @@ expression result, as specified in the advertised tool description. Those
 controller errors are preserved and do not count as product failures.
 
 CodeGraph's npm launcher downloaded the pinned `1.6.2` bundle and reported a
-verified release checksum. Telemetry is disabled. `CODEGRAPH_NO_DAEMON=1`
-avoids changing the real user's shared daemon registry during this preflight;
-the default shared-daemon condition has not been validated. Neither peer's
-client-registration installer ran. SDK cohorts still need isolated execution
-so a native shell cannot reach another arm's tools or answers.
+verified release checksum. Telemetry is disabled. The original direct-mode
+preflight uses `CODEGRAPH_NO_DAEMON=1` to avoid the real user's daemon registry.
+The separate [arm64 runtime checks](codegraph_pilot_admission.md#native-arm64-runtime-checks)
+now exercise documented project initialization and the default daemon-enabled
+mode inside an owned container: source stays current in one MCP connection and
+the background process remains after disconnect. Serena's REPL and CodeNib's
+own-CLI rebuild/reconnect also pass there. Native CLI access is limited to the
+selected product in each container; the host-only canary is absent. These are
+readiness checks, not matched task timings. Neither peer's client-registration
+installer ran against the user's real profile.
 
 ## Pilot admission remains open
 
@@ -47,10 +52,12 @@ tools; Serena's recommended context contains explicit tool preferences.
 Native read/search/edit/shell must remain available in every arm, and the
 study prompt must not require CodeNib use.
 
-Freeze task membership and acceptance, exact model/settings, ordering,
-per-task limits, timeout treatment, usage normalization and setup/update
-accounting before matched tasks. Small-fixture setup numbers and corrected
-warm retries are not cold-start product evidence. The five external users
+The [task document](codegraph_matched_tasks_v1.json) and
+[execution policy](codegraph_matched_policy_v3.json) now freeze membership,
+acceptance, model/settings, ordering, limits, timeouts and usage/setup accounting
+before matched inference. Executable driver/source binding and representative
+query checks remain open. Small-fixture setup numbers and corrected warm retries
+are not cold-start product evidence. The five external users
 and seven-day observations remain separate gates in the
 [pilot contract](codegraph_net_benefit.md).
 
