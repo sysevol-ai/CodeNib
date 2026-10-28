@@ -1,0 +1,1951 @@
+{
+  "schema_version": 1,
+  "scope": "Model-free source and MCP semantics regression; no new benefit comparison, model-improvement result or external-user claim.",
+  "original_receipt_sha256": "ca0e85d2a1543d93eef11b4b4f109bddd91b13e718d5413ebc24c1ae87708fff",
+  "receipt": {
+    "scope": "Model-free developer regression on the historically exposed pinned Flask source. Fresh strict SCIP/BM25 build and real MCP 2.3 stdio. No task-benefit, model-improvement, SDK inference or external-user claim.",
+    "started_utc": "2026-10-28T12:06:21.311514+00:00",
+    "controller_sha256": "0e66421ff436e4109541ff519c2fb490f2bab352bb566dfd089aad7aa01f13cb",
+    "base_commit": "8b47a82165ceade7f96b2cf2a58421c540a86732",
+    "implementation_sha256": {
+      "codenib/mcp/server.py": "c1a6a53e533dcb02a6f6cb85297d9b683f5363645851801b0defb344b1635e80",
+      "codenib/mcp/prompts.py": "a7f7b9ce4026861cba4da4af599c8506ef3a0801ba28f1d912d07ca0b1bc9344",
+      "codenib/mcp/tools/dependency.py": "a001a55f9578f11b04f1f2fefd6aac4384b72463346aa7fb9d44706ffc5206de",
+      "codenib/graph/dependency.py": "a89ccdf3846c75b27e254b947bfe4b4bd11968278ef76f5da1dfaa85ae8b66cd"
+    },
+    "calls": [
+      {
+        "name": "dependency_subgraph",
+        "arguments": {
+          "symbol": "src/flask/app.py:Flask.make_response()",
+          "direction": "dependencies",
+          "depth": 1,
+          "max_nodes": 60,
+          "max_edges": 400
+        },
+        "seconds": 0.03143131732940674,
+        "payload": {
+          "meta": {
+            "io.modelcontextprotocol/serverInfo": {
+              "name": "codenib",
+              "version": "0.2.4"
+            }
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"semantics\": {\n    \"edge_type\": \"reference\",\n    \"reference_direction\": \"outgoing\",\n    \"interpretation\": \"Indexed static references can include calls, field access, type use and function values. An edge does not prove that the target is invoked; inspect the source call site.\",\n    \"coverage\": \"External and dynamic calls may be missing. This is not a runtime trace or a guarantee of complete call coverage.\"\n  },\n  \"root\": \"src/flask/app.py:Flask.make_response()\",\n  \"direction\": \"callees\",\n  \"nodes\": [\n    {\n      \"name\": \"src/flask/wrappers.py:Response\",\n      \"file\": \"src/flask/wrappers.py\",\n      \"line\": 136,\n      \"kind\": \"class\",\n      \"depth\": 1\n    },\n    {\n      \"name\": \"src/flask/globals.py:request\",\n      \"file\": \"src/flask/globals.py\",\n      \"line\": 65,\n      \"kind\": \"field\",\n      \"depth\": 1\n    },\n    {\n      \"name\": \"src/flask/app.py:Flask.response_class\",\n      \"file\": \"src/flask/app.py\",\n      \"line\": 208,\n      \"kind\": \"field\",\n      \"depth\": 1\n    },\n    {\n      \"name\": \"src/flask/app.py:Flask.json\",\n      \"file\": \"src/flask/app.py\",\n      \"line\": 414,\n      \"kind\": \"field\",\n      \"depth\": 1\n    },\n    {\n      \"name\": \"src/flask/typing.py:ResponseReturnValue\",\n      \"file\": \"src/flask/typing.py\",\n      \"line\": 32,\n      \"kind\": \"field\",\n      \"depth\": 1\n    },\n    {\n      \"name\": \"src/flask/wrappers.py:Request.endpoint()\",\n      \"file\": \"src/flask/wrappers.py\",\n      \"line\": 60,\n      \"kind\": \"method\",\n      \"depth\": 1\n    },\n    {\n      \"name\": \"src/flask/json/provider.py:JSONProvider.response()\",\n      \"file\": \"src/flask/json/provider.py\",\n      \"line\": 88,\n      \"kind\": \"method\",\n      \"depth\": 1\n    }\n  ],\n  \"edges\": [\n    {\n      \"source\": \"src/flask/app.py:Flask.make_response()\",\n      \"target\": \"src/flask/wrappers.py:Response\",\n      \"type\": \"reference\"\n    },\n    {\n      \"source\": \"src/flask/app.py:Flask.make_response()\",\n      \"target\": \"src/flask/globals.py:request\",\n      \"type\": \"reference\"\n    },\n    {\n      \"source\": \"src/flask/app.py:Flask.make_response()\",\n      \"target\": \"src/flask/app.py:Flask.response_class\",\n      \"type\": \"reference\"\n    },\n    {\n      \"source\": \"src/flask/app.py:Flask.make_response()\",\n      \"target\": \"src/flask/app.py:Flask.json\",\n      \"type\": \"reference\"\n    },\n    {\n      \"source\": \"src/flask/app.py:Flask.make_response()\",\n      \"target\": \"src/flask/typing.py:ResponseReturnValue\",\n      \"type\": \"reference\"\n    },\n    {\n      \"source\": \"src/flask/app.py:Flask.make_response()\",\n      \"target\": \"src/flask/wrappers.py:Request.endpoint()\",\n      \"type\": \"reference\"\n    },\n    {\n      \"source\": \"src/flask/app.py:Flask.make_response()\",\n      \"target\": \"src/flask/json/provider.py:JSONProvider.response()\",\n      \"type\": \"reference\"\n    }\n  ],\n  \"truncated\": false,\n  \"note\": \"\"\n}",
+              "annotations": null,
+              "meta": null
+            }
+          ],
+          "structured_content": {
+            "semantics": {
+              "edge_type": "reference",
+              "reference_direction": "outgoing",
+              "interpretation": "Indexed static references can include calls, field access, type use and function values. An edge does not prove that the target is invoked; inspect the source call site.",
+              "coverage": "External and dynamic calls may be missing. This is not a runtime trace or a guarantee of complete call coverage."
+            },
+            "root": "src/flask/app.py:Flask.make_response()",
+            "direction": "callees",
+            "nodes": [
+              {
+                "name": "src/flask/wrappers.py:Response",
+                "file": "src/flask/wrappers.py",
+                "line": 136,
+                "kind": "class",
+                "depth": 1
+              },
+              {
+                "name": "src/flask/globals.py:request",
+                "file": "src/flask/globals.py",
+                "line": 65,
+                "kind": "field",
+                "depth": 1
+              },
+              {
+                "name": "src/flask/app.py:Flask.response_class",
+                "file": "src/flask/app.py",
+                "line": 208,
+                "kind": "field",
+                "depth": 1
+              },
+              {
+                "name": "src/flask/app.py:Flask.json",
+                "file": "src/flask/app.py",
+                "line": 414,
+                "kind": "field",
+                "depth": 1
+              },
+              {
+                "name": "src/flask/typing.py:ResponseReturnValue",
+                "file": "src/flask/typing.py",
+                "line": 32,
+                "kind": "field",
+                "depth": 1
+              },
+              {
+                "name": "src/flask/wrappers.py:Request.endpoint()",
+                "file": "src/flask/wrappers.py",
+                "line": 60,
+                "kind": "method",
+                "depth": 1
+              },
+              {
+                "name": "src/flask/json/provider.py:JSONProvider.response()",
+                "file": "src/flask/json/provider.py",
+                "line": 88,
+                "kind": "method",
+                "depth": 1
+              }
+            ],
+            "edges": [
+              {
+                "source": "src/flask/app.py:Flask.make_response()",
+                "target": "src/flask/wrappers.py:Response",
+                "type": "reference"
+              },
+              {
+                "source": "src/flask/app.py:Flask.make_response()",
+                "target": "src/flask/globals.py:request",
+                "type": "reference"
+              },
+              {
+                "source": "src/flask/app.py:Flask.make_response()",
+                "target": "src/flask/app.py:Flask.response_class",
+                "type": "reference"
+              },
+              {
+                "source": "src/flask/app.py:Flask.make_response()",
+                "target": "src/flask/app.py:Flask.json",
+                "type": "reference"
+              },
+              {
+                "source": "src/flask/app.py:Flask.make_response()",
+                "target": "src/flask/typing.py:ResponseReturnValue",
+                "type": "reference"
+              },
+              {
+                "source": "src/flask/app.py:Flask.make_response()",
+                "target": "src/flask/wrappers.py:Request.endpoint()",
+                "type": "reference"
+              },
+              {
+                "source": "src/flask/app.py:Flask.make_response()",
+                "target": "src/flask/json/provider.py:JSONProvider.response()",
+                "type": "reference"
+              }
+            ],
+            "truncated": false,
+            "note": ""
+          },
+          "is_error": false,
+          "result_type": "complete"
+        }
+      },
+      {
+        "name": "dependency_subgraph",
+        "arguments": {
+          "symbol": "src/flask/app.py:Flask.make_response()",
+          "direction": "impact",
+          "depth": 1,
+          "max_nodes": 60,
+          "max_edges": 400
+        },
+        "seconds": 0.013944108039140701,
+        "payload": {
+          "meta": {
+            "io.modelcontextprotocol/serverInfo": {
+              "name": "codenib",
+              "version": "0.2.4"
+            }
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"semantics\": {\n    \"edge_type\": \"reference\",\n    \"reference_direction\": \"incoming\",\n    \"interpretation\": \"Indexed static references can include calls, field access, type use and function values. An edge does not prove that the target is invoked; inspect the source call site.\",\n    \"coverage\": \"External and dynamic calls may be missing. This is not a runtime trace or a guarantee of complete call coverage.\"\n  },\n  \"root\": \"src/flask/app.py:Flask.make_response()\",\n  \"direction\": \"callers\",\n  \"nodes\": [\n    {\n      \"name\": \"src/flask/helpers.py:make_response()\",\n      \"file\": \"src/flask/helpers.py\",\n      \"line\": 130,\n      \"kind\": \"function\",\n      \"depth\": 1\n    },\n    {\n      \"name\": \"src/flask/app.py:Flask.finalize_request()\",\n      \"file\": \"src/flask/app.py\",\n      \"line\": 1504,\n      \"kind\": \"method\",\n      \"depth\": 1\n    }\n  ],\n  \"edges\": [\n    {\n      \"source\": \"src/flask/helpers.py:make_response()\",\n      \"target\": \"src/flask/app.py:Flask.make_response()\",\n      \"type\": \"reference\"\n    },\n    {\n      \"source\": \"src/flask/app.py:Flask.finalize_request()\",\n      \"target\": \"src/flask/app.py:Flask.make_response()\",\n      \"type\": \"reference\"\n    }\n  ],\n  \"truncated\": false,\n  \"note\": \"\"\n}",
+              "annotations": null,
+              "meta": null
+            }
+          ],
+          "structured_content": {
+            "semantics": {
+              "edge_type": "reference",
+              "reference_direction": "incoming",
+              "interpretation": "Indexed static references can include calls, field access, type use and function values. An edge does not prove that the target is invoked; inspect the source call site.",
+              "coverage": "External and dynamic calls may be missing. This is not a runtime trace or a guarantee of complete call coverage."
+            },
+            "root": "src/flask/app.py:Flask.make_response()",
+            "direction": "callers",
+            "nodes": [
+              {
+                "name": "src/flask/helpers.py:make_response()",
+                "file": "src/flask/helpers.py",
+                "line": 130,
+                "kind": "function",
+                "depth": 1
+              },
+              {
+                "name": "src/flask/app.py:Flask.finalize_request()",
+                "file": "src/flask/app.py",
+                "line": 1504,
+                "kind": "method",
+                "depth": 1
+              }
+            ],
+            "edges": [
+              {
+                "source": "src/flask/helpers.py:make_response()",
+                "target": "src/flask/app.py:Flask.make_response()",
+                "type": "reference"
+              },
+              {
+                "source": "src/flask/app.py:Flask.finalize_request()",
+                "target": "src/flask/app.py:Flask.make_response()",
+                "type": "reference"
+              }
+            ],
+            "truncated": false,
+            "note": ""
+          },
+          "is_error": false,
+          "result_type": "complete"
+        }
+      },
+      {
+        "name": "dependency_subgraph",
+        "arguments": {
+          "symbol": "src/flask/app.py:Flask.make_response()",
+          "direction": "both",
+          "depth": 1,
+          "max_nodes": 60,
+          "max_edges": 400
+        },
+        "seconds": 0.013054845854640007,
+        "payload": {
+          "meta": {
+            "io.modelcontextprotocol/serverInfo": {
+              "name": "codenib",
+              "version": "0.2.4"
+            }
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"semantics\": {\n    \"edge_type\": \"reference\",\n    \"reference_direction\": \"both\",\n    \"interpretation\": \"Indexed static references can include calls, field access, type use and function values. An edge does not prove that the target is invoked; inspect the source call site.\",\n    \"coverage\": \"External and dynamic calls may be missing. This is not a runtime trace or a guarantee of complete call coverage.\"\n  },\n  \"root\": \"src/flask/app.py:Flask.make_response()\",\n  \"direction\": \"both\",\n  \"nodes\": [\n    {\n      \"name\": \"src/flask/wrappers.py:Response\",\n      \"file\": \"src/flask/wrappers.py\",\n      \"line\": 136,\n      \"kind\": \"class\",\n      \"depth\": 1\n    },\n    {\n      \"name\": \"src/flask/globals.py:request\",\n      \"file\": \"src/flask/globals.py\",\n      \"line\": 65,\n      \"kind\": \"field\",\n      \"depth\": 1\n    },\n    {\n      \"name\": \"src/flask/app.py:Flask.response_class\",\n      \"file\": \"src/flask/app.py\",\n      \"line\": 208,\n      \"kind\": \"field\",\n      \"depth\": 1\n    },\n    {\n      \"name\": \"src/flask/app.py:Flask.json\",\n      \"file\": \"src/flask/app.py\",\n      \"line\": 414,\n      \"kind\": \"field\",\n      \"depth\": 1\n    },\n    {\n      \"name\": \"src/flask/typing.py:ResponseReturnValue\",\n      \"file\": \"src/flask/typing.py\",\n      \"line\": 32,\n      \"kind\": \"field\",\n      \"depth\": 1\n    },\n    {\n      \"name\": \"src/flask/wrappers.py:Request.endpoint()\",\n      \"file\": \"src/flask/wrappers.py\",\n      \"line\": 60,\n      \"kind\": \"method\",\n      \"depth\": 1\n    },\n    {\n      \"name\": \"src/flask/json/provider.py:JSONProvider.response()\",\n      \"file\": \"src/flask/json/provider.py\",\n      \"line\": 88,\n      \"kind\": \"method\",\n      \"depth\": 1\n    },\n    {\n      \"name\": \"src/flask/helpers.py:make_response()\",\n      \"file\": \"src/flask/helpers.py\",\n      \"line\": 130,\n      \"kind\": \"function\",\n      \"depth\": 1\n    },\n    {\n      \"name\": \"src/flask/app.py:Flask.finalize_request()\",\n      \"file\": \"src/flask/app.py\",\n      \"line\": 1504,\n      \"kind\": \"method\",\n      \"depth\": 1\n    }\n  ],\n  \"edges\": [\n    {\n      \"source\": \"src/flask/app.py:Flask.make_response()\",\n      \"target\": \"src/flask/wrappers.py:Response\",\n      \"type\": \"reference\"\n    },\n    {\n      \"source\": \"src/flask/app.py:Flask.make_response()\",\n      \"target\": \"src/flask/globals.py:request\",\n      \"type\": \"reference\"\n    },\n    {\n      \"source\": \"src/flask/app.py:Flask.make_response()\",\n      \"target\": \"src/flask/app.py:Flask.response_class\",\n      \"type\": \"reference\"\n    },\n    {\n      \"source\": \"src/flask/app.py:Flask.make_response()\",\n      \"target\": \"src/flask/app.py:Flask.json\",\n      \"type\": \"reference\"\n    },\n    {\n      \"source\": \"src/flask/app.py:Flask.make_response()\",\n      \"target\": \"src/flask/typing.py:ResponseReturnValue\",\n      \"type\": \"reference\"\n    },\n    {\n      \"source\": \"src/flask/app.py:Flask.make_response()\",\n      \"target\": \"src/flask/wrappers.py:Request.endpoint()\",\n      \"type\": \"reference\"\n    },\n    {\n      \"source\": \"src/flask/app.py:Flask.make_response()\",\n      \"target\": \"src/flask/json/provider.py:JSONProvider.response()\",\n      \"type\": \"reference\"\n    },\n    {\n      \"source\": \"src/flask/helpers.py:make_response()\",\n      \"target\": \"src/flask/app.py:Flask.make_response()\",\n      \"type\": \"reference\"\n    },\n    {\n      \"source\": \"src/flask/app.py:Flask.finalize_request()\",\n      \"target\": \"src/flask/app.py:Flask.make_response()\",\n      \"type\": \"reference\"\n    }\n  ],\n  \"truncated\": false,\n  \"note\": \"\"\n}",
+              "annotations": null,
+              "meta": null
+            }
+          ],
+          "structured_content": {
+            "semantics": {
+              "edge_type": "reference",
+              "reference_direction": "both",
+              "interpretation": "Indexed static references can include calls, field access, type use and function values. An edge does not prove that the target is invoked; inspect the source call site.",
+              "coverage": "External and dynamic calls may be missing. This is not a runtime trace or a guarantee of complete call coverage."
+            },
+            "root": "src/flask/app.py:Flask.make_response()",
+            "direction": "both",
+            "nodes": [
+              {
+                "name": "src/flask/wrappers.py:Response",
+                "file": "src/flask/wrappers.py",
+                "line": 136,
+                "kind": "class",
+                "depth": 1
+              },
+              {
+                "name": "src/flask/globals.py:request",
+                "file": "src/flask/globals.py",
+                "line": 65,
+                "kind": "field",
+                "depth": 1
+              },
+              {
+                "name": "src/flask/app.py:Flask.response_class",
+                "file": "src/flask/app.py",
+                "line": 208,
+                "kind": "field",
+                "depth": 1
+              },
+              {
+                "name": "src/flask/app.py:Flask.json",
+                "file": "src/flask/app.py",
+                "line": 414,
+                "kind": "field",
+                "depth": 1
+              },
+              {
+                "name": "src/flask/typing.py:ResponseReturnValue",
+                "file": "src/flask/typing.py",
+                "line": 32,
+                "kind": "field",
+                "depth": 1
+              },
+              {
+                "name": "src/flask/wrappers.py:Request.endpoint()",
+                "file": "src/flask/wrappers.py",
+                "line": 60,
+                "kind": "method",
+                "depth": 1
+              },
+              {
+                "name": "src/flask/json/provider.py:JSONProvider.response()",
+                "file": "src/flask/json/provider.py",
+                "line": 88,
+                "kind": "method",
+                "depth": 1
+              },
+              {
+                "name": "src/flask/helpers.py:make_response()",
+                "file": "src/flask/helpers.py",
+                "line": 130,
+                "kind": "function",
+                "depth": 1
+              },
+              {
+                "name": "src/flask/app.py:Flask.finalize_request()",
+                "file": "src/flask/app.py",
+                "line": 1504,
+                "kind": "method",
+                "depth": 1
+              }
+            ],
+            "edges": [
+              {
+                "source": "src/flask/app.py:Flask.make_response()",
+                "target": "src/flask/wrappers.py:Response",
+                "type": "reference"
+              },
+              {
+                "source": "src/flask/app.py:Flask.make_response()",
+                "target": "src/flask/globals.py:request",
+                "type": "reference"
+              },
+              {
+                "source": "src/flask/app.py:Flask.make_response()",
+                "target": "src/flask/app.py:Flask.response_class",
+                "type": "reference"
+              },
+              {
+                "source": "src/flask/app.py:Flask.make_response()",
+                "target": "src/flask/app.py:Flask.json",
+                "type": "reference"
+              },
+              {
+                "source": "src/flask/app.py:Flask.make_response()",
+                "target": "src/flask/typing.py:ResponseReturnValue",
+                "type": "reference"
+              },
+              {
+                "source": "src/flask/app.py:Flask.make_response()",
+                "target": "src/flask/wrappers.py:Request.endpoint()",
+                "type": "reference"
+              },
+              {
+                "source": "src/flask/app.py:Flask.make_response()",
+                "target": "src/flask/json/provider.py:JSONProvider.response()",
+                "type": "reference"
+              },
+              {
+                "source": "src/flask/helpers.py:make_response()",
+                "target": "src/flask/app.py:Flask.make_response()",
+                "type": "reference"
+              },
+              {
+                "source": "src/flask/app.py:Flask.finalize_request()",
+                "target": "src/flask/app.py:Flask.make_response()",
+                "type": "reference"
+              }
+            ],
+            "truncated": false,
+            "note": ""
+          },
+          "is_error": false,
+          "result_type": "complete"
+        }
+      },
+      {
+        "name": "read_source",
+        "arguments": {
+          "file_path": "src/flask/app.py",
+          "start_line": 1732,
+          "end_line": 1732
+        },
+        "seconds": 0.02489086426794529,
+        "payload": {
+          "meta": {
+            "io.modelcontextprotocol/serverInfo": {
+              "name": "codenib",
+              "version": "0.2.4"
+            }
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"file\": \"src/flask/app.py\",\n  \"start_line\": 1732,\n  \"end_line\": 1732,\n  \"content\": \"    def make_response(self, rv: ft.ResponseReturnValue) -> Response:\\n\",\n  \"content_projection\": {\n    \"truncated\": false,\n    \"original_chars\": 69,\n    \"returned_chars\": 69,\n    \"strategy\": \"complete\"\n  },\n  \"source\": {\n    \"repository\": \"/tmp/codenib-reference-semantics-20261028/flask1/source\",\n    \"commit\": \"7ee9ceb71e868944a46e1ff00b506772a53a4f1d\",\n    \"source_fingerprint\": \"sha256-v2:c1139eaf9b0f2e3e17f83df03a0bfc98caaa89577c676777274c86cd963eff2b\",\n    \"verified\": true,\n    \"verification_scope\": \"content-bytes\",\n    \"commit_verified\": false,\n    \"checkout_state\": \"not-attested\"\n  }\n}",
+              "annotations": null,
+              "meta": null
+            }
+          ],
+          "structured_content": {
+            "file": "src/flask/app.py",
+            "start_line": 1732,
+            "end_line": 1732,
+            "content": "    def make_response(self, rv: ft.ResponseReturnValue) -> Response:\n",
+            "content_projection": {
+              "truncated": false,
+              "original_chars": 69,
+              "returned_chars": 69,
+              "strategy": "complete"
+            },
+            "source": {
+              "repository": "/tmp/codenib-reference-semantics-20261028/flask1/source",
+              "commit": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d",
+              "source_fingerprint": "sha256-v2:c1139eaf9b0f2e3e17f83df03a0bfc98caaa89577c676777274c86cd963eff2b",
+              "verified": true,
+              "verification_scope": "content-bytes",
+              "commit_verified": false,
+              "checkout_state": "not-attested"
+            }
+          },
+          "is_error": false,
+          "result_type": "complete"
+        }
+      },
+      {
+        "name": "read_source",
+        "arguments": {
+          "file_path": "src/flask/typing.py",
+          "start_line": 32,
+          "end_line": 35
+        },
+        "seconds": 0.023992080241441727,
+        "payload": {
+          "meta": {
+            "io.modelcontextprotocol/serverInfo": {
+              "name": "codenib",
+              "version": "0.2.4"
+            }
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"file\": \"src/flask/typing.py\",\n  \"start_line\": 32,\n  \"end_line\": 35,\n  \"content\": \"ResponseReturnValue = t.Union[\\n    ResponseValue,\\n    t.Tuple[ResponseValue, HeadersValue],\\n    t.Tuple[ResponseValue, int],\\n\",\n  \"content_projection\": {\n    \"truncated\": false,\n    \"original_chars\": 125,\n    \"returned_chars\": 125,\n    \"strategy\": \"complete\"\n  },\n  \"source\": {\n    \"repository\": \"/tmp/codenib-reference-semantics-20261028/flask1/source\",\n    \"commit\": \"7ee9ceb71e868944a46e1ff00b506772a53a4f1d\",\n    \"source_fingerprint\": \"sha256-v2:c1139eaf9b0f2e3e17f83df03a0bfc98caaa89577c676777274c86cd963eff2b\",\n    \"verified\": true,\n    \"verification_scope\": \"content-bytes\",\n    \"commit_verified\": false,\n    \"checkout_state\": \"not-attested\"\n  }\n}",
+              "annotations": null,
+              "meta": null
+            }
+          ],
+          "structured_content": {
+            "file": "src/flask/typing.py",
+            "start_line": 32,
+            "end_line": 35,
+            "content": "ResponseReturnValue = t.Union[\n    ResponseValue,\n    t.Tuple[ResponseValue, HeadersValue],\n    t.Tuple[ResponseValue, int],\n",
+            "content_projection": {
+              "truncated": false,
+              "original_chars": 125,
+              "returned_chars": 125,
+              "strategy": "complete"
+            },
+            "source": {
+              "repository": "/tmp/codenib-reference-semantics-20261028/flask1/source",
+              "commit": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d",
+              "source_fingerprint": "sha256-v2:c1139eaf9b0f2e3e17f83df03a0bfc98caaa89577c676777274c86cd963eff2b",
+              "verified": true,
+              "verification_scope": "content-bytes",
+              "commit_verified": false,
+              "checkout_state": "not-attested"
+            }
+          },
+          "is_error": false,
+          "result_type": "complete"
+        }
+      },
+      {
+        "name": "get_manifest",
+        "arguments": {},
+        "seconds": 0.008933188393712044,
+        "payload": {
+          "meta": {
+            "io.modelcontextprotocol/serverInfo": {
+              "name": "codenib",
+              "version": "0.2.4"
+            }
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"version\": \"1.2\",\n  \"repo\": {\n    \"path\": \"/tmp/codenib-reference-semantics-20261028/flask1/source\",\n    \"commit\": \"7ee9ceb71e868944a46e1ff00b506772a53a4f1d\",\n    \"last_indexed_commit\": \"7ee9ceb71e868944a46e1ff00b506772a53a4f1d\",\n    \"source_fingerprint\": \"sha256-v2:c1139eaf9b0f2e3e17f83df03a0bfc98caaa89577c676777274c86cd963eff2b\",\n    \"last_indexed_source_fingerprint\": \"sha256-v2:c1139eaf9b0f2e3e17f83df03a0bfc98caaa89577c676777274c86cd963eff2b\",\n    \"languages\": [\n      \"python\"\n    ],\n    \"file_count\": 250,\n    \"source_selection\": {\n      \"schema\": \"codenib.repository-source-selection.v1\",\n      \"repository_filter_policy\": 4,\n      \"exclude_subtrees\": []\n    },\n    \"last_indexed_source_selection_digest\": \"sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4\"\n  },\n  \"indexes\": {\n    \"bm25\": {\n      \"index_type\": \"bm25\",\n      \"path\": \"/tmp/codenib-reference-semantics-20261028/flask1/.codenib/repositories/source-e4b4b7202a9a/indexes/bm25\",\n      \"built_at\": \"2026-10-28T12:06:21.482583+00:00\",\n      \"built_at_epoch\": 1793189181.482583,\n      \"status\": \"fresh\",\n      \"config\": {\n        \"builder_schema\": 9,\n        \"languages\": [\n          \"python\"\n        ],\n        \"max_k\": 128,\n        \"max_lines_per_chunk\": 300,\n        \"chunking_failure_policy\": \"fail\",\n        \"include_header_epilogue\": true,\n        \"repository_filter_policy\": 4,\n        \"source_selection_digest\": \"sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4\",\n        \"artifact_file_fingerprints\": {\n          \"documents.json\": {\n            \"size\": 404262,\n            \"sha256\": \"3fd1d0045879489ddcb252b4fb8434fdfe7a0f7c46be7e292c006981f3fae923\"\n          },\n          \"bm25_metadata.json\": {\n            \"size\": 146,\n            \"sha256\": \"6ad2b060e241984c9d83f7a2fdf1cdff42449f82535b7dcabd84b1b291e74016\"\n          }\n        },\n        \"chunk_count\": 380,\n        \"source_file_count\": 32,\n        \"file_count\": 380\n      },\n      \"metadata\": {\n        \"builder_schema\": 9,\n        \"languages\": [\n          \"python\"\n        ],\n        \"max_k\": 128,\n        \"max_lines_per_chunk\": 300,\n        \"chunking_failure_policy\": \"fail\",\n        \"include_header_epilogue\": true,\n        \"repository_filter_policy\": 4,\n        \"source_selection_digest\": \"sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4\",\n        \"artifact_file_fingerprints\": {\n          \"documents.json\": {\n            \"size\": 404262,\n            \"sha256\": \"3fd1d0045879489ddcb252b4fb8434fdfe7a0f7c46be7e292c006981f3fae923\"\n          },\n          \"bm25_metadata.json\": {\n            \"size\": 146,\n            \"sha256\": \"6ad2b060e241984c9d83f7a2fdf1cdff42449f82535b7dcabd84b1b291e74016\"\n          }\n        },\n        \"chunk_count\": 380,\n        \"source_file_count\": 32,\n        \"file_count\": 380,\n        \"build_duration_seconds\": 0.1\n      },\n      \"commit\": \"7ee9ceb71e868944a46e1ff00b506772a53a4f1d\",\n      \"source_fingerprint\": \"sha256-v2:c1139eaf9b0f2e3e17f83df03a0bfc98caaa89577c676777274c86cd963eff2b\",\n      \"source_selection_digest\": \"sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4\"\n    },\n    \"symbol_graph\": {\n      \"index_type\": \"symbol_graph\",\n      \"path\": \"/tmp/codenib-reference-semantics-20261028/flask1/.codenib/repositories/source-e4b4b7202a9a/indexes/symbol_graph\",\n      \"built_at\": \"2026-10-28T12:06:30.424066+00:00\",\n      \"built_at_epoch\": 1793189190.424066,\n      \"status\": \"fresh\",\n      \"config\": {\n        \"builder_schema\": 8,\n        \"languages\": [\n          \"python\"\n        ],\n        \"graph_route\": \"active\",\n        \"exclude_patterns\": [\n          \"**/.codenib_cache/**\",\n          \"**/.env/**\",\n          \"**/.git/**\",\n          \"**/.hg/**\",\n          \"**/.mypy_cache/**\",\n          \"**/.next/**\",\n          \"**/.pytest_cache/**\",\n          \"**/.ruff_cache/**\",\n          \"**/.svn/**\",\n          \"**/.tox/**\",\n          \"**/.venv/**\",\n          \"**/__pycache__/**\",\n          \"**/build/**\",\n          \"**/dist/**\",\n          \"**/env/**\",\n          \"**/htmlcov/**\",\n          \"**/node_modules/**\",\n          \"**/site/**\",\n          \"**/target/**\",\n          \"**/third_party/**\",\n          \"**/vendor/**\",\n          \"**/venv/**\",\n          \".codenib_cache/**\",\n          \".env/**\",\n          \".git/**\",\n          \".hg/**\",\n          \".mypy_cache/**\",\n          \".next/**\",\n          \".pytest_cache/**\",\n          \".ruff_cache/**\",\n          \".svn/**\",\n          \".tox/**\",\n          \".venv/**\",\n          \"__pycache__/**\",\n          \"build/**\",\n          \"dist/**\",\n          \"env/**\",\n          \"htmlcov/**\",\n          \"node_modules/**\",\n          \"site/**\",\n          \"target/**\",\n          \"third_party/**\",\n          \"vendor/**\",\n          \"venv/**\"\n        ],\n        \"allow_partial_languages\": false,\n        \"allow_partial_index\": false,\n        \"source_coverage_fallback\": false,\n        \"allow_project_preparation\": false,\n        \"target_dir\": null,\n        \"repository_filter_policy\": 4,\n        \"source_selection_digest\": \"sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4\",\n        \"node_count\": 2043,\n        \"edge_count\": 4604,\n        \"language\": \"python\",\n        \"available_languages\": [\n          \"python\"\n        ],\n        \"compiler_available_languages\": [\n          \"python\"\n        ],\n        \"index_generation_reports\": {\n          \"python\": {\n            \"backend\": \"scip-python\",\n            \"status\": \"complete\",\n            \"complete\": true,\n            \"partial\": false,\n            \"document_count\": 80,\n            \"identity_recovery\": {\n              \"status\": \"complete\",\n              \"schema\": 1,\n              \"source_file_count\": 80,\n              \"changed_symbol_families\": 83,\n              \"physical_declarations\": 3795,\n              \"restored_definition_roles\": 21,\n              \"positional_definition_queries\": 58,\n              \"local_binding_families\": 4,\n              \"local_binding_semantics\": \"all_source_declarations_for_compiler_binding\",\n              \"shared_lexical_binding_families\": 65,\n              \"utf8_replacement_sources\": [],\n              \"source_only_definitions\": [],\n              \"unmapped_attribute_definitions\": [],\n              \"definition_provider\": {\n                \"command\": [\n                  \"/tmp/codenib-codegraph-identity-next/toolchain/basedpyright-langserver\",\n                  \"--stdio\"\n                ],\n                \"server_info\": {\n                  \"name\": \"basedpyright\",\n                  \"version\": \"1.39.8\"\n                },\n                \"position_encoding\": \"utf-16\"\n              },\n              \"position_encoding\": \"UTF8\",\n              \"source_sha256\": {\n                \"src/flask/app.py\": \"d439102c7658f90f896556c557df89501f2c98ad498d6317453f10ef58508710\",\n                \"src/flask/blueprints.py\": \"9d296c3a0dffffbafd59ef15290a6d4c2061a470f3ad2b00709388d35d1dddc0\",\n                \"src/flask/cli.py\": \"a4b9a758e6defc6e3f640150761ee4830a8f3314579b8a1485a51206924c7aae\",\n                \"src/flask/globals.py\": \"33342ac58f569f596c2c47eab863b37af7d3203134135a11aed845bdf28d3f3d\",\n                \"src/flask/scaffold.py\": \"12d4caff83fd4f57d51c2d29ec0a873508ac035f596a100d1729edccd18d04ac\",\n                \"src/flask/sessions.py\": \"ebaa06944faff6269cf9e6f9e2d14ddc82c08c9d4579eb871d6c3df1455aa317\",\n                \"src/flask/signals.py\": \"1fb4300dc88af9db41c629e32a97b1a6094fd04ea4d0c2482e21564c8b5f9aa5\",\n                \"src/flask/views.py\": \"2ee96db562f8a30545960c2b262f0608d3388a70b7c5bb36201958df56dd092e\",\n                \"tests/conftest.py\": \"6a85cb938e48d53c7ec978c953d8a6236ae5723541fb3f1c8d73dfa05262fece\",\n                \"tests/test_appctx.py\": \"16dbad01d4ccbc2f811f8718b0bfced28c1d0cde1f8fc357f480dd73b05aef67\",\n                \"tests/test_basic.py\": \"e1087ccff5d7fd00f30a3a2ab0e94860896adaa10c68fbb5f06e653bc206ae5b\",\n                \"tests/test_cli.py\": \"8be854106ba28dc85ec6e95cde140d7910ba236569efe3bd6327f951860cdbc4\",\n                \"tests/test_helpers.py\": \"91a9f89c0fbfc8ad7fff560d959ccfae77a8afd9a947f861246c7ecd16dd26a2\",\n                \"tests/test_json.py\": \"9133dcc027c1458348dcc10cf7f3c587f168966922cc4789811ae0eb4c018bf2\",\n                \"tests/test_json_tag.py\": \"019a2cd9b43245667b178e023dbd3541086f561677c32f06fa2eb85fd81aff65\",\n                \"tests/test_reqctx.py\": \"8c19e1468ed3360efccef5e5ea886377cfe5baf8bb259b34dc84ee993974a764\",\n                \"tests/test_user_error_handler.py\": \"f05213bb275e08d354bf9750eb3a37aeb8fc713a8beee7edcdd3078d11af9d60\"\n              }\n            }\n          }\n        },\n        \"scip_decoded_artifacts\": {\n          \"python\": {\n            \"relative_path\": \"index.decoded\",\n            \"size\": 5277566,\n            \"sha256\": \"909e0db027248bfdb7e9aabe7df86d9c2a7154989e27b60669ee778be95a6685\"\n          }\n        },\n        \"graph_artifact\": {\n          \"relative_path\": \"graph.pkl\",\n          \"size\": 441401,\n          \"sha256\": \"81aca592916776aad0baee384a9f8d19eece9b53a8864e51d0789e2d8feec154\"\n        },\n        \"lsp_occurrence_artifact\": {\n          \"relative_path\": \"lsp_index.pkl\",\n          \"size\": 2748069,\n          \"sha256\": \"6f51981fb895fac4a7c9b3841a364aa58e8a8e4faeb9b2878ea02d69a2b48834\"\n        },\n        \"query_surface_sha256\": \"7ce405d573a5f49c1e99132235829e35e75f693b4276f925fd1aafc5aece7f1f\",\n        \"update_mode\": \"full_rebuild\",\n        \"partial_index\": false,\n        \"failed_languages\": {},\n        \"partial\": false,\n        \"source_selection_report\": {\n          \"source_selection_digest\": \"sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4\",\n          \"nodes_before\": 2043,\n          \"nodes_after\": 2043,\n          \"edges_before\": 4604,\n          \"edges_after\": 4604,\n          \"removed_excluded_path_count\": 0,\n          \"excluded_path_count_after\": 0,\n          \"invalid_path_count_before\": 0,\n          \"invalid_path_count_after\": 0\n        }\n      },\n      \"metadata\": {\n        \"builder_schema\": 8,\n        \"languages\": [\n          \"python\"\n        ],\n        \"graph_route\": \"active\",\n        \"exclude_patterns\": [\n          \"**/.codenib_cache/**\",\n          \"**/.env/**\",\n          \"**/.git/**\",\n          \"**/.hg/**\",\n          \"**/.mypy_cache/**\",\n          \"**/.next/**\",\n          \"**/.pytest_cache/**\",\n          \"**/.ruff_cache/**\",\n          \"**/.svn/**\",\n          \"**/.tox/**\",\n          \"**/.venv/**\",\n          \"**/__pycache__/**\",\n          \"**/build/**\",\n          \"**/dist/**\",\n          \"**/env/**\",\n          \"**/htmlcov/**\",\n          \"**/node_modules/**\",\n          \"**/site/**\",\n          \"**/target/**\",\n          \"**/third_party/**\",\n          \"**/vendor/**\",\n          \"**/venv/**\",\n          \".codenib_cache/**\",\n          \".env/**\",\n          \".git/**\",\n          \".hg/**\",\n          \".mypy_cache/**\",\n          \".next/**\",\n          \".pytest_cache/**\",\n          \".ruff_cache/**\",\n          \".svn/**\",\n          \".tox/**\",\n          \".venv/**\",\n          \"__pycache__/**\",\n          \"build/**\",\n          \"dist/**\",\n          \"env/**\",\n          \"htmlcov/**\",\n          \"node_modules/**\",\n          \"site/**\",\n          \"target/**\",\n          \"third_party/**\",\n          \"vendor/**\",\n          \"venv/**\"\n        ],\n        \"allow_partial_languages\": false,\n        \"allow_partial_index\": false,\n        \"source_coverage_fallback\": false,\n        \"allow_project_preparation\": false,\n        \"target_dir\": null,\n        \"repository_filter_policy\": 4,\n        \"source_selection_digest\": \"sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4\",\n        \"node_count\": 2043,\n        \"edge_count\": 4604,\n        \"language\": \"python\",\n        \"available_languages\": [\n          \"python\"\n        ],\n        \"compiler_available_languages\": [\n          \"python\"\n        ],\n        \"index_generation_reports\": {\n          \"python\": {\n            \"backend\": \"scip-python\",\n            \"status\": \"complete\",\n            \"complete\": true,\n            \"partial\": false,\n            \"document_count\": 80,\n            \"identity_recovery\": {\n              \"status\": \"complete\",\n              \"schema\": 1,\n              \"source_file_count\": 80,\n              \"changed_symbol_families\": 83,\n              \"physical_declarations\": 3795,\n              \"restored_definition_roles\": 21,\n              \"positional_definition_queries\": 58,\n              \"local_binding_families\": 4,\n              \"local_binding_semantics\": \"all_source_declarations_for_compiler_binding\",\n              \"shared_lexical_binding_families\": 65,\n              \"utf8_replacement_sources\": [],\n              \"source_only_definitions\": [],\n              \"unmapped_attribute_definitions\": [],\n              \"definition_provider\": {\n                \"command\": [\n                  \"/tmp/codenib-codegraph-identity-next/toolchain/basedpyright-langserver\",\n                  \"--stdio\"\n                ],\n                \"server_info\": {\n                  \"name\": \"basedpyright\",\n                  \"version\": \"1.39.8\"\n                },\n                \"position_encoding\": \"utf-16\"\n              },\n              \"position_encoding\": \"UTF8\",\n              \"source_sha256\": {\n                \"src/flask/app.py\": \"d439102c7658f90f896556c557df89501f2c98ad498d6317453f10ef58508710\",\n                \"src/flask/blueprints.py\": \"9d296c3a0dffffbafd59ef15290a6d4c2061a470f3ad2b00709388d35d1dddc0\",\n                \"src/flask/cli.py\": \"a4b9a758e6defc6e3f640150761ee4830a8f3314579b8a1485a51206924c7aae\",\n                \"src/flask/globals.py\": \"33342ac58f569f596c2c47eab863b37af7d3203134135a11aed845bdf28d3f3d\",\n                \"src/flask/scaffold.py\": \"12d4caff83fd4f57d51c2d29ec0a873508ac035f596a100d1729edccd18d04ac\",\n                \"src/flask/sessions.py\": \"ebaa06944faff6269cf9e6f9e2d14ddc82c08c9d4579eb871d6c3df1455aa317\",\n                \"src/flask/signals.py\": \"1fb4300dc88af9db41c629e32a97b1a6094fd04ea4d0c2482e21564c8b5f9aa5\",\n                \"src/flask/views.py\": \"2ee96db562f8a30545960c2b262f0608d3388a70b7c5bb36201958df56dd092e\",\n                \"tests/conftest.py\": \"6a85cb938e48d53c7ec978c953d8a6236ae5723541fb3f1c8d73dfa05262fece\",\n                \"tests/test_appctx.py\": \"16dbad01d4ccbc2f811f8718b0bfced28c1d0cde1f8fc357f480dd73b05aef67\",\n                \"tests/test_basic.py\": \"e1087ccff5d7fd00f30a3a2ab0e94860896adaa10c68fbb5f06e653bc206ae5b\",\n                \"tests/test_cli.py\": \"8be854106ba28dc85ec6e95cde140d7910ba236569efe3bd6327f951860cdbc4\",\n                \"tests/test_helpers.py\": \"91a9f89c0fbfc8ad7fff560d959ccfae77a8afd9a947f861246c7ecd16dd26a2\",\n                \"tests/test_json.py\": \"9133dcc027c1458348dcc10cf7f3c587f168966922cc4789811ae0eb4c018bf2\",\n                \"tests/test_json_tag.py\": \"019a2cd9b43245667b178e023dbd3541086f561677c32f06fa2eb85fd81aff65\",\n                \"tests/test_reqctx.py\": \"8c19e1468ed3360efccef5e5ea886377cfe5baf8bb259b34dc84ee993974a764\",\n                \"tests/test_user_error_handler.py\": \"f05213bb275e08d354bf9750eb3a37aeb8fc713a8beee7edcdd3078d11af9d60\"\n              }\n            }\n          }\n        },\n        \"scip_decoded_artifacts\": {\n          \"python\": {\n            \"relative_path\": \"index.decoded\",\n            \"size\": 5277566,\n            \"sha256\": \"909e0db027248bfdb7e9aabe7df86d9c2a7154989e27b60669ee778be95a6685\"\n          }\n        },\n        \"graph_artifact\": {\n          \"relative_path\": \"graph.pkl\",\n          \"size\": 441401,\n          \"sha256\": \"81aca592916776aad0baee384a9f8d19eece9b53a8864e51d0789e2d8feec154\"\n        },\n        \"lsp_occurrence_artifact\": {\n          \"relative_path\": \"lsp_index.pkl\",\n          \"size\": 2748069,\n          \"sha256\": \"6f51981fb895fac4a7c9b3841a364aa58e8a8e4faeb9b2878ea02d69a2b48834\"\n        },\n        \"query_surface_sha256\": \"7ce405d573a5f49c1e99132235829e35e75f693b4276f925fd1aafc5aece7f1f\",\n        \"update_mode\": \"full_rebuild\",\n        \"partial_index\": false,\n        \"failed_languages\": {},\n        \"partial\": false,\n        \"source_selection_report\": {\n          \"source_selection_digest\": \"sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4\",\n          \"nodes_before\": 2043,\n          \"nodes_after\": 2043,\n          \"edges_before\": 4604,\n          \"edges_after\": 4604,\n          \"removed_excluded_path_count\": 0,\n          \"excluded_path_count_after\": 0,\n          \"invalid_path_count_before\": 0,\n          \"invalid_path_count_after\": 0\n        },\n        \"build_duration_seconds\": 8.94\n      },\n      \"commit\": \"7ee9ceb71e868944a46e1ff00b506772a53a4f1d\",\n      \"source_fingerprint\": \"sha256-v2:c1139eaf9b0f2e3e17f83df03a0bfc98caaa89577c676777274c86cd963eff2b\",\n      \"source_selection_digest\": \"sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4\"\n    }\n  },\n  \"capabilities\": {\n    \"sparse_search\": true,\n    \"dense_search\": false,\n    \"hybrid_search\": false,\n    \"symbol_navigation\": true\n  },\n  \"compiled_at\": \"2026-10-28T12:06:30.460485+00:00\",\n  \"compiled_at_epoch\": 1793189190.460485,\n  \"runtime\": {\n    \"loaded_views\": [\n      \"bm25\",\n      \"regex_index\",\n      \"symbol_graph\"\n    ],\n    \"view_errors\": {},\n    \"tool_surface\": \"full\",\n    \"explore_session\": {\n      \"calls\": 0,\n      \"ranges\": 0,\n      \"max_ranges\": 160,\n      \"evictions\": 0\n    },\n    \"source_read\": {\n      \"verified\": true,\n      \"error\": null,\n      \"verification_scope\": \"content-bytes\",\n      \"commit_verified\": false,\n      \"checkout_state\": \"not-attested\"\n    },\n    \"lsp_provider\": {\n      \"provider\": \"codenib_static_index\",\n      \"backend\": \"persisted-symbol-graph-v1\",\n      \"status\": \"ok\",\n      \"index_snapshot\": \"symbol_graph:/tmp/codenib-reference-semantics-20261028/flask1/source:2043:4604\",\n      \"fallback_reason\": \"repository_source_policy_requires_persisted_graph\",\n      \"capabilities\": {\n        \"definition\": true,\n        \"references\": true,\n        \"route\": true\n      }\n    }\n  }\n}",
+              "annotations": null,
+              "meta": null
+            }
+          ],
+          "structured_content": {
+            "version": "1.2",
+            "repo": {
+              "path": "/tmp/codenib-reference-semantics-20261028/flask1/source",
+              "commit": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d",
+              "last_indexed_commit": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d",
+              "source_fingerprint": "sha256-v2:c1139eaf9b0f2e3e17f83df03a0bfc98caaa89577c676777274c86cd963eff2b",
+              "last_indexed_source_fingerprint": "sha256-v2:c1139eaf9b0f2e3e17f83df03a0bfc98caaa89577c676777274c86cd963eff2b",
+              "languages": [
+                "python"
+              ],
+              "file_count": 250,
+              "source_selection": {
+                "schema": "codenib.repository-source-selection.v1",
+                "repository_filter_policy": 4,
+                "exclude_subtrees": []
+              },
+              "last_indexed_source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4"
+            },
+            "indexes": {
+              "bm25": {
+                "index_type": "bm25",
+                "path": "/tmp/codenib-reference-semantics-20261028/flask1/.codenib/repositories/source-e4b4b7202a9a/indexes/bm25",
+                "built_at": "2026-10-28T12:06:21.482583+00:00",
+                "built_at_epoch": 1793189181.482583,
+                "status": "fresh",
+                "config": {
+                  "builder_schema": 9,
+                  "languages": [
+                    "python"
+                  ],
+                  "max_k": 128,
+                  "max_lines_per_chunk": 300,
+                  "chunking_failure_policy": "fail",
+                  "include_header_epilogue": true,
+                  "repository_filter_policy": 4,
+                  "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+                  "artifact_file_fingerprints": {
+                    "documents.json": {
+                      "size": 404262,
+                      "sha256": "3fd1d0045879489ddcb252b4fb8434fdfe7a0f7c46be7e292c006981f3fae923"
+                    },
+                    "bm25_metadata.json": {
+                      "size": 146,
+                      "sha256": "6ad2b060e241984c9d83f7a2fdf1cdff42449f82535b7dcabd84b1b291e74016"
+                    }
+                  },
+                  "chunk_count": 380,
+                  "source_file_count": 32,
+                  "file_count": 380
+                },
+                "metadata": {
+                  "builder_schema": 9,
+                  "languages": [
+                    "python"
+                  ],
+                  "max_k": 128,
+                  "max_lines_per_chunk": 300,
+                  "chunking_failure_policy": "fail",
+                  "include_header_epilogue": true,
+                  "repository_filter_policy": 4,
+                  "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+                  "artifact_file_fingerprints": {
+                    "documents.json": {
+                      "size": 404262,
+                      "sha256": "3fd1d0045879489ddcb252b4fb8434fdfe7a0f7c46be7e292c006981f3fae923"
+                    },
+                    "bm25_metadata.json": {
+                      "size": 146,
+                      "sha256": "6ad2b060e241984c9d83f7a2fdf1cdff42449f82535b7dcabd84b1b291e74016"
+                    }
+                  },
+                  "chunk_count": 380,
+                  "source_file_count": 32,
+                  "file_count": 380,
+                  "build_duration_seconds": 0.1
+                },
+                "commit": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d",
+                "source_fingerprint": "sha256-v2:c1139eaf9b0f2e3e17f83df03a0bfc98caaa89577c676777274c86cd963eff2b",
+                "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4"
+              },
+              "symbol_graph": {
+                "index_type": "symbol_graph",
+                "path": "/tmp/codenib-reference-semantics-20261028/flask1/.codenib/repositories/source-e4b4b7202a9a/indexes/symbol_graph",
+                "built_at": "2026-10-28T12:06:30.424066+00:00",
+                "built_at_epoch": 1793189190.424066,
+                "status": "fresh",
+                "config": {
+                  "builder_schema": 8,
+                  "languages": [
+                    "python"
+                  ],
+                  "graph_route": "active",
+                  "exclude_patterns": [
+                    "**/.codenib_cache/**",
+                    "**/.env/**",
+                    "**/.git/**",
+                    "**/.hg/**",
+                    "**/.mypy_cache/**",
+                    "**/.next/**",
+                    "**/.pytest_cache/**",
+                    "**/.ruff_cache/**",
+                    "**/.svn/**",
+                    "**/.tox/**",
+                    "**/.venv/**",
+                    "**/__pycache__/**",
+                    "**/build/**",
+                    "**/dist/**",
+                    "**/env/**",
+                    "**/htmlcov/**",
+                    "**/node_modules/**",
+                    "**/site/**",
+                    "**/target/**",
+                    "**/third_party/**",
+                    "**/vendor/**",
+                    "**/venv/**",
+                    ".codenib_cache/**",
+                    ".env/**",
+                    ".git/**",
+                    ".hg/**",
+                    ".mypy_cache/**",
+                    ".next/**",
+                    ".pytest_cache/**",
+                    ".ruff_cache/**",
+                    ".svn/**",
+                    ".tox/**",
+                    ".venv/**",
+                    "__pycache__/**",
+                    "build/**",
+                    "dist/**",
+                    "env/**",
+                    "htmlcov/**",
+                    "node_modules/**",
+                    "site/**",
+                    "target/**",
+                    "third_party/**",
+                    "vendor/**",
+                    "venv/**"
+                  ],
+                  "allow_partial_languages": false,
+                  "allow_partial_index": false,
+                  "source_coverage_fallback": false,
+                  "allow_project_preparation": false,
+                  "target_dir": null,
+                  "repository_filter_policy": 4,
+                  "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+                  "node_count": 2043,
+                  "edge_count": 4604,
+                  "language": "python",
+                  "available_languages": [
+                    "python"
+                  ],
+                  "compiler_available_languages": [
+                    "python"
+                  ],
+                  "index_generation_reports": {
+                    "python": {
+                      "backend": "scip-python",
+                      "status": "complete",
+                      "complete": true,
+                      "partial": false,
+                      "document_count": 80,
+                      "identity_recovery": {
+                        "status": "complete",
+                        "schema": 1,
+                        "source_file_count": 80,
+                        "changed_symbol_families": 83,
+                        "physical_declarations": 3795,
+                        "restored_definition_roles": 21,
+                        "positional_definition_queries": 58,
+                        "local_binding_families": 4,
+                        "local_binding_semantics": "all_source_declarations_for_compiler_binding",
+                        "shared_lexical_binding_families": 65,
+                        "utf8_replacement_sources": [],
+                        "source_only_definitions": [],
+                        "unmapped_attribute_definitions": [],
+                        "definition_provider": {
+                          "command": [
+                            "/tmp/codenib-codegraph-identity-next/toolchain/basedpyright-langserver",
+                            "--stdio"
+                          ],
+                          "server_info": {
+                            "name": "basedpyright",
+                            "version": "1.39.8"
+                          },
+                          "position_encoding": "utf-16"
+                        },
+                        "position_encoding": "UTF8",
+                        "source_sha256": {
+                          "src/flask/app.py": "d439102c7658f90f896556c557df89501f2c98ad498d6317453f10ef58508710",
+                          "src/flask/blueprints.py": "9d296c3a0dffffbafd59ef15290a6d4c2061a470f3ad2b00709388d35d1dddc0",
+                          "src/flask/cli.py": "a4b9a758e6defc6e3f640150761ee4830a8f3314579b8a1485a51206924c7aae",
+                          "src/flask/globals.py": "33342ac58f569f596c2c47eab863b37af7d3203134135a11aed845bdf28d3f3d",
+                          "src/flask/scaffold.py": "12d4caff83fd4f57d51c2d29ec0a873508ac035f596a100d1729edccd18d04ac",
+                          "src/flask/sessions.py": "ebaa06944faff6269cf9e6f9e2d14ddc82c08c9d4579eb871d6c3df1455aa317",
+                          "src/flask/signals.py": "1fb4300dc88af9db41c629e32a97b1a6094fd04ea4d0c2482e21564c8b5f9aa5",
+                          "src/flask/views.py": "2ee96db562f8a30545960c2b262f0608d3388a70b7c5bb36201958df56dd092e",
+                          "tests/conftest.py": "6a85cb938e48d53c7ec978c953d8a6236ae5723541fb3f1c8d73dfa05262fece",
+                          "tests/test_appctx.py": "16dbad01d4ccbc2f811f8718b0bfced28c1d0cde1f8fc357f480dd73b05aef67",
+                          "tests/test_basic.py": "e1087ccff5d7fd00f30a3a2ab0e94860896adaa10c68fbb5f06e653bc206ae5b",
+                          "tests/test_cli.py": "8be854106ba28dc85ec6e95cde140d7910ba236569efe3bd6327f951860cdbc4",
+                          "tests/test_helpers.py": "91a9f89c0fbfc8ad7fff560d959ccfae77a8afd9a947f861246c7ecd16dd26a2",
+                          "tests/test_json.py": "9133dcc027c1458348dcc10cf7f3c587f168966922cc4789811ae0eb4c018bf2",
+                          "tests/test_json_tag.py": "019a2cd9b43245667b178e023dbd3541086f561677c32f06fa2eb85fd81aff65",
+                          "tests/test_reqctx.py": "8c19e1468ed3360efccef5e5ea886377cfe5baf8bb259b34dc84ee993974a764",
+                          "tests/test_user_error_handler.py": "f05213bb275e08d354bf9750eb3a37aeb8fc713a8beee7edcdd3078d11af9d60"
+                        }
+                      }
+                    }
+                  },
+                  "scip_decoded_artifacts": {
+                    "python": {
+                      "relative_path": "index.decoded",
+                      "size": 5277566,
+                      "sha256": "909e0db027248bfdb7e9aabe7df86d9c2a7154989e27b60669ee778be95a6685"
+                    }
+                  },
+                  "graph_artifact": {
+                    "relative_path": "graph.pkl",
+                    "size": 441401,
+                    "sha256": "81aca592916776aad0baee384a9f8d19eece9b53a8864e51d0789e2d8feec154"
+                  },
+                  "lsp_occurrence_artifact": {
+                    "relative_path": "lsp_index.pkl",
+                    "size": 2748069,
+                    "sha256": "6f51981fb895fac4a7c9b3841a364aa58e8a8e4faeb9b2878ea02d69a2b48834"
+                  },
+                  "query_surface_sha256": "7ce405d573a5f49c1e99132235829e35e75f693b4276f925fd1aafc5aece7f1f",
+                  "update_mode": "full_rebuild",
+                  "partial_index": false,
+                  "failed_languages": {},
+                  "partial": false,
+                  "source_selection_report": {
+                    "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+                    "nodes_before": 2043,
+                    "nodes_after": 2043,
+                    "edges_before": 4604,
+                    "edges_after": 4604,
+                    "removed_excluded_path_count": 0,
+                    "excluded_path_count_after": 0,
+                    "invalid_path_count_before": 0,
+                    "invalid_path_count_after": 0
+                  }
+                },
+                "metadata": {
+                  "builder_schema": 8,
+                  "languages": [
+                    "python"
+                  ],
+                  "graph_route": "active",
+                  "exclude_patterns": [
+                    "**/.codenib_cache/**",
+                    "**/.env/**",
+                    "**/.git/**",
+                    "**/.hg/**",
+                    "**/.mypy_cache/**",
+                    "**/.next/**",
+                    "**/.pytest_cache/**",
+                    "**/.ruff_cache/**",
+                    "**/.svn/**",
+                    "**/.tox/**",
+                    "**/.venv/**",
+                    "**/__pycache__/**",
+                    "**/build/**",
+                    "**/dist/**",
+                    "**/env/**",
+                    "**/htmlcov/**",
+                    "**/node_modules/**",
+                    "**/site/**",
+                    "**/target/**",
+                    "**/third_party/**",
+                    "**/vendor/**",
+                    "**/venv/**",
+                    ".codenib_cache/**",
+                    ".env/**",
+                    ".git/**",
+                    ".hg/**",
+                    ".mypy_cache/**",
+                    ".next/**",
+                    ".pytest_cache/**",
+                    ".ruff_cache/**",
+                    ".svn/**",
+                    ".tox/**",
+                    ".venv/**",
+                    "__pycache__/**",
+                    "build/**",
+                    "dist/**",
+                    "env/**",
+                    "htmlcov/**",
+                    "node_modules/**",
+                    "site/**",
+                    "target/**",
+                    "third_party/**",
+                    "vendor/**",
+                    "venv/**"
+                  ],
+                  "allow_partial_languages": false,
+                  "allow_partial_index": false,
+                  "source_coverage_fallback": false,
+                  "allow_project_preparation": false,
+                  "target_dir": null,
+                  "repository_filter_policy": 4,
+                  "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+                  "node_count": 2043,
+                  "edge_count": 4604,
+                  "language": "python",
+                  "available_languages": [
+                    "python"
+                  ],
+                  "compiler_available_languages": [
+                    "python"
+                  ],
+                  "index_generation_reports": {
+                    "python": {
+                      "backend": "scip-python",
+                      "status": "complete",
+                      "complete": true,
+                      "partial": false,
+                      "document_count": 80,
+                      "identity_recovery": {
+                        "status": "complete",
+                        "schema": 1,
+                        "source_file_count": 80,
+                        "changed_symbol_families": 83,
+                        "physical_declarations": 3795,
+                        "restored_definition_roles": 21,
+                        "positional_definition_queries": 58,
+                        "local_binding_families": 4,
+                        "local_binding_semantics": "all_source_declarations_for_compiler_binding",
+                        "shared_lexical_binding_families": 65,
+                        "utf8_replacement_sources": [],
+                        "source_only_definitions": [],
+                        "unmapped_attribute_definitions": [],
+                        "definition_provider": {
+                          "command": [
+                            "/tmp/codenib-codegraph-identity-next/toolchain/basedpyright-langserver",
+                            "--stdio"
+                          ],
+                          "server_info": {
+                            "name": "basedpyright",
+                            "version": "1.39.8"
+                          },
+                          "position_encoding": "utf-16"
+                        },
+                        "position_encoding": "UTF8",
+                        "source_sha256": {
+                          "src/flask/app.py": "d439102c7658f90f896556c557df89501f2c98ad498d6317453f10ef58508710",
+                          "src/flask/blueprints.py": "9d296c3a0dffffbafd59ef15290a6d4c2061a470f3ad2b00709388d35d1dddc0",
+                          "src/flask/cli.py": "a4b9a758e6defc6e3f640150761ee4830a8f3314579b8a1485a51206924c7aae",
+                          "src/flask/globals.py": "33342ac58f569f596c2c47eab863b37af7d3203134135a11aed845bdf28d3f3d",
+                          "src/flask/scaffold.py": "12d4caff83fd4f57d51c2d29ec0a873508ac035f596a100d1729edccd18d04ac",
+                          "src/flask/sessions.py": "ebaa06944faff6269cf9e6f9e2d14ddc82c08c9d4579eb871d6c3df1455aa317",
+                          "src/flask/signals.py": "1fb4300dc88af9db41c629e32a97b1a6094fd04ea4d0c2482e21564c8b5f9aa5",
+                          "src/flask/views.py": "2ee96db562f8a30545960c2b262f0608d3388a70b7c5bb36201958df56dd092e",
+                          "tests/conftest.py": "6a85cb938e48d53c7ec978c953d8a6236ae5723541fb3f1c8d73dfa05262fece",
+                          "tests/test_appctx.py": "16dbad01d4ccbc2f811f8718b0bfced28c1d0cde1f8fc357f480dd73b05aef67",
+                          "tests/test_basic.py": "e1087ccff5d7fd00f30a3a2ab0e94860896adaa10c68fbb5f06e653bc206ae5b",
+                          "tests/test_cli.py": "8be854106ba28dc85ec6e95cde140d7910ba236569efe3bd6327f951860cdbc4",
+                          "tests/test_helpers.py": "91a9f89c0fbfc8ad7fff560d959ccfae77a8afd9a947f861246c7ecd16dd26a2",
+                          "tests/test_json.py": "9133dcc027c1458348dcc10cf7f3c587f168966922cc4789811ae0eb4c018bf2",
+                          "tests/test_json_tag.py": "019a2cd9b43245667b178e023dbd3541086f561677c32f06fa2eb85fd81aff65",
+                          "tests/test_reqctx.py": "8c19e1468ed3360efccef5e5ea886377cfe5baf8bb259b34dc84ee993974a764",
+                          "tests/test_user_error_handler.py": "f05213bb275e08d354bf9750eb3a37aeb8fc713a8beee7edcdd3078d11af9d60"
+                        }
+                      }
+                    }
+                  },
+                  "scip_decoded_artifacts": {
+                    "python": {
+                      "relative_path": "index.decoded",
+                      "size": 5277566,
+                      "sha256": "909e0db027248bfdb7e9aabe7df86d9c2a7154989e27b60669ee778be95a6685"
+                    }
+                  },
+                  "graph_artifact": {
+                    "relative_path": "graph.pkl",
+                    "size": 441401,
+                    "sha256": "81aca592916776aad0baee384a9f8d19eece9b53a8864e51d0789e2d8feec154"
+                  },
+                  "lsp_occurrence_artifact": {
+                    "relative_path": "lsp_index.pkl",
+                    "size": 2748069,
+                    "sha256": "6f51981fb895fac4a7c9b3841a364aa58e8a8e4faeb9b2878ea02d69a2b48834"
+                  },
+                  "query_surface_sha256": "7ce405d573a5f49c1e99132235829e35e75f693b4276f925fd1aafc5aece7f1f",
+                  "update_mode": "full_rebuild",
+                  "partial_index": false,
+                  "failed_languages": {},
+                  "partial": false,
+                  "source_selection_report": {
+                    "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+                    "nodes_before": 2043,
+                    "nodes_after": 2043,
+                    "edges_before": 4604,
+                    "edges_after": 4604,
+                    "removed_excluded_path_count": 0,
+                    "excluded_path_count_after": 0,
+                    "invalid_path_count_before": 0,
+                    "invalid_path_count_after": 0
+                  },
+                  "build_duration_seconds": 8.94
+                },
+                "commit": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d",
+                "source_fingerprint": "sha256-v2:c1139eaf9b0f2e3e17f83df03a0bfc98caaa89577c676777274c86cd963eff2b",
+                "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4"
+              }
+            },
+            "capabilities": {
+              "sparse_search": true,
+              "dense_search": false,
+              "hybrid_search": false,
+              "symbol_navigation": true
+            },
+            "compiled_at": "2026-10-28T12:06:30.460485+00:00",
+            "compiled_at_epoch": 1793189190.460485,
+            "runtime": {
+              "loaded_views": [
+                "bm25",
+                "regex_index",
+                "symbol_graph"
+              ],
+              "view_errors": {},
+              "tool_surface": "full",
+              "explore_session": {
+                "calls": 0,
+                "ranges": 0,
+                "max_ranges": 160,
+                "evictions": 0
+              },
+              "source_read": {
+                "verified": true,
+                "error": null,
+                "verification_scope": "content-bytes",
+                "commit_verified": false,
+                "checkout_state": "not-attested"
+              },
+              "lsp_provider": {
+                "provider": "codenib_static_index",
+                "backend": "persisted-symbol-graph-v1",
+                "status": "ok",
+                "index_snapshot": "symbol_graph:/tmp/codenib-reference-semantics-20261028/flask1/source:2043:4604",
+                "fallback_reason": "repository_source_policy_requires_persisted_graph",
+                "capabilities": {
+                  "definition": true,
+                  "references": true,
+                  "route": true
+                }
+              }
+            }
+          },
+          "is_error": false,
+          "result_type": "complete"
+        }
+      }
+    ],
+    "checks": [
+      {
+        "direction": "dependencies",
+        "canonical_reference_direction": "outgoing",
+        "legacy_payload_equals_persisted_graph_analysis": true
+      },
+      {
+        "direction": "impact",
+        "canonical_reference_direction": "incoming",
+        "legacy_payload_equals_persisted_graph_analysis": true
+      },
+      {
+        "direction": "both",
+        "canonical_reference_direction": "both",
+        "legacy_payload_equals_persisted_graph_analysis": true
+      }
+    ],
+    "model_inference_sessions": 0,
+    "source_before": {
+      "head": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d",
+      "git_status": "",
+      "files": {
+        ".editorconfig": "759961cac46ae6f8b823e4b377435d2e04311e7026e462976ff54c352eee6f2b",
+        ".flake8": "869445d8583ec77eaf2b3409f550db3262cd30bd2fc1fa96a2bbfe3fb0bdfd2c",
+        ".github/ISSUE_TEMPLATE/bug-report.md": "32b0383ca3cdc7f812aee06b863deb64cb3240c3001a26ac3c46811433b65cc6",
+        ".github/ISSUE_TEMPLATE/config.yml": "59db6f9003216c0477af5278f0bd3dfbb4f46c982f5a13708de58272727ef36e",
+        ".github/ISSUE_TEMPLATE/feature-request.md": "09f7166294a022f7926f32a0c3a785706b3e777f53586dd2cfdf07ee172410b6",
+        ".github/SECURITY.md": "63ed773064a5d44324c4be42661a27ab30a13f323181733b7b42f59504852ab9",
+        ".github/dependabot.yml": "fe27cc0e9c91980474bf2e6c4bbb7c035bb71b781c7fff67a4fa142fbe6c4eed",
+        ".github/pull_request_template.md": "37497840677a8fe41c0e24ec7dde8b298a728fcbf94dc62eee29326bbd49ca84",
+        ".github/workflows/lock.yaml": "de2154d7ca918ebbb767d86be64e847905c540600c50c0cf9d778e5f2352db70",
+        ".github/workflows/publish.yaml": "47df6d05881411805fd079419cb5fc60006122d8ba135b5d4a61af1f360a0589",
+        ".github/workflows/tests.yaml": "a216dc85fef5d788a96f2ad8cf1afdd66771b8dbf9f816de6ade9d5ddd7d42dc",
+        ".gitignore": "ea91eb6582fa6fbd39f24287a2fe6f63353bf3eaea58d0f123704820e95df742",
+        ".pre-commit-config.yaml": "baa35bdeb5f94f1674d105560014af8c0041367c7c782b35ad65bdb679342b55",
+        ".readthedocs.yaml": "dd47a46c7c3027f89216b0a9c2f2ea91275cc7dd2717f6a271a661a29beb2b1a",
+        "CHANGES.rst": "d48be7a6bea42e9aec3810f1031694d06fc3ac44d474bea60051d8d0d1caa7a0",
+        "CODE_OF_CONDUCT.md": "3b3eee7b9db5c0c0a27b60a60883dd706dc954b5dcb25264ff1611ef87426c79",
+        "CONTRIBUTING.rst": "762453ef55412d0333b746647132194174bd112c29b408e2024e8e2c7eb8a7e2",
+        "LICENSE.rst": "489a8e1108509ed98a37bb983e11e0f7e1d31f0bd8f99a79c8448e7ff37d07ea",
+        "MANIFEST.in": "ce56a352e8d1f1fde8a753c15d815888c93e720f7e28452c3ecdeb9aab8e3581",
+        "README.rst": "dfc60b903c5e01d7b3078fc938c362769dc9bfaf1263a817d55690fd5c3e3b03",
+        "artwork/LICENSE.rst": "2e63a3bd3a1f97e2fa9fa33bbf4f61bbb56ee16beb125b5346b0012388dc3b49",
+        "artwork/logo-full.svg": "0fec920ef33dc9ec541c056bc6504e9d78c75c867ffe895f66cee888946dbd92",
+        "artwork/logo-lineart.svg": "c4705ec9f523299ad815780e874be62c3627cea0a67db9a8cbd8b1bc3a78d0f5",
+        "docs/Makefile": "8b6587b859607f200f116e2cb043fc358e1c3a26c326b563bf348453cfc68307",
+        "docs/_static/debugger.png": "2979c9c95ae0fe68a6f5c0055833744daa735f56d3495ee5a41c139ad8567c56",
+        "docs/_static/flask-icon.png": "e115744446f9a617797781fac18f8b92149370a0ce0c648b449b5a55e979384b",
+        "docs/_static/flask-logo.png": "e3b1802e68cdd1ebc02f0132c1f8097c109d38867dc44f1813c064181312ff5f",
+        "docs/_static/no.png": "bc59d3c5cbfe58a7bee295a5d0eb2a200b78201e20c24f393050f2134d9eb10f",
+        "docs/_static/pycharm-run-config.png": "eba3aab19b6969a1268e93b91e19a856430aabe14f90c3ff1228043d88682704",
+        "docs/_static/yes.png": "8e82a0553eb614cce4dca6c60d77626febf3769eb00e0d926f9b54d5a88c5876",
+        "docs/api.rst": "e394f7b80abf581e2e46b5a1cd7bd640653b6ad1cfa876af4349619fae77596d",
+        "docs/appcontext.rst": "f18b338976b18abb5f0068a76eeb36c70d21d3a47677a48c9e5677d23f34a7a1",
+        "docs/async-await.rst": "739dc650532abd7b1903b85d81248137b45ad25c7b657cc06ace27e93cd0a851",
+        "docs/blueprints.rst": "0efbff2912d81e24df4e1d9400657a153cbbfe93c9d3035a6e51ae6ba2d34734",
+        "docs/changes.rst": "94c7e3657f8795af8f66d20fb6208f83df46bce9cab9b82d2c16ad961a87f7e0",
+        "docs/cli.rst": "e8e5e9b220a5159e9c9c8b413de499aa5a51cd0ca487681e2352bbdf6f9b0cda",
+        "docs/conf.py": "313d256d8bb99009fddbb137d6753be041634d3df722e7b01fa35eaa485cc5b5",
+        "docs/config.rst": "e064c784e0b69c06f16727cfea552e1dd28345ffeae30815b61992913b634ace",
+        "docs/contributing.rst": "87d5c7434971ff248a817426c2a84940b3c3ed51251ddcaed6bb8a7d85afad80",
+        "docs/debugging.rst": "2ab0afa292130d00def05d1c6eef75030476734f541f7471a269583c8edb84ff",
+        "docs/deploying/apache-httpd.rst": "676271e9f5f3b317eb282a8b3888d502813e58e8247791d7a56210e6194d4728",
+        "docs/deploying/asgi.rst": "bb29483e443a2e9325e42b2406a1941bec338358018a25f547dd53d890682a63",
+        "docs/deploying/eventlet.rst": "d93ca6cce56fc2bde5a31a7f13ee7e7bc1ab642721344cf9beb0fe374ff4e879",
+        "docs/deploying/gevent.rst": "e542fb5acda27dda113082a4caaaf3bc6b029c3e6f7671611a35905a9740c077",
+        "docs/deploying/gunicorn.rst": "653799579fa07e492b14c8549f9be00b82be817d0b22a65b1f6fd3b74a8ec484",
+        "docs/deploying/index.rst": "2608f551ae1583260af8248c963db3e78cc71d736c17beb57239aa4e6920d63c",
+        "docs/deploying/mod_wsgi.rst": "852707fa7eac584cc0715d1bd5dca3d531b4a2688a2c30241db7b7aff27a652d",
+        "docs/deploying/nginx.rst": "baae442b157057d9f331ef8c2de16065cf3de2e5d6f9b0448e8f74912612e666",
+        "docs/deploying/proxy_fix.rst": "d7da21c812c72a8a8b3d8c74240df3593f626c3b285f64488d4dc81365a4b855",
+        "docs/deploying/uwsgi.rst": "82668e3aa6927b0a88bd5b6e5da06ea6852877e5cd7fe4c02520eb33f61494d0",
+        "docs/deploying/waitress.rst": "f8d6ae27d97a678374125089de144c2d0ef6ca950abfdd2c43aa98f3d31e62d5",
+        "docs/design.rst": "50623cdef4a04bcce46713ed55b5229820b769ecce70ffa5304cea74fa087d74",
+        "docs/errorhandling.rst": "641f43eade9c2e34c1a8809b6bbf8183ef2e40f07e9224129c744d170b213981",
+        "docs/extensiondev.rst": "40fbf588b4b2b66e74ffd7177cb361d46a9d560f77eb1660c7ad56827ea3f812",
+        "docs/extensions.rst": "ccf9b1eb72261ba34b9dd76a483ee3979091916bab0d3b79f7fe4667f418d42d",
+        "docs/index.rst": "ad1156c3cf161fa633b67c8e6dbdc2ab2d6369ef8f84babe8416f74a0e2f3015",
+        "docs/installation.rst": "ae77a1914256a9f9bf594fe9623310cc4ecda1eb45da53cc3a39639b6acd7050",
+        "docs/license.rst": "7535eac513edd12fb8e33f203c6a403549629e34b363418cdbd6c6ea5464515d",
+        "docs/lifecycle.rst": "e056e80bc5cbe46cf616c335b08fc0fd6aad513f3fb1f8fe2d02807dfe0c504c",
+        "docs/logging.rst": "aa114b98ea50fc8c50bc6209d8d645f694b31916df896483c1f17c3d14bdc855",
+        "docs/make.bat": "28aa5a45fae5d43d8a0e7e3d656e42a592b30d05a0838521bef6216d450b93b9",
+        "docs/patterns/appdispatch.rst": "8b1d28d947e89098c60af126db6f3031d147cc762923dcc4ca7df9553194b7ef",
+        "docs/patterns/appfactories.rst": "4e475f0fbcb825a503315fe2d96b6a9e74db7b93b67439b73400eee47f4e4569",
+        "docs/patterns/caching.rst": "69f3d64582f923c04eb89dfd4112bef1173d0a5352b94832c891cb36633bafe1",
+        "docs/patterns/celery.rst": "d38d301a9a97ffba6fbc3d10269c0c07afb9e9974fdc04115abfafb3a3dbd9de",
+        "docs/patterns/deferredcallbacks.rst": "b9d44479bb2af5827b5ee0a953ab3138db11dda8d1cd7ada68963b55b5031adf",
+        "docs/patterns/favicon.rst": "0315c8700dc97bf31359ea8131cac7bbedd07a1d6388ac97f0580314df75dade",
+        "docs/patterns/fileuploads.rst": "1db4e08f5a4435abb41946314bb35d5d0b3e86723db02961ba5bd8f9f9f9a556",
+        "docs/patterns/flashing.rst": "5802f174e23a0392bee1e52bdc90ea6c6d658cc74a6f6401e174661aa2a7c01f",
+        "docs/patterns/index.rst": "e41c5117727b09d67aac1f6917e810484c82ae467f2c9c77bc19e300ed948c9d",
+        "docs/patterns/javascript.rst": "7dbe476916c39b7d17466c3b8ba92d79cdd8987c845b7267781dfeccfb7e8d35",
+        "docs/patterns/jquery.rst": "3bf6ce863472c428f9c3ce23f542b3e8b95ddc7bce64d6a60bd8ca2b93293656",
+        "docs/patterns/lazyloading.rst": "cddcdbf43a1c32ff59d890672cf568770e837f53ff8879f62a5796f3e34c5087",
+        "docs/patterns/methodoverrides.rst": "d5a7d8b280a4e61016ee4be39e8c15e5b209076720e9235b357e48473fa07a56",
+        "docs/patterns/mongoengine.rst": "78490f31e89af2beb6565313c67b41a178e2416c748afe4fa98a194992004f9e",
+        "docs/patterns/packages.rst": "81876700c50a3e2d505568732f8266bc91afb6b793f0be3beafe1a22d7d21a6d",
+        "docs/patterns/requestchecksum.rst": "de35760b81ceb3a402fba66ff4d899aa1efcfdf4f240ce3a075ea3b123aa4a3e",
+        "docs/patterns/singlepageapplications.rst": "363abbdf6ee25f665e6e4ed86da02ba3d79b730f623be082647789123fd2d208",
+        "docs/patterns/sqlalchemy.rst": "60a45ae8047f3aa901d14f6f93063611a0867b4588ef00340e0753d89544be77",
+        "docs/patterns/sqlite3.rst": "6ee6fcaa12dcf1ce11b3883d1e4d1a0f1a413958679649da5ac0ce9d3b06b533",
+        "docs/patterns/streaming.rst": "c21cc62e464fd92e7d37dc62a817d89d5684382b27b1c8613ad3c13bf09fa8ef",
+        "docs/patterns/subclassing.rst": "5f7e400c7970951eb104df5a2d9613c8986a3b05c16bf622d7d1a6ddc69d720b",
+        "docs/patterns/templateinheritance.rst": "f41b40dea855682d9435edf0ff3a27b5f4267492325b8ba447c419e649373e70",
+        "docs/patterns/urlprocessors.rst": "816aa72b588023fbed0f46986cd413132040b8d0a144596781cd3c2fd2a865e5",
+        "docs/patterns/viewdecorators.rst": "2e461ba65df1ba86c01b49f20b5c118d75544796ba637c8bebe8c4789c761144",
+        "docs/patterns/wtforms.rst": "13e7666545c4ed60f7825fe9b5f9237da25d313da7da6ed39418b4f031adfb8c",
+        "docs/quickstart.rst": "884564779240e5b9ad913875a8d18e1ac612d0ebe97204d68f0aa1f7c10ccbdd",
+        "docs/reqcontext.rst": "7caa53bef4158cb84578d917985a4adeb5df891e1b86c0d0d0930d0bae989f2c",
+        "docs/security.rst": "071f46568b0a148c32db938a44d8b2e627cb8a7db21f89888ee2a983b05132b7",
+        "docs/server.rst": "7e40bf214d31eb88b8a1df96607457398809bca6eb857aba546282c0c76d28db",
+        "docs/shell.rst": "10a86c0b756ee35d77620867255ecc658e05525aba9b987be153dccc607a4dab",
+        "docs/signals.rst": "45236414f96c9297a2a8d60c30abc0b21d03c3155890704e11e739a15a45d86a",
+        "docs/templating.rst": "4cbda042253e832df9b95f57fe1d4e6767f076f98fbd25c5a802536d8279d642",
+        "docs/testing.rst": "80883af068924f1f8ef959b0c292ab14eac9aa4b055144d9d6a5c634c9e55e6a",
+        "docs/tutorial/blog.rst": "e38d7c41b6cfc3a20ade1f8318ba2a48e6e658ea0be93f5ff4523868e7e83ee4",
+        "docs/tutorial/database.rst": "88b87c26f014c5ab042687afb51ebcb2040019229f95879115ba4dd30fbfdab3",
+        "docs/tutorial/deploy.rst": "20293623ad985fe72e06523a8f851bb253beccb84c0362708284ec484ca7be97",
+        "docs/tutorial/factory.rst": "47d67dbd5278da36613b7c045a35fc5744563d222d9c4b871c0c07901a844f45",
+        "docs/tutorial/flaskr_edit.png": "5bce7fb2fd68beeb77204b908573e282ad3654a738635803cef2634460bbdbf4",
+        "docs/tutorial/flaskr_index.png": "5bf89de3839acc5b7426ffcc29c3630d367033afa9c47c1f1647bd0d83b92051",
+        "docs/tutorial/flaskr_login.png": "1963095522d1eab0c6dc563d9376eb6ff997879c9895bb41709fe9a309aeb91b",
+        "docs/tutorial/index.rst": "c97b064670686bbb002a720174cbf5feaaa5c615fa317c1cbb901bb214eb81ac",
+        "docs/tutorial/install.rst": "82898bcf31826adebcf319c2b6ca85a4354e8b060215cb6b11ddc5c9e862bf45",
+        "docs/tutorial/layout.rst": "6b1c0b4e5c08d296703c26dd642dbed4097e0745b44d6d175e2a5debd0eed3fd",
+        "docs/tutorial/next.rst": "035d30c638eb8e2596738efd8033d370bc6642e357d43b24c104b9cba4761ad5",
+        "docs/tutorial/static.rst": "233079012d511e3640b35abfe69014e2cab668027e3ade0e31deb03350f6157b",
+        "docs/tutorial/templates.rst": "3d06b3eeb8bc02a6e30ed95fd579dc4e0fcf59986ecac7f3181648f5611a5f7f",
+        "docs/tutorial/tests.rst": "2fd6e84543d49346d504d87e17e99e0969b5848e9932f6f2118445cfdb08a374",
+        "docs/tutorial/views.rst": "7f1856b2432fb9ae865063d1b441fb1f41cabc09f09296ca755ee9152ed2d9af",
+        "docs/views.rst": "225deb1feed5e285a23c151c1ffd9ae7be3106b436f94d2f3f179c2b438b01d6",
+        "examples/celery/README.md": "c31bd98ee22d28e11f183815dfe5727342260d0582a3a5e89ab552c5611d34c8",
+        "examples/celery/make_celery.py": "ff32ebf85ef8791fc07177ffe2dad6020fad34a4a57831d37a8bd8531f6e6707",
+        "examples/celery/pyproject.toml": "b4ac3540881f44a97e88d52828016761e4ecb9f7802977ed19fd8d84db7f822a",
+        "examples/celery/requirements.txt": "3af0dfc4ded483426be750bb7383c412b98ccc7f8870ee66278781139d68910c",
+        "examples/celery/src/task_app/__init__.py": "172de995eb076d7ea1911f20bf4c2fcb72dbc3d7eee3e5796c4cdfa2dfd486ab",
+        "examples/celery/src/task_app/tasks.py": "d2c365c8ed2f5abf0b5b109361ebe58941559b7d67e57f96d6a6b7bd69970364",
+        "examples/celery/src/task_app/templates/index.html": "2ca135b39b9e685a164001abd6d8acb985fec1e126c2a6f36fffbd59b2117f10",
+        "examples/celery/src/task_app/views.py": "cb9f3c9ebbb359bae6d49f55fd717700062691d2be60f1700e2abf7060082704",
+        "examples/javascript/.gitignore": "33e8459e8e10c3260d9b06a2d3a256306cbc154708601d734bff17c42109b319",
+        "examples/javascript/LICENSE.rst": "489a8e1108509ed98a37bb983e11e0f7e1d31f0bd8f99a79c8448e7ff37d07ea",
+        "examples/javascript/MANIFEST.in": "e246d1d9b5462efbacea58ba34089c07eeb93c6370514b84a79bfa0f290d590a",
+        "examples/javascript/README.rst": "2fecf3aa4491175c6beeb793441ae9969b441f65a6086d0ad3b6af46ad52b165",
+        "examples/javascript/js_example/__init__.py": "ea2307cfd406f1b66de1537bc11eecc7d9ff2bf098b65befbe52e99a52ca2b09",
+        "examples/javascript/js_example/templates/base.html": "08d0064958cae81c9b2b30e50ba233195d211316b7e44988fad6ebfa4b42decd",
+        "examples/javascript/js_example/templates/fetch.html": "47c946da9cad2e382ffb69dd9cbde239dce4223e1128cc4b2292d396d3b0a4ca",
+        "examples/javascript/js_example/templates/jquery.html": "4fa2ef87d2f563ff3bfe54429eac4bdbb674aeebe1377efe38b3cba9d96f1643",
+        "examples/javascript/js_example/templates/xhr.html": "e0f2cbefc4be46244d9fc787a47c16dcecaabf26b91409ada20c5669861fa763",
+        "examples/javascript/js_example/views.py": "d8952097a08a6dfae3be6d86359108c8cc62b7d26ab092bec1eb9143cd2a1bb0",
+        "examples/javascript/pyproject.toml": "135221e79dc275033fde7b2c3afd6ee75650bf02a8e2a25c0a437f4116cf7bc2",
+        "examples/javascript/tests/conftest.py": "aff1ac8ea5b7c6e4d7adf67a0eae5c13cbb9adf38e1a2434e6cc7e6824c56b11",
+        "examples/javascript/tests/test_js_example.py": "0668636eada4707d4fdd78185433ed9835bac39f335eebfacb7994d2df60c20e",
+        "examples/tutorial/.gitignore": "33e8459e8e10c3260d9b06a2d3a256306cbc154708601d734bff17c42109b319",
+        "examples/tutorial/LICENSE.rst": "489a8e1108509ed98a37bb983e11e0f7e1d31f0bd8f99a79c8448e7ff37d07ea",
+        "examples/tutorial/MANIFEST.in": "888da39f79f0ed0726aef4ebb0d306233e0246e33acccbeec37e052ea62c7aab",
+        "examples/tutorial/README.rst": "e6c7aa25f5a857ce3b30c0b2a2d0d7a25bbf0f1c96d700e1bad2868c7ea231f5",
+        "examples/tutorial/flaskr/__init__.py": "8b5a321932c3b2ddeb440e5d023c8beae394cd134f4bb3ce5ba80d65038b4281",
+        "examples/tutorial/flaskr/auth.py": "6d77ebafa6443dc1b43ee26f212ad2fa810ceab4a161a164b8ebe4a61184b7c2",
+        "examples/tutorial/flaskr/blog.py": "ffa97ae3827518ea3ef22e8cfcedabb6d757407714fc9ad8e03b4eb05b744bc7",
+        "examples/tutorial/flaskr/db.py": "69fffb53092c30fa0d9b08f12fa970a2c4d3e8adb28727ec62affe237f21bff2",
+        "examples/tutorial/flaskr/schema.sql": "c23021b8a5229cedd3191825850e963f393790a794d31ac2f83846a0c5d559f7",
+        "examples/tutorial/flaskr/static/style.css": "b7724c7981be21b5a13484c8f7eb9df306f06a88406db3dc7619b80aa040e372",
+        "examples/tutorial/flaskr/templates/auth/login.html": "f0d4ee341a19c8f9d51a66c5da624e687e58de7e3fb2ca41c6f5b8d07e20a6c1",
+        "examples/tutorial/flaskr/templates/auth/register.html": "53da308c1d62f057613ec8e445eb70e89404288f503156102d1e3e39ec5b2153",
+        "examples/tutorial/flaskr/templates/base.html": "a3c74c6ba8ae95bd3b4b63c0bcf5712944c5b954578514c1316a248db0949b07",
+        "examples/tutorial/flaskr/templates/blog/create.html": "f41e3166cfd09d41a88def1896fb93631e707b0d9968b14ccb00953263e20025",
+        "examples/tutorial/flaskr/templates/blog/index.html": "67cdf10979b06f697953477d0ee8043e56a11ebe87b03b307ada12d13a240617",
+        "examples/tutorial/flaskr/templates/blog/update.html": "0e16cd0d933914628e890411dcddd7527fb96b5a7c9113390d93b3e79b44b5ad",
+        "examples/tutorial/pyproject.toml": "f46f0dd8c1d4a7643f8ae00679a8322a8b4ffbfc591db0c4a66054895d6cfb19",
+        "examples/tutorial/tests/conftest.py": "2778b7c035d917bb0909ec6ee2f9d61ccba030ff8ae635ff65a52c133ec5afca",
+        "examples/tutorial/tests/data.sql": "244a542220a64bdbf9bd3340f8280551b95e6d3248ead974fdd0a07a7dd06a0c",
+        "examples/tutorial/tests/test_auth.py": "cbbe178c9980d8499561d8eae72f01b8abeead2fa10c9d5f71427da4af38a938",
+        "examples/tutorial/tests/test_blog.py": "a4c01c486e86aed522c3ade398bf4016f6ef59bbada2c7c5f69eb55ce297877c",
+        "examples/tutorial/tests/test_db.py": "324baea21b981575b4e6d92b6517f21ec2ad86a6138010863a9fcfb4f984e649",
+        "examples/tutorial/tests/test_factory.py": "1906cfed379afe315b6ad7db3c71c951ac87c53b57b28b04b5b6c84df2a79e01",
+        "pyproject.toml": "738b80e461d53775a148faa291d4b66d8b715aee674d749827002616c760b01b",
+        "requirements/build.in": "f10ec3ffef16a8dace9b58801e0da28819c98af4c8933410d7e7cacc952f9e9b",
+        "requirements/build.txt": "94edfac456f84acf5c99f10a7bea00e027b51284da6a8172b4bc4cf786defba8",
+        "requirements/dev.in": "4a55617a2d5ae90a3dcd50b0bb9055f55e77462c93af8d6b98e6d66c3a683a1c",
+        "requirements/dev.txt": "7443981a5ca905e1082145ef4bfc525dd6f788d5ed5c9390b86fbb3853defbd5",
+        "requirements/docs.in": "11b236fc3c336a0816687f8c8f907f4cdffe3da1c4e60940e67c1bdad25c4b47",
+        "requirements/docs.txt": "3381d4e77e681780150461db92e1341bb05865c71d1d62d5e4a364127358ee8b",
+        "requirements/tests-pallets-min.in": "7ec68da70bb0df51cbc8207d4c254a130e044a56f5d907ba8f3a8acbd79dc3d1",
+        "requirements/tests-pallets-min.txt": "6cb8a57706ada641641dd8230c3afbf1b4bc7c1ee68cdd17f4820326b668cf8e",
+        "requirements/tests.in": "1ecbca947aa57fbb2f52a6229179cf99226f4ee050ca4063b28edfd9dcf00931",
+        "requirements/tests.txt": "8e377f7d02ba13bdd2cba784814d7a8a169a6bb6cf2893a277c42c2e100d3772",
+        "requirements/typing.in": "7473c420ff6ad3207f3e7187f04e4b1c62dfbffa40a93d314ff16fafff9945a5",
+        "requirements/typing.txt": "cca5b70cf1fef660c53504ce63874ea39198188486079c35131f6c5fd7c33edd",
+        "src/flask/__init__.py": "cb74621666b9ca1383af7591214a0e48917428a8b808d8d04cdbb8591bcc89a7",
+        "src/flask/__main__.py": "6d8b7d7846a845059d7a3107143f11131f63c5511d669b44085b15ec5e3d2279",
+        "src/flask/app.py": "d439102c7658f90f896556c557df89501f2c98ad498d6317453f10ef58508710",
+        "src/flask/blueprints.py": "9d296c3a0dffffbafd59ef15290a6d4c2061a470f3ad2b00709388d35d1dddc0",
+        "src/flask/cli.py": "a4b9a758e6defc6e3f640150761ee4830a8f3314579b8a1485a51206924c7aae",
+        "src/flask/config.py": "584fd038985cd82c1ab2e6e7d9934cbbf99d0b9e25086ef15177567a3040188e",
+        "src/flask/ctx.py": "6c611042e176fdc1ea67764d31e31e106f0738b2640e52fcf2ed810710ab45aa",
+        "src/flask/debughelpers.py": "fd1bc02f74d6e65a8c25e0955ad4d4eab483242ee39d16812fa3849159a8a325",
+        "src/flask/globals.py": "33342ac58f569f596c2c47eab863b37af7d3203134135a11aed845bdf28d3f3d",
+        "src/flask/helpers.py": "efa15481302a200fabae2498f5e6ff9ae002906bd0ad9550b91a32269d4a4c1e",
+        "src/flask/json/__init__.py": "a5db69a0ad9bd1bd6eed2c5bc777de33b55686c236d25d72180bdb616c5ac6f7",
+        "src/flask/json/provider.py": "43324b473bce7096def0847139f97a4f53f763326983a58f5a91f56cc83b04ea",
+        "src/flask/json/tag.py": "7f2b371c12ecb161ee300209b9371fd8ad1b0ada2c78f04a5c85804991048e75",
+        "src/flask/logging.py": "5989e0d1b2d3452fc226ba1c19c08b26989b1dfd65ca01c4fe983e2a8508438c",
+        "src/flask/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "src/flask/scaffold.py": "12d4caff83fd4f57d51c2d29ec0a873508ac035f596a100d1729edccd18d04ac",
+        "src/flask/sessions.py": "ebaa06944faff6269cf9e6f9e2d14ddc82c08c9d4579eb871d6c3df1455aa317",
+        "src/flask/signals.py": "1fb4300dc88af9db41c629e32a97b1a6094fd04ea4d0c2482e21564c8b5f9aa5",
+        "src/flask/templating.py": "3591a3224d577b651e48697ef9ae9a8fff57c8f2f52dfcdf31bbaf055e04bc75",
+        "src/flask/testing.py": "af8e2e80145fdf669988c666bbdb1e617713cc1cb538899ca636835c76d36177",
+        "src/flask/typing.py": "2a0c5e81317dbfd5afba89e0785f0ba2822fa593dabb31ababd6577f78019587",
+        "src/flask/views.py": "2ee96db562f8a30545960c2b262f0608d3388a70b7c5bb36201958df56dd092e",
+        "src/flask/wrappers.py": "7a5ded9f52e049457478d1a060c8ca2024f923ba862606e9221bdc8b89ebc10f",
+        "tests/conftest.py": "6a85cb938e48d53c7ec978c953d8a6236ae5723541fb3f1c8d73dfa05262fece",
+        "tests/static/config.json": "28d7be9c2566e893e5e2da9eec54951032b55485fefc36ab4d53fa97b271c981",
+        "tests/static/config.toml": "1551d036dd594e88079db2179d045df595760af46dd6c80c11ef828fa2f7a02a",
+        "tests/static/index.html": "7f6f02fe6b981005a81f27dab9bc6d8be4cb074c0c8c5647208ddef5346c9ac2",
+        "tests/templates/_macro.html": "5c0daa9f0a49a4eddab928d994a5ce0f3794e057278a6d7689ee6531778bf26b",
+        "tests/templates/context_template.html": "857bc7cdd820b2aa8ed9e5d195be848460d34f33c842271a324d8489bcda8034",
+        "tests/templates/escaping_template.html": "3913ccdd020e22efe55aff4cd74d5b3c766df9b9b2f018aedbaeb7680a0ee748",
+        "tests/templates/mail.txt": "f1ff63d4fc54a3f75e19bae926e0ddae28b5eaa13ec6d57d454ea660f544ffae",
+        "tests/templates/nested/nested.txt": "efa3e5343b700d55a364c3c746506a497f798d8e767bf45664224a65f4569005",
+        "tests/templates/non_escaping_template.txt": "a1bf0b2dc534994c5cd3e2eddee3d81b7c9be229dfc35c57284507576c0fe214",
+        "tests/templates/simple_template.html": "7746a4931590d544240e22f8e5bf2752f084d0aa4be7bf43862a1896fef5ddb1",
+        "tests/templates/template_filter.html": "1e499ffeb7db1bdb46ad1a26ca8b37bd0d87f2e7ebc1ef81d912fed8b7c525a0",
+        "tests/templates/template_test.html": "8376605103743da3a2cf6f3dfc0c4d78fdc809f476f688336d09777c2bf12bff",
+        "tests/test_appctx.py": "16dbad01d4ccbc2f811f8718b0bfced28c1d0cde1f8fc357f480dd73b05aef67",
+        "tests/test_apps/.env": "3739562018bb8d8aeddbb540fb4c53e61af5385fb4d3b613e784057c3129ccc0",
+        "tests/test_apps/.flaskenv": "8933d1515cd054314d9f79b2295ac7833604768cb91e2762607a5560609ea6ac",
+        "tests/test_apps/blueprintapp/__init__.py": "87622ebc37bcfe87d81be1437e4b97a4c2a8341eb3df38461dd37a0b89db07d3",
+        "tests/test_apps/blueprintapp/apps/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tests/test_apps/blueprintapp/apps/admin/__init__.py": "5e849dc6984b0b3944ea687e40d96da9d5a9f42e32aa5b4035dedef4558ad83d",
+        "tests/test_apps/blueprintapp/apps/admin/static/css/test.css": "1750c6f80056de8eb2003f4d73a23357d89879f65e387867e7dd34f4b3096e86",
+        "tests/test_apps/blueprintapp/apps/admin/static/test.txt": "95c3e2ba78ba2d1febc399b1ca3466cfc88c7227e249236a3c5948ae62cace36",
+        "tests/test_apps/blueprintapp/apps/admin/templates/admin/index.html": "d8e592e9062ac5a6ab9d901690bbda9b43f6412a1d44d900e8cd397843952f0e",
+        "tests/test_apps/blueprintapp/apps/frontend/__init__.py": "1630cefb5d073808e8b4164e4d910f69aee57a93eaee53debb575e7e7aabb83f",
+        "tests/test_apps/blueprintapp/apps/frontend/templates/frontend/index.html": "85c0bb0ce45263118d2b90c0202571d41785565cda6a7c5c2213834309bdaf08",
+        "tests/test_apps/cliapp/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tests/test_apps/cliapp/app.py": "b0c37142ff064f6d7f3ca21b8acec34a0657cf1a7c354178d5e3acc0879c7467",
+        "tests/test_apps/cliapp/factory.py": "3a93cd69f200848e8ffef6b2abdaa5803fb5044981ab64297f8c7d6541820570",
+        "tests/test_apps/cliapp/importerrorapp.py": "5ad812b09337f9699cd2b6aeebfd7d6f14045451de846b0503d746a34ce8a8c4",
+        "tests/test_apps/cliapp/inner1/__init__.py": "d3885f0114c83025a754fb3a8582634946541c9aeb72fe4f90af27554a6d4c83",
+        "tests/test_apps/cliapp/inner1/inner2/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tests/test_apps/cliapp/inner1/inner2/flask.py": "570567aafaf185348cffa097d904b964c44fe1a92c5ec82488b97e3d93dbab38",
+        "tests/test_apps/cliapp/message.txt": "f41c9f8b6285b72bbd8f18a781c679d49741835c0ac49b5cd953768002e191de",
+        "tests/test_apps/cliapp/multiapp.py": "0580225ea4edb705c2e412c5ac6bd27d659cc239f0243467a33eaa9ee74675fc",
+        "tests/test_apps/helloworld/hello.py": "42722083156af9f3eb82e3a88403f4191b9dfcb5f9e1c3432e79f02827b0ccf1",
+        "tests/test_apps/helloworld/wsgi.py": "c1d5a162364e71546a8a8b76eb7fba0381582b8546ad14189f6431e647b7a547",
+        "tests/test_apps/subdomaintestmodule/__init__.py": "441b37bad390ba774ec6f41b2b2c24357aa66dd469633829a415b710f10dccf3",
+        "tests/test_apps/subdomaintestmodule/static/hello.txt": "e4fbc4e56428293f5d5e439367adef7c6f45d22032b324e64935f4740e2e8902",
+        "tests/test_async.py": "0a6a50bfd651581478abe8cda5c94aba6d70df35567a220aabc7ba08202d471c",
+        "tests/test_basic.py": "e1087ccff5d7fd00f30a3a2ab0e94860896adaa10c68fbb5f06e653bc206ae5b",
+        "tests/test_blueprints.py": "804b98bbb71ccce566ab78a15cb141793ebbaee3c1b3bb591d9dab04c9940f4a",
+        "tests/test_cli.py": "8be854106ba28dc85ec6e95cde140d7910ba236569efe3bd6327f951860cdbc4",
+        "tests/test_config.py": "4ba589e57daac5e42566c849a9a37a0086bec3793f71d481c724e41a603a0dca",
+        "tests/test_converters.py": "4f529ca6ee85a88c487a488807ff30cb8e4672307b9017f348174a67a5984347",
+        "tests/test_helpers.py": "91a9f89c0fbfc8ad7fff560d959ccfae77a8afd9a947f861246c7ecd16dd26a2",
+        "tests/test_instance_config.py": "863b937b8b215c5243b54f9a80c40601ce63e1032a0cc2fbd71215c6acc94fc6",
+        "tests/test_json.py": "9133dcc027c1458348dcc10cf7f3c587f168966922cc4789811ae0eb4c018bf2",
+        "tests/test_json_tag.py": "019a2cd9b43245667b178e023dbd3541086f561677c32f06fa2eb85fd81aff65",
+        "tests/test_logging.py": "311ea43751a836c3d585a40f08fa54a60d783a232aa50c5ea1225b689e9ac683",
+        "tests/test_regression.py": "2749a17454a9aa8a610a2213d739046488af06fe742da1c06802d00ab28a3bf8",
+        "tests/test_reqctx.py": "8c19e1468ed3360efccef5e5ea886377cfe5baf8bb259b34dc84ee993974a764",
+        "tests/test_session_interface.py": "d3990141744f27683503ffc17f46042b9fe0b10119c77e414ea47795079b7dba",
+        "tests/test_signals.py": "c43524c0c0c59d972b39638b5eb96976cfb55a35e2ca7546ead60f3f43e89854",
+        "tests/test_subclassing.py": "0d325f8099e38403287a0cd8f1e184884beb5c345ac894300f2aa469a04cbd10",
+        "tests/test_templating.py": "d20c5f1f67fdc81ed0f9fdaf450b699fa9cb787e2eb1b40637b4c758a1e20e19",
+        "tests/test_testing.py": "5a3d48e13e7c1ecbd977b0d6ce74fbcd10d5bc90d0cb5f9206a79ee986d33442",
+        "tests/test_user_error_handler.py": "f05213bb275e08d354bf9750eb3a37aeb8fc713a8beee7edcdd3078d11af9d60",
+        "tests/test_views.py": "46a65aa50e962b7c047485e96f33a8a502a394d5097c5adee1239cba10d24566",
+        "tests/typing/typing_app_decorators.py": "dac75620ec452dcb01c76c9f7b070a842e0527261f1a255eb7533b583cd7d31e",
+        "tests/typing/typing_error_handler.py": "6ca69ec7b4813dfac97080cfb49b9c2d41acab44351e86620e337e1f25674604",
+        "tests/typing/typing_route.py": "fd0cf3b76c74c40e89a87f98471d59b502425e57791d17bce5331356ec303344",
+        "tox.ini": "bd9cbdb045badd28c4d854929feaa081da17b1539cc8935dd03e6723d3928c90"
+      }
+    },
+    "build_seconds": 9.130819922313094,
+    "failed_views": [],
+    "manifest": {
+      "version": "1.2",
+      "repo": {
+        "path": "/tmp/codenib-reference-semantics-20261028/flask1/source",
+        "commit": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d",
+        "last_indexed_commit": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d",
+        "source_fingerprint": "sha256-v2:c1139eaf9b0f2e3e17f83df03a0bfc98caaa89577c676777274c86cd963eff2b",
+        "last_indexed_source_fingerprint": "sha256-v2:c1139eaf9b0f2e3e17f83df03a0bfc98caaa89577c676777274c86cd963eff2b",
+        "languages": [
+          "python"
+        ],
+        "file_count": 250,
+        "source_selection": {
+          "schema": "codenib.repository-source-selection.v1",
+          "repository_filter_policy": 4,
+          "exclude_subtrees": []
+        },
+        "last_indexed_source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4"
+      },
+      "indexes": {
+        "bm25": {
+          "index_type": "bm25",
+          "path": "/tmp/codenib-reference-semantics-20261028/flask1/.codenib/repositories/source-e4b4b7202a9a/indexes/bm25",
+          "built_at": "2026-10-28T12:06:21.482583+00:00",
+          "built_at_epoch": 1793189181.482583,
+          "status": "fresh",
+          "config": {
+            "builder_schema": 9,
+            "languages": [
+              "python"
+            ],
+            "max_k": 128,
+            "max_lines_per_chunk": 300,
+            "chunking_failure_policy": "fail",
+            "include_header_epilogue": true,
+            "repository_filter_policy": 4,
+            "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+            "artifact_file_fingerprints": {
+              "documents.json": {
+                "size": 404262,
+                "sha256": "3fd1d0045879489ddcb252b4fb8434fdfe7a0f7c46be7e292c006981f3fae923"
+              },
+              "bm25_metadata.json": {
+                "size": 146,
+                "sha256": "6ad2b060e241984c9d83f7a2fdf1cdff42449f82535b7dcabd84b1b291e74016"
+              }
+            },
+            "chunk_count": 380,
+            "source_file_count": 32,
+            "file_count": 380
+          },
+          "metadata": {
+            "builder_schema": 9,
+            "languages": [
+              "python"
+            ],
+            "max_k": 128,
+            "max_lines_per_chunk": 300,
+            "chunking_failure_policy": "fail",
+            "include_header_epilogue": true,
+            "repository_filter_policy": 4,
+            "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+            "artifact_file_fingerprints": {
+              "documents.json": {
+                "size": 404262,
+                "sha256": "3fd1d0045879489ddcb252b4fb8434fdfe7a0f7c46be7e292c006981f3fae923"
+              },
+              "bm25_metadata.json": {
+                "size": 146,
+                "sha256": "6ad2b060e241984c9d83f7a2fdf1cdff42449f82535b7dcabd84b1b291e74016"
+              }
+            },
+            "chunk_count": 380,
+            "source_file_count": 32,
+            "file_count": 380,
+            "build_duration_seconds": 0.1
+          },
+          "commit": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d",
+          "source_fingerprint": "sha256-v2:c1139eaf9b0f2e3e17f83df03a0bfc98caaa89577c676777274c86cd963eff2b",
+          "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4"
+        },
+        "symbol_graph": {
+          "index_type": "symbol_graph",
+          "path": "/tmp/codenib-reference-semantics-20261028/flask1/.codenib/repositories/source-e4b4b7202a9a/indexes/symbol_graph",
+          "built_at": "2026-10-28T12:06:30.424066+00:00",
+          "built_at_epoch": 1793189190.424066,
+          "status": "fresh",
+          "config": {
+            "builder_schema": 8,
+            "languages": [
+              "python"
+            ],
+            "graph_route": "active",
+            "exclude_patterns": [
+              "**/.codenib_cache/**",
+              "**/.env/**",
+              "**/.git/**",
+              "**/.hg/**",
+              "**/.mypy_cache/**",
+              "**/.next/**",
+              "**/.pytest_cache/**",
+              "**/.ruff_cache/**",
+              "**/.svn/**",
+              "**/.tox/**",
+              "**/.venv/**",
+              "**/__pycache__/**",
+              "**/build/**",
+              "**/dist/**",
+              "**/env/**",
+              "**/htmlcov/**",
+              "**/node_modules/**",
+              "**/site/**",
+              "**/target/**",
+              "**/third_party/**",
+              "**/vendor/**",
+              "**/venv/**",
+              ".codenib_cache/**",
+              ".env/**",
+              ".git/**",
+              ".hg/**",
+              ".mypy_cache/**",
+              ".next/**",
+              ".pytest_cache/**",
+              ".ruff_cache/**",
+              ".svn/**",
+              ".tox/**",
+              ".venv/**",
+              "__pycache__/**",
+              "build/**",
+              "dist/**",
+              "env/**",
+              "htmlcov/**",
+              "node_modules/**",
+              "site/**",
+              "target/**",
+              "third_party/**",
+              "vendor/**",
+              "venv/**"
+            ],
+            "allow_partial_languages": false,
+            "allow_partial_index": false,
+            "source_coverage_fallback": false,
+            "allow_project_preparation": false,
+            "target_dir": null,
+            "repository_filter_policy": 4,
+            "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+            "node_count": 2043,
+            "edge_count": 4604,
+            "language": "python",
+            "available_languages": [
+              "python"
+            ],
+            "compiler_available_languages": [
+              "python"
+            ],
+            "index_generation_reports": {
+              "python": {
+                "backend": "scip-python",
+                "status": "complete",
+                "complete": true,
+                "partial": false,
+                "document_count": 80,
+                "identity_recovery": {
+                  "status": "complete",
+                  "schema": 1,
+                  "source_file_count": 80,
+                  "changed_symbol_families": 83,
+                  "physical_declarations": 3795,
+                  "restored_definition_roles": 21,
+                  "positional_definition_queries": 58,
+                  "local_binding_families": 4,
+                  "local_binding_semantics": "all_source_declarations_for_compiler_binding",
+                  "shared_lexical_binding_families": 65,
+                  "utf8_replacement_sources": [],
+                  "source_only_definitions": [],
+                  "unmapped_attribute_definitions": [],
+                  "definition_provider": {
+                    "command": [
+                      "/tmp/codenib-codegraph-identity-next/toolchain/basedpyright-langserver",
+                      "--stdio"
+                    ],
+                    "server_info": {
+                      "name": "basedpyright",
+                      "version": "1.39.8"
+                    },
+                    "position_encoding": "utf-16"
+                  },
+                  "position_encoding": "UTF8",
+                  "source_sha256": {
+                    "src/flask/app.py": "d439102c7658f90f896556c557df89501f2c98ad498d6317453f10ef58508710",
+                    "src/flask/blueprints.py": "9d296c3a0dffffbafd59ef15290a6d4c2061a470f3ad2b00709388d35d1dddc0",
+                    "src/flask/cli.py": "a4b9a758e6defc6e3f640150761ee4830a8f3314579b8a1485a51206924c7aae",
+                    "src/flask/globals.py": "33342ac58f569f596c2c47eab863b37af7d3203134135a11aed845bdf28d3f3d",
+                    "src/flask/scaffold.py": "12d4caff83fd4f57d51c2d29ec0a873508ac035f596a100d1729edccd18d04ac",
+                    "src/flask/sessions.py": "ebaa06944faff6269cf9e6f9e2d14ddc82c08c9d4579eb871d6c3df1455aa317",
+                    "src/flask/signals.py": "1fb4300dc88af9db41c629e32a97b1a6094fd04ea4d0c2482e21564c8b5f9aa5",
+                    "src/flask/views.py": "2ee96db562f8a30545960c2b262f0608d3388a70b7c5bb36201958df56dd092e",
+                    "tests/conftest.py": "6a85cb938e48d53c7ec978c953d8a6236ae5723541fb3f1c8d73dfa05262fece",
+                    "tests/test_appctx.py": "16dbad01d4ccbc2f811f8718b0bfced28c1d0cde1f8fc357f480dd73b05aef67",
+                    "tests/test_basic.py": "e1087ccff5d7fd00f30a3a2ab0e94860896adaa10c68fbb5f06e653bc206ae5b",
+                    "tests/test_cli.py": "8be854106ba28dc85ec6e95cde140d7910ba236569efe3bd6327f951860cdbc4",
+                    "tests/test_helpers.py": "91a9f89c0fbfc8ad7fff560d959ccfae77a8afd9a947f861246c7ecd16dd26a2",
+                    "tests/test_json.py": "9133dcc027c1458348dcc10cf7f3c587f168966922cc4789811ae0eb4c018bf2",
+                    "tests/test_json_tag.py": "019a2cd9b43245667b178e023dbd3541086f561677c32f06fa2eb85fd81aff65",
+                    "tests/test_reqctx.py": "8c19e1468ed3360efccef5e5ea886377cfe5baf8bb259b34dc84ee993974a764",
+                    "tests/test_user_error_handler.py": "f05213bb275e08d354bf9750eb3a37aeb8fc713a8beee7edcdd3078d11af9d60"
+                  }
+                }
+              }
+            },
+            "scip_decoded_artifacts": {
+              "python": {
+                "relative_path": "index.decoded",
+                "size": 5277566,
+                "sha256": "909e0db027248bfdb7e9aabe7df86d9c2a7154989e27b60669ee778be95a6685"
+              }
+            },
+            "graph_artifact": {
+              "relative_path": "graph.pkl",
+              "size": 441401,
+              "sha256": "81aca592916776aad0baee384a9f8d19eece9b53a8864e51d0789e2d8feec154"
+            },
+            "lsp_occurrence_artifact": {
+              "relative_path": "lsp_index.pkl",
+              "size": 2748069,
+              "sha256": "6f51981fb895fac4a7c9b3841a364aa58e8a8e4faeb9b2878ea02d69a2b48834"
+            },
+            "query_surface_sha256": "7ce405d573a5f49c1e99132235829e35e75f693b4276f925fd1aafc5aece7f1f",
+            "update_mode": "full_rebuild",
+            "partial_index": false,
+            "failed_languages": {},
+            "partial": false,
+            "source_selection_report": {
+              "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+              "nodes_before": 2043,
+              "nodes_after": 2043,
+              "edges_before": 4604,
+              "edges_after": 4604,
+              "removed_excluded_path_count": 0,
+              "excluded_path_count_after": 0,
+              "invalid_path_count_before": 0,
+              "invalid_path_count_after": 0
+            }
+          },
+          "metadata": {
+            "builder_schema": 8,
+            "languages": [
+              "python"
+            ],
+            "graph_route": "active",
+            "exclude_patterns": [
+              "**/.codenib_cache/**",
+              "**/.env/**",
+              "**/.git/**",
+              "**/.hg/**",
+              "**/.mypy_cache/**",
+              "**/.next/**",
+              "**/.pytest_cache/**",
+              "**/.ruff_cache/**",
+              "**/.svn/**",
+              "**/.tox/**",
+              "**/.venv/**",
+              "**/__pycache__/**",
+              "**/build/**",
+              "**/dist/**",
+              "**/env/**",
+              "**/htmlcov/**",
+              "**/node_modules/**",
+              "**/site/**",
+              "**/target/**",
+              "**/third_party/**",
+              "**/vendor/**",
+              "**/venv/**",
+              ".codenib_cache/**",
+              ".env/**",
+              ".git/**",
+              ".hg/**",
+              ".mypy_cache/**",
+              ".next/**",
+              ".pytest_cache/**",
+              ".ruff_cache/**",
+              ".svn/**",
+              ".tox/**",
+              ".venv/**",
+              "__pycache__/**",
+              "build/**",
+              "dist/**",
+              "env/**",
+              "htmlcov/**",
+              "node_modules/**",
+              "site/**",
+              "target/**",
+              "third_party/**",
+              "vendor/**",
+              "venv/**"
+            ],
+            "allow_partial_languages": false,
+            "allow_partial_index": false,
+            "source_coverage_fallback": false,
+            "allow_project_preparation": false,
+            "target_dir": null,
+            "repository_filter_policy": 4,
+            "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+            "node_count": 2043,
+            "edge_count": 4604,
+            "language": "python",
+            "available_languages": [
+              "python"
+            ],
+            "compiler_available_languages": [
+              "python"
+            ],
+            "index_generation_reports": {
+              "python": {
+                "backend": "scip-python",
+                "status": "complete",
+                "complete": true,
+                "partial": false,
+                "document_count": 80,
+                "identity_recovery": {
+                  "status": "complete",
+                  "schema": 1,
+                  "source_file_count": 80,
+                  "changed_symbol_families": 83,
+                  "physical_declarations": 3795,
+                  "restored_definition_roles": 21,
+                  "positional_definition_queries": 58,
+                  "local_binding_families": 4,
+                  "local_binding_semantics": "all_source_declarations_for_compiler_binding",
+                  "shared_lexical_binding_families": 65,
+                  "utf8_replacement_sources": [],
+                  "source_only_definitions": [],
+                  "unmapped_attribute_definitions": [],
+                  "definition_provider": {
+                    "command": [
+                      "/tmp/codenib-codegraph-identity-next/toolchain/basedpyright-langserver",
+                      "--stdio"
+                    ],
+                    "server_info": {
+                      "name": "basedpyright",
+                      "version": "1.39.8"
+                    },
+                    "position_encoding": "utf-16"
+                  },
+                  "position_encoding": "UTF8",
+                  "source_sha256": {
+                    "src/flask/app.py": "d439102c7658f90f896556c557df89501f2c98ad498d6317453f10ef58508710",
+                    "src/flask/blueprints.py": "9d296c3a0dffffbafd59ef15290a6d4c2061a470f3ad2b00709388d35d1dddc0",
+                    "src/flask/cli.py": "a4b9a758e6defc6e3f640150761ee4830a8f3314579b8a1485a51206924c7aae",
+                    "src/flask/globals.py": "33342ac58f569f596c2c47eab863b37af7d3203134135a11aed845bdf28d3f3d",
+                    "src/flask/scaffold.py": "12d4caff83fd4f57d51c2d29ec0a873508ac035f596a100d1729edccd18d04ac",
+                    "src/flask/sessions.py": "ebaa06944faff6269cf9e6f9e2d14ddc82c08c9d4579eb871d6c3df1455aa317",
+                    "src/flask/signals.py": "1fb4300dc88af9db41c629e32a97b1a6094fd04ea4d0c2482e21564c8b5f9aa5",
+                    "src/flask/views.py": "2ee96db562f8a30545960c2b262f0608d3388a70b7c5bb36201958df56dd092e",
+                    "tests/conftest.py": "6a85cb938e48d53c7ec978c953d8a6236ae5723541fb3f1c8d73dfa05262fece",
+                    "tests/test_appctx.py": "16dbad01d4ccbc2f811f8718b0bfced28c1d0cde1f8fc357f480dd73b05aef67",
+                    "tests/test_basic.py": "e1087ccff5d7fd00f30a3a2ab0e94860896adaa10c68fbb5f06e653bc206ae5b",
+                    "tests/test_cli.py": "8be854106ba28dc85ec6e95cde140d7910ba236569efe3bd6327f951860cdbc4",
+                    "tests/test_helpers.py": "91a9f89c0fbfc8ad7fff560d959ccfae77a8afd9a947f861246c7ecd16dd26a2",
+                    "tests/test_json.py": "9133dcc027c1458348dcc10cf7f3c587f168966922cc4789811ae0eb4c018bf2",
+                    "tests/test_json_tag.py": "019a2cd9b43245667b178e023dbd3541086f561677c32f06fa2eb85fd81aff65",
+                    "tests/test_reqctx.py": "8c19e1468ed3360efccef5e5ea886377cfe5baf8bb259b34dc84ee993974a764",
+                    "tests/test_user_error_handler.py": "f05213bb275e08d354bf9750eb3a37aeb8fc713a8beee7edcdd3078d11af9d60"
+                  }
+                }
+              }
+            },
+            "scip_decoded_artifacts": {
+              "python": {
+                "relative_path": "index.decoded",
+                "size": 5277566,
+                "sha256": "909e0db027248bfdb7e9aabe7df86d9c2a7154989e27b60669ee778be95a6685"
+              }
+            },
+            "graph_artifact": {
+              "relative_path": "graph.pkl",
+              "size": 441401,
+              "sha256": "81aca592916776aad0baee384a9f8d19eece9b53a8864e51d0789e2d8feec154"
+            },
+            "lsp_occurrence_artifact": {
+              "relative_path": "lsp_index.pkl",
+              "size": 2748069,
+              "sha256": "6f51981fb895fac4a7c9b3841a364aa58e8a8e4faeb9b2878ea02d69a2b48834"
+            },
+            "query_surface_sha256": "7ce405d573a5f49c1e99132235829e35e75f693b4276f925fd1aafc5aece7f1f",
+            "update_mode": "full_rebuild",
+            "partial_index": false,
+            "failed_languages": {},
+            "partial": false,
+            "source_selection_report": {
+              "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+              "nodes_before": 2043,
+              "nodes_after": 2043,
+              "edges_before": 4604,
+              "edges_after": 4604,
+              "removed_excluded_path_count": 0,
+              "excluded_path_count_after": 0,
+              "invalid_path_count_before": 0,
+              "invalid_path_count_after": 0
+            },
+            "build_duration_seconds": 8.94
+          },
+          "commit": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d",
+          "source_fingerprint": "sha256-v2:c1139eaf9b0f2e3e17f83df03a0bfc98caaa89577c676777274c86cd963eff2b",
+          "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4"
+        }
+      },
+      "capabilities": {
+        "sparse_search": true,
+        "dense_search": false,
+        "hybrid_search": false,
+        "symbol_navigation": true
+      },
+      "compiled_at": "2026-10-28T12:06:30.460485+00:00",
+      "compiled_at_epoch": 1793189190.460485
+    },
+    "tool_description": "Return a bounded indexed static-reference subgraph as nodes+edges JSON. direction='impact' follows incoming references; 'dependencies' follows outgoing references; 'both' follows both, up to depth hops. References can include calls, fields, type uses and function values; they do not prove invocation. External and dynamic calls may be missing. Inspect source call sites before describing runtime behavior. Legacy result direction labels callers/callees mean incoming/outgoing references; semantics reports their interpretation and coverage. max_nodes includes the queried root; max_edges separately bounds relationships. Symbols are fuzzy-matched; unresolved names return a note.",
+    "source_after": {
+      "head": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d",
+      "git_status": "",
+      "files": {
+        ".editorconfig": "759961cac46ae6f8b823e4b377435d2e04311e7026e462976ff54c352eee6f2b",
+        ".flake8": "869445d8583ec77eaf2b3409f550db3262cd30bd2fc1fa96a2bbfe3fb0bdfd2c",
+        ".github/ISSUE_TEMPLATE/bug-report.md": "32b0383ca3cdc7f812aee06b863deb64cb3240c3001a26ac3c46811433b65cc6",
+        ".github/ISSUE_TEMPLATE/config.yml": "59db6f9003216c0477af5278f0bd3dfbb4f46c982f5a13708de58272727ef36e",
+        ".github/ISSUE_TEMPLATE/feature-request.md": "09f7166294a022f7926f32a0c3a785706b3e777f53586dd2cfdf07ee172410b6",
+        ".github/SECURITY.md": "63ed773064a5d44324c4be42661a27ab30a13f323181733b7b42f59504852ab9",
+        ".github/dependabot.yml": "fe27cc0e9c91980474bf2e6c4bbb7c035bb71b781c7fff67a4fa142fbe6c4eed",
+        ".github/pull_request_template.md": "37497840677a8fe41c0e24ec7dde8b298a728fcbf94dc62eee29326bbd49ca84",
+        ".github/workflows/lock.yaml": "de2154d7ca918ebbb767d86be64e847905c540600c50c0cf9d778e5f2352db70",
+        ".github/workflows/publish.yaml": "47df6d05881411805fd079419cb5fc60006122d8ba135b5d4a61af1f360a0589",
+        ".github/workflows/tests.yaml": "a216dc85fef5d788a96f2ad8cf1afdd66771b8dbf9f816de6ade9d5ddd7d42dc",
+        ".gitignore": "ea91eb6582fa6fbd39f24287a2fe6f63353bf3eaea58d0f123704820e95df742",
+        ".pre-commit-config.yaml": "baa35bdeb5f94f1674d105560014af8c0041367c7c782b35ad65bdb679342b55",
+        ".readthedocs.yaml": "dd47a46c7c3027f89216b0a9c2f2ea91275cc7dd2717f6a271a661a29beb2b1a",
+        "CHANGES.rst": "d48be7a6bea42e9aec3810f1031694d06fc3ac44d474bea60051d8d0d1caa7a0",
+        "CODE_OF_CONDUCT.md": "3b3eee7b9db5c0c0a27b60a60883dd706dc954b5dcb25264ff1611ef87426c79",
+        "CONTRIBUTING.rst": "762453ef55412d0333b746647132194174bd112c29b408e2024e8e2c7eb8a7e2",
+        "LICENSE.rst": "489a8e1108509ed98a37bb983e11e0f7e1d31f0bd8f99a79c8448e7ff37d07ea",
+        "MANIFEST.in": "ce56a352e8d1f1fde8a753c15d815888c93e720f7e28452c3ecdeb9aab8e3581",
+        "README.rst": "dfc60b903c5e01d7b3078fc938c362769dc9bfaf1263a817d55690fd5c3e3b03",
+        "artwork/LICENSE.rst": "2e63a3bd3a1f97e2fa9fa33bbf4f61bbb56ee16beb125b5346b0012388dc3b49",
+        "artwork/logo-full.svg": "0fec920ef33dc9ec541c056bc6504e9d78c75c867ffe895f66cee888946dbd92",
+        "artwork/logo-lineart.svg": "c4705ec9f523299ad815780e874be62c3627cea0a67db9a8cbd8b1bc3a78d0f5",
+        "docs/Makefile": "8b6587b859607f200f116e2cb043fc358e1c3a26c326b563bf348453cfc68307",
+        "docs/_static/debugger.png": "2979c9c95ae0fe68a6f5c0055833744daa735f56d3495ee5a41c139ad8567c56",
+        "docs/_static/flask-icon.png": "e115744446f9a617797781fac18f8b92149370a0ce0c648b449b5a55e979384b",
+        "docs/_static/flask-logo.png": "e3b1802e68cdd1ebc02f0132c1f8097c109d38867dc44f1813c064181312ff5f",
+        "docs/_static/no.png": "bc59d3c5cbfe58a7bee295a5d0eb2a200b78201e20c24f393050f2134d9eb10f",
+        "docs/_static/pycharm-run-config.png": "eba3aab19b6969a1268e93b91e19a856430aabe14f90c3ff1228043d88682704",
+        "docs/_static/yes.png": "8e82a0553eb614cce4dca6c60d77626febf3769eb00e0d926f9b54d5a88c5876",
+        "docs/api.rst": "e394f7b80abf581e2e46b5a1cd7bd640653b6ad1cfa876af4349619fae77596d",
+        "docs/appcontext.rst": "f18b338976b18abb5f0068a76eeb36c70d21d3a47677a48c9e5677d23f34a7a1",
+        "docs/async-await.rst": "739dc650532abd7b1903b85d81248137b45ad25c7b657cc06ace27e93cd0a851",
+        "docs/blueprints.rst": "0efbff2912d81e24df4e1d9400657a153cbbfe93c9d3035a6e51ae6ba2d34734",
+        "docs/changes.rst": "94c7e3657f8795af8f66d20fb6208f83df46bce9cab9b82d2c16ad961a87f7e0",
+        "docs/cli.rst": "e8e5e9b220a5159e9c9c8b413de499aa5a51cd0ca487681e2352bbdf6f9b0cda",
+        "docs/conf.py": "313d256d8bb99009fddbb137d6753be041634d3df722e7b01fa35eaa485cc5b5",
+        "docs/config.rst": "e064c784e0b69c06f16727cfea552e1dd28345ffeae30815b61992913b634ace",
+        "docs/contributing.rst": "87d5c7434971ff248a817426c2a84940b3c3ed51251ddcaed6bb8a7d85afad80",
+        "docs/debugging.rst": "2ab0afa292130d00def05d1c6eef75030476734f541f7471a269583c8edb84ff",
+        "docs/deploying/apache-httpd.rst": "676271e9f5f3b317eb282a8b3888d502813e58e8247791d7a56210e6194d4728",
+        "docs/deploying/asgi.rst": "bb29483e443a2e9325e42b2406a1941bec338358018a25f547dd53d890682a63",
+        "docs/deploying/eventlet.rst": "d93ca6cce56fc2bde5a31a7f13ee7e7bc1ab642721344cf9beb0fe374ff4e879",
+        "docs/deploying/gevent.rst": "e542fb5acda27dda113082a4caaaf3bc6b029c3e6f7671611a35905a9740c077",
+        "docs/deploying/gunicorn.rst": "653799579fa07e492b14c8549f9be00b82be817d0b22a65b1f6fd3b74a8ec484",
+        "docs/deploying/index.rst": "2608f551ae1583260af8248c963db3e78cc71d736c17beb57239aa4e6920d63c",
+        "docs/deploying/mod_wsgi.rst": "852707fa7eac584cc0715d1bd5dca3d531b4a2688a2c30241db7b7aff27a652d",
+        "docs/deploying/nginx.rst": "baae442b157057d9f331ef8c2de16065cf3de2e5d6f9b0448e8f74912612e666",
+        "docs/deploying/proxy_fix.rst": "d7da21c812c72a8a8b3d8c74240df3593f626c3b285f64488d4dc81365a4b855",
+        "docs/deploying/uwsgi.rst": "82668e3aa6927b0a88bd5b6e5da06ea6852877e5cd7fe4c02520eb33f61494d0",
+        "docs/deploying/waitress.rst": "f8d6ae27d97a678374125089de144c2d0ef6ca950abfdd2c43aa98f3d31e62d5",
+        "docs/design.rst": "50623cdef4a04bcce46713ed55b5229820b769ecce70ffa5304cea74fa087d74",
+        "docs/errorhandling.rst": "641f43eade9c2e34c1a8809b6bbf8183ef2e40f07e9224129c744d170b213981",
+        "docs/extensiondev.rst": "40fbf588b4b2b66e74ffd7177cb361d46a9d560f77eb1660c7ad56827ea3f812",
+        "docs/extensions.rst": "ccf9b1eb72261ba34b9dd76a483ee3979091916bab0d3b79f7fe4667f418d42d",
+        "docs/index.rst": "ad1156c3cf161fa633b67c8e6dbdc2ab2d6369ef8f84babe8416f74a0e2f3015",
+        "docs/installation.rst": "ae77a1914256a9f9bf594fe9623310cc4ecda1eb45da53cc3a39639b6acd7050",
+        "docs/license.rst": "7535eac513edd12fb8e33f203c6a403549629e34b363418cdbd6c6ea5464515d",
+        "docs/lifecycle.rst": "e056e80bc5cbe46cf616c335b08fc0fd6aad513f3fb1f8fe2d02807dfe0c504c",
+        "docs/logging.rst": "aa114b98ea50fc8c50bc6209d8d645f694b31916df896483c1f17c3d14bdc855",
+        "docs/make.bat": "28aa5a45fae5d43d8a0e7e3d656e42a592b30d05a0838521bef6216d450b93b9",
+        "docs/patterns/appdispatch.rst": "8b1d28d947e89098c60af126db6f3031d147cc762923dcc4ca7df9553194b7ef",
+        "docs/patterns/appfactories.rst": "4e475f0fbcb825a503315fe2d96b6a9e74db7b93b67439b73400eee47f4e4569",
+        "docs/patterns/caching.rst": "69f3d64582f923c04eb89dfd4112bef1173d0a5352b94832c891cb36633bafe1",
+        "docs/patterns/celery.rst": "d38d301a9a97ffba6fbc3d10269c0c07afb9e9974fdc04115abfafb3a3dbd9de",
+        "docs/patterns/deferredcallbacks.rst": "b9d44479bb2af5827b5ee0a953ab3138db11dda8d1cd7ada68963b55b5031adf",
+        "docs/patterns/favicon.rst": "0315c8700dc97bf31359ea8131cac7bbedd07a1d6388ac97f0580314df75dade",
+        "docs/patterns/fileuploads.rst": "1db4e08f5a4435abb41946314bb35d5d0b3e86723db02961ba5bd8f9f9f9a556",
+        "docs/patterns/flashing.rst": "5802f174e23a0392bee1e52bdc90ea6c6d658cc74a6f6401e174661aa2a7c01f",
+        "docs/patterns/index.rst": "e41c5117727b09d67aac1f6917e810484c82ae467f2c9c77bc19e300ed948c9d",
+        "docs/patterns/javascript.rst": "7dbe476916c39b7d17466c3b8ba92d79cdd8987c845b7267781dfeccfb7e8d35",
+        "docs/patterns/jquery.rst": "3bf6ce863472c428f9c3ce23f542b3e8b95ddc7bce64d6a60bd8ca2b93293656",
+        "docs/patterns/lazyloading.rst": "cddcdbf43a1c32ff59d890672cf568770e837f53ff8879f62a5796f3e34c5087",
+        "docs/patterns/methodoverrides.rst": "d5a7d8b280a4e61016ee4be39e8c15e5b209076720e9235b357e48473fa07a56",
+        "docs/patterns/mongoengine.rst": "78490f31e89af2beb6565313c67b41a178e2416c748afe4fa98a194992004f9e",
+        "docs/patterns/packages.rst": "81876700c50a3e2d505568732f8266bc91afb6b793f0be3beafe1a22d7d21a6d",
+        "docs/patterns/requestchecksum.rst": "de35760b81ceb3a402fba66ff4d899aa1efcfdf4f240ce3a075ea3b123aa4a3e",
+        "docs/patterns/singlepageapplications.rst": "363abbdf6ee25f665e6e4ed86da02ba3d79b730f623be082647789123fd2d208",
+        "docs/patterns/sqlalchemy.rst": "60a45ae8047f3aa901d14f6f93063611a0867b4588ef00340e0753d89544be77",
+        "docs/patterns/sqlite3.rst": "6ee6fcaa12dcf1ce11b3883d1e4d1a0f1a413958679649da5ac0ce9d3b06b533",
+        "docs/patterns/streaming.rst": "c21cc62e464fd92e7d37dc62a817d89d5684382b27b1c8613ad3c13bf09fa8ef",
+        "docs/patterns/subclassing.rst": "5f7e400c7970951eb104df5a2d9613c8986a3b05c16bf622d7d1a6ddc69d720b",
+        "docs/patterns/templateinheritance.rst": "f41b40dea855682d9435edf0ff3a27b5f4267492325b8ba447c419e649373e70",
+        "docs/patterns/urlprocessors.rst": "816aa72b588023fbed0f46986cd413132040b8d0a144596781cd3c2fd2a865e5",
+        "docs/patterns/viewdecorators.rst": "2e461ba65df1ba86c01b49f20b5c118d75544796ba637c8bebe8c4789c761144",
+        "docs/patterns/wtforms.rst": "13e7666545c4ed60f7825fe9b5f9237da25d313da7da6ed39418b4f031adfb8c",
+        "docs/quickstart.rst": "884564779240e5b9ad913875a8d18e1ac612d0ebe97204d68f0aa1f7c10ccbdd",
+        "docs/reqcontext.rst": "7caa53bef4158cb84578d917985a4adeb5df891e1b86c0d0d0930d0bae989f2c",
+        "docs/security.rst": "071f46568b0a148c32db938a44d8b2e627cb8a7db21f89888ee2a983b05132b7",
+        "docs/server.rst": "7e40bf214d31eb88b8a1df96607457398809bca6eb857aba546282c0c76d28db",
+        "docs/shell.rst": "10a86c0b756ee35d77620867255ecc658e05525aba9b987be153dccc607a4dab",
+        "docs/signals.rst": "45236414f96c9297a2a8d60c30abc0b21d03c3155890704e11e739a15a45d86a",
+        "docs/templating.rst": "4cbda042253e832df9b95f57fe1d4e6767f076f98fbd25c5a802536d8279d642",
+        "docs/testing.rst": "80883af068924f1f8ef959b0c292ab14eac9aa4b055144d9d6a5c634c9e55e6a",
+        "docs/tutorial/blog.rst": "e38d7c41b6cfc3a20ade1f8318ba2a48e6e658ea0be93f5ff4523868e7e83ee4",
+        "docs/tutorial/database.rst": "88b87c26f014c5ab042687afb51ebcb2040019229f95879115ba4dd30fbfdab3",
+        "docs/tutorial/deploy.rst": "20293623ad985fe72e06523a8f851bb253beccb84c0362708284ec484ca7be97",
+        "docs/tutorial/factory.rst": "47d67dbd5278da36613b7c045a35fc5744563d222d9c4b871c0c07901a844f45",
+        "docs/tutorial/flaskr_edit.png": "5bce7fb2fd68beeb77204b908573e282ad3654a738635803cef2634460bbdbf4",
+        "docs/tutorial/flaskr_index.png": "5bf89de3839acc5b7426ffcc29c3630d367033afa9c47c1f1647bd0d83b92051",
+        "docs/tutorial/flaskr_login.png": "1963095522d1eab0c6dc563d9376eb6ff997879c9895bb41709fe9a309aeb91b",
+        "docs/tutorial/index.rst": "c97b064670686bbb002a720174cbf5feaaa5c615fa317c1cbb901bb214eb81ac",
+        "docs/tutorial/install.rst": "82898bcf31826adebcf319c2b6ca85a4354e8b060215cb6b11ddc5c9e862bf45",
+        "docs/tutorial/layout.rst": "6b1c0b4e5c08d296703c26dd642dbed4097e0745b44d6d175e2a5debd0eed3fd",
+        "docs/tutorial/next.rst": "035d30c638eb8e2596738efd8033d370bc6642e357d43b24c104b9cba4761ad5",
+        "docs/tutorial/static.rst": "233079012d511e3640b35abfe69014e2cab668027e3ade0e31deb03350f6157b",
+        "docs/tutorial/templates.rst": "3d06b3eeb8bc02a6e30ed95fd579dc4e0fcf59986ecac7f3181648f5611a5f7f",
+        "docs/tutorial/tests.rst": "2fd6e84543d49346d504d87e17e99e0969b5848e9932f6f2118445cfdb08a374",
+        "docs/tutorial/views.rst": "7f1856b2432fb9ae865063d1b441fb1f41cabc09f09296ca755ee9152ed2d9af",
+        "docs/views.rst": "225deb1feed5e285a23c151c1ffd9ae7be3106b436f94d2f3f179c2b438b01d6",
+        "examples/celery/README.md": "c31bd98ee22d28e11f183815dfe5727342260d0582a3a5e89ab552c5611d34c8",
+        "examples/celery/make_celery.py": "ff32ebf85ef8791fc07177ffe2dad6020fad34a4a57831d37a8bd8531f6e6707",
+        "examples/celery/pyproject.toml": "b4ac3540881f44a97e88d52828016761e4ecb9f7802977ed19fd8d84db7f822a",
+        "examples/celery/requirements.txt": "3af0dfc4ded483426be750bb7383c412b98ccc7f8870ee66278781139d68910c",
+        "examples/celery/src/task_app/__init__.py": "172de995eb076d7ea1911f20bf4c2fcb72dbc3d7eee3e5796c4cdfa2dfd486ab",
+        "examples/celery/src/task_app/tasks.py": "d2c365c8ed2f5abf0b5b109361ebe58941559b7d67e57f96d6a6b7bd69970364",
+        "examples/celery/src/task_app/templates/index.html": "2ca135b39b9e685a164001abd6d8acb985fec1e126c2a6f36fffbd59b2117f10",
+        "examples/celery/src/task_app/views.py": "cb9f3c9ebbb359bae6d49f55fd717700062691d2be60f1700e2abf7060082704",
+        "examples/javascript/.gitignore": "33e8459e8e10c3260d9b06a2d3a256306cbc154708601d734bff17c42109b319",
+        "examples/javascript/LICENSE.rst": "489a8e1108509ed98a37bb983e11e0f7e1d31f0bd8f99a79c8448e7ff37d07ea",
+        "examples/javascript/MANIFEST.in": "e246d1d9b5462efbacea58ba34089c07eeb93c6370514b84a79bfa0f290d590a",
+        "examples/javascript/README.rst": "2fecf3aa4491175c6beeb793441ae9969b441f65a6086d0ad3b6af46ad52b165",
+        "examples/javascript/js_example/__init__.py": "ea2307cfd406f1b66de1537bc11eecc7d9ff2bf098b65befbe52e99a52ca2b09",
+        "examples/javascript/js_example/templates/base.html": "08d0064958cae81c9b2b30e50ba233195d211316b7e44988fad6ebfa4b42decd",
+        "examples/javascript/js_example/templates/fetch.html": "47c946da9cad2e382ffb69dd9cbde239dce4223e1128cc4b2292d396d3b0a4ca",
+        "examples/javascript/js_example/templates/jquery.html": "4fa2ef87d2f563ff3bfe54429eac4bdbb674aeebe1377efe38b3cba9d96f1643",
+        "examples/javascript/js_example/templates/xhr.html": "e0f2cbefc4be46244d9fc787a47c16dcecaabf26b91409ada20c5669861fa763",
+        "examples/javascript/js_example/views.py": "d8952097a08a6dfae3be6d86359108c8cc62b7d26ab092bec1eb9143cd2a1bb0",
+        "examples/javascript/pyproject.toml": "135221e79dc275033fde7b2c3afd6ee75650bf02a8e2a25c0a437f4116cf7bc2",
+        "examples/javascript/tests/conftest.py": "aff1ac8ea5b7c6e4d7adf67a0eae5c13cbb9adf38e1a2434e6cc7e6824c56b11",
+        "examples/javascript/tests/test_js_example.py": "0668636eada4707d4fdd78185433ed9835bac39f335eebfacb7994d2df60c20e",
+        "examples/tutorial/.gitignore": "33e8459e8e10c3260d9b06a2d3a256306cbc154708601d734bff17c42109b319",
+        "examples/tutorial/LICENSE.rst": "489a8e1108509ed98a37bb983e11e0f7e1d31f0bd8f99a79c8448e7ff37d07ea",
+        "examples/tutorial/MANIFEST.in": "888da39f79f0ed0726aef4ebb0d306233e0246e33acccbeec37e052ea62c7aab",
+        "examples/tutorial/README.rst": "e6c7aa25f5a857ce3b30c0b2a2d0d7a25bbf0f1c96d700e1bad2868c7ea231f5",
+        "examples/tutorial/flaskr/__init__.py": "8b5a321932c3b2ddeb440e5d023c8beae394cd134f4bb3ce5ba80d65038b4281",
+        "examples/tutorial/flaskr/auth.py": "6d77ebafa6443dc1b43ee26f212ad2fa810ceab4a161a164b8ebe4a61184b7c2",
+        "examples/tutorial/flaskr/blog.py": "ffa97ae3827518ea3ef22e8cfcedabb6d757407714fc9ad8e03b4eb05b744bc7",
+        "examples/tutorial/flaskr/db.py": "69fffb53092c30fa0d9b08f12fa970a2c4d3e8adb28727ec62affe237f21bff2",
+        "examples/tutorial/flaskr/schema.sql": "c23021b8a5229cedd3191825850e963f393790a794d31ac2f83846a0c5d559f7",
+        "examples/tutorial/flaskr/static/style.css": "b7724c7981be21b5a13484c8f7eb9df306f06a88406db3dc7619b80aa040e372",
+        "examples/tutorial/flaskr/templates/auth/login.html": "f0d4ee341a19c8f9d51a66c5da624e687e58de7e3fb2ca41c6f5b8d07e20a6c1",
+        "examples/tutorial/flaskr/templates/auth/register.html": "53da308c1d62f057613ec8e445eb70e89404288f503156102d1e3e39ec5b2153",
+        "examples/tutorial/flaskr/templates/base.html": "a3c74c6ba8ae95bd3b4b63c0bcf5712944c5b954578514c1316a248db0949b07",
+        "examples/tutorial/flaskr/templates/blog/create.html": "f41e3166cfd09d41a88def1896fb93631e707b0d9968b14ccb00953263e20025",
+        "examples/tutorial/flaskr/templates/blog/index.html": "67cdf10979b06f697953477d0ee8043e56a11ebe87b03b307ada12d13a240617",
+        "examples/tutorial/flaskr/templates/blog/update.html": "0e16cd0d933914628e890411dcddd7527fb96b5a7c9113390d93b3e79b44b5ad",
+        "examples/tutorial/pyproject.toml": "f46f0dd8c1d4a7643f8ae00679a8322a8b4ffbfc591db0c4a66054895d6cfb19",
+        "examples/tutorial/tests/conftest.py": "2778b7c035d917bb0909ec6ee2f9d61ccba030ff8ae635ff65a52c133ec5afca",
+        "examples/tutorial/tests/data.sql": "244a542220a64bdbf9bd3340f8280551b95e6d3248ead974fdd0a07a7dd06a0c",
+        "examples/tutorial/tests/test_auth.py": "cbbe178c9980d8499561d8eae72f01b8abeead2fa10c9d5f71427da4af38a938",
+        "examples/tutorial/tests/test_blog.py": "a4c01c486e86aed522c3ade398bf4016f6ef59bbada2c7c5f69eb55ce297877c",
+        "examples/tutorial/tests/test_db.py": "324baea21b981575b4e6d92b6517f21ec2ad86a6138010863a9fcfb4f984e649",
+        "examples/tutorial/tests/test_factory.py": "1906cfed379afe315b6ad7db3c71c951ac87c53b57b28b04b5b6c84df2a79e01",
+        "pyproject.toml": "738b80e461d53775a148faa291d4b66d8b715aee674d749827002616c760b01b",
+        "requirements/build.in": "f10ec3ffef16a8dace9b58801e0da28819c98af4c8933410d7e7cacc952f9e9b",
+        "requirements/build.txt": "94edfac456f84acf5c99f10a7bea00e027b51284da6a8172b4bc4cf786defba8",
+        "requirements/dev.in": "4a55617a2d5ae90a3dcd50b0bb9055f55e77462c93af8d6b98e6d66c3a683a1c",
+        "requirements/dev.txt": "7443981a5ca905e1082145ef4bfc525dd6f788d5ed5c9390b86fbb3853defbd5",
+        "requirements/docs.in": "11b236fc3c336a0816687f8c8f907f4cdffe3da1c4e60940e67c1bdad25c4b47",
+        "requirements/docs.txt": "3381d4e77e681780150461db92e1341bb05865c71d1d62d5e4a364127358ee8b",
+        "requirements/tests-pallets-min.in": "7ec68da70bb0df51cbc8207d4c254a130e044a56f5d907ba8f3a8acbd79dc3d1",
+        "requirements/tests-pallets-min.txt": "6cb8a57706ada641641dd8230c3afbf1b4bc7c1ee68cdd17f4820326b668cf8e",
+        "requirements/tests.in": "1ecbca947aa57fbb2f52a6229179cf99226f4ee050ca4063b28edfd9dcf00931",
+        "requirements/tests.txt": "8e377f7d02ba13bdd2cba784814d7a8a169a6bb6cf2893a277c42c2e100d3772",
+        "requirements/typing.in": "7473c420ff6ad3207f3e7187f04e4b1c62dfbffa40a93d314ff16fafff9945a5",
+        "requirements/typing.txt": "cca5b70cf1fef660c53504ce63874ea39198188486079c35131f6c5fd7c33edd",
+        "src/flask/__init__.py": "cb74621666b9ca1383af7591214a0e48917428a8b808d8d04cdbb8591bcc89a7",
+        "src/flask/__main__.py": "6d8b7d7846a845059d7a3107143f11131f63c5511d669b44085b15ec5e3d2279",
+        "src/flask/app.py": "d439102c7658f90f896556c557df89501f2c98ad498d6317453f10ef58508710",
+        "src/flask/blueprints.py": "9d296c3a0dffffbafd59ef15290a6d4c2061a470f3ad2b00709388d35d1dddc0",
+        "src/flask/cli.py": "a4b9a758e6defc6e3f640150761ee4830a8f3314579b8a1485a51206924c7aae",
+        "src/flask/config.py": "584fd038985cd82c1ab2e6e7d9934cbbf99d0b9e25086ef15177567a3040188e",
+        "src/flask/ctx.py": "6c611042e176fdc1ea67764d31e31e106f0738b2640e52fcf2ed810710ab45aa",
+        "src/flask/debughelpers.py": "fd1bc02f74d6e65a8c25e0955ad4d4eab483242ee39d16812fa3849159a8a325",
+        "src/flask/globals.py": "33342ac58f569f596c2c47eab863b37af7d3203134135a11aed845bdf28d3f3d",
+        "src/flask/helpers.py": "efa15481302a200fabae2498f5e6ff9ae002906bd0ad9550b91a32269d4a4c1e",
+        "src/flask/json/__init__.py": "a5db69a0ad9bd1bd6eed2c5bc777de33b55686c236d25d72180bdb616c5ac6f7",
+        "src/flask/json/provider.py": "43324b473bce7096def0847139f97a4f53f763326983a58f5a91f56cc83b04ea",
+        "src/flask/json/tag.py": "7f2b371c12ecb161ee300209b9371fd8ad1b0ada2c78f04a5c85804991048e75",
+        "src/flask/logging.py": "5989e0d1b2d3452fc226ba1c19c08b26989b1dfd65ca01c4fe983e2a8508438c",
+        "src/flask/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "src/flask/scaffold.py": "12d4caff83fd4f57d51c2d29ec0a873508ac035f596a100d1729edccd18d04ac",
+        "src/flask/sessions.py": "ebaa06944faff6269cf9e6f9e2d14ddc82c08c9d4579eb871d6c3df1455aa317",
+        "src/flask/signals.py": "1fb4300dc88af9db41c629e32a97b1a6094fd04ea4d0c2482e21564c8b5f9aa5",
+        "src/flask/templating.py": "3591a3224d577b651e48697ef9ae9a8fff57c8f2f52dfcdf31bbaf055e04bc75",
+        "src/flask/testing.py": "af8e2e80145fdf669988c666bbdb1e617713cc1cb538899ca636835c76d36177",
+        "src/flask/typing.py": "2a0c5e81317dbfd5afba89e0785f0ba2822fa593dabb31ababd6577f78019587",
+        "src/flask/views.py": "2ee96db562f8a30545960c2b262f0608d3388a70b7c5bb36201958df56dd092e",
+        "src/flask/wrappers.py": "7a5ded9f52e049457478d1a060c8ca2024f923ba862606e9221bdc8b89ebc10f",
+        "tests/conftest.py": "6a85cb938e48d53c7ec978c953d8a6236ae5723541fb3f1c8d73dfa05262fece",
+        "tests/static/config.json": "28d7be9c2566e893e5e2da9eec54951032b55485fefc36ab4d53fa97b271c981",
+        "tests/static/config.toml": "1551d036dd594e88079db2179d045df595760af46dd6c80c11ef828fa2f7a02a",
+        "tests/static/index.html": "7f6f02fe6b981005a81f27dab9bc6d8be4cb074c0c8c5647208ddef5346c9ac2",
+        "tests/templates/_macro.html": "5c0daa9f0a49a4eddab928d994a5ce0f3794e057278a6d7689ee6531778bf26b",
+        "tests/templates/context_template.html": "857bc7cdd820b2aa8ed9e5d195be848460d34f33c842271a324d8489bcda8034",
+        "tests/templates/escaping_template.html": "3913ccdd020e22efe55aff4cd74d5b3c766df9b9b2f018aedbaeb7680a0ee748",
+        "tests/templates/mail.txt": "f1ff63d4fc54a3f75e19bae926e0ddae28b5eaa13ec6d57d454ea660f544ffae",
+        "tests/templates/nested/nested.txt": "efa3e5343b700d55a364c3c746506a497f798d8e767bf45664224a65f4569005",
+        "tests/templates/non_escaping_template.txt": "a1bf0b2dc534994c5cd3e2eddee3d81b7c9be229dfc35c57284507576c0fe214",
+        "tests/templates/simple_template.html": "7746a4931590d544240e22f8e5bf2752f084d0aa4be7bf43862a1896fef5ddb1",
+        "tests/templates/template_filter.html": "1e499ffeb7db1bdb46ad1a26ca8b37bd0d87f2e7ebc1ef81d912fed8b7c525a0",
+        "tests/templates/template_test.html": "8376605103743da3a2cf6f3dfc0c4d78fdc809f476f688336d09777c2bf12bff",
+        "tests/test_appctx.py": "16dbad01d4ccbc2f811f8718b0bfced28c1d0cde1f8fc357f480dd73b05aef67",
+        "tests/test_apps/.env": "3739562018bb8d8aeddbb540fb4c53e61af5385fb4d3b613e784057c3129ccc0",
+        "tests/test_apps/.flaskenv": "8933d1515cd054314d9f79b2295ac7833604768cb91e2762607a5560609ea6ac",
+        "tests/test_apps/blueprintapp/__init__.py": "87622ebc37bcfe87d81be1437e4b97a4c2a8341eb3df38461dd37a0b89db07d3",
+        "tests/test_apps/blueprintapp/apps/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tests/test_apps/blueprintapp/apps/admin/__init__.py": "5e849dc6984b0b3944ea687e40d96da9d5a9f42e32aa5b4035dedef4558ad83d",
+        "tests/test_apps/blueprintapp/apps/admin/static/css/test.css": "1750c6f80056de8eb2003f4d73a23357d89879f65e387867e7dd34f4b3096e86",
+        "tests/test_apps/blueprintapp/apps/admin/static/test.txt": "95c3e2ba78ba2d1febc399b1ca3466cfc88c7227e249236a3c5948ae62cace36",
+        "tests/test_apps/blueprintapp/apps/admin/templates/admin/index.html": "d8e592e9062ac5a6ab9d901690bbda9b43f6412a1d44d900e8cd397843952f0e",
+        "tests/test_apps/blueprintapp/apps/frontend/__init__.py": "1630cefb5d073808e8b4164e4d910f69aee57a93eaee53debb575e7e7aabb83f",
+        "tests/test_apps/blueprintapp/apps/frontend/templates/frontend/index.html": "85c0bb0ce45263118d2b90c0202571d41785565cda6a7c5c2213834309bdaf08",
+        "tests/test_apps/cliapp/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tests/test_apps/cliapp/app.py": "b0c37142ff064f6d7f3ca21b8acec34a0657cf1a7c354178d5e3acc0879c7467",
+        "tests/test_apps/cliapp/factory.py": "3a93cd69f200848e8ffef6b2abdaa5803fb5044981ab64297f8c7d6541820570",
+        "tests/test_apps/cliapp/importerrorapp.py": "5ad812b09337f9699cd2b6aeebfd7d6f14045451de846b0503d746a34ce8a8c4",
+        "tests/test_apps/cliapp/inner1/__init__.py": "d3885f0114c83025a754fb3a8582634946541c9aeb72fe4f90af27554a6d4c83",
+        "tests/test_apps/cliapp/inner1/inner2/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tests/test_apps/cliapp/inner1/inner2/flask.py": "570567aafaf185348cffa097d904b964c44fe1a92c5ec82488b97e3d93dbab38",
+        "tests/test_apps/cliapp/message.txt": "f41c9f8b6285b72bbd8f18a781c679d49741835c0ac49b5cd953768002e191de",
+        "tests/test_apps/cliapp/multiapp.py": "0580225ea4edb705c2e412c5ac6bd27d659cc239f0243467a33eaa9ee74675fc",
+        "tests/test_apps/helloworld/hello.py": "42722083156af9f3eb82e3a88403f4191b9dfcb5f9e1c3432e79f02827b0ccf1",
+        "tests/test_apps/helloworld/wsgi.py": "c1d5a162364e71546a8a8b76eb7fba0381582b8546ad14189f6431e647b7a547",
+        "tests/test_apps/subdomaintestmodule/__init__.py": "441b37bad390ba774ec6f41b2b2c24357aa66dd469633829a415b710f10dccf3",
+        "tests/test_apps/subdomaintestmodule/static/hello.txt": "e4fbc4e56428293f5d5e439367adef7c6f45d22032b324e64935f4740e2e8902",
+        "tests/test_async.py": "0a6a50bfd651581478abe8cda5c94aba6d70df35567a220aabc7ba08202d471c",
+        "tests/test_basic.py": "e1087ccff5d7fd00f30a3a2ab0e94860896adaa10c68fbb5f06e653bc206ae5b",
+        "tests/test_blueprints.py": "804b98bbb71ccce566ab78a15cb141793ebbaee3c1b3bb591d9dab04c9940f4a",
+        "tests/test_cli.py": "8be854106ba28dc85ec6e95cde140d7910ba236569efe3bd6327f951860cdbc4",
+        "tests/test_config.py": "4ba589e57daac5e42566c849a9a37a0086bec3793f71d481c724e41a603a0dca",
+        "tests/test_converters.py": "4f529ca6ee85a88c487a488807ff30cb8e4672307b9017f348174a67a5984347",
+        "tests/test_helpers.py": "91a9f89c0fbfc8ad7fff560d959ccfae77a8afd9a947f861246c7ecd16dd26a2",
+        "tests/test_instance_config.py": "863b937b8b215c5243b54f9a80c40601ce63e1032a0cc2fbd71215c6acc94fc6",
+        "tests/test_json.py": "9133dcc027c1458348dcc10cf7f3c587f168966922cc4789811ae0eb4c018bf2",
+        "tests/test_json_tag.py": "019a2cd9b43245667b178e023dbd3541086f561677c32f06fa2eb85fd81aff65",
+        "tests/test_logging.py": "311ea43751a836c3d585a40f08fa54a60d783a232aa50c5ea1225b689e9ac683",
+        "tests/test_regression.py": "2749a17454a9aa8a610a2213d739046488af06fe742da1c06802d00ab28a3bf8",
+        "tests/test_reqctx.py": "8c19e1468ed3360efccef5e5ea886377cfe5baf8bb259b34dc84ee993974a764",
+        "tests/test_session_interface.py": "d3990141744f27683503ffc17f46042b9fe0b10119c77e414ea47795079b7dba",
+        "tests/test_signals.py": "c43524c0c0c59d972b39638b5eb96976cfb55a35e2ca7546ead60f3f43e89854",
+        "tests/test_subclassing.py": "0d325f8099e38403287a0cd8f1e184884beb5c345ac894300f2aa469a04cbd10",
+        "tests/test_templating.py": "d20c5f1f67fdc81ed0f9fdaf450b699fa9cb787e2eb1b40637b4c758a1e20e19",
+        "tests/test_testing.py": "5a3d48e13e7c1ecbd977b0d6ce74fbcd10d5bc90d0cb5f9206a79ee986d33442",
+        "tests/test_user_error_handler.py": "f05213bb275e08d354bf9750eb3a37aeb8fc713a8beee7edcdd3078d11af9d60",
+        "tests/test_views.py": "46a65aa50e962b7c047485e96f33a8a502a394d5097c5adee1239cba10d24566",
+        "tests/typing/typing_app_decorators.py": "dac75620ec452dcb01c76c9f7b070a842e0527261f1a255eb7533b583cd7d31e",
+        "tests/typing/typing_error_handler.py": "6ca69ec7b4813dfac97080cfb49b9c2d41acab44351e86620e337e1f25674604",
+        "tests/typing/typing_route.py": "fd0cf3b76c74c40e89a87f98471d59b502425e57791d17bce5331356ec303344",
+        "tox.ini": "bd9cbdb045badd28c4d854929feaa081da17b1539cc8935dd03e6723d3928c90"
+      }
+    },
+    "status": "passed",
+    "finished_utc": "2026-10-28T12:06:31.560281+00:00"
+  },
+  "executed_controller": {
+    "sha256": "0e66421ff436e4109541ff519c2fb490f2bab352bb566dfd089aad7aa01f13cb",
+    "source": "\"\"\"Model-free strict product/source check for static-reference delivery.\"\"\"\nimport asyncio\nimport hashlib\nimport json\nimport os\nimport shutil\nimport subprocess\nimport sys\nimport time\nimport traceback\nfrom datetime import datetime, timezone\nfrom pathlib import Path\n\nROOT = Path(__file__).parent\nCHECKOUT = Path('/home/zhongming/CodeNib-codegraph-benefit')\nRUN = ROOT / sys.argv[1]\nRUN.mkdir()\nREPO = RUN / 'source'\nSEED = Path('/tmp/codenib-matched-pilot-20261027/sources/pallets__flask')\nshutil.copytree(SEED, REPO, symlinks=True)\nos.environ['CODENIB_HOME'] = str(RUN / '.codenib')\nos.environ['CODENIB_TOOLCHAIN_DIR'] = '/home/zhongming/.codenib/toolchains'\nos.environ['CODENIB_PYTHON_LSP_CMD'] = '/tmp/codenib-codegraph-identity-next/toolchain/basedpyright-langserver --stdio'\nos.environ['PYTHONPATH'] = str(CHECKOUT)\nsys.path.insert(0, str(CHECKOUT))\n\nfrom codenib.agent.boundary import AGENT_LINE_OFFSET\nfrom codenib.cli import index_repository\nfrom codenib.graph.code_graph import CodeGraph\nfrom codenib.graph.dependency import DependencyAnalyzer\nfrom codenib.types import EDGE_TYPE_REFERENCE, NODE_TYPE_FIELD\nfrom mcp import Client, StdioServerParameters\nfrom mcp.client.stdio import stdio_client\n\ndef sha(path):\n    return hashlib.sha256(Path(path).read_bytes()).hexdigest()\n\nreceipt = {\n    'scope': 'Model-free developer regression on the historically exposed pinned Flask source. Fresh strict SCIP/BM25 build and real MCP 2.3 stdio. No task-benefit, model-improvement, SDK inference or external-user claim.',\n    'started_utc': datetime.now(timezone.utc).isoformat(),\n    'controller_sha256': sha(__file__),\n    'base_commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=CHECKOUT, text=True).strip(),\n    'implementation_sha256': {name: sha(CHECKOUT / name) for name in [\n        'codenib/mcp/server.py', 'codenib/mcp/prompts.py', 'codenib/mcp/tools/dependency.py', 'codenib/graph/dependency.py']},\n    'calls': [], 'checks': [], 'model_inference_sessions': 0,\n}\n\ndef save():\n    (RUN / 'receipt.json').write_text(json.dumps(receipt, indent=2) + '\\n')\n\ndef snapshot():\n    files = {str(p.relative_to(REPO)): sha(p) for p in sorted(REPO.rglob('*'))\n             if p.is_file() and '.git' not in p.relative_to(REPO).parts}\n    return {'head': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=REPO, text=True).strip(),\n            'git_status': subprocess.check_output(['git', 'status', '--porcelain', '--untracked-files=all'], cwd=REPO, text=True),\n            'files': files}\n\ndef project(payload):\n    return json.loads(next(p['text'] for p in payload['content'] if p['type'] == 'text'))\n\nasync def call(client, name, args):\n    start = time.monotonic()\n    raw = (await client.call_tool(name, arguments=args)).model_dump(mode='json')\n    receipt['calls'].append({'name': name, 'arguments': args, 'seconds': time.monotonic() - start, 'payload': raw})\n    save()\n    assert raw['is_error'] is False, raw\n    return project(raw)\n\nasync def main():\n    receipt['source_before'] = snapshot()\n    started = time.monotonic()\n    manifest, failed = await asyncio.to_thread(index_repository, REPO, languages=('python',), views=('bm25', 'symbol_graph'),\n        allow_graph_project_preparation=False, allow_partial_graph_languages=False)\n    receipt['build_seconds'] = time.monotonic() - started\n    receipt['failed_views'] = failed\n    receipt['manifest'] = manifest.to_dict()\n    assert not failed, failed\n    assert receipt['manifest']['indexes']['symbol_graph']['status'] == 'fresh'\n    graph_path = Path(receipt['manifest']['indexes']['symbol_graph']['path']) / 'graph.pkl'\n    graph = CodeGraph.load_graph(str(graph_path))\n    analyzer = DependencyAnalyzer(graph)\n    symbol = 'src/flask/app.py:Flask.make_response()'\n    with (RUN / 'mcp.stderr').open('w') as errors:\n        transport = stdio_client(StdioServerParameters(command=sys.executable,\n            args=['-m', 'codenib', 'mcp', str(REPO), '--tool-surface', 'full'], env=dict(os.environ), cwd=RUN), errlog=errors)\n        async with Client(transport, mode='auto', cache=None) as client:\n            tools = {t.name: t for t in (await client.list_tools()).tools}\n            receipt['tool_description'] = tools['dependency_subgraph'].description\n            assert 'static-reference' in receipt['tool_description']\n            for direction, method, expected_direction in [('dependencies', analyzer.dependencies, 'outgoing'), ('impact', analyzer.impact, 'incoming'), ('both', analyzer.subgraph, 'both')]:\n                data = await call(client, 'dependency_subgraph', {'symbol': symbol, 'direction': direction, 'depth': 1, 'max_nodes': 60, 'max_edges': 400})\n                metadata = data.pop('semantics')\n                assert metadata['edge_type'] == EDGE_TYPE_REFERENCE\n                assert metadata['reference_direction'] == expected_direction\n                assert 'type use' in metadata['interpretation'] and 'dynamic' in metadata['coverage']\n                options = {'max_nodes': 60, 'max_edges': 400, 'radius' if direction == 'both' else 'max_depth': 1}\n                expected = method(symbol, **options).to_dict()\n                for node in expected['nodes']:\n                    if isinstance(node.get('line'), int):\n                        node['line'] += AGENT_LINE_OFFSET\n                assert data == expected, (direction, data, expected)\n                if direction == 'dependencies':\n                    alias = 'src/flask/typing.py:ResponseReturnValue'\n                    assert next(n for n in data['nodes'] if n['name'] == alias)['kind'] == NODE_TYPE_FIELD\n                    assert {'source': symbol, 'target': alias, 'type': EDGE_TYPE_REFERENCE} in data['edges']\n                receipt['checks'].append({'direction': direction, 'canonical_reference_direction': expected_direction, 'legacy_payload_equals_persisted_graph_analysis': True})\n            annotation = await call(client, 'read_source', {'file_path': 'src/flask/app.py', 'start_line': 1732, 'end_line': 1732})\n            assert 'rv: ft.ResponseReturnValue' in annotation['content']\n            alias_source = await call(client, 'read_source', {'file_path': 'src/flask/typing.py', 'start_line': 32, 'end_line': 35})\n            assert 'ResponseReturnValue' in alias_source['content']\n            status = await call(client, 'get_manifest', {})\n            assert status['runtime']['source_read']['verified'] is True\n    receipt['source_after'] = snapshot()\n    assert receipt['source_before'] == receipt['source_after']\n    receipt['status'] = 'passed'\n\ntry:\n    asyncio.run(main())\nexcept BaseException as error:\n    receipt['status'] = 'failed'\n    receipt['failure'] = {'type': type(error).__name__, 'message': str(error), 'traceback': traceback.format_exc()}\nfinally:\n    receipt['finished_utc'] = datetime.now(timezone.utc).isoformat()\n    save()\n    print(json.dumps({'status': receipt['status'], 'calls': len(receipt['calls']), 'failure': receipt.get('failure')}))\n"
+  },
+  "graph_runtime_ast_equals_baseline": "8b47a82165ceade7f96b2cf2a58421c540a86732",
+  "validation": {
+    "targeted_mcp_2_0_passed": 39,
+    "targeted_mcp_2_3_passed": 39,
+    "mcp_2_3_unit": {
+      "passed": 447,
+      "skipped": 7,
+      "deselected": 7
+    },
+    "local_unit": {
+      "passed": 8845,
+      "skipped": 24,
+      "deselected": 221,
+      "warnings": 46,
+      "seconds": 144.72
+    }
+  },
+  "prior_study_files_unchanged": {
+    "codegraph_matched_run_v1.md": "07c6a7a3e2529759ad9cb6405446f2480ddaf423aea6ac64d35f7e0ad3c9e9a3",
+    "codegraph_matched_assessment_v1.json": "339aba959fe03e92e3c7148f50f3792e3649019332fb41c6dbb35aa0033a9ca9",
+    "codegraph_matched_policy_v2.json": "cddb449862e49b3807304deb163c0dd10a8b2f4c6f2ff519ca8f7287e0fac368",
+    "codegraph_matched_workflow_v1_02.json": "7d07c74cc28759a6c7d1554576f13f937e9c7c294477e6bd1d888fb25f5de2ae",
+    "codegraph_matched_workflow_v1_11.json": "eb4208bd37aa80fa8a89f57e203bb754055b3779643d92c07d7d107dd50e205e",
+    "codegraph_matched_controller_v1.json": "da735bcc6fe6e4c74c622759cae2c429d538ec8dee2a54f5c538962638d18d39",
+    "codegraph_matched_workflow_v1_01.json": "ffc7941c16b9ad9ce1faac6cc716d3dc84694623f2c2b87cbaaa45b1393ebbe9",
+    "codegraph_matched_workflow_v1_08.json": "b156a317de04a049256a6893d971614e65ae1cbb8319645ba1f409581e083af2",
+    "codegraph_matched_workflow_v1_07.json": "bcb7e5af411c4bea22e3cfda6dbe826a28993a11cf72f0defd096ab6d8a07dc8",
+    "codegraph_matched_workflow_v1_03.json": "441b4de344cb2818e1d3ec0fdcf800aec62b392fe8e684fbec4772021ab3d031",
+    "codegraph_matched_workflow_v1_06.json": "d3776f9cfd3577a5946a0e00a28a2b93d96ebdce88ef2b9f2a2471d38e66ceb6",
+    "codegraph_matched_workflow_v1_10.json": "1ddf046c11ec2a721f19fb0b13ef32cde07782fcd46b3da1070b6a45c4633626",
+    "codegraph_matched_assessment_v1.md": "a2bed2c9f0e50e5706a50ce3a9dd36320c8b0904b2bc69969fb003818c12a2c0",
+    "codegraph_matched_subgroups_v1.json": "4697b6574129c6943c64ab353881eda379afae2cb8085e2106a61f884093087a",
+    "codegraph_matched_workflow_v1_04.json": "836595e0ffada5a6b20478975d531fd8bbe964babc4aaddd049ba7197da05385",
+    "codegraph_matched_workflow_v1_09.json": "e23f29d3e3e7782236f41ddd0b5dd7eb17c626437cdf7ca617b1d83c8cec7fd7",
+    "codegraph_matched_policy_v3.json": "da562c62849d8bc3937dc6dde1c1a2205609ceba7988d6367b2f18e135bebe41",
+    "codegraph_matched_tasks_v1.json": "76f170aaaacee775009fc01d7eedac9bb74d2e73d21c158fe7dee9a78a8d5bd6",
+    "codegraph_matched_workflow_v1_00.json": "e57554cff4c57dd93be3d530833429c87e89768c024a34ebec0b3910e557d34b",
+    "codegraph_matched_validation_v1.json": "6afeb244e85e8a912c98adc6e232f2ffbb7bc33990d053e62ebca2022dca9495",
+    "codegraph_matched_execution_v1.json": "14333c3c473c9a89cf4c746446ee72bcf01edf4423edee6e2f6b1356cf59b6a5",
+    "codegraph_matched_workflow_v1_05.json": "be9c988ae6acd824685b3f9943edf4eac9ed835eae966ae4f738bd8f7a990cf7",
+    "codegraph_agent_recovery_2026_10_28.json": "defc3d887987b27efe2ce46ce295d828eab07068b25d3fe47c157ae4d88bf247",
+    "codegraph_agent_recovery_v1_00.json": "0c21c732d46eb73cc1929b51f9fecbc6162a15ee9a73f87fa11edfac87d890e8",
+    "codegraph_agent_recovery_v1_01.json": "40951346ed0e1d7c4c25cc027fc3716fb785a779b54febd3fa373642d40f2b19",
+    "codegraph_agent_recovery_v1.md": "0db436d3e2b9cf31ef63421a0368d3e8e14d3dc2ec5c73baed871d2506145318",
+    "codegraph_agent_recovery_protocol_v1.json": "572ddcfa442293698d613906e820f5bd4a6fd3aaf0a41f9d6112b822d0b6d35b",
+    "codegraph_agent_recovery_v1_02.json": "ef664daf5ed3ebeed89c7b3b26949df22735f9c3a0f23e3771e3949467138c42",
+    "codegraph_agent_recovery_protocol_v1.md": "d5b86429461ddd2603f4258ad3883f1f8b16dfdaf9fa54e82f960766ce0f8679"
+  },
+  "model_inference_sessions": 0,
+  "external_participants": 0,
+  "product_release": "Source fix only; public PyPI 0.2.4 is unchanged.",
+  "archive_implementation": {
+    "sha256": "b3d3fd806cd49df7f2a4bf91fe71c5a179e91bf5824db0e596016ad9b3d63906",
+    "source": "\"\"\"Retain the model-free control without changing earlier study artifacts.\"\"\"\nimport ast\nimport hashlib\nimport json\nimport subprocess\nfrom pathlib import Path\n\nROOT = Path(__file__).parent\nREPO = Path('/home/zhongming/CodeNib-codegraph-benefit')\nOUT = REPO / 'docs/experiments'\n\ndef sha(path):\n    return hashlib.sha256(Path(path).read_bytes()).hexdigest()\n\nclass StripDocs(ast.NodeTransformer):\n    def generic_visit(self, node):\n        super().generic_visit(node)\n        if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):\n            if node.body and isinstance(node.body[0], ast.Expr) and isinstance(node.body[0].value, ast.Constant) and isinstance(node.body[0].value.value, str):\n                node.body.pop(0)\n        return node\n\nbase = '8b47a82165ceade7f96b2cf2a58421c540a86732'\npath = 'codenib/graph/dependency.py'\nold = subprocess.check_output(['git', 'show', base + ':' + path], cwd=REPO, text=True)\nassert ast.dump(StripDocs().visit(ast.parse(old))) == ast.dump(StripDocs().visit(ast.parse((REPO / path).read_text())))\nraw_path = ROOT / 'flask1/receipt.json'\nreceipt = json.loads(raw_path.read_text())\nassert receipt['status'] == 'passed' and len(receipt['calls']) == 6\nassert receipt['source_before'] == receipt['source_after']\nfor name, digest in receipt['implementation_sha256'].items():\n    assert sha(REPO / name) == digest\nfrozen = {}\nfor pattern in ['codegraph_matched_*', 'codegraph_agent_recovery*']:\n    for item in OUT.glob(pattern):\n        tracked = subprocess.run(['git', 'ls-files', '--error-unmatch', str(item.relative_to(REPO))], cwd=REPO, capture_output=True)\n        if tracked.returncode == 0:\n            expected = subprocess.check_output(['git', 'show', base + ':' + str(item.relative_to(REPO))], cwd=REPO)\n            assert expected == item.read_bytes()\n            frozen[item.name] = sha(item)\narchive = {\n    'schema_version': 1, 'scope': 'Model-free source and MCP semantics regression; no new benefit comparison, model-improvement result or external-user claim.',\n    'original_receipt_sha256': sha(raw_path), 'receipt': receipt,\n    'executed_controller': {'sha256': sha(ROOT / 'check.py'), 'source': (ROOT / 'check.py').read_text()},\n    'graph_runtime_ast_equals_baseline': base,\n    'validation': {'targeted_mcp_2_0_passed': 39, 'targeted_mcp_2_3_passed': 39,\n                   'mcp_2_3_unit': {'passed':447,'skipped':7,'deselected':7},\n                   'local_unit': {'passed':8845,'skipped':24,'deselected':221,'warnings':46,'seconds':144.72}},\n    'prior_study_files_unchanged': frozen, 'model_inference_sessions': 0,\n    'external_participants': 0, 'product_release': 'Source fix only; public PyPI 0.2.4 is unchanged.',\n    'archive_implementation': {'sha256': sha(__file__), 'source': Path(__file__).read_text()},\n}\ntarget = OUT / 'codegraph_reference_semantics_2026_10_28.json'\ntarget.write_text(json.dumps(archive, indent=2) + '\\n')\nprint(json.dumps({'artifact': target.name, 'bytes': target.stat().st_size, 'prior_artifacts_unchanged': len(frozen)}))\n"
+  }
+}

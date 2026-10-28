@@ -488,15 +488,16 @@ async def search_zoekt(
 @mcp.tool(
     name="dependency_subgraph",
     description=(
-        "Return the call-graph dependency subgraph for a symbol as nodes+edges "
-        "JSON. direction='impact' = transitive callers (blast radius: what may "
-        "break if you change it); 'dependencies' = transitive callees (what it "
-        "relies on); 'both' = 1-hop caller+callee neighborhood (for a dependency "
-        "view). The structural 'who calls X / what does X reach' question that "
-        "grep/keyword search cannot answer; backs impact analysis and dependency "
-        "visualization. max_nodes includes the queried root; max_edges bounds "
-        "relationships independently. Symbols are fuzzy-matched; unresolved "
-        "names return a note."
+        "Return a bounded indexed static-reference subgraph as nodes+edges JSON. "
+        "direction='impact' follows incoming references; 'dependencies' follows "
+        "outgoing references; 'both' follows both, up to depth hops. References "
+        "can include calls, fields, type uses and function values; they do not "
+        "prove invocation. External and dynamic calls may be missing. Inspect "
+        "source call sites before describing runtime behavior. Legacy result "
+        "direction labels callers/callees mean incoming/outgoing references; "
+        "semantics reports their interpretation and coverage. max_nodes includes "
+        "the queried root; max_edges separately bounds relationships. Symbols "
+        "are fuzzy-matched; unresolved names return a note."
     ),
 )
 async def dependency_subgraph(
@@ -506,7 +507,7 @@ async def dependency_subgraph(
     max_nodes: _SearchTopK = 60,
     max_edges: _DependencyEdges = 400,
 ) -> dict[str, Any]:
-    """Call-graph subgraph for *symbol*, bounded by node and edge budgets."""
+    """Static-reference subgraph, bounded by node, edge and depth budgets."""
     if _ctx is None:
         raise RuntimeError("Server not initialized")
     return await asyncio.to_thread(

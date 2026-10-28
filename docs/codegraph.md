@@ -121,18 +121,26 @@ response budget:
 > implemented. Cite the returned source paths and lines before proposing an
 > edit.
 
-Use `dependency_subgraph` for structural questions that keyword search cannot
-answer:
+Use `dependency_subgraph` to follow indexed static references across symbols:
 
 > Use `dependency_subgraph` on `RetryPolicy.execute` with direction `impact`
-> and depth 2. Summarize callers that could change if its behavior changes.
+> and depth 2. Summarize incoming references and inspect their source call sites
+> before explaining which functions actually invoke it.
+
+References can come from calls, fields, type annotations or function values.
+Source builds from `main` add `semantics` with that scope and the incoming/outgoing
+reference direction. Published 0.2.4 keeps the older result format. Existing
+`callers`/`callees` result labels retain their legacy names.
+External and dynamic calls may be missing; an empty neighborhood does not prove
+there are no callers. Use the returned paths and lines with `read_source` to
+check actual invocations and behavior.
 
 Useful full-surface tools include:
 
 | Tool | Product use |
 | --- | --- |
 | `explore_context` | Bounded, source-verified context for a repository question |
-| `dependency_subgraph` | Callers, callees, and one-hop dependency neighborhoods |
+| `dependency_subgraph` | Bounded incoming/outgoing static-reference neighborhoods |
 | `search_bm25` | Exact identifiers and keywords |
 | `search_regex` | Patterns over CodeGraph file and symbol nodes |
 | `lsp_definition` / `lsp_references` | Static navigation backed by the graph or a verified live provider |
@@ -188,10 +196,10 @@ question about authentication during redirects with source anchors at
 and
 [`should_strip_auth`, lines 127–157](https://github.com/psf/requests/blob/b25c87d7cb8d6a18a37fa12442b5f883f9e41741/src/requests/sessions.py#L127-L157).
 One `dependency_subgraph` call with `direction="impact"` and depth 4 then
-returns the caller chain `Session.request()` → `Session.send()` →
+returns the indexed reference chain `Session.request()` → `Session.send()` →
 `resolve_redirects()` → `rebuild_auth()`, plus the entry points
 `requests.request()` in `api.py` and seven `Session` HTTP-verb methods.
-A language server's call hierarchy answers one level per request.
+This is a selected, source-checkable path; it is not a complete runtime trace.
 
 The recording runs CodeNib main commit
 [`f7060886`](https://github.com/sysevol-ai/CodeNib/commit/f70608869ff4fff982a43da8f6a776fd9decbc18)
