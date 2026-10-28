@@ -184,7 +184,12 @@ def grade_verified(args):
     if not re.fullmatch(r"sha256:[a-f0-9]{64}", image_id):
         raise ValueError("Native Verified grading requires a pinned local image ID")
     client = docker.from_env(timeout=120)
-    client.images.get(image_id)
+    image = client.images.get(image_id)
+    image_os = image.attrs.get("Os")
+    image_arch = image.attrs.get("Architecture")
+    if image_os != "linux" or image_arch not in {"amd64", "arm64"}:
+        raise ValueError("Native Verified requires a Linux amd64 or arm64 image")
+    native_arch = "x86_64" if image_arch == "amd64" else "arm64"
 
     class PinnedImageSpec(TestSpec):
         @property
@@ -192,7 +197,9 @@ def grade_verified(args):
             return image_id
 
     spec = PinnedImageSpec(
-        **dataclasses.asdict(make_test_spec(selected, namespace="swebench"))
+        **dataclasses.asdict(
+            make_test_spec(selected, namespace="swebench", arch=native_arch)
+        )
     )
     args.output.mkdir(parents=True, exist_ok=False)
     run_id = "codenib-" + uuid.uuid4().hex[:12]
@@ -209,6 +216,8 @@ def grade_verified(args):
             "native_harness_version": "4.1.0",
             "native_harness_hashes": hashes,
             "image_id": image_id,
+            "image_platform": {"os": image_os, "architecture": image_arch},
+            "native_architecture": native_arch,
             "run_id": run_id,
             "container": container_name,
             "container_limits": {
