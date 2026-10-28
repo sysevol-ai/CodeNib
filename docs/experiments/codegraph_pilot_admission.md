@@ -3,7 +3,9 @@
 Fifteen tasks and their execution policy are frozen across three source snapshots.
 The executable/runtime binding and bounded representative source checks are complete.
 All twelve formal workflows execute; the selected original native grader resolves
-all twelve captured repairs. Source-explanation acceptance remains open. Runtime
+all twelve captured repairs. Source review is complete; the
+[assessment](codegraph_matched_assessment_v1.md) retains four unassessable original
+items and finds no complete eligible alternative. Runtime
 checks retain the native-grading isolation defect, failed
 environment profiles and Python graph failure instead of replacing difficult cases. The
 [retained receipts](codegraph_admission_2026_10_27.json) contain the selection,
@@ -195,7 +197,7 @@ All four selected native tests execute: empty fails the intended target with
 three regression passes, and reference passes all four. Earlier raw failures
 and every amd64 result remain unchanged.
 
-Still open: complete source-explanation acceptance, broader provider correctness
+Still open: a valid prospective benefit gate, broader provider correctness
 and the five-user observation gate. Frozen policy v1's duplicate
 workflow labels were corrected in v2 before inference; arm order and experimental
 settings did not change. Policy v3 restores ordinary Read/Grep/Bash access to
@@ -225,4 +227,10 @@ choice and no controller retries. All sixty tasks complete their SDK execution.
 An available optional tool that the model does not use remains an outcome.
 Native repair grading runs after model execution and resolves all twelve captured
 repairs. No grading feedback or reference patch enters a later model input.
-The 48 explanation tasks still require source-rubric review before benefit scoring.
+The [source review](codegraph_matched_assessment_v1.md) covers all 48 explanation
+tasks and preserves the original collection-callsite ambiguity. No complete
+eligible alternative passes the frozen material-error rule. Before future
+inference, source-check every expected rubric anchor and exercise each arm's
+exact unattended setup and representative query on every selected repository.
+Keep the v1 failures and any corrected diagnostic separate from a new prospective
+freeze.

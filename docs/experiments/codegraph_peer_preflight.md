@@ -58,8 +58,11 @@ acceptance, model/settings, ordering, limits, timeouts and usage/setup accountin
 before matched inference. The [execution archive](codegraph_execution_2026_10_27.json)
 binds the executable/runtime and retains representative query checks. The
 [formal execution record](codegraph_matched_run_v1.md) now retains all twelve
-workflows and native repair outcomes. Broader provider correctness and source
-explanation acceptance remain open. Small-fixture setup numbers and corrected warm retries
+workflows and native repair outcomes. The
+[source assessment](codegraph_matched_assessment_v1.md) records insufficient
+evidence under the original policy, including the criterion ambiguity and
+material assistant explanation errors. Broader provider correctness and a valid
+prospective benefit gate remain open. Small-fixture setup numbers and corrected warm retries
 are not cold-start product evidence. The five external users
 and seven-day observations remain separate gates in the
 [pilot contract](codegraph_net_benefit.md).
