@@ -39,7 +39,7 @@ TestPyPI dispatches additionally run the heavier installed-service gates:
 9. Runs sparse Ask through a local OpenAI-compatible endpoint, including a
    real BM25 tool call, final answer, and source citation, without installing
    semantic or graph extras.
-10. Installs the graph extra and a pinned Python SCIP provider, then verifies
+10. Installs the graph extra and pinned Python graph providers, then verifies
    repository-aware diagnostics, a real caller-to-callee graph edge, source
    anchors, and the installed Dependency Map API.
 

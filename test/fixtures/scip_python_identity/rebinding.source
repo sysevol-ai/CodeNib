@@ -1,0 +1,9 @@
+def example():
+    class rep:
+        pass
+    first = rep
+    class rep:
+        pass
+    second = rep
+    rep = object()
+    return first, second, rep

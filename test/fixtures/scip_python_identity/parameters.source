@@ -1,0 +1,15 @@
+class Example:
+    def outer(self, flag):
+        if flag:
+            def convert(v):
+                v = str(v)
+                return v
+        else:
+            def convert(v):
+                v = repr(v)
+                def child():
+                    nonlocal v
+                    v = repr(v)
+                    return v
+                return child() + v
+        return convert(1)

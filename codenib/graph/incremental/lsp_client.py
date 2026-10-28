@@ -260,13 +260,17 @@ class LSPClient:
 
     # ── Lifecycle ─────────────────────────────────────────────
 
-    def start(self, skip_probe: bool = False) -> dict:
+    def start(
+        self, skip_probe: bool = False, *, initialize_timeout: float = 120.0
+    ) -> dict:
         """Start the LSP server and send initialize/initialized.
 
         Args:
             skip_probe: If True, skip the blocking readiness probe.
                 Use this when starting early for warm-up — the server
                 will analyze the project in the background.
+            initialize_timeout: Maximum wait for the initialize reply. A caller
+                with its own overall deadline can pass its remaining budget.
         """
         logger.info(f"Starting LSP server: {' '.join(self.command)}")
         env = _lsp_process_env(self.language, self.project_root)
@@ -319,7 +323,7 @@ class LSPClient:
         if init_opts:
             params["initializationOptions"] = init_opts
 
-        result = self._request("initialize", params, timeout=120)
+        result = self._request("initialize", params, timeout=initialize_timeout)
         self._notify("initialized", {})
 
         commands = (

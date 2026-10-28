@@ -1,0 +1,2480 @@
+{
+  "scope": "Source-checkout developer correctness regression on a pinned historically exposed source. Warm SCIP 0.6.6 and basedpyright 1.39.8. Fresh strict product SCIP/BM25 build, real stdio MCP, serial/native parity. No model inference, task score, external users, or product-benefit claim.",
+  "case": "ipython",
+  "observed_at_utc": "2026-10-28T09:21:37.291909+00:00",
+  "base_commit": "7b8a1daae69cef196ee0f7f70c59354bf8fb7508",
+  "implementation_sha256": {
+    "codenib/scip_interface/python_identity.py": "ae6b80f1286b65c1a7e86183265d9eb4895204c036b476fedc39f7ea311566e8",
+    "codenib/scip_interface/scip_indexer_python.py": "1953f66f743d3e9e4bc424420fde5d4078dfe75d70b65e4fb0554c899a54a13e",
+    "codenib/scip_interface/scip_decode_python.py": "e4379c4fe27b4c4614d2aeffb604a59187a77e65927f9c7fc38564da53a1d020",
+    "codenib/scip_interface/lsp_occurrence_index.py": "7a27b0cd6419b116d3400f734d0ffc899dac73c709338ecc9e06d274a9269667",
+    "codenib/graph/incremental/lsp_client.py": "dba51dfd1e5c1430710c2b2b80948f9bacb7c1586f917c2a2a37038c162a360d",
+    "codenib/compiler/index_builders.py": "83624480deb4735247e41307d28a818e571086b5c11954ac2d2cf97e69d63bff",
+    "core/scip_decode_python.cpp": "8b6574facc6aa1e9538cf830c8b8771d40ef2c6e9985cb2e6c24df23396b63fd"
+  },
+  "native_module": "/home/zhongming/CodeNib-codegraph-benefit/build/core/codenib_core.cpython-312-aarch64-linux-gnu.so",
+  "calls": [
+    {
+      "name": "lsp_definition",
+      "arguments": {
+        "file_path": "IPython/core/magics/execution.py",
+        "line": 541,
+        "character": 8
+      },
+      "payload": {
+        "meta": {
+          "io.modelcontextprotocol/serverInfo": {
+            "name": "codenib",
+            "version": "0.2.4"
+          }
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"node_name\": \"IPython/core/magics/execution.py:541\",\n  \"type\": \"definition\",\n  \"file\": \"IPython/core/magics/execution.py\",\n  \"node_id\": \"IPython/core/magics/execution.py:541:definition\",\n  \"start_line\": 541,\n  \"end_line\": 541,\n  \"score\": 1.0,\n  \"content\": \"lsp definition\",\n  \"lsp_provider\": {\n    \"provider\": \"codenib_static_index\",\n    \"capability\": \"definition\",\n    \"status\": \"ok\",\n    \"lsp_method\": \"textDocument/definition\",\n    \"behavior_contract\": \"static_scip_occurrence_lsp_v1\",\n    \"position_granularity\": \"character\",\n    \"backend\": \"persisted-symbol-graph-v1\",\n    \"index_snapshot\": \"symbol_graph:/tmp/codenib-python-identity-20261027/ipython-source:6629:22372\",\n    \"fallback_reason\": \"repository_source_policy_requires_persisted_graph\",\n    \"position_encoding\": \"UTF8\"\n  }\n}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "result": [
+            {
+              "node_name": "IPython/core/magics/execution.py:541",
+              "type": "definition",
+              "file": "IPython/core/magics/execution.py",
+              "node_id": "IPython/core/magics/execution.py:541:definition",
+              "start_line": 541,
+              "end_line": 541,
+              "score": 1.0,
+              "content": "lsp definition",
+              "lsp_provider": {
+                "provider": "codenib_static_index",
+                "capability": "definition",
+                "status": "ok",
+                "lsp_method": "textDocument/definition",
+                "behavior_contract": "static_scip_occurrence_lsp_v1",
+                "position_granularity": "character",
+                "backend": "persisted-symbol-graph-v1",
+                "index_snapshot": "symbol_graph:/tmp/codenib-python-identity-20261027/ipython-source:6629:22372",
+                "fallback_reason": "repository_source_policy_requires_persisted_graph",
+                "position_encoding": "UTF8"
+              }
+            }
+          ]
+        },
+        "is_error": false,
+        "result_type": "complete"
+      },
+      "seconds": 0.05713385343551636
+    },
+    {
+      "name": "lsp_definition",
+      "arguments": {
+        "file_path": "IPython/core/magics/execution.py",
+        "line": 861,
+        "character": 24
+      },
+      "payload": {
+        "meta": {
+          "io.modelcontextprotocol/serverInfo": {
+            "name": "codenib",
+            "version": "0.2.4"
+          }
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"node_name\": \"IPython/core/magics/execution.py:837\",\n  \"type\": \"definition\",\n  \"file\": \"IPython/core/magics/execution.py\",\n  \"node_id\": \"IPython/core/magics/execution.py:837:definition\",\n  \"start_line\": 837,\n  \"end_line\": 837,\n  \"score\": 1.0,\n  \"content\": \"lsp definition\",\n  \"lsp_provider\": {\n    \"provider\": \"codenib_static_index\",\n    \"capability\": \"definition\",\n    \"status\": \"ok\",\n    \"lsp_method\": \"textDocument/definition\",\n    \"behavior_contract\": \"static_scip_occurrence_lsp_v1\",\n    \"position_granularity\": \"character\",\n    \"backend\": \"persisted-symbol-graph-v1\",\n    \"index_snapshot\": \"symbol_graph:/tmp/codenib-python-identity-20261027/ipython-source:6629:22372\",\n    \"fallback_reason\": \"repository_source_policy_requires_persisted_graph\",\n    \"position_encoding\": \"UTF8\"\n  }\n}",
+            "annotations": null,
+            "meta": null
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"node_name\": \"IPython/core/magics/execution.py:845\",\n  \"type\": \"definition\",\n  \"file\": \"IPython/core/magics/execution.py\",\n  \"node_id\": \"IPython/core/magics/execution.py:845:definition\",\n  \"start_line\": 845,\n  \"end_line\": 845,\n  \"score\": 1.0,\n  \"content\": \"lsp definition\",\n  \"lsp_provider\": {\n    \"provider\": \"codenib_static_index\",\n    \"capability\": \"definition\",\n    \"status\": \"ok\",\n    \"lsp_method\": \"textDocument/definition\",\n    \"behavior_contract\": \"static_scip_occurrence_lsp_v1\",\n    \"position_granularity\": \"character\",\n    \"backend\": \"persisted-symbol-graph-v1\",\n    \"index_snapshot\": \"symbol_graph:/tmp/codenib-python-identity-20261027/ipython-source:6629:22372\",\n    \"fallback_reason\": \"repository_source_policy_requires_persisted_graph\",\n    \"position_encoding\": \"UTF8\"\n  }\n}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "result": [
+            {
+              "node_name": "IPython/core/magics/execution.py:837",
+              "type": "definition",
+              "file": "IPython/core/magics/execution.py",
+              "node_id": "IPython/core/magics/execution.py:837:definition",
+              "start_line": 837,
+              "end_line": 837,
+              "score": 1.0,
+              "content": "lsp definition",
+              "lsp_provider": {
+                "provider": "codenib_static_index",
+                "capability": "definition",
+                "status": "ok",
+                "lsp_method": "textDocument/definition",
+                "behavior_contract": "static_scip_occurrence_lsp_v1",
+                "position_granularity": "character",
+                "backend": "persisted-symbol-graph-v1",
+                "index_snapshot": "symbol_graph:/tmp/codenib-python-identity-20261027/ipython-source:6629:22372",
+                "fallback_reason": "repository_source_policy_requires_persisted_graph",
+                "position_encoding": "UTF8"
+              }
+            },
+            {
+              "node_name": "IPython/core/magics/execution.py:845",
+              "type": "definition",
+              "file": "IPython/core/magics/execution.py",
+              "node_id": "IPython/core/magics/execution.py:845:definition",
+              "start_line": 845,
+              "end_line": 845,
+              "score": 1.0,
+              "content": "lsp definition",
+              "lsp_provider": {
+                "provider": "codenib_static_index",
+                "capability": "definition",
+                "status": "ok",
+                "lsp_method": "textDocument/definition",
+                "behavior_contract": "static_scip_occurrence_lsp_v1",
+                "position_granularity": "character",
+                "backend": "persisted-symbol-graph-v1",
+                "index_snapshot": "symbol_graph:/tmp/codenib-python-identity-20261027/ipython-source:6629:22372",
+                "fallback_reason": "repository_source_policy_requires_persisted_graph",
+                "position_encoding": "UTF8"
+              }
+            }
+          ]
+        },
+        "is_error": false,
+        "result_type": "complete"
+      },
+      "seconds": 0.022470710799098015
+    },
+    {
+      "name": "lsp_definition",
+      "arguments": {
+        "file_path": "IPython/core/magics/execution.py",
+        "line": 858,
+        "character": 46
+      },
+      "payload": {
+        "meta": {
+          "io.modelcontextprotocol/serverInfo": {
+            "name": "codenib",
+            "version": "0.2.4"
+          }
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"node_name\": \"IPython/core/magics/execution.py:837\",\n  \"type\": \"definition\",\n  \"file\": \"IPython/core/magics/execution.py\",\n  \"node_id\": \"IPython/core/magics/execution.py:837:definition\",\n  \"start_line\": 837,\n  \"end_line\": 837,\n  \"score\": 1.0,\n  \"content\": \"lsp definition\",\n  \"lsp_provider\": {\n    \"provider\": \"codenib_static_index\",\n    \"capability\": \"definition\",\n    \"status\": \"ok\",\n    \"lsp_method\": \"textDocument/definition\",\n    \"behavior_contract\": \"static_scip_occurrence_lsp_v1\",\n    \"position_granularity\": \"character\",\n    \"backend\": \"persisted-symbol-graph-v1\",\n    \"index_snapshot\": \"symbol_graph:/tmp/codenib-python-identity-20261027/ipython-source:6629:22372\",\n    \"fallback_reason\": \"repository_source_policy_requires_persisted_graph\",\n    \"position_encoding\": \"UTF8\"\n  }\n}",
+            "annotations": null,
+            "meta": null
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"node_name\": \"IPython/core/magics/execution.py:845\",\n  \"type\": \"definition\",\n  \"file\": \"IPython/core/magics/execution.py\",\n  \"node_id\": \"IPython/core/magics/execution.py:845:definition\",\n  \"start_line\": 845,\n  \"end_line\": 845,\n  \"score\": 1.0,\n  \"content\": \"lsp definition\",\n  \"lsp_provider\": {\n    \"provider\": \"codenib_static_index\",\n    \"capability\": \"definition\",\n    \"status\": \"ok\",\n    \"lsp_method\": \"textDocument/definition\",\n    \"behavior_contract\": \"static_scip_occurrence_lsp_v1\",\n    \"position_granularity\": \"character\",\n    \"backend\": \"persisted-symbol-graph-v1\",\n    \"index_snapshot\": \"symbol_graph:/tmp/codenib-python-identity-20261027/ipython-source:6629:22372\",\n    \"fallback_reason\": \"repository_source_policy_requires_persisted_graph\",\n    \"position_encoding\": \"UTF8\"\n  }\n}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "result": [
+            {
+              "node_name": "IPython/core/magics/execution.py:837",
+              "type": "definition",
+              "file": "IPython/core/magics/execution.py",
+              "node_id": "IPython/core/magics/execution.py:837:definition",
+              "start_line": 837,
+              "end_line": 837,
+              "score": 1.0,
+              "content": "lsp definition",
+              "lsp_provider": {
+                "provider": "codenib_static_index",
+                "capability": "definition",
+                "status": "ok",
+                "lsp_method": "textDocument/definition",
+                "behavior_contract": "static_scip_occurrence_lsp_v1",
+                "position_granularity": "character",
+                "backend": "persisted-symbol-graph-v1",
+                "index_snapshot": "symbol_graph:/tmp/codenib-python-identity-20261027/ipython-source:6629:22372",
+                "fallback_reason": "repository_source_policy_requires_persisted_graph",
+                "position_encoding": "UTF8"
+              }
+            },
+            {
+              "node_name": "IPython/core/magics/execution.py:845",
+              "type": "definition",
+              "file": "IPython/core/magics/execution.py",
+              "node_id": "IPython/core/magics/execution.py:845:definition",
+              "start_line": 845,
+              "end_line": 845,
+              "score": 1.0,
+              "content": "lsp definition",
+              "lsp_provider": {
+                "provider": "codenib_static_index",
+                "capability": "definition",
+                "status": "ok",
+                "lsp_method": "textDocument/definition",
+                "behavior_contract": "static_scip_occurrence_lsp_v1",
+                "position_granularity": "character",
+                "backend": "persisted-symbol-graph-v1",
+                "index_snapshot": "symbol_graph:/tmp/codenib-python-identity-20261027/ipython-source:6629:22372",
+                "fallback_reason": "repository_source_policy_requires_persisted_graph",
+                "position_encoding": "UTF8"
+              }
+            }
+          ]
+        },
+        "is_error": false,
+        "result_type": "complete"
+      },
+      "seconds": 0.021948693320155144
+    },
+    {
+      "name": "lsp_references",
+      "arguments": {
+        "file_path": "IPython/core/magics/execution.py",
+        "line": 837,
+        "character": 28,
+        "include_declaration": false,
+        "top_k": 100
+      },
+      "payload": {
+        "meta": {
+          "io.modelcontextprotocol/serverInfo": {
+            "name": "codenib",
+            "version": "0.2.4"
+          }
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"node_name\": \"IPython/core/magics/execution.py:858\",\n  \"type\": \"references\",\n  \"file\": \"IPython/core/magics/execution.py\",\n  \"node_id\": \"IPython/core/magics/execution.py:858:references\",\n  \"start_line\": 858,\n  \"end_line\": 858,\n  \"score\": 1.0,\n  \"content\": \"lsp references\",\n  \"lsp_provider\": {\n    \"provider\": \"codenib_static_index\",\n    \"capability\": \"references\",\n    \"status\": \"ok\",\n    \"lsp_method\": \"textDocument/references\",\n    \"behavior_contract\": \"static_scip_occurrence_lsp_v1\",\n    \"position_granularity\": \"character\",\n    \"backend\": \"persisted-symbol-graph-v1\",\n    \"index_snapshot\": \"symbol_graph:/tmp/codenib-python-identity-20261027/ipython-source:6629:22372\",\n    \"fallback_reason\": \"repository_source_policy_requires_persisted_graph\",\n    \"position_encoding\": \"UTF8\"\n  }\n}",
+            "annotations": null,
+            "meta": null
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"node_name\": \"IPython/core/magics/execution.py:861\",\n  \"type\": \"references\",\n  \"file\": \"IPython/core/magics/execution.py\",\n  \"node_id\": \"IPython/core/magics/execution.py:861:references\",\n  \"start_line\": 861,\n  \"end_line\": 861,\n  \"score\": 1.0,\n  \"content\": \"lsp references\",\n  \"lsp_provider\": {\n    \"provider\": \"codenib_static_index\",\n    \"capability\": \"references\",\n    \"status\": \"ok\",\n    \"lsp_method\": \"textDocument/references\",\n    \"behavior_contract\": \"static_scip_occurrence_lsp_v1\",\n    \"position_granularity\": \"character\",\n    \"backend\": \"persisted-symbol-graph-v1\",\n    \"index_snapshot\": \"symbol_graph:/tmp/codenib-python-identity-20261027/ipython-source:6629:22372\",\n    \"fallback_reason\": \"repository_source_policy_requires_persisted_graph\",\n    \"position_encoding\": \"UTF8\"\n  }\n}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "result": [
+            {
+              "node_name": "IPython/core/magics/execution.py:858",
+              "type": "references",
+              "file": "IPython/core/magics/execution.py",
+              "node_id": "IPython/core/magics/execution.py:858:references",
+              "start_line": 858,
+              "end_line": 858,
+              "score": 1.0,
+              "content": "lsp references",
+              "lsp_provider": {
+                "provider": "codenib_static_index",
+                "capability": "references",
+                "status": "ok",
+                "lsp_method": "textDocument/references",
+                "behavior_contract": "static_scip_occurrence_lsp_v1",
+                "position_granularity": "character",
+                "backend": "persisted-symbol-graph-v1",
+                "index_snapshot": "symbol_graph:/tmp/codenib-python-identity-20261027/ipython-source:6629:22372",
+                "fallback_reason": "repository_source_policy_requires_persisted_graph",
+                "position_encoding": "UTF8"
+              }
+            },
+            {
+              "node_name": "IPython/core/magics/execution.py:861",
+              "type": "references",
+              "file": "IPython/core/magics/execution.py",
+              "node_id": "IPython/core/magics/execution.py:861:references",
+              "start_line": 861,
+              "end_line": 861,
+              "score": 1.0,
+              "content": "lsp references",
+              "lsp_provider": {
+                "provider": "codenib_static_index",
+                "capability": "references",
+                "status": "ok",
+                "lsp_method": "textDocument/references",
+                "behavior_contract": "static_scip_occurrence_lsp_v1",
+                "position_granularity": "character",
+                "backend": "persisted-symbol-graph-v1",
+                "index_snapshot": "symbol_graph:/tmp/codenib-python-identity-20261027/ipython-source:6629:22372",
+                "fallback_reason": "repository_source_policy_requires_persisted_graph",
+                "position_encoding": "UTF8"
+              }
+            }
+          ]
+        },
+        "is_error": false,
+        "result_type": "complete"
+      },
+      "seconds": 0.023571493104100227
+    },
+    {
+      "name": "dependency_subgraph",
+      "arguments": {
+        "symbol": "IPython/core/magics/execution.py:ExecutionMagics.run().run(_codenib_l836_c28)",
+        "direction": "dependencies",
+        "depth": 1,
+        "max_nodes": 30
+      },
+      "payload": {
+        "meta": {
+          "io.modelcontextprotocol/serverInfo": {
+            "name": "codenib",
+            "version": "0.2.4"
+          }
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"root\": \"IPython/core/magics/execution.py:ExecutionMagics.run().run()\",\n  \"direction\": \"callees\",\n  \"nodes\": [\n    {\n      \"name\": \"IPython/core/interactiveshell.py:InteractiveShell.safe_run_module()\",\n      \"file\": \"IPython/core/interactiveshell.py\",\n      \"line\": 3010,\n      \"kind\": \"method\",\n      \"depth\": 1\n    },\n    {\n      \"name\": \"IPython/core/magic.py:Magics.shell\",\n      \"file\": \"IPython/core/magic.py\",\n      \"line\": 579,\n      \"kind\": \"field\",\n      \"depth\": 1\n    }\n  ],\n  \"edges\": [\n    {\n      \"source\": \"IPython/core/magics/execution.py:ExecutionMagics.run().run()\",\n      \"target\": \"IPython/core/interactiveshell.py:InteractiveShell.safe_run_module()\",\n      \"type\": \"reference\"\n    },\n    {\n      \"source\": \"IPython/core/magics/execution.py:ExecutionMagics.run().run()\",\n      \"target\": \"IPython/core/magic.py:Magics.shell\",\n      \"type\": \"reference\"\n    }\n  ],\n  \"truncated\": false,\n  \"note\": \"\"\n}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "root": "IPython/core/magics/execution.py:ExecutionMagics.run().run()",
+          "direction": "callees",
+          "nodes": [
+            {
+              "name": "IPython/core/interactiveshell.py:InteractiveShell.safe_run_module()",
+              "file": "IPython/core/interactiveshell.py",
+              "line": 3010,
+              "kind": "method",
+              "depth": 1
+            },
+            {
+              "name": "IPython/core/magic.py:Magics.shell",
+              "file": "IPython/core/magic.py",
+              "line": 579,
+              "kind": "field",
+              "depth": 1
+            }
+          ],
+          "edges": [
+            {
+              "source": "IPython/core/magics/execution.py:ExecutionMagics.run().run()",
+              "target": "IPython/core/interactiveshell.py:InteractiveShell.safe_run_module()",
+              "type": "reference"
+            },
+            {
+              "source": "IPython/core/magics/execution.py:ExecutionMagics.run().run()",
+              "target": "IPython/core/magic.py:Magics.shell",
+              "type": "reference"
+            }
+          ],
+          "truncated": false,
+          "note": ""
+        },
+        "is_error": false,
+        "result_type": "complete"
+      },
+      "seconds": 0.022563941776752472
+    },
+    {
+      "name": "lsp_references",
+      "arguments": {
+        "file_path": "IPython/core/magics/execution.py",
+        "line": 845,
+        "character": 28,
+        "include_declaration": false,
+        "top_k": 100
+      },
+      "payload": {
+        "meta": {
+          "io.modelcontextprotocol/serverInfo": {
+            "name": "codenib",
+            "version": "0.2.4"
+          }
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"node_name\": \"IPython/core/magics/execution.py:858\",\n  \"type\": \"references\",\n  \"file\": \"IPython/core/magics/execution.py\",\n  \"node_id\": \"IPython/core/magics/execution.py:858:references\",\n  \"start_line\": 858,\n  \"end_line\": 858,\n  \"score\": 1.0,\n  \"content\": \"lsp references\",\n  \"lsp_provider\": {\n    \"provider\": \"codenib_static_index\",\n    \"capability\": \"references\",\n    \"status\": \"ok\",\n    \"lsp_method\": \"textDocument/references\",\n    \"behavior_contract\": \"static_scip_occurrence_lsp_v1\",\n    \"position_granularity\": \"character\",\n    \"backend\": \"persisted-symbol-graph-v1\",\n    \"index_snapshot\": \"symbol_graph:/tmp/codenib-python-identity-20261027/ipython-source:6629:22372\",\n    \"fallback_reason\": \"repository_source_policy_requires_persisted_graph\",\n    \"position_encoding\": \"UTF8\"\n  }\n}",
+            "annotations": null,
+            "meta": null
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"node_name\": \"IPython/core/magics/execution.py:861\",\n  \"type\": \"references\",\n  \"file\": \"IPython/core/magics/execution.py\",\n  \"node_id\": \"IPython/core/magics/execution.py:861:references\",\n  \"start_line\": 861,\n  \"end_line\": 861,\n  \"score\": 1.0,\n  \"content\": \"lsp references\",\n  \"lsp_provider\": {\n    \"provider\": \"codenib_static_index\",\n    \"capability\": \"references\",\n    \"status\": \"ok\",\n    \"lsp_method\": \"textDocument/references\",\n    \"behavior_contract\": \"static_scip_occurrence_lsp_v1\",\n    \"position_granularity\": \"character\",\n    \"backend\": \"persisted-symbol-graph-v1\",\n    \"index_snapshot\": \"symbol_graph:/tmp/codenib-python-identity-20261027/ipython-source:6629:22372\",\n    \"fallback_reason\": \"repository_source_policy_requires_persisted_graph\",\n    \"position_encoding\": \"UTF8\"\n  }\n}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "result": [
+            {
+              "node_name": "IPython/core/magics/execution.py:858",
+              "type": "references",
+              "file": "IPython/core/magics/execution.py",
+              "node_id": "IPython/core/magics/execution.py:858:references",
+              "start_line": 858,
+              "end_line": 858,
+              "score": 1.0,
+              "content": "lsp references",
+              "lsp_provider": {
+                "provider": "codenib_static_index",
+                "capability": "references",
+                "status": "ok",
+                "lsp_method": "textDocument/references",
+                "behavior_contract": "static_scip_occurrence_lsp_v1",
+                "position_granularity": "character",
+                "backend": "persisted-symbol-graph-v1",
+                "index_snapshot": "symbol_graph:/tmp/codenib-python-identity-20261027/ipython-source:6629:22372",
+                "fallback_reason": "repository_source_policy_requires_persisted_graph",
+                "position_encoding": "UTF8"
+              }
+            },
+            {
+              "node_name": "IPython/core/magics/execution.py:861",
+              "type": "references",
+              "file": "IPython/core/magics/execution.py",
+              "node_id": "IPython/core/magics/execution.py:861:references",
+              "start_line": 861,
+              "end_line": 861,
+              "score": 1.0,
+              "content": "lsp references",
+              "lsp_provider": {
+                "provider": "codenib_static_index",
+                "capability": "references",
+                "status": "ok",
+                "lsp_method": "textDocument/references",
+                "behavior_contract": "static_scip_occurrence_lsp_v1",
+                "position_granularity": "character",
+                "backend": "persisted-symbol-graph-v1",
+                "index_snapshot": "symbol_graph:/tmp/codenib-python-identity-20261027/ipython-source:6629:22372",
+                "fallback_reason": "repository_source_policy_requires_persisted_graph",
+                "position_encoding": "UTF8"
+              }
+            }
+          ]
+        },
+        "is_error": false,
+        "result_type": "complete"
+      },
+      "seconds": 0.022510726004838943
+    },
+    {
+      "name": "dependency_subgraph",
+      "arguments": {
+        "symbol": "IPython/core/magics/execution.py:ExecutionMagics.run().run(_codenib_l844_c28)",
+        "direction": "dependencies",
+        "depth": 1,
+        "max_nodes": 30
+      },
+      "payload": {
+        "meta": {
+          "io.modelcontextprotocol/serverInfo": {
+            "name": "codenib",
+            "version": "0.2.4"
+          }
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"root\": \"IPython/core/magics/execution.py:ExecutionMagics.run().run()\",\n  \"direction\": \"callees\",\n  \"nodes\": [],\n  \"edges\": [],\n  \"truncated\": false,\n  \"note\": \"\"\n}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "root": "IPython/core/magics/execution.py:ExecutionMagics.run().run()",
+          "direction": "callees",
+          "nodes": [],
+          "edges": [],
+          "truncated": false,
+          "note": ""
+        },
+        "is_error": false,
+        "result_type": "complete"
+      },
+      "seconds": 0.021648133173584938
+    },
+    {
+      "name": "lsp_references",
+      "arguments": {
+        "file_path": "IPython/core/magics/execution.py",
+        "line": 541,
+        "character": 8,
+        "include_declaration": false,
+        "top_k": 100
+      },
+      "payload": {
+        "meta": {
+          "io.modelcontextprotocol/serverInfo": {
+            "name": "codenib",
+            "version": "0.2.4"
+          }
+        },
+        "content": [],
+        "structured_content": {
+          "result": []
+        },
+        "is_error": false,
+        "result_type": "complete"
+      },
+      "seconds": 0.022590629756450653
+    },
+    {
+      "name": "read_source",
+      "arguments": {
+        "file_path": "IPython/core/magics/execution.py",
+        "start_line": 837,
+        "end_line": 847
+      },
+      "payload": {
+        "meta": {
+          "io.modelcontextprotocol/serverInfo": {
+            "name": "codenib",
+            "version": "0.2.4"
+          }
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"IPython/core/magics/execution.py\",\n  \"start_line\": 837,\n  \"end_line\": 847,\n  \"content\": \"                        def run():\\n                            self.shell.safe_run_module(modulename, prog_ns)\\n                    else:\\n                        if runner is None:\\n                            runner = self.default_runner\\n                        if runner is None:\\n                            runner = self.shell.safe_execfile\\n\\n                        def run():\\n                            runner(filename, prog_ns, prog_ns,\\n                                    exit_ignore=exit_ignore)\\n\",\n  \"content_projection\": {\n    \"truncated\": false,\n    \"original_chars\": 502,\n    \"returned_chars\": 502,\n    \"strategy\": \"complete\"\n  },\n  \"source\": {\n    \"repository\": \"/tmp/codenib-python-identity-20261027/ipython-source\",\n    \"commit\": \"cd483f2f927c09be71dd5885618d7b2443a81b7a\",\n    \"source_fingerprint\": \"sha256-v2:2fb40ad03ee0e0d6258e6d132cbf0c678f7d98d09d4e0dc2b172317bcaaec914\",\n    \"verified\": true,\n    \"verification_scope\": \"content-bytes\",\n    \"commit_verified\": false,\n    \"checkout_state\": \"not-attested\"\n  }\n}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "file": "IPython/core/magics/execution.py",
+          "start_line": 837,
+          "end_line": 847,
+          "content": "                        def run():\n                            self.shell.safe_run_module(modulename, prog_ns)\n                    else:\n                        if runner is None:\n                            runner = self.default_runner\n                        if runner is None:\n                            runner = self.shell.safe_execfile\n\n                        def run():\n                            runner(filename, prog_ns, prog_ns,\n                                    exit_ignore=exit_ignore)\n",
+          "content_projection": {
+            "truncated": false,
+            "original_chars": 502,
+            "returned_chars": 502,
+            "strategy": "complete"
+          },
+          "source": {
+            "repository": "/tmp/codenib-python-identity-20261027/ipython-source",
+            "commit": "cd483f2f927c09be71dd5885618d7b2443a81b7a",
+            "source_fingerprint": "sha256-v2:2fb40ad03ee0e0d6258e6d132cbf0c678f7d98d09d4e0dc2b172317bcaaec914",
+            "verified": true,
+            "verification_scope": "content-bytes",
+            "commit_verified": false,
+            "checkout_state": "not-attested"
+          }
+        },
+        "is_error": false,
+        "result_type": "complete"
+      },
+      "seconds": 0.03742704913020134
+    },
+    {
+      "name": "search_bm25",
+      "arguments": {
+        "query": "safe_run_module",
+        "top_k": 8
+      },
+      "payload": {
+        "meta": {
+          "io.modelcontextprotocol/serverInfo": {
+            "name": "codenib",
+            "version": "0.2.4"
+          }
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"node_name\": \"IPython/core/interactiveshell.py:InteractiveShell.safe_run_module()\",\n  \"type\": \"method\",\n  \"file\": \"IPython/core/interactiveshell.py\",\n  \"node_id\": \"IPython/core/interactiveshell.py:InteractiveShell.safe_run_module()\",\n  \"start_line\": 3010,\n  \"end_line\": 3036,\n  \"score\": 0.0,\n  \"content\": \"    def safe_run_module(self, mod_name, where):\\n        \\\"\\\"\\\"A safe version of runpy.run_module().\\n\\n        This version will never throw an exception, but instead print\\n        helpful error messages to the screen.\\n\\n        `SystemExit` exceptions with status code 0 or None are ignored.\\n\\n        Parameters\\n        ----------\\n        mod_name : string\\n            The name of the module to be executed.\\n        where : dict\\n            The globals namespace.\\n        \\\"\\\"\\\"\\n        try:\\n            try:\\n                where.update(\\n                    runpy.run_module(str(mod_name), run_name=\\\"__main__\\\",\\n                                     alter_sys=True)\\n                            )\\n            except SystemExit as status:\\n                if status.code:\\n                    raise\\n        except:\\n            self.showtraceback()\\n            warn('Unknown failure executing module: <%s>' % mod_name)\\n\"\n}",
+            "annotations": null,
+            "meta": null
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"node_name\": \"IPython/core/shellapp.py:InteractiveShellApp._run_module()\",\n  \"type\": \"method\",\n  \"file\": \"IPython/core/shellapp.py\",\n  \"node_id\": \"IPython/core/shellapp.py:InteractiveShellApp._run_module()\",\n  \"start_line\": 489,\n  \"end_line\": 500,\n  \"score\": 0.0,\n  \"content\": \"    def _run_module(self):\\n        \\\"\\\"\\\"Run module specified at the command-line.\\\"\\\"\\\"\\n        if self.module_to_run:\\n            # Make sure that the module gets a proper sys.argv as if it were\\n            # run using `python -m`.\\n            save_argv = sys.argv\\n            sys.argv = [sys.executable] + self.extra_args\\n            try:\\n                self.shell.safe_run_module(self.module_to_run,\\n                                           self.shell.user_ns)\\n            finally:\\n                sys.argv = save_argv\\n\"\n}",
+            "annotations": null,
+            "meta": null
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"node_name\": \"IPython/core/completer.py:_safe_isinstance()\",\n  \"type\": \"function\",\n  \"file\": \"IPython/core/completer.py\",\n  \"node_id\": \"IPython/core/completer.py:_safe_isinstance()\",\n  \"start_line\": 1713,\n  \"end_line\": 1720,\n  \"score\": 0.0,\n  \"content\": \"def _safe_isinstance(obj, module, class_name, *attrs):\\n    \\\"\\\"\\\"Checks if obj is an instance of module.class_name if loaded\\n    \\\"\\\"\\\"\\n    if module in sys.modules:\\n        m = sys.modules[module]\\n        for attr in [class_name, *attrs]:\\n            m = getattr(m, attr)\\n        return isinstance(obj, m)\\n\"\n}",
+            "annotations": null,
+            "meta": null
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"node_name\": \"IPython/core/magics/execution.py:ExecutionMagics.run()\",\n  \"type\": \"method\",\n  \"file\": \"IPython/core/magics/execution.py\",\n  \"node_id\": \"IPython/core/magics/execution.py:ExecutionMagics.run()\",\n  \"start_line\": 719,\n  \"end_line\": 898,\n  \"score\": 0.0,\n  \"content\": \"            modulename = opts[\\\"m\\\"][0]\\n            modpath = find_mod(modulename)\\n            if modpath is None:\\n                msg = '%r is not a valid modulename on sys.path'%modulename\\n                raise Exception(msg)\\n... 83 source lines omitted ...\\n                code = 'run_module(modulename, prog_ns)'\\n                code_ns = {\\n                    'run_module': self.shell.safe_run_module,\\n                    'prog_ns': prog_ns,\\n                    'modulename': modulename,\\n... 24 source lines omitted ...\\n                    if 'm' in opts:\\n                        def run():\\n                            self.shell.safe_run_module(modulename, prog_ns)\\n                    else:\\n                        if runner is None:\\n... 58 source lines omitted ...\",\n  \"content_projection\": {\n    \"truncated\": true,\n    \"original_chars\": 7396,\n    \"returned_chars\": 770,\n    \"strategy\": \"query_focused\"\n  }\n}",
+            "annotations": null,
+            "meta": null
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"node_name\": \"IPython/core/pylabtools.py:mpl_runner()\",\n  \"type\": \"function\",\n  \"file\": \"IPython/core/pylabtools.py\",\n  \"node_id\": \"IPython/core/pylabtools.py:mpl_runner()\",\n  \"start_line\": 201,\n  \"end_line\": 248,\n  \"score\": 0.0,\n  \"content\": \"def mpl_runner(safe_execfile):\\n    \\\"\\\"\\\"Factory to return a matplotlib-enabled runner for %run.\\n\\n    Parameters\\n    ----------\\n    safe_execfile : function\\n        This must be a function with the same interface as the\\n        :meth:`safe_execfile` method of IPython.\\n\\n    Returns\\n    -------\\n    A function suitable for use as the ``runner`` argument of the %run magic\\n    function.\\n    \\\"\\\"\\\"\\n\\n    def mpl_execfile(fname,*where,**kw):\\n        \\\"\\\"\\\"matplotlib-aware wrapper around safe_execfile.\\n\\n        Its interface is identical to that of the :func:`execfile` builtin.\\n\\n        This is ultimately a call to execfile(), but wrapped in safeties to\\n        properly handle interactive rendering.\\\"\\\"\\\"\\n\\n        import matplotlib\\n        import matplotlib.pyplot as plt\\n\\n        # print('*** Matplotlib runner ***')  # dbg\\n        # turn off rendering until end of script\\n        with matplotlib.rc_context({\\\"interactive\\\": False}):\\n            safe_execfile(fname, *where, **kw)\\n\\n        if matplotlib.is_interactive():\\n            plt.show()\\n\\n        # make rendering call now, if the user tried to do it\\n        if plt.draw_if_interactive.called:\\n            plt.draw()\\n            plt.draw_if_interactive.called = False\\n\\n... 9 source lines omitted ...\",\n  \"content_projection\": {\n    \"truncated\": true,\n    \"original_chars\": 1405,\n    \"returned_chars\": 1245,\n    \"strategy\": \"query_focused\"\n  }\n}",
+            "annotations": null,
+            "meta": null
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"node_name\": \"IPython/core/interactiveshell.py:InteractiveShell.safe_execfile_ipy()\",\n  \"type\": \"method\",\n  \"file\": \"IPython/core/interactiveshell.py\",\n  \"node_id\": \"IPython/core/interactiveshell.py:InteractiveShell.safe_execfile_ipy()\",\n  \"start_line\": 2952,\n  \"end_line\": 3008,\n  \"score\": 0.0,\n  \"content\": \"    def safe_execfile_ipy(self, fname, shell_futures=False, raise_exceptions=False):\\n        \\\"\\\"\\\"Like safe_execfile, but for .ipy or .ipynb files with IPython syntax.\\n\\n        Parameters\\n        ----------\\n        fname : str\\n            The name of the file to execute.  The filename must have a\\n            .ipy or .ipynb extension.\\n        shell_futures : bool (False)\\n            If True, the code will share future statements with the interactive\\n            shell. It will both be affected by previous __future__ imports, and\\n            any __future__ imports in the code will affect the shell. If False,\\n            __future__ imports are not shared in either direction.\\n        raise_exceptions : bool (False)\\n            If True raise exceptions everywhere.  Meant for testing.\\n        \\\"\\\"\\\"\\n        fname = Path(fname).expanduser().resolve()\\n\\n        # Make sure we can open the file\\n        try:\\n            with fname.open(\\\"rb\\\"):\\n                pass\\n        except:\\n            warn('Could not open file <%s> for safe execution.' % fname)\\n            return\\n\\n        # Find things also in current directory.  This is needed to mimic the\\n... 30 source lines omitted ...\",\n  \"content_projection\": {\n    \"truncated\": true,\n    \"original_chars\": 2343,\n    \"returned_chars\": 1179,\n    \"strategy\": \"query_focused\"\n  }\n}",
+            "annotations": null,
+            "meta": null
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"node_name\": \"IPython/core/interactiveshell.py:InteractiveShell.prepare_user_module()\",\n  \"type\": \"method\",\n  \"file\": \"IPython/core/interactiveshell.py\",\n  \"node_id\": \"IPython/core/interactiveshell.py:InteractiveShell.prepare_user_module()\",\n  \"start_line\": 1303,\n  \"end_line\": 1343,\n  \"score\": 0.0,\n  \"content\": \"    def prepare_user_module(self, user_module=None, user_ns=None):\\n        \\\"\\\"\\\"Prepare the module and namespace in which user code will be run.\\n\\n        When IPython is started normally, both parameters are None: a new module\\n        is created automatically, and its __dict__ used as the namespace.\\n\\n        If only user_module is provided, its __dict__ is used as the namespace.\\n        If only user_ns is provided, a dummy module is created, and user_ns\\n        becomes the global namespace. If both are provided (as they may be\\n        when embedding), user_ns is the local namespace, and user_module\\n        provides the global namespace.\\n\\n        Parameters\\n        ----------\\n        user_module : module, optional\\n            The current user module in which IPython is being run. If None,\\n            a clean module will be created.\\n        user_ns : dict, optional\\n            A namespace in which to run interactive commands.\\n\\n        Returns\\n        -------\\n        A tuple of user_module and user_ns, each properly initialised.\\n        \\\"\\\"\\\"\\n        if user_module is None and user_ns is not None:\\n            user_ns.setdefault(\\\"__name__\\\", \\\"__main__\\\")\\n... 15 source lines omitted ...\",\n  \"content_projection\": {\n    \"truncated\": true,\n    \"original_chars\": 1878,\n    \"returned_chars\": 1194,\n    \"strategy\": \"query_focused\"\n  }\n}",
+            "annotations": null,
+            "meta": null
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"node_name\": \"IPython/core/shellapp.py:InteractiveShellApp.init_code()\",\n  \"type\": \"method\",\n  \"file\": \"IPython/core/shellapp.py\",\n  \"node_id\": \"IPython/core/shellapp.py:InteractiveShellApp.init_code()\",\n  \"start_line\": 346,\n  \"end_line\": 364,\n  \"score\": 0.0,\n  \"content\": \"    def init_code(self):\\n        \\\"\\\"\\\"run the pre-flight code, specified via exec_lines\\\"\\\"\\\"\\n        self._run_startup_files()\\n        self._run_exec_lines()\\n        self._run_exec_files()\\n\\n        # Hide variables defined here from %who etc.\\n        if self.hide_initial_ns:\\n            self.shell.user_ns_hidden.update(self.shell.user_ns)\\n\\n        # command-line execution (ipython -i script.py, ipython -m module)\\n        # should *not* be excluded from %whos\\n        self._run_cmd_line_code()\\n        self._run_module()\\n\\n        # flush output, so itwon't be attached to the first cell\\n        sys.stdout.flush()\\n        sys.stderr.flush()\\n        self.shell._sys_modules_keys = set(sys.modules.keys())\\n\"\n}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "result": [
+            {
+              "node_name": "IPython/core/interactiveshell.py:InteractiveShell.safe_run_module()",
+              "type": "method",
+              "file": "IPython/core/interactiveshell.py",
+              "node_id": "IPython/core/interactiveshell.py:InteractiveShell.safe_run_module()",
+              "start_line": 3010,
+              "end_line": 3036,
+              "score": 0.0,
+              "content": "    def safe_run_module(self, mod_name, where):\n        \"\"\"A safe version of runpy.run_module().\n\n        This version will never throw an exception, but instead print\n        helpful error messages to the screen.\n\n        `SystemExit` exceptions with status code 0 or None are ignored.\n\n        Parameters\n        ----------\n        mod_name : string\n            The name of the module to be executed.\n        where : dict\n            The globals namespace.\n        \"\"\"\n        try:\n            try:\n                where.update(\n                    runpy.run_module(str(mod_name), run_name=\"__main__\",\n                                     alter_sys=True)\n                            )\n            except SystemExit as status:\n                if status.code:\n                    raise\n        except:\n            self.showtraceback()\n            warn('Unknown failure executing module: <%s>' % mod_name)\n"
+            },
+            {
+              "node_name": "IPython/core/shellapp.py:InteractiveShellApp._run_module()",
+              "type": "method",
+              "file": "IPython/core/shellapp.py",
+              "node_id": "IPython/core/shellapp.py:InteractiveShellApp._run_module()",
+              "start_line": 489,
+              "end_line": 500,
+              "score": 0.0,
+              "content": "    def _run_module(self):\n        \"\"\"Run module specified at the command-line.\"\"\"\n        if self.module_to_run:\n            # Make sure that the module gets a proper sys.argv as if it were\n            # run using `python -m`.\n            save_argv = sys.argv\n            sys.argv = [sys.executable] + self.extra_args\n            try:\n                self.shell.safe_run_module(self.module_to_run,\n                                           self.shell.user_ns)\n            finally:\n                sys.argv = save_argv\n"
+            },
+            {
+              "node_name": "IPython/core/completer.py:_safe_isinstance()",
+              "type": "function",
+              "file": "IPython/core/completer.py",
+              "node_id": "IPython/core/completer.py:_safe_isinstance()",
+              "start_line": 1713,
+              "end_line": 1720,
+              "score": 0.0,
+              "content": "def _safe_isinstance(obj, module, class_name, *attrs):\n    \"\"\"Checks if obj is an instance of module.class_name if loaded\n    \"\"\"\n    if module in sys.modules:\n        m = sys.modules[module]\n        for attr in [class_name, *attrs]:\n            m = getattr(m, attr)\n        return isinstance(obj, m)\n"
+            },
+            {
+              "node_name": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+              "type": "method",
+              "file": "IPython/core/magics/execution.py",
+              "node_id": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+              "start_line": 719,
+              "end_line": 898,
+              "score": 0.0,
+              "content": "            modulename = opts[\"m\"][0]\n            modpath = find_mod(modulename)\n            if modpath is None:\n                msg = '%r is not a valid modulename on sys.path'%modulename\n                raise Exception(msg)\n... 83 source lines omitted ...\n                code = 'run_module(modulename, prog_ns)'\n                code_ns = {\n                    'run_module': self.shell.safe_run_module,\n                    'prog_ns': prog_ns,\n                    'modulename': modulename,\n... 24 source lines omitted ...\n                    if 'm' in opts:\n                        def run():\n                            self.shell.safe_run_module(modulename, prog_ns)\n                    else:\n                        if runner is None:\n... 58 source lines omitted ...",
+              "content_projection": {
+                "truncated": true,
+                "original_chars": 7396,
+                "returned_chars": 770,
+                "strategy": "query_focused"
+              }
+            },
+            {
+              "node_name": "IPython/core/pylabtools.py:mpl_runner()",
+              "type": "function",
+              "file": "IPython/core/pylabtools.py",
+              "node_id": "IPython/core/pylabtools.py:mpl_runner()",
+              "start_line": 201,
+              "end_line": 248,
+              "score": 0.0,
+              "content": "def mpl_runner(safe_execfile):\n    \"\"\"Factory to return a matplotlib-enabled runner for %run.\n\n    Parameters\n    ----------\n    safe_execfile : function\n        This must be a function with the same interface as the\n        :meth:`safe_execfile` method of IPython.\n\n    Returns\n    -------\n    A function suitable for use as the ``runner`` argument of the %run magic\n    function.\n    \"\"\"\n\n    def mpl_execfile(fname,*where,**kw):\n        \"\"\"matplotlib-aware wrapper around safe_execfile.\n\n        Its interface is identical to that of the :func:`execfile` builtin.\n\n        This is ultimately a call to execfile(), but wrapped in safeties to\n        properly handle interactive rendering.\"\"\"\n\n        import matplotlib\n        import matplotlib.pyplot as plt\n\n        # print('*** Matplotlib runner ***')  # dbg\n        # turn off rendering until end of script\n        with matplotlib.rc_context({\"interactive\": False}):\n            safe_execfile(fname, *where, **kw)\n\n        if matplotlib.is_interactive():\n            plt.show()\n\n        # make rendering call now, if the user tried to do it\n        if plt.draw_if_interactive.called:\n            plt.draw()\n            plt.draw_if_interactive.called = False\n\n... 9 source lines omitted ...",
+              "content_projection": {
+                "truncated": true,
+                "original_chars": 1405,
+                "returned_chars": 1245,
+                "strategy": "query_focused"
+              }
+            },
+            {
+              "node_name": "IPython/core/interactiveshell.py:InteractiveShell.safe_execfile_ipy()",
+              "type": "method",
+              "file": "IPython/core/interactiveshell.py",
+              "node_id": "IPython/core/interactiveshell.py:InteractiveShell.safe_execfile_ipy()",
+              "start_line": 2952,
+              "end_line": 3008,
+              "score": 0.0,
+              "content": "    def safe_execfile_ipy(self, fname, shell_futures=False, raise_exceptions=False):\n        \"\"\"Like safe_execfile, but for .ipy or .ipynb files with IPython syntax.\n\n        Parameters\n        ----------\n        fname : str\n            The name of the file to execute.  The filename must have a\n            .ipy or .ipynb extension.\n        shell_futures : bool (False)\n            If True, the code will share future statements with the interactive\n            shell. It will both be affected by previous __future__ imports, and\n            any __future__ imports in the code will affect the shell. If False,\n            __future__ imports are not shared in either direction.\n        raise_exceptions : bool (False)\n            If True raise exceptions everywhere.  Meant for testing.\n        \"\"\"\n        fname = Path(fname).expanduser().resolve()\n\n        # Make sure we can open the file\n        try:\n            with fname.open(\"rb\"):\n                pass\n        except:\n            warn('Could not open file <%s> for safe execution.' % fname)\n            return\n\n        # Find things also in current directory.  This is needed to mimic the\n... 30 source lines omitted ...",
+              "content_projection": {
+                "truncated": true,
+                "original_chars": 2343,
+                "returned_chars": 1179,
+                "strategy": "query_focused"
+              }
+            },
+            {
+              "node_name": "IPython/core/interactiveshell.py:InteractiveShell.prepare_user_module()",
+              "type": "method",
+              "file": "IPython/core/interactiveshell.py",
+              "node_id": "IPython/core/interactiveshell.py:InteractiveShell.prepare_user_module()",
+              "start_line": 1303,
+              "end_line": 1343,
+              "score": 0.0,
+              "content": "    def prepare_user_module(self, user_module=None, user_ns=None):\n        \"\"\"Prepare the module and namespace in which user code will be run.\n\n        When IPython is started normally, both parameters are None: a new module\n        is created automatically, and its __dict__ used as the namespace.\n\n        If only user_module is provided, its __dict__ is used as the namespace.\n        If only user_ns is provided, a dummy module is created, and user_ns\n        becomes the global namespace. If both are provided (as they may be\n        when embedding), user_ns is the local namespace, and user_module\n        provides the global namespace.\n\n        Parameters\n        ----------\n        user_module : module, optional\n            The current user module in which IPython is being run. If None,\n            a clean module will be created.\n        user_ns : dict, optional\n            A namespace in which to run interactive commands.\n\n        Returns\n        -------\n        A tuple of user_module and user_ns, each properly initialised.\n        \"\"\"\n        if user_module is None and user_ns is not None:\n            user_ns.setdefault(\"__name__\", \"__main__\")\n... 15 source lines omitted ...",
+              "content_projection": {
+                "truncated": true,
+                "original_chars": 1878,
+                "returned_chars": 1194,
+                "strategy": "query_focused"
+              }
+            },
+            {
+              "node_name": "IPython/core/shellapp.py:InteractiveShellApp.init_code()",
+              "type": "method",
+              "file": "IPython/core/shellapp.py",
+              "node_id": "IPython/core/shellapp.py:InteractiveShellApp.init_code()",
+              "start_line": 346,
+              "end_line": 364,
+              "score": 0.0,
+              "content": "    def init_code(self):\n        \"\"\"run the pre-flight code, specified via exec_lines\"\"\"\n        self._run_startup_files()\n        self._run_exec_lines()\n        self._run_exec_files()\n\n        # Hide variables defined here from %who etc.\n        if self.hide_initial_ns:\n            self.shell.user_ns_hidden.update(self.shell.user_ns)\n\n        # command-line execution (ipython -i script.py, ipython -m module)\n        # should *not* be excluded from %whos\n        self._run_cmd_line_code()\n        self._run_module()\n\n        # flush output, so itwon't be attached to the first cell\n        sys.stdout.flush()\n        sys.stderr.flush()\n        self.shell._sys_modules_keys = set(sys.modules.keys())\n"
+            }
+          ]
+        },
+        "is_error": false,
+        "result_type": "complete"
+      },
+      "seconds": 0.04415794648230076
+    },
+    {
+      "name": "get_manifest",
+      "arguments": {},
+      "payload": {
+        "meta": {
+          "io.modelcontextprotocol/serverInfo": {
+            "name": "codenib",
+            "version": "0.2.4"
+          }
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"version\": \"1.2\",\n  \"repo\": {\n    \"path\": \"/tmp/codenib-python-identity-20261027/ipython-source\",\n    \"commit\": \"cd483f2f927c09be71dd5885618d7b2443a81b7a\",\n    \"last_indexed_commit\": \"cd483f2f927c09be71dd5885618d7b2443a81b7a\",\n    \"source_fingerprint\": \"sha256-v2:2fb40ad03ee0e0d6258e6d132cbf0c678f7d98d09d4e0dc2b172317bcaaec914\",\n    \"last_indexed_source_fingerprint\": \"sha256-v2:2fb40ad03ee0e0d6258e6d132cbf0c678f7d98d09d4e0dc2b172317bcaaec914\",\n    \"languages\": [\n      \"python\"\n    ],\n    \"file_count\": 475,\n    \"source_selection\": {\n      \"schema\": \"codenib.repository-source-selection.v1\",\n      \"repository_filter_policy\": 4,\n      \"exclude_subtrees\": []\n    },\n    \"last_indexed_source_selection_digest\": \"sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4\"\n  },\n  \"indexes\": {\n    \"bm25\": {\n      \"index_type\": \"bm25\",\n      \"path\": \"/tmp/codenib-python-identity-20261027/ipython-workflow6/.codenib/repositories/ipython-source-b119e3d510a9/indexes/bm25\",\n      \"built_at\": \"2026-10-28T09:21:37.877962+00:00\",\n      \"built_at_epoch\": 1793179297.877962,\n      \"status\": \"fresh\",\n      \"config\": {\n        \"builder_schema\": 9,\n        \"languages\": [\n          \"python\"\n        ],\n        \"max_k\": 128,\n        \"max_lines_per_chunk\": 300,\n        \"chunking_failure_policy\": \"fail\",\n        \"include_header_epilogue\": true,\n        \"repository_filter_policy\": 4,\n        \"source_selection_digest\": \"sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4\",\n        \"artifact_file_fingerprints\": {\n          \"documents.json\": {\n            \"size\": 2589978,\n            \"sha256\": \"27a7af3473981a57a121dfc38dbabf5324244636d5a6de2dbcf67107c4d0ac34\"\n          },\n          \"bm25_metadata.json\": {\n            \"size\": 143,\n            \"sha256\": \"3b13809dec3874a6058332fb1e9d636e48b4a4af24aae8f61563813885fedd8f\"\n          }\n        },\n        \"chunk_count\": 2279,\n        \"source_file_count\": 194,\n        \"file_count\": 2279\n      },\n      \"metadata\": {\n        \"builder_schema\": 9,\n        \"languages\": [\n          \"python\"\n        ],\n        \"max_k\": 128,\n        \"max_lines_per_chunk\": 300,\n        \"chunking_failure_policy\": \"fail\",\n        \"include_header_epilogue\": true,\n        \"repository_filter_policy\": 4,\n        \"source_selection_digest\": \"sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4\",\n        \"artifact_file_fingerprints\": {\n          \"documents.json\": {\n            \"size\": 2589978,\n            \"sha256\": \"27a7af3473981a57a121dfc38dbabf5324244636d5a6de2dbcf67107c4d0ac34\"\n          },\n          \"bm25_metadata.json\": {\n            \"size\": 143,\n            \"sha256\": \"3b13809dec3874a6058332fb1e9d636e48b4a4af24aae8f61563813885fedd8f\"\n          }\n        },\n        \"chunk_count\": 2279,\n        \"source_file_count\": 194,\n        \"file_count\": 2279,\n        \"build_duration_seconds\": 0.48\n      },\n      \"commit\": \"cd483f2f927c09be71dd5885618d7b2443a81b7a\",\n      \"source_fingerprint\": \"sha256-v2:2fb40ad03ee0e0d6258e6d132cbf0c678f7d98d09d4e0dc2b172317bcaaec914\",\n      \"source_selection_digest\": \"sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4\"\n    },\n    \"symbol_graph\": {\n      \"index_type\": \"symbol_graph\",\n      \"path\": \"/tmp/codenib-python-identity-20261027/ipython-workflow6/.codenib/repositories/ipython-source-b119e3d510a9/indexes/symbol_graph\",\n      \"built_at\": \"2026-10-28T09:22:09.599791+00:00\",\n      \"built_at_epoch\": 1793179329.599791,\n      \"status\": \"fresh\",\n      \"config\": {\n        \"builder_schema\": 8,\n        \"languages\": [\n          \"python\"\n        ],\n        \"graph_route\": \"active\",\n        \"exclude_patterns\": [\n          \"**/.codenib_cache/**\",\n          \"**/.env/**\",\n          \"**/.git/**\",\n          \"**/.hg/**\",\n          \"**/.mypy_cache/**\",\n          \"**/.next/**\",\n          \"**/.pytest_cache/**\",\n          \"**/.ruff_cache/**\",\n          \"**/.svn/**\",\n          \"**/.tox/**\",\n          \"**/.venv/**\",\n          \"**/__pycache__/**\",\n          \"**/build/**\",\n          \"**/dist/**\",\n          \"**/env/**\",\n          \"**/htmlcov/**\",\n          \"**/node_modules/**\",\n          \"**/site/**\",\n          \"**/target/**\",\n          \"**/third_party/**\",\n          \"**/vendor/**\",\n          \"**/venv/**\",\n          \".codenib_cache/**\",\n          \".env/**\",\n          \".git/**\",\n          \".hg/**\",\n          \".mypy_cache/**\",\n          \".next/**\",\n          \".pytest_cache/**\",\n          \".ruff_cache/**\",\n          \".svn/**\",\n          \".tox/**\",\n          \".venv/**\",\n          \"__pycache__/**\",\n          \"build/**\",\n          \"dist/**\",\n          \"env/**\",\n          \"htmlcov/**\",\n          \"node_modules/**\",\n          \"site/**\",\n          \"target/**\",\n          \"third_party/**\",\n          \"vendor/**\",\n          \"venv/**\"\n        ],\n        \"allow_partial_languages\": false,\n        \"allow_partial_index\": false,\n        \"source_coverage_fallback\": false,\n        \"allow_project_preparation\": false,\n        \"target_dir\": null,\n        \"repository_filter_policy\": 4,\n        \"source_selection_digest\": \"sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4\",\n        \"node_count\": 6629,\n        \"edge_count\": 22372,\n        \"language\": \"python\",\n        \"available_languages\": [\n          \"python\"\n        ],\n        \"compiler_available_languages\": [\n          \"python\"\n        ],\n        \"index_generation_reports\": {\n          \"python\": {\n            \"backend\": \"scip-python\",\n            \"status\": \"complete\",\n            \"complete\": true,\n            \"partial\": false,\n            \"document_count\": 294,\n            \"identity_recovery\": {\n              \"status\": \"complete\",\n              \"schema\": 1,\n              \"source_file_count\": 294,\n              \"changed_symbol_families\": 310,\n              \"physical_declarations\": 11928,\n              \"restored_definition_roles\": 49,\n              \"positional_definition_queries\": 149,\n              \"local_binding_families\": 7,\n              \"local_binding_semantics\": \"all_source_declarations_for_compiler_binding\",\n              \"shared_lexical_binding_families\": 266,\n              \"utf8_replacement_sources\": [\n                \"tests/nonascii.py\",\n                \"tests/nonascii2.py\"\n              ],\n              \"source_only_definitions\": [\n                {\n                  \"file\": \"tests/test_completer.py\",\n                  \"name\": \"_\",\n                  \"line\": 435,\n                  \"character\": 12,\n                  \"compiler_owner_from_parameter\": true\n                },\n                {\n                  \"file\": \"tests/test_completer.py\",\n                  \"name\": \"_\",\n                  \"line\": 607,\n                  \"character\": 12,\n                  \"compiler_owner_from_parameter\": true\n                },\n                {\n                  \"file\": \"tests/test_completer.py\",\n                  \"name\": \"_\",\n                  \"line\": 1872,\n                  \"character\": 12,\n                  \"compiler_owner_from_parameter\": false\n                },\n                {\n                  \"file\": \"tests/test_completer.py\",\n                  \"name\": \"_\",\n                  \"line\": 1923,\n                  \"character\": 16,\n                  \"compiler_owner_from_parameter\": true\n                },\n                {\n                  \"file\": \"tests/test_completer.py\",\n                  \"name\": \"_\",\n                  \"line\": 1968,\n                  \"character\": 16,\n                  \"compiler_owner_from_parameter\": true\n                },\n                {\n                  \"file\": \"tests/test_completer.py\",\n                  \"name\": \"_\",\n                  \"line\": 2001,\n                  \"character\": 12,\n                  \"compiler_owner_from_parameter\": false\n                },\n                {\n                  \"file\": \"tests/test_completer.py\",\n                  \"name\": \"_\",\n                  \"line\": 2024,\n                  \"character\": 12,\n                  \"compiler_owner_from_parameter\": true\n                },\n                {\n                  \"file\": \"tests/test_completer.py\",\n                  \"name\": \"_\",\n                  \"line\": 2052,\n                  \"character\": 12,\n                  \"compiler_owner_from_parameter\": true\n                }\n              ],\n              \"unmapped_attribute_definitions\": [],\n              \"definition_provider\": {\n                \"command\": [\n                  \"/tmp/codenib-codegraph-identity-next/toolchain/basedpyright-langserver\",\n                  \"--stdio\"\n                ],\n                \"server_info\": {\n                  \"name\": \"basedpyright\",\n                  \"version\": \"1.39.8\"\n                },\n                \"position_encoding\": \"utf-16\"\n              },\n              \"position_encoding\": \"UTF8\",\n              \"source_sha256\": {\n                \"IPython/core/application.py\": \"3a15b961ef9aa6d77af324be6d28afd9b1f82a7b6fcaaecc4dfda34eed22db1c\",\n                \"IPython/core/async_helpers.py\": \"e31fd94ab3c89978b4a17cf022668b73779796474b8bee115e1d87717f180d08\",\n                \"IPython/core/completer.py\": \"44eefaae6d959261975aa166b992e1a922f1a6df6696fbd35a635d254127540c\",\n                \"IPython/core/debugger.py\": \"463f573ec2698b3860a11b39a89a5e783f66f60ce6a2dea91214f7abdfda1b7e\",\n                \"IPython/core/display.py\": \"c10815158fd4d4ef9afa32522dbd349c9f66db0f7e36c0611011a741471651dd\",\n                \"IPython/core/events.py\": \"bcbd1559eb75c22c9ead74faf588aaf4487c288a4eb692925ca595c98764838b\",\n                \"IPython/core/guarded_eval.py\": \"45d2970e429189b3e0eea6d677507fa54f77e4260b4d4519a3425d689ed5c645\",\n                \"IPython/core/history.py\": \"2b3f302e24f19994ed78badf981f4088b75802ab5ca2d12d613312c586f62816\",\n                \"IPython/core/interactiveshell.py\": \"97dc7a45cdff64683f7479e12f1a99311cffcaab738d0a79927fae03e0f5e4cb\",\n                \"IPython/core/magic.py\": \"8ade7dbb48a64646d8e7baedcbc30cc35416fff2273cf9cb3e171090a5228573\",\n                \"IPython/core/oinspect.py\": \"fc13c54c9f1167c2cdc11c74ac991e2073a72df066e28b16e6b12d1af2454a8c\",\n                \"IPython/core/page.py\": \"3fc0e6a3432352aef50c49c83ccfe4692199a0a4da3e4ae4e2c52e33823a1c30\",\n                \"IPython/core/pylabtools.py\": \"afbd8d408859016f512f5c3d59601600c6d8a180bc29f68634a07d2416cc83be\",\n                \"IPython/core/tips.py\": \"a0b589b52fe79dddacd5f42e9d75efbc7c48b666ed6ab81958f0a4af99951a3f\",\n                \"IPython/core/magics/auto.py\": \"c84a2e223b10e8b99f4847cdbe465b366343165d7d28b46768972261d47b6b50\",\n                \"IPython/core/magics/basic.py\": \"4a2177eb6f9e4ab49c8673e96dfcde33e970dde8e1afde888c217fd27d96d0ae\",\n                \"IPython/core/magics/code.py\": \"87f761a3d9e23efb5ffc8a683997f91800fa0986d3d04406b1f2dfbadc97fbb2\",\n                \"IPython/core/magics/execution.py\": \"e31cd733d41ad73341932ca4e2495d9636cde358988ee897341d6553dcf1ba7e\",\n                \"IPython/core/magics/history.py\": \"cf649e4889f1eb4f9b241d632787bccdd542557d19d331a867f390cda0ae1c43\",\n                \"IPython/core/magics/namespace.py\": \"068e2c72429a5e971514b20818bddf6568834470de314d4b1ab1cde1976f24db\",\n                \"IPython/core/magics/script.py\": \"58dbed632e2c1e63bb8497adfebb7d72ede2266795a177d0d7c48ccadb58acf1\",\n                \"IPython/extensions/autoreload.py\": \"5e7371484f1de1cc6f046cafcf6609c32491b083997ba597453f5350f58177cf\",\n                \"IPython/extensions/deduperreload/deduperreload.py\": \"cc711227b9df38aaddbef0c139cdc118b03209e7f3486e7f8c6fcdc42694b5e4\",\n                \"IPython/extensions/deduperreload/deduperreload_patching.py\": \"e6efc4eaf9c72b819392c7787009b269d1a45e8be8fc387db37f06a61f32af4c\",\n                \"IPython/external/__init__.py\": \"f844076ee52705ed514b5fc2c1a2c6ccd49942c089b2bc475bfaf5e6c9af556d\",\n                \"IPython/lib/display.py\": \"6015dffd00cdeb63ecdb96d132a8d8f3bdcf7338bf02ff8418d5f9d57d52eb7c\",\n                \"IPython/lib/pretty.py\": \"a0ec7f9aa838e147e3e22c78fecd02b95e3eb410eab3a9065f468808a0c7f8a2\",\n                \"IPython/terminal/debugger.py\": \"d0b7419822951ca346a6604a75be1b0602a5cae4d5c9fcf60e0d98f301381533\",\n                \"IPython/terminal/embed.py\": \"b91d59ef0a79cf94a962da3bb1af40eb7b0f0ed5f98745c3d38f18de00c4fd5d\",\n                \"IPython/terminal/interactiveshell.py\": \"e6966a7e3a9e45eb1a37b348cb4a7383f09885a1913a2408302ca025874445fd\",\n                \"IPython/terminal/pt_inputhooks/pyglet.py\": \"c030d00e08a5bcaf6ecf0181dd7c80a9c7fc2df2abf8b73f34c033ba764cbbf6\",\n                \"IPython/terminal/shortcuts/__init__.py\": \"db1d008f60a3e51a833f569401d4d74a5e686cef5ea3f374da269b7189d6b464\",\n                \"IPython/terminal/shortcuts/auto_suggest.py\": \"8c99ba3d54dd7731a89bc03154f977b0d21e754835a54e2dbf0130bd1aa6d5c2\",\n                \"IPython/terminal/shortcuts/filters.py\": \"320453416abc61f2325af3004ae43d0462aae51430884639b6b4b232732d240a\",\n                \"IPython/testing/globalipapp.py\": \"17e443eb12c52764758cd3f2700f73935d7a19f1fca93b20b1814409609e0d16\",\n                \"IPython/testing/plugin/pytest_ipdoctest.py\": \"9624e00144ae994b042b5fcb7e11fbb4aff05c3467ff5d32d50a3c42e7547c7e\",\n                \"IPython/utils/PyColorize.py\": \"754ed1ad865202f737ba434ba63f94fc32b8e6cd1f64a3ab59ee486e0ebfa6f2\",\n                \"IPython/utils/_process_win32.py\": \"3dc7fa662a8c6ea0d3efd79dcde804fc05f70f7ebb52d13c6db853e359e8e780\",\n                \"IPython/utils/_process_win32_controller.py\": \"862d9e47b98b6e5dd34cc0956e0a6cf391a9a7176d61b84e60afe5d775af61a3\",\n                \"IPython/utils/encoding.py\": \"2ffdc68c31bcdde336e3b3e0023613d0a363b13126f964535ca16471b838a4ff\",\n                \"IPython/utils/path.py\": \"ef1b557ec5428ef93ea7e8e96ea48b8ce71a72c3ab5cd490c7096f7878df3bf5\",\n                \"IPython/utils/terminal.py\": \"60185cfa66056ba315ba31238c0d0a29468de6e467f6da13d6239838e18ecdfb\",\n                \"IPython/utils/text.py\": \"4ad45833998b2f18e5f44b7c6e3e3a3bc0b3d84c1457bbd7567e244f89070e23\",\n                \"IPython/utils/timing.py\": \"9cd0fe6540641d67d87afbdb446f987ce48815ccf3fdea7332a58ae4f1fa9ea0\",\n                \"examples/Embedding/embed_class_short.py\": \"2d9c6f9971430a2554948adbe4f62a30c561217ea2f88aa38056525edb119013\",\n                \"tests/fake_llm.py\": \"02ec954c46a71b0b9c07d28714f793473a4abc2fb10b99a8c6247cb383da8937\",\n                \"tests/test_async_helpers.py\": \"6e0ee824746aa18dad9c5150e8cc1b3521f11e5d14218caa3dcaa279264ca242\",\n                \"tests/test_completer.py\": \"9a4d69c92c46a475aa4678979c5aed3580f4a8a9ece348718264a136b134442a\",\n                \"tests/test_display_2.py\": \"3bad0a5b35b36d9b93793daa42ee4de35f50b5ea69eec68feca1986549631cf4\",\n                \"tests/test_events.py\": \"9def727d0d42f1b158740278a370a14d65de7657987cd6a39c3763aa8b7c7988\",\n                \"tests/test_exceptiongroup_tb.py\": \"7a89129af16dd9d575e43792617bd96ef45013b49ba19ff545154ba3d8734b14\",\n                \"tests/test_formatters.py\": \"bafabed45bd51d6f230e059342b2da6d117d3c1b0f078a5cfc2aa2b3a6bad8ea\",\n                \"tests/test_guarded_eval.py\": \"297af992b9f7e353332f749e16a9ac3cc0afb55f2f5075ed009b540784bb74ed\",\n                \"tests/test_history.py\": \"a2d84d5a62fedff184a247cea08f80ff8e251632f8154360eb87714c3eedeeb8\",\n                \"tests/test_inputtransformer2.py\": \"4b364bd305e96b35b974cc032de9f9de9f9f97d53789a87bc85e59c9e1dd438d\",\n                \"tests/test_interactiveshell.py\": \"5ce83a02958a07d5c3a167f3cb58fd2bc7be6c09b463a0742f03925eaae9ceae\",\n                \"tests/test_interactivshell.py\": \"31e84eed31b897c569740c3df681670bbee2ed2f841dc2e70573ccf44ef18175\",\n                \"tests/test_oinspect.py\": \"f59f317ddbe673e500581164ac92ad30247d190ff4f1efde3c2309a4fc4ad8c4\",\n                \"tests/test_path.py\": \"1e1826a435fb640a425de7b051e5172289dd1ac438ea5dc76b0bca656a10c985\",\n                \"tests/test_process.py\": \"d193e002d172447a37c74472692cffdace4f616a66d3fce0b0e5a4dd462c3a3c\",\n                \"tests/test_run.py\": \"fb62003e89e5a1e9e49e3fb732d083c1d637f79adb37cf1e567c095cdd4b1613\",\n                \"tests/test_tools.py\": \"8da4235161dd1fc5038867a9b30d2ac4c5e2bec1a23f4b8af0e6c2e119bde4e0\",\n                \"tests/test_wildcard.py\": \"006079a64450eb39f9fb64fb6a48f4155871eea43b29608d9da8ef87babd68c1\",\n                \"tests/test_zzz_autoreload.py\": \"6852cdeca3b8241e4b78f6d69d03de6dda3f3b70428a821f2e39cc655e9bf6ba\"\n              }\n            }\n          }\n        },\n        \"scip_decoded_artifacts\": {\n          \"python\": {\n            \"relative_path\": \"index.decoded\",\n            \"size\": 22192069,\n            \"sha256\": \"bf2a0dc57f4f0bce6bb9de07a762acf542e4f90d95572e7ff3d6ec919783bf55\"\n          }\n        },\n        \"graph_artifact\": {\n          \"relative_path\": \"graph.pkl\",\n          \"size\": 1662473,\n          \"sha256\": \"bd635126968c74dda5c699ad77151adf5d2f36068ff664ddd9157b853ffb32fb\"\n        },\n        \"lsp_occurrence_artifact\": {\n          \"relative_path\": \"lsp_index.pkl\",\n          \"size\": 13423343,\n          \"sha256\": \"f0010972972544b9ed7e2c5edc76d673b89f229ecc92bb831c9a23ddd2f8f66d\"\n        },\n        \"query_surface_sha256\": \"2423f1f70d3887f34b4993045b0c25fe2178c34e85358f6e052d80c20b85959a\",\n        \"update_mode\": \"full_rebuild\",\n        \"partial_index\": false,\n        \"failed_languages\": {},\n        \"partial\": false,\n        \"source_selection_report\": {\n          \"source_selection_digest\": \"sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4\",\n          \"nodes_before\": 6629,\n          \"nodes_after\": 6629,\n          \"edges_before\": 22372,\n          \"edges_after\": 22372,\n          \"removed_excluded_path_count\": 0,\n          \"excluded_path_count_after\": 0,\n          \"invalid_path_count_before\": 0,\n          \"invalid_path_count_after\": 0\n        }\n      },\n      \"metadata\": {\n        \"builder_schema\": 8,\n        \"languages\": [\n          \"python\"\n        ],\n        \"graph_route\": \"active\",\n        \"exclude_patterns\": [\n          \"**/.codenib_cache/**\",\n          \"**/.env/**\",\n          \"**/.git/**\",\n          \"**/.hg/**\",\n          \"**/.mypy_cache/**\",\n          \"**/.next/**\",\n          \"**/.pytest_cache/**\",\n          \"**/.ruff_cache/**\",\n          \"**/.svn/**\",\n          \"**/.tox/**\",\n          \"**/.venv/**\",\n          \"**/__pycache__/**\",\n          \"**/build/**\",\n          \"**/dist/**\",\n          \"**/env/**\",\n          \"**/htmlcov/**\",\n          \"**/node_modules/**\",\n          \"**/site/**\",\n          \"**/target/**\",\n          \"**/third_party/**\",\n          \"**/vendor/**\",\n          \"**/venv/**\",\n          \".codenib_cache/**\",\n          \".env/**\",\n          \".git/**\",\n          \".hg/**\",\n          \".mypy_cache/**\",\n          \".next/**\",\n          \".pytest_cache/**\",\n          \".ruff_cache/**\",\n          \".svn/**\",\n          \".tox/**\",\n          \".venv/**\",\n          \"__pycache__/**\",\n          \"build/**\",\n          \"dist/**\",\n          \"env/**\",\n          \"htmlcov/**\",\n          \"node_modules/**\",\n          \"site/**\",\n          \"target/**\",\n          \"third_party/**\",\n          \"vendor/**\",\n          \"venv/**\"\n        ],\n        \"allow_partial_languages\": false,\n        \"allow_partial_index\": false,\n        \"source_coverage_fallback\": false,\n        \"allow_project_preparation\": false,\n        \"target_dir\": null,\n        \"repository_filter_policy\": 4,\n        \"source_selection_digest\": \"sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4\",\n        \"node_count\": 6629,\n        \"edge_count\": 22372,\n        \"language\": \"python\",\n        \"available_languages\": [\n          \"python\"\n        ],\n        \"compiler_available_languages\": [\n          \"python\"\n        ],\n        \"index_generation_reports\": {\n          \"python\": {\n            \"backend\": \"scip-python\",\n            \"status\": \"complete\",\n            \"complete\": true,\n            \"partial\": false,\n            \"document_count\": 294,\n            \"identity_recovery\": {\n              \"status\": \"complete\",\n              \"schema\": 1,\n              \"source_file_count\": 294,\n              \"changed_symbol_families\": 310,\n              \"physical_declarations\": 11928,\n              \"restored_definition_roles\": 49,\n              \"positional_definition_queries\": 149,\n              \"local_binding_families\": 7,\n              \"local_binding_semantics\": \"all_source_declarations_for_compiler_binding\",\n              \"shared_lexical_binding_families\": 266,\n              \"utf8_replacement_sources\": [\n                \"tests/nonascii.py\",\n                \"tests/nonascii2.py\"\n              ],\n              \"source_only_definitions\": [\n                {\n                  \"file\": \"tests/test_completer.py\",\n                  \"name\": \"_\",\n                  \"line\": 435,\n                  \"character\": 12,\n                  \"compiler_owner_from_parameter\": true\n                },\n                {\n                  \"file\": \"tests/test_completer.py\",\n                  \"name\": \"_\",\n                  \"line\": 607,\n                  \"character\": 12,\n                  \"compiler_owner_from_parameter\": true\n                },\n                {\n                  \"file\": \"tests/test_completer.py\",\n                  \"name\": \"_\",\n                  \"line\": 1872,\n                  \"character\": 12,\n                  \"compiler_owner_from_parameter\": false\n                },\n                {\n                  \"file\": \"tests/test_completer.py\",\n                  \"name\": \"_\",\n                  \"line\": 1923,\n                  \"character\": 16,\n                  \"compiler_owner_from_parameter\": true\n                },\n                {\n                  \"file\": \"tests/test_completer.py\",\n                  \"name\": \"_\",\n                  \"line\": 1968,\n                  \"character\": 16,\n                  \"compiler_owner_from_parameter\": true\n                },\n                {\n                  \"file\": \"tests/test_completer.py\",\n                  \"name\": \"_\",\n                  \"line\": 2001,\n                  \"character\": 12,\n                  \"compiler_owner_from_parameter\": false\n                },\n                {\n                  \"file\": \"tests/test_completer.py\",\n                  \"name\": \"_\",\n                  \"line\": 2024,\n                  \"character\": 12,\n                  \"compiler_owner_from_parameter\": true\n                },\n                {\n                  \"file\": \"tests/test_completer.py\",\n                  \"name\": \"_\",\n                  \"line\": 2052,\n                  \"character\": 12,\n                  \"compiler_owner_from_parameter\": true\n                }\n              ],\n              \"unmapped_attribute_definitions\": [],\n              \"definition_provider\": {\n                \"command\": [\n                  \"/tmp/codenib-codegraph-identity-next/toolchain/basedpyright-langserver\",\n                  \"--stdio\"\n                ],\n                \"server_info\": {\n                  \"name\": \"basedpyright\",\n                  \"version\": \"1.39.8\"\n                },\n                \"position_encoding\": \"utf-16\"\n              },\n              \"position_encoding\": \"UTF8\",\n              \"source_sha256\": {\n                \"IPython/core/application.py\": \"3a15b961ef9aa6d77af324be6d28afd9b1f82a7b6fcaaecc4dfda34eed22db1c\",\n                \"IPython/core/async_helpers.py\": \"e31fd94ab3c89978b4a17cf022668b73779796474b8bee115e1d87717f180d08\",\n                \"IPython/core/completer.py\": \"44eefaae6d959261975aa166b992e1a922f1a6df6696fbd35a635d254127540c\",\n                \"IPython/core/debugger.py\": \"463f573ec2698b3860a11b39a89a5e783f66f60ce6a2dea91214f7abdfda1b7e\",\n                \"IPython/core/display.py\": \"c10815158fd4d4ef9afa32522dbd349c9f66db0f7e36c0611011a741471651dd\",\n                \"IPython/core/events.py\": \"bcbd1559eb75c22c9ead74faf588aaf4487c288a4eb692925ca595c98764838b\",\n                \"IPython/core/guarded_eval.py\": \"45d2970e429189b3e0eea6d677507fa54f77e4260b4d4519a3425d689ed5c645\",\n                \"IPython/core/history.py\": \"2b3f302e24f19994ed78badf981f4088b75802ab5ca2d12d613312c586f62816\",\n                \"IPython/core/interactiveshell.py\": \"97dc7a45cdff64683f7479e12f1a99311cffcaab738d0a79927fae03e0f5e4cb\",\n                \"IPython/core/magic.py\": \"8ade7dbb48a64646d8e7baedcbc30cc35416fff2273cf9cb3e171090a5228573\",\n                \"IPython/core/oinspect.py\": \"fc13c54c9f1167c2cdc11c74ac991e2073a72df066e28b16e6b12d1af2454a8c\",\n                \"IPython/core/page.py\": \"3fc0e6a3432352aef50c49c83ccfe4692199a0a4da3e4ae4e2c52e33823a1c30\",\n                \"IPython/core/pylabtools.py\": \"afbd8d408859016f512f5c3d59601600c6d8a180bc29f68634a07d2416cc83be\",\n                \"IPython/core/tips.py\": \"a0b589b52fe79dddacd5f42e9d75efbc7c48b666ed6ab81958f0a4af99951a3f\",\n                \"IPython/core/magics/auto.py\": \"c84a2e223b10e8b99f4847cdbe465b366343165d7d28b46768972261d47b6b50\",\n                \"IPython/core/magics/basic.py\": \"4a2177eb6f9e4ab49c8673e96dfcde33e970dde8e1afde888c217fd27d96d0ae\",\n                \"IPython/core/magics/code.py\": \"87f761a3d9e23efb5ffc8a683997f91800fa0986d3d04406b1f2dfbadc97fbb2\",\n                \"IPython/core/magics/execution.py\": \"e31cd733d41ad73341932ca4e2495d9636cde358988ee897341d6553dcf1ba7e\",\n                \"IPython/core/magics/history.py\": \"cf649e4889f1eb4f9b241d632787bccdd542557d19d331a867f390cda0ae1c43\",\n                \"IPython/core/magics/namespace.py\": \"068e2c72429a5e971514b20818bddf6568834470de314d4b1ab1cde1976f24db\",\n                \"IPython/core/magics/script.py\": \"58dbed632e2c1e63bb8497adfebb7d72ede2266795a177d0d7c48ccadb58acf1\",\n                \"IPython/extensions/autoreload.py\": \"5e7371484f1de1cc6f046cafcf6609c32491b083997ba597453f5350f58177cf\",\n                \"IPython/extensions/deduperreload/deduperreload.py\": \"cc711227b9df38aaddbef0c139cdc118b03209e7f3486e7f8c6fcdc42694b5e4\",\n                \"IPython/extensions/deduperreload/deduperreload_patching.py\": \"e6efc4eaf9c72b819392c7787009b269d1a45e8be8fc387db37f06a61f32af4c\",\n                \"IPython/external/__init__.py\": \"f844076ee52705ed514b5fc2c1a2c6ccd49942c089b2bc475bfaf5e6c9af556d\",\n                \"IPython/lib/display.py\": \"6015dffd00cdeb63ecdb96d132a8d8f3bdcf7338bf02ff8418d5f9d57d52eb7c\",\n                \"IPython/lib/pretty.py\": \"a0ec7f9aa838e147e3e22c78fecd02b95e3eb410eab3a9065f468808a0c7f8a2\",\n                \"IPython/terminal/debugger.py\": \"d0b7419822951ca346a6604a75be1b0602a5cae4d5c9fcf60e0d98f301381533\",\n                \"IPython/terminal/embed.py\": \"b91d59ef0a79cf94a962da3bb1af40eb7b0f0ed5f98745c3d38f18de00c4fd5d\",\n                \"IPython/terminal/interactiveshell.py\": \"e6966a7e3a9e45eb1a37b348cb4a7383f09885a1913a2408302ca025874445fd\",\n                \"IPython/terminal/pt_inputhooks/pyglet.py\": \"c030d00e08a5bcaf6ecf0181dd7c80a9c7fc2df2abf8b73f34c033ba764cbbf6\",\n                \"IPython/terminal/shortcuts/__init__.py\": \"db1d008f60a3e51a833f569401d4d74a5e686cef5ea3f374da269b7189d6b464\",\n                \"IPython/terminal/shortcuts/auto_suggest.py\": \"8c99ba3d54dd7731a89bc03154f977b0d21e754835a54e2dbf0130bd1aa6d5c2\",\n                \"IPython/terminal/shortcuts/filters.py\": \"320453416abc61f2325af3004ae43d0462aae51430884639b6b4b232732d240a\",\n                \"IPython/testing/globalipapp.py\": \"17e443eb12c52764758cd3f2700f73935d7a19f1fca93b20b1814409609e0d16\",\n                \"IPython/testing/plugin/pytest_ipdoctest.py\": \"9624e00144ae994b042b5fcb7e11fbb4aff05c3467ff5d32d50a3c42e7547c7e\",\n                \"IPython/utils/PyColorize.py\": \"754ed1ad865202f737ba434ba63f94fc32b8e6cd1f64a3ab59ee486e0ebfa6f2\",\n                \"IPython/utils/_process_win32.py\": \"3dc7fa662a8c6ea0d3efd79dcde804fc05f70f7ebb52d13c6db853e359e8e780\",\n                \"IPython/utils/_process_win32_controller.py\": \"862d9e47b98b6e5dd34cc0956e0a6cf391a9a7176d61b84e60afe5d775af61a3\",\n                \"IPython/utils/encoding.py\": \"2ffdc68c31bcdde336e3b3e0023613d0a363b13126f964535ca16471b838a4ff\",\n                \"IPython/utils/path.py\": \"ef1b557ec5428ef93ea7e8e96ea48b8ce71a72c3ab5cd490c7096f7878df3bf5\",\n                \"IPython/utils/terminal.py\": \"60185cfa66056ba315ba31238c0d0a29468de6e467f6da13d6239838e18ecdfb\",\n                \"IPython/utils/text.py\": \"4ad45833998b2f18e5f44b7c6e3e3a3bc0b3d84c1457bbd7567e244f89070e23\",\n                \"IPython/utils/timing.py\": \"9cd0fe6540641d67d87afbdb446f987ce48815ccf3fdea7332a58ae4f1fa9ea0\",\n                \"examples/Embedding/embed_class_short.py\": \"2d9c6f9971430a2554948adbe4f62a30c561217ea2f88aa38056525edb119013\",\n                \"tests/fake_llm.py\": \"02ec954c46a71b0b9c07d28714f793473a4abc2fb10b99a8c6247cb383da8937\",\n                \"tests/test_async_helpers.py\": \"6e0ee824746aa18dad9c5150e8cc1b3521f11e5d14218caa3dcaa279264ca242\",\n                \"tests/test_completer.py\": \"9a4d69c92c46a475aa4678979c5aed3580f4a8a9ece348718264a136b134442a\",\n                \"tests/test_display_2.py\": \"3bad0a5b35b36d9b93793daa42ee4de35f50b5ea69eec68feca1986549631cf4\",\n                \"tests/test_events.py\": \"9def727d0d42f1b158740278a370a14d65de7657987cd6a39c3763aa8b7c7988\",\n                \"tests/test_exceptiongroup_tb.py\": \"7a89129af16dd9d575e43792617bd96ef45013b49ba19ff545154ba3d8734b14\",\n                \"tests/test_formatters.py\": \"bafabed45bd51d6f230e059342b2da6d117d3c1b0f078a5cfc2aa2b3a6bad8ea\",\n                \"tests/test_guarded_eval.py\": \"297af992b9f7e353332f749e16a9ac3cc0afb55f2f5075ed009b540784bb74ed\",\n                \"tests/test_history.py\": \"a2d84d5a62fedff184a247cea08f80ff8e251632f8154360eb87714c3eedeeb8\",\n                \"tests/test_inputtransformer2.py\": \"4b364bd305e96b35b974cc032de9f9de9f9f97d53789a87bc85e59c9e1dd438d\",\n                \"tests/test_interactiveshell.py\": \"5ce83a02958a07d5c3a167f3cb58fd2bc7be6c09b463a0742f03925eaae9ceae\",\n                \"tests/test_interactivshell.py\": \"31e84eed31b897c569740c3df681670bbee2ed2f841dc2e70573ccf44ef18175\",\n                \"tests/test_oinspect.py\": \"f59f317ddbe673e500581164ac92ad30247d190ff4f1efde3c2309a4fc4ad8c4\",\n                \"tests/test_path.py\": \"1e1826a435fb640a425de7b051e5172289dd1ac438ea5dc76b0bca656a10c985\",\n                \"tests/test_process.py\": \"d193e002d172447a37c74472692cffdace4f616a66d3fce0b0e5a4dd462c3a3c\",\n                \"tests/test_run.py\": \"fb62003e89e5a1e9e49e3fb732d083c1d637f79adb37cf1e567c095cdd4b1613\",\n                \"tests/test_tools.py\": \"8da4235161dd1fc5038867a9b30d2ac4c5e2bec1a23f4b8af0e6c2e119bde4e0\",\n                \"tests/test_wildcard.py\": \"006079a64450eb39f9fb64fb6a48f4155871eea43b29608d9da8ef87babd68c1\",\n                \"tests/test_zzz_autoreload.py\": \"6852cdeca3b8241e4b78f6d69d03de6dda3f3b70428a821f2e39cc655e9bf6ba\"\n              }\n            }\n          }\n        },\n        \"scip_decoded_artifacts\": {\n          \"python\": {\n            \"relative_path\": \"index.decoded\",\n            \"size\": 22192069,\n            \"sha256\": \"bf2a0dc57f4f0bce6bb9de07a762acf542e4f90d95572e7ff3d6ec919783bf55\"\n          }\n        },\n        \"graph_artifact\": {\n          \"relative_path\": \"graph.pkl\",\n          \"size\": 1662473,\n          \"sha256\": \"bd635126968c74dda5c699ad77151adf5d2f36068ff664ddd9157b853ffb32fb\"\n        },\n        \"lsp_occurrence_artifact\": {\n          \"relative_path\": \"lsp_index.pkl\",\n          \"size\": 13423343,\n          \"sha256\": \"f0010972972544b9ed7e2c5edc76d673b89f229ecc92bb831c9a23ddd2f8f66d\"\n        },\n        \"query_surface_sha256\": \"2423f1f70d3887f34b4993045b0c25fe2178c34e85358f6e052d80c20b85959a\",\n        \"update_mode\": \"full_rebuild\",\n        \"partial_index\": false,\n        \"failed_languages\": {},\n        \"partial\": false,\n        \"source_selection_report\": {\n          \"source_selection_digest\": \"sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4\",\n          \"nodes_before\": 6629,\n          \"nodes_after\": 6629,\n          \"edges_before\": 22372,\n          \"edges_after\": 22372,\n          \"removed_excluded_path_count\": 0,\n          \"excluded_path_count_after\": 0,\n          \"invalid_path_count_before\": 0,\n          \"invalid_path_count_after\": 0\n        },\n        \"build_duration_seconds\": 31.72\n      },\n      \"commit\": \"cd483f2f927c09be71dd5885618d7b2443a81b7a\",\n      \"source_fingerprint\": \"sha256-v2:2fb40ad03ee0e0d6258e6d132cbf0c678f7d98d09d4e0dc2b172317bcaaec914\",\n      \"source_selection_digest\": \"sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4\"\n    }\n  },\n  \"capabilities\": {\n    \"sparse_search\": true,\n    \"dense_search\": false,\n    \"hybrid_search\": false,\n    \"symbol_navigation\": true\n  },\n  \"compiled_at\": \"2026-10-28T09:22:09.667560+00:00\",\n  \"compiled_at_epoch\": 1793179329.66756,\n  \"runtime\": {\n    \"loaded_views\": [\n      \"bm25\",\n      \"regex_index\",\n      \"symbol_graph\"\n    ],\n    \"view_errors\": {},\n    \"tool_surface\": \"full\",\n    \"explore_session\": {\n      \"calls\": 0,\n      \"ranges\": 0,\n      \"max_ranges\": 160,\n      \"evictions\": 0\n    },\n    \"source_read\": {\n      \"verified\": true,\n      \"error\": null,\n      \"verification_scope\": \"content-bytes\",\n      \"commit_verified\": false,\n      \"checkout_state\": \"not-attested\"\n    },\n    \"lsp_provider\": {\n      \"provider\": \"codenib_static_index\",\n      \"backend\": \"persisted-symbol-graph-v1\",\n      \"status\": \"ok\",\n      \"index_snapshot\": \"symbol_graph:/tmp/codenib-python-identity-20261027/ipython-source:6629:22372\",\n      \"fallback_reason\": \"repository_source_policy_requires_persisted_graph\",\n      \"capabilities\": {\n        \"definition\": true,\n        \"references\": true,\n        \"route\": true\n      }\n    }\n  }\n}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "version": "1.2",
+          "repo": {
+            "path": "/tmp/codenib-python-identity-20261027/ipython-source",
+            "commit": "cd483f2f927c09be71dd5885618d7b2443a81b7a",
+            "last_indexed_commit": "cd483f2f927c09be71dd5885618d7b2443a81b7a",
+            "source_fingerprint": "sha256-v2:2fb40ad03ee0e0d6258e6d132cbf0c678f7d98d09d4e0dc2b172317bcaaec914",
+            "last_indexed_source_fingerprint": "sha256-v2:2fb40ad03ee0e0d6258e6d132cbf0c678f7d98d09d4e0dc2b172317bcaaec914",
+            "languages": [
+              "python"
+            ],
+            "file_count": 475,
+            "source_selection": {
+              "schema": "codenib.repository-source-selection.v1",
+              "repository_filter_policy": 4,
+              "exclude_subtrees": []
+            },
+            "last_indexed_source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4"
+          },
+          "indexes": {
+            "bm25": {
+              "index_type": "bm25",
+              "path": "/tmp/codenib-python-identity-20261027/ipython-workflow6/.codenib/repositories/ipython-source-b119e3d510a9/indexes/bm25",
+              "built_at": "2026-10-28T09:21:37.877962+00:00",
+              "built_at_epoch": 1793179297.877962,
+              "status": "fresh",
+              "config": {
+                "builder_schema": 9,
+                "languages": [
+                  "python"
+                ],
+                "max_k": 128,
+                "max_lines_per_chunk": 300,
+                "chunking_failure_policy": "fail",
+                "include_header_epilogue": true,
+                "repository_filter_policy": 4,
+                "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+                "artifact_file_fingerprints": {
+                  "documents.json": {
+                    "size": 2589978,
+                    "sha256": "27a7af3473981a57a121dfc38dbabf5324244636d5a6de2dbcf67107c4d0ac34"
+                  },
+                  "bm25_metadata.json": {
+                    "size": 143,
+                    "sha256": "3b13809dec3874a6058332fb1e9d636e48b4a4af24aae8f61563813885fedd8f"
+                  }
+                },
+                "chunk_count": 2279,
+                "source_file_count": 194,
+                "file_count": 2279
+              },
+              "metadata": {
+                "builder_schema": 9,
+                "languages": [
+                  "python"
+                ],
+                "max_k": 128,
+                "max_lines_per_chunk": 300,
+                "chunking_failure_policy": "fail",
+                "include_header_epilogue": true,
+                "repository_filter_policy": 4,
+                "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+                "artifact_file_fingerprints": {
+                  "documents.json": {
+                    "size": 2589978,
+                    "sha256": "27a7af3473981a57a121dfc38dbabf5324244636d5a6de2dbcf67107c4d0ac34"
+                  },
+                  "bm25_metadata.json": {
+                    "size": 143,
+                    "sha256": "3b13809dec3874a6058332fb1e9d636e48b4a4af24aae8f61563813885fedd8f"
+                  }
+                },
+                "chunk_count": 2279,
+                "source_file_count": 194,
+                "file_count": 2279,
+                "build_duration_seconds": 0.48
+              },
+              "commit": "cd483f2f927c09be71dd5885618d7b2443a81b7a",
+              "source_fingerprint": "sha256-v2:2fb40ad03ee0e0d6258e6d132cbf0c678f7d98d09d4e0dc2b172317bcaaec914",
+              "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4"
+            },
+            "symbol_graph": {
+              "index_type": "symbol_graph",
+              "path": "/tmp/codenib-python-identity-20261027/ipython-workflow6/.codenib/repositories/ipython-source-b119e3d510a9/indexes/symbol_graph",
+              "built_at": "2026-10-28T09:22:09.599791+00:00",
+              "built_at_epoch": 1793179329.599791,
+              "status": "fresh",
+              "config": {
+                "builder_schema": 8,
+                "languages": [
+                  "python"
+                ],
+                "graph_route": "active",
+                "exclude_patterns": [
+                  "**/.codenib_cache/**",
+                  "**/.env/**",
+                  "**/.git/**",
+                  "**/.hg/**",
+                  "**/.mypy_cache/**",
+                  "**/.next/**",
+                  "**/.pytest_cache/**",
+                  "**/.ruff_cache/**",
+                  "**/.svn/**",
+                  "**/.tox/**",
+                  "**/.venv/**",
+                  "**/__pycache__/**",
+                  "**/build/**",
+                  "**/dist/**",
+                  "**/env/**",
+                  "**/htmlcov/**",
+                  "**/node_modules/**",
+                  "**/site/**",
+                  "**/target/**",
+                  "**/third_party/**",
+                  "**/vendor/**",
+                  "**/venv/**",
+                  ".codenib_cache/**",
+                  ".env/**",
+                  ".git/**",
+                  ".hg/**",
+                  ".mypy_cache/**",
+                  ".next/**",
+                  ".pytest_cache/**",
+                  ".ruff_cache/**",
+                  ".svn/**",
+                  ".tox/**",
+                  ".venv/**",
+                  "__pycache__/**",
+                  "build/**",
+                  "dist/**",
+                  "env/**",
+                  "htmlcov/**",
+                  "node_modules/**",
+                  "site/**",
+                  "target/**",
+                  "third_party/**",
+                  "vendor/**",
+                  "venv/**"
+                ],
+                "allow_partial_languages": false,
+                "allow_partial_index": false,
+                "source_coverage_fallback": false,
+                "allow_project_preparation": false,
+                "target_dir": null,
+                "repository_filter_policy": 4,
+                "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+                "node_count": 6629,
+                "edge_count": 22372,
+                "language": "python",
+                "available_languages": [
+                  "python"
+                ],
+                "compiler_available_languages": [
+                  "python"
+                ],
+                "index_generation_reports": {
+                  "python": {
+                    "backend": "scip-python",
+                    "status": "complete",
+                    "complete": true,
+                    "partial": false,
+                    "document_count": 294,
+                    "identity_recovery": {
+                      "status": "complete",
+                      "schema": 1,
+                      "source_file_count": 294,
+                      "changed_symbol_families": 310,
+                      "physical_declarations": 11928,
+                      "restored_definition_roles": 49,
+                      "positional_definition_queries": 149,
+                      "local_binding_families": 7,
+                      "local_binding_semantics": "all_source_declarations_for_compiler_binding",
+                      "shared_lexical_binding_families": 266,
+                      "utf8_replacement_sources": [
+                        "tests/nonascii.py",
+                        "tests/nonascii2.py"
+                      ],
+                      "source_only_definitions": [
+                        {
+                          "file": "tests/test_completer.py",
+                          "name": "_",
+                          "line": 435,
+                          "character": 12,
+                          "compiler_owner_from_parameter": true
+                        },
+                        {
+                          "file": "tests/test_completer.py",
+                          "name": "_",
+                          "line": 607,
+                          "character": 12,
+                          "compiler_owner_from_parameter": true
+                        },
+                        {
+                          "file": "tests/test_completer.py",
+                          "name": "_",
+                          "line": 1872,
+                          "character": 12,
+                          "compiler_owner_from_parameter": false
+                        },
+                        {
+                          "file": "tests/test_completer.py",
+                          "name": "_",
+                          "line": 1923,
+                          "character": 16,
+                          "compiler_owner_from_parameter": true
+                        },
+                        {
+                          "file": "tests/test_completer.py",
+                          "name": "_",
+                          "line": 1968,
+                          "character": 16,
+                          "compiler_owner_from_parameter": true
+                        },
+                        {
+                          "file": "tests/test_completer.py",
+                          "name": "_",
+                          "line": 2001,
+                          "character": 12,
+                          "compiler_owner_from_parameter": false
+                        },
+                        {
+                          "file": "tests/test_completer.py",
+                          "name": "_",
+                          "line": 2024,
+                          "character": 12,
+                          "compiler_owner_from_parameter": true
+                        },
+                        {
+                          "file": "tests/test_completer.py",
+                          "name": "_",
+                          "line": 2052,
+                          "character": 12,
+                          "compiler_owner_from_parameter": true
+                        }
+                      ],
+                      "unmapped_attribute_definitions": [],
+                      "definition_provider": {
+                        "command": [
+                          "/tmp/codenib-codegraph-identity-next/toolchain/basedpyright-langserver",
+                          "--stdio"
+                        ],
+                        "server_info": {
+                          "name": "basedpyright",
+                          "version": "1.39.8"
+                        },
+                        "position_encoding": "utf-16"
+                      },
+                      "position_encoding": "UTF8",
+                      "source_sha256": {
+                        "IPython/core/application.py": "3a15b961ef9aa6d77af324be6d28afd9b1f82a7b6fcaaecc4dfda34eed22db1c",
+                        "IPython/core/async_helpers.py": "e31fd94ab3c89978b4a17cf022668b73779796474b8bee115e1d87717f180d08",
+                        "IPython/core/completer.py": "44eefaae6d959261975aa166b992e1a922f1a6df6696fbd35a635d254127540c",
+                        "IPython/core/debugger.py": "463f573ec2698b3860a11b39a89a5e783f66f60ce6a2dea91214f7abdfda1b7e",
+                        "IPython/core/display.py": "c10815158fd4d4ef9afa32522dbd349c9f66db0f7e36c0611011a741471651dd",
+                        "IPython/core/events.py": "bcbd1559eb75c22c9ead74faf588aaf4487c288a4eb692925ca595c98764838b",
+                        "IPython/core/guarded_eval.py": "45d2970e429189b3e0eea6d677507fa54f77e4260b4d4519a3425d689ed5c645",
+                        "IPython/core/history.py": "2b3f302e24f19994ed78badf981f4088b75802ab5ca2d12d613312c586f62816",
+                        "IPython/core/interactiveshell.py": "97dc7a45cdff64683f7479e12f1a99311cffcaab738d0a79927fae03e0f5e4cb",
+                        "IPython/core/magic.py": "8ade7dbb48a64646d8e7baedcbc30cc35416fff2273cf9cb3e171090a5228573",
+                        "IPython/core/oinspect.py": "fc13c54c9f1167c2cdc11c74ac991e2073a72df066e28b16e6b12d1af2454a8c",
+                        "IPython/core/page.py": "3fc0e6a3432352aef50c49c83ccfe4692199a0a4da3e4ae4e2c52e33823a1c30",
+                        "IPython/core/pylabtools.py": "afbd8d408859016f512f5c3d59601600c6d8a180bc29f68634a07d2416cc83be",
+                        "IPython/core/tips.py": "a0b589b52fe79dddacd5f42e9d75efbc7c48b666ed6ab81958f0a4af99951a3f",
+                        "IPython/core/magics/auto.py": "c84a2e223b10e8b99f4847cdbe465b366343165d7d28b46768972261d47b6b50",
+                        "IPython/core/magics/basic.py": "4a2177eb6f9e4ab49c8673e96dfcde33e970dde8e1afde888c217fd27d96d0ae",
+                        "IPython/core/magics/code.py": "87f761a3d9e23efb5ffc8a683997f91800fa0986d3d04406b1f2dfbadc97fbb2",
+                        "IPython/core/magics/execution.py": "e31cd733d41ad73341932ca4e2495d9636cde358988ee897341d6553dcf1ba7e",
+                        "IPython/core/magics/history.py": "cf649e4889f1eb4f9b241d632787bccdd542557d19d331a867f390cda0ae1c43",
+                        "IPython/core/magics/namespace.py": "068e2c72429a5e971514b20818bddf6568834470de314d4b1ab1cde1976f24db",
+                        "IPython/core/magics/script.py": "58dbed632e2c1e63bb8497adfebb7d72ede2266795a177d0d7c48ccadb58acf1",
+                        "IPython/extensions/autoreload.py": "5e7371484f1de1cc6f046cafcf6609c32491b083997ba597453f5350f58177cf",
+                        "IPython/extensions/deduperreload/deduperreload.py": "cc711227b9df38aaddbef0c139cdc118b03209e7f3486e7f8c6fcdc42694b5e4",
+                        "IPython/extensions/deduperreload/deduperreload_patching.py": "e6efc4eaf9c72b819392c7787009b269d1a45e8be8fc387db37f06a61f32af4c",
+                        "IPython/external/__init__.py": "f844076ee52705ed514b5fc2c1a2c6ccd49942c089b2bc475bfaf5e6c9af556d",
+                        "IPython/lib/display.py": "6015dffd00cdeb63ecdb96d132a8d8f3bdcf7338bf02ff8418d5f9d57d52eb7c",
+                        "IPython/lib/pretty.py": "a0ec7f9aa838e147e3e22c78fecd02b95e3eb410eab3a9065f468808a0c7f8a2",
+                        "IPython/terminal/debugger.py": "d0b7419822951ca346a6604a75be1b0602a5cae4d5c9fcf60e0d98f301381533",
+                        "IPython/terminal/embed.py": "b91d59ef0a79cf94a962da3bb1af40eb7b0f0ed5f98745c3d38f18de00c4fd5d",
+                        "IPython/terminal/interactiveshell.py": "e6966a7e3a9e45eb1a37b348cb4a7383f09885a1913a2408302ca025874445fd",
+                        "IPython/terminal/pt_inputhooks/pyglet.py": "c030d00e08a5bcaf6ecf0181dd7c80a9c7fc2df2abf8b73f34c033ba764cbbf6",
+                        "IPython/terminal/shortcuts/__init__.py": "db1d008f60a3e51a833f569401d4d74a5e686cef5ea3f374da269b7189d6b464",
+                        "IPython/terminal/shortcuts/auto_suggest.py": "8c99ba3d54dd7731a89bc03154f977b0d21e754835a54e2dbf0130bd1aa6d5c2",
+                        "IPython/terminal/shortcuts/filters.py": "320453416abc61f2325af3004ae43d0462aae51430884639b6b4b232732d240a",
+                        "IPython/testing/globalipapp.py": "17e443eb12c52764758cd3f2700f73935d7a19f1fca93b20b1814409609e0d16",
+                        "IPython/testing/plugin/pytest_ipdoctest.py": "9624e00144ae994b042b5fcb7e11fbb4aff05c3467ff5d32d50a3c42e7547c7e",
+                        "IPython/utils/PyColorize.py": "754ed1ad865202f737ba434ba63f94fc32b8e6cd1f64a3ab59ee486e0ebfa6f2",
+                        "IPython/utils/_process_win32.py": "3dc7fa662a8c6ea0d3efd79dcde804fc05f70f7ebb52d13c6db853e359e8e780",
+                        "IPython/utils/_process_win32_controller.py": "862d9e47b98b6e5dd34cc0956e0a6cf391a9a7176d61b84e60afe5d775af61a3",
+                        "IPython/utils/encoding.py": "2ffdc68c31bcdde336e3b3e0023613d0a363b13126f964535ca16471b838a4ff",
+                        "IPython/utils/path.py": "ef1b557ec5428ef93ea7e8e96ea48b8ce71a72c3ab5cd490c7096f7878df3bf5",
+                        "IPython/utils/terminal.py": "60185cfa66056ba315ba31238c0d0a29468de6e467f6da13d6239838e18ecdfb",
+                        "IPython/utils/text.py": "4ad45833998b2f18e5f44b7c6e3e3a3bc0b3d84c1457bbd7567e244f89070e23",
+                        "IPython/utils/timing.py": "9cd0fe6540641d67d87afbdb446f987ce48815ccf3fdea7332a58ae4f1fa9ea0",
+                        "examples/Embedding/embed_class_short.py": "2d9c6f9971430a2554948adbe4f62a30c561217ea2f88aa38056525edb119013",
+                        "tests/fake_llm.py": "02ec954c46a71b0b9c07d28714f793473a4abc2fb10b99a8c6247cb383da8937",
+                        "tests/test_async_helpers.py": "6e0ee824746aa18dad9c5150e8cc1b3521f11e5d14218caa3dcaa279264ca242",
+                        "tests/test_completer.py": "9a4d69c92c46a475aa4678979c5aed3580f4a8a9ece348718264a136b134442a",
+                        "tests/test_display_2.py": "3bad0a5b35b36d9b93793daa42ee4de35f50b5ea69eec68feca1986549631cf4",
+                        "tests/test_events.py": "9def727d0d42f1b158740278a370a14d65de7657987cd6a39c3763aa8b7c7988",
+                        "tests/test_exceptiongroup_tb.py": "7a89129af16dd9d575e43792617bd96ef45013b49ba19ff545154ba3d8734b14",
+                        "tests/test_formatters.py": "bafabed45bd51d6f230e059342b2da6d117d3c1b0f078a5cfc2aa2b3a6bad8ea",
+                        "tests/test_guarded_eval.py": "297af992b9f7e353332f749e16a9ac3cc0afb55f2f5075ed009b540784bb74ed",
+                        "tests/test_history.py": "a2d84d5a62fedff184a247cea08f80ff8e251632f8154360eb87714c3eedeeb8",
+                        "tests/test_inputtransformer2.py": "4b364bd305e96b35b974cc032de9f9de9f9f97d53789a87bc85e59c9e1dd438d",
+                        "tests/test_interactiveshell.py": "5ce83a02958a07d5c3a167f3cb58fd2bc7be6c09b463a0742f03925eaae9ceae",
+                        "tests/test_interactivshell.py": "31e84eed31b897c569740c3df681670bbee2ed2f841dc2e70573ccf44ef18175",
+                        "tests/test_oinspect.py": "f59f317ddbe673e500581164ac92ad30247d190ff4f1efde3c2309a4fc4ad8c4",
+                        "tests/test_path.py": "1e1826a435fb640a425de7b051e5172289dd1ac438ea5dc76b0bca656a10c985",
+                        "tests/test_process.py": "d193e002d172447a37c74472692cffdace4f616a66d3fce0b0e5a4dd462c3a3c",
+                        "tests/test_run.py": "fb62003e89e5a1e9e49e3fb732d083c1d637f79adb37cf1e567c095cdd4b1613",
+                        "tests/test_tools.py": "8da4235161dd1fc5038867a9b30d2ac4c5e2bec1a23f4b8af0e6c2e119bde4e0",
+                        "tests/test_wildcard.py": "006079a64450eb39f9fb64fb6a48f4155871eea43b29608d9da8ef87babd68c1",
+                        "tests/test_zzz_autoreload.py": "6852cdeca3b8241e4b78f6d69d03de6dda3f3b70428a821f2e39cc655e9bf6ba"
+                      }
+                    }
+                  }
+                },
+                "scip_decoded_artifacts": {
+                  "python": {
+                    "relative_path": "index.decoded",
+                    "size": 22192069,
+                    "sha256": "bf2a0dc57f4f0bce6bb9de07a762acf542e4f90d95572e7ff3d6ec919783bf55"
+                  }
+                },
+                "graph_artifact": {
+                  "relative_path": "graph.pkl",
+                  "size": 1662473,
+                  "sha256": "bd635126968c74dda5c699ad77151adf5d2f36068ff664ddd9157b853ffb32fb"
+                },
+                "lsp_occurrence_artifact": {
+                  "relative_path": "lsp_index.pkl",
+                  "size": 13423343,
+                  "sha256": "f0010972972544b9ed7e2c5edc76d673b89f229ecc92bb831c9a23ddd2f8f66d"
+                },
+                "query_surface_sha256": "2423f1f70d3887f34b4993045b0c25fe2178c34e85358f6e052d80c20b85959a",
+                "update_mode": "full_rebuild",
+                "partial_index": false,
+                "failed_languages": {},
+                "partial": false,
+                "source_selection_report": {
+                  "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+                  "nodes_before": 6629,
+                  "nodes_after": 6629,
+                  "edges_before": 22372,
+                  "edges_after": 22372,
+                  "removed_excluded_path_count": 0,
+                  "excluded_path_count_after": 0,
+                  "invalid_path_count_before": 0,
+                  "invalid_path_count_after": 0
+                }
+              },
+              "metadata": {
+                "builder_schema": 8,
+                "languages": [
+                  "python"
+                ],
+                "graph_route": "active",
+                "exclude_patterns": [
+                  "**/.codenib_cache/**",
+                  "**/.env/**",
+                  "**/.git/**",
+                  "**/.hg/**",
+                  "**/.mypy_cache/**",
+                  "**/.next/**",
+                  "**/.pytest_cache/**",
+                  "**/.ruff_cache/**",
+                  "**/.svn/**",
+                  "**/.tox/**",
+                  "**/.venv/**",
+                  "**/__pycache__/**",
+                  "**/build/**",
+                  "**/dist/**",
+                  "**/env/**",
+                  "**/htmlcov/**",
+                  "**/node_modules/**",
+                  "**/site/**",
+                  "**/target/**",
+                  "**/third_party/**",
+                  "**/vendor/**",
+                  "**/venv/**",
+                  ".codenib_cache/**",
+                  ".env/**",
+                  ".git/**",
+                  ".hg/**",
+                  ".mypy_cache/**",
+                  ".next/**",
+                  ".pytest_cache/**",
+                  ".ruff_cache/**",
+                  ".svn/**",
+                  ".tox/**",
+                  ".venv/**",
+                  "__pycache__/**",
+                  "build/**",
+                  "dist/**",
+                  "env/**",
+                  "htmlcov/**",
+                  "node_modules/**",
+                  "site/**",
+                  "target/**",
+                  "third_party/**",
+                  "vendor/**",
+                  "venv/**"
+                ],
+                "allow_partial_languages": false,
+                "allow_partial_index": false,
+                "source_coverage_fallback": false,
+                "allow_project_preparation": false,
+                "target_dir": null,
+                "repository_filter_policy": 4,
+                "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+                "node_count": 6629,
+                "edge_count": 22372,
+                "language": "python",
+                "available_languages": [
+                  "python"
+                ],
+                "compiler_available_languages": [
+                  "python"
+                ],
+                "index_generation_reports": {
+                  "python": {
+                    "backend": "scip-python",
+                    "status": "complete",
+                    "complete": true,
+                    "partial": false,
+                    "document_count": 294,
+                    "identity_recovery": {
+                      "status": "complete",
+                      "schema": 1,
+                      "source_file_count": 294,
+                      "changed_symbol_families": 310,
+                      "physical_declarations": 11928,
+                      "restored_definition_roles": 49,
+                      "positional_definition_queries": 149,
+                      "local_binding_families": 7,
+                      "local_binding_semantics": "all_source_declarations_for_compiler_binding",
+                      "shared_lexical_binding_families": 266,
+                      "utf8_replacement_sources": [
+                        "tests/nonascii.py",
+                        "tests/nonascii2.py"
+                      ],
+                      "source_only_definitions": [
+                        {
+                          "file": "tests/test_completer.py",
+                          "name": "_",
+                          "line": 435,
+                          "character": 12,
+                          "compiler_owner_from_parameter": true
+                        },
+                        {
+                          "file": "tests/test_completer.py",
+                          "name": "_",
+                          "line": 607,
+                          "character": 12,
+                          "compiler_owner_from_parameter": true
+                        },
+                        {
+                          "file": "tests/test_completer.py",
+                          "name": "_",
+                          "line": 1872,
+                          "character": 12,
+                          "compiler_owner_from_parameter": false
+                        },
+                        {
+                          "file": "tests/test_completer.py",
+                          "name": "_",
+                          "line": 1923,
+                          "character": 16,
+                          "compiler_owner_from_parameter": true
+                        },
+                        {
+                          "file": "tests/test_completer.py",
+                          "name": "_",
+                          "line": 1968,
+                          "character": 16,
+                          "compiler_owner_from_parameter": true
+                        },
+                        {
+                          "file": "tests/test_completer.py",
+                          "name": "_",
+                          "line": 2001,
+                          "character": 12,
+                          "compiler_owner_from_parameter": false
+                        },
+                        {
+                          "file": "tests/test_completer.py",
+                          "name": "_",
+                          "line": 2024,
+                          "character": 12,
+                          "compiler_owner_from_parameter": true
+                        },
+                        {
+                          "file": "tests/test_completer.py",
+                          "name": "_",
+                          "line": 2052,
+                          "character": 12,
+                          "compiler_owner_from_parameter": true
+                        }
+                      ],
+                      "unmapped_attribute_definitions": [],
+                      "definition_provider": {
+                        "command": [
+                          "/tmp/codenib-codegraph-identity-next/toolchain/basedpyright-langserver",
+                          "--stdio"
+                        ],
+                        "server_info": {
+                          "name": "basedpyright",
+                          "version": "1.39.8"
+                        },
+                        "position_encoding": "utf-16"
+                      },
+                      "position_encoding": "UTF8",
+                      "source_sha256": {
+                        "IPython/core/application.py": "3a15b961ef9aa6d77af324be6d28afd9b1f82a7b6fcaaecc4dfda34eed22db1c",
+                        "IPython/core/async_helpers.py": "e31fd94ab3c89978b4a17cf022668b73779796474b8bee115e1d87717f180d08",
+                        "IPython/core/completer.py": "44eefaae6d959261975aa166b992e1a922f1a6df6696fbd35a635d254127540c",
+                        "IPython/core/debugger.py": "463f573ec2698b3860a11b39a89a5e783f66f60ce6a2dea91214f7abdfda1b7e",
+                        "IPython/core/display.py": "c10815158fd4d4ef9afa32522dbd349c9f66db0f7e36c0611011a741471651dd",
+                        "IPython/core/events.py": "bcbd1559eb75c22c9ead74faf588aaf4487c288a4eb692925ca595c98764838b",
+                        "IPython/core/guarded_eval.py": "45d2970e429189b3e0eea6d677507fa54f77e4260b4d4519a3425d689ed5c645",
+                        "IPython/core/history.py": "2b3f302e24f19994ed78badf981f4088b75802ab5ca2d12d613312c586f62816",
+                        "IPython/core/interactiveshell.py": "97dc7a45cdff64683f7479e12f1a99311cffcaab738d0a79927fae03e0f5e4cb",
+                        "IPython/core/magic.py": "8ade7dbb48a64646d8e7baedcbc30cc35416fff2273cf9cb3e171090a5228573",
+                        "IPython/core/oinspect.py": "fc13c54c9f1167c2cdc11c74ac991e2073a72df066e28b16e6b12d1af2454a8c",
+                        "IPython/core/page.py": "3fc0e6a3432352aef50c49c83ccfe4692199a0a4da3e4ae4e2c52e33823a1c30",
+                        "IPython/core/pylabtools.py": "afbd8d408859016f512f5c3d59601600c6d8a180bc29f68634a07d2416cc83be",
+                        "IPython/core/tips.py": "a0b589b52fe79dddacd5f42e9d75efbc7c48b666ed6ab81958f0a4af99951a3f",
+                        "IPython/core/magics/auto.py": "c84a2e223b10e8b99f4847cdbe465b366343165d7d28b46768972261d47b6b50",
+                        "IPython/core/magics/basic.py": "4a2177eb6f9e4ab49c8673e96dfcde33e970dde8e1afde888c217fd27d96d0ae",
+                        "IPython/core/magics/code.py": "87f761a3d9e23efb5ffc8a683997f91800fa0986d3d04406b1f2dfbadc97fbb2",
+                        "IPython/core/magics/execution.py": "e31cd733d41ad73341932ca4e2495d9636cde358988ee897341d6553dcf1ba7e",
+                        "IPython/core/magics/history.py": "cf649e4889f1eb4f9b241d632787bccdd542557d19d331a867f390cda0ae1c43",
+                        "IPython/core/magics/namespace.py": "068e2c72429a5e971514b20818bddf6568834470de314d4b1ab1cde1976f24db",
+                        "IPython/core/magics/script.py": "58dbed632e2c1e63bb8497adfebb7d72ede2266795a177d0d7c48ccadb58acf1",
+                        "IPython/extensions/autoreload.py": "5e7371484f1de1cc6f046cafcf6609c32491b083997ba597453f5350f58177cf",
+                        "IPython/extensions/deduperreload/deduperreload.py": "cc711227b9df38aaddbef0c139cdc118b03209e7f3486e7f8c6fcdc42694b5e4",
+                        "IPython/extensions/deduperreload/deduperreload_patching.py": "e6efc4eaf9c72b819392c7787009b269d1a45e8be8fc387db37f06a61f32af4c",
+                        "IPython/external/__init__.py": "f844076ee52705ed514b5fc2c1a2c6ccd49942c089b2bc475bfaf5e6c9af556d",
+                        "IPython/lib/display.py": "6015dffd00cdeb63ecdb96d132a8d8f3bdcf7338bf02ff8418d5f9d57d52eb7c",
+                        "IPython/lib/pretty.py": "a0ec7f9aa838e147e3e22c78fecd02b95e3eb410eab3a9065f468808a0c7f8a2",
+                        "IPython/terminal/debugger.py": "d0b7419822951ca346a6604a75be1b0602a5cae4d5c9fcf60e0d98f301381533",
+                        "IPython/terminal/embed.py": "b91d59ef0a79cf94a962da3bb1af40eb7b0f0ed5f98745c3d38f18de00c4fd5d",
+                        "IPython/terminal/interactiveshell.py": "e6966a7e3a9e45eb1a37b348cb4a7383f09885a1913a2408302ca025874445fd",
+                        "IPython/terminal/pt_inputhooks/pyglet.py": "c030d00e08a5bcaf6ecf0181dd7c80a9c7fc2df2abf8b73f34c033ba764cbbf6",
+                        "IPython/terminal/shortcuts/__init__.py": "db1d008f60a3e51a833f569401d4d74a5e686cef5ea3f374da269b7189d6b464",
+                        "IPython/terminal/shortcuts/auto_suggest.py": "8c99ba3d54dd7731a89bc03154f977b0d21e754835a54e2dbf0130bd1aa6d5c2",
+                        "IPython/terminal/shortcuts/filters.py": "320453416abc61f2325af3004ae43d0462aae51430884639b6b4b232732d240a",
+                        "IPython/testing/globalipapp.py": "17e443eb12c52764758cd3f2700f73935d7a19f1fca93b20b1814409609e0d16",
+                        "IPython/testing/plugin/pytest_ipdoctest.py": "9624e00144ae994b042b5fcb7e11fbb4aff05c3467ff5d32d50a3c42e7547c7e",
+                        "IPython/utils/PyColorize.py": "754ed1ad865202f737ba434ba63f94fc32b8e6cd1f64a3ab59ee486e0ebfa6f2",
+                        "IPython/utils/_process_win32.py": "3dc7fa662a8c6ea0d3efd79dcde804fc05f70f7ebb52d13c6db853e359e8e780",
+                        "IPython/utils/_process_win32_controller.py": "862d9e47b98b6e5dd34cc0956e0a6cf391a9a7176d61b84e60afe5d775af61a3",
+                        "IPython/utils/encoding.py": "2ffdc68c31bcdde336e3b3e0023613d0a363b13126f964535ca16471b838a4ff",
+                        "IPython/utils/path.py": "ef1b557ec5428ef93ea7e8e96ea48b8ce71a72c3ab5cd490c7096f7878df3bf5",
+                        "IPython/utils/terminal.py": "60185cfa66056ba315ba31238c0d0a29468de6e467f6da13d6239838e18ecdfb",
+                        "IPython/utils/text.py": "4ad45833998b2f18e5f44b7c6e3e3a3bc0b3d84c1457bbd7567e244f89070e23",
+                        "IPython/utils/timing.py": "9cd0fe6540641d67d87afbdb446f987ce48815ccf3fdea7332a58ae4f1fa9ea0",
+                        "examples/Embedding/embed_class_short.py": "2d9c6f9971430a2554948adbe4f62a30c561217ea2f88aa38056525edb119013",
+                        "tests/fake_llm.py": "02ec954c46a71b0b9c07d28714f793473a4abc2fb10b99a8c6247cb383da8937",
+                        "tests/test_async_helpers.py": "6e0ee824746aa18dad9c5150e8cc1b3521f11e5d14218caa3dcaa279264ca242",
+                        "tests/test_completer.py": "9a4d69c92c46a475aa4678979c5aed3580f4a8a9ece348718264a136b134442a",
+                        "tests/test_display_2.py": "3bad0a5b35b36d9b93793daa42ee4de35f50b5ea69eec68feca1986549631cf4",
+                        "tests/test_events.py": "9def727d0d42f1b158740278a370a14d65de7657987cd6a39c3763aa8b7c7988",
+                        "tests/test_exceptiongroup_tb.py": "7a89129af16dd9d575e43792617bd96ef45013b49ba19ff545154ba3d8734b14",
+                        "tests/test_formatters.py": "bafabed45bd51d6f230e059342b2da6d117d3c1b0f078a5cfc2aa2b3a6bad8ea",
+                        "tests/test_guarded_eval.py": "297af992b9f7e353332f749e16a9ac3cc0afb55f2f5075ed009b540784bb74ed",
+                        "tests/test_history.py": "a2d84d5a62fedff184a247cea08f80ff8e251632f8154360eb87714c3eedeeb8",
+                        "tests/test_inputtransformer2.py": "4b364bd305e96b35b974cc032de9f9de9f9f97d53789a87bc85e59c9e1dd438d",
+                        "tests/test_interactiveshell.py": "5ce83a02958a07d5c3a167f3cb58fd2bc7be6c09b463a0742f03925eaae9ceae",
+                        "tests/test_interactivshell.py": "31e84eed31b897c569740c3df681670bbee2ed2f841dc2e70573ccf44ef18175",
+                        "tests/test_oinspect.py": "f59f317ddbe673e500581164ac92ad30247d190ff4f1efde3c2309a4fc4ad8c4",
+                        "tests/test_path.py": "1e1826a435fb640a425de7b051e5172289dd1ac438ea5dc76b0bca656a10c985",
+                        "tests/test_process.py": "d193e002d172447a37c74472692cffdace4f616a66d3fce0b0e5a4dd462c3a3c",
+                        "tests/test_run.py": "fb62003e89e5a1e9e49e3fb732d083c1d637f79adb37cf1e567c095cdd4b1613",
+                        "tests/test_tools.py": "8da4235161dd1fc5038867a9b30d2ac4c5e2bec1a23f4b8af0e6c2e119bde4e0",
+                        "tests/test_wildcard.py": "006079a64450eb39f9fb64fb6a48f4155871eea43b29608d9da8ef87babd68c1",
+                        "tests/test_zzz_autoreload.py": "6852cdeca3b8241e4b78f6d69d03de6dda3f3b70428a821f2e39cc655e9bf6ba"
+                      }
+                    }
+                  }
+                },
+                "scip_decoded_artifacts": {
+                  "python": {
+                    "relative_path": "index.decoded",
+                    "size": 22192069,
+                    "sha256": "bf2a0dc57f4f0bce6bb9de07a762acf542e4f90d95572e7ff3d6ec919783bf55"
+                  }
+                },
+                "graph_artifact": {
+                  "relative_path": "graph.pkl",
+                  "size": 1662473,
+                  "sha256": "bd635126968c74dda5c699ad77151adf5d2f36068ff664ddd9157b853ffb32fb"
+                },
+                "lsp_occurrence_artifact": {
+                  "relative_path": "lsp_index.pkl",
+                  "size": 13423343,
+                  "sha256": "f0010972972544b9ed7e2c5edc76d673b89f229ecc92bb831c9a23ddd2f8f66d"
+                },
+                "query_surface_sha256": "2423f1f70d3887f34b4993045b0c25fe2178c34e85358f6e052d80c20b85959a",
+                "update_mode": "full_rebuild",
+                "partial_index": false,
+                "failed_languages": {},
+                "partial": false,
+                "source_selection_report": {
+                  "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+                  "nodes_before": 6629,
+                  "nodes_after": 6629,
+                  "edges_before": 22372,
+                  "edges_after": 22372,
+                  "removed_excluded_path_count": 0,
+                  "excluded_path_count_after": 0,
+                  "invalid_path_count_before": 0,
+                  "invalid_path_count_after": 0
+                },
+                "build_duration_seconds": 31.72
+              },
+              "commit": "cd483f2f927c09be71dd5885618d7b2443a81b7a",
+              "source_fingerprint": "sha256-v2:2fb40ad03ee0e0d6258e6d132cbf0c678f7d98d09d4e0dc2b172317bcaaec914",
+              "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4"
+            }
+          },
+          "capabilities": {
+            "sparse_search": true,
+            "dense_search": false,
+            "hybrid_search": false,
+            "symbol_navigation": true
+          },
+          "compiled_at": "2026-10-28T09:22:09.667560+00:00",
+          "compiled_at_epoch": 1793179329.66756,
+          "runtime": {
+            "loaded_views": [
+              "bm25",
+              "regex_index",
+              "symbol_graph"
+            ],
+            "view_errors": {},
+            "tool_surface": "full",
+            "explore_session": {
+              "calls": 0,
+              "ranges": 0,
+              "max_ranges": 160,
+              "evictions": 0
+            },
+            "source_read": {
+              "verified": true,
+              "error": null,
+              "verification_scope": "content-bytes",
+              "commit_verified": false,
+              "checkout_state": "not-attested"
+            },
+            "lsp_provider": {
+              "provider": "codenib_static_index",
+              "backend": "persisted-symbol-graph-v1",
+              "status": "ok",
+              "index_snapshot": "symbol_graph:/tmp/codenib-python-identity-20261027/ipython-source:6629:22372",
+              "fallback_reason": "repository_source_policy_requires_persisted_graph",
+              "capabilities": {
+                "definition": true,
+                "references": true,
+                "route": true
+              }
+            }
+          }
+        },
+        "is_error": false,
+        "result_type": "complete"
+      },
+      "seconds": 0.014787539839744568
+    }
+  ],
+  "checks": [
+    {
+      "kind": "exact_definition",
+      "file": "IPython/core/magics/execution.py",
+      "line": 541,
+      "character": 8,
+      "expected_lines": [
+        541
+      ]
+    },
+    {
+      "kind": "exact_definition",
+      "file": "IPython/core/magics/execution.py",
+      "line": 861,
+      "character": 24,
+      "expected_lines": [
+        837,
+        845
+      ]
+    },
+    {
+      "kind": "exact_definition",
+      "file": "IPython/core/magics/execution.py",
+      "line": 858,
+      "character": 46,
+      "expected_lines": [
+        837,
+        845
+      ]
+    }
+  ],
+  "source_before": {
+    "file_count": 475,
+    "file_manifest_sha256": "c0303a19211a77e7b901e61f1602f4dc0504030d31085f7045fff384a43c1a14",
+    "commit": "cd483f2f927c09be71dd5885618d7b2443a81b7a",
+    "git_status": ""
+  },
+  "build_seconds": 32.360973900184035,
+  "failed_views": [],
+  "manifest": {
+    "version": "1.2",
+    "repo": {
+      "path": "/tmp/codenib-python-identity-20261027/ipython-source",
+      "commit": "cd483f2f927c09be71dd5885618d7b2443a81b7a",
+      "last_indexed_commit": "cd483f2f927c09be71dd5885618d7b2443a81b7a",
+      "source_fingerprint": "sha256-v2:2fb40ad03ee0e0d6258e6d132cbf0c678f7d98d09d4e0dc2b172317bcaaec914",
+      "last_indexed_source_fingerprint": "sha256-v2:2fb40ad03ee0e0d6258e6d132cbf0c678f7d98d09d4e0dc2b172317bcaaec914",
+      "languages": [
+        "python"
+      ],
+      "file_count": 475,
+      "source_selection": {
+        "schema": "codenib.repository-source-selection.v1",
+        "repository_filter_policy": 4,
+        "exclude_subtrees": []
+      },
+      "last_indexed_source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4"
+    },
+    "indexes": {
+      "bm25": {
+        "index_type": "bm25",
+        "path": "/tmp/codenib-python-identity-20261027/ipython-workflow6/.codenib/repositories/ipython-source-b119e3d510a9/indexes/bm25",
+        "built_at": "2026-10-28T09:21:37.877962+00:00",
+        "built_at_epoch": 1793179297.877962,
+        "status": "fresh",
+        "config": {
+          "builder_schema": 9,
+          "languages": [
+            "python"
+          ],
+          "max_k": 128,
+          "max_lines_per_chunk": 300,
+          "chunking_failure_policy": "fail",
+          "include_header_epilogue": true,
+          "repository_filter_policy": 4,
+          "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+          "artifact_file_fingerprints": {
+            "documents.json": {
+              "size": 2589978,
+              "sha256": "27a7af3473981a57a121dfc38dbabf5324244636d5a6de2dbcf67107c4d0ac34"
+            },
+            "bm25_metadata.json": {
+              "size": 143,
+              "sha256": "3b13809dec3874a6058332fb1e9d636e48b4a4af24aae8f61563813885fedd8f"
+            }
+          },
+          "chunk_count": 2279,
+          "source_file_count": 194,
+          "file_count": 2279
+        },
+        "metadata": {
+          "builder_schema": 9,
+          "languages": [
+            "python"
+          ],
+          "max_k": 128,
+          "max_lines_per_chunk": 300,
+          "chunking_failure_policy": "fail",
+          "include_header_epilogue": true,
+          "repository_filter_policy": 4,
+          "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+          "artifact_file_fingerprints": {
+            "documents.json": {
+              "size": 2589978,
+              "sha256": "27a7af3473981a57a121dfc38dbabf5324244636d5a6de2dbcf67107c4d0ac34"
+            },
+            "bm25_metadata.json": {
+              "size": 143,
+              "sha256": "3b13809dec3874a6058332fb1e9d636e48b4a4af24aae8f61563813885fedd8f"
+            }
+          },
+          "chunk_count": 2279,
+          "source_file_count": 194,
+          "file_count": 2279,
+          "build_duration_seconds": 0.48
+        },
+        "commit": "cd483f2f927c09be71dd5885618d7b2443a81b7a",
+        "source_fingerprint": "sha256-v2:2fb40ad03ee0e0d6258e6d132cbf0c678f7d98d09d4e0dc2b172317bcaaec914",
+        "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4"
+      },
+      "symbol_graph": {
+        "index_type": "symbol_graph",
+        "path": "/tmp/codenib-python-identity-20261027/ipython-workflow6/.codenib/repositories/ipython-source-b119e3d510a9/indexes/symbol_graph",
+        "built_at": "2026-10-28T09:22:09.599791+00:00",
+        "built_at_epoch": 1793179329.599791,
+        "status": "fresh",
+        "config": {
+          "builder_schema": 8,
+          "languages": [
+            "python"
+          ],
+          "graph_route": "active",
+          "exclude_patterns": [
+            "**/.codenib_cache/**",
+            "**/.env/**",
+            "**/.git/**",
+            "**/.hg/**",
+            "**/.mypy_cache/**",
+            "**/.next/**",
+            "**/.pytest_cache/**",
+            "**/.ruff_cache/**",
+            "**/.svn/**",
+            "**/.tox/**",
+            "**/.venv/**",
+            "**/__pycache__/**",
+            "**/build/**",
+            "**/dist/**",
+            "**/env/**",
+            "**/htmlcov/**",
+            "**/node_modules/**",
+            "**/site/**",
+            "**/target/**",
+            "**/third_party/**",
+            "**/vendor/**",
+            "**/venv/**",
+            ".codenib_cache/**",
+            ".env/**",
+            ".git/**",
+            ".hg/**",
+            ".mypy_cache/**",
+            ".next/**",
+            ".pytest_cache/**",
+            ".ruff_cache/**",
+            ".svn/**",
+            ".tox/**",
+            ".venv/**",
+            "__pycache__/**",
+            "build/**",
+            "dist/**",
+            "env/**",
+            "htmlcov/**",
+            "node_modules/**",
+            "site/**",
+            "target/**",
+            "third_party/**",
+            "vendor/**",
+            "venv/**"
+          ],
+          "allow_partial_languages": false,
+          "allow_partial_index": false,
+          "source_coverage_fallback": false,
+          "allow_project_preparation": false,
+          "target_dir": null,
+          "repository_filter_policy": 4,
+          "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+          "node_count": 6629,
+          "edge_count": 22372,
+          "language": "python",
+          "available_languages": [
+            "python"
+          ],
+          "compiler_available_languages": [
+            "python"
+          ],
+          "index_generation_reports": {
+            "python": {
+              "backend": "scip-python",
+              "status": "complete",
+              "complete": true,
+              "partial": false,
+              "document_count": 294,
+              "identity_recovery": {
+                "status": "complete",
+                "schema": 1,
+                "source_file_count": 294,
+                "changed_symbol_families": 310,
+                "physical_declarations": 11928,
+                "restored_definition_roles": 49,
+                "positional_definition_queries": 149,
+                "local_binding_families": 7,
+                "local_binding_semantics": "all_source_declarations_for_compiler_binding",
+                "shared_lexical_binding_families": 266,
+                "utf8_replacement_sources": [
+                  "tests/nonascii.py",
+                  "tests/nonascii2.py"
+                ],
+                "source_only_definitions": [
+                  {
+                    "file": "tests/test_completer.py",
+                    "name": "_",
+                    "line": 435,
+                    "character": 12,
+                    "compiler_owner_from_parameter": true
+                  },
+                  {
+                    "file": "tests/test_completer.py",
+                    "name": "_",
+                    "line": 607,
+                    "character": 12,
+                    "compiler_owner_from_parameter": true
+                  },
+                  {
+                    "file": "tests/test_completer.py",
+                    "name": "_",
+                    "line": 1872,
+                    "character": 12,
+                    "compiler_owner_from_parameter": false
+                  },
+                  {
+                    "file": "tests/test_completer.py",
+                    "name": "_",
+                    "line": 1923,
+                    "character": 16,
+                    "compiler_owner_from_parameter": true
+                  },
+                  {
+                    "file": "tests/test_completer.py",
+                    "name": "_",
+                    "line": 1968,
+                    "character": 16,
+                    "compiler_owner_from_parameter": true
+                  },
+                  {
+                    "file": "tests/test_completer.py",
+                    "name": "_",
+                    "line": 2001,
+                    "character": 12,
+                    "compiler_owner_from_parameter": false
+                  },
+                  {
+                    "file": "tests/test_completer.py",
+                    "name": "_",
+                    "line": 2024,
+                    "character": 12,
+                    "compiler_owner_from_parameter": true
+                  },
+                  {
+                    "file": "tests/test_completer.py",
+                    "name": "_",
+                    "line": 2052,
+                    "character": 12,
+                    "compiler_owner_from_parameter": true
+                  }
+                ],
+                "unmapped_attribute_definitions": [],
+                "definition_provider": {
+                  "command": [
+                    "/tmp/codenib-codegraph-identity-next/toolchain/basedpyright-langserver",
+                    "--stdio"
+                  ],
+                  "server_info": {
+                    "name": "basedpyright",
+                    "version": "1.39.8"
+                  },
+                  "position_encoding": "utf-16"
+                },
+                "position_encoding": "UTF8",
+                "source_sha256": {
+                  "IPython/core/application.py": "3a15b961ef9aa6d77af324be6d28afd9b1f82a7b6fcaaecc4dfda34eed22db1c",
+                  "IPython/core/async_helpers.py": "e31fd94ab3c89978b4a17cf022668b73779796474b8bee115e1d87717f180d08",
+                  "IPython/core/completer.py": "44eefaae6d959261975aa166b992e1a922f1a6df6696fbd35a635d254127540c",
+                  "IPython/core/debugger.py": "463f573ec2698b3860a11b39a89a5e783f66f60ce6a2dea91214f7abdfda1b7e",
+                  "IPython/core/display.py": "c10815158fd4d4ef9afa32522dbd349c9f66db0f7e36c0611011a741471651dd",
+                  "IPython/core/events.py": "bcbd1559eb75c22c9ead74faf588aaf4487c288a4eb692925ca595c98764838b",
+                  "IPython/core/guarded_eval.py": "45d2970e429189b3e0eea6d677507fa54f77e4260b4d4519a3425d689ed5c645",
+                  "IPython/core/history.py": "2b3f302e24f19994ed78badf981f4088b75802ab5ca2d12d613312c586f62816",
+                  "IPython/core/interactiveshell.py": "97dc7a45cdff64683f7479e12f1a99311cffcaab738d0a79927fae03e0f5e4cb",
+                  "IPython/core/magic.py": "8ade7dbb48a64646d8e7baedcbc30cc35416fff2273cf9cb3e171090a5228573",
+                  "IPython/core/oinspect.py": "fc13c54c9f1167c2cdc11c74ac991e2073a72df066e28b16e6b12d1af2454a8c",
+                  "IPython/core/page.py": "3fc0e6a3432352aef50c49c83ccfe4692199a0a4da3e4ae4e2c52e33823a1c30",
+                  "IPython/core/pylabtools.py": "afbd8d408859016f512f5c3d59601600c6d8a180bc29f68634a07d2416cc83be",
+                  "IPython/core/tips.py": "a0b589b52fe79dddacd5f42e9d75efbc7c48b666ed6ab81958f0a4af99951a3f",
+                  "IPython/core/magics/auto.py": "c84a2e223b10e8b99f4847cdbe465b366343165d7d28b46768972261d47b6b50",
+                  "IPython/core/magics/basic.py": "4a2177eb6f9e4ab49c8673e96dfcde33e970dde8e1afde888c217fd27d96d0ae",
+                  "IPython/core/magics/code.py": "87f761a3d9e23efb5ffc8a683997f91800fa0986d3d04406b1f2dfbadc97fbb2",
+                  "IPython/core/magics/execution.py": "e31cd733d41ad73341932ca4e2495d9636cde358988ee897341d6553dcf1ba7e",
+                  "IPython/core/magics/history.py": "cf649e4889f1eb4f9b241d632787bccdd542557d19d331a867f390cda0ae1c43",
+                  "IPython/core/magics/namespace.py": "068e2c72429a5e971514b20818bddf6568834470de314d4b1ab1cde1976f24db",
+                  "IPython/core/magics/script.py": "58dbed632e2c1e63bb8497adfebb7d72ede2266795a177d0d7c48ccadb58acf1",
+                  "IPython/extensions/autoreload.py": "5e7371484f1de1cc6f046cafcf6609c32491b083997ba597453f5350f58177cf",
+                  "IPython/extensions/deduperreload/deduperreload.py": "cc711227b9df38aaddbef0c139cdc118b03209e7f3486e7f8c6fcdc42694b5e4",
+                  "IPython/extensions/deduperreload/deduperreload_patching.py": "e6efc4eaf9c72b819392c7787009b269d1a45e8be8fc387db37f06a61f32af4c",
+                  "IPython/external/__init__.py": "f844076ee52705ed514b5fc2c1a2c6ccd49942c089b2bc475bfaf5e6c9af556d",
+                  "IPython/lib/display.py": "6015dffd00cdeb63ecdb96d132a8d8f3bdcf7338bf02ff8418d5f9d57d52eb7c",
+                  "IPython/lib/pretty.py": "a0ec7f9aa838e147e3e22c78fecd02b95e3eb410eab3a9065f468808a0c7f8a2",
+                  "IPython/terminal/debugger.py": "d0b7419822951ca346a6604a75be1b0602a5cae4d5c9fcf60e0d98f301381533",
+                  "IPython/terminal/embed.py": "b91d59ef0a79cf94a962da3bb1af40eb7b0f0ed5f98745c3d38f18de00c4fd5d",
+                  "IPython/terminal/interactiveshell.py": "e6966a7e3a9e45eb1a37b348cb4a7383f09885a1913a2408302ca025874445fd",
+                  "IPython/terminal/pt_inputhooks/pyglet.py": "c030d00e08a5bcaf6ecf0181dd7c80a9c7fc2df2abf8b73f34c033ba764cbbf6",
+                  "IPython/terminal/shortcuts/__init__.py": "db1d008f60a3e51a833f569401d4d74a5e686cef5ea3f374da269b7189d6b464",
+                  "IPython/terminal/shortcuts/auto_suggest.py": "8c99ba3d54dd7731a89bc03154f977b0d21e754835a54e2dbf0130bd1aa6d5c2",
+                  "IPython/terminal/shortcuts/filters.py": "320453416abc61f2325af3004ae43d0462aae51430884639b6b4b232732d240a",
+                  "IPython/testing/globalipapp.py": "17e443eb12c52764758cd3f2700f73935d7a19f1fca93b20b1814409609e0d16",
+                  "IPython/testing/plugin/pytest_ipdoctest.py": "9624e00144ae994b042b5fcb7e11fbb4aff05c3467ff5d32d50a3c42e7547c7e",
+                  "IPython/utils/PyColorize.py": "754ed1ad865202f737ba434ba63f94fc32b8e6cd1f64a3ab59ee486e0ebfa6f2",
+                  "IPython/utils/_process_win32.py": "3dc7fa662a8c6ea0d3efd79dcde804fc05f70f7ebb52d13c6db853e359e8e780",
+                  "IPython/utils/_process_win32_controller.py": "862d9e47b98b6e5dd34cc0956e0a6cf391a9a7176d61b84e60afe5d775af61a3",
+                  "IPython/utils/encoding.py": "2ffdc68c31bcdde336e3b3e0023613d0a363b13126f964535ca16471b838a4ff",
+                  "IPython/utils/path.py": "ef1b557ec5428ef93ea7e8e96ea48b8ce71a72c3ab5cd490c7096f7878df3bf5",
+                  "IPython/utils/terminal.py": "60185cfa66056ba315ba31238c0d0a29468de6e467f6da13d6239838e18ecdfb",
+                  "IPython/utils/text.py": "4ad45833998b2f18e5f44b7c6e3e3a3bc0b3d84c1457bbd7567e244f89070e23",
+                  "IPython/utils/timing.py": "9cd0fe6540641d67d87afbdb446f987ce48815ccf3fdea7332a58ae4f1fa9ea0",
+                  "examples/Embedding/embed_class_short.py": "2d9c6f9971430a2554948adbe4f62a30c561217ea2f88aa38056525edb119013",
+                  "tests/fake_llm.py": "02ec954c46a71b0b9c07d28714f793473a4abc2fb10b99a8c6247cb383da8937",
+                  "tests/test_async_helpers.py": "6e0ee824746aa18dad9c5150e8cc1b3521f11e5d14218caa3dcaa279264ca242",
+                  "tests/test_completer.py": "9a4d69c92c46a475aa4678979c5aed3580f4a8a9ece348718264a136b134442a",
+                  "tests/test_display_2.py": "3bad0a5b35b36d9b93793daa42ee4de35f50b5ea69eec68feca1986549631cf4",
+                  "tests/test_events.py": "9def727d0d42f1b158740278a370a14d65de7657987cd6a39c3763aa8b7c7988",
+                  "tests/test_exceptiongroup_tb.py": "7a89129af16dd9d575e43792617bd96ef45013b49ba19ff545154ba3d8734b14",
+                  "tests/test_formatters.py": "bafabed45bd51d6f230e059342b2da6d117d3c1b0f078a5cfc2aa2b3a6bad8ea",
+                  "tests/test_guarded_eval.py": "297af992b9f7e353332f749e16a9ac3cc0afb55f2f5075ed009b540784bb74ed",
+                  "tests/test_history.py": "a2d84d5a62fedff184a247cea08f80ff8e251632f8154360eb87714c3eedeeb8",
+                  "tests/test_inputtransformer2.py": "4b364bd305e96b35b974cc032de9f9de9f9f97d53789a87bc85e59c9e1dd438d",
+                  "tests/test_interactiveshell.py": "5ce83a02958a07d5c3a167f3cb58fd2bc7be6c09b463a0742f03925eaae9ceae",
+                  "tests/test_interactivshell.py": "31e84eed31b897c569740c3df681670bbee2ed2f841dc2e70573ccf44ef18175",
+                  "tests/test_oinspect.py": "f59f317ddbe673e500581164ac92ad30247d190ff4f1efde3c2309a4fc4ad8c4",
+                  "tests/test_path.py": "1e1826a435fb640a425de7b051e5172289dd1ac438ea5dc76b0bca656a10c985",
+                  "tests/test_process.py": "d193e002d172447a37c74472692cffdace4f616a66d3fce0b0e5a4dd462c3a3c",
+                  "tests/test_run.py": "fb62003e89e5a1e9e49e3fb732d083c1d637f79adb37cf1e567c095cdd4b1613",
+                  "tests/test_tools.py": "8da4235161dd1fc5038867a9b30d2ac4c5e2bec1a23f4b8af0e6c2e119bde4e0",
+                  "tests/test_wildcard.py": "006079a64450eb39f9fb64fb6a48f4155871eea43b29608d9da8ef87babd68c1",
+                  "tests/test_zzz_autoreload.py": "6852cdeca3b8241e4b78f6d69d03de6dda3f3b70428a821f2e39cc655e9bf6ba"
+                }
+              }
+            }
+          },
+          "scip_decoded_artifacts": {
+            "python": {
+              "relative_path": "index.decoded",
+              "size": 22192069,
+              "sha256": "bf2a0dc57f4f0bce6bb9de07a762acf542e4f90d95572e7ff3d6ec919783bf55"
+            }
+          },
+          "graph_artifact": {
+            "relative_path": "graph.pkl",
+            "size": 1662473,
+            "sha256": "bd635126968c74dda5c699ad77151adf5d2f36068ff664ddd9157b853ffb32fb"
+          },
+          "lsp_occurrence_artifact": {
+            "relative_path": "lsp_index.pkl",
+            "size": 13423343,
+            "sha256": "f0010972972544b9ed7e2c5edc76d673b89f229ecc92bb831c9a23ddd2f8f66d"
+          },
+          "query_surface_sha256": "2423f1f70d3887f34b4993045b0c25fe2178c34e85358f6e052d80c20b85959a",
+          "update_mode": "full_rebuild",
+          "partial_index": false,
+          "failed_languages": {},
+          "partial": false,
+          "source_selection_report": {
+            "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+            "nodes_before": 6629,
+            "nodes_after": 6629,
+            "edges_before": 22372,
+            "edges_after": 22372,
+            "removed_excluded_path_count": 0,
+            "excluded_path_count_after": 0,
+            "invalid_path_count_before": 0,
+            "invalid_path_count_after": 0
+          }
+        },
+        "metadata": {
+          "builder_schema": 8,
+          "languages": [
+            "python"
+          ],
+          "graph_route": "active",
+          "exclude_patterns": [
+            "**/.codenib_cache/**",
+            "**/.env/**",
+            "**/.git/**",
+            "**/.hg/**",
+            "**/.mypy_cache/**",
+            "**/.next/**",
+            "**/.pytest_cache/**",
+            "**/.ruff_cache/**",
+            "**/.svn/**",
+            "**/.tox/**",
+            "**/.venv/**",
+            "**/__pycache__/**",
+            "**/build/**",
+            "**/dist/**",
+            "**/env/**",
+            "**/htmlcov/**",
+            "**/node_modules/**",
+            "**/site/**",
+            "**/target/**",
+            "**/third_party/**",
+            "**/vendor/**",
+            "**/venv/**",
+            ".codenib_cache/**",
+            ".env/**",
+            ".git/**",
+            ".hg/**",
+            ".mypy_cache/**",
+            ".next/**",
+            ".pytest_cache/**",
+            ".ruff_cache/**",
+            ".svn/**",
+            ".tox/**",
+            ".venv/**",
+            "__pycache__/**",
+            "build/**",
+            "dist/**",
+            "env/**",
+            "htmlcov/**",
+            "node_modules/**",
+            "site/**",
+            "target/**",
+            "third_party/**",
+            "vendor/**",
+            "venv/**"
+          ],
+          "allow_partial_languages": false,
+          "allow_partial_index": false,
+          "source_coverage_fallback": false,
+          "allow_project_preparation": false,
+          "target_dir": null,
+          "repository_filter_policy": 4,
+          "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+          "node_count": 6629,
+          "edge_count": 22372,
+          "language": "python",
+          "available_languages": [
+            "python"
+          ],
+          "compiler_available_languages": [
+            "python"
+          ],
+          "index_generation_reports": {
+            "python": {
+              "backend": "scip-python",
+              "status": "complete",
+              "complete": true,
+              "partial": false,
+              "document_count": 294,
+              "identity_recovery": {
+                "status": "complete",
+                "schema": 1,
+                "source_file_count": 294,
+                "changed_symbol_families": 310,
+                "physical_declarations": 11928,
+                "restored_definition_roles": 49,
+                "positional_definition_queries": 149,
+                "local_binding_families": 7,
+                "local_binding_semantics": "all_source_declarations_for_compiler_binding",
+                "shared_lexical_binding_families": 266,
+                "utf8_replacement_sources": [
+                  "tests/nonascii.py",
+                  "tests/nonascii2.py"
+                ],
+                "source_only_definitions": [
+                  {
+                    "file": "tests/test_completer.py",
+                    "name": "_",
+                    "line": 435,
+                    "character": 12,
+                    "compiler_owner_from_parameter": true
+                  },
+                  {
+                    "file": "tests/test_completer.py",
+                    "name": "_",
+                    "line": 607,
+                    "character": 12,
+                    "compiler_owner_from_parameter": true
+                  },
+                  {
+                    "file": "tests/test_completer.py",
+                    "name": "_",
+                    "line": 1872,
+                    "character": 12,
+                    "compiler_owner_from_parameter": false
+                  },
+                  {
+                    "file": "tests/test_completer.py",
+                    "name": "_",
+                    "line": 1923,
+                    "character": 16,
+                    "compiler_owner_from_parameter": true
+                  },
+                  {
+                    "file": "tests/test_completer.py",
+                    "name": "_",
+                    "line": 1968,
+                    "character": 16,
+                    "compiler_owner_from_parameter": true
+                  },
+                  {
+                    "file": "tests/test_completer.py",
+                    "name": "_",
+                    "line": 2001,
+                    "character": 12,
+                    "compiler_owner_from_parameter": false
+                  },
+                  {
+                    "file": "tests/test_completer.py",
+                    "name": "_",
+                    "line": 2024,
+                    "character": 12,
+                    "compiler_owner_from_parameter": true
+                  },
+                  {
+                    "file": "tests/test_completer.py",
+                    "name": "_",
+                    "line": 2052,
+                    "character": 12,
+                    "compiler_owner_from_parameter": true
+                  }
+                ],
+                "unmapped_attribute_definitions": [],
+                "definition_provider": {
+                  "command": [
+                    "/tmp/codenib-codegraph-identity-next/toolchain/basedpyright-langserver",
+                    "--stdio"
+                  ],
+                  "server_info": {
+                    "name": "basedpyright",
+                    "version": "1.39.8"
+                  },
+                  "position_encoding": "utf-16"
+                },
+                "position_encoding": "UTF8",
+                "source_sha256": {
+                  "IPython/core/application.py": "3a15b961ef9aa6d77af324be6d28afd9b1f82a7b6fcaaecc4dfda34eed22db1c",
+                  "IPython/core/async_helpers.py": "e31fd94ab3c89978b4a17cf022668b73779796474b8bee115e1d87717f180d08",
+                  "IPython/core/completer.py": "44eefaae6d959261975aa166b992e1a922f1a6df6696fbd35a635d254127540c",
+                  "IPython/core/debugger.py": "463f573ec2698b3860a11b39a89a5e783f66f60ce6a2dea91214f7abdfda1b7e",
+                  "IPython/core/display.py": "c10815158fd4d4ef9afa32522dbd349c9f66db0f7e36c0611011a741471651dd",
+                  "IPython/core/events.py": "bcbd1559eb75c22c9ead74faf588aaf4487c288a4eb692925ca595c98764838b",
+                  "IPython/core/guarded_eval.py": "45d2970e429189b3e0eea6d677507fa54f77e4260b4d4519a3425d689ed5c645",
+                  "IPython/core/history.py": "2b3f302e24f19994ed78badf981f4088b75802ab5ca2d12d613312c586f62816",
+                  "IPython/core/interactiveshell.py": "97dc7a45cdff64683f7479e12f1a99311cffcaab738d0a79927fae03e0f5e4cb",
+                  "IPython/core/magic.py": "8ade7dbb48a64646d8e7baedcbc30cc35416fff2273cf9cb3e171090a5228573",
+                  "IPython/core/oinspect.py": "fc13c54c9f1167c2cdc11c74ac991e2073a72df066e28b16e6b12d1af2454a8c",
+                  "IPython/core/page.py": "3fc0e6a3432352aef50c49c83ccfe4692199a0a4da3e4ae4e2c52e33823a1c30",
+                  "IPython/core/pylabtools.py": "afbd8d408859016f512f5c3d59601600c6d8a180bc29f68634a07d2416cc83be",
+                  "IPython/core/tips.py": "a0b589b52fe79dddacd5f42e9d75efbc7c48b666ed6ab81958f0a4af99951a3f",
+                  "IPython/core/magics/auto.py": "c84a2e223b10e8b99f4847cdbe465b366343165d7d28b46768972261d47b6b50",
+                  "IPython/core/magics/basic.py": "4a2177eb6f9e4ab49c8673e96dfcde33e970dde8e1afde888c217fd27d96d0ae",
+                  "IPython/core/magics/code.py": "87f761a3d9e23efb5ffc8a683997f91800fa0986d3d04406b1f2dfbadc97fbb2",
+                  "IPython/core/magics/execution.py": "e31cd733d41ad73341932ca4e2495d9636cde358988ee897341d6553dcf1ba7e",
+                  "IPython/core/magics/history.py": "cf649e4889f1eb4f9b241d632787bccdd542557d19d331a867f390cda0ae1c43",
+                  "IPython/core/magics/namespace.py": "068e2c72429a5e971514b20818bddf6568834470de314d4b1ab1cde1976f24db",
+                  "IPython/core/magics/script.py": "58dbed632e2c1e63bb8497adfebb7d72ede2266795a177d0d7c48ccadb58acf1",
+                  "IPython/extensions/autoreload.py": "5e7371484f1de1cc6f046cafcf6609c32491b083997ba597453f5350f58177cf",
+                  "IPython/extensions/deduperreload/deduperreload.py": "cc711227b9df38aaddbef0c139cdc118b03209e7f3486e7f8c6fcdc42694b5e4",
+                  "IPython/extensions/deduperreload/deduperreload_patching.py": "e6efc4eaf9c72b819392c7787009b269d1a45e8be8fc387db37f06a61f32af4c",
+                  "IPython/external/__init__.py": "f844076ee52705ed514b5fc2c1a2c6ccd49942c089b2bc475bfaf5e6c9af556d",
+                  "IPython/lib/display.py": "6015dffd00cdeb63ecdb96d132a8d8f3bdcf7338bf02ff8418d5f9d57d52eb7c",
+                  "IPython/lib/pretty.py": "a0ec7f9aa838e147e3e22c78fecd02b95e3eb410eab3a9065f468808a0c7f8a2",
+                  "IPython/terminal/debugger.py": "d0b7419822951ca346a6604a75be1b0602a5cae4d5c9fcf60e0d98f301381533",
+                  "IPython/terminal/embed.py": "b91d59ef0a79cf94a962da3bb1af40eb7b0f0ed5f98745c3d38f18de00c4fd5d",
+                  "IPython/terminal/interactiveshell.py": "e6966a7e3a9e45eb1a37b348cb4a7383f09885a1913a2408302ca025874445fd",
+                  "IPython/terminal/pt_inputhooks/pyglet.py": "c030d00e08a5bcaf6ecf0181dd7c80a9c7fc2df2abf8b73f34c033ba764cbbf6",
+                  "IPython/terminal/shortcuts/__init__.py": "db1d008f60a3e51a833f569401d4d74a5e686cef5ea3f374da269b7189d6b464",
+                  "IPython/terminal/shortcuts/auto_suggest.py": "8c99ba3d54dd7731a89bc03154f977b0d21e754835a54e2dbf0130bd1aa6d5c2",
+                  "IPython/terminal/shortcuts/filters.py": "320453416abc61f2325af3004ae43d0462aae51430884639b6b4b232732d240a",
+                  "IPython/testing/globalipapp.py": "17e443eb12c52764758cd3f2700f73935d7a19f1fca93b20b1814409609e0d16",
+                  "IPython/testing/plugin/pytest_ipdoctest.py": "9624e00144ae994b042b5fcb7e11fbb4aff05c3467ff5d32d50a3c42e7547c7e",
+                  "IPython/utils/PyColorize.py": "754ed1ad865202f737ba434ba63f94fc32b8e6cd1f64a3ab59ee486e0ebfa6f2",
+                  "IPython/utils/_process_win32.py": "3dc7fa662a8c6ea0d3efd79dcde804fc05f70f7ebb52d13c6db853e359e8e780",
+                  "IPython/utils/_process_win32_controller.py": "862d9e47b98b6e5dd34cc0956e0a6cf391a9a7176d61b84e60afe5d775af61a3",
+                  "IPython/utils/encoding.py": "2ffdc68c31bcdde336e3b3e0023613d0a363b13126f964535ca16471b838a4ff",
+                  "IPython/utils/path.py": "ef1b557ec5428ef93ea7e8e96ea48b8ce71a72c3ab5cd490c7096f7878df3bf5",
+                  "IPython/utils/terminal.py": "60185cfa66056ba315ba31238c0d0a29468de6e467f6da13d6239838e18ecdfb",
+                  "IPython/utils/text.py": "4ad45833998b2f18e5f44b7c6e3e3a3bc0b3d84c1457bbd7567e244f89070e23",
+                  "IPython/utils/timing.py": "9cd0fe6540641d67d87afbdb446f987ce48815ccf3fdea7332a58ae4f1fa9ea0",
+                  "examples/Embedding/embed_class_short.py": "2d9c6f9971430a2554948adbe4f62a30c561217ea2f88aa38056525edb119013",
+                  "tests/fake_llm.py": "02ec954c46a71b0b9c07d28714f793473a4abc2fb10b99a8c6247cb383da8937",
+                  "tests/test_async_helpers.py": "6e0ee824746aa18dad9c5150e8cc1b3521f11e5d14218caa3dcaa279264ca242",
+                  "tests/test_completer.py": "9a4d69c92c46a475aa4678979c5aed3580f4a8a9ece348718264a136b134442a",
+                  "tests/test_display_2.py": "3bad0a5b35b36d9b93793daa42ee4de35f50b5ea69eec68feca1986549631cf4",
+                  "tests/test_events.py": "9def727d0d42f1b158740278a370a14d65de7657987cd6a39c3763aa8b7c7988",
+                  "tests/test_exceptiongroup_tb.py": "7a89129af16dd9d575e43792617bd96ef45013b49ba19ff545154ba3d8734b14",
+                  "tests/test_formatters.py": "bafabed45bd51d6f230e059342b2da6d117d3c1b0f078a5cfc2aa2b3a6bad8ea",
+                  "tests/test_guarded_eval.py": "297af992b9f7e353332f749e16a9ac3cc0afb55f2f5075ed009b540784bb74ed",
+                  "tests/test_history.py": "a2d84d5a62fedff184a247cea08f80ff8e251632f8154360eb87714c3eedeeb8",
+                  "tests/test_inputtransformer2.py": "4b364bd305e96b35b974cc032de9f9de9f9f97d53789a87bc85e59c9e1dd438d",
+                  "tests/test_interactiveshell.py": "5ce83a02958a07d5c3a167f3cb58fd2bc7be6c09b463a0742f03925eaae9ceae",
+                  "tests/test_interactivshell.py": "31e84eed31b897c569740c3df681670bbee2ed2f841dc2e70573ccf44ef18175",
+                  "tests/test_oinspect.py": "f59f317ddbe673e500581164ac92ad30247d190ff4f1efde3c2309a4fc4ad8c4",
+                  "tests/test_path.py": "1e1826a435fb640a425de7b051e5172289dd1ac438ea5dc76b0bca656a10c985",
+                  "tests/test_process.py": "d193e002d172447a37c74472692cffdace4f616a66d3fce0b0e5a4dd462c3a3c",
+                  "tests/test_run.py": "fb62003e89e5a1e9e49e3fb732d083c1d637f79adb37cf1e567c095cdd4b1613",
+                  "tests/test_tools.py": "8da4235161dd1fc5038867a9b30d2ac4c5e2bec1a23f4b8af0e6c2e119bde4e0",
+                  "tests/test_wildcard.py": "006079a64450eb39f9fb64fb6a48f4155871eea43b29608d9da8ef87babd68c1",
+                  "tests/test_zzz_autoreload.py": "6852cdeca3b8241e4b78f6d69d03de6dda3f3b70428a821f2e39cc655e9bf6ba"
+                }
+              }
+            }
+          },
+          "scip_decoded_artifacts": {
+            "python": {
+              "relative_path": "index.decoded",
+              "size": 22192069,
+              "sha256": "bf2a0dc57f4f0bce6bb9de07a762acf542e4f90d95572e7ff3d6ec919783bf55"
+            }
+          },
+          "graph_artifact": {
+            "relative_path": "graph.pkl",
+            "size": 1662473,
+            "sha256": "bd635126968c74dda5c699ad77151adf5d2f36068ff664ddd9157b853ffb32fb"
+          },
+          "lsp_occurrence_artifact": {
+            "relative_path": "lsp_index.pkl",
+            "size": 13423343,
+            "sha256": "f0010972972544b9ed7e2c5edc76d673b89f229ecc92bb831c9a23ddd2f8f66d"
+          },
+          "query_surface_sha256": "2423f1f70d3887f34b4993045b0c25fe2178c34e85358f6e052d80c20b85959a",
+          "update_mode": "full_rebuild",
+          "partial_index": false,
+          "failed_languages": {},
+          "partial": false,
+          "source_selection_report": {
+            "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+            "nodes_before": 6629,
+            "nodes_after": 6629,
+            "edges_before": 22372,
+            "edges_after": 22372,
+            "removed_excluded_path_count": 0,
+            "excluded_path_count_after": 0,
+            "invalid_path_count_before": 0,
+            "invalid_path_count_after": 0
+          },
+          "build_duration_seconds": 31.72
+        },
+        "commit": "cd483f2f927c09be71dd5885618d7b2443a81b7a",
+        "source_fingerprint": "sha256-v2:2fb40ad03ee0e0d6258e6d132cbf0c678f7d98d09d4e0dc2b172317bcaaec914",
+        "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4"
+      }
+    },
+    "capabilities": {
+      "sparse_search": true,
+      "dense_search": false,
+      "hybrid_search": false,
+      "symbol_navigation": true
+    },
+    "compiled_at": "2026-10-28T09:22:09.667560+00:00",
+    "compiled_at_epoch": 1793179329.66756
+  },
+  "source_after_build": {
+    "file_count": 475,
+    "file_manifest_sha256": "c0303a19211a77e7b901e61f1602f4dc0504030d31085f7045fff384a43c1a14",
+    "commit": "cd483f2f927c09be71dd5885618d7b2443a81b7a",
+    "git_status": ""
+  },
+  "graph": {
+    "nodes": 6629,
+    "edges": 22372,
+    "native_parity": "complete",
+    "self_containment": 0,
+    "multiple_containment_parents": []
+  },
+  "physical_run_definitions": {
+    "541": {
+      "name": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "type": "method",
+      "file": "IPython/core/magics/execution.py",
+      "has_definition": true,
+      "selection_line": 540,
+      "start_line": 538,
+      "end_line": 897,
+      "unified_name": "IPython/core/magics/execution.py:ExecutionMagics.run()"
+    },
+    "837": {
+      "name": "IPython/core/magics/execution.py:ExecutionMagics.run().run(_codenib_l836_c28)",
+      "type": "function",
+      "file": "IPython/core/magics/execution.py",
+      "has_definition": true,
+      "selection_line": 836,
+      "start_line": 836,
+      "end_line": 837,
+      "unified_name": "IPython/core/magics/execution.py:ExecutionMagics.run().run()"
+    },
+    "845": {
+      "name": "IPython/core/magics/execution.py:ExecutionMagics.run().run(_codenib_l844_c28)",
+      "type": "function",
+      "file": "IPython/core/magics/execution.py",
+      "has_definition": true,
+      "selection_line": 844,
+      "start_line": 844,
+      "end_line": 846,
+      "unified_name": "IPython/core/magics/execution.py:ExecutionMagics.run().run()"
+    }
+  },
+  "run_callers": [
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/utils/path.py:get_py_filename()",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 541
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/core/magic.py:Magics.parse_options()",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 714
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/utils/module_paths.py:find_mod()",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 719
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/utils/contexts.py:preserve_keys",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 746
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/core/magic.py:Magics.shell",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 746
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/core/interactiveshell.py:InteractiveShell.user_ns(_codenib_l685_c8)",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 746
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/core/interactiveshell.py:InteractiveShell.user_ns(_codenib_l689_c8)",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 746
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/core/magic.py:Magics.shell",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 747
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/core/interactiveshell.py:InteractiveShell.user_ns(_codenib_l685_c8)",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 747
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/core/interactiveshell.py:InteractiveShell.user_ns(_codenib_l689_c8)",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 747
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/core/magic.py:Magics.shell",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 748
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/core/interactiveshell.py:InteractiveShell.safe_execfile_ipy()",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 748
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/utils/path.py:shellglob()",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 762
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/core/magic.py:Magics.shell",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 773
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/core/interactiveshell.py:InteractiveShell.user_ns(_codenib_l685_c8)",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 773
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/core/interactiveshell.py:InteractiveShell.user_ns(_codenib_l689_c8)",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 773
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/core/magic.py:Magics.shell",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 774
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/core/interactiveshell.py:InteractiveShell.user_ns(_codenib_l685_c8)",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 774
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/core/interactiveshell.py:InteractiveShell.user_ns(_codenib_l689_c8)",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 774
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/core/magic.py:Magics.shell",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 776
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/core/interactiveshell.py:InteractiveShell.user_module",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 776
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/core/magic.py:Magics.shell",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 788
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/core/interactiveshell.py:InteractiveShell.new_main_mod()",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 788
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/core/magic.py:Magics.shell",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 808
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/core/interactiveshell.py:InteractiveShell.safe_run_module()",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 808
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/core/magic.py:Magics.shell",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 819
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/core/interactiveshell.py:InteractiveShell.safe_execfile()",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 819
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/utils/path.py:get_py_filename()",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 821
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/core/magics/execution.py:ExecutionMagics._run_with_profiler()",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 827
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/core/magics/execution.py:parse_breakpoint()",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 830
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/core/magics/execution.py:ExecutionMagics._run_with_debugger()",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 832
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run().run(_codenib_l836_c28)",
+      "target": "IPython/core/magic.py:Magics.shell",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 837
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run().run(_codenib_l836_c28)",
+      "target": "IPython/core/interactiveshell.py:InteractiveShell.safe_run_module()",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 837
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/core/magics/execution.py:ExecutionMagics.default_runner",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 840
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/core/magic.py:Magics.shell",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 842
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/core/interactiveshell.py:InteractiveShell.safe_execfile()",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 842
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/core/magics/execution.py:ExecutionMagics._run_with_timing()",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 857
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/core/magics/execution.py:ExecutionMagics.run().run(_codenib_l836_c28)",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 857
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/core/magics/execution.py:ExecutionMagics.run().run(_codenib_l844_c28)",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 857
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/core/magics/execution.py:ExecutionMagics.run().run(_codenib_l836_c28)",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 860
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/core/magics/execution.py:ExecutionMagics.run().run(_codenib_l844_c28)",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 860
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/core/magic.py:Magics.shell",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 863
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/core/interactiveshell.py:InteractiveShell.user_ns(_codenib_l685_c8)",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 863
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/core/interactiveshell.py:InteractiveShell.user_ns(_codenib_l689_c8)",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 863
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/utils/contexts.py:preserve_keys",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 872
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/core/magic.py:Magics.shell",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 872
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/core/interactiveshell.py:InteractiveShell.user_ns(_codenib_l685_c8)",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 872
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/core/interactiveshell.py:InteractiveShell.user_ns(_codenib_l689_c8)",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 872
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/core/magic.py:Magics.shell",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 873
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/core/interactiveshell.py:InteractiveShell.user_ns(_codenib_l685_c8)",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 873
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/core/interactiveshell.py:InteractiveShell.user_ns(_codenib_l689_c8)",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 873
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/core/magic.py:Magics.shell",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 883
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/core/interactiveshell.py:InteractiveShell.user_ns(_codenib_l685_c8)",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 883
+    },
+    {
+      "source": "IPython/core/magics/execution.py:ExecutionMagics.run()",
+      "target": "IPython/core/interactiveshell.py:InteractiveShell.user_ns(_codenib_l689_c8)",
+      "anchor_file": "IPython/core/magics/execution.py",
+      "anchor_line": 883
+    }
+  ],
+  "source_after_queries": {
+    "file_count": 475,
+    "file_manifest_sha256": "c0303a19211a77e7b901e61f1602f4dc0504030d31085f7045fff384a43c1a14",
+    "commit": "cd483f2f927c09be71dd5885618d7b2443a81b7a",
+    "git_status": ""
+  },
+  "status": "passed"
+}

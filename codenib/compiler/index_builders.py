@@ -2067,7 +2067,7 @@ class SymbolGraphBuilder:
     ) -> Dict[str, Any]:
         graph_languages = self.languages or [self.language]
         return {
-            "builder_schema": 7,
+            "builder_schema": 8,
             "languages": list(graph_languages),
             "graph_route": self.graph_route,
             "exclude_patterns": sorted(self.exclude_patterns),

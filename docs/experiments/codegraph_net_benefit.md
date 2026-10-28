@@ -84,8 +84,8 @@ contracts. The release graph/MCP/Dependency Map smoke passes.
 
 The stale-query guard is merged in
 [#878](https://github.com/sysevol-ai/CodeNib/pull/878), closing #876.
-The [#871 identity receipts](codegraph_identity_2026_10_27.json) reproduce the
-remaining issue through the strict Python product builder: SCIP 0.6.6 assigns
+The archived [#871 identity receipts](codegraph_identity_2026_10_27.json)
+reproduce the original strict Python product failure: SCIP 0.6.6 assigns
 the same symbol ID to an enclosing method and a same-named nested definition.
 The graph loses their separate ranges and includes a containment self-edge.
 The guard merged in [#879](https://github.com/sysevol-ai/CodeNib/pull/879)
@@ -96,11 +96,14 @@ graph-unavailable while BM25 source queries work. Reference recursion remains
 valid. The persisted graph field layout is unchanged; the shared Python
 artifact boundary applies to serial and native decoder outputs.
 
-This intrinsic check is a mitigation, not accurate identity recovery. #871
-remains open for ambiguous definitions/references, including collisions that
-do not create cycles. Graph-dependent admission remains gated on that scope
-and representative repository/provider checks. Full rebuilding remains an
-explicit cost. Local manifest sessions now reload
+That intrinsic check is mitigation. The current
+[source identity recovery](codegraph_python_identity.md) restores physical
+definitions and compiler-observed reference bindings, including noncyclic
+class/member collisions. Strict IPython and pytest product builds, complete
+serial/native parity and exact MCP queries now pass. These developer controls
+do not replace the original rejected fixture, failed pilot admission or frozen
+model outcomes. Broader provider accuracy remains gated. Full rebuilding
+remains an explicit cost. Local manifest sessions now reload
 published indexes in the same connection after authenticating current source.
 The [reload receipts](codegraph_reload_2026_10_27.json) retain one real SCIP/BM25
 stdio process across edits, creates, renames and deletes, with eight expected
