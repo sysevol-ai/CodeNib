@@ -1,0 +1,206 @@
+{
+  "scope": "Exact captured v2 tool requests and delivered user/tool messages; no task acceptance or complete source-read score.",
+  "workflow_index": 1,
+  "task_id": "psf__requests-1921-impact",
+  "kind": "impact",
+  "raw_sdk_trace_sha256": "b5180206455fc25c5bc23f4c9ebf954da64595553b8dcf725679e88a57fa655f",
+  "raw_sdk_trace_bytes": 44708,
+  "init": [
+    {
+      "type": "SystemMessage",
+      "subtype": "init",
+      "data": {
+        "model": "claude-opus-5-5",
+        "apiKeySource": "none",
+        "tools": [
+          "Bash",
+          "Edit",
+          "Glob",
+          "Grep",
+          "Read",
+          "ToolSearch",
+          "Write",
+          "mcp__study__dependency_subgraph",
+          "mcp__study__explore_context",
+          "mcp__study__get_manifest",
+          "mcp__study__lsp_definition",
+          "mcp__study__lsp_references",
+          "mcp__study__lsp_route",
+          "mcp__study__read_source",
+          "mcp__study__search_bm25",
+          "mcp__study__search_context",
+          "mcp__study__search_regex",
+          "mcp__study__search_semantic",
+          "mcp__study__search_zoekt"
+        ],
+        "mcp_servers": [
+          {
+            "name": "study",
+            "status": "connected",
+            "source": "dynamic"
+          }
+        ],
+        "claude_code_version": "2.1.310"
+      }
+    }
+  ],
+  "rate_events": [],
+  "tool_calls_in_first_observed_order": [
+    {
+      "id": "toolu_016cHJvSPqEzsc69JojGM7Cu",
+      "name": "Grep",
+      "input": {
+        "pattern": "\\.send\\(|resolve_redirects|allow_redirects",
+        "path": ".",
+        "output_mode": "content",
+        "glob": "!requests/packages/**"
+      }
+    },
+    {
+      "id": "toolu_01FhJSnj8ZwgoW8STAbzTahj",
+      "name": "Grep",
+      "input": {
+        "pattern": "def test.*(redirect|send|digest|history|prepared)",
+        "path": "test_requests.py",
+        "output_mode": "content",
+        "-i": true
+      }
+    },
+    {
+      "id": "toolu_017KHtQbZGSwfUnHNpo8bRNJ",
+      "name": "Read",
+      "input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/test_requests.py",
+        "offset": 95,
+        "limit": 40
+      }
+    },
+    {
+      "id": "toolu_01BSomKxd6bY3mLuERneGejs",
+      "name": "Read",
+      "input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/test_requests.py",
+        "offset": 145,
+        "limit": 75
+      }
+    },
+    {
+      "id": "toolu_0188G3SyMYJC8zpcpd7VNCWP",
+      "name": "Read",
+      "input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/test_requests.py",
+        "offset": 505,
+        "limit": 32
+      }
+    },
+    {
+      "id": "toolu_01S7uKUT7VXdK97YsqRuMeeb",
+      "name": "Read",
+      "input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/test_requests.py",
+        "offset": 715,
+        "limit": 50
+      }
+    },
+    {
+      "id": "toolu_019CokNVXQRyreCEjb4Eb8ff",
+      "name": "Read",
+      "input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/test_requests.py",
+        "offset": 281,
+        "limit": 44
+      }
+    },
+    {
+      "id": "toolu_01KRPSx6KYZxMn6FP2rp7cAM",
+      "name": "Read",
+      "input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/requests/hooks.py",
+        "offset": 29,
+        "limit": 18
+      }
+    }
+  ],
+  "delivered_user_tool_messages_in_order": [
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_016cHJvSPqEzsc69JojGM7Cu",
+          "content": "docs/user/advanced.rst:101:    resp = s.send(prepped,\ndocs/user/advanced.rst:138:    resp = s.send(prepped,\ndocs/user/quickstart.rst:384:redirection handling with the ``allow_redirects`` parameter::\ndocs/user/quickstart.rst:386:    >>> r = requests.get('http://github.com', allow_redirects=False)\ndocs/user/quickstart.rst:394:    >>> r = requests.post('http://github.com', allow_redirects=True)\ntest_requests.py:103:            r = s.send(r.prepare())\ntest_requests.py:111:        r = s.send(r.prepare())\ntest_requests.py:515:        resp = s.send(prep)\ntest_requests.py:532:        resp = s.send(prep)\ntest_requests.py:720:            requests.Session().send(r)\ntest_requests.py:739:        r = s.send(r.prepare())\nrequests/api.py:30:    :param allow_redirects: (optional) Boolean. Set to True if POST/PUT/DELETE redirect following is allowed.\nrequests/api.py:54:    kwargs.setdefault('allow_redirects', True)\nrequests/api.py:65:    kwargs.setdefault('allow_redirects', True)\nrequests/api.py:76:    kwargs.setdefault('allow_redirects', False)\nrequests/auth.py:175:            _r = r.connection.send(prep, **kwargs)\nrequests/adapters.py:351:                        low_conn.send(hex(len(i))[2:].encode('utf-8'))\nrequests/adapters.py:352:                        low_conn.send(b'\\r\\n')\nrequests/adapters.py:353:                        low_conn.send(i)\nrequests/adapters.py:354:                        low_conn.send(b'\\r\\n')\nrequests/adapters.py:355:                    low_conn.send(b'0\\r\\n\\r\\n')\nrequests/models.py:269:      >>> s.send(r)\nrequests/models.py:605:        been processed automatically (by :meth:`Session.resolve_redirects`).\nHISTORY.rst:620:* GET/HEAD obeys allow_redirects=False.\nHISTORY.rst:680:* New 'allow_redirects' param for following non-GET/HEAD Redirects\nrequests/sessions.py:82:    def resolve_redirects(self, resp, req, stream=False, timeout=None,\nrequests/sessions.py:169:            resp = self.send(\nrequests/sessions.py:176:                allow_redirects=False,\nrequests/sessions.py:307:        allow_redirects=True,\nrequests/sessions.py:332:        :param allow_redirects: (optional) Boolean. Set to True by default.\nrequests/sessions.py:389:            'allow_redirects': allow_redirects,\nrequests/sessions.py:391:        resp = self.send(prep, **send_kwargs)\nrequests/sessions.py:402:        kwargs.setdefault('allow_redirects', True)\nrequests/sessions.py:412:        kwargs.setdefault('allow_redirects', True)\nrequests/sessions.py:422:        kwargs.setdefault('allow_redirects', False)\nrequests/sessions.py:478:        # Set up variables needed for resolve_redirects and dispatching of hooks\nrequests/sessions.py:479:        allow_redirects = kwargs.pop('allow_redirects', True)\nrequests/sessions.py:494:        r = adapter.send(request, **kwargs)\nrequests/sessions.py:512:        gen = self.resolve_redirects(r, request,\nrequests/sessions.py:520:        history = [resp for resp in gen] if allow_redirects else []",
+          "is_error": null
+        }
+      ]
+    },
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_01FhJSnj8ZwgoW8STAbzTahj",
+          "content": "115:    def test_HTTP_302_ALLOW_REDIRECT_GET(self):\n121:    # def test_HTTP_302_ALLOW_REDIRECT_POST(self):\n145:    def test_cookie_sent_on_redirect(self):\n208:    def test_requests_in_history_are_not_overridden(self):\n281:    def test_DIGEST_HTTP_200_OK_GET(self):\n297:    def test_DIGEST_AUTH_RETURNS_COOKIE(self):\n306:    def test_DIGEST_AUTH_SETS_SESSION_COOKIES(self):\n313:    def test_DIGEST_STREAM(self):\n324:    def test_DIGESTAUTH_WRONG_HTTP_401_GET(self):\n340:    def test_DIGESTAUTH_QUOTES_QOP_VALUE(self):\n417:    def test_pyopenssl_redirect(self):\n505:    def test_prepared_request_hook(self):\n519:    def test_prepared_from_session(self):\n717:    def test_cannot_send_unprepared_requests(self):\n755:    def test_uppercase_scheme_redirect(self):\n833:    def test_can_send_nonstring_objects_with_files(self):",
+          "is_error": null
+        }
+      ]
+    },
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_017KHtQbZGSwfUnHNpo8bRNJ",
+          "content": "95\t        s = requests.Session()\n96\t        s.proxies = getproxies()\n97\t        parts = urlparse(httpbin('get'))\n98\t        schemes = ['http://', 'HTTP://', 'hTTp://', 'HttP://',\n99\t                   'https://', 'HTTPS://', 'hTTps://', 'HttPs://']\n100\t        for scheme in schemes:\n101\t            url = scheme + parts.netloc + parts.path\n102\t            r = requests.Request('GET', url)\n103\t            r = s.send(r.prepare())\n104\t            assert r.status_code == 200, 'failed for scheme {0}'.format(scheme)\n105\t\n106\t    def test_HTTP_200_OK_GET_ALTERNATIVE(self):\n107\t        r = requests.Request('GET', httpbin('get'))\n108\t        s = requests.Session()\n109\t        s.proxies = getproxies()\n110\t\n111\t        r = s.send(r.prepare())\n112\t\n113\t        assert r.status_code == 200\n114\t\n115\t    def test_HTTP_302_ALLOW_REDIRECT_GET(self):\n116\t        r = requests.get(httpbin('redirect', '1'))\n117\t        assert r.status_code == 200\n118\t        assert r.history[0].status_code == 302\n119\t        assert r.history[0].is_redirect\n120\t\n121\t    # def test_HTTP_302_ALLOW_REDIRECT_POST(self):\n122\t    #     r = requests.post(httpbin('status', '302'), data={'some': 'data'})\n123\t    #     self.assertEqual(r.status_code, 200)\n124\t\n125\t    def test_HTTP_200_OK_GET_WITH_PARAMS(self):\n126\t        heads = {'User-agent': 'Mozilla/5.0'}\n127\t\n128\t        r = requests.get(httpbin('user-agent'), headers=heads)\n129\t\n130\t        assert heads['User-agent'] in r.text\n131\t        assert r.status_code == 200\n132\t\n133\t    def test_HTTP_200_OK_GET_WITH_MIXED_PARAMS(self):\n134\t        heads = {'User-agent': 'Mozilla/5.0'}",
+          "is_error": null
+        }
+      ]
+    },
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_01BSomKxd6bY3mLuERneGejs",
+          "content": "145\t    def test_cookie_sent_on_redirect(self):\n146\t        s = requests.session()\n147\t        s.get(httpbin('cookies/set?foo=bar'))\n148\t        r = s.get(httpbin('redirect/1'))  # redirects to httpbin('get')\n149\t        assert 'Cookie' in r.json()['headers']\n150\t\n151\t    def test_cookie_removed_on_expire(self):\n152\t        s = requests.session()\n153\t        s.get(httpbin('cookies/set?foo=bar'))\n154\t        assert s.cookies['foo'] == 'bar'\n155\t        s.get(\n156\t            httpbin('response-headers'),\n157\t            params={\n158\t                'Set-Cookie':\n159\t                    'foo=deleted; expires=Thu, 01-Jan-1970 00:00:01 GMT'\n160\t            }\n161\t        )\n162\t        assert 'foo' not in s.cookies\n163\t\n164\t    def test_cookie_quote_wrapped(self):\n165\t        s = requests.session()\n166\t        s.get(httpbin('cookies/set?foo=\"bar:baz\"'))\n167\t        assert s.cookies['foo'] == '\"bar:baz\"'\n168\t\n169\t    def test_cookie_persists_via_api(self):\n170\t        s = requests.session()\n171\t        r = s.get(httpbin('redirect/1'), cookies={'foo': 'bar'})\n172\t        assert 'foo' in r.request.headers['Cookie']\n173\t        assert 'foo' in r.history[0].request.headers['Cookie']\n174\t\n175\t    def test_request_cookie_overrides_session_cookie(self):\n176\t        s = requests.session()\n177\t        s.cookies['foo'] = 'bar'\n178\t        r = s.get(httpbin('cookies'), cookies={'foo': 'baz'})\n179\t        assert r.json()['cookies']['foo'] == 'baz'\n180\t        # Session cookie should not be modified\n181\t        assert s.cookies['foo'] == 'bar'\n182\t\n183\t    def test_request_cookies_not_persisted(self):\n184\t        s = requests.session()\n185\t        s.get(httpbin('cookies'), cookies={'foo': 'baz'})\n186\t        # Sending a request with cookies should not add cookies to the session\n187\t        assert not s.cookies\n188\t\n189\t    def test_generic_cookiejar_works(self):\n190\t        cj = cookielib.CookieJar()\n191\t        cookiejar_from_dict({'foo': 'bar'}, cj)\n192\t        s = requests.session()\n193\t        s.cookies = cj\n194\t        r = s.get(httpbin('cookies'))\n195\t        # Make sure the cookie was sent\n196\t        assert r.json()['cookies']['foo'] == 'bar'\n197\t        # Make sure the session cj is still the custom one\n198\t        assert s.cookies is cj\n199\t\n200\t    def test_param_cookiejar_works(self):\n201\t        cj = cookielib.CookieJar()\n202\t        cookiejar_from_dict({'foo' : 'bar'}, cj)\n203\t        s = requests.session()\n204\t        r = s.get(httpbin('cookies'), cookies=cj)\n205\t        # Make sure the cookie was sent\n206\t        assert r.json()['cookies']['foo'] == 'bar'\n207\t\n208\t    def test_requests_in_history_are_not_overridden(self):\n209\t        resp = requests.get(httpbin('redirect/3'))\n210\t        urls = [r.url for r in resp.history]\n211\t        req_urls = [r.request.url for r in resp.history]\n212\t        assert urls == req_urls\n213\t\n214\t    def test_user_agent_transfers(self):\n215\t\n216\t        heads = {\n217\t            'User-agent': 'Mozilla/5.0 (github.com/kennethreitz/requests)'\n218\t        }\n219\t",
+          "is_error": null
+        }
+      ]
+    },
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_0188G3SyMYJC8zpcpd7VNCWP",
+          "content": "505\t    def test_prepared_request_hook(self):\n506\t        def hook(resp, **kwargs):\n507\t            resp.hook_working = True\n508\t            return resp\n509\t\n510\t        req = requests.Request('GET', HTTPBIN, hooks={'response': hook})\n511\t        prep = req.prepare()\n512\t\n513\t        s = requests.Session()\n514\t        s.proxies = getproxies()\n515\t        resp = s.send(prep)\n516\t\n517\t        assert hasattr(resp, 'hook_working')\n518\t\n519\t    def test_prepared_from_session(self):\n520\t        class DummyAuth(requests.auth.AuthBase):\n521\t            def __call__(self, r):\n522\t                r.headers['Dummy-Auth-Test'] = 'dummy-auth-test-ok'\n523\t                return r\n524\t\n525\t        req = requests.Request('GET', httpbin('headers'))\n526\t        assert not req.auth\n527\t\n528\t        s = requests.Session()\n529\t        s.auth = DummyAuth()\n530\t\n531\t        prep = s.prepare_request(req)\n532\t        resp = s.send(prep)\n533\t\n534\t        assert resp.json()['headers']['Dummy-Auth-Test'] == 'dummy-auth-test-ok'\n535\t\n536\t    def test_links(self):",
+          "is_error": null
+        }
+      ]
+    },
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_01S7uKUT7VXdK97YsqRuMeeb",
+          "content": "715\t        assert ('user', 'pass#pass') == requests.utils.get_auth_from_url(url)\n716\t\n717\t    def test_cannot_send_unprepared_requests(self):\n718\t        r = requests.Request(url=HTTPBIN)\n719\t        with pytest.raises(ValueError):\n720\t            requests.Session().send(r)\n721\t\n722\t    def test_http_error(self):\n723\t        error = requests.exceptions.HTTPError()\n724\t        assert not error.response\n725\t        response = requests.Response()\n726\t        error = requests.exceptions.HTTPError(response=response)\n727\t        assert error.response == response\n728\t        error = requests.exceptions.HTTPError('message', response=response)\n729\t        assert str(error) == 'message'\n730\t        assert error.response == response\n731\t\n732\t    def test_session_pickling(self):\n733\t        r = requests.Request('GET', httpbin('get'))\n734\t        s = requests.Session()\n735\t\n736\t        s = pickle.loads(pickle.dumps(s))\n737\t        s.proxies = getproxies()\n738\t\n739\t        r = s.send(r.prepare())\n740\t        assert r.status_code == 200\n741\t\n742\t    def test_fixes_1329(self):\n743\t        \"\"\"\n744\t        Ensure that header updates are done case-insensitively.\n745\t        \"\"\"\n746\t        s = requests.Session()\n747\t        s.headers.update({'ACCEPT': 'BOGUS'})\n748\t        s.headers.update({'accept': 'application/json'})\n749\t        r = s.get(httpbin('get'))\n750\t        headers = r.request.headers\n751\t        assert headers['accept'] == 'application/json'\n752\t        assert headers['Accept'] == 'application/json'\n753\t        assert headers['ACCEPT'] == 'application/json'\n754\t\n755\t    def test_uppercase_scheme_redirect(self):\n756\t        parts = urlparse(httpbin('html'))\n757\t        url = \"HTTP://\" + parts.netloc + parts.path\n758\t        r = requests.get(httpbin('redirect-to'), params={'url': url})\n759\t        assert r.status_code == 200\n760\t        assert r.url.lower() == url.lower()\n761\t\n762\t    def test_transport_adapter_ordering(self):\n763\t        s = requests.Session()\n764\t        order = ['https://', 'http://']",
+          "is_error": null
+        }
+      ]
+    },
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_019CokNVXQRyreCEjb4Eb8ff",
+          "content": "281\t    def test_DIGEST_HTTP_200_OK_GET(self):\n282\t\n283\t        auth = HTTPDigestAuth('user', 'pass')\n284\t        url = httpbin('digest-auth', 'auth', 'user', 'pass')\n285\t\n286\t        r = requests.get(url, auth=auth)\n287\t        assert r.status_code == 200\n288\t\n289\t        r = requests.get(url)\n290\t        assert r.status_code == 401\n291\t\n292\t        s = requests.session()\n293\t        s.auth = HTTPDigestAuth('user', 'pass')\n294\t        r = s.get(url)\n295\t        assert r.status_code == 200\n296\t\n297\t    def test_DIGEST_AUTH_RETURNS_COOKIE(self):\n298\t        url = httpbin('digest-auth', 'auth', 'user', 'pass')\n299\t        auth = HTTPDigestAuth('user', 'pass')\n300\t        r = requests.get(url)\n301\t        assert r.cookies['fake'] == 'fake_value'\n302\t\n303\t        r = requests.get(url, auth=auth)\n304\t        assert r.status_code == 200\n305\t\n306\t    def test_DIGEST_AUTH_SETS_SESSION_COOKIES(self):\n307\t        url = httpbin('digest-auth', 'auth', 'user', 'pass')\n308\t        auth = HTTPDigestAuth('user', 'pass')\n309\t        s = requests.Session()\n310\t        s.get(url, auth=auth)\n311\t        assert s.cookies['fake'] == 'fake_value'\n312\t\n313\t    def test_DIGEST_STREAM(self):\n314\t\n315\t        auth = HTTPDigestAuth('user', 'pass')\n316\t        url = httpbin('digest-auth', 'auth', 'user', 'pass')\n317\t\n318\t        r = requests.get(url, auth=auth, stream=True)\n319\t        assert r.raw.read() != b''\n320\t\n321\t        r = requests.get(url, auth=auth, stream=False)\n322\t        assert r.raw.read() == b''\n323\t\n324\t    def test_DIGESTAUTH_WRONG_HTTP_401_GET(self):",
+          "is_error": null
+        }
+      ]
+    },
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_01KRPSx6KYZxMn6FP2rp7cAM",
+          "content": "29\tdef dispatch_hook(key, hooks, hook_data, **kwargs):\n30\t    \"\"\"Dispatches a hook dictionary on a given piece of data.\"\"\"\n31\t\n32\t    hooks = hooks or dict()\n33\t\n34\t    if key in hooks:\n35\t        hooks = hooks.get(key)\n36\t\n37\t        if hasattr(hooks, '__call__'):\n38\t            hooks = [hooks]\n39\t\n40\t        for hook in hooks:\n41\t            _hook_data = hook(hook_data, **kwargs)\n42\t            if _hook_data is not None:\n43\t                hook_data = _hook_data\n44\t\n45\t    return hook_data\n46\t",
+          "is_error": null
+        }
+      ]
+    }
+  ]
+}

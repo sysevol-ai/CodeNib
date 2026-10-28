@@ -1,0 +1,12 @@
+{
+  "relative_native_path": "grade/logs/codenib-da243a39a766/matched-v2-native/pytest-dev__pytest-5809/patch.diff",
+  "whole_file_sha256": "7592b56c11b12bc267bb69bc3e396f7a4adfd333a9e1e865433c819424598bbd",
+  "whole_file_bytes": 1304,
+  "part": 0,
+  "parts": 1,
+  "content_encoding": "gzip+base64",
+  "gzip_mtime": 0,
+  "gzip_bytes": 557,
+  "base64_bytes": "H4sIAAAAAAACA5WUwY6bMBCG7zzFCGmlRICBbgIkElVOPffQW1UlBg+Ju8Qg7GyIqr57bRM2m42oWh+w7PltZub7gfGqgiDYcwU0LA9U7LFu9uEyixJSnPYV70knFRTTMUfgGSpeIxwbhhBHUbJYOFww7CEaBiFYZlmaJk4QBBAyfA3Fqa4dz/P+evNmA0HkR+DFsNk43hfeg1tjj50LBXKxh5NEBucDCji1dUOZ2VMNFC2VColABVXXHGG3CwK7VXCx2xmFq7BXLnHY+/JlV4bb9qJQqnCUk/aiU5yIXKtcxMs0oQkh6aqI2IqNPTDFTt56LX4qakpPV34Knn3qJcMKyg6pwq3u+NaKZ2UjFAol52sHHDCjpR09Ssjh17A2wy01GXcNo9p3grfQ0M81uDqJQyOeXeAVyIskr9hJ3ogtF1XzPfoBn3N4BqwljlLXd7zHa2xj/Xfvxr7l3cWE4jPiyxj7PUynrta5ugelWrkOwxs5956NaZCma+ftPZyp0JVOQcusWmWEUFpGRbK8pzN5eMAzGTZ84k+Jn2lz6skSKmsqJXzT0q8WTlP8xFIZNOPQcewU1Chmx6Z8QbbV9TctijnkOcQ3od72gVFFdXPulRrFw33q0uLMqOfAJRTGTTfClozp8f8DfniRpTWBK/igHSyRP0kXnq5JcGFrIgyNIWfzm3/uz1gPPao/ZmNtnVf6TzJ83cHo7385O9gyHzz5qP8D0GEdoBgFAAA=",
+  "scope": "Exact original native grading bytes under lossless compression; concatenate decoded gzip pieces, decompress, then verify the whole-file hash. No outcome replacement or repair regrade."
+}

@@ -1,0 +1,152 @@
+{
+  "scope": "Exact captured v2 tool requests and delivered user/tool messages; no task acceptance or complete source-read score.",
+  "workflow_index": 0,
+  "task_id": "psf__requests-1921-post_edit",
+  "kind": "post_edit",
+  "raw_sdk_trace_sha256": "f481df3fc1179314c01f84f69333866e5bd18ce955a616a11b7cba24649585b4",
+  "raw_sdk_trace_bytes": 21465,
+  "init": [
+    {
+      "type": "SystemMessage",
+      "subtype": "init",
+      "data": {
+        "model": "claude-opus-5-5",
+        "apiKeySource": "none",
+        "tools": [
+          "Bash",
+          "Edit",
+          "Glob",
+          "Grep",
+          "Read",
+          "ToolSearch",
+          "Write",
+          "mcp__study__initial_instructions",
+          "mcp__study__serena_repl"
+        ],
+        "mcp_servers": [
+          {
+            "name": "study",
+            "status": "connected",
+            "source": "dynamic"
+          }
+        ],
+        "claude_code_version": "2.1.310"
+      }
+    }
+  ],
+  "rate_events": [],
+  "tool_calls_in_first_observed_order": [
+    {
+      "id": "toolu_0118KLFcUBfsu94qh8uQc9v7",
+      "name": "Grep",
+      "input": {
+        "pattern": "prepare_probe_request",
+        "output_mode": "content",
+        "-n": true
+      }
+    },
+    {
+      "id": "toolu_019tx4amTn6m7J6kUSQ848mn",
+      "name": "Read",
+      "input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/00-psf__requests-1921-serena/workspace/requests/_pilot_post_edit.py"
+      }
+    },
+    {
+      "id": "toolu_01WGZUZJzeBbWPk1HeZ9kwAt",
+      "name": "Grep",
+      "input": {
+        "pattern": "_pilot_post_edit",
+        "output_mode": "content"
+      }
+    },
+    {
+      "id": "toolu_01KpJS2uxAhBdvUKVFSAa1Vu",
+      "name": "Bash",
+      "input": {
+        "command": "git status --short",
+        "description": "Show working tree status"
+      }
+    },
+    {
+      "id": "toolu_016phfQWJE2YsEiwrGRg73Fi",
+      "name": "Grep",
+      "input": {
+        "pattern": "def (prepare_request|request|send|get_adapter|__init__)\\b|p\\.prepare\\(|return p$|self\\.send\\(|adapter\\.send\\(|self\\.mount\\(|get_netrc_auth\\(request",
+        "path": "requests/sessions.py",
+        "output_mode": "content"
+      }
+    },
+    {
+      "id": "toolu_011rcvZZRjX6NdUFdr9zJbwH",
+      "name": "Grep",
+      "input": {
+        "pattern": "def (__init__|prepare|prepare_auth)\\b|class (Request|PreparedRequest)\\b|r = auth\\(self\\)|self\\.__dict__\\.update\\(r\\.__dict__\\)",
+        "path": "requests/models.py",
+        "output_mode": "content"
+      }
+    }
+  ],
+  "delivered_user_tool_messages_in_order": [
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_0118KLFcUBfsu94qh8uQc9v7",
+          "content": "requests/_pilot_post_edit.py:4:def prepare_probe_request(url: str):",
+          "is_error": null
+        }
+      ]
+    },
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_019tx4amTn6m7J6kUSQ848mn",
+          "content": "1\tfrom .models import Request\n2\tfrom .sessions import Session\n3\t\n4\tdef prepare_probe_request(url: str):\n5\t    return Session().prepare_request(Request(\"GET\", url))\n6\t",
+          "is_error": null
+        }
+      ]
+    },
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_01WGZUZJzeBbWPk1HeZ9kwAt",
+          "content": "No matches found",
+          "is_error": null
+        }
+      ]
+    },
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_01KpJS2uxAhBdvUKVFSAa1Vu",
+          "content": "M  requests/sessions.py\nM  test_requests.py\n?? .serena/\n?? requests/_pilot_post_edit.py",
+          "is_error": false
+        }
+      ]
+    },
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_016phfQWJE2YsEiwrGRg73Fi",
+          "content": "170:            resp = self.send(\n204:    def __init__(self):\n252:        self.mount('https://', HTTPAdapter())\n253:        self.mount('http://', HTTPAdapter())\n261:    def prepare_request(self, request):\n284:            auth = get_netrc_auth(request.url)\n287:        p.prepare(\n298:        return p\n300:    def request(self, method, url,\n392:        resp = self.send(prep, **send_kwargs)\n465:    def send(self, request, **kwargs):\n495:        r = adapter.send(request, **kwargs)\n533:    def get_adapter(self, url):",
+          "is_error": null
+        }
+      ]
+    },
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_011rcvZZRjX6NdUFdr9zJbwH",
+          "content": "181:class Request(RequestHooksMixin):\n204:    def __init__(self,\n238:    def prepare(self):\n255:class PreparedRequest(RequestEncodingMixin, RequestHooksMixin):\n274:    def __init__(self):\n289:    def prepare(self, method=None, url=None, headers=None, files=None,\n463:    def prepare_auth(self, auth, url=''):\n477:            r = auth(self)\n480:            self.__dict__.update(r.__dict__)\n521:    def __init__(self):",
+          "is_error": null
+        }
+      ]
+    }
+  ]
+}

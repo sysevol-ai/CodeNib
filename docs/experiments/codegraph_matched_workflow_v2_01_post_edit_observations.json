@@ -1,0 +1,184 @@
+{
+  "scope": "Exact captured v2 tool requests and delivered user/tool messages; no task acceptance or complete source-read score.",
+  "workflow_index": 1,
+  "task_id": "psf__requests-1921-post_edit",
+  "kind": "post_edit",
+  "raw_sdk_trace_sha256": "b321e6db65a9c28985ea5f7d19e3ce05ffa34bcc878d75a3073b3b169b6a5f81",
+  "raw_sdk_trace_bytes": 26764,
+  "init": [
+    {
+      "type": "SystemMessage",
+      "subtype": "init",
+      "data": {
+        "model": "claude-opus-5-5",
+        "apiKeySource": "none",
+        "tools": [
+          "Bash",
+          "Edit",
+          "Glob",
+          "Grep",
+          "Read",
+          "ToolSearch",
+          "Write",
+          "mcp__study__dependency_subgraph",
+          "mcp__study__explore_context",
+          "mcp__study__get_manifest",
+          "mcp__study__lsp_definition",
+          "mcp__study__lsp_references",
+          "mcp__study__lsp_route",
+          "mcp__study__read_source",
+          "mcp__study__search_bm25",
+          "mcp__study__search_context",
+          "mcp__study__search_regex",
+          "mcp__study__search_semantic",
+          "mcp__study__search_zoekt"
+        ],
+        "mcp_servers": [
+          {
+            "name": "study",
+            "status": "connected",
+            "source": "dynamic"
+          }
+        ],
+        "claude_code_version": "2.1.310"
+      }
+    }
+  ],
+  "rate_events": [],
+  "tool_calls_in_first_observed_order": [
+    {
+      "id": "toolu_01PARXd86yv1kFXebxe7wUJC",
+      "name": "Grep",
+      "input": {
+        "pattern": "prepare_probe_request",
+        "path": ".",
+        "output_mode": "content",
+        "-n": true
+      }
+    },
+    {
+      "id": "toolu_01P3TRnkekFBi4S9eCXr7byQ",
+      "name": "Read",
+      "input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/requests/_pilot_post_edit.py"
+      }
+    },
+    {
+      "id": "toolu_0177pNCXogtzzDtrKE4kEinR",
+      "name": "Bash",
+      "input": {
+        "command": "git status --short; git log --oneline -1",
+        "description": "Show working tree status"
+      }
+    },
+    {
+      "id": "toolu_01VxgGdcDEfEfwF42TL69BvH",
+      "name": "Read",
+      "input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/requests/packages/urllib3/poolmanager.py",
+        "offset": 60,
+        "limit": 11
+      }
+    },
+    {
+      "id": "toolu_014xzpMAAabS34cCJJvXZdnJ",
+      "name": "Grep",
+      "input": {
+        "pattern": "def (prepare_url|prepare_headers|prepare_cookies|prepare_body|prepare_auth|prepare_hooks|get_netrc_auth)|socket|urlopen|\\.send\\(",
+        "path": "requests",
+        "glob": "{models,utils}.py",
+        "output_mode": "content"
+      }
+    },
+    {
+      "id": "toolu_01EnLgJd2vEAAEjVZpvJH37y",
+      "name": "Read",
+      "input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/requests/utils.py",
+        "offset": 68,
+        "limit": 12
+      }
+    },
+    {
+      "id": "toolu_01PRAG77vVEp3SUwfZSDdUAQ",
+      "name": "Read",
+      "input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/requests/utils.py",
+        "offset": 496,
+        "limit": 22
+      }
+    }
+  ],
+  "delivered_user_tool_messages_in_order": [
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_01PARXd86yv1kFXebxe7wUJC",
+          "content": "requests/_pilot_post_edit.py:4:def prepare_probe_request(url: str):",
+          "is_error": null
+        }
+      ]
+    },
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_01P3TRnkekFBi4S9eCXr7byQ",
+          "content": "1\tfrom .models import Request\n2\tfrom .sessions import Session\n3\t\n4\tdef prepare_probe_request(url: str):\n5\t    return Session().prepare_request(Request(\"GET\", url))\n6\t",
+          "is_error": null
+        }
+      ]
+    },
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_0177pNCXogtzzDtrKE4kEinR",
+          "content": "M  requests/sessions.py\nM  test_requests.py\n?? requests/_pilot_post_edit.py\n3c88e52 Merge pull request #1918 from zackw/response-is-redirect",
+          "is_error": false
+        }
+      ]
+    },
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_01VxgGdcDEfEfwF42TL69BvH",
+          "content": "60\t\n61\t    \"\"\"\n62\t\n63\t    proxy = None\n64\t\n65\t    def __init__(self, num_pools=10, headers=None, **connection_pool_kw):\n66\t        RequestMethods.__init__(self, headers)\n67\t        self.connection_pool_kw = connection_pool_kw\n68\t        self.pools = RecentlyUsedContainer(num_pools,\n69\t                                           dispose_func=lambda p: p.close())\n70\t",
+          "is_error": null
+        }
+      ]
+    },
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_014xzpMAAabS34cCJJvXZdnJ",
+          "content": "requests/utils.py:20:import socket\nrequests/utils.py:68:def get_netrc_auth(url):\nrequests/utils.py:425:    ipaddr = struct.unpack('=L', socket.inet_aton(ip))[0]\nrequests/utils.py:427:    netmask = struct.unpack('=L', socket.inet_aton(dotted_netmask(int(bits))))[0]\nrequests/utils.py:428:    network = struct.unpack('=L', socket.inet_aton(netaddr))[0] & netmask\nrequests/utils.py:438:    return socket.inet_ntoa(struct.pack('>I', bits))\nrequests/utils.py:443:        socket.inet_aton(string_ip)\nrequests/utils.py:444:    except socket.error:\nrequests/utils.py:461:            socket.inet_aton(string_network.split('/')[0])\nrequests/utils.py:462:        except socket.error:\nrequests/utils.py:505:    except (TypeError, socket.gaierror):\nrequests/models.py:269:      >>> s.send(r)\nrequests/models.py:324:    def prepare_url(self, url, params):\nrequests/models.py:390:    def prepare_headers(self, headers):\nrequests/models.py:398:    def prepare_body(self, data, files):\nrequests/models.py:463:    def prepare_auth(self, auth, url=''):\nrequests/models.py:485:    def prepare_cookies(self, cookies):\nrequests/models.py:497:    def prepare_hooks(self, hooks):",
+          "is_error": null
+        }
+      ]
+    },
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_01EnLgJd2vEAAEjVZpvJH37y",
+          "content": "68\tdef get_netrc_auth(url):\n69\t    \"\"\"Returns the Requests tuple auth for a given url from netrc.\"\"\"\n70\t\n71\t    try:\n72\t        from netrc import netrc, NetrcParseError\n73\t\n74\t        netrc_path = None\n75\t\n76\t        for f in NETRC_FILES:\n77\t            try:\n78\t                loc = os.path.expanduser('~/{0}'.format(f))\n79\t            except KeyError:",
+          "is_error": null
+        }
+      ]
+    },
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_01PRAG77vVEp3SUwfZSDdUAQ",
+          "content": "496\t\n497\t    # If the system proxy settings indicate that this URL should be bypassed,\n498\t    # don't proxy.\n499\t    # The proxy_bypass function is incredibly buggy on OS X in early versions\n500\t    # of Python 2.6, so allow this call to fail. Only catch the specific\n501\t    # exceptions we've seen, though: this call failing in other ways can reveal\n502\t    # legitimate problems.\n503\t    try:\n504\t        bypass = proxy_bypass(netloc)\n505\t    except (TypeError, socket.gaierror):\n506\t        bypass = False\n507\t\n508\t    if bypass:\n509\t        return {}\n510\t\n511\t    # If we get here, we either didn't have no_proxy set or we're not going\n512\t    # anywhere that no_proxy applies to, and the system settings don't require\n513\t    # bypassing the proxy for the current URL.\n514\t    return getproxies()\n515\t\n516\t\n517\tdef default_user_agent(name=\"python-requests\"):",
+          "is_error": null
+        }
+      ]
+    }
+  ]
+}

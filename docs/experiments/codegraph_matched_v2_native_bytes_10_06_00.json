@@ -1,0 +1,12 @@
+{
+  "relative_native_path": "grade/logs/codenib-e04df6648ce1/matched-v2-codegraph/pytest-dev__pytest-5809/run_instance.log",
+  "whole_file_sha256": "7816f58c4230ab8f2a6ebf5286c6a114c8e47f7fdbfa0690c163c8234543c5bc",
+  "whole_file_bytes": 4386,
+  "part": 0,
+  "parts": 1,
+  "content_encoding": "gzip+base64",
+  "gzip_mtime": 0,
+  "gzip_bytes": 1147,
+  "base64_bytes": "H4sIAAAAAAACA+1XWWvjSBB+968oDEMSbF0+dC0eJoSdJbDMhJ28hSBaUinujdwS6rZjM8x/32rJR+JYiZNll2XYfrCsrq/Or/rQwB64hmMbAx9sLxyPwmHQd30bDLj88vkrPS4qZIqLO0gKoRgXWEFWVFCuFEplpLiIovX/sW8Hpml2BgdMegP3kcljLEGiHWMawsD2Ag8xcEaZ59ixjyMMWJIO4uEwGY/ssY/eMAjGnuf6LHHsoR1nQZImrk9o20H3YEC+PXxrQFKx6l8K6FIorGaYcqoAlEwl0xcje6i4UihAFWCpWWklRYqCx8ZMa2JqlDwvlLEYGNqxYw98ayMRxO0CjbuKpSgJYVFULV4MbZWA5dSq4VZe3MmtK7RHaea6Iz9BZ2udPO6UWsxadXpmyrOsD6J4AFaW+Uo3HGWz7bm2vgoo+23VPuoB56TPMYUrbTfsXEwxudfmmjImUybukEK3yLlrxvO7jC/NSirtYQ8rq8Rah0pRSoUxF2a5OoDUEHqz9DPag27iecU/JDkyka/2FVqCaIO3RbLDH66j96iOv3EFmg+IkboOw079Yhh3NM+stoDiNkmHixSXMHLGnstc0/SC2E6DFGgxuKNRxzCMdqudXq/3guVPn8DwaHeBXv1Lrylm650jEvjQVOBUtxEKJc/CDnRAj5JVbCZhAt+bdz26ule7IWzQ/Y6xFeW4xIpkXQpiWohhF3gGciXNBVaSFyLiIitu7Fv4OIEhYC5xA+32O73nZhQuFUl2vnFZ8mqlRc4D4v1G9qN5zKucYu1OlSplaFlxnZYpUHWfctPKftwqWrMTs8TPAt80GUvs2B0/ZadVuaGnVaz5cQZu34eeftQMJTmTEq4JelWTU8R/YqI0NZtBcqwU5ChOZ0Vyj2lE+RclijOYTMDZAWm6DylTjIrzFElUPLOnViWeavQZcAmx7qYdwzUzusZvJ/iZo5qtFrqMPWzTEpMPsgsf1kFwUedkpqgb8vRs1z9Pdeoeeo7ej6Zu60k2z3OjjsPY9Pcxuk1bTpqefI5/dSv5dcFykEnFS/XznmBISZpy+gvtHOVxJ9fIoUvWaFcmvRqgmgvFZxiCY9L6k1RjkcoWXW9Pt5ircv4Tl7jeWZokTbVUB6viDbwDZxjL6Cr1/xH2Xz7CjiezuT2lDal6wQi93HC3yRxhi9pSKzEhH97xLaPNjR/d1Cssi0qF8P2kxcpJLdO9HnEZfSkE0sxnRuXtw3oel1wqSdPX1Xw3K+dJglLqjXsVseaSt8NUKIt88XhGe5QRfaSouaydfj6//D26/hpdnX/7Vk+sLdL/m5O2IzsMtydzGNbC/VY8uSVnGeP5vNKp3Nz+oHft4+/4umClIntrl9o6pbZO6k2qLM/fpSdoATCZcN6gI93dBzPdVFU/9zN9qTJH4Wl0/kA5z1/cykPYsN+Q/3qXntPOPyvV+mySqigffc7TOojN+gxrWwiH9u+Dq2NMV72h3+a3wlmxwH/O89g+9En/PifrYFOz8xcV3WQ9IhEAAA==",
+  "scope": "Exact original native grading bytes under lossless compression; concatenate decoded gzip pieces, decompress, then verify the whole-file hash. No outcome replacement or repair regrade."
+}

@@ -1,0 +1,1406 @@
+{
+  "schema_version": 2,
+  "scope": "Independent prospectively frozen v2 model execution. Original v1 remains unchanged; source/native acceptance is separate.",
+  "original_receipt": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/10-pytest-dev__pytest-5809-codegraph/receipt.json",
+  "original_receipt_sha256": "05ac2153f3ea6eee87e7b361c2049e0bf1ddebf885491ce387c4efd4d9e3bfa7",
+  "receipt_projection": {
+    "workflow": {
+      "workflow_index": 10,
+      "instance_id": "pytest-dev__pytest-5809",
+      "arm": "codegraph"
+    },
+    "owner": "f304f3dac202",
+    "created_utc": "2026-10-28T14:45:26.437743+00:00",
+    "prepare_only": false,
+    "commands": [
+      {
+        "label": "common-directories",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/10-pytest-dev__pytest-5809-codegraph/workspace",
+          "3b139fb8106f8cb8809c9c0b89086282a8ea21fa51527309fb44185c2aaa6d5d",
+          "mkdir",
+          "-p",
+          "/opt/pilot-tools/bin",
+          "/opt/pilot-inputs",
+          "/opt/pilot-state"
+        ],
+        "returncode": 0,
+        "seconds": 0.046848077327013016,
+        "log": "common-directories.log",
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "common-git",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/10-pytest-dev__pytest-5809-codegraph/workspace",
+          "3b139fb8106f8cb8809c9c0b89086282a8ea21fa51527309fb44185c2aaa6d5d",
+          "git",
+          "config",
+          "--global",
+          "--add",
+          "safe.directory",
+          "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/10-pytest-dev__pytest-5809-codegraph/workspace"
+        ],
+        "returncode": 0,
+        "seconds": 0.05310802906751633,
+        "log": "common-git.log",
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "common-project",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/10-pytest-dev__pytest-5809-codegraph/workspace",
+          "3b139fb8106f8cb8809c9c0b89086282a8ea21fa51527309fb44185c2aaa6d5d",
+          "/opt/miniconda3/envs/testbed/bin/python",
+          "-m",
+          "pip",
+          "install",
+          "-e",
+          "."
+        ],
+        "returncode": 0,
+        "seconds": 1.128832459449768,
+        "log": "common-project.log",
+        "log_sha256": "bbfb022223b7230e87c24a723ce41fc32b82f914ec15dfc82b15d8575c5451cc"
+      },
+      {
+        "label": "common-workspace-owner",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/10-pytest-dev__pytest-5809-codegraph/workspace",
+          "3b139fb8106f8cb8809c9c0b89086282a8ea21fa51527309fb44185c2aaa6d5d",
+          "chown",
+          "-R",
+          "1001:1001",
+          "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/10-pytest-dev__pytest-5809-codegraph/workspace"
+        ],
+        "returncode": 0,
+        "seconds": 0.059043485671281815,
+        "log": "common-workspace-owner.log",
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "install-product",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/10-pytest-dev__pytest-5809-codegraph/workspace",
+          "3b139fb8106f8cb8809c9c0b89086282a8ea21fa51527309fb44185c2aaa6d5d",
+          "npm",
+          "install",
+          "--global",
+          "--prefix",
+          "/opt/pilot-tools/npm",
+          "@colbymchenry/codegraph@1.6.2"
+        ],
+        "returncode": 0,
+        "seconds": 4.266891395673156,
+        "log": "install-product.log",
+        "log_sha256": "3c57b5365a0112cd7e6f986d54ab5a98db8c78d6c9f727fb0c89846261762d2b"
+      },
+      {
+        "label": "launcher",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/10-pytest-dev__pytest-5809-codegraph/workspace",
+          "3b139fb8106f8cb8809c9c0b89086282a8ea21fa51527309fb44185c2aaa6d5d",
+          "ln",
+          "-s",
+          "/opt/pilot-tools/npm/bin/codegraph",
+          "/opt/pilot-tools/bin/codegraph"
+        ],
+        "returncode": 0,
+        "seconds": 0.042695920914411545,
+        "log": "launcher.log",
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "bundle",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/10-pytest-dev__pytest-5809-codegraph/workspace",
+          "3b139fb8106f8cb8809c9c0b89086282a8ea21fa51527309fb44185c2aaa6d5d",
+          "codegraph",
+          "--version"
+        ],
+        "returncode": 0,
+        "seconds": 0.1429045218974352,
+        "log": "bundle.log",
+        "log_sha256": "a2d5e268fe70979caccd895156b3d33bd61a3cc7e660ab7a5b07066849b3e248"
+      },
+      {
+        "label": "initialize-product",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/10-pytest-dev__pytest-5809-codegraph/workspace",
+          "3b139fb8106f8cb8809c9c0b89086282a8ea21fa51527309fb44185c2aaa6d5d",
+          "/bin/bash",
+          "-lc",
+          "umask 002\ncodegraph init --yes /tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/10-pytest-dev__pytest-5809-codegraph/workspace"
+        ],
+        "returncode": 0,
+        "seconds": 2.217567650601268,
+        "log": "initialize-product.log",
+        "log_sha256": "1f681fc7dfd9dd2982c0e375eade27ffe5e8c54b269a2156c77c11f2e78f4e4d"
+      },
+      {
+        "label": "verify-target-identity",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/10-pytest-dev__pytest-5809-codegraph/workspace",
+          "3b139fb8106f8cb8809c9c0b89086282a8ea21fa51527309fb44185c2aaa6d5d",
+          "/opt/miniconda3/envs/testbed/bin/python",
+          "-c",
+          "import importlib.metadata as m,json,sys;print(json.dumps({\"python\":sys.version,\"packages\":sorted({(d.metadata[\"Name\"],d.version) for d in m.distributions()})}))"
+        ],
+        "returncode": 0,
+        "seconds": 0.06703145615756512,
+        "log": "verify-target-identity.log",
+        "log_sha256": "4a6ffe3f13b2845216d32fb95a83eb558eed0367ebd6b566b3c10a835a5733e6"
+      },
+      {
+        "label": "verify-product-identity",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/10-pytest-dev__pytest-5809-codegraph/workspace",
+          "3b139fb8106f8cb8809c9c0b89086282a8ea21fa51527309fb44185c2aaa6d5d",
+          "node",
+          "-e",
+          "const fs=require(\"fs\"),path=require(\"path\"),crypto=require(\"crypto\");let base=\"/opt/pilot-tools/npm/lib/node_modules/@colbymchenry/codegraph\",files={};function walk(p){for(const e of fs.readdirSync(p,{withFileTypes:true})){let q=path.join(p,e.name);if(e.isDirectory())walk(q);else if(e.isFile())files[q]=crypto.createHash(\"sha256\").update(fs.readFileSync(q)).digest(\"hex\")}}walk(base);console.log(JSON.stringify({node:process.version,package:require(base+\"/package.json\").version,package_files:files}))"
+        ],
+        "returncode": 0,
+        "seconds": 0.34596872329711914,
+        "log": "verify-product-identity.log",
+        "log_sha256": "6f1404d8f95e599b224a95a72b38dfef54a63cbcbba9b0284ca7f9ecfa912341"
+      }
+    ],
+    "phases": [
+      {
+        "task_id": "pytest-dev__pytest-5809-lookup",
+        "kind": "lookup",
+        "started_utc": "2026-10-28T14:45:37.609552+00:00",
+        "prompt_sha256": "4876cb66f53ff17fc080d4139b520a804f6d6351464bc75181fbfa31f0883389",
+        "source_before": {
+          "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/10-pytest-dev__pytest-5809-codegraph/lookup-before-source.json",
+          "sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+          "source_digest": "b9f298fd897f95436ccc5d1fac9b106b2840e1b65573146ce260039c17cdc573",
+          "file_count": 424,
+          "head": "8aba863a634f40560e25055d179220f0eefabe9a"
+        },
+        "stream_output_tokens": 1708,
+        "session": "cold",
+        "result": {
+          "subtype": "success",
+          "duration_ms": 17157,
+          "duration_api_ms": 18145,
+          "is_error": false,
+          "num_turns": 4,
+          "session_id": "f1a26fc2-9526-4ba6-bd9e-95f1568d13ff",
+          "stop_reason": "end_turn",
+          "total_cost_usd": 0.15091790000000002,
+          "usage": {
+            "input_tokens": 8,
+            "cache_creation_input_tokens": 13277,
+            "cache_read_input_tokens": 51412,
+            "output_tokens": 1708,
+            "output_tokens_details": {
+              "thinking_tokens": 108
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            },
+            "service_tier": "standard",
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 13277,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "inference_geo": "global",
+            "iterations": [
+              {
+                "input_tokens": 2,
+                "output_tokens": 1322,
+                "cache_read_input_tokens": 18304,
+                "cache_creation_input_tokens": 647,
+                "cache_creation": {
+                  "ephemeral_5m_input_tokens": 0,
+                  "ephemeral_1h_input_tokens": 647
+                },
+                "type": "message"
+              }
+            ],
+            "speed": "standard",
+            "fallback_credit": null
+          },
+          "result": "The implementation is `CallInfo`, defined in `src/_pytest/runner.py:202-245`. Its factory method `CallInfo.from_call` is at lines 219-233.\n\n## What it stores (`src/_pytest/runner.py:202-211`)\n\n`CallInfo` is an `attr.s` class with five fields:\n- `_result`: the callable's return value.\n- `excinfo`: either `None` or an `ExceptionInfo`. The comment on line 207 says `Optional[ExceptionInfo]`.\n- `start` and `stop`: timestamps from `time()`.\n- `when`: the phase name, such as `\"setup\"`, `\"call\"`, `\"teardown\"` or `\"collect\"`.\n\n## How `from_call` works (`src/_pytest/runner.py:219-233`)\n\n```python\n223        start = time()\n224        excinfo = None\n225        try:\n226            result = func()\n227        except:  # noqa\n228            excinfo = ExceptionInfo.from_current()\n229            if reraise is not None and excinfo.errisinstance(reraise):\n230                raise\n231            result = None\n232        stop = time()\n233        return cls(start=start, stop=stop, when=when, result=result, excinfo=excinfo)\n```\n\n- It records the start time, then calls `func()` with no arguments.\n- A bare `except:` catches every exception. The exception is saved as `ExceptionInfo.from_current()` and the result is set to `None`.\n- If the exception matches the `reraise` types, it is raised again and no `CallInfo` is returned. `call_runtest_hook` (lines 191-199) uses this for `Exit`, and also for `KeyboardInterrupt` unless `--pdb` is active.\n- The stop time is recorded in both the success and the captured-exception cases.\n\n## How callers tell success from a captured exception\n\n1. **The check callers use is whether `excinfo` is `None`.** Callers test its truthiness:\n   - `pytest_make_collect_report`, `src/_pytest/runner.py:255`: `if not call.excinfo: outcome = \"passed\"`. Otherwise it checks `errisinstance(skip_exceptions)` and sets the outcome to \"skipped\" or \"failed\" (lines 261-270).\n   - `TestReport.from_item_and_call`, `src/_pytest/reports.py:355-373`: `if not call.excinfo` means \"passed\". Otherwise a skip exception means \"skipped\" and anything else means \"failed\". This method also computes `duration = call.stop - call.start` (line 351).\n   - Other examples: `check_interactive_exception` (`src/_pytest/runner.py:184-187`), `src/_pytest/skipping.py:145-150` and `src/_pytest/nose.py:28`.\n\n2. **The `result` property is guarded.** At `src/_pytest/runner.py:213-217`, reading `call.result` raises `AttributeError` when `excinfo` is not `None`. A failed call therefore has no usable result, rather than one that silently reads as `None`. Callers use this in two ways:\n   - `getattr(call, \"result\", None)` (`src/_pytest/runner.py:272`) returns the collected items on success and `None` on failure.\n   - `src/_pytest/unittest.py:243-248` adds an exception to an existing `CallInfo` by setting `call.excinfo` and then `del call.result` inside a `try/except AttributeError`.\n\n3. **`__repr__` follows the same rule.** At `src/_pytest/runner.py:235-245`, it shows `\"exception\"` with `excinfo.value` when `excinfo` is set, and `\"result\"` with `repr(self._result)` otherwise.\n\nThese caller relationships come from reading the code and searching for `call.excinfo` and `call.result` usages. I did not trace them at runtime.",
+          "structured_output": null,
+          "model_usage": {
+            "claude-haiku-5-5": {
+              "inputTokens": 1340,
+              "outputTokens": 187,
+              "cacheReadInputTokens": 0,
+              "cacheCreationInputTokens": 0,
+              "webSearchRequests": 0,
+              "costUSD": 0.0002275,
+              "contextWindow": 1000000,
+              "maxOutputTokens": 128000,
+              "thinkingTokens": 169,
+              "canonicalModel": "claude-haiku-5-5",
+              "provider": "firstParty",
+              "costBasis": "list"
+            },
+            "claude-opus-5-5": {
+              "inputTokens": 8,
+              "outputTokens": 1708,
+              "cacheReadInputTokens": 51412,
+              "cacheCreationInputTokens": 13277,
+              "webSearchRequests": 0,
+              "costUSD": 0.1506904,
+              "contextWindow": 1000000,
+              "maxOutputTokens": 128000,
+              "thinkingTokens": 108,
+              "canonicalModel": "claude-opus-5-5",
+              "provider": "firstParty",
+              "costBasis": "list"
+            }
+          },
+          "permission_denials": [],
+          "deferred_tool_use": null,
+          "errors": null,
+          "api_error_status": null,
+          "uuid": "d7892fb5-d34a-4673-8594-bb7ae4ea4caa",
+          "terminal_reason": "completed",
+          "origin": null
+        },
+        "status": "sdk_completed_pending_acceptance",
+        "seconds": 17.235768172889948,
+        "source_after": {
+          "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/10-pytest-dev__pytest-5809-codegraph/lookup-after-source.json",
+          "sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+          "source_digest": "b9f298fd897f95436ccc5d1fac9b106b2840e1b65573146ce260039c17cdc573",
+          "file_count": 424,
+          "head": "8aba863a634f40560e25055d179220f0eefabe9a"
+        },
+        "read_only_source_preserved": true,
+        "trace": {
+          "path": "lookup-sdk.jsonl",
+          "sha256": "7575cd74cfb54afd07de476b0001cd3bbda21931ce52684dd0d637b86a4f4284"
+        }
+      },
+      {
+        "task_id": "pytest-dev__pytest-5809-flow",
+        "kind": "flow",
+        "started_utc": "2026-10-28T14:45:55.567351+00:00",
+        "prompt_sha256": "6702adc20b563afd9f271cce73cae892eff1ae75733f6bc60e19df94b472b67b",
+        "source_before": {
+          "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/10-pytest-dev__pytest-5809-codegraph/flow-before-source.json",
+          "sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+          "source_digest": "b9f298fd897f95436ccc5d1fac9b106b2840e1b65573146ce260039c17cdc573",
+          "file_count": 424,
+          "head": "8aba863a634f40560e25055d179220f0eefabe9a"
+        },
+        "stream_output_tokens": 4882,
+        "session": "return",
+        "result": {
+          "subtype": "success",
+          "duration_ms": 45587,
+          "duration_api_ms": 45755,
+          "is_error": false,
+          "num_turns": 7,
+          "session_id": "f20119aa-499b-47ec-aa14-1db24e2dfe25",
+          "stop_reason": "end_turn",
+          "total_cost_usd": 0.2532569,
+          "usage": {
+            "input_tokens": 12,
+            "cache_creation_input_tokens": 16926,
+            "cache_read_input_tokens": 100072,
+            "output_tokens": 4882,
+            "output_tokens_details": {
+              "thinking_tokens": 83
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            },
+            "service_tier": "standard",
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 16926,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "inference_geo": "global",
+            "iterations": [
+              {
+                "input_tokens": 2,
+                "output_tokens": 3626,
+                "cache_read_input_tokens": 22978,
+                "cache_creation_input_tokens": 1340,
+                "cache_creation": {
+                  "ephemeral_5m_input_tokens": 0,
+                  "ephemeral_1h_input_tokens": 1340
+                },
+                "type": "message"
+              }
+            ],
+            "speed": "standard",
+            "fallback_credit": null
+          },
+          "result": "The flow runs from `runner.py` into `python.py` and back. The test function's exception does not travel up through the hooks to the top. `CallInfo.from_call` catches it and keeps it as data, and a separate `pytest_runtest_makereport` hook call then turns that data into a `TestReport`.\n\nAll of this comes from reading the code (codegraph, grep, reads); I didn't run anything. Pluggy decides at runtime which hook implementations run and in what order, so the code alone can't show it. Every `hook.X(...)` call below is therefore a **dispatch boundary**: the arrow leading out of one is a claim about which implementation registered in this repo handles it, not a direct call edge.\n\n## 0. Entry: the run loop \u2192 the protocol hook (boundary #1)\n- `src/_pytest/main.py:262-275` `pytest_runtestloop`: for each collected item it calls `item.config.hook.pytest_runtest_protocol(item=item, nextitem=nextitem)` (line 271).\n- `src/_pytest/hookspec.py:311-312`: `pytest_runtest_protocol` is `firstresult=True`, so the first non-None return ends the call.\n- Hookwrappers run around the core implementation: `capture.py:221-225`, `warnings.py:139-140`, `unittest.py:254-281` (which only patches twisted for `TestCaseFunction`), and `pytester.py:132-133` when pytester is active. Each one `yield`s to the inner call.\n- The core implementation is `src/_pytest/runner.py:76-80` `pytest_runtest_protocol`. It logs start and finish around `runtestprotocol` and returns `True`, which satisfies firstresult.\n\n## 1. The run protocol (direct calls inside runner.py)\n- `src/_pytest/runner.py:83-100` `runtestprotocol`:\n  - It calls `item._initrequest()` if needed. For a `Function`, that is `python.py:1441-1443`, which sets `funcargs = {}` and creates a `FixtureRequest`.\n  - It then runs `call_and_report(item, \"setup\")`.\n  - Only if setup passed (and `--setup-only` isn't set) does it run `call_and_report(item, \"call\")` (line 93).\n  - Teardown always runs (line 94).\n- `src/_pytest/runner.py:172-180` `call_and_report` does three things:\n  1. It calls `call_runtest_hook`.\n  2. It calls `hook.pytest_runtest_makereport` (boundary #4).\n  3. It calls `pytest_runtest_logreport`, and calls `pytest_exception_interact` if `check_interactive_exception` (lines 183-188) says to.\n- `src/_pytest/runner.py:191-199` `call_runtest_hook`:\n  - It builds the hook name `\"pytest_runtest_\" + when`, giving `pytest_runtest_call`, and looks it up with `getattr(item.ihook, hookname)`.\n  - It sets `reraise = (Exit,)` and adds `KeyboardInterrupt` unless `--pdb` is on.\n  - It wraps the hook call in a lambda and passes it to `CallInfo.from_call`.\n\n**About `item.ihook`:** `src/_pytest/nodes.py:99-102` sends it to `Session.gethookproxy` (`src/_pytest/main.py:478-490`). That returns either `config.hook` or an `FSHookProxy` (`main.py:385-394`), which uses `pm.subset_hook_caller` to leave out conftest plugins that don't apply to this path. So exactly which implementations run depends on the item's file location.\n\n## 2. Exception capture point\n- `src/_pytest/runner.py:219-233` `CallInfo.from_call`:\n  - It records the start time and calls `func()`, which is the lambda that calls the hook.\n  - A bare `except:` builds `ExceptionInfo.from_current()` (`src/_pytest/_code/code.py:403`, class at `:389`).\n  - It re-raises only if the exception is one of the `reraise` types (`Exit`, possibly `KeyboardInterrupt`).\n  - Otherwise it sets `result = None` and returns `CallInfo(start, stop, when, result, excinfo)`.\n  - Reading `.result` raises `AttributeError` when `excinfo` is set (lines 213-217).\n\n## 3. Call-phase hook \u2192 test item (boundary #2)\n- The spec is at `src/_pytest/hookspec.py:355`. It is not firstresult, so every implementation runs.\n- Hookwrappers:\n  - `capture.py:232-235` captures stdout/stderr for \"call\" through `item_capture`.\n  - `logging.py:584-587` captures logs through `_runtest_for(item, \"call\")`.\n  - Pluggy unwinds their `yield`s even when the inner call raises, then sends the exception on outward.\n- The core implementation is `src/_pytest/runner.py:119-132` `pytest_runtest_call`:\n  - It updates `PYTEST_CURRENT_TEST` (lines 141-154) and clears `sys.last_*`.\n  - It calls `item.runtest()`, which is ordinary Python dynamic dispatch on the item's class.\n  - On `Exception` it stores `sys.last_type/value/traceback`, skipping its own frame, so post-mortem debugging can use them. It then **re-raises**, so the exception reaches `from_call`.\n\n## 4. Python plugin: item \u2192 test function (boundary #3)\n- `src/_pytest/python.py:1462-1464` `Function.runtest` makes another hook call: `self.ihook.pytest_pyfunc_call(pyfuncitem=self)`.\n- The spec is `firstresult=True` (`hookspec.py:266-267`).\n- Hookwrappers:\n  - `skipping.py:95-101` runs `check_xfail_no_run` before the yield (it may raise xfail with `[NOTRUN]`) and `check_strict_xfail` afterwards if the call passed.\n  - `debugging.py:273-276` (`PdbTrace`, `--trace` only) swaps `pyfuncitem.obj` for `pdb.runcall` (lines 279-288).\n- The core implementation is `src/_pytest/python.py:160-175` `pytest_pyfunc_call`. It is `trylast=True`, so a plugin or conftest implementation can return a value first and stop it from running.\n  - It skips coroutine functions that no async plugin handles (lines 163-171).\n  - It builds `testargs` from `pyfuncitem.funcargs`, filtered by `_fixtureinfo.argnames`.\n  - It calls **`testfunction(**testargs)`** at line 174, which is where the user's test actually runs, and returns `True`.\n\nAn exception raised at line 174 unwinds back through the `pytest_pyfunc_call` wrappers, then `Function.runtest`, then `runner.pytest_runtest_call` (which records `sys.last_*` and re-raises), then the capture and logging wrappers. It ends in `CallInfo.from_call`, where it becomes `excinfo`.\n\n## 5. Report creation (boundary #4)\n- The spec is `pytest_runtest_makereport`, `firstresult=True` (`hookspec.py:369-370`). It is called from `call_and_report` at line 175.\n- Other implementations:\n  - `unittest.py:240-241` (`tryfirst`) handles unittest items.\n  - `nose.py:27` also takes part.\n  - `skipping.py:125-175` is a hookwrapper: after `outcome.get_result()` it rewrites `rep.outcome`, `wasxfail` and `longrepr` for xfail, xpass-strict and skip-location cases.\n- The core implementation is `src/_pytest/runner.py:248-249`, which calls `TestReport.from_item_and_call`.\n- `src/_pytest/reports.py:345-386` `TestReport.from_item_and_call`:\n  - `duration = stop - start`.\n  - If there is no excinfo, the outcome is `\"passed\"`.\n  - If excinfo is not an `ExceptionInfo`, the outcome is `\"failed\"` and the raw value becomes `longrepr`.\n  - For `skip.Exception`, the outcome is `\"skipped\"` and `longrepr` is a `(path, lineno, message)` tuple built from `_getreprcrash()`.\n  - Otherwise the outcome is `\"failed\"`. In the call phase `longrepr = item.repr_failure(excinfo)` (line 369); setup and teardown use `_repr_failure_py`.\n  - It adds the `\"Captured ...\"` sections from `item._report_sections`, which the capture and logging wrappers filled in step 3.\n- The traceback formatting is in two places:\n  - `src/_pytest/python.py:841-846` `repr_failure` turns `\"auto\"` into `\"long\"`, then calls `src/_pytest/nodes.py:244-262` `_repr_failure_py`.\n  - That calls the item's `_prunetraceback` (`python.py:820-839`), which cuts the traceback down to the test function's own frames and shortens the middle entries.\n\nAfter this, `call_and_report` calls `pytest_runtest_logreport` (terminal, junitxml and other reporters) and possibly `pytest_exception_interact` (for example `debugging.py:258` for `--pdb`). The report goes back into the `reports` list in `runtestprotocol`.\n\n## Summary of boundaries\n| # | Caller (static) | Hook | Core impl | Notable wrappers / overrides |\n|---|---|---|---|---|\n| 1 | `main.py:271` | `pytest_runtest_protocol` (firstresult) | `runner.py:76` | capture, warnings, unittest, pytester |\n| 2 | `runner.py:198` (in a lambda run by `from_call`) | `pytest_runtest_call` | `runner.py:119` | capture `:232`, logging `:584` |\n| 3 | `python.py:1464` | `pytest_pyfunc_call` (firstresult) | `python.py:161` (trylast) | skipping `:95`, debugging `:273` |\n| 4 | `runner.py:175` | `pytest_runtest_makereport` (firstresult) | `runner.py:248` | skipping `:125` wrapper, unittest `:240` tryfirst |\n\nWithin each row the code calls itself directly. Across rows, the link depends on pluggy's runtime registration, ordering (`tryfirst`/`trylast`/`hookwrapper`) and the per-path conftest subset from `gethookproxy`. Third-party plugins or a conftest can add implementations, or replace a firstresult one, anywhere along this path.",
+          "structured_output": null,
+          "model_usage": {
+            "claude-haiku-5-5": {
+              "inputTokens": 1370,
+              "outputTokens": 19,
+              "cacheReadInputTokens": 0,
+              "cacheCreationInputTokens": 0,
+              "webSearchRequests": 0,
+              "costUSD": 0.00014649999999999998,
+              "contextWindow": 1000000,
+              "maxOutputTokens": 128000,
+              "thinkingTokens": 0,
+              "canonicalModel": "claude-haiku-5-5",
+              "provider": "firstParty",
+              "costBasis": "list"
+            },
+            "claude-opus-5-5": {
+              "inputTokens": 12,
+              "outputTokens": 4882,
+              "cacheReadInputTokens": 100072,
+              "cacheCreationInputTokens": 16926,
+              "webSearchRequests": 0,
+              "costUSD": 0.25311039999999996,
+              "contextWindow": 1000000,
+              "maxOutputTokens": 128000,
+              "thinkingTokens": 83,
+              "canonicalModel": "claude-opus-5-5",
+              "provider": "firstParty",
+              "costBasis": "list"
+            }
+          },
+          "permission_denials": [],
+          "deferred_tool_use": null,
+          "errors": null,
+          "api_error_status": null,
+          "uuid": "6165910c-a103-4a28-af55-66aa5f818d98",
+          "terminal_reason": "completed",
+          "origin": null
+        },
+        "status": "sdk_completed_pending_acceptance",
+        "seconds": 45.623848374933004,
+        "source_after": {
+          "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/10-pytest-dev__pytest-5809-codegraph/flow-after-source.json",
+          "sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+          "source_digest": "b9f298fd897f95436ccc5d1fac9b106b2840e1b65573146ce260039c17cdc573",
+          "file_count": 424,
+          "head": "8aba863a634f40560e25055d179220f0eefabe9a"
+        },
+        "read_only_source_preserved": true,
+        "trace": {
+          "path": "flow-sdk.jsonl",
+          "sha256": "3ccaa2f898a5de0578b1949e354450d845776412a55b1b50755ef9e90a4e370e"
+        }
+      },
+      {
+        "task_id": "pytest-dev__pytest-5809-impact",
+        "kind": "impact",
+        "started_utc": "2026-10-28T14:46:41.275539+00:00",
+        "prompt_sha256": "0a0da9831f03db437454f1420a3526e8bbc94848cb6550b2a4d94953f333f84e",
+        "source_before": {
+          "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/10-pytest-dev__pytest-5809-codegraph/impact-before-source.json",
+          "sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+          "source_digest": "b9f298fd897f95436ccc5d1fac9b106b2840e1b65573146ce260039c17cdc573",
+          "file_count": 424,
+          "head": "8aba863a634f40560e25055d179220f0eefabe9a"
+        },
+        "stream_output_tokens": 4186,
+        "session": "return",
+        "result": {
+          "subtype": "success",
+          "duration_ms": 39980,
+          "duration_api_ms": 85123,
+          "is_error": false,
+          "num_turns": 7,
+          "session_id": "f20119aa-499b-47ec-aa14-1db24e2dfe25",
+          "stop_reason": "end_turn",
+          "total_cost_usd": 0.4672661000000001,
+          "usage": {
+            "input_tokens": 14,
+            "cache_creation_input_tokens": 10982,
+            "cache_read_input_tokens": 211886,
+            "output_tokens": 4186,
+            "output_tokens_details": {
+              "thinking_tokens": 532
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            },
+            "service_tier": "standard",
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 10982,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "inference_geo": "global",
+            "iterations": [
+              {
+                "input_tokens": 2,
+                "output_tokens": 2643,
+                "cache_read_input_tokens": 34101,
+                "cache_creation_input_tokens": 1199,
+                "cache_creation": {
+                  "ephemeral_5m_input_tokens": 0,
+                  "ephemeral_1h_input_tokens": 1199
+                },
+                "type": "message"
+              }
+            ],
+            "speed": "standard",
+            "fallback_credit": null
+          },
+          "result": "A change to `CallInfo.from_call` affects three production call sites: the runtest path, the collection path, and a nose plugin site. Only the runtest path configures any re-raising. This is based on reading the code; I didn't run any tests.\n\n## The function under change\n`src/_pytest/runner.py:219-233` `CallInfo.from_call(func, when, reraise=None)`:\n- It records `start = time()`, then runs `func()` inside a **bare `except:`** (line 227). That catches every `BaseException`, including `KeyboardInterrupt`, `SystemExit` and `Exit`.\n- It wraps the exception with `ExceptionInfo.from_current()` (line 228). It re-raises only if `reraise is not None and excinfo.errisinstance(reraise)` (lines 229-230).\n- It sets `stop = time()` only after a normal return or a swallowed exception (line 232). A re-raised exception skips line 232, so no `CallInfo` and no timing are produced.\n\n## Production call sites (a full-repo grep found only these three)\n\n### 1. Runtest path: configured re-raising\n`src/_pytest/runner.py:191-199` `call_runtest_hook`:\n- `reraise = (Exit,)` always (line 194). `KeyboardInterrupt` is added **unless `--pdb` is set** (lines 195-196).\n- So with `--pdb`, a Ctrl-C inside a test is caught and becomes a failed report, which then goes to the debugger.\n- It is called from `call_and_report` (`runner.py:172-180`) for each of setup, call and teardown. `runtestprotocol` (`runner.py:83-100`) drives those three phases.\n\nWhat downstream code depends on:\n- **Excinfo contract:**\n  - `check_interactive_exception` (`runner.py:183-188`) decides whether to call `pytest_exception_interact`. `debugging.py:265` uses `call.excinfo` there.\n  - `TestReport.from_item_and_call` (`src/_pytest/reports.py:353-373`) sets the outcome to passed, skipped or failed and builds `longrepr` (`repr_failure` in the call phase, otherwise `_repr_failure_py`).\n  - The `pytest_runtest_makereport` implementations read or rewrite `call.excinfo`: `skipping.py:145-154`, `unittest.py:244` (which replaces `call.excinfo`) and `nose.py:28-33`.\n- **Timing contract:**\n  - `reports.py:351` `duration = call.stop - call.start`.\n  - Consumers of that duration are the `--durations` summary (`runner.py:39-60`, which sorts on `rep.duration`) and junitxml (`junitxml.py:635`, which adds up `report.duration`, written out at `:158`).\n- **Exceptions that escape:** an `Exit` (or a `KeyboardInterrupt` without `--pdb`) that leaves `from_call` goes up through `runtestprotocol` and the hook to the session handler at `src/_pytest/main.py:212-215`. `main.py:228-229` is a separate branch that prints \"mainloop: caught unexpected SystemExit!\" if a `SystemExit` gets that far. At the runtest site it shouldn't, because `SystemExit` is not in `reraise`.\n\n### 2. Collection path: no re-raising configured\n`src/_pytest/runner.py:252-275` `pytest_make_collect_report`:\n- It calls `CallInfo.from_call(lambda: list(collector.collect()), \"collect\")` with **no `reraise`** (line 253). As written, any exception from `collect()`, including `KeyboardInterrupt` and `Exit`, is caught and turned into a skipped or failed `CollectReport` (lines 255-270).\n- If you add or change re-raise behaviour inside `from_call` itself, this site is where the effect would change most, because it currently depends on catching everything.\n- It reads `call.excinfo` (lines 255-267), uses `getattr(call, \"result\", None)`, which depends on the `.result` property raising `AttributeError` when there is an exception (`runner.py:213-217`), and attaches `rep.call = call` (line 274).\n- `collect_one_node` (`runner.py:368-375`) pops `rep.call` and runs `check_interactive_exception` on it. It is called from `main.py:519`, `:748` and `:775`.\n- Timing: `CollectReport` doesn't store a duration, so on this path only the excinfo and result semantics matter.\n- A hookwrapper also sits on this hook: `capture.py:207`.\n\n### 3. Nose plugin: secondary use\n`src/_pytest/nose.py:27-33` `pytest_runtest_makereport`:\n- It calls `from_call(lambda: pytest.skip(...), call.when)` with no `reraise`, only to create a `Skipped` excinfo. It then copies it over with `call.excinfo = call2.excinfo`.\n- It depends on `from_call` catching `Skipped` (an `OutcomeException`) and exposing it as `.excinfo`. It ignores the timing of `call2`, so the original `call.start/stop` still decide the reported duration.\n\n## Existing tests that protect these behaviours\n1. **`testing/test_runner.py:484-496` `test_callinfo`** tests `from_call` directly:\n   - Success: `result == 0`, `when` is stored, and the repr is `\"<CallInfo when='123' result: 0>\"`.\n   - Exception (`0 / 0`): there is no `result` attribute, `excinfo` is set, and the repr reads `exception: division by zero`.\n   - Nothing checks `start`/`stop`. A timing change would only be caught indirectly.\n2. **Configured re-raising on the runtest path:**\n   - `testing/test_runner.py:387-399` `test_exit_propagates`: `pytest.exit.Exception` raised in a test has to escape the runner.\n   - `testing/test_runner.py:409-420` `TestExecutionNonForked.test_keyboardinterrupt_propagates`: `KeyboardInterrupt` has to escape when `--pdb` is not set.\n   - The other direction (what gets swallowed):\n     - `testing/test_runner.py:373-385` `test_systemexit_does_not_bail_out` checks that `SystemExit` becomes a failed call-phase report.\n     - `testing/test_pdb.py:142-151` `test_pdb_on_KeyboardInterrupt` covers the `--pdb` branch: `KeyboardInterrupt` is caught, the report fails, and the debugger is entered once.\n\n## Gaps to flag\n- I found no test that checks collection-time `KeyboardInterrupt` or `Exit` going through `pytest_make_collect_report`. `testing/test_terminal.py:244-260` raises during `pytest_sessionstart`, which happens before collection, so it never reaches `from_call`.\n- Nothing asserts `CallInfo.start/stop` or `TestReport.duration` values directly. If you change timing, add a test that checks `duration` stays non-negative and is still set when an exception is swallowed.\n\nThese call relationships come from static reading. Third-party plugins or conftest files could also call `CallInfo.from_call` or replace `pytest_make_collect_report`/`pytest_runtest_makereport`, and that wouldn't show up in this checkout.",
+          "structured_output": null,
+          "model_usage": {
+            "claude-haiku-5-5": {
+              "inputTokens": 1370,
+              "outputTokens": 19,
+              "cacheReadInputTokens": 0,
+              "cacheCreationInputTokens": 0,
+              "webSearchRequests": 0,
+              "costUSD": 0.00014649999999999998,
+              "contextWindow": 1000000,
+              "maxOutputTokens": 128000,
+              "thinkingTokens": 0,
+              "canonicalModel": "claude-haiku-5-5",
+              "provider": "firstParty",
+              "costBasis": "list"
+            },
+            "claude-opus-5-5": {
+              "inputTokens": 26,
+              "outputTokens": 9068,
+              "cacheReadInputTokens": 311958,
+              "cacheCreationInputTokens": 27908,
+              "webSearchRequests": 0,
+              "costUSD": 0.4671196,
+              "contextWindow": 1000000,
+              "maxOutputTokens": 128000,
+              "thinkingTokens": 615,
+              "canonicalModel": "claude-opus-5-5",
+              "provider": "firstParty",
+              "costBasis": "list"
+            }
+          },
+          "permission_denials": [],
+          "deferred_tool_use": null,
+          "errors": null,
+          "api_error_status": null,
+          "uuid": "d0857e77-430c-4b02-bd27-7d69b45c3826",
+          "terminal_reason": "completed",
+          "origin": null
+        },
+        "status": "sdk_completed_pending_acceptance",
+        "seconds": 39.98928362876177,
+        "source_after": {
+          "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/10-pytest-dev__pytest-5809-codegraph/impact-after-source.json",
+          "sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+          "source_digest": "b9f298fd897f95436ccc5d1fac9b106b2840e1b65573146ce260039c17cdc573",
+          "file_count": 424,
+          "head": "8aba863a634f40560e25055d179220f0eefabe9a"
+        },
+        "read_only_source_preserved": true,
+        "trace": {
+          "path": "impact-sdk.jsonl",
+          "sha256": "82b4342a7da169aeada3a514d5fb6c8af14c5f59b7e9897d1a5a7a52acfbf9ab"
+        }
+      },
+      {
+        "task_id": "pytest-dev__pytest-5809-repair",
+        "kind": "repair",
+        "started_utc": "2026-10-28T14:47:21.326917+00:00",
+        "prompt_sha256": "fb47c2d5a3e91da9aa61ba5cc7714172acf74a9ca57b7a7ce4456c0052e9790a",
+        "source_before": {
+          "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/10-pytest-dev__pytest-5809-codegraph/repair-before-source.json",
+          "sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+          "source_digest": "b9f298fd897f95436ccc5d1fac9b106b2840e1b65573146ce260039c17cdc573",
+          "file_count": 424,
+          "head": "8aba863a634f40560e25055d179220f0eefabe9a"
+        },
+        "stream_output_tokens": 1401,
+        "session": "return",
+        "result": {
+          "subtype": "success",
+          "duration_ms": 14547,
+          "duration_api_ms": 98966,
+          "is_error": false,
+          "num_turns": 7,
+          "session_id": "f20119aa-499b-47ec-aa14-1db24e2dfe25",
+          "stop_reason": "end_turn",
+          "total_cost_usd": 0.5778424999999999,
+          "usage": {
+            "input_tokens": 10,
+            "cache_creation_input_tokens": 5488,
+            "cache_read_input_tokens": 193062,
+            "output_tokens": 1401,
+            "output_tokens_details": {
+              "thinking_tokens": 34
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            },
+            "service_tier": "standard",
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 5488,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "inference_geo": "global",
+            "iterations": [
+              {
+                "input_tokens": 2,
+                "output_tokens": 469,
+                "cache_read_input_tokens": 40332,
+                "cache_creation_input_tokens": 456,
+                "cache_creation": {
+                  "ephemeral_5m_input_tokens": 0,
+                  "ephemeral_1h_input_tokens": 456
+                },
+                "type": "message"
+              }
+            ],
+            "speed": "standard",
+            "fallback_credit": null
+          },
+          "result": "`--pastebin` now uploads pytest's output to bpaste.net as `lexer=text` instead of `python3`/`python`. The output is plain console text, not Python code, and the issue reports that the `python3` lexer triggers \"HTTP Error 400: Bad Request\" for some contents.\n\n**Changes:**\n- `src/_pytest/pastebin.py:80-84`: in `create_new_paste`, the lexer is now always `\"text\"`. The Python-version check that used to choose between `python3` and `python` is gone.\n- `testing/test_pastebin.py:122-131`: `test_create_new_paste` now checks that the request body contains `lexer=text`.\n- `changelog/5806.bugfix.rst`: new changelog entry. The issue number isn't given anywhere in the checkout, so I guessed 5806; rename the file if the real number is different.\n\n**Verification:** `python -m pytest testing/test_pastebin.py -q` gives 4 passed. That test replaces `urlopen` with a fake, so nothing was actually sent to bpaste.net (there's no network here). The 400 error itself is therefore not reproduced, and the fix rests on the issue's report that `text` works. I couldn't run flake8 because it isn't installed. `sys` is still used in both files, so the edit leaves no unused import.",
+          "structured_output": null,
+          "model_usage": {
+            "claude-haiku-5-5": {
+              "inputTokens": 1370,
+              "outputTokens": 19,
+              "cacheReadInputTokens": 0,
+              "cacheCreationInputTokens": 0,
+              "webSearchRequests": 0,
+              "costUSD": 0.00014649999999999998,
+              "contextWindow": 1000000,
+              "maxOutputTokens": 128000,
+              "thinkingTokens": 0,
+              "canonicalModel": "claude-haiku-5-5",
+              "provider": "firstParty",
+              "costBasis": "list"
+            },
+            "claude-opus-5-5": {
+              "inputTokens": 36,
+              "outputTokens": 10469,
+              "cacheReadInputTokens": 505020,
+              "cacheCreationInputTokens": 33396,
+              "webSearchRequests": 0,
+              "costUSD": 0.5776959999999999,
+              "contextWindow": 1000000,
+              "maxOutputTokens": 128000,
+              "thinkingTokens": 649,
+              "canonicalModel": "claude-opus-5-5",
+              "provider": "firstParty",
+              "costBasis": "list"
+            }
+          },
+          "permission_denials": [],
+          "deferred_tool_use": null,
+          "errors": null,
+          "api_error_status": null,
+          "uuid": "2ed2e656-b817-4bb8-b872-9bab82dcea79",
+          "terminal_reason": "completed",
+          "origin": null
+        },
+        "status": "sdk_completed_pending_acceptance",
+        "seconds": 14.552992474287748,
+        "source_after": {
+          "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/10-pytest-dev__pytest-5809-codegraph/repair-after-source.json",
+          "sha256": "d5d19c9b60ff7237ffd227018a1a6def6512de73185b822702fd0e116a43a736",
+          "source_digest": "20f7bbb4986b1f0760352437df9b58081518e4e24f02fc825044b7adfda6bb80",
+          "file_count": 425,
+          "head": "8aba863a634f40560e25055d179220f0eefabe9a"
+        },
+        "read_only_source_preserved": false,
+        "submission": {
+          "path": "repair.patch",
+          "sha256": "7592b56c11b12bc267bb69bc3e396f7a4adfd333a9e1e865433c819424598bbd",
+          "bytes": 1304,
+          "attribution": "whole workspace diff; includes any separately recorded setup metadata"
+        },
+        "trace": {
+          "path": "repair-sdk.jsonl",
+          "sha256": "b43a8857fe2da55265a4bc7c0b00c792a2af75cef14dd8a1b2dc8a2bed710d43"
+        }
+      },
+      {
+        "task_id": "pytest-dev__pytest-5809-post_edit",
+        "kind": "post_edit",
+        "started_utc": "2026-10-28T14:47:35.945306+00:00",
+        "prompt_sha256": "a8367dedc01f4b41fd8c817d09f0086fff73dd623fa3cb70e3c636bb2b08adf7",
+        "source_before": {
+          "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/10-pytest-dev__pytest-5809-codegraph/post_edit-before-source.json",
+          "sha256": "35b2996781a05ab15a1d61ce64b4ee6b418e32b2283299a23879e814072e3860",
+          "source_digest": "9fa2396af966abf08da0ec98e6dcfd44f2e1d083a106771ba8cff27931825c99",
+          "file_count": 426,
+          "head": "8aba863a634f40560e25055d179220f0eefabe9a"
+        },
+        "stream_output_tokens": 1577,
+        "session": "return",
+        "result": {
+          "subtype": "success",
+          "duration_ms": 17899,
+          "duration_api_ms": 116663,
+          "is_error": false,
+          "num_turns": 4,
+          "session_id": "f20119aa-499b-47ec-aa14-1db24e2dfe25",
+          "stop_reason": "end_turn",
+          "total_cost_usd": 0.6575911,
+          "usage": {
+            "input_tokens": 8,
+            "cache_creation_input_tokens": 1872,
+            "cache_read_input_tokens": 166003,
+            "output_tokens": 1577,
+            "output_tokens_details": {
+              "thinking_tokens": 59
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            },
+            "service_tier": "standard",
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 1872,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "inference_geo": "global",
+            "iterations": [
+              {
+                "input_tokens": 2,
+                "output_tokens": 1124,
+                "cache_read_input_tokens": 42080,
+                "cache_creation_input_tokens": 580,
+                "cache_creation": {
+                  "ephemeral_5m_input_tokens": 0,
+                  "ephemeral_1h_input_tokens": 580
+                },
+                "type": "message"
+              }
+            ],
+            "speed": "standard",
+            "fallback_credit": null
+          },
+          "result": "`capture_probe_result` is in `src/_pytest/_pilot_post_edit.py:3-4`, an untracked file, and nothing in the checkout calls it yet. The only call it makes, its next production call, is `CallInfo.from_call` in `src/_pytest/runner.py:219-233`.\n\n## The helper\n`src/_pytest/_pilot_post_edit.py:1-4`:\n```python\nfrom .runner import CallInfo\n\ndef capture_probe_result(function):\n    return CallInfo.from_call(function, \"call\")\n```\nIt passes `function` straight through with `when=\"call\"` and no `reraise` argument, so `reraise` defaults to `None`. A grep of the `*.py`/`*.cfg`/`*.toml`/`*.ini` files found no caller or import of the helper or its module.\n\n## How `CallInfo.from_call` handles an ordinary exception\nIn `src/_pytest/runner.py:219-233`:\n- **Lines 223-224:** it records `start = time()` and sets `excinfo = None`.\n- **Lines 225-226:** it calls `result = func()`, which here is the probe callable.\n- **Line 227:** a bare `except:` catches anything raised.\n- **Line 228:** `ExceptionInfo.from_current()` wraps the active exception (type, value and traceback from `sys.exc_info()`). This object is how the exception is kept.\n- **Lines 229-230:** the exception would be re-raised only if `reraise` were set and matched. The helper passes no `reraise`, so its path never re-raises. Because the `except:` is bare, that applies to every exception type, not just ordinary ones.\n- **Line 231:** `result = None`.\n- **Lines 232-233:** `stop = time()` is recorded in both the success and failure cases. The method then returns `CallInfo(start, stop, when, result, excinfo)`. The exception is stored as data and is not propagated to the caller of `capture_probe_result`.\n\n## Success vs. exception\nThe class is in `src/_pytest/runner.py:202-217`. Fields are at lines 206-211, and the `result` property is at lines 213-217.\n\n| | Successful return | Exception from the callable |\n|---|---|---|\n| `_result` | the callable's return value | `None` |\n| `excinfo` | `None` | an `ExceptionInfo` (`.type`, `.value`, `.traceback`, `errisinstance(...)`) |\n| `.result` | returns `_result` | raises `AttributeError(\"<CallInfo ...> has no valid result\")` (line 216), so `hasattr(ci, \"result\")` is `False` |\n| `start`/`stop`/`when` | set, `when == \"call\"` | set the same way |\n| `repr` (lines 235-245) | `<CallInfo when='call' result: ...>` | `<CallInfo when='call' exception: ...>` |\n\nThe success case does not store `None` in `excinfo` as a separate \"no error\" marker. The `result` property checks `excinfo is not None` to decide which case it is in.\n\nThese behaviours are already covered by `testing/test_runner.py:484-496` `test_callinfo` (the `lambda: 0` and `lambda: 0 / 0` cases), through `from_call`. I didn't run any tests and didn't modify files for this answer.",
+          "structured_output": null,
+          "model_usage": {
+            "claude-haiku-5-5": {
+              "inputTokens": 1370,
+              "outputTokens": 19,
+              "cacheReadInputTokens": 0,
+              "cacheCreationInputTokens": 0,
+              "webSearchRequests": 0,
+              "costUSD": 0.00014649999999999998,
+              "contextWindow": 1000000,
+              "maxOutputTokens": 128000,
+              "thinkingTokens": 0,
+              "canonicalModel": "claude-haiku-5-5",
+              "provider": "firstParty",
+              "costBasis": "list"
+            },
+            "claude-opus-5-5": {
+              "inputTokens": 44,
+              "outputTokens": 12046,
+              "cacheReadInputTokens": 671023,
+              "cacheCreationInputTokens": 35268,
+              "webSearchRequests": 0,
+              "costUSD": 0.6574445999999999,
+              "contextWindow": 1000000,
+              "maxOutputTokens": 128000,
+              "thinkingTokens": 708,
+              "canonicalModel": "claude-opus-5-5",
+              "provider": "firstParty",
+              "costBasis": "list"
+            }
+          },
+          "permission_denials": [],
+          "deferred_tool_use": null,
+          "errors": null,
+          "api_error_status": null,
+          "uuid": "9d291ffb-f867-49b4-9ffd-3710d18c1dfc",
+          "terminal_reason": "completed",
+          "origin": null
+        },
+        "status": "sdk_completed_pending_acceptance",
+        "seconds": 17.90360797010362,
+        "source_after": {
+          "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/10-pytest-dev__pytest-5809-codegraph/post_edit-after-source.json",
+          "sha256": "35b2996781a05ab15a1d61ce64b4ee6b418e32b2283299a23879e814072e3860",
+          "source_digest": "9fa2396af966abf08da0ec98e6dcfd44f2e1d083a106771ba8cff27931825c99",
+          "file_count": 426,
+          "head": "8aba863a634f40560e25055d179220f0eefabe9a"
+        },
+        "read_only_source_preserved": true,
+        "trace": {
+          "path": "post_edit-sdk.jsonl",
+          "sha256": "44509d78504f0857bad2fbd719986dfe8ebc35f21162c22f94a3cf94b86f6236"
+        }
+      }
+    ],
+    "sessions": [
+      {
+        "name": "cold",
+        "started_utc": "2026-10-28T14:45:37.152132+00:00",
+        "budget_requested_usd": 20.0,
+        "rate_events": [
+          {
+            "rate_limit_info": {
+              "status": "allowed",
+              "resets_at": 1793204400,
+              "rate_limit_type": "five_hour",
+              "utilization": null,
+              "overage_status": "rejected",
+              "overage_resets_at": null,
+              "overage_disabled_reason": "org_level_disabled",
+              "raw": {
+                "status": "allowed",
+                "resetsAt": 1793204400,
+                "rateLimitType": "five_hour",
+                "overageStatus": "rejected",
+                "overageDisabledReason": "org_level_disabled",
+                "isUsingOverage": false,
+                "unifiedWindows": {
+                  "five_hour": {
+                    "utilization": 0.03,
+                    "resetsAt": 1793204400,
+                    "status": "allowed"
+                  },
+                  "seven_day": {
+                    "utilization": 0.45,
+                    "resetsAt": 1793278800,
+                    "status": "allowed"
+                  }
+                }
+              }
+            },
+            "uuid": "d1e60420-1475-46db-b54b-84f9d7373494",
+            "session_id": "f1a26fc2-9526-4ba6-bd9e-95f1568d13ff"
+          },
+          {
+            "rate_limit_info": {
+              "status": "allowed",
+              "resets_at": 1793204400,
+              "rate_limit_type": "five_hour",
+              "utilization": null,
+              "overage_status": "rejected",
+              "overage_resets_at": null,
+              "overage_disabled_reason": "org_level_disabled",
+              "raw": {
+                "status": "allowed",
+                "resetsAt": 1793204400,
+                "rateLimitType": "five_hour",
+                "overageStatus": "rejected",
+                "overageDisabledReason": "org_level_disabled",
+                "isUsingOverage": false,
+                "unifiedWindows": {
+                  "five_hour": {
+                    "utilization": 0.04,
+                    "resetsAt": 1793204400,
+                    "status": "allowed"
+                  },
+                  "seven_day": {
+                    "utilization": 0.45,
+                    "resetsAt": 1793278800,
+                    "status": "allowed"
+                  }
+                }
+              }
+            },
+            "uuid": "323345b8-cf8b-4752-a466-4e8282eaeeb5",
+            "session_id": "f1a26fc2-9526-4ba6-bd9e-95f1568d13ff"
+          },
+          {
+            "rate_limit_info": {
+              "status": "allowed",
+              "resets_at": 1793204400,
+              "rate_limit_type": "five_hour",
+              "utilization": null,
+              "overage_status": "rejected",
+              "overage_resets_at": null,
+              "overage_disabled_reason": "org_level_disabled",
+              "raw": {
+                "status": "allowed",
+                "resetsAt": 1793204400,
+                "rateLimitType": "five_hour",
+                "overageStatus": "rejected",
+                "overageDisabledReason": "org_level_disabled",
+                "isUsingOverage": false,
+                "unifiedWindows": {
+                  "five_hour": {
+                    "utilization": 0.03,
+                    "resetsAt": 1793204400,
+                    "status": "allowed"
+                  },
+                  "seven_day": {
+                    "utilization": 0.45,
+                    "resetsAt": 1793278800,
+                    "status": "allowed"
+                  }
+                }
+              }
+            },
+            "uuid": "fd9b7099-b30e-49d6-b2c1-b28b80529b50",
+            "session_id": "f1a26fc2-9526-4ba6-bd9e-95f1568d13ff"
+          },
+          {
+            "rate_limit_info": {
+              "status": "allowed",
+              "resets_at": 1793204400,
+              "rate_limit_type": "five_hour",
+              "utilization": null,
+              "overage_status": "rejected",
+              "overage_resets_at": null,
+              "overage_disabled_reason": "org_level_disabled",
+              "raw": {
+                "status": "allowed",
+                "resetsAt": 1793204400,
+                "rateLimitType": "five_hour",
+                "overageStatus": "rejected",
+                "overageDisabledReason": "org_level_disabled",
+                "isUsingOverage": false,
+                "unifiedWindows": {
+                  "five_hour": {
+                    "utilization": 0.04,
+                    "resetsAt": 1793204400,
+                    "status": "allowed"
+                  },
+                  "seven_day": {
+                    "utilization": 0.45,
+                    "resetsAt": 1793278800,
+                    "status": "allowed"
+                  }
+                }
+              }
+            },
+            "uuid": "a2b6ea87-a7e5-47a4-aff7-d9773911bf6c",
+            "session_id": "f1a26fc2-9526-4ba6-bd9e-95f1568d13ff"
+          }
+        ],
+        "results": [
+          {
+            "phase_result_reference": "lookup"
+          }
+        ],
+        "init": {
+          "model": "claude-opus-5-5",
+          "apiKeySource": "none",
+          "tools": [
+            "Bash",
+            "Edit",
+            "Glob",
+            "Grep",
+            "Read",
+            "ToolSearch",
+            "Write",
+            "mcp__study__codegraph_explore"
+          ],
+          "mcp_servers": [
+            {
+              "name": "study",
+              "status": "connected",
+              "source": "dynamic"
+            }
+          ],
+          "claude_code_version": "2.1.310"
+        },
+        "connect_seconds": 0.4569425992667675,
+        "latest_query_result_complete": true,
+        "closed": true,
+        "seconds": 18.016773024573922,
+        "usage_complete": true,
+        "final_result": {
+          "subtype": "success",
+          "duration_ms": 17157,
+          "duration_api_ms": 18145,
+          "is_error": false,
+          "num_turns": 4,
+          "session_id": "f1a26fc2-9526-4ba6-bd9e-95f1568d13ff",
+          "stop_reason": "end_turn",
+          "total_cost_usd": 0.15091790000000002,
+          "usage": {
+            "input_tokens": 8,
+            "cache_creation_input_tokens": 13277,
+            "cache_read_input_tokens": 51412,
+            "output_tokens": 1708,
+            "output_tokens_details": {
+              "thinking_tokens": 108
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            },
+            "service_tier": "standard",
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 13277,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "inference_geo": "global",
+            "iterations": [
+              {
+                "input_tokens": 2,
+                "output_tokens": 1322,
+                "cache_read_input_tokens": 18304,
+                "cache_creation_input_tokens": 647,
+                "cache_creation": {
+                  "ephemeral_5m_input_tokens": 0,
+                  "ephemeral_1h_input_tokens": 647
+                },
+                "type": "message"
+              }
+            ],
+            "speed": "standard",
+            "fallback_credit": null
+          },
+          "result": {
+            "phase_answer_reference": "lookup"
+          },
+          "structured_output": null,
+          "model_usage": {
+            "claude-haiku-5-5": {
+              "inputTokens": 1340,
+              "outputTokens": 187,
+              "cacheReadInputTokens": 0,
+              "cacheCreationInputTokens": 0,
+              "webSearchRequests": 0,
+              "costUSD": 0.0002275,
+              "contextWindow": 1000000,
+              "maxOutputTokens": 128000,
+              "thinkingTokens": 169,
+              "canonicalModel": "claude-haiku-5-5",
+              "provider": "firstParty",
+              "costBasis": "list"
+            },
+            "claude-opus-5-5": {
+              "inputTokens": 8,
+              "outputTokens": 1708,
+              "cacheReadInputTokens": 51412,
+              "cacheCreationInputTokens": 13277,
+              "webSearchRequests": 0,
+              "costUSD": 0.1506904,
+              "contextWindow": 1000000,
+              "maxOutputTokens": 128000,
+              "thinkingTokens": 108,
+              "canonicalModel": "claude-opus-5-5",
+              "provider": "firstParty",
+              "costBasis": "list"
+            }
+          },
+          "permission_denials": [],
+          "deferred_tool_use": null,
+          "errors": null,
+          "api_error_status": null,
+          "uuid": "d7892fb5-d34a-4673-8594-bb7ae4ea4caa",
+          "terminal_reason": "completed",
+          "origin": null
+        },
+        "normalized_tokens": 67932,
+        "sdk_estimate_usd": 0.15091790000000002
+      },
+      {
+        "name": "return",
+        "started_utc": "2026-10-28T14:45:55.170557+00:00",
+        "budget_requested_usd": 19.8490821,
+        "rate_events": [
+          {
+            "rate_limit_info": {
+              "status": "allowed",
+              "resets_at": 1793204400,
+              "rate_limit_type": "five_hour",
+              "utilization": null,
+              "overage_status": "rejected",
+              "overage_resets_at": null,
+              "overage_disabled_reason": "org_level_disabled",
+              "raw": {
+                "status": "allowed",
+                "resetsAt": 1793204400,
+                "rateLimitType": "five_hour",
+                "overageStatus": "rejected",
+                "overageDisabledReason": "org_level_disabled",
+                "isUsingOverage": false,
+                "unifiedWindows": {
+                  "five_hour": {
+                    "utilization": 0.04,
+                    "resetsAt": 1793204400,
+                    "status": "allowed"
+                  },
+                  "seven_day": {
+                    "utilization": 0.45,
+                    "resetsAt": 1793278800,
+                    "status": "allowed"
+                  }
+                }
+              }
+            },
+            "uuid": "a9e3c1cf-de12-4548-8416-efcf28844950",
+            "session_id": "f20119aa-499b-47ec-aa14-1db24e2dfe25"
+          }
+        ],
+        "results": [
+          {
+            "phase_result_reference": "flow"
+          },
+          {
+            "phase_result_reference": "impact"
+          },
+          {
+            "phase_result_reference": "repair"
+          },
+          {
+            "phase_result_reference": "post_edit"
+          }
+        ],
+        "init": {
+          "model": "claude-opus-5-5",
+          "apiKeySource": "none",
+          "tools": [
+            "Bash",
+            "Edit",
+            "Glob",
+            "Grep",
+            "Read",
+            "ToolSearch",
+            "Write",
+            "mcp__study__codegraph_explore"
+          ],
+          "mcp_servers": [
+            {
+              "name": "study",
+              "status": "connected",
+              "source": "dynamic"
+            }
+          ],
+          "claude_code_version": "2.1.310"
+        },
+        "connect_seconds": 0.3870312962681055,
+        "latest_query_result_complete": true,
+        "closed": true,
+        "seconds": 119.0947348754853,
+        "usage_complete": true,
+        "final_result": {
+          "subtype": "success",
+          "duration_ms": 17899,
+          "duration_api_ms": 116663,
+          "is_error": false,
+          "num_turns": 4,
+          "session_id": "f20119aa-499b-47ec-aa14-1db24e2dfe25",
+          "stop_reason": "end_turn",
+          "total_cost_usd": 0.6575911,
+          "usage": {
+            "input_tokens": 8,
+            "cache_creation_input_tokens": 1872,
+            "cache_read_input_tokens": 166003,
+            "output_tokens": 1577,
+            "output_tokens_details": {
+              "thinking_tokens": 59
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            },
+            "service_tier": "standard",
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 1872,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "inference_geo": "global",
+            "iterations": [
+              {
+                "input_tokens": 2,
+                "output_tokens": 1124,
+                "cache_read_input_tokens": 42080,
+                "cache_creation_input_tokens": 580,
+                "cache_creation": {
+                  "ephemeral_5m_input_tokens": 0,
+                  "ephemeral_1h_input_tokens": 580
+                },
+                "type": "message"
+              }
+            ],
+            "speed": "standard",
+            "fallback_credit": null
+          },
+          "result": {
+            "phase_answer_reference": "post_edit"
+          },
+          "structured_output": null,
+          "model_usage": {
+            "claude-haiku-5-5": {
+              "inputTokens": 1370,
+              "outputTokens": 19,
+              "cacheReadInputTokens": 0,
+              "cacheCreationInputTokens": 0,
+              "webSearchRequests": 0,
+              "costUSD": 0.00014649999999999998,
+              "contextWindow": 1000000,
+              "maxOutputTokens": 128000,
+              "thinkingTokens": 0,
+              "canonicalModel": "claude-haiku-5-5",
+              "provider": "firstParty",
+              "costBasis": "list"
+            },
+            "claude-opus-5-5": {
+              "inputTokens": 44,
+              "outputTokens": 12046,
+              "cacheReadInputTokens": 671023,
+              "cacheCreationInputTokens": 35268,
+              "webSearchRequests": 0,
+              "costUSD": 0.6574445999999999,
+              "contextWindow": 1000000,
+              "maxOutputTokens": 128000,
+              "thinkingTokens": 708,
+              "canonicalModel": "claude-opus-5-5",
+              "provider": "firstParty",
+              "costBasis": "list"
+            }
+          },
+          "permission_denials": [],
+          "deferred_tool_use": null,
+          "errors": null,
+          "api_error_status": null,
+          "uuid": "9d291ffb-f867-49b4-9ffd-3710d18c1dfc",
+          "terminal_reason": "completed",
+          "origin": null
+        },
+        "normalized_tokens": 719770,
+        "sdk_estimate_usd": 0.6575911
+      }
+    ],
+    "api_invoice_cost_usd": null,
+    "http_request_count": null,
+    "owned_containers": [
+      "3b139fb8106f8cb8809c9c0b89086282a8ea21fa51527309fb44185c2aaa6d5d",
+      "b17e9c58a1e9abddbe69aa1fd1a31c7d891727725a4f2c4a988ee27443329e56"
+    ],
+    "cohort_stop_reason": null,
+    "driver_sha256": "1293e68f51d448b4154b80b1dfbe716720c4297f9934ef993470a3fffccfb962",
+    "scope_sha256": "4c11983fdc26b5854f49968d1da139745050b0a0b2699d9f5777aa8bc559a192",
+    "policy_sha256": "cb373c0a407fbbc89bd4b12e30076b81b3aa9e77dc46cd017b7a32255f8b604a",
+    "tasks_sha256": "218eb7085da807c3cb067ef742ff7ceff161910dad18c676458a5b599d2d45ea",
+    "auth": {
+      "loggedIn": true,
+      "authMethod": "claude.ai",
+      "subscriptionType": "max"
+    },
+    "sdk": "0.2.174",
+    "neutral_image": "sha256:cd4894bd827b6f2fc079498778ab78d03673ec3ba86855756190e7932ef15f49",
+    "common_source": {
+      "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/10-pytest-dev__pytest-5809-codegraph/common-source.json",
+      "sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+      "source_digest": "b9f298fd897f95436ccc5d1fac9b106b2840e1b65573146ce260039c17cdc573",
+      "file_count": 424,
+      "head": "8aba863a634f40560e25055d179220f0eefabe9a"
+    },
+    "common_prepare_seconds": 1.6231505442410707,
+    "clock_started_utc": "2026-10-28T14:45:28.065769+00:00",
+    "setup": {
+      "started_utc": "2026-10-28T14:45:28.065777+00:00",
+      "ready": true,
+      "seconds": 6.671499574556947
+    },
+    "target_identity": {
+      "python": "3.9.25 (main, Nov  3 2025, 22:33:42) \n[GCC 11.2.0]",
+      "packages": [
+        [
+          "atomicwrites",
+          "1.4.1"
+        ],
+        [
+          "attrs",
+          "23.1.0"
+        ],
+        [
+          "importlib_metadata",
+          "8.7.0"
+        ],
+        [
+          "more-itertools",
+          "10.1.0"
+        ],
+        [
+          "packaging",
+          "23.1"
+        ],
+        [
+          "pip",
+          "26.0.1"
+        ],
+        [
+          "pluggy",
+          "0.13.1"
+        ],
+        [
+          "py",
+          "1.11.0"
+        ],
+        [
+          "pytest",
+          "4.6.6.dev9+g8aba863a6"
+        ],
+        [
+          "setuptools",
+          "80.9.0"
+        ],
+        [
+          "six",
+          "1.16.0"
+        ],
+        [
+          "wcwidth",
+          "0.2.6"
+        ],
+        [
+          "wheel",
+          "0.45.1"
+        ],
+        [
+          "zipp",
+          "3.23.1"
+        ]
+      ]
+    },
+    "product_identity_matches_admission": true,
+    "prepared_image": "sha256:4d1e2b433d1907faddd3e67682721f88ef95bf65c4be21f501ffd38f916ccb0c",
+    "observed_container": {
+      "id": "b17e9c58a1e9abddbe69aa1fd1a31c7d891727725a4f2c4a988ee27443329e56",
+      "network_disabled": true,
+      "network_mode": "none",
+      "memory_bytes": 4294967296,
+      "nano_cpus": 2000000000,
+      "pids_limit": 256,
+      "mounts": [
+        {
+          "Type": "bind",
+          "Source": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/10-pytest-dev__pytest-5809-codegraph/workspace",
+          "Destination": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/10-pytest-dev__pytest-5809-codegraph/workspace",
+          "Mode": "rw",
+          "RW": true,
+          "Propagation": "rprivate"
+        }
+      ]
+    },
+    "pre_model_source": {
+      "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/10-pytest-dev__pytest-5809-codegraph/pre-model-source.json",
+      "sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+      "source_digest": "b9f298fd897f95436ccc5d1fac9b106b2840e1b65573146ce260039c17cdc573",
+      "file_count": 424,
+      "head": "8aba863a634f40560e25055d179220f0eefabe9a"
+    },
+    "setup_patch": {
+      "path": "pre-model.patch",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "attribution": "whole workspace diff; includes any separately recorded setup metadata"
+    },
+    "observed_effort_levels": [
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium"
+    ],
+    "controlled_edit": {
+      "apply_before": "pytest-dev__pytest-5809-post_edit",
+      "path": "src/_pytest/_pilot_post_edit.py",
+      "source": "from .runner import CallInfo\n\ndef capture_probe_result(function):\n    return CallInfo.from_call(function, \"call\")\n",
+      "sha256": "be5413f1fd182d77cea517c0a5c3fe600caaa2d2e53e64645f02c2a84dcd356f",
+      "classification": "identical controlled synthetic source addition in every arm; no task outcome or runtime-benefit claim from the edit alone",
+      "rule": "Capture the repair patch before adding this file. Never overwrite an existing file; an unexpected collision is a recorded controller failure. Keep the same return-session MCP connection for the follow-up.",
+      "applied_utc": "2026-10-28T14:47:35.945299+00:00"
+    },
+    "status": "model_execution_complete_pending_grading",
+    "observed_workflow_seconds": 146.2110257409513,
+    "unattempted_tasks": [],
+    "cleanup": [
+      {
+        "id": "b17e9c58a1e9abddbe69aa1fd1a31c7d891727725a4f2c4a988ee27443329e56",
+        "removed": true
+      },
+      {
+        "id": "3b139fb8106f8cb8809c9c0b89086282a8ea21fa51527309fb44185c2aaa6d5d",
+        "removed": true
+      }
+    ],
+    "finished_utc": "2026-10-28T14:47:54.380291+00:00"
+  },
+  "projection_rule": "Phase results/answers retained; duplicate cumulative session answers link to their phase. Exact tool deliveries, original pre-tool inputs and source snapshots are separately hash-bound. Intermediate visible prose/stream usage remain in the original SDK traces and are not summed as cumulative usage.",
+  "phase_observations": {
+    "lookup": {
+      "artifact": "codegraph_matched_workflow_v2_10_lookup_observations.json",
+      "sha256": "1f16c3dc3f8000bd12834bca6ee384acc0c77465d7ba231b9d9b3dd20637f644"
+    },
+    "flow": {
+      "artifact": "codegraph_matched_workflow_v2_10_flow_observations.json",
+      "sha256": "f620ea717190f4ff2d59bb9d7f728015ae123acebd3ba4c772bdece8a77bcaac"
+    },
+    "impact": {
+      "artifact": "codegraph_matched_workflow_v2_10_impact_observations.json",
+      "sha256": "413fa398a21df35702f1134e097d7012eca512948a02a4511f9c5042b70761f4"
+    },
+    "repair": {
+      "artifact": "codegraph_matched_workflow_v2_10_repair_observations.json",
+      "sha256": "d72b85dab14059ddb9ccb17d9562f759aca7908723975bf52f5537b0f8bfeb1a"
+    },
+    "post_edit": {
+      "artifact": "codegraph_matched_workflow_v2_10_post_edit_observations.json",
+      "sha256": "bb2f4aabb5d05e19f355913a3d9f2de786369d47ede5fd30e436d2eb72d983ad"
+    }
+  },
+  "source_snapshots": {
+    "artifact": "codegraph_matched_workflow_v2_10_sources.json",
+    "sha256": "5af772af0f6a0488debc86c2f64a073e1e125bbda78bdae370cdde3a3ab63e47"
+  },
+  "original_tool_inputs": {
+    "artifact": "codegraph_matched_workflow_v2_10_tool_inputs.json",
+    "sha256": "6560fa88d943363649b01b07d7bb27df7a76038ba19e7cd83155d06c5515f9ec"
+  },
+  "repair_patch": "diff --git a/changelog/5806.bugfix.rst b/changelog/5806.bugfix.rst\nnew file mode 100644\nindex 0000000..ec88776\n--- /dev/null\n+++ b/changelog/5806.bugfix.rst\n@@ -0,0 +1 @@\n+Fix \"lexer\" being used when uploading to bpaste.net from ``--pastebin`` to \"text\".\ndiff --git a/src/_pytest/pastebin.py b/src/_pytest/pastebin.py\nindex 41576a6..79b0d9d 100644\n--- a/src/_pytest/pastebin.py\n+++ b/src/_pytest/pastebin.py\n@@ -79,7 +79,7 @@ def create_new_paste(contents):\n \n     params = {\n         \"code\": contents,\n-        \"lexer\": \"python3\" if sys.version_info[0] >= 3 else \"python\",\n+        \"lexer\": \"text\",\n         \"expiry\": \"1week\",\n     }\n     url = \"https://bpaste.net\"\ndiff --git a/testing/test_pastebin.py b/testing/test_pastebin.py\nindex bac8f98..aac0b65 100644\n--- a/testing/test_pastebin.py\n+++ b/testing/test_pastebin.py\n@@ -126,8 +126,7 @@ class TestPaste(object):\n         assert len(mocked_urlopen) == 1\n         url, data = mocked_urlopen[0]\n         assert type(data) is bytes\n-        lexer = \"python3\" if sys.version_info[0] >= 3 else \"python\"\n         assert url == \"https://bpaste.net\"\n-        assert \"lexer=%s\" % lexer in data.decode()\n+        assert \"lexer=text\" in data.decode()\n         assert \"code=full-paste-contents\" in data.decode()\n         assert \"expiry=1week\" in data.decode()\n",
+  "setup_patch": "",
+  "source_credit": "No complete ContextBench read score. Arbitrary shell output remains unattributed until source-version/file mapping is verified.",
+  "archive_implementation_sha256": "66794e05d95a0d45a394ddb96575491190e1566a64a9a1c4f709c18e1540a6a7"
+}

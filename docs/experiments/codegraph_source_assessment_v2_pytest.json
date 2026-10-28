@@ -1,0 +1,1635 @@
+{
+  "schema_version": 2,
+  "recorded_utc": "2026-10-28T15:03:54.550752+00:00",
+  "instance_id": "pytest-dev__pytest-5809",
+  "review_method": "One unblinded maintainer-agent review of new v2 answers against all frozen criteria and exact source versions. No v1 judgment is reused.",
+  "task_sha256": "218eb7085da807c3cb067ef742ff7ceff161910dad18c676458a5b599d2d45ea",
+  "policy_sha256": "cb373c0a407fbbc89bd4b12e30076b81b3aa9e77dc46cd017b7a32255f8b604a",
+  "source_evidence": {
+    "563b3db1d1ee14886aaf4ab32a1a5f22e3e1fcd53e10b16e472adc7ed8658f3a": {
+      "file": "src/_pytest/runner.py",
+      "sha256": "b4be752755314079f93c5fa46cfc1e9577d345379e5011e5cd63c6f9aad8273c",
+      "start_line": 202,
+      "end_line": 245,
+      "text": "@attr.s(repr=False)\nclass CallInfo(object):\n    \"\"\" Result/Exception info a function invocation. \"\"\"\n\n    _result = attr.ib()\n    # Optional[ExceptionInfo]\n    excinfo = attr.ib()\n    start = attr.ib()\n    stop = attr.ib()\n    when = attr.ib()\n\n    @property\n    def result(self):\n        if self.excinfo is not None:\n            raise AttributeError(\"{!r} has no valid result\".format(self))\n        return self._result\n\n    @classmethod\n    def from_call(cls, func, when, reraise=None):\n        #: context of invocation: one of \"setup\", \"call\",\n        #: \"teardown\", \"memocollect\"\n        start = time()\n        excinfo = None\n        try:\n            result = func()\n        except:  # noqa\n            excinfo = ExceptionInfo.from_current()\n            if reraise is not None and excinfo.errisinstance(reraise):\n                raise\n            result = None\n        stop = time()\n        return cls(start=start, stop=stop, when=when, result=result, excinfo=excinfo)\n\n    def __repr__(self):\n        if self.excinfo is not None:\n            status = \"exception\"\n            value = self.excinfo.value\n        else:\n            # TODO: investigate unification\n            value = repr(self._result)\n            status = \"result\"\n        return \"<CallInfo when={when!r} {status}: {value}>\".format(\n            when=self.when, value=value, status=status\n        )",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    },
+    "2a75cbb1bca301ac7d7fa2449528156fe28cb1a357bdde54c91aa98c41510434": {
+      "file": "src/_pytest/runner.py",
+      "sha256": "b4be752755314079f93c5fa46cfc1e9577d345379e5011e5cd63c6f9aad8273c",
+      "start_line": 183,
+      "end_line": 199,
+      "text": "def check_interactive_exception(call, report):\n    return call.excinfo and not (\n        hasattr(report, \"wasxfail\")\n        or call.excinfo.errisinstance(Skipped)\n        or call.excinfo.errisinstance(bdb.BdbQuit)\n    )\n\n\ndef call_runtest_hook(item, when, **kwds):\n    hookname = \"pytest_runtest_\" + when\n    ihook = getattr(item.ihook, hookname)\n    reraise = (Exit,)\n    if not item.config.getoption(\"usepdb\", False):\n        reraise += (KeyboardInterrupt,)\n    return CallInfo.from_call(\n        lambda: ihook(item=item, **kwds), when=when, reraise=reraise\n    )",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    },
+    "7887bc06b4b3cfa458f5f7e2bf5eae4d27cdf5a48e8130c9ef5b6542851d1e57": {
+      "file": "src/_pytest/runner.py",
+      "sha256": "b4be752755314079f93c5fa46cfc1e9577d345379e5011e5cd63c6f9aad8273c",
+      "start_line": 252,
+      "end_line": 275,
+      "text": "def pytest_make_collect_report(collector):\n    call = CallInfo.from_call(lambda: list(collector.collect()), \"collect\")\n    longrepr = None\n    if not call.excinfo:\n        outcome = \"passed\"\n    else:\n        from _pytest import nose\n\n        skip_exceptions = (Skipped,) + nose.get_skip_exceptions()\n        if call.excinfo.errisinstance(skip_exceptions):\n            outcome = \"skipped\"\n            r = collector._repr_failure_py(call.excinfo, \"line\").reprcrash\n            longrepr = (str(r.path), r.lineno, r.message)\n        else:\n            outcome = \"failed\"\n            errorinfo = collector.repr_failure(call.excinfo)\n            if not hasattr(errorinfo, \"toterminal\"):\n                errorinfo = CollectErrorRepr(errorinfo)\n            longrepr = errorinfo\n    rep = CollectReport(\n        collector.nodeid, outcome, longrepr, getattr(call, \"result\", None)\n    )\n    rep.call = call  # see collect_one_node\n    return rep",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    },
+    "c95fa6d4ec11e13eb92fe32f82c4f811831f9e759ffee3f81fe59fed9f869a89": {
+      "file": "src/_pytest/reports.py",
+      "sha256": "8093291ac30a5fedb2a94a12bd3384824e6a94f3ebb2359b391b9d04180c2a01",
+      "start_line": 346,
+      "end_line": 373,
+      "text": "    def from_item_and_call(cls, item, call):\n        \"\"\"\n        Factory method to create and fill a TestReport with standard item and call info.\n        \"\"\"\n        when = call.when\n        duration = call.stop - call.start\n        keywords = {x: 1 for x in item.keywords}\n        excinfo = call.excinfo\n        sections = []\n        if not call.excinfo:\n            outcome = \"passed\"\n            longrepr = None\n        else:\n            if not isinstance(excinfo, ExceptionInfo):\n                outcome = \"failed\"\n                longrepr = excinfo\n            elif excinfo.errisinstance(skip.Exception):\n                outcome = \"skipped\"\n                r = excinfo._getreprcrash()\n                longrepr = (str(r.path), r.lineno, r.message)\n            else:\n                outcome = \"failed\"\n                if call.when == \"call\":\n                    longrepr = item.repr_failure(excinfo)\n                else:  # exception in setup or teardown\n                    longrepr = item._repr_failure_py(\n                        excinfo, style=item.config.getoption(\"tbstyle\", \"auto\")\n                    )",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    },
+    "b7fb08394966e345285bdd9751778ff27e38b0174b1721d924a6aafd2c1d7781": {
+      "file": "src/_pytest/nose.py",
+      "sha256": "fd222997315607cfbb31b2e133b8776af86b0f5dd1fe74c833f1aff680f03b33",
+      "start_line": 27,
+      "end_line": 33,
+      "text": "def pytest_runtest_makereport(item, call):\n    if call.excinfo and call.excinfo.errisinstance(get_skip_exceptions()):\n        # let's substitute the excinfo with a pytest.skip one\n        call2 = runner.CallInfo.from_call(\n            lambda: pytest.skip(six.text_type(call.excinfo.value)), call.when\n        )\n        call.excinfo = call2.excinfo",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    },
+    "313c813e2b952d20d7069509e62e086ac980059eda0e2fd09bed4ca4d9f83291": {
+      "file": "src/_pytest/unittest.py",
+      "sha256": "8beaf4bf929fe3813e5406af9fdd2049d6287fde48aac046eb9210cd72dcbe92",
+      "start_line": 240,
+      "end_line": 248,
+      "text": "@hookimpl(tryfirst=True)\ndef pytest_runtest_makereport(item, call):\n    if isinstance(item, TestCaseFunction):\n        if item._excinfo:\n            call.excinfo = item._excinfo.pop(0)\n            try:\n                del call.result\n            except AttributeError:\n                pass",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    },
+    "ab7c5f67900e85b00959478afdc97992ee7a7de95d17afa23ea3f08d46f31e7b": {
+      "file": "src/_pytest/runner.py",
+      "sha256": "b4be752755314079f93c5fa46cfc1e9577d345379e5011e5cd63c6f9aad8273c",
+      "start_line": 76,
+      "end_line": 100,
+      "text": "def pytest_runtest_protocol(item, nextitem):\n    item.ihook.pytest_runtest_logstart(nodeid=item.nodeid, location=item.location)\n    runtestprotocol(item, nextitem=nextitem)\n    item.ihook.pytest_runtest_logfinish(nodeid=item.nodeid, location=item.location)\n    return True\n\n\ndef runtestprotocol(item, log=True, nextitem=None):\n    hasrequest = hasattr(item, \"_request\")\n    if hasrequest and not item._request:\n        item._initrequest()\n    rep = call_and_report(item, \"setup\", log)\n    reports = [rep]\n    if rep.passed:\n        if item.config.getoption(\"setupshow\", False):\n            show_test_item(item)\n        if not item.config.getoption(\"setuponly\", False):\n            reports.append(call_and_report(item, \"call\", log))\n    reports.append(call_and_report(item, \"teardown\", log, nextitem=nextitem))\n    # after all teardown hooks have been called\n    # want funcargs and request info to go away\n    if hasrequest:\n        item._request = False\n        item.funcargs = None\n    return reports",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    },
+    "ab44c1ebcd89cad80b608e69ff5003bc8051c5b3276b1f8c7f6cd73ad32cd5fa": {
+      "file": "src/_pytest/runner.py",
+      "sha256": "b4be752755314079f93c5fa46cfc1e9577d345379e5011e5cd63c6f9aad8273c",
+      "start_line": 119,
+      "end_line": 132,
+      "text": "def pytest_runtest_call(item):\n    _update_current_test_var(item, \"call\")\n    sys.last_type, sys.last_value, sys.last_traceback = (None, None, None)\n    try:\n        item.runtest()\n    except Exception:\n        # Store trace info to allow postmortem debugging\n        type, value, tb = sys.exc_info()\n        tb = tb.tb_next  # Skip *this* frame\n        sys.last_type = type\n        sys.last_value = value\n        sys.last_traceback = tb\n        del type, value, tb  # Get rid of these in this frame\n        raise",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    },
+    "67c65a099218de1880663927aaa37ac1324facac047ff2c72d2960f97c738df1": {
+      "file": "src/_pytest/runner.py",
+      "sha256": "b4be752755314079f93c5fa46cfc1e9577d345379e5011e5cd63c6f9aad8273c",
+      "start_line": 172,
+      "end_line": 245,
+      "text": "def call_and_report(item, when, log=True, **kwds):\n    call = call_runtest_hook(item, when, **kwds)\n    hook = item.ihook\n    report = hook.pytest_runtest_makereport(item=item, call=call)\n    if log:\n        hook.pytest_runtest_logreport(report=report)\n    if check_interactive_exception(call, report):\n        hook.pytest_exception_interact(node=item, call=call, report=report)\n    return report\n\n\ndef check_interactive_exception(call, report):\n    return call.excinfo and not (\n        hasattr(report, \"wasxfail\")\n        or call.excinfo.errisinstance(Skipped)\n        or call.excinfo.errisinstance(bdb.BdbQuit)\n    )\n\n\ndef call_runtest_hook(item, when, **kwds):\n    hookname = \"pytest_runtest_\" + when\n    ihook = getattr(item.ihook, hookname)\n    reraise = (Exit,)\n    if not item.config.getoption(\"usepdb\", False):\n        reraise += (KeyboardInterrupt,)\n    return CallInfo.from_call(\n        lambda: ihook(item=item, **kwds), when=when, reraise=reraise\n    )\n\n\n@attr.s(repr=False)\nclass CallInfo(object):\n    \"\"\" Result/Exception info a function invocation. \"\"\"\n\n    _result = attr.ib()\n    # Optional[ExceptionInfo]\n    excinfo = attr.ib()\n    start = attr.ib()\n    stop = attr.ib()\n    when = attr.ib()\n\n    @property\n    def result(self):\n        if self.excinfo is not None:\n            raise AttributeError(\"{!r} has no valid result\".format(self))\n        return self._result\n\n    @classmethod\n    def from_call(cls, func, when, reraise=None):\n        #: context of invocation: one of \"setup\", \"call\",\n        #: \"teardown\", \"memocollect\"\n        start = time()\n        excinfo = None\n        try:\n            result = func()\n        except:  # noqa\n            excinfo = ExceptionInfo.from_current()\n            if reraise is not None and excinfo.errisinstance(reraise):\n                raise\n            result = None\n        stop = time()\n        return cls(start=start, stop=stop, when=when, result=result, excinfo=excinfo)\n\n    def __repr__(self):\n        if self.excinfo is not None:\n            status = \"exception\"\n            value = self.excinfo.value\n        else:\n            # TODO: investigate unification\n            value = repr(self._result)\n            status = \"result\"\n        return \"<CallInfo when={when!r} {status}: {value}>\".format(\n            when=self.when, value=value, status=status\n        )",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    },
+    "e202a70d866fe67c4592958214481c2b6e67e4f743197c8e4b0b53b8b15a1e81": {
+      "file": "src/_pytest/runner.py",
+      "sha256": "b4be752755314079f93c5fa46cfc1e9577d345379e5011e5cd63c6f9aad8273c",
+      "start_line": 248,
+      "end_line": 249,
+      "text": "def pytest_runtest_makereport(item, call):\n    return TestReport.from_item_and_call(item, call)",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    },
+    "2ef584b12a99c6aa52cd4d94d62613b81c2c1b92d68b7a1cd5c8e03a17ceb451": {
+      "file": "src/_pytest/python.py",
+      "sha256": "c30ae40f482c3354e6e1af768463340fb605552af26955f72b6452c979f6bc32",
+      "start_line": 160,
+      "end_line": 175,
+      "text": "@hookimpl(trylast=True)\ndef pytest_pyfunc_call(pyfuncitem):\n    testfunction = pyfuncitem.obj\n    iscoroutinefunction = getattr(inspect, \"iscoroutinefunction\", None)\n    if iscoroutinefunction is not None and iscoroutinefunction(testfunction):\n        msg = \"Coroutine functions are not natively supported and have been skipped.\\n\"\n        msg += \"You need to install a suitable plugin for your async framework, for example:\\n\"\n        msg += \"  - pytest-asyncio\\n\"\n        msg += \"  - pytest-trio\\n\"\n        msg += \"  - pytest-tornasync\"\n        warnings.warn(PytestUnhandledCoroutineWarning(msg.format(pyfuncitem.nodeid)))\n        skip(msg=\"coroutine function and no async plugin installed (see warnings)\")\n    funcargs = pyfuncitem.funcargs\n    testargs = {arg: funcargs[arg] for arg in pyfuncitem._fixtureinfo.argnames}\n    testfunction(**testargs)\n    return True",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    },
+    "f4628eff7c63966d19fdd53beb814347b37afb1f364cb9028f14880b574649fd": {
+      "file": "src/_pytest/python.py",
+      "sha256": "c30ae40f482c3354e6e1af768463340fb605552af26955f72b6452c979f6bc32",
+      "start_line": 1462,
+      "end_line": 1468,
+      "text": "    def runtest(self):\n        \"\"\" execute the underlying test function. \"\"\"\n        self.ihook.pytest_pyfunc_call(pyfuncitem=self)\n\n    def setup(self):\n        super(Function, self).setup()\n        fixtures.fillfixtures(self)",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    },
+    "884ef943a5e5784c2a599a8089f56605ef4b939b2f68af6997f7df65f5c37618": {
+      "file": "src/_pytest/reports.py",
+      "sha256": "8093291ac30a5fedb2a94a12bd3384824e6a94f3ebb2359b391b9d04180c2a01",
+      "start_line": 346,
+      "end_line": 386,
+      "text": "    def from_item_and_call(cls, item, call):\n        \"\"\"\n        Factory method to create and fill a TestReport with standard item and call info.\n        \"\"\"\n        when = call.when\n        duration = call.stop - call.start\n        keywords = {x: 1 for x in item.keywords}\n        excinfo = call.excinfo\n        sections = []\n        if not call.excinfo:\n            outcome = \"passed\"\n            longrepr = None\n        else:\n            if not isinstance(excinfo, ExceptionInfo):\n                outcome = \"failed\"\n                longrepr = excinfo\n            elif excinfo.errisinstance(skip.Exception):\n                outcome = \"skipped\"\n                r = excinfo._getreprcrash()\n                longrepr = (str(r.path), r.lineno, r.message)\n            else:\n                outcome = \"failed\"\n                if call.when == \"call\":\n                    longrepr = item.repr_failure(excinfo)\n                else:  # exception in setup or teardown\n                    longrepr = item._repr_failure_py(\n                        excinfo, style=item.config.getoption(\"tbstyle\", \"auto\")\n                    )\n        for rwhen, key, content in item._report_sections:\n            sections.append((\"Captured %s %s\" % (key, rwhen), content))\n        return cls(\n            item.nodeid,\n            item.location,\n            keywords,\n            outcome,\n            longrepr,\n            when,\n            sections,\n            duration,\n            user_properties=item.user_properties,\n        )",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    },
+    "9937909f069219642b5ee86c4fc5fae652a942279958ecbe6c537ac16db7f266": {
+      "file": "src/_pytest/skipping.py",
+      "sha256": "ab5f7d9d2306887a5a4e50dcf48e33e32589161aa18e8acc5a2f62b5a63338f2",
+      "start_line": 95,
+      "end_line": 102,
+      "text": "@hookimpl(hookwrapper=True)\ndef pytest_pyfunc_call(pyfuncitem):\n    check_xfail_no_run(pyfuncitem)\n    outcome = yield\n    passed = outcome.excinfo is None\n    if passed:\n        check_strict_xfail(pyfuncitem)\n",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    },
+    "cb2709aef921dbc8ac5793938358c849aff37b16ba46bda70013ac9acce30485": {
+      "file": "src/_pytest/debugging.py",
+      "sha256": "7335d06fb13b3247d46bd913691a3ae6123c5bed019ba8622254aa2ade3f24c8",
+      "start_line": 272,
+      "end_line": 276,
+      "text": "class PdbTrace(object):\n    @hookimpl(hookwrapper=True)\n    def pytest_pyfunc_call(self, pyfuncitem):\n        _test_pytest_function(pyfuncitem)\n        yield",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    },
+    "30360f58d4f838c6a375f867b53eac5b27ec223b3214f77d5e01beb8d067b9cc": {
+      "file": "src/_pytest/hookspec.py",
+      "sha256": "e15dc05789036a017fcd5a6c41038781fde74611c7ea10c0100b1b45dd0f5df1",
+      "start_line": 266,
+      "end_line": 270,
+      "text": "@hookspec(firstresult=True)\ndef pytest_pyfunc_call(pyfuncitem):\n    \"\"\" call underlying test function.\n\n    Stops at first non-None result, see :ref:`firstresult` \"\"\"",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    },
+    "01c1d3956a45f3de1a98f7e432b36f17f0adddb9cc1759302a20d17e15f9ae2d": {
+      "file": "src/_pytest/runner.py",
+      "sha256": "b4be752755314079f93c5fa46cfc1e9577d345379e5011e5cd63c6f9aad8273c",
+      "start_line": 368,
+      "end_line": 375,
+      "text": "def collect_one_node(collector):\n    ihook = collector.ihook\n    ihook.pytest_collectstart(collector=collector)\n    rep = ihook.pytest_make_collect_report(collector=collector)\n    call = rep.__dict__.pop(\"call\", None)\n    if call and check_interactive_exception(call, rep):\n        ihook.pytest_exception_interact(node=collector, call=call, report=rep)\n    return rep",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    },
+    "c37164797a1dc2f36ed17aad65519e55c382bb9bcdad496093326c2eea57ae1b": {
+      "file": "testing/test_runner.py",
+      "sha256": "4b602d3e0b61e05f1a1ae312b85bef38b56d72a0cf22846dad3a9589abf7a4c6",
+      "start_line": 373,
+      "end_line": 420,
+      "text": "    def test_systemexit_does_not_bail_out(self, testdir):\n        try:\n            reports = testdir.runitem(\n                \"\"\"\n                def test_func():\n                    raise SystemExit(42)\n            \"\"\"\n            )\n        except SystemExit:\n            pytest.fail(\"runner did not catch SystemExit\")\n        rep = reports[1]\n        assert rep.failed\n        assert rep.when == \"call\"\n\n    def test_exit_propagates(self, testdir):\n        try:\n            testdir.runitem(\n                \"\"\"\n                import pytest\n                def test_func():\n                    raise pytest.exit.Exception()\n            \"\"\"\n            )\n        except pytest.exit.Exception:\n            pass\n        else:\n            pytest.fail(\"did not raise\")\n\n\nclass TestExecutionNonForked(BaseFunctionalTests):\n    def getrunner(self):\n        def f(item):\n            return runner.runtestprotocol(item, log=False)\n\n        return f\n\n    def test_keyboardinterrupt_propagates(self, testdir):\n        try:\n            testdir.runitem(\n                \"\"\"\n                def test_func():\n                    raise KeyboardInterrupt(\"fake\")\n            \"\"\"\n            )\n        except KeyboardInterrupt:\n            pass\n        else:\n            pytest.fail(\"did not raise\")",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    },
+    "28cf9559e4acb206778aadfd913a7783460f8ba754682ad9fddaece86ea8594b": {
+      "file": "testing/test_runner.py",
+      "sha256": "4b602d3e0b61e05f1a1ae312b85bef38b56d72a0cf22846dad3a9589abf7a4c6",
+      "start_line": 484,
+      "end_line": 496,
+      "text": "def test_callinfo():\n    ci = runner.CallInfo.from_call(lambda: 0, \"123\")\n    assert ci.when == \"123\"\n    assert ci.result == 0\n    assert \"result\" in repr(ci)\n    assert repr(ci) == \"<CallInfo when='123' result: 0>\"\n\n    ci = runner.CallInfo.from_call(lambda: 0 / 0, \"123\")\n    assert ci.when == \"123\"\n    assert not hasattr(ci, \"result\")\n    assert repr(ci) == \"<CallInfo when='123' exception: division by zero>\"\n    assert ci.excinfo\n    assert \"exc\" in repr(ci)",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    },
+    "12925073e15d549c68b174eafde8028d6d29c62713ed0b44f5cd3d5f12ed9017": {
+      "file": "testing/test_pdb.py",
+      "sha256": "0f1c697ab178ec54a0443a5cf1b79c26aa6dacacfd7677cfa58a2c54cc0a4937",
+      "start_line": 142,
+      "end_line": 151,
+      "text": "    def test_pdb_on_KeyboardInterrupt(self, testdir, pdblist):\n        rep = runpdb_and_get_report(\n            testdir,\n            \"\"\"\n            def test_func():\n                raise KeyboardInterrupt\n        \"\"\",\n        )\n        assert rep.failed\n        assert len(pdblist) == 1",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    },
+    "81c92cbea46b99fe8dbb3fd84400538d11861ee7d542adbacce3743f79032c33": {
+      "file": "src/_pytest/main.py",
+      "sha256": "9b76ec4f59d76da3eee52435c8094629c2119510712a99756975d83e9efedc43",
+      "start_line": 510,
+      "end_line": 523,
+      "text": "        self._notfound = []\n        initialpaths = []\n        self._initialparts = []\n        self.items = items = []\n        for arg in args:\n            parts = self._parsearg(arg)\n            self._initialparts.append(parts)\n            initialpaths.append(parts[0])\n        self._initialpaths = frozenset(initialpaths)\n        rep = collect_one_node(self)\n        self.ihook.pytest_collectreport(report=rep)\n        self.trace.root.indent -= 1\n        if self._notfound:\n            errors = []",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    },
+    "218d6ec999ef84774f707b48e3e3d8741d251920c0421968f33925102744ea5f": {
+      "file": "src/_pytest/_pilot_post_edit.py",
+      "sha256": "be5413f1fd182d77cea517c0a5c3fe600caaa2d2e53e64645f02c2a84dcd356f",
+      "start_line": 1,
+      "end_line": 4,
+      "text": "from .runner import CallInfo\n\ndef capture_probe_result(function):\n    return CallInfo.from_call(function, \"call\")",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    },
+    "c5253df5850c0e4a7b840d4a6f24f7d4346b280145138a22a7a2ecf29c994184": {
+      "file": "src/_pytest/runner.py",
+      "sha256": "b4be752755314079f93c5fa46cfc1e9577d345379e5011e5cd63c6f9aad8273c",
+      "start_line": 191,
+      "end_line": 199,
+      "text": "def call_runtest_hook(item, when, **kwds):\n    hookname = \"pytest_runtest_\" + when\n    ihook = getattr(item.ihook, hookname)\n    reraise = (Exit,)\n    if not item.config.getoption(\"usepdb\", False):\n        reraise += (KeyboardInterrupt,)\n    return CallInfo.from_call(\n        lambda: ihook(item=item, **kwds), when=when, reraise=reraise\n    )",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    }
+  },
+  "reviews": [
+    {
+      "workflow_index": 8,
+      "arm": "codenib",
+      "task_id": "pytest-dev__pytest-5809-lookup",
+      "kind": "lookup",
+      "criteria": [
+        {
+          "criterion": "Identify CallInfo.from_call in src/_pytest/runner.py.",
+          "met": true,
+          "rationale": "Identifies CallInfo.from_call and its actual runner.py definition."
+        },
+        {
+          "criterion": "Explain captured result versus excinfo and start/stop timing from the actual implementation.",
+          "met": true,
+          "rationale": "Explains the result/ExceptionInfo split and start/stop timing for returned instances, with an explicit no-instance configured-reraise path."
+        },
+        {
+          "criterion": "Cite the relevant constructor/accessor behavior without claiming exceptions are always swallowed.",
+          "met": true,
+          "rationale": "Cites the guarded result accessor, fields and factory and does not claim configured exceptions are always swallowed."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "findings": [],
+      "notes": [
+        "Timing language is read with the explicit configured-reraise/no-instance qualification. The nose factory call really exists; extra consumers are source-checked rather than assumed to be direct factory callers."
+      ],
+      "source_before_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+      "source_after_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "a0ba73d7c913196bb6ad289e0bd8511db9000e2936c44806ab0b61f052f4634f",
+      "sdk_trace_sha256": "b21b3e6b4286041027242e9638f7a6916416699eb8d0ac1e22649ade7b62eaa4",
+      "workflow_artifact": "codegraph_matched_workflow_v2_08.json",
+      "workflow_artifact_sha256": "9c89369b35805db6433c171816a070e392207bb8c85e330fc905c4fe26976c71",
+      "observation_artifact": {
+        "artifact": "codegraph_matched_workflow_v2_08_lookup_observations.json",
+        "sha256": "a6ab8504fee6e975e3161cf5f9a23ec466c125c809ea8fbafeebe20e4e42e9b2"
+      },
+      "observation_tool_use_ids": [
+        "toolu_013h2wtpf2nGaHPsSxd8U1AS",
+        "toolu_019Mgm4UuUgNy5K8QyYoeqdE",
+        "toolu_01MyS3Mxbxd1RXnZD3Q9z2b6"
+      ],
+      "delivered_user_tool_message_count": 3,
+      "source_credit_scope": "Controller ground truth establishes answer correctness, not model-read credit or a complete ContextBench score.",
+      "source_evidence": [
+        {
+          "source_evidence_id": "563b3db1d1ee14886aaf4ab32a1a5f22e3e1fcd53e10b16e472adc7ed8658f3a",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "2a75cbb1bca301ac7d7fa2449528156fe28cb1a357bdde54c91aa98c41510434",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "7887bc06b4b3cfa458f5f7e2bf5eae4d27cdf5a48e8130c9ef5b6542851d1e57",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "c95fa6d4ec11e13eb92fe32f82c4f811831f9e759ffee3f81fe59fed9f869a89",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "b7fb08394966e345285bdd9751778ff27e38b0174b1721d924a6aafd2c1d7781",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "313c813e2b952d20d7069509e62e086ac980059eda0e2fd09bed4ca4d9f83291",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        }
+      ]
+    },
+    {
+      "workflow_index": 9,
+      "arm": "native",
+      "task_id": "pytest-dev__pytest-5809-lookup",
+      "kind": "lookup",
+      "criteria": [
+        {
+          "criterion": "Identify CallInfo.from_call in src/_pytest/runner.py.",
+          "met": true,
+          "rationale": "Identifies CallInfo.from_call and its actual runner.py definition."
+        },
+        {
+          "criterion": "Explain captured result versus excinfo and start/stop timing from the actual implementation.",
+          "met": true,
+          "rationale": "Explains the result/ExceptionInfo split and start/stop timing for returned instances, with an explicit no-instance configured-reraise path."
+        },
+        {
+          "criterion": "Cite the relevant constructor/accessor behavior without claiming exceptions are always swallowed.",
+          "met": true,
+          "rationale": "Cites the guarded result accessor, fields and factory and does not claim configured exceptions are always swallowed."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "findings": [],
+      "notes": [
+        "Timing language is read with the explicit configured-reraise/no-instance qualification. The nose factory call really exists; extra consumers are source-checked rather than assumed to be direct factory callers."
+      ],
+      "source_before_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+      "source_after_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "2a09a746f73095b433cb171225c479a26ce0ed19ef7429d10ce9d511137c2870",
+      "sdk_trace_sha256": "5e7cb21a74893e69d0529c41180810346e0f12a706cbc6006fd77beca2045f9d",
+      "workflow_artifact": "codegraph_matched_workflow_v2_09.json",
+      "workflow_artifact_sha256": "0a6ba8ed750fe4cb25f33244ca8a5a1f8138e435115b06357ac713bdf701efca",
+      "observation_artifact": {
+        "artifact": "codegraph_matched_workflow_v2_09_lookup_observations.json",
+        "sha256": "8e440161bfb528c1f56cfb8c233e902f23cf923a161096f2ad841fd9dc72dd8a"
+      },
+      "observation_tool_use_ids": [
+        "toolu_01GrbLdFb2RxrbEXmeJ1L5mU",
+        "toolu_01FkkJkgArGXZ7pTb4ynfkbj",
+        "toolu_01PWVxZPpYB89MYkYkBZ51BQ",
+        "toolu_01QCcEJZs2Bu2XQHhHVQ2hSP",
+        "toolu_015mgkTZcBh9syFAUYGuLvmP"
+      ],
+      "delivered_user_tool_message_count": 5,
+      "source_credit_scope": "Controller ground truth establishes answer correctness, not model-read credit or a complete ContextBench score.",
+      "source_evidence": [
+        {
+          "source_evidence_id": "563b3db1d1ee14886aaf4ab32a1a5f22e3e1fcd53e10b16e472adc7ed8658f3a",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "2a75cbb1bca301ac7d7fa2449528156fe28cb1a357bdde54c91aa98c41510434",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "7887bc06b4b3cfa458f5f7e2bf5eae4d27cdf5a48e8130c9ef5b6542851d1e57",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "c95fa6d4ec11e13eb92fe32f82c4f811831f9e759ffee3f81fe59fed9f869a89",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "b7fb08394966e345285bdd9751778ff27e38b0174b1721d924a6aafd2c1d7781",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "313c813e2b952d20d7069509e62e086ac980059eda0e2fd09bed4ca4d9f83291",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        }
+      ]
+    },
+    {
+      "workflow_index": 10,
+      "arm": "codegraph",
+      "task_id": "pytest-dev__pytest-5809-lookup",
+      "kind": "lookup",
+      "criteria": [
+        {
+          "criterion": "Identify CallInfo.from_call in src/_pytest/runner.py.",
+          "met": true,
+          "rationale": "Identifies CallInfo.from_call and its actual runner.py definition."
+        },
+        {
+          "criterion": "Explain captured result versus excinfo and start/stop timing from the actual implementation.",
+          "met": true,
+          "rationale": "Explains the result/ExceptionInfo split and start/stop timing for returned instances, with an explicit no-instance configured-reraise path."
+        },
+        {
+          "criterion": "Cite the relevant constructor/accessor behavior without claiming exceptions are always swallowed.",
+          "met": true,
+          "rationale": "Cites the guarded result accessor, fields and factory and does not claim configured exceptions are always swallowed."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "findings": [],
+      "notes": [
+        "Timing language is read with the explicit configured-reraise/no-instance qualification. The nose factory call really exists; extra consumers are source-checked rather than assumed to be direct factory callers."
+      ],
+      "source_before_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+      "source_after_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "92ac189492fc15c235d5e24c80bf9290de35c08e96b71aa8cdcff1cd48c149f2",
+      "sdk_trace_sha256": "7575cd74cfb54afd07de476b0001cd3bbda21931ce52684dd0d637b86a4f4284",
+      "workflow_artifact": "codegraph_matched_workflow_v2_10.json",
+      "workflow_artifact_sha256": "85d41ca495cdb2624d22b7b29c820dd0b519231ce11debfdaaccce7a7a031fcb",
+      "observation_artifact": {
+        "artifact": "codegraph_matched_workflow_v2_10_lookup_observations.json",
+        "sha256": "1f16c3dc3f8000bd12834bca6ee384acc0c77465d7ba231b9d9b3dd20637f644"
+      },
+      "observation_tool_use_ids": [
+        "toolu_01EEtgahG4bUV1jwdfSHkgiQ",
+        "toolu_01XtpvX3ySzDXDx13W4PY5ot",
+        "toolu_01F1mpKcMzjvrWSuFXhigaCg"
+      ],
+      "delivered_user_tool_message_count": 3,
+      "source_credit_scope": "Controller ground truth establishes answer correctness, not model-read credit or a complete ContextBench score.",
+      "source_evidence": [
+        {
+          "source_evidence_id": "563b3db1d1ee14886aaf4ab32a1a5f22e3e1fcd53e10b16e472adc7ed8658f3a",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "2a75cbb1bca301ac7d7fa2449528156fe28cb1a357bdde54c91aa98c41510434",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "7887bc06b4b3cfa458f5f7e2bf5eae4d27cdf5a48e8130c9ef5b6542851d1e57",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "c95fa6d4ec11e13eb92fe32f82c4f811831f9e759ffee3f81fe59fed9f869a89",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "b7fb08394966e345285bdd9751778ff27e38b0174b1721d924a6aafd2c1d7781",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "313c813e2b952d20d7069509e62e086ac980059eda0e2fd09bed4ca4d9f83291",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        }
+      ]
+    },
+    {
+      "workflow_index": 11,
+      "arm": "serena",
+      "task_id": "pytest-dev__pytest-5809-lookup",
+      "kind": "lookup",
+      "criteria": [
+        {
+          "criterion": "Identify CallInfo.from_call in src/_pytest/runner.py.",
+          "met": true,
+          "rationale": "Identifies CallInfo.from_call and its actual runner.py definition."
+        },
+        {
+          "criterion": "Explain captured result versus excinfo and start/stop timing from the actual implementation.",
+          "met": true,
+          "rationale": "Explains the result/ExceptionInfo split and start/stop timing for returned instances, with an explicit no-instance configured-reraise path."
+        },
+        {
+          "criterion": "Cite the relevant constructor/accessor behavior without claiming exceptions are always swallowed.",
+          "met": true,
+          "rationale": "Cites the guarded result accessor, fields and factory and does not claim configured exceptions are always swallowed."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "findings": [],
+      "notes": [
+        "Timing language is read with the explicit configured-reraise/no-instance qualification. The nose factory call really exists; extra consumers are source-checked rather than assumed to be direct factory callers."
+      ],
+      "source_before_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+      "source_after_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "336e8ce77366e82f885fe07fdd6947244aa3a6530ff3b7d2bbc3ee3dd750f8fe",
+      "sdk_trace_sha256": "59ba3fa31b4ece2b7b606704f7723d6cc4fc52d07ece38cbce6262b63a7401be",
+      "workflow_artifact": "codegraph_matched_workflow_v2_11.json",
+      "workflow_artifact_sha256": "a1510f6390989e76f4c37dbaa87f105907f986b11a5e6730c5002e911fa6f4cc",
+      "observation_artifact": {
+        "artifact": "codegraph_matched_workflow_v2_11_lookup_observations.json",
+        "sha256": "a76f1cba0fc2ce24683f57ee9166205a29fb3c2a1253e471061aee9c63ac0c96"
+      },
+      "observation_tool_use_ids": [
+        "toolu_01U5UNqcP37fZbfPmaLoDuoK",
+        "toolu_0156o5AFJNnBnzRpQZXBP43N",
+        "toolu_01W1Q8qCAWRkQw7LwxU3fTqD",
+        "toolu_018tas8F4XKYem2hYBwseZMG"
+      ],
+      "delivered_user_tool_message_count": 4,
+      "source_credit_scope": "Controller ground truth establishes answer correctness, not model-read credit or a complete ContextBench score.",
+      "source_evidence": [
+        {
+          "source_evidence_id": "563b3db1d1ee14886aaf4ab32a1a5f22e3e1fcd53e10b16e472adc7ed8658f3a",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "2a75cbb1bca301ac7d7fa2449528156fe28cb1a357bdde54c91aa98c41510434",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "7887bc06b4b3cfa458f5f7e2bf5eae4d27cdf5a48e8130c9ef5b6542851d1e57",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "c95fa6d4ec11e13eb92fe32f82c4f811831f9e759ffee3f81fe59fed9f869a89",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "b7fb08394966e345285bdd9751778ff27e38b0174b1721d924a6aafd2c1d7781",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "313c813e2b952d20d7069509e62e086ac980059eda0e2fd09bed4ca4d9f83291",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        }
+      ]
+    },
+    {
+      "workflow_index": 8,
+      "arm": "codenib",
+      "task_id": "pytest-dev__pytest-5809-flow",
+      "kind": "flow",
+      "criteria": [
+        {
+          "criterion": "Connect runtestprotocol, call_and_report and call_runtest_hook in runner.py.",
+          "met": true,
+          "rationale": "Connects runtestprotocol, call_and_report and call_runtest_hook through the call phase."
+        },
+        {
+          "criterion": "Connect pytest_runtest_call, Function.runtest and pytest_pyfunc_call through their plugin hook boundaries.",
+          "met": true,
+          "rationale": "Connects runner.pytest_runtest_call, Function.runtest and the default Python function hook with actual pluggy dispatch boundaries."
+        },
+        {
+          "criterion": "Explain CallInfo.from_call exception capture and pytest_runtest_makereport/TestReport creation.",
+          "met": true,
+          "rationale": "Explains configured exception capture/reraise and default makereport/TestReport creation."
+        },
+        {
+          "criterion": "Cite relevant runner.py and python.py call sites and distinguish collection/setup/teardown from the call phase.",
+          "met": true,
+          "rationale": "Cites runner.py/python.py and distinguishes setup, call, collection and teardown; the extra false cleanup guarantee is separately rejected under the frozen serious-error rule."
+        }
+      ],
+      "accepted": false,
+      "serious_error": true,
+      "findings": [
+        {
+          "category": "incorrect_unconditional_teardown_guarantee",
+          "serious": true,
+          "quote": "teardown always runs",
+          "explanation": "runtestprotocol has no try/finally around setup/call. The answer acknowledges configured Exit/KeyboardInterrupt re-raising, but still unconditionally guarantees the per-item teardown phase. The pinned-function counterexample records setup/call only before KeyboardInterrupt escapes; later session cleanup is a different boundary.",
+          "post_run_counterexample": "source-controlflow-audit-v2/receipt.json"
+        }
+      ],
+      "notes": [
+        "Apply the same material-error rule used in v1 to newly captured answers; do not revise the rule because the error recurs across arms. No v1 answer judgment is imported."
+      ],
+      "source_before_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+      "source_after_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "ff293376a3f4b4a6b3ee613da7282401876eb0b81d333040abafb54b596974d1",
+      "sdk_trace_sha256": "d81810ad0f2194899d0c911a345c418629b7a6e743ed1c7a912f789b653b6f23",
+      "workflow_artifact": "codegraph_matched_workflow_v2_08.json",
+      "workflow_artifact_sha256": "9c89369b35805db6433c171816a070e392207bb8c85e330fc905c4fe26976c71",
+      "observation_artifact": {
+        "artifact": "codegraph_matched_workflow_v2_08_flow_observations.json",
+        "sha256": "c7ef824107897adea0aa05ed45a609dc842d25c77b49d74b4d1bebaa6a50ab26"
+      },
+      "observation_tool_use_ids": [
+        "toolu_015cRyTFPJBHY3nj1CcLFqGy",
+        "toolu_01XDZcptiCugYG1PTiqPJXjZ",
+        "toolu_01EVps5LZpM2vQFfnNc3CaN6",
+        "toolu_01Lw1aewYPr1zevtvafY1VkL",
+        "toolu_01WK7kVg6mmxRStN1z55vVyE",
+        "toolu_019oXtnZrGsd98n6oVhyuK1g",
+        "toolu_019cSKNfqZTLmvFQzrBoWHmq",
+        "toolu_01CqsmzkVcYQMjLSC2mHcwCG",
+        "toolu_01MVJL87BbyL6kMSVEx48mKj",
+        "toolu_017Zm3r2fieyE1PUV18a8nWr",
+        "toolu_01Jor1ArznU4eza5654YTJWM"
+      ],
+      "delivered_user_tool_message_count": 11,
+      "source_credit_scope": "Controller ground truth establishes answer correctness, not model-read credit or a complete ContextBench score.",
+      "source_evidence": [
+        {
+          "source_evidence_id": "ab7c5f67900e85b00959478afdc97992ee7a7de95d17afa23ea3f08d46f31e7b",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "ab44c1ebcd89cad80b608e69ff5003bc8051c5b3276b1f8c7f6cd73ad32cd5fa",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "67c65a099218de1880663927aaa37ac1324facac047ff2c72d2960f97c738df1",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "e202a70d866fe67c4592958214481c2b6e67e4f743197c8e4b0b53b8b15a1e81",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "2ef584b12a99c6aa52cd4d94d62613b81c2c1b92d68b7a1cd5c8e03a17ceb451",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "f4628eff7c63966d19fdd53beb814347b37afb1f364cb9028f14880b574649fd",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "884ef943a5e5784c2a599a8089f56605ef4b939b2f68af6997f7df65f5c37618",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "9937909f069219642b5ee86c4fc5fae652a942279958ecbe6c537ac16db7f266",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "cb2709aef921dbc8ac5793938358c849aff37b16ba46bda70013ac9acce30485",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "30360f58d4f838c6a375f867b53eac5b27ec223b3214f77d5e01beb8d067b9cc",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        }
+      ]
+    },
+    {
+      "workflow_index": 9,
+      "arm": "native",
+      "task_id": "pytest-dev__pytest-5809-flow",
+      "kind": "flow",
+      "criteria": [
+        {
+          "criterion": "Connect runtestprotocol, call_and_report and call_runtest_hook in runner.py.",
+          "met": true,
+          "rationale": "Connects runtestprotocol, call_and_report and call_runtest_hook through the call phase."
+        },
+        {
+          "criterion": "Connect pytest_runtest_call, Function.runtest and pytest_pyfunc_call through their plugin hook boundaries.",
+          "met": true,
+          "rationale": "Connects runner.pytest_runtest_call, Function.runtest and the default Python function hook with actual pluggy dispatch boundaries."
+        },
+        {
+          "criterion": "Explain CallInfo.from_call exception capture and pytest_runtest_makereport/TestReport creation.",
+          "met": true,
+          "rationale": "Explains configured exception capture/reraise and default makereport/TestReport creation."
+        },
+        {
+          "criterion": "Cite relevant runner.py and python.py call sites and distinguish collection/setup/teardown from the call phase.",
+          "met": true,
+          "rationale": "Cites runner.py/python.py and distinguishes setup, call, collection and teardown; the extra false cleanup guarantee is separately rejected under the frozen serious-error rule."
+        }
+      ],
+      "accepted": false,
+      "serious_error": true,
+      "findings": [
+        {
+          "category": "incorrect_unconditional_teardown_guarantee",
+          "serious": true,
+          "quote": "Teardown always runs (line 94).",
+          "explanation": "runtestprotocol has no try/finally around setup/call. The answer acknowledges configured Exit/KeyboardInterrupt re-raising, but still unconditionally guarantees the per-item teardown phase. The pinned-function counterexample records setup/call only before KeyboardInterrupt escapes; later session cleanup is a different boundary.",
+          "post_run_counterexample": "source-controlflow-audit-v2/receipt.json"
+        }
+      ],
+      "notes": [
+        "Apply the same material-error rule used in v1 to newly captured answers; do not revise the rule because the error recurs across arms. No v1 answer judgment is imported."
+      ],
+      "source_before_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+      "source_after_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "747fc74804f29ccb5c0c78f760fc62e515e53a63091e6be915da3c2040e336ca",
+      "sdk_trace_sha256": "fcd8dd77e641e3b1cbe9da8ab1193a680e82a5c1875e6f77e687841f515715fd",
+      "workflow_artifact": "codegraph_matched_workflow_v2_09.json",
+      "workflow_artifact_sha256": "0a6ba8ed750fe4cb25f33244ca8a5a1f8138e435115b06357ac713bdf701efca",
+      "observation_artifact": {
+        "artifact": "codegraph_matched_workflow_v2_09_flow_observations.json",
+        "sha256": "818bf3351ecbf50c4dfb02032b3454724bfab2e703e34c902854fc5321456710"
+      },
+      "observation_tool_use_ids": [
+        "toolu_01AsJJ7ugKvHB72tiJA1hDWW",
+        "toolu_01CLXgXGcixLX3AAgXSyjoCF",
+        "toolu_01KHUg63SjJk1tQFCaJUNmHs",
+        "toolu_015fM29Yz9W4b3CN5hKBFUnh",
+        "toolu_01ECgCLAWwHYY82uK47KcsWQ"
+      ],
+      "delivered_user_tool_message_count": 5,
+      "source_credit_scope": "Controller ground truth establishes answer correctness, not model-read credit or a complete ContextBench score.",
+      "source_evidence": [
+        {
+          "source_evidence_id": "ab7c5f67900e85b00959478afdc97992ee7a7de95d17afa23ea3f08d46f31e7b",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "ab44c1ebcd89cad80b608e69ff5003bc8051c5b3276b1f8c7f6cd73ad32cd5fa",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "67c65a099218de1880663927aaa37ac1324facac047ff2c72d2960f97c738df1",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "e202a70d866fe67c4592958214481c2b6e67e4f743197c8e4b0b53b8b15a1e81",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "2ef584b12a99c6aa52cd4d94d62613b81c2c1b92d68b7a1cd5c8e03a17ceb451",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "f4628eff7c63966d19fdd53beb814347b37afb1f364cb9028f14880b574649fd",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "884ef943a5e5784c2a599a8089f56605ef4b939b2f68af6997f7df65f5c37618",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "9937909f069219642b5ee86c4fc5fae652a942279958ecbe6c537ac16db7f266",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "cb2709aef921dbc8ac5793938358c849aff37b16ba46bda70013ac9acce30485",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "30360f58d4f838c6a375f867b53eac5b27ec223b3214f77d5e01beb8d067b9cc",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        }
+      ]
+    },
+    {
+      "workflow_index": 10,
+      "arm": "codegraph",
+      "task_id": "pytest-dev__pytest-5809-flow",
+      "kind": "flow",
+      "criteria": [
+        {
+          "criterion": "Connect runtestprotocol, call_and_report and call_runtest_hook in runner.py.",
+          "met": true,
+          "rationale": "Connects runtestprotocol, call_and_report and call_runtest_hook through the call phase."
+        },
+        {
+          "criterion": "Connect pytest_runtest_call, Function.runtest and pytest_pyfunc_call through their plugin hook boundaries.",
+          "met": true,
+          "rationale": "Connects runner.pytest_runtest_call, Function.runtest and the default Python function hook with actual pluggy dispatch boundaries."
+        },
+        {
+          "criterion": "Explain CallInfo.from_call exception capture and pytest_runtest_makereport/TestReport creation.",
+          "met": true,
+          "rationale": "Explains configured exception capture/reraise and default makereport/TestReport creation."
+        },
+        {
+          "criterion": "Cite relevant runner.py and python.py call sites and distinguish collection/setup/teardown from the call phase.",
+          "met": true,
+          "rationale": "Cites runner.py/python.py and distinguishes setup, call, collection and teardown; the extra false cleanup guarantee is separately rejected under the frozen serious-error rule."
+        }
+      ],
+      "accepted": false,
+      "serious_error": true,
+      "findings": [
+        {
+          "category": "incorrect_unconditional_teardown_guarantee",
+          "serious": true,
+          "quote": "Teardown always runs (line 94).",
+          "explanation": "runtestprotocol has no try/finally around setup/call. The answer acknowledges configured Exit/KeyboardInterrupt re-raising, but still unconditionally guarantees the per-item teardown phase. The pinned-function counterexample records setup/call only before KeyboardInterrupt escapes; later session cleanup is a different boundary.",
+          "post_run_counterexample": "source-controlflow-audit-v2/receipt.json"
+        }
+      ],
+      "notes": [
+        "Apply the same material-error rule used in v1 to newly captured answers; do not revise the rule because the error recurs across arms. No v1 answer judgment is imported."
+      ],
+      "source_before_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+      "source_after_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "c0b02ea3331dc2630dd98c9a1671bc02f01c45a7fa6410d8131553ce0f3d2f9c",
+      "sdk_trace_sha256": "3ccaa2f898a5de0578b1949e354450d845776412a55b1b50755ef9e90a4e370e",
+      "workflow_artifact": "codegraph_matched_workflow_v2_10.json",
+      "workflow_artifact_sha256": "85d41ca495cdb2624d22b7b29c820dd0b519231ce11debfdaaccce7a7a031fcb",
+      "observation_artifact": {
+        "artifact": "codegraph_matched_workflow_v2_10_flow_observations.json",
+        "sha256": "f620ea717190f4ff2d59bb9d7f728015ae123acebd3ba4c772bdece8a77bcaac"
+      },
+      "observation_tool_use_ids": [
+        "toolu_01J4GcGcNcVcZCDKAmuswdy8",
+        "toolu_01FKPZPhi1hLYt9yNUogeeWa",
+        "toolu_01HpT1nPNMM5gLVjD2FzzaYH",
+        "toolu_01JXRuAKCEtqHES6Cx3KYaDY",
+        "toolu_01MLtAzUnerXPckYmavxJPek",
+        "toolu_012TFRZcWCUXtcXAQUTgSRgf"
+      ],
+      "delivered_user_tool_message_count": 6,
+      "source_credit_scope": "Controller ground truth establishes answer correctness, not model-read credit or a complete ContextBench score.",
+      "source_evidence": [
+        {
+          "source_evidence_id": "ab7c5f67900e85b00959478afdc97992ee7a7de95d17afa23ea3f08d46f31e7b",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "ab44c1ebcd89cad80b608e69ff5003bc8051c5b3276b1f8c7f6cd73ad32cd5fa",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "67c65a099218de1880663927aaa37ac1324facac047ff2c72d2960f97c738df1",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "e202a70d866fe67c4592958214481c2b6e67e4f743197c8e4b0b53b8b15a1e81",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "2ef584b12a99c6aa52cd4d94d62613b81c2c1b92d68b7a1cd5c8e03a17ceb451",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "f4628eff7c63966d19fdd53beb814347b37afb1f364cb9028f14880b574649fd",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "884ef943a5e5784c2a599a8089f56605ef4b939b2f68af6997f7df65f5c37618",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "9937909f069219642b5ee86c4fc5fae652a942279958ecbe6c537ac16db7f266",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "cb2709aef921dbc8ac5793938358c849aff37b16ba46bda70013ac9acce30485",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "30360f58d4f838c6a375f867b53eac5b27ec223b3214f77d5e01beb8d067b9cc",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        }
+      ]
+    },
+    {
+      "workflow_index": 11,
+      "arm": "serena",
+      "task_id": "pytest-dev__pytest-5809-flow",
+      "kind": "flow",
+      "criteria": [
+        {
+          "criterion": "Connect runtestprotocol, call_and_report and call_runtest_hook in runner.py.",
+          "met": true,
+          "rationale": "Connects runtestprotocol, call_and_report and call_runtest_hook through the call phase."
+        },
+        {
+          "criterion": "Connect pytest_runtest_call, Function.runtest and pytest_pyfunc_call through their plugin hook boundaries.",
+          "met": true,
+          "rationale": "Connects runner.pytest_runtest_call, Function.runtest and the default Python function hook with actual pluggy dispatch boundaries."
+        },
+        {
+          "criterion": "Explain CallInfo.from_call exception capture and pytest_runtest_makereport/TestReport creation.",
+          "met": true,
+          "rationale": "Explains configured exception capture/reraise and default makereport/TestReport creation."
+        },
+        {
+          "criterion": "Cite relevant runner.py and python.py call sites and distinguish collection/setup/teardown from the call phase.",
+          "met": true,
+          "rationale": "Cites runner.py/python.py and distinguishes setup, call, collection and teardown; the extra false cleanup guarantee is separately rejected under the frozen serious-error rule."
+        }
+      ],
+      "accepted": false,
+      "serious_error": true,
+      "findings": [
+        {
+          "category": "incorrect_unconditional_teardown_guarantee",
+          "serious": true,
+          "quote": "Teardown always runs (line 94).",
+          "explanation": "runtestprotocol has no try/finally around setup/call. The answer acknowledges configured Exit/KeyboardInterrupt re-raising, but still unconditionally guarantees the per-item teardown phase. The pinned-function counterexample records setup/call only before KeyboardInterrupt escapes; later session cleanup is a different boundary.",
+          "post_run_counterexample": "source-controlflow-audit-v2/receipt.json"
+        }
+      ],
+      "notes": [
+        "Apply the same material-error rule used in v1 to newly captured answers; do not revise the rule because the error recurs across arms. No v1 answer judgment is imported."
+      ],
+      "source_before_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+      "source_after_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "0234bdd7aaebafbe17cf51fd6157f3f36e5a27dd08fbca55a4ffa785826ff842",
+      "sdk_trace_sha256": "3b7b057948423920bbc6d5c139a90c32a0b8830ab3a19dd4800eb2233980b9e0",
+      "workflow_artifact": "codegraph_matched_workflow_v2_11.json",
+      "workflow_artifact_sha256": "a1510f6390989e76f4c37dbaa87f105907f986b11a5e6730c5002e911fa6f4cc",
+      "observation_artifact": {
+        "artifact": "codegraph_matched_workflow_v2_11_flow_observations.json",
+        "sha256": "82bcd11d758f697ab8351b5b6f2568db9619309d00e91ab764795e3113485841"
+      },
+      "observation_tool_use_ids": [
+        "toolu_01BxgPr7BsZ8YvsKET1wzJNC",
+        "toolu_01GuqdkvcfyyhP1EtY2H1daj",
+        "toolu_01HT1smTtKr3Awy41MgKa697",
+        "toolu_01GiUyJHeX7aU43mGdCNMcYS",
+        "toolu_01G5R2a93z1TzuiFXvKBQGfG",
+        "toolu_01AUEXt1jYJu14yBTY6u1ZmG",
+        "toolu_01WxahoX9dvmggTogwaQPfCX",
+        "toolu_01HioQP6c2dvvSoe9rndX4uS"
+      ],
+      "delivered_user_tool_message_count": 8,
+      "source_credit_scope": "Controller ground truth establishes answer correctness, not model-read credit or a complete ContextBench score.",
+      "source_evidence": [
+        {
+          "source_evidence_id": "ab7c5f67900e85b00959478afdc97992ee7a7de95d17afa23ea3f08d46f31e7b",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "ab44c1ebcd89cad80b608e69ff5003bc8051c5b3276b1f8c7f6cd73ad32cd5fa",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "67c65a099218de1880663927aaa37ac1324facac047ff2c72d2960f97c738df1",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "e202a70d866fe67c4592958214481c2b6e67e4f743197c8e4b0b53b8b15a1e81",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "2ef584b12a99c6aa52cd4d94d62613b81c2c1b92d68b7a1cd5c8e03a17ceb451",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "f4628eff7c63966d19fdd53beb814347b37afb1f364cb9028f14880b574649fd",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "884ef943a5e5784c2a599a8089f56605ef4b939b2f68af6997f7df65f5c37618",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "9937909f069219642b5ee86c4fc5fae652a942279958ecbe6c537ac16db7f266",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "cb2709aef921dbc8ac5793938358c849aff37b16ba46bda70013ac9acce30485",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "30360f58d4f838c6a375f867b53eac5b27ec223b3214f77d5e01beb8d067b9cc",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        }
+      ]
+    },
+    {
+      "workflow_index": 8,
+      "arm": "codenib",
+      "task_id": "pytest-dev__pytest-5809-impact",
+      "kind": "impact",
+      "criteria": [
+        {
+          "criterion": "Identify call_runtest_hook and pytest_make_collect_report as direct CallInfo.from_call call sites; explain collect_one_node as upstream hook-dispatch entry and report consumer.",
+          "met": true,
+          "rationale": "Names call_runtest_hook and pytest_make_collect_report as direct factory call sites and collect_one_node as upstream hook dispatch/report consumer. Also correctly finds the additional nose skip-translation factory."
+        },
+        {
+          "criterion": "Explain when/phase metadata and configured reraise behavior rather than assuming all exceptions are suppressed.",
+          "met": true,
+          "rationale": "Explains setup/call/teardown versus collect metadata and the configured Exit/KeyboardInterrupt reraise switch, with no collection reraise argument."
+        },
+        {
+          "criterion": "Locate two actual relevant tests with correct assertions and valid source citations.",
+          "met": true,
+          "rationale": "Cites actual capture and propagation tests with correct assertions, including direct CallInfo result/exception tests."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "findings": [],
+      "notes": [
+        "The corrected criterion asks for these two actual direct sites without making them an exhaustive list; the separately discovered nose call is valid. Existing collection-interruption coverage claims remain bounded to inspected tests."
+      ],
+      "source_before_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+      "source_after_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "d338d76d9d10e9ab629dfea3d85e35651e22ac36f8b0da65dcae9be8a90b03c2",
+      "sdk_trace_sha256": "1d978a93a47fa901cfb21b9dde1aafada51f05fc9413d73b0d5153995f627e96",
+      "workflow_artifact": "codegraph_matched_workflow_v2_08.json",
+      "workflow_artifact_sha256": "9c89369b35805db6433c171816a070e392207bb8c85e330fc905c4fe26976c71",
+      "observation_artifact": {
+        "artifact": "codegraph_matched_workflow_v2_08_impact_observations.json",
+        "sha256": "2c4ab726075b09d2b8949848a402ef89d4c704d5261d29b87e533a43b5edb125"
+      },
+      "observation_tool_use_ids": [
+        "toolu_011iFxmdsZ5zr94SixD16Roe",
+        "toolu_01VEA45bS39X7cPR5qr5sAyV",
+        "toolu_01S1W97BDiWRLKHh5yXVTgxq",
+        "toolu_01FC6iAk8tuiTA59KfFyY2UM",
+        "toolu_0157TRD5DZKqFEvHds8HeTFd",
+        "toolu_014ahVdM4TZunqTpYdjzfoV1",
+        "toolu_013ojnv83waf3asHBv7Vhz9z",
+        "toolu_01LbE8dQA3x6KnbBVjo1gSSE",
+        "toolu_01CFMcgF4bfLPf4T6a2QsdiC",
+        "toolu_01SUngorrZnyVr74A8Cto1Ns",
+        "toolu_01Q6R21wGEzbck4n3cqZFZ1N",
+        "toolu_01AKLafPQxR5u7Km4sH7Gjqf",
+        "toolu_01KwioTRaM7hw441zDwGGD2F",
+        "toolu_012Sh5kmySEkC7LdNSg4VmY9",
+        "toolu_01Go5yorzPk67Qcxk2cHDSav",
+        "toolu_01RG81f7mQBKVQ72y8YzqLAa",
+        "toolu_01KANdA8YpbM2VQWqUTXJcuR",
+        "toolu_01J3FkiYQU5wCfjjfTZ3r6f8",
+        "toolu_019iknvSHAYzadQbhC3KbJFT",
+        "toolu_01FpVQU2VSpRqLndUgDntJLv",
+        "toolu_01XyeCRRwp8Eq8h6iaZu2vjQ"
+      ],
+      "delivered_user_tool_message_count": 21,
+      "source_credit_scope": "Controller ground truth establishes answer correctness, not model-read credit or a complete ContextBench score.",
+      "source_evidence": [
+        {
+          "source_evidence_id": "563b3db1d1ee14886aaf4ab32a1a5f22e3e1fcd53e10b16e472adc7ed8658f3a",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "2a75cbb1bca301ac7d7fa2449528156fe28cb1a357bdde54c91aa98c41510434",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "7887bc06b4b3cfa458f5f7e2bf5eae4d27cdf5a48e8130c9ef5b6542851d1e57",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "c95fa6d4ec11e13eb92fe32f82c4f811831f9e759ffee3f81fe59fed9f869a89",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "b7fb08394966e345285bdd9751778ff27e38b0174b1721d924a6aafd2c1d7781",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "313c813e2b952d20d7069509e62e086ac980059eda0e2fd09bed4ca4d9f83291",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "01c1d3956a45f3de1a98f7e432b36f17f0adddb9cc1759302a20d17e15f9ae2d",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "c37164797a1dc2f36ed17aad65519e55c382bb9bcdad496093326c2eea57ae1b",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "28cf9559e4acb206778aadfd913a7783460f8ba754682ad9fddaece86ea8594b",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "12925073e15d549c68b174eafde8028d6d29c62713ed0b44f5cd3d5f12ed9017",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "81c92cbea46b99fe8dbb3fd84400538d11861ee7d542adbacce3743f79032c33",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        }
+      ]
+    },
+    {
+      "workflow_index": 9,
+      "arm": "native",
+      "task_id": "pytest-dev__pytest-5809-impact",
+      "kind": "impact",
+      "criteria": [
+        {
+          "criterion": "Identify call_runtest_hook and pytest_make_collect_report as direct CallInfo.from_call call sites; explain collect_one_node as upstream hook-dispatch entry and report consumer.",
+          "met": true,
+          "rationale": "Names call_runtest_hook and pytest_make_collect_report as direct factory call sites and collect_one_node as upstream hook dispatch/report consumer. Also correctly finds the additional nose skip-translation factory."
+        },
+        {
+          "criterion": "Explain when/phase metadata and configured reraise behavior rather than assuming all exceptions are suppressed.",
+          "met": true,
+          "rationale": "Explains setup/call/teardown versus collect metadata and the configured Exit/KeyboardInterrupt reraise switch, with no collection reraise argument."
+        },
+        {
+          "criterion": "Locate two actual relevant tests with correct assertions and valid source citations.",
+          "met": false,
+          "rationale": "The two selected tests are real, but the affirmative claim that --pdb KeyboardInterrupt capture has no existing test contradicts test_pdb_on_KeyboardInterrupt."
+        }
+      ],
+      "accepted": false,
+      "serious_error": false,
+      "findings": [
+        {
+          "category": "missed_existing_pdb_capture_test",
+          "serious": false,
+          "quote": "There's also no test pinning the `--pdb` case where `KeyboardInterrupt` is captured on the runtest path.",
+          "explanation": "testing/test_pdb.py:142-151 invokes the PDB report helper on a test raising KeyboardInterrupt and asserts a failed report and one debugger entry."
+        }
+      ],
+      "notes": [
+        "The corrected criterion asks for these two actual direct sites without making them an exhaustive list; the separately discovered nose call is valid. Existing collection-interruption coverage claims remain bounded to inspected tests."
+      ],
+      "source_before_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+      "source_after_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "bd44ded59c5bfb53940189936fb715f2ce8789f1cd4d745fd526a50f2ae81915",
+      "sdk_trace_sha256": "ee8cc88f8d7a87451f0929a927a36a5d1e25f8d1f11afaf01727f348c3925cb5",
+      "workflow_artifact": "codegraph_matched_workflow_v2_09.json",
+      "workflow_artifact_sha256": "0a6ba8ed750fe4cb25f33244ca8a5a1f8138e435115b06357ac713bdf701efca",
+      "observation_artifact": {
+        "artifact": "codegraph_matched_workflow_v2_09_impact_observations.json",
+        "sha256": "b726d34a2496b6738eb229e42a619aca800e2fe242d2657c0098eb6004357e02"
+      },
+      "observation_tool_use_ids": [
+        "toolu_01XNLVdY6BrjVA1665Vgf8XT",
+        "toolu_012ndFvpqA5W6iYFogDmpHbN",
+        "toolu_01LdmaSL4Dke8AwVV3aB5W8m",
+        "toolu_017qkcY3WKeYHhy2VE455yYF",
+        "toolu_01HVsDP6mT66GdSdv5sKHzNi"
+      ],
+      "delivered_user_tool_message_count": 5,
+      "source_credit_scope": "Controller ground truth establishes answer correctness, not model-read credit or a complete ContextBench score.",
+      "source_evidence": [
+        {
+          "source_evidence_id": "563b3db1d1ee14886aaf4ab32a1a5f22e3e1fcd53e10b16e472adc7ed8658f3a",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "2a75cbb1bca301ac7d7fa2449528156fe28cb1a357bdde54c91aa98c41510434",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "7887bc06b4b3cfa458f5f7e2bf5eae4d27cdf5a48e8130c9ef5b6542851d1e57",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "c95fa6d4ec11e13eb92fe32f82c4f811831f9e759ffee3f81fe59fed9f869a89",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "b7fb08394966e345285bdd9751778ff27e38b0174b1721d924a6aafd2c1d7781",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "313c813e2b952d20d7069509e62e086ac980059eda0e2fd09bed4ca4d9f83291",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "01c1d3956a45f3de1a98f7e432b36f17f0adddb9cc1759302a20d17e15f9ae2d",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "c37164797a1dc2f36ed17aad65519e55c382bb9bcdad496093326c2eea57ae1b",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "28cf9559e4acb206778aadfd913a7783460f8ba754682ad9fddaece86ea8594b",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "12925073e15d549c68b174eafde8028d6d29c62713ed0b44f5cd3d5f12ed9017",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "81c92cbea46b99fe8dbb3fd84400538d11861ee7d542adbacce3743f79032c33",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        }
+      ]
+    },
+    {
+      "workflow_index": 10,
+      "arm": "codegraph",
+      "task_id": "pytest-dev__pytest-5809-impact",
+      "kind": "impact",
+      "criteria": [
+        {
+          "criterion": "Identify call_runtest_hook and pytest_make_collect_report as direct CallInfo.from_call call sites; explain collect_one_node as upstream hook-dispatch entry and report consumer.",
+          "met": true,
+          "rationale": "Names call_runtest_hook and pytest_make_collect_report as direct factory call sites and collect_one_node as upstream hook dispatch/report consumer. Also correctly finds the additional nose skip-translation factory."
+        },
+        {
+          "criterion": "Explain when/phase metadata and configured reraise behavior rather than assuming all exceptions are suppressed.",
+          "met": true,
+          "rationale": "Explains setup/call/teardown versus collect metadata and the configured Exit/KeyboardInterrupt reraise switch, with no collection reraise argument."
+        },
+        {
+          "criterion": "Locate two actual relevant tests with correct assertions and valid source citations.",
+          "met": true,
+          "rationale": "Cites actual capture and propagation tests with correct assertions, including direct CallInfo result/exception tests."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "findings": [],
+      "notes": [
+        "The corrected criterion asks for these two actual direct sites without making them an exhaustive list; the separately discovered nose call is valid. Existing collection-interruption coverage claims remain bounded to inspected tests."
+      ],
+      "source_before_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+      "source_after_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "6c7fece6f87f742b0d4fa281ff69a5bcd78ba498351012a2dd54530d1e42c94a",
+      "sdk_trace_sha256": "82b4342a7da169aeada3a514d5fb6c8af14c5f59b7e9897d1a5a7a52acfbf9ab",
+      "workflow_artifact": "codegraph_matched_workflow_v2_10.json",
+      "workflow_artifact_sha256": "85d41ca495cdb2624d22b7b29c820dd0b519231ce11debfdaaccce7a7a031fcb",
+      "observation_artifact": {
+        "artifact": "codegraph_matched_workflow_v2_10_impact_observations.json",
+        "sha256": "413fa398a21df35702f1134e097d7012eca512948a02a4511f9c5042b70761f4"
+      },
+      "observation_tool_use_ids": [
+        "toolu_01BrEG3TXMqa6MySUiietzrE",
+        "toolu_01UBjHGM8kji6vfRtqV7yGxK",
+        "toolu_01QhdPaH3q6VqUC1kzd6ujFZ",
+        "toolu_01SKn7NdFzPqTvd6ZPfy9CuZ",
+        "toolu_01AbBv8r7AoN747xn8TCPVxJ",
+        "toolu_01VBvvqUYLvN9vxWZT2h9tsc"
+      ],
+      "delivered_user_tool_message_count": 6,
+      "source_credit_scope": "Controller ground truth establishes answer correctness, not model-read credit or a complete ContextBench score.",
+      "source_evidence": [
+        {
+          "source_evidence_id": "563b3db1d1ee14886aaf4ab32a1a5f22e3e1fcd53e10b16e472adc7ed8658f3a",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "2a75cbb1bca301ac7d7fa2449528156fe28cb1a357bdde54c91aa98c41510434",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "7887bc06b4b3cfa458f5f7e2bf5eae4d27cdf5a48e8130c9ef5b6542851d1e57",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "c95fa6d4ec11e13eb92fe32f82c4f811831f9e759ffee3f81fe59fed9f869a89",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "b7fb08394966e345285bdd9751778ff27e38b0174b1721d924a6aafd2c1d7781",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "313c813e2b952d20d7069509e62e086ac980059eda0e2fd09bed4ca4d9f83291",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "01c1d3956a45f3de1a98f7e432b36f17f0adddb9cc1759302a20d17e15f9ae2d",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "c37164797a1dc2f36ed17aad65519e55c382bb9bcdad496093326c2eea57ae1b",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "28cf9559e4acb206778aadfd913a7783460f8ba754682ad9fddaece86ea8594b",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "12925073e15d549c68b174eafde8028d6d29c62713ed0b44f5cd3d5f12ed9017",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "81c92cbea46b99fe8dbb3fd84400538d11861ee7d542adbacce3743f79032c33",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        }
+      ]
+    },
+    {
+      "workflow_index": 11,
+      "arm": "serena",
+      "task_id": "pytest-dev__pytest-5809-impact",
+      "kind": "impact",
+      "criteria": [
+        {
+          "criterion": "Identify call_runtest_hook and pytest_make_collect_report as direct CallInfo.from_call call sites; explain collect_one_node as upstream hook-dispatch entry and report consumer.",
+          "met": true,
+          "rationale": "Names call_runtest_hook and pytest_make_collect_report as direct factory call sites and collect_one_node as upstream hook dispatch/report consumer. Also correctly finds the additional nose skip-translation factory."
+        },
+        {
+          "criterion": "Explain when/phase metadata and configured reraise behavior rather than assuming all exceptions are suppressed.",
+          "met": true,
+          "rationale": "Explains setup/call/teardown versus collect metadata and the configured Exit/KeyboardInterrupt reraise switch, with no collection reraise argument."
+        },
+        {
+          "criterion": "Locate two actual relevant tests with correct assertions and valid source citations.",
+          "met": true,
+          "rationale": "Cites actual capture and propagation tests with correct assertions, including direct CallInfo result/exception tests."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "findings": [],
+      "notes": [
+        "The corrected criterion asks for these two actual direct sites without making them an exhaustive list; the separately discovered nose call is valid. Existing collection-interruption coverage claims remain bounded to inspected tests."
+      ],
+      "source_before_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+      "source_after_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "2669097a44ccef1c6163fab9b034b636e910524ff1c17791ab30b95039a6a7e0",
+      "sdk_trace_sha256": "8887e874ef14fdd59848f1ab87952b180d75055fa6f0213a5b83393e649a83d5",
+      "workflow_artifact": "codegraph_matched_workflow_v2_11.json",
+      "workflow_artifact_sha256": "a1510f6390989e76f4c37dbaa87f105907f986b11a5e6730c5002e911fa6f4cc",
+      "observation_artifact": {
+        "artifact": "codegraph_matched_workflow_v2_11_impact_observations.json",
+        "sha256": "63dc6842cf3fad56c9665f77b96e4830fdca358affce5eef7adc1c6058081cc9"
+      },
+      "observation_tool_use_ids": [
+        "toolu_01J4wQLwJq4iDndZR4Qqem6E",
+        "toolu_01HLbhCrwNoAvzk3MHHXS1kp",
+        "toolu_0144QBEc2wKYs7fJGRSjBqjm",
+        "toolu_01Mp2qyaE3cErpz8gNHKysKw",
+        "toolu_018JQyZSroFUpSjKbNDLz3DN",
+        "toolu_01ADymarfnAcVSH3zaZx7wzo",
+        "toolu_01EkNbN5St6Xpeo78AvRpTLJ",
+        "toolu_01CQ28RTqYnocfqccKWpg8qK",
+        "toolu_01K97CV1FY8vMyqd6HpAT53Q",
+        "toolu_01BuitXFAnbcrKaXJBodf4HX",
+        "toolu_01EitUUPxNdhPKid9uSPxJW8",
+        "toolu_01AiauZkuMp17n55CjDx1VN1",
+        "toolu_01HbHjAHTAWSyBGFqro44Nee",
+        "toolu_01TgNuZyLnu8s7LjpdUBHZG9",
+        "toolu_01LCcfudJFT3fvvgpWRqm32D"
+      ],
+      "delivered_user_tool_message_count": 15,
+      "source_credit_scope": "Controller ground truth establishes answer correctness, not model-read credit or a complete ContextBench score.",
+      "source_evidence": [
+        {
+          "source_evidence_id": "563b3db1d1ee14886aaf4ab32a1a5f22e3e1fcd53e10b16e472adc7ed8658f3a",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "2a75cbb1bca301ac7d7fa2449528156fe28cb1a357bdde54c91aa98c41510434",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "7887bc06b4b3cfa458f5f7e2bf5eae4d27cdf5a48e8130c9ef5b6542851d1e57",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "c95fa6d4ec11e13eb92fe32f82c4f811831f9e759ffee3f81fe59fed9f869a89",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "b7fb08394966e345285bdd9751778ff27e38b0174b1721d924a6aafd2c1d7781",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "313c813e2b952d20d7069509e62e086ac980059eda0e2fd09bed4ca4d9f83291",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "01c1d3956a45f3de1a98f7e432b36f17f0adddb9cc1759302a20d17e15f9ae2d",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "c37164797a1dc2f36ed17aad65519e55c382bb9bcdad496093326c2eea57ae1b",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "28cf9559e4acb206778aadfd913a7783460f8ba754682ad9fddaece86ea8594b",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "12925073e15d549c68b174eafde8028d6d29c62713ed0b44f5cd3d5f12ed9017",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "81c92cbea46b99fe8dbb3fd84400538d11861ee7d542adbacce3743f79032c33",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        }
+      ]
+    },
+    {
+      "workflow_index": 8,
+      "arm": "codenib",
+      "task_id": "pytest-dev__pytest-5809-post_edit",
+      "kind": "post_edit",
+      "criteria": [
+        {
+          "criterion": "Cite the new helper and its CallInfo.from_call call with call-phase metadata.",
+          "met": true,
+          "rationale": "Cites the current newly added helper and its direct CallInfo.from_call(function, call) invocation with no reraise override."
+        },
+        {
+          "criterion": "Explain result versus excinfo using the current CallInfo implementation.",
+          "met": true,
+          "rationale": "Explains success result versus captured ExceptionInfo, guarded result access and timing using the current implementation."
+        },
+        {
+          "criterion": "Use current source evidence rather than silently relying on a pre-edit graph.",
+          "met": true,
+          "rationale": "Uses the current helper/factory source rather than asserting pre-edit graph contents are current."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "findings": [],
+      "notes": [],
+      "source_before_sha256": "b04ce58b91aa07644c1754967972fcbe3ec4d53c79a6e5261a4a91e66f4d0a6a",
+      "source_after_sha256": "b04ce58b91aa07644c1754967972fcbe3ec4d53c79a6e5261a4a91e66f4d0a6a",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "6ae73ce253bc3a6c2dd9430ad0c3a5c7ebda253ffcdb67c2944e646110de2e08",
+      "sdk_trace_sha256": "29d44cc5b91b23102b6315a9d4e12087f009f4c55f26feb8251ce743754ea620",
+      "workflow_artifact": "codegraph_matched_workflow_v2_08.json",
+      "workflow_artifact_sha256": "9c89369b35805db6433c171816a070e392207bb8c85e330fc905c4fe26976c71",
+      "observation_artifact": {
+        "artifact": "codegraph_matched_workflow_v2_08_post_edit_observations.json",
+        "sha256": "0e904c91e7e6b422890a50b2146af12791717c9bd1cb4e5d92c6bf2d1b3e578b"
+      },
+      "observation_tool_use_ids": [
+        "toolu_01FFXStXxzPSr3ButYj7Vm4i",
+        "toolu_01Ut4FZ5mCwpviN3b4SFZUth",
+        "toolu_01NxCxRYDvUWRqpuWXDXrq68",
+        "toolu_01BxUz3xoZnaJcJczBzWnD9H",
+        "toolu_015WBg4fFUQHoRoKndRXbwvJ"
+      ],
+      "delivered_user_tool_message_count": 5,
+      "source_credit_scope": "Controller ground truth establishes answer correctness, not model-read credit or a complete ContextBench score.",
+      "source_evidence": [
+        {
+          "source_evidence_id": "218d6ec999ef84774f707b48e3e3d8741d251920c0421968f33925102744ea5f",
+          "source_snapshot_sha256": "b04ce58b91aa07644c1754967972fcbe3ec4d53c79a6e5261a4a91e66f4d0a6a"
+        },
+        {
+          "source_evidence_id": "563b3db1d1ee14886aaf4ab32a1a5f22e3e1fcd53e10b16e472adc7ed8658f3a",
+          "source_snapshot_sha256": "b04ce58b91aa07644c1754967972fcbe3ec4d53c79a6e5261a4a91e66f4d0a6a"
+        },
+        {
+          "source_evidence_id": "c5253df5850c0e4a7b840d4a6f24f7d4346b280145138a22a7a2ecf29c994184",
+          "source_snapshot_sha256": "b04ce58b91aa07644c1754967972fcbe3ec4d53c79a6e5261a4a91e66f4d0a6a"
+        },
+        {
+          "source_evidence_id": "28cf9559e4acb206778aadfd913a7783460f8ba754682ad9fddaece86ea8594b",
+          "source_snapshot_sha256": "b04ce58b91aa07644c1754967972fcbe3ec4d53c79a6e5261a4a91e66f4d0a6a"
+        }
+      ]
+    },
+    {
+      "workflow_index": 9,
+      "arm": "native",
+      "task_id": "pytest-dev__pytest-5809-post_edit",
+      "kind": "post_edit",
+      "criteria": [
+        {
+          "criterion": "Cite the new helper and its CallInfo.from_call call with call-phase metadata.",
+          "met": true,
+          "rationale": "Cites the current newly added helper and its direct CallInfo.from_call(function, call) invocation with no reraise override."
+        },
+        {
+          "criterion": "Explain result versus excinfo using the current CallInfo implementation.",
+          "met": true,
+          "rationale": "Explains success result versus captured ExceptionInfo, guarded result access and timing using the current implementation."
+        },
+        {
+          "criterion": "Use current source evidence rather than silently relying on a pre-edit graph.",
+          "met": true,
+          "rationale": "Uses the current helper/factory source rather than asserting pre-edit graph contents are current."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "findings": [],
+      "notes": [],
+      "source_before_sha256": "35b2996781a05ab15a1d61ce64b4ee6b418e32b2283299a23879e814072e3860",
+      "source_after_sha256": "35b2996781a05ab15a1d61ce64b4ee6b418e32b2283299a23879e814072e3860",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "1d480c739e38954c3e9e20d839b64fb9dee31429e57a029af8573593b9e0219f",
+      "sdk_trace_sha256": "ac271afd482eb885ee9838138500f339fb2ad78da3683ac6aa7a34aa100b358a",
+      "workflow_artifact": "codegraph_matched_workflow_v2_09.json",
+      "workflow_artifact_sha256": "0a6ba8ed750fe4cb25f33244ca8a5a1f8138e435115b06357ac713bdf701efca",
+      "observation_artifact": {
+        "artifact": "codegraph_matched_workflow_v2_09_post_edit_observations.json",
+        "sha256": "03d9d96bce605de8522a1ca1908944fcffeadc7bc65e9ada1dffc61a77f281bf"
+      },
+      "observation_tool_use_ids": [
+        "toolu_01MfHDmCfPdrAzk7wVBijNXT",
+        "toolu_01KoSLZxyuYBSbXvqEmJgkXR",
+        "toolu_015peTmPwWQ7j149LvTnzfWX",
+        "toolu_015YtQKE2W6BBZGMvrZWMd43",
+        "toolu_01AoxYW6j6qQBg8E33AyjNEJ"
+      ],
+      "delivered_user_tool_message_count": 5,
+      "source_credit_scope": "Controller ground truth establishes answer correctness, not model-read credit or a complete ContextBench score.",
+      "source_evidence": [
+        {
+          "source_evidence_id": "218d6ec999ef84774f707b48e3e3d8741d251920c0421968f33925102744ea5f",
+          "source_snapshot_sha256": "35b2996781a05ab15a1d61ce64b4ee6b418e32b2283299a23879e814072e3860"
+        },
+        {
+          "source_evidence_id": "563b3db1d1ee14886aaf4ab32a1a5f22e3e1fcd53e10b16e472adc7ed8658f3a",
+          "source_snapshot_sha256": "35b2996781a05ab15a1d61ce64b4ee6b418e32b2283299a23879e814072e3860"
+        },
+        {
+          "source_evidence_id": "c5253df5850c0e4a7b840d4a6f24f7d4346b280145138a22a7a2ecf29c994184",
+          "source_snapshot_sha256": "35b2996781a05ab15a1d61ce64b4ee6b418e32b2283299a23879e814072e3860"
+        },
+        {
+          "source_evidence_id": "28cf9559e4acb206778aadfd913a7783460f8ba754682ad9fddaece86ea8594b",
+          "source_snapshot_sha256": "35b2996781a05ab15a1d61ce64b4ee6b418e32b2283299a23879e814072e3860"
+        }
+      ]
+    },
+    {
+      "workflow_index": 10,
+      "arm": "codegraph",
+      "task_id": "pytest-dev__pytest-5809-post_edit",
+      "kind": "post_edit",
+      "criteria": [
+        {
+          "criterion": "Cite the new helper and its CallInfo.from_call call with call-phase metadata.",
+          "met": true,
+          "rationale": "Cites the current newly added helper and its direct CallInfo.from_call(function, call) invocation with no reraise override."
+        },
+        {
+          "criterion": "Explain result versus excinfo using the current CallInfo implementation.",
+          "met": false,
+          "rationale": "The preceding table and factory description are correct, but the final affirmative denial that the success case stores None in excinfo contradicts both source and the answer itself."
+        },
+        {
+          "criterion": "Use current source evidence rather than silently relying on a pre-edit graph.",
+          "met": true,
+          "rationale": "Uses the current helper/factory source rather than asserting pre-edit graph contents are current."
+        }
+      ],
+      "accepted": false,
+      "serious_error": false,
+      "findings": [
+        {
+          "category": "contradictory_success_marker_description",
+          "serious": false,
+          "quote": "The success case does not store `None` in `excinfo` as a separate \"no error\" marker.",
+          "explanation": "The factory initializes excinfo=None and passes it to the instance on success; the property uses that exact marker. Because the answer already gives the correct table and factory steps, this is recorded as a contradictory explanation rather than an independently coherent false flow claim."
+        }
+      ],
+      "notes": [],
+      "source_before_sha256": "35b2996781a05ab15a1d61ce64b4ee6b418e32b2283299a23879e814072e3860",
+      "source_after_sha256": "35b2996781a05ab15a1d61ce64b4ee6b418e32b2283299a23879e814072e3860",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "e1a5b143c2cca596e6f9dacbb0ce42052f3cf1b8ea3fc04b8e3fe7f004208fe0",
+      "sdk_trace_sha256": "44509d78504f0857bad2fbd719986dfe8ebc35f21162c22f94a3cf94b86f6236",
+      "workflow_artifact": "codegraph_matched_workflow_v2_10.json",
+      "workflow_artifact_sha256": "85d41ca495cdb2624d22b7b29c820dd0b519231ce11debfdaaccce7a7a031fcb",
+      "observation_artifact": {
+        "artifact": "codegraph_matched_workflow_v2_10_post_edit_observations.json",
+        "sha256": "bb2f4aabb5d05e19f355913a3d9f2de786369d47ede5fd30e436d2eb72d983ad"
+      },
+      "observation_tool_use_ids": [
+        "toolu_01SgDHNNb4G7PQTWvbS2Nr3J",
+        "toolu_01BB3t5orJMRf9XovWpUPQGL",
+        "toolu_01KA8M1xo22NfYptUFXhbBar"
+      ],
+      "delivered_user_tool_message_count": 3,
+      "source_credit_scope": "Controller ground truth establishes answer correctness, not model-read credit or a complete ContextBench score.",
+      "source_evidence": [
+        {
+          "source_evidence_id": "218d6ec999ef84774f707b48e3e3d8741d251920c0421968f33925102744ea5f",
+          "source_snapshot_sha256": "35b2996781a05ab15a1d61ce64b4ee6b418e32b2283299a23879e814072e3860"
+        },
+        {
+          "source_evidence_id": "563b3db1d1ee14886aaf4ab32a1a5f22e3e1fcd53e10b16e472adc7ed8658f3a",
+          "source_snapshot_sha256": "35b2996781a05ab15a1d61ce64b4ee6b418e32b2283299a23879e814072e3860"
+        },
+        {
+          "source_evidence_id": "c5253df5850c0e4a7b840d4a6f24f7d4346b280145138a22a7a2ecf29c994184",
+          "source_snapshot_sha256": "35b2996781a05ab15a1d61ce64b4ee6b418e32b2283299a23879e814072e3860"
+        },
+        {
+          "source_evidence_id": "28cf9559e4acb206778aadfd913a7783460f8ba754682ad9fddaece86ea8594b",
+          "source_snapshot_sha256": "35b2996781a05ab15a1d61ce64b4ee6b418e32b2283299a23879e814072e3860"
+        }
+      ]
+    },
+    {
+      "workflow_index": 11,
+      "arm": "serena",
+      "task_id": "pytest-dev__pytest-5809-post_edit",
+      "kind": "post_edit",
+      "criteria": [
+        {
+          "criterion": "Cite the new helper and its CallInfo.from_call call with call-phase metadata.",
+          "met": true,
+          "rationale": "Cites the current newly added helper and its direct CallInfo.from_call(function, call) invocation with no reraise override."
+        },
+        {
+          "criterion": "Explain result versus excinfo using the current CallInfo implementation.",
+          "met": true,
+          "rationale": "Explains success result versus captured ExceptionInfo, guarded result access and timing using the current implementation."
+        },
+        {
+          "criterion": "Use current source evidence rather than silently relying on a pre-edit graph.",
+          "met": true,
+          "rationale": "Uses the current helper/factory source rather than asserting pre-edit graph contents are current."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "findings": [],
+      "notes": [],
+      "source_before_sha256": "c3dca147c1cc55c0268c9be6b301621e8e8b352c6f2d4402861e07a798469c5c",
+      "source_after_sha256": "c3dca147c1cc55c0268c9be6b301621e8e8b352c6f2d4402861e07a798469c5c",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "ce0a6cdfde4366f71354d4c222ebd0e672965881ca586afce222cee8868469e3",
+      "sdk_trace_sha256": "c455e201ea90bf3cd2efcdd5cc624031548f332dedb50bd8d66bd4ca59a1ffdc",
+      "workflow_artifact": "codegraph_matched_workflow_v2_11.json",
+      "workflow_artifact_sha256": "a1510f6390989e76f4c37dbaa87f105907f986b11a5e6730c5002e911fa6f4cc",
+      "observation_artifact": {
+        "artifact": "codegraph_matched_workflow_v2_11_post_edit_observations.json",
+        "sha256": "b5ea3f6b42dd34e2617770f33cdae6dd118529118ca3c7e336fb9a080eba54f0"
+      },
+      "observation_tool_use_ids": [
+        "toolu_01UNXMiVSUMdWEmV12hnhNAk",
+        "toolu_01VwU2JTLYY3JaT4tZRcUiqQ",
+        "toolu_01Uh926nfMP375NeywgE1pAc",
+        "toolu_01VDhXGkt3GMokUz1hcr1GLL"
+      ],
+      "delivered_user_tool_message_count": 4,
+      "source_credit_scope": "Controller ground truth establishes answer correctness, not model-read credit or a complete ContextBench score.",
+      "source_evidence": [
+        {
+          "source_evidence_id": "218d6ec999ef84774f707b48e3e3d8741d251920c0421968f33925102744ea5f",
+          "source_snapshot_sha256": "c3dca147c1cc55c0268c9be6b301621e8e8b352c6f2d4402861e07a798469c5c"
+        },
+        {
+          "source_evidence_id": "563b3db1d1ee14886aaf4ab32a1a5f22e3e1fcd53e10b16e472adc7ed8658f3a",
+          "source_snapshot_sha256": "c3dca147c1cc55c0268c9be6b301621e8e8b352c6f2d4402861e07a798469c5c"
+        },
+        {
+          "source_evidence_id": "c5253df5850c0e4a7b840d4a6f24f7d4346b280145138a22a7a2ecf29c994184",
+          "source_snapshot_sha256": "c3dca147c1cc55c0268c9be6b301621e8e8b352c6f2d4402861e07a798469c5c"
+        },
+        {
+          "source_evidence_id": "28cf9559e4acb206778aadfd913a7783460f8ba754682ad9fddaece86ea8594b",
+          "source_snapshot_sha256": "c3dca147c1cc55c0268c9be6b301621e8e8b352c6f2d4402861e07a798469c5c"
+        }
+      ]
+    }
+  ],
+  "limits": "No independent external adjudication, unseen-task claim or complete ContextBench source-read score."
+}
