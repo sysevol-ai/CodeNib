@@ -1,0 +1,1173 @@
+{
+  "schema_version": 1,
+  "recorded_utc": "2026-10-28T17:49:29.705157+00:00",
+  "scope": "Post-hoc model-free regression diagnostic, not a matched benefit cohort or full graph correctness score.",
+  "production_consumers": [
+    "codenib.mcp.tools.search.search_impl",
+    "codenib.model.retrieve_rerank_pipeline.RetrieveRerankPipeline._run_graph_expansion_plan"
+  ],
+  "source": {
+    "repository": "https://github.com/httpie/cli",
+    "tag": "3.2.4",
+    "commit": "2105caa49bae87c5809c274e407619a0de2639d1",
+    "working_tree_clean": true
+  },
+  "before_product_commit": "91f79a81f3e342f35c0c3ac40e8282a7414d9a11",
+  "before_operator_sha256": "af9aeafa9c2cc28b5f528e913b8b2cba4a9517993892b8c19fd0f95031897dc1",
+  "after_operator_sha256": "4784621cb880ac93cdf34f072171665373b882256f5ae8d3cfcb3dc0949daaef",
+  "graph_sha256": "9eafffea81ce89aa4dbc7e37d99e9c33ef9141650cbcea20239243afb8d11d94",
+  "graph_rebuilt_between_controls": false,
+  "probe_sha256": {
+    "probe.py": "feb124a62b70248fb2cb16bcc386cb2ea9a9671a0eecddfff9a13bc439eb439b",
+    "probe-after.py": "793b63023702b8fe8a09e89196854691253bdede9595b78ebc3a781df5240989"
+  },
+  "source_file_sha256": {
+    "httpie/cli/utils.py": "95dc7b7b4866ac29dfb23818cc0074d7b65ca24d37e11deca93492c8dd5c325b",
+    "httpie/output/streams.py": "11e5101d4b5375083d3c08ce52edf34cddf7d8d0e9b0b1a0c4a2b68ca2ea016d",
+    "httpie/sessions.py": "962d21af9c4d86f688be3123e21e71d8df5c456b756250790232f5a5e63e29bf"
+  },
+  "configuration": {
+    "per_seed": 20,
+    "direction": "both",
+    "symbol_only": true,
+    "require_span": true,
+    "relationships": "indexed static references, not a runtime call trace"
+  },
+  "before": [
+    {
+      "chunk_node_id": "httpie/cli/utils.py:LazyChoices.help()",
+      "file": "httpie/cli/utils.py",
+      "start_line": 64,
+      "end_line": 66,
+      "resolved_without_span": null,
+      "source_overlapping_physical_ids": [
+        "httpie/cli/utils.py:LazyChoices.help(_codenib_l65_c8)"
+      ],
+      "canonical_seed_neighbor_count": 0,
+      "physical_seed_neighbor_count": 3,
+      "physical_neighbor_locations": [
+        {
+          "name": "httpie/cli/utils.py:LazyChoices._help",
+          "file": "httpie/cli/utils.py",
+          "start_line": 43,
+          "end_line": 43
+        },
+        {
+          "name": "httpie/cli/options.py:Argument.serialize()",
+          "file": "httpie/cli/options.py",
+          "start_line": 112,
+          "end_line": 164
+        },
+        {
+          "name": "httpie/cli/utils.py:LazyChoices",
+          "file": "httpie/cli/utils.py",
+          "start_line": 27,
+          "end_line": 78
+        }
+      ]
+    },
+    {
+      "chunk_node_id": "httpie/output/streams.py:EncodedStream.encoding()",
+      "file": "httpie/output/streams.py",
+      "start_line": 164,
+      "end_line": 166,
+      "resolved_without_span": null,
+      "source_overlapping_physical_ids": [
+        "httpie/output/streams.py:EncodedStream.encoding(_codenib_l165_c8)"
+      ],
+      "canonical_seed_neighbor_count": 0,
+      "physical_seed_neighbor_count": 3,
+      "physical_neighbor_locations": [
+        {
+          "name": "httpie/output/streams.py:EncodedStream._encoding",
+          "file": "httpie/output/streams.py",
+          "start_line": 126,
+          "end_line": 126
+        },
+        {
+          "name": "httpie/output/streams.py:EncodedStream",
+          "file": "httpie/output/streams.py",
+          "start_line": 104,
+          "end_line": 166
+        },
+        {
+          "name": "httpie/output/streams.py:EncodedStream.decode_chunk()",
+          "file": "httpie/output/streams.py",
+          "start_line": 144,
+          "end_line": 147
+        }
+      ]
+    },
+    {
+      "chunk_node_id": "httpie/cli/utils.py:LazyChoices.help()",
+      "file": "httpie/cli/utils.py",
+      "start_line": 55,
+      "end_line": 62,
+      "resolved_without_span": null,
+      "source_overlapping_physical_ids": [
+        "httpie/cli/utils.py:LazyChoices.help(_codenib_l56_c8)"
+      ],
+      "canonical_seed_neighbor_count": 0,
+      "physical_seed_neighbor_count": 6,
+      "physical_neighbor_locations": [
+        {
+          "name": "httpie/cli/utils.py:LazyChoices.load()",
+          "file": "httpie/cli/utils.py",
+          "start_line": 48,
+          "end_line": 53
+        },
+        {
+          "name": "httpie/cli/options.py:Argument.serialize()",
+          "file": "httpie/cli/options.py",
+          "start_line": 112,
+          "end_line": 164
+        },
+        {
+          "name": "httpie/cli/utils.py:LazyChoices.help_formatter",
+          "file": "httpie/cli/utils.py",
+          "start_line": 39,
+          "end_line": 39
+        },
+        {
+          "name": "httpie/cli/utils.py:LazyChoices",
+          "file": "httpie/cli/utils.py",
+          "start_line": 27,
+          "end_line": 78
+        },
+        {
+          "name": "httpie/cli/utils.py:LazyChoices.isolation_mode",
+          "file": "httpie/cli/utils.py",
+          "start_line": 42,
+          "end_line": 42
+        },
+        {
+          "name": "httpie/cli/utils.py:LazyChoices._help",
+          "file": "httpie/cli/utils.py",
+          "start_line": 43,
+          "end_line": 43
+        }
+      ]
+    },
+    {
+      "chunk_node_id": "httpie/output/streams.py:EncodedStream.encoding()",
+      "file": "httpie/output/streams.py",
+      "start_line": 149,
+      "end_line": 162,
+      "resolved_without_span": null,
+      "source_overlapping_physical_ids": [
+        "httpie/output/streams.py:EncodedStream.encoding(_codenib_l150_c8)"
+      ],
+      "canonical_seed_neighbor_count": 0,
+      "physical_seed_neighbor_count": 5,
+      "physical_neighbor_locations": [
+        {
+          "name": "httpie/output/streams.py:ENCODING_GUESS_THRESHOLD",
+          "file": "httpie/output/streams.py",
+          "start_line": 101,
+          "end_line": 101
+        },
+        {
+          "name": "httpie/output/streams.py:EncodedStream",
+          "file": "httpie/output/streams.py",
+          "start_line": 104,
+          "end_line": 166
+        },
+        {
+          "name": "httpie/output/streams.py:EncodedStream._encoding",
+          "file": "httpie/output/streams.py",
+          "start_line": 126,
+          "end_line": 126
+        },
+        {
+          "name": "httpie/output/streams.py:EncodedStream.decode_chunk()",
+          "file": "httpie/output/streams.py",
+          "start_line": 144,
+          "end_line": 147
+        },
+        {
+          "name": "httpie/output/streams.py:EncodedStream._encoding_guesses",
+          "file": "httpie/output/streams.py",
+          "start_line": 127,
+          "end_line": 127
+        }
+      ]
+    },
+    {
+      "chunk_node_id": "httpie/sessions.py:Session.cookies()",
+      "file": "httpie/sessions.py",
+      "start_line": 258,
+      "end_line": 260,
+      "resolved_without_span": null,
+      "source_overlapping_physical_ids": [
+        "httpie/sessions.py:Session.cookies(_codenib_l259_c8)"
+      ],
+      "canonical_seed_neighbor_count": 0,
+      "physical_seed_neighbor_count": 10,
+      "physical_neighbor_locations": [
+        {
+          "name": "httpie/sessions.py:Session.cookie_jar",
+          "file": "httpie/sessions.py",
+          "start_line": 149,
+          "end_line": 149
+        },
+        {
+          "name": "httpie/client.py:collect_messages()",
+          "file": "httpie/client.py",
+          "start_line": 42,
+          "end_line": 139
+        },
+        {
+          "name": "httpie/sessions.py:Session",
+          "file": "httpie/sessions.py",
+          "start_line": 123,
+          "end_line": 321
+        },
+        {
+          "name": "httpie/legacy/v3_1_0_session_cookie_format.py:fix_layout()",
+          "file": "httpie/legacy/v3_1_0_session_cookie_format.py",
+          "start_line": 83,
+          "end_line": 99
+        },
+        {
+          "name": "tests/test_sessions.py:TestExpiredCookies.test_removes_expired_cookies_from_session_obj()",
+          "file": "tests/test_sessions.py",
+          "start_line": 371,
+          "end_line": 382
+        },
+        {
+          "name": "tests/test_sessions.py:test_old_session_cookie_layout_warning()",
+          "file": "tests/test_sessions.py",
+          "start_line": 595,
+          "end_line": 604
+        },
+        {
+          "name": "tests/test_sessions.py:test_old_session_cookie_layout_loading()",
+          "file": "tests/test_sessions.py",
+          "start_line": 665,
+          "end_line": 675
+        },
+        {
+          "name": "tests/test_sessions.py:test_session_cookie_layout_preservation()",
+          "file": "tests/test_sessions.py",
+          "start_line": 678,
+          "end_line": 688
+        },
+        {
+          "name": "tests/test_sessions.py:test_session_cookie_layout_preservation_on_new_cookies()",
+          "file": "tests/test_sessions.py",
+          "start_line": 691,
+          "end_line": 706
+        },
+        {
+          "name": "tests/test_sessions.py:test_secure_cookies_on_localhost()",
+          "file": "tests/test_sessions.py",
+          "start_line": 819,
+          "end_line": 851
+        }
+      ]
+    },
+    {
+      "chunk_node_id": "httpie/sessions.py:Session.auth()",
+      "file": "httpie/sessions.py",
+      "start_line": 300,
+      "end_line": 303,
+      "resolved_without_span": null,
+      "source_overlapping_physical_ids": [
+        "httpie/sessions.py:Session.auth(_codenib_l301_c8)"
+      ],
+      "canonical_seed_neighbor_count": 0,
+      "physical_seed_neighbor_count": 2,
+      "physical_neighbor_locations": [
+        {
+          "name": "httpie/client.py:collect_messages()",
+          "file": "httpie/client.py",
+          "start_line": 42,
+          "end_line": 139
+        },
+        {
+          "name": "httpie/sessions.py:Session",
+          "file": "httpie/sessions.py",
+          "start_line": 123,
+          "end_line": 321
+        }
+      ]
+    },
+    {
+      "chunk_node_id": "httpie/sessions.py:Session.cookies()",
+      "file": "httpie/sessions.py",
+      "start_line": 253,
+      "end_line": 256,
+      "resolved_without_span": null,
+      "source_overlapping_physical_ids": [
+        "httpie/sessions.py:Session.cookies(_codenib_l254_c8)"
+      ],
+      "canonical_seed_neighbor_count": 0,
+      "physical_seed_neighbor_count": 10,
+      "physical_neighbor_locations": [
+        {
+          "name": "httpie/sessions.py:Session.cookie_jar",
+          "file": "httpie/sessions.py",
+          "start_line": 149,
+          "end_line": 149
+        },
+        {
+          "name": "httpie/client.py:collect_messages()",
+          "file": "httpie/client.py",
+          "start_line": 42,
+          "end_line": 139
+        },
+        {
+          "name": "httpie/sessions.py:Session",
+          "file": "httpie/sessions.py",
+          "start_line": 123,
+          "end_line": 321
+        },
+        {
+          "name": "httpie/legacy/v3_1_0_session_cookie_format.py:fix_layout()",
+          "file": "httpie/legacy/v3_1_0_session_cookie_format.py",
+          "start_line": 83,
+          "end_line": 99
+        },
+        {
+          "name": "tests/test_sessions.py:TestExpiredCookies.test_removes_expired_cookies_from_session_obj()",
+          "file": "tests/test_sessions.py",
+          "start_line": 371,
+          "end_line": 382
+        },
+        {
+          "name": "tests/test_sessions.py:test_old_session_cookie_layout_warning()",
+          "file": "tests/test_sessions.py",
+          "start_line": 595,
+          "end_line": 604
+        },
+        {
+          "name": "tests/test_sessions.py:test_old_session_cookie_layout_loading()",
+          "file": "tests/test_sessions.py",
+          "start_line": 665,
+          "end_line": 675
+        },
+        {
+          "name": "tests/test_sessions.py:test_session_cookie_layout_preservation()",
+          "file": "tests/test_sessions.py",
+          "start_line": 678,
+          "end_line": 688
+        },
+        {
+          "name": "tests/test_sessions.py:test_session_cookie_layout_preservation_on_new_cookies()",
+          "file": "tests/test_sessions.py",
+          "start_line": 691,
+          "end_line": 706
+        },
+        {
+          "name": "tests/test_sessions.py:test_secure_cookies_on_localhost()",
+          "file": "tests/test_sessions.py",
+          "start_line": 819,
+          "end_line": 851
+        }
+      ]
+    },
+    {
+      "chunk_node_id": "httpie/sessions.py:Session.auth()",
+      "file": "httpie/sessions.py",
+      "start_line": 271,
+      "end_line": 298,
+      "resolved_without_span": null,
+      "source_overlapping_physical_ids": [
+        "httpie/sessions.py:Session.auth(_codenib_l272_c8)"
+      ],
+      "canonical_seed_neighbor_count": 0,
+      "physical_seed_neighbor_count": 10,
+      "physical_neighbor_locations": [
+        {
+          "name": "httpie/plugins/registry.py:plugin_manager",
+          "file": "httpie/plugins/registry.py",
+          "start_line": 8,
+          "end_line": 8
+        },
+        {
+          "name": "httpie/client.py:collect_messages()",
+          "file": "httpie/client.py",
+          "start_line": 42,
+          "end_line": 139
+        },
+        {
+          "name": "httpie/plugins/manager.py:PluginManager.get_auth_plugin()",
+          "file": "httpie/plugins/manager.py",
+          "start_line": 90,
+          "end_line": 91
+        },
+        {
+          "name": "httpie/sessions.py:Session",
+          "file": "httpie/sessions.py",
+          "start_line": 123,
+          "end_line": 321
+        },
+        {
+          "name": "httpie/plugins/base.py:AuthPlugin.raw_auth",
+          "file": "httpie/plugins/base.py",
+          "start_line": 55,
+          "end_line": 55
+        },
+        {
+          "name": "httpie/plugins/base.py:AuthPlugin.auth_parse",
+          "file": "httpie/plugins/base.py",
+          "start_line": 37,
+          "end_line": 37
+        },
+        {
+          "name": "httpie/cli/argtypes.py:parse_auth",
+          "file": "httpie/cli/argtypes.py",
+          "start_line": 190,
+          "end_line": 190
+        },
+        {
+          "name": "httpie/cli/argtypes.py:KeyValueArg.key",
+          "file": "httpie/cli/argtypes.py",
+          "start_line": 15,
+          "end_line": 15
+        },
+        {
+          "name": "httpie/cli/argtypes.py:KeyValueArg.value",
+          "file": "httpie/cli/argtypes.py",
+          "start_line": 16,
+          "end_line": 16
+        },
+        {
+          "name": "httpie/plugins/base.py:AuthPlugin.get_auth()",
+          "file": "httpie/plugins/base.py",
+          "start_line": 57,
+          "end_line": 68
+        }
+      ]
+    }
+  ],
+  "after": [
+    {
+      "chunk_node_id": "httpie/cli/utils.py:LazyChoices.help()",
+      "file": "httpie/cli/utils.py",
+      "start_line": 64,
+      "end_line": 66,
+      "resolved_without_span": null,
+      "source_overlapping_physical_ids": [
+        "httpie/cli/utils.py:LazyChoices.help(_codenib_l65_c8)"
+      ],
+      "canonical_seed_neighbor_count": 3,
+      "physical_seed_neighbor_count": 3,
+      "canonical_neighbor_locations": [
+        {
+          "name": "httpie/cli/utils.py:LazyChoices._help",
+          "file": "httpie/cli/utils.py",
+          "start_line": 43,
+          "end_line": 43
+        },
+        {
+          "name": "httpie/cli/options.py:Argument.serialize()",
+          "file": "httpie/cli/options.py",
+          "start_line": 112,
+          "end_line": 164
+        },
+        {
+          "name": "httpie/cli/utils.py:LazyChoices",
+          "file": "httpie/cli/utils.py",
+          "start_line": 27,
+          "end_line": 78
+        }
+      ],
+      "physical_neighbor_locations": [
+        {
+          "name": "httpie/cli/utils.py:LazyChoices._help",
+          "file": "httpie/cli/utils.py",
+          "start_line": 43,
+          "end_line": 43
+        },
+        {
+          "name": "httpie/cli/options.py:Argument.serialize()",
+          "file": "httpie/cli/options.py",
+          "start_line": 112,
+          "end_line": 164
+        },
+        {
+          "name": "httpie/cli/utils.py:LazyChoices",
+          "file": "httpie/cli/utils.py",
+          "start_line": 27,
+          "end_line": 78
+        }
+      ]
+    },
+    {
+      "chunk_node_id": "httpie/output/streams.py:EncodedStream.encoding()",
+      "file": "httpie/output/streams.py",
+      "start_line": 164,
+      "end_line": 166,
+      "resolved_without_span": null,
+      "source_overlapping_physical_ids": [
+        "httpie/output/streams.py:EncodedStream.encoding(_codenib_l165_c8)"
+      ],
+      "canonical_seed_neighbor_count": 3,
+      "physical_seed_neighbor_count": 3,
+      "canonical_neighbor_locations": [
+        {
+          "name": "httpie/output/streams.py:EncodedStream._encoding",
+          "file": "httpie/output/streams.py",
+          "start_line": 126,
+          "end_line": 126
+        },
+        {
+          "name": "httpie/output/streams.py:EncodedStream",
+          "file": "httpie/output/streams.py",
+          "start_line": 104,
+          "end_line": 166
+        },
+        {
+          "name": "httpie/output/streams.py:EncodedStream.decode_chunk()",
+          "file": "httpie/output/streams.py",
+          "start_line": 144,
+          "end_line": 147
+        }
+      ],
+      "physical_neighbor_locations": [
+        {
+          "name": "httpie/output/streams.py:EncodedStream._encoding",
+          "file": "httpie/output/streams.py",
+          "start_line": 126,
+          "end_line": 126
+        },
+        {
+          "name": "httpie/output/streams.py:EncodedStream",
+          "file": "httpie/output/streams.py",
+          "start_line": 104,
+          "end_line": 166
+        },
+        {
+          "name": "httpie/output/streams.py:EncodedStream.decode_chunk()",
+          "file": "httpie/output/streams.py",
+          "start_line": 144,
+          "end_line": 147
+        }
+      ]
+    },
+    {
+      "chunk_node_id": "httpie/cli/utils.py:LazyChoices.help()",
+      "file": "httpie/cli/utils.py",
+      "start_line": 55,
+      "end_line": 62,
+      "resolved_without_span": null,
+      "source_overlapping_physical_ids": [
+        "httpie/cli/utils.py:LazyChoices.help(_codenib_l56_c8)"
+      ],
+      "canonical_seed_neighbor_count": 6,
+      "physical_seed_neighbor_count": 6,
+      "canonical_neighbor_locations": [
+        {
+          "name": "httpie/cli/utils.py:LazyChoices.load()",
+          "file": "httpie/cli/utils.py",
+          "start_line": 48,
+          "end_line": 53
+        },
+        {
+          "name": "httpie/cli/options.py:Argument.serialize()",
+          "file": "httpie/cli/options.py",
+          "start_line": 112,
+          "end_line": 164
+        },
+        {
+          "name": "httpie/cli/utils.py:LazyChoices.help_formatter",
+          "file": "httpie/cli/utils.py",
+          "start_line": 39,
+          "end_line": 39
+        },
+        {
+          "name": "httpie/cli/utils.py:LazyChoices",
+          "file": "httpie/cli/utils.py",
+          "start_line": 27,
+          "end_line": 78
+        },
+        {
+          "name": "httpie/cli/utils.py:LazyChoices.isolation_mode",
+          "file": "httpie/cli/utils.py",
+          "start_line": 42,
+          "end_line": 42
+        },
+        {
+          "name": "httpie/cli/utils.py:LazyChoices._help",
+          "file": "httpie/cli/utils.py",
+          "start_line": 43,
+          "end_line": 43
+        }
+      ],
+      "physical_neighbor_locations": [
+        {
+          "name": "httpie/cli/utils.py:LazyChoices.load()",
+          "file": "httpie/cli/utils.py",
+          "start_line": 48,
+          "end_line": 53
+        },
+        {
+          "name": "httpie/cli/options.py:Argument.serialize()",
+          "file": "httpie/cli/options.py",
+          "start_line": 112,
+          "end_line": 164
+        },
+        {
+          "name": "httpie/cli/utils.py:LazyChoices.help_formatter",
+          "file": "httpie/cli/utils.py",
+          "start_line": 39,
+          "end_line": 39
+        },
+        {
+          "name": "httpie/cli/utils.py:LazyChoices",
+          "file": "httpie/cli/utils.py",
+          "start_line": 27,
+          "end_line": 78
+        },
+        {
+          "name": "httpie/cli/utils.py:LazyChoices.isolation_mode",
+          "file": "httpie/cli/utils.py",
+          "start_line": 42,
+          "end_line": 42
+        },
+        {
+          "name": "httpie/cli/utils.py:LazyChoices._help",
+          "file": "httpie/cli/utils.py",
+          "start_line": 43,
+          "end_line": 43
+        }
+      ]
+    },
+    {
+      "chunk_node_id": "httpie/output/streams.py:EncodedStream.encoding()",
+      "file": "httpie/output/streams.py",
+      "start_line": 149,
+      "end_line": 162,
+      "resolved_without_span": null,
+      "source_overlapping_physical_ids": [
+        "httpie/output/streams.py:EncodedStream.encoding(_codenib_l150_c8)"
+      ],
+      "canonical_seed_neighbor_count": 5,
+      "physical_seed_neighbor_count": 5,
+      "canonical_neighbor_locations": [
+        {
+          "name": "httpie/output/streams.py:ENCODING_GUESS_THRESHOLD",
+          "file": "httpie/output/streams.py",
+          "start_line": 101,
+          "end_line": 101
+        },
+        {
+          "name": "httpie/output/streams.py:EncodedStream",
+          "file": "httpie/output/streams.py",
+          "start_line": 104,
+          "end_line": 166
+        },
+        {
+          "name": "httpie/output/streams.py:EncodedStream._encoding",
+          "file": "httpie/output/streams.py",
+          "start_line": 126,
+          "end_line": 126
+        },
+        {
+          "name": "httpie/output/streams.py:EncodedStream.decode_chunk()",
+          "file": "httpie/output/streams.py",
+          "start_line": 144,
+          "end_line": 147
+        },
+        {
+          "name": "httpie/output/streams.py:EncodedStream._encoding_guesses",
+          "file": "httpie/output/streams.py",
+          "start_line": 127,
+          "end_line": 127
+        }
+      ],
+      "physical_neighbor_locations": [
+        {
+          "name": "httpie/output/streams.py:ENCODING_GUESS_THRESHOLD",
+          "file": "httpie/output/streams.py",
+          "start_line": 101,
+          "end_line": 101
+        },
+        {
+          "name": "httpie/output/streams.py:EncodedStream",
+          "file": "httpie/output/streams.py",
+          "start_line": 104,
+          "end_line": 166
+        },
+        {
+          "name": "httpie/output/streams.py:EncodedStream._encoding",
+          "file": "httpie/output/streams.py",
+          "start_line": 126,
+          "end_line": 126
+        },
+        {
+          "name": "httpie/output/streams.py:EncodedStream.decode_chunk()",
+          "file": "httpie/output/streams.py",
+          "start_line": 144,
+          "end_line": 147
+        },
+        {
+          "name": "httpie/output/streams.py:EncodedStream._encoding_guesses",
+          "file": "httpie/output/streams.py",
+          "start_line": 127,
+          "end_line": 127
+        }
+      ]
+    },
+    {
+      "chunk_node_id": "httpie/sessions.py:Session.cookies()",
+      "file": "httpie/sessions.py",
+      "start_line": 258,
+      "end_line": 260,
+      "resolved_without_span": null,
+      "source_overlapping_physical_ids": [
+        "httpie/sessions.py:Session.cookies(_codenib_l259_c8)"
+      ],
+      "canonical_seed_neighbor_count": 10,
+      "physical_seed_neighbor_count": 10,
+      "canonical_neighbor_locations": [
+        {
+          "name": "httpie/sessions.py:Session.cookie_jar",
+          "file": "httpie/sessions.py",
+          "start_line": 149,
+          "end_line": 149
+        },
+        {
+          "name": "httpie/client.py:collect_messages()",
+          "file": "httpie/client.py",
+          "start_line": 42,
+          "end_line": 139
+        },
+        {
+          "name": "httpie/sessions.py:Session",
+          "file": "httpie/sessions.py",
+          "start_line": 123,
+          "end_line": 321
+        },
+        {
+          "name": "httpie/legacy/v3_1_0_session_cookie_format.py:fix_layout()",
+          "file": "httpie/legacy/v3_1_0_session_cookie_format.py",
+          "start_line": 83,
+          "end_line": 99
+        },
+        {
+          "name": "tests/test_sessions.py:TestExpiredCookies.test_removes_expired_cookies_from_session_obj()",
+          "file": "tests/test_sessions.py",
+          "start_line": 371,
+          "end_line": 382
+        },
+        {
+          "name": "tests/test_sessions.py:test_old_session_cookie_layout_warning()",
+          "file": "tests/test_sessions.py",
+          "start_line": 595,
+          "end_line": 604
+        },
+        {
+          "name": "tests/test_sessions.py:test_old_session_cookie_layout_loading()",
+          "file": "tests/test_sessions.py",
+          "start_line": 665,
+          "end_line": 675
+        },
+        {
+          "name": "tests/test_sessions.py:test_session_cookie_layout_preservation()",
+          "file": "tests/test_sessions.py",
+          "start_line": 678,
+          "end_line": 688
+        },
+        {
+          "name": "tests/test_sessions.py:test_session_cookie_layout_preservation_on_new_cookies()",
+          "file": "tests/test_sessions.py",
+          "start_line": 691,
+          "end_line": 706
+        },
+        {
+          "name": "tests/test_sessions.py:test_secure_cookies_on_localhost()",
+          "file": "tests/test_sessions.py",
+          "start_line": 819,
+          "end_line": 851
+        }
+      ],
+      "physical_neighbor_locations": [
+        {
+          "name": "httpie/sessions.py:Session.cookie_jar",
+          "file": "httpie/sessions.py",
+          "start_line": 149,
+          "end_line": 149
+        },
+        {
+          "name": "httpie/client.py:collect_messages()",
+          "file": "httpie/client.py",
+          "start_line": 42,
+          "end_line": 139
+        },
+        {
+          "name": "httpie/sessions.py:Session",
+          "file": "httpie/sessions.py",
+          "start_line": 123,
+          "end_line": 321
+        },
+        {
+          "name": "httpie/legacy/v3_1_0_session_cookie_format.py:fix_layout()",
+          "file": "httpie/legacy/v3_1_0_session_cookie_format.py",
+          "start_line": 83,
+          "end_line": 99
+        },
+        {
+          "name": "tests/test_sessions.py:TestExpiredCookies.test_removes_expired_cookies_from_session_obj()",
+          "file": "tests/test_sessions.py",
+          "start_line": 371,
+          "end_line": 382
+        },
+        {
+          "name": "tests/test_sessions.py:test_old_session_cookie_layout_warning()",
+          "file": "tests/test_sessions.py",
+          "start_line": 595,
+          "end_line": 604
+        },
+        {
+          "name": "tests/test_sessions.py:test_old_session_cookie_layout_loading()",
+          "file": "tests/test_sessions.py",
+          "start_line": 665,
+          "end_line": 675
+        },
+        {
+          "name": "tests/test_sessions.py:test_session_cookie_layout_preservation()",
+          "file": "tests/test_sessions.py",
+          "start_line": 678,
+          "end_line": 688
+        },
+        {
+          "name": "tests/test_sessions.py:test_session_cookie_layout_preservation_on_new_cookies()",
+          "file": "tests/test_sessions.py",
+          "start_line": 691,
+          "end_line": 706
+        },
+        {
+          "name": "tests/test_sessions.py:test_secure_cookies_on_localhost()",
+          "file": "tests/test_sessions.py",
+          "start_line": 819,
+          "end_line": 851
+        }
+      ]
+    },
+    {
+      "chunk_node_id": "httpie/sessions.py:Session.auth()",
+      "file": "httpie/sessions.py",
+      "start_line": 300,
+      "end_line": 303,
+      "resolved_without_span": null,
+      "source_overlapping_physical_ids": [
+        "httpie/sessions.py:Session.auth(_codenib_l301_c8)"
+      ],
+      "canonical_seed_neighbor_count": 2,
+      "physical_seed_neighbor_count": 2,
+      "canonical_neighbor_locations": [
+        {
+          "name": "httpie/client.py:collect_messages()",
+          "file": "httpie/client.py",
+          "start_line": 42,
+          "end_line": 139
+        },
+        {
+          "name": "httpie/sessions.py:Session",
+          "file": "httpie/sessions.py",
+          "start_line": 123,
+          "end_line": 321
+        }
+      ],
+      "physical_neighbor_locations": [
+        {
+          "name": "httpie/client.py:collect_messages()",
+          "file": "httpie/client.py",
+          "start_line": 42,
+          "end_line": 139
+        },
+        {
+          "name": "httpie/sessions.py:Session",
+          "file": "httpie/sessions.py",
+          "start_line": 123,
+          "end_line": 321
+        }
+      ]
+    },
+    {
+      "chunk_node_id": "httpie/sessions.py:Session.cookies()",
+      "file": "httpie/sessions.py",
+      "start_line": 253,
+      "end_line": 256,
+      "resolved_without_span": null,
+      "source_overlapping_physical_ids": [
+        "httpie/sessions.py:Session.cookies(_codenib_l254_c8)"
+      ],
+      "canonical_seed_neighbor_count": 10,
+      "physical_seed_neighbor_count": 10,
+      "canonical_neighbor_locations": [
+        {
+          "name": "httpie/sessions.py:Session.cookie_jar",
+          "file": "httpie/sessions.py",
+          "start_line": 149,
+          "end_line": 149
+        },
+        {
+          "name": "httpie/client.py:collect_messages()",
+          "file": "httpie/client.py",
+          "start_line": 42,
+          "end_line": 139
+        },
+        {
+          "name": "httpie/sessions.py:Session",
+          "file": "httpie/sessions.py",
+          "start_line": 123,
+          "end_line": 321
+        },
+        {
+          "name": "httpie/legacy/v3_1_0_session_cookie_format.py:fix_layout()",
+          "file": "httpie/legacy/v3_1_0_session_cookie_format.py",
+          "start_line": 83,
+          "end_line": 99
+        },
+        {
+          "name": "tests/test_sessions.py:TestExpiredCookies.test_removes_expired_cookies_from_session_obj()",
+          "file": "tests/test_sessions.py",
+          "start_line": 371,
+          "end_line": 382
+        },
+        {
+          "name": "tests/test_sessions.py:test_old_session_cookie_layout_warning()",
+          "file": "tests/test_sessions.py",
+          "start_line": 595,
+          "end_line": 604
+        },
+        {
+          "name": "tests/test_sessions.py:test_old_session_cookie_layout_loading()",
+          "file": "tests/test_sessions.py",
+          "start_line": 665,
+          "end_line": 675
+        },
+        {
+          "name": "tests/test_sessions.py:test_session_cookie_layout_preservation()",
+          "file": "tests/test_sessions.py",
+          "start_line": 678,
+          "end_line": 688
+        },
+        {
+          "name": "tests/test_sessions.py:test_session_cookie_layout_preservation_on_new_cookies()",
+          "file": "tests/test_sessions.py",
+          "start_line": 691,
+          "end_line": 706
+        },
+        {
+          "name": "tests/test_sessions.py:test_secure_cookies_on_localhost()",
+          "file": "tests/test_sessions.py",
+          "start_line": 819,
+          "end_line": 851
+        }
+      ],
+      "physical_neighbor_locations": [
+        {
+          "name": "httpie/sessions.py:Session.cookie_jar",
+          "file": "httpie/sessions.py",
+          "start_line": 149,
+          "end_line": 149
+        },
+        {
+          "name": "httpie/client.py:collect_messages()",
+          "file": "httpie/client.py",
+          "start_line": 42,
+          "end_line": 139
+        },
+        {
+          "name": "httpie/sessions.py:Session",
+          "file": "httpie/sessions.py",
+          "start_line": 123,
+          "end_line": 321
+        },
+        {
+          "name": "httpie/legacy/v3_1_0_session_cookie_format.py:fix_layout()",
+          "file": "httpie/legacy/v3_1_0_session_cookie_format.py",
+          "start_line": 83,
+          "end_line": 99
+        },
+        {
+          "name": "tests/test_sessions.py:TestExpiredCookies.test_removes_expired_cookies_from_session_obj()",
+          "file": "tests/test_sessions.py",
+          "start_line": 371,
+          "end_line": 382
+        },
+        {
+          "name": "tests/test_sessions.py:test_old_session_cookie_layout_warning()",
+          "file": "tests/test_sessions.py",
+          "start_line": 595,
+          "end_line": 604
+        },
+        {
+          "name": "tests/test_sessions.py:test_old_session_cookie_layout_loading()",
+          "file": "tests/test_sessions.py",
+          "start_line": 665,
+          "end_line": 675
+        },
+        {
+          "name": "tests/test_sessions.py:test_session_cookie_layout_preservation()",
+          "file": "tests/test_sessions.py",
+          "start_line": 678,
+          "end_line": 688
+        },
+        {
+          "name": "tests/test_sessions.py:test_session_cookie_layout_preservation_on_new_cookies()",
+          "file": "tests/test_sessions.py",
+          "start_line": 691,
+          "end_line": 706
+        },
+        {
+          "name": "tests/test_sessions.py:test_secure_cookies_on_localhost()",
+          "file": "tests/test_sessions.py",
+          "start_line": 819,
+          "end_line": 851
+        }
+      ]
+    },
+    {
+      "chunk_node_id": "httpie/sessions.py:Session.auth()",
+      "file": "httpie/sessions.py",
+      "start_line": 271,
+      "end_line": 298,
+      "resolved_without_span": null,
+      "source_overlapping_physical_ids": [
+        "httpie/sessions.py:Session.auth(_codenib_l272_c8)"
+      ],
+      "canonical_seed_neighbor_count": 10,
+      "physical_seed_neighbor_count": 10,
+      "canonical_neighbor_locations": [
+        {
+          "name": "httpie/plugins/registry.py:plugin_manager",
+          "file": "httpie/plugins/registry.py",
+          "start_line": 8,
+          "end_line": 8
+        },
+        {
+          "name": "httpie/client.py:collect_messages()",
+          "file": "httpie/client.py",
+          "start_line": 42,
+          "end_line": 139
+        },
+        {
+          "name": "httpie/plugins/manager.py:PluginManager.get_auth_plugin()",
+          "file": "httpie/plugins/manager.py",
+          "start_line": 90,
+          "end_line": 91
+        },
+        {
+          "name": "httpie/sessions.py:Session",
+          "file": "httpie/sessions.py",
+          "start_line": 123,
+          "end_line": 321
+        },
+        {
+          "name": "httpie/plugins/base.py:AuthPlugin.raw_auth",
+          "file": "httpie/plugins/base.py",
+          "start_line": 55,
+          "end_line": 55
+        },
+        {
+          "name": "httpie/plugins/base.py:AuthPlugin.auth_parse",
+          "file": "httpie/plugins/base.py",
+          "start_line": 37,
+          "end_line": 37
+        },
+        {
+          "name": "httpie/cli/argtypes.py:parse_auth",
+          "file": "httpie/cli/argtypes.py",
+          "start_line": 190,
+          "end_line": 190
+        },
+        {
+          "name": "httpie/cli/argtypes.py:KeyValueArg.key",
+          "file": "httpie/cli/argtypes.py",
+          "start_line": 15,
+          "end_line": 15
+        },
+        {
+          "name": "httpie/cli/argtypes.py:KeyValueArg.value",
+          "file": "httpie/cli/argtypes.py",
+          "start_line": 16,
+          "end_line": 16
+        },
+        {
+          "name": "httpie/plugins/base.py:AuthPlugin.get_auth()",
+          "file": "httpie/plugins/base.py",
+          "start_line": 57,
+          "end_line": 68
+        }
+      ],
+      "physical_neighbor_locations": [
+        {
+          "name": "httpie/plugins/registry.py:plugin_manager",
+          "file": "httpie/plugins/registry.py",
+          "start_line": 8,
+          "end_line": 8
+        },
+        {
+          "name": "httpie/client.py:collect_messages()",
+          "file": "httpie/client.py",
+          "start_line": 42,
+          "end_line": 139
+        },
+        {
+          "name": "httpie/plugins/manager.py:PluginManager.get_auth_plugin()",
+          "file": "httpie/plugins/manager.py",
+          "start_line": 90,
+          "end_line": 91
+        },
+        {
+          "name": "httpie/sessions.py:Session",
+          "file": "httpie/sessions.py",
+          "start_line": 123,
+          "end_line": 321
+        },
+        {
+          "name": "httpie/plugins/base.py:AuthPlugin.raw_auth",
+          "file": "httpie/plugins/base.py",
+          "start_line": 55,
+          "end_line": 55
+        },
+        {
+          "name": "httpie/plugins/base.py:AuthPlugin.auth_parse",
+          "file": "httpie/plugins/base.py",
+          "start_line": 37,
+          "end_line": 37
+        },
+        {
+          "name": "httpie/cli/argtypes.py:parse_auth",
+          "file": "httpie/cli/argtypes.py",
+          "start_line": 190,
+          "end_line": 190
+        },
+        {
+          "name": "httpie/cli/argtypes.py:KeyValueArg.key",
+          "file": "httpie/cli/argtypes.py",
+          "start_line": 15,
+          "end_line": 15
+        },
+        {
+          "name": "httpie/cli/argtypes.py:KeyValueArg.value",
+          "file": "httpie/cli/argtypes.py",
+          "start_line": 16,
+          "end_line": 16
+        },
+        {
+          "name": "httpie/plugins/base.py:AuthPlugin.get_auth()",
+          "file": "httpie/plugins/base.py",
+          "start_line": 57,
+          "end_line": 68
+        }
+      ]
+    }
+  ],
+  "acceptance": {
+    "all_8_canonical_seeds_match_exact_physical_id_controls": true,
+    "missing_or_ambiguous_source_remains_unresolved": "covered by deterministic unit regressions"
+  },
+  "limits": [
+    "One historically exposed Python source; chosen to reproduce a concrete consumer failure.",
+    "The physical-ID control tests consumer consistency, not provider precision or full repository graph coverage.",
+    "No coding-agent inference, native task grade, voluntary-use observation or whole-task benefit measurement.",
+    "Original matched cohorts, accounting and promotion criteria are unchanged."
+  ],
+  "controller_preparation_note": "A preliminary diagnostic failed when dataclasses.replace was used on a Pydantic queried node. Paired controls below use the original queried fields; this is not a model task or frozen outcome."
+}
