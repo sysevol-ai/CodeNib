@@ -26,6 +26,7 @@ Usage:
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -108,12 +109,15 @@ def _build_graph_with_scip(
     project_root: Path,
     language: str,
     output_dir: Path,
+    *,
+    reuse_cache: bool = True,
     **kwargs,
 ) -> CodeGraph:
     """Build a CodeGraph via SCIP cold-start (LSIndexer.run_pipeline).
 
-    Reuses a cached graph only for the same language and source commit,
-    falling back to a full pipeline when that exact cache is absent.
+    Reuse a graph only for the same language and source commit unless an
+    explicitly cold build is requested. The pipeline already builds on a
+    cache miss; a failed build must not be attempted a second time.
     """
     source_commit = _git("rev-parse", "HEAD", cwd=project_root)
     output_dir = output_dir / language / source_commit
@@ -122,11 +126,11 @@ def _build_graph_with_scip(
         output_dir=output_dir,
         language=language,
     )
-    # Try loading cached graph first
-    graph = indexer.run_pipeline(skip_level="graph", report_profile=False, **kwargs)
-    if graph is None:
-        # No cache, do full pipeline
-        graph = indexer.run_pipeline(skip_level=None, report_profile=False, **kwargs)
+    graph = indexer.run_pipeline(
+        skip_level="graph" if reuse_cache else None,
+        report_profile=False,
+        **kwargs,
+    )
     assert graph is not None, f"SCIP run_pipeline returned None for {language}"
     return graph
 
@@ -1031,19 +1035,72 @@ class TestSWEBenchPython:
             pytest.skip(f"Cannot clone repo: {e}")
             return None  # unreachable; satisfies linter
 
-    def test_graph_patch(self, repo_dir, tmp_path):
+    @pytest.fixture
+    def analysis_environment(self, repo_dir, monkeypatch):
+        """Analyze this historical source with its scientific dependencies.
+
+        Library implementation inference is explicitly disabled for this
+        fixture; all project source and the existing graph assertions remain.
+        The temporary project config is removed only while still ours.
+        """
+        configured = os.environ.get("CODENIB_SKLEARN_TEST_PYTHON")
+        assert configured, (
+            "Prepare test/graph/incremental/sklearn-environment.yml and set "
+            "CODENIB_SKLEARN_TEST_PYTHON to that environment's bin/python"
+        )
+        python = Path(configured).expanduser().resolve()
+        subprocess.run(
+            [
+                str(python),
+                "-c",
+                "import sys, numpy, scipy; "
+                "assert sys.version_info[:2] == (3, 6); "
+                "assert numpy.__version__ == '1.19.2'; "
+                "assert scipy.__version__ == '1.5.2'",
+            ],
+            check=True,
+        )
+        prefix = python.parent.parent
+        monkeypatch.setenv("PATH", str(python.parent) + os.pathsep + os.environ["PATH"])
+        monkeypatch.setenv("CONDA_PREFIX", str(prefix))
+        monkeypatch.delenv("VIRTUAL_ENV", raising=False)
+        monkeypatch.delenv("PYTHONPATH", raising=False)
+        path = repo_dir / "pyrightconfig.json"
+        payload = (
+            json.dumps(
+                {
+                    "useLibraryCodeForTypes": False,
+                    "pythonVersion": "3.6",
+                    "venvPath": str(prefix.parent),
+                    "venv": prefix.name,
+                },
+                indent=2,
+            )
+            + "\n"
+        )
+        with path.open("x", encoding="utf-8") as handle:
+            handle.write(payload)
+        try:
+            yield
+        finally:
+            if path.exists() and path.read_text(encoding="utf-8") == payload:
+                path.unlink()
+
+    def test_graph_patch(self, repo_dir, tmp_path, analysis_environment, request):
         earlier = _get_earlier_commit(repo_dir, self.LATER, self.N_BACK)
 
         _git("checkout", "-f", earlier, cwd=repo_dir)
 
         # Start LSP early for warm-up (parallel with SCIP)
         patcher = GraphPatcher(str(repo_dir), None, "python")
+        request.addfinalizer(patcher.stop_lsp)
         patcher.start_lsp()
 
         g = _build_graph_with_scip(
             repo_dir,
             "python",
             Path.home() / ".codenib" / "scip_cache" / self.REPO.replace("/", "_"),
+            reuse_cache=False,
         )
         patcher.code_graph = g
 

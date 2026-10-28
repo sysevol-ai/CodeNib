@@ -1,0 +1,700 @@
+{
+  "schema": 1,
+  "scope": "post-hoc model-free Python cold-start readiness regression; not a new efficacy cohort, complete semantic coverage claim or release acceptance",
+  "date": "2026-10-28",
+  "tracking_issue": "https://github.com/sysevol-ai/CodeNib/issues/901",
+  "provider_dependency": {
+    "pull_request": "https://github.com/fishmingyu/scip-python/pull/1",
+    "base_commit": "50ae07db4593419f57b70012bc7b2f2b1d4ae472",
+    "candidate_commit": "3fa68e7c60901a5285541afd1943efe9c4e5ddf8",
+    "status": "draft; snapshot discovery failure also reproduced on unmodified base"
+  },
+  "source": {
+    "repository": "scikit-learn/scikit-learn",
+    "initial_commit": "2b835a0ce89eb63ef9959eea00ede597cf8bff4d",
+    "later_fixture_commit": "b90661d6a46aa3619d3eec94d5281f5888add501",
+    "initial_project_files": 684,
+    "scope_preserved": true,
+    "instance_id": "scikit-learn__scikit-learn-10297",
+    "exposure": "existing public integration fixture; exclude from prospective unseen validation"
+  },
+  "analysis_policy": {
+    "useLibraryCodeForTypes": false,
+    "pythonVersion": "3.6",
+    "meaning": "Explicitly disable implementation-based type inference for external libraries while retaining all project source; does not establish all possible references or runtime calls."
+  },
+  "historical_environment_basis": {
+    "installed_package": "swebench",
+    "version": "4.1.0",
+    "file": "swebench/harness/constants/python.py",
+    "sha256": "ce4f0e0f0939745944d84c51356530f5da57f486ac839523556d7ffdb2f9072b",
+    "project_versions": [
+      "0.20",
+      "0.21",
+      "0.22"
+    ],
+    "python": "3.6",
+    "numpy": "1.19.2",
+    "scipy": "1.5.2",
+    "other_pins": "See test/graph/incremental/sklearn-environment.yml; no CodeNib interpreter or product dependency change"
+  },
+  "observations": {
+    "diagnostic.json": [
+      {
+        "label": "default",
+        "scope": "bounded model-free whole-source diagnostic; not CI or a frozen task score",
+        "source_commit": "2b835a0ce89eb63ef9959eea00ede597cf8bff4d",
+        "command": [
+          "/home/zhongming/.codenib/toolchains/node-tools/node_modules/.bin/scip-python",
+          "index",
+          "--cwd",
+          "/tmp/codenib-sklearn-cold-start-20261028/source",
+          "--project-name",
+          "scikit-learn_scikit-learn",
+          "--output",
+          "/tmp/codenib-sklearn-cold-start-20261028/default/index.scip",
+          "--environment",
+          "/tmp/codenib-sklearn-cold-start-20261028/environment.json"
+        ],
+        "timeout_seconds": 120,
+        "status": "timeout",
+        "seconds": 120.39536086656153,
+        "stack_overflow_messages": 1,
+        "index_bytes": 82
+      },
+      {
+        "label": "node-stack-4096",
+        "scope": "bounded model-free whole-source diagnostic; not CI or a frozen task score",
+        "source_commit": "2b835a0ce89eb63ef9959eea00ede597cf8bff4d",
+        "command": [
+          "/home/zhongming/.local/bin/node",
+          "--stack-size=4096",
+          "/home/zhongming/.codenib/toolchains/node-tools/node_modules/@sourcegraph/scip-python/index.js",
+          "index",
+          "--cwd",
+          "/tmp/codenib-sklearn-cold-start-20261028/source",
+          "--project-name",
+          "scikit-learn_scikit-learn",
+          "--output",
+          "/tmp/codenib-sklearn-cold-start-20261028/node-stack-4096/index.scip",
+          "--environment",
+          "/tmp/codenib-sklearn-cold-start-20261028/environment.json"
+        ],
+        "timeout_seconds": 120,
+        "status": "timeout",
+        "seconds": 121.06913623772562,
+        "stack_overflow_messages": 1,
+        "index_bytes": 82
+      }
+    ],
+    "environment-diagnostic.json": [
+      {
+        "label": "bare-analysis-env",
+        "scope": "bounded environment diagnostic on full source; not CI acceptance or a frozen benchmark outcome",
+        "command": [
+          "/home/zhongming/.codenib/toolchains/node-tools/node_modules/.bin/scip-python",
+          "index",
+          "--cwd",
+          "/tmp/codenib-sklearn-cold-start-20261028/source",
+          "--project-name",
+          "scikit-learn_scikit-learn",
+          "--output",
+          "/tmp/codenib-sklearn-cold-start-20261028/bare-analysis-env/index.scip",
+          "--environment",
+          "/tmp/codenib-sklearn-cold-start-20261028/environment.json"
+        ],
+        "packages": {
+          "codenib": "0.2.4",
+          "pip": "24.0"
+        },
+        "timeout_seconds": 120,
+        "status": "exit_zero",
+        "seconds": 22.40672684647143,
+        "stack_overflow_messages": 0,
+        "index_bytes": 34631358
+      },
+      {
+        "label": "scientific-1x-analysis-env",
+        "scope": "bounded environment diagnostic on full source; not CI acceptance or a frozen benchmark outcome",
+        "command": [
+          "/home/zhongming/.codenib/toolchains/node-tools/node_modules/.bin/scip-python",
+          "index",
+          "--cwd",
+          "/tmp/codenib-sklearn-cold-start-20261028/source",
+          "--project-name",
+          "scikit-learn_scikit-learn",
+          "--output",
+          "/tmp/codenib-sklearn-cold-start-20261028/scientific-1x-analysis-env/index.scip",
+          "--environment",
+          "/tmp/codenib-sklearn-cold-start-20261028/environment.json"
+        ],
+        "packages": {
+          "codenib": "0.2.4",
+          "fonttools": "4.68.0",
+          "packaging": "26.3",
+          "pillow": "13.0.0",
+          "pip": "24.0",
+          "pyparsing": "3.3.3",
+          "cycler": "0.12.1",
+          "python-dateutil": "3.0.0",
+          "scipy": "1.11.4",
+          "matplotlib": "3.8.4",
+          "numpy": "1.26.4",
+          "kiwisolver": "1.5.1",
+          "six": "1.17.0",
+          "contourpy": "1.3.3",
+          "tzdata": "2026.6"
+        },
+        "timeout_seconds": 120,
+        "status": "timeout",
+        "seconds": 120.71925549581647,
+        "stack_overflow_messages": 0,
+        "index_bytes": 82
+      }
+    ],
+    "spectral-file-diagnostic/receipt.json": {
+      "scope": "minimal diagnostic only; full-source gate and original failures remain unchanged",
+      "command": [
+        "/home/zhongming/.codenib/toolchains/node-tools/node_modules/.bin/scip-python",
+        "index",
+        "--cwd",
+        "/tmp/codenib-sklearn-cold-start-20261028/source",
+        "--project-name",
+        "scikit-learn_scikit-learn",
+        "--output",
+        "/tmp/codenib-sklearn-cold-start-20261028/spectral-file-diagnostic/index.scip",
+        "--environment",
+        "/tmp/codenib-sklearn-cold-start-20261028/environment.json",
+        "--target-only",
+        "sklearn/manifold/spectral_embedding_.py"
+      ],
+      "timeout_seconds": 90,
+      "status": "timeout",
+      "seconds": 90.15286110900342,
+      "index_bytes": 122
+    },
+    "scientific-1x-production-bound/receipt.json": {
+      "scope": "New prospectively bounded confirmation under the existing 600-second product limit; earlier 120-second diagnostics remain unchanged. Not CI acceptance or a frozen task score.",
+      "command": [
+        "/home/zhongming/.codenib/toolchains/node-tools/node_modules/.bin/scip-python",
+        "index",
+        "--cwd",
+        "/tmp/codenib-sklearn-cold-start-20261028/source",
+        "--project-name",
+        "scikit-learn_scikit-learn",
+        "--output",
+        "/tmp/codenib-sklearn-cold-start-20261028/scientific-1x-production-bound/index.scip",
+        "--environment",
+        "/tmp/codenib-sklearn-cold-start-20261028/environment.json"
+      ],
+      "timeout_seconds": 600,
+      "status": "timeout",
+      "seconds": 600.8309032768011,
+      "stack_overflow_messages": 0,
+      "index_bytes": 26323200
+    },
+    "historical-runtime-full-source/receipt.json": {
+      "scope": "full pinned source historical-runtime control; raw index alone does not close product identity or incremental gates",
+      "command": [
+        "/home/zhongming/.codenib/toolchains/node-tools/node_modules/.bin/scip-python",
+        "index",
+        "--cwd",
+        "/tmp/codenib-sklearn-cold-start-20261028/source",
+        "--project-name",
+        "scikit-learn_scikit-learn",
+        "--output",
+        "/tmp/codenib-sklearn-cold-start-20261028/historical-runtime-full-source/index.scip",
+        "--environment",
+        "/tmp/codenib-sklearn-cold-start-20261028/environment.json"
+      ],
+      "timeout_seconds": 600,
+      "runtime": {
+        "python": "3.6.15 | packaged by conda-forge | (default, Dec  3 2021, 19:12:04) \n[GCC 9.4.0]",
+        "executable": "/tmp/codenib-sklearn-cold-start-20261028/historical-python36/bin/python",
+        "numpy": "1.19.2",
+        "scipy": "1.5.2",
+        "matplotlib": "3.3.4",
+        "pandas": "1.1.5",
+        "cython": "0.29.24"
+      },
+      "source_commit": "2b835a0ce89eb63ef9959eea00ede597cf8bff4d",
+      "status": "timeout",
+      "seconds": 600.4890224244446,
+      "index_bytes": 25956176,
+      "stack_overflow_messages": 0,
+      "document_count": 501,
+      "occurrence_count": 185448,
+      "index_sha256": "8346bee313550704c463b2d1954d335a33ba759f3814562498305ada832f7ce8"
+    },
+    "historical-library-type-control/receipt.json": {
+      "scope": "full-source dependency-type-policy diagnostic only; original gate and raw observations preserved",
+      "command": [
+        "/home/zhongming/.codenib/toolchains/node-tools/node_modules/.bin/scip-python",
+        "index",
+        "--cwd",
+        "/tmp/codenib-sklearn-cold-start-20261028/source-library-type-control",
+        "--project-name",
+        "scikit-learn_scikit-learn",
+        "--output",
+        "/tmp/codenib-sklearn-cold-start-20261028/historical-library-type-control/index.scip",
+        "--environment",
+        "/tmp/codenib-sklearn-cold-start-20261028/environment.json"
+      ],
+      "config": {
+        "useLibraryCodeForTypes": false,
+        "pythonVersion": "3.6"
+      },
+      "timeout_seconds": 120,
+      "status": "timeout",
+      "seconds": 120.32624251767993,
+      "index_bytes": 25937846,
+      "document_count": 501,
+      "occurrence_count": 185449,
+      "stack_overflow_messages": 0
+    },
+    "effective-library-type-control/receipt.json": {
+      "scope": "causal diagnostic of effective library-type policy on full pinned source; patched provider is scratch-only and not production acceptance",
+      "command": [
+        "/home/zhongming/.local/bin/node",
+        "/tmp/codenib-sklearn-cold-start-20261028/scip-python-respect-library-control/index.js",
+        "index",
+        "--cwd",
+        "/tmp/codenib-sklearn-cold-start-20261028/source-library-type-control",
+        "--project-name",
+        "scikit-learn_scikit-learn",
+        "--output",
+        "/tmp/codenib-sklearn-cold-start-20261028/effective-library-type-control/index.scip",
+        "--environment",
+        "/tmp/codenib-sklearn-cold-start-20261028/environment.json"
+      ],
+      "config": {
+        "useLibraryCodeForTypes": false,
+        "pythonVersion": "3.6"
+      },
+      "provider_delta": "remove final unconditional useLibraryCodeForTypes=true assignment so explicit project false survives",
+      "original_bundle_sha256": "55c645ed91e34ea4a2a7b47b1c482162cf173882e335a64c48ea6e8cbdb0ec05",
+      "patched_bundle_sha256": "038e7d32f8f25e6c076acc1cff2239f002514a25dd923ee36644a0950d851079",
+      "timeout_seconds": 120,
+      "status": "completed",
+      "returncode": 0,
+      "seconds": 25.96606371924281,
+      "index_bytes": 38520136,
+      "document_count": 684,
+      "occurrence_count": 297477,
+      "stack_overflow_messages": 0
+    },
+    "product-identity-control/receipt.json": {
+      "scope": "ordinary full-source LSIndexer pipeline against scratch policy-fix provider; not yet a released provider or original incremental fixture acceptance",
+      "source_commit": "2b835a0ce89eb63ef9959eea00ede597cf8bff4d",
+      "product_commit": "4ef1d9bcea27737efd2188a31775640be5a9b0dd",
+      "status": "completed",
+      "seconds": 60.65026604384184,
+      "index_generation_report": {
+        "backend": "scip-python",
+        "status": "complete",
+        "complete": true,
+        "partial": false,
+        "document_count": 684,
+        "identity_recovery": {
+          "status": "complete",
+          "schema": 1,
+          "source_file_count": 684,
+          "changed_symbol_families": 217,
+          "physical_declarations": 25559,
+          "restored_definition_roles": 56,
+          "positional_definition_queries": 143,
+          "local_binding_families": 8,
+          "local_binding_semantics": "all_source_declarations_for_compiler_binding",
+          "shared_lexical_binding_families": 169,
+          "utf8_replacement_sources": [],
+          "source_only_definitions": [
+            {
+              "file": "doc/tutorial/machine_learning_map/pyparsing.py",
+              "name": "Literal",
+              "line": 2376,
+              "character": 6,
+              "compiler_owner_from_parameter": false
+            },
+            {
+              "file": "sklearn/externals/joblib/_memory_helpers.py",
+              "name": "open_py_source",
+              "line": 95,
+              "character": 8,
+              "compiler_owner_from_parameter": true
+            }
+          ],
+          "unmapped_attribute_definitions": [],
+          "definition_provider": {
+            "command": [
+              "/tmp/codenib-sklearn-cold-start-20261028/diagnostic-toolchain/basedpyright-langserver",
+              "--stdio"
+            ],
+            "server_info": {
+              "name": "basedpyright",
+              "version": "1.39.8"
+            },
+            "position_encoding": "utf-16"
+          },
+          "position_encoding": "UTF8",
+          "source_sha256": {
+            "doc/tutorial/machine_learning_map/pyparsing.py": "821644a6c89234828f59c91644040c9bc3909aaf03b13add5601bf073180d142",
+            "sklearn/isotonic.py": "68600b9347c8715b77d1f9732d9840e2acf70f6487b89286d8835a5153cb0994",
+            "sklearn/cluster/bicluster.py": "a44a9107afd4c4997e6103be5bb109a8bc2d0d44ed43982aa4b6aa327a985c94",
+            "sklearn/cluster/tests/test_hierarchical.py": "972787bfb043e678b2e2646dcbb7e8da3f4122e168ea9a111e592841f6fdb0c3",
+            "sklearn/decomposition/factor_analysis.py": "e3605bb87110b24045a1a9ab8265b39f9aa280116dcf46f51347832b76858629",
+            "sklearn/decomposition/fastica_.py": "f5b1d49f1931c7a92d07df4cd02ebe8cc464856ea3b50e30fa748c3fc238734f",
+            "sklearn/decomposition/online_lda.py": "616e36e438ee718cc75d94b0b8bfa5bb26db83f19ea6292b96035b6a70e5138f",
+            "sklearn/ensemble/tests/test_bagging.py": "3832fe5a23e6a46f2bb3016f3aef82ba271af35957b99d1e7800e4e621cc4c8a",
+            "sklearn/ensemble/tests/test_weight_boosting.py": "d6d9cf8ce8e1da7fd6da9fd9ddff5a071c55a965b54e08c03a54dac2ba25619f",
+            "sklearn/externals/six.py": "48d5c0a4337b8f09a55fcfcd2c26fa71a92caf7f7bf099a62f72e02ce36d1eab",
+            "sklearn/externals/joblib/backports.py": "abaa2035aaf7c5cf39750ae14d5260c7d9709c6ff3e93b0337a7ca8b7b3bf1b1",
+            "sklearn/externals/joblib/memory.py": "db331aad82d23fdd5a0bd4dad1f70d6bd4c9269d56031264c5cf37ec8ca6375a",
+            "sklearn/externals/joblib/numpy_pickle_compat.py": "f6f27a73e7f412e89f362d76d3ac2e184af9b0d4d20305160a1e0fd2dcb3af61",
+            "sklearn/externals/joblib/parallel.py": "adf44c3b08f10291cd97ada955c253d2919b9c48769cd9dbd9a366d4bf47468d",
+            "sklearn/externals/joblib/pool.py": "be61bf42bcb938323873d42140f6249ac3a05d1e7016c2521cd992c8fd5eba69",
+            "sklearn/feature_extraction/text.py": "f6c465e65cf98e30fbd3413bd425db22ace94055bd4a3064157593c780889b63",
+            "sklearn/gaussian_process/gaussian_process.py": "9f40bf1c609e75f32f5bd8fbc10ecfe3611548a5de79efb32d87cc7b3f9291a2",
+            "sklearn/gaussian_process/gpc.py": "10bb046544fa0dde3486dcb8733fdd84d228015a9949f2153d17ca392fa686c7",
+            "sklearn/gaussian_process/gpr.py": "54957cf662d6f4819116f981fca2ae1848d16055d081a13673f5942f3c6655a6",
+            "sklearn/gaussian_process/kernels.py": "94c48c85201c7b31d15a8e1bf4435595dc306257e94cc692760a1c2a17b3e217",
+            "sklearn/linear_model/bayes.py": "8186b6ac8e7243210c5a81cf7bfae26ae3ae4ac72d2ce75b7ab3e13535a92176",
+            "sklearn/linear_model/ridge.py": "8392ea684f0133c8cc9e158f36307abc11871af3d5cf574915b9b146c127bb35",
+            "sklearn/manifold/tests/test_t_sne.py": "fe7d33a03fb41ddafa375d4db38c43b576744343f45fe8524f45c33f77f76477",
+            "sklearn/model_selection/_search.py": "8bc453eb8837778ef0f7b85859f1d42374f7784906bd0e66726f80bb78eac8e8",
+            "sklearn/model_selection/tests/test_split.py": "24a0e0458bb2e819f99079a80006cd9e72c03fc21652e821946120e749e6e53a",
+            "sklearn/preprocessing/tests/test_target.py": "439e06015c468e96c18651321b5ecadb4c14110f878c0c4751a4bc34a8620518",
+            "sklearn/tests/test_base.py": "fe9caa971d7738cad32ba6b7480902d0d958d807242832bd7f0a3a8a323c520e",
+            "sklearn/tests/test_metaestimators.py": "2563655639f9564fcc223c37ce1db90dbef2e71f417ee5f361828ed2334d783a",
+            "sklearn/utils/deprecation.py": "ec55cd64788a6ede7c0178c0c94e74eac9413c175e0e1b173e490118d03f0561",
+            "sklearn/utils/fixes.py": "93874cb6c69aa52bb19b7ca8ac654f1e7f6b6622dc752dc5372479bbb8fd0451",
+            "sklearn/utils/testing.py": "4c255005ae44cb8db4ad4c0306d30a75ada2a03b06d826270882656b101cab8a",
+            "sklearn/utils/tests/test_estimator_checks.py": "2c2c62f8c2a8b58b92385cfa8cf4b089c07d656eb97094e2ffe1b2f3474b6f2c",
+            "sklearn/utils/tests/test_testing.py": "9349f2634e239c4f6e9a29fbad0ce7356637e87e0a3c3200b15631dcb4079c12",
+            "sklearn/utils/tests/test_utils.py": "9dc123b04147f867e5a7c4c2c9084370449a9c8496a5238232ada62c7adb02e4"
+          }
+        }
+      },
+      "vertices": 15541,
+      "edges": 72875
+    },
+    "original-fixture-receipt.json": {
+      "scope": "original incremental fixture unchanged; task-owned repo/cache, historically pinned dependencies, explicit library-type policy and source-built provider",
+      "pytest_exitstatus": 0,
+      "generation_reports": [
+        {
+          "backend": "scip-python",
+          "status": "complete",
+          "complete": true,
+          "partial": false,
+          "document_count": 684,
+          "identity_recovery": {
+            "status": "complete",
+            "schema": 1,
+            "source_file_count": 684,
+            "changed_symbol_families": 217,
+            "physical_declarations": 25559,
+            "restored_definition_roles": 56,
+            "positional_definition_queries": 143,
+            "local_binding_families": 8,
+            "local_binding_semantics": "all_source_declarations_for_compiler_binding",
+            "shared_lexical_binding_families": 169,
+            "utf8_replacement_sources": [],
+            "source_only_definitions": [
+              {
+                "file": "doc/tutorial/machine_learning_map/pyparsing.py",
+                "name": "Literal",
+                "line": 2376,
+                "character": 6,
+                "compiler_owner_from_parameter": false
+              },
+              {
+                "file": "sklearn/externals/joblib/_memory_helpers.py",
+                "name": "open_py_source",
+                "line": 95,
+                "character": 8,
+                "compiler_owner_from_parameter": true
+              }
+            ],
+            "unmapped_attribute_definitions": [],
+            "definition_provider": {
+              "command": [
+                "/tmp/codenib-sklearn-cold-start-20261028/source-diagnostic-toolchain/basedpyright-langserver",
+                "--stdio"
+              ],
+              "server_info": {
+                "name": "basedpyright",
+                "version": "1.39.8"
+              },
+              "position_encoding": "utf-16"
+            },
+            "position_encoding": "UTF8",
+            "source_sha256": {
+              "doc/tutorial/machine_learning_map/pyparsing.py": "821644a6c89234828f59c91644040c9bc3909aaf03b13add5601bf073180d142",
+              "sklearn/isotonic.py": "68600b9347c8715b77d1f9732d9840e2acf70f6487b89286d8835a5153cb0994",
+              "sklearn/cluster/bicluster.py": "a44a9107afd4c4997e6103be5bb109a8bc2d0d44ed43982aa4b6aa327a985c94",
+              "sklearn/cluster/tests/test_hierarchical.py": "972787bfb043e678b2e2646dcbb7e8da3f4122e168ea9a111e592841f6fdb0c3",
+              "sklearn/decomposition/factor_analysis.py": "e3605bb87110b24045a1a9ab8265b39f9aa280116dcf46f51347832b76858629",
+              "sklearn/decomposition/fastica_.py": "f5b1d49f1931c7a92d07df4cd02ebe8cc464856ea3b50e30fa748c3fc238734f",
+              "sklearn/decomposition/online_lda.py": "616e36e438ee718cc75d94b0b8bfa5bb26db83f19ea6292b96035b6a70e5138f",
+              "sklearn/ensemble/tests/test_bagging.py": "3832fe5a23e6a46f2bb3016f3aef82ba271af35957b99d1e7800e4e621cc4c8a",
+              "sklearn/ensemble/tests/test_weight_boosting.py": "d6d9cf8ce8e1da7fd6da9fd9ddff5a071c55a965b54e08c03a54dac2ba25619f",
+              "sklearn/externals/six.py": "48d5c0a4337b8f09a55fcfcd2c26fa71a92caf7f7bf099a62f72e02ce36d1eab",
+              "sklearn/externals/joblib/backports.py": "abaa2035aaf7c5cf39750ae14d5260c7d9709c6ff3e93b0337a7ca8b7b3bf1b1",
+              "sklearn/externals/joblib/memory.py": "db331aad82d23fdd5a0bd4dad1f70d6bd4c9269d56031264c5cf37ec8ca6375a",
+              "sklearn/externals/joblib/numpy_pickle_compat.py": "f6f27a73e7f412e89f362d76d3ac2e184af9b0d4d20305160a1e0fd2dcb3af61",
+              "sklearn/externals/joblib/parallel.py": "adf44c3b08f10291cd97ada955c253d2919b9c48769cd9dbd9a366d4bf47468d",
+              "sklearn/externals/joblib/pool.py": "be61bf42bcb938323873d42140f6249ac3a05d1e7016c2521cd992c8fd5eba69",
+              "sklearn/feature_extraction/text.py": "f6c465e65cf98e30fbd3413bd425db22ace94055bd4a3064157593c780889b63",
+              "sklearn/gaussian_process/gaussian_process.py": "9f40bf1c609e75f32f5bd8fbc10ecfe3611548a5de79efb32d87cc7b3f9291a2",
+              "sklearn/gaussian_process/gpc.py": "10bb046544fa0dde3486dcb8733fdd84d228015a9949f2153d17ca392fa686c7",
+              "sklearn/gaussian_process/gpr.py": "54957cf662d6f4819116f981fca2ae1848d16055d081a13673f5942f3c6655a6",
+              "sklearn/gaussian_process/kernels.py": "94c48c85201c7b31d15a8e1bf4435595dc306257e94cc692760a1c2a17b3e217",
+              "sklearn/linear_model/bayes.py": "8186b6ac8e7243210c5a81cf7bfae26ae3ae4ac72d2ce75b7ab3e13535a92176",
+              "sklearn/linear_model/ridge.py": "8392ea684f0133c8cc9e158f36307abc11871af3d5cf574915b9b146c127bb35",
+              "sklearn/manifold/tests/test_t_sne.py": "fe7d33a03fb41ddafa375d4db38c43b576744343f45fe8524f45c33f77f76477",
+              "sklearn/model_selection/_search.py": "8bc453eb8837778ef0f7b85859f1d42374f7784906bd0e66726f80bb78eac8e8",
+              "sklearn/model_selection/tests/test_split.py": "24a0e0458bb2e819f99079a80006cd9e72c03fc21652e821946120e749e6e53a",
+              "sklearn/preprocessing/tests/test_target.py": "439e06015c468e96c18651321b5ecadb4c14110f878c0c4751a4bc34a8620518",
+              "sklearn/tests/test_base.py": "fe9caa971d7738cad32ba6b7480902d0d958d807242832bd7f0a3a8a323c520e",
+              "sklearn/tests/test_metaestimators.py": "2563655639f9564fcc223c37ce1db90dbef2e71f417ee5f361828ed2334d783a",
+              "sklearn/utils/deprecation.py": "ec55cd64788a6ede7c0178c0c94e74eac9413c175e0e1b173e490118d03f0561",
+              "sklearn/utils/fixes.py": "93874cb6c69aa52bb19b7ca8ac654f1e7f6b6622dc752dc5372479bbb8fd0451",
+              "sklearn/utils/testing.py": "4c255005ae44cb8db4ad4c0306d30a75ada2a03b06d826270882656b101cab8a",
+              "sklearn/utils/tests/test_estimator_checks.py": "2c2c62f8c2a8b58b92385cfa8cf4b089c07d656eb97094e2ffe1b2f3474b6f2c",
+              "sklearn/utils/tests/test_testing.py": "9349f2634e239c4f6e9a29fbad0ce7356637e87e0a3c3200b15631dcb4079c12",
+              "sklearn/utils/tests/test_utils.py": "9dc123b04147f867e5a7c4c2c9084370449a9c8496a5238232ada62c7adb02e4"
+            }
+          }
+        }
+      ]
+    },
+    "integrated-fixture-receipt.json": {
+      "scope": "committed integration path with task-owned repo/cache isolation only; real environment fixture and cold pipeline unchanged",
+      "pytest_exitstatus": 0,
+      "generation_reports": [
+        {
+          "backend": "scip-python",
+          "status": "complete",
+          "complete": true,
+          "partial": false,
+          "document_count": 684,
+          "identity_recovery": {
+            "status": "complete",
+            "schema": 1,
+            "source_file_count": 684,
+            "changed_symbol_families": 217,
+            "physical_declarations": 25559,
+            "restored_definition_roles": 56,
+            "positional_definition_queries": 143,
+            "local_binding_families": 8,
+            "local_binding_semantics": "all_source_declarations_for_compiler_binding",
+            "shared_lexical_binding_families": 169,
+            "utf8_replacement_sources": [],
+            "source_only_definitions": [
+              {
+                "file": "doc/tutorial/machine_learning_map/pyparsing.py",
+                "name": "Literal",
+                "line": 2376,
+                "character": 6,
+                "compiler_owner_from_parameter": false
+              },
+              {
+                "file": "sklearn/externals/joblib/_memory_helpers.py",
+                "name": "open_py_source",
+                "line": 95,
+                "character": 8,
+                "compiler_owner_from_parameter": true
+              }
+            ],
+            "unmapped_attribute_definitions": [],
+            "definition_provider": {
+              "command": [
+                "/tmp/codenib-sklearn-cold-start-20261028/source-diagnostic-toolchain/basedpyright-langserver",
+                "--stdio"
+              ],
+              "server_info": {
+                "name": "basedpyright",
+                "version": "1.39.8"
+              },
+              "position_encoding": "utf-16"
+            },
+            "position_encoding": "UTF8",
+            "source_sha256": {
+              "doc/tutorial/machine_learning_map/pyparsing.py": "821644a6c89234828f59c91644040c9bc3909aaf03b13add5601bf073180d142",
+              "sklearn/isotonic.py": "68600b9347c8715b77d1f9732d9840e2acf70f6487b89286d8835a5153cb0994",
+              "sklearn/cluster/bicluster.py": "a44a9107afd4c4997e6103be5bb109a8bc2d0d44ed43982aa4b6aa327a985c94",
+              "sklearn/cluster/tests/test_hierarchical.py": "972787bfb043e678b2e2646dcbb7e8da3f4122e168ea9a111e592841f6fdb0c3",
+              "sklearn/decomposition/factor_analysis.py": "e3605bb87110b24045a1a9ab8265b39f9aa280116dcf46f51347832b76858629",
+              "sklearn/decomposition/fastica_.py": "f5b1d49f1931c7a92d07df4cd02ebe8cc464856ea3b50e30fa748c3fc238734f",
+              "sklearn/decomposition/online_lda.py": "616e36e438ee718cc75d94b0b8bfa5bb26db83f19ea6292b96035b6a70e5138f",
+              "sklearn/ensemble/tests/test_bagging.py": "3832fe5a23e6a46f2bb3016f3aef82ba271af35957b99d1e7800e4e621cc4c8a",
+              "sklearn/ensemble/tests/test_weight_boosting.py": "d6d9cf8ce8e1da7fd6da9fd9ddff5a071c55a965b54e08c03a54dac2ba25619f",
+              "sklearn/externals/six.py": "48d5c0a4337b8f09a55fcfcd2c26fa71a92caf7f7bf099a62f72e02ce36d1eab",
+              "sklearn/externals/joblib/backports.py": "abaa2035aaf7c5cf39750ae14d5260c7d9709c6ff3e93b0337a7ca8b7b3bf1b1",
+              "sklearn/externals/joblib/memory.py": "db331aad82d23fdd5a0bd4dad1f70d6bd4c9269d56031264c5cf37ec8ca6375a",
+              "sklearn/externals/joblib/numpy_pickle_compat.py": "f6f27a73e7f412e89f362d76d3ac2e184af9b0d4d20305160a1e0fd2dcb3af61",
+              "sklearn/externals/joblib/parallel.py": "adf44c3b08f10291cd97ada955c253d2919b9c48769cd9dbd9a366d4bf47468d",
+              "sklearn/externals/joblib/pool.py": "be61bf42bcb938323873d42140f6249ac3a05d1e7016c2521cd992c8fd5eba69",
+              "sklearn/feature_extraction/text.py": "f6c465e65cf98e30fbd3413bd425db22ace94055bd4a3064157593c780889b63",
+              "sklearn/gaussian_process/gaussian_process.py": "9f40bf1c609e75f32f5bd8fbc10ecfe3611548a5de79efb32d87cc7b3f9291a2",
+              "sklearn/gaussian_process/gpc.py": "10bb046544fa0dde3486dcb8733fdd84d228015a9949f2153d17ca392fa686c7",
+              "sklearn/gaussian_process/gpr.py": "54957cf662d6f4819116f981fca2ae1848d16055d081a13673f5942f3c6655a6",
+              "sklearn/gaussian_process/kernels.py": "94c48c85201c7b31d15a8e1bf4435595dc306257e94cc692760a1c2a17b3e217",
+              "sklearn/linear_model/bayes.py": "8186b6ac8e7243210c5a81cf7bfae26ae3ae4ac72d2ce75b7ab3e13535a92176",
+              "sklearn/linear_model/ridge.py": "8392ea684f0133c8cc9e158f36307abc11871af3d5cf574915b9b146c127bb35",
+              "sklearn/manifold/tests/test_t_sne.py": "fe7d33a03fb41ddafa375d4db38c43b576744343f45fe8524f45c33f77f76477",
+              "sklearn/model_selection/_search.py": "8bc453eb8837778ef0f7b85859f1d42374f7784906bd0e66726f80bb78eac8e8",
+              "sklearn/model_selection/tests/test_split.py": "24a0e0458bb2e819f99079a80006cd9e72c03fc21652e821946120e749e6e53a",
+              "sklearn/preprocessing/tests/test_target.py": "439e06015c468e96c18651321b5ecadb4c14110f878c0c4751a4bc34a8620518",
+              "sklearn/tests/test_base.py": "fe9caa971d7738cad32ba6b7480902d0d958d807242832bd7f0a3a8a323c520e",
+              "sklearn/tests/test_metaestimators.py": "2563655639f9564fcc223c37ce1db90dbef2e71f417ee5f361828ed2334d783a",
+              "sklearn/utils/deprecation.py": "ec55cd64788a6ede7c0178c0c94e74eac9413c175e0e1b173e490118d03f0561",
+              "sklearn/utils/fixes.py": "93874cb6c69aa52bb19b7ca8ac654f1e7f6b6622dc752dc5372479bbb8fd0451",
+              "sklearn/utils/testing.py": "4c255005ae44cb8db4ad4c0306d30a75ada2a03b06d826270882656b101cab8a",
+              "sklearn/utils/tests/test_estimator_checks.py": "2c2c62f8c2a8b58b92385cfa8cf4b089c07d656eb97094e2ffe1b2f3474b6f2c",
+              "sklearn/utils/tests/test_testing.py": "9349f2634e239c4f6e9a29fbad0ce7356637e87e0a3c3200b15631dcb4079c12",
+              "sklearn/utils/tests/test_utils.py": "9dc123b04147f867e5a7c4c2c9084370449a9c8496a5238232ada62c7adb02e4"
+            }
+          }
+        }
+      ]
+    },
+    "provider-baseline-receipt.json": {
+      "scope": "unmodified pinned provider baseline for snapshot failure attribution",
+      "source_commit": "50ae07db4593419f57b70012bc7b2f2b1d4ae472",
+      "build": {
+        "returncode": 0,
+        "seconds": 8.273338237777352
+      },
+      "snapshots": {
+        "returncode": 1,
+        "seconds": 3.0492423977702856
+      }
+    },
+    "core-parity-control/receipt.json": {
+      "scope": "retain this failed cache/identity path; no native parity result was produced",
+      "status": "failed_before_native_decode",
+      "stage": "second identity normalization of already-recovered decoded SCIP",
+      "error": "Python definition has conflicting provider symbols",
+      "input_sha256": "78111528c067fa90e1dfddd6885609b5fb56805ab327addaf242a888aca18934",
+      "parity_compared": false
+    },
+    "core-parity-from-raw-control/receipt.json": {
+      "scope": "fresh raw-index full native/serial graph comparison; original recovered-cache failure is preserved separately",
+      "status": "passed",
+      "raw_index_sha256": "55de72053e50000954f80c526ac9ae65a106791df293682de0457666ecdec737",
+      "vertices": 15541,
+      "edges": 72875,
+      "compared_vertex_attributes": [
+        "type",
+        "file",
+        "start_line",
+        "end_line",
+        "selection_line",
+        "unified_name",
+        "symbol_kind",
+        "has_definition"
+      ],
+      "compared_edge_attributes": [
+        "type",
+        "anchor_file",
+        "anchor_line"
+      ],
+      "seconds": 28.57519364543259
+    }
+  },
+  "retained_logs": {
+    "provider-config-before.log": {
+      "local_path": "/tmp/codenib-sklearn-cold-start-20261028/provider-config-before.log",
+      "bytes": 5151,
+      "sha256": "15a1f613e1764246a43952a70bb424c39e39ee208d7c28bbd317d6b648a4db6b"
+    },
+    "provider-unit-after.log": {
+      "local_path": "/tmp/codenib-sklearn-cold-start-20261028/provider-unit-after.log",
+      "bytes": 6168,
+      "sha256": "e5070d4be983d5a15a9e067be1d4fa7bcade6b0e371fe0f303b28f2f0e4ef275"
+    },
+    "provider-development-build.log": {
+      "local_path": "/tmp/codenib-sklearn-cold-start-20261028/provider-development-build.log",
+      "bytes": 76,
+      "sha256": "af35929dadb9bc2074b4e20c35161ee2ab817cdfe5822d76f12788aa62c48334"
+    },
+    "provider-snapshots.log": {
+      "local_path": "/tmp/codenib-sklearn-cold-start-20261028/provider-snapshots.log",
+      "bytes": 2196,
+      "sha256": "86d1d02af2b498779ebbe65387257f1910bad77eac75980d4446b8cdb250ab04"
+    },
+    "provider-snapshots-python36.log": {
+      "local_path": "/tmp/codenib-sklearn-cold-start-20261028/provider-snapshots-python36.log",
+      "bytes": 2104,
+      "sha256": "290d948b996ed56890be9dba95ed88b2c3090df2fc781996bbee65021b64ad47"
+    },
+    "provider-baseline-build.log": {
+      "local_path": "/tmp/codenib-sklearn-cold-start-20261028/provider-baseline-build.log",
+      "bytes": 76,
+      "sha256": "af35929dadb9bc2074b4e20c35161ee2ab817cdfe5822d76f12788aa62c48334"
+    },
+    "provider-baseline-snapshots.log": {
+      "local_path": "/tmp/codenib-sklearn-cold-start-20261028/provider-baseline-snapshots.log",
+      "bytes": 2218,
+      "sha256": "fd0d0148ae58697e6cf9444aa5ca56ae020dbaf6c4ffdda3e7b37764ed91548a"
+    },
+    "original-fixture-plugin-import-failure.log": {
+      "local_path": "/tmp/codenib-sklearn-cold-start-20261028/original-fixture-plugin-import-failure.log",
+      "bytes": 5303,
+      "sha256": "bab72439cad0d12cd71f18bea39724b8e6fd221b31e62210f53b0894de286260"
+    },
+    "original-fixture-path-preflight-skip.log": {
+      "local_path": "/tmp/codenib-sklearn-cold-start-20261028/original-fixture-path-preflight-skip.log",
+      "bytes": 1571,
+      "sha256": "f17dceb56a811cd8e8f07d7717407f123b0288cf978e3351dff7c45cb5c5f145"
+    },
+    "original-fixture.log": {
+      "local_path": "/tmp/codenib-sklearn-cold-start-20261028/original-fixture.log",
+      "bytes": 1799,
+      "sha256": "8697763b30dfc7b9fc25d29dea62e926f791da3d76037ad025aafcb461e0a178"
+    },
+    "integrated-fixture.log": {
+      "local_path": "/tmp/codenib-sklearn-cold-start-20261028/integrated-fixture.log",
+      "bytes": 1799,
+      "sha256": "7dd93a77cd5f926208726e38fc55e170dc52480bd9e89c86b4eb2cb235b823b4"
+    }
+  },
+  "snapshot_assertion": {
+    "candidate": "Expected to find '__init__.py' in fake package files: __editable___test_scip_package_1_0_0_finder.py",
+    "unmodified_base": "Expected to find '__init__.py' in fake package files: __editable___test_scip_package_1_0_0_finder.py",
+    "suite_passed": false,
+    "snapshots_modified": false
+  },
+  "verification": {
+    "related_python_tests_passed": 82,
+    "ci_policy_tests_passed": 23,
+    "helper_failed_build_tests_included": 2,
+    "original_assertions_preserved": true,
+    "product_timeout_seconds": 600,
+    "test_timeout_seconds": 900,
+    "prior_evidence_count": 383,
+    "prior_evidence_manifest_sha256": "854fbee7c133b2e4f5654d66c4f98cfd8bcaff6cab8e5ac71b66dda2e184773a",
+    "prior_evidence_changed": [],
+    "frozen_input_count": 34,
+    "frozen_inputs_changed": [],
+    "native_and_consumer_ci": "pending; original main jobs were skipped after producer failure",
+    "promotion": "hold; provider draft and CI gates remain open",
+    "fresh_raw_native_serial_parity": "passed: 15,541 vertices and 72,875 edges; maintained names, vertex attributes, anchored edge multiset and multiplicity comparison",
+    "recovered_cache_identity": "failed before native decoding: second normalization reports conflicting provider symbols; retained as open gate",
+    "docs": "strict MkDocs and public documentation boundary checks passed",
+    "pinned_hooks": "all changed files passed pinned hooks after formatting"
+  },
+  "implementation_files": {
+    ".github/workflows/ci-full.yml": "b66d85a8a2c296853f7dfd6af1b686f0baae57c481d4352366dc8aba92b92022",
+    "test/graph/incremental/test_graph_patcher.py": "6666dd38e269de19360294e38eaae50c192ed9fe826659277e6d74001a1f4de8",
+    "test/graph/incremental/test_graph_patcher_helpers.py": "780db137a05bbcc25ffe0cf247cbe088b54db93c6f8246a92047260b8ed5ce1b",
+    "test/graph/incremental/sklearn-environment.yml": "2137eb370a6ef868a13d494e8cf128cba6155af536fb32219f58e02c0dfc11e5"
+  },
+  "open_gates": [
+    "Provider dependency remains draft with the original/candidate snapshot discovery failure.",
+    "Repeated identity recovery on an already-normalized decoded cache fails; fresh raw-input parity does not clear this failure.",
+    "CI historical-environment preparation and full serial/native/consumer chain still need remote acceptance.",
+    "Tracking #874 benefit and external-use criteria remain unmet; no new model inference ran."
+  ]
+}

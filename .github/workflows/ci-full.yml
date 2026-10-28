@@ -415,6 +415,17 @@ jobs:
           install-clangd: "true"
           install-bear: "true"
 
+      - name: Prepare historical scikit-learn analysis environment
+        shell: bash -l {0}
+        run: |
+          SKLEARN_ANALYSIS_PREFIX="$RUNNER_TEMP/sklearn-analysis-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          conda env create --yes --solver=libmamba \
+            --prefix "$SKLEARN_ANALYSIS_PREFIX" \
+            --file test/graph/incremental/sklearn-environment.yml
+          "$SKLEARN_ANALYSIS_PREFIX/bin/python" -c \
+            'import sys, numpy, scipy; print(sys.version); print(numpy.__version__, scipy.__version__)'
+          echo "CODENIB_SKLEARN_TEST_PYTHON=$SKLEARN_ANALYSIS_PREFIX/bin/python" >> "$GITHUB_ENV"
+
       - name: Run integration serial tests
         shell: bash -l {0}
         # SCIP outputs land at ~/.codenib/<instance_id>/ (conftest fixture
