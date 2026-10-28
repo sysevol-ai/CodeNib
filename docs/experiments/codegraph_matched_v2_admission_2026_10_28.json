@@ -1,0 +1,788 @@
+{
+  "schema_version": 1,
+  "scope": "Prospective corrected v2 freeze and no-model admission, before the first new query. Original v1 tasks/outcomes and every previous study artifact remain unchanged.",
+  "source_baseline": "3b3aaf5bd7a8b9cd1faa42d8d8c05e827b587bf2",
+  "published_inputs": {
+    "matched-tasks-v2.json": {
+      "artifact": "codegraph_matched_tasks_v2.json",
+      "sha256": "218eb7085da807c3cb067ef742ff7ceff161910dad18c676458a5b599d2d45ea"
+    },
+    "matched-policy-v4.json": {
+      "artifact": "codegraph_matched_policy_v4.json",
+      "sha256": "cb373c0a407fbbc89bd4b12e30076b81b3aa9e77dc46cd017b7a32255f8b604a"
+    },
+    "rubric-source-review-v2.json": {
+      "artifact": "codegraph_matched_source_review_v2.json",
+      "sha256": "fd806c4c78266e101734766b0e7fb16849a8d21db531b8b348dd735cd432b48e"
+    },
+    "execution-binding-v2.json": {
+      "artifact": "codegraph_matched_binding_v2.json",
+      "sha256": "c0a684ea39796d8334109edf674dad71e8311ed8976ca9f121cd669d9f20d40c"
+    },
+    "execution-binding-v2-freeze.json": {
+      "artifact": "codegraph_matched_binding_v2_freeze.json",
+      "sha256": "3e38c5c665d1ee4c896597c056bf341d34f8a5c1ec66dd0114a0f1a86900edbd"
+    },
+    "executables": {
+      "artifact": "codegraph_matched_v2_executables.json",
+      "sha256": "a1e31760cd18baef072985a6585d6ca2d1c431932e09048696e76979b7baa18c"
+    },
+    "runtime_identities": {
+      "artifact": "codegraph_matched_v2_runtime_identities.json",
+      "sha256": "ad5679f7f0f2446e17a77b26351f627472ce9fbe211a41e35c8e7223b8f0b1ea"
+    }
+  },
+  "readiness_controls": [
+    {
+      "artifact": "codegraph_matched_v2_admission_00.json",
+      "sha256": "8f68cb7d8ac755610f0255d7fd91fdf8a0303b94d1d8a3a878be12bdddfc32f9",
+      "generation": "driver-validation-v2",
+      "workflow": {
+        "workflow_index": 8,
+        "instance_id": "pytest-dev__pytest-5809",
+        "arm": "codenib"
+      },
+      "status": "prepared_no_inference"
+    },
+    {
+      "artifact": "codegraph_matched_v2_admission_01.json",
+      "sha256": "4c3a4e6dfe8c5d2b8eca471e0edbc977642a6dbe0b074620a81a8d095c3e4144",
+      "generation": "driver-validation-v2-final",
+      "workflow": {
+        "workflow_index": 0,
+        "instance_id": "psf__requests-1921",
+        "arm": "serena"
+      },
+      "status": "error"
+    },
+    {
+      "artifact": "codegraph_matched_v2_admission_02.json",
+      "sha256": "30af84adef94433fd05edb45828628ed9784b8147b0007e190014c71c4fc64d1",
+      "generation": "driver-validation-v2-corrected",
+      "workflow": {
+        "workflow_index": 0,
+        "instance_id": "psf__requests-1921",
+        "arm": "serena"
+      },
+      "status": "prepared_no_inference"
+    },
+    {
+      "artifact": "codegraph_matched_v2_admission_03.json",
+      "sha256": "276b999d32a1b0d1cb0baf7f866d60858ae7acfc87d726c087c21ec3162af5ac",
+      "generation": "driver-validation-v2-corrected",
+      "workflow": {
+        "workflow_index": 1,
+        "instance_id": "psf__requests-1921",
+        "arm": "codenib"
+      },
+      "status": "error"
+    },
+    {
+      "artifact": "codegraph_matched_v2_admission_04.json",
+      "sha256": "00cb8a13afb86d9a6a2b0ef45ce23438f1b0146a00c4e7bd21dbeaa7ce341899",
+      "generation": "driver-validation-v2-admitted",
+      "workflow": {
+        "workflow_index": 0,
+        "instance_id": "psf__requests-1921",
+        "arm": "serena"
+      },
+      "status": "prepared_no_inference"
+    },
+    {
+      "artifact": "codegraph_matched_v2_admission_05.json",
+      "sha256": "acd177af1340b9f7f497ae8916ee5fa351237a1119c68d65627f6662628254b8",
+      "generation": "driver-validation-v2-admitted",
+      "workflow": {
+        "workflow_index": 1,
+        "instance_id": "psf__requests-1921",
+        "arm": "codenib"
+      },
+      "status": "prepared_no_inference"
+    },
+    {
+      "artifact": "codegraph_matched_v2_admission_06.json",
+      "sha256": "28a527c55614af0f8e3bb8552535e181821df4afaca0a61f62424681aed3d8ed",
+      "generation": "driver-validation-v2-admitted",
+      "workflow": {
+        "workflow_index": 2,
+        "instance_id": "psf__requests-1921",
+        "arm": "codegraph"
+      },
+      "status": "prepared_no_inference"
+    },
+    {
+      "artifact": "codegraph_matched_v2_admission_07.json",
+      "sha256": "2b984b4d09ba2a6cf6c336b233cd2f31e9f7df106affafe48ae2f8c25986baff",
+      "generation": "driver-validation-v2-admitted",
+      "workflow": {
+        "workflow_index": 3,
+        "instance_id": "psf__requests-1921",
+        "arm": "native"
+      },
+      "status": "prepared_no_inference"
+    },
+    {
+      "artifact": "codegraph_matched_v2_admission_08.json",
+      "sha256": "833200f93318b2916edbd2489c46331fa1d921c1fb2d21a8529da00e094a3d42",
+      "generation": "driver-validation-v2-admitted",
+      "workflow": {
+        "workflow_index": 4,
+        "instance_id": "pallets__flask-5014",
+        "arm": "serena"
+      },
+      "status": "prepared_no_inference"
+    },
+    {
+      "artifact": "codegraph_matched_v2_admission_09.json",
+      "sha256": "cabec58f809402ece11f4f8abc1b57e1403f8ba74070782b5a4d07139c909d3b",
+      "generation": "driver-validation-v2-admitted",
+      "workflow": {
+        "workflow_index": 5,
+        "instance_id": "pallets__flask-5014",
+        "arm": "codegraph"
+      },
+      "status": "prepared_no_inference"
+    },
+    {
+      "artifact": "codegraph_matched_v2_admission_10.json",
+      "sha256": "4483e911f107cb737b5d81e3b21a9043f20ebd8229437eb6134591ef662b5432",
+      "generation": "driver-validation-v2-admitted",
+      "workflow": {
+        "workflow_index": 6,
+        "instance_id": "pallets__flask-5014",
+        "arm": "native"
+      },
+      "status": "prepared_no_inference"
+    },
+    {
+      "artifact": "codegraph_matched_v2_admission_11.json",
+      "sha256": "7d220b11e8622b410806f885e74f8e0d35f59bd245c8d3157eea3cc5f3d3805f",
+      "generation": "driver-validation-v2-admitted",
+      "workflow": {
+        "workflow_index": 7,
+        "instance_id": "pallets__flask-5014",
+        "arm": "codenib"
+      },
+      "status": "prepared_no_inference"
+    },
+    {
+      "artifact": "codegraph_matched_v2_admission_12.json",
+      "sha256": "fa8e7d90972059225da8ef6552259ecfab3cdb2316f5945fc7726f2b64202c5e",
+      "generation": "driver-validation-v2-admitted",
+      "workflow": {
+        "workflow_index": 8,
+        "instance_id": "pytest-dev__pytest-5809",
+        "arm": "codenib"
+      },
+      "status": "prepared_no_inference"
+    },
+    {
+      "artifact": "codegraph_matched_v2_admission_13.json",
+      "sha256": "d2f6231188edeea54434273eaf73e877f6a21675554c6903f1669b9cabac4b19",
+      "generation": "driver-validation-v2-admitted",
+      "workflow": {
+        "workflow_index": 9,
+        "instance_id": "pytest-dev__pytest-5809",
+        "arm": "native"
+      },
+      "status": "prepared_no_inference"
+    },
+    {
+      "artifact": "codegraph_matched_v2_admission_14.json",
+      "sha256": "8771b971c7a82c701f28ddcd8badc982ce1bab42f64142a790fd798734df26dd",
+      "generation": "driver-validation-v2-admitted",
+      "workflow": {
+        "workflow_index": 10,
+        "instance_id": "pytest-dev__pytest-5809",
+        "arm": "codegraph"
+      },
+      "status": "prepared_no_inference"
+    },
+    {
+      "artifact": "codegraph_matched_v2_admission_15.json",
+      "sha256": "69f4700d62f574c11e2025e679284686a9eb1e0c5db40be3ad4fb22af955f347",
+      "generation": "driver-validation-v2-admitted",
+      "workflow": {
+        "workflow_index": 11,
+        "instance_id": "pytest-dev__pytest-5809",
+        "arm": "serena"
+      },
+      "status": "prepared_no_inference"
+    }
+  ],
+  "current_batch": {
+    "scope": "Exact-driver no-model preparation and first-source-query admission; no new model inference or task benefit.",
+    "started_utc": "2026-10-28T13:54:44.623269+00:00",
+    "driver_sha256": "1293e68f51d448b4154b80b1dfbe716720c4297f9934ef993470a3fffccfb962",
+    "results": [
+      {
+        "workflow": {
+          "workflow_index": 0,
+          "instance_id": "psf__requests-1921",
+          "arm": "serena"
+        },
+        "process_returncode": 0,
+        "status": "prepared_no_inference",
+        "receipt": "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/00-psf__requests-1921-serena/receipt.json",
+        "receipt_sha256": "ec6ab46cf5ee32574abda3f33fd70c9b7568b72524f82a6cdee7d55e1fbdc71a",
+        "error": null
+      },
+      {
+        "workflow": {
+          "workflow_index": 1,
+          "instance_id": "psf__requests-1921",
+          "arm": "codenib"
+        },
+        "process_returncode": 0,
+        "status": "prepared_no_inference",
+        "receipt": "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/01-psf__requests-1921-codenib/receipt.json",
+        "receipt_sha256": "897180e456d0bea46652bfd106e197ac69a7a6bab604bde8555424ef3126d431",
+        "error": null
+      },
+      {
+        "workflow": {
+          "workflow_index": 2,
+          "instance_id": "psf__requests-1921",
+          "arm": "codegraph"
+        },
+        "process_returncode": 0,
+        "status": "prepared_no_inference",
+        "receipt": "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/02-psf__requests-1921-codegraph/receipt.json",
+        "receipt_sha256": "d09e542c6f9001eac0dc3f246ea131128c5e68e532cde1326683af29e7d63b4a",
+        "error": null
+      },
+      {
+        "workflow": {
+          "workflow_index": 3,
+          "instance_id": "psf__requests-1921",
+          "arm": "native"
+        },
+        "process_returncode": 0,
+        "status": "prepared_no_inference",
+        "receipt": "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/03-psf__requests-1921-native/receipt.json",
+        "receipt_sha256": "a7f880a87907dae3f42f966f191ef0597ce19e535fa87fad112ac02d85b18d9d",
+        "error": null
+      },
+      {
+        "workflow": {
+          "workflow_index": 4,
+          "instance_id": "pallets__flask-5014",
+          "arm": "serena"
+        },
+        "process_returncode": 0,
+        "status": "prepared_no_inference",
+        "receipt": "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/04-pallets__flask-5014-serena/receipt.json",
+        "receipt_sha256": "0d384c6657796791ea415cee96b7b7656009b253f21f7bd2217c8b7601661d28",
+        "error": null
+      },
+      {
+        "workflow": {
+          "workflow_index": 5,
+          "instance_id": "pallets__flask-5014",
+          "arm": "codegraph"
+        },
+        "process_returncode": 0,
+        "status": "prepared_no_inference",
+        "receipt": "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/05-pallets__flask-5014-codegraph/receipt.json",
+        "receipt_sha256": "2d6d404e6d8444b494fbb75b06cb51db59d6058bb8c2d6fbfd0e00ab7837f27b",
+        "error": null
+      },
+      {
+        "workflow": {
+          "workflow_index": 6,
+          "instance_id": "pallets__flask-5014",
+          "arm": "native"
+        },
+        "process_returncode": 0,
+        "status": "prepared_no_inference",
+        "receipt": "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/06-pallets__flask-5014-native/receipt.json",
+        "receipt_sha256": "d58346d11fa0c99df7bbfcf1e56ec9b43c4e13a7e142dc609d7cb9ef7a06b04a",
+        "error": null
+      },
+      {
+        "workflow": {
+          "workflow_index": 7,
+          "instance_id": "pallets__flask-5014",
+          "arm": "codenib"
+        },
+        "process_returncode": 0,
+        "status": "prepared_no_inference",
+        "receipt": "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/07-pallets__flask-5014-codenib/receipt.json",
+        "receipt_sha256": "e4aa68942ab1c9479b819805e96cf4e53a448dd1861b7b3e0680a33ae79a8680",
+        "error": null
+      },
+      {
+        "workflow": {
+          "workflow_index": 8,
+          "instance_id": "pytest-dev__pytest-5809",
+          "arm": "codenib"
+        },
+        "process_returncode": 0,
+        "status": "prepared_no_inference",
+        "receipt": "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/08-pytest-dev__pytest-5809-codenib/receipt.json",
+        "receipt_sha256": "9d59c924fb115d2b834c4d6b4694c48c1fb3e99b0b039e07c8cc0856025f3c15",
+        "error": null
+      },
+      {
+        "workflow": {
+          "workflow_index": 9,
+          "instance_id": "pytest-dev__pytest-5809",
+          "arm": "native"
+        },
+        "process_returncode": 0,
+        "status": "prepared_no_inference",
+        "receipt": "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/09-pytest-dev__pytest-5809-native/receipt.json",
+        "receipt_sha256": "af0e585d597bd870ffa5583974cc8f7442cbeafcfdb7069e01b22f152a28e072",
+        "error": null
+      },
+      {
+        "workflow": {
+          "workflow_index": 10,
+          "instance_id": "pytest-dev__pytest-5809",
+          "arm": "codegraph"
+        },
+        "process_returncode": 0,
+        "status": "prepared_no_inference",
+        "receipt": "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/10-pytest-dev__pytest-5809-codegraph/receipt.json",
+        "receipt_sha256": "03df721886ccc4c7d7d97a0e3f237b763c684a289841e7682fd2328f8d94b769",
+        "error": null
+      },
+      {
+        "workflow": {
+          "workflow_index": 11,
+          "instance_id": "pytest-dev__pytest-5809",
+          "arm": "serena"
+        },
+        "process_returncode": 0,
+        "status": "prepared_no_inference",
+        "receipt": "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/11-pytest-dev__pytest-5809-serena/receipt.json",
+        "receipt_sha256": "5f24a8a1553e055f362f5eb8caeb0fd2df13b369b02b6feeab8737c100939c50",
+        "error": null
+      }
+    ],
+    "finished_utc": "2026-10-28T13:58:14.104040+00:00"
+  },
+  "conformance": {
+    "driver-conformance-v2-admitted/receipt.json": {
+      "sha256": "601d10f46bc13eb8d476529f636c4b79597ad8040c8c1cfb60671cb4788dbc1e",
+      "receipt": {
+        "scope": "No-model driver conformance; not matched task acceptance.",
+        "driver_sha256": "1293e68f51d448b4154b80b1dfbe716720c4297f9934ef993470a3fffccfb962",
+        "checks": {
+          "product_cache_not_source": true,
+          "source_change_detected": true,
+          "committed_solver_change_in_patch": true,
+          "product_cache_not_submitted": true,
+          "all_model_and_cache_counters_counted_once": true,
+          "thinking_not_double_counted": true,
+          "missing_usage_not_zero": true
+        }
+      }
+    },
+    "driver-usage-conformance-v2-admitted/assessment.json": {
+      "sha256": "145a70a54b57d0ae7e6b90e4fe11e00a91d3060a7ff7a446c75704191b70f06b",
+      "receipt": {
+        "scope": "Simulated SDK failure boundary; no model or billed call.",
+        "driver_sha256": "1293e68f51d448b4154b80b1dfbe716720c4297f9934ef993470a3fffccfb962",
+        "prior_cumulative_result_retained_as_lower_bound": true,
+        "latest_query_missing_usage_blocks_next_workflow": true,
+        "session_closed": true
+      }
+    },
+    "terminal-conformance/assessment.json": {
+      "sha256": "2073e07aa7a8293d11a6d0c984f7c33a5acc1ec335d7017f98e031fecd5b391e",
+      "receipt": {
+        "scope": "No-model source protocol conformance, not task acceptance",
+        "driver_sha256": "1293e68f51d448b4154b80b1dfbe716720c4297f9934ef993470a3fffccfb962",
+        "invalid_terminals_rejected": [
+          {
+            "subtype": "error_max_turns",
+            "is_error": false,
+            "terminal_reason": "completed",
+            "stop_reason": "end_turn",
+            "api_error_status": null
+          },
+          {
+            "subtype": "error_max_budget_usd",
+            "is_error": false,
+            "terminal_reason": "completed",
+            "stop_reason": "end_turn",
+            "api_error_status": null
+          },
+          {
+            "subtype": "success",
+            "is_error": true,
+            "terminal_reason": "completed",
+            "stop_reason": "end_turn",
+            "api_error_status": null
+          },
+          {
+            "subtype": "success",
+            "is_error": false,
+            "terminal_reason": null,
+            "stop_reason": "end_turn",
+            "api_error_status": null
+          },
+          {
+            "subtype": "success",
+            "is_error": false,
+            "terminal_reason": "max_turns",
+            "stop_reason": "end_turn",
+            "api_error_status": null
+          },
+          {
+            "subtype": "success",
+            "is_error": false,
+            "terminal_reason": "api_error",
+            "stop_reason": "end_turn",
+            "api_error_status": null
+          },
+          {
+            "subtype": "success",
+            "is_error": false,
+            "terminal_reason": "aborted_tools",
+            "stop_reason": "end_turn",
+            "api_error_status": null
+          },
+          {
+            "subtype": "success",
+            "is_error": false,
+            "terminal_reason": "completed",
+            "stop_reason": "max_tokens",
+            "api_error_status": null
+          },
+          {
+            "subtype": "success",
+            "is_error": false,
+            "terminal_reason": "completed",
+            "stop_reason": "refusal",
+            "api_error_status": null
+          },
+          {
+            "subtype": "success",
+            "is_error": false,
+            "terminal_reason": "completed",
+            "stop_reason": "tool_use",
+            "api_error_status": null
+          },
+          {
+            "subtype": "success",
+            "is_error": false,
+            "terminal_reason": "completed",
+            "stop_reason": "end_turn",
+            "api_error_status": 401
+          },
+          {
+            "subtype": "success",
+            "is_error": false,
+            "terminal_reason": "completed",
+            "stop_reason": "end_turn",
+            "api_error_status": 403
+          },
+          {
+            "subtype": "success",
+            "is_error": false,
+            "terminal_reason": "completed",
+            "stop_reason": "end_turn",
+            "api_error_status": 429
+          },
+          {
+            "subtype": "success",
+            "is_error": false,
+            "terminal_reason": "completed",
+            "stop_reason": "end_turn",
+            "api_error_status": null,
+            "origin": {
+              "kind": "task-notification"
+            }
+          }
+        ],
+        "returned_429_stops_cohort": true,
+        "final_usage_retained": true,
+        "session_closed": true
+      }
+    }
+  },
+  "uv_options": {
+    "scope": "Model-free pinned uv CLI option inspection",
+    "owner": "026819fcdcdb47fc94e96b2ab873282b",
+    "commands": [
+      {
+        "argv": [
+          "uv",
+          "tool",
+          "install",
+          "--help"
+        ],
+        "exit_code": 0,
+        "output": "Install commands provided by a Python package\n\nUsage: uv tool install [OPTIONS] <PACKAGE>\n\nArguments:\n  <PACKAGE>  The package to install commands from\n\nOptions:\n  -w, --with <WITH>\n          Include the following additional requirements\n      --with-requirements <WITH_REQUIREMENTS>\n          Run with the packages listed in the given files\n  -e, --editable\n          Install the target package in editable mode, such that changes in the package's source\n          directory are reflected without reinstallation\n      --with-editable <WITH_EDITABLE>\n          Include the given packages in editable mode\n      --with-executables-from <WITH_EXECUTABLES_FROM>\n          Install executables from the following packages\n  -c, --constraints <CONSTRAINTS>\n          Constrain versions using the given requirements files [env: `UV_CONSTRAINT`=]\n      --overrides <OVERRIDES>\n          Override versions using the given requirements files [env: `UV_OVERRIDE`=]\n      --excludes <EXCLUDES>\n          Exclude packages from resolution using the given requirements files [env: `UV_EXCLUDE`=]\n  -b, --build-constraints <BUILD_CONSTRAINTS>\n          Constrain build dependencies using the given requirements files when building source\n          distributions [env: `UV_BUILD_CONSTRAINT`=]\n      --force\n          Force installation of the tool\n      --lfs\n          Whether to use Git LFS when adding a dependency from Git\n      --python-platform <PYTHON_PLATFORM>\n          The platform for which requirements should be installed [possible values: windows, linux,\n          macos, x86_64-pc-windows-msvc, aarch64-pc-windows-msvc, i686-pc-windows-msvc,\n          x86_64-unknown-linux-gnu, aarch64-apple-darwin, x86_64-apple-darwin,\n          aarch64-unknown-linux-gnu, aarch64-unknown-linux-musl, x86_64-unknown-linux-musl,\n          riscv64-unknown-linux, x86_64-manylinux2014, x86_64-manylinux_2_17, x86_64-manylinux_2_28,\n          x86_64-manylinux_2_31, x86_64-manylinux_2_32, x86_64-manylinux_2_33,\n          x86_64-manylinux_2_34, x86_64-manylinux_2_35, x86_64-manylinux_2_36,\n          x86_64-manylinux_2_37, x86_64-manylinux_2_38, x86_64-manylinux_2_39,\n          x86_64-manylinux_2_40, aarch64-manylinux2014, aarch64-manylinux_2_17,\n          aarch64-manylinux_2_28, aarch64-manylinux_2_31, aarch64-manylinux_2_32,\n          aarch64-manylinux_2_33, aarch64-manylinux_2_34, aarch64-manylinux_2_35,\n          aarch64-manylinux_2_36, aarch64-manylinux_2_37, aarch64-manylinux_2_38,\n          aarch64-manylinux_2_39, aarch64-manylinux_2_40, aarch64-linux-android,\n          x86_64-linux-android, wasm32-pyodide2024, wasm32-pyodide2025, arm64-apple-ios,\n          arm64-apple-ios-simulator, x86_64-apple-ios-simulator]\n      --torch-backend <TORCH_BACKEND>\n          The backend to use when fetching packages in the PyTorch ecosystem (e.g., `cpu`, `cu126`,\n          or `auto`) [env: UV_TORCH_BACKEND=] [possible values: auto, cpu, cu132, cu130, cu129,\n          cu128, cu126, cu125, cu124, cu123, cu122, cu121, cu120, cu118, cu117, cu116, cu115, cu114,\n          cu113, cu112, cu111, cu110, cu102, cu101, cu100, cu92, cu91, cu90, cu80, rocm7.2, rocm7.1,\n          rocm7.0, rocm6.4, rocm6.3, rocm6.2.4, rocm6.2, rocm6.1, rocm6.0, rocm5.7, rocm5.6,\n          rocm5.5, rocm5.4.2, rocm5.4, rocm5.3, rocm5.2, rocm5.1.1, rocm4.2, rocm4.1, rocm4.0.1,\n          xpu]\n\nIndex options:\n      --index <INDEX>\n          The indexes to use when resolving dependencies, in addition to the default index [env:\n          UV_INDEX]\n      --default-index <DEFAULT_INDEX>\n          The default package index (by default: <https://pypi.org/simple>) [env: UV_DEFAULT_INDEX]\n  -i, --index-url <INDEX_URL>\n          (Deprecated: use `--default-index` instead) The URL of the Python package index (by\n          default: <https://pypi.org/simple>) [env: UV_INDEX_URL]\n      --extra-index-url <EXTRA_INDEX_URL>\n          (Deprecated: use `--index` instead) Extra URLs of package indexes to use, in addition to\n          `--index-url` [env: UV_EXTRA_INDEX_URL]\n  -f, --find-links <FIND_LINKS>\n          Locations to search for candidate distributions, in addition to those found in the\n          registry indexes [env: UV_FIND_LINKS]\n      --no-index\n          Ignore the registry index (e.g., PyPI), instead relying on direct URL dependencies and\n          those provided via `--find-links`\n      --index-strategy <INDEX_STRATEGY>\n          The strategy to use when resolving against multiple index URLs [env: UV_INDEX_STRATEGY=]\n          [possible values: first-index, unsafe-first-match, unsafe-best-match]\n      --keyring-provider <KEYRING_PROVIDER>\n          Attempt to use `keyring` for authentication for index URLs [env: UV_KEYRING_PROVIDER=]\n          [possible values: disabled, subprocess]\n\nResolver options:\n  -U, --upgrade\n          Allow package upgrades, ignoring pinned versions in any existing output file. Implies\n          `--refresh`\n  -P, --upgrade-package <UPGRADE_PACKAGE>\n          Allow upgrades for a specific package, ignoring pinned versions in any existing output\n          file. Implies `--refresh-package`\n      --upgrade-group <UPGRADE_GROUP>\n          Allow upgrades for all packages in a dependency group, ignoring pinned versions in any\n          existing output file\n      --resolution <RESOLUTION>\n          The strategy to use when selecting between the different compatible versions for a given\n          package requirement [env: UV_RESOLUTION=] [possible values: highest, lowest,\n          lowest-direct]\n      --prerelease <PRERELEASE>\n          The strategy to use when considering pre-release versions [env: UV_PRERELEASE=] [possible\n          values: disallow, allow, if-necessary, explicit, if-necessary-or-explicit]\n      --prerelease-package <PRERELEASE_PACKAGE>\n          The strategy to use when considering pre-release versions for a specific package\n      --fork-strategy <FORK_STRATEGY>\n          The strategy to use when selecting multiple versions of a given package across Python\n          versions and platforms [env: UV_FORK_STRATEGY=] [possible values: fewest, requires-python]\n      --exclude-newer <EXCLUDE_NEWER>\n          Limit candidate packages to those that were uploaded prior to the given date [env:\n          UV_EXCLUDE_NEWER=]\n      --exclude-newer-package <EXCLUDE_NEWER_PACKAGE>\n          Limit candidate packages for specific packages to those that were uploaded prior to the\n          given date\n      --no-sources\n          Ignore the `tool.uv.sources` table when resolving dependencies. Used to lock against the\n          standards-compliant, publishable package metadata, as opposed to using any workspace, Git,\n          URL, or local path sources [env: UV_NO_SOURCES=]\n      --no-sources-package <NO_SOURCES_PACKAGE>\n          Don't use sources from the `tool.uv.sources` table for the specified packages [env:\n          `UV_NO_SOURCES_PACKAGE`=]\n\nInstaller options:\n      --reinstall\n          Reinstall all packages, regardless of whether they're already installed. Implies\n          `--refresh`\n      --reinstall-package <REINSTALL_PACKAGE>\n          Reinstall a specific package, regardless of whether it's already installed. Implies\n          `--refresh-package`\n      --link-mode <LINK_MODE>\n          The method to use when installing packages from the global cache [env: UV_LINK_MODE=]\n          [possible values: clone, copy, hardlink, symlink]\n      --compile-bytecode\n          Compile Python files to bytecode after installation [env: UV_COMPILE_BYTECODE=]\n\nBuild options:\n  -C, --config-setting <CONFIG_SETTING>\n          Settings to pass to the PEP 517 build backend, specified as `KEY=VALUE` pairs\n      --config-settings-package <CONFIG_SETTINGS_PACKAGE>\n          Settings to pass to the PEP 517 build backend for a specific package, specified as\n          `PACKAGE:KEY=VALUE` pairs\n      --no-build-isolation\n          Disable isolation when building source distributions [env: UV_NO_BUILD_ISOLATION=]\n      --no-build-isolation-package <NO_BUILD_ISOLATION_PACKAGE>\n          Disable isolation when building source distributions for a specific package\n      --no-build\n          Don't build source distributions [env: UV_NO_BUILD=]\n      --no-build-package <NO_BUILD_PACKAGE>\n          Don't build source distributions for a specific package [env: `UV_NO_BUILD_PACKAGE`=]\n      --no-binary\n          Don't install pre-built wheels [env: UV_NO_BINARY=]\n      --no-binary-package <NO_BINARY_PACKAGE>\n          Don't install pre-built wheels for a specific package [env: `UV_NO_BINARY_PACKAGE`=]\n      --require-build-hashes\n          Require hashes for all build dependencies\n      --no-require-build-hashes\n          Do not require hashes for every build dependency\n\nCache options:\n  -n, --no-cache\n          Avoid reading from or writing to the cache, instead using a temporary directory for the\n          duration of the operation [env: UV_NO_CACHE=]\n      --cache-dir <CACHE_DIR>\n          Path to the cache directory [env: UV_CACHE_DIR=/opt/pilot-state/uv-cache]\n      --refresh\n          Refresh all cached data\n      --refresh-package <REFRESH_PACKAGE>\n          Refresh cached data for a specific package\n\nPython options:\n  -p, --python <PYTHON>      The Python interpreter to use to build the tool environment. [env:\n                             UV_PYTHON=]\n      --managed-python       Require use of uv-managed Python versions [env: UV_MANAGED_PYTHON=]\n      --no-managed-python    Disable use of uv-managed Python versions [env: UV_NO_MANAGED_PYTHON=]\n      --no-python-downloads  Disable automatic downloads of Python. [env:\n                             \"UV_PYTHON_DOWNLOADS=never\"]\n\nGlobal options:\n  -q, --quiet...\n          Use quiet output\n  -v, --verbose...\n          Use verbose output\n      --color <COLOR_CHOICE>\n          Control the use of color in output [possible values: auto, always, never]\n      --system-certs\n          Whether to load TLS certificates from the platform's native certificate store [env:\n          UV_SYSTEM_CERTS=]\n      --offline\n          Disable network access [env: UV_OFFLINE=]\n      --allow-insecure-host <ALLOW_INSECURE_HOST>\n          Allow insecure connections to a host [env: UV_INSECURE_HOST=]\n      --no-progress\n          Hide all progress outputs [env: UV_NO_PROGRESS=]\n      --directory <DIRECTORY>\n          Change to the given directory prior to running the command [env: UV_WORKING_DIR=]\n      --project <PROJECT>\n          Discover a project in the given directory [env: UV_PROJECT=]\n      --config-file <CONFIG_FILE>\n          The path to a `uv.toml` file to use for configuration [env: UV_CONFIG_FILE=]\n      --no-config\n          Avoid discovering configuration files (`pyproject.toml`, `uv.toml`) [env: UV_NO_CONFIG=]\n  -h, --help\n          Display the concise help for this command\n"
+      },
+      {
+        "argv": [
+          "uv",
+          "pip",
+          "install",
+          "--help"
+        ],
+        "exit_code": 0,
+        "output": "Install packages into an environment\n\nUsage: uv pip install [OPTIONS] <PACKAGE|--requirements <REQUIREMENTS>|--editable <EDITABLE>|--group <GROUP>>\n\nArguments:\n  [PACKAGE]...  Install all listed packages\n\nOptions:\n  -r, --requirements <REQUIREMENTS>\n          Install the packages listed in the given files\n  -e, --editable <EDITABLE>\n          Install the editable package based on the provided local file path\n      --no-editable\n          Install any editable dependencies as non-editable [env: UV_NO_EDITABLE=]\n      --no-editable-package <NO_EDITABLE_PACKAGE>\n          Install the specified editable packages as non-editable\n  -c, --constraints <CONSTRAINTS>\n          Constrain versions using the given requirements files [env: `UV_CONSTRAINT`=]\n      --overrides <OVERRIDES>\n          Override versions using the given requirements files [env: `UV_OVERRIDE`=]\n      --excludes <EXCLUDES>\n          Exclude packages from resolution using the given requirements files [env: `UV_EXCLUDE`=]\n  -b, --build-constraints <BUILD_CONSTRAINTS>\n          Constrain build dependencies using the given requirements files when building source\n          distributions [env: `UV_BUILD_CONSTRAINT`=]\n      --extra <EXTRA>\n          Include optional dependencies from the specified extra name; may be provided more than\n          once\n      --all-extras\n          Include all optional dependencies\n      --cert <FILE>\n          Path to a PEM-encoded CA certificate bundle\n      --group <GROUP>\n          Install the specified dependency group from a `pylock.toml` or `pyproject.toml`\n      --no-deps\n          Ignore package dependencies, instead only installing those packages explicitly listed on\n          the command line or in the requirements files\n      --require-hashes\n          Require a matching hash for each requirement [env: UV_REQUIRE_HASHES=]\n      --no-verify-hashes\n          Disable validation of hashes in the requirements file [env: UV_NO_VERIFY_HASHES=]\n      --require-build-hashes\n          Require hashes for all build dependencies\n      --system\n          Install packages into the system Python environment [env: UV_SYSTEM_PYTHON=]\n      --break-system-packages\n          Allow uv to modify an `EXTERNALLY-MANAGED` Python installation [env:\n          UV_BREAK_SYSTEM_PACKAGES=]\n      --no-break-system-packages\n          \n  -t, --target <TARGET>\n          Install packages into the specified directory, rather than into the virtual or system\n          Python environment. The packages will be installed at the top-level of the directory\n      --prefix <PREFIX>\n          Install packages into `lib`, `bin`, and other top-level folders under the specified\n          directory, as if a virtual environment were present at that location\n      --no-build\n          Don't build source distributions\n      --no-binary <NO_BINARY>\n          Don't install pre-built wheels\n      --only-binary <ONLY_BINARY>\n          Only use pre-built wheels; don't build source distributions\n      --python-version <PYTHON_VERSION>\n          The minimum Python version that should be supported by the requirements (e.g., `3.7` or\n          `3.7.9`)\n      --python-platform <PYTHON_PLATFORM>\n          The platform for which requirements should be installed [possible values: windows, linux,\n          macos, x86_64-pc-windows-msvc, aarch64-pc-windows-msvc, i686-pc-windows-msvc,\n          x86_64-unknown-linux-gnu, aarch64-apple-darwin, x86_64-apple-darwin,\n          aarch64-unknown-linux-gnu, aarch64-unknown-linux-musl, x86_64-unknown-linux-musl,\n          riscv64-unknown-linux, x86_64-manylinux2014, x86_64-manylinux_2_17, x86_64-manylinux_2_28,\n          x86_64-manylinux_2_31, x86_64-manylinux_2_32, x86_64-manylinux_2_33,\n          x86_64-manylinux_2_34, x86_64-manylinux_2_35, x86_64-manylinux_2_36,\n          x86_64-manylinux_2_37, x86_64-manylinux_2_38, x86_64-manylinux_2_39,\n          x86_64-manylinux_2_40, aarch64-manylinux2014, aarch64-manylinux_2_17,\n          aarch64-manylinux_2_28, aarch64-manylinux_2_31, aarch64-manylinux_2_32,\n          aarch64-manylinux_2_33, aarch64-manylinux_2_34, aarch64-manylinux_2_35,\n          aarch64-manylinux_2_36, aarch64-manylinux_2_37, aarch64-manylinux_2_38,\n          aarch64-manylinux_2_39, aarch64-manylinux_2_40, aarch64-linux-android,\n          x86_64-linux-android, wasm32-pyodide2024, wasm32-pyodide2025, arm64-apple-ios,\n          arm64-apple-ios-simulator, x86_64-apple-ios-simulator]\n      --exact\n          Perform an exact sync, removing extraneous packages\n      --strict\n          Validate the Python environment after completing the installation, to detect packages with\n          missing dependencies or other issues\n      --dry-run\n          Perform a dry run, i.e., don't actually install anything but resolve the dependencies and\n          print the resulting plan\n      --check\n          Check whether the environment satisfies the requirements without modifying it\n      --output-format <OUTPUT_FORMAT>\n          Select the output format [default: text] [possible values: text, json]\n      --torch-backend <TORCH_BACKEND>\n          The backend to use when fetching packages in the PyTorch ecosystem (e.g., `cpu`, `cu126`,\n          or `auto`) [env: UV_TORCH_BACKEND=] [possible values: auto, cpu, cu132, cu130, cu129,\n          cu128, cu126, cu125, cu124, cu123, cu122, cu121, cu120, cu118, cu117, cu116, cu115, cu114,\n          cu113, cu112, cu111, cu110, cu102, cu101, cu100, cu92, cu91, cu90, cu80, rocm7.2, rocm7.1,\n          rocm7.0, rocm6.4, rocm6.3, rocm6.2.4, rocm6.2, rocm6.1, rocm6.0, rocm5.7, rocm5.6,\n          rocm5.5, rocm5.4.2, rocm5.4, rocm5.3, rocm5.2, rocm5.1.1, rocm4.2, rocm4.1, rocm4.0.1,\n          xpu]\n      --user\n          \n\nIndex options:\n      --index <INDEX>\n          The indexes to use when resolving dependencies, in addition to the default index [env:\n          UV_INDEX]\n      --default-index <DEFAULT_INDEX>\n          The default package index (by default: <https://pypi.org/simple>) [env: UV_DEFAULT_INDEX]\n  -i, --index-url <INDEX_URL>\n          (Deprecated: use `--default-index` instead) The URL of the Python package index (by\n          default: <https://pypi.org/simple>) [env: UV_INDEX_URL]\n      --extra-index-url <EXTRA_INDEX_URL>\n          (Deprecated: use `--index` instead) Extra URLs of package indexes to use, in addition to\n          `--index-url` [env: UV_EXTRA_INDEX_URL]\n  -f, --find-links <FIND_LINKS>\n          Locations to search for candidate distributions, in addition to those found in the\n          registry indexes [env: UV_FIND_LINKS]\n      --no-index\n          Ignore the registry index (e.g., PyPI), instead relying on direct URL dependencies and\n          those provided via `--find-links`\n      --index-strategy <INDEX_STRATEGY>\n          The strategy to use when resolving against multiple index URLs [env: UV_INDEX_STRATEGY=]\n          [possible values: first-index, unsafe-first-match, unsafe-best-match]\n      --keyring-provider <KEYRING_PROVIDER>\n          Attempt to use `keyring` for authentication for index URLs [env: UV_KEYRING_PROVIDER=]\n          [possible values: disabled, subprocess]\n\nResolver options:\n  -U, --upgrade\n          Allow package upgrades, ignoring pinned versions in any existing output file. Implies\n          `--refresh`\n  -P, --upgrade-package <UPGRADE_PACKAGE>\n          Allow upgrades for a specific package, ignoring pinned versions in any existing output\n          file. Implies `--refresh-package`\n      --upgrade-group <UPGRADE_GROUP>\n          Allow upgrades for all packages in a dependency group, ignoring pinned versions in any\n          existing output file\n      --resolution <RESOLUTION>\n          The strategy to use when selecting between the different compatible versions for a given\n          package requirement [env: UV_RESOLUTION=] [possible values: highest, lowest,\n          lowest-direct]\n      --prerelease <PRERELEASE>\n          The strategy to use when considering pre-release versions [env: UV_PRERELEASE=] [possible\n          values: disallow, allow, if-necessary, explicit, if-necessary-or-explicit]\n      --prerelease-package <PRERELEASE_PACKAGE>\n          The strategy to use when considering pre-release versions for a specific package\n      --fork-strategy <FORK_STRATEGY>\n          The strategy to use when selecting multiple versions of a given package across Python\n          versions and platforms [env: UV_FORK_STRATEGY=] [possible values: fewest, requires-python]\n      --exclude-newer <EXCLUDE_NEWER>\n          Limit candidate packages to those that were uploaded prior to the given date [env:\n          UV_EXCLUDE_NEWER=]\n      --exclude-newer-package <EXCLUDE_NEWER_PACKAGE>\n          Limit candidate packages for specific packages to those that were uploaded prior to the\n          given date\n      --no-sources\n          Ignore the `tool.uv.sources` table when resolving dependencies. Used to lock against the\n          standards-compliant, publishable package metadata, as opposed to using any workspace, Git,\n          URL, or local path sources [env: UV_NO_SOURCES=]\n      --no-sources-package <NO_SOURCES_PACKAGE>\n          Don't use sources from the `tool.uv.sources` table for the specified packages [env:\n          `UV_NO_SOURCES_PACKAGE`=]\n\nInstaller options:\n      --reinstall\n          Reinstall all packages, regardless of whether they're already installed. Implies\n          `--refresh`\n      --reinstall-package <REINSTALL_PACKAGE>\n          Reinstall a specific package, regardless of whether it's already installed. Implies\n          `--refresh-package`\n      --link-mode <LINK_MODE>\n          The method to use when installing packages from the global cache [env: UV_LINK_MODE=]\n          [possible values: clone, copy, hardlink, symlink]\n      --compile-bytecode\n          Compile Python files to bytecode after installation [env: UV_COMPILE_BYTECODE=]\n\nBuild options:\n  -C, --config-setting <CONFIG_SETTING>\n          Settings to pass to the PEP 517 build backend, specified as `KEY=VALUE` pairs\n      --config-settings-package <CONFIG_SETTINGS_PACKAGE>\n          Settings to pass to the PEP 517 build backend for a specific package, specified as\n          `PACKAGE:KEY=VALUE` pairs\n      --no-build-isolation\n          Disable isolation when building source distributions [env: UV_NO_BUILD_ISOLATION=]\n      --no-build-isolation-package <NO_BUILD_ISOLATION_PACKAGE>\n          Disable isolation when building source distributions for a specific package\n\nCache options:\n  -n, --no-cache\n          Avoid reading from or writing to the cache, instead using a temporary directory for the\n          duration of the operation [env: UV_NO_CACHE=]\n      --cache-dir <CACHE_DIR>\n          Path to the cache directory [env: UV_CACHE_DIR=/opt/pilot-state/uv-cache]\n      --refresh\n          Refresh all cached data\n      --refresh-package <REFRESH_PACKAGE>\n          Refresh cached data for a specific package\n\nPython options:\n  -p, --python <PYTHON>      The Python interpreter into which packages should be installed. [env:\n                             UV_PYTHON=]\n      --managed-python       Require use of uv-managed Python versions [env: UV_MANAGED_PYTHON=]\n      --no-managed-python    Disable use of uv-managed Python versions [env: UV_NO_MANAGED_PYTHON=]\n      --no-python-downloads  Disable automatic downloads of Python. [env:\n                             \"UV_PYTHON_DOWNLOADS=never\"]\n\nGlobal options:\n  -q, --quiet...\n          Use quiet output\n  -v, --verbose...\n          Use verbose output\n      --color <COLOR_CHOICE>\n          Control the use of color in output [possible values: auto, always, never]\n      --system-certs\n          Whether to load TLS certificates from the platform's native certificate store [env:\n          UV_SYSTEM_CERTS=]\n      --offline\n          Disable network access [env: UV_OFFLINE=]\n      --allow-insecure-host <ALLOW_INSECURE_HOST>\n          Allow insecure connections to a host [env: UV_INSECURE_HOST=]\n      --no-progress\n          Hide all progress outputs [env: UV_NO_PROGRESS=]\n      --directory <DIRECTORY>\n          Change to the given directory prior to running the command [env: UV_WORKING_DIR=]\n      --project <PROJECT>\n          Discover a project in the given directory [env: UV_PROJECT=]\n      --config-file <CONFIG_FILE>\n          The path to a `uv.toml` file to use for configuration [env: UV_CONFIG_FILE=]\n      --no-config\n          Avoid discovering configuration files (`pyproject.toml`, `uv.toml`) [env: UV_NO_CONFIG=]\n  -h, --help\n          Display the concise help for this command\n\nUse `uv help pip install` for more details.\n"
+      }
+    ],
+    "container_id": "b7edaac17dfedaae61fbb4802ba6cd493874cbec6bc3e6685a74efbc97418612",
+    "container_removed": true
+  },
+  "owned_container_cleanup": [
+    {
+      "container_id": "1ba26e54353350a03f1278daac4bb0b997c71a5fed1a0eb8095e41f11d58aade",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "1f8b660cf31f3df2df6a34373edc4c7f3ac4c2fd960e9480c772b6bfb690e01f",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "26484e9f3b3f0bf99d0aab25ff91938fe100c49e4147b02c537d1e7fd85e35e0",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "28159df2f1e9d7a31a0fc0e91802abccaf06bcca22537526aeff60d2aeaff560",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "2fde5195d44a659767473a6982c84d9f945b40890bce459b87195387e2d6b140",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "3c6deda2fabcb1bf791a61ee4c37f4efaf55304f5a99a2254e32aa0eb615bd52",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "3cf17a75925f409a5c631e9a00f6a8f85063e21574045259cef72ba17e244ebf",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "3f37a776354b041e7ae4add7de80af826e2db721606d165eb6443c0ad38bc0c2",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "47f602040f9c652b337c85b72d4c1798742325fbb4497f82878e9ff885ea6324",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "533940c8d8b7dfd41152ff5239550064fe500af04cf3e4637e7837f83c1e892b",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "5ce9e0bc25fd7fb09f93ea94d9fe3eeec3bbbfc39c8974102e22fad272cb8c51",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "6a3a85030de58a30c8dfba4e265a808e8314e6fa32a489d9539bcd678f7c0e67",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "6b1715e42964eab3d751690dcae3dea50a94bb58c3fca6d2ee2059c81f0fcf45",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "767dca891763a0017eda1e5dbe5da26b442f88f451dc4332bc290df5c6c2403d",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "7b41c1ad510170aad902c0417e265585ec97baae9f19470b78ff51eb294c2087",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "7bcb077b6dc2245d7515200daa54070bc2a2cda0295a8675c4f06fa2a015b50d",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "7db6c1549e54fd7ad234e308da764b656f59985469e5673bac7070e0bb78b450",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "8c13ef7249a7e53d0bba5086cc593583d868ec77b86382a2effc6ca834001166",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "920622f391a3a1641496898054006fe4f74ce1ff6df5a9f3b2ccb356f9de0fd2",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "a6376b47cde2686772cff7c503aad8f76a25cb2c99c4292051695c130840de87",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "a8a2e14d86f7535079d9399e8b1caa7f4b4ffe0b3ba27849a667aecafed98593",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "ad0c752adca8c74e947dea2ba17e5d8a057620811d637c9a07de06c2f6f0be05",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "ad917c6970572508fe27753bb85245e5f58d4613e0858d57fc26c0b0675fcc1a",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "b36bbe3201c646ff495bd7f10edd86bae462642abff3273f542ff9a63134b89a",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "b7edaac17dfedaae61fbb4802ba6cd493874cbec6bc3e6685a74efbc97418612",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "d12cc9ea8f7204bedd4695e5e6449f369b8c18ae57c3d0fa1b6f800d3e613a7e",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "d720aad8eff4afc8902390f63fbbe255c70ece737e2ce1999f9066aac84e4209",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "da96bd29663142e86aa1badf0d7eabc5c4adda16062b1eac5d02ed41cd8f50dd",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "f47d2494ace5657827b2a1d8f867fe243605982d340726c1483b94b915abaa40",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "f85a436e595dcba0c3fae7865826abb9f65142b6089286dd0eeb25e85e59ecf3",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "ffd0953444a63defa9fa63e67b011f04b1335a93da96e9b484a418cb623ff448",
+      "confirmed_absent": true
+    }
+  ],
+  "prior_codegraph_json_files_unchanged": {
+    "docs/experiments/codegraph_admission_2026_10_27.json": "cf60d66b913f68f6a375a0e5aba792a8abd3291eb2a7d8e692b72d2855761631",
+    "docs/experiments/codegraph_agent_recovery_2026_10_28.json": "defc3d887987b27efe2ce46ce295d828eab07068b25d3fe47c157ae4d88bf247",
+    "docs/experiments/codegraph_agent_recovery_protocol_v1.json": "572ddcfa442293698d613906e820f5bd4a6fd3aaf0a41f9d6112b822d0b6d35b",
+    "docs/experiments/codegraph_agent_recovery_v1_00.json": "0c21c732d46eb73cc1929b51f9fecbc6162a15ee9a73f87fa11edfac87d890e8",
+    "docs/experiments/codegraph_agent_recovery_v1_01.json": "40951346ed0e1d7c4c25cc027fc3716fb785a779b54febd3fa373642d40f2b19",
+    "docs/experiments/codegraph_agent_recovery_v1_02.json": "ef664daf5ed3ebeed89c7b3b26949df22735f9c3a0f23e3771e3949467138c42",
+    "docs/experiments/codegraph_common_runtime_2026_10_28.json": "8cf04adfa920a2daacb6711d4eac2637c5cb9264b4895f9705fe8fc3248bf6f7",
+    "docs/experiments/codegraph_common_runtime_v1_00.json": "300424b5550ab5d431c448790b787c6249bc1f4df08d2262258500ee752e486a",
+    "docs/experiments/codegraph_common_runtime_v1_01.json": "3fe2d29b485e7c5edbd03ae005ab2565f14fe54bd073b1620d5680c7c50eae52",
+    "docs/experiments/codegraph_common_runtime_v1_02.json": "8fd6acb160848e623cd4772106054fe660a1a0adcf7017064e8f68b33b187a24",
+    "docs/experiments/codegraph_common_runtime_v1_03.json": "005a56c40c283e6f74f7e57384718bd675f71d1e4e33b4e6b3064775dd464b6f",
+    "docs/experiments/codegraph_common_runtime_v1_04.json": "17908338ae64a635d581b7f4d00b442412ffbf1ce68f389fea1a2cd7125ccfd6",
+    "docs/experiments/codegraph_common_runtime_v1_05.json": "108ad9447279b6b7d307907c001c13d09c78f111960580fa10df1fb9da227dcd",
+    "docs/experiments/codegraph_common_runtime_v1_06.json": "6588a4599944c456cee01d1ed1300e82b738da7d10051f6ec285df602a7435f5",
+    "docs/experiments/codegraph_common_runtime_v1_07.json": "2f1e557fb874801ca5b4a7e0dccd6c3f56c73c4aa5ad1e46488ee38d11a6d013",
+    "docs/experiments/codegraph_common_runtime_v1_08.json": "6b6dcba29e3bc4400d57cdbd67e10127d02a4f2d7e681108753c08f0e655ddc7",
+    "docs/experiments/codegraph_common_runtime_v1_09.json": "7dc5612063943b518364203c993b6780118dd7212d927a122fd6cdd164bccd03",
+    "docs/experiments/codegraph_common_runtime_v1_10.json": "00f96996834141d56dacbf24f58f455dfb6e3f5b1e826b0d6d562983967739c1",
+    "docs/experiments/codegraph_common_runtime_v1_11.json": "c732a05327bd09229cb277c99f654faeeedb41b7faeaf785086f4f9e6aa77689",
+    "docs/experiments/codegraph_common_runtime_v1_12.json": "3d7346e563cd401ec59146174c5fd3c90181abab4d0c9e57b11e4775f29bbd1d",
+    "docs/experiments/codegraph_common_runtime_v1_13.json": "5ca3874c82b8419946e90e266359a174d41549405744fd3f2f0c32e7c86d91b0",
+    "docs/experiments/codegraph_common_runtime_v1_14.json": "8e77272244f4de222888c55c9154b3b1fd2ed4c9a10d84a169f1648e7780c900",
+    "docs/experiments/codegraph_common_runtime_v1_15.json": "40879342bd52da2502cb13ce555fc3206e003aeba025159e6721d66eb1795453",
+    "docs/experiments/codegraph_common_runtime_v1_16.json": "9adc08f0821ef28d47110509d43256aca7aa9790b1b0c0adc8d106b9228820de",
+    "docs/experiments/codegraph_common_runtime_v1_audit_0.json": "63ca9594445ec72cd6a917b01089f0931405eec66f24c84981d0b1b3ffad4b6f",
+    "docs/experiments/codegraph_common_runtime_v1_audit_1.json": "fd36b9c64965078568638eb0c307570af8443c4f333de572a0ceac60ec5714c3",
+    "docs/experiments/codegraph_common_runtime_v1_audit_10.json": "b5d401dc3910f53101cf3e319c45afadd211a9403a2e1ebf4a3f9e50b2c77305",
+    "docs/experiments/codegraph_common_runtime_v1_audit_11.json": "3304a15e9fc8605ab525b66e98a8c0dfd741042f37a392ebf61e29924188f368",
+    "docs/experiments/codegraph_common_runtime_v1_audit_12.json": "4cc19f0be7370fe5ec6c684960ba3d20a0ae477a87013e3ea9ebdeaae61d1e8b",
+    "docs/experiments/codegraph_common_runtime_v1_audit_13.json": "94db39c0bb7439d527fc6c7cf86c06985fc9dbd6dfc8123950594e6f63c68c42",
+    "docs/experiments/codegraph_common_runtime_v1_audit_14.json": "93f1ea426bbb0303316f2835ca082f14190cd56a0c6f65b4feabfe57c34848d3",
+    "docs/experiments/codegraph_common_runtime_v1_audit_2.json": "9bdf79e81d018edd18db38e9297a97da3d1aa10f4fe717a182b8c78c1e218dbe",
+    "docs/experiments/codegraph_common_runtime_v1_audit_3.json": "2091674adbd9dce9fbb9d11181c8be153a09be2414ffc736235a31391a957291",
+    "docs/experiments/codegraph_common_runtime_v1_audit_4.json": "3ea5f2f3cddea2455c827f8ff653d4b8c57bd237829a6325c5af80685954e05d",
+    "docs/experiments/codegraph_common_runtime_v1_audit_5.json": "1ff44b4e78709170245e5c72a2f58a8c71fa2082e3052bb1a322f24d988d494f",
+    "docs/experiments/codegraph_common_runtime_v1_audit_6.json": "9dbfc8aba70e79d7e925ea77aa6544b0ddd3b0559189e57367bc0a14a78ba93d",
+    "docs/experiments/codegraph_common_runtime_v1_audit_7.json": "b5384ca2c3b95d6aac8f9b15d39b03e51212b7b6a2bdde0a73f2fdb15da22f23",
+    "docs/experiments/codegraph_common_runtime_v1_audit_8.json": "a29ea0b8b787d25c1aab8a6268b4731f5349d71c17a04f7ab0590223b7850507",
+    "docs/experiments/codegraph_common_runtime_v1_audit_9.json": "2856c99f38ceb41167b62c661230d612f1dbc79bda8b88ce0427e1f522339c1d",
+    "docs/experiments/codegraph_common_runtime_v1_package_0.json": "994d139794b04fa7071bc390da6bdc937575c8f648aec55c27d9c0093b0fc736",
+    "docs/experiments/codegraph_common_runtime_v1_package_1.json": "bb32fa3947a67d12b698201ac528cf0f5d8f944357f389ff6a7a428df9a3d2b2",
+    "docs/experiments/codegraph_common_runtime_v1_package_2.json": "934c126a69ea54a713f803aa978e386f34bb660cac2ce9f21aa7902efa0ed111",
+    "docs/experiments/codegraph_common_runtime_v1_package_3.json": "086ed2f918c9477cf955cbe828376eaf5b8bd8f2160d59d38a9887259d743d09",
+    "docs/experiments/codegraph_common_runtime_v1_package_4.json": "c646c5da903c9caed727098db0c256fc08ff7f143d720a42318c2cff9d7f5668",
+    "docs/experiments/codegraph_common_runtime_v1_package_5.json": "cb7e1f28b70ed4e94a72e9e3ff2a4a2e7518784aab4988734e0639ec22f54735",
+    "docs/experiments/codegraph_common_runtime_v1_package_6.json": "fe746541ffd92e0606e1150e186a00278bc855b77f170873e140eddb6ec143dd",
+    "docs/experiments/codegraph_currentness_2026_10_27.json": "2e6c337974219aac7cad2c0482d800a0524632620e3e238cb739b17da1f0eed8",
+    "docs/experiments/codegraph_execution_2026_10_27.json": "5defd066ef52273cb5440564cb6e5331ded829cd7b412afab7b47cb3504e6fe4",
+    "docs/experiments/codegraph_identity_2026_10_27.json": "5dd181d297c3d072fc6a64c616ff0e8b74d9d3192c574c3bce3f00db64ce4887",
+    "docs/experiments/codegraph_matched_assessment_v1.json": "339aba959fe03e92e3c7148f50f3792e3649019332fb41c6dbb35aa0033a9ca9",
+    "docs/experiments/codegraph_matched_controller_v1.json": "da735bcc6fe6e4c74c622759cae2c429d538ec8dee2a54f5c538962638d18d39",
+    "docs/experiments/codegraph_matched_execution_v1.json": "14333c3c473c9a89cf4c746446ee72bcf01edf4423edee6e2f6b1356cf59b6a5",
+    "docs/experiments/codegraph_matched_policy_v2.json": "cddb449862e49b3807304deb163c0dd10a8b2f4c6f2ff519ca8f7287e0fac368",
+    "docs/experiments/codegraph_matched_policy_v3.json": "da562c62849d8bc3937dc6dde1c1a2205609ceba7988d6367b2f18e135bebe41",
+    "docs/experiments/codegraph_matched_subgroups_v1.json": "4697b6574129c6943c64ab353881eda379afae2cb8085e2106a61f884093087a",
+    "docs/experiments/codegraph_matched_tasks_v1.json": "76f170aaaacee775009fc01d7eedac9bb74d2e73d21c158fe7dee9a78a8d5bd6",
+    "docs/experiments/codegraph_matched_validation_v1.json": "6afeb244e85e8a912c98adc6e232f2ffbb7bc33990d053e62ebca2022dca9495",
+    "docs/experiments/codegraph_matched_workflow_v1_00.json": "e57554cff4c57dd93be3d530833429c87e89768c024a34ebec0b3910e557d34b",
+    "docs/experiments/codegraph_matched_workflow_v1_01.json": "ffc7941c16b9ad9ce1faac6cc716d3dc84694623f2c2b87cbaaa45b1393ebbe9",
+    "docs/experiments/codegraph_matched_workflow_v1_02.json": "7d07c74cc28759a6c7d1554576f13f937e9c7c294477e6bd1d888fb25f5de2ae",
+    "docs/experiments/codegraph_matched_workflow_v1_03.json": "441b4de344cb2818e1d3ec0fdcf800aec62b392fe8e684fbec4772021ab3d031",
+    "docs/experiments/codegraph_matched_workflow_v1_04.json": "836595e0ffada5a6b20478975d531fd8bbe964babc4aaddd049ba7197da05385",
+    "docs/experiments/codegraph_matched_workflow_v1_05.json": "be9c988ae6acd824685b3f9943edf4eac9ed835eae966ae4f738bd8f7a990cf7",
+    "docs/experiments/codegraph_matched_workflow_v1_06.json": "d3776f9cfd3577a5946a0e00a28a2b93d96ebdce88ef2b9f2a2471d38e66ceb6",
+    "docs/experiments/codegraph_matched_workflow_v1_07.json": "bcb7e5af411c4bea22e3cfda6dbe826a28993a11cf72f0defd096ab6d8a07dc8",
+    "docs/experiments/codegraph_matched_workflow_v1_08.json": "b156a317de04a049256a6893d971614e65ae1cbb8319645ba1f409581e083af2",
+    "docs/experiments/codegraph_matched_workflow_v1_09.json": "e23f29d3e3e7782236f41ddd0b5dd7eb17c626437cdf7ca617b1d83c8cec7fd7",
+    "docs/experiments/codegraph_matched_workflow_v1_10.json": "1ddf046c11ec2a721f19fb0b13ef32cde07782fcd46b3da1070b6a45c4633626",
+    "docs/experiments/codegraph_matched_workflow_v1_11.json": "eb4208bd37aa80fa8a89f57e203bb754055b3779643d92c07d7d107dd50e205e",
+    "docs/experiments/codegraph_mcp_recovery_2026_10_28.json": "8de9ca5c52eb80242c6628a442d833152d18fd129a8b0bad184c1f9c025e3118",
+    "docs/experiments/codegraph_mcp_recovery_v1_00.json": "83725f64e3c54d5ce2da605a1c26b3efff284b63618e185b7144dcaa09fefeeb",
+    "docs/experiments/codegraph_mcp_recovery_v1_01.json": "07fe5b743c6d2de2ed41b65ee52065f0d5dc9909aaa1bb4cdda2ea3e4b0642e4",
+    "docs/experiments/codegraph_mcp_recovery_v1_02.json": "c0b0a539ee17314c3af95577bd8e8a688f4ee6f8a8a7820d64f0b154be3844c3",
+    "docs/experiments/codegraph_mcp_recovery_v1_03.json": "9b3f50b5580e4c7f9d9eae912c5cec428839e3691e3ab06442a5133099df2e86",
+    "docs/experiments/codegraph_mcp_recovery_v1_04.json": "e5313dfe789cb731530d6b9ef3f653b2ed36c78f3cd0d7b16adf0d1eac6fb354",
+    "docs/experiments/codegraph_mcp_recovery_v1_05.json": "1dcfddd30b2646a404be39f875a9ea32120240b46a5ff50af2a687121bc14d58",
+    "docs/experiments/codegraph_peer_source_admission_2026_10_28.json": "bb72d1b436b12d4e948ac363329696ef5fc282f96db363b93f3a4de42b854019",
+    "docs/experiments/codegraph_peer_source_admission_v1_00.json": "6df124e68ebc6ae021645118acfbd638b73c0f67106bb88fff5688cda4d5429b",
+    "docs/experiments/codegraph_peer_source_admission_v1_01.json": "8bf6a9b7508b847946849953c08f8d386bec013f0648a6f66442fc3486af3ee7",
+    "docs/experiments/codegraph_peer_source_admission_v1_02.json": "4ba52de732f26f6e73febd377fe544b18d48a65752fd6dc49a12a902bd915d58",
+    "docs/experiments/codegraph_peer_source_admission_v1_03.json": "45b40d7a7d65be208ec24870b7ae644c3bfeda9f2248cee3042fb298bbbcbc28",
+    "docs/experiments/codegraph_peer_source_admission_v1_04.json": "f09f64b60730b903598010ace38c51beb2e8cc88fc65feffdc3ab9c809985737",
+    "docs/experiments/codegraph_peer_source_admission_v1_05.json": "acf983ca87194d3decaa4fd4b58e5ae0fc92d11667732574eb2eb0b61da64284",
+    "docs/experiments/codegraph_peer_source_admission_v1_06.json": "2c633d397e0d17936325efd1b31be941b8a8c6b83f2e4798e013b991d3ab52cd",
+    "docs/experiments/codegraph_peer_source_admission_v1_07.json": "362afbe932bb19c4217a072fc20e021c7e90432de9589031a73d370a7de761f2",
+    "docs/experiments/codegraph_peer_source_admission_v1_08.json": "da85bb5f60709a05205342c645fa307743ad1e4e93b45a1c77e9d0c926459b0b",
+    "docs/experiments/codegraph_peer_source_admission_v1_09.json": "88a2996f414d97902968388e9e2d9e6386bb40a6230e077de2116a6a1205bbdd",
+    "docs/experiments/codegraph_peer_source_admission_v1_10.json": "ce25b0177c51a001e46f1a05764b17d4d075df0ef2b9c86ab8b74266434c55cd",
+    "docs/experiments/codegraph_peer_source_admission_v1_11.json": "7743913a1a90fededbbe410a89e490685b1aaab58634363a03af380d9cbab5a5",
+    "docs/experiments/codegraph_peers_2026_10_27.json": "4b000ee2efaaa54fd4eacf673eac8a8ca2513f6c32151a11d72edce0c8d2b7fb",
+    "docs/experiments/codegraph_python_identity_2026_10_28.json": "12848e1f5cdcfd53a3f1f9c709957002597cedffb9c5278e228410788571a5a9",
+    "docs/experiments/codegraph_python_identity_v1_00.json": "c185b1ae9555b2f22239c27ae474433bc365eef190108a9d89908bc09e5e4fdc",
+    "docs/experiments/codegraph_python_identity_v1_01.json": "33d72471f4333991ec0dd75c82694b3486c0c9503725fed6abb533fd20e3c31a",
+    "docs/experiments/codegraph_python_identity_v1_02.json": "75476e5910d5c0a8d61d6ab176ef26a41b86feeb0ec1e88205141899729eeb17",
+    "docs/experiments/codegraph_python_identity_v1_03.json": "3b6d56d006a5b1f1f17990bc092fde4d9127ee98916e43e5b741db6f868f1b36",
+    "docs/experiments/codegraph_python_identity_v1_04.json": "677c5699c33aeb8abfb875950969271b3d240a616936c925306e9e309c1a18f3",
+    "docs/experiments/codegraph_python_identity_v1_05.json": "6121a3f2fbd0b1c1f263d4a6355a044785f2cff181ac3fe3c10fda0beeb44d5c",
+    "docs/experiments/codegraph_python_identity_v1_06.json": "30e7c21c75bae83674348a72e6c0d2e571a7a22bdfc9bb7fb8215cacc9f2edbf",
+    "docs/experiments/codegraph_python_identity_v1_07.json": "c03df14676bd35c8a6b31b881e294b0b33187610ae2d8c9010a818dab013eee6",
+    "docs/experiments/codegraph_python_identity_v1_08.json": "f7691db1335b00afe1fd526e69813cad2a28fe0052be01f34931bea70d01cd63",
+    "docs/experiments/codegraph_python_identity_v1_09.json": "1257810bbbbf5ac4c1b50488759e88cd4b0844e80e072e33cac59e4e4b198703",
+    "docs/experiments/codegraph_python_identity_v1_10.json": "de4d0f26ce872b04292495bc498834cb6c5622b2ee342b60ea98699af473336b",
+    "docs/experiments/codegraph_reference_semantics_2026_10_28.json": "bc7a5f34e9540ed5808a06e342fff38943acdc42ff32e3ea8d59bc06f704b8d4",
+    "docs/experiments/codegraph_reload_2026_10_27.json": "d98b1733498b944e67e4c9de8525f30e0fe0527e415de6783a6d90afdc06cfb6",
+    "docs/experiments/codegraph_reload_stdio_v1_00.json": "bac2300d7fed0f4a80619dc3ffc8d5a3f324c81af422c24cbfc6ccc112c98b7d",
+    "docs/experiments/codegraph_reload_stdio_v1_01.json": "6d872405a2113589ba609834f011a520d0f1312a427e62695b3cf0cbf207d58b",
+    "docs/experiments/codegraph_reload_stdio_v1_02.json": "eb345373dbfd4e8ec8748b26dc4549e14f63ed65399af49bffbf7dda29d806ac",
+    "docs/experiments/codegraph_runtime_2026_10_27.json": "c8f4ca2ce52a98268837cc74165e4ccf6374c793e5c25badd788721a8459d795",
+    "docs/experiments/codegraph_sdk_2026_10_27.json": "fd671b2ac6c86b078195058428bd43c6192c0893cd3faa60212050221d4f822e",
+    "docs/experiments/codegraph_sdk_scope_2026_10_27.json": "c58e4945351a51e6aa661356f40fa0d830cd02eddf53726c77bccb8d1d6c9d76",
+    "docs/experiments/codegraph_source_assessment_v1_flask.json": "18d4732d7442615b51f14e794b9968d57346644d2310780fcce859597a5bdf6d",
+    "docs/experiments/codegraph_source_assessment_v1_pytest.json": "9addbb2197d63479f09cd258c885fe70f05603ba5501709d498f611aa11a79ae",
+    "docs/experiments/codegraph_source_assessment_v1_requests.json": "b2d29fa354934c58288d06a0b83a416d9a5fdf6a923bf680dc3b898018153f6e",
+    "docs/experiments/codegraph_source_protocol_v2.json": "33d40d67da41464d05c2085bc943d2fb628f79c69d78f5dd4474ec815b6cd38f",
+    "docs/experiments/codegraph_source_review_method_v1.json": "454b9b0c7f2b6ba6384fb1b460a4251bff81e15c70689a334af9d5a7f9a676de",
+    "docs/experiments/codegraph_workflow_2026_10_26.json": "7bb9649e6c9728e267924f1993d25c0d6cb2b11b802c122f0cea8225c0d4eae0"
+  },
+  "native_grading_controls": {
+    "original_selected_controls": 6,
+    "adapter_source_unchanged_from_v1": true
+  },
+  "development_failures": {
+    "return_value_unpack": "The driver command returns (code, output); the first identity query passed the tuple to json.loads. Its original failure remains recorded.",
+    "metadata_scope": "A product identity scan from the target checkout picked up that project egg-info. The query now runs from /opt, matching the original identity audit. No product dependency change is hidden by this correction."
+  },
+  "model_inference_sessions": 0,
+  "external_participants": 0
+}

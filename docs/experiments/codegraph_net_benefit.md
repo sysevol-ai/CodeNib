@@ -11,7 +11,10 @@ Separate common-runtime controls retain all four arms' actual installation,
 source lookup and source-addition update costs, including Codegraph's pending
 replies and bounded retry. A full corrected source rubric, prospective benefit
 protocol, broader provider coverage, representative workflows beyond these
-controls, automatic rebuilding and external trials remain open.
+controls, automatic rebuilding and external trials remain open. The separate
+corrected v2 cohort now has a complete pre-inference
+[protocol and executable/runtime freeze](codegraph_matched_protocol_v2.md);
+its execution and assessment remain pending.
 Established 2026-10-26
 (Pacific); target review 2026-11-09.
 Current outcomes and open gates belong to [adoption A0](../adoption_roadmap.md).

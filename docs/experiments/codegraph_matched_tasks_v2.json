@@ -1,0 +1,367 @@
+{
+  "schema_version": 2,
+  "status": "frozen prospective corrected v2 tasks; no v2 inference at freeze",
+  "recorded_utc": "2026-10-28T13:38:25.556131+00:00",
+  "cohort_selection_sha256": "3929173ac94afd3527e636d6f0d5dc260842eb5db323e03f3b0052f3c25d1f18",
+  "source": "historical exposed SWE-bench Verified cases; no unseen-task or population-wide efficacy claim",
+  "task_count": 15,
+  "repository_count": 3,
+  "tasks": [
+    {
+      "task_id": "psf__requests-1921-lookup",
+      "instance_id": "psf__requests-1921",
+      "repo": "psf/requests",
+      "source_commit": "3c88e520da24ae6f736929a750876e7654accc3d",
+      "sequence": 1,
+      "kind": "lookup",
+      "session": "cold",
+      "prompt": "Work only in the provided checkout using any available native or optional tools. Cite repository-relative source paths and 1-based line ranges for code explanations. Treat static relationships as static evidence, not a complete runtime trace. Tool choice is yours; no optional tool is required. Reference patches and external grading feedback are unavailable. Locate the production method that combines a Request with Session defaults into a PreparedRequest. Explain which request/session settings it merges. Cite its definition with repository-relative path and 1-based lines. Do not modify files.",
+      "read_only": true,
+      "timeout_seconds": 180,
+      "acceptance": {
+        "method": "source-checked rubric review against this task version and captured delivered observations",
+        "all_required": [
+          "Identify Session.prepare_request in requests/sessions.py, not Request.prepare as the session-merging implementation.",
+          "Describe headers, cookies and authentication/session defaults from the actual implementation.",
+          "Cite a valid definition range and support the stated behavior."
+        ],
+        "terminal_requirement": "successful SDK terminal; an output-limit/error/timeout terminal is not accepted even if partial text or patch exists"
+      }
+    },
+    {
+      "task_id": "psf__requests-1921-flow",
+      "instance_id": "psf__requests-1921",
+      "repo": "psf/requests",
+      "source_commit": "3c88e520da24ae6f736929a750876e7654accc3d",
+      "sequence": 2,
+      "kind": "flow",
+      "session": "return",
+      "prompt": "Work only in the provided checkout using any available native or optional tools. Cite repository-relative source paths and 1-based line ranges for code explanations. Treat static relationships as static evidence, not a complete runtime trace. Tool choice is yours; no optional tool is required. Reference patches and external grading feedback are unavailable. Trace how Session.request turns a method and URL into an outgoing request, from preparation through transport selection and the actual transport call. Explain where redirects re-enter this flow. Cite the production functions and their call sites across files; distinguish static calls from runtime choices. Do not modify files.",
+      "read_only": true,
+      "timeout_seconds": 360,
+      "acceptance": {
+        "method": "source-checked rubric review against this task version and captured delivered observations",
+        "all_required": [
+          "Connect Session.request to Session.prepare_request and PreparedRequest.prepare.",
+          "Connect Session.send, get_adapter and HTTPAdapter.send to the underlying connection/urllib3 transport call.",
+          "Explain Session.resolve_redirects returning through send, including redirect control, without treating adapter selection as one unconditional runtime target.",
+          "Cite the relevant sessions, models and adapters source boundaries."
+        ],
+        "terminal_requirement": "successful SDK terminal; an output-limit/error/timeout terminal is not accepted even if partial text or patch exists"
+      }
+    },
+    {
+      "task_id": "psf__requests-1921-impact",
+      "instance_id": "psf__requests-1921",
+      "repo": "psf/requests",
+      "source_commit": "3c88e520da24ae6f736929a750876e7654accc3d",
+      "sequence": 3,
+      "kind": "impact",
+      "session": "return",
+      "prompt": "Work only in the provided checkout using any available native or optional tools. Cite repository-relative source paths and 1-based line ranges for code explanations. Treat static relationships as static evidence, not a complete runtime trace. Tool choice is yours; no optional tool is required. Reference patches and external grading feedback are unavailable. If Session.send changes how it forwards request options, which production callers in this repository need review? Explain each direct caller and the redirect consequence. Locate two existing tests relevant to direct sending or redirects, and say what each protects. Cite paths and lines. Do not modify files.",
+      "read_only": true,
+      "timeout_seconds": 360,
+      "acceptance": {
+        "method": "source-checked rubric review against this task version and captured delivered observations",
+        "all_required": [
+          "Identify production direct callers Session.request and Session.resolve_redirects with their actual argument handling.",
+          "Explain the redirect consequence and distinguish the adapter transport call from callers of Session.send.",
+          "Locate two actual existing source tests that exercise direct sending or redirect behavior, with valid citations and correct descriptions."
+        ],
+        "terminal_requirement": "successful SDK terminal; an output-limit/error/timeout terminal is not accepted even if partial text or patch exists"
+      }
+    },
+    {
+      "task_id": "psf__requests-1921-repair",
+      "instance_id": "psf__requests-1921",
+      "repo": "psf/requests",
+      "source_commit": "3c88e520da24ae6f736929a750876e7654accc3d",
+      "sequence": 4,
+      "kind": "repair",
+      "session": "return",
+      "prompt": "Work only in the provided checkout using any available native or optional tools. Cite repository-relative source paths and 1-based line ranges for code explanations. Treat static relationships as static evidence, not a complete runtime trace. Tool choice is yours; no optional tool is required. Reference patches and external grading feedback are unavailable. Fix the issue below in this checkout. Preserve unrelated changes and add focused regression coverage if useful. You may run existing local tests. Leave the final source changes in the checkout and give a short summary of the fix and verification.\n\nRemoving a default header of a session\n[The docs](http://docs.python-requests.org/en/latest/user/advanced/#session-objects) say that you can prevent sending a session header by setting the headers value to None in the method's arguments. You would expect (as [discussed on IRC](https://botbot.me/freenode/python-requests/msg/10788170/)) that this would work for session's default headers, too:\n\n``` python\nsession = requests.Session()\n# Do not send Accept-Encoding\nsession.headers['Accept-Encoding'] = None\n```\n\nWhat happens is that \"None\"  gets sent as the value of header.\n\n```\nAccept-Encoding: None\n```\n\nFor the reference, here is a way that works:\n\n``` python\ndel session.headers['Accept-Encoding']\n```\n\n",
+      "read_only": false,
+      "timeout_seconds": 720,
+      "acceptance": {
+        "method": "pinned native repair grading",
+        "all_required": [
+          "The unchanged pinned native SWE-bench Verified 4.1.0 grading protocol resolves this exact instance on the captured model patch.",
+          "Retain native collection errors, model/native test-patch conflicts, behavioral failures and all selected outcomes separately.",
+          "No reference material or grading feedback is supplied to this or later model tasks."
+        ],
+        "terminal_requirement": "successful SDK terminal; an output-limit/error/timeout terminal is not accepted even if partial text or patch exists"
+      }
+    },
+    {
+      "task_id": "psf__requests-1921-post_edit",
+      "instance_id": "psf__requests-1921",
+      "repo": "psf/requests",
+      "source_commit": "3c88e520da24ae6f736929a750876e7654accc3d",
+      "sequence": 5,
+      "kind": "post_edit",
+      "session": "return",
+      "prompt": "Work only in the provided checkout using any available native or optional tools. Cite repository-relative source paths and 1-based line ranges for code explanations. Treat static relationships as static evidence, not a complete runtime trace. Tool choice is yours; no optional tool is required. Reference patches and external grading feedback are unavailable. A controlled local edit has added prepare_probe_request. Locate its current implementation and trace its next production call. Does invoking this helper itself send a network request? Explain the preparation/sending boundary with current source citations. Do not modify files.",
+      "read_only": true,
+      "timeout_seconds": 180,
+      "acceptance": {
+        "method": "source-checked rubric review against this task version and captured delivered observations",
+        "all_required": [
+          "Cite the newly added helper and its call to Session.prepare_request.",
+          "Explain that it creates a PreparedRequest without calling Session.send or the adapter transport.",
+          "Cite current helper and production definitions; do not present pre-edit graph facts as current."
+        ],
+        "terminal_requirement": "successful SDK terminal; an output-limit/error/timeout terminal is not accepted even if partial text or patch exists"
+      }
+    },
+    {
+      "task_id": "pallets__flask-5014-lookup",
+      "instance_id": "pallets__flask-5014",
+      "repo": "pallets/flask",
+      "source_commit": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d",
+      "sequence": 1,
+      "kind": "lookup",
+      "session": "cold",
+      "prompt": "Work only in the provided checkout using any available native or optional tools. Cite repository-relative source paths and 1-based line ranges for code explanations. Treat static relationships as static evidence, not a complete runtime trace. Tool choice is yours; no optional tool is required. Reference patches and external grading feedback are unavailable. Locate where Flask executes after_request response callbacks. Explain the ordering of the per-request callbacks and registered application/blueprint callbacks in this implementation. Cite the definition and 1-based lines. Do not modify files.",
+      "read_only": true,
+      "timeout_seconds": 180,
+      "acceptance": {
+        "method": "source-checked rubric review against this task version and captured delivered observations",
+        "all_required": [
+          "Identify Flask.process_response in src/flask/app.py.",
+          "Correctly distinguish request-context callbacks from reversed registered after_request callback lists and relevant blueprint/application iteration.",
+          "Cite valid current source for the ordering claimed."
+        ],
+        "terminal_requirement": "successful SDK terminal; an output-limit/error/timeout terminal is not accepted even if partial text or patch exists"
+      }
+    },
+    {
+      "task_id": "pallets__flask-5014-flow",
+      "instance_id": "pallets__flask-5014",
+      "repo": "pallets/flask",
+      "source_commit": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d",
+      "sequence": 2,
+      "kind": "flow",
+      "session": "return",
+      "prompt": "Work only in the provided checkout using any available native or optional tools. Cite repository-relative source paths and 1-based line ranges for code explanations. Treat static relationships as static evidence, not a complete runtime trace. Tool choice is yours; no optional tool is required. Reference patches and external grading feedback are unavailable. Trace a normal WSGI request from Flask.__call__ to the registered view and back to the WSGI response. Include request-context entry/cleanup, before-request handling and after-request processing. Cite the responsible functions across files and distinguish plugin or callback dispatch from a complete runtime trace. Do not modify files.",
+      "read_only": true,
+      "timeout_seconds": 360,
+      "acceptance": {
+        "method": "source-checked rubric review against this task version and captured delivered observations",
+        "all_required": [
+          "Connect __call__, wsgi_app and request-context push/pop in app.py and ctx.py.",
+          "Connect full_dispatch_request, preprocess_request and dispatch_request to the selected view.",
+          "Connect finalize_request, make_response and process_response to response creation and after-request processing.",
+          "Explain finally-based context cleanup and cite the relevant cross-file call sites without claiming a complete concrete runtime path."
+        ],
+        "terminal_requirement": "successful SDK terminal; an output-limit/error/timeout terminal is not accepted even if partial text or patch exists"
+      }
+    },
+    {
+      "task_id": "pallets__flask-5014-impact",
+      "instance_id": "pallets__flask-5014",
+      "repo": "pallets/flask",
+      "source_commit": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d",
+      "sequence": 3,
+      "kind": "impact",
+      "session": "return",
+      "prompt": "Work only in the provided checkout using any available native or optional tools. Cite repository-relative source paths and 1-based line ranges for code explanations. Treat static relationships as static evidence, not a complete runtime trace. Tool choice is yours; no optional tool is required. Reference patches and external grading feedback are unavailable. If the callback order inside Flask.process_response changes, which registration mechanisms and tests should be reviewed? Cover after_this_request, application/blueprint after_request callbacks, and the distinction from teardown. Locate two existing relevant tests and explain their assertions with source citations. Do not modify files.",
+      "read_only": true,
+      "timeout_seconds": 360,
+      "acceptance": {
+        "method": "source-checked rubric review against this task version and captured delivered observations",
+        "all_required": [
+          "Locate after_this_request and after_request registration mechanisms and explain their corresponding callback collections.",
+          "Explain blueprint/application order and reversed registered callbacks from process_response.",
+          "Distinguish teardown callbacks from response transformation.",
+          "Locate two genuine existing tests with valid citations and relevant assertions."
+        ],
+        "terminal_requirement": "successful SDK terminal; an output-limit/error/timeout terminal is not accepted even if partial text or patch exists"
+      }
+    },
+    {
+      "task_id": "pallets__flask-5014-repair",
+      "instance_id": "pallets__flask-5014",
+      "repo": "pallets/flask",
+      "source_commit": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d",
+      "sequence": 4,
+      "kind": "repair",
+      "session": "return",
+      "prompt": "Work only in the provided checkout using any available native or optional tools. Cite repository-relative source paths and 1-based line ranges for code explanations. Treat static relationships as static evidence, not a complete runtime trace. Tool choice is yours; no optional tool is required. Reference patches and external grading feedback are unavailable. Fix the issue below in this checkout. Preserve unrelated changes and add focused regression coverage if useful. You may run existing local tests. Leave the final source changes in the checkout and give a short summary of the fix and verification.\n\nRequire a non-empty name for Blueprints\nThings do not work correctly if a Blueprint is given an empty name (e.g. #4944).\r\nIt would be helpful if a `ValueError` was raised when trying to do that.\n",
+      "read_only": false,
+      "timeout_seconds": 720,
+      "acceptance": {
+        "method": "pinned native repair grading",
+        "all_required": [
+          "The unchanged pinned native SWE-bench Verified 4.1.0 grading protocol resolves this exact instance on the captured model patch.",
+          "Retain native collection errors, model/native test-patch conflicts, behavioral failures and all selected outcomes separately.",
+          "No reference material or grading feedback is supplied to this or later model tasks."
+        ],
+        "terminal_requirement": "successful SDK terminal; an output-limit/error/timeout terminal is not accepted even if partial text or patch exists"
+      }
+    },
+    {
+      "task_id": "pallets__flask-5014-post_edit",
+      "instance_id": "pallets__flask-5014",
+      "repo": "pallets/flask",
+      "source_commit": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d",
+      "sequence": 5,
+      "kind": "post_edit",
+      "session": "return",
+      "prompt": "Work only in the provided checkout using any available native or optional tools. Cite repository-relative source paths and 1-based line ranges for code explanations. Treat static relationships as static evidence, not a complete runtime trace. Tool choice is yours; no optional tool is required. Reference patches and external grading feedback are unavailable. A controlled local edit has added dispatch_probe_request. Locate its current implementation. Does it start a WSGI server or dispatch a view in process? Explain its request-context cleanup boundary and next production call, with current source citations. Do not modify files.",
+      "read_only": true,
+      "timeout_seconds": 180,
+      "acceptance": {
+        "method": "source-checked rubric review against this task version and captured delivered observations",
+        "all_required": [
+          "Cite the new helper and Flask.full_dispatch_request.",
+          "Explain in-process dispatch rather than starting a WSGI server.",
+          "Explain the test_request_context context-manager exit/pop boundary using current ctx/app source."
+        ],
+        "terminal_requirement": "successful SDK terminal; an output-limit/error/timeout terminal is not accepted even if partial text or patch exists"
+      }
+    },
+    {
+      "task_id": "pytest-dev__pytest-5809-lookup",
+      "instance_id": "pytest-dev__pytest-5809",
+      "repo": "pytest-dev/pytest",
+      "source_commit": "8aba863a634f40560e25055d179220f0eefabe9a",
+      "sequence": 1,
+      "kind": "lookup",
+      "session": "cold",
+      "prompt": "Work only in the provided checkout using any available native or optional tools. Cite repository-relative source paths and 1-based line ranges for code explanations. Treat static relationships as static evidence, not a complete runtime trace. Tool choice is yours; no optional tool is required. Reference patches and external grading feedback are unavailable. Locate the implementation that calls a Python callable while retaining either its result or exception information and start/stop times. Explain how callers distinguish success from a captured exception. Cite the definition and 1-based lines. Do not modify files.",
+      "read_only": true,
+      "timeout_seconds": 180,
+      "acceptance": {
+        "method": "source-checked rubric review against this task version and captured delivered observations",
+        "all_required": [
+          "Identify CallInfo.from_call in src/_pytest/runner.py.",
+          "Explain captured result versus excinfo and start/stop timing from the actual implementation.",
+          "Cite the relevant constructor/accessor behavior without claiming exceptions are always swallowed."
+        ],
+        "terminal_requirement": "successful SDK terminal; an output-limit/error/timeout terminal is not accepted even if partial text or patch exists"
+      }
+    },
+    {
+      "task_id": "pytest-dev__pytest-5809-flow",
+      "instance_id": "pytest-dev__pytest-5809",
+      "repo": "pytest-dev/pytest",
+      "source_commit": "8aba863a634f40560e25055d179220f0eefabe9a",
+      "sequence": 2,
+      "kind": "flow",
+      "session": "return",
+      "prompt": "Work only in the provided checkout using any available native or optional tools. Cite repository-relative source paths and 1-based line ranges for code explanations. Treat static relationships as static evidence, not a complete runtime trace. Tool choice is yours; no optional tool is required. Reference patches and external grading feedback are unavailable. Trace pytest running a collected Python test function, from its run protocol through the call-phase hook to the function, then to exception capture and report creation. Cite the relevant runner and Python-plugin functions across files. Explain hook dispatch boundaries rather than treating them as one complete static runtime trace. Do not modify files.",
+      "read_only": true,
+      "timeout_seconds": 360,
+      "acceptance": {
+        "method": "source-checked rubric review against this task version and captured delivered observations",
+        "all_required": [
+          "Connect runtestprotocol, call_and_report and call_runtest_hook in runner.py.",
+          "Connect pytest_runtest_call, Function.runtest and pytest_pyfunc_call through their plugin hook boundaries.",
+          "Explain CallInfo.from_call exception capture and pytest_runtest_makereport/TestReport creation.",
+          "Cite relevant runner.py and python.py call sites and distinguish collection/setup/teardown from the call phase."
+        ],
+        "terminal_requirement": "successful SDK terminal; an output-limit/error/timeout terminal is not accepted even if partial text or patch exists"
+      }
+    },
+    {
+      "task_id": "pytest-dev__pytest-5809-impact",
+      "instance_id": "pytest-dev__pytest-5809",
+      "repo": "pytest-dev/pytest",
+      "source_commit": "8aba863a634f40560e25055d179220f0eefabe9a",
+      "sequence": 3,
+      "kind": "impact",
+      "session": "return",
+      "prompt": "Work only in the provided checkout using any available native or optional tools. Cite repository-relative source paths and 1-based line ranges for code explanations. Treat static relationships as static evidence, not a complete runtime trace. Tool choice is yours; no optional tool is required. Reference patches and external grading feedback are unavailable. If CallInfo.from_call changes exception propagation or timing capture, which production call sites need review? Include both runtest and collection paths, distinguish configured re-raising, and locate two existing tests that protect these behaviors. Cite source paths and lines. Do not modify files.",
+      "read_only": true,
+      "timeout_seconds": 360,
+      "acceptance": {
+        "method": "source-checked rubric review against this task version and captured delivered observations",
+        "all_required": [
+          "Identify call_runtest_hook and pytest_make_collect_report as direct CallInfo.from_call call sites; explain collect_one_node as upstream hook-dispatch entry and report consumer.",
+          "Explain when/phase metadata and configured reraise behavior rather than assuming all exceptions are suppressed.",
+          "Locate two actual relevant tests with correct assertions and valid source citations."
+        ],
+        "terminal_requirement": "successful SDK terminal; an output-limit/error/timeout terminal is not accepted even if partial text or patch exists"
+      }
+    },
+    {
+      "task_id": "pytest-dev__pytest-5809-repair",
+      "instance_id": "pytest-dev__pytest-5809",
+      "repo": "pytest-dev/pytest",
+      "source_commit": "8aba863a634f40560e25055d179220f0eefabe9a",
+      "sequence": 4,
+      "kind": "repair",
+      "session": "return",
+      "prompt": "Work only in the provided checkout using any available native or optional tools. Cite repository-relative source paths and 1-based line ranges for code explanations. Treat static relationships as static evidence, not a complete runtime trace. Tool choice is yours; no optional tool is required. Reference patches and external grading feedback are unavailable. Fix the issue below in this checkout. Preserve unrelated changes and add focused regression coverage if useful. You may run existing local tests. Leave the final source changes in the checkout and give a short summary of the fix and verification.\n\nLexer \"python3\" in --pastebin feature causes HTTP errors\nThe `--pastebin` option currently submits the output of `pytest` to `bpaste.net` using `lexer=python3`: https://github.com/pytest-dev/pytest/blob/d47b9d04d4cf824150caef46c9c888779c1b3f58/src/_pytest/pastebin.py#L68-L73\r\n\r\nFor some `contents`, this will raise a \"HTTP Error 400: Bad Request\".\r\n\r\nAs an example:\r\n~~~\r\n>>> from urllib.request import urlopen\r\n>>> with open(\"data.txt\", \"rb\") as in_fh:\r\n...     data = in_fh.read()\r\n>>> url = \"https://bpaste.net\"\r\n>>> urlopen(url, data=data)\r\nHTTPError: Bad Request\r\n~~~\r\nwith the attached [data.txt](https://github.com/pytest-dev/pytest/files/3561212/data.txt).\r\n\r\nThis is the underlying cause for the problems mentioned in #5764.\r\n\r\nThe call goes through fine if `lexer` is changed from `python3` to `text`. This would seem like the right thing to do in any case: the console output of a `pytest` run that is being uploaded is not Python code, but arbitrary text.\r\n\n",
+      "read_only": false,
+      "timeout_seconds": 720,
+      "acceptance": {
+        "method": "pinned native repair grading",
+        "all_required": [
+          "The unchanged pinned native SWE-bench Verified 4.1.0 grading protocol resolves this exact instance on the captured model patch.",
+          "Retain native collection errors, model/native test-patch conflicts, behavioral failures and all selected outcomes separately.",
+          "No reference material or grading feedback is supplied to this or later model tasks."
+        ],
+        "terminal_requirement": "successful SDK terminal; an output-limit/error/timeout terminal is not accepted even if partial text or patch exists"
+      }
+    },
+    {
+      "task_id": "pytest-dev__pytest-5809-post_edit",
+      "instance_id": "pytest-dev__pytest-5809",
+      "repo": "pytest-dev/pytest",
+      "source_commit": "8aba863a634f40560e25055d179220f0eefabe9a",
+      "sequence": 5,
+      "kind": "post_edit",
+      "session": "return",
+      "prompt": "Work only in the provided checkout using any available native or optional tools. Cite repository-relative source paths and 1-based line ranges for code explanations. Treat static relationships as static evidence, not a complete runtime trace. Tool choice is yours; no optional tool is required. Reference patches and external grading feedback are unavailable. A controlled local edit has added capture_probe_result. Locate its current implementation and next production call. Explain how an ordinary exception from its callable is retained and how the result differs from a successful return. Cite the current helper and CallInfo implementation. Do not modify files.",
+      "read_only": true,
+      "timeout_seconds": 180,
+      "acceptance": {
+        "method": "source-checked rubric review against this task version and captured delivered observations",
+        "all_required": [
+          "Cite the new helper and its CallInfo.from_call call with call-phase metadata.",
+          "Explain result versus excinfo using the current CallInfo implementation.",
+          "Use current source evidence rather than silently relying on a pre-edit graph."
+        ],
+        "terminal_requirement": "successful SDK terminal; an output-limit/error/timeout terminal is not accepted even if partial text or patch exists"
+      }
+    }
+  ],
+  "controlled_edits": {
+    "psf__requests-1921": {
+      "apply_before": "psf__requests-1921-post_edit",
+      "path": "requests/_pilot_post_edit.py",
+      "source": "from .models import Request\nfrom .sessions import Session\n\ndef prepare_probe_request(url: str):\n    return Session().prepare_request(Request(\"GET\", url))\n",
+      "sha256": "91ae1a3d5561b96db5590260d4e20b68db8a3a693c19965d2c92cb3e062d087e",
+      "classification": "identical controlled synthetic source addition in every arm; no task outcome or runtime-benefit claim from the edit alone",
+      "rule": "Capture the repair patch before adding this file. Never overwrite an existing file; an unexpected collision is a recorded controller failure. Keep the same return-session MCP connection for the follow-up."
+    },
+    "pallets__flask-5014": {
+      "apply_before": "pallets__flask-5014-post_edit",
+      "path": "src/flask/_pilot_post_edit.py",
+      "source": "from .app import Flask\n\ndef dispatch_probe_request(app: Flask, path: str = \"/\"):\n    with app.test_request_context(path):\n        return app.full_dispatch_request()\n",
+      "sha256": "585d6863900b4bda76016c8a65eb04807b29ef0e1cdd8fd5bfec82c6050f323a",
+      "classification": "identical controlled synthetic source addition in every arm; no task outcome or runtime-benefit claim from the edit alone",
+      "rule": "Capture the repair patch before adding this file. Never overwrite an existing file; an unexpected collision is a recorded controller failure. Keep the same return-session MCP connection for the follow-up."
+    },
+    "pytest-dev__pytest-5809": {
+      "apply_before": "pytest-dev__pytest-5809-post_edit",
+      "path": "src/_pytest/_pilot_post_edit.py",
+      "source": "from .runner import CallInfo\n\ndef capture_probe_result(function):\n    return CallInfo.from_call(function, \"call\")\n",
+      "sha256": "be5413f1fd182d77cea517c0a5c3fe600caaa2d2e53e64645f02c2a84dcd356f",
+      "classification": "identical controlled synthetic source addition in every arm; no task outcome or runtime-benefit claim from the edit alone",
+      "rule": "Capture the repair patch before adding this file. Never overwrite an existing file; an unexpected collision is a recorded controller failure. Keep the same return-session MCP connection for the follow-up."
+    }
+  },
+  "session_schedule": "Per repository and arm: cold setup + lookup in one SDK session; close it; a fresh return SDK session runs flow, impact, repair and then the identical controlled source addition plus same-session post-edit query. Index/provider state remains in the owned container; conversations do not cross arms or repositories.",
+  "evaluation_boundary": "Keep acceptance rubrics, native test/reference patches and grading outcomes outside model inputs. Send only the relevant task prompt. Grade after model execution; do not use grader feedback to revise a model attempt.",
+  "original_tasks_sha256": "76f170aaaacee775009fc01d7eedac9bb74d2e73d21c158fe7dee9a78a8d5bd6",
+  "change": {
+    "task_id": "pytest-dev__pytest-5809-impact",
+    "original_criterion": "Identify call_runtest_hook and collect_one_node as production CallInfo.from_call call sites.",
+    "corrected_criterion": "Identify call_runtest_hook and pytest_make_collect_report as direct CallInfo.from_call call sites; explain collect_one_node as upstream hook-dispatch entry and report consumer.",
+    "reason": "collect_one_node has no from_call invocation; the direct collection call is pytest_make_collect_report at runner.py:253. The original wording confuses an upstream entry/consumer with a direct site.",
+    "affected_original_observations": 4
+  },
+  "frozen_utc": "2026-10-28T14:04:01.806001+00:00"
+}
