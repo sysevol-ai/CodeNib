@@ -14,6 +14,7 @@ from threading import Event
 
 import pytest
 from filelock import FileLock
+from mcp import Client
 
 from codenib.compiler.artifact_fingerprints import bm25_artifact_file_fingerprints
 from codenib.compiler.manifest import IndexEntry, RepoManifest
@@ -148,6 +149,92 @@ def test_rebuilt_views_restore_queries_in_the_same_connection(local_server, chan
             assert second["summary"]["session_call"] == 2
             assert second["source"]["verified"] is True
         assert server.get_context().explore_runtime is None
+
+    asyncio.run(session())
+
+
+@pytest.mark.parametrize("mode", ("auto", "legacy"))
+@pytest.mark.parametrize(
+    "tool,arguments",
+    (
+        ("explore_context", {"query": "original"}),
+        ("search_context", {"query": "original"}),
+        ("search_semantic", {"query": "original"}),
+        ("search_bm25", {"query": "original"}),
+        ("search_regex", {"pattern": "original"}),
+        ("search_zoekt", {"query": "original"}),
+        ("dependency_subgraph", {"symbol": "original"}),
+        ("lsp_definition", {"symbol": "original"}),
+        ("lsp_references", {"symbol": "original"}),
+        ("lsp_route", {"symbols": ["original"]}),
+        ("read_source", {"file_path": "sample.py"}),
+    ),
+)
+def test_client_receives_stale_recovery_and_can_retry(
+    local_server, mode, tool, arguments
+):
+    """The agent must receive recovery instructions through actual tools/call."""
+    repo, cache, _initial = local_server
+
+    async def session():
+        async with Client(server.mcp, mode=mode, cache=None) as client:
+            (repo / "sample.py").write_text("def updated():\n    return 2\n")
+            rejected = await client.call_tool(tool, arguments)
+            assert rejected.is_error is True
+            text = "\n".join(part.text for part in rejected.content)
+            assert "Indexed source changed" in text
+            assert "codenib codegraph init" in text
+            assert "retry" in text and "this MCP connection reloads" in text
+            assert "restart" not in text
+            assert str(repo) not in text
+
+            _publish(repo, cache, "sample.py", "updated")
+            retried = await client.call_tool("search_bm25", {"query": "updated"})
+            assert retried.is_error is False
+            assert "def updated()" in "\n".join(part.text for part in retried.content)
+
+    asyncio.run(session())
+
+
+@pytest.mark.parametrize("mode", ("auto", "legacy"))
+def test_client_discards_mid_query_facts_and_receives_recovery(
+    local_server, monkeypatch, mode
+):
+    repo, _cache, _initial = local_server
+
+    def edit_while_querying(*_args):
+        (repo / "sample.py").write_text("def updated():\n    return 2\n")
+        return [{"content": "obsolete provider result"}]
+
+    monkeypatch.setattr(server, "search_bm25_impl", edit_while_querying)
+
+    async def session():
+        async with Client(server.mcp, mode=mode, cache=None) as client:
+            response = await client.call_tool("search_bm25", {"query": "original"})
+            assert response.is_error is True
+            text = "\n".join(part.text for part in response.content)
+            assert "Indexed source changed" in text
+            assert "codenib codegraph init" in text
+            assert "obsolete provider result" not in text
+
+    asyncio.run(session())
+
+
+@pytest.mark.parametrize("mode", ("auto", "legacy"))
+def test_client_receives_busy_rebuild_retry(local_server, mode):
+    repo, cache, initial = local_server
+    _publish(repo, cache, "sample.py", "original")
+
+    async def session():
+        async with Client(server.mcp, mode=mode, cache=None) as client:
+            with FileLock(str(cache / ".index-compiler.lock")):
+                rejected = await client.call_tool("search_bm25", {"query": "original"})
+                assert rejected.is_error is True
+                text = "\n".join(part.text for part in rejected.content)
+                assert "being rebuilt; retry the query" in text
+                assert server.get_context() is initial
+            retried = await client.call_tool("search_bm25", {"query": "original"})
+            assert retried.is_error is False
 
     asyncio.run(session())
 

@@ -33,7 +33,7 @@ from pydantic import Field
 from .._version import package_version
 from ..compiler.manifest import RepoManifest
 from ..log_utils import set_console_log_level
-from .context import ServerContext
+from .context import IndexedQueryError, ServerContext
 from .explore_session import ExploreSessionLedger, ExploreSessionRuntime
 from .prompts import (
     CODENIB_EXPLORE_GUIDE,
@@ -169,7 +169,7 @@ def _refresh_local_context(ctx: ServerContext) -> ServerContext:
         current._local_manifest_path != ctx._local_manifest_path
         or current.manifest.repo_path != ctx.manifest.repo_path
     ):
-        raise RuntimeError("MCP repository was reconfigured; retry the query")
+        raise IndexedQueryError("MCP repository was reconfigured; retry the query")
     path = current._local_manifest_path
     published = RepoManifest.load(path)
     if published.to_dict() != current.manifest.to_dict():
@@ -181,7 +181,9 @@ def _refresh_local_context(ctx: ServerContext) -> ServerContext:
         try:
             _init_server(path, _reload=True)
         except Timeout as exc:
-            raise RuntimeError("Indexes are being rebuilt; retry the query") from exc
+            raise IndexedQueryError(
+                "Indexes are being rebuilt; retry the query"
+            ) from exc
         return get_context()
     return current
 

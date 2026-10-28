@@ -66,6 +66,18 @@ _VIEW_DEPENDENCIES = {
 }
 
 
+class IndexedQueryError(RuntimeError):
+    """An indexed-query rejection with explicit, client-safe recovery text.
+
+    Keep diagnostic details on the exception for local logging. The MCP
+    boundary sends only ``public_message``, even when its SDK masks exceptions.
+    """
+
+    def __init__(self, public_message: str, detail: str = "") -> None:
+        self.public_message = public_message.rstrip()
+        super().__init__(self.public_message + (f" {detail}" if detail else ""))
+
+
 def _running_event_loop() -> asyncio.AbstractEventLoop | None:
     """Return the active loop without requiring one during sync setup."""
 
@@ -449,10 +461,9 @@ class ServerContext:
                 "restart its CodeNib MCP server. "
             )
             if source is None:
-                raise RuntimeError(
-                    "Indexed source is unavailable. "
-                    + recovery
-                    + (self.source_error or "source binding is unverified")
+                raise IndexedQueryError(
+                    "Indexed source is unavailable. " + recovery,
+                    self.source_error or "source binding is unverified",
                 )
 
             def require_current_source() -> None:
@@ -460,8 +471,8 @@ class ServerContext:
                     source.verify_snapshot()
                 except (OSError, RuntimeError, ValueError) as exc:
                     self.source_error = source.failure_reason or str(exc)
-                    raise RuntimeError(
-                        "Indexed source changed. " + recovery + self.source_error
+                    raise IndexedQueryError(
+                        "Indexed source changed. " + recovery, self.source_error
                     ) from exc
 
             require_current_source()
