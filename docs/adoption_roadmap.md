@@ -75,11 +75,14 @@ rebuild/retry instructions visible through MCP 2.3 exception masking. Real
 Requests, Flask and pytest controls retain stale rejection and source-current
 queries after explicit rebuilding in the same process; no agent inference ran.
 The separate [prompted agent recovery probe](experiments/codegraph_agent_recovery_v1.md)
-now observes three agent sessions receive that error, rebuild through the CLI and retry
+([#892](https://github.com/sysevol-ai/CodeNib/pull/892)) now observes three agent
+sessions receive that error, rebuild through the CLI and retry
 successfully in their original MCP process. Its three controlled edits take
 31.910–43.647 seconds for the complete changed-source request. This is recovery
 evidence, with explicit tool use requested; complete answer quality, voluntary
-use and comparative benefit remain separate gates.
+use and comparative benefit remain separate gates. Static-reference
+interpretation is a recorded next-cohort blocker in
+[#891](https://github.com/sysevol-ai/CodeNib/issues/891).
 Automatic source-driven rebuilding, broader provider correctness and external
 repeat-use observations remain open. This does not close the milestone.
 Tracking issue: [#874](https://github.com/sysevol-ai/CodeNib/issues/874).
