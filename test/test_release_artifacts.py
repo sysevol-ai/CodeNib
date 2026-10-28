@@ -520,6 +520,7 @@ def test_registry_publishers_use_separate_workflows() -> None:
     )
     assert "docs/releases/**" in production["on"]["pull_request"]["paths"]
     assert "native/**" in production["on"]["pull_request"]["paths"]
+    assert "scripts/smoke_release_graph.py" in production["on"]["pull_request"]["paths"]
 
     release_tag_push = (
         "github.event_name == 'push' && github.ref_type == 'tag' && "
@@ -947,7 +948,7 @@ def test_registry_publishers_use_separate_workflows() -> None:
         "graph-smoke",
     ):
         expected_gate = "inputs.full"
-        if job_name == "agent-smoke":
+        if job_name in {"agent-smoke", "graph-smoke", "upgrade-smoke"}:
             expected_gate += " || github.event_name == 'pull_request'"
         assert verification["jobs"][job_name]["if"] == expected_gate
     assert not any(name.startswith("publish-") for name in verification["jobs"])

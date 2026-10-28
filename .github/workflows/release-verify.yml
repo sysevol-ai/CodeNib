@@ -1282,7 +1282,7 @@ jobs:
 
   upgrade-smoke:
     name: Upgrade from CodeNib 0.2.2
-    if: inputs.full
+    if: inputs.full || github.event_name == 'pull_request'
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -1434,7 +1434,7 @@ jobs:
 
   graph-smoke:
     name: Installed CodeGraph and agent onboarding
-    if: inputs.full
+    if: inputs.full || github.event_name == 'pull_request'
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 20

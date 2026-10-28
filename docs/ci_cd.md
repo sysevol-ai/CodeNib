@@ -26,7 +26,9 @@ GitHub Actions has ten workflow files:
   dispatch (with an optional `delete_unused` input that removes labels absent
   from `labels.yml`).
 - `.github/workflows/release-verify.yml` is the reusable distribution, Python
-  compatibility, installed CLI, Wiki, and MCP verification pipeline.
+  compatibility, installed CLI, Wiki, and MCP verification pipeline. Relevant
+  pull requests run the installed CodeGraph and upgrade gates as well as
+  sparse Ask; the complete matrix also runs on `main` and release triggers.
 - `.github/workflows/release-test.yml` manually verifies and publishes a
   candidate through the trusted TestPyPI environment.
 - `.github/workflows/release.yml` invokes the same verification pipeline and

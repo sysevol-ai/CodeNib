@@ -83,6 +83,11 @@ renames; each 1.389-1.455 second initialization preserves visible file hashes
 and Git status. Fresh stdio sessions return the updated call target and file.
 The release smoke also verifies unchanged reuse, native registration reuse,
 real graph/source MCP composition, Dependency Map serving and a dirty rebuild.
+Its current gate requires stale rejection followed by the renamed target in
+the original MCP session after explicit rebuilding. Installed graph and
+upgrade checks run on relevant pull requests. Upgrade verification separates
+portable-format support from builder compatibility: a changed BM25 identity
+rebuilds once, and an unchanged subsequent request reuses that current view.
 Client CLIs are isolated stand-ins; no coding agent/model or external user ran.
 These small-fixture timings do not measure net task benefit.
 
