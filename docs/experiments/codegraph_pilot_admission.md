@@ -1,11 +1,14 @@
 # CodeGraph pilot admission
 
-Three source snapshots are selected, but matched inference is not admitted yet.
-The checks exposed a native-grading isolation defect and a Python graph failure.
-Keep those outcomes instead of replacing difficult cases. The
+Fifteen tasks and their execution policy are frozen across three source snapshots.
+Matched inference still needs its executable driver/source binding and representative
+query checks. Runtime checks retain the native-grading isolation defect, failed
+environment profiles and Python graph failure instead of replacing difficult cases. The
 [retained receipts](codegraph_admission_2026_10_27.json) contain the selection,
 original and corrected controls, exact harnesses, source identities and SDK
-configuration probes. Reference production and test patches are excluded.
+configuration probes. The [runtime receipts](codegraph_runtime_2026_10_27.json)
+add actual arm64 tool/container checks and the new native controls. Reference
+production and test patches are excluded.
 
 ## Fixed source cohort
 
@@ -17,16 +20,31 @@ uses only metadata difficulty under one hour and an already-local native image.
 The raw dataset README and projected metadata were used, without an HTML viewer.
 These historical benchmark cases are already exposed; no unseen-task claim applies.
 
-| Repository / selected case | Strict CodeNib source-index outcome | Native admission with corrected isolation |
+| Repository / selected case | Strict CodeNib source-index outcome | Native arm64 admission with corrected isolation |
 | --- | --- | --- |
-| Requests / `psf__requests-1921` | BM25 and graph fresh; source preserved | Offline HTTPbin v2: empty production change fails one target; reference passes all 119 collected tests |
+| Requests / `psf__requests-1921` | BM25 and graph fresh; source preserved | Offline HTTPbin: empty production change fails one target; reference passes all 119 collected tests |
 | Flask / `pallets__flask-5014` | BM25 and graph fresh; source preserved | Empty production change fails one target; reference passes all 60 collected tests |
 | pytest / `pytest-dev__pytest-5809` | BM25 fresh; graph rejected for cyclic containment; source preserved | Empty production change fails one target; reference passes all four selected native tests |
 
-The planned shape is five tasks per repository: lookup, cross-file flow, bounded
-change impact, original issue repair and a controlled post-edit follow-up.
-The fifteen prompts, acceptance rubric and full execution manifest are not
-frozen yet. Case selection remains fixed after these checks.
+The [frozen task document](codegraph_matched_tasks_v1.json) contains five tasks per
+repository: lookup, cross-file flow, bounded change impact, original issue repair
+and a controlled post-edit follow-up. Its SHA-256 is
+`76f170aaaacee775009fc01d7eedac9bb74d2e73d21c158fe7dee9a78a8d5bd6`.
+The [execution policy](codegraph_matched_policy_v3.json) fixes model/settings,
+ordering, attempts, timeouts, accounting and acceptance before inference.
+Its SHA-256 is `da562c62849d8bc3937dc6dde1c1a2205609ceba7988d6367b2f18e135bebe41`.
+The JSON copies preserve the controller files byte for byte; internal path fields
+refer to those working filenames. Case selection remains fixed.
+
+Each of twelve repository/arm workflows has a cold setup and lookup session,
+then a fresh return session for flow, impact, repair and the same-session post-edit
+query. Native read/search/edit/shell tools remain available to all arms; optional
+tool use is not forced. The complete five-task wall time includes product setup,
+indexing, both session startups and updates. Failed or unattempted tasks retain
+their denominator and the frozen timeout penalty. Usage sums final cumulative
+per-model counters once per session, including auxiliary models and cache tokens;
+SDK estimates remain separate from invoices. The executable driver and final
+runtime/source manifest remain an admission gate, not an implementation claim.
 
 Strict provider probes use the CLI policy: project preparation and partial
 language admission are disabled. An earlier Requests probe enabled preparation;
@@ -123,6 +141,56 @@ SDK turns are not HTTP-request counts. Successful scope and corrected cap probes
 confirm included-only rate events. SDK dollar estimates remain separate from
 unreconciled invoices; the first failed cap observer has missing usage.
 
-Still open: task-container architecture and usable per-arm tool runtimes, the
-full task/model/tool manifest and usage normalization, peer isolation/default
-daemon, matched inference and the five-user observation gate.
+## Native arm64 runtime checks
+
+All three neutral project environments and separately installed product runtimes
+run as arm64. The source-candidate CodeNib wheel is built from `fcc02fe1`, imports
+from its installed container location and is distinct from the public wheel.
+The shared Python/Node/uv/agent runtimes are dependency-warm prerequisites, not
+measured product-cold setup. Product readiness timings and tiny fixtures do not
+enter the formal matched result.
+
+Actual MCP checks run in separate, observed network-none containers with only
+their own source checkout mounted. Serena's v2 REPL sees the renamed definition
+without reconnecting; a host-only canary is absent through its Python REPL.
+CodeGraph runs without the direct-mode override, sees the edit in the same
+connection and retains its default background process after MCP disconnects.
+CodeNib rejects the stale query, rebuilds using its own installed CLI and actual
+container-local Claude registration, and returns the new callee after reconnecting.
+All owned containers are removed. Controller setup/schema errors remain retained.
+
+The [native SDK scope receipts](codegraph_sdk_scope_2026_10_27.json) confirm that
+Read, Grep, Glob, Write, Edit and container-executed Bash succeed while
+the intended outside-scope attempts are denied. Large shell output remains usable:
+Read and Grep admit only the hashed file named by native Bash metadata in that
+exact SDK session's output directory. Its verified read-only copy is also available
+to Bash inside the owned container. The corrected multi-line diagnostic confirms
+actual content delivery through all three tools. It records 1,336 then 90 streamed
+main output tokens and a final cumulative count of 1,426; summing
+the two result totals would double count. Rate updates are validated when emitted,
+not required to repeat unchanged in every user turn. Earlier diagnostic/controller
+failures stay visible.
+
+The native adapter now selects the harness architecture from the pinned image
+instead of always requesting x86_64. Requests and Flask arm64 controls execute
+the same selected tests as their amd64 controls. Requests' reference passes all
+119 collected tests; Flask's passes 60. Empty production changes fail their
+intended targets. The first pytest arm64 profile fails before collection:
+offline build dependencies are unavailable and the tag-free source checkout
+produces a `0.1` version that fails pytest's own minimum-version check. A further
+preparation failure exposes missing `importlib-metadata`; neither is a model result.
+
+The corrected pytest environment stages build/runtime wheels in the target
+testbed's own pip configuration and supplies the version observed in the
+original pinned image through pytest's distribution-specific SCM setting.
+It preserves the one-commit source and the original test code/parser/grading.
+All four selected native tests execute: empty fails the intended target with
+three regression passes, and reference passes all four. Earlier raw failures
+and every amd64 result remain unchanged.
+
+Still open: executable driver/source binding, representative query/source checks,
+matched inference and the five-user observation gate. Frozen policy v1's duplicate
+workflow labels were corrected in v2 before inference; arm order and experimental
+settings did not change. Policy v3 restores ordinary Read/Grep/Bash access to
+owned SDK output files after a single oversized line exposed a delivery failure;
+the actual marker delivery is checked, not just the hook permission.
