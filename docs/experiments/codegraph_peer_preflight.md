@@ -47,6 +47,15 @@ selected product in each container; the host-only canary is absent. These are
 readiness checks, not matched task timings. Neither peer's client-registration
 installer ran against the user's real profile.
 
+The separate [real-source startup checks](codegraph_peer_source_admission.md)
+now cover the original lookup target in each pinned Requests, Flask and pytest
+source. Both peers return the complete selected body. Serena uses explicit
+Python project creation and cached offline Pyright startup; the original
+pytest setup failure remains unchanged. All twelve new controls are retained,
+including controller errors and Codegraph's separate `make_response` source
+omission. These preinstalled checks do not complete measured cold-start or
+common-runtime admission for another matched cohort.
+
 ## Matched execution
 
 The frozen policy uses these package versions and modes. Retain representative
