@@ -99,24 +99,57 @@ def native_environment():
     return hashes
 
 
-def owned_native_client(client, container_name):
-    """Only this invocation's native container may be created through the client."""
-    containers = client.containers
-    create = containers.create
+def owned_native_client(client, container_name, *, observed=None):
+    """Admit only the owned, bounded container before the native harness starts it.
+
+    DockerClient.containers is a fresh collection on every access. Guard its
+    stable API boundary instead. Daemon creation is the linearization point;
+    verify the actual limits before returning the created container to the
+    harness. If that verification fails, grade_verified's finally block owns
+    recovery of the already-recorded unique container name.
+    """
+    create = client.api.create_container
 
     def create_owned(*args, **kwargs):
         if kwargs.get("name") != container_name:
             raise ValueError("Unexpected native Verified container owner")
-        kwargs.update(
-            entrypoint=[],
-            network_disabled=True,
-            mem_limit="4g",
-            nano_cpus=2_000_000_000,
-            pids_limit=256,
+        host_config = dict(kwargs.get("host_config") or {})
+        host_config.update(
+            NetworkMode="none",
+            Memory=4 * 1024**3,
+            NanoCpus=2_000_000_000,
+            PidsLimit=256,
         )
-        return create(*args, **kwargs)
+        kwargs.update(entrypoint=[], network_disabled=True, host_config=host_config)
+        kwargs.pop("networking_config", None)
+        response = create(*args, **kwargs)
+        actual = client.api.inspect_container(response["Id"])
+        config = actual["Config"]
+        host = actual["HostConfig"]
+        limits = {
+            "name": actual["Name"].removeprefix("/"),
+            "network_disabled": config.get("NetworkDisabled", False),
+            "network_mode": host.get("NetworkMode"),
+            "entrypoint": config.get("Entrypoint"),
+            "memory_bytes": host.get("Memory"),
+            "nano_cpus": host.get("NanoCpus"),
+            "pids_limit": host.get("PidsLimit"),
+        }
+        if observed is not None:
+            observed.update(limits)
+        if (
+            limits["name"] != container_name
+            or limits["network_disabled"] is not True
+            or limits["network_mode"] != "none"
+            or limits["entrypoint"] not in (None, [])
+            or limits["memory_bytes"] != 4 * 1024**3
+            or limits["nano_cpus"] != 2_000_000_000
+            or limits["pids_limit"] != 256
+        ):
+            raise RuntimeError("Native Verified container isolation was not applied")
+        return response
 
-    containers.create = create_owned
+    client.api.create_container = create_owned
     return client
 
 
@@ -164,7 +197,8 @@ def grade_verified(args):
     args.output.mkdir(parents=True, exist_ok=False)
     run_id = "codenib-" + uuid.uuid4().hex[:12]
     container_name = spec.get_instance_container_name(run_id)
-    client = owned_native_client(client, container_name)
+    observed_limits = {}
+    client = owned_native_client(client, container_name, observed=observed_limits)
     write_json(
         args.output / "config.json",
         {
@@ -225,6 +259,7 @@ def grade_verified(args):
     except Exception as error:
         record.update(error_class=type(error).__name__, error=str(error))
     finally:
+        record["observed_container_limits"] = observed_limits
         try:
             client.containers.get(container_name).remove(force=True)
         except docker.errors.NotFound:
