@@ -11,7 +11,8 @@ CodeNib already rejects stale queries and reloads explicitly rebuilt indexes
 in the same MCP connection. With MCP 2.3, an ordinary raised exception hides
 that action behind `Error executing tool dependency_subgraph`.
 
-Return known source and rebuild rejections as explicit failed tool results.
+[#890](https://github.com/sysevol-ai/CodeNib/pull/890) returns known source and
+rebuild rejections as explicit failed tool results.
 This fixes delivery of the recovery instruction; it does not establish that an
 agent will follow it or that rebuilding improves complete task time. The source
 fix is unreleased, and [A0](../adoption_roadmap.md) and
