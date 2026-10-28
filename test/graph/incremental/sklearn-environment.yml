@@ -1,0 +1,12 @@
+# Historical analysis dependencies for the pinned scikit-learn 0.20 fixture.
+# CodeNib itself continues to run in the supported test interpreter.
+channels:
+  - conda-forge
+dependencies:
+  - python=3.6.15
+  - numpy=1.19.2
+  - scipy=1.5.2
+  - matplotlib=3.3.4
+  - pandas=1.1.5
+  - cython=0.29.24
+  - pytest=6.2.5

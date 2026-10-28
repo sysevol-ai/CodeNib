@@ -80,6 +80,19 @@ the existing basedpyright provider. This is unreleased source correctness work
 for [#871](https://github.com/sysevol-ai/CodeNib/issues/871), not a backend,
 acceleration or task-benefit promotion. The A0 objective remains active.
 
+Python cold-start [readiness gate #901](https://github.com/sysevol-ai/CodeNib/issues/901)
+remains open on the full pinned scikit-learn source. A candidate provider fix
+preserves the project's explicit library-type analysis policy; historical
+scientific dependencies and all 684 project files are retained. Local controls
+complete the ordinary pipeline and original incremental assertions, while the
+[provider dependency](https://github.com/fishmingyu/scip-python/pull/1) remains
+draft with a snapshot failure also reproduced on its original base. The
+[readiness receipt](experiments/codegraph_python_cold_start_2026_10_28.json)
+retains the original failures and scoped successes. Fresh raw-input serial/native
+parity passes; reprocessing an already-normalized cache still fails identity
+recovery before native decoding. Main serial/native/consumer acceptance and provider promotion remain required; no language, acceleration
+backend or task-benefit claim is promoted.
+
 ## Archived Layered Goal
 
 The completed multi-language SCIP cold-start and acceleration program required:
