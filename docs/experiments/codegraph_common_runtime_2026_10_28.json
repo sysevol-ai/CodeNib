@@ -1,0 +1,906 @@
+{
+  "schema_version": 1,
+  "scope": "Model-free common-base installation, source lookup and source-addition update admission. Diagnostics and bounded recovery remain separate from original frozen model outcomes. No whole-task benefit, new model inference or external-user claim.",
+  "source_baseline": "733343e8e1f8ada6ed74ddf8860ac65754a897a5",
+  "selected_controls": {
+    "requests": {
+      "native": {
+        "control": "requests-native-1"
+      },
+      "serena": {
+        "control": "requests-serena-1"
+      },
+      "codegraph": {
+        "immediate_control": "requests-codegraph-1",
+        "bounded_followup": "requests-codegraph-watcher1"
+      },
+      "codenib": {
+        "control": "requests-codenib-1"
+      }
+    },
+    "flask": {
+      "native": {
+        "control": "flask-native-1"
+      },
+      "serena": {
+        "control": "flask-serena-1"
+      },
+      "codegraph": {
+        "immediate_control": "flask-codegraph-1",
+        "bounded_followup": "flask-codegraph-watcher1"
+      },
+      "codenib": {
+        "control": "flask-codenib-1"
+      }
+    },
+    "pytest": {
+      "native": {
+        "control": "pytest-native-1"
+      },
+      "serena": {
+        "control": "pytest-serena-1"
+      },
+      "codegraph": {
+        "immediate_control": "pytest-codegraph-1",
+        "bounded_followup": "pytest-codegraph-watcher1"
+      },
+      "codenib": {
+        "control": "pytest-codenib-3"
+      }
+    }
+  },
+  "control_counts": {
+    "total": 17,
+    "passed": 12,
+    "failed": 5
+  },
+  "controls": [
+    {
+      "artifact": "codegraph_common_runtime_v1_00.json",
+      "sha256": "300424b5550ab5d431c448790b787c6249bc1f4df08d2262258500ee752e486a",
+      "bytes": 143726,
+      "attempt": "flask-codegraph-1",
+      "status": "failed"
+    },
+    {
+      "artifact": "codegraph_common_runtime_v1_01.json",
+      "sha256": "3fe2d29b485e7c5edbd03ae005ab2565f14fe54bd073b1620d5680c7c50eae52",
+      "bytes": 158881,
+      "attempt": "flask-codegraph-watcher1",
+      "status": "passed"
+    },
+    {
+      "artifact": "codegraph_common_runtime_v1_02.json",
+      "sha256": "8fd6acb160848e623cd4772106054fe660a1a0adcf7017064e8f68b33b187a24",
+      "bytes": 144815,
+      "attempt": "flask-codenib-1",
+      "status": "passed"
+    },
+    {
+      "artifact": "codegraph_common_runtime_v1_03.json",
+      "sha256": "005a56c40c283e6f74f7e57384718bd675f71d1e4e33b4e6b3064775dd464b6f",
+      "bytes": 102130,
+      "attempt": "flask-native-1",
+      "status": "passed"
+    },
+    {
+      "artifact": "codegraph_common_runtime_v1_04.json",
+      "sha256": "17908338ae64a635d581b7f4d00b442412ffbf1ce68f389fea1a2cd7125ccfd6",
+      "bytes": 149561,
+      "attempt": "flask-serena-1",
+      "status": "passed"
+    },
+    {
+      "artifact": "codegraph_common_runtime_v1_05.json",
+      "sha256": "108ad9447279b6b7d307907c001c13d09c78f111960580fa10df1fb9da227dcd",
+      "bytes": 208229,
+      "attempt": "pytest-codegraph-1",
+      "status": "failed"
+    },
+    {
+      "artifact": "codegraph_common_runtime_v1_06.json",
+      "sha256": "6588a4599944c456cee01d1ed1300e82b738da7d10051f6ec285df602a7435f5",
+      "bytes": 229842,
+      "attempt": "pytest-codegraph-watcher1",
+      "status": "passed"
+    },
+    {
+      "artifact": "codegraph_common_runtime_v1_07.json",
+      "sha256": "2f1e557fb874801ca5b4a7e0dccd6c3f56c73c4aa5ad1e46488ee38d11a6d013",
+      "bytes": 172507,
+      "attempt": "pytest-codenib-1",
+      "status": "failed"
+    },
+    {
+      "artifact": "codegraph_common_runtime_v1_08.json",
+      "sha256": "6b6dcba29e3bc4400d57cdbd67e10127d02a4f2d7e681108753c08f0e655ddc7",
+      "bytes": 185606,
+      "attempt": "pytest-codenib-2",
+      "status": "failed"
+    },
+    {
+      "artifact": "codegraph_common_runtime_v1_09.json",
+      "sha256": "7dc5612063943b518364203c993b6780118dd7212d927a122fd6cdd164bccd03",
+      "bytes": 197207,
+      "attempt": "pytest-codenib-3",
+      "status": "passed"
+    },
+    {
+      "artifact": "codegraph_common_runtime_v1_10.json",
+      "sha256": "00f96996834141d56dacbf24f58f455dfb6e3f5b1e826b0d6d562983967739c1",
+      "bytes": 160101,
+      "attempt": "pytest-native-1",
+      "status": "passed"
+    },
+    {
+      "artifact": "codegraph_common_runtime_v1_11.json",
+      "sha256": "c732a05327bd09229cb277c99f654faeeedb41b7faeaf785086f4f9e6aa77689",
+      "bytes": 207084,
+      "attempt": "pytest-serena-1",
+      "status": "passed"
+    },
+    {
+      "artifact": "codegraph_common_runtime_v1_12.json",
+      "sha256": "3d7346e563cd401ec59146174c5fd3c90181abab4d0c9e57b11e4775f29bbd1d",
+      "bytes": 95087,
+      "attempt": "requests-codegraph-1",
+      "status": "failed"
+    },
+    {
+      "artifact": "codegraph_common_runtime_v1_13.json",
+      "sha256": "5ca3874c82b8419946e90e266359a174d41549405744fd3f2f0c32e7c86d91b0",
+      "bytes": 110598,
+      "attempt": "requests-codegraph-watcher1",
+      "status": "passed"
+    },
+    {
+      "artifact": "codegraph_common_runtime_v1_14.json",
+      "sha256": "8e77272244f4de222888c55c9154b3b1fd2ed4c9a10d84a169f1648e7780c900",
+      "bytes": 104048,
+      "attempt": "requests-codenib-1",
+      "status": "passed"
+    },
+    {
+      "artifact": "codegraph_common_runtime_v1_15.json",
+      "sha256": "40879342bd52da2502cb13ce555fc3206e003aeba025159e6721d66eb1795453",
+      "bytes": 56013,
+      "attempt": "requests-native-1",
+      "status": "passed"
+    },
+    {
+      "artifact": "codegraph_common_runtime_v1_16.json",
+      "sha256": "9adc08f0821ef28d47110509d43256aca7aa9790b1b0c0adc8d106b9228820de",
+      "bytes": 103243,
+      "attempt": "requests-serena-1",
+      "status": "passed"
+    }
+  ],
+  "batch": {
+    "scope": "Model-free common-runtime admission. No new matched model inference or benefit cohort.",
+    "started_utc": "2026-10-28T13:12:30.303389+00:00",
+    "controller_sha256": "7f21c7ca14ad20b9b1f0ae128b92ef65a4a8bdf2f53bf2a4574e9bf9ff9c8e91",
+    "order": [
+      {
+        "workflow_index": 0,
+        "instance_id": "psf__requests-1921",
+        "arm": "serena"
+      },
+      {
+        "workflow_index": 1,
+        "instance_id": "psf__requests-1921",
+        "arm": "codenib"
+      },
+      {
+        "workflow_index": 2,
+        "instance_id": "psf__requests-1921",
+        "arm": "codegraph"
+      },
+      {
+        "workflow_index": 3,
+        "instance_id": "psf__requests-1921",
+        "arm": "native"
+      },
+      {
+        "workflow_index": 4,
+        "instance_id": "pallets__flask-5014",
+        "arm": "serena"
+      },
+      {
+        "workflow_index": 5,
+        "instance_id": "pallets__flask-5014",
+        "arm": "codegraph"
+      },
+      {
+        "workflow_index": 6,
+        "instance_id": "pallets__flask-5014",
+        "arm": "native"
+      },
+      {
+        "workflow_index": 7,
+        "instance_id": "pallets__flask-5014",
+        "arm": "codenib"
+      },
+      {
+        "workflow_index": 8,
+        "instance_id": "pytest-dev__pytest-5809",
+        "arm": "codenib"
+      },
+      {
+        "workflow_index": 9,
+        "instance_id": "pytest-dev__pytest-5809",
+        "arm": "native"
+      },
+      {
+        "workflow_index": 10,
+        "instance_id": "pytest-dev__pytest-5809",
+        "arm": "codegraph"
+      },
+      {
+        "workflow_index": 11,
+        "instance_id": "pytest-dev__pytest-5809",
+        "arm": "serena"
+      }
+    ],
+    "results": [
+      {
+        "case": "requests",
+        "arm": "serena",
+        "tag": "1",
+        "process_returncode": 0,
+        "status": "passed",
+        "checks": 2,
+        "failure": ""
+      },
+      {
+        "case": "requests",
+        "arm": "codenib",
+        "tag": "1",
+        "process_returncode": 0,
+        "status": "passed",
+        "checks": 2,
+        "failure": ""
+      },
+      {
+        "case": "requests",
+        "arm": "codegraph",
+        "tag": "1",
+        "process_returncode": 0,
+        "status": "failed",
+        "checks": 1,
+        "failure": "unhandled errors in a TaskGroup (1 sub-exception)"
+      },
+      {
+        "case": "requests",
+        "arm": "native",
+        "tag": "1",
+        "process_returncode": 0,
+        "status": "passed",
+        "checks": 2,
+        "failure": ""
+      },
+      {
+        "case": "flask",
+        "arm": "serena",
+        "tag": "1",
+        "process_returncode": 0,
+        "status": "passed",
+        "checks": 2,
+        "failure": ""
+      },
+      {
+        "case": "flask",
+        "arm": "codegraph",
+        "tag": "1",
+        "process_returncode": 0,
+        "status": "failed",
+        "checks": 1,
+        "failure": "unhandled errors in a TaskGroup (1 sub-exception)"
+      },
+      {
+        "case": "flask",
+        "arm": "native",
+        "tag": "1",
+        "process_returncode": 0,
+        "status": "passed",
+        "checks": 2,
+        "failure": ""
+      },
+      {
+        "case": "flask",
+        "arm": "codenib",
+        "tag": "1",
+        "process_returncode": 0,
+        "status": "passed",
+        "checks": 2,
+        "failure": ""
+      },
+      {
+        "case": "pytest",
+        "arm": "codenib",
+        "tag": "3",
+        "process_returncode": 0,
+        "status": "passed",
+        "checks": 2,
+        "failure": ""
+      },
+      {
+        "case": "pytest",
+        "arm": "native",
+        "tag": "1",
+        "process_returncode": 0,
+        "status": "passed",
+        "checks": 2,
+        "failure": ""
+      },
+      {
+        "case": "pytest",
+        "arm": "codegraph",
+        "tag": "1",
+        "process_returncode": 0,
+        "status": "failed",
+        "checks": 1,
+        "failure": "unhandled errors in a TaskGroup (1 sub-exception)"
+      },
+      {
+        "case": "pytest",
+        "arm": "serena",
+        "tag": "1",
+        "process_returncode": 0,
+        "status": "passed",
+        "checks": 2,
+        "failure": ""
+      }
+    ],
+    "finished_utc": "2026-10-28T13:16:52.458696+00:00"
+  },
+  "controllers": {
+    "3213f6e953e1ab225dcdda921c2e95a90fb58a24870d851dc8e381694cad3ac4": {
+      "filename": "run_batch.py",
+      "source": "\"\"\"Serial, model-free execution of the twelve fixed source/arm controls.\"\"\"\nimport hashlib\nimport json\nimport subprocess\nimport sys\nfrom datetime import datetime, timezone\nfrom pathlib import Path\n\nROOT = Path(__file__).parent\nold = Path('/tmp/codenib-matched-pilot-20261027')\npolicy = json.loads((old / 'matched-policy-v3.json').read_text())\nnames = {'psf__requests-1921': 'requests', 'pallets__flask-5014': 'flask', 'pytest-dev__pytest-5809': 'pytest'}\nplan = {'scope': 'Model-free common-runtime admission. No new matched model inference or benefit cohort.', 'started_utc': datetime.now(timezone.utc).isoformat(), 'controller_sha256': hashlib.sha256((ROOT / 'run.py').read_bytes()).hexdigest(), 'order': policy['execution_order']['workflows'], 'results': []}\n(ROOT / 'batch.json').write_text(json.dumps(plan, indent=2) + '\\n')\nfor row in plan['order']:\n    case, arm = names[row['instance_id']], row['arm']\n    tag = '3' if (case, arm) == ('pytest', 'codenib') else '1'\n    path = ROOT / f'{case}-{arm}-{tag}'\n    assert not path.exists(), path\n    with (ROOT / f'batch-{case}-{arm}-{tag}.log').open('w') as stream:\n        result = subprocess.run([sys.executable, str(ROOT / 'run.py'), case, arm, tag], stdout=stream, stderr=subprocess.STDOUT)\n    receipt = json.loads((path / 'receipt.json').read_text())\n    output = {'case': case, 'arm': arm, 'tag': tag, 'process_returncode': result.returncode, 'status': receipt['status'], 'checks': len(receipt['checks']), 'failure': receipt.get('failure', {}).get('message', '')[:400]}\n    plan['results'].append(output)\n    (ROOT / 'batch.json').write_text(json.dumps(plan, indent=2) + '\\n')\n    print(json.dumps(output), flush=True)\nplan['finished_utc'] = datetime.now(timezone.utc).isoformat()\n(ROOT / 'batch.json').write_text(json.dumps(plan, indent=2) + '\\n')\n"
+    },
+    "213df1d45a1cee2c3b815d6b04ff206dd2cf2a437a32396950aa7e759372b780": {
+      "filename": "watcher_followup.py",
+      "source": "\"\"\"Separate bounded Codegraph pending-sync recovery; original controls stay failed.\"\"\"\nimport asyncio\nimport hashlib\nimport json\nimport time\nfrom pathlib import Path\n\nfrom run import Attempt\n\n\nclass WatcherAttempt(Attempt):\n    def __init__(self, case):\n        super().__init__(case, 'codegraph', 'watcher1')\n        self.record['wrapper_sha256'] = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()\n        self.record['scope'] = 'Separate model-free pending-sync recovery with a prospectively declared one-second wait and at most one same-session retry. Preserve the original immediate-query control and every reply/cost; no model benefit or update-latency benchmark.'\n        self.record['recovery_rule'] = 'Only an explicit pending sync reply to the newly added source permits one one-second wait and one identical query in the same MCP connection. Other omissions/errors fail without retry.'\n        self.save()\n\n    async def call(self, client, name, args):\n        reply = await super().call(client, name, args)\n        text = ''.join(b.get('text', '') for b in reply['content'])\n        is_added_file_query = name == 'codegraph_explore' and self.edit['path'] in args.get('query', '')\n        if is_added_file_query and 'pending sync' in text.lower():\n            start = time.monotonic()\n            await asyncio.sleep(1.0)\n            self.record['watcher_wait'] = {'requested_seconds': 1.0, 'observed_seconds': time.monotonic() - start, 'reason': 'Explicit pending sync in the retained original reply', 'same_mcp_client': True, 'retry_limit': 1}\n            self.save()\n            return await super().call(client, name, args)\n        return reply\n\n\nasync def main():\n    for case in ['requests', 'flask', 'pytest']:\n        await WatcherAttempt(case).run()\n\n\nif __name__ == '__main__':\n    asyncio.run(main())\n"
+    },
+    "b4679bf46778a9c2836e5cba5fafbabfc2000a74c8a3195b31e73131053f2733": {
+      "filename": "runtime_audit.py",
+      "source": "\"\"\"Read immutable prepared-runtime package/provider identities without source mounts.\"\"\"\nimport hashlib\nimport json\nimport subprocess\nimport uuid\nfrom pathlib import Path\n\nimport docker\n\nROOT = Path(__file__).parent\nengine = docker.from_env(timeout=120)\nresults = []\ntry:\n    for case in ['requests', 'flask', 'pytest']:\n        for arm in ['codegraph', 'codenib']:\n            tag = '3' if (case, arm) == ('pytest', 'codenib') else '1'\n            receipt = json.loads((ROOT / f'{case}-{arm}-{tag}' / 'receipt.json').read_text())\n            image = engine.images.get(receipt['prepared_image'])\n            owner = uuid.uuid4().hex\n            row = {'case': case, 'arm': arm, 'prepared_image': image.id, 'owner': owner, 'controller_sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}\n            container = None\n            try:\n                container = engine.containers.create(image.id, ['180'], entrypoint='/bin/sleep', labels={'codenib.common-admission.owner': owner}, network_mode='none', network_disabled=True, tmpfs={p: 'rw,noexec,nosuid,size=1m' for p in image.attrs['Config'].get('Volumes', {})}, mem_limit=4 * 1024**3, nano_cpus=2_000_000_000, pids_limit=256)\n                row['container_id'] = container.id\n                (ROOT / 'runtime-audit-live.json').write_text(json.dumps(row, indent=2) + '\\n')\n                container.start()\n                if arm == 'codegraph':\n                    code = 'const fs=require(\"fs\"),path=require(\"path\"),crypto=require(\"crypto\");let base=\"/opt/pilot-tools/npm/lib/node_modules/@colbymchenry/codegraph\",files={};function walk(p){for(const e of fs.readdirSync(p,{withFileTypes:true})){let q=path.join(p,e.name);if(e.isDirectory())walk(q);else if(e.isFile())files[q]=crypto.createHash(\"sha256\").update(fs.readFileSync(q)).digest(\"hex\")}}walk(base);console.log(JSON.stringify({node:process.version,package:require(base+\"/package.json\").version,package_files:files}))'\n                    args = ['node', '-e', code]\n                else:\n                    py = '/opt/pilot-tools/uv/serena-agent/bin/python' if arm == 'serena' else '/opt/pilot-tools/codenib/bin/python'\n                    code = 'import importlib.metadata as m,json,sys;from pathlib import Path;result={\"python\":sys.version,\"packages\":dict(sorted((d.metadata[\"Name\"],d.version) for d in m.distributions()))};'\n                    if arm == 'codenib':\n                        code += 'from codenib import _workspace_owner as o;result[\"workspace_owner_protocol\"]=o._protocol_version;result[\"providers\"]={n:json.loads((Path(\"/opt/pilot-tools/.codenib/toolchains/node-tools/node_modules\")/n/\"package.json\").read_text())[\"version\"] for n in (\"@sourcegraph/scip-python\",\"basedpyright\")};'\n                    code += 'print(json.dumps(result))'\n                    args = [py, '-c', code]\n                result = subprocess.run(['docker', 'exec', '-w', '/opt', container.id, *args], capture_output=True, text=True, timeout=60)\n                row.update(argv=args, returncode=result.returncode, stdout=result.stdout, stderr=result.stderr)\n                assert result.returncode == 0, (case, arm, result.stderr[-1200:])\n                row['identity'] = json.loads(result.stdout)\n                row['status'] = 'passed'\n            except BaseException as exc:\n                row.update(status='failed', failure={'type': type(exc).__name__, 'message': str(exc)})\n            finally:\n                if container:\n                    container.reload()\n                    assert container.attrs['Config']['Labels']['codenib.common-admission.owner'] == owner\n                    container.remove(force=True, v=True)\n                    try:\n                        engine.containers.get(container.id)\n                        row['container_removed'] = False\n                    except docker.errors.NotFound:\n                        row['container_removed'] = True\n                results.append(row)\n                (ROOT / 'runtime-audit-corrected.json').write_text(json.dumps(results, indent=2) + '\\n')\n                print(json.dumps({'case': case, 'arm': arm, 'status': row['status'], 'failure': row.get('failure')}), flush=True)\nfinally:\n    engine.close()\n"
+    },
+    "7f21c7ca14ad20b9b1f0ae128b92ef65a4a8bdf2f53bf2a4574e9bf9ff9c8e91": {
+      "filename": "run.py",
+      "source": "\"\"\"Model-free four-arm installation, lookup and same-session update admission.\n\nCreation returns the ownership receipt before start or verification. Recovery\nremoves only those recorded IDs after checking their unique owner label. Each\ncontainer owns background processes, and every attempt retains its failure.\nThis controller never imports an inference driver or any reference patch.\n\"\"\"\nimport argparse\nimport ast\nimport asyncio\nimport hashlib\nimport io\nimport json\nimport os\nimport re\nimport shutil\nimport subprocess\nimport tarfile\nimport time\nimport traceback\nimport uuid\nfrom datetime import datetime, timezone\nfrom pathlib import Path\n\nimport docker\nfrom mcp import Client, StdioServerParameters\nfrom mcp.client.stdio import stdio_client\n\nROOT = Path(__file__).parent\nOLD = Path('/tmp/codenib-matched-pilot-20261027')\nCASES = {\n    'requests': ('psf__requests-1921', 'requests/sessions.py', 'Session/prepare_request', 'sha256:ac3aeb4416832db7147d67ee205a1e1da97f5f13d73a587e0cd4457af5acb791'),\n    'flask': ('pallets__flask-5014', 'src/flask/app.py', 'Flask/process_response', 'sha256:82d039276bd7fa3d25cefd6732f5fcf105163ee1a5dc24ebb13c3a9e514f1258'),\n    'pytest': ('pytest-dev__pytest-5809', 'src/_pytest/runner.py', 'CallInfo/from_call', 'sha256:cd4894bd827b6f2fc079498778ab78d03673ec3ba86855756190e7932ef15f49'),\n}\n\n\ndef sha(path):\n    return hashlib.sha256(Path(path).read_bytes()).hexdigest()\n\n\ndef snapshot(work):\n    paths = subprocess.check_output(['git', 'ls-files', '-z'], cwd=work).decode().split('\\0')\n    return {'head': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=work, text=True).strip(),\n            'tracked': {p: sha(work / p) for p in filter(None, paths)},\n            'git_status': subprocess.check_output(['git', 'status', '--porcelain', '--untracked-files=all'], cwd=work, text=True)}\n\n\ndef span(work, file, symbol):\n    nodes = ast.parse((work / file).read_text()).body\n    for name in symbol.split('/'):\n        node = next(n for n in nodes if isinstance(n, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name)\n        nodes = node.body\n    start = min([node.lineno] + [d.lineno for d in node.decorator_list])\n    return start, node.end_lineno\n\n\nclass Attempt:\n    def __init__(self, case, arm, tag):\n        self.case, self.arm = case, arm\n        self.instance, self.file, self.symbol, self.base_image = CASES[case]\n        self.folder = ROOT / (case + '-' + arm + '-' + tag)\n        self.folder.mkdir()\n        self.work = self.folder / 'workspace'\n        shutil.copytree(OLD / 'sources' / self.instance.rsplit('-', 1)[0], self.work, symlinks=True)\n        self.tasks = json.loads((OLD / 'matched-tasks-v1.json').read_text())\n        self.edit = self.tasks['controlled_edits'][self.instance]\n        self.owner = uuid.uuid4().hex\n        self.engine = docker.from_env(timeout=120)\n        self.current = None\n        self.owned = []\n        self.record = {'scope': 'Model-free common-base runtime/source admission, including actual installation, initialization and same-session source-addition costs. No matched model task, benefit estimate or external user.',\n                       'case': case, 'arm': arm, 'instance_id': self.instance, 'owner': self.owner,\n                       'started_utc': datetime.now(timezone.utc).isoformat(), 'controller_sha256': sha(__file__),\n                       'source_commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd='/home/zhongming/CodeNib-codegraph-benefit', text=True).strip(),\n                       'base_image': self.base_image, 'commands': [], 'calls': [], 'owned_containers': [], 'checks': [], 'model_inference_sessions': 0}\n        self.save()\n\n    def save(self):\n        (self.folder / 'receipt.json').write_text(json.dumps(self.record, indent=2) + '\\n')\n\n    def command(self, label, args, required=True, timeout=600):\n        t = time.monotonic()\n        argv = ['docker', 'exec', '-w', str(self.work), self.current.id, *args]\n        try:\n            result = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)\n            code, output = result.returncode, result.stdout + result.stderr\n        except subprocess.TimeoutExpired as exc:\n            code, output = 124, str(exc.stdout or '') + str(exc.stderr or '')\n        log = self.folder / (label + '.log')\n        log.write_text(output)\n        row = {'label': label, 'argv': argv, 'returncode': code, 'seconds': time.monotonic() - t, 'log_sha256': sha(log), 'output': output}\n        self.record['commands'].append(row)\n        self.save()\n        print(self.case, self.arm, label, code, flush=True)\n        if required:\n            assert code == 0, (label, output[-1600:])\n        return output\n\n    def create(self, image_id, network):\n        image = self.engine.images.get(image_id)\n        assert image.attrs['Architecture'] == 'arm64'\n        environment = {'UV_TOOL_DIR': '/opt/pilot-tools/uv', 'UV_TOOL_BIN_DIR': '/opt/pilot-tools/bin', 'UV_CACHE_DIR': '/opt/pilot-state/uv-cache', 'UV_PYTHON_INSTALL_DIR': '/opt/pilot-runtimes/managed-python',\n                       'PATH': '/opt/pilot-tools/bin:/opt/pilot-runtimes/node/bin:/usr/local/bin:/opt/miniconda3/bin:/usr/sbin:/usr/bin:/sbin:/bin',\n                       'SERENA_HOME': '/opt/pilot-tools/serena-state', 'CODENIB_HOME': '/opt/pilot-state/.codenib', 'CODENIB_TOOLCHAIN_DIR': '/opt/pilot-tools/.codenib/toolchains', 'CODENIB_SCIP_TOOLS_DIR': '/opt/pilot-tools/.codenib/toolchains',\n                       'CODEGRAPH_INSTALL_DIR': '/opt/pilot-tools/codegraph-runtime', 'CODEGRAPH_TELEMETRY': '0', 'DO_NOT_TRACK': '1'}\n        if network == 'none':\n            environment['UV_OFFLINE'] = '1'\n        container = self.engine.containers.create(image.id, ['1800'], entrypoint='/bin/sleep',\n            labels={'codenib.common-admission.owner': self.owner}, environment=environment,\n            network_mode=network, network_disabled=(network == 'none'),\n            volumes={str(self.work): {'bind': str(self.work), 'mode': 'rw'}},\n            tmpfs={p: 'rw,noexec,nosuid,size=1m' for p in image.attrs['Config'].get('Volumes', {}) if p != str(self.work)},\n            working_dir=str(self.work), mem_limit=4 * 1024**3, nano_cpus=2_000_000_000, pids_limit=256)\n        self.owned.append(container.id)\n        self.record['owned_containers'].append(container.id)\n        self.current = container\n        self.save()\n        container.start()\n        container.reload()\n        actual = container.attrs\n        binds = [m for m in actual['Mounts'] if m['Type'] == 'bind']\n        assert len(binds) == 1 and binds[0]['Source'] == str(self.work)\n        assert actual['HostConfig']['NetworkMode'] == network\n        if network == 'none':\n            assert actual['Config']['NetworkDisabled'] is True\n            self.record['isolated_runtime'] = {'container_id': container.id, 'image_id': image.id, 'mounts': actual['Mounts'], 'network': network, 'network_disabled': actual['Config']['NetworkDisabled'], 'memory': actual['HostConfig']['Memory'], 'nano_cpus': actual['HostConfig']['NanoCpus'], 'pids_limit': actual['HostConfig']['PidsLimit']}\n        self.save()\n\n    def remove(self, cid):\n        try:\n            c = self.engine.containers.get(cid)\n        except docker.errors.NotFound:\n            return True\n        assert c.attrs['Config']['Labels']['codenib.common-admission.owner'] == self.owner\n        c.remove(force=True, v=True)\n        try:\n            self.engine.containers.get(cid)\n            return False\n        except docker.errors.NotFound:\n            return True\n\n    def common_prepare(self):\n        t = time.monotonic()\n        self.create(self.base_image, 'bridge')\n        self.command('common-directories', ['mkdir', '-p', '/opt/pilot-tools/bin', '/opt/pilot-state', '/opt/pilot-inputs'])\n        self.command('common-git', ['git', 'config', '--global', '--add', 'safe.directory', str(self.work)])\n        self.command('neutral-boundary', ['/opt/pilot-runtimes/python/bin/python3.13', '-c', 'import json,shutil;from pathlib import Path;print(json.dumps({\"testbed_files\":sorted(p.name for p in Path(\"/testbed\").iterdir()),\"optional_clis\":{n:shutil.which(n) for n in [\"serena\",\"codegraph\",\"codenib\"]}}))'])\n        args = ['/opt/miniconda3/envs/testbed/bin/python', '-m', 'pip', 'install']\n        self.command('common-project', args + (['.'] if self.case == 'requests' else ['-e', '.']))\n        self.record['common_runtime_packages'] = json.loads(self.command('common-packages', ['/opt/miniconda3/envs/testbed/bin/python', '-c', 'import importlib.metadata as m,json,sys;print(json.dumps({\"python\":sys.version,\"packages\":sorted({(d.metadata[\"Name\"],d.version) for d in m.distributions()})}))']))\n        self.command('common-runtimes', ['/bin/bash', '-lc', 'python --version\\nnode --version\\nuv --version\\nclaude --version\\nrg --version'])\n        self.record['common_prepare_seconds'] = time.monotonic() - t\n        self.record['source_before_product'] = snapshot(self.work)\n        self.save()\n\n    def install_product(self):\n        t = time.monotonic()\n        if self.arm == 'serena':\n            self.command('install-product', ['uv', 'tool', 'install', '--python', '/opt/pilot-runtimes/python/bin/python3.13', '--with', 'pyright==1.1.403', 'serena-agent==2.1.0'])\n            self.command('prepare-python-provider', ['uv', 'tool', 'run', '-p', '3.13', '--from', 'pyright==1.1.403', 'pyright', '--version'])\n            self.command('initialize-product', ['serena', 'project', 'create', '--language', 'python', '--name', 'admission-' + self.owner[:8], str(self.work)])\n        elif self.arm == 'codegraph':\n            self.command('install-product', ['npm', 'install', '--global', '--prefix', '/opt/pilot-tools/npm', '@colbymchenry/codegraph@1.6.2'])\n            self.command('product-launcher', ['ln', '-s', '/opt/pilot-tools/npm/bin/codegraph', '/opt/pilot-tools/bin/codegraph'])\n            self.command('prepare-bundle', ['codegraph', '--version'])\n            self.command('initialize-product', ['codegraph', 'init', '--yes', str(self.work)])\n        elif self.arm == 'codenib':\n            wheel = json.loads((ROOT / 'native-wheel-receipt.json').read_text())\n            path = ROOT / 'candidate-wheel-native' / wheel['filename']\n            assert sha(path) == wheel['sha256']\n            self.record['wheel'] = wheel\n            payload = io.BytesIO()\n            with tarfile.open(fileobj=payload, mode='w') as archive:\n                archive.add(path, arcname=path.name)\n            assert self.current.put_archive('/opt/pilot-inputs', payload.getvalue())\n            self.command('product-venv', ['uv', 'venv', '--python', '/opt/pilot-runtimes/python/bin/python3.13', '/opt/pilot-tools/codenib'])\n            self.command('install-product', ['uv', 'pip', 'install', '--python', '/opt/pilot-tools/codenib/bin/python', '/opt/pilot-inputs/' + path.name + '[graph,mcp]'])\n            self.command('product-launcher', ['ln', '-s', '/opt/pilot-tools/codenib/bin/codenib', '/opt/pilot-tools/bin/codenib'])\n            self.command('prepare-language-providers', ['codenib', 'toolchain', 'install', str(self.work), '--language', 'python', '--scope', 'all'])\n            self.command('initialize-product', ['codenib', 'codegraph', 'init', str(self.work), '--language', 'python', '--agent', 'claude'])\n        self.record['product_install_initialize_seconds'] = time.monotonic() - t\n        self.save()\n\n    def isolate(self):\n        self.command('workspace-owner-before-isolation', ['chown', '-R', f'{os.getuid()}:{os.getgid()}', str(self.work)])\n        image = self.current.commit(repository='codenib/common-admission-arm64', tag=self.owner)\n        self.record['prepared_image'] = image.id\n        self.save()\n        assert self.remove(self.current.id)\n        self.current = None\n        self.create(image.id, 'none')\n\n    async def call(self, client, name, args):\n        t = time.monotonic()\n        raw = (await client.call_tool(name, arguments=args)).model_dump(mode='json')\n        self.record['calls'].append({'name': name, 'arguments': args, 'seconds': time.monotonic() - t, 'reply': raw})\n        self.save()\n        return raw\n\n    def body_check(self, raw, file, symbol, mode):\n        assert not raw['is_error'], raw\n        start, end = span(self.work, file, symbol)\n        text = ''.join(b.get('text', '') for b in raw['content'])\n        lines = (self.work / file).read_text().splitlines()\n        expected = '\\n'.join(lines[start - 1:end])\n        obs = {'file': file, 'symbol': symbol, 'file_sha256': sha(self.work / file), 'start_line_1based': start, 'end_line_1based': end, 'mode': mode}\n        if mode == 'serena':\n            rows = json.loads(text)\n            assert len(rows) == 1 and rows[0]['relative_path'] == file and rows[0]['name_path'] == symbol, rows\n            loc = rows[0]['body_location']\n            assert (loc['start_line'] + 1, loc['end_line'] + 1) == (start, end), loc\n            first = expected.split('\\n', 1)[0]\n            indent = len(first) - len(first.lstrip(' \\t'))\n            assert rows[0]['body'] == expected[indent:]\n            obs['first_line_indent_characters'] = indent\n        elif mode == 'codegraph':\n            visible, final_rows = {}, []\n            current, fenced = None, False\n            for line in text.splitlines():\n                header = re.match(r'\\*\\*`([^`]+)`\\*\\*', line)\n                if header:\n                    current = header[1]\n                if line.startswith('```'):\n                    fenced = not fenced\n                    continue\n                match = re.match(r'(\\d+)\\t(.*)', line)\n                if fenced and current and match:\n                    p = self.work / current\n                    source = p.read_text()\n                    original = source.splitlines()\n                    n = int(match[1])\n                    if n == len(original) + 1 and source.endswith('\\n') and match[2] == '':\n                        final_rows.append({'file': current, 'rendered_line': n, 'source_credit': False})\n                        continue\n                    assert 1 <= n <= len(original) and original[n - 1] == match[2], (current, line)\n                    visible.setdefault(current, set()).add(n)\n            missing = sorted(set(range(start, end + 1)) - visible.get(file, set()))\n            obs.update(visible_line_counts={p: len(ns) for p, ns in visible.items()}, non_source_final_empty_rows=final_rows, missing_body_lines=missing)\n            assert not missing, obs\n        else:\n            data = json.loads(text)\n            assert data['content'].splitlines() == expected.splitlines(), data\n        obs['body_matches_captured_source'] = True\n        self.record['checks'].append(obs)\n        self.save()\n\n    def apply_edit(self):\n        target = self.work / self.edit['path']\n        assert not target.exists()\n        assert hashlib.sha256(self.edit['source'].encode()).hexdigest() == self.edit['sha256']\n        target.write_text(self.edit['source'])\n        self.record['controlled_edit'] = self.edit\n        self.save()\n        tree = ast.parse(self.edit['source'])\n        return self.edit['path'], next(n.name for n in tree.body if isinstance(n, ast.FunctionDef))\n\n    async def query_checks(self):\n        if self.arm == 'native':\n            for phase in ['initial', 'post_edit']:\n                file, symbol = (self.file, self.symbol) if phase == 'initial' else self.apply_edit()\n                start, end = span(self.work, file, symbol)\n                code = 'from pathlib import Path;import json; p=Path(' + repr(file) + '); print(json.dumps({\"content\":\"\\\\n\".join(p.read_text().splitlines()[' + str(start - 1) + ':' + str(end) + '])}))'\n                text = self.command('native-' + phase, ['python', '-c', code])\n                self.body_check({'is_error': False, 'content': [{'text': text}]}, file, symbol, 'native')\n            return\n        if self.arm == 'serena':\n            argv = ['serena', 'start-mcp-server', '--project', str(self.work), '--context', 'claude-code', '--agent-interface', 'REPL', '--enable-web-dashboard', 'False', '--enable-gui-log-window', 'False', '--open-web-dashboard', 'False']\n        elif self.arm == 'codegraph':\n            argv = ['codegraph', 'serve', '--mcp', '--path', str(self.work)]\n        else:\n            argv = ['codenib', 'mcp', str(self.work), '--tool-surface', 'full']\n        args = ['exec', '-i', '-w', str(self.work), self.current.id, *argv]\n        self.record['server_argv'] = ['docker', *args]\n        with (self.folder / 'mcp.stderr').open('w') as errors:\n            transport = stdio_client(StdioServerParameters(command='docker', args=args, cwd=self.folder), errlog=errors)\n            async with Client(transport, mode='auto', cache=None) as client:\n                session = None\n                if self.arm == 'serena':\n                    raw = await self.call(client, 'initial_instructions', {})\n                    assert not raw['is_error']\n                    text = ''.join(b.get('text', '') for b in raw['content'])\n                    session = re.search(r'session id is `([^`]+)`', text)[1]\n                for phase in ['initial', 'post_edit']:\n                    file, symbol = (self.file, self.symbol) if phase == 'initial' else self.apply_edit()\n                    if phase == 'post_edit' and self.arm == 'codenib':\n                        stale = await self.call(client, 'dependency_subgraph', {'symbol': file + ':' + symbol + '()', 'direction': 'dependencies', 'depth': 1})\n                        message = ''.join(b.get('text', '') for b in stale['content'])\n                        assert stale['is_error'] and message == 'Indexed source changed. Run `codenib codegraph init` for this repository and retry; this MCP connection reloads rebuilt indexes.', stale\n                        self.command('post-edit-rebuild', ['codenib', 'codegraph', 'init', str(self.work), '--language', 'python', '--agent', 'claude'])\n                    if self.arm == 'serena':\n                        code = f's.lsp.find_symbol(name_path_pattern={symbol!r}, relative_path={file!r}, include_body=True)'\n                        raw = await self.call(client, 'serena_repl', {'session': session, 'code': code})\n                    elif self.arm == 'codegraph':\n                        raw = await self.call(client, 'codegraph_explore', {'query': symbol.rsplit('/', 1)[-1] + ' ' + file})\n                    else:\n                        qualified = file + ':' + symbol.replace('/', '.') + '()'\n                        graph = await self.call(client, 'dependency_subgraph', {'symbol': qualified, 'direction': 'dependencies', 'depth': 1})\n                        assert not graph['is_error'] and json.loads(graph['content'][0]['text'])['root'] == qualified, graph\n                        start, end = span(self.work, file, symbol)\n                        raw = await self.call(client, 'read_source', {'file_path': file, 'start_line': start, 'end_line': end})\n                    self.body_check(raw, file, symbol, self.arm)\n\n    async def run(self):\n        try:\n            self.record['source_original'] = snapshot(self.work)\n            self.common_prepare()\n            self.install_product()\n            self.isolate()\n            t = time.monotonic()\n            await asyncio.wait_for(self.query_checks(), timeout=600)\n            self.record['lookup_update_checks_seconds'] = time.monotonic() - t\n            self.record['status'] = 'passed'\n        except BaseException as exc:\n            self.record.update(status='failed', failure={'type': type(exc).__name__, 'message': str(exc), 'traceback': traceback.format_exc()})\n        finally:\n            if self.current is not None:\n                try:\n                    self.command('final-workspace-owner', ['chown', '-R', f'{os.getuid()}:{os.getgid()}', str(self.work)], required=False, timeout=60)\n                except Exception as exc:\n                    self.record['owner_cleanup_error'] = str(exc)\n            self.record['cleanup'] = [{'container_id': cid, 'confirmed_absent': self.remove(cid)} for cid in reversed(self.owned)]\n            self.record['source_final'] = snapshot(self.work)\n            before, after = self.record['source_original'], self.record['source_final']\n            changed = [p for p in before['tracked'] if before['tracked'][p] != after['tracked'].get(p)]\n            self.record['changed_tracked_files'] = changed\n            if changed or before['head'] != after['head']:\n                self.record['status'] = 'failed'\n                self.record['preservation_failure'] = True\n            if self.record.get('controlled_edit'):\n                assert sha(self.work / self.edit['path']) == self.edit['sha256']\n            self.record['finished_utc'] = datetime.now(timezone.utc).isoformat()\n            self.save()\n            self.engine.close()\n            print(json.dumps({'case': self.case, 'arm': self.arm, 'status': self.record['status'], 'failure': self.record.get('failure', {}).get('message', '')[:500], 'checks': len(self.record['checks']), 'cleanup': all(c['confirmed_absent'] for c in self.record['cleanup'])}), flush=True)\n\n\nif __name__ == '__main__':\n    parser = argparse.ArgumentParser()\n    parser.add_argument('case', choices=CASES)\n    parser.add_argument('arm', choices=['native', 'serena', 'codegraph', 'codenib'])\n    parser.add_argument('tag')\n    args = parser.parse_args()\n    asyncio.run(Attempt(args.case, args.arm, args.tag).run())\n"
+    },
+    "d5ec43cb2f282ec137ab3d4f45aeddc2d1e5835ff66f99d350511afb58f1a0ca": {
+      "filename": "build_candidate.py",
+      "source": "\"\"\"Build the pinned source candidate in a complete, owned tool runtime.\"\"\"\nimport hashlib\nimport io\nimport json\nimport shutil\nimport subprocess\nimport tarfile\nimport time\nimport traceback\nimport uuid\nfrom pathlib import Path\n\nimport docker\n\nROOT = Path(__file__).parent\nREPO = Path('/home/zhongming/CodeNib-codegraph-benefit')\nSTAGE = ROOT / 'wheel-source-native'\nSTAGE.mkdir()\ninputs = json.loads((ROOT / 'wheel-inputs.json').read_text())\nsource = subprocess.check_output(['git', 'archive', inputs['source_commit'], *inputs['source_paths']], cwd=REPO)\nassert hashlib.sha256(source).hexdigest() == inputs['source_archive_sha256']\nwith tarfile.open(fileobj=io.BytesIO(source)) as archive:\n    archive.extractall(STAGE, filter='data')\nshutil.copytree(ROOT / 'wheel-source/web/dist', STAGE / 'web/dist')\n(ROOT / 'candidate-wheel-native').mkdir()\nowner = uuid.uuid4().hex\nengine = docker.from_env(timeout=120)\ncontainer = None\nrecord = {'scope': 'Candidate packaging, not a model task or measured product installation', 'owner': owner, 'source_commit': inputs['source_commit'], 'source_archive_sha256': inputs['source_archive_sha256'], 'commands': [], 'controller_sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}\n\ndef save():\n    (ROOT / 'native-wheel-build.json').write_text(json.dumps(record, indent=2) + '\\n')\n\ndef command(label, args):\n    t = time.monotonic()\n    r = subprocess.run(['docker', 'exec', '-w', str(STAGE), container.id, *args], capture_output=True, text=True, timeout=240)\n    log = ROOT / (label + '.log')\n    log.write_text(r.stdout + r.stderr)\n    record['commands'].append({'label': label, 'argv': args, 'exit_code': r.returncode, 'seconds': time.monotonic() - t, 'output': r.stdout + r.stderr, 'log_sha256': hashlib.sha256(log.read_bytes()).hexdigest()})\n    save()\n    assert r.returncode == 0, (label, r.stderr[-1200:])\n\ntry:\n    image = engine.images.get('sha256:ac3aeb4416832db7147d67ee205a1e1da97f5f13d73a587e0cd4457af5acb791')\n    record['image_id'] = image.id\n    container = engine.containers.create(image.id, ['600'], entrypoint='/bin/sleep', labels={'codenib.common-admission.owner': owner}, network_mode='bridge', volumes={str(STAGE): {'bind': str(STAGE), 'mode': 'rw'}, str(ROOT / 'candidate-wheel-native'): {'bind': '/candidate-wheel', 'mode': 'rw'}}, working_dir=str(STAGE), mem_limit=4 * 1024**3, nano_cpus=2_000_000_000, pids_limit=256)\n    record['container_id'] = container.id\n    save()\n    container.start()\n    command('build-env', ['uv', 'venv', '--python', '/opt/pilot-runtimes/python/bin/python3.13', '/opt/build-venv'])\n    command('build-requirements', ['uv', 'pip', 'install', '--python', '/opt/build-venv/bin/python', 'setuptools==83.0.0', 'wheel==0.47.0', 'build==1.5.0'])\n    command('native-wheel-build', ['/opt/build-venv/bin/python', '-m', 'build', '--wheel', '--no-isolation', '--outdir', '/candidate-wheel'])\n    command('build-output-owner', ['chown', '-R', str(__import__('os').getuid()) + ':' + str(__import__('os').getgid()), str(STAGE), '/candidate-wheel'])\n    record['status'] = 'built'\nexcept BaseException as exc:\n    record.update(status='failed', failure={'type': type(exc).__name__, 'message': str(exc), 'traceback': traceback.format_exc()})\nfinally:\n    if container:\n        container.reload()\n        assert container.attrs['Config']['Labels']['codenib.common-admission.owner'] == owner\n        container.remove(force=True, v=True)\n        try:\n            engine.containers.get(container.id)\n            record['container_removed'] = False\n        except docker.errors.NotFound:\n            record['container_removed'] = True\n    save()\n    engine.close()\n    print(json.dumps({'status': record['status'], 'failure': record.get('failure'), 'container_removed': record.get('container_removed')}))\n"
+    },
+    "76ce5f2c3e0d9f232c41ddc7ce027cbe80bb940320b910ee5591aa3940fa1ba3": {
+      "filename": "run_before_stale_message_check.py",
+      "source": "\"\"\"Model-free four-arm installation, lookup and same-session update admission.\n\nCreation returns the ownership receipt before start or verification. Recovery\nremoves only those recorded IDs after checking their unique owner label. Each\ncontainer owns background processes, and every attempt retains its failure.\nThis controller never imports an inference driver or any reference patch.\n\"\"\"\nimport argparse\nimport ast\nimport asyncio\nimport hashlib\nimport io\nimport json\nimport os\nimport re\nimport shutil\nimport subprocess\nimport tarfile\nimport time\nimport traceback\nimport uuid\nfrom datetime import datetime, timezone\nfrom pathlib import Path\n\nimport docker\nfrom mcp import Client, StdioServerParameters\nfrom mcp.client.stdio import stdio_client\n\nROOT = Path(__file__).parent\nOLD = Path('/tmp/codenib-matched-pilot-20261027')\nCASES = {\n    'requests': ('psf__requests-1921', 'requests/sessions.py', 'Session/prepare_request', 'sha256:ac3aeb4416832db7147d67ee205a1e1da97f5f13d73a587e0cd4457af5acb791'),\n    'flask': ('pallets__flask-5014', 'src/flask/app.py', 'Flask/process_response', 'sha256:82d039276bd7fa3d25cefd6732f5fcf105163ee1a5dc24ebb13c3a9e514f1258'),\n    'pytest': ('pytest-dev__pytest-5809', 'src/_pytest/runner.py', 'CallInfo/from_call', 'sha256:cd4894bd827b6f2fc079498778ab78d03673ec3ba86855756190e7932ef15f49'),\n}\n\n\ndef sha(path):\n    return hashlib.sha256(Path(path).read_bytes()).hexdigest()\n\n\ndef snapshot(work):\n    paths = subprocess.check_output(['git', 'ls-files', '-z'], cwd=work).decode().split('\\0')\n    return {'head': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=work, text=True).strip(),\n            'tracked': {p: sha(work / p) for p in filter(None, paths)},\n            'git_status': subprocess.check_output(['git', 'status', '--porcelain', '--untracked-files=all'], cwd=work, text=True)}\n\n\ndef span(work, file, symbol):\n    nodes = ast.parse((work / file).read_text()).body\n    for name in symbol.split('/'):\n        node = next(n for n in nodes if isinstance(n, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name)\n        nodes = node.body\n    start = min([node.lineno] + [d.lineno for d in node.decorator_list])\n    return start, node.end_lineno\n\n\nclass Attempt:\n    def __init__(self, case, arm, tag):\n        self.case, self.arm = case, arm\n        self.instance, self.file, self.symbol, self.base_image = CASES[case]\n        self.folder = ROOT / (case + '-' + arm + '-' + tag)\n        self.folder.mkdir()\n        self.work = self.folder / 'workspace'\n        shutil.copytree(OLD / 'sources' / self.instance.rsplit('-', 1)[0], self.work, symlinks=True)\n        self.tasks = json.loads((OLD / 'matched-tasks-v1.json').read_text())\n        self.edit = self.tasks['controlled_edits'][self.instance]\n        self.owner = uuid.uuid4().hex\n        self.engine = docker.from_env(timeout=120)\n        self.current = None\n        self.owned = []\n        self.record = {'scope': 'Model-free common-base runtime/source admission, including actual installation, initialization and same-session source-addition costs. No matched model task, benefit estimate or external user.',\n                       'case': case, 'arm': arm, 'instance_id': self.instance, 'owner': self.owner,\n                       'started_utc': datetime.now(timezone.utc).isoformat(), 'controller_sha256': sha(__file__),\n                       'source_commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd='/home/zhongming/CodeNib-codegraph-benefit', text=True).strip(),\n                       'base_image': self.base_image, 'commands': [], 'calls': [], 'owned_containers': [], 'checks': [], 'model_inference_sessions': 0}\n        self.save()\n\n    def save(self):\n        (self.folder / 'receipt.json').write_text(json.dumps(self.record, indent=2) + '\\n')\n\n    def command(self, label, args, required=True, timeout=600):\n        t = time.monotonic()\n        argv = ['docker', 'exec', '-w', str(self.work), self.current.id, *args]\n        try:\n            result = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)\n            code, output = result.returncode, result.stdout + result.stderr\n        except subprocess.TimeoutExpired as exc:\n            code, output = 124, str(exc.stdout or '') + str(exc.stderr or '')\n        log = self.folder / (label + '.log')\n        log.write_text(output)\n        row = {'label': label, 'argv': argv, 'returncode': code, 'seconds': time.monotonic() - t, 'log_sha256': sha(log), 'output': output}\n        self.record['commands'].append(row)\n        self.save()\n        print(self.case, self.arm, label, code, flush=True)\n        if required:\n            assert code == 0, (label, output[-1600:])\n        return output\n\n    def create(self, image_id, network):\n        image = self.engine.images.get(image_id)\n        assert image.attrs['Architecture'] == 'arm64'\n        environment = {'UV_TOOL_DIR': '/opt/pilot-tools/uv', 'UV_TOOL_BIN_DIR': '/opt/pilot-tools/bin', 'UV_CACHE_DIR': '/opt/pilot-state/uv-cache', 'UV_PYTHON_INSTALL_DIR': '/opt/pilot-runtimes/managed-python',\n                       'PATH': '/opt/pilot-tools/bin:/opt/pilot-runtimes/node/bin:/usr/local/bin:/opt/miniconda3/bin:/usr/sbin:/usr/bin:/sbin:/bin',\n                       'SERENA_HOME': '/opt/pilot-tools/serena-state', 'CODENIB_HOME': '/opt/pilot-state/.codenib', 'CODENIB_TOOLCHAIN_DIR': '/opt/pilot-tools/.codenib/toolchains', 'CODENIB_SCIP_TOOLS_DIR': '/opt/pilot-tools/.codenib/toolchains',\n                       'CODEGRAPH_INSTALL_DIR': '/opt/pilot-tools/codegraph-runtime', 'CODEGRAPH_TELEMETRY': '0', 'DO_NOT_TRACK': '1'}\n        if network == 'none':\n            environment['UV_OFFLINE'] = '1'\n        container = self.engine.containers.create(image.id, ['1800'], entrypoint='/bin/sleep',\n            labels={'codenib.common-admission.owner': self.owner}, environment=environment,\n            network_mode=network, network_disabled=(network == 'none'),\n            volumes={str(self.work): {'bind': str(self.work), 'mode': 'rw'}},\n            tmpfs={p: 'rw,noexec,nosuid,size=1m' for p in image.attrs['Config'].get('Volumes', {}) if p != str(self.work)},\n            working_dir=str(self.work), mem_limit=4 * 1024**3, nano_cpus=2_000_000_000, pids_limit=256)\n        self.owned.append(container.id)\n        self.record['owned_containers'].append(container.id)\n        self.current = container\n        self.save()\n        container.start()\n        container.reload()\n        actual = container.attrs\n        binds = [m for m in actual['Mounts'] if m['Type'] == 'bind']\n        assert len(binds) == 1 and binds[0]['Source'] == str(self.work)\n        assert actual['HostConfig']['NetworkMode'] == network\n        if network == 'none':\n            assert actual['Config']['NetworkDisabled'] is True\n            self.record['isolated_runtime'] = {'container_id': container.id, 'image_id': image.id, 'mounts': actual['Mounts'], 'network': network, 'network_disabled': actual['Config']['NetworkDisabled'], 'memory': actual['HostConfig']['Memory'], 'nano_cpus': actual['HostConfig']['NanoCpus'], 'pids_limit': actual['HostConfig']['PidsLimit']}\n        self.save()\n\n    def remove(self, cid):\n        try:\n            c = self.engine.containers.get(cid)\n        except docker.errors.NotFound:\n            return True\n        assert c.attrs['Config']['Labels']['codenib.common-admission.owner'] == self.owner\n        c.remove(force=True, v=True)\n        try:\n            self.engine.containers.get(cid)\n            return False\n        except docker.errors.NotFound:\n            return True\n\n    def common_prepare(self):\n        t = time.monotonic()\n        self.create(self.base_image, 'bridge')\n        self.command('common-directories', ['mkdir', '-p', '/opt/pilot-tools/bin', '/opt/pilot-state', '/opt/pilot-inputs'])\n        self.command('common-git', ['git', 'config', '--global', '--add', 'safe.directory', str(self.work)])\n        self.command('neutral-boundary', ['/opt/pilot-runtimes/python/bin/python3.13', '-c', 'import json,shutil;from pathlib import Path;print(json.dumps({\"testbed_files\":sorted(p.name for p in Path(\"/testbed\").iterdir()),\"optional_clis\":{n:shutil.which(n) for n in [\"serena\",\"codegraph\",\"codenib\"]}}))'])\n        args = ['/opt/miniconda3/envs/testbed/bin/python', '-m', 'pip', 'install']\n        self.command('common-project', args + (['.'] if self.case == 'requests' else ['-e', '.']))\n        self.record['common_runtime_packages'] = json.loads(self.command('common-packages', ['/opt/miniconda3/envs/testbed/bin/python', '-c', 'import importlib.metadata as m,json,sys;print(json.dumps({\"python\":sys.version,\"packages\":sorted({(d.metadata[\"Name\"],d.version) for d in m.distributions()})}))']))\n        self.command('common-runtimes', ['/bin/bash', '-lc', 'python --version\\nnode --version\\nuv --version\\nclaude --version\\nrg --version'])\n        self.record['common_prepare_seconds'] = time.monotonic() - t\n        self.record['source_before_product'] = snapshot(self.work)\n        self.save()\n\n    def install_product(self):\n        t = time.monotonic()\n        if self.arm == 'serena':\n            self.command('install-product', ['uv', 'tool', 'install', '--python', '/opt/pilot-runtimes/python/bin/python3.13', '--with', 'pyright==1.1.403', 'serena-agent==2.1.0'])\n            self.command('prepare-python-provider', ['uv', 'tool', 'run', '-p', '3.13', '--from', 'pyright==1.1.403', 'pyright', '--version'])\n            self.command('initialize-product', ['serena', 'project', 'create', '--language', 'python', '--name', 'admission-' + self.owner[:8], str(self.work)])\n        elif self.arm == 'codegraph':\n            self.command('install-product', ['npm', 'install', '--global', '--prefix', '/opt/pilot-tools/npm', '@colbymchenry/codegraph@1.6.2'])\n            self.command('product-launcher', ['ln', '-s', '/opt/pilot-tools/npm/bin/codegraph', '/opt/pilot-tools/bin/codegraph'])\n            self.command('prepare-bundle', ['codegraph', '--version'])\n            self.command('initialize-product', ['codegraph', 'init', '--yes', str(self.work)])\n        elif self.arm == 'codenib':\n            wheel = json.loads((ROOT / 'native-wheel-receipt.json').read_text())\n            path = ROOT / 'candidate-wheel-native' / wheel['filename']\n            assert sha(path) == wheel['sha256']\n            self.record['wheel'] = wheel\n            payload = io.BytesIO()\n            with tarfile.open(fileobj=payload, mode='w') as archive:\n                archive.add(path, arcname=path.name)\n            assert self.current.put_archive('/opt/pilot-inputs', payload.getvalue())\n            self.command('product-venv', ['uv', 'venv', '--python', '/opt/pilot-runtimes/python/bin/python3.13', '/opt/pilot-tools/codenib'])\n            self.command('install-product', ['uv', 'pip', 'install', '--python', '/opt/pilot-tools/codenib/bin/python', '/opt/pilot-inputs/' + path.name + '[graph,mcp]'])\n            self.command('product-launcher', ['ln', '-s', '/opt/pilot-tools/codenib/bin/codenib', '/opt/pilot-tools/bin/codenib'])\n            self.command('prepare-language-providers', ['codenib', 'toolchain', 'install', str(self.work), '--language', 'python', '--scope', 'all'])\n            self.command('initialize-product', ['codenib', 'codegraph', 'init', str(self.work), '--language', 'python', '--agent', 'claude'])\n        self.record['product_install_initialize_seconds'] = time.monotonic() - t\n        self.save()\n\n    def isolate(self):\n        self.command('workspace-owner-before-isolation', ['chown', '-R', f'{os.getuid()}:{os.getgid()}', str(self.work)])\n        image = self.current.commit(repository='codenib/common-admission-arm64', tag=self.owner)\n        self.record['prepared_image'] = image.id\n        self.save()\n        assert self.remove(self.current.id)\n        self.current = None\n        self.create(image.id, 'none')\n\n    async def call(self, client, name, args):\n        t = time.monotonic()\n        raw = (await client.call_tool(name, arguments=args)).model_dump(mode='json')\n        self.record['calls'].append({'name': name, 'arguments': args, 'seconds': time.monotonic() - t, 'reply': raw})\n        self.save()\n        return raw\n\n    def body_check(self, raw, file, symbol, mode):\n        assert not raw['is_error'], raw\n        start, end = span(self.work, file, symbol)\n        text = ''.join(b.get('text', '') for b in raw['content'])\n        lines = (self.work / file).read_text().splitlines()\n        expected = '\\n'.join(lines[start - 1:end])\n        obs = {'file': file, 'symbol': symbol, 'file_sha256': sha(self.work / file), 'start_line_1based': start, 'end_line_1based': end, 'mode': mode}\n        if mode == 'serena':\n            rows = json.loads(text)\n            assert len(rows) == 1 and rows[0]['relative_path'] == file and rows[0]['name_path'] == symbol, rows\n            loc = rows[0]['body_location']\n            assert (loc['start_line'] + 1, loc['end_line'] + 1) == (start, end), loc\n            first = expected.split('\\n', 1)[0]\n            indent = len(first) - len(first.lstrip(' \\t'))\n            assert rows[0]['body'] == expected[indent:]\n            obs['first_line_indent_characters'] = indent\n        elif mode == 'codegraph':\n            visible, final_rows = {}, []\n            current, fenced = None, False\n            for line in text.splitlines():\n                header = re.match(r'\\*\\*`([^`]+)`\\*\\*', line)\n                if header:\n                    current = header[1]\n                if line.startswith('```'):\n                    fenced = not fenced\n                    continue\n                match = re.match(r'(\\d+)\\t(.*)', line)\n                if fenced and current and match:\n                    p = self.work / current\n                    source = p.read_text()\n                    original = source.splitlines()\n                    n = int(match[1])\n                    if n == len(original) + 1 and source.endswith('\\n') and match[2] == '':\n                        final_rows.append({'file': current, 'rendered_line': n, 'source_credit': False})\n                        continue\n                    assert 1 <= n <= len(original) and original[n - 1] == match[2], (current, line)\n                    visible.setdefault(current, set()).add(n)\n            missing = sorted(set(range(start, end + 1)) - visible.get(file, set()))\n            obs.update(visible_line_counts={p: len(ns) for p, ns in visible.items()}, non_source_final_empty_rows=final_rows, missing_body_lines=missing)\n            assert not missing, obs\n        else:\n            data = json.loads(text)\n            assert data['content'].splitlines() == expected.splitlines(), data\n        obs['body_matches_captured_source'] = True\n        self.record['checks'].append(obs)\n        self.save()\n\n    def apply_edit(self):\n        target = self.work / self.edit['path']\n        assert not target.exists()\n        assert hashlib.sha256(self.edit['source'].encode()).hexdigest() == self.edit['sha256']\n        target.write_text(self.edit['source'])\n        self.record['controlled_edit'] = self.edit\n        self.save()\n        tree = ast.parse(self.edit['source'])\n        return self.edit['path'], next(n.name for n in tree.body if isinstance(n, ast.FunctionDef))\n\n    async def query_checks(self):\n        if self.arm == 'native':\n            for phase in ['initial', 'post_edit']:\n                file, symbol = (self.file, self.symbol) if phase == 'initial' else self.apply_edit()\n                start, end = span(self.work, file, symbol)\n                code = 'from pathlib import Path;import json; p=Path(' + repr(file) + '); print(json.dumps({\"content\":\"\\\\n\".join(p.read_text().splitlines()[' + str(start - 1) + ':' + str(end) + '])}))'\n                text = self.command('native-' + phase, ['python', '-c', code])\n                self.body_check({'is_error': False, 'content': [{'text': text}]}, file, symbol, 'native')\n            return\n        if self.arm == 'serena':\n            argv = ['serena', 'start-mcp-server', '--project', str(self.work), '--context', 'claude-code', '--agent-interface', 'REPL', '--enable-web-dashboard', 'False', '--enable-gui-log-window', 'False', '--open-web-dashboard', 'False']\n        elif self.arm == 'codegraph':\n            argv = ['codegraph', 'serve', '--mcp', '--path', str(self.work)]\n        else:\n            argv = ['codenib', 'mcp', str(self.work), '--tool-surface', 'full']\n        args = ['exec', '-i', '-w', str(self.work), self.current.id, *argv]\n        self.record['server_argv'] = ['docker', *args]\n        with (self.folder / 'mcp.stderr').open('w') as errors:\n            transport = stdio_client(StdioServerParameters(command='docker', args=args, cwd=self.folder), errlog=errors)\n            async with Client(transport, mode='auto', cache=None) as client:\n                session = None\n                if self.arm == 'serena':\n                    raw = await self.call(client, 'initial_instructions', {})\n                    assert not raw['is_error']\n                    text = ''.join(b.get('text', '') for b in raw['content'])\n                    session = re.search(r'session id is `([^`]+)`', text)[1]\n                for phase in ['initial', 'post_edit']:\n                    file, symbol = (self.file, self.symbol) if phase == 'initial' else self.apply_edit()\n                    if phase == 'post_edit' and self.arm == 'codenib':\n                        stale = await self.call(client, 'dependency_subgraph', {'symbol': file + ':' + symbol + '()', 'direction': 'dependencies', 'depth': 1})\n                        assert stale['is_error'] and 'init' in json.dumps(stale) and 'stale' in json.dumps(stale).lower(), stale\n                        self.command('post-edit-rebuild', ['codenib', 'codegraph', 'init', str(self.work), '--language', 'python', '--agent', 'claude'])\n                    if self.arm == 'serena':\n                        code = f's.lsp.find_symbol(name_path_pattern={symbol!r}, relative_path={file!r}, include_body=True)'\n                        raw = await self.call(client, 'serena_repl', {'session': session, 'code': code})\n                    elif self.arm == 'codegraph':\n                        raw = await self.call(client, 'codegraph_explore', {'query': symbol.rsplit('/', 1)[-1] + ' ' + file})\n                    else:\n                        qualified = file + ':' + symbol.replace('/', '.') + '()'\n                        graph = await self.call(client, 'dependency_subgraph', {'symbol': qualified, 'direction': 'dependencies', 'depth': 1})\n                        assert not graph['is_error'] and json.loads(graph['content'][0]['text'])['root'] == qualified, graph\n                        start, end = span(self.work, file, symbol)\n                        raw = await self.call(client, 'read_source', {'file_path': file, 'start_line': start, 'end_line': end})\n                    self.body_check(raw, file, symbol, self.arm)\n\n    async def run(self):\n        try:\n            self.record['source_original'] = snapshot(self.work)\n            self.common_prepare()\n            self.install_product()\n            self.isolate()\n            t = time.monotonic()\n            await asyncio.wait_for(self.query_checks(), timeout=600)\n            self.record['lookup_update_checks_seconds'] = time.monotonic() - t\n            self.record['status'] = 'passed'\n        except BaseException as exc:\n            self.record.update(status='failed', failure={'type': type(exc).__name__, 'message': str(exc), 'traceback': traceback.format_exc()})\n        finally:\n            if self.current is not None:\n                try:\n                    self.command('final-workspace-owner', ['chown', '-R', f'{os.getuid()}:{os.getgid()}', str(self.work)], required=False, timeout=60)\n                except Exception as exc:\n                    self.record['owner_cleanup_error'] = str(exc)\n            self.record['cleanup'] = [{'container_id': cid, 'confirmed_absent': self.remove(cid)} for cid in reversed(self.owned)]\n            self.record['source_final'] = snapshot(self.work)\n            before, after = self.record['source_original'], self.record['source_final']\n            changed = [p for p in before['tracked'] if before['tracked'][p] != after['tracked'].get(p)]\n            self.record['changed_tracked_files'] = changed\n            if changed or before['head'] != after['head']:\n                self.record['status'] = 'failed'\n                self.record['preservation_failure'] = True\n            if self.record.get('controlled_edit'):\n                assert sha(self.work / self.edit['path']) == self.edit['sha256']\n            self.record['finished_utc'] = datetime.now(timezone.utc).isoformat()\n            self.save()\n            self.engine.close()\n            print(json.dumps({'case': self.case, 'arm': self.arm, 'status': self.record['status'], 'failure': self.record.get('failure', {}).get('message', '')[:500], 'checks': len(self.record['checks']), 'cleanup': all(c['confirmed_absent'] for c in self.record['cleanup'])}), flush=True)\n\n\nif __name__ == '__main__':\n    parser = argparse.ArgumentParser()\n    parser.add_argument('case', choices=CASES)\n    parser.add_argument('arm', choices=['native', 'serena', 'codegraph', 'codenib'])\n    parser.add_argument('tag')\n    args = parser.parse_args()\n    asyncio.run(Attempt(args.case, args.arm, args.tag).run())\n"
+    },
+    "f3f25899b13dd437374fa2bcb4ec920c0ff76ef1e7867bc520c2a3cea22eadec": {
+      "filename": "run_before_volume_rebind.py",
+      "source": "\"\"\"Model-free four-arm installation, lookup and same-session update admission.\n\nCreation returns the ownership receipt before start or verification. Recovery\nremoves only those recorded IDs after checking their unique owner label. Each\ncontainer owns background processes, and every attempt retains its failure.\nThis controller never imports an inference driver or any reference patch.\n\"\"\"\nimport argparse\nimport ast\nimport asyncio\nimport hashlib\nimport io\nimport json\nimport os\nimport re\nimport shutil\nimport subprocess\nimport tarfile\nimport time\nimport traceback\nimport uuid\nfrom datetime import datetime, timezone\nfrom pathlib import Path\n\nimport docker\nfrom mcp import Client, StdioServerParameters\nfrom mcp.client.stdio import stdio_client\n\nROOT = Path(__file__).parent\nOLD = Path('/tmp/codenib-matched-pilot-20261027')\nCASES = {\n    'requests': ('psf__requests-1921', 'requests/sessions.py', 'Session/prepare_request', 'sha256:ac3aeb4416832db7147d67ee205a1e1da97f5f13d73a587e0cd4457af5acb791'),\n    'flask': ('pallets__flask-5014', 'src/flask/app.py', 'Flask/process_response', 'sha256:82d039276bd7fa3d25cefd6732f5fcf105163ee1a5dc24ebb13c3a9e514f1258'),\n    'pytest': ('pytest-dev__pytest-5809', 'src/_pytest/runner.py', 'CallInfo/from_call', 'sha256:cd4894bd827b6f2fc079498778ab78d03673ec3ba86855756190e7932ef15f49'),\n}\n\n\ndef sha(path):\n    return hashlib.sha256(Path(path).read_bytes()).hexdigest()\n\n\ndef snapshot(work):\n    paths = subprocess.check_output(['git', 'ls-files', '-z'], cwd=work).decode().split('\\0')\n    return {'head': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=work, text=True).strip(),\n            'tracked': {p: sha(work / p) for p in filter(None, paths)},\n            'git_status': subprocess.check_output(['git', 'status', '--porcelain', '--untracked-files=all'], cwd=work, text=True)}\n\n\ndef span(work, file, symbol):\n    nodes = ast.parse((work / file).read_text()).body\n    for name in symbol.split('/'):\n        node = next(n for n in nodes if isinstance(n, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name)\n        nodes = node.body\n    start = min([node.lineno] + [d.lineno for d in node.decorator_list])\n    return start, node.end_lineno\n\n\nclass Attempt:\n    def __init__(self, case, arm, tag):\n        self.case, self.arm = case, arm\n        self.instance, self.file, self.symbol, self.base_image = CASES[case]\n        self.folder = ROOT / (case + '-' + arm + '-' + tag)\n        self.folder.mkdir()\n        self.work = self.folder / 'workspace'\n        shutil.copytree(OLD / 'sources' / self.instance.rsplit('-', 1)[0], self.work, symlinks=True)\n        self.tasks = json.loads((OLD / 'matched-tasks-v1.json').read_text())\n        self.edit = self.tasks['controlled_edits'][self.instance]\n        self.owner = uuid.uuid4().hex\n        self.engine = docker.from_env(timeout=120)\n        self.current = None\n        self.owned = []\n        self.record = {'scope': 'Model-free common-base runtime/source admission, including actual installation, initialization and same-session source-addition costs. No matched model task, benefit estimate or external user.',\n                       'case': case, 'arm': arm, 'instance_id': self.instance, 'owner': self.owner,\n                       'started_utc': datetime.now(timezone.utc).isoformat(), 'controller_sha256': sha(__file__),\n                       'source_commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd='/home/zhongming/CodeNib-codegraph-benefit', text=True).strip(),\n                       'base_image': self.base_image, 'commands': [], 'calls': [], 'owned_containers': [], 'checks': [], 'model_inference_sessions': 0}\n        self.save()\n\n    def save(self):\n        (self.folder / 'receipt.json').write_text(json.dumps(self.record, indent=2) + '\\n')\n\n    def command(self, label, args, required=True, timeout=600):\n        t = time.monotonic()\n        argv = ['docker', 'exec', '-w', str(self.work), self.current.id, *args]\n        try:\n            result = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)\n            code, output = result.returncode, result.stdout + result.stderr\n        except subprocess.TimeoutExpired as exc:\n            code, output = 124, str(exc.stdout or '') + str(exc.stderr or '')\n        log = self.folder / (label + '.log')\n        log.write_text(output)\n        row = {'label': label, 'argv': argv, 'returncode': code, 'seconds': time.monotonic() - t, 'log_sha256': sha(log), 'output': output}\n        self.record['commands'].append(row)\n        self.save()\n        print(self.case, self.arm, label, code, flush=True)\n        if required:\n            assert code == 0, (label, output[-1600:])\n        return output\n\n    def create(self, image_id, network):\n        image = self.engine.images.get(image_id)\n        assert image.attrs['Architecture'] == 'arm64'\n        environment = {'UV_TOOL_DIR': '/opt/pilot-tools/uv', 'UV_TOOL_BIN_DIR': '/opt/pilot-tools/bin', 'UV_CACHE_DIR': '/opt/pilot-state/uv-cache', 'UV_PYTHON_INSTALL_DIR': '/opt/pilot-runtimes/managed-python',\n                       'PATH': '/opt/pilot-tools/bin:/opt/pilot-runtimes/node/bin:/usr/local/bin:/opt/miniconda3/bin:/usr/sbin:/usr/bin:/sbin:/bin',\n                       'SERENA_HOME': '/opt/pilot-tools/serena-state', 'CODENIB_HOME': '/opt/pilot-state/.codenib', 'CODENIB_TOOLCHAIN_DIR': '/opt/pilot-tools/.codenib/toolchains', 'CODENIB_SCIP_TOOLS_DIR': '/opt/pilot-tools/.codenib/toolchains',\n                       'CODEGRAPH_INSTALL_DIR': '/opt/pilot-tools/codegraph-runtime', 'CODEGRAPH_TELEMETRY': '0', 'DO_NOT_TRACK': '1'}\n        if network == 'none':\n            environment['UV_OFFLINE'] = '1'\n        container = self.engine.containers.create(image.id, ['1800'], entrypoint='/bin/sleep',\n            labels={'codenib.common-admission.owner': self.owner}, environment=environment,\n            network_mode=network, network_disabled=(network == 'none'),\n            volumes={str(self.work): {'bind': str(self.work), 'mode': 'rw'}},\n            tmpfs={p: 'rw,noexec,nosuid,size=1m' for p in image.attrs['Config'].get('Volumes', {})},\n            working_dir=str(self.work), mem_limit=4 * 1024**3, nano_cpus=2_000_000_000, pids_limit=256)\n        self.owned.append(container.id)\n        self.record['owned_containers'].append(container.id)\n        self.current = container\n        self.save()\n        container.start()\n        container.reload()\n        actual = container.attrs\n        binds = [m for m in actual['Mounts'] if m['Type'] == 'bind']\n        assert len(binds) == 1 and binds[0]['Source'] == str(self.work)\n        assert actual['HostConfig']['NetworkMode'] == network\n        if network == 'none':\n            assert actual['Config']['NetworkDisabled'] is True\n            self.record['isolated_runtime'] = {'container_id': container.id, 'image_id': image.id, 'mounts': actual['Mounts'], 'network': network, 'network_disabled': actual['Config']['NetworkDisabled'], 'memory': actual['HostConfig']['Memory'], 'nano_cpus': actual['HostConfig']['NanoCpus'], 'pids_limit': actual['HostConfig']['PidsLimit']}\n        self.save()\n\n    def remove(self, cid):\n        try:\n            c = self.engine.containers.get(cid)\n        except docker.errors.NotFound:\n            return True\n        assert c.attrs['Config']['Labels']['codenib.common-admission.owner'] == self.owner\n        c.remove(force=True, v=True)\n        try:\n            self.engine.containers.get(cid)\n            return False\n        except docker.errors.NotFound:\n            return True\n\n    def common_prepare(self):\n        t = time.monotonic()\n        self.create(self.base_image, 'bridge')\n        self.command('common-directories', ['mkdir', '-p', '/opt/pilot-tools/bin', '/opt/pilot-state', '/opt/pilot-inputs'])\n        self.command('common-git', ['git', 'config', '--global', '--add', 'safe.directory', str(self.work)])\n        self.command('neutral-boundary', ['/opt/pilot-runtimes/python/bin/python3.13', '-c', 'import json,shutil;from pathlib import Path;print(json.dumps({\"testbed_files\":sorted(p.name for p in Path(\"/testbed\").iterdir()),\"optional_clis\":{n:shutil.which(n) for n in [\"serena\",\"codegraph\",\"codenib\"]}}))'])\n        args = ['/opt/miniconda3/envs/testbed/bin/python', '-m', 'pip', 'install']\n        self.command('common-project', args + (['.'] if self.case == 'requests' else ['-e', '.']))\n        self.record['common_runtime_packages'] = json.loads(self.command('common-packages', ['/opt/miniconda3/envs/testbed/bin/python', '-c', 'import importlib.metadata as m,json,sys;print(json.dumps({\"python\":sys.version,\"packages\":sorted({(d.metadata[\"Name\"],d.version) for d in m.distributions()})}))']))\n        self.command('common-runtimes', ['/bin/bash', '-lc', 'python --version\\nnode --version\\nuv --version\\nclaude --version\\nrg --version'])\n        self.record['common_prepare_seconds'] = time.monotonic() - t\n        self.record['source_before_product'] = snapshot(self.work)\n        self.save()\n\n    def install_product(self):\n        t = time.monotonic()\n        if self.arm == 'serena':\n            self.command('install-product', ['uv', 'tool', 'install', '--python', '/opt/pilot-runtimes/python/bin/python3.13', '--with', 'pyright==1.1.403', 'serena-agent==2.1.0'])\n            self.command('prepare-python-provider', ['uv', 'tool', 'run', '-p', '3.13', '--from', 'pyright==1.1.403', 'pyright', '--version'])\n            self.command('initialize-product', ['serena', 'project', 'create', '--language', 'python', '--name', 'admission-' + self.owner[:8], str(self.work)])\n        elif self.arm == 'codegraph':\n            self.command('install-product', ['npm', 'install', '--global', '--prefix', '/opt/pilot-tools/npm', '@colbymchenry/codegraph@1.6.2'])\n            self.command('product-launcher', ['ln', '-s', '/opt/pilot-tools/npm/bin/codegraph', '/opt/pilot-tools/bin/codegraph'])\n            self.command('prepare-bundle', ['codegraph', '--version'])\n            self.command('initialize-product', ['codegraph', 'init', '--yes', str(self.work)])\n        elif self.arm == 'codenib':\n            wheel = json.loads((ROOT / 'native-wheel-receipt.json').read_text())\n            path = ROOT / 'candidate-wheel-native' / wheel['filename']\n            assert sha(path) == wheel['sha256']\n            self.record['wheel'] = wheel\n            payload = io.BytesIO()\n            with tarfile.open(fileobj=payload, mode='w') as archive:\n                archive.add(path, arcname=path.name)\n            assert self.current.put_archive('/opt/pilot-inputs', payload.getvalue())\n            self.command('product-venv', ['uv', 'venv', '--python', '/opt/pilot-runtimes/python/bin/python3.13', '/opt/pilot-tools/codenib'])\n            self.command('install-product', ['uv', 'pip', 'install', '--python', '/opt/pilot-tools/codenib/bin/python', '/opt/pilot-inputs/' + path.name + '[graph,mcp]'])\n            self.command('product-launcher', ['ln', '-s', '/opt/pilot-tools/codenib/bin/codenib', '/opt/pilot-tools/bin/codenib'])\n            self.command('prepare-language-providers', ['codenib', 'toolchain', 'install', str(self.work), '--language', 'python', '--scope', 'all'])\n            self.command('initialize-product', ['codenib', 'codegraph', 'init', str(self.work), '--language', 'python', '--agent', 'claude'])\n        self.record['product_install_initialize_seconds'] = time.monotonic() - t\n        self.save()\n\n    def isolate(self):\n        self.command('workspace-owner-before-isolation', ['chown', '-R', f'{os.getuid()}:{os.getgid()}', str(self.work)])\n        image = self.current.commit(repository='codenib/common-admission-arm64', tag=self.owner)\n        self.record['prepared_image'] = image.id\n        self.save()\n        assert self.remove(self.current.id)\n        self.create(image.id, 'none')\n\n    async def call(self, client, name, args):\n        t = time.monotonic()\n        raw = (await client.call_tool(name, arguments=args)).model_dump(mode='json')\n        self.record['calls'].append({'name': name, 'arguments': args, 'seconds': time.monotonic() - t, 'reply': raw})\n        self.save()\n        return raw\n\n    def body_check(self, raw, file, symbol, mode):\n        assert not raw['is_error'], raw\n        start, end = span(self.work, file, symbol)\n        text = ''.join(b.get('text', '') for b in raw['content'])\n        lines = (self.work / file).read_text().splitlines()\n        expected = '\\n'.join(lines[start - 1:end])\n        obs = {'file': file, 'symbol': symbol, 'file_sha256': sha(self.work / file), 'start_line_1based': start, 'end_line_1based': end, 'mode': mode}\n        if mode == 'serena':\n            rows = json.loads(text)\n            assert len(rows) == 1 and rows[0]['relative_path'] == file and rows[0]['name_path'] == symbol, rows\n            loc = rows[0]['body_location']\n            assert (loc['start_line'] + 1, loc['end_line'] + 1) == (start, end), loc\n            first = expected.split('\\n', 1)[0]\n            indent = len(first) - len(first.lstrip(' \\t'))\n            assert rows[0]['body'] == expected[indent:]\n            obs['first_line_indent_characters'] = indent\n        elif mode == 'codegraph':\n            visible, final_rows = {}, []\n            current, fenced = None, False\n            for line in text.splitlines():\n                header = re.match(r'\\*\\*`([^`]+)`\\*\\*', line)\n                if header:\n                    current = header[1]\n                if line.startswith('```'):\n                    fenced = not fenced\n                    continue\n                match = re.match(r'(\\d+)\\t(.*)', line)\n                if fenced and current and match:\n                    p = self.work / current\n                    source = p.read_text()\n                    original = source.splitlines()\n                    n = int(match[1])\n                    if n == len(original) + 1 and source.endswith('\\n') and match[2] == '':\n                        final_rows.append({'file': current, 'rendered_line': n, 'source_credit': False})\n                        continue\n                    assert 1 <= n <= len(original) and original[n - 1] == match[2], (current, line)\n                    visible.setdefault(current, set()).add(n)\n            missing = sorted(set(range(start, end + 1)) - visible.get(file, set()))\n            obs.update(visible_line_counts={p: len(ns) for p, ns in visible.items()}, non_source_final_empty_rows=final_rows, missing_body_lines=missing)\n            assert not missing, obs\n        else:\n            data = json.loads(text)\n            assert data['content'].splitlines() == expected.splitlines(), data\n        obs['body_matches_captured_source'] = True\n        self.record['checks'].append(obs)\n        self.save()\n\n    def apply_edit(self):\n        target = self.work / self.edit['path']\n        assert not target.exists()\n        assert hashlib.sha256(self.edit['source'].encode()).hexdigest() == self.edit['sha256']\n        target.write_text(self.edit['source'])\n        self.record['controlled_edit'] = self.edit\n        self.save()\n        tree = ast.parse(self.edit['source'])\n        return self.edit['path'], next(n.name for n in tree.body if isinstance(n, ast.FunctionDef))\n\n    async def query_checks(self):\n        if self.arm == 'native':\n            for phase, file, symbol in [('initial', self.file, self.symbol), ('post_edit', *self.apply_edit())]:\n                start, end = span(self.work, file, symbol)\n                code = 'from pathlib import Path;import json; p=Path(' + repr(file) + '); print(json.dumps({\"content\":\"\\\\n\".join(p.read_text().splitlines()[' + str(start - 1) + ':' + str(end) + '])}))'\n                text = self.command('native-' + phase, ['python', '-c', code])\n                self.body_check({'is_error': False, 'content': [{'text': text}]}, file, symbol, 'native')\n            return\n        if self.arm == 'serena':\n            argv = ['serena', 'start-mcp-server', '--project', str(self.work), '--context', 'claude-code', '--agent-interface', 'REPL', '--enable-web-dashboard', 'False', '--enable-gui-log-window', 'False', '--open-web-dashboard', 'False']\n        elif self.arm == 'codegraph':\n            argv = ['codegraph', 'serve', '--mcp', '--path', str(self.work)]\n        else:\n            argv = ['codenib', 'mcp', str(self.work), '--tool-surface', 'full']\n        args = ['exec', '-i', '-w', str(self.work), self.current.id, *argv]\n        self.record['server_argv'] = ['docker', *args]\n        with (self.folder / 'mcp.stderr').open('w') as errors:\n            transport = stdio_client(StdioServerParameters(command='docker', args=args, cwd=self.folder), errlog=errors)\n            async with Client(transport, mode='auto', cache=None) as client:\n                session = None\n                if self.arm == 'serena':\n                    raw = await self.call(client, 'initial_instructions', {})\n                    assert not raw['is_error']\n                    text = ''.join(b.get('text', '') for b in raw['content'])\n                    session = re.search(r'session id is `([^`]+)`', text)[1]\n                for phase in ['initial', 'post_edit']:\n                    file, symbol = (self.file, self.symbol) if phase == 'initial' else self.apply_edit()\n                    if phase == 'post_edit' and self.arm == 'codenib':\n                        stale = await self.call(client, 'dependency_subgraph', {'symbol': file + ':' + symbol + '()', 'direction': 'dependencies', 'depth': 1})\n                        assert stale['is_error'] and 'init' in json.dumps(stale) and 'stale' in json.dumps(stale).lower(), stale\n                        self.command('post-edit-rebuild', ['codenib', 'codegraph', 'init', str(self.work), '--language', 'python', '--agent', 'claude'])\n                    if self.arm == 'serena':\n                        code = f's.lsp.find_symbol(name_path_pattern={symbol!r}, relative_path={file!r}, include_body=True)'\n                        raw = await self.call(client, 'serena_repl', {'session': session, 'code': code})\n                    elif self.arm == 'codegraph':\n                        raw = await self.call(client, 'codegraph_explore', {'query': symbol.rsplit('/', 1)[-1] + ' ' + file})\n                    else:\n                        qualified = file + ':' + symbol.replace('/', '.') + '()'\n                        graph = await self.call(client, 'dependency_subgraph', {'symbol': qualified, 'direction': 'dependencies', 'depth': 1})\n                        assert not graph['is_error'] and json.loads(graph['content'][0]['text'])['root'] == qualified, graph\n                        start, end = span(self.work, file, symbol)\n                        raw = await self.call(client, 'read_source', {'file_path': file, 'start_line': start, 'end_line': end})\n                    self.body_check(raw, file, symbol, self.arm)\n\n    async def run(self):\n        try:\n            self.record['source_original'] = snapshot(self.work)\n            self.common_prepare()\n            self.install_product()\n            self.isolate()\n            t = time.monotonic()\n            await asyncio.wait_for(self.query_checks(), timeout=600)\n            self.record['lookup_update_checks_seconds'] = time.monotonic() - t\n            self.record['status'] = 'passed'\n        except BaseException as exc:\n            self.record.update(status='failed', failure={'type': type(exc).__name__, 'message': str(exc), 'traceback': traceback.format_exc()})\n        finally:\n            if self.current is not None:\n                try:\n                    self.command('final-workspace-owner', ['chown', '-R', f'{os.getuid()}:{os.getgid()}', str(self.work)], required=False, timeout=60)\n                except Exception as exc:\n                    self.record['owner_cleanup_error'] = str(exc)\n            self.record['cleanup'] = [{'container_id': cid, 'confirmed_absent': self.remove(cid)} for cid in reversed(self.owned)]\n            self.record['source_final'] = snapshot(self.work)\n            before, after = self.record['source_original'], self.record['source_final']\n            changed = [p for p in before['tracked'] if before['tracked'][p] != after['tracked'].get(p)]\n            self.record['changed_tracked_files'] = changed\n            if changed or before['head'] != after['head']:\n                self.record['status'] = 'failed'\n                self.record['preservation_failure'] = True\n            if self.record.get('controlled_edit'):\n                assert sha(self.work / self.edit['path']) == self.edit['sha256']\n            self.record['finished_utc'] = datetime.now(timezone.utc).isoformat()\n            self.save()\n            self.engine.close()\n            print(json.dumps({'case': self.case, 'arm': self.arm, 'status': self.record['status'], 'failure': self.record.get('failure', {}).get('message', '')[:500], 'checks': len(self.record['checks']), 'cleanup': all(c['confirmed_absent'] for c in self.record['cleanup'])}), flush=True)\n\n\nif __name__ == '__main__':\n    parser = argparse.ArgumentParser()\n    parser.add_argument('case', choices=CASES)\n    parser.add_argument('arm', choices=['native', 'serena', 'codegraph', 'codenib'])\n    parser.add_argument('tag')\n    args = parser.parse_args()\n    asyncio.run(Attempt(args.case, args.arm, args.tag).run())\n"
+    },
+    "c1d8e0ad2b8895ef9a06f97203b248f7f05db22c04ff743218848ff220b00dff": {
+      "filename": "runtime_audit_initial.py",
+      "source": "\"\"\"Read immutable prepared-runtime package/provider identities without source mounts.\"\"\"\nimport hashlib\nimport json\nimport subprocess\nimport uuid\nfrom pathlib import Path\n\nimport docker\n\nROOT = Path(__file__).parent\nengine = docker.from_env(timeout=120)\nresults = []\ntry:\n    for case in ['requests', 'flask', 'pytest']:\n        for arm in ['serena', 'codegraph', 'codenib']:\n            tag = '3' if (case, arm) == ('pytest', 'codenib') else '1'\n            receipt = json.loads((ROOT / f'{case}-{arm}-{tag}' / 'receipt.json').read_text())\n            image = engine.images.get(receipt['prepared_image'])\n            owner = uuid.uuid4().hex\n            row = {'case': case, 'arm': arm, 'prepared_image': image.id, 'owner': owner, 'controller_sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}\n            container = None\n            try:\n                container = engine.containers.create(image.id, ['180'], entrypoint='/bin/sleep', labels={'codenib.common-admission.owner': owner}, network_mode='none', network_disabled=True, tmpfs={p: 'rw,noexec,nosuid,size=1m' for p in image.attrs['Config'].get('Volumes', {})}, mem_limit=4 * 1024**3, nano_cpus=2_000_000_000, pids_limit=256)\n                row['container_id'] = container.id\n                (ROOT / 'runtime-audit-live.json').write_text(json.dumps(row, indent=2) + '\\n')\n                container.start()\n                if arm == 'codegraph':\n                    code = 'const fs=require(\"fs\"),path=require(\"path\"),crypto=require(\"crypto\");let base=\"/opt/pilot-tools/codegraph-runtime\",files={};function walk(p){for(const e of fs.readdirSync(p,{withFileTypes:true})){let q=path.join(p,e.name);if(e.isDirectory())walk(q);else if(e.isFile())files[q]=crypto.createHash(\"sha256\").update(fs.readFileSync(q)).digest(\"hex\")}}walk(base);console.log(JSON.stringify({node:process.version,package:require(\"/opt/pilot-tools/npm/lib/node_modules/@colbymchenry/codegraph/package.json\").version,runtime_files:files}))'\n                    args = ['node', '-e', code]\n                else:\n                    py = '/opt/pilot-tools/uv/serena-agent/bin/python' if arm == 'serena' else '/opt/pilot-tools/codenib/bin/python'\n                    code = 'import importlib.metadata as m,json,sys;from pathlib import Path;result={\"python\":sys.version,\"packages\":dict(sorted((d.metadata[\"Name\"],d.version) for d in m.distributions()))};'\n                    if arm == 'codenib':\n                        code += 'from codenib import _workspace_owner as o;o.require_support();result[\"workspace_owner_protocol\"]=o._protocol_version;result[\"providers\"]={n:json.loads((Path(\"/opt/pilot-tools/.codenib/toolchains/node-tools/node_modules\")/n/\"package.json\").read_text())[\"version\"] for n in (\"@sourcegraph/scip-python\",\"basedpyright\")};'\n                    code += 'print(json.dumps(result))'\n                    args = [py, '-c', code]\n                result = subprocess.run(['docker', 'exec', '-w', '/opt', container.id, *args], capture_output=True, text=True, timeout=60)\n                row.update(argv=args, returncode=result.returncode, stdout=result.stdout, stderr=result.stderr)\n                assert result.returncode == 0, (case, arm, result.stderr[-1200:])\n                row['identity'] = json.loads(result.stdout)\n                row['status'] = 'passed'\n            except BaseException as exc:\n                row.update(status='failed', failure={'type': type(exc).__name__, 'message': str(exc)})\n            finally:\n                if container:\n                    container.reload()\n                    assert container.attrs['Config']['Labels']['codenib.common-admission.owner'] == owner\n                    container.remove(force=True, v=True)\n                    try:\n                        engine.containers.get(container.id)\n                        row['container_removed'] = False\n                    except docker.errors.NotFound:\n                        row['container_removed'] = True\n                results.append(row)\n                (ROOT / 'runtime-audit.json').write_text(json.dumps(results, indent=2) + '\\n')\n                print(json.dumps({'case': case, 'arm': arm, 'status': row['status'], 'failure': row.get('failure')}), flush=True)\nfinally:\n    engine.close()\n"
+    }
+  },
+  "packaging_and_neutral_diagnostics": [
+    {
+      "artifact": "codegraph_common_runtime_v1_package_0.json",
+      "sha256": "994d139794b04fa7071bc390da6bdc937575c8f648aec55c27d9c0093b0fc736",
+      "bytes": 71733
+    },
+    {
+      "artifact": "codegraph_common_runtime_v1_package_1.json",
+      "sha256": "bb32fa3947a67d12b698201ac528cf0f5d8f944357f389ff6a7a428df9a3d2b2",
+      "bytes": 577
+    },
+    {
+      "artifact": "codegraph_common_runtime_v1_package_2.json",
+      "sha256": "934c126a69ea54a713f803aa978e386f34bb660cac2ce9f21aa7902efa0ed111",
+      "bytes": 716
+    },
+    {
+      "artifact": "codegraph_common_runtime_v1_package_3.json",
+      "sha256": "086ed2f918c9477cf955cbe828376eaf5b8bd8f2160d59d38a9887259d743d09",
+      "bytes": 186386
+    },
+    {
+      "artifact": "codegraph_common_runtime_v1_package_4.json",
+      "sha256": "c646c5da903c9caed727098db0c256fc08ff7f143d720a42318c2cff9d7f5668",
+      "bytes": 948
+    },
+    {
+      "artifact": "codegraph_common_runtime_v1_package_5.json",
+      "sha256": "cb7e1f28b70ed4e94a72e9e3ff2a4a2e7518784aab4988734e0639ec22f54735",
+      "bytes": 1085
+    },
+    {
+      "artifact": "codegraph_common_runtime_v1_package_6.json",
+      "sha256": "fe746541ffd92e0606e1150e186a00278bc855b77f170873e140eddb6ec143dd",
+      "bytes": 701
+    }
+  ],
+  "runtime_identity_audits": [
+    {
+      "artifact": "codegraph_common_runtime_v1_audit_0.json",
+      "sha256": "63ca9594445ec72cd6a917b01089f0931405eec66f24c84981d0b1b3ffad4b6f",
+      "bytes": 3141,
+      "case": "requests",
+      "arm": "serena",
+      "status": "passed"
+    },
+    {
+      "artifact": "codegraph_common_runtime_v1_audit_1.json",
+      "sha256": "fd36b9c64965078568638eb0c307570af8443c4f333de572a0ceac60ec5714c3",
+      "bytes": 2922,
+      "case": "requests",
+      "arm": "codegraph",
+      "status": "failed"
+    },
+    {
+      "artifact": "codegraph_common_runtime_v1_audit_2.json",
+      "sha256": "9bdf79e81d018edd18db38e9297a97da3d1aa10f4fe717a182b8c78c1e218dbe",
+      "bytes": 3731,
+      "case": "requests",
+      "arm": "codenib",
+      "status": "failed"
+    },
+    {
+      "artifact": "codegraph_common_runtime_v1_audit_3.json",
+      "sha256": "2091674adbd9dce9fbb9d11181c8be153a09be2414ffc736235a31391a957291",
+      "bytes": 3138,
+      "case": "flask",
+      "arm": "serena",
+      "status": "passed"
+    },
+    {
+      "artifact": "codegraph_common_runtime_v1_audit_4.json",
+      "sha256": "3ea5f2f3cddea2455c827f8ff653d4b8c57bd237829a6325c5af80685954e05d",
+      "bytes": 2916,
+      "case": "flask",
+      "arm": "codegraph",
+      "status": "failed"
+    },
+    {
+      "artifact": "codegraph_common_runtime_v1_audit_5.json",
+      "sha256": "1ff44b4e78709170245e5c72a2f58a8c71fa2082e3052bb1a322f24d988d494f",
+      "bytes": 3725,
+      "case": "flask",
+      "arm": "codenib",
+      "status": "failed"
+    },
+    {
+      "artifact": "codegraph_common_runtime_v1_audit_6.json",
+      "sha256": "9dbfc8aba70e79d7e925ea77aa6544b0ddd3b0559189e57367bc0a14a78ba93d",
+      "bytes": 3139,
+      "case": "pytest",
+      "arm": "serena",
+      "status": "passed"
+    },
+    {
+      "artifact": "codegraph_common_runtime_v1_audit_7.json",
+      "sha256": "b5384ca2c3b95d6aac8f9b15d39b03e51212b7b6a2bdde0a73f2fdb15da22f23",
+      "bytes": 2918,
+      "case": "pytest",
+      "arm": "codegraph",
+      "status": "failed"
+    },
+    {
+      "artifact": "codegraph_common_runtime_v1_audit_8.json",
+      "sha256": "a29ea0b8b787d25c1aab8a6268b4731f5349d71c17a04f7ab0590223b7850507",
+      "bytes": 3727,
+      "case": "pytest",
+      "arm": "codenib",
+      "status": "failed"
+    },
+    {
+      "artifact": "codegraph_common_runtime_v1_audit_9.json",
+      "sha256": "2856c99f38ceb41167b62c661230d612f1dbc79bda8b88ce0427e1f522339c1d",
+      "bytes": 343849,
+      "case": "requests",
+      "arm": "codegraph",
+      "status": "passed"
+    },
+    {
+      "artifact": "codegraph_common_runtime_v1_audit_10.json",
+      "sha256": "b5d401dc3910f53101cf3e319c45afadd211a9403a2e1ebf4a3f9e50b2c77305",
+      "bytes": 2760,
+      "case": "requests",
+      "arm": "codenib",
+      "status": "passed"
+    },
+    {
+      "artifact": "codegraph_common_runtime_v1_audit_11.json",
+      "sha256": "3304a15e9fc8605ab525b66e98a8c0dfd741042f37a392ebf61e29924188f368",
+      "bytes": 343846,
+      "case": "flask",
+      "arm": "codegraph",
+      "status": "passed"
+    },
+    {
+      "artifact": "codegraph_common_runtime_v1_audit_12.json",
+      "sha256": "4cc19f0be7370fe5ec6c684960ba3d20a0ae477a87013e3ea9ebdeaae61d1e8b",
+      "bytes": 2757,
+      "case": "flask",
+      "arm": "codenib",
+      "status": "passed"
+    },
+    {
+      "artifact": "codegraph_common_runtime_v1_audit_13.json",
+      "sha256": "94db39c0bb7439d527fc6c7cf86c06985fc9dbd6dfc8123950594e6f63c68c42",
+      "bytes": 343847,
+      "case": "pytest",
+      "arm": "codegraph",
+      "status": "passed"
+    },
+    {
+      "artifact": "codegraph_common_runtime_v1_audit_14.json",
+      "sha256": "93f1ea426bbb0303316f2835ca082f14190cd56a0c6f65b4feabfe57c34848d3",
+      "bytes": 2758,
+      "case": "pytest",
+      "arm": "codenib",
+      "status": "passed"
+    }
+  ],
+  "actual_product_identities": {
+    "serena": {
+      "version": "2.1.0",
+      "pyright": "1.1.403",
+      "mcp": "2.2.0"
+    },
+    "codegraph": {
+      "version": "1.6.2",
+      "node": "v22.23.1",
+      "package_file_hash_count": 1586
+    },
+    "codenib": {
+      "version": "0.2.4",
+      "mcp": "2.3.0",
+      "providers": {
+        "@sourcegraph/scip-python": "0.6.6",
+        "basedpyright": "1.39.8"
+      },
+      "workspace_owner_abi": 6
+    }
+  },
+  "all_common_target_packages_identical_within_each_repository": true,
+  "all_selected_product_package_identities_identical_across_sources": true,
+  "post_run_new_helper_reference_audit": [
+    {
+      "case": "requests",
+      "attempt": "requests-codenib-1",
+      "captured_call_index": 3,
+      "edge": {
+        "source": "requests/_pilot_post_edit.py:prepare_probe_request()",
+        "target": "requests/sessions.py:Session.prepare_request()",
+        "type": "reference"
+      },
+      "helper_file_sha256": "91ae1a3d5561b96db5590260d4e20b68db8a3a693c19965d2c92cb3e062d087e",
+      "scope": "Post-run verification of the captured reply; no invocation or runtime-coverage claim and no change to original outcomes."
+    },
+    {
+      "case": "flask",
+      "attempt": "flask-codenib-1",
+      "captured_call_index": 3,
+      "edge": {
+        "source": "src/flask/_pilot_post_edit.py:dispatch_probe_request()",
+        "target": "src/flask/app.py:Flask.full_dispatch_request()",
+        "type": "reference"
+      },
+      "helper_file_sha256": "585d6863900b4bda76016c8a65eb04807b29ef0e1cdd8fd5bfec82c6050f323a",
+      "scope": "Post-run verification of the captured reply; no invocation or runtime-coverage claim and no change to original outcomes."
+    },
+    {
+      "case": "pytest",
+      "attempt": "pytest-codenib-3",
+      "captured_call_index": 3,
+      "edge": {
+        "source": "src/_pytest/_pilot_post_edit.py:capture_probe_result()",
+        "target": "src/_pytest/runner.py:CallInfo.from_call()",
+        "type": "reference"
+      },
+      "helper_file_sha256": "be5413f1fd182d77cea517c0a5c3fe600caaa2d2e53e64645f02c2a84dcd356f",
+      "scope": "Post-run verification of the captured reply; no invocation or runtime-coverage claim and no change to original outcomes."
+    }
+  ],
+  "owned_container_cleanup": [
+    {
+      "container_id": "04a6800b0d22477b10d50bab38f66fda005f6afde893141a5b4897a9fe8645a2",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "071dd813e4a328a0fa7e766fbe4da3130c06cb92f6b0f01c5e6c07be5d787df3",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "07d186621c510d6638409faf8d1be2d8829efa9e4481a77b1774a75ce4f39d71",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "119d6a84ac39bde378e8052ac5bc2f2ca75b940ee54ce2f79fcefa0741f4c6c0",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "177b066686966cb94d5e0e932d9eb845ab24ef1ac00f2f9067980c39d7a09e91",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "236ff45ac5c2475b762f128f53b112e366af65c2f97283fe25878c414737847e",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "27a5698ab265f3ac193afcf4335a10a37baf7213a6c06ed102b392f6c09d447a",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "2cb581178c543138781a1f27a1be95d70f8195f713c21d13dd9ac321dca6afea",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "300aaf1a776498bde31c0fb8ba055406b1e70bc64985e26cdfa8426a54c0b0ad",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "4032dba987c345ca4f77947dbd0dd920a0af9180a193da05161b1d00e2649acb",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "4080fc733b21038ac4fa3356eff7b0e67a5e363cbc79a28baa161162f6399138",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "50972ea6495046f17074e58158d006d1b43b7dd513f1dc2a2c2e4c37d4c51df0",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "51d473afd126b6d083028c35bb0253b1765bda9a850d9dec66cfdcef14d69bb1",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "61587e87374c8e6f07e8424eb4901cdedd28b003338a4969254af443a2ec597f",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "615c646d9f617c912ce2a0a855b68f432ae7cc9788e8b7362cb277c6a83fb3cb",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "62fc1f1600c87be579b1ee4e9db2066892b9373d25cfba51d414ed9dc966fa27",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "645d0f967d6da85b8c369b6740a86e9d5c77b9298e65c4e85fe21593a680bf41",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "64d308bec65a55ed218abde49c79cdf6d62be9bc1a8057661053e30177f4dede",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "686f03751359ab6490f66256cddfbd888be30d091792f5371d0ac7b5001853a4",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "73dc219ba8074e4ceb0f3a460feb28c885eba092d9abdfa478ce78638a3ca5c1",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "78a71dfcd0fb7d010a06101e5973467f652cc2eb66ed41988a6250357f0d0635",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "7dfc30924981f260ebf422693d0b792a29a94f77f5962cc136a00aaeae1483f6",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "7e8ac66b1a373fb85db219cb4b41f4589ee310da2b8176de8d50b29ad4ff30ef",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "860e0fdf11bca5075a351066ffaaec76cd4019a99af58beb69d7cc357b5e77b1",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "870aa8a2f67c3d4578fd098a30bf82a447ada88fef171c7229635dac898187d7",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "8956840df6ba69ef511200f03ed336ccf66ffd9f20db193fdfd6ffa31b52c9ec",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "8bd1ff26031a30fb03fc60b904009488a1b8b9caaf96d9d2465f4ce8dde43aca",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "8ebb578ed95026bab9baa845e5a09596aa1b69de7fce483912552fc5b31c8edf",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "8f9fdaac40b08f47ea4df44bd6b31bd549efba038db7dcf665b430592f3377e0",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "9121ab30ef3ebf6b52881f37a9164cd1a3efbbe350cf3e35e444257bb8063754",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "91d44f5ff7f87438345a3cff8283c945a4cc1064df65d026ad5571e1e735d2cc",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "93c330c7bac785c2f4effa4c8cdb9af5950eaafe65563068875e7cb542b0b932",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "94aa94d8cd949cd881a9c9819e02ab2889759564b1393ff39b6a5c6685ad13ef",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "9e6d271acede5e59c48873289539230e8ae5953e96061d61ace4f27fe6a482c7",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "9f10ac25c795674298bed02d96a6d6d5672b6086728cb4237bdbad21f2fd6165",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "9f914f9efaca16e65d8a4bfc7d3db52921143a89aee300626c830e60772cf994",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "a9f065348e6d9ae65ac14e94237d87cebcf5e648220287009f5dff215c5568b4",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "b75b47c6e3c48c58125673e84814e03f1a4bb476b9b7d70858d57dc0ab5e9881",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "c116da8a3d7475184196ce75952df5d485241240e29e6ae7acb7b62399b6f5ef",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "c2e5df0bd373319e4fca57beaa98c7b6e7df57350cc557ad22fb0ea451460228",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "c3f1ec1160d7ce93a1aa7b6693220cf51321a30325950d110f90a7d9cbfd783f",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "c460439f67cdaa8a95e38df24b5ba84cb82c6a6857bb0b070527ff22aa8cd0d0",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "c4b7af0accaa32e89821287c0d286a9eca13b18dce689041510aa6f3d60a0ad0",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "c82e7bc8c4d7c3309791d8c42b0c2cab71310a8c22682458e89cd1d8f39ce2e7",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "cc0559f8cbfc1cc455d0fcc8de3983e5b5c4db266a5a123304aa0d5084f64861",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "d74c333b6c25ce3bbf744169a4df6e06e309a471e6d6694ebecd11974d79ea04",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "e9af56f1fb509984c0d688dfb7bc3e223e507b226d8a60daa4f14d478578c04e",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "eab9f69d3d25e1df3c98d6ca0e597ae12ce89c84793fbceb0443b388ffad0b61",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "f394b0ebb7c9b65ac3c1a8eb209da7e9bd7e481ac69ab60b8e895df9c78d39d0",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "f714939ea152c4794d33d31aec06f4a031fb0ab313760073c8332624fa8a67dc",
+      "confirmed_absent": true
+    },
+    {
+      "container_id": "fcdc4341d3da5b8a93eb4787ef04f5a2a70c3ee3df263ef47d866a135cdd3aa2",
+      "confirmed_absent": true
+    }
+  ],
+  "prior_codegraph_json_files_unchanged": {
+    "docs/experiments/codegraph_admission_2026_10_27.json": "cf60d66b913f68f6a375a0e5aba792a8abd3291eb2a7d8e692b72d2855761631",
+    "docs/experiments/codegraph_agent_recovery_2026_10_28.json": "defc3d887987b27efe2ce46ce295d828eab07068b25d3fe47c157ae4d88bf247",
+    "docs/experiments/codegraph_agent_recovery_protocol_v1.json": "572ddcfa442293698d613906e820f5bd4a6fd3aaf0a41f9d6112b822d0b6d35b",
+    "docs/experiments/codegraph_agent_recovery_v1_00.json": "0c21c732d46eb73cc1929b51f9fecbc6162a15ee9a73f87fa11edfac87d890e8",
+    "docs/experiments/codegraph_agent_recovery_v1_01.json": "40951346ed0e1d7c4c25cc027fc3716fb785a779b54febd3fa373642d40f2b19",
+    "docs/experiments/codegraph_agent_recovery_v1_02.json": "ef664daf5ed3ebeed89c7b3b26949df22735f9c3a0f23e3771e3949467138c42",
+    "docs/experiments/codegraph_currentness_2026_10_27.json": "2e6c337974219aac7cad2c0482d800a0524632620e3e238cb739b17da1f0eed8",
+    "docs/experiments/codegraph_execution_2026_10_27.json": "5defd066ef52273cb5440564cb6e5331ded829cd7b412afab7b47cb3504e6fe4",
+    "docs/experiments/codegraph_identity_2026_10_27.json": "5dd181d297c3d072fc6a64c616ff0e8b74d9d3192c574c3bce3f00db64ce4887",
+    "docs/experiments/codegraph_matched_assessment_v1.json": "339aba959fe03e92e3c7148f50f3792e3649019332fb41c6dbb35aa0033a9ca9",
+    "docs/experiments/codegraph_matched_controller_v1.json": "da735bcc6fe6e4c74c622759cae2c429d538ec8dee2a54f5c538962638d18d39",
+    "docs/experiments/codegraph_matched_execution_v1.json": "14333c3c473c9a89cf4c746446ee72bcf01edf4423edee6e2f6b1356cf59b6a5",
+    "docs/experiments/codegraph_matched_policy_v2.json": "cddb449862e49b3807304deb163c0dd10a8b2f4c6f2ff519ca8f7287e0fac368",
+    "docs/experiments/codegraph_matched_policy_v3.json": "da562c62849d8bc3937dc6dde1c1a2205609ceba7988d6367b2f18e135bebe41",
+    "docs/experiments/codegraph_matched_subgroups_v1.json": "4697b6574129c6943c64ab353881eda379afae2cb8085e2106a61f884093087a",
+    "docs/experiments/codegraph_matched_tasks_v1.json": "76f170aaaacee775009fc01d7eedac9bb74d2e73d21c158fe7dee9a78a8d5bd6",
+    "docs/experiments/codegraph_matched_validation_v1.json": "6afeb244e85e8a912c98adc6e232f2ffbb7bc33990d053e62ebca2022dca9495",
+    "docs/experiments/codegraph_matched_workflow_v1_00.json": "e57554cff4c57dd93be3d530833429c87e89768c024a34ebec0b3910e557d34b",
+    "docs/experiments/codegraph_matched_workflow_v1_01.json": "ffc7941c16b9ad9ce1faac6cc716d3dc84694623f2c2b87cbaaa45b1393ebbe9",
+    "docs/experiments/codegraph_matched_workflow_v1_02.json": "7d07c74cc28759a6c7d1554576f13f937e9c7c294477e6bd1d888fb25f5de2ae",
+    "docs/experiments/codegraph_matched_workflow_v1_03.json": "441b4de344cb2818e1d3ec0fdcf800aec62b392fe8e684fbec4772021ab3d031",
+    "docs/experiments/codegraph_matched_workflow_v1_04.json": "836595e0ffada5a6b20478975d531fd8bbe964babc4aaddd049ba7197da05385",
+    "docs/experiments/codegraph_matched_workflow_v1_05.json": "be9c988ae6acd824685b3f9943edf4eac9ed835eae966ae4f738bd8f7a990cf7",
+    "docs/experiments/codegraph_matched_workflow_v1_06.json": "d3776f9cfd3577a5946a0e00a28a2b93d96ebdce88ef2b9f2a2471d38e66ceb6",
+    "docs/experiments/codegraph_matched_workflow_v1_07.json": "bcb7e5af411c4bea22e3cfda6dbe826a28993a11cf72f0defd096ab6d8a07dc8",
+    "docs/experiments/codegraph_matched_workflow_v1_08.json": "b156a317de04a049256a6893d971614e65ae1cbb8319645ba1f409581e083af2",
+    "docs/experiments/codegraph_matched_workflow_v1_09.json": "e23f29d3e3e7782236f41ddd0b5dd7eb17c626437cdf7ca617b1d83c8cec7fd7",
+    "docs/experiments/codegraph_matched_workflow_v1_10.json": "1ddf046c11ec2a721f19fb0b13ef32cde07782fcd46b3da1070b6a45c4633626",
+    "docs/experiments/codegraph_matched_workflow_v1_11.json": "eb4208bd37aa80fa8a89f57e203bb754055b3779643d92c07d7d107dd50e205e",
+    "docs/experiments/codegraph_mcp_recovery_2026_10_28.json": "8de9ca5c52eb80242c6628a442d833152d18fd129a8b0bad184c1f9c025e3118",
+    "docs/experiments/codegraph_mcp_recovery_v1_00.json": "83725f64e3c54d5ce2da605a1c26b3efff284b63618e185b7144dcaa09fefeeb",
+    "docs/experiments/codegraph_mcp_recovery_v1_01.json": "07fe5b743c6d2de2ed41b65ee52065f0d5dc9909aaa1bb4cdda2ea3e4b0642e4",
+    "docs/experiments/codegraph_mcp_recovery_v1_02.json": "c0b0a539ee17314c3af95577bd8e8a688f4ee6f8a8a7820d64f0b154be3844c3",
+    "docs/experiments/codegraph_mcp_recovery_v1_03.json": "9b3f50b5580e4c7f9d9eae912c5cec428839e3691e3ab06442a5133099df2e86",
+    "docs/experiments/codegraph_mcp_recovery_v1_04.json": "e5313dfe789cb731530d6b9ef3f653b2ed36c78f3cd0d7b16adf0d1eac6fb354",
+    "docs/experiments/codegraph_mcp_recovery_v1_05.json": "1dcfddd30b2646a404be39f875a9ea32120240b46a5ff50af2a687121bc14d58",
+    "docs/experiments/codegraph_peer_source_admission_2026_10_28.json": "bb72d1b436b12d4e948ac363329696ef5fc282f96db363b93f3a4de42b854019",
+    "docs/experiments/codegraph_peer_source_admission_v1_00.json": "6df124e68ebc6ae021645118acfbd638b73c0f67106bb88fff5688cda4d5429b",
+    "docs/experiments/codegraph_peer_source_admission_v1_01.json": "8bf6a9b7508b847946849953c08f8d386bec013f0648a6f66442fc3486af3ee7",
+    "docs/experiments/codegraph_peer_source_admission_v1_02.json": "4ba52de732f26f6e73febd377fe544b18d48a65752fd6dc49a12a902bd915d58",
+    "docs/experiments/codegraph_peer_source_admission_v1_03.json": "45b40d7a7d65be208ec24870b7ae644c3bfeda9f2248cee3042fb298bbbcbc28",
+    "docs/experiments/codegraph_peer_source_admission_v1_04.json": "f09f64b60730b903598010ace38c51beb2e8cc88fc65feffdc3ab9c809985737",
+    "docs/experiments/codegraph_peer_source_admission_v1_05.json": "acf983ca87194d3decaa4fd4b58e5ae0fc92d11667732574eb2eb0b61da64284",
+    "docs/experiments/codegraph_peer_source_admission_v1_06.json": "2c633d397e0d17936325efd1b31be941b8a8c6b83f2e4798e013b991d3ab52cd",
+    "docs/experiments/codegraph_peer_source_admission_v1_07.json": "362afbe932bb19c4217a072fc20e021c7e90432de9589031a73d370a7de761f2",
+    "docs/experiments/codegraph_peer_source_admission_v1_08.json": "da85bb5f60709a05205342c645fa307743ad1e4e93b45a1c77e9d0c926459b0b",
+    "docs/experiments/codegraph_peer_source_admission_v1_09.json": "88a2996f414d97902968388e9e2d9e6386bb40a6230e077de2116a6a1205bbdd",
+    "docs/experiments/codegraph_peer_source_admission_v1_10.json": "ce25b0177c51a001e46f1a05764b17d4d075df0ef2b9c86ab8b74266434c55cd",
+    "docs/experiments/codegraph_peer_source_admission_v1_11.json": "7743913a1a90fededbbe410a89e490685b1aaab58634363a03af380d9cbab5a5",
+    "docs/experiments/codegraph_peers_2026_10_27.json": "4b000ee2efaaa54fd4eacf673eac8a8ca2513f6c32151a11d72edce0c8d2b7fb",
+    "docs/experiments/codegraph_python_identity_2026_10_28.json": "12848e1f5cdcfd53a3f1f9c709957002597cedffb9c5278e228410788571a5a9",
+    "docs/experiments/codegraph_python_identity_v1_00.json": "c185b1ae9555b2f22239c27ae474433bc365eef190108a9d89908bc09e5e4fdc",
+    "docs/experiments/codegraph_python_identity_v1_01.json": "33d72471f4333991ec0dd75c82694b3486c0c9503725fed6abb533fd20e3c31a",
+    "docs/experiments/codegraph_python_identity_v1_02.json": "75476e5910d5c0a8d61d6ab176ef26a41b86feeb0ec1e88205141899729eeb17",
+    "docs/experiments/codegraph_python_identity_v1_03.json": "3b6d56d006a5b1f1f17990bc092fde4d9127ee98916e43e5b741db6f868f1b36",
+    "docs/experiments/codegraph_python_identity_v1_04.json": "677c5699c33aeb8abfb875950969271b3d240a616936c925306e9e309c1a18f3",
+    "docs/experiments/codegraph_python_identity_v1_05.json": "6121a3f2fbd0b1c1f263d4a6355a044785f2cff181ac3fe3c10fda0beeb44d5c",
+    "docs/experiments/codegraph_python_identity_v1_06.json": "30e7c21c75bae83674348a72e6c0d2e571a7a22bdfc9bb7fb8215cacc9f2edbf",
+    "docs/experiments/codegraph_python_identity_v1_07.json": "c03df14676bd35c8a6b31b881e294b0b33187610ae2d8c9010a818dab013eee6",
+    "docs/experiments/codegraph_python_identity_v1_08.json": "f7691db1335b00afe1fd526e69813cad2a28fe0052be01f34931bea70d01cd63",
+    "docs/experiments/codegraph_python_identity_v1_09.json": "1257810bbbbf5ac4c1b50488759e88cd4b0844e80e072e33cac59e4e4b198703",
+    "docs/experiments/codegraph_python_identity_v1_10.json": "de4d0f26ce872b04292495bc498834cb6c5622b2ee342b60ea98699af473336b",
+    "docs/experiments/codegraph_reference_semantics_2026_10_28.json": "bc7a5f34e9540ed5808a06e342fff38943acdc42ff32e3ea8d59bc06f704b8d4",
+    "docs/experiments/codegraph_reload_2026_10_27.json": "d98b1733498b944e67e4c9de8525f30e0fe0527e415de6783a6d90afdc06cfb6",
+    "docs/experiments/codegraph_reload_stdio_v1_00.json": "bac2300d7fed0f4a80619dc3ffc8d5a3f324c81af422c24cbfc6ccc112c98b7d",
+    "docs/experiments/codegraph_reload_stdio_v1_01.json": "6d872405a2113589ba609834f011a520d0f1312a427e62695b3cf0cbf207d58b",
+    "docs/experiments/codegraph_reload_stdio_v1_02.json": "eb345373dbfd4e8ec8748b26dc4549e14f63ed65399af49bffbf7dda29d806ac",
+    "docs/experiments/codegraph_runtime_2026_10_27.json": "c8f4ca2ce52a98268837cc74165e4ccf6374c793e5c25badd788721a8459d795",
+    "docs/experiments/codegraph_sdk_2026_10_27.json": "fd671b2ac6c86b078195058428bd43c6192c0893cd3faa60212050221d4f822e",
+    "docs/experiments/codegraph_sdk_scope_2026_10_27.json": "c58e4945351a51e6aa661356f40fa0d830cd02eddf53726c77bccb8d1d6c9d76",
+    "docs/experiments/codegraph_source_assessment_v1_flask.json": "18d4732d7442615b51f14e794b9968d57346644d2310780fcce859597a5bdf6d",
+    "docs/experiments/codegraph_source_assessment_v1_pytest.json": "9addbb2197d63479f09cd258c885fe70f05603ba5501709d498f611aa11a79ae",
+    "docs/experiments/codegraph_source_assessment_v1_requests.json": "b2d29fa354934c58288d06a0b83a416d9a5fdf6a923bf680dc3b898018153f6e",
+    "docs/experiments/codegraph_source_protocol_v2.json": "33d40d67da41464d05c2085bc943d2fb628f79c69d78f5dd4474ec815b6cd38f",
+    "docs/experiments/codegraph_source_review_method_v1.json": "454b9b0c7f2b6ba6384fb1b460a4251bff81e15c70689a334af9d5a7f9a676de",
+    "docs/experiments/codegraph_workflow_2026_10_26.json": "7bb9649e6c9728e267924f1993d25c0d6cb2b11b802c122f0cea8225c0d4eae0"
+  },
+  "model_inference_sessions": 0,
+  "external_participants": 0,
+  "remaining_gates": [
+    "Complete source-check of the full corrected rubric and freeze a separate complete model/tool/time/resource protocol before new inference.",
+    "Whole-task correctness and at least 20% improvement against the strongest eligible alternative remain unproven.",
+    "Voluntary optional-tool use, representative update costs beyond this source-addition control and broader provider coverage remain open.",
+    "Five consenting external users and their seven-day observation windows remain unavailable."
+  ],
+  "archive_implementation": {
+    "sha256": "5fd071c8b0ea8989ed19e9880d072a086295c9d91bc9d8b50cc14e5615f6f497",
+    "source": "\"\"\"Retain all common-runtime developer attempts without changing frozen studies.\"\"\"\nimport hashlib\nimport json\nimport subprocess\nfrom pathlib import Path\n\nimport docker\n\nROOT = Path(__file__).parent\nREPO = Path('/home/zhongming/CodeNib-codegraph-benefit')\nOUT = REPO / 'docs/experiments'\nBASE = '733343e8e1f8ada6ed74ddf8860ac65754a897a5'\n\n\ndef sha(path):\n    return hashlib.sha256(Path(path).read_bytes()).hexdigest()\n\n\ndef write_part(label, value):\n    path = OUT / ('codegraph_common_runtime_v1_' + label + '.json')\n    path.write_text(json.dumps(value, indent=2) + '\\n')\n    assert path.stat().st_size < 500 * 1024, (path, path.stat().st_size)\n    return {'artifact': path.name, 'sha256': sha(path), 'bytes': path.stat().st_size}\n\n\nbatch = json.loads((ROOT / 'batch.json').read_text())\nassert len(batch['results']) == 12 and batch.get('finished_utc')\ncontrollers = {sha(p): {'filename': p.name, 'source': p.read_text()} for p in ROOT.glob('*.py') if p.name != 'archive.py'}\nrecords = []\nids = set()\nraw_by_name = {}\nfor folder in sorted(ROOT.iterdir()):\n    path = folder / 'receipt.json'\n    if not folder.is_dir() or not path.exists():\n        continue\n    raw = json.loads(path.read_text())\n    assert raw['controller_sha256'] in controllers, folder\n    assert not raw['changed_tracked_files'] and raw['source_original']['head'] == raw['source_final']['head']\n    assert all(c['confirmed_absent'] for c in raw['cleanup'])\n    ids.update(raw['owned_containers'])\n    stderr = folder / 'mcp.stderr'\n    record = {'attempt': folder.name, 'original_receipt_sha256': sha(path), 'receipt': raw}\n    if stderr.exists():\n        record['retained_mcp_stderr'] = {'sha256': sha(stderr), 'text': stderr.read_text()}\n    ref = write_part(f'{len(records):02d}', record)\n    ref.update(attempt=folder.name, status=raw['status'])\n    records.append(ref)\n    raw_by_name[folder.name] = raw\nassert len(records) == 17\n\nselected = {}\nhelper_references = []\nfor case in ['requests', 'flask', 'pytest']:\n    common = []\n    selected[case] = {}\n    for arm in ['native', 'serena', 'codegraph', 'codenib']:\n        tag = '3' if (case, arm) == ('pytest', 'codenib') else '1'\n        name = f'{case}-{arm}-{tag}'\n        raw = raw_by_name[name]\n        common.append(raw['common_runtime_packages'])\n        assert raw['checks'][0]['body_matches_captured_source']\n        if arm == 'codegraph':\n            assert raw['status'] == 'failed' and len(raw['checks']) == 1\n            pending = ''.join(p.get('text', '') for p in raw['calls'][-1]['reply']['content'])\n            assert 'pending sync' in pending.lower()\n            recovery_name = f'{case}-codegraph-watcher1'\n            recovery = raw_by_name[recovery_name]\n            assert recovery['status'] == 'passed' and len(recovery['checks']) == 2\n            assert recovery['watcher_wait']['retry_limit'] == 1 and recovery['watcher_wait']['same_mcp_client']\n            selected[case][arm] = {'immediate_control': name, 'bounded_followup': recovery_name}\n        else:\n            assert raw['status'] == 'passed' and len(raw['checks']) == 2\n            selected[case][arm] = {'control': name}\n        if arm == 'codenib':\n            assert len(raw['calls']) == 5 and raw['calls'][2]['reply']['is_error']\n            assert any(c['label'] == 'post-edit-rebuild' and c['returncode'] == 0 for c in raw['commands'])\n            graph = json.loads(raw['calls'][3]['reply']['content'][0]['text'])\n            targets = {'requests': 'requests/sessions.py:Session.prepare_request()', 'flask': 'src/flask/app.py:Flask.full_dispatch_request()', 'pytest': 'src/_pytest/runner.py:CallInfo.from_call()'}\n            edge = {'source': graph['root'], 'target': targets[case], 'type': 'reference'}\n            assert not graph['note'] and edge in graph['edges']\n            assert graph['semantics']['edge_type'] == 'reference' and graph['semantics']['reference_direction'] == 'outgoing'\n            helper_references.append({'case': case, 'attempt': name, 'captured_call_index': 3, 'edge': edge, 'helper_file_sha256': raw['controlled_edit']['sha256'], 'scope': 'Post-run verification of the captured reply; no invocation or runtime-coverage claim and no change to original outcomes.'})\n    assert all(value == common[0] for value in common)\n\ndiagnostic_names = ['wheel-inputs.json', 'wheel-receipt.json', 'native-wheel-receipt.json', 'native-wheel-build.json', 'packaging-runtime-inspection.json', 'neutral-image-audit.json', 'host-wheel-audit.json']\ndiagnostics = []\nfor name in diagnostic_names:\n    raw = json.loads((ROOT / name).read_text())\n    if 'container_id' in raw:\n        assert raw['container_removed']\n        ids.add(raw['container_id'])\n    ref = write_part('package_' + str(len(diagnostics)), {'original_file': name, 'original_sha256': sha(ROOT / name), 'receipt': raw})\n    diagnostics.append(ref)\n\naudits = []\nidentities = {}\nfor name in ['runtime-audit-initial.json', 'runtime-audit-corrected.json']:\n    values = json.loads((ROOT / name).read_text())\n    for index, raw in enumerate(values):\n        assert raw['container_removed']\n        ids.add(raw['container_id'])\n        assert raw['controller_sha256'] in controllers\n        retained = dict(raw)\n        identity = retained.pop('identity', None)\n        if identity is not None:\n            assert json.loads(retained['stdout']) == identity\n            if raw['status'] == 'passed':\n                identities[(raw['case'], raw['arm'])] = identity\n        # Preserve the exact stdout once rather than duplicating its JSON tree.\n        value = {'original_file': name, 'original_file_sha256': sha(ROOT / name), 'record_index': index, 'receipt': retained, 'identity_is_exact_json_parse_of_stdout': identity is not None}\n        ref = write_part('audit_' + str(len(audits)), value)\n        ref.update(case=raw['case'], arm=raw['arm'], status=raw['status'])\n        audits.append(ref)\nfor arm in ['serena', 'codegraph', 'codenib']:\n    values = [identities[(case, arm)] for case in ['requests', 'flask', 'pytest']]\n    assert values[0] == values[1] == values[2], arm\n\nengine = docker.from_env(timeout=60)\ncleanup = []\ntry:\n    for cid in sorted(ids):\n        try:\n            engine.containers.get(cid)\n        except docker.errors.NotFound:\n            cleanup.append({'container_id': cid, 'confirmed_absent': True})\n        else:\n            raise AssertionError('Owned container remains: ' + cid)\nfinally:\n    engine.close()\n\npreserved = {}\nnames = subprocess.check_output(['git', 'ls-tree', '-r', '--name-only', BASE, '--', 'docs/experiments'], cwd=REPO, text=True).splitlines()\nfor name in names:\n    p = Path(name)\n    if p.name.startswith('codegraph_') and p.suffix == '.json':\n        assert subprocess.check_output(['git', 'show', BASE + ':' + name], cwd=REPO) == (REPO / name).read_bytes(), name\n        preserved[name] = sha(REPO / name)\nartifact = {\n    'schema_version': 1,\n    'scope': 'Model-free common-base installation, source lookup and source-addition update admission. Diagnostics and bounded recovery remain separate from original frozen model outcomes. No whole-task benefit, new model inference or external-user claim.',\n    'source_baseline': BASE, 'selected_controls': selected,\n    'control_counts': {'total': len(records), 'passed': sum(r['status'] == 'passed' for r in records), 'failed': sum(r['status'] == 'failed' for r in records)},\n    'controls': records, 'batch': batch, 'controllers': controllers,\n    'packaging_and_neutral_diagnostics': diagnostics, 'runtime_identity_audits': audits,\n    'actual_product_identities': {'serena': {'version': identities[('requests', 'serena')]['packages']['serena-agent'], 'pyright': identities[('requests', 'serena')]['packages']['pyright'], 'mcp': identities[('requests', 'serena')]['packages']['mcp']}, 'codegraph': {'version': identities[('requests', 'codegraph')]['package'], 'node': identities[('requests', 'codegraph')]['node'], 'package_file_hash_count': len(identities[('requests', 'codegraph')]['package_files'])}, 'codenib': {'version': identities[('requests', 'codenib')]['packages']['codenib'], 'mcp': identities[('requests', 'codenib')]['packages']['mcp'], 'providers': identities[('requests', 'codenib')]['providers'], 'workspace_owner_abi': identities[('requests', 'codenib')]['workspace_owner_protocol']}},\n    'all_common_target_packages_identical_within_each_repository': True,\n    'all_selected_product_package_identities_identical_across_sources': True,\n    'post_run_new_helper_reference_audit': helper_references,\n    'owned_container_cleanup': cleanup,\n    'prior_codegraph_json_files_unchanged': preserved,\n    'model_inference_sessions': 0, 'external_participants': 0,\n    'remaining_gates': ['Complete source-check of the full corrected rubric and freeze a separate complete model/tool/time/resource protocol before new inference.', 'Whole-task correctness and at least 20% improvement against the strongest eligible alternative remain unproven.', 'Voluntary optional-tool use, representative update costs beyond this source-addition control and broader provider coverage remain open.', 'Five consenting external users and their seven-day observation windows remain unavailable.'],\n    'archive_implementation': {'sha256': sha(__file__), 'source': Path(__file__).read_text()},\n}\ntarget = OUT / 'codegraph_common_runtime_2026_10_28.json'\ntarget.write_text(json.dumps(artifact, indent=2) + '\\n')\nassert target.stat().st_size < 500 * 1024\nprint(json.dumps({'index': target.name, 'index_bytes': target.stat().st_size, 'counts': artifact['control_counts'], 'owned_containers_absent': len(cleanup), 'prior_json_files_unchanged': len(preserved), 'parts': len(records) + len(diagnostics) + len(audits)}))\n"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "original_file": "native-wheel-receipt.json",
+  "original_sha256": "e77ab2d59c98c2034ede91d91674977d360a2ca6c1bd75697b875d085b6e41e9",
+  "receipt": {
+    "filename": "codenib-0.2.4-cp310-abi3-linux_aarch64.whl",
+    "sha256": "40586ca073a0d100a99b4478bdaa0f37b42fae55e93e2a39c860ee3a2b4d5e76",
+    "bytes": 3811525,
+    "source_commit": "733343e8e1f8ada6ed74ddf8860ac65754a897a5",
+    "version_label": "0.2.4 source candidate; not the public PyPI wheel",
+    "all_package_python_files_match_source": true,
+    "python_file_count": 484,
+    "native_extension": {
+      "path": "codenib/_workspace_owner_impl.abi3.so",
+      "sha256": "18a27da42ab01470a3689bac5938a4ea8d374ddcf171104a500781f305353165"
+    }
+  }
+}

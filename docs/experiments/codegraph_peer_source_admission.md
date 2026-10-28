@@ -97,8 +97,12 @@ check. All fourteen owned control/help/diagnostic containers are confirmed
 absent. All sixty-three earlier tracked CodeGraph JSON artifacts remain
 byte-identical to source baseline `bc62135b`.
 
-Complete the common runtime/source binding, installation and cold/update
-preparation for every arm before another matched run. Source-check the full
+The separate [common-runtime controls](codegraph_common_runtime_admission.md)
+now cover all four arms' actual installation, initial lookup and source-addition
+updates on the same project environments. Their controller failures and
+Codegraph's bounded pending-sync recovery remain recorded. These controls
+do not change the warm observations above or establish a task-time benefit.
+Source-check the full
 corrected rubric and freeze a separate prospective model/tool/resource
 protocol. Preserve native tools, automatic optional-tool choice, failures,
 unused tools, complete task costs and unknown invoice charges. These controls

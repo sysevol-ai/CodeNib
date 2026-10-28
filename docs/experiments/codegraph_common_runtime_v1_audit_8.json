@@ -1,0 +1,28 @@
+{
+  "original_file": "runtime-audit-initial.json",
+  "original_file_sha256": "9c0d0051e73a2984ed3d134d60616af84dc11a924c5ced3bf483a75f33820e40",
+  "record_index": 8,
+  "receipt": {
+    "case": "pytest",
+    "arm": "codenib",
+    "prepared_image": "sha256:f59a4f718ee42a5a834ca3208219d1baace557a1e34fa7ea7c3f4c0485fe8e45",
+    "owner": "f064e5deb65542148e5b1f6067ba18b8",
+    "controller_sha256": "c1d8e0ad2b8895ef9a06f97203b248f7f05db22c04ff743218848ff220b00dff",
+    "container_id": "f394b0ebb7c9b65ac3c1a8eb209da7e9bd7e481ac69ab60b8e895df9c78d39d0",
+    "argv": [
+      "/opt/pilot-tools/codenib/bin/python",
+      "-c",
+      "import importlib.metadata as m,json,sys;from pathlib import Path;result={\"python\":sys.version,\"packages\":dict(sorted((d.metadata[\"Name\"],d.version) for d in m.distributions()))};from codenib import _workspace_owner as o;o.require_support();result[\"workspace_owner_protocol\"]=o._protocol_version;result[\"providers\"]={n:json.loads((Path(\"/opt/pilot-tools/.codenib/toolchains/node-tools/node_modules\")/n/\"package.json\").read_text())[\"version\"] for n in (\"@sourcegraph/scip-python\",\"basedpyright\")};print(json.dumps(result))"
+    ],
+    "returncode": 1,
+    "stdout": "",
+    "stderr": "Traceback (most recent call last):\n  File \"<string>\", line 1, in <module>\n    import importlib.metadata as m,json,sys;from pathlib import Path;result={\"python\":sys.version,\"packages\":dict(sorted((d.metadata[\"Name\"],d.version) for d in m.distributions()))};from codenib import _workspace_owner as o;o.require_support();result[\"workspace_owner_protocol\"]=o._protocol_version;result[\"providers\"]={n:json.loads((Path(\"/opt/pilot-tools/.codenib/toolchains/node-tools/node_modules\")/n/\"package.json\").read_text())[\"version\"] for n in (\"@sourcegraph/scip-python\",\"basedpyright\")};print(json.dumps(result))\n                                                                                                                                                                                                                                ~~~~~~~~~~~~~~~~~^^\n  File \"/opt/pilot-tools/codenib/lib/python3.13/site-packages/codenib/_workspace_owner.py\", line 261, in require_support\n    result = _require_support_exact()\nRuntimeError: native strict workspace provisioning requires permitted same-process kcmp OFD comparison\n",
+    "status": "failed",
+    "failure": {
+      "type": "AssertionError",
+      "message": "('pytest', 'codenib', 'Traceback (most recent call last):\\n  File \"<string>\", line 1, in <module>\\n    import importlib.metadata as m,json,sys;from pathlib import Path;result={\"python\":sys.version,\"packages\":dict(sorted((d.metadata[\"Name\"],d.version) for d in m.distributions()))};from codenib import _workspace_owner as o;o.require_support();result[\"workspace_owner_protocol\"]=o._protocol_version;result[\"providers\"]={n:json.loads((Path(\"/opt/pilot-tools/.codenib/toolchains/node-tools/node_modules\")/n/\"package.json\").read_text())[\"version\"] for n in (\"@sourcegraph/scip-python\",\"basedpyright\")};print(json.dumps(result))\\n                                                                                                                                                                                                                                ~~~~~~~~~~~~~~~~~^^\\n  File \"/opt/pilot-tools/codenib/lib/python3.13/site-packages/codenib/_workspace_owner.py\", line 261, in require_support\\n    result = _require_support_exact()\\nRuntimeError: native strict workspace provisioning requires permitted same-process kcmp OFD comparison\\n')"
+    },
+    "container_removed": true
+  },
+  "identity_is_exact_json_parse_of_stdout": false
+}
