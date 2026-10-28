@@ -8,7 +8,6 @@ import json
 import subprocess
 import sys
 import threading
-import time
 from pathlib import Path
 
 from scripts.guardian.deepswe import solo_matrix as matrix
@@ -225,6 +224,9 @@ def test_run_plan_limits_parallel_trials_to_configured_concurrency(
     plan = matrix._build_plan(args)[:6]
     statuses = {trial.key: matrix._initial_status(args, trial) for trial in plan}
     lock = threading.Lock()
+    # Each wave of three trials must be in flight together; a fixed sleep let a
+    # loaded runner finish one trial before the coordinator launched the third.
+    wave = threading.Barrier(3, timeout=30)
     active = 0
     maximum_active = 0
     seen_jobs_dirs = set()
@@ -235,7 +237,7 @@ def test_run_plan_limits_parallel_trials_to_configured_concurrency(
             active += 1
             maximum_active = max(maximum_active, active)
             seen_jobs_dirs.add(trial_args.jobs_dir)
-        time.sleep(0.03)
+        wave.wait()
         with lock:
             active -= 1
         return {
