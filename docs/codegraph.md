@@ -23,7 +23,8 @@ codenib codegraph init /absolute/path/to/repository
 
 Published 0.2.4 requires a clean Git checkout for initialization. Source builds
 from `main` add dirty-checkout initialization and per-query stale-index
-rejection; these fixes await a package release.
+rejection, then reload rebuilt indexes within the same MCP connection. These
+fixes await a package release.
 
 The initializer detects repository languages and installed agent clients. It
 then installs package-managed graph providers, builds `bm25` and
@@ -156,12 +157,16 @@ the complete path is ready:
 codenib codegraph status /absolute/path/to/repository --json
 ```
 
-After source changes, stop the agent's CodeNib MCP server, rerun `init`, and
-restart the server to load the rebuilt index. Published 0.2.4 requires a clean
-checkout for this rebuild; a running 0.2.4 session can return stale facts after
-an edit. Source builds from `main` accept the dirty working tree and reject
-indexed queries once source changes, reporting the rebuild and restart steps.
-Running sessions do not automatically refresh their loaded indexes.
+Source builds from `main` reject indexed queries after source changes. Rerun
+`codenib codegraph init /absolute/path/to/repository`, then retry in the same
+agent connection. The server loads the published indexes after checking that
+they match current source. If the compiler is still publishing, retry after it
+finishes. Queries do not start an index build.
+
+Published 0.2.4 requires a clean checkout for rebuilding. Stop its CodeNib MCP
+server, rerun `init`, and restart the server to load the result. A running
+0.2.4 session can return stale facts after an edit.
+
 Views whose complete identities remain
 current are reused; affected requested views rebuild atomically. File-level
 delta repair is currently disabled until it can use the same pinned source

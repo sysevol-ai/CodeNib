@@ -273,8 +273,14 @@ commit/source fingerprint. `content_projection` reports whether the requested
 window was shortened and, when truncation ended on a complete line, the next
 `start_line`. Each read session revalidates the retained whole-tree authority
 and exact file record. The commit is display provenance only: mutable Git HEAD
-is not attested by this content binding. Any source drift permanently disables
-the binding until the server is restarted or rebound.
+is not attested by this content binding. Source drift disables that binding.
+For a local manifest server, rebuild with `codenib codegraph init` and retry in
+the same connection: the next indexed query or idle manifest-status request
+loads the published generation after authenticating current source. A busy
+compiler returns a retry message. Connection delivery history and its worker
+barrier survive a successful reload. Query calls do not build indexes.
+Portable artifacts retain their selected snapshot and require explicit
+rebinding to change it.
 
 ### `get_manifest`
 Returns the manifest version; a nested `repo` object containing path, commit,
