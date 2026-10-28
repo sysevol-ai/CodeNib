@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Exercise the supported CodeNib 0.2.2 to v0.2.3 upgrade boundary."""
+"""Exercise materialized artifacts and BM25 compatibility across an upgrade."""
 
 from __future__ import annotations
 
@@ -358,7 +358,11 @@ def smoke(wheel: Path, *, expected_version: str, root: Path) -> None:
         env=environment,
     )
     _assert_storage_surface(python, root=root, env=environment)
-    _assert_builder_contract(baseline.get("config"), expected_bm25_identity)
+    baseline_config = baseline.get("config")
+    baseline_compatible = isinstance(baseline_config, dict) and all(
+        baseline_config.get(key) == value
+        for key, value in expected_bm25_identity.items()
+    )
     _run(
         [
             codenib,
@@ -380,9 +384,11 @@ def smoke(wheel: Path, *, expected_version: str, root: Path) -> None:
         env=environment,
     )
     upgraded = _load_bm25(manifest_path)
-    if upgraded.get("built_at") != baseline.get("built_at"):
-        raise RuntimeError("the candidate rebuilt the compatible 0.2.2 BM25 view")
     _assert_builder_contract(upgraded.get("config"), expected_bm25_identity)
+    if baseline_compatible and upgraded.get("built_at") != baseline.get("built_at"):
+        raise RuntimeError("the candidate rebuilt the compatible 0.2.2 BM25 view")
+    if not baseline_compatible and upgraded.get("built_at") == baseline.get("built_at"):
+        raise RuntimeError("the candidate reused an incompatible 0.2.2 BM25 view")
 
     _run(
         [codenib, "index", repository, "--preset", "fast"],
@@ -390,8 +396,8 @@ def smoke(wheel: Path, *, expected_version: str, root: Path) -> None:
         env=environment,
     )
     reused = _load_bm25(manifest_path)
-    if reused.get("built_at") != baseline.get("built_at"):
-        raise RuntimeError("the compatible 0.2.2 BM25 view was rebuilt again")
+    if reused.get("built_at") != upgraded.get("built_at"):
+        raise RuntimeError("the unchanged candidate BM25 view was rebuilt again")
     status = _run(
         ["git", "status", "--porcelain"],
         cwd=repository,
@@ -399,9 +405,10 @@ def smoke(wheel: Path, *, expected_version: str, root: Path) -> None:
     ).stdout
     if status:
         raise RuntimeError(f"upgrade modified the target repository: {status!r}")
+    bm25_outcome = "reused" if baseline_compatible else "rebuilt once"
     print(
         f"Upgrade smoke passed: {BASELINE_VERSION} -> {expected_version}; "
-        "BM25 and portable artifact reused; storage is Wiki-only"
+        f"BM25 {bm25_outcome}; portable artifact reused; storage is Wiki-only"
     )
 
 

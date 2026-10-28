@@ -19,7 +19,7 @@ import traceback
 import urllib.parse
 from contextlib import nullcontext
 from pathlib import Path
-from typing import Sequence
+from typing import Any, Sequence
 
 from smoke_release_services import (
     _free_port,
@@ -149,6 +149,22 @@ def _assert_codemap(
             _stop_process_group(process)
 
 
+def _assert_dependency_target(result: Any, *, callee: str) -> dict[str, Any]:
+    payload = _structured_result(result)
+    dependency = payload.get("result", payload)
+    names = {str(node.get("name") or "") for node in dependency.get("nodes", [])}
+    if not any(name.endswith(f":{callee}()") for name in names):
+        raise RuntimeError(
+            "CodeGraph MCP dependency traversal did not reach the callee: "
+            f"{dependency!r}"
+        )
+    if not dependency.get("edges"):
+        raise RuntimeError(
+            f"CodeGraph MCP dependency traversal has no edge: {dependency!r}"
+        )
+    return dependency
+
+
 async def _assert_codegraph_mcp_async(
     root: Path,
     repo: Path,
@@ -189,22 +205,7 @@ async def _assert_codegraph_mcp_async(
                         "max_edges": 24,
                     },
                 )
-                dependency_payload = _structured_result(dependency)
-                dependency_result = dependency_payload.get("result", dependency_payload)
-                node_names = {
-                    str(node.get("name") or "")
-                    for node in dependency_result.get("nodes", [])
-                }
-                if not any(name.endswith(f":{callee}()") for name in node_names):
-                    raise RuntimeError(
-                        "CodeGraph MCP dependency traversal did not reach the "
-                        f"callee: {dependency_result!r}"
-                    )
-                if not dependency_result.get("edges"):
-                    raise RuntimeError(
-                        f"CodeGraph MCP dependency traversal has no edge: "
-                        f"{dependency_result!r}"
-                    )
+                _assert_dependency_target(dependency, callee=callee)
 
                 explored = await client.call_tool(
                     "explore_context",
@@ -275,7 +276,7 @@ def _assert_dirty_reinitialization(
     env: dict[str, str],
     agent_state: Path,
 ) -> None:
-    """Reject old-session facts and load the edited graph after reconnecting."""
+    """Reject stale facts, then load the edited graph in the original session."""
 
     from mcp import Client, StdioServerParameters
     from mcp.client.stdio import stdio_client
@@ -297,8 +298,9 @@ def _assert_dirty_reinitialization(
                     "max_nodes": 12,
                     "max_edges": 24,
                 }
-                _structured_result(
-                    await client.call_tool("dependency_subgraph", arguments=arguments)
+                _assert_dependency_target(
+                    await client.call_tool("dependency_subgraph", arguments=arguments),
+                    callee="release_sum",
                 )
 
                 async def reject_old_facts() -> None:
@@ -312,7 +314,8 @@ def _assert_dirty_reinitialization(
                         not result.is_error
                         or result.structured_content is not None
                         or "codenib codegraph init" not in message
-                        or "restart" not in message
+                        or "retry" not in message
+                        or "reloads rebuilt indexes" not in message
                     ):
                         raise RuntimeError(f"stale graph was not rejected: {result!r}")
 
@@ -350,7 +353,10 @@ def _assert_dirty_reinitialization(
                     "adds"
                 ) != registrations.get("adds"):
                     raise RuntimeError("dirty init rewrote an agent registration")
-                await reject_old_facts()
+                _assert_dependency_target(
+                    await client.call_tool("dependency_subgraph", arguments=arguments),
+                    callee="release_sum_updated",
+                )
         await _assert_codegraph_mcp_async(
             root, repo, executable=executable, env=env, callee="release_sum_updated"
         )

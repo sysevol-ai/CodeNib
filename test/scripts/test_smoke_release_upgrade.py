@@ -120,3 +120,57 @@ def test_upgrade_smoke_rejects_stale_storage_surface(monkeypatch):
 
     with pytest.raises(RuntimeError, match="unexpected candidate storage surface"):
         _assert_storage_surface(Path("python"), root=Path("."), env={})
+
+
+@pytest.mark.parametrize(
+    "baseline_schema,first_build,second_build,error",
+    [
+        (8, "candidate", "candidate", None),
+        (9, "baseline", "baseline", None),
+        (8, "baseline", "baseline", "incompatible"),
+        (9, "candidate", "candidate", "compatible"),
+        (8, "candidate", "repeated", "rebuilt again"),
+    ],
+)
+def test_upgrade_checks_compatibility_before_requiring_reuse(
+    monkeypatch, tmp_path, baseline_schema, first_build, second_build, error
+):
+    expected = {"builder_schema": 9, "languages": ["python"]}
+    views = iter(
+        [
+            {
+                "built_at": "baseline",
+                "config": {**expected, "builder_schema": baseline_schema},
+            },
+            {"built_at": first_build, "config": expected},
+            {"built_at": second_build, "config": expected},
+        ]
+    )
+    monkeypatch.setattr(upgrade_smoke.venv.EnvBuilder, "create", lambda *_args: None)
+    monkeypatch.setattr(
+        upgrade_smoke, "_manifest_path", lambda *_args, **_kwargs: tmp_path / "manifest"
+    )
+    monkeypatch.setattr(upgrade_smoke, "_load_bm25", lambda *_args: next(views))
+    monkeypatch.setattr(
+        upgrade_smoke, "_installed_bm25_identity", lambda *_args, **_kwargs: expected
+    )
+    monkeypatch.setattr(
+        upgrade_smoke, "_assert_storage_surface", lambda *_args, **_kwargs: None
+    )
+    monkeypatch.setattr(
+        upgrade_smoke,
+        "_run",
+        lambda command, **_kwargs: SimpleNamespace(
+            stdout="codenib 0.2.4\n" if "--version" in command else ""
+        ),
+    )
+
+    if error:
+        with pytest.raises(RuntimeError, match=error):
+            upgrade_smoke.smoke(
+                tmp_path / "candidate.whl", expected_version="0.2.4", root=tmp_path
+            )
+    else:
+        upgrade_smoke.smoke(
+            tmp_path / "candidate.whl", expected_version="0.2.4", root=tmp_path
+        )
