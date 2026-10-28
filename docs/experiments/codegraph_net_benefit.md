@@ -4,7 +4,9 @@ Owner: CodeNib product and CodeGraph maintainers.
 Status: dirty initialization and stale-query guard merged; provider-identity
 collision reproduced and graph-integrity guard merged; all twelve matched
 workflows execute and their repairs pass the selected original native grading.
-Source-explanation acceptance and external trials remain open.
+Source review is complete with four protocol-unassessable observations; the
+frozen outcome is insufficient evidence and promotion is held. Provider recovery
+and external trials remain open.
 Established 2026-10-26
 (Pacific); target review 2026-11-09.
 Current outcomes and open gates belong to [adoption A0](../adoption_roadmap.md).
@@ -163,8 +165,11 @@ accounting are frozen in the [execution policy](codegraph_matched_policy_v3.json
 The [executable/runtime binding and source checks](codegraph_execution_2026_10_27.json)
 precede the first matched query. [All twelve workflows](codegraph_matched_run_v1.md)
 now complete; the selected original native grader resolves all twelve captured
-repairs. The 48 source explanations await rubric review before the complete
-benefit gate can be evaluated.
+repairs. The [source assessment](codegraph_matched_assessment_v1.md) reviews all
+48 explanations, retaining four ambiguous original items and material errors in
+every alternative. The frozen policy therefore admits no eligible complete
+comparison. A separate retrospective correction preserves the original wording
+and cannot establish a prospective gain.
 Work on offline reproduction and scoped fixes can proceed. A live experiment must
 not silently substitute the graph-free search pair or grep/Jev for CodeGraph.
 

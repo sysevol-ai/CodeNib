@@ -1,0 +1,130 @@
+{
+  "scope": "Prespecified descriptive groups under original source decisions; one fifth of actual non-phase workflow overhead per task. No eligible primary winner or causal graph-effect claim.",
+  "assessment_sha256": "339aba959fe03e92e3c7148f50f3792e3649019332fb41c6dbb35aa0033a9ca9",
+  "arms": {
+    "native": {
+      "lookup": {
+        "denominator": 3,
+        "accepted_known": 3,
+        "rejected_known": 0,
+        "protocol_unassessable": 0,
+        "observed_allocated_seconds": 59.03952584788203
+      },
+      "flow_impact": {
+        "denominator": 6,
+        "accepted_known": 3,
+        "rejected_known": 2,
+        "protocol_unassessable": 1,
+        "observed_allocated_seconds": 262.8037974033505
+      },
+      "repair": {
+        "denominator": 3,
+        "accepted_known": 3,
+        "rejected_known": 0,
+        "protocol_unassessable": 0,
+        "observed_allocated_seconds": 72.17030184902251
+      },
+      "post_edit": {
+        "denominator": 3,
+        "accepted_known": 3,
+        "rejected_known": 0,
+        "protocol_unassessable": 0,
+        "observed_allocated_seconds": 63.897729059681296
+      }
+    },
+    "serena": {
+      "lookup": {
+        "denominator": 3,
+        "accepted_known": 3,
+        "rejected_known": 0,
+        "protocol_unassessable": 0,
+        "observed_allocated_seconds": 82.58798497691751
+      },
+      "flow_impact": {
+        "denominator": 6,
+        "accepted_known": 1,
+        "rejected_known": 4,
+        "protocol_unassessable": 1,
+        "observed_allocated_seconds": 302.11023848056794
+      },
+      "repair": {
+        "denominator": 3,
+        "accepted_known": 3,
+        "rejected_known": 0,
+        "protocol_unassessable": 0,
+        "observed_allocated_seconds": 98.34163844920695
+      },
+      "post_edit": {
+        "denominator": 3,
+        "accepted_known": 3,
+        "rejected_known": 0,
+        "protocol_unassessable": 0,
+        "observed_allocated_seconds": 96.1704870980233
+      }
+    },
+    "codegraph": {
+      "lookup": {
+        "denominator": 3,
+        "accepted_known": 2,
+        "rejected_known": 1,
+        "protocol_unassessable": 0,
+        "observed_allocated_seconds": 67.68755504079164
+      },
+      "flow_impact": {
+        "denominator": 6,
+        "accepted_known": 1,
+        "rejected_known": 4,
+        "protocol_unassessable": 1,
+        "observed_allocated_seconds": 295.4509191133082
+      },
+      "repair": {
+        "denominator": 3,
+        "accepted_known": 3,
+        "rejected_known": 0,
+        "protocol_unassessable": 0,
+        "observed_allocated_seconds": 77.35364328101278
+      },
+      "post_edit": {
+        "denominator": 3,
+        "accepted_known": 3,
+        "rejected_known": 0,
+        "protocol_unassessable": 0,
+        "observed_allocated_seconds": 77.92237804420293
+      }
+    },
+    "codenib": {
+      "lookup": {
+        "denominator": 3,
+        "accepted_known": 3,
+        "rejected_known": 0,
+        "protocol_unassessable": 0,
+        "observed_allocated_seconds": 77.0581763599068
+      },
+      "flow_impact": {
+        "denominator": 6,
+        "accepted_known": 1,
+        "rejected_known": 4,
+        "protocol_unassessable": 1,
+        "observed_allocated_seconds": 320.0568692959845
+      },
+      "repair": {
+        "denominator": 3,
+        "accepted_known": 3,
+        "rejected_known": 0,
+        "protocol_unassessable": 0,
+        "observed_allocated_seconds": 125.80085760988295
+      },
+      "post_edit": {
+        "denominator": 3,
+        "accepted_known": 3,
+        "rejected_known": 0,
+        "protocol_unassessable": 0,
+        "observed_allocated_seconds": 96.00437029898167
+      }
+    }
+  },
+  "implementation": {
+    "sha256": "d9458eacd4ad1090bd2390aa3d18fa61e66748953c18035b46517a6ef5c3a077",
+    "text": "\"\"\"Prespecified descriptive groups with the frozen five-task overhead split.\"\"\"\nimport hashlib,json\nfrom pathlib import Path\nROOT=Path('/tmp/codenib-matched-pilot-20261027')\nDEST=Path('/home/zhongming/CodeNib-codegraph-benefit/docs/experiments')\np=DEST/'codegraph_matched_assessment_v1.json';data=json.loads(p.read_text())\ngroups={'lookup':['lookup'],'flow_impact':['flow','impact'],'repair':['repair'],'post_edit':['post_edit']}\nresult={}\nfor arm in ['native','serena','codegraph','codenib']:\n    rows=[r for r in data['workflows'] if r['workflow']['arm']==arm];result[arm]={}\n    for group,kinds in groups.items():\n        tasks=[t for row in rows for t in row['tasks'] if t['kind'] in kinds]\n        result[arm][group]={'denominator':len(tasks),'accepted_known':sum(t['accepted_original'] is True for t in tasks),\n           'rejected_known':sum(t['accepted_original'] is False for t in tasks),\n           'protocol_unassessable':sum(t['accepted_original'] is None for t in tasks),\n           'observed_allocated_seconds':sum(t['descriptive_phase_plus_one_fifth_overhead_seconds'] for t in tasks)}\n    assert abs(sum(g['observed_allocated_seconds'] for g in result[arm].values())-data['arm_summary'][arm]['observed_seconds'])<1e-8\nout=DEST/'codegraph_matched_subgroups_v1.json';assert not out.exists()\nvalue={'scope':'Prespecified descriptive groups under original source decisions; one fifth of actual non-phase workflow overhead per task. No eligible primary winner or causal graph-effect claim.',\n       'assessment_sha256':hashlib.sha256(p.read_bytes()).hexdigest(),'arms':result,\n       'implementation':{'sha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),'text':Path(__file__).read_text()}}\nout.write_text(json.dumps(value,indent=2)+'\\n');print(json.dumps(result,indent=2))\n"
+  }
+}

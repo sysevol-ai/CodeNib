@@ -1,8 +1,10 @@
 # CodeGraph matched pilot execution
 
 All twelve frozen workflows completed their five model tasks. The original native
-repair grader resolves 12/12 captured repairs. Source-rubric acceptance for the
-48 explanation tasks remains open, so the complete benefit gate is unassessed.
+repair grader resolves 12/12 captured repairs. The
+[completed source assessment](codegraph_matched_assessment_v1.md) records 29
+accepted explanations, 15 rejected and four protocol-unassessable observations.
+The frozen benefit outcome is insufficient evidence, with promotion held.
 
 The same native Claude agent is compared alone, with Serena, with
 [`colbymchenry/codegraph`](https://github.com/colbymchenry/codegraph), and with
@@ -80,13 +82,14 @@ models, including cache creation/read and output. The cohort records 8,959,314
 tokens and $9.880642 in SDK estimates. These estimates are separate from
 invoices; per-task cash charges and complete HTTP request counts remain unknown.
 
-48/48 read-only tasks preserve the recorded source bytes. Applying each frozen
-source rubric remains necessary before accepted-task counts, the strongest
-eligible alternative, timeout penalties, cluster uncertainty or the 20%
-promotion gate can be reported.
+48/48 read-only tasks preserve the recorded source bytes. The separate source
+assessment records every criterion and its source evidence, timing interpretation
+bounds and descriptive repository-cluster uncertainty. No alternative is eligible
+under the frozen material-error rule. The original execution JSON retains its
+pre-review state; the separate assessment is the current decision record.
 
-This cohort has one attempt per task and supports a bounded pilot decision after
-acceptance review. Broader graph correctness (#871), manual rebuild/reconnect
+This cohort has one attempt per task and its bounded decision holds promotion
+for insufficient evidence. Broader graph correctness (#871), manual rebuild/reconnect
 costs and five external users with seven-day repeat-use observations remain open.
 No external participant is enrolled.
 
