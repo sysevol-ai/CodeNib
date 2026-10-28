@@ -1,0 +1,12 @@
+{
+  "relative_native_path": "grade/eval.sh",
+  "whole_file_sha256": "d91612830bde43fffe596f8f45a332afa32089e13c5464f80b03110789c80e23",
+  "whole_file_bytes": 1215,
+  "part": 0,
+  "parts": 1,
+  "content_encoding": "gzip+base64",
+  "gzip_mtime": 0,
+  "gzip_bytes": 536,
+  "base64_bytes": "H4sIAAAAAAACA61T0W7aMBR9z1fcZaoAgRNIgBZUqu6he5v6sL1NE3Lia7Bq7Ci+oc3fzzFl1WBUkza/5No55+ie6+OPH9JCmbTgbhs5JGDNi4VKVSi50pGzTV0ipLaidKeMKq0RPA8MXpLac8IonMFxC4SOChRRKSA91htF4GFSbYCxjbYF177gQoDjEhOhaizJ1u0b45TtiFPjDuXWPoeClV60xkQqjV+swJXk2iEIJSXc8ILfzHM+z6dyOp7Nx5jNxrOZmFwvsmwsx+j9Fbjg/+KwamlrDbBdNy9QxveovS+E5GB4i+WTbeivewnCymyC8XXFHaFvI6naIMerSrfA9sDg9rb38Ph5PZlM82yRZ9PFJOtFwbafbgdNLylBcfFXxBh7hxkNh8P32Pf3wCbZfHQNw8PHHwiUwdO6rNEPbm3w+cDpO9RyBEf+CHa2fEKxbmptKzSDZQTHxZ3DmkCj6Z+AYLWCyRvQH49AcOKwOpH7Pv5xpkdthf0OPQDloGh9mxE7YjS+YO1l4sMN5zEoCa51yR5rp6xZKyOtV4W7FeSAXeheoXE0PBMhfKH4rAHfW2cg3hJVbpmmRRhGYvAP2Dhora5cDFevusoEr4nA0ie/PzjnlOFFNFqzoMx8iAkNeY0zbnSapmgJvbtuwVfiXuybv0R4bKhqqNfFvtuy+tPlwP7iPxjxO/s/v4yffbo2s78EAAA=",
+  "scope": "Exact original native grading bytes under lossless compression; concatenate decoded gzip pieces, decompress, then verify the whole-file hash. No outcome replacement or repair regrade."
+}

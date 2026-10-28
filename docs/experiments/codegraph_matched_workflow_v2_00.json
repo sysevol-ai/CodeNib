@@ -1,0 +1,1319 @@
+{
+  "schema_version": 2,
+  "scope": "Independent prospectively frozen v2 model execution. Original v1 remains unchanged; source/native acceptance is separate.",
+  "original_receipt": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/00-psf__requests-1921-serena/receipt.json",
+  "original_receipt_sha256": "9f1ec5bac774f673517313db3ee19af28f4ffe2d95c6525e35c34666d5e59fc2",
+  "receipt_projection": {
+    "workflow": {
+      "workflow_index": 0,
+      "instance_id": "psf__requests-1921",
+      "arm": "serena"
+    },
+    "owner": "53abc26d8c2b",
+    "created_utc": "2026-10-28T14:12:19.227021+00:00",
+    "prepare_only": false,
+    "commands": [
+      {
+        "label": "common-directories",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/00-psf__requests-1921-serena/workspace",
+          "beb6e2622cffc654ca5d31fdd58a30c9e0c8d348bebca85372ff522fedccbe61",
+          "mkdir",
+          "-p",
+          "/opt/pilot-tools/bin",
+          "/opt/pilot-inputs",
+          "/opt/pilot-state"
+        ],
+        "returncode": 0,
+        "seconds": 0.053762711584568024,
+        "log": "common-directories.log",
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "common-git",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/00-psf__requests-1921-serena/workspace",
+          "beb6e2622cffc654ca5d31fdd58a30c9e0c8d348bebca85372ff522fedccbe61",
+          "git",
+          "config",
+          "--global",
+          "--add",
+          "safe.directory",
+          "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/00-psf__requests-1921-serena/workspace"
+        ],
+        "returncode": 0,
+        "seconds": 0.05091456510126591,
+        "log": "common-git.log",
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "common-project",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/00-psf__requests-1921-serena/workspace",
+          "beb6e2622cffc654ca5d31fdd58a30c9e0c8d348bebca85372ff522fedccbe61",
+          "/opt/miniconda3/envs/testbed/bin/python",
+          "-m",
+          "pip",
+          "install",
+          "."
+        ],
+        "returncode": 0,
+        "seconds": 1.0613884720951319,
+        "log": "common-project.log",
+        "log_sha256": "546b4ecb12d9ff9a5ae8adf1aa40ce51f03709f5bd33fa8315cdb40476a55b68"
+      },
+      {
+        "label": "common-workspace-owner",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/00-psf__requests-1921-serena/workspace",
+          "beb6e2622cffc654ca5d31fdd58a30c9e0c8d348bebca85372ff522fedccbe61",
+          "chown",
+          "-R",
+          "1001:1001",
+          "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/00-psf__requests-1921-serena/workspace"
+        ],
+        "returncode": 0,
+        "seconds": 0.061062538996338844,
+        "log": "common-workspace-owner.log",
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "install-product",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/00-psf__requests-1921-serena/workspace",
+          "beb6e2622cffc654ca5d31fdd58a30c9e0c8d348bebca85372ff522fedccbe61",
+          "uv",
+          "tool",
+          "install",
+          "--python",
+          "/opt/pilot-runtimes/python/bin/python3.13",
+          "--with",
+          "pyright==1.1.403",
+          "serena-agent==2.1.0",
+          "--constraints",
+          "/opt/pilot-inputs/serena-constraints.txt"
+        ],
+        "returncode": 0,
+        "seconds": 1.2729889508336782,
+        "log": "install-product.log",
+        "log_sha256": "6d06076e7b6290ec1a236c8be493080c6ef224be2393063a9ef47f40e2b8c68a"
+      },
+      {
+        "label": "prepare-python-provider",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/00-psf__requests-1921-serena/workspace",
+          "beb6e2622cffc654ca5d31fdd58a30c9e0c8d348bebca85372ff522fedccbe61",
+          "uv",
+          "tool",
+          "run",
+          "-p",
+          "3.13",
+          "--from",
+          "pyright==1.1.403",
+          "pyright",
+          "--version"
+        ],
+        "returncode": 0,
+        "seconds": 1.3419493529945612,
+        "log": "prepare-python-provider.log",
+        "log_sha256": "ef239605535ca29ba78e8e36f7c3a1a4f3d4dab8cca2ae885532b0fe646a876c"
+      },
+      {
+        "label": "initialize-product",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/00-psf__requests-1921-serena/workspace",
+          "beb6e2622cffc654ca5d31fdd58a30c9e0c8d348bebca85372ff522fedccbe61",
+          "/bin/bash",
+          "-lc",
+          "umask 002\nserena project create --language python --name matched-53abc26d8c2b /tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/00-psf__requests-1921-serena/workspace"
+        ],
+        "returncode": 0,
+        "seconds": 1.3226647563278675,
+        "log": "initialize-product.log",
+        "log_sha256": "3f3321f28381087946616c3d51e452f5726d87dec1a07bef2adb13391dd37736"
+      },
+      {
+        "label": "verify-target-identity",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/00-psf__requests-1921-serena/workspace",
+          "beb6e2622cffc654ca5d31fdd58a30c9e0c8d348bebca85372ff522fedccbe61",
+          "/opt/miniconda3/envs/testbed/bin/python",
+          "-c",
+          "import importlib.metadata as m,json,sys;print(json.dumps({\"python\":sys.version,\"packages\":sorted({(d.metadata[\"Name\"],d.version) for d in m.distributions()})}))"
+        ],
+        "returncode": 0,
+        "seconds": 0.11214196868240833,
+        "log": "verify-target-identity.log",
+        "log_sha256": "6e24a3c019355251755ba80a035af2b0ee0b6a0ca641e60c2ca35eea1fd59a7d"
+      },
+      {
+        "label": "verify-product-identity",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/00-psf__requests-1921-serena/workspace",
+          "beb6e2622cffc654ca5d31fdd58a30c9e0c8d348bebca85372ff522fedccbe61",
+          "/opt/pilot-tools/uv/serena-agent/bin/python",
+          "-c",
+          "import os;os.chdir(\"/opt\");import importlib.metadata as m,json,sys;from pathlib import Path;result={\"python\":sys.version,\"packages\":dict(sorted((d.metadata[\"Name\"],d.version) for d in m.distributions()))};print(json.dumps(result))"
+        ],
+        "returncode": 0,
+        "seconds": 0.08789453469216824,
+        "log": "verify-product-identity.log",
+        "log_sha256": "20fbfce4343add74b795d00ebfaf92915b0957f0bd71540efd745524e3ede72f"
+      }
+    ],
+    "phases": [
+      {
+        "task_id": "psf__requests-1921-lookup",
+        "kind": "lookup",
+        "started_utc": "2026-10-28T14:12:33.415093+00:00",
+        "prompt_sha256": "421f512f55dcbe05d8670d4f3c6a578be4d3449b061ba2e8a299c58a6d41c500",
+        "source_before": {
+          "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/00-psf__requests-1921-serena/lookup-before-source.json",
+          "sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+          "source_digest": "9d62fa6c6020866d1179df058f73b19587e44f70063bd3ca06f8153a2573491a",
+          "file_count": 121,
+          "head": "3c88e520da24ae6f736929a750876e7654accc3d"
+        },
+        "stream_output_tokens": 1171,
+        "session": "cold",
+        "result": {
+          "subtype": "success",
+          "duration_ms": 14774,
+          "duration_api_ms": 16964,
+          "is_error": false,
+          "num_turns": 3,
+          "session_id": "13ebeebe-c892-4f0e-88fa-1eccfcdae416",
+          "stop_reason": "end_turn",
+          "total_cost_usd": 0.0907386,
+          "usage": {
+            "input_tokens": 6,
+            "cache_creation_input_tokens": 7792,
+            "cache_read_input_tokens": 23342,
+            "output_tokens": 1171,
+            "output_tokens_details": {
+              "thinking_tokens": 50
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            },
+            "service_tier": "standard",
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 7792,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "inference_geo": "global",
+            "iterations": [
+              {
+                "input_tokens": 2,
+                "output_tokens": 901,
+                "cache_read_input_tokens": 8967,
+                "cache_creation_input_tokens": 4470,
+                "cache_creation": {
+                  "ephemeral_5m_input_tokens": 0,
+                  "ephemeral_1h_input_tokens": 4470
+                },
+                "type": "message"
+              }
+            ],
+            "speed": "standard",
+            "fallback_credit": null
+          },
+          "result": "The method is `Session.prepare_request`, defined at `requests/sessions.py:260-297`. I found it by reading the source; I didn't run any tests.\n\n## What it merges (`requests/sessions.py:269-296`)\n\n| Setting | How it's combined |\n|---|---|\n| **Cookies** (269-277) | If `request.cookies` is not already a CookieJar, it is turned into one with `cookiejar_from_dict`. Then a new `RequestsCookieJar` is filled with `self.cookies` (the session's cookies) first and the request's cookies second, using `merge_cookies` twice. Request cookies win on conflict. |\n| **Auth** (280-283, 293) | It starts with `request.auth`. If `trust_env` is on and neither the request nor the session has auth, it falls back to `get_netrc_auth(request.url)`. The result goes through `merge_setting(auth, self.auth)`. |\n| **Headers** (291) | `merge_setting(request.headers, self.headers, dict_class=CaseInsensitiveDict)`, so header names are matched case-insensitively. |\n| **Params** (292) | `merge_setting(request.params, self.params)`. |\n| **Hooks** (295) | `merge_hooks(request.hooks, self.hooks)`. |\n| **Not merged** (287-290) | `method` (uppercased), `url`, `files` and `data` come from the Request only. |\n\nAll of these are passed to a new `PreparedRequest` through `p.prepare(...)` (285-296), and the method returns it (297). Session-level `stream`, `verify`, `cert` and `proxies` are not handled here. Judging from the code, they are applied later at request or send time, outside this method.\n\n## Merge helpers\n\n- **`merge_setting`** (`requests/sessions.py:34-62`):\n  - If either value is `None`, it returns the other one (41-45).\n  - If either value is not a mapping, the request's value wins (47-52).\n  - If both are mappings, it starts from the session's values and overlays the request's (54-55).\n  - It then removes any key whose **request** value is `None` (57-60). Keys set to `None` on the session side are not removed, so a session header set to `None` would still reach `PreparedRequest.prepare`.\n- **`merge_hooks`** (`requests/sessions.py:65-78`): if one side's `'response'` hook list is empty, it returns the other side unchanged (72-76). Otherwise it calls `merge_setting` (78). Without this check, a request's default `{'response': []}` would replace the session's hooks.",
+          "structured_output": null,
+          "model_usage": {
+            "claude-haiku-5-5": {
+              "inputTokens": 1337,
+              "outputTokens": 313,
+              "cacheReadInputTokens": 0,
+              "cacheCreationInputTokens": 0,
+              "webSearchRequests": 0,
+              "costUSD": 0.0002902,
+              "contextWindow": 1000000,
+              "maxOutputTokens": 128000,
+              "thinkingTokens": 291,
+              "canonicalModel": "claude-haiku-5-5",
+              "provider": "firstParty",
+              "costBasis": "list"
+            },
+            "claude-opus-5-5": {
+              "inputTokens": 6,
+              "outputTokens": 1171,
+              "cacheReadInputTokens": 23342,
+              "cacheCreationInputTokens": 7792,
+              "webSearchRequests": 0,
+              "costUSD": 0.09044840000000001,
+              "contextWindow": 1000000,
+              "maxOutputTokens": 128000,
+              "thinkingTokens": 50,
+              "canonicalModel": "claude-opus-5-5",
+              "provider": "firstParty",
+              "costBasis": "list"
+            }
+          },
+          "permission_denials": [],
+          "deferred_tool_use": null,
+          "errors": null,
+          "api_error_status": null,
+          "uuid": "53cb1a05-ea34-4747-9b89-8e7f825c4a74",
+          "terminal_reason": "completed",
+          "origin": null
+        },
+        "status": "sdk_completed_pending_acceptance",
+        "seconds": 15.502863636240363,
+        "source_after": {
+          "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/00-psf__requests-1921-serena/lookup-after-source.json",
+          "sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+          "source_digest": "9d62fa6c6020866d1179df058f73b19587e44f70063bd3ca06f8153a2573491a",
+          "file_count": 121,
+          "head": "3c88e520da24ae6f736929a750876e7654accc3d"
+        },
+        "read_only_source_preserved": true,
+        "trace": {
+          "path": "lookup-sdk.jsonl",
+          "sha256": "2f6622df0ba0903c10b05dac6c9bd8caa5f1f8278477ee15ba509d00cf74408f"
+        }
+      },
+      {
+        "task_id": "psf__requests-1921-flow",
+        "kind": "flow",
+        "started_utc": "2026-10-28T14:12:49.637063+00:00",
+        "prompt_sha256": "76e9d641a0b486c1e02f401c86e96f2b5377ac956123d0fa7ef29a8ca94122b4",
+        "source_before": {
+          "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/00-psf__requests-1921-serena/flow-before-source.json",
+          "sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+          "source_digest": "9d62fa6c6020866d1179df058f73b19587e44f70063bd3ca06f8153a2573491a",
+          "file_count": 121,
+          "head": "3c88e520da24ae6f736929a750876e7654accc3d"
+        },
+        "stream_output_tokens": 5250,
+        "session": "return",
+        "result": {
+          "subtype": "success",
+          "duration_ms": 47280,
+          "duration_api_ms": 47749,
+          "is_error": false,
+          "num_turns": 8,
+          "session_id": "67595d5b-a8d5-4b81-b51d-1332efa66e40",
+          "stop_reason": "end_turn",
+          "total_cost_usd": 0.2643669,
+          "usage": {
+            "input_tokens": 10,
+            "cache_creation_input_tokens": 18064,
+            "cache_read_input_tokens": 73345,
+            "output_tokens": 5250,
+            "output_tokens_details": {
+              "thinking_tokens": 258
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            },
+            "service_tier": "standard",
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 18064,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "inference_geo": "global",
+            "iterations": [
+              {
+                "input_tokens": 2,
+                "output_tokens": 4000,
+                "cache_read_input_tokens": 24166,
+                "cache_creation_input_tokens": 1324,
+                "cache_creation": {
+                  "ephemeral_5m_input_tokens": 0,
+                  "ephemeral_1h_input_tokens": 1324
+                },
+                "type": "message"
+              }
+            ],
+            "speed": "standard",
+            "fallback_credit": null
+          },
+          "result": "I traced this by reading the source only, not by running anything, and I didn't modify any files. The flow has four stages: prepare, choose an adapter, make the transport call, then handle redirects.\n\n## 1. Entry: `Session.request` builds the request (requests/sessions.py:299-393)\n\n- The module-level helper `requests.request` creates a new `Session` and calls `session.request(method=..., url=...)` (requests/api.py:43-44).\n- `Session.request` converts the method to a native string (sessions.py:343). It then builds a plain `Request` with the method upper-cased, and `data`/`params` default to `{}` (sessions.py:346-356).\n- **Preparation call:** `prep = self.prepare_request(req)` (sessions.py:357).\n- **Environment and settings merge** (sessions.py:359-380). If `trust_env` is set, proxies come from `get_environ_proxies(url)`. If `verify` was left unset, it falls back to the `REQUESTS_CA_BUNDLE` or `CURL_CA_BUNDLE` environment variables. Then `merge_setting` (sessions.py:34-62) combines proxies, stream, verify and cert with the session defaults.\n- **Send call:** `resp = self.send(prep, **send_kwargs)` (sessions.py:383-391). `allow_redirects` is passed along inside `send_kwargs`.\n\n## 2. Preparation (requests/sessions.py:260-297 \u2192 requests/models.py:289-303)\n\n`Session.prepare_request` does the following:\n- Merges the request's cookies over the session's cookie jar (sessions.py:269-277).\n- If no auth was given and `trust_env` is set, falls back to `get_netrc_auth` (sessions.py:281-283).\n- Creates a `PreparedRequest` and calls `p.prepare(...)` (sessions.py:285-296). Headers, params and auth are merged with `merge_setting`, and hooks with `merge_hooks` (sessions.py:65-78).\n\n`PreparedRequest.prepare` (models.py:289-303) then calls a fixed sequence of steps, all static calls:\n`prepare_method` \u2192 `prepare_url(url, params)` \u2192 `prepare_headers` \u2192 `prepare_cookies` \u2192 `prepare_body(data, files)` \u2192 `prepare_auth(auth, url)` \u2192 `prepare_hooks`.\nThe comments there say auth must run last, so auth handlers see a fully prepared request, and hooks must come after auth because an auth handler may add a hook (models.py:299-303). The method definitions are at models.py:318-497.\n\nNote that `Request.prepare` (models.py:238-252) is a separate path that skips the session merge. `Session.request` does not use it.\n\n## 3. Choosing the transport: `Session.send` (requests/sessions.py:464-530)\n\n- Fills in defaults with `setdefault` for stream, verify, cert and proxies (sessions.py:468-471). It rejects anything that isn't a `PreparedRequest` (sessions.py:475-476), then pops `allow_redirects` out of the kwargs (sessions.py:479).\n- **Adapter selection:** `adapter = self.get_adapter(url=request.url)` (sessions.py:488).\n  - `get_adapter` (sessions.py:532-540) returns the first mounted prefix that matches the lower-cased URL. Otherwise it raises `InvalidSchema`.\n  - `mount` (sessions.py:547-556) keeps longer prefixes first, so the most specific prefix wins. By default, `HTTPAdapter()` is mounted for both `https://` and `http://` (sessions.py:250-252).\n  - **The adapter is a runtime choice.** The call site is a fixed line, but which object's `send` actually runs depends on what has been mounted on the session.\n- **Transport call:** `r = adapter.send(request, **kwargs)` (sessions.py:494).\n- Afterwards it does the following:\n  - Records `r.elapsed`.\n  - Runs `dispatch_hook('response', hooks, r, **kwargs)` (sessions.py:500; defined at hooks.py:29).\n  - Saves cookies from any `r.history` that hooks created, then from `r` itself (sessions.py:503-509).\n\n## 4. The actual call: `HTTPAdapter.send` (requests/adapters.py:294-396), for the default adapter\n\n1. **`get_connection(request.url, proxies)`** (adapters.py:305 \u2192 194-224). This is a runtime choice:\n   - If a proxy matches the URL scheme, the connection pool comes from `self.proxy_manager[proxy]`, created on demand with `proxy_from_url` (adapters.py:205-217).\n   - Otherwise it comes from `self.poolmanager.connection_from_url(url)` (adapters.py:218-222). That pool manager is built in `init_poolmanager` (adapters.py:104-119).\n2. **`cert_verify`** (adapters.py:307 \u2192 121-156). For https URLs with `verify` set, it sets `cert_reqs` and `ca_certs` on the connection. It also attaches the client cert if one was given.\n3. **`request_url`** (adapters.py:308 \u2192 234-256). If the request goes through a non-https proxy, the full URL is used (with the fragment removed). Otherwise only `path_url` is used.\n4. **`add_headers`** (adapters.py:309 \u2192 258-270). This does nothing by default; it exists so subclasses can override it.\n5. **Timeout:** with `stream`, only the connect timeout is set. Otherwise both connect and read timeouts are set (adapters.py:313-316).\n6. **Choosing the wire path** at runtime with `chunked = not (request.body is None or 'Content-Length' in request.headers)` (adapters.py:311):\n   - **Not chunked:** `conn.urlopen(..., redirect=False, preload_content=False, retries=self.max_retries, ...)` (adapters.py:319-331). Because of `redirect=False`, urllib3 never follows redirects itself; Requests handles them.\n   - **Chunked:** it takes a connection with `conn._get_conn` (using `conn.proxy_pool` if there is a proxy). It then writes the request line, headers and chunked body directly with `putrequest`, `putheader`, `endheaders` and `send`. It reads the reply with `getresponse()`, wraps it in `HTTPResponse.from_httplib`, and returns the connection to the pool with `_put_conn` (adapters.py:334-372).\n7. **Error mapping:** socket errors and `MaxRetryError` become `ConnectionError`; proxy errors become `ProxyError`; SSL errors become `SSLError`; timeouts become `Timeout` (adapters.py:374-389).\n8. **`build_response(request, resp)`** (adapters.py:391 \u2192 158-192). This creates the `Response`: status, case-insensitive headers, encoding, `raw`, `url`, cookies (via `extract_cookies_to_jar`), plus `request` and `connection`. If not streaming, `r.content` is read immediately (adapters.py:393-394).\n\n## 5. Where redirects re-enter\n\n- After the first response, `Session.send` always creates the generator `self.resolve_redirects(r, request, ...)` (sessions.py:512-517). It only runs that generator if `allow_redirects` is true: `history = [resp for resp in gen] if allow_redirects else []` (sessions.py:520).\n  - It's a generator, so if redirects are disabled, none of its body runs.\n- `SessionRedirectMixin.resolve_redirects` (sessions.py:82-182) loops while `resp.is_redirect` is true. That property is defined at models.py:602-607 as having a `location` header and a status in `REDIRECT_STATI`. On each pass it:\n  - Copies the request with `req.copy()` (sessions.py:89; models.py:308-315), reads the old response's body, checks `max_redirects`, and closes the old response (sessions.py:91-97).\n  - Works out the new URL from `Location`: handles scheme-relative `//` URLs, resolves relative paths with `urljoin`, and applies `requote_uri` (sessions.py:99-119).\n  - Rewrites the method: 303 becomes GET (unless HEAD), 302 becomes GET (unless HEAD), and a 301 on a POST becomes GET (sessions.py:121-136). Except for 307/308, it drops the body and `Content-Length` (sessions.py:138-143).\n  - Rebuilds cookies by updating the existing prepared request in place: `extract_cookies_to_jar` \u2192 `_cookies.update(self.cookies)` \u2192 `prepare_cookies` (sessions.py:145-153).\n  - Removes `Authorization` if the host changed, and may re-apply netrc auth with `prepare_auth` (sessions.py:155-167).\n  - **Re-entry point:** `resp = self.send(prepared_request, ..., allow_redirects=False)` (sessions.py:169-177). Each hop goes back through `Session.send`, so `get_adapter` and `adapter.send` run again. The adapter is chosen again from the new URL, so an http\u2192https redirect can pick a different mounted adapter. `allow_redirects=False` stops the nested call from starting its own redirect loop.\n  - Saves cookies to the session jar and yields the response (sessions.py:179-182).\n- Back in `Session.send`, the first response is put at the front of the history list. The last response becomes `r`, and the earlier ones go into `r.history` (sessions.py:523-528).\n\n### Points to note from reading the code\n- **Prepared once:** redirect hops skip `prepare_request` and the proxy/verify environment merge in `Session.request`. They reuse the merged `stream`, `timeout`, `verify`, `cert` and `proxies` passed through `send`.\n- **Each hop restarts from the original request:** every iteration copies `req`, the original request, and starts from `method = req.method` (sessions.py:89, 100). It does not start from the previous hop's prepared request. So a method change or body removal made on one hop isn't carried into the next copy; each hop works it out again from the original request and the current response.\n\n### Static calls vs. runtime choices\n**Static** (fixed call sites):\n- `request` \u2192 `prepare_request` \u2192 `PreparedRequest.prepare` \u2192 `prepare_*`\n- `request` \u2192 `send`\n- `send` \u2192 `get_adapter`, `dispatch_hook`, `resolve_redirects`\n- `resolve_redirects` \u2192 `send`\n- `HTTPAdapter.send` \u2192 `get_connection`, `cert_verify`, `request_url`, `add_headers`, `build_response`\n\n**Decided at runtime:**\n- Which adapter's `send` runs, based on mounted prefixes.\n- `self.send` and the `HTTPAdapter` helper methods are ordinary method calls, so subclasses can override them.\n- Proxy pool vs. normal pool in `get_connection`.\n- `urlopen` vs. hand-written chunked sending.\n- Whether the redirect loop runs, and how many times (`allow_redirects`, `is_redirect`, `max_redirects`).\n- Whether response hooks replace `r` or add history.",
+          "structured_output": null,
+          "model_usage": {
+            "claude-haiku-5-5": {
+              "inputTokens": 1359,
+              "outputTokens": 20,
+              "cacheReadInputTokens": 0,
+              "cacheCreationInputTokens": 0,
+              "webSearchRequests": 0,
+              "costUSD": 0.0001459,
+              "contextWindow": 1000000,
+              "maxOutputTokens": 128000,
+              "thinkingTokens": 0,
+              "canonicalModel": "claude-haiku-5-5",
+              "provider": "firstParty",
+              "costBasis": "list"
+            },
+            "claude-opus-5-5": {
+              "inputTokens": 10,
+              "outputTokens": 5250,
+              "cacheReadInputTokens": 73345,
+              "cacheCreationInputTokens": 18064,
+              "webSearchRequests": 0,
+              "costUSD": 0.264221,
+              "contextWindow": 1000000,
+              "maxOutputTokens": 128000,
+              "thinkingTokens": 258,
+              "canonicalModel": "claude-opus-5-5",
+              "provider": "firstParty",
+              "costBasis": "list"
+            }
+          },
+          "permission_denials": [],
+          "deferred_tool_use": null,
+          "errors": null,
+          "api_error_status": null,
+          "uuid": "a3cc4687-4cbe-4209-a621-dd727ee918dc",
+          "terminal_reason": "completed",
+          "origin": null
+        },
+        "status": "sdk_completed_pending_acceptance",
+        "seconds": 47.69760560058057,
+        "source_after": {
+          "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/00-psf__requests-1921-serena/flow-after-source.json",
+          "sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+          "source_digest": "9d62fa6c6020866d1179df058f73b19587e44f70063bd3ca06f8153a2573491a",
+          "file_count": 121,
+          "head": "3c88e520da24ae6f736929a750876e7654accc3d"
+        },
+        "read_only_source_preserved": true,
+        "trace": {
+          "path": "flow-sdk.jsonl",
+          "sha256": "eae71c99208a26e54b3760a6cfbb2aad1818a77610866cdce92386a47fe2c087"
+        }
+      },
+      {
+        "task_id": "psf__requests-1921-impact",
+        "kind": "impact",
+        "started_utc": "2026-10-28T14:13:37.364260+00:00",
+        "prompt_sha256": "54abf4f6a5fa542fbc6949f92c17a804476d6d8150ba2e8bc70b295cba8b098d",
+        "source_before": {
+          "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/00-psf__requests-1921-serena/impact-before-source.json",
+          "sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+          "source_digest": "9d62fa6c6020866d1179df058f73b19587e44f70063bd3ca06f8153a2573491a",
+          "file_count": 121,
+          "head": "3c88e520da24ae6f736929a750876e7654accc3d"
+        },
+        "stream_output_tokens": 3142,
+        "session": "return",
+        "result": {
+          "subtype": "success",
+          "duration_ms": 29388,
+          "duration_api_ms": 77052,
+          "is_error": false,
+          "num_turns": 7,
+          "session_id": "67595d5b-a8d5-4b81-b51d-1332efa66e40",
+          "stop_reason": "end_turn",
+          "total_cost_usd": 0.4217999,
+          "usage": {
+            "input_tokens": 6,
+            "cache_creation_input_tokens": 9675,
+            "cache_read_input_tokens": 85845,
+            "output_tokens": 3142,
+            "output_tokens_details": {
+              "thinking_tokens": 316
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            },
+            "service_tier": "standard",
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 9675,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "inference_geo": "global",
+            "iterations": [
+              {
+                "input_tokens": 2,
+                "output_tokens": 2228,
+                "cache_read_input_tokens": 30640,
+                "cache_creation_input_tokens": 4525,
+                "cache_creation": {
+                  "ephemeral_5m_input_tokens": 0,
+                  "ephemeral_1h_input_tokens": 4525
+                },
+                "type": "message"
+              }
+            ],
+            "speed": "standard",
+            "fallback_credit": null
+          },
+          "result": "Only two production call sites in this repository call `Session.send` directly, and both are in `requests/sessions.py`. There is also one indirect consumer that needs review: the digest-auth response hook receives the same options that `Session.send` passes on. I found this by searching and reading the code; I didn't run any tests and didn't modify any files.\n\n## Production callers to review\n\n### 1. `Session.request` \u2192 `self.send(prep, **send_kwargs)` (requests/sessions.py:383-391)\n- This is the main entry point. `api.request` (requests/api.py:43-44) and the `get`/`options`/`head`/`post`/`put`/`patch`/`delete` helpers (sessions.py:395-462) all reach `Session.send` through here.\n- Before calling, it builds a dict with `stream`, `timeout`, `verify`, `cert`, `proxies` and `allow_redirects` (sessions.py:383-390). It has already merged environment proxies, CA-bundle variables and session defaults into these (sessions.py:359-380).\n- **Redirect consequence:** this is the only call that passes the user's `allow_redirects`.\n  - `send` pops it (sessions.py:479), so it never reaches the adapter.\n  - It then decides whether the `resolve_redirects` generator runs at all (sessions.py:520).\n  - The helpers set different defaults: `get` and `options` default to True, `head` defaults to False (sessions.py:402, 412, 422).\n  - If `send` renamed this key, stopped popping it, or changed its default (`True`, sessions.py:479), the redirect behaviour of every high-level call would change. If the key were left in `kwargs`, it would also reach `adapter.send`, which doesn't accept it (requests/adapters.py:294).\n\n### 2. `SessionRedirectMixin.resolve_redirects` \u2192 `self.send(prepared_request, ..., allow_redirects=False)` (requests/sessions.py:169-177)\n- This is the redirect loop calling back into `send`. It passes along the `stream`, `timeout`, `verify`, `cert` and `proxies` that `send` read from its own kwargs (sessions.py:480-484) and handed to the generator (sessions.py:512-517).\n- **Redirect consequences:**\n  - **Recursion guard:** the hard-coded `allow_redirects=False` stops each hop from starting its own redirect loop. Otherwise redirects would be resolved recursively and `history` would be built in nested pieces (sessions.py:523-528). If `send` stopped honouring that key, or switched to a different option name, this guard would silently stop working.\n  - **Options carried between hops:** each hop gets only the options listed explicitly at sessions.py:170-175. If `send` started forwarding a new option (for example, a new key in `kwargs` passed to `adapter.send`), it would apply to the first request but be dropped on every redirect hop unless this call site is also updated.\n  - **Defaults:** `send` fills in session defaults with `setdefault` (sessions.py:468-471) before the redirect generator reads them. A redirect hop therefore inherits whatever values the first request ended up with. If that defaulting moved or changed, the first request and later hops could end up with different settings.\n\n### Indirect consumer: `HTTPDigestAuth.handle_401` (requests/auth.py:149-182)\n- It doesn't call `Session.send`, but it is a response hook. `Session.send` runs hooks with `dispatch_hook('response', hooks, r, **kwargs)` (sessions.py:500), so the hook receives the options left after `allow_redirects` was popped. It then calls `r.connection.send(prep, **kwargs)` on the adapter (auth.py:175), skipping `Session.send`.\n- **Redirect consequence:** the hook prepends the 401 response to the new response's history (`_r.history.append(r)`, auth.py:176). `Session.send` then copies cookies from that history (sessions.py:503-507) and passes the new response into `resolve_redirects` (sessions.py:512). If `send` forwarded a key that `HTTPAdapter.send` doesn't accept (adapters.py:294), this re-send would break. If `send` removed a key, the authenticated retry would use different options from the original request.\n\n## Two existing tests\n\n1. **`test_prepared_from_session`** (test_requests.py:519-534) covers direct sending. It calls `s.prepare_request(req)` and then `s.send(prep)` with no keyword arguments (lines 531-532), and asserts that the session-level auth header was sent (line 534). It checks that a bare `Session.send` call works on its own: `send` must fill in its own defaults (sessions.py:468-471, 479) without depending on `Session.request`. Related direct-send tests are at lines 106-113, 505-517, 717-720 (rejecting an unprepared `Request`) and 732-740.\n\n2. **`test_HTTP_302_ALLOW_REDIRECT_GET`** (test_requests.py:115-119) covers redirects. `requests.get(httpbin('redirect', '1'))` must end with status 200, and `r.history[0]` must be a 302 with `is_redirect` true. This covers the whole path: `request` passes `allow_redirects=True`, `send` runs `resolve_redirects`, the nested `send(..., allow_redirects=False)` happens, and history is rearranged (sessions.py:520-528). If the nested call started following redirects itself, the shape of `history` would change.\n   - Related: `test_requests_in_history_are_not_overridden` (test_requests.py:208-212) checks that each response in history keeps its own request URL across 3 redirects. `test_cookie_persists_via_api` (test_requests.py:169-173) checks that cookies are re-sent on a redirect hop.\n\nNone of these tests passes a non-default `timeout`, `verify`, `cert` or `stream` through a redirect. That means the per-hop option forwarding at sessions.py:169-177 isn't directly tested by anything I found.",
+          "structured_output": null,
+          "model_usage": {
+            "claude-haiku-5-5": {
+              "inputTokens": 1359,
+              "outputTokens": 20,
+              "cacheReadInputTokens": 0,
+              "cacheCreationInputTokens": 0,
+              "webSearchRequests": 0,
+              "costUSD": 0.0001459,
+              "contextWindow": 1000000,
+              "maxOutputTokens": 128000,
+              "thinkingTokens": 0,
+              "canonicalModel": "claude-haiku-5-5",
+              "provider": "firstParty",
+              "costBasis": "list"
+            },
+            "claude-opus-5-5": {
+              "inputTokens": 16,
+              "outputTokens": 8392,
+              "cacheReadInputTokens": 159190,
+              "cacheCreationInputTokens": 27739,
+              "webSearchRequests": 0,
+              "costUSD": 0.421654,
+              "contextWindow": 1000000,
+              "maxOutputTokens": 128000,
+              "thinkingTokens": 574,
+              "canonicalModel": "claude-opus-5-5",
+              "provider": "firstParty",
+              "costBasis": "list"
+            }
+          },
+          "permission_denials": [],
+          "deferred_tool_use": null,
+          "errors": null,
+          "api_error_status": null,
+          "uuid": "7e068bb1-3831-4fa1-81c2-e069bb0729c4",
+          "terminal_reason": "completed",
+          "origin": null
+        },
+        "status": "sdk_completed_pending_acceptance",
+        "seconds": 29.398555021733046,
+        "source_after": {
+          "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/00-psf__requests-1921-serena/impact-after-source.json",
+          "sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+          "source_digest": "9d62fa6c6020866d1179df058f73b19587e44f70063bd3ca06f8153a2573491a",
+          "file_count": 121,
+          "head": "3c88e520da24ae6f736929a750876e7654accc3d"
+        },
+        "read_only_source_preserved": true,
+        "trace": {
+          "path": "impact-sdk.jsonl",
+          "sha256": "a1f6d36bc298ee2a8c05e4d2506026b44cc62b5baff4d2b756047fb679811611"
+        }
+      },
+      {
+        "task_id": "psf__requests-1921-repair",
+        "kind": "repair",
+        "started_utc": "2026-10-28T14:14:06.792035+00:00",
+        "prompt_sha256": "904ae6179ee50a714ce6e92d12ceb735f532a4e3bd28a15ad577bfd0432eebd2",
+        "source_before": {
+          "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/00-psf__requests-1921-serena/repair-before-source.json",
+          "sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+          "source_digest": "9d62fa6c6020866d1179df058f73b19587e44f70063bd3ca06f8153a2573491a",
+          "file_count": 121,
+          "head": "3c88e520da24ae6f736929a750876e7654accc3d"
+        },
+        "stream_output_tokens": 2263,
+        "session": "return",
+        "result": {
+          "subtype": "success",
+          "duration_ms": 29127,
+          "duration_api_ms": 101110,
+          "is_error": false,
+          "num_turns": 6,
+          "session_id": "67595d5b-a8d5-4b81-b51d-1332efa66e40",
+          "stop_reason": "end_turn",
+          "total_cost_usd": 0.5598327,
+          "usage": {
+            "input_tokens": 10,
+            "cache_creation_input_tokens": 6822,
+            "cache_read_input_tokens": 190784,
+            "output_tokens": 2263,
+            "output_tokens_details": {
+              "thinking_tokens": 523
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            },
+            "service_tier": "standard",
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 6822,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "inference_geo": "global",
+            "iterations": [
+              {
+                "input_tokens": 2,
+                "output_tokens": 595,
+                "cache_read_input_tokens": 40421,
+                "cache_creation_input_tokens": 1566,
+                "cache_creation": {
+                  "ephemeral_5m_input_tokens": 0,
+                  "ephemeral_1h_input_tokens": 1566
+                },
+                "type": "message"
+              }
+            ],
+            "speed": "standard",
+            "fallback_credit": null
+          },
+          "result": "Setting a session header to `None` now stops that header from being sent; it is no longer sent as the text `None`. The full test suite passes (119 tests).\n\n**Cause:** `merge_setting` in `requests/sessions.py:34-62` combines the session's headers with each request's headers. It only removed keys that were set to `None` on the request. A `None` stored in `session.headers` was copied into the merged headers and sent as `Accept-Encoding: None`. Requests never reach the earlier shortcut with no headers at all, because `Request` turns `headers=None` into `{}` (`requests/models.py:218`).\n\n**Fix:** `requests/sessions.py:57-61` now removes every `None` value from the merged result, wherever it came from. It collects those keys first, then deletes them. The merged object stays the same dict type as before, which for headers is the case-insensitive dict.\n\nThis change affects every setting merged this way, not just headers: a `None` stored in the session's params or hooks is now dropped too.\n\n**Regression test:** `test_headers_on_session_with_None_are_not_sent` in `test_requests.py:230-236` sets `session.headers['Accept-Encoding'] = None`, then checks that the prepared request has no `Accept-Encoding` header.\n\n**Verification:** I ran `pytest` with the local offline HTTPBin service.\n- With the fix temporarily stashed, the new test failed, which confirms it reproduces the bug.\n- With the fix in place, `test_requests.py` passed in full, including the existing `test_header_remove_is_case_insensitive` (setting a header to `None` on an individual request still works).\n\nThe only changed files are `requests/sessions.py` and `test_requests.py`; the untracked `.serena/` folder was left alone.",
+          "structured_output": null,
+          "model_usage": {
+            "claude-haiku-5-5": {
+              "inputTokens": 1359,
+              "outputTokens": 20,
+              "cacheReadInputTokens": 0,
+              "cacheCreationInputTokens": 0,
+              "webSearchRequests": 0,
+              "costUSD": 0.0001459,
+              "contextWindow": 1000000,
+              "maxOutputTokens": 128000,
+              "thinkingTokens": 0,
+              "canonicalModel": "claude-haiku-5-5",
+              "provider": "firstParty",
+              "costBasis": "list"
+            },
+            "claude-opus-5-5": {
+              "inputTokens": 26,
+              "outputTokens": 10655,
+              "cacheReadInputTokens": 349974,
+              "cacheCreationInputTokens": 34561,
+              "webSearchRequests": 0,
+              "costUSD": 0.5596867999999999,
+              "contextWindow": 1000000,
+              "maxOutputTokens": 128000,
+              "thinkingTokens": 1097,
+              "canonicalModel": "claude-opus-5-5",
+              "provider": "firstParty",
+              "costBasis": "list"
+            }
+          },
+          "permission_denials": [],
+          "deferred_tool_use": null,
+          "errors": null,
+          "api_error_status": null,
+          "uuid": "7e8412f8-3ad6-4b55-9d43-bec2a864947c",
+          "terminal_reason": "completed",
+          "origin": null
+        },
+        "status": "sdk_completed_pending_acceptance",
+        "seconds": 29.13489092513919,
+        "source_after": {
+          "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/00-psf__requests-1921-serena/repair-after-source.json",
+          "sha256": "efe206f6f2a87e1ba1230824e483938b569238b4e9ad491173ebd3f0ffe8218d",
+          "source_digest": "ef71d5334ec63c07f36e51b2da092eeb81a6c17f1d4e201fc33a455a6eabdb8c",
+          "file_count": 121,
+          "head": "3c88e520da24ae6f736929a750876e7654accc3d"
+        },
+        "read_only_source_preserved": false,
+        "submission": {
+          "path": "repair.patch",
+          "sha256": "24ecc58fcc624cedb45d9585318089b8e06c716b0a32da21a86e9acdaadb6bf4",
+          "bytes": 1578,
+          "attribution": "whole workspace diff; includes any separately recorded setup metadata"
+        },
+        "trace": {
+          "path": "repair-sdk.jsonl",
+          "sha256": "bea1f58b0cf9ea90bb9ab998739bea6dfb15dfa0cb47e4b6bfe2f8767c3fb36a"
+        }
+      },
+      {
+        "task_id": "psf__requests-1921-post_edit",
+        "kind": "post_edit",
+        "started_utc": "2026-10-28T14:14:35.955187+00:00",
+        "prompt_sha256": "8123227d4b5996fbe22a78c904fa59ff3bb787b05d8ed76d05afa2c35e124a89",
+        "source_before": {
+          "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/00-psf__requests-1921-serena/post_edit-before-source.json",
+          "sha256": "5105b59f4bbfcd62b25dbb893c6d318d6959d1358dba59a2f74b51605d5c626e",
+          "source_digest": "de4e1993a8134c994b4be2558cccd9062061cd24940c365c497f71916512810c",
+          "file_count": 122,
+          "head": "3c88e520da24ae6f736929a750876e7654accc3d"
+        },
+        "stream_output_tokens": 2386,
+        "session": "return",
+        "result": {
+          "subtype": "success",
+          "duration_ms": 26073,
+          "duration_api_ms": 126991,
+          "is_error": false,
+          "num_turns": 7,
+          "session_id": "67595d5b-a8d5-4b81-b51d-1332efa66e40",
+          "stop_reason": "end_turn",
+          "total_cost_usd": 0.6621733,
+          "usage": {
+            "input_tokens": 8,
+            "cache_creation_input_tokens": 2542,
+            "cache_read_input_tokens": 171263,
+            "output_tokens": 2386,
+            "output_tokens_details": {
+              "thinking_tokens": 276
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            },
+            "service_tier": "standard",
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 2542,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "inference_geo": "global",
+            "iterations": [
+              {
+                "input_tokens": 2,
+                "output_tokens": 1412,
+                "cache_read_input_tokens": 43510,
+                "cache_creation_input_tokens": 1019,
+                "cache_creation": {
+                  "ephemeral_5m_input_tokens": 0,
+                  "ephemeral_1h_input_tokens": 1019
+                },
+                "type": "message"
+              }
+            ],
+            "speed": "standard",
+            "fallback_credit": null
+          },
+          "result": "No. Calling `prepare_probe_request` does not send a network request. It builds and returns a `PreparedRequest` and stops there. Nothing in this repository calls it, so it is never followed by a send.\n\n## Where it is\nThe helper is in the new, untracked file `requests/_pilot_post_edit.py`, at lines 4-5:\n\n```python\ndef prepare_probe_request(url: str):\n    return Session().prepare_request(Request(\"GET\", url))\n```\n\nIt imports `Request` from `.models` and `Session` from `.sessions` (lines 1-2). A search of the repository for `prepare_probe_request` and `_pilot_post_edit` finds only this definition, so nothing calls it or imports it.\n\n## What it calls\n1. **`Request(\"GET\", url)`**: `requests/models.py:181-236`. The constructor (from line 204) only stores the arguments, swapping `None` for an empty dict where needed (lines 218-220). No I/O happens.\n2. **`Session()`**: `requests/sessions.py:204-253`. It sets up the default headers, cookie jar and other defaults. It also attaches an `HTTPAdapter()` for `https://` and `http://` (lines 252-253). Each adapter creates a urllib3 `PoolManager` (`requests/adapters.py:73-86`, `104-119`), but that only creates empty pools. No connection is opened.\n3. **`Session.prepare_request`**: `requests/sessions.py:261-298`. This is the next production call, and the last one the helper makes. It:\n   - merges cookies;\n   - if `trust_env` is on and no auth was given, calls `get_netrc_auth(request.url)` (line 284). That reads a local `.netrc` file; it is not network traffic.\n   - creates a `PreparedRequest` and calls `p.prepare(...)` (line 287) with headers, params, auth and hooks merged with the session's settings. The `None`-header fix from earlier applies here.\n   - returns `p` (line 298).\n4. **`PreparedRequest.prepare`**: `requests/models.py:289-303`. It runs `prepare_method`, `prepare_url`, `prepare_headers`, `prepare_cookies`, `prepare_body`, `prepare_auth` and `prepare_hooks`, which all just set fields on the object.\n   - `prepare_auth` calls an auth handler if one is set (`requests/models.py:463-480`, call at line 477). Here none is passed, the new `Session` has `auth=None`, and netrc is the only possible source.\n   - Netrc auth is a username/password pair, which becomes a Basic auth header and does not send anything.\n   - A custom auth handler could do anything when called, but this helper can't receive one.\n\n## Where sending starts\nIn the current source, the network is only reached through `Session.send`:\n- `Session.request` prepares the request and then calls `self.send(prep, ...)` (`requests/sessions.py:392`). The redirect loop also calls `self.send(...)` (line 170).\n- `Session.send` (`requests/sessions.py:465`) picks an adapter (`get_adapter`, line 533) and calls `adapter.send(request, **kwargs)` (line 495).\n- `HTTPAdapter.send` (`requests/adapters.py:294-396`) is where a pooled connection is used: `get_connection`, then `conn.urlopen(...)` or the chunked `low_conn` path.\n\n`prepare_probe_request` stops at the return value of `prepare_request`, before any of these steps. A caller would have to pass the result to `Session.send` (or an adapter's `send`) for a request to go out. Response hooks, which only run inside `send` (`requests/sessions.py`, around line 501), and redirect handling don't run either.\n\nThis is from reading the source, not from running anything. It holds unless something patches these classes at runtime.\n\nSeparately, `git status` now shows `requests/sessions.py` and `test_requests.py` as staged (`M` in the first column). I didn't stage them, so something outside this session did. Their contents still contain the earlier fix, and I made no changes this turn.",
+          "structured_output": null,
+          "model_usage": {
+            "claude-haiku-5-5": {
+              "inputTokens": 1359,
+              "outputTokens": 20,
+              "cacheReadInputTokens": 0,
+              "cacheCreationInputTokens": 0,
+              "webSearchRequests": 0,
+              "costUSD": 0.0001459,
+              "contextWindow": 1000000,
+              "maxOutputTokens": 128000,
+              "thinkingTokens": 0,
+              "canonicalModel": "claude-haiku-5-5",
+              "provider": "firstParty",
+              "costBasis": "list"
+            },
+            "claude-opus-5-5": {
+              "inputTokens": 34,
+              "outputTokens": 13041,
+              "cacheReadInputTokens": 521237,
+              "cacheCreationInputTokens": 37103,
+              "webSearchRequests": 0,
+              "costUSD": 0.6620273999999999,
+              "contextWindow": 1000000,
+              "maxOutputTokens": 128000,
+              "thinkingTokens": 1373,
+              "canonicalModel": "claude-opus-5-5",
+              "provider": "firstParty",
+              "costBasis": "list"
+            }
+          },
+          "permission_denials": [],
+          "deferred_tool_use": null,
+          "errors": null,
+          "api_error_status": null,
+          "uuid": "5016b16f-6937-429c-b436-e54fffe842f0",
+          "terminal_reason": "completed",
+          "origin": null
+        },
+        "status": "sdk_completed_pending_acceptance",
+        "seconds": 26.07734702527523,
+        "source_after": {
+          "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/00-psf__requests-1921-serena/post_edit-after-source.json",
+          "sha256": "5105b59f4bbfcd62b25dbb893c6d318d6959d1358dba59a2f74b51605d5c626e",
+          "source_digest": "de4e1993a8134c994b4be2558cccd9062061cd24940c365c497f71916512810c",
+          "file_count": 122,
+          "head": "3c88e520da24ae6f736929a750876e7654accc3d"
+        },
+        "read_only_source_preserved": true,
+        "trace": {
+          "path": "post_edit-sdk.jsonl",
+          "sha256": "f481df3fc1179314c01f84f69333866e5bd18ce955a616a11b7cba24649585b4"
+        }
+      }
+    ],
+    "sessions": [
+      {
+        "name": "cold",
+        "started_utc": "2026-10-28T14:12:33.076867+00:00",
+        "budget_requested_usd": 20.0,
+        "rate_events": [
+          {
+            "rate_limit_info": {
+              "status": "allowed",
+              "resets_at": 1793204400,
+              "rate_limit_type": "five_hour",
+              "utilization": null,
+              "overage_status": "rejected",
+              "overage_resets_at": null,
+              "overage_disabled_reason": "org_level_disabled",
+              "raw": {
+                "status": "allowed",
+                "resetsAt": 1793204400,
+                "rateLimitType": "five_hour",
+                "overageStatus": "rejected",
+                "overageDisabledReason": "org_level_disabled",
+                "isUsingOverage": false,
+                "unifiedWindows": {
+                  "five_hour": {
+                    "utilization": 0.01,
+                    "resetsAt": 1793204400,
+                    "status": "allowed"
+                  },
+                  "seven_day": {
+                    "utilization": 0.45,
+                    "resetsAt": 1793278800,
+                    "status": "allowed"
+                  }
+                }
+              }
+            },
+            "uuid": "afab7433-c282-4feb-937d-02a7aaeb498e",
+            "session_id": "13ebeebe-c892-4f0e-88fa-1eccfcdae416"
+          }
+        ],
+        "results": [
+          {
+            "phase_result_reference": "lookup"
+          }
+        ],
+        "init": {
+          "model": "claude-opus-5-5",
+          "apiKeySource": "none",
+          "tools": [
+            "Bash",
+            "Edit",
+            "Glob",
+            "Grep",
+            "Read",
+            "ToolSearch",
+            "Write",
+            "mcp__study__initial_instructions",
+            "mcp__study__serena_repl"
+          ],
+          "mcp_servers": [
+            {
+              "name": "study",
+              "status": "connected",
+              "source": "dynamic"
+            }
+          ],
+          "claude_code_version": "2.1.310"
+        },
+        "connect_seconds": 0.33776988089084625,
+        "latest_query_result_complete": true,
+        "closed": true,
+        "seconds": 16.156117606908083,
+        "usage_complete": true,
+        "final_result": {
+          "subtype": "success",
+          "duration_ms": 14774,
+          "duration_api_ms": 16964,
+          "is_error": false,
+          "num_turns": 3,
+          "session_id": "13ebeebe-c892-4f0e-88fa-1eccfcdae416",
+          "stop_reason": "end_turn",
+          "total_cost_usd": 0.0907386,
+          "usage": {
+            "input_tokens": 6,
+            "cache_creation_input_tokens": 7792,
+            "cache_read_input_tokens": 23342,
+            "output_tokens": 1171,
+            "output_tokens_details": {
+              "thinking_tokens": 50
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            },
+            "service_tier": "standard",
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 7792,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "inference_geo": "global",
+            "iterations": [
+              {
+                "input_tokens": 2,
+                "output_tokens": 901,
+                "cache_read_input_tokens": 8967,
+                "cache_creation_input_tokens": 4470,
+                "cache_creation": {
+                  "ephemeral_5m_input_tokens": 0,
+                  "ephemeral_1h_input_tokens": 4470
+                },
+                "type": "message"
+              }
+            ],
+            "speed": "standard",
+            "fallback_credit": null
+          },
+          "result": {
+            "phase_answer_reference": "lookup"
+          },
+          "structured_output": null,
+          "model_usage": {
+            "claude-haiku-5-5": {
+              "inputTokens": 1337,
+              "outputTokens": 313,
+              "cacheReadInputTokens": 0,
+              "cacheCreationInputTokens": 0,
+              "webSearchRequests": 0,
+              "costUSD": 0.0002902,
+              "contextWindow": 1000000,
+              "maxOutputTokens": 128000,
+              "thinkingTokens": 291,
+              "canonicalModel": "claude-haiku-5-5",
+              "provider": "firstParty",
+              "costBasis": "list"
+            },
+            "claude-opus-5-5": {
+              "inputTokens": 6,
+              "outputTokens": 1171,
+              "cacheReadInputTokens": 23342,
+              "cacheCreationInputTokens": 7792,
+              "webSearchRequests": 0,
+              "costUSD": 0.09044840000000001,
+              "contextWindow": 1000000,
+              "maxOutputTokens": 128000,
+              "thinkingTokens": 50,
+              "canonicalModel": "claude-opus-5-5",
+              "provider": "firstParty",
+              "costBasis": "list"
+            }
+          },
+          "permission_denials": [],
+          "deferred_tool_use": null,
+          "errors": null,
+          "api_error_status": null,
+          "uuid": "53cb1a05-ea34-4747-9b89-8e7f825c4a74",
+          "terminal_reason": "completed",
+          "origin": null
+        },
+        "normalized_tokens": 33961,
+        "sdk_estimate_usd": 0.0907386
+      },
+      {
+        "name": "return",
+        "started_utc": "2026-10-28T14:12:49.234244+00:00",
+        "budget_requested_usd": 19.9092614,
+        "rate_events": [
+          {
+            "rate_limit_info": {
+              "status": "allowed",
+              "resets_at": 1793204400,
+              "rate_limit_type": "five_hour",
+              "utilization": null,
+              "overage_status": "rejected",
+              "overage_resets_at": null,
+              "overage_disabled_reason": "org_level_disabled",
+              "raw": {
+                "status": "allowed",
+                "resetsAt": 1793204400,
+                "rateLimitType": "five_hour",
+                "overageStatus": "rejected",
+                "overageDisabledReason": "org_level_disabled",
+                "isUsingOverage": false,
+                "unifiedWindows": {
+                  "five_hour": {
+                    "utilization": 0.01,
+                    "resetsAt": 1793204400,
+                    "status": "allowed"
+                  },
+                  "seven_day": {
+                    "utilization": 0.45,
+                    "resetsAt": 1793278800,
+                    "status": "allowed"
+                  }
+                }
+              }
+            },
+            "uuid": "4d672797-5f8f-48cb-bcb8-26e53b943266",
+            "session_id": "67595d5b-a8d5-4b81-b51d-1332efa66e40"
+          }
+        ],
+        "results": [
+          {
+            "phase_result_reference": "flow"
+          },
+          {
+            "phase_result_reference": "impact"
+          },
+          {
+            "phase_result_reference": "repair"
+          },
+          {
+            "phase_result_reference": "post_edit"
+          }
+        ],
+        "init": {
+          "model": "claude-opus-5-5",
+          "apiKeySource": "none",
+          "tools": [
+            "Bash",
+            "Edit",
+            "Glob",
+            "Grep",
+            "Read",
+            "ToolSearch",
+            "Write",
+            "mcp__study__initial_instructions",
+            "mcp__study__serena_repl"
+          ],
+          "mcp_servers": [
+            {
+              "name": "study",
+              "status": "connected",
+              "source": "dynamic"
+            }
+          ],
+          "claude_code_version": "2.1.310"
+        },
+        "connect_seconds": 0.3930508457124233,
+        "latest_query_result_complete": true,
+        "closed": true,
+        "seconds": 133.1038720048964,
+        "usage_complete": true,
+        "final_result": {
+          "subtype": "success",
+          "duration_ms": 26073,
+          "duration_api_ms": 126991,
+          "is_error": false,
+          "num_turns": 7,
+          "session_id": "67595d5b-a8d5-4b81-b51d-1332efa66e40",
+          "stop_reason": "end_turn",
+          "total_cost_usd": 0.6621733,
+          "usage": {
+            "input_tokens": 8,
+            "cache_creation_input_tokens": 2542,
+            "cache_read_input_tokens": 171263,
+            "output_tokens": 2386,
+            "output_tokens_details": {
+              "thinking_tokens": 276
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            },
+            "service_tier": "standard",
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 2542,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "inference_geo": "global",
+            "iterations": [
+              {
+                "input_tokens": 2,
+                "output_tokens": 1412,
+                "cache_read_input_tokens": 43510,
+                "cache_creation_input_tokens": 1019,
+                "cache_creation": {
+                  "ephemeral_5m_input_tokens": 0,
+                  "ephemeral_1h_input_tokens": 1019
+                },
+                "type": "message"
+              }
+            ],
+            "speed": "standard",
+            "fallback_credit": null
+          },
+          "result": {
+            "phase_answer_reference": "post_edit"
+          },
+          "structured_output": null,
+          "model_usage": {
+            "claude-haiku-5-5": {
+              "inputTokens": 1359,
+              "outputTokens": 20,
+              "cacheReadInputTokens": 0,
+              "cacheCreationInputTokens": 0,
+              "webSearchRequests": 0,
+              "costUSD": 0.0001459,
+              "contextWindow": 1000000,
+              "maxOutputTokens": 128000,
+              "thinkingTokens": 0,
+              "canonicalModel": "claude-haiku-5-5",
+              "provider": "firstParty",
+              "costBasis": "list"
+            },
+            "claude-opus-5-5": {
+              "inputTokens": 34,
+              "outputTokens": 13041,
+              "cacheReadInputTokens": 521237,
+              "cacheCreationInputTokens": 37103,
+              "webSearchRequests": 0,
+              "costUSD": 0.6620273999999999,
+              "contextWindow": 1000000,
+              "maxOutputTokens": 128000,
+              "thinkingTokens": 1373,
+              "canonicalModel": "claude-opus-5-5",
+              "provider": "firstParty",
+              "costBasis": "list"
+            }
+          },
+          "permission_denials": [],
+          "deferred_tool_use": null,
+          "errors": null,
+          "api_error_status": null,
+          "uuid": "5016b16f-6937-429c-b436-e54fffe842f0",
+          "terminal_reason": "completed",
+          "origin": null
+        },
+        "normalized_tokens": 572794,
+        "sdk_estimate_usd": 0.6621733
+      }
+    ],
+    "api_invoice_cost_usd": null,
+    "http_request_count": null,
+    "owned_containers": [
+      "beb6e2622cffc654ca5d31fdd58a30c9e0c8d348bebca85372ff522fedccbe61",
+      "d6d889aeee05590c635c37a98665bf2e98c5b207739cea4cce12ef2f45037c80"
+    ],
+    "cohort_stop_reason": null,
+    "driver_sha256": "1293e68f51d448b4154b80b1dfbe716720c4297f9934ef993470a3fffccfb962",
+    "scope_sha256": "4c11983fdc26b5854f49968d1da139745050b0a0b2699d9f5777aa8bc559a192",
+    "policy_sha256": "cb373c0a407fbbc89bd4b12e30076b81b3aa9e77dc46cd017b7a32255f8b604a",
+    "tasks_sha256": "218eb7085da807c3cb067ef742ff7ceff161910dad18c676458a5b599d2d45ea",
+    "auth": {
+      "loggedIn": true,
+      "authMethod": "claude.ai",
+      "subscriptionType": "max"
+    },
+    "sdk": "0.2.174",
+    "neutral_image": "sha256:ac3aeb4416832db7147d67ee205a1e1da97f5f13d73a587e0cd4457af5acb791",
+    "common_source": {
+      "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/00-psf__requests-1921-serena/common-source.json",
+      "sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "source_digest": "9d62fa6c6020866d1179df058f73b19587e44f70063bd3ca06f8153a2573491a",
+      "file_count": 121,
+      "head": "3c88e520da24ae6f736929a750876e7654accc3d"
+    },
+    "common_prepare_seconds": 1.5589911509305239,
+    "clock_started_utc": "2026-10-28T14:12:20.791019+00:00",
+    "setup": {
+      "started_utc": "2026-10-28T14:12:20.791031+00:00",
+      "ready": true,
+      "seconds": 3.9424591436982155
+    },
+    "target_identity": {
+      "python": "3.9.25 (main, Nov  3 2025, 22:33:42) \n[GCC 11.2.0]",
+      "packages": [
+        [
+          "Pygments",
+          "2.19.1"
+        ],
+        [
+          "atomicwrites",
+          "1.4.1"
+        ],
+        [
+          "attrs",
+          "26.1.0"
+        ],
+        [
+          "exceptiongroup",
+          "1.3.0"
+        ],
+        [
+          "iniconfig",
+          "2.1.0"
+        ],
+        [
+          "more-itertools",
+          "10.8.0"
+        ],
+        [
+          "packaging",
+          "25.0"
+        ],
+        [
+          "pip",
+          "26.0.1"
+        ],
+        [
+          "pluggy",
+          "0.13.1"
+        ],
+        [
+          "py",
+          "1.11.0"
+        ],
+        [
+          "pytest",
+          "4.6.11"
+        ],
+        [
+          "requests",
+          "2.3.0"
+        ],
+        [
+          "setuptools",
+          "80.9.0"
+        ],
+        [
+          "six",
+          "1.17.0"
+        ],
+        [
+          "tomli",
+          "2.2.1"
+        ],
+        [
+          "typing_extensions",
+          "4.15.0"
+        ],
+        [
+          "wcwidth",
+          "0.9.4"
+        ],
+        [
+          "wheel",
+          "0.45.1"
+        ]
+      ]
+    },
+    "product_identity_matches_admission": true,
+    "prepared_image": "sha256:de22b759ef57a8023e5ac3c4249b54d4391a96bc040bc3546be6d957cc73d410",
+    "observed_container": {
+      "id": "d6d889aeee05590c635c37a98665bf2e98c5b207739cea4cce12ef2f45037c80",
+      "network_disabled": true,
+      "network_mode": "none",
+      "memory_bytes": 4294967296,
+      "nano_cpus": 2000000000,
+      "pids_limit": 256,
+      "mounts": [
+        {
+          "Type": "bind",
+          "Source": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/00-psf__requests-1921-serena/workspace",
+          "Destination": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/00-psf__requests-1921-serena/workspace",
+          "Mode": "rw",
+          "RW": true,
+          "Propagation": "rprivate"
+        }
+      ]
+    },
+    "pre_model_source": {
+      "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/00-psf__requests-1921-serena/pre-model-source.json",
+      "sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "source_digest": "9d62fa6c6020866d1179df058f73b19587e44f70063bd3ca06f8153a2573491a",
+      "file_count": 121,
+      "head": "3c88e520da24ae6f736929a750876e7654accc3d"
+    },
+    "setup_patch": {
+      "path": "pre-model.patch",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "attribution": "whole workspace diff; includes any separately recorded setup metadata"
+    },
+    "observed_effort_levels": [
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium"
+    ],
+    "controlled_edit": {
+      "apply_before": "psf__requests-1921-post_edit",
+      "path": "requests/_pilot_post_edit.py",
+      "source": "from .models import Request\nfrom .sessions import Session\n\ndef prepare_probe_request(url: str):\n    return Session().prepare_request(Request(\"GET\", url))\n",
+      "sha256": "91ae1a3d5561b96db5590260d4e20b68db8a3a693c19965d2c92cb3e062d087e",
+      "classification": "identical controlled synthetic source addition in every arm; no task outcome or runtime-benefit claim from the edit alone",
+      "rule": "Capture the repair patch before adding this file. Never overwrite an existing file; an unexpected collision is a recorded controller failure. Keep the same return-session MCP connection for the follow-up.",
+      "applied_utc": "2026-10-28T14:14:35.955181+00:00"
+    },
+    "status": "model_execution_complete_pending_grading",
+    "observed_workflow_seconds": 161.5585236866027,
+    "unattempted_tasks": [],
+    "cleanup": [
+      {
+        "id": "d6d889aeee05590c635c37a98665bf2e98c5b207739cea4cce12ef2f45037c80",
+        "removed": true
+      },
+      {
+        "id": "beb6e2622cffc654ca5d31fdd58a30c9e0c8d348bebca85372ff522fedccbe61",
+        "removed": true
+      }
+    ],
+    "finished_utc": "2026-10-28T14:15:02.437450+00:00"
+  },
+  "projection_rule": "Phase results/answers retained; duplicate cumulative session answers link to their phase. Exact tool deliveries, original pre-tool inputs and source snapshots are separately hash-bound. Intermediate visible prose/stream usage remain in the original SDK traces and are not summed as cumulative usage.",
+  "phase_observations": {
+    "lookup": {
+      "artifact": "codegraph_matched_workflow_v2_00_lookup_observations.json",
+      "sha256": "69547cfdddd3d857f3db370aa889a986b5bef23d5a0c1c37130e14020dc58f6c"
+    },
+    "flow": {
+      "artifact": "codegraph_matched_workflow_v2_00_flow_observations.json",
+      "sha256": "a574a2dbec71333d5501e2a5b954f4735167a51d6b542416abd9d455ba6ce403"
+    },
+    "impact": {
+      "artifact": "codegraph_matched_workflow_v2_00_impact_observations.json",
+      "sha256": "43af7135c12b94f78cb6a649b3d2614fa1d6fd68f3b25d4e94b5abb8f283dd99"
+    },
+    "repair": {
+      "artifact": "codegraph_matched_workflow_v2_00_repair_observations.json",
+      "sha256": "9113423292f754aaa4934c67fcfdadd24429e51dc9e71150998e6bd044254222"
+    },
+    "post_edit": {
+      "artifact": "codegraph_matched_workflow_v2_00_post_edit_observations.json",
+      "sha256": "4257fb3ab562c6218edfbadc4f6765b92be12170ad753120ff621144d5797397"
+    }
+  },
+  "source_snapshots": {
+    "artifact": "codegraph_matched_workflow_v2_00_sources.json",
+    "sha256": "f09df07a78c6754b116157bfa2e7f326c3f32e23cf9ee77fa6b8bc19c8d8d91b"
+  },
+  "original_tool_inputs": {
+    "artifact": "codegraph_matched_workflow_v2_00_tool_inputs.json",
+    "sha256": "4e8800f2aa5cabcb29c9afd7a73e7ca610cadb76ef93881c0d2fb60648e727eb"
+  },
+  "repair_patch": "diff --git a/requests/sessions.py b/requests/sessions.py\nindex a023e4e..3f1d97a 100644\n--- a/requests/sessions.py\n+++ b/requests/sessions.py\n@@ -54,10 +54,11 @@ def merge_setting(request_setting, session_setting, dict_class=OrderedDict):\n     merged_setting = dict_class(to_key_val_list(session_setting))\n     merged_setting.update(to_key_val_list(request_setting))\n \n-    # Remove keys that are set to None.\n-    for (k, v) in request_setting.items():\n-        if v is None:\n-            del merged_setting[k]\n+    # Remove keys that are set to None. Extract keys first to avoid altering\n+    # the dictionary during iteration.\n+    none_keys = [k for (k, v) in merged_setting.items() if v is None]\n+    for key in none_keys:\n+        del merged_setting[key]\n \n     return merged_setting\n \ndiff --git a/test_requests.py b/test_requests.py\nindex 3d7cdaa..437532d 100755\n--- a/test_requests.py\n+++ b/test_requests.py\n@@ -227,6 +227,14 @@ class RequestsTestCase(unittest.TestCase):\n         r = requests.get(httpbin('user-agent'), headers=heads)\n         assert heads['user-agent'] in r.text\n \n+    def test_headers_on_session_with_None_are_not_sent(self):\n+        \"\"\"Do not send headers in Session.headers with None values.\"\"\"\n+        ses = requests.Session()\n+        ses.headers['Accept-Encoding'] = None\n+        req = requests.Request('GET', httpbin('get'))\n+        prep = ses.prepare_request(req)\n+        assert 'Accept-Encoding' not in prep.headers\n+\n     def test_HTTP_200_OK_HEAD(self):\n         r = requests.head(httpbin('get'))\n         assert r.status_code == 200\n",
+  "setup_patch": "",
+  "source_credit": "No complete ContextBench read score. Arbitrary shell output remains unattributed until source-version/file mapping is verified.",
+  "archive_implementation_sha256": "66794e05d95a0d45a394ddb96575491190e1566a64a9a1c4f709c18e1540a6a7"
+}

@@ -1,0 +1,143 @@
+{
+  "scope": "Exact captured v2 tool requests and delivered user/tool messages; no task acceptance or complete source-read score.",
+  "workflow_index": 8,
+  "task_id": "pytest-dev__pytest-5809-post_edit",
+  "kind": "post_edit",
+  "raw_sdk_trace_sha256": "29d44cc5b91b23102b6315a9d4e12087f009f4c55f26feb8251ce743754ea620",
+  "raw_sdk_trace_bytes": 16736,
+  "init": [
+    {
+      "type": "SystemMessage",
+      "subtype": "init",
+      "data": {
+        "model": "claude-opus-5-5",
+        "apiKeySource": "none",
+        "tools": [
+          "Bash",
+          "Edit",
+          "Glob",
+          "Grep",
+          "Read",
+          "ToolSearch",
+          "Write",
+          "mcp__study__dependency_subgraph",
+          "mcp__study__explore_context",
+          "mcp__study__get_manifest",
+          "mcp__study__lsp_definition",
+          "mcp__study__lsp_references",
+          "mcp__study__lsp_route",
+          "mcp__study__read_source",
+          "mcp__study__search_bm25",
+          "mcp__study__search_context",
+          "mcp__study__search_regex",
+          "mcp__study__search_semantic",
+          "mcp__study__search_zoekt"
+        ],
+        "mcp_servers": [
+          {
+            "name": "study",
+            "status": "connected",
+            "source": "dynamic"
+          }
+        ],
+        "claude_code_version": "2.1.310"
+      }
+    }
+  ],
+  "rate_events": [],
+  "tool_calls_in_first_observed_order": [
+    {
+      "id": "toolu_01FFXStXxzPSr3ButYj7Vm4i",
+      "name": "Grep",
+      "input": {
+        "pattern": "capture_probe_result",
+        "output_mode": "content",
+        "-n": true
+      }
+    },
+    {
+      "id": "toolu_01Ut4FZ5mCwpviN3b4SFZUth",
+      "name": "Bash",
+      "input": {
+        "command": "git status --short && git diff --stat",
+        "description": "Show working tree changes"
+      }
+    },
+    {
+      "id": "toolu_01NxCxRYDvUWRqpuWXDXrq68",
+      "name": "Read",
+      "input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/08-pytest-dev__pytest-5809-codenib/workspace/src/_pytest/_pilot_post_edit.py"
+      }
+    },
+    {
+      "id": "toolu_01BxUz3xoZnaJcJczBzWnD9H",
+      "name": "Read",
+      "input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/08-pytest-dev__pytest-5809-codenib/workspace/src/_pytest/runner.py",
+        "offset": 200,
+        "limit": 35
+      }
+    },
+    {
+      "id": "toolu_015WBg4fFUQHoRoKndRXbwvJ",
+      "name": "Grep",
+      "input": {
+        "pattern": "_pilot_post_edit",
+        "output_mode": "content"
+      }
+    }
+  ],
+  "delivered_user_tool_messages_in_order": [
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_01FFXStXxzPSr3ButYj7Vm4i",
+          "content": "src/_pytest/_pilot_post_edit.py:3:def capture_probe_result(function):",
+          "is_error": null
+        }
+      ]
+    },
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_01Ut4FZ5mCwpviN3b4SFZUth",
+          "content": "A  changelog/5764.bugfix.rst\nM  src/_pytest/pastebin.py\nM  testing/test_pastebin.py\n?? src/_pytest/_pilot_post_edit.py",
+          "is_error": false
+        }
+      ]
+    },
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_01NxCxRYDvUWRqpuWXDXrq68",
+          "content": "1\tfrom .runner import CallInfo\n2\t\n3\tdef capture_probe_result(function):\n4\t    return CallInfo.from_call(function, \"call\")\n5\t",
+          "is_error": null
+        }
+      ]
+    },
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_01BxUz3xoZnaJcJczBzWnD9H",
+          "content": "200\t\n201\t\n202\t@attr.s(repr=False)\n203\tclass CallInfo(object):\n204\t    \"\"\" Result/Exception info a function invocation. \"\"\"\n205\t\n206\t    _result = attr.ib()\n207\t    # Optional[ExceptionInfo]\n208\t    excinfo = attr.ib()\n209\t    start = attr.ib()\n210\t    stop = attr.ib()\n211\t    when = attr.ib()\n212\t\n213\t    @property\n214\t    def result(self):\n215\t        if self.excinfo is not None:\n216\t            raise AttributeError(\"{!r} has no valid result\".format(self))\n217\t        return self._result\n218\t\n219\t    @classmethod\n220\t    def from_call(cls, func, when, reraise=None):\n221\t        #: context of invocation: one of \"setup\", \"call\",\n222\t        #: \"teardown\", \"memocollect\"\n223\t        start = time()\n224\t        excinfo = None\n225\t        try:\n226\t            result = func()\n227\t        except:  # noqa\n228\t            excinfo = ExceptionInfo.from_current()\n229\t            if reraise is not None and excinfo.errisinstance(reraise):\n230\t                raise\n231\t            result = None\n232\t        stop = time()\n233\t        return cls(start=start, stop=stop, when=when, result=result, excinfo=excinfo)\n234\t",
+          "is_error": null
+        }
+      ]
+    },
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_015WBg4fFUQHoRoKndRXbwvJ",
+          "content": "No matches found",
+          "is_error": null
+        }
+      ]
+    }
+  ]
+}

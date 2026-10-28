@@ -9,12 +9,18 @@ frozen outcome is insufficient evidence and promotion is held. Separate
 model-free peer controls now pass the original lookup on all three sources.
 Separate common-runtime controls retain all four arms' actual installation,
 source lookup and source-addition update costs, including Codegraph's pending
-replies and bounded retry. A full corrected source rubric, prospective benefit
-protocol, broader provider coverage, representative workflows beyond these
-controls, automatic rebuilding and external trials remain open. The separate
-corrected v2 cohort now has a complete pre-inference
-[protocol and executable/runtime freeze](codegraph_matched_protocol_v2.md);
-its execution and assessment remain pending.
+replies and bounded retry. Broader provider coverage, representative workflows
+beyond these controls, automatic rebuilding and external trials remain open.
+The independent corrected v2 cohort has a complete pre-inference
+[protocol and executable/runtime freeze](codegraph_matched_protocol_v2.md).
+Its [execution](codegraph_matched_run_v2.md) completes all sixty tasks and twelve
+native repairs with connected optional products. Its
+[assessment](codegraph_matched_assessment_v2.md) accepts 34/48 explanations and
+finds no complete eligible alternative under the unchanged material-error rule.
+CodeNib accepts 11/15 tasks versus Native 13/15 and receives no voluntary
+product call. Hold promotion; preserve both cohorts and prioritize actual
+source-linked use before further efficacy experiments. External enrollment
+remains 0/5.
 Established 2026-10-26
 (Pacific); target review 2026-11-09.
 Current outcomes and open gates belong to [adoption A0](../adoption_roadmap.md).
@@ -196,8 +202,17 @@ including their preparation/controller failures and bounded source omissions.
 They use preinstalled warm runtimes and do not replace the original failed
 setups. The [common-runtime controls](codegraph_common_runtime_admission.md)
 separately bind every arm to the same project environment and retain actual
-installation and source-addition update costs. They do not freeze the next
-model protocol or establish a whole-task benefit.
+installation and source-addition update costs. They do not establish a
+whole-task benefit. The separately [frozen v2 protocol](codegraph_matched_protocol_v2.md)
+precedes a new independent execution on the same exposed sources. Its
+[completed assessment](codegraph_matched_assessment_v2.md) keeps all sixty
+attempts, twelve native repair passes and fourteen rejected explanations.
+Native / Serena / Codegraph / CodeNib accept 13 / 12 / 10 / 11 of fifteen
+tasks. Every alternative has a serious explanation error, so no complete
+eligible baseline exists and no 20% gain is claimed. All optional products
+connect; CodeNib and Serena receive no voluntary MCP or CLI call. Keep the
+hold-promotion decision and require a real task/use case before another
+efficacy cohort. This does not change the original protocol or results.
 Work on offline reproduction and scoped fixes can proceed. A live experiment must
 not silently substitute the graph-free search pair or grep/Jev for CodeGraph.
 

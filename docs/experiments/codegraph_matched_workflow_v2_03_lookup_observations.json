@@ -1,0 +1,128 @@
+{
+  "scope": "Exact captured v2 tool requests and delivered user/tool messages; no task acceptance or complete source-read score.",
+  "workflow_index": 3,
+  "task_id": "psf__requests-1921-lookup",
+  "kind": "lookup",
+  "raw_sdk_trace_sha256": "ea51432eba010653e522424d33277e13725262f40603bf7f000373a29f361f05",
+  "raw_sdk_trace_bytes": 27574,
+  "init": [
+    {
+      "type": "SystemMessage",
+      "subtype": "init",
+      "data": {
+        "model": "claude-opus-5-5",
+        "apiKeySource": "none",
+        "tools": [
+          "Bash",
+          "Edit",
+          "Glob",
+          "Grep",
+          "Read",
+          "ToolSearch",
+          "Write"
+        ],
+        "mcp_servers": [],
+        "claude_code_version": "2.1.310"
+      }
+    }
+  ],
+  "rate_events": [
+    {
+      "type": "RateLimitEvent",
+      "data": {
+        "rate_limit_info": {
+          "status": "allowed",
+          "resets_at": 1793204400,
+          "rate_limit_type": "five_hour",
+          "utilization": null,
+          "overage_status": "rejected",
+          "overage_resets_at": null,
+          "overage_disabled_reason": "org_level_disabled",
+          "raw": {
+            "status": "allowed",
+            "resetsAt": 1793204400,
+            "rateLimitType": "five_hour",
+            "overageStatus": "rejected",
+            "overageDisabledReason": "org_level_disabled",
+            "isUsingOverage": false,
+            "unifiedWindows": {
+              "five_hour": {
+                "utilization": 0.02,
+                "resetsAt": 1793204400,
+                "status": "allowed"
+              },
+              "seven_day": {
+                "utilization": 0.45,
+                "resetsAt": 1793278800,
+                "status": "allowed"
+              }
+            }
+          }
+        },
+        "uuid": "551dd29d-354f-4043-aec9-2594e513c7af",
+        "session_id": "67cd7662-1962-4039-9111-513baffd6404"
+      }
+    }
+  ],
+  "tool_calls_in_first_observed_order": [
+    {
+      "id": "toolu_01KYxGAJbkvYjzAUNDjMB7ug",
+      "name": "Grep",
+      "input": {
+        "pattern": "def prepare_request|def merge_setting|def merge_hooks",
+        "path": "requests/sessions.py",
+        "output_mode": "content"
+      }
+    },
+    {
+      "id": "toolu_01WiJA7LWEdxJUfaxQtW2dvT",
+      "name": "Read",
+      "input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/03-psf__requests-1921-native/workspace/requests/sessions.py",
+        "offset": 30,
+        "limit": 270
+      }
+    },
+    {
+      "id": "toolu_01R3rQksBREg212WjWjuwcxo",
+      "name": "Grep",
+      "input": {
+        "pattern": "prepare_request\\(|merge_environment|merge_setting\\(",
+        "path": "requests/sessions.py",
+        "output_mode": "content"
+      }
+    }
+  ],
+  "delivered_user_tool_messages_in_order": [
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_01KYxGAJbkvYjzAUNDjMB7ug",
+          "content": "34:def merge_setting(request_setting, session_setting, dict_class=OrderedDict):\n65:def merge_hooks(request_hooks, session_hooks, dict_class=OrderedDict):\n260:    def prepare_request(self, request):",
+          "is_error": null
+        }
+      ]
+    },
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_01WiJA7LWEdxJUfaxQtW2dvT",
+          "content": "30\t# formerly defined here, reexposed here for backward compatibility\n31\tfrom .models import REDIRECT_STATI\n32\t\n33\t\n34\tdef merge_setting(request_setting, session_setting, dict_class=OrderedDict):\n35\t    \"\"\"\n36\t    Determines appropriate setting for a given request, taking into account the\n37\t    explicit setting on that request, and the setting in the session. If a\n38\t    setting is a dictionary, they will be merged together using `dict_class`\n39\t    \"\"\"\n40\t\n41\t    if session_setting is None:\n42\t        return request_setting\n43\t\n44\t    if request_setting is None:\n45\t        return session_setting\n46\t\n47\t    # Bypass if not a dictionary (e.g. verify)\n48\t    if not (\n49\t            isinstance(session_setting, Mapping) and\n50\t            isinstance(request_setting, Mapping)\n51\t    ):\n52\t        return request_setting\n53\t\n54\t    merged_setting = dict_class(to_key_val_list(session_setting))\n55\t    merged_setting.update(to_key_val_list(request_setting))\n56\t\n57\t    # Remove keys that are set to None.\n58\t    for (k, v) in request_setting.items():\n59\t        if v is None:\n60\t            del merged_setting[k]\n61\t\n62\t    return merged_setting\n63\t\n64\t\n65\tdef merge_hooks(request_hooks, session_hooks, dict_class=OrderedDict):\n66\t    \"\"\"\n67\t    Properly merges both requests and session hooks.\n68\t\n69\t    This is necessary because when request_hooks == {'response': []}, the\n70\t    merge breaks Session hooks entirely.\n71\t    \"\"\"\n72\t    if session_hooks is None or session_hooks.get('response') == []:\n73\t        return request_hooks\n74\t\n75\t    if request_hooks is None or request_hooks.get('response') == []:\n76\t        return session_hooks\n77\t\n78\t    return merge_setting(request_hooks, session_hooks, dict_class)\n79\t\n80\t\n81\tclass SessionRedirectMixin(object):\n82\t    def resolve_redirects(self, resp, req, stream=False, timeout=None,\n83\t                          verify=True, cert=None, proxies=None):\n84\t        \"\"\"Receives a Response. Returns a generator of Responses.\"\"\"\n85\t\n86\t        i = 0\n87\t\n88\t        while resp.is_redirect:\n89\t            prepared_request = req.copy()\n90\t\n91\t            resp.content  # Consume socket so it can be released\n92\t\n93\t            if i >= self.max_redirects:\n94\t                raise TooManyRedirects('Exceeded %s redirects.' % self.max_redirects)\n95\t\n96\t            # Release the connection back into the pool.\n97\t            resp.close()\n98\t\n99\t            url = resp.headers['location']\n100\t            method = req.method\n101\t\n102\t            # Handle redirection without scheme (see: RFC 1808 Section 4)\n103\t            if url.startswith('//'):\n104\t                parsed_rurl = urlparse(resp.url)\n105\t                url = '%s:%s' % (parsed_rurl.scheme, url)\n106\t\n107\t            # The scheme should be lower case...\n108\t            parsed = urlparse(url)\n109\t            url = parsed.geturl()\n110\t\n111\t            # Facilitate non-RFC2616-compliant 'location' headers\n112\t            # (e.g. '/path/to/resource' instead of 'http://domain.tld/path/to/resource')\n113\t            # Compliant with RFC3986, we percent encode the url.\n114\t            if not urlparse(url).netloc:\n115\t                url = urljoin(resp.url, requote_uri(url))\n116\t            else:\n117\t                url = requote_uri(url)\n118\t\n119\t            prepared_request.url = to_native_string(url)\n120\t\n121\t            # http://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html#sec10.3.4\n122\t            if (resp.status_code == codes.see_other and\n123\t                    method != 'HEAD'):\n124\t                method = 'GET'\n125\t\n126\t            # Do what the browsers do, despite standards...\n127\t            # First, turn 302s into GETs.\n128\t            if resp.status_code == codes.found and method != 'HEAD':\n129\t                method = 'GET'\n130\t\n131\t            # Second, if a POST is responded to with a 301, turn it into a GET.\n132\t            # This bizarre behaviour is explained in Issue 1704.\n133\t            if resp.status_code == codes.moved and method == 'POST':\n134\t                method = 'GET'\n135\t\n136\t            prepared_request.method = method\n137\t\n138\t            # https://github.com/kennethreitz/requests/issues/1084\n139\t            if resp.status_code not in (codes.temporary, codes.resume):\n140\t                if 'Content-Length' in prepared_request.headers:\n141\t                    del prepared_request.headers['Content-Length']\n142\t\n143\t                prepared_request.body = None\n144\t\n145\t            headers = prepared_request.headers\n146\t            try:\n147\t                del headers['Cookie']\n148\t            except KeyError:\n149\t                pass\n150\t\n151\t            extract_cookies_to_jar(prepared_request._cookies, prepared_request, resp.raw)\n152\t            prepared_request._cookies.update(self.cookies)\n153\t            prepared_request.prepare_cookies(prepared_request._cookies)\n154\t\n155\t            if 'Authorization' in headers:\n156\t                # If we get redirected to a new host, we should strip out any\n157\t                #\u00a0authentication headers.\n158\t                original_parsed = urlparse(resp.request.url)\n159\t                redirect_parsed = urlparse(url)\n160\t\n161\t                if (original_parsed.hostname != redirect_parsed.hostname):\n162\t                    del headers['Authorization']\n163\t\n164\t            # .netrc might have more auth for us.\n165\t            new_auth = get_netrc_auth(url) if self.trust_env else None\n166\t            if new_auth is not None:\n167\t                prepared_request.prepare_auth(new_auth)\n168\t\n169\t            resp = self.send(\n170\t                prepared_request,\n171\t                stream=stream,\n172\t                timeout=timeout,\n173\t                verify=verify,\n174\t                cert=cert,\n175\t                proxies=proxies,\n176\t                allow_redirects=False,\n177\t            )\n178\t\n179\t            extract_cookies_to_jar(self.cookies, prepared_request, resp.raw)\n180\t\n181\t            i += 1\n182\t            yield resp\n183\t\n184\t\n185\tclass Session(SessionRedirectMixin):\n186\t    \"\"\"A Requests session.\n187\t\n188\t    Provides cookie persistence, connection-pooling, and configuration.\n189\t\n190\t    Basic Usage::\n191\t\n192\t      >>> import requests\n193\t      >>> s = requests.Session()\n194\t      >>> s.get('http://httpbin.org/get')\n195\t      200\n196\t    \"\"\"\n197\t\n198\t    __attrs__ = [\n199\t        'headers', 'cookies', 'auth', 'timeout', 'proxies', 'hooks',\n200\t        'params', 'verify', 'cert', 'prefetch', 'adapters', 'stream',\n201\t        'trust_env', 'max_redirects']\n202\t\n203\t    def __init__(self):\n204\t\n205\t        #: A case-insensitive dictionary of headers to be sent on each\n206\t        #: :class:`Request <Request>` sent from this\n207\t        #: :class:`Session <Session>`.\n208\t        self.headers = default_headers()\n209\t\n210\t        #: Default Authentication tuple or object to attach to\n211\t        #: :class:`Request <Request>`.\n212\t        self.auth = None\n213\t\n214\t        #: Dictionary mapping protocol to the URL of the proxy (e.g.\n215\t        #: {'http': 'foo.bar:3128'}) to be used on each\n216\t        #: :class:`Request <Request>`.\n217\t        self.proxies = {}\n218\t\n219\t        #: Event-handling hooks.\n220\t        self.hooks = default_hooks()\n221\t\n222\t        #: Dictionary of querystring data to attach to each\n223\t        #: :class:`Request <Request>`. The dictionary values may be lists for\n224\t        #: representing multivalued query parameters.\n225\t        self.params = {}\n226\t\n227\t        #: Stream response content default.\n228\t        self.stream = False\n229\t\n230\t        #: SSL Verification default.\n231\t        self.verify = True\n232\t\n233\t        #: SSL certificate default.\n234\t        self.cert = None\n235\t\n236\t        #: Maximum number of redirects allowed. If the request exceeds this\n237\t        #: limit, a :class:`TooManyRedirects` exception is raised.\n238\t        self.max_redirects = DEFAULT_REDIRECT_LIMIT\n239\t\n240\t        #: Should we trust the environment?\n241\t        self.trust_env = True\n242\t\n243\t        #: A CookieJar containing all currently outstanding cookies set on this\n244\t        #: session. By default it is a\n245\t        #: :class:`RequestsCookieJar <requests.cookies.RequestsCookieJar>`, but\n246\t        #: may be any other ``cookielib.CookieJar`` compatible object.\n247\t        self.cookies = cookiejar_from_dict({})\n248\t\n249\t        # Default connection adapters.\n250\t        self.adapters = OrderedDict()\n251\t        self.mount('https://', HTTPAdapter())\n252\t        self.mount('http://', HTTPAdapter())\n253\t\n254\t    def __enter__(self):\n255\t        return self\n256\t\n257\t    def __exit__(self, *args):\n258\t        self.close()\n259\t\n260\t    def prepare_request(self, request):\n261\t        \"\"\"Constructs a :class:`PreparedRequest <PreparedRequest>` for\n262\t        transmission and returns it. The :class:`PreparedRequest` has settings\n263\t        merged from the :class:`Request <Request>` instance and those of the\n264\t        :class:`Session`.\n265\t\n266\t        :param request: :class:`Request` instance to prepare with this\n267\t            session's settings.\n268\t        \"\"\"\n269\t        cookies = request.cookies or {}\n270\t\n271\t        # Bootstrap CookieJar.\n272\t        if not isinstance(cookies, cookielib.CookieJar):\n273\t            cookies = cookiejar_from_dict(cookies)\n274\t\n275\t        # Merge with session cookies\n276\t        merged_cookies = merge_cookies(\n277\t            merge_cookies(RequestsCookieJar(), self.cookies), cookies)\n278\t\n279\t\n280\t        # Set environment's basic authentication if not explicitly set.\n281\t        auth = request.auth\n282\t        if self.trust_env and not auth and not self.auth:\n283\t            auth = get_netrc_auth(request.url)\n284\t\n285\t        p = PreparedRequest()\n286\t        p.prepare(\n287\t            method=request.method.upper(),\n288\t            url=request.url,\n289\t            files=request.files,\n290\t            data=request.data,\n291\t            headers=merge_setting(request.headers, self.headers, dict_class=CaseInsensitiveDict),\n292\t            params=merge_setting(request.params, self.params),\n293\t            auth=merge_setting(auth, self.auth),\n294\t            cookies=merged_cookies,\n295\t            hooks=merge_hooks(request.hooks, self.hooks),\n296\t        )\n297\t        return p\n298\t\n299\t    def request(self, method, url,",
+          "is_error": null
+        }
+      ]
+    },
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_01R3rQksBREg212WjWjuwcxo",
+          "content": "34:def merge_setting(request_setting, session_setting, dict_class=OrderedDict):\n78:    return merge_setting(request_hooks, session_hooks, dict_class)\n260:    def prepare_request(self, request):\n291:            headers=merge_setting(request.headers, self.headers, dict_class=CaseInsensitiveDict),\n292:            params=merge_setting(request.params, self.params),\n293:            auth=merge_setting(auth, self.auth),\n357:        prep = self.prepare_request(req)\n377:        proxies = merge_setting(proxies, self.proxies)\n378:        stream = merge_setting(stream, self.stream)\n379:        verify = merge_setting(verify, self.verify)\n380:        cert = merge_setting(cert, self.cert)",
+          "is_error": null
+        }
+      ]
+    }
+  ]
+}

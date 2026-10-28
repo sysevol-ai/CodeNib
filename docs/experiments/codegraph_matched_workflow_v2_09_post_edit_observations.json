@@ -1,0 +1,123 @@
+{
+  "scope": "Exact captured v2 tool requests and delivered user/tool messages; no task acceptance or complete source-read score.",
+  "workflow_index": 9,
+  "task_id": "pytest-dev__pytest-5809-post_edit",
+  "kind": "post_edit",
+  "raw_sdk_trace_sha256": "ac271afd482eb885ee9838138500f339fb2ad78da3683ac6aa7a34aa100b358a",
+  "raw_sdk_trace_bytes": 22877,
+  "init": [
+    {
+      "type": "SystemMessage",
+      "subtype": "init",
+      "data": {
+        "model": "claude-opus-5-5",
+        "apiKeySource": "none",
+        "tools": [
+          "Bash",
+          "Edit",
+          "Glob",
+          "Grep",
+          "Read",
+          "ToolSearch",
+          "Write"
+        ],
+        "mcp_servers": [],
+        "claude_code_version": "2.1.310"
+      }
+    }
+  ],
+  "rate_events": [],
+  "tool_calls_in_first_observed_order": [
+    {
+      "id": "toolu_01MfHDmCfPdrAzk7wVBijNXT",
+      "name": "Grep",
+      "input": {
+        "pattern": "capture_probe_result",
+        "output_mode": "content",
+        "-n": true
+      }
+    },
+    {
+      "id": "toolu_01KoSLZxyuYBSbXvqEmJgkXR",
+      "name": "Bash",
+      "input": {
+        "command": "git status --short; git diff --stat"
+      }
+    },
+    {
+      "id": "toolu_015peTmPwWQ7j149LvTnzfWX",
+      "name": "Bash",
+      "input": {
+        "command": "cat -n src/_pytest/_pilot_post_edit.py; grep -rn \"_pilot_post_edit\\|probe\" --include=*.py src testing | grep -v \"^src/_pytest/_pilot_post_edit.py\" | head; sed -n 203,233p src/_pytest/runner.py | cat -n | sed 's/^ *\\([0-9]*\\)/\\1+202/' | head -0; awk 'NR>=203 && NR<=233{print NR\": \"$0}' src/_pytest/runner.py"
+      }
+    },
+    {
+      "id": "toolu_015YtQKE2W6BBZGMvrZWMd43",
+      "name": "Grep",
+      "input": {
+        "pattern": "capture_probe_result|_pilot_post_edit",
+        "output_mode": "content",
+        "glob": "!src/_pytest/_pilot_post_edit.py"
+      }
+    },
+    {
+      "id": "toolu_01AoxYW6j6qQBg8E33AyjNEJ",
+      "name": "Bash",
+      "input": {
+        "command": "grep -n \"def from_current\" -A20 src/_pytest/_code/code.py | head -26; grep -n \"ExceptionInfo\\|^from\\|^import\" src/_pytest/runner.py | head -20"
+      }
+    }
+  ],
+  "delivered_user_tool_messages_in_order": [
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_01MfHDmCfPdrAzk7wVBijNXT",
+          "content": "src/_pytest/_pilot_post_edit.py:3:def capture_probe_result(function):",
+          "is_error": null
+        }
+      ]
+    },
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_01KoSLZxyuYBSbXvqEmJgkXR",
+          "content": "A  changelog/5806.bugfix.rst\nM  src/_pytest/pastebin.py\nM  testing/test_pastebin.py\n?? src/_pytest/_pilot_post_edit.py",
+          "is_error": false
+        }
+      ]
+    },
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_015peTmPwWQ7j149LvTnzfWX",
+          "content": "     1\tfrom .runner import CallInfo\n     2\t\n     3\tdef capture_probe_result(function):\n     4\t    return CallInfo.from_call(function, \"call\")\n203: class CallInfo(object):\n204:     \"\"\" Result/Exception info a function invocation. \"\"\"\n205: \n206:     _result = attr.ib()\n207:     # Optional[ExceptionInfo]\n208:     excinfo = attr.ib()\n209:     start = attr.ib()\n210:     stop = attr.ib()\n211:     when = attr.ib()\n212: \n213:     @property\n214:     def result(self):\n215:         if self.excinfo is not None:\n216:             raise AttributeError(\"{!r} has no valid result\".format(self))\n217:         return self._result\n218: \n219:     @classmethod\n220:     def from_call(cls, func, when, reraise=None):\n221:         #: context of invocation: one of \"setup\", \"call\",\n222:         #: \"teardown\", \"memocollect\"\n223:         start = time()\n224:         excinfo = None\n225:         try:\n226:             result = func()\n227:         except:  # noqa\n228:             excinfo = ExceptionInfo.from_current()\n229:             if reraise is not None and excinfo.errisinstance(reraise):\n230:                 raise\n231:             result = None\n232:         stop = time()\n233:         return cls(start=start, stop=stop, when=when, result=result, excinfo=excinfo)",
+          "is_error": false
+        }
+      ]
+    },
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_015YtQKE2W6BBZGMvrZWMd43",
+          "content": "No matches found",
+          "is_error": null
+        }
+      ]
+    },
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_01AoxYW6j6qQBg8E33AyjNEJ",
+          "content": "403:    def from_current(cls, exprinfo=None):\n404-        \"\"\"returns an ExceptionInfo matching the current traceback\n405-\n406-        .. warning::\n407-\n408-            Experimental API\n409-\n410-\n411-        :param exprinfo: a text string helping to determine if we should\n412-                         strip ``AssertionError`` from the output, defaults\n413-                         to the exception message/``__str__()``\n414-        \"\"\"\n415-        tup = sys.exc_info()\n416-        assert tup[0] is not None, \"no current exception\"\n417-        _striptext = \"\"\n418-        if exprinfo is None and isinstance(tup[1], AssertionError):\n419-            exprinfo = getattr(tup[1], \"msg\", None)\n420-            if exprinfo is None:\n421-                exprinfo = saferepr(tup[1])\n422-            if exprinfo and exprinfo.startswith(cls._assert_start_repr):\n423-                _striptext = \"AssertionError: \"\n3:from __future__ import absolute_import\n4:from __future__ import division\n5:from __future__ import print_function\n7:import bdb\n8:import os\n9:import sys\n10:from time import time\n12:import attr\n13:import six\n15:from .reports import CollectErrorRepr\n16:from .reports import CollectReport\n17:from .reports import TestReport\n18:from _pytest._code.code import ExceptionInfo\n19:from _pytest.outcomes import Exit\n20:from _pytest.outcomes import Skipped\n21:from _pytest.outcomes import TEST_OUTCOME\n207:    # Optional[ExceptionInfo]\n228:            excinfo = ExceptionInfo.from_current()",
+          "is_error": false
+        }
+      ]
+    }
+  ]
+}

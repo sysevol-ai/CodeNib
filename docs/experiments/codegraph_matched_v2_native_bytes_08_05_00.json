@@ -1,0 +1,12 @@
+{
+  "relative_native_path": "grade/logs/codenib-ad75acfc5c6f/matched-v2-codenib/pytest-dev__pytest-5809/report.json",
+  "whole_file_sha256": "02ffa7fa930f3b2d17f328fb3118613406ee941c54d4ae0b673b52e3a2f63b88",
+  "whole_file_bytes": 995,
+  "part": 0,
+  "parts": 1,
+  "content_encoding": "gzip+base64",
+  "gzip_mtime": 0,
+  "gzip_bytes": 268,
+  "base64_bytes": "H4sIAAAAAAACA7WSTWvDMAyG7/kVJefs4zLYciuDwWBshfZWitBcpTMYx0Ry11Dy32cn2SDzYJfUFxk9L9Ir2edsEU7uWiGWqz0dAcb73f3tQ14uzr1gEKGoD9AMr7WlgCo0TMVvTifNwgFL41PKXilirrwxLaBzRtM+1TbEtTn+RaI1BhYUzxN3PX1aPr/A5g1Wy/U6ob1i7B/gNoE/DbQ93MQIDlnoXdtr15blJmRWMVGWPVQNoRBY+hx0eVJwV6QGKtTGN3F9292EdlNxHme4/CyP6CTYGUeK5sLWi5nKoTGz1bK1BWSl9aAGoZPMvPHv3xPjvxuf5W0v0Cmb3rqs+wLQd2YQ4wMAAA==",
+  "scope": "Exact original native grading bytes under lossless compression; concatenate decoded gzip pieces, decompress, then verify the whole-file hash. No outcome replacement or repair regrade."
+}

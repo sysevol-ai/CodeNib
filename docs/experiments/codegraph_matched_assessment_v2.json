@@ -1,0 +1,2554 @@
+{
+  "schema_version": 2,
+  "recorded_utc": "2026-10-28T15:03:54.550752+00:00",
+  "scope": "Independent prospectively frozen v2 on three historically exposed Python sources; preserve all original v1 outcomes.",
+  "task_sha256": "218eb7085da807c3cb067ef742ff7ceff161910dad18c676458a5b599d2d45ea",
+  "policy_sha256": "cb373c0a407fbbc89bd4b12e30076b81b3aa9e77dc46cd017b7a32255f8b604a",
+  "binding_sha256": "c0a684ea39796d8334109edf674dad71e8311ed8976ca9f121cd669d9f20d40c",
+  "execution_summary_sha256": "b71e58d074639564ba26e9ef00d5f0a7e4bada8b681f29902b88c62d340f5a55",
+  "native_grading_summary_sha256": "da699eb82c8d62b2336c60c4a41163fe44e111d973c6e3684486ee6ecf87c0f6",
+  "assessment_artifacts": {
+    "psf__requests-1921": {
+      "path": "codegraph_source_assessment_v2_requests.json",
+      "sha256": "5089389e9e72545856037f5cedfbcc76f36cdb4bebd46f88df654056db6400d1"
+    },
+    "pallets__flask-5014": {
+      "path": "codegraph_source_assessment_v2_flask.json",
+      "sha256": "5edd49fbab31fa0e68fd0e3b44d0d08e909d0b9b02b778518fc92a1ca5aa9597"
+    },
+    "pytest-dev__pytest-5809": {
+      "path": "codegraph_source_assessment_v2_pytest.json",
+      "sha256": "95a64686ba2b08fd1a8ca2360e2c1ecab3aaff857746e96b2fefabd7fa34466e"
+    }
+  },
+  "source_counts": {
+    "reviewed": 48,
+    "accepted": 34,
+    "rejected": 14,
+    "unassessable": 0
+  },
+  "native_repairs_accepted": 12,
+  "arm_summary": {
+    "native": {
+      "accepted": 13,
+      "rejected": 2,
+      "unassessable": 0,
+      "serious_error_tasks": 1,
+      "observed_seconds": 511.72420630045235,
+      "penalized_seconds": 1135.1785276383162,
+      "normalized_recorded_tokens": 2115543,
+      "sdk_estimate_usd": 2.2648688,
+      "optional_mcp_attempts": 0
+    },
+    "serena": {
+      "accepted": 12,
+      "rejected": 3,
+      "unassessable": 0,
+      "serious_error_tasks": 1,
+      "observed_seconds": 567.9992205556482,
+      "penalized_seconds": 1529.4592134114355,
+      "normalized_recorded_tokens": 2191580,
+      "sdk_estimate_usd": 2.4546566,
+      "optional_mcp_attempts": 0
+    },
+    "codegraph": {
+      "accepted": 10,
+      "rejected": 5,
+      "unassessable": 0,
+      "serious_error_tasks": 4,
+      "observed_seconds": 526.6444468311965,
+      "penalized_seconds": 1959.8063272926956,
+      "normalized_recorded_tokens": 2510976,
+      "sdk_estimate_usd": 2.5575456,
+      "optional_mcp_attempts": 6
+    },
+    "codenib": {
+      "accepted": 11,
+      "rejected": 4,
+      "unassessable": 0,
+      "serious_error_tasks": 3,
+      "observed_seconds": 667.0050900615752,
+      "penalized_seconds": 1750.1602623369545,
+      "normalized_recorded_tokens": 2571238,
+      "sdk_estimate_usd": 2.7158119,
+      "optional_mcp_attempts": 0
+    }
+  },
+  "workflows": [
+    {
+      "workflow": {
+        "workflow_index": 0,
+        "instance_id": "psf__requests-1921",
+        "arm": "serena"
+      },
+      "tasks": [
+        {
+          "task_id": "psf__requests-1921-lookup",
+          "kind": "lookup",
+          "accepted": true,
+          "serious_error": false,
+          "findings": [],
+          "observed_seconds": 15.502863636240363,
+          "frozen_deadline_seconds": 180,
+          "penalty_if_rejected_seconds": 164.49713636375964,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 18.252315931767225
+        },
+        {
+          "task_id": "psf__requests-1921-flow",
+          "kind": "flow",
+          "accepted": true,
+          "serious_error": false,
+          "findings": [],
+          "observed_seconds": 47.69760560058057,
+          "frozen_deadline_seconds": 360,
+          "penalty_if_rejected_seconds": 312.3023943994194,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 50.44705789610744
+        },
+        {
+          "task_id": "psf__requests-1921-impact",
+          "kind": "impact",
+          "accepted": false,
+          "serious_error": false,
+          "findings": [
+            {
+              "category": "overstated_test_protection",
+              "serious": false,
+              "quote": "If the nested call started following redirects itself, the shape of `history` would change.",
+              "explanation": "The cited test follows exactly one redirect. The nested response is already terminal, so enabling its redirect traversal need not change history; the explanation overstates this test."
+            }
+          ],
+          "observed_seconds": 29.398555021733046,
+          "frozen_deadline_seconds": 360,
+          "penalty_if_rejected_seconds": 330.60144497826695,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 32.14800731725991
+        },
+        {
+          "task_id": "psf__requests-1921-repair",
+          "kind": "repair",
+          "accepted": true,
+          "serious_error": false,
+          "findings": [],
+          "observed_seconds": 29.13489092513919,
+          "frozen_deadline_seconds": 720,
+          "penalty_if_rejected_seconds": 690.8651090748608,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 31.88434322066605
+        },
+        {
+          "task_id": "psf__requests-1921-post_edit",
+          "kind": "post_edit",
+          "accepted": true,
+          "serious_error": false,
+          "findings": [],
+          "observed_seconds": 26.07734702527523,
+          "frozen_deadline_seconds": 180,
+          "penalty_if_rejected_seconds": 153.92265297472477,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 28.826799320802092
+        }
+      ],
+      "observed_seconds": 161.5585236866027,
+      "known_penalty_seconds": 330.60144497826695,
+      "unassessable_penalty_upper_seconds": 0,
+      "penalized_seconds": 492.15996866486967,
+      "penalized_interpretation_bounds_seconds": [
+        492.15996866486967,
+        492.15996866486967
+      ],
+      "non_phase_overhead_seconds": 13.74726147763431,
+      "normalized_recorded_tokens": 606755,
+      "sdk_estimate_usd": 0.7529119,
+      "optional_mcp_attempts": 0,
+      "repair_native_status": "graded",
+      "repair_native_result": {
+        "instance_id": "psf__requests-1921",
+        "status": "graded",
+        "resolved": true,
+        "container": "sweb.eval.psf__requests-1921.codenib-5546d64dab4f",
+        "model_calls": 0,
+        "native_report": {
+          "psf__requests-1921": {
+            "patch_is_None": false,
+            "patch_exists": true,
+            "patch_successfully_applied": true,
+            "resolved": true,
+            "tests_status": {
+              "FAIL_TO_PASS": {
+                "success": [
+                  "test_requests.py::RequestsTestCase::test_DIGESTAUTH_WRONG_HTTP_401_GET",
+                  "test_requests.py::RequestsTestCase::test_POSTBIN_GET_POST_FILES",
+                  "test_requests.py::RequestsTestCase::test_basicauth_with_netrc",
+                  "test_requests.py::RequestsTestCase::test_cookie_persists_via_api",
+                  "test_requests.py::RequestsTestCase::test_headers_on_session_with_None_are_not_sent",
+                  "test_requests.py::RequestsTestCase::test_uppercase_scheme_redirect"
+                ],
+                "failure": []
+              },
+              "PASS_TO_PASS": {
+                "success": [
+                  "test_requests.py::RequestsTestCase::test_DIGESTAUTH_QUOTES_QOP_VALUE",
+                  "test_requests.py::RequestsTestCase::test_DIGEST_AUTH_RETURNS_COOKIE",
+                  "test_requests.py::RequestsTestCase::test_DIGEST_STREAM",
+                  "test_requests.py::RequestsTestCase::test_HTTP_200_OK_GET_WITH_MIXED_PARAMS",
+                  "test_requests.py::RequestsTestCase::test_HTTP_200_OK_GET_WITH_PARAMS",
+                  "test_requests.py::RequestsTestCase::test_HTTP_200_OK_HEAD",
+                  "test_requests.py::RequestsTestCase::test_HTTP_200_OK_PUT",
+                  "test_requests.py::RequestsTestCase::test_HTTP_302_ALLOW_REDIRECT_GET",
+                  "test_requests.py::RequestsTestCase::test_POSTBIN_GET_POST_FILES_WITH_DATA",
+                  "test_requests.py::RequestsTestCase::test_autoset_header_values_are_native",
+                  "test_requests.py::RequestsTestCase::test_basic_building",
+                  "test_requests.py::RequestsTestCase::test_can_send_nonstring_objects_with_files",
+                  "test_requests.py::RequestsTestCase::test_cannot_send_unprepared_requests",
+                  "test_requests.py::RequestsTestCase::test_cookie_as_dict_items",
+                  "test_requests.py::RequestsTestCase::test_cookie_as_dict_keeps_items",
+                  "test_requests.py::RequestsTestCase::test_cookie_as_dict_keeps_len",
+                  "test_requests.py::RequestsTestCase::test_cookie_as_dict_keys",
+                  "test_requests.py::RequestsTestCase::test_cookie_as_dict_values",
+                  "test_requests.py::RequestsTestCase::test_cookie_parameters",
+                  "test_requests.py::RequestsTestCase::test_cookie_quote_wrapped",
+                  "test_requests.py::RequestsTestCase::test_cookie_removed_on_expire",
+                  "test_requests.py::RequestsTestCase::test_custom_content_type",
+                  "test_requests.py::RequestsTestCase::test_decompress_gzip",
+                  "test_requests.py::RequestsTestCase::test_different_encodings_dont_break_post",
+                  "test_requests.py::RequestsTestCase::test_entry_points",
+                  "test_requests.py::RequestsTestCase::test_fixes_1329",
+                  "test_requests.py::RequestsTestCase::test_generic_cookiejar_works",
+                  "test_requests.py::RequestsTestCase::test_get_auth_from_url",
+                  "test_requests.py::RequestsTestCase::test_get_auth_from_url_encoded_hashes",
+                  "test_requests.py::RequestsTestCase::test_get_auth_from_url_encoded_spaces",
+                  "test_requests.py::RequestsTestCase::test_get_auth_from_url_not_encoded_spaces",
+                  "test_requests.py::RequestsTestCase::test_get_auth_from_url_percent_chars",
+                  "test_requests.py::RequestsTestCase::test_header_keys_are_native",
+                  "test_requests.py::RequestsTestCase::test_header_remove_is_case_insensitive",
+                  "test_requests.py::RequestsTestCase::test_hook_receives_request_arguments",
+                  "test_requests.py::RequestsTestCase::test_http_error",
+                  "test_requests.py::RequestsTestCase::test_invalid_url",
+                  "test_requests.py::RequestsTestCase::test_links",
+                  "test_requests.py::RequestsTestCase::test_long_authinfo_in_url",
+                  "test_requests.py::RequestsTestCase::test_mixed_case_scheme_acceptable",
+                  "test_requests.py::RequestsTestCase::test_no_content_length",
+                  "test_requests.py::RequestsTestCase::test_oddball_schemes_dont_check_URLs",
+                  "test_requests.py::RequestsTestCase::test_param_cookiejar_works",
+                  "test_requests.py::RequestsTestCase::test_params_are_added_before_fragment",
+                  "test_requests.py::RequestsTestCase::test_params_are_merged_case_sensitive",
+                  "test_requests.py::RequestsTestCase::test_path_is_not_double_encoded",
+                  "test_requests.py::RequestsTestCase::test_prepared_from_session",
+                  "test_requests.py::RequestsTestCase::test_prepared_request_hook",
+                  "test_requests.py::RequestsTestCase::test_pyopenssl_redirect",
+                  "test_requests.py::RequestsTestCase::test_request_and_response_are_pickleable",
+                  "test_requests.py::RequestsTestCase::test_request_cookie_overrides_session_cookie",
+                  "test_requests.py::RequestsTestCase::test_request_cookies_not_persisted",
+                  "test_requests.py::RequestsTestCase::test_request_ok_set",
+                  "test_requests.py::RequestsTestCase::test_requests_in_history_are_not_overridden",
+                  "test_requests.py::RequestsTestCase::test_response_is_iterable",
+                  "test_requests.py::RequestsTestCase::test_session_hooks_are_overriden_by_request_hooks",
+                  "test_requests.py::RequestsTestCase::test_session_hooks_are_used_with_no_request_hooks",
+                  "test_requests.py::RequestsTestCase::test_session_pickling",
+                  "test_requests.py::RequestsTestCase::test_set_cookie_on_301",
+                  "test_requests.py::RequestsTestCase::test_status_raising",
+                  "test_requests.py::RequestsTestCase::test_time_elapsed_blank",
+                  "test_requests.py::RequestsTestCase::test_transport_adapter_ordering",
+                  "test_requests.py::RequestsTestCase::test_unicode_get",
+                  "test_requests.py::RequestsTestCase::test_unicode_header_name",
+                  "test_requests.py::RequestsTestCase::test_unicode_method_name",
+                  "test_requests.py::RequestsTestCase::test_unicode_multipart_post",
+                  "test_requests.py::RequestsTestCase::test_unicode_multipart_post_fieldnames",
+                  "test_requests.py::RequestsTestCase::test_urlencoded_get_query_multivalued_param",
+                  "test_requests.py::RequestsTestCase::test_user_agent_transfers",
+                  "test_requests.py::TestContentEncodingDetection::test_html4_pragma",
+                  "test_requests.py::TestContentEncodingDetection::test_html_charset",
+                  "test_requests.py::TestContentEncodingDetection::test_none",
+                  "test_requests.py::TestContentEncodingDetection::test_precedence",
+                  "test_requests.py::TestContentEncodingDetection::test_xhtml_pragma",
+                  "test_requests.py::TestContentEncodingDetection::test_xml",
+                  "test_requests.py::TestCaseInsensitiveDict::test_contains",
+                  "test_requests.py::TestCaseInsensitiveDict::test_delitem",
+                  "test_requests.py::TestCaseInsensitiveDict::test_docstring_example",
+                  "test_requests.py::TestCaseInsensitiveDict::test_equality",
+                  "test_requests.py::TestCaseInsensitiveDict::test_fixes_649",
+                  "test_requests.py::TestCaseInsensitiveDict::test_get",
+                  "test_requests.py::TestCaseInsensitiveDict::test_getitem",
+                  "test_requests.py::TestCaseInsensitiveDict::test_iter",
+                  "test_requests.py::TestCaseInsensitiveDict::test_iterable_init",
+                  "test_requests.py::TestCaseInsensitiveDict::test_kwargs_init",
+                  "test_requests.py::TestCaseInsensitiveDict::test_len",
+                  "test_requests.py::TestCaseInsensitiveDict::test_lower_items",
+                  "test_requests.py::TestCaseInsensitiveDict::test_mapping_init",
+                  "test_requests.py::TestCaseInsensitiveDict::test_preserve_key_case",
+                  "test_requests.py::TestCaseInsensitiveDict::test_preserve_last_key_case",
+                  "test_requests.py::TestCaseInsensitiveDict::test_setdefault",
+                  "test_requests.py::TestCaseInsensitiveDict::test_update",
+                  "test_requests.py::TestCaseInsensitiveDict::test_update_retains_unchanged",
+                  "test_requests.py::UtilsTestCase::test_address_in_network",
+                  "test_requests.py::UtilsTestCase::test_dotted_netmask",
+                  "test_requests.py::UtilsTestCase::test_get_auth_from_url",
+                  "test_requests.py::UtilsTestCase::test_get_environ_proxies",
+                  "test_requests.py::UtilsTestCase::test_get_environ_proxies_ip_ranges",
+                  "test_requests.py::UtilsTestCase::test_is_ipv4_address",
+                  "test_requests.py::UtilsTestCase::test_is_valid_cidr",
+                  "test_requests.py::UtilsTestCase::test_super_len_io_streams",
+                  "test_requests.py::TestMorselToCookieExpires::test_expires_invalid_int",
+                  "test_requests.py::TestMorselToCookieExpires::test_expires_invalid_str",
+                  "test_requests.py::TestMorselToCookieExpires::test_expires_none",
+                  "test_requests.py::TestMorselToCookieExpires::test_expires_valid_str",
+                  "test_requests.py::TestMorselToCookieMaxAge::test_max_age_invalid_str",
+                  "test_requests.py::TestMorselToCookieMaxAge::test_max_age_valid_int"
+                ],
+                "failure": []
+              },
+              "FAIL_TO_FAIL": {
+                "success": [],
+                "failure": []
+              },
+              "PASS_TO_FAIL": {
+                "success": [],
+                "failure": []
+              }
+            }
+          }
+        },
+        "observed_container_limits": {
+          "name": "sweb.eval.psf__requests-1921.codenib-5546d64dab4f",
+          "network_disabled": true,
+          "network_mode": "none",
+          "entrypoint": [],
+          "memory_bytes": 4294967296,
+          "nano_cpus": 2000000000,
+          "pids_limit": 256
+        },
+        "owned_container_removed": true
+      }
+    },
+    {
+      "workflow": {
+        "workflow_index": 1,
+        "instance_id": "psf__requests-1921",
+        "arm": "codenib"
+      },
+      "tasks": [
+        {
+          "task_id": "psf__requests-1921-lookup",
+          "kind": "lookup",
+          "accepted": true,
+          "serious_error": false,
+          "findings": [],
+          "observed_seconds": 24.03068190999329,
+          "frozen_deadline_seconds": 180,
+          "penalty_if_rejected_seconds": 155.9693180900067,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 30.329739156737922
+        },
+        {
+          "task_id": "psf__requests-1921-flow",
+          "kind": "flow",
+          "accepted": true,
+          "serious_error": false,
+          "findings": [],
+          "observed_seconds": 53.28283401951194,
+          "frozen_deadline_seconds": 360,
+          "penalty_if_rejected_seconds": 306.71716598048806,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 59.58189126625657
+        },
+        {
+          "task_id": "psf__requests-1921-impact",
+          "kind": "impact",
+          "accepted": true,
+          "serious_error": false,
+          "findings": [],
+          "observed_seconds": 38.82884632796049,
+          "frozen_deadline_seconds": 360,
+          "penalty_if_rejected_seconds": 321.1711536720395,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 45.12790357470512
+        },
+        {
+          "task_id": "psf__requests-1921-repair",
+          "kind": "repair",
+          "accepted": true,
+          "serious_error": false,
+          "findings": [],
+          "observed_seconds": 30.99251195974648,
+          "frozen_deadline_seconds": 720,
+          "penalty_if_rejected_seconds": 689.0074880402535,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 37.29156920649111
+        },
+        {
+          "task_id": "psf__requests-1921-post_edit",
+          "kind": "post_edit",
+          "accepted": true,
+          "serious_error": false,
+          "findings": [
+            {
+              "category": "nonmaterial_constructor_order",
+              "serious": false,
+              "quote": "in this order:",
+              "explanation": "The answer lists Request before Session, but Python evaluates the Session() receiver before the Request argument. Both remain preparation-only; the requested network boundary is correctly explained."
+            }
+          ],
+          "observed_seconds": 32.47764045931399,
+          "frozen_deadline_seconds": 180,
+          "penalty_if_rejected_seconds": 147.522359540686,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 38.77669770605862
+        }
+      ],
+      "observed_seconds": 211.10780091024935,
+      "known_penalty_seconds": 0,
+      "unassessable_penalty_upper_seconds": 0,
+      "penalized_seconds": 211.10780091024935,
+      "penalized_interpretation_bounds_seconds": [
+        211.10780091024935,
+        211.10780091024935
+      ],
+      "non_phase_overhead_seconds": 31.495286233723164,
+      "normalized_recorded_tokens": 955676,
+      "sdk_estimate_usd": 0.9268349,
+      "optional_mcp_attempts": 0,
+      "repair_native_status": "graded",
+      "repair_native_result": {
+        "instance_id": "psf__requests-1921",
+        "status": "graded",
+        "resolved": true,
+        "container": "sweb.eval.psf__requests-1921.codenib-d17871093639",
+        "model_calls": 0,
+        "native_report": {
+          "psf__requests-1921": {
+            "patch_is_None": false,
+            "patch_exists": true,
+            "patch_successfully_applied": true,
+            "resolved": true,
+            "tests_status": {
+              "FAIL_TO_PASS": {
+                "success": [
+                  "test_requests.py::RequestsTestCase::test_DIGESTAUTH_WRONG_HTTP_401_GET",
+                  "test_requests.py::RequestsTestCase::test_POSTBIN_GET_POST_FILES",
+                  "test_requests.py::RequestsTestCase::test_basicauth_with_netrc",
+                  "test_requests.py::RequestsTestCase::test_cookie_persists_via_api",
+                  "test_requests.py::RequestsTestCase::test_headers_on_session_with_None_are_not_sent",
+                  "test_requests.py::RequestsTestCase::test_uppercase_scheme_redirect"
+                ],
+                "failure": []
+              },
+              "PASS_TO_PASS": {
+                "success": [
+                  "test_requests.py::RequestsTestCase::test_DIGESTAUTH_QUOTES_QOP_VALUE",
+                  "test_requests.py::RequestsTestCase::test_DIGEST_AUTH_RETURNS_COOKIE",
+                  "test_requests.py::RequestsTestCase::test_DIGEST_STREAM",
+                  "test_requests.py::RequestsTestCase::test_HTTP_200_OK_GET_WITH_MIXED_PARAMS",
+                  "test_requests.py::RequestsTestCase::test_HTTP_200_OK_GET_WITH_PARAMS",
+                  "test_requests.py::RequestsTestCase::test_HTTP_200_OK_HEAD",
+                  "test_requests.py::RequestsTestCase::test_HTTP_200_OK_PUT",
+                  "test_requests.py::RequestsTestCase::test_HTTP_302_ALLOW_REDIRECT_GET",
+                  "test_requests.py::RequestsTestCase::test_POSTBIN_GET_POST_FILES_WITH_DATA",
+                  "test_requests.py::RequestsTestCase::test_autoset_header_values_are_native",
+                  "test_requests.py::RequestsTestCase::test_basic_building",
+                  "test_requests.py::RequestsTestCase::test_can_send_nonstring_objects_with_files",
+                  "test_requests.py::RequestsTestCase::test_cannot_send_unprepared_requests",
+                  "test_requests.py::RequestsTestCase::test_cookie_as_dict_items",
+                  "test_requests.py::RequestsTestCase::test_cookie_as_dict_keeps_items",
+                  "test_requests.py::RequestsTestCase::test_cookie_as_dict_keeps_len",
+                  "test_requests.py::RequestsTestCase::test_cookie_as_dict_keys",
+                  "test_requests.py::RequestsTestCase::test_cookie_as_dict_values",
+                  "test_requests.py::RequestsTestCase::test_cookie_parameters",
+                  "test_requests.py::RequestsTestCase::test_cookie_quote_wrapped",
+                  "test_requests.py::RequestsTestCase::test_cookie_removed_on_expire",
+                  "test_requests.py::RequestsTestCase::test_custom_content_type",
+                  "test_requests.py::RequestsTestCase::test_decompress_gzip",
+                  "test_requests.py::RequestsTestCase::test_different_encodings_dont_break_post",
+                  "test_requests.py::RequestsTestCase::test_entry_points",
+                  "test_requests.py::RequestsTestCase::test_fixes_1329",
+                  "test_requests.py::RequestsTestCase::test_generic_cookiejar_works",
+                  "test_requests.py::RequestsTestCase::test_get_auth_from_url",
+                  "test_requests.py::RequestsTestCase::test_get_auth_from_url_encoded_hashes",
+                  "test_requests.py::RequestsTestCase::test_get_auth_from_url_encoded_spaces",
+                  "test_requests.py::RequestsTestCase::test_get_auth_from_url_not_encoded_spaces",
+                  "test_requests.py::RequestsTestCase::test_get_auth_from_url_percent_chars",
+                  "test_requests.py::RequestsTestCase::test_header_keys_are_native",
+                  "test_requests.py::RequestsTestCase::test_header_remove_is_case_insensitive",
+                  "test_requests.py::RequestsTestCase::test_hook_receives_request_arguments",
+                  "test_requests.py::RequestsTestCase::test_http_error",
+                  "test_requests.py::RequestsTestCase::test_invalid_url",
+                  "test_requests.py::RequestsTestCase::test_links",
+                  "test_requests.py::RequestsTestCase::test_long_authinfo_in_url",
+                  "test_requests.py::RequestsTestCase::test_mixed_case_scheme_acceptable",
+                  "test_requests.py::RequestsTestCase::test_no_content_length",
+                  "test_requests.py::RequestsTestCase::test_oddball_schemes_dont_check_URLs",
+                  "test_requests.py::RequestsTestCase::test_param_cookiejar_works",
+                  "test_requests.py::RequestsTestCase::test_params_are_added_before_fragment",
+                  "test_requests.py::RequestsTestCase::test_params_are_merged_case_sensitive",
+                  "test_requests.py::RequestsTestCase::test_path_is_not_double_encoded",
+                  "test_requests.py::RequestsTestCase::test_prepared_from_session",
+                  "test_requests.py::RequestsTestCase::test_prepared_request_hook",
+                  "test_requests.py::RequestsTestCase::test_pyopenssl_redirect",
+                  "test_requests.py::RequestsTestCase::test_request_and_response_are_pickleable",
+                  "test_requests.py::RequestsTestCase::test_request_cookie_overrides_session_cookie",
+                  "test_requests.py::RequestsTestCase::test_request_cookies_not_persisted",
+                  "test_requests.py::RequestsTestCase::test_request_ok_set",
+                  "test_requests.py::RequestsTestCase::test_requests_in_history_are_not_overridden",
+                  "test_requests.py::RequestsTestCase::test_response_is_iterable",
+                  "test_requests.py::RequestsTestCase::test_session_hooks_are_overriden_by_request_hooks",
+                  "test_requests.py::RequestsTestCase::test_session_hooks_are_used_with_no_request_hooks",
+                  "test_requests.py::RequestsTestCase::test_session_pickling",
+                  "test_requests.py::RequestsTestCase::test_set_cookie_on_301",
+                  "test_requests.py::RequestsTestCase::test_status_raising",
+                  "test_requests.py::RequestsTestCase::test_time_elapsed_blank",
+                  "test_requests.py::RequestsTestCase::test_transport_adapter_ordering",
+                  "test_requests.py::RequestsTestCase::test_unicode_get",
+                  "test_requests.py::RequestsTestCase::test_unicode_header_name",
+                  "test_requests.py::RequestsTestCase::test_unicode_method_name",
+                  "test_requests.py::RequestsTestCase::test_unicode_multipart_post",
+                  "test_requests.py::RequestsTestCase::test_unicode_multipart_post_fieldnames",
+                  "test_requests.py::RequestsTestCase::test_urlencoded_get_query_multivalued_param",
+                  "test_requests.py::RequestsTestCase::test_user_agent_transfers",
+                  "test_requests.py::TestContentEncodingDetection::test_html4_pragma",
+                  "test_requests.py::TestContentEncodingDetection::test_html_charset",
+                  "test_requests.py::TestContentEncodingDetection::test_none",
+                  "test_requests.py::TestContentEncodingDetection::test_precedence",
+                  "test_requests.py::TestContentEncodingDetection::test_xhtml_pragma",
+                  "test_requests.py::TestContentEncodingDetection::test_xml",
+                  "test_requests.py::TestCaseInsensitiveDict::test_contains",
+                  "test_requests.py::TestCaseInsensitiveDict::test_delitem",
+                  "test_requests.py::TestCaseInsensitiveDict::test_docstring_example",
+                  "test_requests.py::TestCaseInsensitiveDict::test_equality",
+                  "test_requests.py::TestCaseInsensitiveDict::test_fixes_649",
+                  "test_requests.py::TestCaseInsensitiveDict::test_get",
+                  "test_requests.py::TestCaseInsensitiveDict::test_getitem",
+                  "test_requests.py::TestCaseInsensitiveDict::test_iter",
+                  "test_requests.py::TestCaseInsensitiveDict::test_iterable_init",
+                  "test_requests.py::TestCaseInsensitiveDict::test_kwargs_init",
+                  "test_requests.py::TestCaseInsensitiveDict::test_len",
+                  "test_requests.py::TestCaseInsensitiveDict::test_lower_items",
+                  "test_requests.py::TestCaseInsensitiveDict::test_mapping_init",
+                  "test_requests.py::TestCaseInsensitiveDict::test_preserve_key_case",
+                  "test_requests.py::TestCaseInsensitiveDict::test_preserve_last_key_case",
+                  "test_requests.py::TestCaseInsensitiveDict::test_setdefault",
+                  "test_requests.py::TestCaseInsensitiveDict::test_update",
+                  "test_requests.py::TestCaseInsensitiveDict::test_update_retains_unchanged",
+                  "test_requests.py::UtilsTestCase::test_address_in_network",
+                  "test_requests.py::UtilsTestCase::test_dotted_netmask",
+                  "test_requests.py::UtilsTestCase::test_get_auth_from_url",
+                  "test_requests.py::UtilsTestCase::test_get_environ_proxies",
+                  "test_requests.py::UtilsTestCase::test_get_environ_proxies_ip_ranges",
+                  "test_requests.py::UtilsTestCase::test_is_ipv4_address",
+                  "test_requests.py::UtilsTestCase::test_is_valid_cidr",
+                  "test_requests.py::UtilsTestCase::test_super_len_io_streams",
+                  "test_requests.py::TestMorselToCookieExpires::test_expires_invalid_int",
+                  "test_requests.py::TestMorselToCookieExpires::test_expires_invalid_str",
+                  "test_requests.py::TestMorselToCookieExpires::test_expires_none",
+                  "test_requests.py::TestMorselToCookieExpires::test_expires_valid_str",
+                  "test_requests.py::TestMorselToCookieMaxAge::test_max_age_invalid_str",
+                  "test_requests.py::TestMorselToCookieMaxAge::test_max_age_valid_int"
+                ],
+                "failure": []
+              },
+              "FAIL_TO_FAIL": {
+                "success": [],
+                "failure": []
+              },
+              "PASS_TO_FAIL": {
+                "success": [],
+                "failure": []
+              }
+            }
+          }
+        },
+        "observed_container_limits": {
+          "name": "sweb.eval.psf__requests-1921.codenib-d17871093639",
+          "network_disabled": true,
+          "network_mode": "none",
+          "entrypoint": [],
+          "memory_bytes": 4294967296,
+          "nano_cpus": 2000000000,
+          "pids_limit": 256
+        },
+        "owned_container_removed": true
+      }
+    },
+    {
+      "workflow": {
+        "workflow_index": 2,
+        "instance_id": "psf__requests-1921",
+        "arm": "codegraph"
+      },
+      "tasks": [
+        {
+          "task_id": "psf__requests-1921-lookup",
+          "kind": "lookup",
+          "accepted": true,
+          "serious_error": false,
+          "findings": [],
+          "observed_seconds": 11.199523298069835,
+          "frozen_deadline_seconds": 180,
+          "penalty_if_rejected_seconds": 168.80047670193017,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 13.359940243884921
+        },
+        {
+          "task_id": "psf__requests-1921-flow",
+          "kind": "flow",
+          "accepted": false,
+          "serious_error": true,
+          "findings": [
+            {
+              "category": "incorrect_redirect_method_condition",
+              "serious": true,
+              "quote": "303 becomes GET (except for HEAD), 302 becomes GET, and 301 after a POST becomes GET",
+              "explanation": "Unlike the separately qualified 303 rule, the 302 rule omits the source HEAD exclusion and predicts a different outgoing HTTP method."
+            }
+          ],
+          "observed_seconds": 46.55664340220392,
+          "frozen_deadline_seconds": 360,
+          "penalty_if_rejected_seconds": 313.4433565977961,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 48.717060348019004
+        },
+        {
+          "task_id": "psf__requests-1921-impact",
+          "kind": "impact",
+          "accepted": false,
+          "serious_error": true,
+          "findings": [
+            {
+              "category": "incorrect_digest_redirect_consequence",
+              "serious": true,
+              "quote": "So a 401 retry that itself gets redirected is not followed, and that behaviour doesn't depend on `send`'s redirect logic.",
+              "explanation": "auth.handle_401 returns the adapter response; dispatch_hook returns it to Session.send line 500, whose lines 512-520 then handle its Location/status when allow_redirects is true."
+            },
+            {
+              "category": "incorrect_default_option_dependency",
+              "serious": true,
+              "quote": "If it changes, every `requests.get()` / `Session.get()` call changes behaviour.",
+              "explanation": "The claim is tied to changing pop(..., True). Both GET helpers explicitly set allow_redirects=True, so changing that fallback alone does not change these ordinary calls."
+            }
+          ],
+          "observed_seconds": 31.161778895184398,
+          "frozen_deadline_seconds": 360,
+          "penalty_if_rejected_seconds": 328.8382211048156,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 33.322195840999484
+        },
+        {
+          "task_id": "psf__requests-1921-repair",
+          "kind": "repair",
+          "accepted": true,
+          "serious_error": false,
+          "findings": [],
+          "observed_seconds": 41.31990110129118,
+          "frozen_deadline_seconds": 720,
+          "penalty_if_rejected_seconds": 678.6800988987088,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 43.480318047106266
+        },
+        {
+          "task_id": "psf__requests-1921-post_edit",
+          "kind": "post_edit",
+          "accepted": true,
+          "serious_error": false,
+          "findings": [],
+          "observed_seconds": 24.237008206546307,
+          "frozen_deadline_seconds": 180,
+          "penalty_if_rejected_seconds": 155.7629917934537,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 26.397425152361393
+        }
+      ],
+      "observed_seconds": 165.27693963237107,
+      "known_penalty_seconds": 642.2815777026117,
+      "unassessable_penalty_upper_seconds": 0,
+      "penalized_seconds": 807.5585173349828,
+      "penalized_interpretation_bounds_seconds": [
+        807.5585173349828,
+        807.5585173349828
+      ],
+      "non_phase_overhead_seconds": 10.802084729075432,
+      "normalized_recorded_tokens": 651981,
+      "sdk_estimate_usd": 0.7732918999999999,
+      "optional_mcp_attempts": 2,
+      "repair_native_status": "graded",
+      "repair_native_result": {
+        "instance_id": "psf__requests-1921",
+        "status": "graded",
+        "resolved": true,
+        "container": "sweb.eval.psf__requests-1921.codenib-49f5eecef1f2",
+        "model_calls": 0,
+        "native_report": {
+          "psf__requests-1921": {
+            "patch_is_None": false,
+            "patch_exists": true,
+            "patch_successfully_applied": true,
+            "resolved": true,
+            "tests_status": {
+              "FAIL_TO_PASS": {
+                "success": [
+                  "test_requests.py::RequestsTestCase::test_DIGESTAUTH_WRONG_HTTP_401_GET",
+                  "test_requests.py::RequestsTestCase::test_POSTBIN_GET_POST_FILES",
+                  "test_requests.py::RequestsTestCase::test_basicauth_with_netrc",
+                  "test_requests.py::RequestsTestCase::test_cookie_persists_via_api",
+                  "test_requests.py::RequestsTestCase::test_headers_on_session_with_None_are_not_sent",
+                  "test_requests.py::RequestsTestCase::test_uppercase_scheme_redirect"
+                ],
+                "failure": []
+              },
+              "PASS_TO_PASS": {
+                "success": [
+                  "test_requests.py::RequestsTestCase::test_DIGESTAUTH_QUOTES_QOP_VALUE",
+                  "test_requests.py::RequestsTestCase::test_DIGEST_AUTH_RETURNS_COOKIE",
+                  "test_requests.py::RequestsTestCase::test_DIGEST_STREAM",
+                  "test_requests.py::RequestsTestCase::test_HTTP_200_OK_GET_WITH_MIXED_PARAMS",
+                  "test_requests.py::RequestsTestCase::test_HTTP_200_OK_GET_WITH_PARAMS",
+                  "test_requests.py::RequestsTestCase::test_HTTP_200_OK_HEAD",
+                  "test_requests.py::RequestsTestCase::test_HTTP_200_OK_PUT",
+                  "test_requests.py::RequestsTestCase::test_HTTP_302_ALLOW_REDIRECT_GET",
+                  "test_requests.py::RequestsTestCase::test_POSTBIN_GET_POST_FILES_WITH_DATA",
+                  "test_requests.py::RequestsTestCase::test_autoset_header_values_are_native",
+                  "test_requests.py::RequestsTestCase::test_basic_building",
+                  "test_requests.py::RequestsTestCase::test_can_send_nonstring_objects_with_files",
+                  "test_requests.py::RequestsTestCase::test_cannot_send_unprepared_requests",
+                  "test_requests.py::RequestsTestCase::test_cookie_as_dict_items",
+                  "test_requests.py::RequestsTestCase::test_cookie_as_dict_keeps_items",
+                  "test_requests.py::RequestsTestCase::test_cookie_as_dict_keeps_len",
+                  "test_requests.py::RequestsTestCase::test_cookie_as_dict_keys",
+                  "test_requests.py::RequestsTestCase::test_cookie_as_dict_values",
+                  "test_requests.py::RequestsTestCase::test_cookie_parameters",
+                  "test_requests.py::RequestsTestCase::test_cookie_quote_wrapped",
+                  "test_requests.py::RequestsTestCase::test_cookie_removed_on_expire",
+                  "test_requests.py::RequestsTestCase::test_custom_content_type",
+                  "test_requests.py::RequestsTestCase::test_decompress_gzip",
+                  "test_requests.py::RequestsTestCase::test_different_encodings_dont_break_post",
+                  "test_requests.py::RequestsTestCase::test_entry_points",
+                  "test_requests.py::RequestsTestCase::test_fixes_1329",
+                  "test_requests.py::RequestsTestCase::test_generic_cookiejar_works",
+                  "test_requests.py::RequestsTestCase::test_get_auth_from_url",
+                  "test_requests.py::RequestsTestCase::test_get_auth_from_url_encoded_hashes",
+                  "test_requests.py::RequestsTestCase::test_get_auth_from_url_encoded_spaces",
+                  "test_requests.py::RequestsTestCase::test_get_auth_from_url_not_encoded_spaces",
+                  "test_requests.py::RequestsTestCase::test_get_auth_from_url_percent_chars",
+                  "test_requests.py::RequestsTestCase::test_header_keys_are_native",
+                  "test_requests.py::RequestsTestCase::test_header_remove_is_case_insensitive",
+                  "test_requests.py::RequestsTestCase::test_hook_receives_request_arguments",
+                  "test_requests.py::RequestsTestCase::test_http_error",
+                  "test_requests.py::RequestsTestCase::test_invalid_url",
+                  "test_requests.py::RequestsTestCase::test_links",
+                  "test_requests.py::RequestsTestCase::test_long_authinfo_in_url",
+                  "test_requests.py::RequestsTestCase::test_mixed_case_scheme_acceptable",
+                  "test_requests.py::RequestsTestCase::test_no_content_length",
+                  "test_requests.py::RequestsTestCase::test_oddball_schemes_dont_check_URLs",
+                  "test_requests.py::RequestsTestCase::test_param_cookiejar_works",
+                  "test_requests.py::RequestsTestCase::test_params_are_added_before_fragment",
+                  "test_requests.py::RequestsTestCase::test_params_are_merged_case_sensitive",
+                  "test_requests.py::RequestsTestCase::test_path_is_not_double_encoded",
+                  "test_requests.py::RequestsTestCase::test_prepared_from_session",
+                  "test_requests.py::RequestsTestCase::test_prepared_request_hook",
+                  "test_requests.py::RequestsTestCase::test_pyopenssl_redirect",
+                  "test_requests.py::RequestsTestCase::test_request_and_response_are_pickleable",
+                  "test_requests.py::RequestsTestCase::test_request_cookie_overrides_session_cookie",
+                  "test_requests.py::RequestsTestCase::test_request_cookies_not_persisted",
+                  "test_requests.py::RequestsTestCase::test_request_ok_set",
+                  "test_requests.py::RequestsTestCase::test_requests_in_history_are_not_overridden",
+                  "test_requests.py::RequestsTestCase::test_response_is_iterable",
+                  "test_requests.py::RequestsTestCase::test_session_hooks_are_overriden_by_request_hooks",
+                  "test_requests.py::RequestsTestCase::test_session_hooks_are_used_with_no_request_hooks",
+                  "test_requests.py::RequestsTestCase::test_session_pickling",
+                  "test_requests.py::RequestsTestCase::test_set_cookie_on_301",
+                  "test_requests.py::RequestsTestCase::test_status_raising",
+                  "test_requests.py::RequestsTestCase::test_time_elapsed_blank",
+                  "test_requests.py::RequestsTestCase::test_transport_adapter_ordering",
+                  "test_requests.py::RequestsTestCase::test_unicode_get",
+                  "test_requests.py::RequestsTestCase::test_unicode_header_name",
+                  "test_requests.py::RequestsTestCase::test_unicode_method_name",
+                  "test_requests.py::RequestsTestCase::test_unicode_multipart_post",
+                  "test_requests.py::RequestsTestCase::test_unicode_multipart_post_fieldnames",
+                  "test_requests.py::RequestsTestCase::test_urlencoded_get_query_multivalued_param",
+                  "test_requests.py::RequestsTestCase::test_user_agent_transfers",
+                  "test_requests.py::TestContentEncodingDetection::test_html4_pragma",
+                  "test_requests.py::TestContentEncodingDetection::test_html_charset",
+                  "test_requests.py::TestContentEncodingDetection::test_none",
+                  "test_requests.py::TestContentEncodingDetection::test_precedence",
+                  "test_requests.py::TestContentEncodingDetection::test_xhtml_pragma",
+                  "test_requests.py::TestContentEncodingDetection::test_xml",
+                  "test_requests.py::TestCaseInsensitiveDict::test_contains",
+                  "test_requests.py::TestCaseInsensitiveDict::test_delitem",
+                  "test_requests.py::TestCaseInsensitiveDict::test_docstring_example",
+                  "test_requests.py::TestCaseInsensitiveDict::test_equality",
+                  "test_requests.py::TestCaseInsensitiveDict::test_fixes_649",
+                  "test_requests.py::TestCaseInsensitiveDict::test_get",
+                  "test_requests.py::TestCaseInsensitiveDict::test_getitem",
+                  "test_requests.py::TestCaseInsensitiveDict::test_iter",
+                  "test_requests.py::TestCaseInsensitiveDict::test_iterable_init",
+                  "test_requests.py::TestCaseInsensitiveDict::test_kwargs_init",
+                  "test_requests.py::TestCaseInsensitiveDict::test_len",
+                  "test_requests.py::TestCaseInsensitiveDict::test_lower_items",
+                  "test_requests.py::TestCaseInsensitiveDict::test_mapping_init",
+                  "test_requests.py::TestCaseInsensitiveDict::test_preserve_key_case",
+                  "test_requests.py::TestCaseInsensitiveDict::test_preserve_last_key_case",
+                  "test_requests.py::TestCaseInsensitiveDict::test_setdefault",
+                  "test_requests.py::TestCaseInsensitiveDict::test_update",
+                  "test_requests.py::TestCaseInsensitiveDict::test_update_retains_unchanged",
+                  "test_requests.py::UtilsTestCase::test_address_in_network",
+                  "test_requests.py::UtilsTestCase::test_dotted_netmask",
+                  "test_requests.py::UtilsTestCase::test_get_auth_from_url",
+                  "test_requests.py::UtilsTestCase::test_get_environ_proxies",
+                  "test_requests.py::UtilsTestCase::test_get_environ_proxies_ip_ranges",
+                  "test_requests.py::UtilsTestCase::test_is_ipv4_address",
+                  "test_requests.py::UtilsTestCase::test_is_valid_cidr",
+                  "test_requests.py::UtilsTestCase::test_super_len_io_streams",
+                  "test_requests.py::TestMorselToCookieExpires::test_expires_invalid_int",
+                  "test_requests.py::TestMorselToCookieExpires::test_expires_invalid_str",
+                  "test_requests.py::TestMorselToCookieExpires::test_expires_none",
+                  "test_requests.py::TestMorselToCookieExpires::test_expires_valid_str",
+                  "test_requests.py::TestMorselToCookieMaxAge::test_max_age_invalid_str",
+                  "test_requests.py::TestMorselToCookieMaxAge::test_max_age_valid_int"
+                ],
+                "failure": []
+              },
+              "FAIL_TO_FAIL": {
+                "success": [],
+                "failure": []
+              },
+              "PASS_TO_FAIL": {
+                "success": [],
+                "failure": []
+              }
+            }
+          }
+        },
+        "observed_container_limits": {
+          "name": "sweb.eval.psf__requests-1921.codenib-49f5eecef1f2",
+          "network_disabled": true,
+          "network_mode": "none",
+          "entrypoint": [],
+          "memory_bytes": 4294967296,
+          "nano_cpus": 2000000000,
+          "pids_limit": 256
+        },
+        "owned_container_removed": true
+      }
+    },
+    {
+      "workflow": {
+        "workflow_index": 3,
+        "instance_id": "psf__requests-1921",
+        "arm": "native"
+      },
+      "tasks": [
+        {
+          "task_id": "psf__requests-1921-lookup",
+          "kind": "lookup",
+          "accepted": true,
+          "serious_error": false,
+          "findings": [],
+          "observed_seconds": 18.26679326966405,
+          "frozen_deadline_seconds": 180,
+          "penalty_if_rejected_seconds": 161.73320673033595,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 18.65145818516612
+        },
+        {
+          "task_id": "psf__requests-1921-flow",
+          "kind": "flow",
+          "accepted": true,
+          "serious_error": false,
+          "findings": [],
+          "observed_seconds": 49.561358412727714,
+          "frozen_deadline_seconds": 360,
+          "penalty_if_rejected_seconds": 310.4386415872723,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 49.946023328229785
+        },
+        {
+          "task_id": "psf__requests-1921-impact",
+          "kind": "impact",
+          "accepted": true,
+          "serious_error": false,
+          "findings": [],
+          "observed_seconds": 33.269751004874706,
+          "frozen_deadline_seconds": 360,
+          "penalty_if_rejected_seconds": 326.7302489951253,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 33.65441592037678
+        },
+        {
+          "task_id": "psf__requests-1921-repair",
+          "kind": "repair",
+          "accepted": true,
+          "serious_error": false,
+          "findings": [],
+          "observed_seconds": 39.149959249421954,
+          "frozen_deadline_seconds": 720,
+          "penalty_if_rejected_seconds": 680.850040750578,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 39.534624164924026
+        },
+        {
+          "task_id": "psf__requests-1921-post_edit",
+          "kind": "post_edit",
+          "accepted": true,
+          "serious_error": false,
+          "findings": [
+            {
+              "category": "nonmaterial_constructor_order",
+              "serious": false,
+              "quote": "in this order:",
+              "explanation": "The answer lists Request before Session, but Python evaluates the Session() receiver before the Request argument. Both remain preparation-only; the requested network boundary is correctly explained."
+            }
+          ],
+          "observed_seconds": 24.882395569235086,
+          "frozen_deadline_seconds": 180,
+          "penalty_if_rejected_seconds": 155.1176044307649,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 25.267060484737158
+        }
+      ],
+      "observed_seconds": 167.05358208343387,
+      "known_penalty_seconds": 0,
+      "unassessable_penalty_upper_seconds": 0,
+      "penalized_seconds": 167.05358208343387,
+      "penalized_interpretation_bounds_seconds": [
+        167.05358208343387,
+        167.05358208343387
+      ],
+      "non_phase_overhead_seconds": 1.923324577510357,
+      "normalized_recorded_tokens": 680514,
+      "sdk_estimate_usd": 0.7465622,
+      "optional_mcp_attempts": 0,
+      "repair_native_status": "graded",
+      "repair_native_result": {
+        "instance_id": "psf__requests-1921",
+        "status": "graded",
+        "resolved": true,
+        "container": "sweb.eval.psf__requests-1921.codenib-d7ab4df10c00",
+        "model_calls": 0,
+        "native_report": {
+          "psf__requests-1921": {
+            "patch_is_None": false,
+            "patch_exists": true,
+            "patch_successfully_applied": true,
+            "resolved": true,
+            "tests_status": {
+              "FAIL_TO_PASS": {
+                "success": [
+                  "test_requests.py::RequestsTestCase::test_DIGESTAUTH_WRONG_HTTP_401_GET",
+                  "test_requests.py::RequestsTestCase::test_POSTBIN_GET_POST_FILES",
+                  "test_requests.py::RequestsTestCase::test_basicauth_with_netrc",
+                  "test_requests.py::RequestsTestCase::test_cookie_persists_via_api",
+                  "test_requests.py::RequestsTestCase::test_headers_on_session_with_None_are_not_sent",
+                  "test_requests.py::RequestsTestCase::test_uppercase_scheme_redirect"
+                ],
+                "failure": []
+              },
+              "PASS_TO_PASS": {
+                "success": [
+                  "test_requests.py::RequestsTestCase::test_DIGESTAUTH_QUOTES_QOP_VALUE",
+                  "test_requests.py::RequestsTestCase::test_DIGEST_AUTH_RETURNS_COOKIE",
+                  "test_requests.py::RequestsTestCase::test_DIGEST_STREAM",
+                  "test_requests.py::RequestsTestCase::test_HTTP_200_OK_GET_WITH_MIXED_PARAMS",
+                  "test_requests.py::RequestsTestCase::test_HTTP_200_OK_GET_WITH_PARAMS",
+                  "test_requests.py::RequestsTestCase::test_HTTP_200_OK_HEAD",
+                  "test_requests.py::RequestsTestCase::test_HTTP_200_OK_PUT",
+                  "test_requests.py::RequestsTestCase::test_HTTP_302_ALLOW_REDIRECT_GET",
+                  "test_requests.py::RequestsTestCase::test_POSTBIN_GET_POST_FILES_WITH_DATA",
+                  "test_requests.py::RequestsTestCase::test_autoset_header_values_are_native",
+                  "test_requests.py::RequestsTestCase::test_basic_building",
+                  "test_requests.py::RequestsTestCase::test_can_send_nonstring_objects_with_files",
+                  "test_requests.py::RequestsTestCase::test_cannot_send_unprepared_requests",
+                  "test_requests.py::RequestsTestCase::test_cookie_as_dict_items",
+                  "test_requests.py::RequestsTestCase::test_cookie_as_dict_keeps_items",
+                  "test_requests.py::RequestsTestCase::test_cookie_as_dict_keeps_len",
+                  "test_requests.py::RequestsTestCase::test_cookie_as_dict_keys",
+                  "test_requests.py::RequestsTestCase::test_cookie_as_dict_values",
+                  "test_requests.py::RequestsTestCase::test_cookie_parameters",
+                  "test_requests.py::RequestsTestCase::test_cookie_quote_wrapped",
+                  "test_requests.py::RequestsTestCase::test_cookie_removed_on_expire",
+                  "test_requests.py::RequestsTestCase::test_custom_content_type",
+                  "test_requests.py::RequestsTestCase::test_decompress_gzip",
+                  "test_requests.py::RequestsTestCase::test_different_encodings_dont_break_post",
+                  "test_requests.py::RequestsTestCase::test_entry_points",
+                  "test_requests.py::RequestsTestCase::test_fixes_1329",
+                  "test_requests.py::RequestsTestCase::test_generic_cookiejar_works",
+                  "test_requests.py::RequestsTestCase::test_get_auth_from_url",
+                  "test_requests.py::RequestsTestCase::test_get_auth_from_url_encoded_hashes",
+                  "test_requests.py::RequestsTestCase::test_get_auth_from_url_encoded_spaces",
+                  "test_requests.py::RequestsTestCase::test_get_auth_from_url_not_encoded_spaces",
+                  "test_requests.py::RequestsTestCase::test_get_auth_from_url_percent_chars",
+                  "test_requests.py::RequestsTestCase::test_header_keys_are_native",
+                  "test_requests.py::RequestsTestCase::test_header_remove_is_case_insensitive",
+                  "test_requests.py::RequestsTestCase::test_hook_receives_request_arguments",
+                  "test_requests.py::RequestsTestCase::test_http_error",
+                  "test_requests.py::RequestsTestCase::test_invalid_url",
+                  "test_requests.py::RequestsTestCase::test_links",
+                  "test_requests.py::RequestsTestCase::test_long_authinfo_in_url",
+                  "test_requests.py::RequestsTestCase::test_mixed_case_scheme_acceptable",
+                  "test_requests.py::RequestsTestCase::test_no_content_length",
+                  "test_requests.py::RequestsTestCase::test_oddball_schemes_dont_check_URLs",
+                  "test_requests.py::RequestsTestCase::test_param_cookiejar_works",
+                  "test_requests.py::RequestsTestCase::test_params_are_added_before_fragment",
+                  "test_requests.py::RequestsTestCase::test_params_are_merged_case_sensitive",
+                  "test_requests.py::RequestsTestCase::test_path_is_not_double_encoded",
+                  "test_requests.py::RequestsTestCase::test_prepared_from_session",
+                  "test_requests.py::RequestsTestCase::test_prepared_request_hook",
+                  "test_requests.py::RequestsTestCase::test_pyopenssl_redirect",
+                  "test_requests.py::RequestsTestCase::test_request_and_response_are_pickleable",
+                  "test_requests.py::RequestsTestCase::test_request_cookie_overrides_session_cookie",
+                  "test_requests.py::RequestsTestCase::test_request_cookies_not_persisted",
+                  "test_requests.py::RequestsTestCase::test_request_ok_set",
+                  "test_requests.py::RequestsTestCase::test_requests_in_history_are_not_overridden",
+                  "test_requests.py::RequestsTestCase::test_response_is_iterable",
+                  "test_requests.py::RequestsTestCase::test_session_hooks_are_overriden_by_request_hooks",
+                  "test_requests.py::RequestsTestCase::test_session_hooks_are_used_with_no_request_hooks",
+                  "test_requests.py::RequestsTestCase::test_session_pickling",
+                  "test_requests.py::RequestsTestCase::test_set_cookie_on_301",
+                  "test_requests.py::RequestsTestCase::test_status_raising",
+                  "test_requests.py::RequestsTestCase::test_time_elapsed_blank",
+                  "test_requests.py::RequestsTestCase::test_transport_adapter_ordering",
+                  "test_requests.py::RequestsTestCase::test_unicode_get",
+                  "test_requests.py::RequestsTestCase::test_unicode_header_name",
+                  "test_requests.py::RequestsTestCase::test_unicode_method_name",
+                  "test_requests.py::RequestsTestCase::test_unicode_multipart_post",
+                  "test_requests.py::RequestsTestCase::test_unicode_multipart_post_fieldnames",
+                  "test_requests.py::RequestsTestCase::test_urlencoded_get_query_multivalued_param",
+                  "test_requests.py::RequestsTestCase::test_user_agent_transfers",
+                  "test_requests.py::TestContentEncodingDetection::test_html4_pragma",
+                  "test_requests.py::TestContentEncodingDetection::test_html_charset",
+                  "test_requests.py::TestContentEncodingDetection::test_none",
+                  "test_requests.py::TestContentEncodingDetection::test_precedence",
+                  "test_requests.py::TestContentEncodingDetection::test_xhtml_pragma",
+                  "test_requests.py::TestContentEncodingDetection::test_xml",
+                  "test_requests.py::TestCaseInsensitiveDict::test_contains",
+                  "test_requests.py::TestCaseInsensitiveDict::test_delitem",
+                  "test_requests.py::TestCaseInsensitiveDict::test_docstring_example",
+                  "test_requests.py::TestCaseInsensitiveDict::test_equality",
+                  "test_requests.py::TestCaseInsensitiveDict::test_fixes_649",
+                  "test_requests.py::TestCaseInsensitiveDict::test_get",
+                  "test_requests.py::TestCaseInsensitiveDict::test_getitem",
+                  "test_requests.py::TestCaseInsensitiveDict::test_iter",
+                  "test_requests.py::TestCaseInsensitiveDict::test_iterable_init",
+                  "test_requests.py::TestCaseInsensitiveDict::test_kwargs_init",
+                  "test_requests.py::TestCaseInsensitiveDict::test_len",
+                  "test_requests.py::TestCaseInsensitiveDict::test_lower_items",
+                  "test_requests.py::TestCaseInsensitiveDict::test_mapping_init",
+                  "test_requests.py::TestCaseInsensitiveDict::test_preserve_key_case",
+                  "test_requests.py::TestCaseInsensitiveDict::test_preserve_last_key_case",
+                  "test_requests.py::TestCaseInsensitiveDict::test_setdefault",
+                  "test_requests.py::TestCaseInsensitiveDict::test_update",
+                  "test_requests.py::TestCaseInsensitiveDict::test_update_retains_unchanged",
+                  "test_requests.py::UtilsTestCase::test_address_in_network",
+                  "test_requests.py::UtilsTestCase::test_dotted_netmask",
+                  "test_requests.py::UtilsTestCase::test_get_auth_from_url",
+                  "test_requests.py::UtilsTestCase::test_get_environ_proxies",
+                  "test_requests.py::UtilsTestCase::test_get_environ_proxies_ip_ranges",
+                  "test_requests.py::UtilsTestCase::test_is_ipv4_address",
+                  "test_requests.py::UtilsTestCase::test_is_valid_cidr",
+                  "test_requests.py::UtilsTestCase::test_super_len_io_streams",
+                  "test_requests.py::TestMorselToCookieExpires::test_expires_invalid_int",
+                  "test_requests.py::TestMorselToCookieExpires::test_expires_invalid_str",
+                  "test_requests.py::TestMorselToCookieExpires::test_expires_none",
+                  "test_requests.py::TestMorselToCookieExpires::test_expires_valid_str",
+                  "test_requests.py::TestMorselToCookieMaxAge::test_max_age_invalid_str",
+                  "test_requests.py::TestMorselToCookieMaxAge::test_max_age_valid_int"
+                ],
+                "failure": []
+              },
+              "FAIL_TO_FAIL": {
+                "success": [],
+                "failure": []
+              },
+              "PASS_TO_FAIL": {
+                "success": [],
+                "failure": []
+              }
+            }
+          }
+        },
+        "observed_container_limits": {
+          "name": "sweb.eval.psf__requests-1921.codenib-d7ab4df10c00",
+          "network_disabled": true,
+          "network_mode": "none",
+          "entrypoint": [],
+          "memory_bytes": 4294967296,
+          "nano_cpus": 2000000000,
+          "pids_limit": 256
+        },
+        "owned_container_removed": true
+      }
+    },
+    {
+      "workflow": {
+        "workflow_index": 4,
+        "instance_id": "pallets__flask-5014",
+        "arm": "serena"
+      },
+      "tasks": [
+        {
+          "task_id": "pallets__flask-5014-lookup",
+          "kind": "lookup",
+          "accepted": true,
+          "serious_error": false,
+          "findings": [],
+          "observed_seconds": 30.41268691048026,
+          "frozen_deadline_seconds": 180,
+          "penalty_if_rejected_seconds": 149.58731308951974,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 33.25944344550371
+        },
+        {
+          "task_id": "pallets__flask-5014-flow",
+          "kind": "flow",
+          "accepted": true,
+          "serious_error": false,
+          "findings": [],
+          "observed_seconds": 55.373016465455294,
+          "frozen_deadline_seconds": 360,
+          "penalty_if_rejected_seconds": 304.6269835345447,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 58.219773000478746
+        },
+        {
+          "task_id": "pallets__flask-5014-impact",
+          "kind": "impact",
+          "accepted": false,
+          "serious_error": false,
+          "findings": [
+            {
+              "category": "missed_existing_session_order_test",
+              "serious": false,
+              "quote": "only reverse order among app-level `after_request` functions, and that after-request runs before teardown.",
+              "explanation": "An existing third ordering regression mutates session in after_request and checks that the next request observes it; moving session save before that callback breaks the observable guarantee."
+            }
+          ],
+          "observed_seconds": 49.27473138459027,
+          "frozen_deadline_seconds": 360,
+          "penalty_if_rejected_seconds": 310.72526861540973,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 52.12148791961372
+        },
+        {
+          "task_id": "pallets__flask-5014-repair",
+          "kind": "repair",
+          "accepted": true,
+          "serious_error": false,
+          "findings": [],
+          "observed_seconds": 56.72998574748635,
+          "frozen_deadline_seconds": 720,
+          "penalty_if_rejected_seconds": 663.2700142525136,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 59.576742282509805
+        },
+        {
+          "task_id": "pallets__flask-5014-post_edit",
+          "kind": "post_edit",
+          "accepted": true,
+          "serious_error": false,
+          "findings": [],
+          "observed_seconds": 37.224807946011424,
+          "frozen_deadline_seconds": 180,
+          "penalty_if_rejected_seconds": 142.77519205398858,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 40.071564481034876
+        }
+      ],
+      "observed_seconds": 243.24901112914085,
+      "known_penalty_seconds": 310.72526861540973,
+      "unassessable_penalty_upper_seconds": 0,
+      "penalized_seconds": 553.9742797445506,
+      "penalized_interpretation_bounds_seconds": [
+        553.9742797445506,
+        553.9742797445506
+      ],
+      "non_phase_overhead_seconds": 14.233782675117254,
+      "normalized_recorded_tokens": 879695,
+      "sdk_estimate_usd": 0.9211660999999998,
+      "optional_mcp_attempts": 0,
+      "repair_native_status": "graded",
+      "repair_native_result": {
+        "instance_id": "pallets__flask-5014",
+        "status": "graded",
+        "resolved": true,
+        "container": "sweb.eval.pallets__flask-5014.codenib-c36883757df5",
+        "model_calls": 0,
+        "native_report": {
+          "pallets__flask-5014": {
+            "patch_is_None": false,
+            "patch_exists": true,
+            "patch_successfully_applied": true,
+            "resolved": true,
+            "tests_status": {
+              "FAIL_TO_PASS": {
+                "success": [
+                  "tests/test_blueprints.py::test_empty_name_not_allowed"
+                ],
+                "failure": []
+              },
+              "PASS_TO_PASS": {
+                "success": [
+                  "tests/test_blueprints.py::test_blueprint_specific_error_handling",
+                  "tests/test_blueprints.py::test_blueprint_specific_user_error_handling",
+                  "tests/test_blueprints.py::test_blueprint_app_error_handling",
+                  "tests/test_blueprints.py::test_blueprint_prefix_slash[-/-/]",
+                  "tests/test_blueprints.py::test_blueprint_prefix_slash[/--/]",
+                  "tests/test_blueprints.py::test_blueprint_prefix_slash[/-/-/]",
+                  "tests/test_blueprints.py::test_blueprint_prefix_slash[/foo--/foo]",
+                  "tests/test_blueprints.py::test_blueprint_prefix_slash[/foo/--/foo/]",
+                  "tests/test_blueprints.py::test_blueprint_prefix_slash[-/bar-/bar]",
+                  "tests/test_blueprints.py::test_blueprint_prefix_slash[/foo/-/bar-/foo/bar]",
+                  "tests/test_blueprints.py::test_blueprint_prefix_slash[/foo/-bar-/foo/bar]",
+                  "tests/test_blueprints.py::test_blueprint_prefix_slash[/foo-/bar-/foo/bar]",
+                  "tests/test_blueprints.py::test_blueprint_prefix_slash[/foo/-//bar-/foo/bar]",
+                  "tests/test_blueprints.py::test_blueprint_prefix_slash[/foo//-/bar-/foo/bar]",
+                  "tests/test_blueprints.py::test_blueprint_url_defaults",
+                  "tests/test_blueprints.py::test_blueprint_url_processors",
+                  "tests/test_blueprints.py::test_templates_and_static",
+                  "tests/test_blueprints.py::test_default_static_max_age",
+                  "tests/test_blueprints.py::test_templates_list",
+                  "tests/test_blueprints.py::test_dotted_name_not_allowed",
+                  "tests/test_blueprints.py::test_dotted_names_from_app",
+                  "tests/test_blueprints.py::test_empty_url_defaults",
+                  "tests/test_blueprints.py::test_route_decorator_custom_endpoint",
+                  "tests/test_blueprints.py::test_route_decorator_custom_endpoint_with_dots",
+                  "tests/test_blueprints.py::test_endpoint_decorator",
+                  "tests/test_blueprints.py::test_template_filter",
+                  "tests/test_blueprints.py::test_add_template_filter",
+                  "tests/test_blueprints.py::test_template_filter_with_name",
+                  "tests/test_blueprints.py::test_add_template_filter_with_name",
+                  "tests/test_blueprints.py::test_template_filter_with_template",
+                  "tests/test_blueprints.py::test_template_filter_after_route_with_template",
+                  "tests/test_blueprints.py::test_add_template_filter_with_template",
+                  "tests/test_blueprints.py::test_template_filter_with_name_and_template",
+                  "tests/test_blueprints.py::test_add_template_filter_with_name_and_template",
+                  "tests/test_blueprints.py::test_template_test",
+                  "tests/test_blueprints.py::test_add_template_test",
+                  "tests/test_blueprints.py::test_template_test_with_name",
+                  "tests/test_blueprints.py::test_add_template_test_with_name",
+                  "tests/test_blueprints.py::test_template_test_with_template",
+                  "tests/test_blueprints.py::test_template_test_after_route_with_template",
+                  "tests/test_blueprints.py::test_add_template_test_with_template",
+                  "tests/test_blueprints.py::test_template_test_with_name_and_template",
+                  "tests/test_blueprints.py::test_add_template_test_with_name_and_template",
+                  "tests/test_blueprints.py::test_context_processing",
+                  "tests/test_blueprints.py::test_template_global",
+                  "tests/test_blueprints.py::test_request_processing",
+                  "tests/test_blueprints.py::test_app_request_processing",
+                  "tests/test_blueprints.py::test_app_url_processors",
+                  "tests/test_blueprints.py::test_nested_blueprint",
+                  "tests/test_blueprints.py::test_nested_callback_order",
+                  "tests/test_blueprints.py::test_nesting_url_prefixes[/parent-/child-None-None]",
+                  "tests/test_blueprints.py::test_nesting_url_prefixes[/parent-None-None-/child]",
+                  "tests/test_blueprints.py::test_nesting_url_prefixes[None-None-/parent-/child]",
+                  "tests/test_blueprints.py::test_nesting_url_prefixes[/other-/something-/parent-/child]",
+                  "tests/test_blueprints.py::test_nesting_subdomains",
+                  "tests/test_blueprints.py::test_child_and_parent_subdomain",
+                  "tests/test_blueprints.py::test_unique_blueprint_names",
+                  "tests/test_blueprints.py::test_self_registration",
+                  "tests/test_blueprints.py::test_blueprint_renaming"
+                ],
+                "failure": []
+              },
+              "FAIL_TO_FAIL": {
+                "success": [],
+                "failure": []
+              },
+              "PASS_TO_FAIL": {
+                "success": [],
+                "failure": []
+              }
+            }
+          }
+        },
+        "observed_container_limits": {
+          "name": "sweb.eval.pallets__flask-5014.codenib-c36883757df5",
+          "network_disabled": true,
+          "network_mode": "none",
+          "entrypoint": [],
+          "memory_bytes": 4294967296,
+          "nano_cpus": 2000000000,
+          "pids_limit": 256
+        },
+        "owned_container_removed": true
+      }
+    },
+    {
+      "workflow": {
+        "workflow_index": 5,
+        "instance_id": "pallets__flask-5014",
+        "arm": "codegraph"
+      },
+      "tasks": [
+        {
+          "task_id": "pallets__flask-5014-lookup",
+          "kind": "lookup",
+          "accepted": true,
+          "serious_error": false,
+          "findings": [],
+          "observed_seconds": 38.16444426961243,
+          "frozen_deadline_seconds": 180,
+          "penalty_if_rejected_seconds": 141.83555573038757,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 40.38860327601433
+        },
+        {
+          "task_id": "pallets__flask-5014-flow",
+          "kind": "flow",
+          "accepted": false,
+          "serious_error": true,
+          "findings": [
+            {
+              "category": "incorrect_exception_propagation_condition",
+              "serious": true,
+              "quote": "Re-raises if `PROPAGATE_EXCEPTIONS` (or testing/debug) is on.",
+              "explanation": "Testing/debug supply a fallback only when PROPAGATE_EXCEPTIONS is None. An explicit False suppresses propagation even with debug=True, as the pinned post-run source audit confirms."
+            },
+            {
+              "category": "registration_name_and_citation_error",
+              "serious": false,
+              "quote": "`Scaffold.add_url_rule` (`src/flask/scaffold.py:526`)",
+              "explanation": "The assignment at scaffold.py:526 belongs to the endpoint decorator, not Scaffold.add_url_rule. The correctly cited Flask.add_url_rule still establishes view registration."
+            }
+          ],
+          "observed_seconds": 45.592240896075964,
+          "frozen_deadline_seconds": 360,
+          "penalty_if_rejected_seconds": 314.40775910392404,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 47.81639990247786
+        },
+        {
+          "task_id": "pallets__flask-5014-impact",
+          "kind": "impact",
+          "accepted": true,
+          "serious_error": false,
+          "findings": [],
+          "observed_seconds": 46.34080488048494,
+          "frozen_deadline_seconds": 360,
+          "penalty_if_rejected_seconds": 313.65919511951506,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 48.56496388688684
+        },
+        {
+          "task_id": "pallets__flask-5014-repair",
+          "kind": "repair",
+          "accepted": true,
+          "serious_error": false,
+          "findings": [],
+          "observed_seconds": 38.61932163499296,
+          "frozen_deadline_seconds": 720,
+          "penalty_if_rejected_seconds": 681.380678365007,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 40.843480641394855
+        },
+        {
+          "task_id": "pallets__flask-5014-post_edit",
+          "kind": "post_edit",
+          "accepted": true,
+          "serious_error": false,
+          "findings": [],
+          "observed_seconds": 35.318874744698405,
+          "frozen_deadline_seconds": 180,
+          "penalty_if_rejected_seconds": 144.6811252553016,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 37.5430337511003
+        }
+      ],
+      "observed_seconds": 215.15648145787418,
+      "known_penalty_seconds": 314.40775910392404,
+      "unassessable_penalty_upper_seconds": 0,
+      "penalized_seconds": 529.5642405617982,
+      "penalized_interpretation_bounds_seconds": [
+        529.5642405617982,
+        529.5642405617982
+      ],
+      "non_phase_overhead_seconds": 11.120795032009482,
+      "normalized_recorded_tokens": 1071293,
+      "sdk_estimate_usd": 0.9757446999999999,
+      "optional_mcp_attempts": 2,
+      "repair_native_status": "graded",
+      "repair_native_result": {
+        "instance_id": "pallets__flask-5014",
+        "status": "graded",
+        "resolved": true,
+        "container": "sweb.eval.pallets__flask-5014.codenib-2713547c02c9",
+        "model_calls": 0,
+        "native_report": {
+          "pallets__flask-5014": {
+            "patch_is_None": false,
+            "patch_exists": true,
+            "patch_successfully_applied": true,
+            "resolved": true,
+            "tests_status": {
+              "FAIL_TO_PASS": {
+                "success": [
+                  "tests/test_blueprints.py::test_empty_name_not_allowed"
+                ],
+                "failure": []
+              },
+              "PASS_TO_PASS": {
+                "success": [
+                  "tests/test_blueprints.py::test_blueprint_specific_error_handling",
+                  "tests/test_blueprints.py::test_blueprint_specific_user_error_handling",
+                  "tests/test_blueprints.py::test_blueprint_app_error_handling",
+                  "tests/test_blueprints.py::test_blueprint_prefix_slash[-/-/]",
+                  "tests/test_blueprints.py::test_blueprint_prefix_slash[/--/]",
+                  "tests/test_blueprints.py::test_blueprint_prefix_slash[/-/-/]",
+                  "tests/test_blueprints.py::test_blueprint_prefix_slash[/foo--/foo]",
+                  "tests/test_blueprints.py::test_blueprint_prefix_slash[/foo/--/foo/]",
+                  "tests/test_blueprints.py::test_blueprint_prefix_slash[-/bar-/bar]",
+                  "tests/test_blueprints.py::test_blueprint_prefix_slash[/foo/-/bar-/foo/bar]",
+                  "tests/test_blueprints.py::test_blueprint_prefix_slash[/foo/-bar-/foo/bar]",
+                  "tests/test_blueprints.py::test_blueprint_prefix_slash[/foo-/bar-/foo/bar]",
+                  "tests/test_blueprints.py::test_blueprint_prefix_slash[/foo/-//bar-/foo/bar]",
+                  "tests/test_blueprints.py::test_blueprint_prefix_slash[/foo//-/bar-/foo/bar]",
+                  "tests/test_blueprints.py::test_blueprint_url_defaults",
+                  "tests/test_blueprints.py::test_blueprint_url_processors",
+                  "tests/test_blueprints.py::test_templates_and_static",
+                  "tests/test_blueprints.py::test_default_static_max_age",
+                  "tests/test_blueprints.py::test_templates_list",
+                  "tests/test_blueprints.py::test_dotted_name_not_allowed",
+                  "tests/test_blueprints.py::test_dotted_names_from_app",
+                  "tests/test_blueprints.py::test_empty_url_defaults",
+                  "tests/test_blueprints.py::test_route_decorator_custom_endpoint",
+                  "tests/test_blueprints.py::test_route_decorator_custom_endpoint_with_dots",
+                  "tests/test_blueprints.py::test_endpoint_decorator",
+                  "tests/test_blueprints.py::test_template_filter",
+                  "tests/test_blueprints.py::test_add_template_filter",
+                  "tests/test_blueprints.py::test_template_filter_with_name",
+                  "tests/test_blueprints.py::test_add_template_filter_with_name",
+                  "tests/test_blueprints.py::test_template_filter_with_template",
+                  "tests/test_blueprints.py::test_template_filter_after_route_with_template",
+                  "tests/test_blueprints.py::test_add_template_filter_with_template",
+                  "tests/test_blueprints.py::test_template_filter_with_name_and_template",
+                  "tests/test_blueprints.py::test_add_template_filter_with_name_and_template",
+                  "tests/test_blueprints.py::test_template_test",
+                  "tests/test_blueprints.py::test_add_template_test",
+                  "tests/test_blueprints.py::test_template_test_with_name",
+                  "tests/test_blueprints.py::test_add_template_test_with_name",
+                  "tests/test_blueprints.py::test_template_test_with_template",
+                  "tests/test_blueprints.py::test_template_test_after_route_with_template",
+                  "tests/test_blueprints.py::test_add_template_test_with_template",
+                  "tests/test_blueprints.py::test_template_test_with_name_and_template",
+                  "tests/test_blueprints.py::test_add_template_test_with_name_and_template",
+                  "tests/test_blueprints.py::test_context_processing",
+                  "tests/test_blueprints.py::test_template_global",
+                  "tests/test_blueprints.py::test_request_processing",
+                  "tests/test_blueprints.py::test_app_request_processing",
+                  "tests/test_blueprints.py::test_app_url_processors",
+                  "tests/test_blueprints.py::test_nested_blueprint",
+                  "tests/test_blueprints.py::test_nested_callback_order",
+                  "tests/test_blueprints.py::test_nesting_url_prefixes[/parent-/child-None-None]",
+                  "tests/test_blueprints.py::test_nesting_url_prefixes[/parent-None-None-/child]",
+                  "tests/test_blueprints.py::test_nesting_url_prefixes[None-None-/parent-/child]",
+                  "tests/test_blueprints.py::test_nesting_url_prefixes[/other-/something-/parent-/child]",
+                  "tests/test_blueprints.py::test_nesting_subdomains",
+                  "tests/test_blueprints.py::test_child_and_parent_subdomain",
+                  "tests/test_blueprints.py::test_unique_blueprint_names",
+                  "tests/test_blueprints.py::test_self_registration",
+                  "tests/test_blueprints.py::test_blueprint_renaming"
+                ],
+                "failure": []
+              },
+              "FAIL_TO_FAIL": {
+                "success": [],
+                "failure": []
+              },
+              "PASS_TO_FAIL": {
+                "success": [],
+                "failure": []
+              }
+            }
+          }
+        },
+        "observed_container_limits": {
+          "name": "sweb.eval.pallets__flask-5014.codenib-2713547c02c9",
+          "network_disabled": true,
+          "network_mode": "none",
+          "entrypoint": [],
+          "memory_bytes": 4294967296,
+          "nano_cpus": 2000000000,
+          "pids_limit": 256
+        },
+        "owned_container_removed": true
+      }
+    },
+    {
+      "workflow": {
+        "workflow_index": 6,
+        "instance_id": "pallets__flask-5014",
+        "arm": "native"
+      },
+      "tasks": [
+        {
+          "task_id": "pallets__flask-5014-lookup",
+          "kind": "lookup",
+          "accepted": true,
+          "serious_error": false,
+          "findings": [],
+          "observed_seconds": 23.882408061996102,
+          "frozen_deadline_seconds": 180,
+          "penalty_if_rejected_seconds": 156.1175919380039,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 24.28601053059101
+        },
+        {
+          "task_id": "pallets__flask-5014-flow",
+          "kind": "flow",
+          "accepted": true,
+          "serious_error": false,
+          "findings": [],
+          "observed_seconds": 47.847096832469106,
+          "frozen_deadline_seconds": 360,
+          "penalty_if_rejected_seconds": 312.1529031675309,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 48.25069930106402
+        },
+        {
+          "task_id": "pallets__flask-5014-impact",
+          "kind": "impact",
+          "accepted": true,
+          "serious_error": false,
+          "findings": [],
+          "observed_seconds": 44.50713383592665,
+          "frozen_deadline_seconds": 360,
+          "penalty_if_rejected_seconds": 315.49286616407335,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 44.91073630452156
+        },
+        {
+          "task_id": "pallets__flask-5014-repair",
+          "kind": "repair",
+          "accepted": true,
+          "serious_error": false,
+          "findings": [],
+          "observed_seconds": 32.957407385110855,
+          "frozen_deadline_seconds": 720,
+          "penalty_if_rejected_seconds": 687.0425926148891,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 33.36100985370577
+        },
+        {
+          "task_id": "pallets__flask-5014-post_edit",
+          "kind": "post_edit",
+          "accepted": true,
+          "serious_error": false,
+          "findings": [],
+          "observed_seconds": 25.020461155101657,
+          "frozen_deadline_seconds": 180,
+          "penalty_if_rejected_seconds": 154.97953884489834,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 25.424063623696565
+        }
+      ],
+      "observed_seconds": 176.23251961357892,
+      "known_penalty_seconds": 0,
+      "unassessable_penalty_upper_seconds": 0,
+      "penalized_seconds": 176.23251961357892,
+      "penalized_interpretation_bounds_seconds": [
+        176.23251961357892,
+        176.23251961357892
+      ],
+      "non_phase_overhead_seconds": 2.0180123429745436,
+      "normalized_recorded_tokens": 690056,
+      "sdk_estimate_usd": 0.7471049000000001,
+      "optional_mcp_attempts": 0,
+      "repair_native_status": "graded",
+      "repair_native_result": {
+        "instance_id": "pallets__flask-5014",
+        "status": "graded",
+        "resolved": true,
+        "container": "sweb.eval.pallets__flask-5014.codenib-63e7114a3f25",
+        "model_calls": 0,
+        "native_report": {
+          "pallets__flask-5014": {
+            "patch_is_None": false,
+            "patch_exists": true,
+            "patch_successfully_applied": true,
+            "resolved": true,
+            "tests_status": {
+              "FAIL_TO_PASS": {
+                "success": [
+                  "tests/test_blueprints.py::test_empty_name_not_allowed"
+                ],
+                "failure": []
+              },
+              "PASS_TO_PASS": {
+                "success": [
+                  "tests/test_blueprints.py::test_blueprint_specific_error_handling",
+                  "tests/test_blueprints.py::test_blueprint_specific_user_error_handling",
+                  "tests/test_blueprints.py::test_blueprint_app_error_handling",
+                  "tests/test_blueprints.py::test_blueprint_prefix_slash[-/-/]",
+                  "tests/test_blueprints.py::test_blueprint_prefix_slash[/--/]",
+                  "tests/test_blueprints.py::test_blueprint_prefix_slash[/-/-/]",
+                  "tests/test_blueprints.py::test_blueprint_prefix_slash[/foo--/foo]",
+                  "tests/test_blueprints.py::test_blueprint_prefix_slash[/foo/--/foo/]",
+                  "tests/test_blueprints.py::test_blueprint_prefix_slash[-/bar-/bar]",
+                  "tests/test_blueprints.py::test_blueprint_prefix_slash[/foo/-/bar-/foo/bar]",
+                  "tests/test_blueprints.py::test_blueprint_prefix_slash[/foo/-bar-/foo/bar]",
+                  "tests/test_blueprints.py::test_blueprint_prefix_slash[/foo-/bar-/foo/bar]",
+                  "tests/test_blueprints.py::test_blueprint_prefix_slash[/foo/-//bar-/foo/bar]",
+                  "tests/test_blueprints.py::test_blueprint_prefix_slash[/foo//-/bar-/foo/bar]",
+                  "tests/test_blueprints.py::test_blueprint_url_defaults",
+                  "tests/test_blueprints.py::test_blueprint_url_processors",
+                  "tests/test_blueprints.py::test_templates_and_static",
+                  "tests/test_blueprints.py::test_default_static_max_age",
+                  "tests/test_blueprints.py::test_templates_list",
+                  "tests/test_blueprints.py::test_dotted_name_not_allowed",
+                  "tests/test_blueprints.py::test_dotted_names_from_app",
+                  "tests/test_blueprints.py::test_empty_url_defaults",
+                  "tests/test_blueprints.py::test_route_decorator_custom_endpoint",
+                  "tests/test_blueprints.py::test_route_decorator_custom_endpoint_with_dots",
+                  "tests/test_blueprints.py::test_endpoint_decorator",
+                  "tests/test_blueprints.py::test_template_filter",
+                  "tests/test_blueprints.py::test_add_template_filter",
+                  "tests/test_blueprints.py::test_template_filter_with_name",
+                  "tests/test_blueprints.py::test_add_template_filter_with_name",
+                  "tests/test_blueprints.py::test_template_filter_with_template",
+                  "tests/test_blueprints.py::test_template_filter_after_route_with_template",
+                  "tests/test_blueprints.py::test_add_template_filter_with_template",
+                  "tests/test_blueprints.py::test_template_filter_with_name_and_template",
+                  "tests/test_blueprints.py::test_add_template_filter_with_name_and_template",
+                  "tests/test_blueprints.py::test_template_test",
+                  "tests/test_blueprints.py::test_add_template_test",
+                  "tests/test_blueprints.py::test_template_test_with_name",
+                  "tests/test_blueprints.py::test_add_template_test_with_name",
+                  "tests/test_blueprints.py::test_template_test_with_template",
+                  "tests/test_blueprints.py::test_template_test_after_route_with_template",
+                  "tests/test_blueprints.py::test_add_template_test_with_template",
+                  "tests/test_blueprints.py::test_template_test_with_name_and_template",
+                  "tests/test_blueprints.py::test_add_template_test_with_name_and_template",
+                  "tests/test_blueprints.py::test_context_processing",
+                  "tests/test_blueprints.py::test_template_global",
+                  "tests/test_blueprints.py::test_request_processing",
+                  "tests/test_blueprints.py::test_app_request_processing",
+                  "tests/test_blueprints.py::test_app_url_processors",
+                  "tests/test_blueprints.py::test_nested_blueprint",
+                  "tests/test_blueprints.py::test_nested_callback_order",
+                  "tests/test_blueprints.py::test_nesting_url_prefixes[/parent-/child-None-None]",
+                  "tests/test_blueprints.py::test_nesting_url_prefixes[/parent-None-None-/child]",
+                  "tests/test_blueprints.py::test_nesting_url_prefixes[None-None-/parent-/child]",
+                  "tests/test_blueprints.py::test_nesting_url_prefixes[/other-/something-/parent-/child]",
+                  "tests/test_blueprints.py::test_nesting_subdomains",
+                  "tests/test_blueprints.py::test_child_and_parent_subdomain",
+                  "tests/test_blueprints.py::test_unique_blueprint_names",
+                  "tests/test_blueprints.py::test_self_registration",
+                  "tests/test_blueprints.py::test_blueprint_renaming"
+                ],
+                "failure": []
+              },
+              "FAIL_TO_FAIL": {
+                "success": [],
+                "failure": []
+              },
+              "PASS_TO_FAIL": {
+                "success": [],
+                "failure": []
+              }
+            }
+          }
+        },
+        "observed_container_limits": {
+          "name": "sweb.eval.pallets__flask-5014.codenib-63e7114a3f25",
+          "network_disabled": true,
+          "network_mode": "none",
+          "entrypoint": [],
+          "memory_bytes": 4294967296,
+          "nano_cpus": 2000000000,
+          "pids_limit": 256
+        },
+        "owned_container_removed": true
+      }
+    },
+    {
+      "workflow": {
+        "workflow_index": 7,
+        "instance_id": "pallets__flask-5014",
+        "arm": "codenib"
+      },
+      "tasks": [
+        {
+          "task_id": "pallets__flask-5014-lookup",
+          "kind": "lookup",
+          "accepted": true,
+          "serious_error": false,
+          "findings": [],
+          "observed_seconds": 43.34633335284889,
+          "frozen_deadline_seconds": 180,
+          "penalty_if_rejected_seconds": 136.6536666471511,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 49.825648598000406
+        },
+        {
+          "task_id": "pallets__flask-5014-flow",
+          "kind": "flow",
+          "accepted": false,
+          "serious_error": true,
+          "findings": [
+            {
+              "category": "unsupported_universal_callback_wrapper",
+              "serious": true,
+              "quote": "The same wrapper is used for every callback type.",
+              "explanation": "The statement asserts an ensure_sync call for every callback type, but URL-value preprocessors run directly at app.py:1984 and signal receivers use signal dispatch. It overstates the model-facing static call path and async boundary, despite the earlier direct URL-preprocessor description."
+            }
+          ],
+          "observed_seconds": 61.15872233733535,
+          "frozen_deadline_seconds": 360,
+          "penalty_if_rejected_seconds": 298.84127766266465,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 67.63803758248687
+        },
+        {
+          "task_id": "pallets__flask-5014-impact",
+          "kind": "impact",
+          "accepted": false,
+          "serious_error": false,
+          "findings": [
+            {
+              "category": "missed_existing_session_order_test",
+              "serious": false,
+              "quote": "whether `save_session` sees changes made by after-request callbacks.",
+              "explanation": "This is listed under No test asserts, but test_basic.py:454-465 checks exactly that a session value set in after_request persists to the following request."
+            }
+          ],
+          "observed_seconds": 39.91746187582612,
+          "frozen_deadline_seconds": 360,
+          "penalty_if_rejected_seconds": 320.0825381241739,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 46.39677712097764
+        },
+        {
+          "task_id": "pallets__flask-5014-repair",
+          "kind": "repair",
+          "accepted": true,
+          "serious_error": false,
+          "findings": [],
+          "observed_seconds": 41.686449563130736,
+          "frozen_deadline_seconds": 720,
+          "penalty_if_rejected_seconds": 678.3135504368693,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 48.165764808282255
+        },
+        {
+          "task_id": "pallets__flask-5014-post_edit",
+          "kind": "post_edit",
+          "accepted": false,
+          "serious_error": true,
+          "findings": [
+            {
+              "category": "incorrect_wrapped_stream_lifetime",
+              "serious": true,
+              "quote": "Any streaming or generator body that needs the request context (for example one wrapped in `stream_with_context`) would be iterated after cleanup.",
+              "explanation": "helpers.py:106-126 primes a generator inside with ctx. The pinned audit observes a live request context and no teardown at helper return, then successful request access during iteration and teardown only at completion."
+            }
+          ],
+          "observed_seconds": 28.39584239013493,
+          "frozen_deadline_seconds": 180,
+          "penalty_if_rejected_seconds": 151.60415760986507,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 34.87515763528645
+        }
+      ],
+      "observed_seconds": 246.90138574503362,
+      "known_penalty_seconds": 770.5279733967036,
+      "unassessable_penalty_upper_seconds": 0,
+      "penalized_seconds": 1017.4293591417372,
+      "penalized_interpretation_bounds_seconds": [
+        1017.4293591417372,
+        1017.4293591417372
+      ],
+      "non_phase_overhead_seconds": 32.3965762257576,
+      "normalized_recorded_tokens": 858094,
+      "sdk_estimate_usd": 0.9282537,
+      "optional_mcp_attempts": 0,
+      "repair_native_status": "graded",
+      "repair_native_result": {
+        "instance_id": "pallets__flask-5014",
+        "status": "graded",
+        "resolved": true,
+        "container": "sweb.eval.pallets__flask-5014.codenib-49eabc136c4c",
+        "model_calls": 0,
+        "native_report": {
+          "pallets__flask-5014": {
+            "patch_is_None": false,
+            "patch_exists": true,
+            "patch_successfully_applied": true,
+            "resolved": true,
+            "tests_status": {
+              "FAIL_TO_PASS": {
+                "success": [
+                  "tests/test_blueprints.py::test_empty_name_not_allowed"
+                ],
+                "failure": []
+              },
+              "PASS_TO_PASS": {
+                "success": [
+                  "tests/test_blueprints.py::test_blueprint_specific_error_handling",
+                  "tests/test_blueprints.py::test_blueprint_specific_user_error_handling",
+                  "tests/test_blueprints.py::test_blueprint_app_error_handling",
+                  "tests/test_blueprints.py::test_blueprint_prefix_slash[-/-/]",
+                  "tests/test_blueprints.py::test_blueprint_prefix_slash[/--/]",
+                  "tests/test_blueprints.py::test_blueprint_prefix_slash[/-/-/]",
+                  "tests/test_blueprints.py::test_blueprint_prefix_slash[/foo--/foo]",
+                  "tests/test_blueprints.py::test_blueprint_prefix_slash[/foo/--/foo/]",
+                  "tests/test_blueprints.py::test_blueprint_prefix_slash[-/bar-/bar]",
+                  "tests/test_blueprints.py::test_blueprint_prefix_slash[/foo/-/bar-/foo/bar]",
+                  "tests/test_blueprints.py::test_blueprint_prefix_slash[/foo/-bar-/foo/bar]",
+                  "tests/test_blueprints.py::test_blueprint_prefix_slash[/foo-/bar-/foo/bar]",
+                  "tests/test_blueprints.py::test_blueprint_prefix_slash[/foo/-//bar-/foo/bar]",
+                  "tests/test_blueprints.py::test_blueprint_prefix_slash[/foo//-/bar-/foo/bar]",
+                  "tests/test_blueprints.py::test_blueprint_url_defaults",
+                  "tests/test_blueprints.py::test_blueprint_url_processors",
+                  "tests/test_blueprints.py::test_templates_and_static",
+                  "tests/test_blueprints.py::test_default_static_max_age",
+                  "tests/test_blueprints.py::test_templates_list",
+                  "tests/test_blueprints.py::test_dotted_name_not_allowed",
+                  "tests/test_blueprints.py::test_dotted_names_from_app",
+                  "tests/test_blueprints.py::test_empty_url_defaults",
+                  "tests/test_blueprints.py::test_route_decorator_custom_endpoint",
+                  "tests/test_blueprints.py::test_route_decorator_custom_endpoint_with_dots",
+                  "tests/test_blueprints.py::test_endpoint_decorator",
+                  "tests/test_blueprints.py::test_template_filter",
+                  "tests/test_blueprints.py::test_add_template_filter",
+                  "tests/test_blueprints.py::test_template_filter_with_name",
+                  "tests/test_blueprints.py::test_add_template_filter_with_name",
+                  "tests/test_blueprints.py::test_template_filter_with_template",
+                  "tests/test_blueprints.py::test_template_filter_after_route_with_template",
+                  "tests/test_blueprints.py::test_add_template_filter_with_template",
+                  "tests/test_blueprints.py::test_template_filter_with_name_and_template",
+                  "tests/test_blueprints.py::test_add_template_filter_with_name_and_template",
+                  "tests/test_blueprints.py::test_template_test",
+                  "tests/test_blueprints.py::test_add_template_test",
+                  "tests/test_blueprints.py::test_template_test_with_name",
+                  "tests/test_blueprints.py::test_add_template_test_with_name",
+                  "tests/test_blueprints.py::test_template_test_with_template",
+                  "tests/test_blueprints.py::test_template_test_after_route_with_template",
+                  "tests/test_blueprints.py::test_add_template_test_with_template",
+                  "tests/test_blueprints.py::test_template_test_with_name_and_template",
+                  "tests/test_blueprints.py::test_add_template_test_with_name_and_template",
+                  "tests/test_blueprints.py::test_context_processing",
+                  "tests/test_blueprints.py::test_template_global",
+                  "tests/test_blueprints.py::test_request_processing",
+                  "tests/test_blueprints.py::test_app_request_processing",
+                  "tests/test_blueprints.py::test_app_url_processors",
+                  "tests/test_blueprints.py::test_nested_blueprint",
+                  "tests/test_blueprints.py::test_nested_callback_order",
+                  "tests/test_blueprints.py::test_nesting_url_prefixes[/parent-/child-None-None]",
+                  "tests/test_blueprints.py::test_nesting_url_prefixes[/parent-None-None-/child]",
+                  "tests/test_blueprints.py::test_nesting_url_prefixes[None-None-/parent-/child]",
+                  "tests/test_blueprints.py::test_nesting_url_prefixes[/other-/something-/parent-/child]",
+                  "tests/test_blueprints.py::test_nesting_subdomains",
+                  "tests/test_blueprints.py::test_child_and_parent_subdomain",
+                  "tests/test_blueprints.py::test_unique_blueprint_names",
+                  "tests/test_blueprints.py::test_self_registration",
+                  "tests/test_blueprints.py::test_blueprint_renaming"
+                ],
+                "failure": []
+              },
+              "FAIL_TO_FAIL": {
+                "success": [],
+                "failure": []
+              },
+              "PASS_TO_FAIL": {
+                "success": [],
+                "failure": []
+              }
+            }
+          }
+        },
+        "observed_container_limits": {
+          "name": "sweb.eval.pallets__flask-5014.codenib-49eabc136c4c",
+          "network_disabled": true,
+          "network_mode": "none",
+          "entrypoint": [],
+          "memory_bytes": 4294967296,
+          "nano_cpus": 2000000000,
+          "pids_limit": 256
+        },
+        "owned_container_removed": true
+      }
+    },
+    {
+      "workflow": {
+        "workflow_index": 8,
+        "instance_id": "pytest-dev__pytest-5809",
+        "arm": "codenib"
+      },
+      "tasks": [
+        {
+          "task_id": "pytest-dev__pytest-5809-lookup",
+          "kind": "lookup",
+          "accepted": true,
+          "serious_error": false,
+          "findings": [],
+          "observed_seconds": 22.4453060682863,
+          "frozen_deadline_seconds": 180,
+          "penalty_if_rejected_seconds": 157.5546939317137,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 31.823920798301696
+        },
+        {
+          "task_id": "pytest-dev__pytest-5809-flow",
+          "kind": "flow",
+          "accepted": false,
+          "serious_error": true,
+          "findings": [
+            {
+              "category": "incorrect_unconditional_teardown_guarantee",
+              "serious": true,
+              "quote": "teardown always runs",
+              "explanation": "runtestprotocol has no try/finally around setup/call. The answer acknowledges configured Exit/KeyboardInterrupt re-raising, but still unconditionally guarantees the per-item teardown phase. The pinned-function counterexample records setup/call only before KeyboardInterrupt escapes; later session cleanup is a different boundary.",
+              "post_run_counterexample": "source-controlflow-audit-v2/receipt.json"
+            }
+          ],
+          "observed_seconds": 47.3728011213243,
+          "frozen_deadline_seconds": 360,
+          "penalty_if_rejected_seconds": 312.6271988786757,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 56.7514158513397
+        },
+        {
+          "task_id": "pytest-dev__pytest-5809-impact",
+          "kind": "impact",
+          "accepted": true,
+          "serious_error": false,
+          "findings": [],
+          "observed_seconds": 57.99484615214169,
+          "frozen_deadline_seconds": 360,
+          "penalty_if_rejected_seconds": 302.0051538478583,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 67.37346088215709
+        },
+        {
+          "task_id": "pytest-dev__pytest-5809-repair",
+          "kind": "repair",
+          "accepted": true,
+          "serious_error": false,
+          "findings": [],
+          "observed_seconds": 17.638282399624586,
+          "frozen_deadline_seconds": 720,
+          "penalty_if_rejected_seconds": 702.3617176003754,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 27.016897129639982
+        },
+        {
+          "task_id": "pytest-dev__pytest-5809-post_edit",
+          "kind": "post_edit",
+          "accepted": true,
+          "serious_error": false,
+          "findings": [],
+          "observed_seconds": 16.651594014838338,
+          "frozen_deadline_seconds": 180,
+          "penalty_if_rejected_seconds": 163.34840598516166,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 26.030208744853734
+        }
+      ],
+      "observed_seconds": 208.9959034062922,
+      "known_penalty_seconds": 312.6271988786757,
+      "unassessable_penalty_upper_seconds": 0,
+      "penalized_seconds": 521.6231022849679,
+      "penalized_interpretation_bounds_seconds": [
+        521.6231022849679,
+        521.6231022849679
+      ],
+      "non_phase_overhead_seconds": 46.893073650076985,
+      "normalized_recorded_tokens": 757468,
+      "sdk_estimate_usd": 0.8607232999999999,
+      "optional_mcp_attempts": 0,
+      "repair_native_status": "graded",
+      "repair_native_result": {
+        "instance_id": "pytest-dev__pytest-5809",
+        "status": "graded",
+        "resolved": true,
+        "container": "sweb.eval.pytest-dev__pytest-5809.codenib-ad75acfc5c6f",
+        "model_calls": 0,
+        "native_report": {
+          "pytest-dev__pytest-5809": {
+            "patch_is_None": false,
+            "patch_exists": true,
+            "patch_successfully_applied": true,
+            "resolved": true,
+            "tests_status": {
+              "FAIL_TO_PASS": {
+                "success": [
+                  "testing/test_pastebin.py::TestPaste::test_create_new_paste"
+                ],
+                "failure": []
+              },
+              "PASS_TO_PASS": {
+                "success": [
+                  "testing/test_pastebin.py::TestPasteCapture::test_failed",
+                  "testing/test_pastebin.py::TestPasteCapture::test_all",
+                  "testing/test_pastebin.py::TestPasteCapture::test_non_ascii_paste_text"
+                ],
+                "failure": []
+              },
+              "FAIL_TO_FAIL": {
+                "success": [],
+                "failure": []
+              },
+              "PASS_TO_FAIL": {
+                "success": [],
+                "failure": []
+              }
+            }
+          }
+        },
+        "observed_container_limits": {
+          "name": "sweb.eval.pytest-dev__pytest-5809.codenib-ad75acfc5c6f",
+          "network_disabled": true,
+          "network_mode": "none",
+          "entrypoint": [],
+          "memory_bytes": 4294967296,
+          "nano_cpus": 2000000000,
+          "pids_limit": 256
+        },
+        "owned_container_removed": true
+      }
+    },
+    {
+      "workflow": {
+        "workflow_index": 9,
+        "instance_id": "pytest-dev__pytest-5809",
+        "arm": "native"
+      },
+      "tasks": [
+        {
+          "task_id": "pytest-dev__pytest-5809-lookup",
+          "kind": "lookup",
+          "accepted": true,
+          "serious_error": false,
+          "findings": [],
+          "observed_seconds": 25.108468536287546,
+          "frozen_deadline_seconds": 180,
+          "penalty_if_rejected_seconds": 154.89153146371245,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 25.556858116015793
+        },
+        {
+          "task_id": "pytest-dev__pytest-5809-flow",
+          "kind": "flow",
+          "accepted": false,
+          "serious_error": true,
+          "findings": [
+            {
+              "category": "incorrect_unconditional_teardown_guarantee",
+              "serious": true,
+              "quote": "Teardown always runs (line 94).",
+              "explanation": "runtestprotocol has no try/finally around setup/call. The answer acknowledges configured Exit/KeyboardInterrupt re-raising, but still unconditionally guarantees the per-item teardown phase. The pinned-function counterexample records setup/call only before KeyboardInterrupt escapes; later session cleanup is a different boundary.",
+              "post_run_counterexample": "source-controlflow-audit-v2/receipt.json"
+            }
+          ],
+          "observed_seconds": 51.452874053269625,
+          "frozen_deadline_seconds": 360,
+          "penalty_if_rejected_seconds": 308.5471259467304,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 51.90126363299787
+        },
+        {
+          "task_id": "pytest-dev__pytest-5809-impact",
+          "kind": "impact",
+          "accepted": false,
+          "serious_error": false,
+          "findings": [
+            {
+              "category": "missed_existing_pdb_capture_test",
+              "serious": false,
+              "quote": "There's also no test pinning the `--pdb` case where `KeyboardInterrupt` is captured on the runtest path.",
+              "explanation": "testing/test_pdb.py:142-151 invokes the PDB report helper on a test raising KeyboardInterrupt and asserts a failed report and one debugger entry."
+            }
+          ],
+          "observed_seconds": 45.09280460886657,
+          "frozen_deadline_seconds": 360,
+          "penalty_if_rejected_seconds": 314.9071953911334,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 45.541194188594815
+        },
+        {
+          "task_id": "pytest-dev__pytest-5809-repair",
+          "kind": "repair",
+          "accepted": true,
+          "serious_error": false,
+          "findings": [],
+          "observed_seconds": 18.719914773479104,
+          "frozen_deadline_seconds": 720,
+          "penalty_if_rejected_seconds": 701.2800852265209,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 19.16830435320735
+        },
+        {
+          "task_id": "pytest-dev__pytest-5809-post_edit",
+          "kind": "post_edit",
+          "accepted": true,
+          "serious_error": false,
+          "findings": [],
+          "observed_seconds": 25.822094732895494,
+          "frozen_deadline_seconds": 180,
+          "penalty_if_rejected_seconds": 154.1779052671045,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 26.27048431262374
+        }
+      ],
+      "observed_seconds": 168.43810460343957,
+      "known_penalty_seconds": 623.4543213378638,
+      "unassessable_penalty_upper_seconds": 0,
+      "penalized_seconds": 791.8924259413034,
+      "penalized_interpretation_bounds_seconds": [
+        791.8924259413034,
+        791.8924259413034
+      ],
+      "non_phase_overhead_seconds": 2.2419478986412287,
+      "normalized_recorded_tokens": 744973,
+      "sdk_estimate_usd": 0.7712017,
+      "optional_mcp_attempts": 0,
+      "repair_native_status": "graded",
+      "repair_native_result": {
+        "instance_id": "pytest-dev__pytest-5809",
+        "status": "graded",
+        "resolved": true,
+        "container": "sweb.eval.pytest-dev__pytest-5809.codenib-da243a39a766",
+        "model_calls": 0,
+        "native_report": {
+          "pytest-dev__pytest-5809": {
+            "patch_is_None": false,
+            "patch_exists": true,
+            "patch_successfully_applied": true,
+            "resolved": true,
+            "tests_status": {
+              "FAIL_TO_PASS": {
+                "success": [
+                  "testing/test_pastebin.py::TestPaste::test_create_new_paste"
+                ],
+                "failure": []
+              },
+              "PASS_TO_PASS": {
+                "success": [
+                  "testing/test_pastebin.py::TestPasteCapture::test_failed",
+                  "testing/test_pastebin.py::TestPasteCapture::test_all",
+                  "testing/test_pastebin.py::TestPasteCapture::test_non_ascii_paste_text"
+                ],
+                "failure": []
+              },
+              "FAIL_TO_FAIL": {
+                "success": [],
+                "failure": []
+              },
+              "PASS_TO_FAIL": {
+                "success": [],
+                "failure": []
+              }
+            }
+          }
+        },
+        "observed_container_limits": {
+          "name": "sweb.eval.pytest-dev__pytest-5809.codenib-da243a39a766",
+          "network_disabled": true,
+          "network_mode": "none",
+          "entrypoint": [],
+          "memory_bytes": 4294967296,
+          "nano_cpus": 2000000000,
+          "pids_limit": 256
+        },
+        "owned_container_removed": true
+      }
+    },
+    {
+      "workflow": {
+        "workflow_index": 10,
+        "instance_id": "pytest-dev__pytest-5809",
+        "arm": "codegraph"
+      },
+      "tasks": [
+        {
+          "task_id": "pytest-dev__pytest-5809-lookup",
+          "kind": "lookup",
+          "accepted": true,
+          "serious_error": false,
+          "findings": [],
+          "observed_seconds": 17.235768172889948,
+          "frozen_deadline_seconds": 180,
+          "penalty_if_rejected_seconds": 162.76423182711005,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 19.41687319688499
+        },
+        {
+          "task_id": "pytest-dev__pytest-5809-flow",
+          "kind": "flow",
+          "accepted": false,
+          "serious_error": true,
+          "findings": [
+            {
+              "category": "incorrect_unconditional_teardown_guarantee",
+              "serious": true,
+              "quote": "Teardown always runs (line 94).",
+              "explanation": "runtestprotocol has no try/finally around setup/call. The answer acknowledges configured Exit/KeyboardInterrupt re-raising, but still unconditionally guarantees the per-item teardown phase. The pinned-function counterexample records setup/call only before KeyboardInterrupt escapes; later session cleanup is a different boundary.",
+              "post_run_counterexample": "source-controlflow-audit-v2/receipt.json"
+            }
+          ],
+          "observed_seconds": 45.623848374933004,
+          "frozen_deadline_seconds": 360,
+          "penalty_if_rejected_seconds": 314.376151625067,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 47.80495339892805
+        },
+        {
+          "task_id": "pytest-dev__pytest-5809-impact",
+          "kind": "impact",
+          "accepted": true,
+          "serious_error": false,
+          "findings": [],
+          "observed_seconds": 39.98928362876177,
+          "frozen_deadline_seconds": 360,
+          "penalty_if_rejected_seconds": 320.01071637123823,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 42.17038865275681
+        },
+        {
+          "task_id": "pytest-dev__pytest-5809-repair",
+          "kind": "repair",
+          "accepted": true,
+          "serious_error": false,
+          "findings": [],
+          "observed_seconds": 14.552992474287748,
+          "frozen_deadline_seconds": 720,
+          "penalty_if_rejected_seconds": 705.4470075257123,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 16.73409749828279
+        },
+        {
+          "task_id": "pytest-dev__pytest-5809-post_edit",
+          "kind": "post_edit",
+          "accepted": false,
+          "serious_error": false,
+          "findings": [
+            {
+              "category": "contradictory_success_marker_description",
+              "serious": false,
+              "quote": "The success case does not store `None` in `excinfo` as a separate \"no error\" marker.",
+              "explanation": "The factory initializes excinfo=None and passes it to the instance on success; the property uses that exact marker. Because the answer already gives the correct table and factory steps, this is recorded as a contradictory explanation rather than an independently coherent false flow claim."
+            }
+          ],
+          "observed_seconds": 17.90360797010362,
+          "frozen_deadline_seconds": 180,
+          "penalty_if_rejected_seconds": 162.09639202989638,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 20.084712994098663
+        }
+      ],
+      "observed_seconds": 146.2110257409513,
+      "known_penalty_seconds": 476.4725436549634,
+      "unassessable_penalty_upper_seconds": 0,
+      "penalized_seconds": 622.6835693959147,
+      "penalized_interpretation_bounds_seconds": [
+        622.6835693959147,
+        622.6835693959147
+      ],
+      "non_phase_overhead_seconds": 10.90552511997521,
+      "normalized_recorded_tokens": 787702,
+      "sdk_estimate_usd": 0.808509,
+      "optional_mcp_attempts": 2,
+      "repair_native_status": "graded",
+      "repair_native_result": {
+        "instance_id": "pytest-dev__pytest-5809",
+        "status": "graded",
+        "resolved": true,
+        "container": "sweb.eval.pytest-dev__pytest-5809.codenib-e04df6648ce1",
+        "model_calls": 0,
+        "native_report": {
+          "pytest-dev__pytest-5809": {
+            "patch_is_None": false,
+            "patch_exists": true,
+            "patch_successfully_applied": true,
+            "resolved": true,
+            "tests_status": {
+              "FAIL_TO_PASS": {
+                "success": [
+                  "testing/test_pastebin.py::TestPaste::test_create_new_paste"
+                ],
+                "failure": []
+              },
+              "PASS_TO_PASS": {
+                "success": [
+                  "testing/test_pastebin.py::TestPasteCapture::test_failed",
+                  "testing/test_pastebin.py::TestPasteCapture::test_all",
+                  "testing/test_pastebin.py::TestPasteCapture::test_non_ascii_paste_text"
+                ],
+                "failure": []
+              },
+              "FAIL_TO_FAIL": {
+                "success": [],
+                "failure": []
+              },
+              "PASS_TO_FAIL": {
+                "success": [],
+                "failure": []
+              }
+            }
+          }
+        },
+        "observed_container_limits": {
+          "name": "sweb.eval.pytest-dev__pytest-5809.codenib-e04df6648ce1",
+          "network_disabled": true,
+          "network_mode": "none",
+          "entrypoint": [],
+          "memory_bytes": 4294967296,
+          "nano_cpus": 2000000000,
+          "pids_limit": 256
+        },
+        "owned_container_removed": true
+      }
+    },
+    {
+      "workflow": {
+        "workflow_index": 11,
+        "instance_id": "pytest-dev__pytest-5809",
+        "arm": "serena"
+      },
+      "tasks": [
+        {
+          "task_id": "pytest-dev__pytest-5809-lookup",
+          "kind": "lookup",
+          "accepted": true,
+          "serious_error": false,
+          "findings": [],
+          "observed_seconds": 20.1890977229923,
+          "frozen_deadline_seconds": 180,
+          "penalty_if_rejected_seconds": 159.8109022770077,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 22.934083910658956
+        },
+        {
+          "task_id": "pytest-dev__pytest-5809-flow",
+          "kind": "flow",
+          "accepted": false,
+          "serious_error": true,
+          "findings": [
+            {
+              "category": "incorrect_unconditional_teardown_guarantee",
+              "serious": true,
+              "quote": "Teardown always runs (line 94).",
+              "explanation": "runtestprotocol has no try/finally around setup/call. The answer acknowledges configured Exit/KeyboardInterrupt re-raising, but still unconditionally guarantees the per-item teardown phase. The pinned-function counterexample records setup/call only before KeyboardInterrupt escapes; later session cleanup is a different boundary.",
+              "post_run_counterexample": "source-controlflow-audit-v2/receipt.json"
+            }
+          ],
+          "observed_seconds": 39.86672073788941,
+          "frozen_deadline_seconds": 360,
+          "penalty_if_rejected_seconds": 320.1332792621106,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 42.611706925556064
+        },
+        {
+          "task_id": "pytest-dev__pytest-5809-impact",
+          "kind": "impact",
+          "accepted": true,
+          "serious_error": false,
+          "findings": [],
+          "observed_seconds": 47.61938222497702,
+          "frozen_deadline_seconds": 360,
+          "penalty_if_rejected_seconds": 312.380617775023,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 50.36436841264367
+        },
+        {
+          "task_id": "pytest-dev__pytest-5809-repair",
+          "kind": "repair",
+          "accepted": true,
+          "serious_error": false,
+          "findings": [],
+          "observed_seconds": 22.825767884030938,
+          "frozen_deadline_seconds": 720,
+          "penalty_if_rejected_seconds": 697.1742321159691,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 25.570754071697593
+        },
+        {
+          "task_id": "pytest-dev__pytest-5809-post_edit",
+          "kind": "post_edit",
+          "accepted": true,
+          "serious_error": false,
+          "findings": [],
+          "observed_seconds": 18.965786231681705,
+          "frozen_deadline_seconds": 180,
+          "penalty_if_rejected_seconds": 161.0342137683183,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 21.71077241934836
+        }
+      ],
+      "observed_seconds": 163.19168573990464,
+      "known_penalty_seconds": 320.1332792621106,
+      "unassessable_penalty_upper_seconds": 0,
+      "penalized_seconds": 483.32496500201523,
+      "penalized_interpretation_bounds_seconds": [
+        483.32496500201523,
+        483.32496500201523
+      ],
+      "non_phase_overhead_seconds": 13.724930938333273,
+      "normalized_recorded_tokens": 705130,
+      "sdk_estimate_usd": 0.7805785999999999,
+      "optional_mcp_attempts": 0,
+      "repair_native_status": "graded",
+      "repair_native_result": {
+        "instance_id": "pytest-dev__pytest-5809",
+        "status": "graded",
+        "resolved": true,
+        "container": "sweb.eval.pytest-dev__pytest-5809.codenib-7421ad9cbfd4",
+        "model_calls": 0,
+        "native_report": {
+          "pytest-dev__pytest-5809": {
+            "patch_is_None": false,
+            "patch_exists": true,
+            "patch_successfully_applied": true,
+            "resolved": true,
+            "tests_status": {
+              "FAIL_TO_PASS": {
+                "success": [
+                  "testing/test_pastebin.py::TestPaste::test_create_new_paste"
+                ],
+                "failure": []
+              },
+              "PASS_TO_PASS": {
+                "success": [
+                  "testing/test_pastebin.py::TestPasteCapture::test_failed",
+                  "testing/test_pastebin.py::TestPasteCapture::test_all",
+                  "testing/test_pastebin.py::TestPasteCapture::test_non_ascii_paste_text"
+                ],
+                "failure": []
+              },
+              "FAIL_TO_FAIL": {
+                "success": [],
+                "failure": []
+              },
+              "PASS_TO_FAIL": {
+                "success": [],
+                "failure": []
+              }
+            }
+          }
+        },
+        "observed_container_limits": {
+          "name": "sweb.eval.pytest-dev__pytest-5809.codenib-7421ad9cbfd4",
+          "network_disabled": true,
+          "network_mode": "none",
+          "entrypoint": [],
+          "memory_bytes": 4294967296,
+          "nano_cpus": 2000000000,
+          "pids_limit": 256
+        },
+        "owned_container_removed": true
+      }
+    }
+  ],
+  "frozen_gate": {
+    "outcome": "insufficient_evidence",
+    "maximum_alternative_accepted": 13,
+    "eligible_complete_alternatives_at_maximum": [],
+    "strongest_eligible_alternative": null,
+    "primary_improvement": null,
+    "normalized_usage_ratio": null,
+    "additional_serious_paired_tasks": null,
+    "promotion": "hold",
+    "external_repeat_use": "0/5 enrolled; no recruitment or outreach",
+    "reason": "No alternative at the maximum accepted-task count has complete assessment and zero serious source/correctness errors; do not select a weaker alternative post hoc."
+  },
+  "descriptive_raw_time_pairs": {
+    "native": {
+      "scope": "Descriptive unpenalized wall time; not proof of quality parity or a selected eligible primary comparison.",
+      "repository_cluster_ratios": [
+        1.263713104965405,
+        1.4009978764782387,
+        1.240787551595522
+      ],
+      "cohort_ratio": 1.3034464304194975,
+      "repository_bootstrap_95_percentile_interval": [
+        1.240787551595522,
+        1.4009978764782387
+      ],
+      "draws": 10000,
+      "seed": "codenib-matched-execution-2026-10-27-v1",
+      "generator": "Python random.Random string seed version2",
+      "statistic": "Ratio of paired resampled repository totals; n=3 clusters."
+    },
+    "serena": {
+      "scope": "Descriptive unpenalized wall time; not proof of quality parity or a selected eligible primary comparison.",
+      "repository_cluster_ratios": [
+        1.306695531086705,
+        1.0150149618242588,
+        1.280677397618102
+      ],
+      "cohort_ratio": 1.1743063474789173,
+      "repository_bootstrap_95_percentile_interval": [
+        1.0150149618242588,
+        1.306695531086705
+      ],
+      "draws": 10000,
+      "seed": "codenib-matched-execution-2026-10-27-v1",
+      "generator": "Python random.Random string seed version2",
+      "statistic": "Ratio of paired resampled repository totals; n=3 clusters."
+    },
+    "codegraph": {
+      "scope": "Descriptive unpenalized wall time; not proof of quality parity or a selected eligible primary comparison.",
+      "repository_cluster_ratios": [
+        1.2772973736071156,
+        1.1475433325180808,
+        1.42941274330829
+      ],
+      "cohort_ratio": 1.2665187947483816,
+      "repository_bootstrap_95_percentile_interval": [
+        1.1475433325180808,
+        1.42941274330829
+      ],
+      "draws": 10000,
+      "seed": "codenib-matched-execution-2026-10-27-v1",
+      "generator": "Python random.Random string seed version2",
+      "statistic": "Ratio of paired resampled repository totals; n=3 clusters."
+    }
+  },
+  "prespecified_descriptive_groups": {
+    "lookup": {
+      "native": {
+        "accepted": 3,
+        "tasks": 3,
+        "serious_error_tasks": 0,
+        "descriptive_seconds_with_equal_overhead_share": 68.49432683177292
+      },
+      "serena": {
+        "accepted": 3,
+        "tasks": 3,
+        "serious_error_tasks": 0,
+        "descriptive_seconds_with_equal_overhead_share": 74.44584328792989
+      },
+      "codegraph": {
+        "accepted": 3,
+        "tasks": 3,
+        "serious_error_tasks": 0,
+        "descriptive_seconds_with_equal_overhead_share": 73.16541671678424
+      },
+      "codenib": {
+        "accepted": 3,
+        "tasks": 3,
+        "serious_error_tasks": 0,
+        "descriptive_seconds_with_equal_overhead_share": 111.97930855304003
+      }
+    },
+    "flow_and_impact": {
+      "native": {
+        "accepted": 4,
+        "tasks": 6,
+        "serious_error_tasks": 1,
+        "descriptive_seconds_with_equal_overhead_share": 274.2043326757848
+      },
+      "serena": {
+        "accepted": 3,
+        "tasks": 6,
+        "serious_error_tasks": 1,
+        "descriptive_seconds_with_equal_overhead_share": 285.91240147165956
+      },
+      "codegraph": {
+        "accepted": 2,
+        "tasks": 6,
+        "serious_error_tasks": 4,
+        "descriptive_seconds_with_equal_overhead_share": 268.39596203006806
+      },
+      "codenib": {
+        "accepted": 3,
+        "tasks": 6,
+        "serious_error_tasks": 2,
+        "descriptive_seconds_with_equal_overhead_share": 342.869486277923
+      }
+    },
+    "repair": {
+      "native": {
+        "accepted": 3,
+        "tasks": 3,
+        "serious_error_tasks": 0,
+        "descriptive_seconds_with_equal_overhead_share": 92.06393837183714
+      },
+      "serena": {
+        "accepted": 3,
+        "tasks": 3,
+        "serious_error_tasks": 0,
+        "descriptive_seconds_with_equal_overhead_share": 117.03183957487344
+      },
+      "codegraph": {
+        "accepted": 3,
+        "tasks": 3,
+        "serious_error_tasks": 0,
+        "descriptive_seconds_with_equal_overhead_share": 101.0578961867839
+      },
+      "codenib": {
+        "accepted": 3,
+        "tasks": 3,
+        "serious_error_tasks": 0,
+        "descriptive_seconds_with_equal_overhead_share": 112.47423114441335
+      }
+    },
+    "post_edit": {
+      "native": {
+        "accepted": 3,
+        "tasks": 3,
+        "serious_error_tasks": 0,
+        "descriptive_seconds_with_equal_overhead_share": 76.96160842105746
+      },
+      "serena": {
+        "accepted": 3,
+        "tasks": 3,
+        "serious_error_tasks": 0,
+        "descriptive_seconds_with_equal_overhead_share": 90.60913622118532
+      },
+      "codegraph": {
+        "accepted": 2,
+        "tasks": 3,
+        "serious_error_tasks": 0,
+        "descriptive_seconds_with_equal_overhead_share": 84.02517189756036
+      },
+      "codenib": {
+        "accepted": 2,
+        "tasks": 3,
+        "serious_error_tasks": 1,
+        "descriptive_seconds_with_equal_overhead_share": 99.6820640861988
+      }
+    }
+  },
+  "subgroup_overhead_rule": "Each task receives one fifth of actual non-phase workflow overhead; no independent subgroup promotion claim.",
+  "api_invoice_cost_usd": null,
+  "http_request_count": null,
+  "analysis_implementation_sha256": "0710296002b657c28428f98c0e692265ea54335239e4fb8b39855e14b476280f"
+}

@@ -1,0 +1,332 @@
+{
+  "scope": "Sealed v2 captured observations, before separate acceptance; original v1 remains unchanged.",
+  "launch": {
+    "cohort_version": 2,
+    "started_utc": "2026-10-28T14:12:18.701103+00:00",
+    "binding_sha256": "c0a684ea39796d8334109edf674dad71e8311ed8976ca9f121cd669d9f20d40c",
+    "launcher_sha256": "2551de0c11930e68e9458e5f731e2fbc2e4b550f3460f7b0ea01f11996323236",
+    "results": [
+      {
+        "workflow": {
+          "workflow_index": 0,
+          "instance_id": "psf__requests-1921",
+          "arm": "serena"
+        },
+        "process_returncode": 0,
+        "receipt_sha256": "9f1ec5bac774f673517313db3ee19af28f4ffe2d95c6525e35c34666d5e59fc2",
+        "status": "model_execution_complete_pending_grading",
+        "stop_reason": null,
+        "actual_assistant_models": [
+          "claude-opus-5-5"
+        ],
+        "attempted_tasks": 5,
+        "sdk_estimate_usd": 0.7529119
+      },
+      {
+        "workflow": {
+          "workflow_index": 1,
+          "instance_id": "psf__requests-1921",
+          "arm": "codenib"
+        },
+        "process_returncode": 0,
+        "receipt_sha256": "79a74d79bf9ea925b3524352393141da7d2e36da27695bb23f16ceb7703df6ca",
+        "status": "model_execution_complete_pending_grading",
+        "stop_reason": null,
+        "actual_assistant_models": [
+          "claude-opus-5-5"
+        ],
+        "attempted_tasks": 5,
+        "sdk_estimate_usd": 0.9268349
+      },
+      {
+        "workflow": {
+          "workflow_index": 2,
+          "instance_id": "psf__requests-1921",
+          "arm": "codegraph"
+        },
+        "process_returncode": 0,
+        "receipt_sha256": "41ddc977bead2723c5265b1c1aac0b3fcf150e3fdbe02d523998cc14a1ddbc19",
+        "status": "model_execution_complete_pending_grading",
+        "stop_reason": null,
+        "actual_assistant_models": [
+          "claude-opus-5-5"
+        ],
+        "attempted_tasks": 5,
+        "sdk_estimate_usd": 0.7732918999999999
+      },
+      {
+        "workflow": {
+          "workflow_index": 3,
+          "instance_id": "psf__requests-1921",
+          "arm": "native"
+        },
+        "process_returncode": 0,
+        "receipt_sha256": "97952d06f6bafb1f74646877fe53389f3551ea10aa50440ae2b4b19af21c7bf4",
+        "status": "model_execution_complete_pending_grading",
+        "stop_reason": null,
+        "actual_assistant_models": [
+          "claude-opus-5-5"
+        ],
+        "attempted_tasks": 5,
+        "sdk_estimate_usd": 0.7465622
+      },
+      {
+        "workflow": {
+          "workflow_index": 4,
+          "instance_id": "pallets__flask-5014",
+          "arm": "serena"
+        },
+        "process_returncode": 0,
+        "receipt_sha256": "2172d3c774bed3b3c0e2bc6b88f5d70ff09ba3e5dd28c828dfb4dd41c12f03ad",
+        "status": "model_execution_complete_pending_grading",
+        "stop_reason": null,
+        "actual_assistant_models": [
+          "claude-opus-5-5"
+        ],
+        "attempted_tasks": 5,
+        "sdk_estimate_usd": 0.9211660999999998
+      },
+      {
+        "workflow": {
+          "workflow_index": 5,
+          "instance_id": "pallets__flask-5014",
+          "arm": "codegraph"
+        },
+        "process_returncode": 0,
+        "receipt_sha256": "f376fa759e467101fa7f1d53904e85da68c4ea029492b7c68f2d7a8c4b9bbdfc",
+        "status": "model_execution_complete_pending_grading",
+        "stop_reason": null,
+        "actual_assistant_models": [
+          "claude-opus-5-5"
+        ],
+        "attempted_tasks": 5,
+        "sdk_estimate_usd": 0.9757446999999999
+      },
+      {
+        "workflow": {
+          "workflow_index": 6,
+          "instance_id": "pallets__flask-5014",
+          "arm": "native"
+        },
+        "process_returncode": 0,
+        "receipt_sha256": "3c31d334ac6fbeb1a0ce8d9226af7d5756b9894721e51d7197a7c89961aa2c3c",
+        "status": "model_execution_complete_pending_grading",
+        "stop_reason": null,
+        "actual_assistant_models": [
+          "claude-opus-5-5"
+        ],
+        "attempted_tasks": 5,
+        "sdk_estimate_usd": 0.7471049000000001
+      },
+      {
+        "workflow": {
+          "workflow_index": 7,
+          "instance_id": "pallets__flask-5014",
+          "arm": "codenib"
+        },
+        "process_returncode": 0,
+        "receipt_sha256": "61757ed442467d1dd27b73cf276848ce2f183303e1ddfe357c59490647041608",
+        "status": "model_execution_complete_pending_grading",
+        "stop_reason": null,
+        "actual_assistant_models": [
+          "claude-opus-5-5"
+        ],
+        "attempted_tasks": 5,
+        "sdk_estimate_usd": 0.9282537
+      },
+      {
+        "workflow": {
+          "workflow_index": 8,
+          "instance_id": "pytest-dev__pytest-5809",
+          "arm": "codenib"
+        },
+        "process_returncode": 0,
+        "receipt_sha256": "ba95e21a1d163a8feb988ce684c8ab19e9c37fc5f8eb24e18188e6a990f5cf59",
+        "status": "model_execution_complete_pending_grading",
+        "stop_reason": null,
+        "actual_assistant_models": [
+          "claude-opus-5-5"
+        ],
+        "attempted_tasks": 5,
+        "sdk_estimate_usd": 0.8607232999999999
+      },
+      {
+        "workflow": {
+          "workflow_index": 9,
+          "instance_id": "pytest-dev__pytest-5809",
+          "arm": "native"
+        },
+        "process_returncode": 0,
+        "receipt_sha256": "e9e717916d5d8e1419b7a29054da4221819b7a9d7f816f00442ce90c195d3142",
+        "status": "model_execution_complete_pending_grading",
+        "stop_reason": null,
+        "actual_assistant_models": [
+          "claude-opus-5-5"
+        ],
+        "attempted_tasks": 5,
+        "sdk_estimate_usd": 0.7712017
+      },
+      {
+        "workflow": {
+          "workflow_index": 10,
+          "instance_id": "pytest-dev__pytest-5809",
+          "arm": "codegraph"
+        },
+        "process_returncode": 0,
+        "receipt_sha256": "05ac2153f3ea6eee87e7b361c2049e0bf1ddebf885491ce387c4efd4d9e3bfa7",
+        "status": "model_execution_complete_pending_grading",
+        "stop_reason": null,
+        "actual_assistant_models": [
+          "claude-opus-5-5"
+        ],
+        "attempted_tasks": 5,
+        "sdk_estimate_usd": 0.808509
+      },
+      {
+        "workflow": {
+          "workflow_index": 11,
+          "instance_id": "pytest-dev__pytest-5809",
+          "arm": "serena"
+        },
+        "process_returncode": 0,
+        "receipt_sha256": "405f52eb697d6263ebb0b7acbc47a7c5e9ebc7cc69bc2046b33077cb70422836",
+        "status": "model_execution_complete_pending_grading",
+        "stop_reason": null,
+        "actual_assistant_models": [
+          "claude-opus-5-5"
+        ],
+        "attempted_tasks": 5,
+        "sdk_estimate_usd": 0.7805785999999999
+      }
+    ],
+    "sdk_estimate_usd": 9.992882900000001,
+    "finished_utc": "2026-10-28T14:50:40.045570+00:00",
+    "unattempted_workflows": []
+  },
+  "workflows": [
+    {
+      "artifact": "codegraph_matched_workflow_v2_00.json",
+      "sha256": "75075549b2a47b5ec5340f42dc8724c6f1120dfc071b9e74ecc8d51dd04c45ef",
+      "workflow": {
+        "workflow_index": 0,
+        "instance_id": "psf__requests-1921",
+        "arm": "serena"
+      },
+      "original_receipt_sha256": "9f1ec5bac774f673517313db3ee19af28f4ffe2d95c6525e35c34666d5e59fc2"
+    },
+    {
+      "artifact": "codegraph_matched_workflow_v2_01.json",
+      "sha256": "9e51ac5aa05a8ad2685d4ad726d19491356a2ab32082e249a77c8e3a8c2dc2ea",
+      "workflow": {
+        "workflow_index": 1,
+        "instance_id": "psf__requests-1921",
+        "arm": "codenib"
+      },
+      "original_receipt_sha256": "79a74d79bf9ea925b3524352393141da7d2e36da27695bb23f16ceb7703df6ca"
+    },
+    {
+      "artifact": "codegraph_matched_workflow_v2_02.json",
+      "sha256": "637908eed017bd40bee980c4c498316ec055fac8320ad0b26502169e2022f5ac",
+      "workflow": {
+        "workflow_index": 2,
+        "instance_id": "psf__requests-1921",
+        "arm": "codegraph"
+      },
+      "original_receipt_sha256": "41ddc977bead2723c5265b1c1aac0b3fcf150e3fdbe02d523998cc14a1ddbc19"
+    },
+    {
+      "artifact": "codegraph_matched_workflow_v2_03.json",
+      "sha256": "f61fb16998925bb5df07631a55545d1e0964b8b2793592c045044d9d8feeb757",
+      "workflow": {
+        "workflow_index": 3,
+        "instance_id": "psf__requests-1921",
+        "arm": "native"
+      },
+      "original_receipt_sha256": "97952d06f6bafb1f74646877fe53389f3551ea10aa50440ae2b4b19af21c7bf4"
+    },
+    {
+      "artifact": "codegraph_matched_workflow_v2_04.json",
+      "sha256": "fd11fa881a0d783762aab45ccf07db9b60df96a883f57df5220123651563a497",
+      "workflow": {
+        "workflow_index": 4,
+        "instance_id": "pallets__flask-5014",
+        "arm": "serena"
+      },
+      "original_receipt_sha256": "2172d3c774bed3b3c0e2bc6b88f5d70ff09ba3e5dd28c828dfb4dd41c12f03ad"
+    },
+    {
+      "artifact": "codegraph_matched_workflow_v2_05.json",
+      "sha256": "daa7a1063cb554040d1858c48790924b402bd7c1988f20157ec3cbb56b2c5a57",
+      "workflow": {
+        "workflow_index": 5,
+        "instance_id": "pallets__flask-5014",
+        "arm": "codegraph"
+      },
+      "original_receipt_sha256": "f376fa759e467101fa7f1d53904e85da68c4ea029492b7c68f2d7a8c4b9bbdfc"
+    },
+    {
+      "artifact": "codegraph_matched_workflow_v2_06.json",
+      "sha256": "a65c7a6e058b66d672030e94df1177bbfa5059a5a9430a96798895686fc9356a",
+      "workflow": {
+        "workflow_index": 6,
+        "instance_id": "pallets__flask-5014",
+        "arm": "native"
+      },
+      "original_receipt_sha256": "3c31d334ac6fbeb1a0ce8d9226af7d5756b9894721e51d7197a7c89961aa2c3c"
+    },
+    {
+      "artifact": "codegraph_matched_workflow_v2_07.json",
+      "sha256": "1b14d5fe298008dd25110f4e1ca7352766153c5c35d32e7a230bc089ff6c51a0",
+      "workflow": {
+        "workflow_index": 7,
+        "instance_id": "pallets__flask-5014",
+        "arm": "codenib"
+      },
+      "original_receipt_sha256": "61757ed442467d1dd27b73cf276848ce2f183303e1ddfe357c59490647041608"
+    },
+    {
+      "artifact": "codegraph_matched_workflow_v2_08.json",
+      "sha256": "9c89369b35805db6433c171816a070e392207bb8c85e330fc905c4fe26976c71",
+      "workflow": {
+        "workflow_index": 8,
+        "instance_id": "pytest-dev__pytest-5809",
+        "arm": "codenib"
+      },
+      "original_receipt_sha256": "ba95e21a1d163a8feb988ce684c8ab19e9c37fc5f8eb24e18188e6a990f5cf59"
+    },
+    {
+      "artifact": "codegraph_matched_workflow_v2_09.json",
+      "sha256": "0a6ba8ed750fe4cb25f33244ca8a5a1f8138e435115b06357ac713bdf701efca",
+      "workflow": {
+        "workflow_index": 9,
+        "instance_id": "pytest-dev__pytest-5809",
+        "arm": "native"
+      },
+      "original_receipt_sha256": "e9e717916d5d8e1419b7a29054da4221819b7a9d7f816f00442ce90c195d3142"
+    },
+    {
+      "artifact": "codegraph_matched_workflow_v2_10.json",
+      "sha256": "85d41ca495cdb2624d22b7b29c820dd0b519231ce11debfdaaccce7a7a031fcb",
+      "workflow": {
+        "workflow_index": 10,
+        "instance_id": "pytest-dev__pytest-5809",
+        "arm": "codegraph"
+      },
+      "original_receipt_sha256": "05ac2153f3ea6eee87e7b361c2049e0bf1ddebf885491ce387c4efd4d9e3bfa7"
+    },
+    {
+      "artifact": "codegraph_matched_workflow_v2_11.json",
+      "sha256": "a1510f6390989e76f4c37dbaa87f105907f986b11a5e6730c5002e911fa6f4cc",
+      "workflow": {
+        "workflow_index": 11,
+        "instance_id": "pytest-dev__pytest-5809",
+        "arm": "serena"
+      },
+      "original_receipt_sha256": "405f52eb697d6263ebb0b7acbc47a7c5e9ebc7cc69bc2046b33077cb70422836"
+    }
+  ],
+  "archive_implementation": {
+    "sha256": "66794e05d95a0d45a394ddb96575491190e1566a64a9a1c4f709c18e1540a6a7",
+    "source": "\"\"\"Archive sealed v2 model deliveries with deterministic size-limited parts.\"\"\"\nimport copy\nimport hashlib\nimport json\nfrom pathlib import Path\n\nROOT = Path(__file__).parent\nDEST = Path('/home/zhongming/CodeNib-codegraph-benefit/docs/experiments')\n\n\ndef sha(path):\n    return hashlib.sha256(Path(path).read_bytes()).hexdigest()\n\n\ndef write(name, value):\n    path = DEST / name\n    data = json.dumps(value, indent=2) + '\\n'\n    assert len(data.encode()) < 500 * 1024, (name, len(data.encode()))\n    if path.exists():\n        assert path.read_text() == data, 'Never replace an existing v2 capture'\n    else:\n        path.write_text(data)\n    return {'artifact': name, 'sha256': sha(path)}\n\n\ndef archive():\n    launch = json.loads((ROOT / 'sequential-launch-v2.json').read_text())\n    assert launch.get('finished_utc'), 'Archive final results only after the model batch is sealed'\n    manifest = []\n    for path in sorted((ROOT / 'matched-runs-v2').glob('*/receipt.json')):\n        raw = json.loads(path.read_text())\n        assert raw.get('finished_utc')\n        folder, index = path.parent, raw['workflow']['workflow_index']\n        projection = copy.deepcopy(raw)\n        for session in projection['sessions']:\n            relevant = [p for p in raw['phases'] if p['session'] == session['name'] and p.get('result')]\n            session['results'] = [{'phase_result_reference': p['kind']} for p in relevant]\n            if session.get('final_result') and relevant:\n                session['final_result']['result'] = {'phase_answer_reference': relevant[-1]['kind']}\n        observations, sources = {}, {}\n        for phase in raw['phases']:\n            for label in ['source_before', 'source_after']:\n                item = phase.get(label)\n                if item:\n                    source = Path(item['path'])\n                    assert sha(source) == item['sha256']\n                    sources.setdefault(item['sha256'], {'text': source.read_text(), 'original_names': []})['original_names'].append(source.name)\n            if not phase.get('trace'):\n                continue\n            trace = folder / phase['trace']['path']\n            assert sha(trace) == phase['trace']['sha256']\n            calls, deliveries, init, rates = {}, [], [], []\n            for line in trace.read_text().splitlines():\n                event = json.loads(line)\n                if event.get('type') == 'AssistantMessage':\n                    for block in event['content']:\n                        if block.get('name') and block.get('id'):\n                            if block['id'] in calls: assert calls[block['id']] == block\n                            calls[block['id']] = block\n                elif event.get('type') == 'UserMessage': deliveries.append(event)\n                elif event.get('type') == 'SystemMessage': init.append(event)\n                elif event.get('type') == 'RateLimitEvent': rates.append(event)\n            value = {'scope': 'Exact captured v2 tool requests and delivered user/tool messages; no task acceptance or complete source-read score.', 'workflow_index': index, 'task_id': phase['task_id'], 'kind': phase['kind'], 'raw_sdk_trace_sha256': sha(trace), 'raw_sdk_trace_bytes': trace.stat().st_size, 'init': init, 'rate_events': rates, 'tool_calls_in_first_observed_order': list(calls.values()), 'delivered_user_tool_messages_in_order': deliveries}\n            observations[phase['kind']] = write(f'codegraph_matched_workflow_v2_{index:02d}_{phase[\"kind\"]}_observations.json', value)\n        source_ref = write(f'codegraph_matched_workflow_v2_{index:02d}_sources.json', {'scope': 'Actual source-version receipts, not model-read credit.', 'source_snapshot_captures_by_sha256': sources})\n        hooks_path = folder / 'hooks.jsonl'\n        hooks = [json.loads(line) for line in hooks_path.read_text().splitlines()] if hooks_path.exists() else []\n        hook_ref = write(f'codegraph_matched_workflow_v2_{index:02d}_tool_inputs.json', {\n            'scope': 'Original pre-tool requests, permissions, effective scoped inputs and SDK output registration receipts. Post-tool response bytes are retained in original hooks and delivered model/tool observations, not duplicated here.',\n            'raw_hooks_sha256': sha(hooks_path) if hooks_path.exists() else None,\n            'raw_hooks_bytes': hooks_path.stat().st_size if hooks_path.exists() else None,\n            'pre_tool_and_output_registration_events': [h for h in hooks if h.get('event') != 'post']})\n        value = {'schema_version': 2, 'scope': 'Independent prospectively frozen v2 model execution. Original v1 remains unchanged; source/native acceptance is separate.', 'original_receipt': str(path), 'original_receipt_sha256': sha(path), 'receipt_projection': projection, 'projection_rule': 'Phase results/answers retained; duplicate cumulative session answers link to their phase. Exact tool deliveries, original pre-tool inputs and source snapshots are separately hash-bound. Intermediate visible prose/stream usage remain in the original SDK traces and are not summed as cumulative usage.', 'phase_observations': observations, 'source_snapshots': source_ref, 'original_tool_inputs': hook_ref, 'repair_patch': (folder / 'repair.patch').read_text() if (folder / 'repair.patch').exists() else None, 'setup_patch': (folder / 'pre-model.patch').read_text() if (folder / 'pre-model.patch').exists() else None, 'source_credit': 'No complete ContextBench read score. Arbitrary shell output remains unattributed until source-version/file mapping is verified.', 'archive_implementation_sha256': sha(__file__)}\n        ref = write(f'codegraph_matched_workflow_v2_{index:02d}.json', value)\n        ref.update(workflow=raw['workflow'], original_receipt_sha256=sha(path))\n        manifest.append(ref)\n        print(json.dumps({'workflow_index': index, 'archived_phases': len(observations), 'artifact': ref['artifact']}), flush=True)\n    write('codegraph_matched_v2_capture_manifest.json', {'scope': 'Sealed v2 captured observations, before separate acceptance; original v1 remains unchanged.', 'launch': launch, 'workflows': manifest, 'archive_implementation': {'sha256': sha(__file__), 'source': Path(__file__).read_text()}})\n\n\nif __name__ == '__main__':\n    archive()\n"
+  }
+}

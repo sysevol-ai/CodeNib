@@ -1,0 +1,556 @@
+{
+  "scope": "Actual optional-tool choice in this sealed automatic-choice pilot, not a separate tool efficacy or forced-use comparison.",
+  "workflows": [
+    {
+      "workflow": {
+        "workflow_index": 0,
+        "instance_id": "psf__requests-1921",
+        "arm": "serena"
+      },
+      "setup_ready": true,
+      "sdk_mcp_servers": {
+        "cold": [
+          {
+            "name": "study",
+            "status": "connected",
+            "source": "dynamic"
+          }
+        ],
+        "return": [
+          {
+            "name": "study",
+            "status": "connected",
+            "source": "dynamic"
+          }
+        ]
+      },
+      "mcp_attempts": 0,
+      "mcp_delivered_results": [],
+      "original_shell_request_tool_use_ids": [
+        "toolu_019bbmK194o7r3aY78jSGaPi",
+        "toolu_01KpJS2uxAhBdvUKVFSAa1Vu"
+      ],
+      "original_tool_input_artifact": {
+        "artifact": "codegraph_matched_workflow_v2_00_tool_inputs.json",
+        "sha256": "4e8800f2aa5cabcb29c9afd7a73e7ca610cadb76ef93881c0d2fb60648e727eb"
+      },
+      "shell_product_usage_review": {
+        "product_cli_invocations": 0,
+        "method": "Unblinded inspection of every original Bash request for this optional-product workflow; requests are linked by tool-use ID. A product name inside a workspace/file path is not a CLI invocation."
+      }
+    },
+    {
+      "workflow": {
+        "workflow_index": 1,
+        "instance_id": "psf__requests-1921",
+        "arm": "codenib"
+      },
+      "setup_ready": true,
+      "sdk_mcp_servers": {
+        "cold": [
+          {
+            "name": "study",
+            "status": "connected",
+            "source": "dynamic"
+          }
+        ],
+        "return": [
+          {
+            "name": "study",
+            "status": "connected",
+            "source": "dynamic"
+          }
+        ]
+      },
+      "mcp_attempts": 0,
+      "mcp_delivered_results": [],
+      "original_shell_request_tool_use_ids": [
+        "toolu_017hTzbUqb4QSTDUCF2XLzkc",
+        "toolu_01Dcf1YUoGVzLxbkAJQMRxAi",
+        "toolu_0177pNCXogtzzDtrKE4kEinR"
+      ],
+      "original_tool_input_artifact": {
+        "artifact": "codegraph_matched_workflow_v2_01_tool_inputs.json",
+        "sha256": "80b0e9ca37852ef8335102b1a2130cf05e7c11f00a9202e3d1de474cc19bafad"
+      },
+      "shell_product_usage_review": {
+        "product_cli_invocations": 0,
+        "method": "Unblinded inspection of every original Bash request for this optional-product workflow; requests are linked by tool-use ID. A product name inside a workspace/file path is not a CLI invocation."
+      }
+    },
+    {
+      "workflow": {
+        "workflow_index": 2,
+        "instance_id": "psf__requests-1921",
+        "arm": "codegraph"
+      },
+      "setup_ready": true,
+      "sdk_mcp_servers": {
+        "cold": [
+          {
+            "name": "study",
+            "status": "connected",
+            "source": "dynamic"
+          }
+        ],
+        "return": [
+          {
+            "name": "study",
+            "status": "connected",
+            "source": "dynamic"
+          }
+        ]
+      },
+      "mcp_attempts": 2,
+      "mcp_delivered_results": [
+        {
+          "kind": "lookup",
+          "tool_use_id": "toolu_01E1rAY7MBHDE4i4tYoCy6ds",
+          "name": "mcp__study__codegraph_explore",
+          "delivered_error_flag": null,
+          "observation_artifact": {
+            "artifact": "codegraph_matched_workflow_v2_02_lookup_observations.json",
+            "sha256": "aae25a2394a016c558b0706eecda21eb13b0fa82014ffd4372ba69f7406aca2b"
+          }
+        },
+        {
+          "kind": "flow",
+          "tool_use_id": "toolu_01JnGjr32MTHPnWfRVeyCCXN",
+          "name": "mcp__study__codegraph_explore",
+          "delivered_error_flag": null,
+          "observation_artifact": {
+            "artifact": "codegraph_matched_workflow_v2_02_flow_observations.json",
+            "sha256": "37d3a0f1df8967056eb65cb9f702a649098ebd26ef47dc1ae8b9e79067f90476"
+          }
+        }
+      ],
+      "original_shell_request_tool_use_ids": [
+        "toolu_01VokAzynhafoGqomj9kESii",
+        "toolu_01BfNGjN9QrtPBenZA4xnEk7",
+        "toolu_01QtTnawpt6591fPJFmdHLdY",
+        "toolu_01WyggLi4RtRTqRdF6hCSHxA",
+        "toolu_01UyF8Ddgxys5AopfBWa4ZG5",
+        "toolu_01QcuHouhCr9orE1dG7ZHCNL",
+        "toolu_01VZzxLoAy8S7DVDmQZVrq1w",
+        "toolu_01P1QFays78p5D9x4vtk3VnU",
+        "toolu_01ESKPjnLYkJswbADo7P7yjV"
+      ],
+      "original_tool_input_artifact": {
+        "artifact": "codegraph_matched_workflow_v2_02_tool_inputs.json",
+        "sha256": "10866fd5333bfe318b00711f7fd3258fb60135c53aae573bed884c5c71244003"
+      },
+      "shell_product_usage_review": {
+        "product_cli_invocations": 0,
+        "method": "Unblinded inspection of every original Bash request for this optional-product workflow; requests are linked by tool-use ID. A product name inside a workspace/file path is not a CLI invocation."
+      }
+    },
+    {
+      "workflow": {
+        "workflow_index": 3,
+        "instance_id": "psf__requests-1921",
+        "arm": "native"
+      },
+      "setup_ready": true,
+      "sdk_mcp_servers": {
+        "cold": [],
+        "return": []
+      },
+      "mcp_attempts": 0,
+      "mcp_delivered_results": [],
+      "original_shell_request_tool_use_ids": [
+        "toolu_01TKpuPZ3gcr4h98mSJ4eHee",
+        "toolu_014tjjmnpLtd9Hx2zuxWmba5",
+        "toolu_01WT6wcqLnPUjQM5XarkQUk1",
+        "toolu_01HyHakmrhbuaWUKRbGtL4Cr",
+        "toolu_01QB57d4dpyxnM6TryhTSud1",
+        "toolu_01QgyhQbAvmeKmKRxKR34FfE",
+        "toolu_01N8R23M9CNoyep8C68oz1oY",
+        "toolu_01YTCmWU6adKFkWzfs3m4Mq2",
+        "toolu_01JViGXzvsJQ4aSsySuJNGnC",
+        "toolu_012kkfasnpnp46Wapf3zDnLe",
+        "toolu_011ahTtPgHMEYLos2PFncWWK",
+        "toolu_01XFqwK16nm65xSd3ikXHPZE",
+        "toolu_01SUbEwYSqSWmFs8PyN4egAV",
+        "toolu_01W7PKfSpADkCxTMYMYGQjxY"
+      ],
+      "original_tool_input_artifact": {
+        "artifact": "codegraph_matched_workflow_v2_03_tool_inputs.json",
+        "sha256": "ba8f3d772a58a7a5bf46825d42c361e231e67d0e81e7421b6c75c8e82d76db7a"
+      },
+      "shell_product_usage_review": {
+        "product_cli_invocations": null,
+        "method": "Native-only arm; no optional product installed or advertised."
+      }
+    },
+    {
+      "workflow": {
+        "workflow_index": 4,
+        "instance_id": "pallets__flask-5014",
+        "arm": "serena"
+      },
+      "setup_ready": true,
+      "sdk_mcp_servers": {
+        "cold": [
+          {
+            "name": "study",
+            "status": "connected",
+            "source": "dynamic"
+          }
+        ],
+        "return": [
+          {
+            "name": "study",
+            "status": "connected",
+            "source": "dynamic"
+          }
+        ]
+      },
+      "mcp_attempts": 0,
+      "mcp_delivered_results": [],
+      "original_shell_request_tool_use_ids": [
+        "toolu_01NYa5mh5RvBJ95CU9U1H8mn",
+        "toolu_01UbcPCEBPNRBnvkvGQ1y81B",
+        "toolu_0157wvwjQuuvfcMWEeYTojyQ",
+        "toolu_01F9rjTeGGsEvMnTVRpr2BG9",
+        "toolu_01MDXuscDRhEzykV12WYgXwd"
+      ],
+      "original_tool_input_artifact": {
+        "artifact": "codegraph_matched_workflow_v2_04_tool_inputs.json",
+        "sha256": "549cf3a378f3bc80f629b9169528d2d327f88ed02014f0845045230c475f34d5"
+      },
+      "shell_product_usage_review": {
+        "product_cli_invocations": 0,
+        "method": "Unblinded inspection of every original Bash request for this optional-product workflow; requests are linked by tool-use ID. A product name inside a workspace/file path is not a CLI invocation."
+      }
+    },
+    {
+      "workflow": {
+        "workflow_index": 5,
+        "instance_id": "pallets__flask-5014",
+        "arm": "codegraph"
+      },
+      "setup_ready": true,
+      "sdk_mcp_servers": {
+        "cold": [
+          {
+            "name": "study",
+            "status": "connected",
+            "source": "dynamic"
+          }
+        ],
+        "return": [
+          {
+            "name": "study",
+            "status": "connected",
+            "source": "dynamic"
+          }
+        ]
+      },
+      "mcp_attempts": 2,
+      "mcp_delivered_results": [
+        {
+          "kind": "flow",
+          "tool_use_id": "toolu_01ASTmHv4jyLq1b4NuAfzhRx",
+          "name": "mcp__study__codegraph_explore",
+          "delivered_error_flag": null,
+          "observation_artifact": {
+            "artifact": "codegraph_matched_workflow_v2_05_flow_observations.json",
+            "sha256": "eeb0a4df5e0655f788506b681a7804ec137ed43248eddca32879c8e71993b35d"
+          }
+        },
+        {
+          "kind": "flow",
+          "tool_use_id": "toolu_01TDEaS3gmvKGQBUyPLp5XCx",
+          "name": "mcp__study__codegraph_explore",
+          "delivered_error_flag": null,
+          "observation_artifact": {
+            "artifact": "codegraph_matched_workflow_v2_05_flow_observations.json",
+            "sha256": "eeb0a4df5e0655f788506b681a7804ec137ed43248eddca32879c8e71993b35d"
+          }
+        }
+      ],
+      "original_shell_request_tool_use_ids": [
+        "toolu_0193obCkk2oLySSXosiqcuFr",
+        "toolu_01WcPMaMbiGoQMtdvHD8c9Gd",
+        "toolu_01X1tzG4seVAf5wNj7JoCBBp"
+      ],
+      "original_tool_input_artifact": {
+        "artifact": "codegraph_matched_workflow_v2_05_tool_inputs.json",
+        "sha256": "df4280a7566ed71447e84943d9d2f4eb24b20aa3a86ea3552367306307683ab6"
+      },
+      "shell_product_usage_review": {
+        "product_cli_invocations": 0,
+        "method": "Unblinded inspection of every original Bash request for this optional-product workflow; requests are linked by tool-use ID. A product name inside a workspace/file path is not a CLI invocation."
+      }
+    },
+    {
+      "workflow": {
+        "workflow_index": 6,
+        "instance_id": "pallets__flask-5014",
+        "arm": "native"
+      },
+      "setup_ready": true,
+      "sdk_mcp_servers": {
+        "cold": [],
+        "return": []
+      },
+      "mcp_attempts": 0,
+      "mcp_delivered_results": [],
+      "original_shell_request_tool_use_ids": [
+        "toolu_014shyFX7BKr8CLDkEAHR2Lv",
+        "toolu_01TLR2GPnDt6ququtxe3Arxa",
+        "toolu_01SppQghb8foNkZadybQMiVN",
+        "toolu_014YbRDtzzwHg8FtnLhpy8jj",
+        "toolu_01LmYH1bPhyG1xQ5SA3orMMX",
+        "toolu_01LFA9zRwiekvoEKK1XbYBSG",
+        "toolu_01MkDqpa2AokxeQA4GYoJT51",
+        "toolu_01E1uA3pzu6CCccgHbzCQJ3Y",
+        "toolu_012wvVaDmTgGDkud6H7Niy9m",
+        "toolu_01VD1eTYfX8NUTDgGGdoejrX",
+        "toolu_011eFG7cxijSKbMvUyiJyooq",
+        "toolu_01RgAYimmmY2ZFKrFv6LgMrw",
+        "toolu_01H2egkrg2DjPxVXFpC4Bh8S",
+        "toolu_01N1ZEHFv53fyA6jXRXYv69q",
+        "toolu_01NBwjELacPgEjJY6PZvsVWi"
+      ],
+      "original_tool_input_artifact": {
+        "artifact": "codegraph_matched_workflow_v2_06_tool_inputs.json",
+        "sha256": "c1afdad0f528d82e5649bf2fb34487890f29874426513de5e66c9c76ab366db1"
+      },
+      "shell_product_usage_review": {
+        "product_cli_invocations": null,
+        "method": "Native-only arm; no optional product installed or advertised."
+      }
+    },
+    {
+      "workflow": {
+        "workflow_index": 7,
+        "instance_id": "pallets__flask-5014",
+        "arm": "codenib"
+      },
+      "setup_ready": true,
+      "sdk_mcp_servers": {
+        "cold": [
+          {
+            "name": "study",
+            "status": "connected",
+            "source": "dynamic"
+          }
+        ],
+        "return": [
+          {
+            "name": "study",
+            "status": "connected",
+            "source": "dynamic"
+          }
+        ]
+      },
+      "mcp_attempts": 0,
+      "mcp_delivered_results": [],
+      "original_shell_request_tool_use_ids": [
+        "toolu_01Ps3MJjT9HdrohH9qF7229u",
+        "toolu_01ArGJ1gNz7wJNwms5YsJjtw",
+        "toolu_018FbYXyamkHthASbn3PTk9q"
+      ],
+      "original_tool_input_artifact": {
+        "artifact": "codegraph_matched_workflow_v2_07_tool_inputs.json",
+        "sha256": "fe3b4cbf96fdeabcb2d2c80a9701c26039935ca1588a176b562be10fef9300a3"
+      },
+      "shell_product_usage_review": {
+        "product_cli_invocations": 0,
+        "method": "Unblinded inspection of every original Bash request for this optional-product workflow; requests are linked by tool-use ID. A product name inside a workspace/file path is not a CLI invocation."
+      }
+    },
+    {
+      "workflow": {
+        "workflow_index": 8,
+        "instance_id": "pytest-dev__pytest-5809",
+        "arm": "codenib"
+      },
+      "setup_ready": true,
+      "sdk_mcp_servers": {
+        "cold": [
+          {
+            "name": "study",
+            "status": "connected",
+            "source": "dynamic"
+          }
+        ],
+        "return": [
+          {
+            "name": "study",
+            "status": "connected",
+            "source": "dynamic"
+          }
+        ]
+      },
+      "mcp_attempts": 0,
+      "mcp_delivered_results": [],
+      "original_shell_request_tool_use_ids": [
+        "toolu_01WT5fHCLffWpVEQZhDCZpCV",
+        "toolu_01Ut4FZ5mCwpviN3b4SFZUth"
+      ],
+      "original_tool_input_artifact": {
+        "artifact": "codegraph_matched_workflow_v2_08_tool_inputs.json",
+        "sha256": "6ebd3e6e23e3ed73350089758c4d0e01949237b2988cedf7deaa1774242c3e53"
+      },
+      "shell_product_usage_review": {
+        "product_cli_invocations": 0,
+        "method": "Unblinded inspection of every original Bash request for this optional-product workflow; requests are linked by tool-use ID. A product name inside a workspace/file path is not a CLI invocation."
+      }
+    },
+    {
+      "workflow": {
+        "workflow_index": 9,
+        "instance_id": "pytest-dev__pytest-5809",
+        "arm": "native"
+      },
+      "setup_ready": true,
+      "sdk_mcp_servers": {
+        "cold": [],
+        "return": []
+      },
+      "mcp_attempts": 0,
+      "mcp_delivered_results": [],
+      "original_shell_request_tool_use_ids": [
+        "toolu_01AsJJ7ugKvHB72tiJA1hDWW",
+        "toolu_01CLXgXGcixLX3AAgXSyjoCF",
+        "toolu_01KHUg63SjJk1tQFCaJUNmHs",
+        "toolu_015fM29Yz9W4b3CN5hKBFUnh",
+        "toolu_01ECgCLAWwHYY82uK47KcsWQ",
+        "toolu_01XNLVdY6BrjVA1665Vgf8XT",
+        "toolu_012ndFvpqA5W6iYFogDmpHbN",
+        "toolu_01LdmaSL4Dke8AwVV3aB5W8m",
+        "toolu_017qkcY3WKeYHhy2VE455yYF",
+        "toolu_01HVsDP6mT66GdSdv5sKHzNi",
+        "toolu_01DR2uEc7hXEmbunn2dNyKdu",
+        "toolu_01XQbYtnm9tShvu87NwjC7tH",
+        "toolu_01LQkbSHZGnGz29HsU8BMVha",
+        "toolu_01KoSLZxyuYBSbXvqEmJgkXR",
+        "toolu_015peTmPwWQ7j149LvTnzfWX",
+        "toolu_01AoxYW6j6qQBg8E33AyjNEJ"
+      ],
+      "original_tool_input_artifact": {
+        "artifact": "codegraph_matched_workflow_v2_09_tool_inputs.json",
+        "sha256": "265d34964acc456dcbb8474ac11aa60ab2af90c03c7b89e90bebb13d5335d63a"
+      },
+      "shell_product_usage_review": {
+        "product_cli_invocations": null,
+        "method": "Native-only arm; no optional product installed or advertised."
+      }
+    },
+    {
+      "workflow": {
+        "workflow_index": 10,
+        "instance_id": "pytest-dev__pytest-5809",
+        "arm": "codegraph"
+      },
+      "setup_ready": true,
+      "sdk_mcp_servers": {
+        "cold": [
+          {
+            "name": "study",
+            "status": "connected",
+            "source": "dynamic"
+          }
+        ],
+        "return": [
+          {
+            "name": "study",
+            "status": "connected",
+            "source": "dynamic"
+          }
+        ]
+      },
+      "mcp_attempts": 2,
+      "mcp_delivered_results": [
+        {
+          "kind": "lookup",
+          "tool_use_id": "toolu_01EEtgahG4bUV1jwdfSHkgiQ",
+          "name": "mcp__study__codegraph_explore",
+          "delivered_error_flag": null,
+          "observation_artifact": {
+            "artifact": "codegraph_matched_workflow_v2_10_lookup_observations.json",
+            "sha256": "1f16c3dc3f8000bd12834bca6ee384acc0c77465d7ba231b9d9b3dd20637f644"
+          }
+        },
+        {
+          "kind": "flow",
+          "tool_use_id": "toolu_01J4GcGcNcVcZCDKAmuswdy8",
+          "name": "mcp__study__codegraph_explore",
+          "delivered_error_flag": null,
+          "observation_artifact": {
+            "artifact": "codegraph_matched_workflow_v2_10_flow_observations.json",
+            "sha256": "f620ea717190f4ff2d59bb9d7f728015ae123acebd3ba4c772bdece8a77bcaac"
+          }
+        }
+      ],
+      "original_shell_request_tool_use_ids": [
+        "toolu_01MLtAzUnerXPckYmavxJPek",
+        "toolu_012TFRZcWCUXtcXAQUTgSRgf",
+        "toolu_01UBjHGM8kji6vfRtqV7yGxK",
+        "toolu_01QhdPaH3q6VqUC1kzd6ujFZ",
+        "toolu_01AbBv8r7AoN747xn8TCPVxJ",
+        "toolu_01VBvvqUYLvN9vxWZT2h9tsc",
+        "toolu_01MT66YyZRqkJMSj21gCcEsk",
+        "toolu_01JrzAK7cRk5CpYxer8UC9Pb",
+        "toolu_019rAC3xD4tvrBEurbohrMUP",
+        "toolu_01BB3t5orJMRf9XovWpUPQGL"
+      ],
+      "original_tool_input_artifact": {
+        "artifact": "codegraph_matched_workflow_v2_10_tool_inputs.json",
+        "sha256": "6560fa88d943363649b01b07d7bb27df7a76038ba19e7cd83155d06c5515f9ec"
+      },
+      "shell_product_usage_review": {
+        "product_cli_invocations": 0,
+        "method": "Unblinded inspection of every original Bash request for this optional-product workflow; requests are linked by tool-use ID. A product name inside a workspace/file path is not a CLI invocation."
+      }
+    },
+    {
+      "workflow": {
+        "workflow_index": 11,
+        "instance_id": "pytest-dev__pytest-5809",
+        "arm": "serena"
+      },
+      "setup_ready": true,
+      "sdk_mcp_servers": {
+        "cold": [
+          {
+            "name": "study",
+            "status": "connected",
+            "source": "dynamic"
+          }
+        ],
+        "return": [
+          {
+            "name": "study",
+            "status": "connected",
+            "source": "dynamic"
+          }
+        ]
+      },
+      "mcp_attempts": 0,
+      "mcp_delivered_results": [],
+      "original_shell_request_tool_use_ids": [
+        "toolu_01MnnjVXLSrvTGjnQGMuMHTy",
+        "toolu_019JcRpgvJFv1meB66JVre8W"
+      ],
+      "original_tool_input_artifact": {
+        "artifact": "codegraph_matched_workflow_v2_11_tool_inputs.json",
+        "sha256": "83b8e30ce3ca2039b3fb8ae81a443c98488ab7486a2bc8fdaadc9fa7803647f2"
+      },
+      "shell_product_usage_review": {
+        "product_cli_invocations": 0,
+        "method": "Unblinded inspection of every original Bash request for this optional-product workflow; requests are linked by tool-use ID. A product name inside a workspace/file path is not a CLI invocation."
+      }
+    }
+  ],
+  "mcp_attempts_by_arm": {
+    "native": 0,
+    "serena": 0,
+    "codegraph": 6,
+    "codenib": 0
+  },
+  "claim_limit": "Connected setup and native fallback do not establish graph utility. Zero observed product calls prevents attributing CodeNib/Serena answer outcomes to graph retrieval.",
+  "implementation_sha256": "3c1b44873dbbbe32e7c1c7ca3d2b142bb9d7879d74eda27260c4b9ec9847d71c"
+}

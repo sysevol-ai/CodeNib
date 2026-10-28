@@ -1,0 +1,140 @@
+{
+  "scope": "Exact captured v2 tool requests and delivered user/tool messages; no task acceptance or complete source-read score.",
+  "workflow_index": 0,
+  "task_id": "psf__requests-1921-repair",
+  "kind": "repair",
+  "raw_sdk_trace_sha256": "bea1f58b0cf9ea90bb9ab998739bea6dfb15dfa0cb47e4b6bfe2f8767c3fb36a",
+  "raw_sdk_trace_bytes": 24237,
+  "init": [
+    {
+      "type": "SystemMessage",
+      "subtype": "init",
+      "data": {
+        "model": "claude-opus-5-5",
+        "apiKeySource": "none",
+        "tools": [
+          "Bash",
+          "Edit",
+          "Glob",
+          "Grep",
+          "Read",
+          "ToolSearch",
+          "Write",
+          "mcp__study__initial_instructions",
+          "mcp__study__serena_repl"
+        ],
+        "mcp_servers": [
+          {
+            "name": "study",
+            "status": "connected",
+            "source": "dynamic"
+          }
+        ],
+        "claude_code_version": "2.1.310"
+      }
+    }
+  ],
+  "rate_events": [],
+  "tool_calls_in_first_observed_order": [
+    {
+      "id": "toolu_018nGm41A5GV6FHkUggVjyVr",
+      "name": "Grep",
+      "input": {
+        "pattern": "headers = \\{\\} if|params = \\{\\} if|hooks = \\{\\} if",
+        "path": "requests/models.py",
+        "output_mode": "content"
+      }
+    },
+    {
+      "id": "toolu_01V9mzzZFQ8nUhhe59cPF42K",
+      "name": "Edit",
+      "input": {
+        "replace_all": false,
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/00-psf__requests-1921-serena/workspace/requests/sessions.py",
+        "old_string": "    # Remove keys that are set to None.\n    for (k, v) in request_setting.items():\n        if v is None:\n            del merged_setting[k]\n\n    return merged_setting",
+        "new_string": "    # Remove keys that are set to None. Extract keys first to avoid altering\n    # the dictionary during iteration.\n    none_keys = [k for (k, v) in merged_setting.items() if v is None]\n    for key in none_keys:\n        del merged_setting[key]\n\n    return merged_setting"
+      }
+    },
+    {
+      "id": "toolu_011qgqqA4FGqzmLH4PJxVtFq",
+      "name": "Grep",
+      "input": {
+        "pattern": "def test_(headers_on_session|user_agent_transfers|header_remove|session_hooks)",
+        "path": "test_requests.py",
+        "output_mode": "content",
+        "-A": 20
+      }
+    },
+    {
+      "id": "toolu_01KLhJmyZP28FPVYc1mRDHbm",
+      "name": "Edit",
+      "input": {
+        "replace_all": false,
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/00-psf__requests-1921-serena/workspace/test_requests.py",
+        "old_string": "    def test_HTTP_200_OK_HEAD(self):",
+        "new_string": "    def test_headers_on_session_with_None_are_not_sent(self):\n        \"\"\"Do not send headers in Session.headers with None values.\"\"\"\n        ses = requests.Session()\n        ses.headers['Accept-Encoding'] = None\n        req = requests.Request('GET', httpbin('get'))\n        prep = ses.prepare_request(req)\n        assert 'Accept-Encoding' not in prep.headers\n\n    def test_HTTP_200_OK_HEAD(self):"
+      }
+    },
+    {
+      "id": "toolu_019bbmK194o7r3aY78jSGaPi",
+      "name": "Bash",
+      "input": {
+        "command": "git stash -q -- requests/sessions.py && pytest -q test_requests.py -k None_are_not_sent 2>&1 | tail -3; git stash pop -q && pytest -q test_requests.py 2>&1 | tail -5; git status --short",
+        "description": "Confirm test fails without fix, then run full suite with fix",
+        "timeout": 600000
+      }
+    }
+  ],
+  "delivered_user_tool_messages_in_order": [
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_018nGm41A5GV6FHkUggVjyVr",
+          "content": "218:        headers = {} if headers is None else headers\n219:        params = {} if params is None else params\n220:        hooks = {} if hooks is None else hooks",
+          "is_error": null
+        }
+      ]
+    },
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_01V9mzzZFQ8nUhhe59cPF42K",
+          "content": "The file /tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/00-psf__requests-1921-serena/workspace/requests/sessions.py has been updated successfully.",
+          "is_error": null
+        }
+      ]
+    },
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_011qgqqA4FGqzmLH4PJxVtFq",
+          "content": "214:    def test_user_agent_transfers(self):\n215-\n216-        heads = {\n217-            'User-agent': 'Mozilla/5.0 (github.com/kennethreitz/requests)'\n218-        }\n219-\n220-        r = requests.get(httpbin('user-agent'), headers=heads)\n221-        assert heads['User-agent'] in r.text\n222-\n223-        heads = {\n224-            'user-agent': 'Mozilla/5.0 (github.com/kennethreitz/requests)'\n225-        }\n226-\n227-        r = requests.get(httpbin('user-agent'), headers=heads)\n228-        assert heads['user-agent'] in r.text\n229-\n230-    def test_HTTP_200_OK_HEAD(self):\n231-        r = requests.head(httpbin('get'))\n232-        assert r.status_code == 200\n233-\n234-    def test_HTTP_200_OK_PUT(self):\n--\n486:    def test_session_hooks_are_used_with_no_request_hooks(self):\n487-        hook = lambda x, *args, **kwargs: x\n488-        s = requests.Session()\n489-        s.hooks['response'].append(hook)\n490-        r = requests.Request('GET', HTTPBIN)\n491-        prep = s.prepare_request(r)\n492-        assert prep.hooks['response'] != []\n493-        assert prep.hooks['response'] == [hook]\n494-\n495:    def test_session_hooks_are_overriden_by_request_hooks(self):\n496-        hook1 = lambda x, *args, **kwargs: x\n497-        hook2 = lambda x, *args, **kwargs: x\n498-        assert hook1 is not hook2\n499-        s = requests.Session()\n500-        s.hooks['response'].append(hook2)\n501-        r = requests.Request('GET', HTTPBIN, hooks={'response': [hook1]})\n502-        prep = s.prepare_request(r)\n503-        assert prep.hooks['response'] == [hook1]\n504-\n505-    def test_prepared_request_hook(self):\n506-        def hook(resp, **kwargs):\n507-            resp.hook_working = True\n508-            return resp\n509-\n510-        req = requests.Request('GET', HTTPBIN, hooks={'response': hook})\n511-        prep = req.prepare()\n512-\n513-        s = requests.Session()\n514-        s.proxies = getproxies()\n515-        resp = s.send(prep)\n--\n800:    def test_header_remove_is_case_insensitive(self):\n801-        # From issue #1321\n802-        s = requests.Session()\n803-        s.headers['foo'] = 'bar'\n804-        r = s.get(httpbin('get'), headers={'FOO': None})\n805-        assert 'foo' not in r.request.headers\n806-\n807-    def test_params_are_merged_case_sensitive(self):\n808-        s = requests.Session()\n809-        s.params['foo'] = 'bar'\n810-        r = s.get(httpbin('get'), params={'FOO': 'bar'})\n811-        assert r.json()['args'] == {'foo': 'bar', 'FOO': 'bar'}\n812-\n813-\n814-    def test_long_authinfo_in_url(self):\n815-        url = 'http://{0}:{1}@{2}:9000/path?query#frag'.format(\n816-            'E8A3BE87-9E3F-4620-8858-95478E385B5B',\n817-            'EA770032-DA4D-4D84-8CE9-29C6D910BF1E',\n818-            'exactly-------------sixty-----------three------------characters',\n819-        )\n820-        r = requests.Request('GET', url).prepare()",
+          "is_error": null
+        }
+      ]
+    },
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_01KLhJmyZP28FPVYc1mRDHbm",
+          "content": "The file /tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/00-psf__requests-1921-serena/workspace/test_requests.py has been updated successfully.",
+          "is_error": null
+        }
+      ]
+    },
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_019bbmK194o7r3aY78jSGaPi",
+          "content": "-- Docs: https://docs.pytest.org/en/latest/warnings.html\n1 failed, 118 deselected, 3 warnings in 0.13 seconds\nOFFLINE_HTTPBIN_RECEIPT {\"exit_code\": 1, \"profile\": \"requests-offline-httpbin-arm64-v1\", \"ready\": true, \"server_pids\": [126, 127], \"server_returncodes\": [0, 0], \"trust_store_overlay\": {\"fixture_ca_sha256\": \"3ee42b8945633bdb1b34f57f90e01c99f17142e00ac96744d1ec6284854618b8\", \"original_sha256\": \"6a4eeafeaf28cc7750f5f7f6ed4f84d6f08dacb8ac151412332f732647694253\", \"path\": \"/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/00-psf__requests-1921-serena/workspace/requests/cacert.pem\", \"restored\": true, \"runtime_sha256\": \"cf8d011c317e903a6dac2187464cec46662ad683b2c5d5e639fc4bcfa86e3f7e\"}}\n    pytest.raises(ValueError, \"requests.post(url, data=u'[{\\\"some\\\": \\\"data\\\"}]', files={'some': f})\")\n\n-- Docs: https://docs.pytest.org/en/latest/warnings.html\n119 passed, 5 warnings in 0.27 seconds\nOFFLINE_HTTPBIN_RECEIPT {\"exit_code\": 0, \"profile\": \"requests-offline-httpbin-arm64-v1\", \"ready\": true, \"server_pids\": [137, 138], \"server_returncodes\": [0, 0], \"trust_store_overlay\": {\"fixture_ca_sha256\": \"3ee42b8945633bdb1b34f57f90e01c99f17142e00ac96744d1ec6284854618b8\", \"original_sha256\": \"6a4eeafeaf28cc7750f5f7f6ed4f84d6f08dacb8ac151412332f732647694253\", \"path\": \"/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/00-psf__requests-1921-serena/workspace/requests/cacert.pem\", \"restored\": true, \"runtime_sha256\": \"cf8d011c317e903a6dac2187464cec46662ad683b2c5d5e639fc4bcfa86e3f7e\"}}\n M requests/sessions.py\n M test_requests.py\n?? .serena/",
+          "is_error": false
+        }
+      ]
+    }
+  ]
+}
