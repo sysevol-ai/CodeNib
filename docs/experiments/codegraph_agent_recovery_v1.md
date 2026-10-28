@@ -12,6 +12,8 @@ and queried the changed relationship through the original MCP process. This
 verifies the bounded recovery path after #890. It does not establish voluntary
 use or a comparative whole-task benefit; [A0](../adoption_roadmap.md) and
 [#874](https://github.com/sysevol-ai/CodeNib/issues/874) remain active.
+The evidence and roadmap reconciliation are tracked in
+[#892](https://github.com/sysevol-ai/CodeNib/pull/892).
 
 The [execution record](codegraph_agent_recovery_2026_10_28.json) retains all
 three sessions, six prompts and nine delivered MCP outcomes: six successful
@@ -57,6 +59,8 @@ contains fields and the `ResponseReturnValue` annotation. The pytest answer
 explicitly observes missing edges for external and dynamic calls. Keep these
 interpretation limits visible before a future benefit cohort; recovering an
 index does not make every returned reference a runtime call.
+[#891](https://github.com/sysevol-ai/CodeNib/issues/891) tracks the model-visible
+description and coverage correction.
 
 ## Complete request and rebuild-command costs
 
