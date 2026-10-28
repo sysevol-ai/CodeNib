@@ -82,7 +82,8 @@ successfully in their original MCP process. Its three controlled edits take
 evidence, with explicit tool use requested; complete answer quality, voluntary
 use and comparative benefit remain separate gates. The
 [static-reference interpretation fix](experiments/codegraph_reference_semantics.md)
-addresses [#891](https://github.com/sysevol-ai/CodeNib/issues/891) with explicit
+([#893](https://github.com/sysevol-ai/CodeNib/pull/893)) addresses
+[#891](https://github.com/sysevol-ai/CodeNib/issues/891) with explicit
 reference directions, meaning and coverage in the model-facing reply. It
 preserves the underlying relationships and does not establish better model
 answers or comparative benefit.

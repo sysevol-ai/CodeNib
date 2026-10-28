@@ -12,6 +12,8 @@ complete runtime call coverage. The model-facing guidance and response now
 state that meaning, addressing
 [#891](https://github.com/sysevol-ai/CodeNib/issues/891) before another benefit
 cohort. Promotion remains held under [A0](../adoption_roadmap.md).
+The implementation and evidence are tracked in
+[#893](https://github.com/sysevol-ai/CodeNib/pull/893).
 
 ## Observed interpretation gap
 
