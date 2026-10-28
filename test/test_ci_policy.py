@@ -227,7 +227,8 @@ def test_ci_reuses_versioned_toolchains_and_serializes_consumers() -> None:
         'SCIP_PYTHON_SHA="$(git -C third_party/scip-python rev-parse HEAD)"' in action
     )
     assert (
-        'SCIP_PYTHON_PREFIX="$TOOLCHAIN_CACHE/scip-python/$SCIP_PYTHON_SHA"' in action
+        'SCIP_PYTHON_PREFIX="$(realpath -m "$TOOLCHAIN_CACHE")/scip-python/'
+        '$SCIP_PYTHON_SHA"' in action
     )
     assert 'if [ -x "$SCIP_PYTHON_BIN" ]; then' in action
     assert 'echo "$SCIP_PYTHON_PREFIX/bin" >> "$GITHUB_PATH"' in action

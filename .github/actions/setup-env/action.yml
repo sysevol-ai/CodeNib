@@ -79,7 +79,9 @@ runs:
         # scip-env is recreated per job, and a host-wide scip-python on PATH
         # used to satisfy a cache probe against it, so jobs silently ran that
         # binary instead of this submodule. Keep one install per revision.
-        SCIP_PYTHON_PREFIX="$TOOLCHAIN_CACHE/scip-python/$SCIP_PYTHON_SHA"
+        # The runner normalizes GITHUB_PATH entries, so drop the `..` here too
+        # for the resolution check below to compare equal paths.
+        SCIP_PYTHON_PREFIX="$(realpath -m "$TOOLCHAIN_CACHE")/scip-python/$SCIP_PYTHON_SHA"
         SCIP_PYTHON_BIN="$SCIP_PYTHON_PREFIX/bin/scip-python"
         if [ -x "$SCIP_PYTHON_BIN" ]; then
           echo "[scip-python] cached revision $SCIP_PYTHON_SHA"
