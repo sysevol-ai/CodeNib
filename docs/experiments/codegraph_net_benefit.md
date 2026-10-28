@@ -2,8 +2,10 @@
 
 Owner: CodeNib product and CodeGraph maintainers.
 Status: dirty initialization and stale-query guard merged; provider-identity
-collision reproduced and graph-integrity guard merged;
-no matched-task or external trial has run. Established 2026-10-26
+collision reproduced and graph-integrity guard merged; all twelve matched
+workflows execute and their repairs pass the selected original native grading.
+Source-explanation acceptance and external trials remain open.
+Established 2026-10-26
 (Pacific); target review 2026-11-09.
 Current outcomes and open gates belong to [adoption A0](../adoption_roadmap.md).
 Tracking issue: [#874](https://github.com/sysevol-ai/CodeNib/issues/874).
@@ -156,8 +158,13 @@ not demonstrate statistical non-inferiority on an unseen population.
 The user authorized a $500 API ceiling and prefers existing Codex/Claude
 account SDKs. Both native SDK/MCP connectivity probes succeeded without
 supplied API keys; their forced-tool fixtures are excluded from task/adoption
-results. Admission remains open: tasks, acceptance fixtures, exact model/tool
-configurations, per-run limits and effective accounting are not yet frozen.
+results. Tasks, acceptance, exact model/tool configurations, per-run limits and
+accounting are frozen in the [execution policy](codegraph_matched_policy_v3.json).
+The [executable/runtime binding and source checks](codegraph_execution_2026_10_27.json)
+precede the first matched query. [All twelve workflows](codegraph_matched_run_v1.md)
+now complete; the selected original native grader resolves all twelve captured
+repairs. The 48 source explanations await rubric review before the complete
+benefit gate can be evaluated.
 Work on offline reproduction and scoped fixes can proceed. A live experiment must
 not silently substitute the graph-free search pair or grep/Jev for CodeGraph.
 
