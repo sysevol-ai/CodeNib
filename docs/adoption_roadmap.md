@@ -136,10 +136,16 @@ ContextBench rank and website clicks cannot substitute for G2 or G3.
 
 The authorized API ceiling is $500; native account SDK/MCP connectivity is
 verified. Task/model/tool policy, limits, accounting and the executable/runtime
-binding are frozen. Source review is complete with the original criterion defect
-explicitly retained; its prospective benefit gate remains unmet. Open gates are
-broader provider coverage, representative source-update workflows, the full
-prospective v2 execution/assessment, a valid matched benefit gate and
+binding are frozen. Both cohorts' execution and source/native assessments are
+complete; the original criterion defect and v1 outcomes remain explicitly
+retained. The prospective benefit gate remains unmet. Public entry and MCP
+guidance now describe bounded static-reference navigation, distinguish a first
+connection check from ordinary tool choice, and include indexing/rebuild costs
+in task-fit guidance. The repository-tool comparison promises no call-graph
+equivalence or precision advantage. This implements the bounded scope decision
+without adding benefit evidence or changing either cohort. Open gates are a
+real source-linked task and observed reuse, broader provider coverage,
+representative source-update workflows, a valid matched benefit gate and
 participant recruitment/consent.
 These do not block offline reproduction and the workflow fixes. If the review date arrives
 before evidence is complete, report the open gates rather than treating an

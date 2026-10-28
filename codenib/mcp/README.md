@@ -89,7 +89,7 @@ discovery.
 | `search_bm25` | `bm25` | symbol | exact-name / keyword lookups |
 | `search_regex` | `symbol_graph` | file / symbol | structural pattern matching |
 | `search_zoekt` | `zoekt` | file | fast substring/regex across raw repo contents |
-| `dependency_subgraph` | `symbol_graph` | call graph | structural dependency / impact analysis |
+| `dependency_subgraph` | `symbol_graph` | static-reference subgraph | bounded incoming/outgoing references across symbols |
 | `lsp_definition` | runtime LSP provider or `symbol_graph` | location | static graph analogue of go-to-definition |
 | `lsp_references` | runtime LSP provider or `symbol_graph` | locations | static graph analogue of find-references |
 | `lsp_route` | runtime LSP provider or `symbol_graph` | locations | compact route anchors for related symbols |
@@ -215,17 +215,25 @@ file-level (`type="file"`).
 - `file_filter` (str, default `""`): glob/regex appended as `file:<expr>`.
 
 ### `dependency_subgraph`
-Call-graph neighborhood or transitive impact analysis.
+
+Bounded navigation over indexed static references between symbols. References
+can include calls, field access, type use and function values; inspect source
+before treating an edge as invocation. External and dynamic calls may be absent.
 
 - `symbol` (str): readable symbol seed; fuzzy resolution is supported.
-- `direction` (str, default `"both"`): `"impact"` for transitive callers,
-  `"dependencies"` for transitive callees, or `"both"` for a neighborhood.
-- `depth` (int, default 2): traversal depth, clamped to at least 1.
+- `direction` (str, default `"both"`): `"impact"` follows incoming references,
+  `"dependencies"` follows outgoing references, and `"both"` follows both.
+  Legacy `"callers"` / `"callees"` aliases retain these reference meanings.
+- `depth` (int, default 2): traversal depth, from 1 through 8.
 - `max_nodes` (int, default 60): root-inclusive node budget (maximum 100).
 - `max_edges` (int, default 400): relationship budget (maximum 2,000).
 
 Returns `root`, `direction`, `nodes`, `edges`, `truncated`, and `note`.
 Each node's optional `line` is 1-based.
+Source builds from `main` also return `semantics` describing edge meaning,
+reference direction and coverage. Legacy result labels `callers` / `callees`
+remain compatible. Published 0.2.4 retains the older response shape; see the
+[CodeGraph guide](../../docs/codegraph.md) for the release boundary.
 
 ### `lsp_definition` / `lsp_references` / `lsp_route`
 Static LSP-shaped navigation through the server's selected runtime provider.

@@ -294,6 +294,11 @@ reader. A page is not a record of how the work was done.
 - `.c` files use the `cpp` chunker; there is no separate C chunker.
 - Graph node and edge types are centralized in `codenib/types.py`. Use the
   constants and helpers there instead of hard-coded string literals.
+- Describe `dependency_subgraph` as bounded incoming/outgoing static references
+  in public copy and tool reference pages. Legacy `callers`/`callees` labels do
+  not make every edge an invocation: fields, types and function values also
+  produce references. Keep documentation tables aligned with MCP semantics;
+  source inspection must support call-path and runtime claims.
 - Persisted graph schema changes require updating `_SCHEMA_VERSION` in
   `codenib/graph/code_graph.py` and checking C++ decoder parity under `core/`.
 - New languages should flow through the language registry instead of adding
