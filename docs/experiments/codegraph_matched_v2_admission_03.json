@@ -1,0 +1,847 @@
+{
+  "generation": "driver-validation-v2-corrected",
+  "original_receipt_sha256": "235b66fa2fb6707ce644ecf55f7ed16500da945c4d0b9c3cc932f6ccb6de9951",
+  "receipt": {
+    "workflow": {
+      "workflow_index": 1,
+      "instance_id": "psf__requests-1921",
+      "arm": "codenib"
+    },
+    "owner": "19ef5be6e31d",
+    "created_utc": "2026-10-28T13:50:46.074180+00:00",
+    "prepare_only": true,
+    "commands": [
+      {
+        "label": "common-directories",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-corrected/01-psf__requests-1921-codenib/workspace",
+          "1ba26e54353350a03f1278daac4bb0b997c71a5fed1a0eb8095e41f11d58aade",
+          "mkdir",
+          "-p",
+          "/opt/pilot-tools/bin",
+          "/opt/pilot-inputs",
+          "/opt/pilot-state"
+        ],
+        "returncode": 0,
+        "seconds": 0.05067884922027588,
+        "log": "common-directories.log",
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "common-git",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-corrected/01-psf__requests-1921-codenib/workspace",
+          "1ba26e54353350a03f1278daac4bb0b997c71a5fed1a0eb8095e41f11d58aade",
+          "git",
+          "config",
+          "--global",
+          "--add",
+          "safe.directory",
+          "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-corrected/01-psf__requests-1921-codenib/workspace"
+        ],
+        "returncode": 0,
+        "seconds": 0.045133914798498154,
+        "log": "common-git.log",
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "common-project",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-corrected/01-psf__requests-1921-codenib/workspace",
+          "1ba26e54353350a03f1278daac4bb0b997c71a5fed1a0eb8095e41f11d58aade",
+          "/opt/miniconda3/envs/testbed/bin/python",
+          "-m",
+          "pip",
+          "install",
+          "."
+        ],
+        "returncode": 0,
+        "seconds": 1.0834890194237232,
+        "log": "common-project.log",
+        "log_sha256": "8a752675ffafb28df970097d22a95eabfc117e5697efc4f48dbc7092f425e76b"
+      },
+      {
+        "label": "common-workspace-owner",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-corrected/01-psf__requests-1921-codenib/workspace",
+          "1ba26e54353350a03f1278daac4bb0b997c71a5fed1a0eb8095e41f11d58aade",
+          "chown",
+          "-R",
+          "1001:1001",
+          "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-corrected/01-psf__requests-1921-codenib/workspace"
+        ],
+        "returncode": 0,
+        "seconds": 0.04352085664868355,
+        "log": "common-workspace-owner.log",
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "product-venv",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-corrected/01-psf__requests-1921-codenib/workspace",
+          "1ba26e54353350a03f1278daac4bb0b997c71a5fed1a0eb8095e41f11d58aade",
+          "uv",
+          "venv",
+          "--python",
+          "/opt/pilot-runtimes/python/bin/python3.13",
+          "/opt/pilot-tools/codenib"
+        ],
+        "returncode": 0,
+        "seconds": 0.09639046154916286,
+        "log": "product-venv.log",
+        "log_sha256": "7e70384cac45258a54a81bd9d47effc9a7bac0432781acf88986c2f78b5b6f23"
+      },
+      {
+        "label": "install-product",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-corrected/01-psf__requests-1921-codenib/workspace",
+          "1ba26e54353350a03f1278daac4bb0b997c71a5fed1a0eb8095e41f11d58aade",
+          "uv",
+          "pip",
+          "install",
+          "--python",
+          "/opt/pilot-tools/codenib/bin/python",
+          "--constraints",
+          "/opt/pilot-inputs/codenib-constraints.txt",
+          "/opt/pilot-inputs/codenib-0.2.4-cp310-abi3-linux_aarch64.whl[graph,mcp]"
+        ],
+        "returncode": 0,
+        "seconds": 0.7387892734259367,
+        "log": "install-product.log",
+        "log_sha256": "c4482a9f5b1502c506528bf45f4942cf61525f51acccb2167f228adc74f3f106"
+      },
+      {
+        "label": "launcher",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-corrected/01-psf__requests-1921-codenib/workspace",
+          "1ba26e54353350a03f1278daac4bb0b997c71a5fed1a0eb8095e41f11d58aade",
+          "ln",
+          "-s",
+          "/opt/pilot-tools/codenib/bin/codenib",
+          "/opt/pilot-tools/bin/codenib"
+        ],
+        "returncode": 0,
+        "seconds": 0.056025417521595955,
+        "log": "launcher.log",
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "prepare-language-providers",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-corrected/01-psf__requests-1921-codenib/workspace",
+          "1ba26e54353350a03f1278daac4bb0b997c71a5fed1a0eb8095e41f11d58aade",
+          "codenib",
+          "toolchain",
+          "install",
+          "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-corrected/01-psf__requests-1921-codenib/workspace",
+          "--language",
+          "python",
+          "--scope",
+          "all"
+        ],
+        "returncode": 0,
+        "seconds": 7.921031517907977,
+        "log": "prepare-language-providers.log",
+        "log_sha256": "cefb62803ca4eec720d306fac49ef90250084af5952224f77dbd0d506641b687"
+      },
+      {
+        "label": "initialize-product",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-corrected/01-psf__requests-1921-codenib/workspace",
+          "1ba26e54353350a03f1278daac4bb0b997c71a5fed1a0eb8095e41f11d58aade",
+          "/bin/bash",
+          "-lc",
+          "umask 002\ncodenib codegraph init /tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-corrected/01-psf__requests-1921-codenib/workspace --language python --agent claude"
+        ],
+        "returncode": 0,
+        "seconds": 13.650086497887969,
+        "log": "initialize-product.log",
+        "log_sha256": "c95b209597c6cbeb4c68e7a7a08c53fda756e36a82707f5994ba9fdd7028da8e"
+      },
+      {
+        "label": "verify-target-identity",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-corrected/01-psf__requests-1921-codenib/workspace",
+          "1ba26e54353350a03f1278daac4bb0b997c71a5fed1a0eb8095e41f11d58aade",
+          "/opt/miniconda3/envs/testbed/bin/python",
+          "-c",
+          "import importlib.metadata as m,json,sys;print(json.dumps({\"python\":sys.version,\"packages\":sorted({(d.metadata[\"Name\"],d.version) for d in m.distributions()})}))"
+        ],
+        "returncode": 0,
+        "seconds": 0.10855657421052456,
+        "log": "verify-target-identity.log",
+        "log_sha256": "6e24a3c019355251755ba80a035af2b0ee0b6a0ca641e60c2ca35eea1fd59a7d"
+      },
+      {
+        "label": "verify-product-identity",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-corrected/01-psf__requests-1921-codenib/workspace",
+          "1ba26e54353350a03f1278daac4bb0b997c71a5fed1a0eb8095e41f11d58aade",
+          "/opt/pilot-tools/codenib/bin/python",
+          "-c",
+          "import importlib.metadata as m,json,sys;from pathlib import Path;result={\"python\":sys.version,\"packages\":dict(sorted((d.metadata[\"Name\"],d.version) for d in m.distributions()))};from codenib import _workspace_owner as o;result[\"workspace_owner_protocol\"]=o._protocol_version;result[\"providers\"]={n:json.loads((Path(\"/opt/pilot-tools/.codenib/toolchains/node-tools/node_modules\")/n/\"package.json\").read_text())[\"version\"] for n in (\"@sourcegraph/scip-python\",\"basedpyright\")};print(json.dumps(result))"
+        ],
+        "returncode": 0,
+        "seconds": 0.12755096890032291,
+        "log": "verify-product-identity.log",
+        "log_sha256": "55a70a9398dd7fbaf04f1308362b9e33481329c7a011c91f8a4991d315e1fa10"
+      }
+    ],
+    "phases": [],
+    "sessions": [],
+    "api_invoice_cost_usd": null,
+    "http_request_count": null,
+    "owned_containers": [
+      "1ba26e54353350a03f1278daac4bb0b997c71a5fed1a0eb8095e41f11d58aade"
+    ],
+    "cohort_stop_reason": "Selected product/provider identity differs from frozen admission",
+    "driver_sha256": "6e20dbdfe38c3af31f462d185f03dc260e32988fe13d211666bf336163cb6cba",
+    "scope_sha256": "4c11983fdc26b5854f49968d1da139745050b0a0b2699d9f5777aa8bc559a192",
+    "policy_sha256": "2e62fdcfc0ef7fcf1638ddcafe48fa06b1cdef9decc8e80ffee9bf257c528d9a",
+    "tasks_sha256": "c4049564e326455310a53d9a78f9be88014a3b2c08998cfef5a37c7df034c4f8",
+    "auth": {
+      "loggedIn": true,
+      "authMethod": "claude.ai",
+      "subscriptionType": "max"
+    },
+    "sdk": "0.2.174",
+    "neutral_image": "sha256:ac3aeb4416832db7147d67ee205a1e1da97f5f13d73a587e0cd4457af5acb791",
+    "common_source": {
+      "path": "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-corrected/01-psf__requests-1921-codenib/common-source.json",
+      "sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "source_digest": "9d62fa6c6020866d1179df058f73b19587e44f70063bd3ca06f8153a2573491a",
+      "file_count": 121,
+      "head": "3c88e520da24ae6f736929a750876e7654accc3d"
+    },
+    "common_prepare_seconds": 1.5645180325955153,
+    "clock_started_utc": "2026-10-28T13:50:47.643703+00:00",
+    "setup": {
+      "started_utc": "2026-10-28T13:50:47.643717+00:00",
+      "ready": true,
+      "seconds": 22.480869399383664
+    },
+    "target_identity": {
+      "python": "3.9.25 (main, Nov  3 2025, 22:33:42) \n[GCC 11.2.0]",
+      "packages": [
+        [
+          "Pygments",
+          "2.19.1"
+        ],
+        [
+          "atomicwrites",
+          "1.4.1"
+        ],
+        [
+          "attrs",
+          "26.1.0"
+        ],
+        [
+          "exceptiongroup",
+          "1.3.0"
+        ],
+        [
+          "iniconfig",
+          "2.1.0"
+        ],
+        [
+          "more-itertools",
+          "10.8.0"
+        ],
+        [
+          "packaging",
+          "25.0"
+        ],
+        [
+          "pip",
+          "26.0.1"
+        ],
+        [
+          "pluggy",
+          "0.13.1"
+        ],
+        [
+          "py",
+          "1.11.0"
+        ],
+        [
+          "pytest",
+          "4.6.11"
+        ],
+        [
+          "requests",
+          "2.3.0"
+        ],
+        [
+          "setuptools",
+          "80.9.0"
+        ],
+        [
+          "six",
+          "1.17.0"
+        ],
+        [
+          "tomli",
+          "2.2.1"
+        ],
+        [
+          "typing_extensions",
+          "4.15.0"
+        ],
+        [
+          "wcwidth",
+          "0.9.4"
+        ],
+        [
+          "wheel",
+          "0.45.1"
+        ]
+      ]
+    },
+    "product_identity_matches_admission": false,
+    "status": "error",
+    "error": {
+      "type": "RuntimeError",
+      "message": "Selected product/provider identity differs from frozen admission",
+      "traceback": "Traceback (most recent call last):\n  File \"/tmp/codenib-matched-pilot-v2-20261028/run-matched-v2.py\", line 585, in execute\n    self.verify_runtime_identity()\n  File \"/tmp/codenib-matched-pilot-v2-20261028/run-matched-v2.py\", line 370, in verify_runtime_identity\n    raise RuntimeError(self.record[\"cohort_stop_reason\"])\nRuntimeError: Selected product/provider identity differs from frozen admission\n"
+    },
+    "observed_workflow_seconds": 22.72980804927647,
+    "unattempted_tasks": [
+      "psf__requests-1921-lookup",
+      "psf__requests-1921-flow",
+      "psf__requests-1921-impact",
+      "psf__requests-1921-repair",
+      "psf__requests-1921-post_edit"
+    ],
+    "cleanup": [
+      {
+        "id": "1ba26e54353350a03f1278daac4bb0b997c71a5fed1a0eb8095e41f11d58aade",
+        "removed": true
+      }
+    ],
+    "finished_utc": "2026-10-28T13:51:10.899708+00:00"
+  },
+  "source_snapshots": {
+    "common_source": {
+      "head": "3c88e520da24ae6f736929a750876e7654accc3d",
+      "files": {
+        ".gitignore": {
+          "sha256": "cad5fe62e70ddb73af88feb33f5a5169d5af491879b3830616bf21a04cdbdf28",
+          "bytes": 203
+        },
+        "AUTHORS.rst": {
+          "sha256": "28487561897eb533c0b3dacf5717a645b63bb779eeb3a17bb136ea33707759be",
+          "bytes": 3564
+        },
+        "HISTORY.rst": {
+          "sha256": "241974d3f1fc22a8439a440bfa388f0e231f85e9a08370d56a23cdcee5c6c874",
+          "bytes": 20576
+        },
+        "LICENSE": {
+          "sha256": "89478f1915fbb6b6585a685d071bf006ba5649d2615fab787f66e9693c622ae4",
+          "bytes": 581
+        },
+        "MANIFEST.in": {
+          "sha256": "588abc6c5050b10ef1629e67ca79e7eb57febb26c41bb995d6224828f8ca0bc1",
+          "bytes": 100
+        },
+        "Makefile": {
+          "sha256": "c6d89b7c95ea8535803d6b961ff78fd164804eacdaf49badf60a13b553ee315a",
+          "bytes": 913
+        },
+        "NOTICE": {
+          "sha256": "548eb62c9f5f5f7a121d15f26bb0d6a5ebb0cf7260584e0529ad65c56b39e83d",
+          "bytes": 2795
+        },
+        "README.rst": {
+          "sha256": "fb7ad6162349f0548c822b7ab3ac75129b8dd8ab27dfc45b7e39529335b740e4",
+          "bytes": 3050
+        },
+        "docs/MANIFEST.in": {
+          "sha256": "293a8936089ee64bb0728018eee77ad422bb92be40e1ea70c1361a0ea53b1d16",
+          "bytes": 38
+        },
+        "docs/Makefile": {
+          "sha256": "612c28d4c5ccb2731ba2386e358ba0c50d4564f94409cfb0cafd507cb7216c1c",
+          "bytes": 5569
+        },
+        "docs/_static/requests-sidebar.png": {
+          "sha256": "5321117037e924e82d22ba484fa19f9ee64d95cab1b650958ec5d94f9aff68e1",
+          "bytes": 12001
+        },
+        "docs/_templates/sidebarintro.html": {
+          "sha256": "bc5d196bba888bcb5bcaa8e39efd56e4a4d3ae030daf4f4fdc3bf22db3dd9e90",
+          "bytes": 1631
+        },
+        "docs/_templates/sidebarlogo.html": {
+          "sha256": "56a7487ed201d4c0dba22a9722552ec43555cc7bc6176e57aded0c3f37da6c32",
+          "bytes": 1006
+        },
+        "docs/_themes/.gitignore": {
+          "sha256": "f27660c4ec6efa86aac4d61036c5f495e9438805a6f63be44f17db003979a06f",
+          "bytes": 22
+        },
+        "docs/_themes/LICENSE": {
+          "sha256": "6afc9d58f919ab52f4806a895a37aefe4d263f8e52278e6a1e87c5d7ec82299c",
+          "bytes": 1861
+        },
+        "docs/_themes/README.rst": {
+          "sha256": "7e91e1410eb502112c2b346a248104bbdc68ee4dad1e382517ef14a563610197",
+          "bytes": 743
+        },
+        "docs/_themes/flask_theme_support.py": {
+          "sha256": "bba3677c6eeb99f678e808e90142a025b798b7658bac1ab4632591df8441d209",
+          "bytes": 4875
+        },
+        "docs/_themes/kr/layout.html": {
+          "sha256": "1aeb7715214e019a8bd27b01a423cefaaa0ec5ccbc9a28aaa401530814185ea7",
+          "bytes": 2774
+        },
+        "docs/_themes/kr/relations.html": {
+          "sha256": "e64e488e5cd09c680a5968e6c72d03b1b15f81631577c122b00bbbee94a79f92",
+          "bytes": 590
+        },
+        "docs/_themes/kr/static/flasky.css_t": {
+          "sha256": "d0587869c6049f67fe5163b1b5ad64f35f385279201eb7277daaadb1e5617f82",
+          "bytes": 8272
+        },
+        "docs/_themes/kr/theme.conf": {
+          "sha256": "6f9423779600222e465f99360c0ee9e8b87de6523c2ddcbd6b5d39edb4b4726d",
+          "bytes": 121
+        },
+        "docs/_themes/kr_small/layout.html": {
+          "sha256": "c0d6e1bbfc53181ec280327f7f4bd66f0899eaaee0e42640666311c6eb0ea9f3",
+          "bytes": 683
+        },
+        "docs/_themes/kr_small/static/flasky.css_t": {
+          "sha256": "6f8dd4dcaa0df7966b9d48ec80b4d2563b68d7408d3017f7de70a7ca5ec94fde",
+          "bytes": 4587
+        },
+        "docs/_themes/kr_small/theme.conf": {
+          "sha256": "e2202373ab211e1c5a2552d99fba96cc70cc90e0865c6954c16fcd0253312ecf",
+          "bytes": 184
+        },
+        "docs/api.rst": {
+          "sha256": "754f7d7bc0d876a11be7ac0bb3eff54197eba46125714c80f809c292074a153c",
+          "bytes": 7347
+        },
+        "docs/community/faq.rst": {
+          "sha256": "ff4bc4dae77e701b19938a275ed70b3b4f3b1e3812ea04a75735a81ca490932b",
+          "bytes": 3272
+        },
+        "docs/community/out-there.rst": {
+          "sha256": "c81acb873203d8c849834ea674436fa49494ce726d50aa921ce2891004b08166",
+          "bytes": 1448
+        },
+        "docs/community/support.rst": {
+          "sha256": "10a4926d22ad0898546ddd5eff2eb1f37d96091d51fcf0a13b8b755de2cf0981",
+          "bytes": 817
+        },
+        "docs/community/updates.rst": {
+          "sha256": "db473c9143a593f0a042e29bb5a3c0b81eebb26a088c4cae6030003b686618e0",
+          "bytes": 709
+        },
+        "docs/conf.py": {
+          "sha256": "ac552c9e83906e8547f6c3a53bbd164ab04dcd384de164f7096e3fade202a6e5",
+          "bytes": 8133
+        },
+        "docs/dev/authors.rst": {
+          "sha256": "fca9beca6d06486a750884fc0dd3befccdb3293f3c1e54ca7a8fb5dca4bef8b5",
+          "bytes": 49
+        },
+        "docs/dev/internals.rst": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        "docs/dev/philosophy.rst": {
+          "sha256": "a29b5e1650f8895655e37766fdddcefe0e9655e9c0ccd46fd58b2d589b7c7d0b",
+          "bytes": 1787
+        },
+        "docs/dev/todo.rst": {
+          "sha256": "821bc6e29a87dc0b036e88932d6f49dbfd2d95ff08f97dfcac84554b9f49cd00",
+          "bytes": 1901
+        },
+        "docs/index.rst": {
+          "sha256": "980fa4d51ee8710ed8f9b03197797fd2f91a8489944adeefcfaef6603a02d436",
+          "bytes": 3801
+        },
+        "docs/make.bat": {
+          "sha256": "4016647c49f700d4fe8ddbd6d5be5b0b7e65d465d60414e7541f0f1970c9b025",
+          "bytes": 5100
+        },
+        "docs/requirements.txt": {
+          "sha256": "eacd39a02669d178c5a3e4b35b2ffa04951ddf82864f3058ddbb96c67b7e8205",
+          "bytes": 14
+        },
+        "docs/user/advanced.rst": {
+          "sha256": "5eb89c59647744ae4d54646886b059d9e95c14afc5aefddb905eb9bd4b0e38a9",
+          "bytes": 24949
+        },
+        "docs/user/authentication.rst": {
+          "sha256": "9161a54d57f8b91a153543b43468e29089230def4ba420e887a50ca05984c61a",
+          "bytes": 4219
+        },
+        "docs/user/install.rst": {
+          "sha256": "bcc7a4f5607e465aee67383c923b83c6aa974271e3a05fb8a6aef71749b89466",
+          "bytes": 1537
+        },
+        "docs/user/intro.rst": {
+          "sha256": "53bd32e686ac7cd0a941708309c2c03988100f35b8fdd3e118d79d52839b577d",
+          "bytes": 1191
+        },
+        "docs/user/quickstart.rst": {
+          "sha256": "a0b3110df2489919c30ebb216bf59a767c1aabd80ca9736fb07b83f07d94ecf7",
+          "bytes": 13459
+        },
+        "ext/requests-logo.ai": {
+          "sha256": "1eb6f876f90f2092675e717bf615a6f3f0eb595fdce3309327835e9a395d8a2b",
+          "bytes": 212865
+        },
+        "requests/__init__.py": {
+          "sha256": "465e36de457e3014c50e24ed10e2623fd0ae6ae6c54a2f2b1daab3ab5281374c",
+          "bytes": 1856
+        },
+        "requests/adapters.py": {
+          "sha256": "4002f9ad2c04ceeaece4fe2ac23148cc74086de515f0eb1498a06f796e2bf899",
+          "bytes": 14742
+        },
+        "requests/api.py": {
+          "sha256": "46295d2e64e1951dc134523a0b76d2d5bbf15791bae5e84256b0469181de8c3b",
+          "bytes": 4333
+        },
+        "requests/auth.py": {
+          "sha256": "c766c5a872b72e46e6eea3d4ca1fdd02a60b4c34e8b418bed736bd12909d0345",
+          "bytes": 6123
+        },
+        "requests/cacert.pem": {
+          "sha256": "6a4eeafeaf28cc7750f5f7f6ed4f84d6f08dacb8ac151412332f732647694253",
+          "bytes": 308434
+        },
+        "requests/certs.py": {
+          "sha256": "c126aa8523680748a0a7a0dafa15b0d23b5720229705b2fc692f6cc2d865b79d",
+          "bytes": 544
+        },
+        "requests/compat.py": {
+          "sha256": "246ac93d5d9819ab73c2b7b197d912b7c67c42d9856e84591fdcb0b0b2bf30c0",
+          "bytes": 2556
+        },
+        "requests/cookies.py": {
+          "sha256": "06330ab6b23c4d7403e68415793a18b64441175e3d788f395215ac046c2c25a7",
+          "bytes": 16686
+        },
+        "requests/exceptions.py": {
+          "sha256": "cfedd0a6271a7cab4887ce5b30468294bd8ea4d3ddb1ce933fff3729cb1587c6",
+          "bytes": 1877
+        },
+        "requests/hooks.py": {
+          "sha256": "f6f362ba244745de50cba057ff4a751f736c5330e8d4cfc76854760052f8d538",
+          "bytes": 820
+        },
+        "requests/models.py": {
+          "sha256": "91153287286b3bc2018f8739e40dbaaee4c23cf5d7ca95b6ac661e0ac2ca9c33",
+          "bytes": 26224
+        },
+        "requests/packages/README.rst": {
+          "sha256": "6184621991b784af0fa9fa860be44bcf322622c18864f3ae134244abe74c7f14",
+          "bytes": 434
+        },
+        "requests/packages/__init__.py": {
+          "sha256": "69791b3428ccfd686bc91068704e00680fe9efe093c4be4b3aeb58ed7cca9b8b",
+          "bytes": 62
+        },
+        "requests/packages/chardet/__init__.py": {
+          "sha256": "f3edfd0e0daa12ea1de4334ded131d9f665838ef73154ddf15f684f348835867",
+          "bytes": 1295
+        },
+        "requests/packages/chardet/big5freq.py": {
+          "sha256": "0fca13773f8633b260f13b1a5890e6eb9bccfce2c70b7c6e6faa94277ace82c4",
+          "bytes": 82594
+        },
+        "requests/packages/chardet/big5prober.py": {
+          "sha256": "5d7f7a0befba58a616dfa98bfb3ee925202d735ebd67c648981c823f8a4437d0",
+          "bytes": 1684
+        },
+        "requests/packages/chardet/chardetect.py": {
+          "sha256": "f20f9d45203dedb484e8cdb94ea7b5ae828ab65dd71d2327aa2eaf4f3a47355d",
+          "bytes": 1141
+        },
+        "requests/packages/chardet/chardistribution.py": {
+          "sha256": "714011405af5a132d778908342b0d19143fbefc02f48cce14829c6f152c2579f",
+          "bytes": 9226
+        },
+        "requests/packages/chardet/charsetgroupprober.py": {
+          "sha256": "d252a4ed5139d7a7e0330d75f6d35e7c5a8b3b129f204f567dd929213ebd38a5",
+          "bytes": 3791
+        },
+        "requests/packages/chardet/charsetprober.py": {
+          "sha256": "678f28d8a88e8f6dc536a607f05ab3847e66d6a766deb23c0dc4e6d98aad9258",
+          "bytes": 1902
+        },
+        "requests/packages/chardet/codingstatemachine.py": {
+          "sha256": "13ce6b6211d5330f710c4255822421a743a72c6afa8b6afcffb40e58c2931f4f",
+          "bytes": 2318
+        },
+        "requests/packages/chardet/compat.py": {
+          "sha256": "e669bacab1f079fd49106e4ec643c9952ab99648cb56910687788f805064a643",
+          "bytes": 1157
+        },
+        "requests/packages/chardet/constants.py": {
+          "sha256": "f949d8f14ec43fbcfd7d3c9dd3dcaadf9044912144014022bfda217750d6d6ce",
+          "bytes": 1335
+        },
+        "requests/packages/chardet/cp949prober.py": {
+          "sha256": "14cbdd2f207b7de8cf5d1b136dc6bb2cad4fdd152fbecb268d43726847f3f336",
+          "bytes": 1782
+        },
+        "requests/packages/chardet/escprober.py": {
+          "sha256": "ab94dc40a795ab7d56c6b5bb4aff328e96648c4a1a1cef12f7610967d868772b",
+          "bytes": 3187
+        },
+        "requests/packages/chardet/escsm.py": {
+          "sha256": "ee296310a37c9574e1f091573d44b09626cc9e8e91ea4b2ae1ebcbc5b9337eba",
+          "bytes": 7839
+        },
+        "requests/packages/chardet/eucjpprober.py": {
+          "sha256": "e48a5f4848c06fb87785c18c77a76453cd0ef74d02d8deb192edbcadd6052ae7",
+          "bytes": 3678
+        },
+        "requests/packages/chardet/euckrfreq.py": {
+          "sha256": "4f9b1a2b99889b2486e728103edb29ea8dae2ae968b82c189b61253b216426a5",
+          "bytes": 45978
+        },
+        "requests/packages/chardet/euckrprober.py": {
+          "sha256": "5a8edd9d9e44af0fe70781fe9b96a53223b13ae2549861e5c0249a1aa1310d90",
+          "bytes": 1675
+        },
+        "requests/packages/chardet/euctwfreq.py": {
+          "sha256": "1bf234056f62d70d0e35e794c0862a57bfd4d3d6ee20776a87ec0d1d56aa97b2",
+          "bytes": 34872
+        },
+        "requests/packages/chardet/euctwprober.py": {
+          "sha256": "ba94b63fa1ae4f9ba33b15d8c3e4492dc4fb0383d3ba8dbb28650a538519a484",
+          "bytes": 1676
+        },
+        "requests/packages/chardet/gb2312freq.py": {
+          "sha256": "336805768fea43f06c952b44721acf5b90ab3c464469c0b4bb20cbc38a24fa46",
+          "bytes": 36011
+        },
+        "requests/packages/chardet/gb2312prober.py": {
+          "sha256": "5569e3a116bcdd8e95ea873331ac7252bd2ecb8f220a70b69f393dcdf1084477",
+          "bytes": 1681
+        },
+        "requests/packages/chardet/hebrewprober.py": {
+          "sha256": "f2976851fb155dffcbe019c975efc17b04ba1f6c889d5e7af3c7aed271612c76",
+          "bytes": 13359
+        },
+        "requests/packages/chardet/jisfreq.py": {
+          "sha256": "65c2f84797a41c76cfd8a09819a915301b222aa659640001ce1c22fae4643a9b",
+          "bytes": 47315
+        },
+        "requests/packages/chardet/jpcntx.py": {
+          "sha256": "f5f27da12d0151aadc7593724b09b3551b93d37b18742952985c170e3df254d8",
+          "bytes": 19104
+        },
+        "requests/packages/chardet/langbulgarianmodel.py": {
+          "sha256": "6723ec03bf7a31256161d7d684c0a0296724ba900a0272aa59c1370a5dde8faa",
+          "bytes": 12784
+        },
+        "requests/packages/chardet/langcyrillicmodel.py": {
+          "sha256": "7e471de4ebe8814a7e1ab34358064f82462c491083da89a8b4012faa39662ca1",
+          "bytes": 17725
+        },
+        "requests/packages/chardet/langgreekmodel.py": {
+          "sha256": "407332df5087fe8b7aed40ad9aeac210aa8ac765b0a1a2abc3660261804ad8bc",
+          "bytes": 12628
+        },
+        "requests/packages/chardet/langhebrewmodel.py": {
+          "sha256": "e004a5e6fcca24f9e0e07dbbf151cab51602d374e94297a79474dcb26647d6b1",
+          "bytes": 11318
+        },
+        "requests/packages/chardet/langhungarianmodel.py": {
+          "sha256": "497c2e533878f7f70178c5e1b2144776b865933d13f3fa59595fe976a04a3459",
+          "bytes": 12536
+        },
+        "requests/packages/chardet/langthaimodel.py": {
+          "sha256": "fa4edd8e1ddd18a9e00069eddd67eea0937b69c0dc59c98700fa2385a51deeae",
+          "bytes": 11275
+        },
+        "requests/packages/chardet/latin1prober.py": {
+          "sha256": "83aee0a99db3f3d2d43a547b059100878fa9e5ad72196b2cf675b2f0508d9bc4",
+          "bytes": 5241
+        },
+        "requests/packages/chardet/mbcharsetprober.py": {
+          "sha256": "f6b3828c356c992329e9eeeadaccaa6a4db68fb96b6d466126131e7b681b54bd",
+          "bytes": 3268
+        },
+        "requests/packages/chardet/mbcsgroupprober.py": {
+          "sha256": "48747334f2e90d77cc24b03ca61087554d1682a6e00c23710d03289465ffef29",
+          "bytes": 1967
+        },
+        "requests/packages/chardet/mbcssm.py": {
+          "sha256": "52e880e0873cbc47345e94ca0e77aa672887d93c06b85559c4ec5625ea775ffe",
+          "bytes": 19608
+        },
+        "requests/packages/chardet/sbcharsetprober.py": {
+          "sha256": "5ead25383a899c3831825062408e01a931623db9fadfed1ae57340e7e855bbb5",
+          "bytes": 4793
+        },
+        "requests/packages/chardet/sbcsgroupprober.py": {
+          "sha256": "f212f21fc4401be6a8841a3ba3f29c896560468e36644ff312db8d1b524c4582",
+          "bytes": 3291
+        },
+        "requests/packages/chardet/sjisprober.py": {
+          "sha256": "d518e94362d4da0be8101ff83bcdfdc434157215b1d9f1bf0bbfef5e1e763f92",
+          "bytes": 3734
+        },
+        "requests/packages/chardet/universaldetector.py": {
+          "sha256": "1a465dc0dc8d7db1560bc235baa9f3ca139417b7dabd60aa08e2aa750971ea04",
+          "bytes": 6831
+        },
+        "requests/packages/chardet/utf8prober.py": {
+          "sha256": "eed74d646ac963b8d95010f8f3718632488fd13c7c169f9c1af587a00b229478",
+          "bytes": 2652
+        },
+        "requests/packages/urllib3/__init__.py": {
+          "sha256": "b0b20abfd7462630e5a225575010635c3596abc6cceba91cbd31f6494fd664a8",
+          "bytes": 1701
+        },
+        "requests/packages/urllib3/_collections.py": {
+          "sha256": "611616dfcaacea619583d2b0ff2fdeb4fd278784911ab2ccea4be922b5f73f0a",
+          "bytes": 3111
+        },
+        "requests/packages/urllib3/connection.py": {
+          "sha256": "5af01865997b6e8c0265603bb75051830fa2d7f57b37555f89f61215f14c16c6",
+          "bytes": 5659
+        },
+        "requests/packages/urllib3/connectionpool.py": {
+          "sha256": "faeab17e36f3139609bb8a0506e53c174c48cc77c6c9d69c1026233d6cf4ef32",
+          "bytes": 25767
+        },
+        "requests/packages/urllib3/contrib/__init__.py": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        "requests/packages/urllib3/contrib/ntlmpool.py": {
+          "sha256": "549f868f1a58213c528f8503297d22aaf1f069ab72836440dcf693ca6e56a7ac",
+          "bytes": 4741
+        },
+        "requests/packages/urllib3/contrib/pyopenssl.py": {
+          "sha256": "f011a1d9173bdc86dc16f0b025929422768c5e42d9d71b0b6996ee3928251df1",
+          "bytes": 13871
+        },
+        "requests/packages/urllib3/exceptions.py": {
+          "sha256": "dc4af7e589b8c6b7f9c4d7533d520000d45d45551fe35bae32c342e2ca4f9347",
+          "bytes": 3274
+        },
+        "requests/packages/urllib3/fields.py": {
+          "sha256": "52eb88dc819fc47c0ea0a71bc39152e98b98ddfe32b82bd02edba649a22282be",
+          "bytes": 5976
+        },
+        "requests/packages/urllib3/filepost.py": {
+          "sha256": "b563d8df71e714cfd13e9114f4f1eff43df89faef0f1946df34652b1622fd0a9",
+          "bytes": 2512
+        },
+        "requests/packages/urllib3/packages/__init__.py": {
+          "sha256": "10a09300e8d9b4f47f1c2e747bb5fc852e63e1b90590df3b5d9393f967697eeb",
+          "bytes": 74
+        },
+        "requests/packages/urllib3/packages/ordered_dict.py": {
+          "sha256": "1ed1e986d4ad265a2bcd0aa821ab7ccd41f496a2e7b38d7a81f48ef72fda4804",
+          "bytes": 8936
+        },
+        "requests/packages/urllib3/packages/six.py": {
+          "sha256": "53eacef9606b152f0fc4779a99297aa242828ea3c5d7c3618996f4a8f67aed73",
+          "bytes": 11628
+        },
+        "requests/packages/urllib3/packages/ssl_match_hostname/__init__.py": {
+          "sha256": "0ecb345326fef8f57f22eeccfd2d74c78afe6d6a6e766e6621124d88e2772b4a",
+          "bytes": 459
+        },
+        "requests/packages/urllib3/packages/ssl_match_hostname/_implementation.py": {
+          "sha256": "7cadbc937ee12fbf83efdbfd88cd9f1e034af50d4fc3433ba9544be2b91f1634",
+          "bytes": 3778
+        },
+        "requests/packages/urllib3/poolmanager.py": {
+          "sha256": "6cc60774d6952393b862b247af54fab44d9160710ccccdbf2b4713cbbbb35f63",
+          "bytes": 8977
+        },
+        "requests/packages/urllib3/request.py": {
+          "sha256": "7174dcaebf5de7446ddb5dd95cb8027f9dca356c5ee0b43c971495d470586bd1",
+          "bytes": 5808
+        },
+        "requests/packages/urllib3/response.py": {
+          "sha256": "69a0b04bdd5fe69daa8c08d18abf41f1b093420c8fd59abb5f861d9c74eafbcc",
+          "bytes": 10537
+        },
+        "requests/packages/urllib3/util.py": {
+          "sha256": "87ca3f11220369c7292d62062af1ce80f0d4fe67c71061408ddf766c0c8db676",
+          "bytes": 21407
+        },
+        "requests/sessions.py": {
+          "sha256": "32e30eadf91367b3aefb90e8541cf3fc20d3d950a16828c0101f4232d36a78a9",
+          "bytes": 19902
+        },
+        "requests/status_codes.py": {
+          "sha256": "2d8a6a2efe0010ab933dbcbe412be097f808edf7159540ea481727748c17f908",
+          "bytes": 3136
+        },
+        "requests/structures.py": {
+          "sha256": "9fb92004e5099d05d64c9a518744b36b892e5a1b963249f7593678236e7f0119",
+          "bytes": 3575
+        },
+        "requests/utils.py": {
+          "sha256": "c38f1858cb796264436c06185e957437dba5f89ad3c54c9176c8515236d3fd0f",
+          "bytes": 19653
+        },
+        "requirements.txt": {
+          "sha256": "878c487bab1e59dc96e58d6268f03aeb70a644b1c549b11a087f7ae06e9ad57f",
+          "bytes": 61
+        },
+        "setup.cfg": {
+          "sha256": "13fb77272894ca43a3edcf58f4eb59d606a8c3a42331b8a56fde94ec606a4159",
+          "bytes": 22
+        },
+        "setup.py": {
+          "sha256": "4264d70db4af18d3ac44519037a5855d300cd2d24318ecf838f6bb84de1546f4",
+          "bytes": 1602
+        },
+        "test_requests.py": {
+          "sha256": "37ef77c0f9c3bddee646e2e3fd496e1a114daf6e8b05d3e47897ebc2e0d7630e",
+          "bytes": 40990
+        }
+      }
+    }
+  }
+}

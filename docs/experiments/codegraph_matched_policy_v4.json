@@ -1,0 +1,392 @@
+{
+  "schema_version": 2,
+  "recorded_utc": "2026-10-28T13:42:54.105519+00:00",
+  "status": "frozen before prospective v2 inference; immutable run policy",
+  "tasks": {
+    "path": "matched-tasks-v2.json",
+    "sha256": "218eb7085da807c3cb067ef742ff7ceff161910dad18c676458a5b599d2d45ea",
+    "task_count": 15,
+    "repository_count": 3,
+    "status": "frozen prospective corrected v2 tasks",
+    "matched_task_inference_started": false
+  },
+  "matched_inference_started": false,
+  "execution_order": {
+    "seed": "codenib-matched-execution-2026-10-27-v1",
+    "rule": "Repository blocks retain fixed cohort order; sort arm names by SHA256(seed + NUL + instance ID + NUL + arm). No output-dependent reordering.",
+    "workflows": [
+      {
+        "workflow_index": 0,
+        "instance_id": "psf__requests-1921",
+        "arm": "serena"
+      },
+      {
+        "workflow_index": 1,
+        "instance_id": "psf__requests-1921",
+        "arm": "codenib"
+      },
+      {
+        "workflow_index": 2,
+        "instance_id": "psf__requests-1921",
+        "arm": "codegraph"
+      },
+      {
+        "workflow_index": 3,
+        "instance_id": "psf__requests-1921",
+        "arm": "native"
+      },
+      {
+        "workflow_index": 4,
+        "instance_id": "pallets__flask-5014",
+        "arm": "serena"
+      },
+      {
+        "workflow_index": 5,
+        "instance_id": "pallets__flask-5014",
+        "arm": "codegraph"
+      },
+      {
+        "workflow_index": 6,
+        "instance_id": "pallets__flask-5014",
+        "arm": "native"
+      },
+      {
+        "workflow_index": 7,
+        "instance_id": "pallets__flask-5014",
+        "arm": "codenib"
+      },
+      {
+        "workflow_index": 8,
+        "instance_id": "pytest-dev__pytest-5809",
+        "arm": "codenib"
+      },
+      {
+        "workflow_index": 9,
+        "instance_id": "pytest-dev__pytest-5809",
+        "arm": "native"
+      },
+      {
+        "workflow_index": 10,
+        "instance_id": "pytest-dev__pytest-5809",
+        "arm": "codegraph"
+      },
+      {
+        "workflow_index": 11,
+        "instance_id": "pytest-dev__pytest-5809",
+        "arm": "serena"
+      }
+    ]
+  },
+  "arms": {
+    "native": {
+      "additional_product": null,
+      "mcp": null
+    },
+    "serena": {
+      "package": "serena-agent==2.1.0",
+      "python": "3.13.18",
+      "pyright": "1.1.403",
+      "install": [
+        "uv",
+        "tool",
+        "install",
+        "--python",
+        "/opt/pilot-runtimes/python/bin/python3.13",
+        "--with",
+        "pyright==1.1.403",
+        "serena-agent==2.1.0",
+        "--constraints",
+        "/opt/pilot-inputs/serena-constraints.txt"
+      ],
+      "prepare": [
+        "serena",
+        "project",
+        "create",
+        "--language",
+        "python",
+        "--name",
+        "{project_name}",
+        "{workspace}"
+      ],
+      "mcp": [
+        "serena",
+        "start-mcp-server",
+        "--project",
+        "{workspace}",
+        "--context",
+        "claude-code",
+        "--agent-interface",
+        "REPL",
+        "--enable-web-dashboard",
+        "False",
+        "--enable-gui-log-window",
+        "False",
+        "--open-web-dashboard",
+        "False"
+      ],
+      "prepare_python_provider": [
+        "uv",
+        "tool",
+        "run",
+        "-p",
+        "3.13",
+        "--from",
+        "pyright==1.1.403",
+        "pyright",
+        "--version"
+      ],
+      "python_constraints": {
+        "path": "constraints/serena.txt",
+        "sha256": "285128bcc3313d7a3fe88b4b455aa4506744e0b2c0d290fa44b8a9c65c22be3e"
+      },
+      "mcp_version": "2.2.0",
+      "eager_index": false
+    },
+    "codegraph": {
+      "package": "@colbymchenry/codegraph@1.6.2",
+      "npm_git_head": "6560052a6f856855d3f71eee838fd66ccfa4285d",
+      "install": [
+        "npm",
+        "install",
+        "--global",
+        "--prefix",
+        "/opt/pilot-tools/npm",
+        "@colbymchenry/codegraph@1.6.2"
+      ],
+      "prepare": [
+        "codegraph",
+        "init",
+        "--yes",
+        "{workspace}"
+      ],
+      "mcp": [
+        "codegraph",
+        "serve",
+        "--mcp",
+        "--path",
+        "{workspace}"
+      ],
+      "environment": {
+        "CODEGRAPH_TELEMETRY": "0",
+        "DO_NOT_TRACK": "1"
+      },
+      "daemon": "default enabled; do not set CODEGRAPH_NO_DAEMON"
+    },
+    "codenib": {
+      "artifact": {
+        "filename": "codenib-0.2.4-cp310-abi3-linux_aarch64.whl",
+        "sha256": "40586ca073a0d100a99b4478bdaa0f37b42fae55e93e2a39c860ee3a2b4d5e76",
+        "source_commit": "733343e8e1f8ada6ed74ddf8860ac65754a897a5",
+        "version_label": "0.2.4 source candidate; not the public PyPI wheel"
+      },
+      "extras": [
+        "graph",
+        "mcp"
+      ],
+      "python": "3.13.18",
+      "scip_python": "0.6.6",
+      "prepare": [
+        "codenib",
+        "codegraph",
+        "init",
+        "{workspace}",
+        "--language",
+        "python",
+        "--agent",
+        "claude"
+      ],
+      "mcp": [
+        "codenib",
+        "mcp",
+        "{workspace}",
+        "--tool-surface",
+        "full"
+      ],
+      "project_preparation": false,
+      "partial_languages": false,
+      "auto_refresh": false,
+      "substitution": "Do not replace the graph route with grep/Jev or silently count BM25/native fallback as graph benefit.",
+      "prepare_language_providers": [
+        "codenib",
+        "toolchain",
+        "install",
+        "{workspace}",
+        "--language",
+        "python",
+        "--scope",
+        "all"
+      ],
+      "mcp_version": "2.3.0",
+      "basedpyright": "1.39.8",
+      "python_constraints": {
+        "path": "constraints/codenib.txt",
+        "sha256": "17077f17027c09d80709cd2ad11c279a52b61343e90f59033e44900e471b4ce2"
+      }
+    }
+  },
+  "agent": {
+    "sdk": "claude-agent-sdk==0.2.174",
+    "cli": "Claude Code 2.1.310",
+    "main_model": "claude-opus-5-5",
+    "fallback_model": null,
+    "effort": "medium",
+    "thinking": {
+      "type": "adaptive",
+      "display": "omitted"
+    },
+    "tool_choice": "automatic; no forced study-product call",
+    "requested_output_limit": 16384,
+    "native_tools": [
+      "Read",
+      "Grep",
+      "Glob",
+      "Edit",
+      "Write",
+      "Bash",
+      "ToolSearch"
+    ],
+    "required_available_native_tools": [
+      "Read",
+      "Grep",
+      "Glob",
+      "Edit",
+      "Write",
+      "Bash"
+    ],
+    "max_turns_per_query": 48,
+    "setting_sources": [],
+    "skills": [],
+    "plugins": [],
+    "strict_mcp_config": true,
+    "system_prompt": "unmodified claude_code preset plus identical repository-environment context; retain each MCP server actual instructions and schemas",
+    "session_schedule": "Cold lookup session, then a fresh return session for flow/impact/repair/post-edit. Keep that return MCP connection through the controlled edit. Never share conversations across arms or repositories."
+  },
+  "runtime": {
+    "architecture": "linux/arm64/v8 for task shells, product tools and new native controls",
+    "limits": {
+      "memory_bytes": 4294967296,
+      "nano_cpus": 2000000000,
+      "pids": 256
+    },
+    "network": "bridge only during neutral/project preparation and product setup; new network-none container for model and MCP, with both daemon mode and Config.NetworkDisabled inspected",
+    "mounts": "only this workflow checkout; no Docker socket, home, credentials, controller files, other arm or grading material",
+    "shell": "native Bash command quoted with shlex.join into the exact owned container ID",
+    "native_files": "Native Read/Grep/Glob/Edit/Write scoped to own checkout. Native Read and Grep also admit only hash-verified native Bash output files in the exact SDK-owned session tool-results directory; other outside access remains denied.",
+    "common_prerequisites": {
+      "python": "3.13.18 tool runtime; target conda environments from pinned native harness",
+      "node": "22.23.1",
+      "uv": "0.13.6",
+      "neutral_preparation": "source copy and common target project/test dependencies occur before the product-cold clock; record separately. Language/agent runtimes are pre-existing prerequisites in every arm.",
+      "source": "same pinned one-commit checkout; no future Git objects or native reference/test patches in model access",
+      "version_binding": "Pinned immutable neutral images from v1, with the same explicit target/test Python installation per case. Match target metadata within a repository; match selected product/provider identities to the source-admission receipts before inference."
+    },
+    "requests_tests": "Use the supplied pytest launcher for local offline HTTPbin HTTP/HTTPS services and temporary CA-data overlay/restoration; python -m pytest bypasses service startup. Supply the same context to all arms.",
+    "tool_registration": "Only actual container-local native Claude CLI registration. Runtime SDK MCP configuration uses docker exec for that same owned server; no host client-profile writes.",
+    "setup_failure": "Preserve exact failure and elapsed setup cost, leave only available native tools if the ordinary optional-tool setup fails, and continue tasks without switching products. The installed own CLI remains available in Bash; retries chosen by the model count as task work.",
+    "shell_output_files": "Copy only each verified SDK-owned Bash output file into the same exact path in this owned container, compare its SHA256, and make the copy read-only. This preserves ordinary native Bash reads of its own output without mounting a profile or another session. Record the mapping and captured bytes; output caps still govern actual model delivery.",
+    "offline_python_provider": "Prepare cached pinned Pyright during counted product setup; set UV_OFFLINE=1 only in the network-none runtime. Serena UV_CONSTRAINT binds the standalone child provider as well.",
+    "container_ownership": "Record the container ID returned by create before start/verification. Inspect owner/limits before use, rebind the active workspace once and mask only other inherited volume destinations. Remove only returned owned IDs in finally."
+  },
+  "time_and_attempts": {
+    "setup_timeout_seconds": 900,
+    "session_start_timeout_seconds": 120,
+    "session_close_timeout_seconds": 30,
+    "workflow_timeout_seconds": 3000,
+    "task_timeouts_seconds": {
+      "lookup": 180,
+      "flow": 360,
+      "impact": 360,
+      "repair": 720,
+      "post_edit": 180
+    },
+    "attempts": "One planned attempt per task; keep every start, tool error, timeout, terminal, partial patch and unattempted remainder. No controller retries or model substitutions after results.",
+    "fatal_sdk_terminal": "Fail that task and stop the remaining workflow; retain every remaining task as unattempted. Ordinary tool errors may be recovered by the agent within the same phase bounds.",
+    "quota_or_billing_change": "Stop starting workflows; retain the incomplete cohort and all attempts. Do not switch model, authentication route or task membership. Missing paired observations block a benefit claim.",
+    "read_only": "Lookup/flow/impact/post-edit must preserve source bytes. Record source versions before and after each phase; an unexpected source change fails that read-only task. Capture the repair patch before injecting the controlled edit."
+  },
+  "primary": {
+    "name": "complete five-task workflow wall time, summed over all three paired repositories",
+    "clock": "Start before arm-specific package installation/indexing/native registration; stop after final SDK session close. Include both session startups, all model/native/MCP calls, agent-chosen rebuild/reconnect work and controlled-edit application. Exclude separately recorded common machine/source/project-dependency preparation and later controller grading.",
+    "failures": "Retain observed elapsed time. For each rejected, timed-out or unattempted task add max(0, frozen task deadline minus observed task elapsed) to form the penalized primary total; no zero-time omitted failures.",
+    "alternative": "Find maximum accepted-task count among alternatives; among alternatives attaining it with no serious source/correctness error, select the smallest complete penalized cohort time. No eligible complete alternative means insufficient evidence.",
+    "promotion": "CodeNib accepted count must be at least that maximum, have no additional serious error on any paired task, and improve the primary cohort total by at least 20%; secondary normalized model usage must not worsen more than 10%. G1 correctness and external repeat-use gates remain separate.",
+    "units": "Three paired repository workflows; fifteen task observations are not independent samples. Publish all paired outcomes and observed cluster ratios; exploratory bootstrap uses repository resampling, seed above, 10000 draws and a 95% interval, with no population non-inferiority claim."
+  },
+  "secondary": {
+    "gated_measure": "normalized recorded model token volume",
+    "formula": "For each SDK session take final cumulative model_usage counters once; sum inputTokens + cacheCreationInputTokens + cacheReadInputTokens + outputTokens across main and all auxiliary models. Sum the two sessions and all repository workflows. Never sum cumulative per-phase results within the return session. thinkingTokens are already part of outputTokens and are not added again.",
+    "incomplete": "Retain available counters as lower bounds; missing final usage prevents the complete secondary gate and is never zero.",
+    "money": "Retain per-model costUSD and total_cost_usd as client estimates, separate from invoices. No per-task cash savings claim from included-plan usage.",
+    "http_requests": "SDK turns and main-model stream steps are not complete HTTP request counts; keep unknown unless independently observed."
+  },
+  "budget": {
+    "authorized_api_ceiling_usd": 500,
+    "route": "existing native Max account; no supplied API key, included-only rate events; no automatic paid fallback",
+    "sdk_estimate_cap_per_workflow_usd": 20,
+    "sdk_estimate_planned_cohort_cap_usd": 240,
+    "sessions": "Return-session cap is 20 minus the cold-session final estimate. Stop if a preceding session has missing final usage.",
+    "preflights": "Keep all probe estimates and missing-usage attempts separate; do not call their actual invoice zero.",
+    "prior_recorded_sdk_estimate_usd": 10.5268443,
+    "prior_estimates_are_not_invoice": true
+  },
+  "grading": {
+    "repair": "Pinned unmodified SWE-bench Verified 4.1.0 tests/parser/grading, with existing owned image adapter; use the confirmed native arm64 control images. Reference patches/test patches and grading output stay outside all model inputs. Grade captured model repair patches after model execution.",
+    "explanations": "Apply every frozen criterion against the actual source version and captured delivered observations. Unsupported material caller/flow/order/propagation claims, fabricated source and presenting stale data as current are serious errors. Missing coverage or citations without an affirmative false claim fails task acceptance without automatically becoming a serious error.",
+    "source_credit": "No complete ContextBench source-read score is claimed. Requested ranges, assistant summaries, elided output and arbitrary shell text are not attributed reads without a verified captured-version mapping.",
+    "subgroups": "Lookup, flow+impact, repair and post-edit are prespecified descriptive groups. Share non-phase workflow overhead equally across its five tasks when reporting group costs; label the five-task amortization assumption. Whole-cohort promotion remains the primary gate.",
+    "terminal": {
+      "subtype": "success",
+      "is_error": false,
+      "terminal_reason": "completed",
+      "stop_reason": "end_turn",
+      "api_error_status": null,
+      "cap_rule": "An output/turn/budget/error/timeout terminal is not accepted even if partial text or patch exists. Never change these rules after observing v2 results."
+    },
+    "criterion_change": {
+      "task_id": "pytest-dev__pytest-5809-impact",
+      "original_criterion": "Identify call_runtest_hook and collect_one_node as production CallInfo.from_call call sites.",
+      "corrected_criterion": "Identify call_runtest_hook and pytest_make_collect_report as direct CallInfo.from_call call sites; explain collect_one_node as upstream hook-dispatch entry and report consumer.",
+      "reason": "collect_one_node has no from_call invocation; the direct collection call is pytest_make_collect_report at runner.py:253. The original wording confuses an upstream entry/consumer with a direct site.",
+      "affected_original_observations": 4
+    },
+    "source_review": {
+      "path": "rubric-source-review-v2.json",
+      "sha256": "fd806c4c78266e101734766b0e7fb16849a8d21db531b8b348dd735cd432b48e",
+      "scope": "Twelve explanation tasks, forty criteria, forty-eight pinned source definitions/tests; no model answer or reference patch enters the SDK input."
+    }
+  },
+  "remaining_admission": [
+    "Execute and grade this separately frozen cohort while preserving every v1 observation",
+    "Complete broader provider/representative workflow evidence and five-user seven-day repeat-use evidence before promotion"
+  ],
+  "official_configuration_sources": [
+    {
+      "url": "https://platform.claude.com/docs/en/models/opus-5-5/overview",
+      "checked_utc": "2026-10-28T13:42:54.105519+00:00",
+      "facts": "Exact main model ID; adaptive thinking always enabled; medium effort available; model maximum output 128K, with this run requesting 16384."
+    },
+    {
+      "url": "https://platform.claude.com/docs/en/models/opus-5-5/migration-guide",
+      "checked_utc": "2026-10-28T13:42:54.105519+00:00",
+      "facts": "Automatic tool choice is supported; any/tool forced choice is rejected. The study does not force a product call."
+    },
+    {
+      "url": "https://code.claude.com/docs/en/agent-sdk/python",
+      "checked_utc": "2026-10-28T13:42:54.105519+00:00",
+      "facts": "SDK effort/thinking/MCP configuration and explicit terminal fields; installed SDK and CLI versions are separately bound."
+    },
+    {
+      "url": "https://code.claude.com/docs/en/agent-sdk/cost-tracking",
+      "checked_utc": "2026-10-28T13:42:54.105519+00:00",
+      "facts": "Final cumulative session counters are counted once; SDK cost fields are estimates, distinct from authoritative billing."
+    }
+  ],
+  "policy_version": 4,
+  "supersedes": {
+    "scope": "Separate future cohort, never a replacement or rescore of v1",
+    "original_policy_sha256": "da562c62849d8bc3937dc6dde1c1a2205609ceba7988d6367b2f18e135bebe41",
+    "reason": "Source-checked direct-caller correction, current source candidate and verified unattended provider preparation. Preserve task membership/order, original prompts, primary/secondary rules, native grading and every old observation."
+  },
+  "cohort_version": 2,
+  "frozen_utc": "2026-10-28T14:04:01.806001+00:00"
+}

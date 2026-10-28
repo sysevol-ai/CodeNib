@@ -1,0 +1,983 @@
+{
+  "schema_version": 1,
+  "status": "source-checked before prospective v2 inference",
+  "recorded_utc": "2026-10-28T13:38:25.596902+00:00",
+  "scope": "All fifteen historically exposed task prompts; twelve explanation rubrics bound to source and three unchanged native repair grading boundaries. Source material only, no model answers or retrospective acceptance totals.",
+  "task_file_sha256": "218eb7085da807c3cb067ef742ff7ceff161910dad18c676458a5b599d2d45ea",
+  "single_rubric_correction": {
+    "task_id": "pytest-dev__pytest-5809-impact",
+    "original_criterion": "Identify call_runtest_hook and collect_one_node as production CallInfo.from_call call sites.",
+    "corrected_criterion": "Identify call_runtest_hook and pytest_make_collect_report as direct CallInfo.from_call call sites; explain collect_one_node as upstream hook-dispatch entry and report consumer.",
+    "reason": "collect_one_node has no from_call invocation; the direct collection call is pytest_make_collect_report at runner.py:253. The original wording confuses an upstream entry/consumer with a direct site.",
+    "affected_original_observations": 4
+  },
+  "source_refs": {
+    "requests:Session.prepare_request": {
+      "repository": "psf__requests-1921",
+      "source_commit": "3c88e520da24ae6f736929a750876e7654accc3d",
+      "file": "requests/sessions.py",
+      "file_sha256": "32e30eadf91367b3aefb90e8541cf3fc20d3d950a16828c0101f4232d36a78a9",
+      "symbol": "Session.prepare_request",
+      "start_line": 260,
+      "end_line": 297,
+      "location_convention": "1-based inclusive",
+      "source": "    def prepare_request(self, request):\n        \"\"\"Constructs a :class:`PreparedRequest <PreparedRequest>` for\n        transmission and returns it. The :class:`PreparedRequest` has settings\n        merged from the :class:`Request <Request>` instance and those of the\n        :class:`Session`.\n\n        :param request: :class:`Request` instance to prepare with this\n            session's settings.\n        \"\"\"\n        cookies = request.cookies or {}\n\n        # Bootstrap CookieJar.\n        if not isinstance(cookies, cookielib.CookieJar):\n            cookies = cookiejar_from_dict(cookies)\n\n        # Merge with session cookies\n        merged_cookies = merge_cookies(\n            merge_cookies(RequestsCookieJar(), self.cookies), cookies)\n\n\n        # Set environment's basic authentication if not explicitly set.\n        auth = request.auth\n        if self.trust_env and not auth and not self.auth:\n            auth = get_netrc_auth(request.url)\n\n        p = PreparedRequest()\n        p.prepare(\n            method=request.method.upper(),\n            url=request.url,\n            files=request.files,\n            data=request.data,\n            headers=merge_setting(request.headers, self.headers, dict_class=CaseInsensitiveDict),\n            params=merge_setting(request.params, self.params),\n            auth=merge_setting(auth, self.auth),\n            cookies=merged_cookies,\n            hooks=merge_hooks(request.hooks, self.hooks),\n        )\n        return p\n"
+    },
+    "requests:Session.request": {
+      "repository": "psf__requests-1921",
+      "source_commit": "3c88e520da24ae6f736929a750876e7654accc3d",
+      "file": "requests/sessions.py",
+      "file_sha256": "32e30eadf91367b3aefb90e8541cf3fc20d3d950a16828c0101f4232d36a78a9",
+      "symbol": "Session.request",
+      "start_line": 299,
+      "end_line": 393,
+      "location_convention": "1-based inclusive",
+      "source": "    def request(self, method, url,\n        params=None,\n        data=None,\n        headers=None,\n        cookies=None,\n        files=None,\n        auth=None,\n        timeout=None,\n        allow_redirects=True,\n        proxies=None,\n        hooks=None,\n        stream=None,\n        verify=None,\n        cert=None):\n        \"\"\"Constructs a :class:`Request <Request>`, prepares it and sends it.\n        Returns :class:`Response <Response>` object.\n\n        :param method: method for the new :class:`Request` object.\n        :param url: URL for the new :class:`Request` object.\n        :param params: (optional) Dictionary or bytes to be sent in the query\n            string for the :class:`Request`.\n        :param data: (optional) Dictionary or bytes to send in the body of the\n            :class:`Request`.\n        :param headers: (optional) Dictionary of HTTP Headers to send with the\n            :class:`Request`.\n        :param cookies: (optional) Dict or CookieJar object to send with the\n            :class:`Request`.\n        :param files: (optional) Dictionary of 'filename': file-like-objects\n            for multipart encoding upload.\n        :param auth: (optional) Auth tuple or callable to enable\n            Basic/Digest/Custom HTTP Auth.\n        :param timeout: (optional) Float describing the timeout of the\n            request.\n        :param allow_redirects: (optional) Boolean. Set to True by default.\n        :param proxies: (optional) Dictionary mapping protocol to the URL of\n            the proxy.\n        :param stream: (optional) whether to immediately download the response\n            content. Defaults to ``False``.\n        :param verify: (optional) if ``True``, the SSL cert will be verified.\n            A CA_BUNDLE path can also be provided.\n        :param cert: (optional) if String, path to ssl client cert file (.pem).\n            If Tuple, ('cert', 'key') pair.\n        \"\"\"\n\n        method = builtin_str(method)\n\n        # Create the Request.\n        req = Request(\n            method = method.upper(),\n            url = url,\n            headers = headers,\n            files = files,\n            data = data or {},\n            params = params or {},\n            auth = auth,\n            cookies = cookies,\n            hooks = hooks,\n        )\n        prep = self.prepare_request(req)\n\n        proxies = proxies or {}\n\n        # Gather clues from the surrounding environment.\n        if self.trust_env:\n            # Set environment's proxies.\n            env_proxies = get_environ_proxies(url) or {}\n            for (k, v) in env_proxies.items():\n                proxies.setdefault(k, v)\n\n            # Look for configuration.\n            if not verify and verify is not False:\n                verify = os.environ.get('REQUESTS_CA_BUNDLE')\n\n            # Curl compatibility.\n            if not verify and verify is not False:\n                verify = os.environ.get('CURL_CA_BUNDLE')\n\n        # Merge all the kwargs.\n        proxies = merge_setting(proxies, self.proxies)\n        stream = merge_setting(stream, self.stream)\n        verify = merge_setting(verify, self.verify)\n        cert = merge_setting(cert, self.cert)\n\n        # Send the request.\n        send_kwargs = {\n            'stream': stream,\n            'timeout': timeout,\n            'verify': verify,\n            'cert': cert,\n            'proxies': proxies,\n            'allow_redirects': allow_redirects,\n        }\n        resp = self.send(prep, **send_kwargs)\n\n        return resp\n"
+    },
+    "requests:Session.send": {
+      "repository": "psf__requests-1921",
+      "source_commit": "3c88e520da24ae6f736929a750876e7654accc3d",
+      "file": "requests/sessions.py",
+      "file_sha256": "32e30eadf91367b3aefb90e8541cf3fc20d3d950a16828c0101f4232d36a78a9",
+      "symbol": "Session.send",
+      "start_line": 464,
+      "end_line": 530,
+      "location_convention": "1-based inclusive",
+      "source": "    def send(self, request, **kwargs):\n        \"\"\"Send a given PreparedRequest.\"\"\"\n        # Set defaults that the hooks can utilize to ensure they always have\n        # the correct parameters to reproduce the previous request.\n        kwargs.setdefault('stream', self.stream)\n        kwargs.setdefault('verify', self.verify)\n        kwargs.setdefault('cert', self.cert)\n        kwargs.setdefault('proxies', self.proxies)\n\n        # It's possible that users might accidentally send a Request object.\n        # Guard against that specific failure case.\n        if not isinstance(request, PreparedRequest):\n            raise ValueError('You can only send PreparedRequests.')\n\n        # Set up variables needed for resolve_redirects and dispatching of hooks\n        allow_redirects = kwargs.pop('allow_redirects', True)\n        stream = kwargs.get('stream')\n        timeout = kwargs.get('timeout')\n        verify = kwargs.get('verify')\n        cert = kwargs.get('cert')\n        proxies = kwargs.get('proxies')\n        hooks = request.hooks\n\n        # Get the appropriate adapter to use\n        adapter = self.get_adapter(url=request.url)\n\n        # Start time (approximately) of the request\n        start = datetime.utcnow()\n\n        # Send the request\n        r = adapter.send(request, **kwargs)\n\n        # Total elapsed time of the request (approximately)\n        r.elapsed = datetime.utcnow() - start\n\n        # Response manipulation hooks\n        r = dispatch_hook('response', hooks, r, **kwargs)\n\n        # Persist cookies\n        if r.history:\n\n            # If the hooks create history then we want those cookies too\n            for resp in r.history:\n                extract_cookies_to_jar(self.cookies, resp.request, resp.raw)\n\n        extract_cookies_to_jar(self.cookies, request, r.raw)\n\n        # Redirect resolving generator.\n        gen = self.resolve_redirects(r, request,\n            stream=stream,\n            timeout=timeout,\n            verify=verify,\n            cert=cert,\n            proxies=proxies)\n\n        # Resolve redirects if allowed.\n        history = [resp for resp in gen] if allow_redirects else []\n\n        # Shuffle things around if there's history.\n        if history:\n            # Insert the first (original) request at the start\n            history.insert(0, r)\n            # Get the last request made\n            r = history.pop()\n            r.history = tuple(history)\n\n        return r\n"
+    },
+    "requests:SessionRedirectMixin.resolve_redirects": {
+      "repository": "psf__requests-1921",
+      "source_commit": "3c88e520da24ae6f736929a750876e7654accc3d",
+      "file": "requests/sessions.py",
+      "file_sha256": "32e30eadf91367b3aefb90e8541cf3fc20d3d950a16828c0101f4232d36a78a9",
+      "symbol": "SessionRedirectMixin.resolve_redirects",
+      "start_line": 82,
+      "end_line": 182,
+      "location_convention": "1-based inclusive",
+      "source": "    def resolve_redirects(self, resp, req, stream=False, timeout=None,\n                          verify=True, cert=None, proxies=None):\n        \"\"\"Receives a Response. Returns a generator of Responses.\"\"\"\n\n        i = 0\n\n        while resp.is_redirect:\n            prepared_request = req.copy()\n\n            resp.content  # Consume socket so it can be released\n\n            if i >= self.max_redirects:\n                raise TooManyRedirects('Exceeded %s redirects.' % self.max_redirects)\n\n            # Release the connection back into the pool.\n            resp.close()\n\n            url = resp.headers['location']\n            method = req.method\n\n            # Handle redirection without scheme (see: RFC 1808 Section 4)\n            if url.startswith('//'):\n                parsed_rurl = urlparse(resp.url)\n                url = '%s:%s' % (parsed_rurl.scheme, url)\n\n            # The scheme should be lower case...\n            parsed = urlparse(url)\n            url = parsed.geturl()\n\n            # Facilitate non-RFC2616-compliant 'location' headers\n            # (e.g. '/path/to/resource' instead of 'http://domain.tld/path/to/resource')\n            # Compliant with RFC3986, we percent encode the url.\n            if not urlparse(url).netloc:\n                url = urljoin(resp.url, requote_uri(url))\n            else:\n                url = requote_uri(url)\n\n            prepared_request.url = to_native_string(url)\n\n            # http://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html#sec10.3.4\n            if (resp.status_code == codes.see_other and\n                    method != 'HEAD'):\n                method = 'GET'\n\n            # Do what the browsers do, despite standards...\n            # First, turn 302s into GETs.\n            if resp.status_code == codes.found and method != 'HEAD':\n                method = 'GET'\n\n            # Second, if a POST is responded to with a 301, turn it into a GET.\n            # This bizarre behaviour is explained in Issue 1704.\n            if resp.status_code == codes.moved and method == 'POST':\n                method = 'GET'\n\n            prepared_request.method = method\n\n            # https://github.com/kennethreitz/requests/issues/1084\n            if resp.status_code not in (codes.temporary, codes.resume):\n                if 'Content-Length' in prepared_request.headers:\n                    del prepared_request.headers['Content-Length']\n\n                prepared_request.body = None\n\n            headers = prepared_request.headers\n            try:\n                del headers['Cookie']\n            except KeyError:\n                pass\n\n            extract_cookies_to_jar(prepared_request._cookies, prepared_request, resp.raw)\n            prepared_request._cookies.update(self.cookies)\n            prepared_request.prepare_cookies(prepared_request._cookies)\n\n            if 'Authorization' in headers:\n                # If we get redirected to a new host, we should strip out any\n                #\u00a0authentication headers.\n                original_parsed = urlparse(resp.request.url)\n                redirect_parsed = urlparse(url)\n\n                if (original_parsed.hostname != redirect_parsed.hostname):\n                    del headers['Authorization']\n\n            # .netrc might have more auth for us.\n            new_auth = get_netrc_auth(url) if self.trust_env else None\n            if new_auth is not None:\n                prepared_request.prepare_auth(new_auth)\n\n            resp = self.send(\n                prepared_request,\n                stream=stream,\n                timeout=timeout,\n                verify=verify,\n                cert=cert,\n                proxies=proxies,\n                allow_redirects=False,\n            )\n\n            extract_cookies_to_jar(self.cookies, prepared_request, resp.raw)\n\n            i += 1\n            yield resp\n"
+    },
+    "requests:Request.prepare": {
+      "repository": "psf__requests-1921",
+      "source_commit": "3c88e520da24ae6f736929a750876e7654accc3d",
+      "file": "requests/models.py",
+      "file_sha256": "91153287286b3bc2018f8739e40dbaaee4c23cf5d7ca95b6ac661e0ac2ca9c33",
+      "symbol": "Request.prepare",
+      "start_line": 238,
+      "end_line": 252,
+      "location_convention": "1-based inclusive",
+      "source": "    def prepare(self):\n        \"\"\"Constructs a :class:`PreparedRequest <PreparedRequest>` for transmission and returns it.\"\"\"\n        p = PreparedRequest()\n        p.prepare(\n            method=self.method,\n            url=self.url,\n            headers=self.headers,\n            files=self.files,\n            data=self.data,\n            params=self.params,\n            auth=self.auth,\n            cookies=self.cookies,\n            hooks=self.hooks,\n        )\n        return p\n"
+    },
+    "requests:PreparedRequest.prepare": {
+      "repository": "psf__requests-1921",
+      "source_commit": "3c88e520da24ae6f736929a750876e7654accc3d",
+      "file": "requests/models.py",
+      "file_sha256": "91153287286b3bc2018f8739e40dbaaee4c23cf5d7ca95b6ac661e0ac2ca9c33",
+      "symbol": "PreparedRequest.prepare",
+      "start_line": 289,
+      "end_line": 303,
+      "location_convention": "1-based inclusive",
+      "source": "    def prepare(self, method=None, url=None, headers=None, files=None,\n                data=None, params=None, auth=None, cookies=None, hooks=None):\n        \"\"\"Prepares the entire request with the given parameters.\"\"\"\n\n        self.prepare_method(method)\n        self.prepare_url(url, params)\n        self.prepare_headers(headers)\n        self.prepare_cookies(cookies)\n        self.prepare_body(data, files)\n        self.prepare_auth(auth, url)\n        # Note that prepare_auth must be last to enable authentication schemes\n        # such as OAuth to work on a fully prepared request.\n\n        # This MUST go after prepare_auth. Authenticators could add a hook\n        self.prepare_hooks(hooks)\n"
+    },
+    "requests:HTTPAdapter.send": {
+      "repository": "psf__requests-1921",
+      "source_commit": "3c88e520da24ae6f736929a750876e7654accc3d",
+      "file": "requests/adapters.py",
+      "file_sha256": "4002f9ad2c04ceeaece4fe2ac23148cc74086de515f0eb1498a06f796e2bf899",
+      "symbol": "HTTPAdapter.send",
+      "start_line": 294,
+      "end_line": 396,
+      "location_convention": "1-based inclusive",
+      "source": "    def send(self, request, stream=False, timeout=None, verify=True, cert=None, proxies=None):\n        \"\"\"Sends PreparedRequest object. Returns Response object.\n\n        :param request: The :class:`PreparedRequest <PreparedRequest>` being sent.\n        :param stream: (optional) Whether to stream the request content.\n        :param timeout: (optional) The timeout on the request.\n        :param verify: (optional) Whether to verify SSL certificates.\n        :param cert: (optional) Any user-provided SSL certificate to be trusted.\n        :param proxies: (optional) The proxies dictionary to apply to the request.\n        \"\"\"\n\n        conn = self.get_connection(request.url, proxies)\n\n        self.cert_verify(conn, request.url, verify, cert)\n        url = self.request_url(request, proxies)\n        self.add_headers(request)\n\n        chunked = not (request.body is None or 'Content-Length' in request.headers)\n\n        if stream:\n            timeout = TimeoutSauce(connect=timeout)\n        else:\n            timeout = TimeoutSauce(connect=timeout, read=timeout)\n\n        try:\n            if not chunked:\n                resp = conn.urlopen(\n                    method=request.method,\n                    url=url,\n                    body=request.body,\n                    headers=request.headers,\n                    redirect=False,\n                    assert_same_host=False,\n                    preload_content=False,\n                    decode_content=False,\n                    retries=self.max_retries,\n                    timeout=timeout\n                )\n\n            # Send the request.\n            else:\n                if hasattr(conn, 'proxy_pool'):\n                    conn = conn.proxy_pool\n\n                low_conn = conn._get_conn(timeout=timeout)\n\n                try:\n                    low_conn.putrequest(request.method,\n                                        url,\n                                        skip_accept_encoding=True)\n\n                    for header, value in request.headers.items():\n                        low_conn.putheader(header, value)\n\n                    low_conn.endheaders()\n\n                    for i in request.body:\n                        low_conn.send(hex(len(i))[2:].encode('utf-8'))\n                        low_conn.send(b'\\r\\n')\n                        low_conn.send(i)\n                        low_conn.send(b'\\r\\n')\n                    low_conn.send(b'0\\r\\n\\r\\n')\n\n                    r = low_conn.getresponse()\n                    resp = HTTPResponse.from_httplib(\n                        r,\n                        pool=conn,\n                        connection=low_conn,\n                        preload_content=False,\n                        decode_content=False\n                    )\n                except:\n                    # If we hit any problems here, clean up the connection.\n                    # Then, reraise so that we can handle the actual exception.\n                    low_conn.close()\n                    raise\n                else:\n                    # All is well, return the connection to the pool.\n                    conn._put_conn(low_conn)\n\n        except socket.error as sockerr:\n            raise ConnectionError(sockerr, request=request)\n\n        except MaxRetryError as e:\n            raise ConnectionError(e, request=request)\n\n        except _ProxyError as e:\n            raise ProxyError(e)\n\n        except (_SSLError, _HTTPError) as e:\n            if isinstance(e, _SSLError):\n                raise SSLError(e, request=request)\n            elif isinstance(e, TimeoutError):\n                raise Timeout(e, request=request)\n            else:\n                raise\n\n        r = self.build_response(request, resp)\n\n        if not stream:\n            r.content\n\n        return r\n"
+    },
+    "requests:RequestsTestCase.test_cannot_send_unprepared_requests": {
+      "repository": "psf__requests-1921",
+      "source_commit": "3c88e520da24ae6f736929a750876e7654accc3d",
+      "file": "test_requests.py",
+      "file_sha256": "37ef77c0f9c3bddee646e2e3fd496e1a114daf6e8b05d3e47897ebc2e0d7630e",
+      "symbol": "RequestsTestCase.test_cannot_send_unprepared_requests",
+      "start_line": 717,
+      "end_line": 720,
+      "location_convention": "1-based inclusive",
+      "source": "    def test_cannot_send_unprepared_requests(self):\n        r = requests.Request(url=HTTPBIN)\n        with pytest.raises(ValueError):\n            requests.Session().send(r)\n"
+    },
+    "requests:RequestsTestCase.test_cookie_sent_on_redirect": {
+      "repository": "psf__requests-1921",
+      "source_commit": "3c88e520da24ae6f736929a750876e7654accc3d",
+      "file": "test_requests.py",
+      "file_sha256": "37ef77c0f9c3bddee646e2e3fd496e1a114daf6e8b05d3e47897ebc2e0d7630e",
+      "symbol": "RequestsTestCase.test_cookie_sent_on_redirect",
+      "start_line": 145,
+      "end_line": 149,
+      "location_convention": "1-based inclusive",
+      "source": "    def test_cookie_sent_on_redirect(self):\n        s = requests.session()\n        s.get(httpbin('cookies/set?foo=bar'))\n        r = s.get(httpbin('redirect/1'))  # redirects to httpbin('get')\n        assert 'Cookie' in r.json()['headers']\n"
+    },
+    "flask:Flask.process_response": {
+      "repository": "pallets__flask-5014",
+      "source_commit": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d",
+      "file": "src/flask/app.py",
+      "file_sha256": "d439102c7658f90f896556c557df89501f2c98ad498d6317453f10ef58508710",
+      "symbol": "Flask.process_response",
+      "start_line": 1996,
+      "end_line": 2022,
+      "location_convention": "1-based inclusive",
+      "source": "    def process_response(self, response: Response) -> Response:\n        \"\"\"Can be overridden in order to modify the response object\n        before it's sent to the WSGI server.  By default this will\n        call all the :meth:`after_request` decorated functions.\n\n        .. versionchanged:: 0.5\n           As of Flask 0.5 the functions registered for after request\n           execution are called in reverse order of registration.\n\n        :param response: a :attr:`response_class` object.\n        :return: a new response object or the same, has to be an\n                 instance of :attr:`response_class`.\n        \"\"\"\n        ctx = request_ctx._get_current_object()  # type: ignore[attr-defined]\n\n        for func in ctx._after_request_functions:\n            response = self.ensure_sync(func)(response)\n\n        for name in chain(request.blueprints, (None,)):\n            if name in self.after_request_funcs:\n                for func in reversed(self.after_request_funcs[name]):\n                    response = self.ensure_sync(func)(response)\n\n        if not self.session_interface.is_null_session(ctx.session):\n            self.session_interface.save_session(self, ctx.session, response)\n\n        return response\n"
+    },
+    "flask:Flask.__call__": {
+      "repository": "pallets__flask-5014",
+      "source_commit": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d",
+      "file": "src/flask/app.py",
+      "file_sha256": "d439102c7658f90f896556c557df89501f2c98ad498d6317453f10ef58508710",
+      "symbol": "Flask.__call__",
+      "start_line": 2223,
+      "end_line": 2228,
+      "location_convention": "1-based inclusive",
+      "source": "    def __call__(self, environ: dict, start_response: t.Callable) -> t.Any:\n        \"\"\"The WSGI server calls the Flask application object as the\n        WSGI application. This calls :meth:`wsgi_app`, which can be\n        wrapped to apply middleware.\n        \"\"\"\n        return self.wsgi_app(environ, start_response)\n"
+    },
+    "flask:Flask.wsgi_app": {
+      "repository": "pallets__flask-5014",
+      "source_commit": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d",
+      "file": "src/flask/app.py",
+      "file_sha256": "d439102c7658f90f896556c557df89501f2c98ad498d6317453f10ef58508710",
+      "symbol": "Flask.wsgi_app",
+      "start_line": 2175,
+      "end_line": 2221,
+      "location_convention": "1-based inclusive",
+      "source": "    def wsgi_app(self, environ: dict, start_response: t.Callable) -> t.Any:\n        \"\"\"The actual WSGI application. This is not implemented in\n        :meth:`__call__` so that middlewares can be applied without\n        losing a reference to the app object. Instead of doing this::\n\n            app = MyMiddleware(app)\n\n        It's a better idea to do this instead::\n\n            app.wsgi_app = MyMiddleware(app.wsgi_app)\n\n        Then you still have the original application object around and\n        can continue to call methods on it.\n\n        .. versionchanged:: 0.7\n            Teardown events for the request and app contexts are called\n            even if an unhandled error occurs. Other events may not be\n            called depending on when an error occurs during dispatch.\n            See :ref:`callbacks-and-errors`.\n\n        :param environ: A WSGI environment.\n        :param start_response: A callable accepting a status code,\n            a list of headers, and an optional exception context to\n            start the response.\n        \"\"\"\n        ctx = self.request_context(environ)\n        error: t.Optional[BaseException] = None\n        try:\n            try:\n                ctx.push()\n                response = self.full_dispatch_request()\n            except Exception as e:\n                error = e\n                response = self.handle_exception(e)\n            except:  # noqa: B001\n                error = sys.exc_info()[1]\n                raise\n            return response(environ, start_response)\n        finally:\n            if \"werkzeug.debug.preserve_context\" in environ:\n                environ[\"werkzeug.debug.preserve_context\"](_cv_app.get())\n                environ[\"werkzeug.debug.preserve_context\"](_cv_request.get())\n\n            if error is not None and self.should_ignore_error(error):\n                error = None\n\n            ctx.pop(error)\n"
+    },
+    "flask:Flask.full_dispatch_request": {
+      "repository": "pallets__flask-5014",
+      "source_commit": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d",
+      "file": "src/flask/app.py",
+      "file_sha256": "d439102c7658f90f896556c557df89501f2c98ad498d6317453f10ef58508710",
+      "symbol": "Flask.full_dispatch_request",
+      "start_line": 1486,
+      "end_line": 1502,
+      "location_convention": "1-based inclusive",
+      "source": "    def full_dispatch_request(self) -> Response:\n        \"\"\"Dispatches the request and on top of that performs request\n        pre and postprocessing as well as HTTP exception catching and\n        error handling.\n\n        .. versionadded:: 0.7\n        \"\"\"\n        self._got_first_request = True\n\n        try:\n            request_started.send(self)\n            rv = self.preprocess_request()\n            if rv is None:\n                rv = self.dispatch_request()\n        except Exception as e:\n            rv = self.handle_user_exception(e)\n        return self.finalize_request(rv)\n"
+    },
+    "flask:Flask.preprocess_request": {
+      "repository": "pallets__flask-5014",
+      "source_commit": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d",
+      "file": "src/flask/app.py",
+      "file_sha256": "d439102c7658f90f896556c557df89501f2c98ad498d6317453f10ef58508710",
+      "symbol": "Flask.preprocess_request",
+      "start_line": 1969,
+      "end_line": 1994,
+      "location_convention": "1-based inclusive",
+      "source": "    def preprocess_request(self) -> t.Optional[ft.ResponseReturnValue]:\n        \"\"\"Called before the request is dispatched. Calls\n        :attr:`url_value_preprocessors` registered with the app and the\n        current blueprint (if any). Then calls :attr:`before_request_funcs`\n        registered with the app and the blueprint.\n\n        If any :meth:`before_request` handler returns a non-None value, the\n        value is handled as if it was the return value from the view, and\n        further request handling is stopped.\n        \"\"\"\n        names = (None, *reversed(request.blueprints))\n\n        for name in names:\n            if name in self.url_value_preprocessors:\n                for url_func in self.url_value_preprocessors[name]:\n                    url_func(request.endpoint, request.view_args)\n\n        for name in names:\n            if name in self.before_request_funcs:\n                for before_func in self.before_request_funcs[name]:\n                    rv = self.ensure_sync(before_func)()\n\n                    if rv is not None:\n                        return rv\n\n        return None\n"
+    },
+    "flask:Flask.dispatch_request": {
+      "repository": "pallets__flask-5014",
+      "source_commit": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d",
+      "file": "src/flask/app.py",
+      "file_sha256": "d439102c7658f90f896556c557df89501f2c98ad498d6317453f10ef58508710",
+      "symbol": "Flask.dispatch_request",
+      "start_line": 1461,
+      "end_line": 1484,
+      "location_convention": "1-based inclusive",
+      "source": "    def dispatch_request(self) -> ft.ResponseReturnValue:\n        \"\"\"Does the request dispatching.  Matches the URL and returns the\n        return value of the view or error handler.  This does not have to\n        be a response object.  In order to convert the return value to a\n        proper response object, call :func:`make_response`.\n\n        .. versionchanged:: 0.7\n           This no longer does the exception handling, this code was\n           moved to the new :meth:`full_dispatch_request`.\n        \"\"\"\n        req = request_ctx.request\n        if req.routing_exception is not None:\n            self.raise_routing_exception(req)\n        rule: Rule = req.url_rule  # type: ignore[assignment]\n        # if we provide automatic options for this URL and the\n        # request came with the OPTIONS method, reply automatically\n        if (\n            getattr(rule, \"provide_automatic_options\", False)\n            and req.method == \"OPTIONS\"\n        ):\n            return self.make_default_options_response()\n        # otherwise dispatch to the handler for that endpoint\n        view_args: t.Dict[str, t.Any] = req.view_args  # type: ignore[assignment]\n        return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)\n"
+    },
+    "flask:Flask.finalize_request": {
+      "repository": "pallets__flask-5014",
+      "source_commit": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d",
+      "file": "src/flask/app.py",
+      "file_sha256": "d439102c7658f90f896556c557df89501f2c98ad498d6317453f10ef58508710",
+      "symbol": "Flask.finalize_request",
+      "start_line": 1504,
+      "end_line": 1531,
+      "location_convention": "1-based inclusive",
+      "source": "    def finalize_request(\n        self,\n        rv: t.Union[ft.ResponseReturnValue, HTTPException],\n        from_error_handler: bool = False,\n    ) -> Response:\n        \"\"\"Given the return value from a view function this finalizes\n        the request by converting it into a response and invoking the\n        postprocessing functions.  This is invoked for both normal\n        request dispatching as well as error handlers.\n\n        Because this means that it might be called as a result of a\n        failure a special safe mode is available which can be enabled\n        with the `from_error_handler` flag.  If enabled, failures in\n        response processing will be logged and otherwise ignored.\n\n        :internal:\n        \"\"\"\n        response = self.make_response(rv)\n        try:\n            response = self.process_response(response)\n            request_finished.send(self, response=response)\n        except Exception:\n            if not from_error_handler:\n                raise\n            self.logger.exception(\n                \"Request finalizing failed with an error while handling an error\"\n            )\n        return response\n"
+    },
+    "flask:Flask.make_response": {
+      "repository": "pallets__flask-5014",
+      "source_commit": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d",
+      "file": "src/flask/app.py",
+      "file_sha256": "d439102c7658f90f896556c557df89501f2c98ad498d6317453f10ef58508710",
+      "symbol": "Flask.make_response",
+      "start_line": 1732,
+      "end_line": 1870,
+      "location_convention": "1-based inclusive",
+      "source": "    def make_response(self, rv: ft.ResponseReturnValue) -> Response:\n        \"\"\"Convert the return value from a view function to an instance of\n        :attr:`response_class`.\n\n        :param rv: the return value from the view function. The view function\n            must return a response. Returning ``None``, or the view ending\n            without returning, is not allowed. The following types are allowed\n            for ``view_rv``:\n\n            ``str``\n                A response object is created with the string encoded to UTF-8\n                as the body.\n\n            ``bytes``\n                A response object is created with the bytes as the body.\n\n            ``dict``\n                A dictionary that will be jsonify'd before being returned.\n\n            ``list``\n                A list that will be jsonify'd before being returned.\n\n            ``generator`` or ``iterator``\n                A generator that returns ``str`` or ``bytes`` to be\n                streamed as the response.\n\n            ``tuple``\n                Either ``(body, status, headers)``, ``(body, status)``, or\n                ``(body, headers)``, where ``body`` is any of the other types\n                allowed here, ``status`` is a string or an integer, and\n                ``headers`` is a dictionary or a list of ``(key, value)``\n                tuples. If ``body`` is a :attr:`response_class` instance,\n                ``status`` overwrites the exiting value and ``headers`` are\n                extended.\n\n            :attr:`response_class`\n                The object is returned unchanged.\n\n            other :class:`~werkzeug.wrappers.Response` class\n                The object is coerced to :attr:`response_class`.\n\n            :func:`callable`\n                The function is called as a WSGI application. The result is\n                used to create a response object.\n\n        .. versionchanged:: 2.2\n            A generator will be converted to a streaming response.\n            A list will be converted to a JSON response.\n\n        .. versionchanged:: 1.1\n            A dict will be converted to a JSON response.\n\n        .. versionchanged:: 0.9\n           Previously a tuple was interpreted as the arguments for the\n           response object.\n        \"\"\"\n\n        status = headers = None\n\n        # unpack tuple returns\n        if isinstance(rv, tuple):\n            len_rv = len(rv)\n\n            # a 3-tuple is unpacked directly\n            if len_rv == 3:\n                rv, status, headers = rv  # type: ignore[misc]\n            # decide if a 2-tuple has status or headers\n            elif len_rv == 2:\n                if isinstance(rv[1], (Headers, dict, tuple, list)):\n                    rv, headers = rv\n                else:\n                    rv, status = rv  # type: ignore[assignment,misc]\n            # other sized tuples are not allowed\n            else:\n                raise TypeError(\n                    \"The view function did not return a valid response tuple.\"\n                    \" The tuple must have the form (body, status, headers),\"\n                    \" (body, status), or (body, headers).\"\n                )\n\n        # the body must not be None\n        if rv is None:\n            raise TypeError(\n                f\"The view function for {request.endpoint!r} did not\"\n                \" return a valid response. The function either returned\"\n                \" None or ended without a return statement.\"\n            )\n\n        # make sure the body is an instance of the response class\n        if not isinstance(rv, self.response_class):\n            if isinstance(rv, (str, bytes, bytearray)) or isinstance(rv, _abc_Iterator):\n                # let the response class set the status and headers instead of\n                # waiting to do it manually, so that the class can handle any\n                # special logic\n                rv = self.response_class(\n                    rv,\n                    status=status,\n                    headers=headers,  # type: ignore[arg-type]\n                )\n                status = headers = None\n            elif isinstance(rv, (dict, list)):\n                rv = self.json.response(rv)\n            elif isinstance(rv, BaseResponse) or callable(rv):\n                # evaluate a WSGI callable, or coerce a different response\n                # class to the correct type\n                try:\n                    rv = self.response_class.force_type(\n                        rv, request.environ  # type: ignore[arg-type]\n                    )\n                except TypeError as e:\n                    raise TypeError(\n                        f\"{e}\\nThe view function did not return a valid\"\n                        \" response. The return type must be a string,\"\n                        \" dict, list, tuple with headers or status,\"\n                        \" Response instance, or WSGI callable, but it\"\n                        f\" was a {type(rv).__name__}.\"\n                    ).with_traceback(sys.exc_info()[2]) from None\n            else:\n                raise TypeError(\n                    \"The view function did not return a valid\"\n                    \" response. The return type must be a string,\"\n                    \" dict, list, tuple with headers or status,\"\n                    \" Response instance, or WSGI callable, but it was a\"\n                    f\" {type(rv).__name__}.\"\n                )\n\n        rv = t.cast(Response, rv)\n        # prefer the status if it was provided\n        if status is not None:\n            if isinstance(status, (str, bytes, bytearray)):\n                rv.status = status\n            else:\n                rv.status_code = status\n\n        # extend existing headers with provided headers\n        if headers:\n            rv.headers.update(headers)  # type: ignore[arg-type]\n\n        return rv\n"
+    },
+    "flask:Flask.ensure_sync": {
+      "repository": "pallets__flask-5014",
+      "source_commit": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d",
+      "file": "src/flask/app.py",
+      "file_sha256": "d439102c7658f90f896556c557df89501f2c98ad498d6317453f10ef58508710",
+      "symbol": "Flask.ensure_sync",
+      "start_line": 1556,
+      "end_line": 1568,
+      "location_convention": "1-based inclusive",
+      "source": "    def ensure_sync(self, func: t.Callable) -> t.Callable:\n        \"\"\"Ensure that the function is synchronous for WSGI workers.\n        Plain ``def`` functions are returned as-is. ``async def``\n        functions are wrapped to run and wait for the response.\n\n        Override this method to change how the app runs async views.\n\n        .. versionadded:: 2.0\n        \"\"\"\n        if iscoroutinefunction(func):\n            return self.async_to_sync(func)\n\n        return func\n"
+    },
+    "flask:Flask.do_teardown_request": {
+      "repository": "pallets__flask-5014",
+      "source_commit": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d",
+      "file": "src/flask/app.py",
+      "file_sha256": "d439102c7658f90f896556c557df89501f2c98ad498d6317453f10ef58508710",
+      "symbol": "Flask.do_teardown_request",
+      "start_line": 2024,
+      "end_line": 2055,
+      "location_convention": "1-based inclusive",
+      "source": "    def do_teardown_request(\n        self, exc: t.Optional[BaseException] = _sentinel  # type: ignore\n    ) -> None:\n        \"\"\"Called after the request is dispatched and the response is\n        returned, right before the request context is popped.\n\n        This calls all functions decorated with\n        :meth:`teardown_request`, and :meth:`Blueprint.teardown_request`\n        if a blueprint handled the request. Finally, the\n        :data:`request_tearing_down` signal is sent.\n\n        This is called by\n        :meth:`RequestContext.pop() <flask.ctx.RequestContext.pop>`,\n        which may be delayed during testing to maintain access to\n        resources.\n\n        :param exc: An unhandled exception raised while dispatching the\n            request. Detected from the current exception information if\n            not passed. Passed to each teardown function.\n\n        .. versionchanged:: 0.9\n            Added the ``exc`` argument.\n        \"\"\"\n        if exc is _sentinel:\n            exc = sys.exc_info()[1]\n\n        for name in chain(request.blueprints, (None,)):\n            if name in self.teardown_request_funcs:\n                for func in reversed(self.teardown_request_funcs[name]):\n                    self.ensure_sync(func)(exc)\n\n        request_tearing_down.send(self, exc=exc)\n"
+    },
+    "flask:Flask.test_request_context": {
+      "repository": "pallets__flask-5014",
+      "source_commit": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d",
+      "file": "src/flask/app.py",
+      "file_sha256": "d439102c7658f90f896556c557df89501f2c98ad498d6317453f10ef58508710",
+      "symbol": "Flask.test_request_context",
+      "start_line": 2119,
+      "end_line": 2173,
+      "location_convention": "1-based inclusive",
+      "source": "    def test_request_context(self, *args: t.Any, **kwargs: t.Any) -> RequestContext:\n        \"\"\"Create a :class:`~flask.ctx.RequestContext` for a WSGI\n        environment created from the given values. This is mostly useful\n        during testing, where you may want to run a function that uses\n        request data without dispatching a full request.\n\n        See :doc:`/reqcontext`.\n\n        Use a ``with`` block to push the context, which will make\n        :data:`request` point at the request for the created\n        environment. ::\n\n            with app.test_request_context(...):\n                generate_report()\n\n        When using the shell, it may be easier to push and pop the\n        context manually to avoid indentation. ::\n\n            ctx = app.test_request_context(...)\n            ctx.push()\n            ...\n            ctx.pop()\n\n        Takes the same arguments as Werkzeug's\n        :class:`~werkzeug.test.EnvironBuilder`, with some defaults from\n        the application. See the linked Werkzeug docs for most of the\n        available arguments. Flask-specific behavior is listed here.\n\n        :param path: URL path being requested.\n        :param base_url: Base URL where the app is being served, which\n            ``path`` is relative to. If not given, built from\n            :data:`PREFERRED_URL_SCHEME`, ``subdomain``,\n            :data:`SERVER_NAME`, and :data:`APPLICATION_ROOT`.\n        :param subdomain: Subdomain name to append to\n            :data:`SERVER_NAME`.\n        :param url_scheme: Scheme to use instead of\n            :data:`PREFERRED_URL_SCHEME`.\n        :param data: The request body, either as a string or a dict of\n            form keys and values.\n        :param json: If given, this is serialized as JSON and passed as\n            ``data``. Also defaults ``content_type`` to\n            ``application/json``.\n        :param args: other positional arguments passed to\n            :class:`~werkzeug.test.EnvironBuilder`.\n        :param kwargs: other keyword arguments passed to\n            :class:`~werkzeug.test.EnvironBuilder`.\n        \"\"\"\n        from .testing import EnvironBuilder\n\n        builder = EnvironBuilder(self, *args, **kwargs)\n\n        try:\n            return self.request_context(builder.get_environ())\n        finally:\n            builder.close()\n"
+    },
+    "flask:after_this_request": {
+      "repository": "pallets__flask-5014",
+      "source_commit": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d",
+      "file": "src/flask/ctx.py",
+      "file_sha256": "6c611042e176fdc1ea67764d31e31e106f0738b2640e52fcf2ed810710ab45aa",
+      "symbol": "after_this_request",
+      "start_line": 113,
+      "end_line": 143,
+      "location_convention": "1-based inclusive",
+      "source": "def after_this_request(f: ft.AfterRequestCallable) -> ft.AfterRequestCallable:\n    \"\"\"Executes a function after this request.  This is useful to modify\n    response objects.  The function is passed the response object and has\n    to return the same or a new one.\n\n    Example::\n\n        @app.route('/')\n        def index():\n            @after_this_request\n            def add_header(response):\n                response.headers['X-Foo'] = 'Parachute'\n                return response\n            return 'Hello World!'\n\n    This is more useful if a function other than the view function wants to\n    modify a response.  For instance think of a decorator that wants to add\n    some headers without converting the return value into a response object.\n\n    .. versionadded:: 0.9\n    \"\"\"\n    ctx = _cv_request.get(None)\n\n    if ctx is None:\n        raise RuntimeError(\n            \"'after_this_request' can only be used when a request\"\n            \" context is active, such as in a view function.\"\n        )\n\n    ctx._after_request_functions.append(f)\n    return f\n"
+    },
+    "flask:RequestContext.push": {
+      "repository": "pallets__flask-5014",
+      "source_commit": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d",
+      "file": "src/flask/ctx.py",
+      "file_sha256": "6c611042e176fdc1ea67764d31e31e106f0738b2640e52fcf2ed810710ab45aa",
+      "symbol": "RequestContext.push",
+      "start_line": 356,
+      "end_line": 383,
+      "location_convention": "1-based inclusive",
+      "source": "    def push(self) -> None:\n        # Before we push the request context we have to ensure that there\n        # is an application context.\n        app_ctx = _cv_app.get(None)\n\n        if app_ctx is None or app_ctx.app is not self.app:\n            app_ctx = self.app.app_context()\n            app_ctx.push()\n        else:\n            app_ctx = None\n\n        self._cv_tokens.append((_cv_request.set(self), app_ctx))\n\n        # Open the session at the moment that the request context is available.\n        # This allows a custom open_session method to use the request context.\n        # Only open a new session if this is the first time the request was\n        # pushed, otherwise stream_with_context loses the session.\n        if self.session is None:\n            session_interface = self.app.session_interface\n            self.session = session_interface.open_session(self.app, self.request)\n\n            if self.session is None:\n                self.session = session_interface.make_null_session(self.app)\n\n        # Match the request URL after loading the session, so that the\n        # session is available in custom URL converters.\n        if self.url_adapter is not None:\n            self.match_request()\n"
+    },
+    "flask:RequestContext.pop": {
+      "repository": "pallets__flask-5014",
+      "source_commit": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d",
+      "file": "src/flask/ctx.py",
+      "file_sha256": "6c611042e176fdc1ea67764d31e31e106f0738b2640e52fcf2ed810710ab45aa",
+      "symbol": "RequestContext.pop",
+      "start_line": 385,
+      "end_line": 420,
+      "location_convention": "1-based inclusive",
+      "source": "    def pop(self, exc: t.Optional[BaseException] = _sentinel) -> None:  # type: ignore\n        \"\"\"Pops the request context and unbinds it by doing that.  This will\n        also trigger the execution of functions registered by the\n        :meth:`~flask.Flask.teardown_request` decorator.\n\n        .. versionchanged:: 0.9\n           Added the `exc` argument.\n        \"\"\"\n        clear_request = len(self._cv_tokens) == 1\n\n        try:\n            if clear_request:\n                if exc is _sentinel:\n                    exc = sys.exc_info()[1]\n                self.app.do_teardown_request(exc)\n\n                request_close = getattr(self.request, \"close\", None)\n                if request_close is not None:\n                    request_close()\n        finally:\n            ctx = _cv_request.get()\n            token, app_ctx = self._cv_tokens.pop()\n            _cv_request.reset(token)\n\n            # get rid of circular dependencies at the end of the request\n            # so that we don't require the GC to be active.\n            if clear_request:\n                ctx.request.environ[\"werkzeug.request\"] = None\n\n            if app_ctx is not None:\n                app_ctx.pop(exc)\n\n            if ctx is not self:\n                raise AssertionError(\n                    f\"Popped wrong request context. ({ctx!r} instead of {self!r})\"\n                )\n"
+    },
+    "flask:RequestContext.__enter__": {
+      "repository": "pallets__flask-5014",
+      "source_commit": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d",
+      "file": "src/flask/ctx.py",
+      "file_sha256": "6c611042e176fdc1ea67764d31e31e106f0738b2640e52fcf2ed810710ab45aa",
+      "symbol": "RequestContext.__enter__",
+      "start_line": 422,
+      "end_line": 424,
+      "location_convention": "1-based inclusive",
+      "source": "    def __enter__(self) -> \"RequestContext\":\n        self.push()\n        return self\n"
+    },
+    "flask:RequestContext.__exit__": {
+      "repository": "pallets__flask-5014",
+      "source_commit": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d",
+      "file": "src/flask/ctx.py",
+      "file_sha256": "6c611042e176fdc1ea67764d31e31e106f0738b2640e52fcf2ed810710ab45aa",
+      "symbol": "RequestContext.__exit__",
+      "start_line": 426,
+      "end_line": 432,
+      "location_convention": "1-based inclusive",
+      "source": "    def __exit__(\n        self,\n        exc_type: t.Optional[type],\n        exc_value: t.Optional[BaseException],\n        tb: t.Optional[TracebackType],\n    ) -> None:\n        self.pop(exc_value)\n"
+    },
+    "flask:Scaffold.after_request": {
+      "repository": "pallets__flask-5014",
+      "source_commit": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d",
+      "file": "src/flask/scaffold.py",
+      "file_sha256": "12d4caff83fd4f57d51c2d29ec0a873508ac035f596a100d1729edccd18d04ac",
+      "symbol": "Scaffold.after_request",
+      "start_line": 558,
+      "end_line": 577,
+      "location_convention": "1-based inclusive",
+      "source": "    @setupmethod\n    def after_request(self, f: T_after_request) -> T_after_request:\n        \"\"\"Register a function to run after each request to this object.\n\n        The function is called with the response object, and must return\n        a response object. This allows the functions to modify or\n        replace the response before it is sent.\n\n        If a function raises an exception, any remaining\n        ``after_request`` functions will not be called. Therefore, this\n        should not be used for actions that must execute, such as to\n        close resources. Use :meth:`teardown_request` for that.\n\n        This is available on both app and blueprint objects. When used on an app, this\n        executes after every request. When used on a blueprint, this executes after\n        every request that the blueprint handles. To register with a blueprint and\n        execute after every request, use :meth:`.Blueprint.after_app_request`.\n        \"\"\"\n        self.after_request_funcs.setdefault(None, []).append(f)\n        return f\n"
+    },
+    "flask:Blueprint.after_app_request": {
+      "repository": "pallets__flask-5014",
+      "source_commit": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d",
+      "file": "src/flask/blueprints.py",
+      "file_sha256": "9d296c3a0dffffbafd59ef15290a6d4c2061a470f3ad2b00709388d35d1dddc0",
+      "symbol": "Blueprint.after_app_request",
+      "start_line": 555,
+      "end_line": 563,
+      "location_convention": "1-based inclusive",
+      "source": "    @setupmethod\n    def after_app_request(self, f: T_after_request) -> T_after_request:\n        \"\"\"Like :meth:`after_request`, but after every request, not only those handled\n        by the blueprint. Equivalent to :meth:`.Flask.after_request`.\n        \"\"\"\n        self.record_once(\n            lambda s: s.app.after_request_funcs.setdefault(None, []).append(f)\n        )\n        return f\n"
+    },
+    "flask:Blueprint.register": {
+      "repository": "pallets__flask-5014",
+      "source_commit": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d",
+      "file": "src/flask/blueprints.py",
+      "file_sha256": "9d296c3a0dffffbafd59ef15290a6d4c2061a470f3ad2b00709388d35d1dddc0",
+      "symbol": "Blueprint.register",
+      "start_line": 268,
+      "end_line": 402,
+      "location_convention": "1-based inclusive",
+      "source": "    def register(self, app: \"Flask\", options: dict) -> None:\n        \"\"\"Called by :meth:`Flask.register_blueprint` to register all\n        views and callbacks registered on the blueprint with the\n        application. Creates a :class:`.BlueprintSetupState` and calls\n        each :meth:`record` callback with it.\n\n        :param app: The application this blueprint is being registered\n            with.\n        :param options: Keyword arguments forwarded from\n            :meth:`~Flask.register_blueprint`.\n\n        .. versionchanged:: 2.3\n            Nested blueprints now correctly apply subdomains.\n\n        .. versionchanged:: 2.1\n            Registering the same blueprint with the same name multiple\n            times is an error.\n\n        .. versionchanged:: 2.0.1\n            Nested blueprints are registered with their dotted name.\n            This allows different blueprints with the same name to be\n            nested at different locations.\n\n        .. versionchanged:: 2.0.1\n            The ``name`` option can be used to change the (pre-dotted)\n            name the blueprint is registered with. This allows the same\n            blueprint to be registered multiple times with unique names\n            for ``url_for``.\n        \"\"\"\n        name_prefix = options.get(\"name_prefix\", \"\")\n        self_name = options.get(\"name\", self.name)\n        name = f\"{name_prefix}.{self_name}\".lstrip(\".\")\n\n        if name in app.blueprints:\n            bp_desc = \"this\" if app.blueprints[name] is self else \"a different\"\n            existing_at = f\" '{name}'\" if self_name != name else \"\"\n\n            raise ValueError(\n                f\"The name '{self_name}' is already registered for\"\n                f\" {bp_desc} blueprint{existing_at}. Use 'name=' to\"\n                f\" provide a unique name.\"\n            )\n\n        first_bp_registration = not any(bp is self for bp in app.blueprints.values())\n        first_name_registration = name not in app.blueprints\n\n        app.blueprints[name] = self\n        self._got_registered_once = True\n        state = self.make_setup_state(app, options, first_bp_registration)\n\n        if self.has_static_folder:\n            state.add_url_rule(\n                f\"{self.static_url_path}/<path:filename>\",\n                view_func=self.send_static_file,\n                endpoint=\"static\",\n            )\n\n        # Merge blueprint data into parent.\n        if first_bp_registration or first_name_registration:\n\n            def extend(bp_dict, parent_dict):\n                for key, values in bp_dict.items():\n                    key = name if key is None else f\"{name}.{key}\"\n                    parent_dict[key].extend(values)\n\n            for key, value in self.error_handler_spec.items():\n                key = name if key is None else f\"{name}.{key}\"\n                value = defaultdict(\n                    dict,\n                    {\n                        code: {\n                            exc_class: func for exc_class, func in code_values.items()\n                        }\n                        for code, code_values in value.items()\n                    },\n                )\n                app.error_handler_spec[key] = value\n\n            for endpoint, func in self.view_functions.items():\n                app.view_functions[endpoint] = func\n\n            extend(self.before_request_funcs, app.before_request_funcs)\n            extend(self.after_request_funcs, app.after_request_funcs)\n            extend(\n                self.teardown_request_funcs,\n                app.teardown_request_funcs,\n            )\n            extend(self.url_default_functions, app.url_default_functions)\n            extend(self.url_value_preprocessors, app.url_value_preprocessors)\n            extend(self.template_context_processors, app.template_context_processors)\n\n        for deferred in self.deferred_functions:\n            deferred(state)\n\n        cli_resolved_group = options.get(\"cli_group\", self.cli_group)\n\n        if self.cli.commands:\n            if cli_resolved_group is None:\n                app.cli.commands.update(self.cli.commands)\n            elif cli_resolved_group is _sentinel:\n                self.cli.name = name\n                app.cli.add_command(self.cli)\n            else:\n                self.cli.name = cli_resolved_group\n                app.cli.add_command(self.cli)\n\n        for blueprint, bp_options in self._blueprints:\n            bp_options = bp_options.copy()\n            bp_url_prefix = bp_options.get(\"url_prefix\")\n            bp_subdomain = bp_options.get(\"subdomain\")\n\n            if bp_subdomain is None:\n                bp_subdomain = blueprint.subdomain\n\n            if state.subdomain is not None and bp_subdomain is not None:\n                bp_options[\"subdomain\"] = bp_subdomain + \".\" + state.subdomain\n            elif bp_subdomain is not None:\n                bp_options[\"subdomain\"] = bp_subdomain\n            elif state.subdomain is not None:\n                bp_options[\"subdomain\"] = state.subdomain\n\n            if bp_url_prefix is None:\n                bp_url_prefix = blueprint.url_prefix\n\n            if state.url_prefix is not None and bp_url_prefix is not None:\n                bp_options[\"url_prefix\"] = (\n                    state.url_prefix.rstrip(\"/\") + \"/\" + bp_url_prefix.lstrip(\"/\")\n                )\n            elif bp_url_prefix is not None:\n                bp_options[\"url_prefix\"] = bp_url_prefix\n            elif state.url_prefix is not None:\n                bp_options[\"url_prefix\"] = state.url_prefix\n\n            bp_options[\"name_prefix\"] = name\n            blueprint.register(app, bp_options)\n"
+    },
+    "flask:Request.blueprints": {
+      "repository": "pallets__flask-5014",
+      "source_commit": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d",
+      "file": "src/flask/wrappers.py",
+      "file_sha256": "7a5ded9f52e049457478d1a060c8ca2024f923ba862606e9221bdc8b89ebc10f",
+      "symbol": "Request.blueprints",
+      "start_line": 94,
+      "end_line": 109,
+      "location_convention": "1-based inclusive",
+      "source": "    @property\n    def blueprints(self) -> t.List[str]:\n        \"\"\"The registered names of the current blueprint upwards through\n        parent blueprints.\n\n        This will be an empty list if there is no current blueprint, or\n        if URL matching failed.\n\n        .. versionadded:: 2.0.1\n        \"\"\"\n        name = self.blueprint\n\n        if name is None:\n            return []\n\n        return _split_blueprint_path(name)\n"
+    },
+    "flask:test_after_request_processing": {
+      "repository": "pallets__flask-5014",
+      "source_commit": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d",
+      "file": "tests/test_basic.py",
+      "file_sha256": "e1087ccff5d7fd00f30a3a2ab0e94860896adaa10c68fbb5f06e653bc206ae5b",
+      "symbol": "test_after_request_processing",
+      "start_line": 737,
+      "end_line": 749,
+      "location_convention": "1-based inclusive",
+      "source": "def test_after_request_processing(app, client):\n    @app.route(\"/\")\n    def index():\n        @flask.after_this_request\n        def foo(response):\n            response.headers[\"X-Foo\"] = \"a header\"\n            return response\n\n        return \"Test\"\n\n    resp = client.get(\"/\")\n    assert resp.status_code == 200\n    assert resp.headers[\"X-Foo\"] == \"a header\"\n"
+    },
+    "flask:test_before_after_request_order": {
+      "repository": "pallets__flask-5014",
+      "source_commit": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d",
+      "file": "tests/test_basic.py",
+      "file_sha256": "e1087ccff5d7fd00f30a3a2ab0e94860896adaa10c68fbb5f06e653bc206ae5b",
+      "symbol": "test_before_after_request_order",
+      "start_line": 826,
+      "end_line": 861,
+      "location_convention": "1-based inclusive",
+      "source": "def test_before_after_request_order(app, client):\n    called = []\n\n    @app.before_request\n    def before1():\n        called.append(1)\n\n    @app.before_request\n    def before2():\n        called.append(2)\n\n    @app.after_request\n    def after1(response):\n        called.append(4)\n        return response\n\n    @app.after_request\n    def after2(response):\n        called.append(3)\n        return response\n\n    @app.teardown_request\n    def finish1(exc):\n        called.append(6)\n\n    @app.teardown_request\n    def finish2(exc):\n        called.append(5)\n\n    @app.route(\"/\")\n    def index():\n        return \"42\"\n\n    rv = client.get(\"/\")\n    assert rv.data == b\"42\"\n    assert called == [1, 2, 3, 4, 5, 6]\n"
+    },
+    "flask:test_teardown_request_handler": {
+      "repository": "pallets__flask-5014",
+      "source_commit": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d",
+      "file": "tests/test_basic.py",
+      "file_sha256": "e1087ccff5d7fd00f30a3a2ab0e94860896adaa10c68fbb5f06e653bc206ae5b",
+      "symbol": "test_teardown_request_handler",
+      "start_line": 752,
+      "end_line": 767,
+      "location_convention": "1-based inclusive",
+      "source": "def test_teardown_request_handler(app, client):\n    called = []\n\n    @app.teardown_request\n    def teardown_request(exc):\n        called.append(True)\n        return \"Ignored\"\n\n    @app.route(\"/\")\n    def root():\n        return \"Response\"\n\n    rv = client.get(\"/\")\n    assert rv.status_code == 200\n    assert b\"Response\" in rv.data\n    assert len(called) == 1\n"
+    },
+    "pytest:CallInfo": {
+      "repository": "pytest-dev__pytest-5809",
+      "source_commit": "8aba863a634f40560e25055d179220f0eefabe9a",
+      "file": "src/_pytest/runner.py",
+      "file_sha256": "b4be752755314079f93c5fa46cfc1e9577d345379e5011e5cd63c6f9aad8273c",
+      "symbol": "CallInfo",
+      "start_line": 202,
+      "end_line": 245,
+      "location_convention": "1-based inclusive",
+      "source": "@attr.s(repr=False)\nclass CallInfo(object):\n    \"\"\" Result/Exception info a function invocation. \"\"\"\n\n    _result = attr.ib()\n    # Optional[ExceptionInfo]\n    excinfo = attr.ib()\n    start = attr.ib()\n    stop = attr.ib()\n    when = attr.ib()\n\n    @property\n    def result(self):\n        if self.excinfo is not None:\n            raise AttributeError(\"{!r} has no valid result\".format(self))\n        return self._result\n\n    @classmethod\n    def from_call(cls, func, when, reraise=None):\n        #: context of invocation: one of \"setup\", \"call\",\n        #: \"teardown\", \"memocollect\"\n        start = time()\n        excinfo = None\n        try:\n            result = func()\n        except:  # noqa\n            excinfo = ExceptionInfo.from_current()\n            if reraise is not None and excinfo.errisinstance(reraise):\n                raise\n            result = None\n        stop = time()\n        return cls(start=start, stop=stop, when=when, result=result, excinfo=excinfo)\n\n    def __repr__(self):\n        if self.excinfo is not None:\n            status = \"exception\"\n            value = self.excinfo.value\n        else:\n            # TODO: investigate unification\n            value = repr(self._result)\n            status = \"result\"\n        return \"<CallInfo when={when!r} {status}: {value}>\".format(\n            when=self.when, value=value, status=status\n        )\n"
+    },
+    "pytest:CallInfo.from_call": {
+      "repository": "pytest-dev__pytest-5809",
+      "source_commit": "8aba863a634f40560e25055d179220f0eefabe9a",
+      "file": "src/_pytest/runner.py",
+      "file_sha256": "b4be752755314079f93c5fa46cfc1e9577d345379e5011e5cd63c6f9aad8273c",
+      "symbol": "CallInfo.from_call",
+      "start_line": 219,
+      "end_line": 233,
+      "location_convention": "1-based inclusive",
+      "source": "    @classmethod\n    def from_call(cls, func, when, reraise=None):\n        #: context of invocation: one of \"setup\", \"call\",\n        #: \"teardown\", \"memocollect\"\n        start = time()\n        excinfo = None\n        try:\n            result = func()\n        except:  # noqa\n            excinfo = ExceptionInfo.from_current()\n            if reraise is not None and excinfo.errisinstance(reraise):\n                raise\n            result = None\n        stop = time()\n        return cls(start=start, stop=stop, when=when, result=result, excinfo=excinfo)\n"
+    },
+    "pytest:CallInfo.result": {
+      "repository": "pytest-dev__pytest-5809",
+      "source_commit": "8aba863a634f40560e25055d179220f0eefabe9a",
+      "file": "src/_pytest/runner.py",
+      "file_sha256": "b4be752755314079f93c5fa46cfc1e9577d345379e5011e5cd63c6f9aad8273c",
+      "symbol": "CallInfo.result",
+      "start_line": 213,
+      "end_line": 217,
+      "location_convention": "1-based inclusive",
+      "source": "    @property\n    def result(self):\n        if self.excinfo is not None:\n            raise AttributeError(\"{!r} has no valid result\".format(self))\n        return self._result\n"
+    },
+    "pytest:runtestprotocol": {
+      "repository": "pytest-dev__pytest-5809",
+      "source_commit": "8aba863a634f40560e25055d179220f0eefabe9a",
+      "file": "src/_pytest/runner.py",
+      "file_sha256": "b4be752755314079f93c5fa46cfc1e9577d345379e5011e5cd63c6f9aad8273c",
+      "symbol": "runtestprotocol",
+      "start_line": 83,
+      "end_line": 100,
+      "location_convention": "1-based inclusive",
+      "source": "def runtestprotocol(item, log=True, nextitem=None):\n    hasrequest = hasattr(item, \"_request\")\n    if hasrequest and not item._request:\n        item._initrequest()\n    rep = call_and_report(item, \"setup\", log)\n    reports = [rep]\n    if rep.passed:\n        if item.config.getoption(\"setupshow\", False):\n            show_test_item(item)\n        if not item.config.getoption(\"setuponly\", False):\n            reports.append(call_and_report(item, \"call\", log))\n    reports.append(call_and_report(item, \"teardown\", log, nextitem=nextitem))\n    # after all teardown hooks have been called\n    # want funcargs and request info to go away\n    if hasrequest:\n        item._request = False\n        item.funcargs = None\n    return reports\n"
+    },
+    "pytest:call_and_report": {
+      "repository": "pytest-dev__pytest-5809",
+      "source_commit": "8aba863a634f40560e25055d179220f0eefabe9a",
+      "file": "src/_pytest/runner.py",
+      "file_sha256": "b4be752755314079f93c5fa46cfc1e9577d345379e5011e5cd63c6f9aad8273c",
+      "symbol": "call_and_report",
+      "start_line": 172,
+      "end_line": 180,
+      "location_convention": "1-based inclusive",
+      "source": "def call_and_report(item, when, log=True, **kwds):\n    call = call_runtest_hook(item, when, **kwds)\n    hook = item.ihook\n    report = hook.pytest_runtest_makereport(item=item, call=call)\n    if log:\n        hook.pytest_runtest_logreport(report=report)\n    if check_interactive_exception(call, report):\n        hook.pytest_exception_interact(node=item, call=call, report=report)\n    return report\n"
+    },
+    "pytest:call_runtest_hook": {
+      "repository": "pytest-dev__pytest-5809",
+      "source_commit": "8aba863a634f40560e25055d179220f0eefabe9a",
+      "file": "src/_pytest/runner.py",
+      "file_sha256": "b4be752755314079f93c5fa46cfc1e9577d345379e5011e5cd63c6f9aad8273c",
+      "symbol": "call_runtest_hook",
+      "start_line": 191,
+      "end_line": 199,
+      "location_convention": "1-based inclusive",
+      "source": "def call_runtest_hook(item, when, **kwds):\n    hookname = \"pytest_runtest_\" + when\n    ihook = getattr(item.ihook, hookname)\n    reraise = (Exit,)\n    if not item.config.getoption(\"usepdb\", False):\n        reraise += (KeyboardInterrupt,)\n    return CallInfo.from_call(\n        lambda: ihook(item=item, **kwds), when=when, reraise=reraise\n    )\n"
+    },
+    "pytest:pytest_runtest_call": {
+      "repository": "pytest-dev__pytest-5809",
+      "source_commit": "8aba863a634f40560e25055d179220f0eefabe9a",
+      "file": "src/_pytest/runner.py",
+      "file_sha256": "b4be752755314079f93c5fa46cfc1e9577d345379e5011e5cd63c6f9aad8273c",
+      "symbol": "pytest_runtest_call",
+      "start_line": 119,
+      "end_line": 132,
+      "location_convention": "1-based inclusive",
+      "source": "def pytest_runtest_call(item):\n    _update_current_test_var(item, \"call\")\n    sys.last_type, sys.last_value, sys.last_traceback = (None, None, None)\n    try:\n        item.runtest()\n    except Exception:\n        # Store trace info to allow postmortem debugging\n        type, value, tb = sys.exc_info()\n        tb = tb.tb_next  # Skip *this* frame\n        sys.last_type = type\n        sys.last_value = value\n        sys.last_traceback = tb\n        del type, value, tb  # Get rid of these in this frame\n        raise\n"
+    },
+    "pytest:pytest_runtest_makereport": {
+      "repository": "pytest-dev__pytest-5809",
+      "source_commit": "8aba863a634f40560e25055d179220f0eefabe9a",
+      "file": "src/_pytest/runner.py",
+      "file_sha256": "b4be752755314079f93c5fa46cfc1e9577d345379e5011e5cd63c6f9aad8273c",
+      "symbol": "pytest_runtest_makereport",
+      "start_line": 248,
+      "end_line": 249,
+      "location_convention": "1-based inclusive",
+      "source": "def pytest_runtest_makereport(item, call):\n    return TestReport.from_item_and_call(item, call)\n"
+    },
+    "pytest:pytest_make_collect_report": {
+      "repository": "pytest-dev__pytest-5809",
+      "source_commit": "8aba863a634f40560e25055d179220f0eefabe9a",
+      "file": "src/_pytest/runner.py",
+      "file_sha256": "b4be752755314079f93c5fa46cfc1e9577d345379e5011e5cd63c6f9aad8273c",
+      "symbol": "pytest_make_collect_report",
+      "start_line": 252,
+      "end_line": 275,
+      "location_convention": "1-based inclusive",
+      "source": "def pytest_make_collect_report(collector):\n    call = CallInfo.from_call(lambda: list(collector.collect()), \"collect\")\n    longrepr = None\n    if not call.excinfo:\n        outcome = \"passed\"\n    else:\n        from _pytest import nose\n\n        skip_exceptions = (Skipped,) + nose.get_skip_exceptions()\n        if call.excinfo.errisinstance(skip_exceptions):\n            outcome = \"skipped\"\n            r = collector._repr_failure_py(call.excinfo, \"line\").reprcrash\n            longrepr = (str(r.path), r.lineno, r.message)\n        else:\n            outcome = \"failed\"\n            errorinfo = collector.repr_failure(call.excinfo)\n            if not hasattr(errorinfo, \"toterminal\"):\n                errorinfo = CollectErrorRepr(errorinfo)\n            longrepr = errorinfo\n    rep = CollectReport(\n        collector.nodeid, outcome, longrepr, getattr(call, \"result\", None)\n    )\n    rep.call = call  # see collect_one_node\n    return rep\n"
+    },
+    "pytest:collect_one_node": {
+      "repository": "pytest-dev__pytest-5809",
+      "source_commit": "8aba863a634f40560e25055d179220f0eefabe9a",
+      "file": "src/_pytest/runner.py",
+      "file_sha256": "b4be752755314079f93c5fa46cfc1e9577d345379e5011e5cd63c6f9aad8273c",
+      "symbol": "collect_one_node",
+      "start_line": 368,
+      "end_line": 375,
+      "location_convention": "1-based inclusive",
+      "source": "def collect_one_node(collector):\n    ihook = collector.ihook\n    ihook.pytest_collectstart(collector=collector)\n    rep = ihook.pytest_make_collect_report(collector=collector)\n    call = rep.__dict__.pop(\"call\", None)\n    if call and check_interactive_exception(call, rep):\n        ihook.pytest_exception_interact(node=collector, call=call, report=rep)\n    return rep\n"
+    },
+    "pytest:Function.runtest": {
+      "repository": "pytest-dev__pytest-5809",
+      "source_commit": "8aba863a634f40560e25055d179220f0eefabe9a",
+      "file": "src/_pytest/python.py",
+      "file_sha256": "c30ae40f482c3354e6e1af768463340fb605552af26955f72b6452c979f6bc32",
+      "symbol": "Function.runtest",
+      "start_line": 1462,
+      "end_line": 1464,
+      "location_convention": "1-based inclusive",
+      "source": "    def runtest(self):\n        \"\"\" execute the underlying test function. \"\"\"\n        self.ihook.pytest_pyfunc_call(pyfuncitem=self)\n"
+    },
+    "pytest:pytest_pyfunc_call": {
+      "repository": "pytest-dev__pytest-5809",
+      "source_commit": "8aba863a634f40560e25055d179220f0eefabe9a",
+      "file": "src/_pytest/python.py",
+      "file_sha256": "c30ae40f482c3354e6e1af768463340fb605552af26955f72b6452c979f6bc32",
+      "symbol": "pytest_pyfunc_call",
+      "start_line": 160,
+      "end_line": 175,
+      "location_convention": "1-based inclusive",
+      "source": "@hookimpl(trylast=True)\ndef pytest_pyfunc_call(pyfuncitem):\n    testfunction = pyfuncitem.obj\n    iscoroutinefunction = getattr(inspect, \"iscoroutinefunction\", None)\n    if iscoroutinefunction is not None and iscoroutinefunction(testfunction):\n        msg = \"Coroutine functions are not natively supported and have been skipped.\\n\"\n        msg += \"You need to install a suitable plugin for your async framework, for example:\\n\"\n        msg += \"  - pytest-asyncio\\n\"\n        msg += \"  - pytest-trio\\n\"\n        msg += \"  - pytest-tornasync\"\n        warnings.warn(PytestUnhandledCoroutineWarning(msg.format(pyfuncitem.nodeid)))\n        skip(msg=\"coroutine function and no async plugin installed (see warnings)\")\n    funcargs = pyfuncitem.funcargs\n    testargs = {arg: funcargs[arg] for arg in pyfuncitem._fixtureinfo.argnames}\n    testfunction(**testargs)\n    return True\n"
+    },
+    "pytest:pytest_runtest_makereport:nose": {
+      "repository": "pytest-dev__pytest-5809",
+      "source_commit": "8aba863a634f40560e25055d179220f0eefabe9a",
+      "file": "src/_pytest/nose.py",
+      "file_sha256": "fd222997315607cfbb31b2e133b8776af86b0f5dd1fe74c833f1aff680f03b33",
+      "symbol": "pytest_runtest_makereport",
+      "start_line": 27,
+      "end_line": 33,
+      "location_convention": "1-based inclusive",
+      "source": "def pytest_runtest_makereport(item, call):\n    if call.excinfo and call.excinfo.errisinstance(get_skip_exceptions()):\n        # let's substitute the excinfo with a pytest.skip one\n        call2 = runner.CallInfo.from_call(\n            lambda: pytest.skip(six.text_type(call.excinfo.value)), call.when\n        )\n        call.excinfo = call2.excinfo\n"
+    },
+    "pytest:TestReport.from_item_and_call": {
+      "repository": "pytest-dev__pytest-5809",
+      "source_commit": "8aba863a634f40560e25055d179220f0eefabe9a",
+      "file": "src/_pytest/reports.py",
+      "file_sha256": "8093291ac30a5fedb2a94a12bd3384824e6a94f3ebb2359b391b9d04180c2a01",
+      "symbol": "TestReport.from_item_and_call",
+      "start_line": 345,
+      "end_line": 386,
+      "location_convention": "1-based inclusive",
+      "source": "    @classmethod\n    def from_item_and_call(cls, item, call):\n        \"\"\"\n        Factory method to create and fill a TestReport with standard item and call info.\n        \"\"\"\n        when = call.when\n        duration = call.stop - call.start\n        keywords = {x: 1 for x in item.keywords}\n        excinfo = call.excinfo\n        sections = []\n        if not call.excinfo:\n            outcome = \"passed\"\n            longrepr = None\n        else:\n            if not isinstance(excinfo, ExceptionInfo):\n                outcome = \"failed\"\n                longrepr = excinfo\n            elif excinfo.errisinstance(skip.Exception):\n                outcome = \"skipped\"\n                r = excinfo._getreprcrash()\n                longrepr = (str(r.path), r.lineno, r.message)\n            else:\n                outcome = \"failed\"\n                if call.when == \"call\":\n                    longrepr = item.repr_failure(excinfo)\n                else:  # exception in setup or teardown\n                    longrepr = item._repr_failure_py(\n                        excinfo, style=item.config.getoption(\"tbstyle\", \"auto\")\n                    )\n        for rwhen, key, content in item._report_sections:\n            sections.append((\"Captured %s %s\" % (key, rwhen), content))\n        return cls(\n            item.nodeid,\n            item.location,\n            keywords,\n            outcome,\n            longrepr,\n            when,\n            sections,\n            duration,\n            user_properties=item.user_properties,\n        )\n"
+    },
+    "pytest:test_callinfo": {
+      "repository": "pytest-dev__pytest-5809",
+      "source_commit": "8aba863a634f40560e25055d179220f0eefabe9a",
+      "file": "testing/test_runner.py",
+      "file_sha256": "4b602d3e0b61e05f1a1ae312b85bef38b56d72a0cf22846dad3a9589abf7a4c6",
+      "symbol": "test_callinfo",
+      "start_line": 484,
+      "end_line": 496,
+      "location_convention": "1-based inclusive",
+      "source": "def test_callinfo():\n    ci = runner.CallInfo.from_call(lambda: 0, \"123\")\n    assert ci.when == \"123\"\n    assert ci.result == 0\n    assert \"result\" in repr(ci)\n    assert repr(ci) == \"<CallInfo when='123' result: 0>\"\n\n    ci = runner.CallInfo.from_call(lambda: 0 / 0, \"123\")\n    assert ci.when == \"123\"\n    assert not hasattr(ci, \"result\")\n    assert repr(ci) == \"<CallInfo when='123' exception: division by zero>\"\n    assert ci.excinfo\n    assert \"exc\" in repr(ci)\n"
+    },
+    "pytest:TestSessionReports.test_collect_result": {
+      "repository": "pytest-dev__pytest-5809",
+      "source_commit": "8aba863a634f40560e25055d179220f0eefabe9a",
+      "file": "testing/test_runner.py",
+      "file_sha256": "4b602d3e0b61e05f1a1ae312b85bef38b56d72a0cf22846dad3a9589abf7a4c6",
+      "symbol": "TestSessionReports.test_collect_result",
+      "start_line": 445,
+      "end_line": 465,
+      "location_convention": "1-based inclusive",
+      "source": "    def test_collect_result(self, testdir):\n        col = testdir.getmodulecol(\n            \"\"\"\n            def test_func1():\n                pass\n            class TestClass(object):\n                pass\n        \"\"\"\n        )\n        rep = runner.collect_one_node(col)\n        assert not rep.failed\n        assert not rep.skipped\n        assert rep.passed\n        locinfo = rep.location\n        assert locinfo[0] == col.fspath.basename\n        assert not locinfo[1]\n        assert locinfo[2] == col.fspath.basename\n        res = rep.result\n        assert len(res) == 2\n        assert res[0].name == \"test_func1\"\n        assert res[1].name == \"TestClass\"\n"
+    }
+  },
+  "tasks": [
+    {
+      "task_id": "psf__requests-1921-lookup",
+      "kind": "lookup",
+      "criteria": [
+        {
+          "criterion": "Identify Session.prepare_request in requests/sessions.py, not Request.prepare as the session-merging implementation.",
+          "support": [
+            "requests:Session.prepare_request",
+            "requests:Request.prepare"
+          ]
+        },
+        {
+          "criterion": "Describe headers, cookies and authentication/session defaults from the actual implementation.",
+          "support": [
+            "requests:Session.prepare_request"
+          ]
+        },
+        {
+          "criterion": "Cite a valid definition range and support the stated behavior.",
+          "support": [
+            "requests:Session.prepare_request"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "psf__requests-1921-flow",
+      "kind": "flow",
+      "criteria": [
+        {
+          "criterion": "Connect Session.request to Session.prepare_request and PreparedRequest.prepare.",
+          "support": [
+            "requests:Session.request",
+            "requests:Session.prepare_request",
+            "requests:PreparedRequest.prepare"
+          ]
+        },
+        {
+          "criterion": "Connect Session.send, get_adapter and HTTPAdapter.send to the underlying connection/urllib3 transport call.",
+          "support": [
+            "requests:Session.send",
+            "requests:HTTPAdapter.send"
+          ]
+        },
+        {
+          "criterion": "Explain Session.resolve_redirects returning through send, including redirect control, without treating adapter selection as one unconditional runtime target.",
+          "support": [
+            "requests:SessionRedirectMixin.resolve_redirects",
+            "requests:Session.send"
+          ]
+        },
+        {
+          "criterion": "Cite the relevant sessions, models and adapters source boundaries.",
+          "support": [
+            "requests:Session.request",
+            "requests:PreparedRequest.prepare",
+            "requests:HTTPAdapter.send"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "psf__requests-1921-impact",
+      "kind": "impact",
+      "criteria": [
+        {
+          "criterion": "Identify production direct callers Session.request and Session.resolve_redirects with their actual argument handling.",
+          "support": [
+            "requests:Session.request",
+            "requests:SessionRedirectMixin.resolve_redirects",
+            "requests:Session.send"
+          ]
+        },
+        {
+          "criterion": "Explain the redirect consequence and distinguish the adapter transport call from callers of Session.send.",
+          "support": [
+            "requests:SessionRedirectMixin.resolve_redirects",
+            "requests:HTTPAdapter.send"
+          ]
+        },
+        {
+          "criterion": "Locate two actual existing source tests that exercise direct sending or redirect behavior, with valid citations and correct descriptions.",
+          "support": [
+            "requests:RequestsTestCase.test_cannot_send_unprepared_requests",
+            "requests:RequestsTestCase.test_cookie_sent_on_redirect"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "psf__requests-1921-repair",
+      "kind": "repair",
+      "boundary": "Unchanged pinned native SWE-bench Verified 4.1.0 tests/parser/grading. Its selected empty/reference readiness controls remain separate; no reference or grading material enters model input."
+    },
+    {
+      "task_id": "psf__requests-1921-post_edit",
+      "kind": "post_edit",
+      "controlled_source": {
+        "apply_before": "psf__requests-1921-post_edit",
+        "path": "requests/_pilot_post_edit.py",
+        "source": "from .models import Request\nfrom .sessions import Session\n\ndef prepare_probe_request(url: str):\n    return Session().prepare_request(Request(\"GET\", url))\n",
+        "sha256": "91ae1a3d5561b96db5590260d4e20b68db8a3a693c19965d2c92cb3e062d087e",
+        "classification": "identical controlled synthetic source addition in every arm; no task outcome or runtime-benefit claim from the edit alone",
+        "rule": "Capture the repair patch before adding this file. Never overwrite an existing file; an unexpected collision is a recorded controller failure. Keep the same return-session MCP connection for the follow-up."
+      },
+      "criteria": [
+        {
+          "criterion": "Cite the newly added helper and its call to Session.prepare_request.",
+          "support": [
+            "requests:Session.prepare_request",
+            "requests:Session.send"
+          ],
+          "also_requires_current_controlled_helper": true
+        },
+        {
+          "criterion": "Explain that it creates a PreparedRequest without calling Session.send or the adapter transport.",
+          "support": [
+            "requests:Session.prepare_request",
+            "requests:Session.send"
+          ],
+          "also_requires_current_controlled_helper": true
+        },
+        {
+          "criterion": "Cite current helper and production definitions; do not present pre-edit graph facts as current.",
+          "support": [
+            "requests:Session.prepare_request",
+            "requests:Session.send"
+          ],
+          "also_requires_current_controlled_helper": true
+        }
+      ]
+    },
+    {
+      "task_id": "pallets__flask-5014-lookup",
+      "kind": "lookup",
+      "criteria": [
+        {
+          "criterion": "Identify Flask.process_response in src/flask/app.py.",
+          "support": [
+            "flask:Flask.process_response"
+          ]
+        },
+        {
+          "criterion": "Correctly distinguish request-context callbacks from reversed registered after_request callback lists and relevant blueprint/application iteration.",
+          "support": [
+            "flask:Flask.process_response",
+            "flask:Request.blueprints",
+            "flask:after_this_request"
+          ]
+        },
+        {
+          "criterion": "Cite valid current source for the ordering claimed.",
+          "support": [
+            "flask:Flask.process_response",
+            "flask:Request.blueprints"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "pallets__flask-5014-flow",
+      "kind": "flow",
+      "criteria": [
+        {
+          "criterion": "Connect __call__, wsgi_app and request-context push/pop in app.py and ctx.py.",
+          "support": [
+            "flask:Flask.__call__",
+            "flask:Flask.wsgi_app",
+            "flask:RequestContext.push",
+            "flask:RequestContext.pop"
+          ]
+        },
+        {
+          "criterion": "Connect full_dispatch_request, preprocess_request and dispatch_request to the selected view.",
+          "support": [
+            "flask:Flask.full_dispatch_request",
+            "flask:Flask.preprocess_request",
+            "flask:Flask.dispatch_request",
+            "flask:Flask.ensure_sync"
+          ]
+        },
+        {
+          "criterion": "Connect finalize_request, make_response and process_response to response creation and after-request processing.",
+          "support": [
+            "flask:Flask.finalize_request",
+            "flask:Flask.make_response",
+            "flask:Flask.process_response"
+          ]
+        },
+        {
+          "criterion": "Explain finally-based context cleanup and cite the relevant cross-file call sites without claiming a complete concrete runtime path.",
+          "support": [
+            "flask:Flask.wsgi_app",
+            "flask:RequestContext.pop"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "pallets__flask-5014-impact",
+      "kind": "impact",
+      "criteria": [
+        {
+          "criterion": "Locate after_this_request and after_request registration mechanisms and explain their corresponding callback collections.",
+          "support": [
+            "flask:after_this_request",
+            "flask:Scaffold.after_request",
+            "flask:Blueprint.register",
+            "flask:Blueprint.after_app_request"
+          ]
+        },
+        {
+          "criterion": "Explain blueprint/application order and reversed registered callbacks from process_response.",
+          "support": [
+            "flask:Flask.process_response",
+            "flask:Request.blueprints"
+          ]
+        },
+        {
+          "criterion": "Distinguish teardown callbacks from response transformation.",
+          "support": [
+            "flask:Flask.do_teardown_request",
+            "flask:RequestContext.pop",
+            "flask:test_teardown_request_handler"
+          ]
+        },
+        {
+          "criterion": "Locate two genuine existing tests with valid citations and relevant assertions.",
+          "support": [
+            "flask:test_after_request_processing",
+            "flask:test_before_after_request_order"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "pallets__flask-5014-repair",
+      "kind": "repair",
+      "boundary": "Unchanged pinned native SWE-bench Verified 4.1.0 tests/parser/grading. Its selected empty/reference readiness controls remain separate; no reference or grading material enters model input."
+    },
+    {
+      "task_id": "pallets__flask-5014-post_edit",
+      "kind": "post_edit",
+      "controlled_source": {
+        "apply_before": "pallets__flask-5014-post_edit",
+        "path": "src/flask/_pilot_post_edit.py",
+        "source": "from .app import Flask\n\ndef dispatch_probe_request(app: Flask, path: str = \"/\"):\n    with app.test_request_context(path):\n        return app.full_dispatch_request()\n",
+        "sha256": "585d6863900b4bda76016c8a65eb04807b29ef0e1cdd8fd5bfec82c6050f323a",
+        "classification": "identical controlled synthetic source addition in every arm; no task outcome or runtime-benefit claim from the edit alone",
+        "rule": "Capture the repair patch before adding this file. Never overwrite an existing file; an unexpected collision is a recorded controller failure. Keep the same return-session MCP connection for the follow-up."
+      },
+      "criteria": [
+        {
+          "criterion": "Cite the new helper and Flask.full_dispatch_request.",
+          "support": [
+            "flask:Flask.test_request_context",
+            "flask:Flask.full_dispatch_request",
+            "flask:RequestContext.__enter__",
+            "flask:RequestContext.__exit__",
+            "flask:RequestContext.pop"
+          ],
+          "also_requires_current_controlled_helper": true
+        },
+        {
+          "criterion": "Explain in-process dispatch rather than starting a WSGI server.",
+          "support": [
+            "flask:Flask.test_request_context",
+            "flask:Flask.full_dispatch_request",
+            "flask:RequestContext.__enter__",
+            "flask:RequestContext.__exit__",
+            "flask:RequestContext.pop"
+          ],
+          "also_requires_current_controlled_helper": true
+        },
+        {
+          "criterion": "Explain the test_request_context context-manager exit/pop boundary using current ctx/app source.",
+          "support": [
+            "flask:Flask.test_request_context",
+            "flask:Flask.full_dispatch_request",
+            "flask:RequestContext.__enter__",
+            "flask:RequestContext.__exit__",
+            "flask:RequestContext.pop"
+          ],
+          "also_requires_current_controlled_helper": true
+        }
+      ]
+    },
+    {
+      "task_id": "pytest-dev__pytest-5809-lookup",
+      "kind": "lookup",
+      "criteria": [
+        {
+          "criterion": "Identify CallInfo.from_call in src/_pytest/runner.py.",
+          "support": [
+            "pytest:CallInfo.from_call"
+          ]
+        },
+        {
+          "criterion": "Explain captured result versus excinfo and start/stop timing from the actual implementation.",
+          "support": [
+            "pytest:CallInfo",
+            "pytest:CallInfo.from_call",
+            "pytest:CallInfo.result"
+          ]
+        },
+        {
+          "criterion": "Cite the relevant constructor/accessor behavior without claiming exceptions are always swallowed.",
+          "support": [
+            "pytest:CallInfo",
+            "pytest:CallInfo.from_call",
+            "pytest:CallInfo.result"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "pytest-dev__pytest-5809-flow",
+      "kind": "flow",
+      "criteria": [
+        {
+          "criterion": "Connect runtestprotocol, call_and_report and call_runtest_hook in runner.py.",
+          "support": [
+            "pytest:runtestprotocol",
+            "pytest:call_and_report",
+            "pytest:call_runtest_hook"
+          ]
+        },
+        {
+          "criterion": "Connect pytest_runtest_call, Function.runtest and pytest_pyfunc_call through their plugin hook boundaries.",
+          "support": [
+            "pytest:pytest_runtest_call",
+            "pytest:Function.runtest",
+            "pytest:pytest_pyfunc_call"
+          ]
+        },
+        {
+          "criterion": "Explain CallInfo.from_call exception capture and pytest_runtest_makereport/TestReport creation.",
+          "support": [
+            "pytest:CallInfo.from_call",
+            "pytest:pytest_runtest_makereport",
+            "pytest:TestReport.from_item_and_call"
+          ]
+        },
+        {
+          "criterion": "Cite relevant runner.py and python.py call sites and distinguish collection/setup/teardown from the call phase.",
+          "support": [
+            "pytest:runtestprotocol",
+            "pytest:call_runtest_hook",
+            "pytest:Function.runtest",
+            "pytest:pytest_pyfunc_call"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "pytest-dev__pytest-5809-impact",
+      "kind": "impact",
+      "criteria": [
+        {
+          "criterion": "Identify call_runtest_hook and pytest_make_collect_report as direct CallInfo.from_call call sites; explain collect_one_node as upstream hook-dispatch entry and report consumer.",
+          "support": [
+            "pytest:call_runtest_hook",
+            "pytest:pytest_make_collect_report",
+            "pytest:collect_one_node"
+          ]
+        },
+        {
+          "criterion": "Explain when/phase metadata and configured reraise behavior rather than assuming all exceptions are suppressed.",
+          "support": [
+            "pytest:call_runtest_hook",
+            "pytest:pytest_make_collect_report",
+            "pytest:CallInfo.from_call"
+          ]
+        },
+        {
+          "criterion": "Locate two actual relevant tests with correct assertions and valid source citations.",
+          "support": [
+            "pytest:test_callinfo",
+            "pytest:TestSessionReports.test_collect_result"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "pytest-dev__pytest-5809-repair",
+      "kind": "repair",
+      "boundary": "Unchanged pinned native SWE-bench Verified 4.1.0 tests/parser/grading. Its selected empty/reference readiness controls remain separate; no reference or grading material enters model input."
+    },
+    {
+      "task_id": "pytest-dev__pytest-5809-post_edit",
+      "kind": "post_edit",
+      "controlled_source": {
+        "apply_before": "pytest-dev__pytest-5809-post_edit",
+        "path": "src/_pytest/_pilot_post_edit.py",
+        "source": "from .runner import CallInfo\n\ndef capture_probe_result(function):\n    return CallInfo.from_call(function, \"call\")\n",
+        "sha256": "be5413f1fd182d77cea517c0a5c3fe600caaa2d2e53e64645f02c2a84dcd356f",
+        "classification": "identical controlled synthetic source addition in every arm; no task outcome or runtime-benefit claim from the edit alone",
+        "rule": "Capture the repair patch before adding this file. Never overwrite an existing file; an unexpected collision is a recorded controller failure. Keep the same return-session MCP connection for the follow-up."
+      },
+      "criteria": [
+        {
+          "criterion": "Cite the new helper and its CallInfo.from_call call with call-phase metadata.",
+          "support": [
+            "pytest:CallInfo",
+            "pytest:CallInfo.from_call",
+            "pytest:CallInfo.result"
+          ],
+          "also_requires_current_controlled_helper": true
+        },
+        {
+          "criterion": "Explain result versus excinfo using the current CallInfo implementation.",
+          "support": [
+            "pytest:CallInfo",
+            "pytest:CallInfo.from_call",
+            "pytest:CallInfo.result"
+          ],
+          "also_requires_current_controlled_helper": true
+        },
+        {
+          "criterion": "Use current source evidence rather than silently relying on a pre-edit graph.",
+          "support": [
+            "pytest:CallInfo",
+            "pytest:CallInfo.from_call",
+            "pytest:CallInfo.result"
+          ],
+          "also_requires_current_controlled_helper": true
+        }
+      ]
+    }
+  ],
+  "source_assertions": [
+    "Direct runtest and collection factory calls versus upstream collection dispatch are distinguished",
+    "Nose provides an additional factory call; the selected two callers are not an exhaustive call-site assertion",
+    "Session.resolve_redirects is inherited from SessionRedirectMixin",
+    "Per-request callbacks retain insertion order; registered callbacks reverse within blueprint-to-parent/application iteration"
+  ],
+  "controller_sha256": "1732e4e3c1d837b29e2bb5e698094ac3ac379037639762d96d2515e8cb045e2e",
+  "frozen_utc": "2026-10-28T14:04:01.806001+00:00"
+}
