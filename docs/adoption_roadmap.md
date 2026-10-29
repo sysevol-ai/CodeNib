@@ -195,6 +195,44 @@ Acceptance: strict docs build and public-link audit; published claims traced
 to committed results; desktop/mobile inspection of the actual landing page;
 all first-screen links work; quickstart remains exactly two commands.
 
+#### ContextBench result publication
+
+Status: the [English article](https://codenib.ai/blogs/contextbench-500-tasks/)
+and its homepage/blog-index entries are published on 2026-10-23 UTC from
+`5c2edd00`, tracked in [#852](https://github.com/sysevol-ai/CodeNib/pull/852).
+Its figures follow the other posts: a Geist-embedded mechanism diagram serves
+as both hero and sharing image, with a narrow variant for phones, and the
+task-source chart adds model usage per task. Local and public browser
+acceptance passes at 1440/820/390/320 pixels, including metadata, figure
+variant selection, dated ranking scope, no overflow and exact asset hashes.
+Wide/narrow teaser labels fit their SVG bounds. Delayed/failed-style
+opening/refresh regressions pass locally and publicly at 1440/390/320 pixels.
+Strict MkDocs,
+public-doc boundaries, support tables and pinned pre-commit checks pass.
+The article leads with 77.07% search-only line recall and the 0.83-point
+increase to 77.90% after confirmed repair reads. It explains the fixed
+first-search/scout/repair roles, iterative source-tool loop, observed-source
+union and bounded navigation handoff, distinguishing role routing from
+dynamic model selection and navigation metadata from source bodies.
+The separate 32-task comparison retains uncertainty about the complementary
+policy's gain over a simple repeat. The complete-system result remains
+388/500 native positives (77.60%), 28.11% final line F1 and $0.6778 recorded
+search-plus-repair model usage per task; search-only model usage is $0.0114.
+The [official submission PR #4](https://github.com/ContextBench/contextbench.github.io/pull/4)
+merged on 2026-10-22 UTC, and the full agent is published on the
+[Agent systems leaderboard](https://contextbench.github.io/). As of
+2026-10-23 UTC it ranks #1 in line recall and Pass@1, verified against the
+[published score snapshot](https://github.com/ContextBench/contextbench.github.io/blob/4f979971e04a1fe0a743fbe45e60fa8edf79440d/src/data/agent_results.json).
+The teaser, homepage/index copy and social metadata state the full-agent
+scope and date while retaining the separate search-only result.
+Known annotation exposure,
+three reused development repairs, partial shell-source attribution and cost
+scope remain explicit. The measured Haiku search/Opus repair route is kept
+separate from shipping CodeGraph and experimental Jev/graph claims.
+
+Open gates: CodeNib PR #852 review/CI. The external submission and leaderboard
+publication gate is closed.
+
 #### First-visit activation
 
 Status: the shared first-visit surface is merged in
