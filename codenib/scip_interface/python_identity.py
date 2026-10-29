@@ -650,6 +650,7 @@ def normalize_python_index(
                 return resolve_definitions(relative, line, character)
             from ..graph.incremental.lsp_client import LSPClient
             from ..toolchains import resolve_command
+            from .scip_indexer_python import _stdlib_only_python_shims
 
             if client is None:
                 command = LSPClient.get_lsp_command("python")
@@ -659,7 +660,11 @@ def normalize_python_index(
                         "run `codenib toolchain install --scope lsp`"
                     )
                 command[0] = resolve_command(command[0])
-                client = LSPClient(command, str(root), "python")
+                # Targets must be repository declarations. Type evaluation
+                # against the caller's site-packages can stall one definition
+                # past its timeout (sympy polyroots.py: >60 s vs 0.02 s).
+                shims = cleanup.enter_context(_stdlib_only_python_shims())
+                client = LSPClient(command, str(root), "python", path_prefix=shims)
                 cleanup.callback(client.shutdown)
                 initialized = client.start(
                     skip_probe=True,
