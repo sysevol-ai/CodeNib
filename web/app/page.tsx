@@ -305,7 +305,7 @@ export default function Landing({ browse = false }: { browse?: boolean }) {
       <Header />
       {browse ? (
         <section className="browse-intro landing-catalog">
-          <span className="browse-eyebrow">CODE, EXPLAINED</span>
+          <span className="browse-eyebrow">Code, explained</span>
           <h1>Browse Wikis</h1>
           <p>
             Explore how real projects work. Read a featured guide or discover
@@ -372,7 +372,7 @@ export default function Landing({ browse = false }: { browse?: boolean }) {
       ) : (
         <section className={`hero ${!staticRuntime ? "first-visit-hero" : ""}`}>
           <div className="first-visit-intro">
-            <p className="first-visit-eyebrow">FROM THE BIG PICTURE TO THE SOURCE</p>
+            <p className="first-visit-eyebrow">From the big picture to the source</p>
             <h1>Understand a repo.<br />Follow the code.</h1>
             <p className="hero-sub">
               Explore how a repository works, see the code behind each explanation,
