@@ -80,8 +80,11 @@ static definition locations, including conditional definitions and property
 accessors. These are possible source targets, not an execution trace. Source
 syntax supplies definitions; reference locations come from compiler output.
 The build consults the Python LSP when a compiler ID spans different scopes.
-Saved queries use the resulting index. An unresolved identity repair keeps the
-graph unavailable; independently built BM25 search remains usable.
+If the LSP finds no definition for a reference, the reference keeps every
+static location of that ID, and the build report lists it under
+`unanswered_definition_queries`. Saved queries use the resulting index. A
+target outside those locations or a failed LSP query keeps the graph
+unavailable; independently built BM25 search remains usable.
 
 Go graphs include `_test.go` files. A repository with nested `go.mod` files is
 indexed one module at a time; the modules are merged into one graph, with each
