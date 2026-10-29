@@ -60,10 +60,10 @@ breaks this down per benchmark.
 <!-- BEGIN CODENIB_SUPPORT_MATRIX:methods -->
 | Method | Type | Views read | Model at query time | Exposed through | Evidence |
 | --- | --- | --- | --- | --- | --- |
-| BM25 | A · CodeNib | `bm25` | none | Python, MCP | Runnable · 7 benchmarks |
-| Dense | A · CodeNib | `vector` | embedding model | Python, MCP | Runnable · 6 benchmarks |
-| Hybrid (RRF) | A · CodeNib | `bm25`, `vector` | embedding model | Python, MCP | Runnable · 4 benchmarks |
-| Graph expansion | A · CodeNib | `bm25` or `vector`, plus `symbol_graph` | embedding model for dense seeds; optional reranker | Python, MCP | Runnable · 5 benchmarks |
+| BM25 | A · CodeNib | `bm25` | none | Python, MCP | [Measured](../evaluation/agent_retrieval_bench.md#results) · ARB (L1) |
+| Dense | A · CodeNib | `vector` | embedding model | Python, MCP | [Measured](../evaluation/agent_retrieval_bench.md#results) · ARB (L1) |
+| Hybrid (RRF) | A · CodeNib | `bm25`, `vector` | embedding model | Python, MCP | [Measured](../evaluation/agent_retrieval_bench.md#results) · ARB (L1) |
+| Graph expansion | A · CodeNib | `bm25` or `vector`, plus `symbol_graph` | embedding model for dense seeds; optional reranker | Python, MCP | [Measured](../evaluation/agent_retrieval_bench.md#results) · ARB (L1) |
 | Retrieve → rerank | A · CodeNib | any first stage | a reranker | Python | [Measured](../evaluation/grep_jev.md#what-was-measured) · Base (L1) |
 | Planner `auto` | A · CodeNib | whatever is available | none to plan; the chosen route may need embeddings or a reranker | Python, MCP | Runnable · 4 benchmarks |
 | Model-planned grep → Jev | B · CodeNib | none; reads the checkout | planner LLM and Jev | CLI, MCP | [Measured](../evaluation/grep_jev.md) · Base (L1) |
@@ -223,6 +223,6 @@ as checkout source.
 | Claude Code or Codex, no model budget for CodeNib | [`codenib codegraph init`](../codegraph.md): BM25 plus the symbol graph over MCP |
 | An OpenRouter key and no index | [Model-planned grep → Jev](../guides/grep-jev.md) |
 | Your own pipeline that needs ranked regions | `RepositoryContextExplorer` with `policy="auto"`, or a fixed policy for an ablation |
-| A question about callers, impact, or dependencies | MCP `dependency_subgraph`, or the `graph` policy |
+| A question about static references or change-impact candidates | MCP `dependency_subgraph`, or the `graph` policy; inspect the related source before concluding which functions are invoked |
 | A published localization agent to reproduce, or to run on CodeNib's index | [Reproduced agents](../agent_integrations.md) |
 | Your own agent loop | [Agent skills](../agent_skills.md) and `AgentRunner` |

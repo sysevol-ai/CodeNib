@@ -11,6 +11,7 @@ from typing import Any
 from mcp.server import MCPServer
 from mcp.types import CallToolResult, TextContent
 
+from .context import IndexedQueryError
 from .explore_bounds import MAX_EXPLORE_CALL_RESULT_BYTES, call_tool_result_bytes
 
 TOOL_SURFACE_FULL = "full"
@@ -60,7 +61,24 @@ class ToolSurfaceMCPServer(MCPServer):
                 f"tool {name!r} is unavailable under the "
                 f"{self._tool_surface!r} MCP tool surface"
             )
-        result = await super().call_tool(name, arguments, context)
+        try:
+            result = await super().call_tool(name, arguments, context)
+        except Exception as error:
+            # MCP 2.3 masks raised tool exceptions. Return a protocol-level
+            # tool failure for our known source/reload rejections instead of
+            # losing the recovery action. The SDK wraps the original exception
+            # in ToolError; keep all other errors on its existing error path.
+            cause: BaseException | None = error
+            seen: set[int] = set()
+            while cause is not None and id(cause) not in seen:
+                if isinstance(cause, IndexedQueryError):
+                    return CallToolResult(
+                        content=[TextContent(type="text", text=cause.public_message)],
+                        is_error=True,
+                    )
+                seen.add(id(cause))
+                cause = cause.__cause__
+            raise
         if (
             name == "explore_context"
             and call_tool_result_bytes(result) > MAX_EXPLORE_CALL_RESULT_BYTES

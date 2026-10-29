@@ -1,0 +1,537 @@
+{
+  "scope": "Two forced-MCP connectivity probes using official local coding-agent SDKs. These are not matched tasks, native-tool adoption evidence, ContextBench source credit or a savings result.",
+  "observed_date_pacific": "2026-10-27",
+  "source_checkout": "/home/zhongming/CodeNib-codegraph-benefit",
+  "source_files_sha256": {
+    "codenib/mcp/server.py": "770bd59d85dbbab13df7d6debdd7d7559df48fc47a878e468f7de463a037fabe",
+    "codenib/mcp/context.py": "f732589eadcca5f87dd1762a8f00089c637e4e5e882d9271dd9bf20f5f33968f",
+    "codenib/graph/code_graph.py": "b475f4674fba0a8228d1eec6fd1ed3abcc6e5bb1642c7d057e45c810742f563b"
+  },
+  "codex": {
+    "sdk": "0.163.0",
+    "account_type": "chatgpt",
+    "api_key_env_supplied": false,
+    "status": "TurnStatus.completed",
+    "error": null,
+    "elapsed_seconds": 8.958,
+    "final_response": "sdk_probe_calculate",
+    "usage": {
+      "last": {
+        "cache_write_input_tokens": 0,
+        "cached_input_tokens": 11648,
+        "input_tokens": 11912,
+        "output_tokens": 8,
+        "reasoning_output_tokens": 0,
+        "total_tokens": 11920
+      },
+      "model_context_window": 475000,
+      "total": {
+        "cache_write_input_tokens": 0,
+        "cached_input_tokens": 30848,
+        "input_tokens": 34950,
+        "output_tokens": 115,
+        "reasoning_output_tokens": 0,
+        "total_tokens": 35065
+      }
+    },
+    "mcp_calls": [
+      {
+        "app_context": null,
+        "arguments": {
+          "symbol": "sdk_probe_checkout",
+          "direction": "dependencies",
+          "depth": 1
+        },
+        "duration_ms": 4,
+        "error": null,
+        "id": "exec-603f7eb2-7f69-4715-a28b-dfdfc9cc214e",
+        "mcp_app_resource_uri": null,
+        "mcp_app_ui": null,
+        "plugin_id": null,
+        "read_only_hint": null,
+        "result": {
+          "field_meta": null,
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"root\": \"probe.py:sdk_probe_checkout()\",\n  \"direction\": \"callees\",\n  \"nodes\": [\n    {\n      \"name\": \"probe.py:sdk_probe_calculate()\",\n      \"file\": \"probe.py\",\n      \"line\": 1,\n      \"kind\": \"function\",\n      \"depth\": 1\n    }\n  ],\n  \"edges\": [\n    {\n      \"source\": \"probe.py:sdk_probe_checkout()\",\n      \"target\": \"probe.py:sdk_probe_calculate()\",\n      \"type\": \"reference\"\n    }\n  ],\n  \"truncated\": false,\n  \"note\": \"\"\n}"
+            }
+          ],
+          "structured_content": {
+            "root": "probe.py:sdk_probe_checkout()",
+            "direction": "callees",
+            "nodes": [
+              {
+                "name": "probe.py:sdk_probe_calculate()",
+                "file": "probe.py",
+                "line": 1,
+                "kind": "function",
+                "depth": 1
+              }
+            ],
+            "edges": [
+              {
+                "source": "probe.py:sdk_probe_checkout()",
+                "target": "probe.py:sdk_probe_calculate()",
+                "type": "reference"
+              }
+            ],
+            "truncated": false,
+            "note": ""
+          }
+        },
+        "server": "codenib",
+        "status": "completed",
+        "tool": "dependency_subgraph",
+        "type": "mcpToolCall"
+      }
+    ],
+    "api_invoice_cost_usd": null,
+    "scope": "Forced MCP connectivity smoke, not a matched-benefit or adoption task."
+  },
+  "claude": {
+    "sdk": "0.2.174",
+    "api_key_env_supplied": false,
+    "credential_route": "existing Claude Code claude.ai/Max login; no credential values read or copied",
+    "elapsed_seconds": 10.436,
+    "init": {
+      "model": "claude-opus-5-5",
+      "apiKeySource": "none",
+      "mcp_servers": [
+        {
+          "name": "codenib",
+          "status": "connected",
+          "source": "dynamic"
+        }
+      ],
+      "tools": [
+        "mcp__codenib__dependency_subgraph",
+        "mcp__codenib__explore_context",
+        "mcp__codenib__get_manifest",
+        "mcp__codenib__lsp_definition",
+        "mcp__codenib__lsp_references",
+        "mcp__codenib__lsp_route",
+        "mcp__codenib__read_source",
+        "mcp__codenib__search_bm25",
+        "mcp__codenib__search_context",
+        "mcp__codenib__search_regex",
+        "mcp__codenib__search_semantic",
+        "mcp__codenib__search_zoekt"
+      ],
+      "permissionMode": "default",
+      "claude_code_version": "2.1.310"
+    },
+    "result": {
+      "subtype": "success",
+      "is_error": false,
+      "duration_ms": 9221,
+      "num_turns": 2,
+      "total_cost_usd": 0.048072000000000004,
+      "usage": {
+        "input_tokens": 4,
+        "cache_creation_input_tokens": 5534,
+        "cache_read_input_tokens": 5236,
+        "output_tokens": 130,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 5534,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "global",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 12,
+            "cache_read_input_tokens": 5236,
+            "cache_creation_input_tokens": 298,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 298
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard",
+        "fallback_credit": null
+      },
+      "result": "sdk_probe_calculate"
+    },
+    "tool_calls": [
+      {
+        "id": "toolu_01RAW7pJMZ7qYJ7vicZDW3tL",
+        "name": "mcp__codenib__dependency_subgraph",
+        "input": {
+          "symbol": "sdk_probe_checkout",
+          "direction": "dependencies",
+          "depth": 1
+        }
+      }
+    ],
+    "api_invoice_cost_usd": null,
+    "scope": "Forced MCP connectivity smoke, not a matched-benefit or adoption task."
+  },
+  "indexed_fixture": {
+    "version": "1.2",
+    "repo": {
+      "path": "/tmp/codenib-sdk-probe-20261027/repository",
+      "commit": "f85b7d352c8bc98efc3154c619f9602113372a34",
+      "last_indexed_commit": "f85b7d352c8bc98efc3154c619f9602113372a34",
+      "source_fingerprint": "sha256-v2:180fc731c64ff22c0dbc6637680f81cb7b41124342c005b910e987f0f49d2a61",
+      "last_indexed_source_fingerprint": "sha256-v2:180fc731c64ff22c0dbc6637680f81cb7b41124342c005b910e987f0f49d2a61",
+      "languages": [
+        "python"
+      ],
+      "file_count": 1,
+      "source_selection": {
+        "schema": "codenib.repository-source-selection.v1",
+        "repository_filter_policy": 4,
+        "exclude_subtrees": []
+      },
+      "last_indexed_source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4"
+    },
+    "indexes": {
+      "bm25": {
+        "index_type": "bm25",
+        "path": "/tmp/codenib-sdk-probe-20261027/state/repositories/repository-e8840b8bf562/indexes/bm25",
+        "built_at": "2026-10-27T22:38:46.378246+00:00",
+        "built_at_epoch": 1793140726.378246,
+        "status": "fresh",
+        "config": {
+          "builder_schema": 9,
+          "languages": [
+            "python"
+          ],
+          "max_k": 128,
+          "max_lines_per_chunk": 300,
+          "chunking_failure_policy": "fail",
+          "include_header_epilogue": true,
+          "repository_filter_policy": 4,
+          "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+          "artifact_file_fingerprints": {
+            "documents.json": {
+              "size": 878,
+              "sha256": "68ae516d433d42b35fdacc9d81ec4490c88fac6dde140e0a74e7fd87aa6436c5"
+            },
+            "bm25_metadata.json": {
+              "size": 133,
+              "sha256": "83683cead9b8cb809543b11a6eee618d2b6f22e89d6366d08dde684c1e3bd93b"
+            }
+          },
+          "chunk_count": 2,
+          "source_file_count": 1,
+          "file_count": 2
+        },
+        "metadata": {
+          "builder_schema": 9,
+          "languages": [
+            "python"
+          ],
+          "max_k": 128,
+          "max_lines_per_chunk": 300,
+          "chunking_failure_policy": "fail",
+          "include_header_epilogue": true,
+          "repository_filter_policy": 4,
+          "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+          "artifact_file_fingerprints": {
+            "documents.json": {
+              "size": 878,
+              "sha256": "68ae516d433d42b35fdacc9d81ec4490c88fac6dde140e0a74e7fd87aa6436c5"
+            },
+            "bm25_metadata.json": {
+              "size": 133,
+              "sha256": "83683cead9b8cb809543b11a6eee618d2b6f22e89d6366d08dde684c1e3bd93b"
+            }
+          },
+          "chunk_count": 2,
+          "source_file_count": 1,
+          "file_count": 2,
+          "build_duration_seconds": 0.1
+        },
+        "commit": "f85b7d352c8bc98efc3154c619f9602113372a34",
+        "source_fingerprint": "sha256-v2:180fc731c64ff22c0dbc6637680f81cb7b41124342c005b910e987f0f49d2a61",
+        "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4"
+      },
+      "symbol_graph": {
+        "index_type": "symbol_graph",
+        "path": "/tmp/codenib-sdk-probe-20261027/state/repositories/repository-e8840b8bf562/indexes/symbol_graph",
+        "built_at": "2026-10-27T22:38:46.951319+00:00",
+        "built_at_epoch": 1793140726.951319,
+        "status": "fresh",
+        "config": {
+          "builder_schema": 7,
+          "languages": [
+            "python"
+          ],
+          "graph_route": "active",
+          "exclude_patterns": [
+            "**/.codenib_cache/**",
+            "**/.env/**",
+            "**/.git/**",
+            "**/.hg/**",
+            "**/.mypy_cache/**",
+            "**/.next/**",
+            "**/.pytest_cache/**",
+            "**/.ruff_cache/**",
+            "**/.svn/**",
+            "**/.tox/**",
+            "**/.venv/**",
+            "**/__pycache__/**",
+            "**/build/**",
+            "**/dist/**",
+            "**/env/**",
+            "**/htmlcov/**",
+            "**/node_modules/**",
+            "**/site/**",
+            "**/target/**",
+            "**/third_party/**",
+            "**/vendor/**",
+            "**/venv/**",
+            ".codenib_cache/**",
+            ".env/**",
+            ".git/**",
+            ".hg/**",
+            ".mypy_cache/**",
+            ".next/**",
+            ".pytest_cache/**",
+            ".ruff_cache/**",
+            ".svn/**",
+            ".tox/**",
+            ".venv/**",
+            "__pycache__/**",
+            "build/**",
+            "dist/**",
+            "env/**",
+            "htmlcov/**",
+            "node_modules/**",
+            "site/**",
+            "target/**",
+            "third_party/**",
+            "vendor/**",
+            "venv/**"
+          ],
+          "allow_partial_languages": false,
+          "allow_partial_index": false,
+          "source_coverage_fallback": false,
+          "allow_project_preparation": false,
+          "target_dir": null,
+          "repository_filter_policy": 4,
+          "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+          "node_count": 4,
+          "edge_count": 4,
+          "language": "python",
+          "available_languages": [
+            "python"
+          ],
+          "compiler_available_languages": [
+            "python"
+          ],
+          "index_generation_reports": {
+            "python": {
+              "backend": "scip-python",
+              "status": "complete",
+              "complete": true,
+              "partial": false,
+              "document_count": 1
+            }
+          },
+          "scip_decoded_artifacts": {
+            "python": {
+              "relative_path": "index.decoded",
+              "size": 3346,
+              "sha256": "32acce5eec8a75ea500b14e2fda21bb59f430da0080128dedb55ed354b150631"
+            }
+          },
+          "graph_artifact": {
+            "relative_path": "graph.pkl",
+            "size": 762,
+            "sha256": "05b636c2c499c5109f6941e3b9ef3e99d6f5620c8be797ed4ba7fecebaf03484"
+          },
+          "lsp_occurrence_artifact": {
+            "relative_path": "lsp_index.pkl",
+            "size": 1093,
+            "sha256": "3d0739da29cdaee9da940233f8bbf212eded959a5e32374f757ef3c756742f0b"
+          },
+          "query_surface_sha256": "272c55aff5cceff20e0d51bc95800e83638cf88b9e19741dfe0eee21e8a52cb5",
+          "update_mode": "full_rebuild",
+          "partial_index": false,
+          "failed_languages": {},
+          "partial": false,
+          "source_selection_report": {
+            "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+            "nodes_before": 4,
+            "nodes_after": 4,
+            "edges_before": 4,
+            "edges_after": 4,
+            "removed_excluded_path_count": 0,
+            "excluded_path_count_after": 0,
+            "invalid_path_count_before": 0,
+            "invalid_path_count_after": 0
+          }
+        },
+        "metadata": {
+          "builder_schema": 7,
+          "languages": [
+            "python"
+          ],
+          "graph_route": "active",
+          "exclude_patterns": [
+            "**/.codenib_cache/**",
+            "**/.env/**",
+            "**/.git/**",
+            "**/.hg/**",
+            "**/.mypy_cache/**",
+            "**/.next/**",
+            "**/.pytest_cache/**",
+            "**/.ruff_cache/**",
+            "**/.svn/**",
+            "**/.tox/**",
+            "**/.venv/**",
+            "**/__pycache__/**",
+            "**/build/**",
+            "**/dist/**",
+            "**/env/**",
+            "**/htmlcov/**",
+            "**/node_modules/**",
+            "**/site/**",
+            "**/target/**",
+            "**/third_party/**",
+            "**/vendor/**",
+            "**/venv/**",
+            ".codenib_cache/**",
+            ".env/**",
+            ".git/**",
+            ".hg/**",
+            ".mypy_cache/**",
+            ".next/**",
+            ".pytest_cache/**",
+            ".ruff_cache/**",
+            ".svn/**",
+            ".tox/**",
+            ".venv/**",
+            "__pycache__/**",
+            "build/**",
+            "dist/**",
+            "env/**",
+            "htmlcov/**",
+            "node_modules/**",
+            "site/**",
+            "target/**",
+            "third_party/**",
+            "vendor/**",
+            "venv/**"
+          ],
+          "allow_partial_languages": false,
+          "allow_partial_index": false,
+          "source_coverage_fallback": false,
+          "allow_project_preparation": false,
+          "target_dir": null,
+          "repository_filter_policy": 4,
+          "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+          "node_count": 4,
+          "edge_count": 4,
+          "language": "python",
+          "available_languages": [
+            "python"
+          ],
+          "compiler_available_languages": [
+            "python"
+          ],
+          "index_generation_reports": {
+            "python": {
+              "backend": "scip-python",
+              "status": "complete",
+              "complete": true,
+              "partial": false,
+              "document_count": 1
+            }
+          },
+          "scip_decoded_artifacts": {
+            "python": {
+              "relative_path": "index.decoded",
+              "size": 3346,
+              "sha256": "32acce5eec8a75ea500b14e2fda21bb59f430da0080128dedb55ed354b150631"
+            }
+          },
+          "graph_artifact": {
+            "relative_path": "graph.pkl",
+            "size": 762,
+            "sha256": "05b636c2c499c5109f6941e3b9ef3e99d6f5620c8be797ed4ba7fecebaf03484"
+          },
+          "lsp_occurrence_artifact": {
+            "relative_path": "lsp_index.pkl",
+            "size": 1093,
+            "sha256": "3d0739da29cdaee9da940233f8bbf212eded959a5e32374f757ef3c756742f0b"
+          },
+          "query_surface_sha256": "272c55aff5cceff20e0d51bc95800e83638cf88b9e19741dfe0eee21e8a52cb5",
+          "update_mode": "full_rebuild",
+          "partial_index": false,
+          "failed_languages": {},
+          "partial": false,
+          "source_selection_report": {
+            "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+            "nodes_before": 4,
+            "nodes_after": 4,
+            "edges_before": 4,
+            "edges_after": 4,
+            "removed_excluded_path_count": 0,
+            "excluded_path_count_after": 0,
+            "invalid_path_count_before": 0,
+            "invalid_path_count_after": 0
+          },
+          "build_duration_seconds": 0.57
+        },
+        "commit": "f85b7d352c8bc98efc3154c619f9602113372a34",
+        "source_fingerprint": "sha256-v2:180fc731c64ff22c0dbc6637680f81cb7b41124342c005b910e987f0f49d2a61",
+        "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4"
+      }
+    },
+    "capabilities": {
+      "sparse_search": true,
+      "dense_search": false,
+      "hybrid_search": false,
+      "symbol_navigation": true
+    },
+    "compiled_at": "2026-10-27T22:38:46.953886+00:00",
+    "compiled_at_epoch": 1793140726.953886
+  },
+  "executed_harnesses": {
+    "codex-mcp.py": "import importlib.metadata\nimport json\nimport os\nimport time\nfrom pathlib import Path\nfrom openai_codex import Codex, CodexConfig, ApprovalMode, Sandbox\nfrom openai_codex.generated.v2_all import ReasoningEffort\n\nROOT=Path('/tmp/codenib-sdk-probe-20261027')\nfor name in ('OPENAI_API_KEY','CODEX_API_KEY','ANTHROPIC_API_KEY'):\n    os.environ.pop(name,None)\nserver={'command':'/home/zhongming/.venvs/codenib/bin/python','args':['-m','codenib','mcp',str(ROOT/'repository'),'--tool-surface','full'],'env':{'CODENIB_HOME':str(ROOT/'state'),'PYTHONPATH':'/home/zhongming/CodeNib-codegraph-benefit'},'enabled_tools':['dependency_subgraph']}\n# All values are TOML-safe quoted strings or JSON-compatible scalar arrays.\nserver_toml='{command='+json.dumps(server['command'])+',args='+json.dumps(server['args'])+',env={'+','.join(k+'='+json.dumps(v) for k,v in server['env'].items())+'},enabled_tools=[\"dependency_subgraph\"]}'\nconfig=CodexConfig(codex_bin='/home/zhongming/.local/bin/codex',cwd=str(ROOT),config_overrides=('features.apps=false','features.plugins=false','features.multi_agent=false','web_search=\"disabled\"','mcp_servers.codenib='+server_toml))\nstarted=time.monotonic()\nwith Codex(config) as client:\n    account=client.account().account\n    principal=getattr(account,'root',account)\n    auth={'sdk':importlib.metadata.version('openai-codex'),'account_type':getattr(principal,'type',None),'api_key_env_supplied':False}\n    (ROOT/'codex-account.json').write_text(json.dumps(auth,indent=2))\n    print('auth',json.dumps(auth),flush=True)\n    thread=client.thread_start(cwd=str(ROOT),sandbox=Sandbox.read_only,approval_mode=ApprovalMode.auto_review,ephemeral=True)\n    result=thread.run('Connectivity check only: call the codenib dependency_subgraph MCP tool for sdk_probe_checkout with direction dependencies and depth 1. Do not run shell commands or edit any files. Reply with the callee name only.',effort=ReasoningEffort.low)\n    calls=[]\n    for item in result.items:\n        data=item.model_dump(mode='json')\n        if data.get('type')=='mcpToolCall':\n            calls.append(data)\n    receipt={**auth,'status':str(result.status),'error':result.error.model_dump(mode='json') if result.error else None,'elapsed_seconds':round(time.monotonic()-started,3),'final_response':result.final_response,'usage':result.usage.model_dump(mode='json') if result.usage else None,'mcp_calls':calls,'api_invoice_cost_usd':None,'scope':'Forced MCP connectivity smoke, not a matched-benefit or adoption task.'}\n    (ROOT/'codex-mcp.json').write_text(json.dumps(receipt,indent=2))\n    print(json.dumps({k:receipt[k] for k in ('status','elapsed_seconds','final_response','usage')}),flush=True)\n    print('MCP calls',len(calls),flush=True)\n    assert calls, 'No captured MCP tool call; inspect SDK receipt instead of claiming success'\n    assert 'sdk_probe_calculate' in (result.final_response or ''),receipt\n",
+    "claude-mcp.py": "import asyncio\nimport dataclasses\nimport importlib.metadata\nimport json\nimport os\nimport time\nfrom pathlib import Path\nfrom claude_agent_sdk import query, ClaudeAgentOptions\n\nROOT=Path('/tmp/codenib-sdk-probe-20261027')\nfor name in ('ANTHROPIC_API_KEY','ANTHROPIC_AUTH_TOKEN','ANTHROPIC_BASE_URL','CLAUDE_CODE_USE_BEDROCK','CLAUDE_CODE_USE_VERTEX','CLAUDE_CODE_USE_FOUNDRY'):\n    os.environ.pop(name,None)\nserver={'command':'/home/zhongming/.venvs/codenib/bin/python','args':['-m','codenib','mcp',str(ROOT/'repository'),'--tool-surface','full'],'env':{'CODENIB_HOME':str(ROOT/'state'),'PYTHONPATH':'/home/zhongming/CodeNib-codegraph-benefit'}}\nasync def main():\n    start=time.monotonic()\n    calls=[]\n    final=None\n    init={}\n    opts=ClaudeAgentOptions(cwd=str(ROOT),cli_path='/home/zhongming/.local/bin/claude',setting_sources=[],strict_mcp_config=True,mcp_servers={'codenib':server},allowed_tools=['mcp__codenib__dependency_subgraph'],tools=[],plugins=[],max_turns=3,max_budget_usd=1.0)\n    async for message in query(prompt='Connectivity check only: call the codenib dependency_subgraph MCP tool for sdk_probe_checkout with direction dependencies and depth 1. Do not run shell commands or edit any files. Reply with the callee name only.',options=opts):\n        if type(message).__name__=='SystemMessage' and getattr(message,'subtype',None)=='init':\n            data=message.data\n            init={k:data.get(k) for k in ('model','apiKeySource','mcp_servers','tools','permissionMode','claude_code_version')}\n        for block in getattr(message,'content',[]):\n            if type(block).__name__=='ToolUseBlock':\n                calls.append(dataclasses.asdict(block))\n        if type(message).__name__=='ResultMessage':\n            final={k:getattr(message,k,None) for k in ('subtype','is_error','duration_ms','num_turns','total_cost_usd','usage','result')}\n    receipt={'sdk':importlib.metadata.version('claude-agent-sdk'),'api_key_env_supplied':False,'credential_route':'existing Claude Code claude.ai/Max login; no credential values read or copied','elapsed_seconds':round(time.monotonic()-start,3),'init':init,'result':final,'tool_calls':calls,'api_invoice_cost_usd':None,'scope':'Forced MCP connectivity smoke, not a matched-benefit or adoption task.'}\n    (ROOT/'claude-mcp.json').write_text(json.dumps(receipt,indent=2))\n    print(json.dumps(receipt,indent=2))\n    assert final and not final.get('is_error'),receipt\n    assert any(c.get('name')=='mcp__codenib__dependency_subgraph' for c in calls),receipt\n    assert 'sdk_probe_calculate' in (final.get('result') or ''),receipt\nasyncio.run(asyncio.wait_for(main(),timeout=90))\n"
+  },
+  "sdk_versions": {
+    "openai-codex": "0.163.0",
+    "claude-agent-sdk": "0.2.174"
+  },
+  "cli_versions": {
+    "codex": "0.165.0",
+    "claude": "2.1.310"
+  },
+  "auth_scope": {
+    "codex": "SDK account root reports chatgpt; API-key environment entries removed in the child",
+    "claude": "Existing claude.ai Max sign-in; SDK init apiKeySource=none; API-key/provider environment entries removed in the child",
+    "harness_copies_or_logs_credential_values": false,
+    "sdk_reuses_existing_local_signin": true
+  },
+  "cost_scope": "SDK token/cost reports are retained. No API invoice was reconciled; subscription allowance use is not zero-cost or unlimited usage. Claude total_cost_usd is a reported estimate, not proof of an extra charge.",
+  "model_scope": "Claude SDK init reports claude-opus-5-5. Codex used the configured default (gpt-6.1-sol); this probe did not capture a separate effective-model receipt. Freeze explicit model/effort per client before any matched task run.",
+  "user_constraints": {
+    "api_budget_ceiling_usd": 500,
+    "preferred_route": "Existing Codex/Claude account login through native SDK + MCP",
+    "external_users_recruited": 0
+  },
+  "official_sources": [
+    "https://learn.chatgpt.com/docs/codex-sdk",
+    "https://learn.chatgpt.com/docs/auth",
+    "https://code.claude.com/docs/en/agent-sdk/overview",
+    "https://code.claude.com/docs/en/agent-sdk/plugins",
+    "https://code.claude.com/docs/en/authentication"
+  ],
+  "source_candidate_commit": "e07468d44ce0d15ab453f5a01a9ce19734cbf158"
+}

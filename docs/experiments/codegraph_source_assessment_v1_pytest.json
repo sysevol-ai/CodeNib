@@ -1,0 +1,1339 @@
+{
+  "schema_version": 1,
+  "recorded_utc": "2026-10-28T05:36:18.045005+00:00",
+  "instance_id": "pytest-dev__pytest-5809",
+  "review_method": "One unblinded maintainer-agent source review against original captured answers and exact source versions. Controller excerpts are ground truth, not model-read credit.",
+  "task_sha256": "76f170aaaacee775009fc01d7eedac9bb74d2e73d21c158fe7dee9a78a8d5bd6",
+  "policy_sha256": "da562c62849d8bc3937dc6dde1c1a2205609ceba7988d6367b2f18e135bebe41",
+  "source_evidence": {
+    "68240e62e2218a611228cc1a064c9ce8794e1474882af7c0ac0778a0f5cf4163": {
+      "file": "src/_pytest/runner.py",
+      "sha256": "b4be752755314079f93c5fa46cfc1e9577d345379e5011e5cd63c6f9aad8273c",
+      "start_line": 202,
+      "end_line": 245,
+      "text": "@attr.s(repr=False)\nclass CallInfo(object):\n    \"\"\" Result/Exception info a function invocation. \"\"\"\n\n    _result = attr.ib()\n    # Optional[ExceptionInfo]\n    excinfo = attr.ib()\n    start = attr.ib()\n    stop = attr.ib()\n    when = attr.ib()\n\n    @property\n    def result(self):\n        if self.excinfo is not None:\n            raise AttributeError(\"{!r} has no valid result\".format(self))\n        return self._result\n\n    @classmethod\n    def from_call(cls, func, when, reraise=None):\n        #: context of invocation: one of \"setup\", \"call\",\n        #: \"teardown\", \"memocollect\"\n        start = time()\n        excinfo = None\n        try:\n            result = func()\n        except:  # noqa\n            excinfo = ExceptionInfo.from_current()\n            if reraise is not None and excinfo.errisinstance(reraise):\n                raise\n            result = None\n        stop = time()\n        return cls(start=start, stop=stop, when=when, result=result, excinfo=excinfo)\n\n    def __repr__(self):\n        if self.excinfo is not None:\n            status = \"exception\"\n            value = self.excinfo.value\n        else:\n            # TODO: investigate unification\n            value = repr(self._result)\n            status = \"result\"\n        return \"<CallInfo when={when!r} {status}: {value}>\".format(\n            when=self.when, value=value, status=status\n        )",
+      "line_base": 1
+    },
+    "5200890b2cef70299090b9d090bcf46b1865af989615307f47b6fa0617ea468a": {
+      "file": "src/_pytest/runner.py",
+      "sha256": "b4be752755314079f93c5fa46cfc1e9577d345379e5011e5cd63c6f9aad8273c",
+      "start_line": 183,
+      "end_line": 199,
+      "text": "def check_interactive_exception(call, report):\n    return call.excinfo and not (\n        hasattr(report, \"wasxfail\")\n        or call.excinfo.errisinstance(Skipped)\n        or call.excinfo.errisinstance(bdb.BdbQuit)\n    )\n\n\ndef call_runtest_hook(item, when, **kwds):\n    hookname = \"pytest_runtest_\" + when\n    ihook = getattr(item.ihook, hookname)\n    reraise = (Exit,)\n    if not item.config.getoption(\"usepdb\", False):\n        reraise += (KeyboardInterrupt,)\n    return CallInfo.from_call(\n        lambda: ihook(item=item, **kwds), when=when, reraise=reraise\n    )",
+      "line_base": 1
+    },
+    "d55f018dc8c93c887c19a6866fd50017e45e77171b496fb5e2c5cc82a7d3b6de": {
+      "file": "src/_pytest/runner.py",
+      "sha256": "b4be752755314079f93c5fa46cfc1e9577d345379e5011e5cd63c6f9aad8273c",
+      "start_line": 252,
+      "end_line": 275,
+      "text": "def pytest_make_collect_report(collector):\n    call = CallInfo.from_call(lambda: list(collector.collect()), \"collect\")\n    longrepr = None\n    if not call.excinfo:\n        outcome = \"passed\"\n    else:\n        from _pytest import nose\n\n        skip_exceptions = (Skipped,) + nose.get_skip_exceptions()\n        if call.excinfo.errisinstance(skip_exceptions):\n            outcome = \"skipped\"\n            r = collector._repr_failure_py(call.excinfo, \"line\").reprcrash\n            longrepr = (str(r.path), r.lineno, r.message)\n        else:\n            outcome = \"failed\"\n            errorinfo = collector.repr_failure(call.excinfo)\n            if not hasattr(errorinfo, \"toterminal\"):\n                errorinfo = CollectErrorRepr(errorinfo)\n            longrepr = errorinfo\n    rep = CollectReport(\n        collector.nodeid, outcome, longrepr, getattr(call, \"result\", None)\n    )\n    rep.call = call  # see collect_one_node\n    return rep",
+      "line_base": 1
+    },
+    "5671a09512a68ae89a30ceb6c9c688f706727a5353c5e33845f2a9ae94e964ff": {
+      "file": "src/_pytest/reports.py",
+      "sha256": "8093291ac30a5fedb2a94a12bd3384824e6a94f3ebb2359b391b9d04180c2a01",
+      "start_line": 346,
+      "end_line": 373,
+      "text": "    def from_item_and_call(cls, item, call):\n        \"\"\"\n        Factory method to create and fill a TestReport with standard item and call info.\n        \"\"\"\n        when = call.when\n        duration = call.stop - call.start\n        keywords = {x: 1 for x in item.keywords}\n        excinfo = call.excinfo\n        sections = []\n        if not call.excinfo:\n            outcome = \"passed\"\n            longrepr = None\n        else:\n            if not isinstance(excinfo, ExceptionInfo):\n                outcome = \"failed\"\n                longrepr = excinfo\n            elif excinfo.errisinstance(skip.Exception):\n                outcome = \"skipped\"\n                r = excinfo._getreprcrash()\n                longrepr = (str(r.path), r.lineno, r.message)\n            else:\n                outcome = \"failed\"\n                if call.when == \"call\":\n                    longrepr = item.repr_failure(excinfo)\n                else:  # exception in setup or teardown\n                    longrepr = item._repr_failure_py(\n                        excinfo, style=item.config.getoption(\"tbstyle\", \"auto\")\n                    )",
+      "line_base": 1
+    },
+    "7cf8975e07780984caff2786d88e2de57dc6349f625164477980b37176325aad": {
+      "file": "src/_pytest/runner.py",
+      "sha256": "b4be752755314079f93c5fa46cfc1e9577d345379e5011e5cd63c6f9aad8273c",
+      "start_line": 76,
+      "end_line": 100,
+      "text": "def pytest_runtest_protocol(item, nextitem):\n    item.ihook.pytest_runtest_logstart(nodeid=item.nodeid, location=item.location)\n    runtestprotocol(item, nextitem=nextitem)\n    item.ihook.pytest_runtest_logfinish(nodeid=item.nodeid, location=item.location)\n    return True\n\n\ndef runtestprotocol(item, log=True, nextitem=None):\n    hasrequest = hasattr(item, \"_request\")\n    if hasrequest and not item._request:\n        item._initrequest()\n    rep = call_and_report(item, \"setup\", log)\n    reports = [rep]\n    if rep.passed:\n        if item.config.getoption(\"setupshow\", False):\n            show_test_item(item)\n        if not item.config.getoption(\"setuponly\", False):\n            reports.append(call_and_report(item, \"call\", log))\n    reports.append(call_and_report(item, \"teardown\", log, nextitem=nextitem))\n    # after all teardown hooks have been called\n    # want funcargs and request info to go away\n    if hasrequest:\n        item._request = False\n        item.funcargs = None\n    return reports",
+      "line_base": 1
+    },
+    "963710dd9693c21aae4c30a6d16a8cbc014c7c844f0f2eeb03f2547617aa4a85": {
+      "file": "src/_pytest/runner.py",
+      "sha256": "b4be752755314079f93c5fa46cfc1e9577d345379e5011e5cd63c6f9aad8273c",
+      "start_line": 119,
+      "end_line": 132,
+      "text": "def pytest_runtest_call(item):\n    _update_current_test_var(item, \"call\")\n    sys.last_type, sys.last_value, sys.last_traceback = (None, None, None)\n    try:\n        item.runtest()\n    except Exception:\n        # Store trace info to allow postmortem debugging\n        type, value, tb = sys.exc_info()\n        tb = tb.tb_next  # Skip *this* frame\n        sys.last_type = type\n        sys.last_value = value\n        sys.last_traceback = tb\n        del type, value, tb  # Get rid of these in this frame\n        raise",
+      "line_base": 1
+    },
+    "cf460e780c957360f6cdc8db05a49ab9711c0296c63d87d2815362b5d4ca2f5b": {
+      "file": "src/_pytest/runner.py",
+      "sha256": "b4be752755314079f93c5fa46cfc1e9577d345379e5011e5cd63c6f9aad8273c",
+      "start_line": 172,
+      "end_line": 245,
+      "text": "def call_and_report(item, when, log=True, **kwds):\n    call = call_runtest_hook(item, when, **kwds)\n    hook = item.ihook\n    report = hook.pytest_runtest_makereport(item=item, call=call)\n    if log:\n        hook.pytest_runtest_logreport(report=report)\n    if check_interactive_exception(call, report):\n        hook.pytest_exception_interact(node=item, call=call, report=report)\n    return report\n\n\ndef check_interactive_exception(call, report):\n    return call.excinfo and not (\n        hasattr(report, \"wasxfail\")\n        or call.excinfo.errisinstance(Skipped)\n        or call.excinfo.errisinstance(bdb.BdbQuit)\n    )\n\n\ndef call_runtest_hook(item, when, **kwds):\n    hookname = \"pytest_runtest_\" + when\n    ihook = getattr(item.ihook, hookname)\n    reraise = (Exit,)\n    if not item.config.getoption(\"usepdb\", False):\n        reraise += (KeyboardInterrupt,)\n    return CallInfo.from_call(\n        lambda: ihook(item=item, **kwds), when=when, reraise=reraise\n    )\n\n\n@attr.s(repr=False)\nclass CallInfo(object):\n    \"\"\" Result/Exception info a function invocation. \"\"\"\n\n    _result = attr.ib()\n    # Optional[ExceptionInfo]\n    excinfo = attr.ib()\n    start = attr.ib()\n    stop = attr.ib()\n    when = attr.ib()\n\n    @property\n    def result(self):\n        if self.excinfo is not None:\n            raise AttributeError(\"{!r} has no valid result\".format(self))\n        return self._result\n\n    @classmethod\n    def from_call(cls, func, when, reraise=None):\n        #: context of invocation: one of \"setup\", \"call\",\n        #: \"teardown\", \"memocollect\"\n        start = time()\n        excinfo = None\n        try:\n            result = func()\n        except:  # noqa\n            excinfo = ExceptionInfo.from_current()\n            if reraise is not None and excinfo.errisinstance(reraise):\n                raise\n            result = None\n        stop = time()\n        return cls(start=start, stop=stop, when=when, result=result, excinfo=excinfo)\n\n    def __repr__(self):\n        if self.excinfo is not None:\n            status = \"exception\"\n            value = self.excinfo.value\n        else:\n            # TODO: investigate unification\n            value = repr(self._result)\n            status = \"result\"\n        return \"<CallInfo when={when!r} {status}: {value}>\".format(\n            when=self.when, value=value, status=status\n        )",
+      "line_base": 1
+    },
+    "3eb116daeab6a5e0a3d1cf2f42b3aff69a44ff79713ee60dd6f0e5e4ca3cb8ac": {
+      "file": "src/_pytest/runner.py",
+      "sha256": "b4be752755314079f93c5fa46cfc1e9577d345379e5011e5cd63c6f9aad8273c",
+      "start_line": 248,
+      "end_line": 249,
+      "text": "def pytest_runtest_makereport(item, call):\n    return TestReport.from_item_and_call(item, call)",
+      "line_base": 1
+    },
+    "262fb08f55189877798556469726ecfd311c7542559e441fe89c300b1df15fe1": {
+      "file": "src/_pytest/python.py",
+      "sha256": "c30ae40f482c3354e6e1af768463340fb605552af26955f72b6452c979f6bc32",
+      "start_line": 161,
+      "end_line": 175,
+      "text": "def pytest_pyfunc_call(pyfuncitem):\n    testfunction = pyfuncitem.obj\n    iscoroutinefunction = getattr(inspect, \"iscoroutinefunction\", None)\n    if iscoroutinefunction is not None and iscoroutinefunction(testfunction):\n        msg = \"Coroutine functions are not natively supported and have been skipped.\\n\"\n        msg += \"You need to install a suitable plugin for your async framework, for example:\\n\"\n        msg += \"  - pytest-asyncio\\n\"\n        msg += \"  - pytest-trio\\n\"\n        msg += \"  - pytest-tornasync\"\n        warnings.warn(PytestUnhandledCoroutineWarning(msg.format(pyfuncitem.nodeid)))\n        skip(msg=\"coroutine function and no async plugin installed (see warnings)\")\n    funcargs = pyfuncitem.funcargs\n    testargs = {arg: funcargs[arg] for arg in pyfuncitem._fixtureinfo.argnames}\n    testfunction(**testargs)\n    return True",
+      "line_base": 1
+    },
+    "f8d85f3d0ca85fe02a33e869c69cf78997c50324e85e12fd9ae9e521f63e2ba9": {
+      "file": "src/_pytest/python.py",
+      "sha256": "c30ae40f482c3354e6e1af768463340fb605552af26955f72b6452c979f6bc32",
+      "start_line": 1462,
+      "end_line": 1464,
+      "text": "    def runtest(self):\n        \"\"\" execute the underlying test function. \"\"\"\n        self.ihook.pytest_pyfunc_call(pyfuncitem=self)",
+      "line_base": 1
+    },
+    "09b316c5b983498f60699412383852eccf77b21b48b21611ef7b2f37374faf07": {
+      "file": "src/_pytest/reports.py",
+      "sha256": "8093291ac30a5fedb2a94a12bd3384824e6a94f3ebb2359b391b9d04180c2a01",
+      "start_line": 346,
+      "end_line": 386,
+      "text": "    def from_item_and_call(cls, item, call):\n        \"\"\"\n        Factory method to create and fill a TestReport with standard item and call info.\n        \"\"\"\n        when = call.when\n        duration = call.stop - call.start\n        keywords = {x: 1 for x in item.keywords}\n        excinfo = call.excinfo\n        sections = []\n        if not call.excinfo:\n            outcome = \"passed\"\n            longrepr = None\n        else:\n            if not isinstance(excinfo, ExceptionInfo):\n                outcome = \"failed\"\n                longrepr = excinfo\n            elif excinfo.errisinstance(skip.Exception):\n                outcome = \"skipped\"\n                r = excinfo._getreprcrash()\n                longrepr = (str(r.path), r.lineno, r.message)\n            else:\n                outcome = \"failed\"\n                if call.when == \"call\":\n                    longrepr = item.repr_failure(excinfo)\n                else:  # exception in setup or teardown\n                    longrepr = item._repr_failure_py(\n                        excinfo, style=item.config.getoption(\"tbstyle\", \"auto\")\n                    )\n        for rwhen, key, content in item._report_sections:\n            sections.append((\"Captured %s %s\" % (key, rwhen), content))\n        return cls(\n            item.nodeid,\n            item.location,\n            keywords,\n            outcome,\n            longrepr,\n            when,\n            sections,\n            duration,\n            user_properties=item.user_properties,\n        )",
+      "line_base": 1
+    },
+    "c8e2a6bb4517d1d9ad3833f7217588b8196be75480ca1d49e1d0bb3b4e681371": {
+      "file": "src/_pytest/runner.py",
+      "sha256": "b4be752755314079f93c5fa46cfc1e9577d345379e5011e5cd63c6f9aad8273c",
+      "start_line": 191,
+      "end_line": 245,
+      "text": "def call_runtest_hook(item, when, **kwds):\n    hookname = \"pytest_runtest_\" + when\n    ihook = getattr(item.ihook, hookname)\n    reraise = (Exit,)\n    if not item.config.getoption(\"usepdb\", False):\n        reraise += (KeyboardInterrupt,)\n    return CallInfo.from_call(\n        lambda: ihook(item=item, **kwds), when=when, reraise=reraise\n    )\n\n\n@attr.s(repr=False)\nclass CallInfo(object):\n    \"\"\" Result/Exception info a function invocation. \"\"\"\n\n    _result = attr.ib()\n    # Optional[ExceptionInfo]\n    excinfo = attr.ib()\n    start = attr.ib()\n    stop = attr.ib()\n    when = attr.ib()\n\n    @property\n    def result(self):\n        if self.excinfo is not None:\n            raise AttributeError(\"{!r} has no valid result\".format(self))\n        return self._result\n\n    @classmethod\n    def from_call(cls, func, when, reraise=None):\n        #: context of invocation: one of \"setup\", \"call\",\n        #: \"teardown\", \"memocollect\"\n        start = time()\n        excinfo = None\n        try:\n            result = func()\n        except:  # noqa\n            excinfo = ExceptionInfo.from_current()\n            if reraise is not None and excinfo.errisinstance(reraise):\n                raise\n            result = None\n        stop = time()\n        return cls(start=start, stop=stop, when=when, result=result, excinfo=excinfo)\n\n    def __repr__(self):\n        if self.excinfo is not None:\n            status = \"exception\"\n            value = self.excinfo.value\n        else:\n            # TODO: investigate unification\n            value = repr(self._result)\n            status = \"result\"\n        return \"<CallInfo when={when!r} {status}: {value}>\".format(\n            when=self.when, value=value, status=status\n        )",
+      "line_base": 1
+    },
+    "7458de392759faf5cb9e76d12df26a1264faae8f60d5e342f0543479dec118e7": {
+      "file": "src/_pytest/runner.py",
+      "sha256": "b4be752755314079f93c5fa46cfc1e9577d345379e5011e5cd63c6f9aad8273c",
+      "start_line": 368,
+      "end_line": 375,
+      "text": "def collect_one_node(collector):\n    ihook = collector.ihook\n    ihook.pytest_collectstart(collector=collector)\n    rep = ihook.pytest_make_collect_report(collector=collector)\n    call = rep.__dict__.pop(\"call\", None)\n    if call and check_interactive_exception(call, rep):\n        ihook.pytest_exception_interact(node=collector, call=call, report=rep)\n    return rep",
+      "line_base": 1
+    },
+    "ea4861b6ae3e7c229cf4d1d98a6390598e396ebb34cc1f9bef92ef18aa5e611d": {
+      "file": "src/_pytest/nose.py",
+      "sha256": "fd222997315607cfbb31b2e133b8776af86b0f5dd1fe74c833f1aff680f03b33",
+      "start_line": 27,
+      "end_line": 33,
+      "text": "def pytest_runtest_makereport(item, call):\n    if call.excinfo and call.excinfo.errisinstance(get_skip_exceptions()):\n        # let's substitute the excinfo with a pytest.skip one\n        call2 = runner.CallInfo.from_call(\n            lambda: pytest.skip(six.text_type(call.excinfo.value)), call.when\n        )\n        call.excinfo = call2.excinfo",
+      "line_base": 1
+    },
+    "70fb1bca1b95553b01b62ebf3adc36a91265a924677fbe83571961e515b66920": {
+      "file": "testing/test_runner.py",
+      "sha256": "4b602d3e0b61e05f1a1ae312b85bef38b56d72a0cf22846dad3a9589abf7a4c6",
+      "start_line": 373,
+      "end_line": 420,
+      "text": "    def test_systemexit_does_not_bail_out(self, testdir):\n        try:\n            reports = testdir.runitem(\n                \"\"\"\n                def test_func():\n                    raise SystemExit(42)\n            \"\"\"\n            )\n        except SystemExit:\n            pytest.fail(\"runner did not catch SystemExit\")\n        rep = reports[1]\n        assert rep.failed\n        assert rep.when == \"call\"\n\n    def test_exit_propagates(self, testdir):\n        try:\n            testdir.runitem(\n                \"\"\"\n                import pytest\n                def test_func():\n                    raise pytest.exit.Exception()\n            \"\"\"\n            )\n        except pytest.exit.Exception:\n            pass\n        else:\n            pytest.fail(\"did not raise\")\n\n\nclass TestExecutionNonForked(BaseFunctionalTests):\n    def getrunner(self):\n        def f(item):\n            return runner.runtestprotocol(item, log=False)\n\n        return f\n\n    def test_keyboardinterrupt_propagates(self, testdir):\n        try:\n            testdir.runitem(\n                \"\"\"\n                def test_func():\n                    raise KeyboardInterrupt(\"fake\")\n            \"\"\"\n            )\n        except KeyboardInterrupt:\n            pass\n        else:\n            pytest.fail(\"did not raise\")",
+      "line_base": 1
+    },
+    "8b5e9322d1691d4bb9cb2488dfa23e64ef86cf95097d775bab0c97a5620924bb": {
+      "file": "testing/test_runner.py",
+      "sha256": "4b602d3e0b61e05f1a1ae312b85bef38b56d72a0cf22846dad3a9589abf7a4c6",
+      "start_line": 484,
+      "end_line": 496,
+      "text": "def test_callinfo():\n    ci = runner.CallInfo.from_call(lambda: 0, \"123\")\n    assert ci.when == \"123\"\n    assert ci.result == 0\n    assert \"result\" in repr(ci)\n    assert repr(ci) == \"<CallInfo when='123' result: 0>\"\n\n    ci = runner.CallInfo.from_call(lambda: 0 / 0, \"123\")\n    assert ci.when == \"123\"\n    assert not hasattr(ci, \"result\")\n    assert repr(ci) == \"<CallInfo when='123' exception: division by zero>\"\n    assert ci.excinfo\n    assert \"exc\" in repr(ci)",
+      "line_base": 1
+    },
+    "aebd23e73c0e8802ae267af9ccf55aeebf4ef7bbdffacc04b3e6acf84e68ae92": {
+      "file": "testing/test_pdb.py",
+      "sha256": "0f1c697ab178ec54a0443a5cf1b79c26aa6dacacfd7677cfa58a2c54cc0a4937",
+      "start_line": 142,
+      "end_line": 152,
+      "text": "    def test_pdb_on_KeyboardInterrupt(self, testdir, pdblist):\n        rep = runpdb_and_get_report(\n            testdir,\n            \"\"\"\n            def test_func():\n                raise KeyboardInterrupt\n        \"\"\",\n        )\n        assert rep.failed\n        assert len(pdblist) == 1\n",
+      "line_base": 1
+    },
+    "4b860502123243e22a87b9106a8cbe54f90e45c6f337bcb52e40636c751568fc": {
+      "file": "src/_pytest/_pilot_post_edit.py",
+      "sha256": "be5413f1fd182d77cea517c0a5c3fe600caaa2d2e53e64645f02c2a84dcd356f",
+      "start_line": 1,
+      "end_line": 4,
+      "text": "from .runner import CallInfo\n\ndef capture_probe_result(function):\n    return CallInfo.from_call(function, \"call\")",
+      "line_base": 1
+    },
+    "a5e7dddc9ac1bc26606fe3c99993af44cbe7d14e47a77aa1124301fbf3dc04c5": {
+      "file": "src/_pytest/runner.py",
+      "sha256": "b4be752755314079f93c5fa46cfc1e9577d345379e5011e5cd63c6f9aad8273c",
+      "start_line": 191,
+      "end_line": 199,
+      "text": "def call_runtest_hook(item, when, **kwds):\n    hookname = \"pytest_runtest_\" + when\n    ihook = getattr(item.ihook, hookname)\n    reraise = (Exit,)\n    if not item.config.getoption(\"usepdb\", False):\n        reraise += (KeyboardInterrupt,)\n    return CallInfo.from_call(\n        lambda: ihook(item=item, **kwds), when=when, reraise=reraise\n    )",
+      "line_base": 1
+    }
+  },
+  "reviews": [
+    {
+      "workflow_index": 8,
+      "arm": "codenib",
+      "task_id": "pytest-dev__pytest-5809-lookup",
+      "kind": "lookup",
+      "criteria": [
+        {
+          "criterion": "Identify CallInfo.from_call in src/_pytest/runner.py.",
+          "met": true,
+          "rationale": "Identifies CallInfo.from_call in runner.py and the CallInfo fields."
+        },
+        {
+          "criterion": "Explain captured result versus excinfo and start/stop timing from the actual implementation.",
+          "met": true,
+          "rationale": "Explains start/stop timing, result versus ExceptionInfo and the no-object path when a configured exception is re-raised."
+        },
+        {
+          "criterion": "Cite the relevant constructor/accessor behavior without claiming exceptions are always swallowed.",
+          "met": true,
+          "rationale": "Cites the factory and guarded result accessor and explicitly explains configured reraise instead of universal swallowing."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "protocol_issues": [],
+      "findings": [],
+      "notes": [],
+      "source_before_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+      "source_after_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "7b4b67144af3f97b3a7f4b44afbd64cf737ff5bb07e28b129301d66093cd53c3",
+      "sdk_trace_sha256": "3763817e0a7aafadc6ea03d0295334598f83bbd728fac632b2fdbc4ca8301ab6",
+      "workflow_artifact": "codegraph_matched_workflow_v1_08.json",
+      "workflow_artifact_sha256": "b156a317de04a049256a6893d971614e65ae1cbb8319645ba1f409581e083af2",
+      "observation_tool_use_ids": [
+        "toolu_012mPc7GRkHVotP4TirrrynS",
+        "toolu_012Vxpxiu3PCR9CZf2bhSrR2",
+        "toolu_01XKYyqqTzcuhfUgx3p9dj44",
+        "toolu_01DaFoCtbSo7yGnyH5NxkHpL"
+      ],
+      "source_evidence": [
+        {
+          "source_evidence_id": "68240e62e2218a611228cc1a064c9ce8794e1474882af7c0ac0778a0f5cf4163",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "5200890b2cef70299090b9d090bcf46b1865af989615307f47b6fa0617ea468a",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "d55f018dc8c93c887c19a6866fd50017e45e77171b496fb5e2c5cc82a7d3b6de",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "5671a09512a68ae89a30ceb6c9c688f706727a5353c5e33845f2a9ae94e964ff",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        }
+      ]
+    },
+    {
+      "workflow_index": 9,
+      "arm": "native",
+      "task_id": "pytest-dev__pytest-5809-lookup",
+      "kind": "lookup",
+      "criteria": [
+        {
+          "criterion": "Identify CallInfo.from_call in src/_pytest/runner.py.",
+          "met": true,
+          "rationale": "Identifies CallInfo.from_call in runner.py and the CallInfo fields."
+        },
+        {
+          "criterion": "Explain captured result versus excinfo and start/stop timing from the actual implementation.",
+          "met": true,
+          "rationale": "Explains start/stop timing, result versus ExceptionInfo and the no-object path when a configured exception is re-raised."
+        },
+        {
+          "criterion": "Cite the relevant constructor/accessor behavior without claiming exceptions are always swallowed.",
+          "met": true,
+          "rationale": "Cites the factory and guarded result accessor and explicitly explains configured reraise instead of universal swallowing."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "protocol_issues": [],
+      "findings": [],
+      "notes": [],
+      "source_before_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+      "source_after_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "7f20599efc00192f83a1d1342eb4fa48414c2a385b441ae3f336b90f85dd7a41",
+      "sdk_trace_sha256": "522f6db03e35d1e8bf6c2208c2649f1137b5db516f4b7b40182dc6afb6cbe37a",
+      "workflow_artifact": "codegraph_matched_workflow_v1_09.json",
+      "workflow_artifact_sha256": "e23f29d3e3e7782236f41ddd0b5dd7eb17c626437cdf7ca617b1d83c8cec7fd7",
+      "observation_tool_use_ids": [
+        "toolu_01Xr5yHCwNbwyN6nz6wdUco2",
+        "toolu_01JfweNrq75die8wKczy7ou3",
+        "toolu_01K8P5QcnsvdT7rmq69y2gb1"
+      ],
+      "source_evidence": [
+        {
+          "source_evidence_id": "68240e62e2218a611228cc1a064c9ce8794e1474882af7c0ac0778a0f5cf4163",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "5200890b2cef70299090b9d090bcf46b1865af989615307f47b6fa0617ea468a",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "d55f018dc8c93c887c19a6866fd50017e45e77171b496fb5e2c5cc82a7d3b6de",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "5671a09512a68ae89a30ceb6c9c688f706727a5353c5e33845f2a9ae94e964ff",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        }
+      ]
+    },
+    {
+      "workflow_index": 10,
+      "arm": "codegraph",
+      "task_id": "pytest-dev__pytest-5809-lookup",
+      "kind": "lookup",
+      "criteria": [
+        {
+          "criterion": "Identify CallInfo.from_call in src/_pytest/runner.py.",
+          "met": true,
+          "rationale": "Identifies CallInfo.from_call in runner.py and the CallInfo fields."
+        },
+        {
+          "criterion": "Explain captured result versus excinfo and start/stop timing from the actual implementation.",
+          "met": true,
+          "rationale": "Explains start/stop timing, result versus ExceptionInfo and the no-object path when a configured exception is re-raised."
+        },
+        {
+          "criterion": "Cite the relevant constructor/accessor behavior without claiming exceptions are always swallowed.",
+          "met": true,
+          "rationale": "Cites the factory and guarded result accessor and explicitly explains configured reraise instead of universal swallowing."
+        }
+      ],
+      "accepted": false,
+      "serious_error": true,
+      "protocol_issues": [],
+      "findings": [
+        {
+          "category": "incorrect_interactive_hook_predicate",
+          "serious": true,
+          "quote": "returns true when `call.excinfo` is set and is not a `Skipped` or `bdb.BdbQuit`.",
+          "explanation": "The predicate additionally excludes reports with wasxfail. For an ordinary captured failure with wasxfail set, the stated condition holds but the real function returns False. This is a false debugger-dispatch condition.",
+          "runtime_evidence": "source-controlflow-audit-v1/receipt.json"
+        }
+      ],
+      "notes": [
+        "The unittest post-construction mutation does catch AttributeError around del call.result; its outcome mutation is valid despite the absent property deleter."
+      ],
+      "source_before_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+      "source_after_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "8ddbc0d2422e2bd073da4f0795057510f4c6a1a641c4dd3467269461fb6020c4",
+      "sdk_trace_sha256": "1e1e44a14a4087af21e70892639bb41e0b9f82938398a1056749063f64de9392",
+      "workflow_artifact": "codegraph_matched_workflow_v1_10.json",
+      "workflow_artifact_sha256": "1ddf046c11ec2a721f19fb0b13ef32cde07782fcd46b3da1070b6a45c4633626",
+      "observation_tool_use_ids": [
+        "toolu_01SbdmKovUizdzxcNXn7agoV",
+        "toolu_01H9wzontsmhzGw7LBY8rtUC",
+        "toolu_017RVHgujbzbXmGm7DQ1UPHG"
+      ],
+      "source_evidence": [
+        {
+          "source_evidence_id": "68240e62e2218a611228cc1a064c9ce8794e1474882af7c0ac0778a0f5cf4163",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "5200890b2cef70299090b9d090bcf46b1865af989615307f47b6fa0617ea468a",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "d55f018dc8c93c887c19a6866fd50017e45e77171b496fb5e2c5cc82a7d3b6de",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "5671a09512a68ae89a30ceb6c9c688f706727a5353c5e33845f2a9ae94e964ff",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        }
+      ]
+    },
+    {
+      "workflow_index": 11,
+      "arm": "serena",
+      "task_id": "pytest-dev__pytest-5809-lookup",
+      "kind": "lookup",
+      "criteria": [
+        {
+          "criterion": "Identify CallInfo.from_call in src/_pytest/runner.py.",
+          "met": true,
+          "rationale": "Identifies CallInfo.from_call in runner.py and the CallInfo fields."
+        },
+        {
+          "criterion": "Explain captured result versus excinfo and start/stop timing from the actual implementation.",
+          "met": true,
+          "rationale": "Explains start/stop timing, result versus ExceptionInfo and the no-object path when a configured exception is re-raised."
+        },
+        {
+          "criterion": "Cite the relevant constructor/accessor behavior without claiming exceptions are always swallowed.",
+          "met": true,
+          "rationale": "Cites the factory and guarded result accessor and explicitly explains configured reraise instead of universal swallowing."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "protocol_issues": [],
+      "findings": [],
+      "notes": [],
+      "source_before_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+      "source_after_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "dbe7b34d65459216bfe34844df3d9ca1f50d294d687383a2dda0dadf0e0d5f7c",
+      "sdk_trace_sha256": "2d53e14077cd0509046f6c8e2964214d22e6dd6bbcbf23a09f7cfd8a7ffb1374",
+      "workflow_artifact": "codegraph_matched_workflow_v1_11.json",
+      "workflow_artifact_sha256": "eb4208bd37aa80fa8a89f57e203bb754055b3779643d92c07d7d107dd50e205e",
+      "observation_tool_use_ids": [
+        "toolu_01EA1QgDCTPnNvX51ZmERmSd",
+        "toolu_01Bf3A7pd4c8QaZ6ihQSQSWW",
+        "toolu_01FM7pdfNy7TThRSfwSG4Zbx",
+        "toolu_0128vgueKXoRyibcozoaCQXF"
+      ],
+      "source_evidence": [
+        {
+          "source_evidence_id": "68240e62e2218a611228cc1a064c9ce8794e1474882af7c0ac0778a0f5cf4163",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "5200890b2cef70299090b9d090bcf46b1865af989615307f47b6fa0617ea468a",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "d55f018dc8c93c887c19a6866fd50017e45e77171b496fb5e2c5cc82a7d3b6de",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "5671a09512a68ae89a30ceb6c9c688f706727a5353c5e33845f2a9ae94e964ff",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        }
+      ]
+    },
+    {
+      "workflow_index": 8,
+      "arm": "codenib",
+      "task_id": "pytest-dev__pytest-5809-flow",
+      "kind": "flow",
+      "criteria": [
+        {
+          "criterion": "Connect runtestprotocol, call_and_report and call_runtest_hook in runner.py.",
+          "met": true,
+          "rationale": "Connects runtestprotocol, call_and_report and call_runtest_hook through the selected call phase."
+        },
+        {
+          "criterion": "Connect pytest_runtest_call, Function.runtest and pytest_pyfunc_call through their plugin hook boundaries.",
+          "met": true,
+          "rationale": "Connects pytest_runtest_call, Function.runtest and the trylast Python function hook, preserving plugin dispatch boundaries."
+        },
+        {
+          "criterion": "Explain CallInfo.from_call exception capture and pytest_runtest_makereport/TestReport creation.",
+          "met": true,
+          "rationale": "Explains CallInfo exception capture/configured reraise and default makereport/TestReport creation."
+        },
+        {
+          "criterion": "Cite relevant runner.py and python.py call sites and distinguish collection/setup/teardown from the call phase.",
+          "met": true,
+          "rationale": "Cites runner.py/python.py and separates setup, call, collection and teardown; the false additional cleanup guarantee is separately flagged."
+        }
+      ],
+      "accepted": false,
+      "serious_error": true,
+      "protocol_issues": [],
+      "findings": [
+        {
+          "category": "incorrect_unconditional_teardown_guarantee",
+          "serious": true,
+          "quote": "Teardown always runs (line 94).",
+          "explanation": "runtestprotocol has no try/finally around setup/call. Configured Exit or KeyboardInterrupt re-raising can leave call_and_report before line94; the teardown phase is then not reached. The pinned-function audit records setup and call only before KeyboardInterrupt escapes. Later session-level cleanup is not this per-item teardown phase.",
+          "runtime_evidence": "source-controlflow-audit-v1/receipt.json"
+        }
+      ],
+      "notes": [],
+      "source_before_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+      "source_after_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "56f104edf9ce1c8ae62e51c179f033b4e2b379a2a41b20bbf39387561f7831dc",
+      "sdk_trace_sha256": "7a3386e4d2567aab67e21da2faaa323967c67621cb510212bc57d9ff1de8c610",
+      "workflow_artifact": "codegraph_matched_workflow_v1_08.json",
+      "workflow_artifact_sha256": "b156a317de04a049256a6893d971614e65ae1cbb8319645ba1f409581e083af2",
+      "observation_tool_use_ids": [
+        "toolu_01PmhtSgv9zTbvRJJABjABY8",
+        "toolu_01R4KkY5BgTAXfaWC2fBwdNz",
+        "toolu_01FHn9oh4rnJZexH5XnhPTWJ"
+      ],
+      "source_evidence": [
+        {
+          "source_evidence_id": "7cf8975e07780984caff2786d88e2de57dc6349f625164477980b37176325aad",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "963710dd9693c21aae4c30a6d16a8cbc014c7c844f0f2eeb03f2547617aa4a85",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "cf460e780c957360f6cdc8db05a49ab9711c0296c63d87d2815362b5d4ca2f5b",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "3eb116daeab6a5e0a3d1cf2f42b3aff69a44ff79713ee60dd6f0e5e4ca3cb8ac",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "262fb08f55189877798556469726ecfd311c7542559e441fe89c300b1df15fe1",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "f8d85f3d0ca85fe02a33e869c69cf78997c50324e85e12fd9ae9e521f63e2ba9",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "09b316c5b983498f60699412383852eccf77b21b48b21611ef7b2f37374faf07",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        }
+      ]
+    },
+    {
+      "workflow_index": 9,
+      "arm": "native",
+      "task_id": "pytest-dev__pytest-5809-flow",
+      "kind": "flow",
+      "criteria": [
+        {
+          "criterion": "Connect runtestprotocol, call_and_report and call_runtest_hook in runner.py.",
+          "met": true,
+          "rationale": "Connects runtestprotocol, call_and_report and call_runtest_hook through the selected call phase."
+        },
+        {
+          "criterion": "Connect pytest_runtest_call, Function.runtest and pytest_pyfunc_call through their plugin hook boundaries.",
+          "met": true,
+          "rationale": "Connects pytest_runtest_call, Function.runtest and the trylast Python function hook, preserving plugin dispatch boundaries."
+        },
+        {
+          "criterion": "Explain CallInfo.from_call exception capture and pytest_runtest_makereport/TestReport creation.",
+          "met": true,
+          "rationale": "Explains CallInfo exception capture/configured reraise and default makereport/TestReport creation."
+        },
+        {
+          "criterion": "Cite relevant runner.py and python.py call sites and distinguish collection/setup/teardown from the call phase.",
+          "met": true,
+          "rationale": "Cites runner.py/python.py and separates setup, call, collection and teardown; the false additional cleanup guarantee is separately flagged."
+        }
+      ],
+      "accepted": false,
+      "serious_error": true,
+      "protocol_issues": [],
+      "findings": [
+        {
+          "category": "incorrect_unconditional_teardown_guarantee",
+          "serious": true,
+          "quote": "Teardown always runs (line 94).",
+          "explanation": "runtestprotocol has no try/finally around setup/call. Configured Exit or KeyboardInterrupt re-raising can leave call_and_report before line94; the teardown phase is then not reached. The pinned-function audit records setup and call only before KeyboardInterrupt escapes. Later session-level cleanup is not this per-item teardown phase.",
+          "runtime_evidence": "source-controlflow-audit-v1/receipt.json"
+        }
+      ],
+      "notes": [],
+      "source_before_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+      "source_after_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "ff041ebda229f307f3f8b49cdde725d09d2fed74d998a0b64cd95bd11760a062",
+      "sdk_trace_sha256": "8d72fbafa7c7e99c3780f0ebef2337b27aa792e9455df60bd8f4e5b6916fc259",
+      "workflow_artifact": "codegraph_matched_workflow_v1_09.json",
+      "workflow_artifact_sha256": "e23f29d3e3e7782236f41ddd0b5dd7eb17c626437cdf7ca617b1d83c8cec7fd7",
+      "observation_tool_use_ids": [
+        "toolu_015FFN259bdWPvu32CdPD1fx",
+        "toolu_01SVDa769LfGPcPanunhnnCy",
+        "toolu_01XJMiRkhLNd28dTupRvfQ1p",
+        "toolu_012GErcSxcWYoFC6CNgUgQq1"
+      ],
+      "source_evidence": [
+        {
+          "source_evidence_id": "7cf8975e07780984caff2786d88e2de57dc6349f625164477980b37176325aad",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "963710dd9693c21aae4c30a6d16a8cbc014c7c844f0f2eeb03f2547617aa4a85",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "cf460e780c957360f6cdc8db05a49ab9711c0296c63d87d2815362b5d4ca2f5b",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "3eb116daeab6a5e0a3d1cf2f42b3aff69a44ff79713ee60dd6f0e5e4ca3cb8ac",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "262fb08f55189877798556469726ecfd311c7542559e441fe89c300b1df15fe1",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "f8d85f3d0ca85fe02a33e869c69cf78997c50324e85e12fd9ae9e521f63e2ba9",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "09b316c5b983498f60699412383852eccf77b21b48b21611ef7b2f37374faf07",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        }
+      ]
+    },
+    {
+      "workflow_index": 10,
+      "arm": "codegraph",
+      "task_id": "pytest-dev__pytest-5809-flow",
+      "kind": "flow",
+      "criteria": [
+        {
+          "criterion": "Connect runtestprotocol, call_and_report and call_runtest_hook in runner.py.",
+          "met": true,
+          "rationale": "Connects runtestprotocol, call_and_report and call_runtest_hook through the selected call phase."
+        },
+        {
+          "criterion": "Connect pytest_runtest_call, Function.runtest and pytest_pyfunc_call through their plugin hook boundaries.",
+          "met": true,
+          "rationale": "Connects pytest_runtest_call, Function.runtest and the trylast Python function hook, preserving plugin dispatch boundaries."
+        },
+        {
+          "criterion": "Explain CallInfo.from_call exception capture and pytest_runtest_makereport/TestReport creation.",
+          "met": true,
+          "rationale": "Explains CallInfo exception capture/configured reraise and default makereport/TestReport creation."
+        },
+        {
+          "criterion": "Cite relevant runner.py and python.py call sites and distinguish collection/setup/teardown from the call phase.",
+          "met": true,
+          "rationale": "Cites runner.py/python.py and separates setup, call, collection and teardown; the false additional cleanup guarantee is separately flagged."
+        }
+      ],
+      "accepted": false,
+      "serious_error": true,
+      "protocol_issues": [],
+      "findings": [
+        {
+          "category": "incorrect_unconditional_teardown_guarantee",
+          "serious": true,
+          "quote": "Teardown always runs (line 94).",
+          "explanation": "runtestprotocol has no try/finally around setup/call. Configured Exit or KeyboardInterrupt re-raising can leave call_and_report before line94; the teardown phase is then not reached. The pinned-function audit records setup and call only before KeyboardInterrupt escapes. Later session-level cleanup is not this per-item teardown phase.",
+          "runtime_evidence": "source-controlflow-audit-v1/receipt.json"
+        }
+      ],
+      "notes": [],
+      "source_before_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+      "source_after_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "6ad43d342de3ad9380d406fbda0b01ccce27c8bef7f461ba858df107acd4c838",
+      "sdk_trace_sha256": "9cf18043c605a1455685ac1fa115cdc1efe1182a24c8de3a1d30d4f16734e9cf",
+      "workflow_artifact": "codegraph_matched_workflow_v1_10.json",
+      "workflow_artifact_sha256": "1ddf046c11ec2a721f19fb0b13ef32cde07782fcd46b3da1070b6a45c4633626",
+      "observation_tool_use_ids": [
+        "toolu_011XMAAXvs2bVZo1v6WpHCUd",
+        "toolu_019Cew6YuHM8UWq16SARGUUi",
+        "toolu_01Y8LctAkiMKdRpUr6S1G7TA",
+        "toolu_017z5Y6SnBmoKfswnNFJQ1Kj"
+      ],
+      "source_evidence": [
+        {
+          "source_evidence_id": "7cf8975e07780984caff2786d88e2de57dc6349f625164477980b37176325aad",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "963710dd9693c21aae4c30a6d16a8cbc014c7c844f0f2eeb03f2547617aa4a85",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "cf460e780c957360f6cdc8db05a49ab9711c0296c63d87d2815362b5d4ca2f5b",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "3eb116daeab6a5e0a3d1cf2f42b3aff69a44ff79713ee60dd6f0e5e4ca3cb8ac",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "262fb08f55189877798556469726ecfd311c7542559e441fe89c300b1df15fe1",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "f8d85f3d0ca85fe02a33e869c69cf78997c50324e85e12fd9ae9e521f63e2ba9",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "09b316c5b983498f60699412383852eccf77b21b48b21611ef7b2f37374faf07",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        }
+      ]
+    },
+    {
+      "workflow_index": 11,
+      "arm": "serena",
+      "task_id": "pytest-dev__pytest-5809-flow",
+      "kind": "flow",
+      "criteria": [
+        {
+          "criterion": "Connect runtestprotocol, call_and_report and call_runtest_hook in runner.py.",
+          "met": true,
+          "rationale": "Connects runtestprotocol, call_and_report and call_runtest_hook through the selected call phase."
+        },
+        {
+          "criterion": "Connect pytest_runtest_call, Function.runtest and pytest_pyfunc_call through their plugin hook boundaries.",
+          "met": true,
+          "rationale": "Connects pytest_runtest_call, Function.runtest and the trylast Python function hook, preserving plugin dispatch boundaries."
+        },
+        {
+          "criterion": "Explain CallInfo.from_call exception capture and pytest_runtest_makereport/TestReport creation.",
+          "met": true,
+          "rationale": "Explains CallInfo exception capture/configured reraise and default makereport/TestReport creation."
+        },
+        {
+          "criterion": "Cite relevant runner.py and python.py call sites and distinguish collection/setup/teardown from the call phase.",
+          "met": true,
+          "rationale": "Cites runner.py/python.py and separates setup, call, collection and teardown; the false additional cleanup guarantee is separately flagged."
+        }
+      ],
+      "accepted": false,
+      "serious_error": true,
+      "protocol_issues": [],
+      "findings": [
+        {
+          "category": "incorrect_unconditional_teardown_guarantee",
+          "serious": true,
+          "quote": "It always runs `\"teardown\"` and returns the list of reports.",
+          "explanation": "runtestprotocol has no try/finally around setup/call. Configured Exit or KeyboardInterrupt re-raising can leave call_and_report before line94; the teardown phase is then not reached. The pinned-function audit records setup and call only before KeyboardInterrupt escapes. Later session-level cleanup is not this per-item teardown phase.",
+          "runtime_evidence": "source-controlflow-audit-v1/receipt.json"
+        }
+      ],
+      "notes": [],
+      "source_before_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+      "source_after_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "a9b419f46912e878830209a4045e9d9d8b9bde28a2dc2f3a9bc981be29fc155b",
+      "sdk_trace_sha256": "c3ce1a5468904665515bad61145c677d5760a1e4fc823e13f903853e4d29bd23",
+      "workflow_artifact": "codegraph_matched_workflow_v1_11.json",
+      "workflow_artifact_sha256": "eb4208bd37aa80fa8a89f57e203bb754055b3779643d92c07d7d107dd50e205e",
+      "observation_tool_use_ids": [
+        "toolu_01LsHXtauCzSmT9ix5RwTQT8",
+        "toolu_01CC4qUJ4WAMAFcMTZXwJWvS",
+        "toolu_01VkKthNtm8VpUbhsi7wGSJE",
+        "toolu_013MW3PXFGtRVinpLNRs57th",
+        "toolu_01KVcG85ZtHGXiX1ac1TRnLH"
+      ],
+      "source_evidence": [
+        {
+          "source_evidence_id": "7cf8975e07780984caff2786d88e2de57dc6349f625164477980b37176325aad",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "963710dd9693c21aae4c30a6d16a8cbc014c7c844f0f2eeb03f2547617aa4a85",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "cf460e780c957360f6cdc8db05a49ab9711c0296c63d87d2815362b5d4ca2f5b",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "3eb116daeab6a5e0a3d1cf2f42b3aff69a44ff79713ee60dd6f0e5e4ca3cb8ac",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "262fb08f55189877798556469726ecfd311c7542559e441fe89c300b1df15fe1",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "f8d85f3d0ca85fe02a33e869c69cf78997c50324e85e12fd9ae9e521f63e2ba9",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "09b316c5b983498f60699412383852eccf77b21b48b21611ef7b2f37374faf07",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        }
+      ]
+    },
+    {
+      "workflow_index": 8,
+      "arm": "codenib",
+      "task_id": "pytest-dev__pytest-5809-impact",
+      "kind": "impact",
+      "criteria": [
+        {
+          "criterion": "Identify call_runtest_hook and collect_one_node as production CallInfo.from_call call sites.",
+          "met": null,
+          "rationale": "Protocol wording defect: collect_one_node is an upstream hook-dispatch entry/consumer, not the direct from_call call site. The answer correctly names pytest_make_collect_report and describes collect_one_node. The original item is left unassessable rather than forcing a false direct-call claim."
+        },
+        {
+          "criterion": "Explain when/phase metadata and configured reraise behavior rather than assuming all exceptions are suppressed.",
+          "met": true,
+          "rationale": "Correctly distinguishes runtest configured Exit/KeyboardInterrupt re-raising, when metadata and the collection/nose default reraise=None behavior."
+        },
+        {
+          "criterion": "Locate two actual relevant tests with correct assertions and valid source citations.",
+          "met": true,
+          "rationale": "Names actual capture/Exit/KeyboardInterrupt tests with assertions matching the captured source; timing coverage is separately scoped."
+        }
+      ],
+      "accepted": null,
+      "serious_error": false,
+      "protocol_issues": [
+        {
+          "id": "pytest_collection_callsite_wording",
+          "original_criterion": "Identify call_runtest_hook and collect_one_node as production CallInfo.from_call call sites.",
+          "source_fact": "The direct collection invocation is pytest_make_collect_report at runner.py:253. collect_one_node at368-375 invokes the report hook and consumes rep.call.",
+          "disposition": "Unassessable original item; no zero or model-error label. Any corrected diagnostic is separate and retrospective."
+        }
+      ],
+      "findings": [],
+      "notes": [],
+      "source_before_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+      "source_after_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "a956c4d8606877d68a59fe648268e61dbaba50a68feef674f92303a1b7c4ecc3",
+      "sdk_trace_sha256": "0836e991eac063f290fa03ebdad1efa028ecf7dac45644962b699e9665724901",
+      "workflow_artifact": "codegraph_matched_workflow_v1_08.json",
+      "workflow_artifact_sha256": "b156a317de04a049256a6893d971614e65ae1cbb8319645ba1f409581e083af2",
+      "observation_tool_use_ids": [
+        "toolu_01YEFo7aYRPFYqFGUiAzM1av",
+        "toolu_01YBLPkPyPXk44CfiYK9e4zD",
+        "toolu_01Q2Uike66qvkkQHMk4L9L9K",
+        "toolu_014JVL4cfacto6C2v3f9S4tj",
+        "toolu_019jSRy3ri6od3TXM1nweoKG",
+        "toolu_01QTHfoFjSmAyRY52Pxuj1hd",
+        "toolu_01C76hCQJUw6QLbo9MK1Jkm1"
+      ],
+      "retrospective_corrected_criterion": {
+        "criterion": "Identify call_runtest_hook and pytest_make_collect_report as direct CallInfo.from_call call sites; explain collect_one_node as upstream hook-dispatch entry and report consumer.",
+        "met": true,
+        "scope": "Retrospective diagnostic only; not the frozen original criterion."
+      },
+      "source_evidence": [
+        {
+          "source_evidence_id": "c8e2a6bb4517d1d9ad3833f7217588b8196be75480ca1d49e1d0bb3b4e681371",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "d55f018dc8c93c887c19a6866fd50017e45e77171b496fb5e2c5cc82a7d3b6de",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "7458de392759faf5cb9e76d12df26a1264faae8f60d5e342f0543479dec118e7",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "ea4861b6ae3e7c229cf4d1d98a6390598e396ebb34cc1f9bef92ef18aa5e611d",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "70fb1bca1b95553b01b62ebf3adc36a91265a924677fbe83571961e515b66920",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "8b5e9322d1691d4bb9cb2488dfa23e64ef86cf95097d775bab0c97a5620924bb",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "aebd23e73c0e8802ae267af9ccf55aeebf4ef7bbdffacc04b3e6acf84e68ae92",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        }
+      ]
+    },
+    {
+      "workflow_index": 9,
+      "arm": "native",
+      "task_id": "pytest-dev__pytest-5809-impact",
+      "kind": "impact",
+      "criteria": [
+        {
+          "criterion": "Identify call_runtest_hook and collect_one_node as production CallInfo.from_call call sites.",
+          "met": null,
+          "rationale": "Protocol wording defect: collect_one_node is an upstream hook-dispatch entry/consumer, not the direct from_call call site. The answer correctly names pytest_make_collect_report and describes collect_one_node. The original item is left unassessable rather than forcing a false direct-call claim."
+        },
+        {
+          "criterion": "Explain when/phase metadata and configured reraise behavior rather than assuming all exceptions are suppressed.",
+          "met": true,
+          "rationale": "Correctly distinguishes runtest configured Exit/KeyboardInterrupt re-raising, when metadata and the collection/nose default reraise=None behavior."
+        },
+        {
+          "criterion": "Locate two actual relevant tests with correct assertions and valid source citations.",
+          "met": true,
+          "rationale": "Names actual capture/Exit/KeyboardInterrupt tests with assertions matching the captured source; timing coverage is separately scoped."
+        }
+      ],
+      "accepted": null,
+      "serious_error": false,
+      "protocol_issues": [
+        {
+          "id": "pytest_collection_callsite_wording",
+          "original_criterion": "Identify call_runtest_hook and collect_one_node as production CallInfo.from_call call sites.",
+          "source_fact": "The direct collection invocation is pytest_make_collect_report at runner.py:253. collect_one_node at368-375 invokes the report hook and consumes rep.call.",
+          "disposition": "Unassessable original item; no zero or model-error label. Any corrected diagnostic is separate and retrospective."
+        }
+      ],
+      "findings": [],
+      "notes": [],
+      "source_before_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+      "source_after_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "a7de5c5108ede765f29a3283cc7eb1fdc70ca1b7fd2812846c0a3385f2883f5f",
+      "sdk_trace_sha256": "71a5312b9d04bb59084f2541b31390bd0079c7a7bf5a5b3afafdb6eaeb724042",
+      "workflow_artifact": "codegraph_matched_workflow_v1_09.json",
+      "workflow_artifact_sha256": "e23f29d3e3e7782236f41ddd0b5dd7eb17c626437cdf7ca617b1d83c8cec7fd7",
+      "observation_tool_use_ids": [
+        "toolu_01SQ7iWwC82UrBUzLC9oYzZS",
+        "toolu_01T4uWwGr8BLSPBBDGsgkftW",
+        "toolu_01BzPanEN4oAnUxJYeeBjySY",
+        "toolu_01FePXdoBtWTgtb5cQ4XoZCr",
+        "toolu_01Hgh5rzZKbDNHB2FePMuDwX",
+        "toolu_01DkTAjGBYrmW5hgi6ZCsrYL"
+      ],
+      "retrospective_corrected_criterion": {
+        "criterion": "Identify call_runtest_hook and pytest_make_collect_report as direct CallInfo.from_call call sites; explain collect_one_node as upstream hook-dispatch entry and report consumer.",
+        "met": true,
+        "scope": "Retrospective diagnostic only; not the frozen original criterion."
+      },
+      "source_evidence": [
+        {
+          "source_evidence_id": "c8e2a6bb4517d1d9ad3833f7217588b8196be75480ca1d49e1d0bb3b4e681371",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "d55f018dc8c93c887c19a6866fd50017e45e77171b496fb5e2c5cc82a7d3b6de",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "7458de392759faf5cb9e76d12df26a1264faae8f60d5e342f0543479dec118e7",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "ea4861b6ae3e7c229cf4d1d98a6390598e396ebb34cc1f9bef92ef18aa5e611d",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "70fb1bca1b95553b01b62ebf3adc36a91265a924677fbe83571961e515b66920",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "8b5e9322d1691d4bb9cb2488dfa23e64ef86cf95097d775bab0c97a5620924bb",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "aebd23e73c0e8802ae267af9ccf55aeebf4ef7bbdffacc04b3e6acf84e68ae92",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        }
+      ]
+    },
+    {
+      "workflow_index": 10,
+      "arm": "codegraph",
+      "task_id": "pytest-dev__pytest-5809-impact",
+      "kind": "impact",
+      "criteria": [
+        {
+          "criterion": "Identify call_runtest_hook and collect_one_node as production CallInfo.from_call call sites.",
+          "met": null,
+          "rationale": "Protocol wording defect: collect_one_node is an upstream hook-dispatch entry/consumer, not the direct from_call call site. The answer correctly names pytest_make_collect_report and describes collect_one_node. The original item is left unassessable rather than forcing a false direct-call claim."
+        },
+        {
+          "criterion": "Explain when/phase metadata and configured reraise behavior rather than assuming all exceptions are suppressed.",
+          "met": true,
+          "rationale": "Correctly distinguishes runtest configured Exit/KeyboardInterrupt re-raising, when metadata and the collection/nose default reraise=None behavior."
+        },
+        {
+          "criterion": "Locate two actual relevant tests with correct assertions and valid source citations.",
+          "met": true,
+          "rationale": "Names actual capture/Exit/KeyboardInterrupt tests with assertions matching the captured source; timing coverage is separately scoped."
+        }
+      ],
+      "accepted": null,
+      "serious_error": false,
+      "protocol_issues": [
+        {
+          "id": "pytest_collection_callsite_wording",
+          "original_criterion": "Identify call_runtest_hook and collect_one_node as production CallInfo.from_call call sites.",
+          "source_fact": "The direct collection invocation is pytest_make_collect_report at runner.py:253. collect_one_node at368-375 invokes the report hook and consumes rep.call.",
+          "disposition": "Unassessable original item; no zero or model-error label. Any corrected diagnostic is separate and retrospective."
+        }
+      ],
+      "findings": [],
+      "notes": [],
+      "source_before_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+      "source_after_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "ea369e8640338a3820e72c4891a55f97f5c7138c8f50e76ffa195456fd9e396f",
+      "sdk_trace_sha256": "40848b7c275bbfc61ab61ac4ba2e8560a0d185f81d97b2bc9cdb863e342cca93",
+      "workflow_artifact": "codegraph_matched_workflow_v1_10.json",
+      "workflow_artifact_sha256": "1ddf046c11ec2a721f19fb0b13ef32cde07782fcd46b3da1070b6a45c4633626",
+      "observation_tool_use_ids": [
+        "toolu_015hvG3L8ws9HfLQVaiptndd",
+        "toolu_013kg3P9XKgDXjW4VexgqQWE",
+        "toolu_01Hr7V4E6B6yWy99rdVqTu6V",
+        "toolu_01N8J72maXA56nVMZ41RoufV",
+        "toolu_017d1VL7ismnDaKfGv97pqaU",
+        "toolu_01VLUPP1eh9uNHQzXyvmRxY9",
+        "toolu_01CifnAiCmtrjQ2fLAXLoaHU",
+        "toolu_01G4zcab9BQAZiC9pB8NYjhU",
+        "toolu_01FhYggbzgAezaXi5Hipq5Vv"
+      ],
+      "retrospective_corrected_criterion": {
+        "criterion": "Identify call_runtest_hook and pytest_make_collect_report as direct CallInfo.from_call call sites; explain collect_one_node as upstream hook-dispatch entry and report consumer.",
+        "met": true,
+        "scope": "Retrospective diagnostic only; not the frozen original criterion."
+      },
+      "source_evidence": [
+        {
+          "source_evidence_id": "c8e2a6bb4517d1d9ad3833f7217588b8196be75480ca1d49e1d0bb3b4e681371",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "d55f018dc8c93c887c19a6866fd50017e45e77171b496fb5e2c5cc82a7d3b6de",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "7458de392759faf5cb9e76d12df26a1264faae8f60d5e342f0543479dec118e7",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "ea4861b6ae3e7c229cf4d1d98a6390598e396ebb34cc1f9bef92ef18aa5e611d",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "70fb1bca1b95553b01b62ebf3adc36a91265a924677fbe83571961e515b66920",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "8b5e9322d1691d4bb9cb2488dfa23e64ef86cf95097d775bab0c97a5620924bb",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "aebd23e73c0e8802ae267af9ccf55aeebf4ef7bbdffacc04b3e6acf84e68ae92",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        }
+      ]
+    },
+    {
+      "workflow_index": 11,
+      "arm": "serena",
+      "task_id": "pytest-dev__pytest-5809-impact",
+      "kind": "impact",
+      "criteria": [
+        {
+          "criterion": "Identify call_runtest_hook and collect_one_node as production CallInfo.from_call call sites.",
+          "met": null,
+          "rationale": "Protocol wording defect: collect_one_node is an upstream hook-dispatch entry/consumer, not the direct from_call call site. The answer correctly names pytest_make_collect_report and describes collect_one_node. The original item is left unassessable rather than forcing a false direct-call claim."
+        },
+        {
+          "criterion": "Explain when/phase metadata and configured reraise behavior rather than assuming all exceptions are suppressed.",
+          "met": true,
+          "rationale": "Correctly distinguishes runtest configured Exit/KeyboardInterrupt re-raising, when metadata and the collection/nose default reraise=None behavior."
+        },
+        {
+          "criterion": "Locate two actual relevant tests with correct assertions and valid source citations.",
+          "met": true,
+          "rationale": "Names actual capture/Exit/KeyboardInterrupt tests with assertions matching the captured source; timing coverage is separately scoped."
+        }
+      ],
+      "accepted": null,
+      "serious_error": false,
+      "protocol_issues": [
+        {
+          "id": "pytest_collection_callsite_wording",
+          "original_criterion": "Identify call_runtest_hook and collect_one_node as production CallInfo.from_call call sites.",
+          "source_fact": "The direct collection invocation is pytest_make_collect_report at runner.py:253. collect_one_node at368-375 invokes the report hook and consumes rep.call.",
+          "disposition": "Unassessable original item; no zero or model-error label. Any corrected diagnostic is separate and retrospective."
+        }
+      ],
+      "findings": [],
+      "notes": [],
+      "source_before_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+      "source_after_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "54ee271a1d64b76783c8dc9dd6859a9ca931f1e85f6ad63b4f75728cb4b3c876",
+      "sdk_trace_sha256": "3bd0cf1d2aa07319b28d949bb0d728d243cca8345397641a9a25365c919cf175",
+      "workflow_artifact": "codegraph_matched_workflow_v1_11.json",
+      "workflow_artifact_sha256": "eb4208bd37aa80fa8a89f57e203bb754055b3779643d92c07d7d107dd50e205e",
+      "observation_tool_use_ids": [
+        "toolu_01GrFBS4sNAmhj1EPRw99JLN",
+        "toolu_01AitnWJtAycxttRFwEjg8BV",
+        "toolu_01LRvKctNxCiszJSz3wX5Wk7",
+        "toolu_01JgVTkHapzaEcnMJki8hCnE",
+        "toolu_01SuQ92w5a7a5mtJnfRv9sKq"
+      ],
+      "retrospective_corrected_criterion": {
+        "criterion": "Identify call_runtest_hook and pytest_make_collect_report as direct CallInfo.from_call call sites; explain collect_one_node as upstream hook-dispatch entry and report consumer.",
+        "met": true,
+        "scope": "Retrospective diagnostic only; not the frozen original criterion."
+      },
+      "source_evidence": [
+        {
+          "source_evidence_id": "c8e2a6bb4517d1d9ad3833f7217588b8196be75480ca1d49e1d0bb3b4e681371",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "d55f018dc8c93c887c19a6866fd50017e45e77171b496fb5e2c5cc82a7d3b6de",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "7458de392759faf5cb9e76d12df26a1264faae8f60d5e342f0543479dec118e7",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "ea4861b6ae3e7c229cf4d1d98a6390598e396ebb34cc1f9bef92ef18aa5e611d",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "70fb1bca1b95553b01b62ebf3adc36a91265a924677fbe83571961e515b66920",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "8b5e9322d1691d4bb9cb2488dfa23e64ef86cf95097d775bab0c97a5620924bb",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        },
+        {
+          "source_evidence_id": "aebd23e73c0e8802ae267af9ccf55aeebf4ef7bbdffacc04b3e6acf84e68ae92",
+          "source_snapshot_sha256": "a1751b21408591290fbe3f1cb96585d4ba863effbacfb67d3622fee39b76082b"
+        }
+      ]
+    },
+    {
+      "workflow_index": 8,
+      "arm": "codenib",
+      "task_id": "pytest-dev__pytest-5809-post_edit",
+      "kind": "post_edit",
+      "criteria": [
+        {
+          "criterion": "Cite the new helper and its CallInfo.from_call call with call-phase metadata.",
+          "met": true,
+          "rationale": "Quotes the current capture_probe_result helper and its direct CallInfo.from_call(function, call) invocation."
+        },
+        {
+          "criterion": "Explain result versus excinfo using the current CallInfo implementation.",
+          "met": true,
+          "rationale": "Explains excinfo versus successful return, the guarded result AttributeError, recorded timing and the default reraise=None used by this helper."
+        },
+        {
+          "criterion": "Use current source evidence rather than silently relying on a pre-edit graph.",
+          "met": true,
+          "rationale": "Cites the current added helper and captured CallInfo source; does not claim old graph facts were refreshed."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "protocol_issues": [],
+      "findings": [],
+      "notes": [],
+      "source_before_sha256": "dbd94168a5819b5e18c0ce73911138bf0a699e7d95670a404b5cedf42f1329a9",
+      "source_after_sha256": "dbd94168a5819b5e18c0ce73911138bf0a699e7d95670a404b5cedf42f1329a9",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "7b0eceb99cf0f65c0b021d7016d0df821e1020d5aa269aa0f688828b96cd39b3",
+      "sdk_trace_sha256": "89f9f759f07976998eb9c87035c9418cf58e3557e7861b99bbc7313b8081b834",
+      "workflow_artifact": "codegraph_matched_workflow_v1_08.json",
+      "workflow_artifact_sha256": "b156a317de04a049256a6893d971614e65ae1cbb8319645ba1f409581e083af2",
+      "observation_tool_use_ids": [
+        "toolu_01VAo2iRQ7g3shojfvULcwZs",
+        "toolu_01JgSnJBAMo6CFYe6SCWEttV",
+        "toolu_01YbM7UEVhkURtx9weWLbZP6",
+        "toolu_01Ai3A8bJh68PmAsesH622u2"
+      ],
+      "source_evidence": [
+        {
+          "source_evidence_id": "4b860502123243e22a87b9106a8cbe54f90e45c6f337bcb52e40636c751568fc",
+          "source_snapshot_sha256": "dbd94168a5819b5e18c0ce73911138bf0a699e7d95670a404b5cedf42f1329a9"
+        },
+        {
+          "source_evidence_id": "68240e62e2218a611228cc1a064c9ce8794e1474882af7c0ac0778a0f5cf4163",
+          "source_snapshot_sha256": "dbd94168a5819b5e18c0ce73911138bf0a699e7d95670a404b5cedf42f1329a9"
+        },
+        {
+          "source_evidence_id": "a5e7dddc9ac1bc26606fe3c99993af44cbe7d14e47a77aa1124301fbf3dc04c5",
+          "source_snapshot_sha256": "dbd94168a5819b5e18c0ce73911138bf0a699e7d95670a404b5cedf42f1329a9"
+        },
+        {
+          "source_evidence_id": "8b5e9322d1691d4bb9cb2488dfa23e64ef86cf95097d775bab0c97a5620924bb",
+          "source_snapshot_sha256": "dbd94168a5819b5e18c0ce73911138bf0a699e7d95670a404b5cedf42f1329a9"
+        }
+      ]
+    },
+    {
+      "workflow_index": 9,
+      "arm": "native",
+      "task_id": "pytest-dev__pytest-5809-post_edit",
+      "kind": "post_edit",
+      "criteria": [
+        {
+          "criterion": "Cite the new helper and its CallInfo.from_call call with call-phase metadata.",
+          "met": true,
+          "rationale": "Quotes the current capture_probe_result helper and its direct CallInfo.from_call(function, call) invocation."
+        },
+        {
+          "criterion": "Explain result versus excinfo using the current CallInfo implementation.",
+          "met": true,
+          "rationale": "Explains excinfo versus successful return, the guarded result AttributeError, recorded timing and the default reraise=None used by this helper."
+        },
+        {
+          "criterion": "Use current source evidence rather than silently relying on a pre-edit graph.",
+          "met": true,
+          "rationale": "Cites the current added helper and captured CallInfo source; does not claim old graph facts were refreshed."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "protocol_issues": [],
+      "findings": [],
+      "notes": [
+        "Several internal line references are shifted by one to three lines, including func() at223 instead of226. The containing CallInfo definition/factory and current helper are cited and the behavior is correctly described."
+      ],
+      "source_before_sha256": "283abf11ecb663a24a2a6655793b261a4d11d96bb02d14e5be0a7eccc6fc6417",
+      "source_after_sha256": "283abf11ecb663a24a2a6655793b261a4d11d96bb02d14e5be0a7eccc6fc6417",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "4d969d77f516d9e61ba442803cc263a3e2037481cda90373866feca98b18c79d",
+      "sdk_trace_sha256": "a1c22245f16cd415efa9e97d2b60090b9f5a9fdb7034d9bc0621c0d56558c8af",
+      "workflow_artifact": "codegraph_matched_workflow_v1_09.json",
+      "workflow_artifact_sha256": "e23f29d3e3e7782236f41ddd0b5dd7eb17c626437cdf7ca617b1d83c8cec7fd7",
+      "observation_tool_use_ids": [
+        "toolu_01MVWGCqMgDKUyCigkcQRLZS",
+        "toolu_01SL5Yf1QGYAHbUfj9Zo3kTc"
+      ],
+      "source_evidence": [
+        {
+          "source_evidence_id": "4b860502123243e22a87b9106a8cbe54f90e45c6f337bcb52e40636c751568fc",
+          "source_snapshot_sha256": "283abf11ecb663a24a2a6655793b261a4d11d96bb02d14e5be0a7eccc6fc6417"
+        },
+        {
+          "source_evidence_id": "68240e62e2218a611228cc1a064c9ce8794e1474882af7c0ac0778a0f5cf4163",
+          "source_snapshot_sha256": "283abf11ecb663a24a2a6655793b261a4d11d96bb02d14e5be0a7eccc6fc6417"
+        },
+        {
+          "source_evidence_id": "a5e7dddc9ac1bc26606fe3c99993af44cbe7d14e47a77aa1124301fbf3dc04c5",
+          "source_snapshot_sha256": "283abf11ecb663a24a2a6655793b261a4d11d96bb02d14e5be0a7eccc6fc6417"
+        },
+        {
+          "source_evidence_id": "8b5e9322d1691d4bb9cb2488dfa23e64ef86cf95097d775bab0c97a5620924bb",
+          "source_snapshot_sha256": "283abf11ecb663a24a2a6655793b261a4d11d96bb02d14e5be0a7eccc6fc6417"
+        }
+      ]
+    },
+    {
+      "workflow_index": 10,
+      "arm": "codegraph",
+      "task_id": "pytest-dev__pytest-5809-post_edit",
+      "kind": "post_edit",
+      "criteria": [
+        {
+          "criterion": "Cite the new helper and its CallInfo.from_call call with call-phase metadata.",
+          "met": true,
+          "rationale": "Quotes the current capture_probe_result helper and its direct CallInfo.from_call(function, call) invocation."
+        },
+        {
+          "criterion": "Explain result versus excinfo using the current CallInfo implementation.",
+          "met": true,
+          "rationale": "Explains excinfo versus successful return, the guarded result AttributeError, recorded timing and the default reraise=None used by this helper."
+        },
+        {
+          "criterion": "Use current source evidence rather than silently relying on a pre-edit graph.",
+          "met": true,
+          "rationale": "Cites the current added helper and captured CallInfo source; does not claim old graph facts were refreshed."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "protocol_issues": [],
+      "findings": [],
+      "notes": [],
+      "source_before_sha256": "35b2996781a05ab15a1d61ce64b4ee6b418e32b2283299a23879e814072e3860",
+      "source_after_sha256": "35b2996781a05ab15a1d61ce64b4ee6b418e32b2283299a23879e814072e3860",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "559f0655c0b2a2f1e731823237b8b0e5a54c4dda36fbcf7186b323b094575249",
+      "sdk_trace_sha256": "a5b33b1e9b5f9d1285e532f5d3d375e7f79aabf4d10412fbfc3d272fe6abbc00",
+      "workflow_artifact": "codegraph_matched_workflow_v1_10.json",
+      "workflow_artifact_sha256": "1ddf046c11ec2a721f19fb0b13ef32cde07782fcd46b3da1070b6a45c4633626",
+      "observation_tool_use_ids": [
+        "toolu_019cCPww8AYF5fZacXcB1zav",
+        "toolu_01NQ98d5sT6N5tLL67THaDQi",
+        "toolu_01EkzTSLjdCWvgx78KVFAe6D"
+      ],
+      "source_evidence": [
+        {
+          "source_evidence_id": "4b860502123243e22a87b9106a8cbe54f90e45c6f337bcb52e40636c751568fc",
+          "source_snapshot_sha256": "35b2996781a05ab15a1d61ce64b4ee6b418e32b2283299a23879e814072e3860"
+        },
+        {
+          "source_evidence_id": "68240e62e2218a611228cc1a064c9ce8794e1474882af7c0ac0778a0f5cf4163",
+          "source_snapshot_sha256": "35b2996781a05ab15a1d61ce64b4ee6b418e32b2283299a23879e814072e3860"
+        },
+        {
+          "source_evidence_id": "a5e7dddc9ac1bc26606fe3c99993af44cbe7d14e47a77aa1124301fbf3dc04c5",
+          "source_snapshot_sha256": "35b2996781a05ab15a1d61ce64b4ee6b418e32b2283299a23879e814072e3860"
+        },
+        {
+          "source_evidence_id": "8b5e9322d1691d4bb9cb2488dfa23e64ef86cf95097d775bab0c97a5620924bb",
+          "source_snapshot_sha256": "35b2996781a05ab15a1d61ce64b4ee6b418e32b2283299a23879e814072e3860"
+        }
+      ]
+    },
+    {
+      "workflow_index": 11,
+      "arm": "serena",
+      "task_id": "pytest-dev__pytest-5809-post_edit",
+      "kind": "post_edit",
+      "criteria": [
+        {
+          "criterion": "Cite the new helper and its CallInfo.from_call call with call-phase metadata.",
+          "met": true,
+          "rationale": "Quotes the current capture_probe_result helper and its direct CallInfo.from_call(function, call) invocation."
+        },
+        {
+          "criterion": "Explain result versus excinfo using the current CallInfo implementation.",
+          "met": true,
+          "rationale": "Explains excinfo versus successful return, the guarded result AttributeError, recorded timing and the default reraise=None used by this helper."
+        },
+        {
+          "criterion": "Use current source evidence rather than silently relying on a pre-edit graph.",
+          "met": true,
+          "rationale": "Cites the current added helper and captured CallInfo source; does not claim old graph facts were refreshed."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "protocol_issues": [],
+      "findings": [],
+      "notes": [],
+      "source_before_sha256": "ab543045091aef25a9ecf4937e228e9b5dcfa9a5529312fef1b3b816dbdcc993",
+      "source_after_sha256": "ab543045091aef25a9ecf4937e228e9b5dcfa9a5529312fef1b3b816dbdcc993",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "8b0ae68c39aa424521100409aa1f2c537a40636833c468439992a4c7949fb00d",
+      "sdk_trace_sha256": "39ef52c975ea2c3260ddd6d6f10864fa8f086a2479866386b84c3da6e3a3cca4",
+      "workflow_artifact": "codegraph_matched_workflow_v1_11.json",
+      "workflow_artifact_sha256": "eb4208bd37aa80fa8a89f57e203bb754055b3779643d92c07d7d107dd50e205e",
+      "observation_tool_use_ids": [
+        "toolu_01Fii2s9UxroNFLgDTnZBsRR",
+        "toolu_019eAmevSWmCZznxR6bDAMyU",
+        "toolu_01FD53JEWuUZYso1ofWS493Q",
+        "toolu_01Ry8DZCxSDpVqb9GqnUJUBe"
+      ],
+      "source_evidence": [
+        {
+          "source_evidence_id": "4b860502123243e22a87b9106a8cbe54f90e45c6f337bcb52e40636c751568fc",
+          "source_snapshot_sha256": "ab543045091aef25a9ecf4937e228e9b5dcfa9a5529312fef1b3b816dbdcc993"
+        },
+        {
+          "source_evidence_id": "68240e62e2218a611228cc1a064c9ce8794e1474882af7c0ac0778a0f5cf4163",
+          "source_snapshot_sha256": "ab543045091aef25a9ecf4937e228e9b5dcfa9a5529312fef1b3b816dbdcc993"
+        },
+        {
+          "source_evidence_id": "a5e7dddc9ac1bc26606fe3c99993af44cbe7d14e47a77aa1124301fbf3dc04c5",
+          "source_snapshot_sha256": "ab543045091aef25a9ecf4937e228e9b5dcfa9a5529312fef1b3b816dbdcc993"
+        },
+        {
+          "source_evidence_id": "8b5e9322d1691d4bb9cb2488dfa23e64ef86cf95097d775bab0c97a5620924bb",
+          "source_snapshot_sha256": "ab543045091aef25a9ecf4937e228e9b5dcfa9a5529312fef1b3b816dbdcc993"
+        }
+      ]
+    }
+  ],
+  "limits": "No independent external adjudication or complete ContextBench read score. Original source criterion ambiguity is retained; corrected judgments are separate retrospective diagnostics."
+}

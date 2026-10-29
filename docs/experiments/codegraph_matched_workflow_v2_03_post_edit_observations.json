@@ -1,0 +1,121 @@
+{
+  "scope": "Exact captured v2 tool requests and delivered user/tool messages; no task acceptance or complete source-read score.",
+  "workflow_index": 3,
+  "task_id": "psf__requests-1921-post_edit",
+  "kind": "post_edit",
+  "raw_sdk_trace_sha256": "a5cfd599cd640a495ff80f3994cd86f075d782a3b46973a1730d581afc07d305",
+  "raw_sdk_trace_bytes": 21473,
+  "init": [
+    {
+      "type": "SystemMessage",
+      "subtype": "init",
+      "data": {
+        "model": "claude-opus-5-5",
+        "apiKeySource": "none",
+        "tools": [
+          "Bash",
+          "Edit",
+          "Glob",
+          "Grep",
+          "Read",
+          "ToolSearch",
+          "Write"
+        ],
+        "mcp_servers": [],
+        "claude_code_version": "2.1.310"
+      }
+    }
+  ],
+  "rate_events": [],
+  "tool_calls_in_first_observed_order": [
+    {
+      "id": "toolu_01T3ioWDgNwaCQViEpEFfRfA",
+      "name": "Grep",
+      "input": {
+        "pattern": "prepare_probe_request",
+        "output_mode": "content",
+        "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/03-psf__requests-1921-native/workspace"
+      }
+    },
+    {
+      "id": "toolu_01XFqwK16nm65xSd3ikXHPZE",
+      "name": "Bash",
+      "input": {
+        "command": "git status --short && git diff --stat"
+      }
+    },
+    {
+      "id": "toolu_01VMhJ419CHBnczEbZhADJoB",
+      "name": "Read",
+      "input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/03-psf__requests-1921-native/workspace/requests/_pilot_post_edit.py"
+      }
+    },
+    {
+      "id": "toolu_01SUbEwYSqSWmFs8PyN4egAV",
+      "name": "Bash",
+      "input": {
+        "command": "grep -rn \"_pilot_post_edit\" --include=*.py . ; grep -n \"def prepare\\b\\|def prepare(\" requests/models.py; sed -n 236,252p requests/models.py"
+      }
+    },
+    {
+      "id": "toolu_01W7PKfSpADkCxTMYMYGQjxY",
+      "name": "Bash",
+      "input": {
+        "command": "grep -n \"def __init__\\|def prepare_request\\|p.prepare(\\|return p$\\|def request\\|prep = self.prepare_request\\|resp = self.send\\|def send\\|adapter.send\\|self.mount\\|get_netrc_auth(request.url)\" requests/sessions.py; grep -n \"PoolManager(\\|init_poolmanager(\" requests/adapters.py"
+      }
+    }
+  ],
+  "delivered_user_tool_messages_in_order": [
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_01T3ioWDgNwaCQViEpEFfRfA",
+          "content": "requests/_pilot_post_edit.py:4:def prepare_probe_request(url: str):",
+          "is_error": null
+        }
+      ]
+    },
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_01XFqwK16nm65xSd3ikXHPZE",
+          "content": "M  requests/sessions.py\nM  test_requests.py\n?? requests/_pilot_post_edit.py",
+          "is_error": false
+        }
+      ]
+    },
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_01VMhJ419CHBnczEbZhADJoB",
+          "content": "1\tfrom .models import Request\n2\tfrom .sessions import Session\n3\t\n4\tdef prepare_probe_request(url: str):\n5\t    return Session().prepare_request(Request(\"GET\", url))\n6\t",
+          "is_error": null
+        }
+      ]
+    },
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_01SUbEwYSqSWmFs8PyN4egAV",
+          "content": "238:    def prepare(self):\n289:    def prepare(self, method=None, url=None, headers=None, files=None,\n        return '<Request [%s]>' % (self.method)\n\n    def prepare(self):\n        \"\"\"Constructs a :class:`PreparedRequest <PreparedRequest>` for transmission and returns it.\"\"\"\n        p = PreparedRequest()\n        p.prepare(\n            method=self.method,\n            url=self.url,\n            headers=self.headers,\n            files=self.files,\n            data=self.data,\n            params=self.params,\n            auth=self.auth,\n            cookies=self.cookies,\n            hooks=self.hooks,\n        )\n        return p",
+          "is_error": false
+        }
+      ]
+    },
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_01W7PKfSpADkCxTMYMYGQjxY",
+          "content": "169:            resp = self.send(\n203:    def __init__(self):\n251:        self.mount('https://', HTTPAdapter())\n252:        self.mount('http://', HTTPAdapter())\n260:    def prepare_request(self, request):\n283:            auth = get_netrc_auth(request.url)\n286:        p.prepare(\n297:        return p\n299:    def request(self, method, url,\n357:        prep = self.prepare_request(req)\n391:        resp = self.send(prep, **send_kwargs)\n464:    def send(self, request, **kwargs):\n494:        r = adapter.send(request, **kwargs)\n86:        self.init_poolmanager(pool_connections, pool_maxsize, block=pool_block)\n101:        self.init_poolmanager(self._pool_connections, self._pool_maxsize,\n104:    def init_poolmanager(self, connections, maxsize, block=DEFAULT_POOLBLOCK):\n118:        self.poolmanager = PoolManager(num_pools=connections, maxsize=maxsize,",
+          "is_error": false
+        }
+      ]
+    }
+  ]
+}

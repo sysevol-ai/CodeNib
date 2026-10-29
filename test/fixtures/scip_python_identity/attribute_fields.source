@@ -1,0 +1,10 @@
+def one():
+    class Config:
+        def __init__(self):
+            self.value = 1
+    return Config().value
+def two():
+    class Config:
+        def __init__(self):
+            self.value = 2
+    return Config().value

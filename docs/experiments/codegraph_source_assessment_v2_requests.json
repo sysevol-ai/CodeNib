@@ -1,0 +1,1628 @@
+{
+  "schema_version": 2,
+  "recorded_utc": "2026-10-28T15:03:54.550752+00:00",
+  "instance_id": "psf__requests-1921",
+  "review_method": "One unblinded maintainer-agent review of new v2 answers against all frozen criteria and exact source versions. No v1 judgment is reused.",
+  "task_sha256": "218eb7085da807c3cb067ef742ff7ceff161910dad18c676458a5b599d2d45ea",
+  "policy_sha256": "cb373c0a407fbbc89bd4b12e30076b81b3aa9e77dc46cd017b7a32255f8b604a",
+  "source_evidence": {
+    "a765e668ce674228a155cddd1d0aac2b79098b7132ea2c9c9fc98b915e9ac7bb": {
+      "file": "requests/sessions.py",
+      "sha256": "32e30eadf91367b3aefb90e8541cf3fc20d3d950a16828c0101f4232d36a78a9",
+      "start_line": 260,
+      "end_line": 297,
+      "text": "    def prepare_request(self, request):\n        \"\"\"Constructs a :class:`PreparedRequest <PreparedRequest>` for\n        transmission and returns it. The :class:`PreparedRequest` has settings\n        merged from the :class:`Request <Request>` instance and those of the\n        :class:`Session`.\n\n        :param request: :class:`Request` instance to prepare with this\n            session's settings.\n        \"\"\"\n        cookies = request.cookies or {}\n\n        # Bootstrap CookieJar.\n        if not isinstance(cookies, cookielib.CookieJar):\n            cookies = cookiejar_from_dict(cookies)\n\n        # Merge with session cookies\n        merged_cookies = merge_cookies(\n            merge_cookies(RequestsCookieJar(), self.cookies), cookies)\n\n\n        # Set environment's basic authentication if not explicitly set.\n        auth = request.auth\n        if self.trust_env and not auth and not self.auth:\n            auth = get_netrc_auth(request.url)\n\n        p = PreparedRequest()\n        p.prepare(\n            method=request.method.upper(),\n            url=request.url,\n            files=request.files,\n            data=request.data,\n            headers=merge_setting(request.headers, self.headers, dict_class=CaseInsensitiveDict),\n            params=merge_setting(request.params, self.params),\n            auth=merge_setting(auth, self.auth),\n            cookies=merged_cookies,\n            hooks=merge_hooks(request.hooks, self.hooks),\n        )\n        return p",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    },
+    "68c8249c3b17438c6300718be9be7d9864c02563030a4a92bb41ca6af40648f2": {
+      "file": "requests/sessions.py",
+      "sha256": "32e30eadf91367b3aefb90e8541cf3fc20d3d950a16828c0101f4232d36a78a9",
+      "start_line": 34,
+      "end_line": 78,
+      "text": "def merge_setting(request_setting, session_setting, dict_class=OrderedDict):\n    \"\"\"\n    Determines appropriate setting for a given request, taking into account the\n    explicit setting on that request, and the setting in the session. If a\n    setting is a dictionary, they will be merged together using `dict_class`\n    \"\"\"\n\n    if session_setting is None:\n        return request_setting\n\n    if request_setting is None:\n        return session_setting\n\n    # Bypass if not a dictionary (e.g. verify)\n    if not (\n            isinstance(session_setting, Mapping) and\n            isinstance(request_setting, Mapping)\n    ):\n        return request_setting\n\n    merged_setting = dict_class(to_key_val_list(session_setting))\n    merged_setting.update(to_key_val_list(request_setting))\n\n    # Remove keys that are set to None.\n    for (k, v) in request_setting.items():\n        if v is None:\n            del merged_setting[k]\n\n    return merged_setting\n\n\ndef merge_hooks(request_hooks, session_hooks, dict_class=OrderedDict):\n    \"\"\"\n    Properly merges both requests and session hooks.\n\n    This is necessary because when request_hooks == {'response': []}, the\n    merge breaks Session hooks entirely.\n    \"\"\"\n    if session_hooks is None or session_hooks.get('response') == []:\n        return request_hooks\n\n    if request_hooks is None or request_hooks.get('response') == []:\n        return session_hooks\n\n    return merge_setting(request_hooks, session_hooks, dict_class)",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    },
+    "d9ee3fd81808b96b5154ca568f0dbdc9e428dc827aa0227e2cb819537e338528": {
+      "file": "requests/cookies.py",
+      "sha256": "06330ab6b23c4d7403e68415793a18b64441175e3d788f395215ac046c2c25a7",
+      "start_line": 435,
+      "end_line": 454,
+      "text": "def merge_cookies(cookiejar, cookies):\n    \"\"\"Add cookies to cookiejar and returns a merged CookieJar.\n\n    :param cookiejar: CookieJar object to add the cookies to.\n    :param cookies: Dictionary or CookieJar object to be added.\n    \"\"\"\n    if not isinstance(cookiejar, cookielib.CookieJar):\n        raise ValueError('You can only merge into CookieJar')\n    \n    if isinstance(cookies, dict):\n        cookiejar = cookiejar_from_dict(\n            cookies, cookiejar=cookiejar, overwrite=False)\n    elif isinstance(cookies, cookielib.CookieJar):\n        try:\n            cookiejar.update(cookies)\n        except AttributeError:\n            for cookie_in_jar in cookies:\n                cookiejar.set_cookie(cookie_in_jar)\n\n    return cookiejar",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    },
+    "0cb404f0d9a59c1bcf77a1e89981fafd5bdef6ec86d6c44ac5930e0ac4274e57": {
+      "file": "requests/sessions.py",
+      "sha256": "32e30eadf91367b3aefb90e8541cf3fc20d3d950a16828c0101f4232d36a78a9",
+      "start_line": 343,
+      "end_line": 391,
+      "text": "        method = builtin_str(method)\n\n        # Create the Request.\n        req = Request(\n            method = method.upper(),\n            url = url,\n            headers = headers,\n            files = files,\n            data = data or {},\n            params = params or {},\n            auth = auth,\n            cookies = cookies,\n            hooks = hooks,\n        )\n        prep = self.prepare_request(req)\n\n        proxies = proxies or {}\n\n        # Gather clues from the surrounding environment.\n        if self.trust_env:\n            # Set environment's proxies.\n            env_proxies = get_environ_proxies(url) or {}\n            for (k, v) in env_proxies.items():\n                proxies.setdefault(k, v)\n\n            # Look for configuration.\n            if not verify and verify is not False:\n                verify = os.environ.get('REQUESTS_CA_BUNDLE')\n\n            # Curl compatibility.\n            if not verify and verify is not False:\n                verify = os.environ.get('CURL_CA_BUNDLE')\n\n        # Merge all the kwargs.\n        proxies = merge_setting(proxies, self.proxies)\n        stream = merge_setting(stream, self.stream)\n        verify = merge_setting(verify, self.verify)\n        cert = merge_setting(cert, self.cert)\n\n        # Send the request.\n        send_kwargs = {\n            'stream': stream,\n            'timeout': timeout,\n            'verify': verify,\n            'cert': cert,\n            'proxies': proxies,\n            'allow_redirects': allow_redirects,\n        }\n        resp = self.send(prep, **send_kwargs)",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    },
+    "285e146f4bb355391b03ca8b5012e232268e5598dbdf1f26039314c0c80756cc": {
+      "file": "requests/models.py",
+      "sha256": "91153287286b3bc2018f8739e40dbaaee4c23cf5d7ca95b6ac661e0ac2ca9c33",
+      "start_line": 289,
+      "end_line": 303,
+      "text": "    def prepare(self, method=None, url=None, headers=None, files=None,\n                data=None, params=None, auth=None, cookies=None, hooks=None):\n        \"\"\"Prepares the entire request with the given parameters.\"\"\"\n\n        self.prepare_method(method)\n        self.prepare_url(url, params)\n        self.prepare_headers(headers)\n        self.prepare_cookies(cookies)\n        self.prepare_body(data, files)\n        self.prepare_auth(auth, url)\n        # Note that prepare_auth must be last to enable authentication schemes\n        # such as OAuth to work on a fully prepared request.\n\n        # This MUST go after prepare_auth. Authenticators could add a hook\n        self.prepare_hooks(hooks)",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    },
+    "ece0163ac3f8e92b1904138d4dad2ec156ebf026db1f9f6c6ddf7c82933374b4": {
+      "file": "requests/sessions.py",
+      "sha256": "32e30eadf91367b3aefb90e8541cf3fc20d3d950a16828c0101f4232d36a78a9",
+      "start_line": 464,
+      "end_line": 540,
+      "text": "    def send(self, request, **kwargs):\n        \"\"\"Send a given PreparedRequest.\"\"\"\n        # Set defaults that the hooks can utilize to ensure they always have\n        # the correct parameters to reproduce the previous request.\n        kwargs.setdefault('stream', self.stream)\n        kwargs.setdefault('verify', self.verify)\n        kwargs.setdefault('cert', self.cert)\n        kwargs.setdefault('proxies', self.proxies)\n\n        # It's possible that users might accidentally send a Request object.\n        # Guard against that specific failure case.\n        if not isinstance(request, PreparedRequest):\n            raise ValueError('You can only send PreparedRequests.')\n\n        # Set up variables needed for resolve_redirects and dispatching of hooks\n        allow_redirects = kwargs.pop('allow_redirects', True)\n        stream = kwargs.get('stream')\n        timeout = kwargs.get('timeout')\n        verify = kwargs.get('verify')\n        cert = kwargs.get('cert')\n        proxies = kwargs.get('proxies')\n        hooks = request.hooks\n\n        # Get the appropriate adapter to use\n        adapter = self.get_adapter(url=request.url)\n\n        # Start time (approximately) of the request\n        start = datetime.utcnow()\n\n        # Send the request\n        r = adapter.send(request, **kwargs)\n\n        # Total elapsed time of the request (approximately)\n        r.elapsed = datetime.utcnow() - start\n\n        # Response manipulation hooks\n        r = dispatch_hook('response', hooks, r, **kwargs)\n\n        # Persist cookies\n        if r.history:\n\n            # If the hooks create history then we want those cookies too\n            for resp in r.history:\n                extract_cookies_to_jar(self.cookies, resp.request, resp.raw)\n\n        extract_cookies_to_jar(self.cookies, request, r.raw)\n\n        # Redirect resolving generator.\n        gen = self.resolve_redirects(r, request,\n            stream=stream,\n            timeout=timeout,\n            verify=verify,\n            cert=cert,\n            proxies=proxies)\n\n        # Resolve redirects if allowed.\n        history = [resp for resp in gen] if allow_redirects else []\n\n        # Shuffle things around if there's history.\n        if history:\n            # Insert the first (original) request at the start\n            history.insert(0, r)\n            # Get the last request made\n            r = history.pop()\n            r.history = tuple(history)\n\n        return r\n\n    def get_adapter(self, url):\n        \"\"\"Returns the appropriate connnection adapter for the given URL.\"\"\"\n        for (prefix, adapter) in self.adapters.items():\n\n            if url.lower().startswith(prefix):\n                return adapter\n\n        # Nothing matches :-/\n        raise InvalidSchema(\"No connection adapters were found for '%s'\" % url)",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    },
+    "6a4d40790b36243abe4defa5a921ce273fb7edc812ddc555559f7d72afd5cb06": {
+      "file": "requests/sessions.py",
+      "sha256": "32e30eadf91367b3aefb90e8541cf3fc20d3d950a16828c0101f4232d36a78a9",
+      "start_line": 547,
+      "end_line": 556,
+      "text": "    def mount(self, prefix, adapter):\n        \"\"\"Registers a connection adapter to a prefix.\n\n        Adapters are sorted in descending order by key length.\"\"\"\n\n        self.adapters[prefix] = adapter\n        keys_to_move = [k for k in self.adapters if len(k) < len(prefix)]\n\n        for key in keys_to_move:\n            self.adapters[key] = self.adapters.pop(key)",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    },
+    "15d1b2256665e271d3da9c6a483d32acfadb02ed51bcf07fa7610ad4dae9d274": {
+      "file": "requests/adapters.py",
+      "sha256": "4002f9ad2c04ceeaece4fe2ac23148cc74086de515f0eb1498a06f796e2bf899",
+      "start_line": 294,
+      "end_line": 396,
+      "text": "    def send(self, request, stream=False, timeout=None, verify=True, cert=None, proxies=None):\n        \"\"\"Sends PreparedRequest object. Returns Response object.\n\n        :param request: The :class:`PreparedRequest <PreparedRequest>` being sent.\n        :param stream: (optional) Whether to stream the request content.\n        :param timeout: (optional) The timeout on the request.\n        :param verify: (optional) Whether to verify SSL certificates.\n        :param cert: (optional) Any user-provided SSL certificate to be trusted.\n        :param proxies: (optional) The proxies dictionary to apply to the request.\n        \"\"\"\n\n        conn = self.get_connection(request.url, proxies)\n\n        self.cert_verify(conn, request.url, verify, cert)\n        url = self.request_url(request, proxies)\n        self.add_headers(request)\n\n        chunked = not (request.body is None or 'Content-Length' in request.headers)\n\n        if stream:\n            timeout = TimeoutSauce(connect=timeout)\n        else:\n            timeout = TimeoutSauce(connect=timeout, read=timeout)\n\n        try:\n            if not chunked:\n                resp = conn.urlopen(\n                    method=request.method,\n                    url=url,\n                    body=request.body,\n                    headers=request.headers,\n                    redirect=False,\n                    assert_same_host=False,\n                    preload_content=False,\n                    decode_content=False,\n                    retries=self.max_retries,\n                    timeout=timeout\n                )\n\n            # Send the request.\n            else:\n                if hasattr(conn, 'proxy_pool'):\n                    conn = conn.proxy_pool\n\n                low_conn = conn._get_conn(timeout=timeout)\n\n                try:\n                    low_conn.putrequest(request.method,\n                                        url,\n                                        skip_accept_encoding=True)\n\n                    for header, value in request.headers.items():\n                        low_conn.putheader(header, value)\n\n                    low_conn.endheaders()\n\n                    for i in request.body:\n                        low_conn.send(hex(len(i))[2:].encode('utf-8'))\n                        low_conn.send(b'\\r\\n')\n                        low_conn.send(i)\n                        low_conn.send(b'\\r\\n')\n                    low_conn.send(b'0\\r\\n\\r\\n')\n\n                    r = low_conn.getresponse()\n                    resp = HTTPResponse.from_httplib(\n                        r,\n                        pool=conn,\n                        connection=low_conn,\n                        preload_content=False,\n                        decode_content=False\n                    )\n                except:\n                    # If we hit any problems here, clean up the connection.\n                    # Then, reraise so that we can handle the actual exception.\n                    low_conn.close()\n                    raise\n                else:\n                    # All is well, return the connection to the pool.\n                    conn._put_conn(low_conn)\n\n        except socket.error as sockerr:\n            raise ConnectionError(sockerr, request=request)\n\n        except MaxRetryError as e:\n            raise ConnectionError(e, request=request)\n\n        except _ProxyError as e:\n            raise ProxyError(e)\n\n        except (_SSLError, _HTTPError) as e:\n            if isinstance(e, _SSLError):\n                raise SSLError(e, request=request)\n            elif isinstance(e, TimeoutError):\n                raise Timeout(e, request=request)\n            else:\n                raise\n\n        r = self.build_response(request, resp)\n\n        if not stream:\n            r.content\n\n        return r",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    },
+    "2f2f9d413383bdc15ac2a3e6b78634c9af3b674f1c69b9db3c375a058f5dcdb6": {
+      "file": "requests/sessions.py",
+      "sha256": "32e30eadf91367b3aefb90e8541cf3fc20d3d950a16828c0101f4232d36a78a9",
+      "start_line": 82,
+      "end_line": 182,
+      "text": "    def resolve_redirects(self, resp, req, stream=False, timeout=None,\n                          verify=True, cert=None, proxies=None):\n        \"\"\"Receives a Response. Returns a generator of Responses.\"\"\"\n\n        i = 0\n\n        while resp.is_redirect:\n            prepared_request = req.copy()\n\n            resp.content  # Consume socket so it can be released\n\n            if i >= self.max_redirects:\n                raise TooManyRedirects('Exceeded %s redirects.' % self.max_redirects)\n\n            # Release the connection back into the pool.\n            resp.close()\n\n            url = resp.headers['location']\n            method = req.method\n\n            # Handle redirection without scheme (see: RFC 1808 Section 4)\n            if url.startswith('//'):\n                parsed_rurl = urlparse(resp.url)\n                url = '%s:%s' % (parsed_rurl.scheme, url)\n\n            # The scheme should be lower case...\n            parsed = urlparse(url)\n            url = parsed.geturl()\n\n            # Facilitate non-RFC2616-compliant 'location' headers\n            # (e.g. '/path/to/resource' instead of 'http://domain.tld/path/to/resource')\n            # Compliant with RFC3986, we percent encode the url.\n            if not urlparse(url).netloc:\n                url = urljoin(resp.url, requote_uri(url))\n            else:\n                url = requote_uri(url)\n\n            prepared_request.url = to_native_string(url)\n\n            # http://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html#sec10.3.4\n            if (resp.status_code == codes.see_other and\n                    method != 'HEAD'):\n                method = 'GET'\n\n            # Do what the browsers do, despite standards...\n            # First, turn 302s into GETs.\n            if resp.status_code == codes.found and method != 'HEAD':\n                method = 'GET'\n\n            # Second, if a POST is responded to with a 301, turn it into a GET.\n            # This bizarre behaviour is explained in Issue 1704.\n            if resp.status_code == codes.moved and method == 'POST':\n                method = 'GET'\n\n            prepared_request.method = method\n\n            # https://github.com/kennethreitz/requests/issues/1084\n            if resp.status_code not in (codes.temporary, codes.resume):\n                if 'Content-Length' in prepared_request.headers:\n                    del prepared_request.headers['Content-Length']\n\n                prepared_request.body = None\n\n            headers = prepared_request.headers\n            try:\n                del headers['Cookie']\n            except KeyError:\n                pass\n\n            extract_cookies_to_jar(prepared_request._cookies, prepared_request, resp.raw)\n            prepared_request._cookies.update(self.cookies)\n            prepared_request.prepare_cookies(prepared_request._cookies)\n\n            if 'Authorization' in headers:\n                # If we get redirected to a new host, we should strip out any\n                #\u00a0authentication headers.\n                original_parsed = urlparse(resp.request.url)\n                redirect_parsed = urlparse(url)\n\n                if (original_parsed.hostname != redirect_parsed.hostname):\n                    del headers['Authorization']\n\n            # .netrc might have more auth for us.\n            new_auth = get_netrc_auth(url) if self.trust_env else None\n            if new_auth is not None:\n                prepared_request.prepare_auth(new_auth)\n\n            resp = self.send(\n                prepared_request,\n                stream=stream,\n                timeout=timeout,\n                verify=verify,\n                cert=cert,\n                proxies=proxies,\n                allow_redirects=False,\n            )\n\n            extract_cookies_to_jar(self.cookies, prepared_request, resp.raw)\n\n            i += 1\n            yield resp",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    },
+    "1d238c489c6191a667d243c8f052176ab52d2f6fb5cbc20e12385806478362b1": {
+      "file": "requests/api.py",
+      "sha256": "46295d2e64e1951dc134523a0b76d2d5bbf15791bae5e84256b0469181de8c3b",
+      "start_line": 41,
+      "end_line": 44,
+      "text": "    \"\"\"\n\n    session = sessions.Session()\n    return session.request(method=method, url=url, **kwargs)",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    },
+    "c1c85d1fa5580d6990c5917b5828b17bf3e068ede3f1ff13d8419f4fba595152": {
+      "file": "requests/auth.py",
+      "sha256": "c766c5a872b72e46e6eea3d4ca1fdd02a60b4c34e8b418bed736bd12909d0345",
+      "start_line": 149,
+      "end_line": 193,
+      "text": "    def handle_401(self, r, **kwargs):\n        \"\"\"Takes the given response and tries digest-auth, if needed.\"\"\"\n\n        if self.pos is not None:\n            # Rewind the file position indicator of the body to where\n            # it was to resend the request.\n            r.request.body.seek(self.pos)\n        num_401_calls = getattr(self, 'num_401_calls', 1)\n        s_auth = r.headers.get('www-authenticate', '')\n\n        if 'digest' in s_auth.lower() and num_401_calls < 2:\n\n            setattr(self, 'num_401_calls', num_401_calls + 1)\n            pat = re.compile(r'digest ', flags=re.IGNORECASE)\n            self.chal = parse_dict_header(pat.sub('', s_auth, count=1))\n\n            # Consume content and release the original connection\n            # to allow our new request to reuse the same one.\n            r.content\n            r.raw.release_conn()\n            prep = r.request.copy()\n            extract_cookies_to_jar(prep._cookies, r.request, r.raw)\n            prep.prepare_cookies(prep._cookies)\n\n            prep.headers['Authorization'] = self.build_digest_header(\n                prep.method, prep.url)\n            _r = r.connection.send(prep, **kwargs)\n            _r.history.append(r)\n            _r.request = prep\n\n            return _r\n\n        setattr(self, 'num_401_calls', 1)\n        return r\n\n    def __call__(self, r):\n        # If we have a saved nonce, skip the 401\n        if self.last_nonce:\n            r.headers['Authorization'] = self.build_digest_header(r.method, r.url)\n        try:\n            self.pos = r.body.tell()\n        except AttributeError:\n            pass\n        r.register_hook('response', self.handle_401)\n        return r",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    },
+    "5e251758dc22cda4cd678ebd4321c172db93be6ba33661cac09c734818a6d483": {
+      "file": "requests/sessions.py",
+      "sha256": "32e30eadf91367b3aefb90e8541cf3fc20d3d950a16828c0101f4232d36a78a9",
+      "start_line": 383,
+      "end_line": 391,
+      "text": "        send_kwargs = {\n            'stream': stream,\n            'timeout': timeout,\n            'verify': verify,\n            'cert': cert,\n            'proxies': proxies,\n            'allow_redirects': allow_redirects,\n        }\n        resp = self.send(prep, **send_kwargs)",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    },
+    "34324a1cbc15e1df27b1b3a81e01959e5cdcc7beb01edb9b98bb15e216b4acdc": {
+      "file": "requests/sessions.py",
+      "sha256": "32e30eadf91367b3aefb90e8541cf3fc20d3d950a16828c0101f4232d36a78a9",
+      "start_line": 169,
+      "end_line": 182,
+      "text": "            resp = self.send(\n                prepared_request,\n                stream=stream,\n                timeout=timeout,\n                verify=verify,\n                cert=cert,\n                proxies=proxies,\n                allow_redirects=False,\n            )\n\n            extract_cookies_to_jar(self.cookies, prepared_request, resp.raw)\n\n            i += 1\n            yield resp",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    },
+    "25b40ad34d984f37a5290abb5da8ea4a3b9604352a6d0e0812e450b154f865dd": {
+      "file": "requests/sessions.py",
+      "sha256": "32e30eadf91367b3aefb90e8541cf3fc20d3d950a16828c0101f4232d36a78a9",
+      "start_line": 464,
+      "end_line": 530,
+      "text": "    def send(self, request, **kwargs):\n        \"\"\"Send a given PreparedRequest.\"\"\"\n        # Set defaults that the hooks can utilize to ensure they always have\n        # the correct parameters to reproduce the previous request.\n        kwargs.setdefault('stream', self.stream)\n        kwargs.setdefault('verify', self.verify)\n        kwargs.setdefault('cert', self.cert)\n        kwargs.setdefault('proxies', self.proxies)\n\n        # It's possible that users might accidentally send a Request object.\n        # Guard against that specific failure case.\n        if not isinstance(request, PreparedRequest):\n            raise ValueError('You can only send PreparedRequests.')\n\n        # Set up variables needed for resolve_redirects and dispatching of hooks\n        allow_redirects = kwargs.pop('allow_redirects', True)\n        stream = kwargs.get('stream')\n        timeout = kwargs.get('timeout')\n        verify = kwargs.get('verify')\n        cert = kwargs.get('cert')\n        proxies = kwargs.get('proxies')\n        hooks = request.hooks\n\n        # Get the appropriate adapter to use\n        adapter = self.get_adapter(url=request.url)\n\n        # Start time (approximately) of the request\n        start = datetime.utcnow()\n\n        # Send the request\n        r = adapter.send(request, **kwargs)\n\n        # Total elapsed time of the request (approximately)\n        r.elapsed = datetime.utcnow() - start\n\n        # Response manipulation hooks\n        r = dispatch_hook('response', hooks, r, **kwargs)\n\n        # Persist cookies\n        if r.history:\n\n            # If the hooks create history then we want those cookies too\n            for resp in r.history:\n                extract_cookies_to_jar(self.cookies, resp.request, resp.raw)\n\n        extract_cookies_to_jar(self.cookies, request, r.raw)\n\n        # Redirect resolving generator.\n        gen = self.resolve_redirects(r, request,\n            stream=stream,\n            timeout=timeout,\n            verify=verify,\n            cert=cert,\n            proxies=proxies)\n\n        # Resolve redirects if allowed.\n        history = [resp for resp in gen] if allow_redirects else []\n\n        # Shuffle things around if there's history.\n        if history:\n            # Insert the first (original) request at the start\n            history.insert(0, r)\n            # Get the last request made\n            r = history.pop()\n            r.history = tuple(history)\n\n        return r",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    },
+    "9a286f6baaf5e98333927cb00aacab4fcf91b7cf9591628d350e563bcae8857c": {
+      "file": "requests/hooks.py",
+      "sha256": "f6f362ba244745de50cba057ff4a751f736c5330e8d4cfc76854760052f8d538",
+      "start_line": 29,
+      "end_line": 45,
+      "text": "def dispatch_hook(key, hooks, hook_data, **kwargs):\n    \"\"\"Dispatches a hook dictionary on a given piece of data.\"\"\"\n\n    hooks = hooks or dict()\n\n    if key in hooks:\n        hooks = hooks.get(key)\n\n        if hasattr(hooks, '__call__'):\n            hooks = [hooks]\n\n        for hook in hooks:\n            _hook_data = hook(hook_data, **kwargs)\n            if _hook_data is not None:\n                hook_data = _hook_data\n\n    return hook_data",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    },
+    "877a593200c771a3f067a97d6e15c52a148ebe0e2e828678b03c7e0552727498": {
+      "file": "requests/adapters.py",
+      "sha256": "4002f9ad2c04ceeaece4fe2ac23148cc74086de515f0eb1498a06f796e2bf899",
+      "start_line": 294,
+      "end_line": 305,
+      "text": "    def send(self, request, stream=False, timeout=None, verify=True, cert=None, proxies=None):\n        \"\"\"Sends PreparedRequest object. Returns Response object.\n\n        :param request: The :class:`PreparedRequest <PreparedRequest>` being sent.\n        :param stream: (optional) Whether to stream the request content.\n        :param timeout: (optional) The timeout on the request.\n        :param verify: (optional) Whether to verify SSL certificates.\n        :param cert: (optional) Any user-provided SSL certificate to be trusted.\n        :param proxies: (optional) The proxies dictionary to apply to the request.\n        \"\"\"\n\n        conn = self.get_connection(request.url, proxies)",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    },
+    "c366c17a5f4407b0042e1a83e2c1be2f1715e4907bb8f9d777ff0ed0c1386dfd": {
+      "file": "test_requests.py",
+      "sha256": "37ef77c0f9c3bddee646e2e3fd496e1a114daf6e8b05d3e47897ebc2e0d7630e",
+      "start_line": 115,
+      "end_line": 119,
+      "text": "    def test_HTTP_302_ALLOW_REDIRECT_GET(self):\n        r = requests.get(httpbin('redirect', '1'))\n        assert r.status_code == 200\n        assert r.history[0].status_code == 302\n        assert r.history[0].is_redirect",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    },
+    "7d5717a9344e4d99553aec5800a1ee6e84d79be4914295a010c58870b119b510": {
+      "file": "test_requests.py",
+      "sha256": "37ef77c0f9c3bddee646e2e3fd496e1a114daf6e8b05d3e47897ebc2e0d7630e",
+      "start_line": 505,
+      "end_line": 534,
+      "text": "    def test_prepared_request_hook(self):\n        def hook(resp, **kwargs):\n            resp.hook_working = True\n            return resp\n\n        req = requests.Request('GET', HTTPBIN, hooks={'response': hook})\n        prep = req.prepare()\n\n        s = requests.Session()\n        s.proxies = getproxies()\n        resp = s.send(prep)\n\n        assert hasattr(resp, 'hook_working')\n\n    def test_prepared_from_session(self):\n        class DummyAuth(requests.auth.AuthBase):\n            def __call__(self, r):\n                r.headers['Dummy-Auth-Test'] = 'dummy-auth-test-ok'\n                return r\n\n        req = requests.Request('GET', httpbin('headers'))\n        assert not req.auth\n\n        s = requests.Session()\n        s.auth = DummyAuth()\n\n        prep = s.prepare_request(req)\n        resp = s.send(prep)\n\n        assert resp.json()['headers']['Dummy-Auth-Test'] == 'dummy-auth-test-ok'",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    },
+    "2427bc37ee86740875ee883da43a95d98647b18bf8ed1a204b3bb0864627809a": {
+      "file": "test_requests.py",
+      "sha256": "37ef77c0f9c3bddee646e2e3fd496e1a114daf6e8b05d3e47897ebc2e0d7630e",
+      "start_line": 208,
+      "end_line": 212,
+      "text": "    def test_requests_in_history_are_not_overridden(self):\n        resp = requests.get(httpbin('redirect/3'))\n        urls = [r.url for r in resp.history]\n        req_urls = [r.request.url for r in resp.history]\n        assert urls == req_urls",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    },
+    "afc44f8c218cce5a3024439ce8fbe0610b544cc4b257a1d7e886588607c36d30": {
+      "file": "test_requests.py",
+      "sha256": "37ef77c0f9c3bddee646e2e3fd496e1a114daf6e8b05d3e47897ebc2e0d7630e",
+      "start_line": 313,
+      "end_line": 322,
+      "text": "    def test_DIGEST_STREAM(self):\n\n        auth = HTTPDigestAuth('user', 'pass')\n        url = httpbin('digest-auth', 'auth', 'user', 'pass')\n\n        r = requests.get(url, auth=auth, stream=True)\n        assert r.raw.read() != b''\n\n        r = requests.get(url, auth=auth, stream=False)\n        assert r.raw.read() == b''",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    },
+    "4dbe68f7ba726db48e8fa5baff936c7f11770230a15cbd0ac16a4be5a34e6d51": {
+      "file": "requests/api.py",
+      "sha256": "46295d2e64e1951dc134523a0b76d2d5bbf15791bae5e84256b0469181de8c3b",
+      "start_line": 47,
+      "end_line": 54,
+      "text": "def get(url, **kwargs):\n    \"\"\"Sends a GET request. Returns :class:`Response` object.\n\n    :param url: URL for the new :class:`Request` object.\n    :param \\*\\*kwargs: Optional arguments that ``request`` takes.\n    \"\"\"\n\n    kwargs.setdefault('allow_redirects', True)",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    },
+    "0e310a0fea0b32bc41bb71cd8607a1722ba8202a1d44f6655712682066f26f35": {
+      "file": "requests/sessions.py",
+      "sha256": "32e30eadf91367b3aefb90e8541cf3fc20d3d950a16828c0101f4232d36a78a9",
+      "start_line": 395,
+      "end_line": 403,
+      "text": "    def get(self, url, **kwargs):\n        \"\"\"Sends a GET request. Returns :class:`Response` object.\n\n        :param url: URL for the new :class:`Request` object.\n        :param \\*\\*kwargs: Optional arguments that ``request`` takes.\n        \"\"\"\n\n        kwargs.setdefault('allow_redirects', True)\n        return self.request('GET', url, **kwargs)",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    },
+    "9927151f335de56799021e54b5697c1170a41c579cca5c4869f4f67677eb7844": {
+      "file": "requests/_pilot_post_edit.py",
+      "sha256": "91ae1a3d5561b96db5590260d4e20b68db8a3a693c19965d2c92cb3e062d087e",
+      "start_line": 1,
+      "end_line": 5,
+      "text": "from .models import Request\nfrom .sessions import Session\n\ndef prepare_probe_request(url: str):\n    return Session().prepare_request(Request(\"GET\", url))",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    },
+    "413dc2c5bd0515acc146007eba01bfd320577b2cf96fc6a2cee7e386e2c27f0c": {
+      "file": "requests/sessions.py",
+      "sha256": "34ba94b0709e4fedd604038059b5afe23eec08458a3cd55a46322c1f51285026",
+      "start_line": 260,
+      "end_line": 299,
+      "text": "\n    def prepare_request(self, request):\n        \"\"\"Constructs a :class:`PreparedRequest <PreparedRequest>` for\n        transmission and returns it. The :class:`PreparedRequest` has settings\n        merged from the :class:`Request <Request>` instance and those of the\n        :class:`Session`.\n\n        :param request: :class:`Request` instance to prepare with this\n            session's settings.\n        \"\"\"\n        cookies = request.cookies or {}\n\n        # Bootstrap CookieJar.\n        if not isinstance(cookies, cookielib.CookieJar):\n            cookies = cookiejar_from_dict(cookies)\n\n        # Merge with session cookies\n        merged_cookies = merge_cookies(\n            merge_cookies(RequestsCookieJar(), self.cookies), cookies)\n\n\n        # Set environment's basic authentication if not explicitly set.\n        auth = request.auth\n        if self.trust_env and not auth and not self.auth:\n            auth = get_netrc_auth(request.url)\n\n        p = PreparedRequest()\n        p.prepare(\n            method=request.method.upper(),\n            url=request.url,\n            files=request.files,\n            data=request.data,\n            headers=merge_setting(request.headers, self.headers, dict_class=CaseInsensitiveDict),\n            params=merge_setting(request.params, self.params),\n            auth=merge_setting(auth, self.auth),\n            cookies=merged_cookies,\n            hooks=merge_hooks(request.hooks, self.hooks),\n        )\n        return p\n",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    },
+    "73655205d03980a596a2a24c522d107bb21ef6c7a17bb70d4fc7f1ff9496c7dd": {
+      "file": "requests/models.py",
+      "sha256": "91153287286b3bc2018f8739e40dbaaee4c23cf5d7ca95b6ac661e0ac2ca9c33",
+      "start_line": 463,
+      "end_line": 483,
+      "text": "    def prepare_auth(self, auth, url=''):\n        \"\"\"Prepares the given HTTP auth data.\"\"\"\n\n        # If no Auth is explicitly provided, extract it from the URL first.\n        if auth is None:\n            url_auth = get_auth_from_url(self.url)\n            auth = url_auth if any(url_auth) else None\n\n        if auth:\n            if isinstance(auth, tuple) and len(auth) == 2:\n                # special-case basic HTTP auth\n                auth = HTTPBasicAuth(*auth)\n\n            # Allow auth to make its changes.\n            r = auth(self)\n\n            # Update self to reflect the auth changes.\n            self.__dict__.update(r.__dict__)\n\n            # Recompute Content-Length\n            self.prepare_content_length(self.body)",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    },
+    "2a6147c4d03856fd6dfd830ae9cdfdd4248e7f6422937b067d63ca6339ee6b8a": {
+      "file": "requests/sessions.py",
+      "sha256": "34ba94b0709e4fedd604038059b5afe23eec08458a3cd55a46322c1f51285026",
+      "start_line": 464,
+      "end_line": 531,
+      "text": "\n    def send(self, request, **kwargs):\n        \"\"\"Send a given PreparedRequest.\"\"\"\n        # Set defaults that the hooks can utilize to ensure they always have\n        # the correct parameters to reproduce the previous request.\n        kwargs.setdefault('stream', self.stream)\n        kwargs.setdefault('verify', self.verify)\n        kwargs.setdefault('cert', self.cert)\n        kwargs.setdefault('proxies', self.proxies)\n\n        # It's possible that users might accidentally send a Request object.\n        # Guard against that specific failure case.\n        if not isinstance(request, PreparedRequest):\n            raise ValueError('You can only send PreparedRequests.')\n\n        # Set up variables needed for resolve_redirects and dispatching of hooks\n        allow_redirects = kwargs.pop('allow_redirects', True)\n        stream = kwargs.get('stream')\n        timeout = kwargs.get('timeout')\n        verify = kwargs.get('verify')\n        cert = kwargs.get('cert')\n        proxies = kwargs.get('proxies')\n        hooks = request.hooks\n\n        # Get the appropriate adapter to use\n        adapter = self.get_adapter(url=request.url)\n\n        # Start time (approximately) of the request\n        start = datetime.utcnow()\n\n        # Send the request\n        r = adapter.send(request, **kwargs)\n\n        # Total elapsed time of the request (approximately)\n        r.elapsed = datetime.utcnow() - start\n\n        # Response manipulation hooks\n        r = dispatch_hook('response', hooks, r, **kwargs)\n\n        # Persist cookies\n        if r.history:\n\n            # If the hooks create history then we want those cookies too\n            for resp in r.history:\n                extract_cookies_to_jar(self.cookies, resp.request, resp.raw)\n\n        extract_cookies_to_jar(self.cookies, request, r.raw)\n\n        # Redirect resolving generator.\n        gen = self.resolve_redirects(r, request,\n            stream=stream,\n            timeout=timeout,\n            verify=verify,\n            cert=cert,\n            proxies=proxies)\n\n        # Resolve redirects if allowed.\n        history = [resp for resp in gen] if allow_redirects else []\n\n        # Shuffle things around if there's history.\n        if history:\n            # Insert the first (original) request at the start\n            history.insert(0, r)\n            # Get the last request made\n            r = history.pop()\n            r.history = tuple(history)\n\n        return r",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    },
+    "8844db6bd58fbfd45768d6445bf2bd825948fb81be2712957ea790832ae7ed1e": {
+      "file": "requests/adapters.py",
+      "sha256": "4002f9ad2c04ceeaece4fe2ac23148cc74086de515f0eb1498a06f796e2bf899",
+      "start_line": 294,
+      "end_line": 372,
+      "text": "    def send(self, request, stream=False, timeout=None, verify=True, cert=None, proxies=None):\n        \"\"\"Sends PreparedRequest object. Returns Response object.\n\n        :param request: The :class:`PreparedRequest <PreparedRequest>` being sent.\n        :param stream: (optional) Whether to stream the request content.\n        :param timeout: (optional) The timeout on the request.\n        :param verify: (optional) Whether to verify SSL certificates.\n        :param cert: (optional) Any user-provided SSL certificate to be trusted.\n        :param proxies: (optional) The proxies dictionary to apply to the request.\n        \"\"\"\n\n        conn = self.get_connection(request.url, proxies)\n\n        self.cert_verify(conn, request.url, verify, cert)\n        url = self.request_url(request, proxies)\n        self.add_headers(request)\n\n        chunked = not (request.body is None or 'Content-Length' in request.headers)\n\n        if stream:\n            timeout = TimeoutSauce(connect=timeout)\n        else:\n            timeout = TimeoutSauce(connect=timeout, read=timeout)\n\n        try:\n            if not chunked:\n                resp = conn.urlopen(\n                    method=request.method,\n                    url=url,\n                    body=request.body,\n                    headers=request.headers,\n                    redirect=False,\n                    assert_same_host=False,\n                    preload_content=False,\n                    decode_content=False,\n                    retries=self.max_retries,\n                    timeout=timeout\n                )\n\n            # Send the request.\n            else:\n                if hasattr(conn, 'proxy_pool'):\n                    conn = conn.proxy_pool\n\n                low_conn = conn._get_conn(timeout=timeout)\n\n                try:\n                    low_conn.putrequest(request.method,\n                                        url,\n                                        skip_accept_encoding=True)\n\n                    for header, value in request.headers.items():\n                        low_conn.putheader(header, value)\n\n                    low_conn.endheaders()\n\n                    for i in request.body:\n                        low_conn.send(hex(len(i))[2:].encode('utf-8'))\n                        low_conn.send(b'\\r\\n')\n                        low_conn.send(i)\n                        low_conn.send(b'\\r\\n')\n                    low_conn.send(b'0\\r\\n\\r\\n')\n\n                    r = low_conn.getresponse()\n                    resp = HTTPResponse.from_httplib(\n                        r,\n                        pool=conn,\n                        connection=low_conn,\n                        preload_content=False,\n                        decode_content=False\n                    )\n                except:\n                    # If we hit any problems here, clean up the connection.\n                    # Then, reraise so that we can handle the actual exception.\n                    low_conn.close()\n                    raise\n                else:\n                    # All is well, return the connection to the pool.\n                    conn._put_conn(low_conn)",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    },
+    "ab070fc805014279f8fb6617289b70ce6e6c1df9291f867f3a80ad8643201541": {
+      "file": "requests/sessions.py",
+      "sha256": "8396869f56d924cf8d0387909a1251e6e1e281fc13889ae54c2d4209810741f5",
+      "start_line": 260,
+      "end_line": 299,
+      "text": "    def prepare_request(self, request):\n        \"\"\"Constructs a :class:`PreparedRequest <PreparedRequest>` for\n        transmission and returns it. The :class:`PreparedRequest` has settings\n        merged from the :class:`Request <Request>` instance and those of the\n        :class:`Session`.\n\n        :param request: :class:`Request` instance to prepare with this\n            session's settings.\n        \"\"\"\n        cookies = request.cookies or {}\n\n        # Bootstrap CookieJar.\n        if not isinstance(cookies, cookielib.CookieJar):\n            cookies = cookiejar_from_dict(cookies)\n\n        # Merge with session cookies\n        merged_cookies = merge_cookies(\n            merge_cookies(RequestsCookieJar(), self.cookies), cookies)\n\n\n        # Set environment's basic authentication if not explicitly set.\n        auth = request.auth\n        if self.trust_env and not auth and not self.auth:\n            auth = get_netrc_auth(request.url)\n\n        p = PreparedRequest()\n        p.prepare(\n            method=request.method.upper(),\n            url=request.url,\n            files=request.files,\n            data=request.data,\n            headers=merge_setting(request.headers, self.headers, dict_class=CaseInsensitiveDict),\n            params=merge_setting(request.params, self.params),\n            auth=merge_setting(auth, self.auth),\n            cookies=merged_cookies,\n            hooks=merge_hooks(request.hooks, self.hooks),\n        )\n        return p\n\n    def request(self, method, url,",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    },
+    "d6bd26b490e71b4e98189a88bd4dad3324f150b79d743e32e72c156dbebec0e7": {
+      "file": "requests/sessions.py",
+      "sha256": "8396869f56d924cf8d0387909a1251e6e1e281fc13889ae54c2d4209810741f5",
+      "start_line": 464,
+      "end_line": 531,
+      "text": "    def send(self, request, **kwargs):\n        \"\"\"Send a given PreparedRequest.\"\"\"\n        # Set defaults that the hooks can utilize to ensure they always have\n        # the correct parameters to reproduce the previous request.\n        kwargs.setdefault('stream', self.stream)\n        kwargs.setdefault('verify', self.verify)\n        kwargs.setdefault('cert', self.cert)\n        kwargs.setdefault('proxies', self.proxies)\n\n        # It's possible that users might accidentally send a Request object.\n        # Guard against that specific failure case.\n        if not isinstance(request, PreparedRequest):\n            raise ValueError('You can only send PreparedRequests.')\n\n        # Set up variables needed for resolve_redirects and dispatching of hooks\n        allow_redirects = kwargs.pop('allow_redirects', True)\n        stream = kwargs.get('stream')\n        timeout = kwargs.get('timeout')\n        verify = kwargs.get('verify')\n        cert = kwargs.get('cert')\n        proxies = kwargs.get('proxies')\n        hooks = request.hooks\n\n        # Get the appropriate adapter to use\n        adapter = self.get_adapter(url=request.url)\n\n        # Start time (approximately) of the request\n        start = datetime.utcnow()\n\n        # Send the request\n        r = adapter.send(request, **kwargs)\n\n        # Total elapsed time of the request (approximately)\n        r.elapsed = datetime.utcnow() - start\n\n        # Response manipulation hooks\n        r = dispatch_hook('response', hooks, r, **kwargs)\n\n        # Persist cookies\n        if r.history:\n\n            # If the hooks create history then we want those cookies too\n            for resp in r.history:\n                extract_cookies_to_jar(self.cookies, resp.request, resp.raw)\n\n        extract_cookies_to_jar(self.cookies, request, r.raw)\n\n        # Redirect resolving generator.\n        gen = self.resolve_redirects(r, request,\n            stream=stream,\n            timeout=timeout,\n            verify=verify,\n            cert=cert,\n            proxies=proxies)\n\n        # Resolve redirects if allowed.\n        history = [resp for resp in gen] if allow_redirects else []\n\n        # Shuffle things around if there's history.\n        if history:\n            # Insert the first (original) request at the start\n            history.insert(0, r)\n            # Get the last request made\n            r = history.pop()\n            r.history = tuple(history)\n\n        return r\n",
+      "line_base": 1,
+      "scope": "Controller source ground truth, not claimed model-read evidence."
+    }
+  },
+  "reviews": [
+    {
+      "workflow_index": 0,
+      "arm": "serena",
+      "task_id": "psf__requests-1921-lookup",
+      "kind": "lookup",
+      "criteria": [
+        {
+          "criterion": "Identify Session.prepare_request in requests/sessions.py, not Request.prepare as the session-merging implementation.",
+          "met": true,
+          "rationale": "Identifies the actual Session.prepare_request definition at sessions.py:260-297."
+        },
+        {
+          "criterion": "Describe headers, cookies and authentication/session defaults from the actual implementation.",
+          "met": true,
+          "rationale": "Explains header/parameter/hook merges, session/request cookie layering and conditional netrc authentication from the implementation."
+        },
+        {
+          "criterion": "Cite a valid definition range and support the stated behavior.",
+          "met": true,
+          "rationale": "Definition and helper citations contain the stated behavior, including the original request-only None deletion."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "findings": [],
+      "notes": [],
+      "source_before_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "source_after_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "9bd216f5c158450c956a66d1737c57aa558fea28bbc46396cb01b1d6a3eab7d0",
+      "sdk_trace_sha256": "2f6622df0ba0903c10b05dac6c9bd8caa5f1f8278477ee15ba509d00cf74408f",
+      "workflow_artifact": "codegraph_matched_workflow_v2_00.json",
+      "workflow_artifact_sha256": "75075549b2a47b5ec5340f42dc8724c6f1120dfc071b9e74ecc8d51dd04c45ef",
+      "observation_artifact": {
+        "artifact": "codegraph_matched_workflow_v2_00_lookup_observations.json",
+        "sha256": "69547cfdddd3d857f3db370aa889a986b5bef23d5a0c1c37130e14020dc58f6c"
+      },
+      "observation_tool_use_ids": [
+        "toolu_01XADEZkJpzDsUGLSFkGCXAN",
+        "toolu_01Ft3u7MTV2CtVzTKu3dusDJ"
+      ],
+      "delivered_user_tool_message_count": 2,
+      "source_credit_scope": "Controller ground truth establishes answer correctness, not model-read credit or a complete ContextBench score.",
+      "source_evidence": [
+        {
+          "source_evidence_id": "a765e668ce674228a155cddd1d0aac2b79098b7132ea2c9c9fc98b915e9ac7bb",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "68c8249c3b17438c6300718be9be7d9864c02563030a4a92bb41ca6af40648f2",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "d9ee3fd81808b96b5154ca568f0dbdc9e428dc827aa0227e2cb819537e338528",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        }
+      ]
+    },
+    {
+      "workflow_index": 1,
+      "arm": "codenib",
+      "task_id": "psf__requests-1921-lookup",
+      "kind": "lookup",
+      "criteria": [
+        {
+          "criterion": "Identify Session.prepare_request in requests/sessions.py, not Request.prepare as the session-merging implementation.",
+          "met": true,
+          "rationale": "Identifies the actual Session.prepare_request definition at sessions.py:260-297."
+        },
+        {
+          "criterion": "Describe headers, cookies and authentication/session defaults from the actual implementation.",
+          "met": true,
+          "rationale": "Explains header/parameter/hook merges, session/request cookie layering and conditional netrc authentication from the implementation."
+        },
+        {
+          "criterion": "Cite a valid definition range and support the stated behavior.",
+          "met": true,
+          "rationale": "Definition and helper citations contain the stated behavior, including the original request-only None deletion."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "findings": [],
+      "notes": [],
+      "source_before_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "source_after_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "6889af4a3914fa3ac8cf7c46af9449357e3c0441b77bc2e0d54142c553e48bd2",
+      "sdk_trace_sha256": "89c44963e5e61468bf4456106ab070c13c1412bbf5dd47cb7371659d7c9398e0",
+      "workflow_artifact": "codegraph_matched_workflow_v2_01.json",
+      "workflow_artifact_sha256": "9e51ac5aa05a8ad2685d4ad726d19491356a2ab32082e249a77c8e3a8c2dc2ea",
+      "observation_artifact": {
+        "artifact": "codegraph_matched_workflow_v2_01_lookup_observations.json",
+        "sha256": "905dfa844d10287645ac2bb743898d75ede068232e235fcdcfbb0a0bc3023e52"
+      },
+      "observation_tool_use_ids": [
+        "toolu_01QT2LMRCqePAMFCeCuzTo4D",
+        "toolu_01EC65t3QFjAvNEqqpaHSArU",
+        "toolu_01NNeRpAMgn6tbC46jona2tz"
+      ],
+      "delivered_user_tool_message_count": 3,
+      "source_credit_scope": "Controller ground truth establishes answer correctness, not model-read credit or a complete ContextBench score.",
+      "source_evidence": [
+        {
+          "source_evidence_id": "a765e668ce674228a155cddd1d0aac2b79098b7132ea2c9c9fc98b915e9ac7bb",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "68c8249c3b17438c6300718be9be7d9864c02563030a4a92bb41ca6af40648f2",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "d9ee3fd81808b96b5154ca568f0dbdc9e428dc827aa0227e2cb819537e338528",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        }
+      ]
+    },
+    {
+      "workflow_index": 2,
+      "arm": "codegraph",
+      "task_id": "psf__requests-1921-lookup",
+      "kind": "lookup",
+      "criteria": [
+        {
+          "criterion": "Identify Session.prepare_request in requests/sessions.py, not Request.prepare as the session-merging implementation.",
+          "met": true,
+          "rationale": "Identifies the actual Session.prepare_request definition at sessions.py:260-297."
+        },
+        {
+          "criterion": "Describe headers, cookies and authentication/session defaults from the actual implementation.",
+          "met": true,
+          "rationale": "Explains header/parameter/hook merges, session/request cookie layering and conditional netrc authentication from the implementation."
+        },
+        {
+          "criterion": "Cite a valid definition range and support the stated behavior.",
+          "met": true,
+          "rationale": "Definition and helper citations contain the stated behavior, including the original request-only None deletion."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "findings": [],
+      "notes": [],
+      "source_before_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "source_after_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "e6c0d9a055bbdfdccb8b7f3b96ffb14e5f1c885302bea954403a12e32b384dbb",
+      "sdk_trace_sha256": "cc6291d5642fb49a111429a6b9481a9846732406a5224658e0071247939e232c",
+      "workflow_artifact": "codegraph_matched_workflow_v2_02.json",
+      "workflow_artifact_sha256": "637908eed017bd40bee980c4c498316ec055fac8320ad0b26502169e2022f5ac",
+      "observation_artifact": {
+        "artifact": "codegraph_matched_workflow_v2_02_lookup_observations.json",
+        "sha256": "aae25a2394a016c558b0706eecda21eb13b0fa82014ffd4372ba69f7406aca2b"
+      },
+      "observation_tool_use_ids": [
+        "toolu_01E1rAY7MBHDE4i4tYoCy6ds"
+      ],
+      "delivered_user_tool_message_count": 1,
+      "source_credit_scope": "Controller ground truth establishes answer correctness, not model-read credit or a complete ContextBench score.",
+      "source_evidence": [
+        {
+          "source_evidence_id": "a765e668ce674228a155cddd1d0aac2b79098b7132ea2c9c9fc98b915e9ac7bb",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "68c8249c3b17438c6300718be9be7d9864c02563030a4a92bb41ca6af40648f2",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "d9ee3fd81808b96b5154ca568f0dbdc9e428dc827aa0227e2cb819537e338528",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        }
+      ]
+    },
+    {
+      "workflow_index": 3,
+      "arm": "native",
+      "task_id": "psf__requests-1921-lookup",
+      "kind": "lookup",
+      "criteria": [
+        {
+          "criterion": "Identify Session.prepare_request in requests/sessions.py, not Request.prepare as the session-merging implementation.",
+          "met": true,
+          "rationale": "Identifies the actual Session.prepare_request definition at sessions.py:260-297."
+        },
+        {
+          "criterion": "Describe headers, cookies and authentication/session defaults from the actual implementation.",
+          "met": true,
+          "rationale": "Explains header/parameter/hook merges, session/request cookie layering and conditional netrc authentication from the implementation."
+        },
+        {
+          "criterion": "Cite a valid definition range and support the stated behavior.",
+          "met": true,
+          "rationale": "Definition and helper citations contain the stated behavior, including the original request-only None deletion."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "findings": [],
+      "notes": [],
+      "source_before_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "source_after_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "dccce40e25098e8f8e1cd5401de0e4da1e5954fd56fda8c38aa36b3210c969d6",
+      "sdk_trace_sha256": "ea51432eba010653e522424d33277e13725262f40603bf7f000373a29f361f05",
+      "workflow_artifact": "codegraph_matched_workflow_v2_03.json",
+      "workflow_artifact_sha256": "f61fb16998925bb5df07631a55545d1e0964b8b2793592c045044d9d8feeb757",
+      "observation_artifact": {
+        "artifact": "codegraph_matched_workflow_v2_03_lookup_observations.json",
+        "sha256": "a14d904010741978ac9126c712677fadde2a77727c19a427babb81d13fe46685"
+      },
+      "observation_tool_use_ids": [
+        "toolu_01KYxGAJbkvYjzAUNDjMB7ug",
+        "toolu_01WiJA7LWEdxJUfaxQtW2dvT",
+        "toolu_01R3rQksBREg212WjWjuwcxo"
+      ],
+      "delivered_user_tool_message_count": 3,
+      "source_credit_scope": "Controller ground truth establishes answer correctness, not model-read credit or a complete ContextBench score.",
+      "source_evidence": [
+        {
+          "source_evidence_id": "a765e668ce674228a155cddd1d0aac2b79098b7132ea2c9c9fc98b915e9ac7bb",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "68c8249c3b17438c6300718be9be7d9864c02563030a4a92bb41ca6af40648f2",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "d9ee3fd81808b96b5154ca568f0dbdc9e428dc827aa0227e2cb819537e338528",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        }
+      ]
+    },
+    {
+      "workflow_index": 0,
+      "arm": "serena",
+      "task_id": "psf__requests-1921-flow",
+      "kind": "flow",
+      "criteria": [
+        {
+          "criterion": "Connect Session.request to Session.prepare_request and PreparedRequest.prepare.",
+          "met": true,
+          "rationale": "Connects request construction, Session.prepare_request and PreparedRequest.prepare in source order."
+        },
+        {
+          "criterion": "Connect Session.send, get_adapter and HTTPAdapter.send to the underlying connection/urllib3 transport call.",
+          "met": true,
+          "rationale": "Connects send/get_adapter/default HTTPAdapter.send to both urlopen and manual chunked transport with dynamic adapter selection."
+        },
+        {
+          "criterion": "Explain Session.resolve_redirects returning through send, including redirect control, without treating adapter selection as one unconditional runtime target.",
+          "met": true,
+          "rationale": "Explains generator consumption, recursive send with allow_redirects=False and transport reselection on redirect hops."
+        },
+        {
+          "criterion": "Cite the relevant sessions, models and adapters source boundaries.",
+          "met": true,
+          "rationale": "Cites the relevant sessions/models/adapters definition and call-site boundaries."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "findings": [],
+      "notes": [
+        "The term previous request alone is not treated as an unequivocal claim that req is reassigned on every hop; the actual loop retains the original req. No source-read credit is inferred from prose."
+      ],
+      "source_before_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "source_after_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "f3ead81be06eaf1d5cce922891e29a47267165a7597135df40843c8f136377c9",
+      "sdk_trace_sha256": "eae71c99208a26e54b3760a6cfbb2aad1818a77610866cdce92386a47fe2c087",
+      "workflow_artifact": "codegraph_matched_workflow_v2_00.json",
+      "workflow_artifact_sha256": "75075549b2a47b5ec5340f42dc8724c6f1120dfc071b9e74ecc8d51dd04c45ef",
+      "observation_artifact": {
+        "artifact": "codegraph_matched_workflow_v2_00_flow_observations.json",
+        "sha256": "a574a2dbec71333d5501e2a5b954f4735167a51d6b542416abd9d455ba6ce403"
+      },
+      "observation_tool_use_ids": [
+        "toolu_01Wt9DemCmPAZcNHGK8vRjK5",
+        "toolu_015nadQZMZSsbecCNGikHWoy",
+        "toolu_01CEraXY3KZ5E9bJFvJk32ge",
+        "toolu_0197jNbuhW48VGSjZyEMMQyg",
+        "toolu_01SD7Gsc1vXu8L4DQgXBfa19",
+        "toolu_0195ansuFXoLQNXpJ94MXkQB",
+        "toolu_01KZKskh5mF5LnWBTbCCQxEd"
+      ],
+      "delivered_user_tool_message_count": 7,
+      "source_credit_scope": "Controller ground truth establishes answer correctness, not model-read credit or a complete ContextBench score.",
+      "source_evidence": [
+        {
+          "source_evidence_id": "0cb404f0d9a59c1bcf77a1e89981fafd5bdef6ec86d6c44ac5930e0ac4274e57",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "a765e668ce674228a155cddd1d0aac2b79098b7132ea2c9c9fc98b915e9ac7bb",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "285e146f4bb355391b03ca8b5012e232268e5598dbdf1f26039314c0c80756cc",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "ece0163ac3f8e92b1904138d4dad2ec156ebf026db1f9f6c6ddf7c82933374b4",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "6a4d40790b36243abe4defa5a921ce273fb7edc812ddc555559f7d72afd5cb06",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "15d1b2256665e271d3da9c6a483d32acfadb02ed51bcf07fa7610ad4dae9d274",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "2f2f9d413383bdc15ac2a3e6b78634c9af3b674f1c69b9db3c375a058f5dcdb6",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "1d238c489c6191a667d243c8f052176ab52d2f6fb5cbc20e12385806478362b1",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "c1c85d1fa5580d6990c5917b5828b17bf3e068ede3f1ff13d8419f4fba595152",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        }
+      ]
+    },
+    {
+      "workflow_index": 1,
+      "arm": "codenib",
+      "task_id": "psf__requests-1921-flow",
+      "kind": "flow",
+      "criteria": [
+        {
+          "criterion": "Connect Session.request to Session.prepare_request and PreparedRequest.prepare.",
+          "met": true,
+          "rationale": "Connects request construction, Session.prepare_request and PreparedRequest.prepare in source order."
+        },
+        {
+          "criterion": "Connect Session.send, get_adapter and HTTPAdapter.send to the underlying connection/urllib3 transport call.",
+          "met": true,
+          "rationale": "Connects send/get_adapter/default HTTPAdapter.send to both urlopen and manual chunked transport with dynamic adapter selection."
+        },
+        {
+          "criterion": "Explain Session.resolve_redirects returning through send, including redirect control, without treating adapter selection as one unconditional runtime target.",
+          "met": true,
+          "rationale": "Explains generator consumption, recursive send with allow_redirects=False and transport reselection on redirect hops."
+        },
+        {
+          "criterion": "Cite the relevant sessions, models and adapters source boundaries.",
+          "met": true,
+          "rationale": "Cites the relevant sessions/models/adapters definition and call-site boundaries."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "findings": [],
+      "notes": [
+        "The term previous request alone is not treated as an unequivocal claim that req is reassigned on every hop; the actual loop retains the original req. No source-read credit is inferred from prose."
+      ],
+      "source_before_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "source_after_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "71908f745c6de911179e6113b1f74725e381cec749acda3f8bedbfd7818b76f0",
+      "sdk_trace_sha256": "7c103c5f09b01d64d9b3141a4a4df4c545d10831e14ef04c1afb902d959437c0",
+      "workflow_artifact": "codegraph_matched_workflow_v2_01.json",
+      "workflow_artifact_sha256": "9e51ac5aa05a8ad2685d4ad726d19491356a2ab32082e249a77c8e3a8c2dc2ea",
+      "observation_artifact": {
+        "artifact": "codegraph_matched_workflow_v2_01_flow_observations.json",
+        "sha256": "6e30968235fe9d8c9e1cecd9b8fbef4d3da53c701267f5cca1a7a4b68c65cf03"
+      },
+      "observation_tool_use_ids": [
+        "toolu_01P8zhgdbvPfPJjArCYMH5VR",
+        "toolu_011u5kZp6FqdoBdAYqBuKPC6",
+        "toolu_01C6V6RGmHgjxFwTV2J9Ka9s",
+        "toolu_01RYDj1nRHqK6FRpZrDLpus8",
+        "toolu_01C3nZ9z2WKdJzh5S93bZ7F9",
+        "toolu_016AWnZzJoSNcdS5yd3NY87U",
+        "toolu_014LSGzJMvNpstoyA3Pw2AQF",
+        "toolu_01VAeum6MTi9zaSPZ1Ly1tVC",
+        "toolu_01SZ6bQPhGG8QiM4D89MYRC2"
+      ],
+      "delivered_user_tool_message_count": 9,
+      "source_credit_scope": "Controller ground truth establishes answer correctness, not model-read credit or a complete ContextBench score.",
+      "source_evidence": [
+        {
+          "source_evidence_id": "0cb404f0d9a59c1bcf77a1e89981fafd5bdef6ec86d6c44ac5930e0ac4274e57",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "a765e668ce674228a155cddd1d0aac2b79098b7132ea2c9c9fc98b915e9ac7bb",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "285e146f4bb355391b03ca8b5012e232268e5598dbdf1f26039314c0c80756cc",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "ece0163ac3f8e92b1904138d4dad2ec156ebf026db1f9f6c6ddf7c82933374b4",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "6a4d40790b36243abe4defa5a921ce273fb7edc812ddc555559f7d72afd5cb06",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "15d1b2256665e271d3da9c6a483d32acfadb02ed51bcf07fa7610ad4dae9d274",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "2f2f9d413383bdc15ac2a3e6b78634c9af3b674f1c69b9db3c375a058f5dcdb6",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "1d238c489c6191a667d243c8f052176ab52d2f6fb5cbc20e12385806478362b1",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "c1c85d1fa5580d6990c5917b5828b17bf3e068ede3f1ff13d8419f4fba595152",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        }
+      ]
+    },
+    {
+      "workflow_index": 2,
+      "arm": "codegraph",
+      "task_id": "psf__requests-1921-flow",
+      "kind": "flow",
+      "criteria": [
+        {
+          "criterion": "Connect Session.request to Session.prepare_request and PreparedRequest.prepare.",
+          "met": true,
+          "rationale": "Connects request construction, Session.prepare_request and PreparedRequest.prepare in source order."
+        },
+        {
+          "criterion": "Connect Session.send, get_adapter and HTTPAdapter.send to the underlying connection/urllib3 transport call.",
+          "met": true,
+          "rationale": "Connects send/get_adapter/default HTTPAdapter.send to both urlopen and manual chunked transport with dynamic adapter selection."
+        },
+        {
+          "criterion": "Explain Session.resolve_redirects returning through send, including redirect control, without treating adapter selection as one unconditional runtime target.",
+          "met": false,
+          "rationale": "Redirect re-entry is identified, but the affirmative unconditional 302-to-GET rule is wrong for HEAD; the source excludes HEAD at lines 128-129."
+        },
+        {
+          "criterion": "Cite the relevant sessions, models and adapters source boundaries.",
+          "met": true,
+          "rationale": "Cites the relevant sessions/models/adapters definition and call-site boundaries."
+        }
+      ],
+      "accepted": false,
+      "serious_error": true,
+      "findings": [
+        {
+          "category": "incorrect_redirect_method_condition",
+          "serious": true,
+          "quote": "303 becomes GET (except for HEAD), 302 becomes GET, and 301 after a POST becomes GET",
+          "explanation": "Unlike the separately qualified 303 rule, the 302 rule omits the source HEAD exclusion and predicts a different outgoing HTTP method."
+        }
+      ],
+      "notes": [
+        "The term previous request alone is not treated as an unequivocal claim that req is reassigned on every hop; the actual loop retains the original req. No source-read credit is inferred from prose."
+      ],
+      "source_before_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "source_after_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "3f566c31036b54ebdb821938a06d562e736d8aad4958d2c3f14ceaa271138b31",
+      "sdk_trace_sha256": "3f42412462ce84374ec5e5677958c996280c7bcbf01af5d34cc7e9c3c5f0d800",
+      "workflow_artifact": "codegraph_matched_workflow_v2_02.json",
+      "workflow_artifact_sha256": "637908eed017bd40bee980c4c498316ec055fac8320ad0b26502169e2022f5ac",
+      "observation_artifact": {
+        "artifact": "codegraph_matched_workflow_v2_02_flow_observations.json",
+        "sha256": "37d3a0f1df8967056eb65cb9f702a649098ebd26ef47dc1ae8b9e79067f90476"
+      },
+      "observation_tool_use_ids": [
+        "toolu_01JnGjr32MTHPnWfRVeyCCXN",
+        "toolu_013tjL3fdZZNHiY13ov3S2se",
+        "toolu_019Q73aHEVhhHcAoZ9Tt1BfF",
+        "toolu_01HKmXpjoMkT12EFfacCcd5c",
+        "toolu_01VokAzynhafoGqomj9kESii",
+        "toolu_01BfNGjN9QrtPBenZA4xnEk7"
+      ],
+      "delivered_user_tool_message_count": 6,
+      "source_credit_scope": "Controller ground truth establishes answer correctness, not model-read credit or a complete ContextBench score.",
+      "source_evidence": [
+        {
+          "source_evidence_id": "0cb404f0d9a59c1bcf77a1e89981fafd5bdef6ec86d6c44ac5930e0ac4274e57",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "a765e668ce674228a155cddd1d0aac2b79098b7132ea2c9c9fc98b915e9ac7bb",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "285e146f4bb355391b03ca8b5012e232268e5598dbdf1f26039314c0c80756cc",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "ece0163ac3f8e92b1904138d4dad2ec156ebf026db1f9f6c6ddf7c82933374b4",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "6a4d40790b36243abe4defa5a921ce273fb7edc812ddc555559f7d72afd5cb06",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "15d1b2256665e271d3da9c6a483d32acfadb02ed51bcf07fa7610ad4dae9d274",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "2f2f9d413383bdc15ac2a3e6b78634c9af3b674f1c69b9db3c375a058f5dcdb6",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "1d238c489c6191a667d243c8f052176ab52d2f6fb5cbc20e12385806478362b1",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "c1c85d1fa5580d6990c5917b5828b17bf3e068ede3f1ff13d8419f4fba595152",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        }
+      ]
+    },
+    {
+      "workflow_index": 3,
+      "arm": "native",
+      "task_id": "psf__requests-1921-flow",
+      "kind": "flow",
+      "criteria": [
+        {
+          "criterion": "Connect Session.request to Session.prepare_request and PreparedRequest.prepare.",
+          "met": true,
+          "rationale": "Connects request construction, Session.prepare_request and PreparedRequest.prepare in source order."
+        },
+        {
+          "criterion": "Connect Session.send, get_adapter and HTTPAdapter.send to the underlying connection/urllib3 transport call.",
+          "met": true,
+          "rationale": "Connects send/get_adapter/default HTTPAdapter.send to both urlopen and manual chunked transport with dynamic adapter selection."
+        },
+        {
+          "criterion": "Explain Session.resolve_redirects returning through send, including redirect control, without treating adapter selection as one unconditional runtime target.",
+          "met": true,
+          "rationale": "Explains generator consumption, recursive send with allow_redirects=False and transport reselection on redirect hops."
+        },
+        {
+          "criterion": "Cite the relevant sessions, models and adapters source boundaries.",
+          "met": true,
+          "rationale": "Cites the relevant sessions/models/adapters definition and call-site boundaries."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "findings": [],
+      "notes": [
+        "The term previous request alone is not treated as an unequivocal claim that req is reassigned on every hop; the actual loop retains the original req. No source-read credit is inferred from prose."
+      ],
+      "source_before_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "source_after_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "02eedab6c19182d99ae94322badc7bd1e2a990e73c33c25647d073b3cc1ef21a",
+      "sdk_trace_sha256": "a971fff955c44709a8cd8198966c13bb242e3ca1c4a2c33d2fe873236146d7a8",
+      "workflow_artifact": "codegraph_matched_workflow_v2_03.json",
+      "workflow_artifact_sha256": "f61fb16998925bb5df07631a55545d1e0964b8b2793592c045044d9d8feeb757",
+      "observation_artifact": {
+        "artifact": "codegraph_matched_workflow_v2_03_flow_observations.json",
+        "sha256": "0f03d8f99bdf0a5a23bfca528df619f261a83e691de066de4ba6bae1ea150c6f"
+      },
+      "observation_tool_use_ids": [
+        "toolu_01TKpuPZ3gcr4h98mSJ4eHee",
+        "toolu_014tjjmnpLtd9Hx2zuxWmba5",
+        "toolu_01WT6wcqLnPUjQM5XarkQUk1",
+        "toolu_01HyHakmrhbuaWUKRbGtL4Cr",
+        "toolu_01QB57d4dpyxnM6TryhTSud1"
+      ],
+      "delivered_user_tool_message_count": 5,
+      "source_credit_scope": "Controller ground truth establishes answer correctness, not model-read credit or a complete ContextBench score.",
+      "source_evidence": [
+        {
+          "source_evidence_id": "0cb404f0d9a59c1bcf77a1e89981fafd5bdef6ec86d6c44ac5930e0ac4274e57",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "a765e668ce674228a155cddd1d0aac2b79098b7132ea2c9c9fc98b915e9ac7bb",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "285e146f4bb355391b03ca8b5012e232268e5598dbdf1f26039314c0c80756cc",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "ece0163ac3f8e92b1904138d4dad2ec156ebf026db1f9f6c6ddf7c82933374b4",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "6a4d40790b36243abe4defa5a921ce273fb7edc812ddc555559f7d72afd5cb06",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "15d1b2256665e271d3da9c6a483d32acfadb02ed51bcf07fa7610ad4dae9d274",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "2f2f9d413383bdc15ac2a3e6b78634c9af3b674f1c69b9db3c375a058f5dcdb6",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "1d238c489c6191a667d243c8f052176ab52d2f6fb5cbc20e12385806478362b1",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "c1c85d1fa5580d6990c5917b5828b17bf3e068ede3f1ff13d8419f4fba595152",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        }
+      ]
+    },
+    {
+      "workflow_index": 0,
+      "arm": "serena",
+      "task_id": "psf__requests-1921-impact",
+      "kind": "impact",
+      "criteria": [
+        {
+          "criterion": "Identify production direct callers Session.request and Session.resolve_redirects with their actual argument handling.",
+          "met": true,
+          "rationale": "Identifies Session.request and resolve_redirects as direct callers and describes the full options dictionary versus explicit per-hop forwarding."
+        },
+        {
+          "criterion": "Explain the redirect consequence and distinguish the adapter transport call from callers of Session.send.",
+          "met": true,
+          "rationale": "Explains allow_redirects removal and the outer redirect loop; correctly separates adapter/digest re-sends from Session.send callers."
+        },
+        {
+          "criterion": "Locate two actual existing source tests that exercise direct sending or redirect behavior, with valid citations and correct descriptions.",
+          "met": false,
+          "rationale": "The tests exist, but the single-hop redirect test does not detect an inner send beginning its own empty redirect traversal; its final 200 and history[0] assertions remain possible unchanged."
+        }
+      ],
+      "accepted": false,
+      "serious_error": false,
+      "findings": [
+        {
+          "category": "overstated_test_protection",
+          "serious": false,
+          "quote": "If the nested call started following redirects itself, the shape of `history` would change.",
+          "explanation": "The cited test follows exactly one redirect. The nested response is already terminal, so enabling its redirect traversal need not change history; the explanation overstates this test."
+        }
+      ],
+      "notes": [
+        "The existing hook test asserts a hook side effect, not exact forwarded kwargs. Listing the exercised redirect path is distinguished from claiming mutation sensitivity to its inner guard."
+      ],
+      "source_before_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "source_after_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "3c52c7d65a59a79d752d0a69d5cd3f1d694b9c539cd10ac04b67e681cbf049f2",
+      "sdk_trace_sha256": "a1f6d36bc298ee2a8c05e4d2506026b44cc62b5baff4d2b756047fb679811611",
+      "workflow_artifact": "codegraph_matched_workflow_v2_00.json",
+      "workflow_artifact_sha256": "75075549b2a47b5ec5340f42dc8724c6f1120dfc071b9e74ecc8d51dd04c45ef",
+      "observation_artifact": {
+        "artifact": "codegraph_matched_workflow_v2_00_impact_observations.json",
+        "sha256": "43af7135c12b94f78cb6a649b3d2614fa1d6fd68f3b25d4e94b5abb8f283dd99"
+      },
+      "observation_tool_use_ids": [
+        "toolu_01KwFcMQ4NM8AXqwodLj5Zcq",
+        "toolu_01TMwGbcLQqrx5vB7hFmyRWz",
+        "toolu_01UyS32wPaqjNfukehkuUkSB",
+        "toolu_013SjHFtvuz8y1oBVa1easz5",
+        "toolu_011oCVuKjtSVShTxxg6mHQqS",
+        "toolu_01Lsh38LSSpVctGw6ZPPeoTb"
+      ],
+      "delivered_user_tool_message_count": 6,
+      "source_credit_scope": "Controller ground truth establishes answer correctness, not model-read credit or a complete ContextBench score.",
+      "source_evidence": [
+        {
+          "source_evidence_id": "5e251758dc22cda4cd678ebd4321c172db93be6ba33661cac09c734818a6d483",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "34324a1cbc15e1df27b1b3a81e01959e5cdcc7beb01edb9b98bb15e216b4acdc",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "25b40ad34d984f37a5290abb5da8ea4a3b9604352a6d0e0812e450b154f865dd",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "c1c85d1fa5580d6990c5917b5828b17bf3e068ede3f1ff13d8419f4fba595152",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "9a286f6baaf5e98333927cb00aacab4fcf91b7cf9591628d350e563bcae8857c",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "877a593200c771a3f067a97d6e15c52a148ebe0e2e828678b03c7e0552727498",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "c366c17a5f4407b0042e1a83e2c1be2f1715e4907bb8f9d777ff0ed0c1386dfd",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "7d5717a9344e4d99553aec5800a1ee6e84d79be4914295a010c58870b119b510",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "2427bc37ee86740875ee883da43a95d98647b18bf8ed1a204b3bb0864627809a",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "afc44f8c218cce5a3024439ce8fbe0610b544cc4b257a1d7e886588607c36d30",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "4dbe68f7ba726db48e8fa5baff936c7f11770230a15cbd0ac16a4be5a34e6d51",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "0e310a0fea0b32bc41bb71cd8607a1722ba8202a1d44f6655712682066f26f35",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        }
+      ]
+    },
+    {
+      "workflow_index": 1,
+      "arm": "codenib",
+      "task_id": "psf__requests-1921-impact",
+      "kind": "impact",
+      "criteria": [
+        {
+          "criterion": "Identify production direct callers Session.request and Session.resolve_redirects with their actual argument handling.",
+          "met": true,
+          "rationale": "Identifies Session.request and resolve_redirects as direct callers and describes the full options dictionary versus explicit per-hop forwarding."
+        },
+        {
+          "criterion": "Explain the redirect consequence and distinguish the adapter transport call from callers of Session.send.",
+          "met": true,
+          "rationale": "Explains allow_redirects removal and the outer redirect loop; correctly separates adapter/digest re-sends from Session.send callers."
+        },
+        {
+          "criterion": "Locate two actual existing source tests that exercise direct sending or redirect behavior, with valid citations and correct descriptions.",
+          "met": true,
+          "rationale": "Cites two actual tests and their observed direct-send/hook or single-redirect assertions without claiming they check forwarded option values."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "findings": [],
+      "notes": [
+        "The existing hook test asserts a hook side effect, not exact forwarded kwargs. Listing the exercised redirect path is distinguished from claiming mutation sensitivity to its inner guard."
+      ],
+      "source_before_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "source_after_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "e051f853c81e310e8e1915089524b97a471f144ae1c632fe98428cacc9eff003",
+      "sdk_trace_sha256": "b5180206455fc25c5bc23f4c9ebf954da64595553b8dcf725679e88a57fa655f",
+      "workflow_artifact": "codegraph_matched_workflow_v2_01.json",
+      "workflow_artifact_sha256": "9e51ac5aa05a8ad2685d4ad726d19491356a2ab32082e249a77c8e3a8c2dc2ea",
+      "observation_artifact": {
+        "artifact": "codegraph_matched_workflow_v2_01_impact_observations.json",
+        "sha256": "f3631abf58f5df121cd58ff73774eae35cdafeb928f576babb86366d2d51a3ce"
+      },
+      "observation_tool_use_ids": [
+        "toolu_016cHJvSPqEzsc69JojGM7Cu",
+        "toolu_01FhJSnj8ZwgoW8STAbzTahj",
+        "toolu_017KHtQbZGSwfUnHNpo8bRNJ",
+        "toolu_01BSomKxd6bY3mLuERneGejs",
+        "toolu_0188G3SyMYJC8zpcpd7VNCWP",
+        "toolu_01S7uKUT7VXdK97YsqRuMeeb",
+        "toolu_019CokNVXQRyreCEjb4Eb8ff",
+        "toolu_01KRPSx6KYZxMn6FP2rp7cAM"
+      ],
+      "delivered_user_tool_message_count": 8,
+      "source_credit_scope": "Controller ground truth establishes answer correctness, not model-read credit or a complete ContextBench score.",
+      "source_evidence": [
+        {
+          "source_evidence_id": "5e251758dc22cda4cd678ebd4321c172db93be6ba33661cac09c734818a6d483",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "34324a1cbc15e1df27b1b3a81e01959e5cdcc7beb01edb9b98bb15e216b4acdc",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "25b40ad34d984f37a5290abb5da8ea4a3b9604352a6d0e0812e450b154f865dd",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "c1c85d1fa5580d6990c5917b5828b17bf3e068ede3f1ff13d8419f4fba595152",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "9a286f6baaf5e98333927cb00aacab4fcf91b7cf9591628d350e563bcae8857c",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "877a593200c771a3f067a97d6e15c52a148ebe0e2e828678b03c7e0552727498",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "c366c17a5f4407b0042e1a83e2c1be2f1715e4907bb8f9d777ff0ed0c1386dfd",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "7d5717a9344e4d99553aec5800a1ee6e84d79be4914295a010c58870b119b510",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "2427bc37ee86740875ee883da43a95d98647b18bf8ed1a204b3bb0864627809a",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "afc44f8c218cce5a3024439ce8fbe0610b544cc4b257a1d7e886588607c36d30",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "4dbe68f7ba726db48e8fa5baff936c7f11770230a15cbd0ac16a4be5a34e6d51",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "0e310a0fea0b32bc41bb71cd8607a1722ba8202a1d44f6655712682066f26f35",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        }
+      ]
+    },
+    {
+      "workflow_index": 2,
+      "arm": "codegraph",
+      "task_id": "psf__requests-1921-impact",
+      "kind": "impact",
+      "criteria": [
+        {
+          "criterion": "Identify production direct callers Session.request and Session.resolve_redirects with their actual argument handling.",
+          "met": true,
+          "rationale": "Identifies Session.request and resolve_redirects as direct callers and describes the full options dictionary versus explicit per-hop forwarding."
+        },
+        {
+          "criterion": "Explain the redirect consequence and distinguish the adapter transport call from callers of Session.send.",
+          "met": false,
+          "rationale": "Correctly separates the adapter call, but falsely concludes a redirected digest-auth retry cannot be followed. Session.send replaces r with the hook result before its outer redirect traversal."
+        },
+        {
+          "criterion": "Locate two actual existing source tests that exercise direct sending or redirect behavior, with valid citations and correct descriptions.",
+          "met": true,
+          "rationale": "Cites two actual tests and their observed direct-send/hook or single-redirect assertions without claiming they check forwarded option values."
+        }
+      ],
+      "accepted": false,
+      "serious_error": true,
+      "findings": [
+        {
+          "category": "incorrect_digest_redirect_consequence",
+          "serious": true,
+          "quote": "So a 401 retry that itself gets redirected is not followed, and that behaviour doesn't depend on `send`'s redirect logic.",
+          "explanation": "auth.handle_401 returns the adapter response; dispatch_hook returns it to Session.send line 500, whose lines 512-520 then handle its Location/status when allow_redirects is true."
+        },
+        {
+          "category": "incorrect_default_option_dependency",
+          "serious": true,
+          "quote": "If it changes, every `requests.get()` / `Session.get()` call changes behaviour.",
+          "explanation": "The claim is tied to changing pop(..., True). Both GET helpers explicitly set allow_redirects=True, so changing that fallback alone does not change these ordinary calls."
+        }
+      ],
+      "notes": [
+        "The existing hook test asserts a hook side effect, not exact forwarded kwargs. Listing the exercised redirect path is distinguished from claiming mutation sensitivity to its inner guard."
+      ],
+      "source_before_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "source_after_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "0383e325de4ea22b3b07cd04d3aa43d7b45bbe9565025ff161a9d02c61d5e052",
+      "sdk_trace_sha256": "e7648090266c90f78849d0abbeb34e434c5a460a3cc5f8a406d71ef5455b7556",
+      "workflow_artifact": "codegraph_matched_workflow_v2_02.json",
+      "workflow_artifact_sha256": "637908eed017bd40bee980c4c498316ec055fac8320ad0b26502169e2022f5ac",
+      "observation_artifact": {
+        "artifact": "codegraph_matched_workflow_v2_02_impact_observations.json",
+        "sha256": "3eb78a04f960ef9de8b658a68708197be52103e70479d428a659493a098574a1"
+      },
+      "observation_tool_use_ids": [
+        "toolu_01QtTnawpt6591fPJFmdHLdY",
+        "toolu_01WyggLi4RtRTqRdF6hCSHxA",
+        "toolu_01UyF8Ddgxys5AopfBWa4ZG5"
+      ],
+      "delivered_user_tool_message_count": 3,
+      "source_credit_scope": "Controller ground truth establishes answer correctness, not model-read credit or a complete ContextBench score.",
+      "source_evidence": [
+        {
+          "source_evidence_id": "5e251758dc22cda4cd678ebd4321c172db93be6ba33661cac09c734818a6d483",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "34324a1cbc15e1df27b1b3a81e01959e5cdcc7beb01edb9b98bb15e216b4acdc",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "25b40ad34d984f37a5290abb5da8ea4a3b9604352a6d0e0812e450b154f865dd",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "c1c85d1fa5580d6990c5917b5828b17bf3e068ede3f1ff13d8419f4fba595152",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "9a286f6baaf5e98333927cb00aacab4fcf91b7cf9591628d350e563bcae8857c",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "877a593200c771a3f067a97d6e15c52a148ebe0e2e828678b03c7e0552727498",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "c366c17a5f4407b0042e1a83e2c1be2f1715e4907bb8f9d777ff0ed0c1386dfd",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "7d5717a9344e4d99553aec5800a1ee6e84d79be4914295a010c58870b119b510",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "2427bc37ee86740875ee883da43a95d98647b18bf8ed1a204b3bb0864627809a",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "afc44f8c218cce5a3024439ce8fbe0610b544cc4b257a1d7e886588607c36d30",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "4dbe68f7ba726db48e8fa5baff936c7f11770230a15cbd0ac16a4be5a34e6d51",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "0e310a0fea0b32bc41bb71cd8607a1722ba8202a1d44f6655712682066f26f35",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        }
+      ]
+    },
+    {
+      "workflow_index": 3,
+      "arm": "native",
+      "task_id": "psf__requests-1921-impact",
+      "kind": "impact",
+      "criteria": [
+        {
+          "criterion": "Identify production direct callers Session.request and Session.resolve_redirects with their actual argument handling.",
+          "met": true,
+          "rationale": "Identifies Session.request and resolve_redirects as direct callers and describes the full options dictionary versus explicit per-hop forwarding."
+        },
+        {
+          "criterion": "Explain the redirect consequence and distinguish the adapter transport call from callers of Session.send.",
+          "met": true,
+          "rationale": "Explains allow_redirects removal and the outer redirect loop; correctly separates adapter/digest re-sends from Session.send callers."
+        },
+        {
+          "criterion": "Locate two actual existing source tests that exercise direct sending or redirect behavior, with valid citations and correct descriptions.",
+          "met": true,
+          "rationale": "Cites two actual tests and their observed direct-send/hook or single-redirect assertions without claiming they check forwarded option values."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "findings": [],
+      "notes": [
+        "The existing hook test asserts a hook side effect, not exact forwarded kwargs. Listing the exercised redirect path is distinguished from claiming mutation sensitivity to its inner guard."
+      ],
+      "source_before_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "source_after_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "c43cd22126e2973f2ba611c444b6561223c13463d1a88d5292e2ca3ed3a72329",
+      "sdk_trace_sha256": "68fc7089536d32a904a15e42f0388b271bc0e3d7956d617d63bceb13db3d228a",
+      "workflow_artifact": "codegraph_matched_workflow_v2_03.json",
+      "workflow_artifact_sha256": "f61fb16998925bb5df07631a55545d1e0964b8b2793592c045044d9d8feeb757",
+      "observation_artifact": {
+        "artifact": "codegraph_matched_workflow_v2_03_impact_observations.json",
+        "sha256": "6719c96e03c90ef2968c232a71db3e9727d29d4436b4587ecf038c8fc3581970"
+      },
+      "observation_tool_use_ids": [
+        "toolu_01QgyhQbAvmeKmKRxKR34FfE",
+        "toolu_01N8R23M9CNoyep8C68oz1oY",
+        "toolu_01YTCmWU6adKFkWzfs3m4Mq2"
+      ],
+      "delivered_user_tool_message_count": 3,
+      "source_credit_scope": "Controller ground truth establishes answer correctness, not model-read credit or a complete ContextBench score.",
+      "source_evidence": [
+        {
+          "source_evidence_id": "5e251758dc22cda4cd678ebd4321c172db93be6ba33661cac09c734818a6d483",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "34324a1cbc15e1df27b1b3a81e01959e5cdcc7beb01edb9b98bb15e216b4acdc",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "25b40ad34d984f37a5290abb5da8ea4a3b9604352a6d0e0812e450b154f865dd",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "c1c85d1fa5580d6990c5917b5828b17bf3e068ede3f1ff13d8419f4fba595152",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "9a286f6baaf5e98333927cb00aacab4fcf91b7cf9591628d350e563bcae8857c",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "877a593200c771a3f067a97d6e15c52a148ebe0e2e828678b03c7e0552727498",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "c366c17a5f4407b0042e1a83e2c1be2f1715e4907bb8f9d777ff0ed0c1386dfd",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "7d5717a9344e4d99553aec5800a1ee6e84d79be4914295a010c58870b119b510",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "2427bc37ee86740875ee883da43a95d98647b18bf8ed1a204b3bb0864627809a",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "afc44f8c218cce5a3024439ce8fbe0610b544cc4b257a1d7e886588607c36d30",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "4dbe68f7ba726db48e8fa5baff936c7f11770230a15cbd0ac16a4be5a34e6d51",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "0e310a0fea0b32bc41bb71cd8607a1722ba8202a1d44f6655712682066f26f35",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        }
+      ]
+    },
+    {
+      "workflow_index": 0,
+      "arm": "serena",
+      "task_id": "psf__requests-1921-post_edit",
+      "kind": "post_edit",
+      "criteria": [
+        {
+          "criterion": "Cite the newly added helper and its call to Session.prepare_request.",
+          "met": true,
+          "rationale": "Locates the newly added untracked helper at requests/_pilot_post_edit.py and its direct Session.prepare_request call."
+        },
+        {
+          "criterion": "Explain that it creates a PreparedRequest without calling Session.send or the adapter transport.",
+          "met": true,
+          "rationale": "Correctly stops at PreparedRequest construction and separates send/adapter transport; acknowledges local netrc/custom-auth conditions."
+        },
+        {
+          "criterion": "Cite current helper and production definitions; do not present pre-edit graph facts as current.",
+          "met": true,
+          "rationale": "Cites the actual post-repair helper and production definitions, including the line shift in the Serena repair."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "findings": [],
+      "notes": [],
+      "source_before_sha256": "5105b59f4bbfcd62b25dbb893c6d318d6959d1358dba59a2f74b51605d5c626e",
+      "source_after_sha256": "5105b59f4bbfcd62b25dbb893c6d318d6959d1358dba59a2f74b51605d5c626e",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "b4adc7f5a59263fb96f576dbe3cc2062d322731e83d0c63f8f151958b897a1ac",
+      "sdk_trace_sha256": "f481df3fc1179314c01f84f69333866e5bd18ce955a616a11b7cba24649585b4",
+      "workflow_artifact": "codegraph_matched_workflow_v2_00.json",
+      "workflow_artifact_sha256": "75075549b2a47b5ec5340f42dc8724c6f1120dfc071b9e74ecc8d51dd04c45ef",
+      "observation_artifact": {
+        "artifact": "codegraph_matched_workflow_v2_00_post_edit_observations.json",
+        "sha256": "4257fb3ab562c6218edfbadc4f6765b92be12170ad753120ff621144d5797397"
+      },
+      "observation_tool_use_ids": [
+        "toolu_0118KLFcUBfsu94qh8uQc9v7",
+        "toolu_019tx4amTn6m7J6kUSQ848mn",
+        "toolu_01WGZUZJzeBbWPk1HeZ9kwAt",
+        "toolu_01KpJS2uxAhBdvUKVFSAa1Vu",
+        "toolu_016phfQWJE2YsEiwrGRg73Fi",
+        "toolu_011rcvZZRjX6NdUFdr9zJbwH"
+      ],
+      "delivered_user_tool_message_count": 6,
+      "source_credit_scope": "Controller ground truth establishes answer correctness, not model-read credit or a complete ContextBench score.",
+      "source_evidence": [
+        {
+          "source_evidence_id": "9927151f335de56799021e54b5697c1170a41c579cca5c4869f4f67677eb7844",
+          "source_snapshot_sha256": "5105b59f4bbfcd62b25dbb893c6d318d6959d1358dba59a2f74b51605d5c626e"
+        },
+        {
+          "source_evidence_id": "413dc2c5bd0515acc146007eba01bfd320577b2cf96fc6a2cee7e386e2c27f0c",
+          "source_snapshot_sha256": "5105b59f4bbfcd62b25dbb893c6d318d6959d1358dba59a2f74b51605d5c626e"
+        },
+        {
+          "source_evidence_id": "285e146f4bb355391b03ca8b5012e232268e5598dbdf1f26039314c0c80756cc",
+          "source_snapshot_sha256": "5105b59f4bbfcd62b25dbb893c6d318d6959d1358dba59a2f74b51605d5c626e"
+        },
+        {
+          "source_evidence_id": "73655205d03980a596a2a24c522d107bb21ef6c7a17bb70d4fc7f1ff9496c7dd",
+          "source_snapshot_sha256": "5105b59f4bbfcd62b25dbb893c6d318d6959d1358dba59a2f74b51605d5c626e"
+        },
+        {
+          "source_evidence_id": "2a6147c4d03856fd6dfd830ae9cdfdd4248e7f6422937b067d63ca6339ee6b8a",
+          "source_snapshot_sha256": "5105b59f4bbfcd62b25dbb893c6d318d6959d1358dba59a2f74b51605d5c626e"
+        },
+        {
+          "source_evidence_id": "8844db6bd58fbfd45768d6445bf2bd825948fb81be2712957ea790832ae7ed1e",
+          "source_snapshot_sha256": "5105b59f4bbfcd62b25dbb893c6d318d6959d1358dba59a2f74b51605d5c626e"
+        }
+      ]
+    },
+    {
+      "workflow_index": 1,
+      "arm": "codenib",
+      "task_id": "psf__requests-1921-post_edit",
+      "kind": "post_edit",
+      "criteria": [
+        {
+          "criterion": "Cite the newly added helper and its call to Session.prepare_request.",
+          "met": true,
+          "rationale": "Locates the newly added untracked helper at requests/_pilot_post_edit.py and its direct Session.prepare_request call."
+        },
+        {
+          "criterion": "Explain that it creates a PreparedRequest without calling Session.send or the adapter transport.",
+          "met": true,
+          "rationale": "Correctly stops at PreparedRequest construction and separates send/adapter transport; acknowledges local netrc/custom-auth conditions."
+        },
+        {
+          "criterion": "Cite current helper and production definitions; do not present pre-edit graph facts as current.",
+          "met": true,
+          "rationale": "Cites the actual post-repair helper and production definitions, including the line shift in the Serena repair."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "findings": [
+        {
+          "category": "nonmaterial_constructor_order",
+          "serious": false,
+          "quote": "in this order:",
+          "explanation": "The answer lists Request before Session, but Python evaluates the Session() receiver before the Request argument. Both remain preparation-only; the requested network boundary is correctly explained."
+        }
+      ],
+      "notes": [],
+      "source_before_sha256": "45c6428a1551c866e484781354cb60344074c1c6494105f41d38ee71d9244927",
+      "source_after_sha256": "45c6428a1551c866e484781354cb60344074c1c6494105f41d38ee71d9244927",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "d3627e8349ebcb6485e51505a51f1e788d643383f8d77d861e935c083c803ceb",
+      "sdk_trace_sha256": "b321e6db65a9c28985ea5f7d19e3ce05ffa34bcc878d75a3073b3b169b6a5f81",
+      "workflow_artifact": "codegraph_matched_workflow_v2_01.json",
+      "workflow_artifact_sha256": "9e51ac5aa05a8ad2685d4ad726d19491356a2ab32082e249a77c8e3a8c2dc2ea",
+      "observation_artifact": {
+        "artifact": "codegraph_matched_workflow_v2_01_post_edit_observations.json",
+        "sha256": "8e2aeac58de5a08cebafc02105cc14bde1a218c678777e6454eb3bacbfc5412a"
+      },
+      "observation_tool_use_ids": [
+        "toolu_01PARXd86yv1kFXebxe7wUJC",
+        "toolu_01P3TRnkekFBi4S9eCXr7byQ",
+        "toolu_0177pNCXogtzzDtrKE4kEinR",
+        "toolu_01VxgGdcDEfEfwF42TL69BvH",
+        "toolu_014xzpMAAabS34cCJJvXZdnJ",
+        "toolu_01EnLgJd2vEAAEjVZpvJH37y",
+        "toolu_01PRAG77vVEp3SUwfZSDdUAQ"
+      ],
+      "delivered_user_tool_message_count": 7,
+      "source_credit_scope": "Controller ground truth establishes answer correctness, not model-read credit or a complete ContextBench score.",
+      "source_evidence": [
+        {
+          "source_evidence_id": "9927151f335de56799021e54b5697c1170a41c579cca5c4869f4f67677eb7844",
+          "source_snapshot_sha256": "45c6428a1551c866e484781354cb60344074c1c6494105f41d38ee71d9244927"
+        },
+        {
+          "source_evidence_id": "ab070fc805014279f8fb6617289b70ce6e6c1df9291f867f3a80ad8643201541",
+          "source_snapshot_sha256": "45c6428a1551c866e484781354cb60344074c1c6494105f41d38ee71d9244927"
+        },
+        {
+          "source_evidence_id": "285e146f4bb355391b03ca8b5012e232268e5598dbdf1f26039314c0c80756cc",
+          "source_snapshot_sha256": "45c6428a1551c866e484781354cb60344074c1c6494105f41d38ee71d9244927"
+        },
+        {
+          "source_evidence_id": "73655205d03980a596a2a24c522d107bb21ef6c7a17bb70d4fc7f1ff9496c7dd",
+          "source_snapshot_sha256": "45c6428a1551c866e484781354cb60344074c1c6494105f41d38ee71d9244927"
+        },
+        {
+          "source_evidence_id": "d6bd26b490e71b4e98189a88bd4dad3324f150b79d743e32e72c156dbebec0e7",
+          "source_snapshot_sha256": "45c6428a1551c866e484781354cb60344074c1c6494105f41d38ee71d9244927"
+        },
+        {
+          "source_evidence_id": "8844db6bd58fbfd45768d6445bf2bd825948fb81be2712957ea790832ae7ed1e",
+          "source_snapshot_sha256": "45c6428a1551c866e484781354cb60344074c1c6494105f41d38ee71d9244927"
+        }
+      ]
+    },
+    {
+      "workflow_index": 2,
+      "arm": "codegraph",
+      "task_id": "psf__requests-1921-post_edit",
+      "kind": "post_edit",
+      "criteria": [
+        {
+          "criterion": "Cite the newly added helper and its call to Session.prepare_request.",
+          "met": true,
+          "rationale": "Locates the newly added untracked helper at requests/_pilot_post_edit.py and its direct Session.prepare_request call."
+        },
+        {
+          "criterion": "Explain that it creates a PreparedRequest without calling Session.send or the adapter transport.",
+          "met": true,
+          "rationale": "Correctly stops at PreparedRequest construction and separates send/adapter transport; acknowledges local netrc/custom-auth conditions."
+        },
+        {
+          "criterion": "Cite current helper and production definitions; do not present pre-edit graph facts as current.",
+          "met": true,
+          "rationale": "Cites the actual post-repair helper and production definitions, including the line shift in the Serena repair."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "findings": [],
+      "notes": [],
+      "source_before_sha256": "64619c4d31b1e869dd788bfb59c51361d86afb0c3253fd0a0b96c6e7304b6d0a",
+      "source_after_sha256": "64619c4d31b1e869dd788bfb59c51361d86afb0c3253fd0a0b96c6e7304b6d0a",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "262251de44001ce326a8a4f1f95cb12de9aa07c306ca344cf6d8283b52203a7f",
+      "sdk_trace_sha256": "e0f25f3123e1a82689d3606bae6676c42325335683dd04fa0514d3cfa0b9b595",
+      "workflow_artifact": "codegraph_matched_workflow_v2_02.json",
+      "workflow_artifact_sha256": "637908eed017bd40bee980c4c498316ec055fac8320ad0b26502169e2022f5ac",
+      "observation_artifact": {
+        "artifact": "codegraph_matched_workflow_v2_02_post_edit_observations.json",
+        "sha256": "96476ea2877a7f61354c9ef16ffbb517bc0ca561e4da39f970e9d5f5a7addec7"
+      },
+      "observation_tool_use_ids": [
+        "toolu_015uMEdkXYvrrNQDBgoaNvsG",
+        "toolu_01P1QFays78p5D9x4vtk3VnU",
+        "toolu_01ESKPjnLYkJswbADo7P7yjV"
+      ],
+      "delivered_user_tool_message_count": 3,
+      "source_credit_scope": "Controller ground truth establishes answer correctness, not model-read credit or a complete ContextBench score.",
+      "source_evidence": [
+        {
+          "source_evidence_id": "9927151f335de56799021e54b5697c1170a41c579cca5c4869f4f67677eb7844",
+          "source_snapshot_sha256": "64619c4d31b1e869dd788bfb59c51361d86afb0c3253fd0a0b96c6e7304b6d0a"
+        },
+        {
+          "source_evidence_id": "ab070fc805014279f8fb6617289b70ce6e6c1df9291f867f3a80ad8643201541",
+          "source_snapshot_sha256": "64619c4d31b1e869dd788bfb59c51361d86afb0c3253fd0a0b96c6e7304b6d0a"
+        },
+        {
+          "source_evidence_id": "285e146f4bb355391b03ca8b5012e232268e5598dbdf1f26039314c0c80756cc",
+          "source_snapshot_sha256": "64619c4d31b1e869dd788bfb59c51361d86afb0c3253fd0a0b96c6e7304b6d0a"
+        },
+        {
+          "source_evidence_id": "73655205d03980a596a2a24c522d107bb21ef6c7a17bb70d4fc7f1ff9496c7dd",
+          "source_snapshot_sha256": "64619c4d31b1e869dd788bfb59c51361d86afb0c3253fd0a0b96c6e7304b6d0a"
+        },
+        {
+          "source_evidence_id": "d6bd26b490e71b4e98189a88bd4dad3324f150b79d743e32e72c156dbebec0e7",
+          "source_snapshot_sha256": "64619c4d31b1e869dd788bfb59c51361d86afb0c3253fd0a0b96c6e7304b6d0a"
+        },
+        {
+          "source_evidence_id": "8844db6bd58fbfd45768d6445bf2bd825948fb81be2712957ea790832ae7ed1e",
+          "source_snapshot_sha256": "64619c4d31b1e869dd788bfb59c51361d86afb0c3253fd0a0b96c6e7304b6d0a"
+        }
+      ]
+    },
+    {
+      "workflow_index": 3,
+      "arm": "native",
+      "task_id": "psf__requests-1921-post_edit",
+      "kind": "post_edit",
+      "criteria": [
+        {
+          "criterion": "Cite the newly added helper and its call to Session.prepare_request.",
+          "met": true,
+          "rationale": "Locates the newly added untracked helper at requests/_pilot_post_edit.py and its direct Session.prepare_request call."
+        },
+        {
+          "criterion": "Explain that it creates a PreparedRequest without calling Session.send or the adapter transport.",
+          "met": true,
+          "rationale": "Correctly stops at PreparedRequest construction and separates send/adapter transport; acknowledges local netrc/custom-auth conditions."
+        },
+        {
+          "criterion": "Cite current helper and production definitions; do not present pre-edit graph facts as current.",
+          "met": true,
+          "rationale": "Cites the actual post-repair helper and production definitions, including the line shift in the Serena repair."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "findings": [
+        {
+          "category": "nonmaterial_constructor_order",
+          "serious": false,
+          "quote": "in this order:",
+          "explanation": "The answer lists Request before Session, but Python evaluates the Session() receiver before the Request argument. Both remain preparation-only; the requested network boundary is correctly explained."
+        }
+      ],
+      "notes": [],
+      "source_before_sha256": "319363f0f7ba50ea38871d4f32fff0309297f8bb1a7070a57b948f91a7d00e5d",
+      "source_after_sha256": "319363f0f7ba50ea38871d4f32fff0309297f8bb1a7070a57b948f91a7d00e5d",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "0e467933171c237cffe332eed28f4d870f319d6e8ea91d9124dc1c68e5a31f4b",
+      "sdk_trace_sha256": "a5cfd599cd640a495ff80f3994cd86f075d782a3b46973a1730d581afc07d305",
+      "workflow_artifact": "codegraph_matched_workflow_v2_03.json",
+      "workflow_artifact_sha256": "f61fb16998925bb5df07631a55545d1e0964b8b2793592c045044d9d8feeb757",
+      "observation_artifact": {
+        "artifact": "codegraph_matched_workflow_v2_03_post_edit_observations.json",
+        "sha256": "68cd18234e9854af134633ced1784e006e2d7abc440b4e625985f77252f2a17c"
+      },
+      "observation_tool_use_ids": [
+        "toolu_01T3ioWDgNwaCQViEpEFfRfA",
+        "toolu_01XFqwK16nm65xSd3ikXHPZE",
+        "toolu_01VMhJ419CHBnczEbZhADJoB",
+        "toolu_01SUbEwYSqSWmFs8PyN4egAV",
+        "toolu_01W7PKfSpADkCxTMYMYGQjxY"
+      ],
+      "delivered_user_tool_message_count": 5,
+      "source_credit_scope": "Controller ground truth establishes answer correctness, not model-read credit or a complete ContextBench score.",
+      "source_evidence": [
+        {
+          "source_evidence_id": "9927151f335de56799021e54b5697c1170a41c579cca5c4869f4f67677eb7844",
+          "source_snapshot_sha256": "319363f0f7ba50ea38871d4f32fff0309297f8bb1a7070a57b948f91a7d00e5d"
+        },
+        {
+          "source_evidence_id": "ab070fc805014279f8fb6617289b70ce6e6c1df9291f867f3a80ad8643201541",
+          "source_snapshot_sha256": "319363f0f7ba50ea38871d4f32fff0309297f8bb1a7070a57b948f91a7d00e5d"
+        },
+        {
+          "source_evidence_id": "285e146f4bb355391b03ca8b5012e232268e5598dbdf1f26039314c0c80756cc",
+          "source_snapshot_sha256": "319363f0f7ba50ea38871d4f32fff0309297f8bb1a7070a57b948f91a7d00e5d"
+        },
+        {
+          "source_evidence_id": "73655205d03980a596a2a24c522d107bb21ef6c7a17bb70d4fc7f1ff9496c7dd",
+          "source_snapshot_sha256": "319363f0f7ba50ea38871d4f32fff0309297f8bb1a7070a57b948f91a7d00e5d"
+        },
+        {
+          "source_evidence_id": "d6bd26b490e71b4e98189a88bd4dad3324f150b79d743e32e72c156dbebec0e7",
+          "source_snapshot_sha256": "319363f0f7ba50ea38871d4f32fff0309297f8bb1a7070a57b948f91a7d00e5d"
+        },
+        {
+          "source_evidence_id": "8844db6bd58fbfd45768d6445bf2bd825948fb81be2712957ea790832ae7ed1e",
+          "source_snapshot_sha256": "319363f0f7ba50ea38871d4f32fff0309297f8bb1a7070a57b948f91a7d00e5d"
+        }
+      ]
+    }
+  ],
+  "limits": "No independent external adjudication, unseen-task claim or complete ContextBench source-read score."
+}

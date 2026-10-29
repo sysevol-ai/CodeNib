@@ -1,0 +1,1543 @@
+{
+  "schema_version": 1,
+  "recorded_utc": "2026-10-28T05:36:18.045005+00:00",
+  "instance_id": "pallets__flask-5014",
+  "review_method": "One unblinded maintainer-agent source review against original captured answers and exact source versions. Controller excerpts are ground truth, not model-read credit.",
+  "task_sha256": "76f170aaaacee775009fc01d7eedac9bb74d2e73d21c158fe7dee9a78a8d5bd6",
+  "policy_sha256": "da562c62849d8bc3937dc6dde1c1a2205609ceba7988d6367b2f18e135bebe41",
+  "source_evidence": {
+    "45e276bdf000a5995c427f542e5a41b6966745bc176ff29fa9d85e5cc44187fc": {
+      "file": "src/flask/app.py",
+      "sha256": "d439102c7658f90f896556c557df89501f2c98ad498d6317453f10ef58508710",
+      "start_line": 1996,
+      "end_line": 2022,
+      "text": "    def process_response(self, response: Response) -> Response:\n        \"\"\"Can be overridden in order to modify the response object\n        before it's sent to the WSGI server.  By default this will\n        call all the :meth:`after_request` decorated functions.\n\n        .. versionchanged:: 0.5\n           As of Flask 0.5 the functions registered for after request\n           execution are called in reverse order of registration.\n\n        :param response: a :attr:`response_class` object.\n        :return: a new response object or the same, has to be an\n                 instance of :attr:`response_class`.\n        \"\"\"\n        ctx = request_ctx._get_current_object()  # type: ignore[attr-defined]\n\n        for func in ctx._after_request_functions:\n            response = self.ensure_sync(func)(response)\n\n        for name in chain(request.blueprints, (None,)):\n            if name in self.after_request_funcs:\n                for func in reversed(self.after_request_funcs[name]):\n                    response = self.ensure_sync(func)(response)\n\n        if not self.session_interface.is_null_session(ctx.session):\n            self.session_interface.save_session(self, ctx.session, response)\n\n        return response",
+      "line_base": 1
+    },
+    "aece433185a20dd9b962ea4db02ea0a7c2b565693c70249f915c4fd744c22033": {
+      "file": "src/flask/ctx.py",
+      "sha256": "6c611042e176fdc1ea67764d31e31e106f0738b2640e52fcf2ed810710ab45aa",
+      "start_line": 134,
+      "end_line": 143,
+      "text": "    ctx = _cv_request.get(None)\n\n    if ctx is None:\n        raise RuntimeError(\n            \"'after_this_request' can only be used when a request\"\n            \" context is active, such as in a view function.\"\n        )\n\n    ctx._after_request_functions.append(f)\n    return f",
+      "line_base": 1
+    },
+    "c96357a6be7871240f0cf28b9574a94f609aefb78c6da8695c8ced24a2083cb7": {
+      "file": "src/flask/scaffold.py",
+      "sha256": "12d4caff83fd4f57d51c2d29ec0a873508ac035f596a100d1729edccd18d04ac",
+      "start_line": 559,
+      "end_line": 577,
+      "text": "    def after_request(self, f: T_after_request) -> T_after_request:\n        \"\"\"Register a function to run after each request to this object.\n\n        The function is called with the response object, and must return\n        a response object. This allows the functions to modify or\n        replace the response before it is sent.\n\n        If a function raises an exception, any remaining\n        ``after_request`` functions will not be called. Therefore, this\n        should not be used for actions that must execute, such as to\n        close resources. Use :meth:`teardown_request` for that.\n\n        This is available on both app and blueprint objects. When used on an app, this\n        executes after every request. When used on a blueprint, this executes after\n        every request that the blueprint handles. To register with a blueprint and\n        execute after every request, use :meth:`.Blueprint.after_app_request`.\n        \"\"\"\n        self.after_request_funcs.setdefault(None, []).append(f)\n        return f",
+      "line_base": 1
+    },
+    "26e072ebb01b5123691ef67a185cda3dd423cc3c3df850cb17b4696f708bf1d9": {
+      "file": "src/flask/blueprints.py",
+      "sha256": "9d296c3a0dffffbafd59ef15290a6d4c2061a470f3ad2b00709388d35d1dddc0",
+      "start_line": 328,
+      "end_line": 350,
+      "text": "            def extend(bp_dict, parent_dict):\n                for key, values in bp_dict.items():\n                    key = name if key is None else f\"{name}.{key}\"\n                    parent_dict[key].extend(values)\n\n            for key, value in self.error_handler_spec.items():\n                key = name if key is None else f\"{name}.{key}\"\n                value = defaultdict(\n                    dict,\n                    {\n                        code: {\n                            exc_class: func for exc_class, func in code_values.items()\n                        }\n                        for code, code_values in value.items()\n                    },\n                )\n                app.error_handler_spec[key] = value\n\n            for endpoint, func in self.view_functions.items():\n                app.view_functions[endpoint] = func\n\n            extend(self.before_request_funcs, app.before_request_funcs)\n            extend(self.after_request_funcs, app.after_request_funcs)",
+      "line_base": 1
+    },
+    "d86a759409da44ab24a4b2a06827a01af1260e5bc993556ca50d74ef671fc65e": {
+      "file": "src/flask/blueprints.py",
+      "sha256": "9d296c3a0dffffbafd59ef15290a6d4c2061a470f3ad2b00709388d35d1dddc0",
+      "start_line": 556,
+      "end_line": 561,
+      "text": "    def after_app_request(self, f: T_after_request) -> T_after_request:\n        \"\"\"Like :meth:`after_request`, but after every request, not only those handled\n        by the blueprint. Equivalent to :meth:`.Flask.after_request`.\n        \"\"\"\n        self.record_once(\n            lambda s: s.app.after_request_funcs.setdefault(None, []).append(f)",
+      "line_base": 1
+    },
+    "89850d466c27b3fcbb59c35076c5f14cba44c8861713f3d23352f069b4763701": {
+      "file": "src/flask/wrappers.py",
+      "sha256": "7a5ded9f52e049457478d1a060c8ca2024f923ba862606e9221bdc8b89ebc10f",
+      "start_line": 94,
+      "end_line": 109,
+      "text": "    @property\n    def blueprints(self) -> t.List[str]:\n        \"\"\"The registered names of the current blueprint upwards through\n        parent blueprints.\n\n        This will be an empty list if there is no current blueprint, or\n        if URL matching failed.\n\n        .. versionadded:: 2.0.1\n        \"\"\"\n        name = self.blueprint\n\n        if name is None:\n            return []\n\n        return _split_blueprint_path(name)",
+      "line_base": 1
+    },
+    "e3bdf46f80145c519660fef0b5f0ef68a6b03d0cea7c43622deaabfce02e93dc": {
+      "file": "src/flask/helpers.py",
+      "sha256": "efa15481302a200fabae2498f5e6ff9ae002906bd0ad9550b91a32269d4a4c1e",
+      "start_line": 677,
+      "end_line": 684,
+      "text": "@lru_cache(maxsize=None)\ndef _split_blueprint_path(name: str) -> t.List[str]:\n    out: t.List[str] = [name]\n\n    if \".\" in name:\n        out.extend(_split_blueprint_path(name.rpartition(\".\")[0]))\n\n    return out",
+      "line_base": 1
+    },
+    "9851dcdfb2b469b3ec62e772f9a7f3e8db258abcf71db7d75aa8af28482d35a8": {
+      "file": "src/flask/app.py",
+      "sha256": "d439102c7658f90f896556c557df89501f2c98ad498d6317453f10ef58508710",
+      "start_line": 2200,
+      "end_line": 2228,
+      "text": "        ctx = self.request_context(environ)\n        error: t.Optional[BaseException] = None\n        try:\n            try:\n                ctx.push()\n                response = self.full_dispatch_request()\n            except Exception as e:\n                error = e\n                response = self.handle_exception(e)\n            except:  # noqa: B001\n                error = sys.exc_info()[1]\n                raise\n            return response(environ, start_response)\n        finally:\n            if \"werkzeug.debug.preserve_context\" in environ:\n                environ[\"werkzeug.debug.preserve_context\"](_cv_app.get())\n                environ[\"werkzeug.debug.preserve_context\"](_cv_request.get())\n\n            if error is not None and self.should_ignore_error(error):\n                error = None\n\n            ctx.pop(error)\n\n    def __call__(self, environ: dict, start_response: t.Callable) -> t.Any:\n        \"\"\"The WSGI server calls the Flask application object as the\n        WSGI application. This calls :meth:`wsgi_app`, which can be\n        wrapped to apply middleware.\n        \"\"\"\n        return self.wsgi_app(environ, start_response)",
+      "line_base": 1
+    },
+    "dbf59a7b899129ddc35010181579db69d8c0502cb33efae00c26cd56ad296290": {
+      "file": "src/flask/ctx.py",
+      "sha256": "6c611042e176fdc1ea67764d31e31e106f0738b2640e52fcf2ed810710ab45aa",
+      "start_line": 356,
+      "end_line": 432,
+      "text": "    def push(self) -> None:\n        # Before we push the request context we have to ensure that there\n        # is an application context.\n        app_ctx = _cv_app.get(None)\n\n        if app_ctx is None or app_ctx.app is not self.app:\n            app_ctx = self.app.app_context()\n            app_ctx.push()\n        else:\n            app_ctx = None\n\n        self._cv_tokens.append((_cv_request.set(self), app_ctx))\n\n        # Open the session at the moment that the request context is available.\n        # This allows a custom open_session method to use the request context.\n        # Only open a new session if this is the first time the request was\n        # pushed, otherwise stream_with_context loses the session.\n        if self.session is None:\n            session_interface = self.app.session_interface\n            self.session = session_interface.open_session(self.app, self.request)\n\n            if self.session is None:\n                self.session = session_interface.make_null_session(self.app)\n\n        # Match the request URL after loading the session, so that the\n        # session is available in custom URL converters.\n        if self.url_adapter is not None:\n            self.match_request()\n\n    def pop(self, exc: t.Optional[BaseException] = _sentinel) -> None:  # type: ignore\n        \"\"\"Pops the request context and unbinds it by doing that.  This will\n        also trigger the execution of functions registered by the\n        :meth:`~flask.Flask.teardown_request` decorator.\n\n        .. versionchanged:: 0.9\n           Added the `exc` argument.\n        \"\"\"\n        clear_request = len(self._cv_tokens) == 1\n\n        try:\n            if clear_request:\n                if exc is _sentinel:\n                    exc = sys.exc_info()[1]\n                self.app.do_teardown_request(exc)\n\n                request_close = getattr(self.request, \"close\", None)\n                if request_close is not None:\n                    request_close()\n        finally:\n            ctx = _cv_request.get()\n            token, app_ctx = self._cv_tokens.pop()\n            _cv_request.reset(token)\n\n            # get rid of circular dependencies at the end of the request\n            # so that we don't require the GC to be active.\n            if clear_request:\n                ctx.request.environ[\"werkzeug.request\"] = None\n\n            if app_ctx is not None:\n                app_ctx.pop(exc)\n\n            if ctx is not self:\n                raise AssertionError(\n                    f\"Popped wrong request context. ({ctx!r} instead of {self!r})\"\n                )\n\n    def __enter__(self) -> \"RequestContext\":\n        self.push()\n        return self\n\n    def __exit__(\n        self,\n        exc_type: t.Optional[type],\n        exc_value: t.Optional[BaseException],\n        tb: t.Optional[TracebackType],\n    ) -> None:\n        self.pop(exc_value)",
+      "line_base": 1
+    },
+    "33ffa8c05e0f74fb48e2bc0089c2f7bef1f1b84844325d336f306cd1daaf84b0": {
+      "file": "src/flask/app.py",
+      "sha256": "d439102c7658f90f896556c557df89501f2c98ad498d6317453f10ef58508710",
+      "start_line": 1461,
+      "end_line": 1531,
+      "text": "    def dispatch_request(self) -> ft.ResponseReturnValue:\n        \"\"\"Does the request dispatching.  Matches the URL and returns the\n        return value of the view or error handler.  This does not have to\n        be a response object.  In order to convert the return value to a\n        proper response object, call :func:`make_response`.\n\n        .. versionchanged:: 0.7\n           This no longer does the exception handling, this code was\n           moved to the new :meth:`full_dispatch_request`.\n        \"\"\"\n        req = request_ctx.request\n        if req.routing_exception is not None:\n            self.raise_routing_exception(req)\n        rule: Rule = req.url_rule  # type: ignore[assignment]\n        # if we provide automatic options for this URL and the\n        # request came with the OPTIONS method, reply automatically\n        if (\n            getattr(rule, \"provide_automatic_options\", False)\n            and req.method == \"OPTIONS\"\n        ):\n            return self.make_default_options_response()\n        # otherwise dispatch to the handler for that endpoint\n        view_args: t.Dict[str, t.Any] = req.view_args  # type: ignore[assignment]\n        return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)\n\n    def full_dispatch_request(self) -> Response:\n        \"\"\"Dispatches the request and on top of that performs request\n        pre and postprocessing as well as HTTP exception catching and\n        error handling.\n\n        .. versionadded:: 0.7\n        \"\"\"\n        self._got_first_request = True\n\n        try:\n            request_started.send(self)\n            rv = self.preprocess_request()\n            if rv is None:\n                rv = self.dispatch_request()\n        except Exception as e:\n            rv = self.handle_user_exception(e)\n        return self.finalize_request(rv)\n\n    def finalize_request(\n        self,\n        rv: t.Union[ft.ResponseReturnValue, HTTPException],\n        from_error_handler: bool = False,\n    ) -> Response:\n        \"\"\"Given the return value from a view function this finalizes\n        the request by converting it into a response and invoking the\n        postprocessing functions.  This is invoked for both normal\n        request dispatching as well as error handlers.\n\n        Because this means that it might be called as a result of a\n        failure a special safe mode is available which can be enabled\n        with the `from_error_handler` flag.  If enabled, failures in\n        response processing will be logged and otherwise ignored.\n\n        :internal:\n        \"\"\"\n        response = self.make_response(rv)\n        try:\n            response = self.process_response(response)\n            request_finished.send(self, response=response)\n        except Exception:\n            if not from_error_handler:\n                raise\n            self.logger.exception(\n                \"Request finalizing failed with an error while handling an error\"\n            )\n        return response",
+      "line_base": 1
+    },
+    "2fce03a3af04f30262c5f80409ac474109c4b7559f01cae496fc36b525ca6922": {
+      "file": "src/flask/app.py",
+      "sha256": "d439102c7658f90f896556c557df89501f2c98ad498d6317453f10ef58508710",
+      "start_line": 1969,
+      "end_line": 2022,
+      "text": "    def preprocess_request(self) -> t.Optional[ft.ResponseReturnValue]:\n        \"\"\"Called before the request is dispatched. Calls\n        :attr:`url_value_preprocessors` registered with the app and the\n        current blueprint (if any). Then calls :attr:`before_request_funcs`\n        registered with the app and the blueprint.\n\n        If any :meth:`before_request` handler returns a non-None value, the\n        value is handled as if it was the return value from the view, and\n        further request handling is stopped.\n        \"\"\"\n        names = (None, *reversed(request.blueprints))\n\n        for name in names:\n            if name in self.url_value_preprocessors:\n                for url_func in self.url_value_preprocessors[name]:\n                    url_func(request.endpoint, request.view_args)\n\n        for name in names:\n            if name in self.before_request_funcs:\n                for before_func in self.before_request_funcs[name]:\n                    rv = self.ensure_sync(before_func)()\n\n                    if rv is not None:\n                        return rv\n\n        return None\n\n    def process_response(self, response: Response) -> Response:\n        \"\"\"Can be overridden in order to modify the response object\n        before it's sent to the WSGI server.  By default this will\n        call all the :meth:`after_request` decorated functions.\n\n        .. versionchanged:: 0.5\n           As of Flask 0.5 the functions registered for after request\n           execution are called in reverse order of registration.\n\n        :param response: a :attr:`response_class` object.\n        :return: a new response object or the same, has to be an\n                 instance of :attr:`response_class`.\n        \"\"\"\n        ctx = request_ctx._get_current_object()  # type: ignore[attr-defined]\n\n        for func in ctx._after_request_functions:\n            response = self.ensure_sync(func)(response)\n\n        for name in chain(request.blueprints, (None,)):\n            if name in self.after_request_funcs:\n                for func in reversed(self.after_request_funcs[name]):\n                    response = self.ensure_sync(func)(response)\n\n        if not self.session_interface.is_null_session(ctx.session):\n            self.session_interface.save_session(self, ctx.session, response)\n\n        return response",
+      "line_base": 1
+    },
+    "c3e54d72af5baa29599d879e5acc9a9f7adfc651df8e6f9d8b4d7b1880aa08ae": {
+      "file": "src/flask/app.py",
+      "sha256": "d439102c7658f90f896556c557df89501f2c98ad498d6317453f10ef58508710",
+      "start_line": 1363,
+      "end_line": 1414,
+      "text": "    def handle_exception(self, e: Exception) -> Response:\n        \"\"\"Handle an exception that did not have an error handler\n        associated with it, or that was raised from an error handler.\n        This always causes a 500 ``InternalServerError``.\n\n        Always sends the :data:`got_request_exception` signal.\n\n        If :data:`PROPAGATE_EXCEPTIONS` is ``True``, such as in debug\n        mode, the error will be re-raised so that the debugger can\n        display it. Otherwise, the original exception is logged, and\n        an :exc:`~werkzeug.exceptions.InternalServerError` is returned.\n\n        If an error handler is registered for ``InternalServerError`` or\n        ``500``, it will be used. For consistency, the handler will\n        always receive the ``InternalServerError``. The original\n        unhandled exception is available as ``e.original_exception``.\n\n        .. versionchanged:: 1.1.0\n            Always passes the ``InternalServerError`` instance to the\n            handler, setting ``original_exception`` to the unhandled\n            error.\n\n        .. versionchanged:: 1.1.0\n            ``after_request`` functions and other finalization is done\n            even for the default 500 response when there is no handler.\n\n        .. versionadded:: 0.3\n        \"\"\"\n        exc_info = sys.exc_info()\n        got_request_exception.send(self, exception=e)\n        propagate = self.config[\"PROPAGATE_EXCEPTIONS\"]\n\n        if propagate is None:\n            propagate = self.testing or self.debug\n\n        if propagate:\n            # Re-raise if called with an active exception, otherwise\n            # raise the passed in exception.\n            if exc_info[1] is e:\n                raise\n\n            raise e\n\n        self.log_exception(exc_info)\n        server_error: t.Union[InternalServerError, ft.ResponseReturnValue]\n        server_error = InternalServerError(original_exception=e)\n        handler = self._find_error_handler(server_error)\n\n        if handler is not None:\n            server_error = self.ensure_sync(handler)(server_error)\n\n        return self.finalize_request(server_error, from_error_handler=True)",
+      "line_base": 1
+    },
+    "f43507a9f808fa059e0a07aa731af3f2b467b695c58452a97bd0811c14d264de": {
+      "file": "src/flask/scaffold.py",
+      "sha256": "12d4caff83fd4f57d51c2d29ec0a873508ac035f596a100d1729edccd18d04ac",
+      "start_line": 559,
+      "end_line": 611,
+      "text": "    def after_request(self, f: T_after_request) -> T_after_request:\n        \"\"\"Register a function to run after each request to this object.\n\n        The function is called with the response object, and must return\n        a response object. This allows the functions to modify or\n        replace the response before it is sent.\n\n        If a function raises an exception, any remaining\n        ``after_request`` functions will not be called. Therefore, this\n        should not be used for actions that must execute, such as to\n        close resources. Use :meth:`teardown_request` for that.\n\n        This is available on both app and blueprint objects. When used on an app, this\n        executes after every request. When used on a blueprint, this executes after\n        every request that the blueprint handles. To register with a blueprint and\n        execute after every request, use :meth:`.Blueprint.after_app_request`.\n        \"\"\"\n        self.after_request_funcs.setdefault(None, []).append(f)\n        return f\n\n    @setupmethod\n    def teardown_request(self, f: T_teardown) -> T_teardown:\n        \"\"\"Register a function to be called when the request context is\n        popped. Typically this happens at the end of each request, but\n        contexts may be pushed manually as well during testing.\n\n        .. code-block:: python\n\n            with app.test_request_context():\n                ...\n\n        When the ``with`` block exits (or ``ctx.pop()`` is called), the\n        teardown functions are called just before the request context is\n        made inactive.\n\n        When a teardown function was called because of an unhandled\n        exception it will be passed an error object. If an\n        :meth:`errorhandler` is registered, it will handle the exception\n        and the teardown will not receive it.\n\n        Teardown functions must avoid raising exceptions. If they\n        execute code that might fail they must surround that code with a\n        ``try``/``except`` block and log any errors.\n\n        The return values of teardown functions are ignored.\n\n        This is available on both app and blueprint objects. When used on an app, this\n        executes after every request. When used on a blueprint, this executes after\n        every request that the blueprint handles. To register with a blueprint and\n        execute after every request, use :meth:`.Blueprint.teardown_app_request`.\n        \"\"\"\n        self.teardown_request_funcs.setdefault(None, []).append(f)\n        return f",
+      "line_base": 1
+    },
+    "8209a003fdd60bd83b6dbe651c206763d840b3bb2cfa3187f778d1966e253688": {
+      "file": "src/flask/blueprints.py",
+      "sha256": "9d296c3a0dffffbafd59ef15290a6d4c2061a470f3ad2b00709388d35d1dddc0",
+      "start_line": 328,
+      "end_line": 354,
+      "text": "            def extend(bp_dict, parent_dict):\n                for key, values in bp_dict.items():\n                    key = name if key is None else f\"{name}.{key}\"\n                    parent_dict[key].extend(values)\n\n            for key, value in self.error_handler_spec.items():\n                key = name if key is None else f\"{name}.{key}\"\n                value = defaultdict(\n                    dict,\n                    {\n                        code: {\n                            exc_class: func for exc_class, func in code_values.items()\n                        }\n                        for code, code_values in value.items()\n                    },\n                )\n                app.error_handler_spec[key] = value\n\n            for endpoint, func in self.view_functions.items():\n                app.view_functions[endpoint] = func\n\n            extend(self.before_request_funcs, app.before_request_funcs)\n            extend(self.after_request_funcs, app.after_request_funcs)\n            extend(\n                self.teardown_request_funcs,\n                app.teardown_request_funcs,\n            )",
+      "line_base": 1
+    },
+    "1ce9059125baebe7fac2fda21af6c3998c11830a5482154b989dc1504ed7f16a": {
+      "file": "src/flask/blueprints.py",
+      "sha256": "9d296c3a0dffffbafd59ef15290a6d4c2061a470f3ad2b00709388d35d1dddc0",
+      "start_line": 556,
+      "end_line": 571,
+      "text": "    def after_app_request(self, f: T_after_request) -> T_after_request:\n        \"\"\"Like :meth:`after_request`, but after every request, not only those handled\n        by the blueprint. Equivalent to :meth:`.Flask.after_request`.\n        \"\"\"\n        self.record_once(\n            lambda s: s.app.after_request_funcs.setdefault(None, []).append(f)\n        )\n        return f\n\n    @setupmethod\n    def teardown_app_request(self, f: T_teardown) -> T_teardown:\n        \"\"\"Like :meth:`teardown_request`, but after every request, not only those\n        handled by the blueprint. Equivalent to :meth:`.Flask.teardown_request`.\n        \"\"\"\n        self.record_once(\n            lambda s: s.app.teardown_request_funcs.setdefault(None, []).append(f)",
+      "line_base": 1
+    },
+    "df8277f6797ed96898194f06587c9917571ad3508432dc72174c0cc04e11b248": {
+      "file": "src/flask/app.py",
+      "sha256": "d439102c7658f90f896556c557df89501f2c98ad498d6317453f10ef58508710",
+      "start_line": 2047,
+      "end_line": 2055,
+      "text": "        if exc is _sentinel:\n            exc = sys.exc_info()[1]\n\n        for name in chain(request.blueprints, (None,)):\n            if name in self.teardown_request_funcs:\n                for func in reversed(self.teardown_request_funcs[name]):\n                    self.ensure_sync(func)(exc)\n\n        request_tearing_down.send(self, exc=exc)",
+      "line_base": 1
+    },
+    "7e176c5bc852a61b53af8154495bbb59c39480a1e5bdbf44635b9310eb19adcc": {
+      "file": "src/flask/app.py",
+      "sha256": "d439102c7658f90f896556c557df89501f2c98ad498d6317453f10ef58508710",
+      "start_line": 2200,
+      "end_line": 2221,
+      "text": "        ctx = self.request_context(environ)\n        error: t.Optional[BaseException] = None\n        try:\n            try:\n                ctx.push()\n                response = self.full_dispatch_request()\n            except Exception as e:\n                error = e\n                response = self.handle_exception(e)\n            except:  # noqa: B001\n                error = sys.exc_info()[1]\n                raise\n            return response(environ, start_response)\n        finally:\n            if \"werkzeug.debug.preserve_context\" in environ:\n                environ[\"werkzeug.debug.preserve_context\"](_cv_app.get())\n                environ[\"werkzeug.debug.preserve_context\"](_cv_request.get())\n\n            if error is not None and self.should_ignore_error(error):\n                error = None\n\n            ctx.pop(error)",
+      "line_base": 1
+    },
+    "a1ad62722186b32fa31f10797fcf2b0f183fe79574e9a8f74aad5c1cdf406a58": {
+      "file": "tests/test_basic.py",
+      "sha256": "e1087ccff5d7fd00f30a3a2ab0e94860896adaa10c68fbb5f06e653bc206ae5b",
+      "start_line": 826,
+      "end_line": 861,
+      "text": "def test_before_after_request_order(app, client):\n    called = []\n\n    @app.before_request\n    def before1():\n        called.append(1)\n\n    @app.before_request\n    def before2():\n        called.append(2)\n\n    @app.after_request\n    def after1(response):\n        called.append(4)\n        return response\n\n    @app.after_request\n    def after2(response):\n        called.append(3)\n        return response\n\n    @app.teardown_request\n    def finish1(exc):\n        called.append(6)\n\n    @app.teardown_request\n    def finish2(exc):\n        called.append(5)\n\n    @app.route(\"/\")\n    def index():\n        return \"42\"\n\n    rv = client.get(\"/\")\n    assert rv.data == b\"42\"\n    assert called == [1, 2, 3, 4, 5, 6]",
+      "line_base": 1
+    },
+    "c08758eb2f23738f5828e5c5cb4a141967554bda4fbbe8ba9c0e6b0fbdfd2811": {
+      "file": "tests/test_basic.py",
+      "sha256": "e1087ccff5d7fd00f30a3a2ab0e94860896adaa10c68fbb5f06e653bc206ae5b",
+      "start_line": 737,
+      "end_line": 749,
+      "text": "def test_after_request_processing(app, client):\n    @app.route(\"/\")\n    def index():\n        @flask.after_this_request\n        def foo(response):\n            response.headers[\"X-Foo\"] = \"a header\"\n            return response\n\n        return \"Test\"\n\n    resp = client.get(\"/\")\n    assert resp.status_code == 200\n    assert resp.headers[\"X-Foo\"] == \"a header\"",
+      "line_base": 1
+    },
+    "88366f0b11744556eab057b8a88574c810df7059127ee1d2f9ebd66a0d7e128a": {
+      "file": "tests/test_basic.py",
+      "sha256": "e1087ccff5d7fd00f30a3a2ab0e94860896adaa10c68fbb5f06e653bc206ae5b",
+      "start_line": 454,
+      "end_line": 465,
+      "text": "def test_session_stored_last(app, client):\n    @app.after_request\n    def modify_session(response):\n        flask.session[\"foo\"] = 42\n        return response\n\n    @app.route(\"/\")\n    def dump_session_contents():\n        return repr(flask.session.get(\"foo\"))\n\n    assert client.get(\"/\").data == b\"None\"\n    assert client.get(\"/\").data == b\"42\"",
+      "line_base": 1
+    },
+    "d4e0ff5301f5044bc8f5b1ee151e0ed30e9f31668df5e5d59bf1ec1963d34b04": {
+      "file": "tests/test_blueprints.py",
+      "sha256": "804b98bbb71ccce566ab78a15cb141793ebbaee3c1b3bb591d9dab04c9940f4a",
+      "start_line": 690,
+      "end_line": 718,
+      "text": "def test_request_processing(app, client):\n    bp = flask.Blueprint(\"bp\", __name__)\n    evts = []\n\n    @bp.before_request\n    def before_bp():\n        evts.append(\"before\")\n\n    @bp.after_request\n    def after_bp(response):\n        response.data += b\"|after\"\n        evts.append(\"after\")\n        return response\n\n    @bp.teardown_request\n    def teardown_bp(exc):\n        evts.append(\"teardown\")\n\n    # Setup routes for testing\n    @bp.route(\"/bp\")\n    def bp_endpoint():\n        return \"request\"\n\n    app.register_blueprint(bp)\n\n    assert evts == []\n    rv = client.get(\"/bp\")\n    assert rv.data == b\"request|after\"\n    assert evts == [\"before\", \"after\", \"teardown\"]",
+      "line_base": 1
+    },
+    "7f0abfaf414c931d1e0265466df0ccaad4f48b679da765e3d4f0e9d1186543c5": {
+      "file": "tests/test_blueprints.py",
+      "sha256": "804b98bbb71ccce566ab78a15cb141793ebbaee3c1b3bb591d9dab04c9940f4a",
+      "start_line": 721,
+      "end_line": 757,
+      "text": "def test_app_request_processing(app, client):\n    bp = flask.Blueprint(\"bp\", __name__)\n    evts = []\n\n    @bp.before_app_request\n    def before_app():\n        evts.append(\"before\")\n\n    @bp.after_app_request\n    def after_app(response):\n        response.data += b\"|after\"\n        evts.append(\"after\")\n        return response\n\n    @bp.teardown_app_request\n    def teardown_app(exc):\n        evts.append(\"teardown\")\n\n    app.register_blueprint(bp)\n\n    # Setup routes for testing\n    @app.route(\"/\")\n    def bp_endpoint():\n        return \"request\"\n\n    # before first request\n    assert evts == []\n\n    # first request\n    resp = client.get(\"/\").data\n    assert resp == b\"request|after\"\n    assert evts == [\"before\", \"after\", \"teardown\"]\n\n    # second request\n    resp = client.get(\"/\").data\n    assert resp == b\"request|after\"\n    assert evts == [\"before\", \"after\", \"teardown\"] * 2",
+      "line_base": 1
+    },
+    "61c04956b8463056da07a31f3b1107096b1b6d3648bd981a5317b7a73996f7c0": {
+      "file": "src/flask/_pilot_post_edit.py",
+      "sha256": "585d6863900b4bda76016c8a65eb04807b29ef0e1cdd8fd5bfec82c6050f323a",
+      "start_line": 1,
+      "end_line": 5,
+      "text": "from .app import Flask\n\ndef dispatch_probe_request(app: Flask, path: str = \"/\"):\n    with app.test_request_context(path):\n        return app.full_dispatch_request()",
+      "line_base": 1
+    },
+    "88659351bd0e679bd443da5af6373317c679bca8984a727a6703b42f9b04bf1d": {
+      "file": "src/flask/app.py",
+      "sha256": "d439102c7658f90f896556c557df89501f2c98ad498d6317453f10ef58508710",
+      "start_line": 1486,
+      "end_line": 1531,
+      "text": "    def full_dispatch_request(self) -> Response:\n        \"\"\"Dispatches the request and on top of that performs request\n        pre and postprocessing as well as HTTP exception catching and\n        error handling.\n\n        .. versionadded:: 0.7\n        \"\"\"\n        self._got_first_request = True\n\n        try:\n            request_started.send(self)\n            rv = self.preprocess_request()\n            if rv is None:\n                rv = self.dispatch_request()\n        except Exception as e:\n            rv = self.handle_user_exception(e)\n        return self.finalize_request(rv)\n\n    def finalize_request(\n        self,\n        rv: t.Union[ft.ResponseReturnValue, HTTPException],\n        from_error_handler: bool = False,\n    ) -> Response:\n        \"\"\"Given the return value from a view function this finalizes\n        the request by converting it into a response and invoking the\n        postprocessing functions.  This is invoked for both normal\n        request dispatching as well as error handlers.\n\n        Because this means that it might be called as a result of a\n        failure a special safe mode is available which can be enabled\n        with the `from_error_handler` flag.  If enabled, failures in\n        response processing will be logged and otherwise ignored.\n\n        :internal:\n        \"\"\"\n        response = self.make_response(rv)\n        try:\n            response = self.process_response(response)\n            request_finished.send(self, response=response)\n        except Exception:\n            if not from_error_handler:\n                raise\n            self.logger.exception(\n                \"Request finalizing failed with an error while handling an error\"\n            )\n        return response",
+      "line_base": 1
+    },
+    "6bf00f2c283d001628b062bfbb7729b6cea7b7213982140847a651d8e030f445": {
+      "file": "src/flask/app.py",
+      "sha256": "d439102c7658f90f896556c557df89501f2c98ad498d6317453f10ef58508710",
+      "start_line": 2103,
+      "end_line": 2117,
+      "text": "    def request_context(self, environ: dict) -> RequestContext:\n        \"\"\"Create a :class:`~flask.ctx.RequestContext` representing a\n        WSGI environment. Use a ``with`` block to push the context,\n        which will make :data:`request` point at this request.\n\n        See :doc:`/reqcontext`.\n\n        Typically you should not call this from your own code. A request\n        context is automatically pushed by the :meth:`wsgi_app` when\n        handling a request. Use :meth:`test_request_context` to create\n        an environment and context instead of this method.\n\n        :param environ: a WSGI environment\n        \"\"\"\n        return RequestContext(self, environ)",
+      "line_base": 1
+    },
+    "29a0150c7025db4258fbd230a3aaad0ea856b2f980f95c97e924e262cc337512": {
+      "file": "src/flask/app.py",
+      "sha256": "d439102c7658f90f896556c557df89501f2c98ad498d6317453f10ef58508710",
+      "start_line": 2166,
+      "end_line": 2173,
+      "text": "        from .testing import EnvironBuilder\n\n        builder = EnvironBuilder(self, *args, **kwargs)\n\n        try:\n            return self.request_context(builder.get_environ())\n        finally:\n            builder.close()",
+      "line_base": 1
+    },
+    "b8ea4d705f12a58d61aa4d4049217b8f2bc93eadc18162e37264dd83a756c257": {
+      "file": "src/flask/app.py",
+      "sha256": "d439102c7658f90f896556c557df89501f2c98ad498d6317453f10ef58508710",
+      "start_line": 1331,
+      "end_line": 1361,
+      "text": "    def handle_user_exception(\n        self, e: Exception\n    ) -> t.Union[HTTPException, ft.ResponseReturnValue]:\n        \"\"\"This method is called whenever an exception occurs that\n        should be handled. A special case is :class:`~werkzeug\n        .exceptions.HTTPException` which is forwarded to the\n        :meth:`handle_http_exception` method. This function will either\n        return a response value or reraise the exception with the same\n        traceback.\n\n        .. versionchanged:: 1.0\n            Key errors raised from request data like ``form`` show the\n            bad key in debug mode rather than a generic bad request\n            message.\n\n        .. versionadded:: 0.7\n        \"\"\"\n        if isinstance(e, BadRequestKeyError) and (\n            self.debug or self.config[\"TRAP_BAD_REQUEST_ERRORS\"]\n        ):\n            e.show_exception = True\n\n        if isinstance(e, HTTPException) and not self.trap_http_exception(e):\n            return self.handle_http_exception(e)\n\n        handler = self._find_error_handler(e)\n\n        if handler is None:\n            raise\n\n        return self.ensure_sync(handler)(e)",
+      "line_base": 1
+    }
+  },
+  "reviews": [
+    {
+      "workflow_index": 4,
+      "arm": "serena",
+      "task_id": "pallets__flask-5014-lookup",
+      "kind": "lookup",
+      "criteria": [
+        {
+          "criterion": "Identify Flask.process_response in src/flask/app.py.",
+          "met": true,
+          "rationale": "Identifies Flask.process_response at its current app.py definition."
+        },
+        {
+          "criterion": "Correctly distinguish request-context callbacks from reversed registered after_request callback lists and relevant blueprint/application iteration.",
+          "met": true,
+          "rationale": "Gives FIFO request-context callbacks, inner-to-outer blueprint scopes followed by app None, and LIFO within each registered scope."
+        },
+        {
+          "criterion": "Cite valid current source for the ordering claimed.",
+          "met": true,
+          "rationale": "The cited loops and registration/property sources support the claimed callback order."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "protocol_issues": [],
+      "findings": [
+        {
+          "category": "registration_name_typo",
+          "serious": false,
+          "quote": "A blueprint's `app_after_request`",
+          "explanation": "The method at the cited blueprint source is named after_app_request. Its app-wide None-key registration and callback ordering are correctly described."
+        }
+      ],
+      "notes": [],
+      "source_before_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd",
+      "source_after_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "2fb501024714a451ac9692b6f25c5539b3cdafedba103ccf028a573d208d8997",
+      "sdk_trace_sha256": "a87003722e5187b83eb3770ec66c8fc79b89af18d4fc07810ccfa369217611d0",
+      "workflow_artifact": "codegraph_matched_workflow_v1_04.json",
+      "workflow_artifact_sha256": "836595e0ffada5a6b20478975d531fd8bbe964babc4aaddd049ba7197da05385",
+      "observation_tool_use_ids": [
+        "toolu_016aQ4dqtbyR5KeJmXfXRPQB",
+        "toolu_01K15ZpPDvWdZEJuNGhyLHXj",
+        "toolu_01P7ftbuSgEK9Zsh39FASybC",
+        "toolu_01TCsHZ3Sqtw2HZRhXeDFy1S",
+        "toolu_01H89u6ga1bqGP2UZ1QUSuH6",
+        "toolu_0176Zr9vVvQ8LuiwPFhoDiqg",
+        "toolu_01GkQacjNfFqiB3jJPkMZyKn",
+        "toolu_01RZ3oGHUKuf8jmdoG8YWeat"
+      ],
+      "source_evidence": [
+        {
+          "source_evidence_id": "45e276bdf000a5995c427f542e5a41b6966745bc176ff29fa9d85e5cc44187fc",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "aece433185a20dd9b962ea4db02ea0a7c2b565693c70249f915c4fd744c22033",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "c96357a6be7871240f0cf28b9574a94f609aefb78c6da8695c8ced24a2083cb7",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "26e072ebb01b5123691ef67a185cda3dd423cc3c3df850cb17b4696f708bf1d9",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "d86a759409da44ab24a4b2a06827a01af1260e5bc993556ca50d74ef671fc65e",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "89850d466c27b3fcbb59c35076c5f14cba44c8861713f3d23352f069b4763701",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "e3bdf46f80145c519660fef0b5f0ef68a6b03d0cea7c43622deaabfce02e93dc",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        }
+      ]
+    },
+    {
+      "workflow_index": 5,
+      "arm": "codegraph",
+      "task_id": "pallets__flask-5014-lookup",
+      "kind": "lookup",
+      "criteria": [
+        {
+          "criterion": "Identify Flask.process_response in src/flask/app.py.",
+          "met": true,
+          "rationale": "Identifies Flask.process_response at its current app.py definition."
+        },
+        {
+          "criterion": "Correctly distinguish request-context callbacks from reversed registered after_request callback lists and relevant blueprint/application iteration.",
+          "met": true,
+          "rationale": "Gives FIFO request-context callbacks, inner-to-outer blueprint scopes followed by app None, and LIFO within each registered scope."
+        },
+        {
+          "criterion": "Cite valid current source for the ordering claimed.",
+          "met": true,
+          "rationale": "The cited loops and registration/property sources support the claimed callback order."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "protocol_issues": [],
+      "findings": [],
+      "notes": [],
+      "source_before_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd",
+      "source_after_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "ba5d86ee5e39ca088e6ff4bb025949bcf612f6daf63a0b0f984e678409a09fe0",
+      "sdk_trace_sha256": "224830bd49d55657fd50fcf723646883f62fc5084647973a249e2705d0553f74",
+      "workflow_artifact": "codegraph_matched_workflow_v1_05.json",
+      "workflow_artifact_sha256": "be9c988ae6acd824685b3f9943edf4eac9ed835eae966ae4f738bd8f7a990cf7",
+      "observation_tool_use_ids": [
+        "toolu_01Mg87uyKgfLSQ8kpyncpjkx",
+        "toolu_01EozmEnZywsvNXZFMk4JTKm",
+        "toolu_01Rw5JRvqGwXsbmzp4tEyR5L"
+      ],
+      "source_evidence": [
+        {
+          "source_evidence_id": "45e276bdf000a5995c427f542e5a41b6966745bc176ff29fa9d85e5cc44187fc",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "aece433185a20dd9b962ea4db02ea0a7c2b565693c70249f915c4fd744c22033",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "c96357a6be7871240f0cf28b9574a94f609aefb78c6da8695c8ced24a2083cb7",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "26e072ebb01b5123691ef67a185cda3dd423cc3c3df850cb17b4696f708bf1d9",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "d86a759409da44ab24a4b2a06827a01af1260e5bc993556ca50d74ef671fc65e",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "89850d466c27b3fcbb59c35076c5f14cba44c8861713f3d23352f069b4763701",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "e3bdf46f80145c519660fef0b5f0ef68a6b03d0cea7c43622deaabfce02e93dc",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        }
+      ]
+    },
+    {
+      "workflow_index": 6,
+      "arm": "native",
+      "task_id": "pallets__flask-5014-lookup",
+      "kind": "lookup",
+      "criteria": [
+        {
+          "criterion": "Identify Flask.process_response in src/flask/app.py.",
+          "met": true,
+          "rationale": "Identifies Flask.process_response at its current app.py definition."
+        },
+        {
+          "criterion": "Correctly distinguish request-context callbacks from reversed registered after_request callback lists and relevant blueprint/application iteration.",
+          "met": true,
+          "rationale": "Gives FIFO request-context callbacks, inner-to-outer blueprint scopes followed by app None, and LIFO within each registered scope."
+        },
+        {
+          "criterion": "Cite valid current source for the ordering claimed.",
+          "met": true,
+          "rationale": "The cited loops and registration/property sources support the claimed callback order."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "protocol_issues": [],
+      "findings": [],
+      "notes": [
+        "The no-blueprint empty list is returned by Request.blueprints before calling _split_blueprint_path; the paragraph is read as the public property behavior, not a helper call with None."
+      ],
+      "source_before_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd",
+      "source_after_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "f5c8675e6dd343fd0047bfa07cf9ed450618e7e6023d505680c1039adce95da2",
+      "sdk_trace_sha256": "79d5c789d44e471bf1a8dfa5dc3409cc4bc94f129747ddc09deac0c1987d91ac",
+      "workflow_artifact": "codegraph_matched_workflow_v1_06.json",
+      "workflow_artifact_sha256": "d3776f9cfd3577a5946a0e00a28a2b93d96ebdce88ef2b9f2a2471d38e66ceb6",
+      "observation_tool_use_ids": [
+        "toolu_014mL3CYHgNKqrceisKoyAwR",
+        "toolu_01EkEuczHYwTPpU19DM8eeBa",
+        "toolu_017tSzDUKTSQKk63xJvCs48A",
+        "toolu_013taF5AEuhuevhFad2F3KA6",
+        "toolu_01TV8kKXtY11YfoSwXLCZzfz",
+        "toolu_01EZ9Reozcp5ySyVTzEB4kXN",
+        "toolu_016KdJ5iKQFA3h7E1DkeZpky",
+        "toolu_01TBtQQgV64YauLP6HGzfPMu",
+        "toolu_0149MrjHniyPgmSZwf1kVEYT",
+        "toolu_014g3gFfEN5JaWSB7tQniUX2"
+      ],
+      "source_evidence": [
+        {
+          "source_evidence_id": "45e276bdf000a5995c427f542e5a41b6966745bc176ff29fa9d85e5cc44187fc",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "aece433185a20dd9b962ea4db02ea0a7c2b565693c70249f915c4fd744c22033",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "c96357a6be7871240f0cf28b9574a94f609aefb78c6da8695c8ced24a2083cb7",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "26e072ebb01b5123691ef67a185cda3dd423cc3c3df850cb17b4696f708bf1d9",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "d86a759409da44ab24a4b2a06827a01af1260e5bc993556ca50d74ef671fc65e",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "89850d466c27b3fcbb59c35076c5f14cba44c8861713f3d23352f069b4763701",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "e3bdf46f80145c519660fef0b5f0ef68a6b03d0cea7c43622deaabfce02e93dc",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        }
+      ]
+    },
+    {
+      "workflow_index": 7,
+      "arm": "codenib",
+      "task_id": "pallets__flask-5014-lookup",
+      "kind": "lookup",
+      "criteria": [
+        {
+          "criterion": "Identify Flask.process_response in src/flask/app.py.",
+          "met": true,
+          "rationale": "Identifies Flask.process_response at its current app.py definition."
+        },
+        {
+          "criterion": "Correctly distinguish request-context callbacks from reversed registered after_request callback lists and relevant blueprint/application iteration.",
+          "met": true,
+          "rationale": "Gives FIFO request-context callbacks, inner-to-outer blueprint scopes followed by app None, and LIFO within each registered scope."
+        },
+        {
+          "criterion": "Cite valid current source for the ordering claimed.",
+          "met": true,
+          "rationale": "The cited loops and registration/property sources support the claimed callback order."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "protocol_issues": [],
+      "findings": [],
+      "notes": [],
+      "source_before_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd",
+      "source_after_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "6410f61a2f3c36730f63d1f2530f3424a41bcfeaa3a6d47045810a10f402e177",
+      "sdk_trace_sha256": "92b775e6db2d3c46608c7ad56bf7bacb47debafbaa6a9ab963fc215cc5d98d6d",
+      "workflow_artifact": "codegraph_matched_workflow_v1_07.json",
+      "workflow_artifact_sha256": "bcb7e5af411c4bea22e3cfda6dbe826a28993a11cf72f0defd096ab6d8a07dc8",
+      "observation_tool_use_ids": [
+        "toolu_01AhVqLdBZ2S2mzMFPWYn2UQ",
+        "toolu_01Jq8Eis3MocC2sgNf3m6rcp",
+        "toolu_01R2guSypsiMqGvbtfzy4M45",
+        "toolu_01HKXncpht4Wc3eRDdKoxRLo",
+        "toolu_013DnZMxgmZ2PG6KJVWvdsvQ",
+        "toolu_01B2d2Nf6yZt7SGFRhAUvWDh",
+        "toolu_01QBwqqSZrXikvwECwsVG3Kd"
+      ],
+      "source_evidence": [
+        {
+          "source_evidence_id": "45e276bdf000a5995c427f542e5a41b6966745bc176ff29fa9d85e5cc44187fc",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "aece433185a20dd9b962ea4db02ea0a7c2b565693c70249f915c4fd744c22033",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "c96357a6be7871240f0cf28b9574a94f609aefb78c6da8695c8ced24a2083cb7",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "26e072ebb01b5123691ef67a185cda3dd423cc3c3df850cb17b4696f708bf1d9",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "d86a759409da44ab24a4b2a06827a01af1260e5bc993556ca50d74ef671fc65e",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "89850d466c27b3fcbb59c35076c5f14cba44c8861713f3d23352f069b4763701",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "e3bdf46f80145c519660fef0b5f0ef68a6b03d0cea7c43622deaabfce02e93dc",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        }
+      ]
+    },
+    {
+      "workflow_index": 4,
+      "arm": "serena",
+      "task_id": "pallets__flask-5014-flow",
+      "kind": "flow",
+      "criteria": [
+        {
+          "criterion": "Connect __call__, wsgi_app and request-context push/pop in app.py and ctx.py.",
+          "met": true,
+          "rationale": "Connects Flask.__call__/wsgi_app with request-context construction, push and finally pop across app.py/ctx.py."
+        },
+        {
+          "criterion": "Connect full_dispatch_request, preprocess_request and dispatch_request to the selected view.",
+          "met": true,
+          "rationale": "Connects full_dispatch_request, preprocess_request and dynamic endpoint view selection, including short-circuit/OPTIONS branches."
+        },
+        {
+          "criterion": "Connect finalize_request, make_response and process_response to response creation and after-request processing.",
+          "met": true,
+          "rationale": "Connects finalize_request, make_response, registered after-request processing and the WSGI response call."
+        },
+        {
+          "criterion": "Explain finally-based context cleanup and cite the relevant cross-file call sites without claiming a complete concrete runtime path.",
+          "met": true,
+          "rationale": "Explains finally-based cleanup and distinguishes actual runtime callback registrations from the statically described normal path."
+        }
+      ],
+      "accepted": false,
+      "serious_error": true,
+      "protocol_issues": [],
+      "findings": [
+        {
+          "category": "overbroad_finalization_exception_suppression",
+          "serious": true,
+          "quote": "With `from_error_handler=True`, errors raised during finalization are logged instead of re-raised.",
+          "explanation": "make_response runs before the protected try block. Its error, for example an invalid None error-handler result, still propagates with from_error_handler=True. Only process_response/request_finished errors are caught. The exact pinned source audit verifies both the propagating conversion error and the ignored protected processing error.",
+          "runtime_evidence": "source-behavior-audit-v1/receipt.json"
+        }
+      ],
+      "notes": [
+        "The requested normal-path entry/view/response/context edges are present. The rejection is for the explicit material exception-propagation claim, not for missing optional branches or a concrete trace requirement.",
+        "The fixed-path summary is read with the earlier before-request/error/reused-context qualifications. Signal receiver side effects are not used as an independent failure gate; Blinker is absent in this runtime audit."
+      ],
+      "source_before_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd",
+      "source_after_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "dea3c11f2077461b842e2317ad4d3bc947bafe18b6b05b73e645a65517149afa",
+      "sdk_trace_sha256": "fc5e0ce65a8d735b2b341054037f2bcdffa7835dd7f4037ef4e2727016ccaf8e",
+      "workflow_artifact": "codegraph_matched_workflow_v1_04.json",
+      "workflow_artifact_sha256": "836595e0ffada5a6b20478975d531fd8bbe964babc4aaddd049ba7197da05385",
+      "observation_tool_use_ids": [
+        "toolu_01PE5QZhCNT5H8mW9ZMiZsTW",
+        "toolu_017Qfv74BGBjw3t3Ju61JABz",
+        "toolu_015jR1UvN7agGup9nTpz518b",
+        "toolu_014JiVQySmzhDggFSHppjFnq",
+        "toolu_01BGrSCiET5KfJfTTjJCwKYa",
+        "toolu_01Lsr2LuLxDEdKxR35nfZQ9e",
+        "toolu_019tmnvkgfn17dcVRk9t514o",
+        "toolu_0186Fp7fCoQPDekd1D1LQomp"
+      ],
+      "source_evidence": [
+        {
+          "source_evidence_id": "9851dcdfb2b469b3ec62e772f9a7f3e8db258abcf71db7d75aa8af28482d35a8",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "dbf59a7b899129ddc35010181579db69d8c0502cb33efae00c26cd56ad296290",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "33ffa8c05e0f74fb48e2bc0089c2f7bef1f1b84844325d336f306cd1daaf84b0",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "2fce03a3af04f30262c5f80409ac474109c4b7559f01cae496fc36b525ca6922",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "c3e54d72af5baa29599d879e5acc9a9f7adfc651df8e6f9d8b4d7b1880aa08ae",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        }
+      ]
+    },
+    {
+      "workflow_index": 5,
+      "arm": "codegraph",
+      "task_id": "pallets__flask-5014-flow",
+      "kind": "flow",
+      "criteria": [
+        {
+          "criterion": "Connect __call__, wsgi_app and request-context push/pop in app.py and ctx.py.",
+          "met": true,
+          "rationale": "Connects Flask.__call__/wsgi_app with request-context construction, push and finally pop across app.py/ctx.py."
+        },
+        {
+          "criterion": "Connect full_dispatch_request, preprocess_request and dispatch_request to the selected view.",
+          "met": true,
+          "rationale": "Connects full_dispatch_request, preprocess_request and dynamic endpoint view selection, including short-circuit/OPTIONS branches."
+        },
+        {
+          "criterion": "Connect finalize_request, make_response and process_response to response creation and after-request processing.",
+          "met": true,
+          "rationale": "Connects finalize_request, make_response, registered after-request processing and the WSGI response call."
+        },
+        {
+          "criterion": "Explain finally-based context cleanup and cite the relevant cross-file call sites without claiming a complete concrete runtime path.",
+          "met": true,
+          "rationale": "Explains finally-based cleanup and distinguishes actual runtime callback registrations from the statically described normal path."
+        }
+      ],
+      "accepted": false,
+      "serious_error": true,
+      "protocol_issues": [],
+      "findings": [
+        {
+          "category": "overbroad_finalization_exception_suppression",
+          "serious": true,
+          "quote": "When `from_error_handler=True`, errors raised here are logged instead of re-raised.",
+          "explanation": "make_response runs before the protected try block. Its error, for example an invalid None error-handler result, still propagates with from_error_handler=True. Only process_response/request_finished errors are caught. The exact pinned source audit verifies both the propagating conversion error and the ignored protected processing error.",
+          "runtime_evidence": "source-behavior-audit-v1/receipt.json"
+        }
+      ],
+      "notes": [
+        "The requested normal-path entry/view/response/context edges are present. The rejection is for the explicit material exception-propagation claim, not for missing optional branches or a concrete trace requirement."
+      ],
+      "source_before_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd",
+      "source_after_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "84e9fa0db2ecc6f8e86251cfe5efbc5d8ebc1c4cdffc5277640c5fa050c459c7",
+      "sdk_trace_sha256": "42590dabb99d7601bda4f588bd8360567e0dee0268a89be8a427af77ce2e05a7",
+      "workflow_artifact": "codegraph_matched_workflow_v1_05.json",
+      "workflow_artifact_sha256": "be9c988ae6acd824685b3f9943edf4eac9ed835eae966ae4f738bd8f7a990cf7",
+      "observation_tool_use_ids": [
+        "toolu_01LBah883vyWrjSp7RbxSW9R",
+        "toolu_01WHcPshubiDTWN775j5AV7f",
+        "toolu_011aHCsZLGeYVgT34kmcrgWu",
+        "toolu_017skHAybUN2NgD2zByxACP4"
+      ],
+      "source_evidence": [
+        {
+          "source_evidence_id": "9851dcdfb2b469b3ec62e772f9a7f3e8db258abcf71db7d75aa8af28482d35a8",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "dbf59a7b899129ddc35010181579db69d8c0502cb33efae00c26cd56ad296290",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "33ffa8c05e0f74fb48e2bc0089c2f7bef1f1b84844325d336f306cd1daaf84b0",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "2fce03a3af04f30262c5f80409ac474109c4b7559f01cae496fc36b525ca6922",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "c3e54d72af5baa29599d879e5acc9a9f7adfc651df8e6f9d8b4d7b1880aa08ae",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        }
+      ]
+    },
+    {
+      "workflow_index": 6,
+      "arm": "native",
+      "task_id": "pallets__flask-5014-flow",
+      "kind": "flow",
+      "criteria": [
+        {
+          "criterion": "Connect __call__, wsgi_app and request-context push/pop in app.py and ctx.py.",
+          "met": true,
+          "rationale": "Connects Flask.__call__/wsgi_app with request-context construction, push and finally pop across app.py/ctx.py."
+        },
+        {
+          "criterion": "Connect full_dispatch_request, preprocess_request and dispatch_request to the selected view.",
+          "met": true,
+          "rationale": "Connects full_dispatch_request, preprocess_request and dynamic endpoint view selection, including short-circuit/OPTIONS branches."
+        },
+        {
+          "criterion": "Connect finalize_request, make_response and process_response to response creation and after-request processing.",
+          "met": true,
+          "rationale": "Connects finalize_request, make_response, registered after-request processing and the WSGI response call."
+        },
+        {
+          "criterion": "Explain finally-based context cleanup and cite the relevant cross-file call sites without claiming a complete concrete runtime path.",
+          "met": true,
+          "rationale": "Explains finally-based cleanup and distinguishes actual runtime callback registrations from the statically described normal path."
+        }
+      ],
+      "accepted": false,
+      "serious_error": true,
+      "protocol_issues": [],
+      "findings": [
+        {
+          "category": "incorrect_exception_propagation_condition",
+          "serious": true,
+          "quote": "when `PROPAGATE_EXCEPTIONS` is on, or the app is in debug or testing mode",
+          "explanation": "handle_exception uses testing/debug only when PROPAGATE_EXCEPTIONS is None. Explicit False suppresses propagation even with debug=True. The exact pinned source audit returns a 500 response in that configuration, refuting the stated OR condition.",
+          "runtime_evidence": "source-behavior-audit-v1/receipt.json"
+        }
+      ],
+      "notes": [
+        "The requested normal-path entry/view/response/context edges are present. The rejection is for the explicit material exception-propagation claim, not for missing optional branches or a concrete trace requirement."
+      ],
+      "source_before_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd",
+      "source_after_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "f2ef300ca79c813b4d622e160e31cff04b2b4fd142d72e555963c9a7786ffda3",
+      "sdk_trace_sha256": "4f79c47bb633aec6d894ec200fa02057b420ad0cb06978603ee27e934435f26c",
+      "workflow_artifact": "codegraph_matched_workflow_v1_06.json",
+      "workflow_artifact_sha256": "d3776f9cfd3577a5946a0e00a28a2b93d96ebdce88ef2b9f2a2471d38e66ceb6",
+      "observation_tool_use_ids": [
+        "toolu_014Zt1VfXvvcD98w6Ckd4eLJ",
+        "toolu_01FQykJD5dAbVfRdgqGFcMcf",
+        "toolu_01Gs5iARCfe8jQEPj8ogVEfz",
+        "toolu_01AXGDvikmWm5wHu5xV3NmMb",
+        "toolu_0163DtWNk25TBj1W3SkMocUr",
+        "toolu_01SSrbj7f7tF7x62WcjyEVJ5",
+        "toolu_01StKwDfdUep6KhuW1ZoAmmg",
+        "toolu_01VMQbnL8gGCBzeJsUD2dsgb",
+        "toolu_01TZ6fkiAYhj8jLMaQSpzBwT",
+        "toolu_01K9EdiCS6bmdrzNTrP3X1kS"
+      ],
+      "source_evidence": [
+        {
+          "source_evidence_id": "9851dcdfb2b469b3ec62e772f9a7f3e8db258abcf71db7d75aa8af28482d35a8",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "dbf59a7b899129ddc35010181579db69d8c0502cb33efae00c26cd56ad296290",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "33ffa8c05e0f74fb48e2bc0089c2f7bef1f1b84844325d336f306cd1daaf84b0",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "2fce03a3af04f30262c5f80409ac474109c4b7559f01cae496fc36b525ca6922",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "c3e54d72af5baa29599d879e5acc9a9f7adfc651df8e6f9d8b4d7b1880aa08ae",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        }
+      ]
+    },
+    {
+      "workflow_index": 7,
+      "arm": "codenib",
+      "task_id": "pallets__flask-5014-flow",
+      "kind": "flow",
+      "criteria": [
+        {
+          "criterion": "Connect __call__, wsgi_app and request-context push/pop in app.py and ctx.py.",
+          "met": true,
+          "rationale": "Connects Flask.__call__/wsgi_app with request-context construction, push and finally pop across app.py/ctx.py."
+        },
+        {
+          "criterion": "Connect full_dispatch_request, preprocess_request and dispatch_request to the selected view.",
+          "met": true,
+          "rationale": "Connects full_dispatch_request, preprocess_request and dynamic endpoint view selection, including short-circuit/OPTIONS branches."
+        },
+        {
+          "criterion": "Connect finalize_request, make_response and process_response to response creation and after-request processing.",
+          "met": true,
+          "rationale": "Connects finalize_request, make_response, registered after-request processing and the WSGI response call."
+        },
+        {
+          "criterion": "Explain finally-based context cleanup and cite the relevant cross-file call sites without claiming a complete concrete runtime path.",
+          "met": true,
+          "rationale": "Explains finally-based cleanup and distinguishes actual runtime callback registrations from the statically described normal path."
+        }
+      ],
+      "accepted": false,
+      "serious_error": true,
+      "protocol_issues": [],
+      "findings": [
+        {
+          "category": "overbroad_finalization_exception_suppression",
+          "serious": true,
+          "quote": "When called with `from_error_handler=True`, errors raised during finalizing are logged rather than re-raised.",
+          "explanation": "make_response runs before the protected try block. Its error, for example an invalid None error-handler result, still propagates with from_error_handler=True. Only process_response/request_finished errors are caught. The exact pinned source audit verifies both the propagating conversion error and the ignored protected processing error.",
+          "runtime_evidence": "source-behavior-audit-v1/receipt.json"
+        }
+      ],
+      "notes": [
+        "The requested normal-path entry/view/response/context edges are present. The rejection is for the explicit material exception-propagation claim, not for missing optional branches or a concrete trace requirement.",
+        "Several detailed entry/context line numbers differ by one from source; the valid containing ranges identify the requested functions. These citation offsets are separate from the propagation error."
+      ],
+      "source_before_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd",
+      "source_after_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "afdd6c4e1d028d7762c5532b9a3fa0df6bb2fdd8024131b890db9819970cc44a",
+      "sdk_trace_sha256": "bc5ef6fb42084b61b8d346a917fd99f1bb59335239cb896fcbb78dfdab896d2a",
+      "workflow_artifact": "codegraph_matched_workflow_v1_07.json",
+      "workflow_artifact_sha256": "bcb7e5af411c4bea22e3cfda6dbe826a28993a11cf72f0defd096ab6d8a07dc8",
+      "observation_tool_use_ids": [
+        "toolu_01G24ykFRi5uSxkhUwxQLaL8",
+        "toolu_01JaZx3eep4wjyzbe5RJFRHK",
+        "toolu_01QkJ9PLCmiM9W1hJzxFzX6F",
+        "toolu_01JMvgfPygntytqmhmWfE62t",
+        "toolu_01QmUKuGfQyub9XPsznEQY6L"
+      ],
+      "source_evidence": [
+        {
+          "source_evidence_id": "9851dcdfb2b469b3ec62e772f9a7f3e8db258abcf71db7d75aa8af28482d35a8",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "dbf59a7b899129ddc35010181579db69d8c0502cb33efae00c26cd56ad296290",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "33ffa8c05e0f74fb48e2bc0089c2f7bef1f1b84844325d336f306cd1daaf84b0",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "2fce03a3af04f30262c5f80409ac474109c4b7559f01cae496fc36b525ca6922",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "c3e54d72af5baa29599d879e5acc9a9f7adfc651df8e6f9d8b4d7b1880aa08ae",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        }
+      ]
+    },
+    {
+      "workflow_index": 4,
+      "arm": "serena",
+      "task_id": "pallets__flask-5014-impact",
+      "kind": "impact",
+      "criteria": [
+        {
+          "criterion": "Locate after_this_request and after_request registration mechanisms and explain their corresponding callback collections.",
+          "met": true,
+          "rationale": "Identifies per-request after_this_request storage, Scaffold.after_request and deferred blueprint/app registration collections."
+        },
+        {
+          "criterion": "Explain blueprint/application order and reversed registered callbacks from process_response.",
+          "met": true,
+          "rationale": "Explains innermost blueprint-to-app ordering and reverse registration inside each scope."
+        },
+        {
+          "criterion": "Distinguish teardown callbacks from response transformation.",
+          "met": true,
+          "rationale": "Distinguishes teardown exception arguments and ignored return values from response transformation; any additional false cleanup precondition is separately flagged."
+        },
+        {
+          "criterion": "Locate two genuine existing tests with valid citations and relevant assertions.",
+          "met": false,
+          "rationale": "Two genuine tests are found, but the selected-test guarantee falsely claims all scope-loop changes would be caught."
+        }
+      ],
+      "accepted": false,
+      "serious_error": false,
+      "protocol_issues": [],
+      "findings": [
+        {
+          "category": "overstated_test_protection",
+          "serious": false,
+          "quote": "Any change to the reversal or the scope loop in `process_response` will show up here.",
+          "explanation": "The chosen test registers app callbacks only. Reordering blueprint scopes relative to the app leaves its assertions unchanged. The answer correctly notes missing cross-scope coverage elsewhere, but this explicit selected-test guarantee contradicts that limit."
+        }
+      ],
+      "notes": [],
+      "source_before_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd",
+      "source_after_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "ac9e048a58ed7bd777ee40d3043147ad78e061024905f9765170d3e806092d7b",
+      "sdk_trace_sha256": "0d2b30075c7006472b9931440274b95d8219e53eb601cedde6355f47b241d77c",
+      "workflow_artifact": "codegraph_matched_workflow_v1_04.json",
+      "workflow_artifact_sha256": "836595e0ffada5a6b20478975d531fd8bbe964babc4aaddd049ba7197da05385",
+      "observation_tool_use_ids": [
+        "toolu_011Rf8oxa5WC25125eaND6TP",
+        "toolu_015pCqHgV1GgJENDbnNQvRrd",
+        "toolu_011YuzUtW5gkRoZTz6tbxQgV",
+        "toolu_01UHuzwP3TGvrwjxvUXnMgQg",
+        "toolu_01KJgKrGjmnNxFVsWVCb8ckC",
+        "toolu_01AaLUodq5EbSQM4FFXyoDry"
+      ],
+      "source_evidence": [
+        {
+          "source_evidence_id": "45e276bdf000a5995c427f542e5a41b6966745bc176ff29fa9d85e5cc44187fc",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "aece433185a20dd9b962ea4db02ea0a7c2b565693c70249f915c4fd744c22033",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "f43507a9f808fa059e0a07aa731af3f2b467b695c58452a97bd0811c14d264de",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "8209a003fdd60bd83b6dbe651c206763d840b3bb2cfa3187f778d1966e253688",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "1ce9059125baebe7fac2fda21af6c3998c11830a5482154b989dc1504ed7f16a",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "df8277f6797ed96898194f06587c9917571ad3508432dc72174c0cc04e11b248",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "7e176c5bc852a61b53af8154495bbb59c39480a1e5bdbf44635b9310eb19adcc",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "a1ad62722186b32fa31f10797fcf2b0f183fe79574e9a8f74aad5c1cdf406a58",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "c08758eb2f23738f5828e5c5cb4a141967554bda4fbbe8ba9c0e6b0fbdfd2811",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        }
+      ]
+    },
+    {
+      "workflow_index": 5,
+      "arm": "codegraph",
+      "task_id": "pallets__flask-5014-impact",
+      "kind": "impact",
+      "criteria": [
+        {
+          "criterion": "Locate after_this_request and after_request registration mechanisms and explain their corresponding callback collections.",
+          "met": true,
+          "rationale": "Identifies per-request after_this_request storage, Scaffold.after_request and deferred blueprint/app registration collections."
+        },
+        {
+          "criterion": "Explain blueprint/application order and reversed registered callbacks from process_response.",
+          "met": true,
+          "rationale": "Explains innermost blueprint-to-app ordering and reverse registration inside each scope."
+        },
+        {
+          "criterion": "Distinguish teardown callbacks from response transformation.",
+          "met": true,
+          "rationale": "Distinguishes teardown exception arguments and ignored return values from response transformation; any additional false cleanup precondition is separately flagged."
+        },
+        {
+          "criterion": "Locate two genuine existing tests with valid citations and relevant assertions.",
+          "met": true,
+          "rationale": "Two genuine tests and their assertion behavior are correctly identified."
+        }
+      ],
+      "accepted": false,
+      "serious_error": true,
+      "protocol_issues": [],
+      "findings": [
+        {
+          "category": "incorrect_teardown_precondition",
+          "serious": true,
+          "quote": "They run even when an exception escapes, and only after `response(environ, start_response)` has been returned.",
+          "explanation": "The finally block pops context even when an unhandled exception prevents any response WSGI call. An exact-source runtime audit observes teardown before the exception reaches the caller, with no start_response call. A prior returned WSGI response is not a teardown precondition.",
+          "runtime_evidence": "source-behavior-audit-v2/receipt.json"
+        }
+      ],
+      "notes": [
+        "The final gap list misses test_session_stored_last at tests/test_basic.py:454-465, which checks persistence of an after-request session change; this is separate from the selected-test assertions and the material cleanup error."
+      ],
+      "source_before_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd",
+      "source_after_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "b0468b712bbb301cb03d7cb3694e59cbb8693ce337f914b49d5d475bffb05956",
+      "sdk_trace_sha256": "d31d23d8f7116c6b10dd3bff9521b55596cf0602f48bfda7490c29199522a9d1",
+      "workflow_artifact": "codegraph_matched_workflow_v1_05.json",
+      "workflow_artifact_sha256": "be9c988ae6acd824685b3f9943edf4eac9ed835eae966ae4f738bd8f7a990cf7",
+      "observation_tool_use_ids": [
+        "toolu_01AwhAqRqaUzTsuXS6iVpQHt",
+        "toolu_01Y7t4GKpBBDfdY8sHe3mVtp",
+        "toolu_014Pfbf5oTunovQpz8a2cSML",
+        "toolu_01YW54VK3YYqmqoxLTEqXDF5"
+      ],
+      "source_evidence": [
+        {
+          "source_evidence_id": "45e276bdf000a5995c427f542e5a41b6966745bc176ff29fa9d85e5cc44187fc",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "aece433185a20dd9b962ea4db02ea0a7c2b565693c70249f915c4fd744c22033",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "f43507a9f808fa059e0a07aa731af3f2b467b695c58452a97bd0811c14d264de",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "8209a003fdd60bd83b6dbe651c206763d840b3bb2cfa3187f778d1966e253688",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "1ce9059125baebe7fac2fda21af6c3998c11830a5482154b989dc1504ed7f16a",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "df8277f6797ed96898194f06587c9917571ad3508432dc72174c0cc04e11b248",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "7e176c5bc852a61b53af8154495bbb59c39480a1e5bdbf44635b9310eb19adcc",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "a1ad62722186b32fa31f10797fcf2b0f183fe79574e9a8f74aad5c1cdf406a58",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "c08758eb2f23738f5828e5c5cb4a141967554bda4fbbe8ba9c0e6b0fbdfd2811",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "88366f0b11744556eab057b8a88574c810df7059127ee1d2f9ebd66a0d7e128a",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        }
+      ]
+    },
+    {
+      "workflow_index": 6,
+      "arm": "native",
+      "task_id": "pallets__flask-5014-impact",
+      "kind": "impact",
+      "criteria": [
+        {
+          "criterion": "Locate after_this_request and after_request registration mechanisms and explain their corresponding callback collections.",
+          "met": true,
+          "rationale": "Identifies per-request after_this_request storage, Scaffold.after_request and deferred blueprint/app registration collections."
+        },
+        {
+          "criterion": "Explain blueprint/application order and reversed registered callbacks from process_response.",
+          "met": true,
+          "rationale": "Explains innermost blueprint-to-app ordering and reverse registration inside each scope."
+        },
+        {
+          "criterion": "Distinguish teardown callbacks from response transformation.",
+          "met": true,
+          "rationale": "Distinguishes teardown exception arguments and ignored return values from response transformation; any additional false cleanup precondition is separately flagged."
+        },
+        {
+          "criterion": "Locate two genuine existing tests with valid citations and relevant assertions.",
+          "met": true,
+          "rationale": "Two genuine tests and their assertion behavior are correctly identified."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "protocol_issues": [],
+      "findings": [],
+      "notes": [
+        "The response-before-teardown sentence is read as the described normal path: the same paragraph separately states teardown also runs on unhandled errors, without making a prior response an only-if precondition."
+      ],
+      "source_before_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd",
+      "source_after_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "25d690626f9178b1068b866e0ac695779e00026b2bc35cc7634e985b158adb5c",
+      "sdk_trace_sha256": "ab9bd40963df2f8a102185f924fffeefb5dd9913c80a6421f4ec892493bf687f",
+      "workflow_artifact": "codegraph_matched_workflow_v1_06.json",
+      "workflow_artifact_sha256": "d3776f9cfd3577a5946a0e00a28a2b93d96ebdce88ef2b9f2a2471d38e66ceb6",
+      "observation_tool_use_ids": [
+        "toolu_013SnCxbL6g6j8iMRAwFuf4s",
+        "toolu_01UmH4TEviDtdQ4GZshSA1Pw",
+        "toolu_01QjVnkk8JVdzUYG1DycDYRg",
+        "toolu_01TEdyRCW81dmM45KJmhh3M6",
+        "toolu_017oKcVGyYkMwBJX4aAGmNes",
+        "toolu_01G8KgZrzpunnmV9YFwD19Br",
+        "toolu_019gpJJ62ay6MhDQSmCZQuWV",
+        "toolu_01C4xkXyTntHHGAjhn6VWMco",
+        "toolu_01Poyj8ZHrfihxuW9fqsYhXr",
+        "toolu_01HxGWLwLDnA9fQkSFEUCgYe",
+        "toolu_017HMvMZpBab8FnmBj17qxKe",
+        "toolu_01HuEFvqXjaKYicqstAXsize",
+        "toolu_015zEPVT14WvcaxtezFe6V6M",
+        "toolu_01Bf5qRKyt825zF9SZzEemfa",
+        "toolu_01LjEhUdey3mUtN8PUa6CcG4",
+        "toolu_01TJAuoHptvjpvHKPob99Lgb"
+      ],
+      "source_evidence": [
+        {
+          "source_evidence_id": "45e276bdf000a5995c427f542e5a41b6966745bc176ff29fa9d85e5cc44187fc",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "aece433185a20dd9b962ea4db02ea0a7c2b565693c70249f915c4fd744c22033",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "f43507a9f808fa059e0a07aa731af3f2b467b695c58452a97bd0811c14d264de",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "8209a003fdd60bd83b6dbe651c206763d840b3bb2cfa3187f778d1966e253688",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "1ce9059125baebe7fac2fda21af6c3998c11830a5482154b989dc1504ed7f16a",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "df8277f6797ed96898194f06587c9917571ad3508432dc72174c0cc04e11b248",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "7e176c5bc852a61b53af8154495bbb59c39480a1e5bdbf44635b9310eb19adcc",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "a1ad62722186b32fa31f10797fcf2b0f183fe79574e9a8f74aad5c1cdf406a58",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "c08758eb2f23738f5828e5c5cb4a141967554bda4fbbe8ba9c0e6b0fbdfd2811",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        }
+      ]
+    },
+    {
+      "workflow_index": 7,
+      "arm": "codenib",
+      "task_id": "pallets__flask-5014-impact",
+      "kind": "impact",
+      "criteria": [
+        {
+          "criterion": "Locate after_this_request and after_request registration mechanisms and explain their corresponding callback collections.",
+          "met": true,
+          "rationale": "Identifies per-request after_this_request storage, Scaffold.after_request and deferred blueprint/app registration collections."
+        },
+        {
+          "criterion": "Explain blueprint/application order and reversed registered callbacks from process_response.",
+          "met": true,
+          "rationale": "Explains innermost blueprint-to-app ordering and reverse registration inside each scope."
+        },
+        {
+          "criterion": "Distinguish teardown callbacks from response transformation.",
+          "met": true,
+          "rationale": "Distinguishes teardown exception arguments and ignored return values from response transformation; any additional false cleanup precondition is separately flagged."
+        },
+        {
+          "criterion": "Locate two genuine existing tests with valid citations and relevant assertions.",
+          "met": true,
+          "rationale": "Two genuine tests and their assertion behavior are correctly identified."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "protocol_issues": [],
+      "findings": [
+        {
+          "category": "missed_existing_session_test",
+          "serious": false,
+          "quote": "That the session is saved after all callbacks. In other words, that a session change made inside an after_request callback still gets saved.",
+          "explanation": "The stated search gap is too broad: test_session_stored_last changes a session in after_request and asserts persistence on the next request. The two selected ordering/blueprint tests and their actual assertions remain valid."
+        }
+      ],
+      "notes": [
+        "Several narrow line intervals end one line before the named assertion; the enclosing named tests are genuine and correctly described. The review keeps this citation drift separate from fabricated source or false runtime behavior."
+      ],
+      "source_before_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd",
+      "source_after_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "0faf9cb8a74061524071b43d314400a632da7681b53fb75f4a705198e151cccd",
+      "sdk_trace_sha256": "e6e8b090fb44a1f6c85a3af73905afe2f8b3bdd3ce4432da8dc895ac714fb942",
+      "workflow_artifact": "codegraph_matched_workflow_v1_07.json",
+      "workflow_artifact_sha256": "bcb7e5af411c4bea22e3cfda6dbe826a28993a11cf72f0defd096ab6d8a07dc8",
+      "observation_tool_use_ids": [
+        "toolu_012Ww5RG8qs5iBkoyTvw4rej",
+        "toolu_01MevefEkqtY81DrVowUCjAs",
+        "toolu_01XaWZKAfMpXXzKQErozd7gg",
+        "toolu_01PGKxuiRPcUDKDWWwefPxyt",
+        "toolu_01Cz7SybZZRWFHkJ11p4EDk1"
+      ],
+      "source_evidence": [
+        {
+          "source_evidence_id": "45e276bdf000a5995c427f542e5a41b6966745bc176ff29fa9d85e5cc44187fc",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "aece433185a20dd9b962ea4db02ea0a7c2b565693c70249f915c4fd744c22033",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "f43507a9f808fa059e0a07aa731af3f2b467b695c58452a97bd0811c14d264de",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "8209a003fdd60bd83b6dbe651c206763d840b3bb2cfa3187f778d1966e253688",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "1ce9059125baebe7fac2fda21af6c3998c11830a5482154b989dc1504ed7f16a",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "df8277f6797ed96898194f06587c9917571ad3508432dc72174c0cc04e11b248",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "7e176c5bc852a61b53af8154495bbb59c39480a1e5bdbf44635b9310eb19adcc",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "a1ad62722186b32fa31f10797fcf2b0f183fe79574e9a8f74aad5c1cdf406a58",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "d4e0ff5301f5044bc8f5b1ee151e0ed30e9f31668df5e5d59bf1ec1963d34b04",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "7f0abfaf414c931d1e0265466df0ccaad4f48b679da765e3d4f0e9d1186543c5",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        },
+        {
+          "source_evidence_id": "88366f0b11744556eab057b8a88574c810df7059127ee1d2f9ebd66a0d7e128a",
+          "source_snapshot_sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd"
+        }
+      ]
+    },
+    {
+      "workflow_index": 4,
+      "arm": "serena",
+      "task_id": "pallets__flask-5014-post_edit",
+      "kind": "post_edit",
+      "criteria": [
+        {
+          "criterion": "Cite the new helper and Flask.full_dispatch_request.",
+          "met": true,
+          "rationale": "Quotes the current newly added dispatch_probe_request helper and full_dispatch_request definition."
+        },
+        {
+          "criterion": "Explain in-process dispatch rather than starting a WSGI server.",
+          "met": true,
+          "rationale": "Explains test environ/context construction and an in-process call, with no server startup or response WSGI invocation."
+        },
+        {
+          "criterion": "Explain the test_request_context context-manager exit/pop boundary using current ctx/app source.",
+          "met": true,
+          "rationale": "Explains __exit__ calling pop as return leaves the with block, with request/app teardown ownership and current ctx/app source."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "protocol_issues": [],
+      "findings": [],
+      "notes": [
+        "The normal returned-response cleanup account is read with the stated stream_with_context caveat and conditional app-context ownership."
+      ],
+      "source_before_sha256": "d123354ba95c9e2bf659279a456a11a79971adbcad798f448d3440969e7ef880",
+      "source_after_sha256": "d123354ba95c9e2bf659279a456a11a79971adbcad798f448d3440969e7ef880",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "ab5c9873ccf01a19ca4ff8d9f485bb44884d11881d79df6cda5da7491d17270b",
+      "sdk_trace_sha256": "04b7a34f3072dca9ef5589fd859fc329afb1933348c1f045c92295f50f75b5d4",
+      "workflow_artifact": "codegraph_matched_workflow_v1_04.json",
+      "workflow_artifact_sha256": "836595e0ffada5a6b20478975d531fd8bbe964babc4aaddd049ba7197da05385",
+      "observation_tool_use_ids": [
+        "toolu_01NLqDVDE75ht7BCzkNDLG9G",
+        "toolu_01VP4SskZvebkhA2YwqeDKaH",
+        "toolu_01UQA6hip4inTHRgKxdoHb2j",
+        "toolu_01JsWfzLk6xyHu1uPrahDds3"
+      ],
+      "source_evidence": [
+        {
+          "source_evidence_id": "61c04956b8463056da07a31f3b1107096b1b6d3648bd981a5317b7a73996f7c0",
+          "source_snapshot_sha256": "d123354ba95c9e2bf659279a456a11a79971adbcad798f448d3440969e7ef880"
+        },
+        {
+          "source_evidence_id": "88659351bd0e679bd443da5af6373317c679bca8984a727a6703b42f9b04bf1d",
+          "source_snapshot_sha256": "d123354ba95c9e2bf659279a456a11a79971adbcad798f448d3440969e7ef880"
+        },
+        {
+          "source_evidence_id": "6bf00f2c283d001628b062bfbb7729b6cea7b7213982140847a651d8e030f445",
+          "source_snapshot_sha256": "d123354ba95c9e2bf659279a456a11a79971adbcad798f448d3440969e7ef880"
+        },
+        {
+          "source_evidence_id": "29a0150c7025db4258fbd230a3aaad0ea856b2f980f95c97e924e262cc337512",
+          "source_snapshot_sha256": "d123354ba95c9e2bf659279a456a11a79971adbcad798f448d3440969e7ef880"
+        },
+        {
+          "source_evidence_id": "dbf59a7b899129ddc35010181579db69d8c0502cb33efae00c26cd56ad296290",
+          "source_snapshot_sha256": "d123354ba95c9e2bf659279a456a11a79971adbcad798f448d3440969e7ef880"
+        },
+        {
+          "source_evidence_id": "b8ea4d705f12a58d61aa4d4049217b8f2bc93eadc18162e37264dd83a756c257",
+          "source_snapshot_sha256": "d123354ba95c9e2bf659279a456a11a79971adbcad798f448d3440969e7ef880"
+        }
+      ]
+    },
+    {
+      "workflow_index": 5,
+      "arm": "codegraph",
+      "task_id": "pallets__flask-5014-post_edit",
+      "kind": "post_edit",
+      "criteria": [
+        {
+          "criterion": "Cite the new helper and Flask.full_dispatch_request.",
+          "met": true,
+          "rationale": "Quotes the current newly added dispatch_probe_request helper and full_dispatch_request definition."
+        },
+        {
+          "criterion": "Explain in-process dispatch rather than starting a WSGI server.",
+          "met": true,
+          "rationale": "Explains test environ/context construction and an in-process call, with no server startup or response WSGI invocation."
+        },
+        {
+          "criterion": "Explain the test_request_context context-manager exit/pop boundary using current ctx/app source.",
+          "met": true,
+          "rationale": "Explains __exit__ calling pop as return leaves the with block, with request/app teardown ownership and current ctx/app source."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "protocol_issues": [],
+      "findings": [],
+      "notes": [
+        "The normal returned-response cleanup account is read with the stated stream_with_context caveat and conditional app-context ownership.",
+        "PROPAGATE_EXCEPTIONS is considered by the omitted outer handle_exception, not by handle_user_exception itself. The example is imprecise; the answer correctly identifies the helper bypass, actual unhandled-error propagation and context exit."
+      ],
+      "source_before_sha256": "d123354ba95c9e2bf659279a456a11a79971adbcad798f448d3440969e7ef880",
+      "source_after_sha256": "d123354ba95c9e2bf659279a456a11a79971adbcad798f448d3440969e7ef880",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "82bf7007b85dd467d95c04ef6dc225646be84b93cf9550c7dafd86379a0cfc3b",
+      "sdk_trace_sha256": "581f5fdc3fdf1b99d8236d57f4ada3a6e3053c10519fbe3229b8713c10d2beef",
+      "workflow_artifact": "codegraph_matched_workflow_v1_05.json",
+      "workflow_artifact_sha256": "be9c988ae6acd824685b3f9943edf4eac9ed835eae966ae4f738bd8f7a990cf7",
+      "observation_tool_use_ids": [
+        "toolu_01RdAUH3MU9h7cu6YBJgRehk",
+        "toolu_01E61nTYuSXVBCz9Vkh9qFTf",
+        "toolu_01F3EqiJYkHQjBDYnJUK8qf5"
+      ],
+      "source_evidence": [
+        {
+          "source_evidence_id": "61c04956b8463056da07a31f3b1107096b1b6d3648bd981a5317b7a73996f7c0",
+          "source_snapshot_sha256": "d123354ba95c9e2bf659279a456a11a79971adbcad798f448d3440969e7ef880"
+        },
+        {
+          "source_evidence_id": "88659351bd0e679bd443da5af6373317c679bca8984a727a6703b42f9b04bf1d",
+          "source_snapshot_sha256": "d123354ba95c9e2bf659279a456a11a79971adbcad798f448d3440969e7ef880"
+        },
+        {
+          "source_evidence_id": "6bf00f2c283d001628b062bfbb7729b6cea7b7213982140847a651d8e030f445",
+          "source_snapshot_sha256": "d123354ba95c9e2bf659279a456a11a79971adbcad798f448d3440969e7ef880"
+        },
+        {
+          "source_evidence_id": "29a0150c7025db4258fbd230a3aaad0ea856b2f980f95c97e924e262cc337512",
+          "source_snapshot_sha256": "d123354ba95c9e2bf659279a456a11a79971adbcad798f448d3440969e7ef880"
+        },
+        {
+          "source_evidence_id": "dbf59a7b899129ddc35010181579db69d8c0502cb33efae00c26cd56ad296290",
+          "source_snapshot_sha256": "d123354ba95c9e2bf659279a456a11a79971adbcad798f448d3440969e7ef880"
+        },
+        {
+          "source_evidence_id": "b8ea4d705f12a58d61aa4d4049217b8f2bc93eadc18162e37264dd83a756c257",
+          "source_snapshot_sha256": "d123354ba95c9e2bf659279a456a11a79971adbcad798f448d3440969e7ef880"
+        }
+      ]
+    },
+    {
+      "workflow_index": 6,
+      "arm": "native",
+      "task_id": "pallets__flask-5014-post_edit",
+      "kind": "post_edit",
+      "criteria": [
+        {
+          "criterion": "Cite the new helper and Flask.full_dispatch_request.",
+          "met": true,
+          "rationale": "Quotes the current newly added dispatch_probe_request helper and full_dispatch_request definition."
+        },
+        {
+          "criterion": "Explain in-process dispatch rather than starting a WSGI server.",
+          "met": true,
+          "rationale": "Explains test environ/context construction and an in-process call, with no server startup or response WSGI invocation."
+        },
+        {
+          "criterion": "Explain the test_request_context context-manager exit/pop boundary using current ctx/app source.",
+          "met": true,
+          "rationale": "Explains __exit__ calling pop as return leaves the with block, with request/app teardown ownership and current ctx/app source."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "protocol_issues": [],
+      "findings": [],
+      "notes": [
+        "The normal returned-response cleanup account is read with the stated stream_with_context caveat and conditional app-context ownership."
+      ],
+      "source_before_sha256": "d123354ba95c9e2bf659279a456a11a79971adbcad798f448d3440969e7ef880",
+      "source_after_sha256": "d123354ba95c9e2bf659279a456a11a79971adbcad798f448d3440969e7ef880",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "ce336ba7a0fbf5749114159141e9ee2e30a5b7efda5015cc8d5179e7ce6c349f",
+      "sdk_trace_sha256": "8fda601fc24576de5b147523f332726197bffd8f31349bf2531db6a71ee9079d",
+      "workflow_artifact": "codegraph_matched_workflow_v1_06.json",
+      "workflow_artifact_sha256": "d3776f9cfd3577a5946a0e00a28a2b93d96ebdce88ef2b9f2a2471d38e66ceb6",
+      "observation_tool_use_ids": [
+        "toolu_015eudw9JEY1rF42jsZc8cRv",
+        "toolu_01Tib3vqERqFztL6xSS11Fvn",
+        "toolu_014PX1uZ3U2E1RJYtRxmFGzw",
+        "toolu_015xYEyPhmJFNKnWoZLMR6zt",
+        "toolu_01R9ZXWk8qznGUY5MnZoSoYD"
+      ],
+      "source_evidence": [
+        {
+          "source_evidence_id": "61c04956b8463056da07a31f3b1107096b1b6d3648bd981a5317b7a73996f7c0",
+          "source_snapshot_sha256": "d123354ba95c9e2bf659279a456a11a79971adbcad798f448d3440969e7ef880"
+        },
+        {
+          "source_evidence_id": "88659351bd0e679bd443da5af6373317c679bca8984a727a6703b42f9b04bf1d",
+          "source_snapshot_sha256": "d123354ba95c9e2bf659279a456a11a79971adbcad798f448d3440969e7ef880"
+        },
+        {
+          "source_evidence_id": "6bf00f2c283d001628b062bfbb7729b6cea7b7213982140847a651d8e030f445",
+          "source_snapshot_sha256": "d123354ba95c9e2bf659279a456a11a79971adbcad798f448d3440969e7ef880"
+        },
+        {
+          "source_evidence_id": "29a0150c7025db4258fbd230a3aaad0ea856b2f980f95c97e924e262cc337512",
+          "source_snapshot_sha256": "d123354ba95c9e2bf659279a456a11a79971adbcad798f448d3440969e7ef880"
+        },
+        {
+          "source_evidence_id": "dbf59a7b899129ddc35010181579db69d8c0502cb33efae00c26cd56ad296290",
+          "source_snapshot_sha256": "d123354ba95c9e2bf659279a456a11a79971adbcad798f448d3440969e7ef880"
+        },
+        {
+          "source_evidence_id": "b8ea4d705f12a58d61aa4d4049217b8f2bc93eadc18162e37264dd83a756c257",
+          "source_snapshot_sha256": "d123354ba95c9e2bf659279a456a11a79971adbcad798f448d3440969e7ef880"
+        }
+      ]
+    },
+    {
+      "workflow_index": 7,
+      "arm": "codenib",
+      "task_id": "pallets__flask-5014-post_edit",
+      "kind": "post_edit",
+      "criteria": [
+        {
+          "criterion": "Cite the new helper and Flask.full_dispatch_request.",
+          "met": true,
+          "rationale": "Quotes the current newly added dispatch_probe_request helper and full_dispatch_request definition."
+        },
+        {
+          "criterion": "Explain in-process dispatch rather than starting a WSGI server.",
+          "met": true,
+          "rationale": "Explains test environ/context construction and an in-process call, with no server startup or response WSGI invocation."
+        },
+        {
+          "criterion": "Explain the test_request_context context-manager exit/pop boundary using current ctx/app source.",
+          "met": true,
+          "rationale": "Explains __exit__ calling pop as return leaves the with block, with request/app teardown ownership and current ctx/app source."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "protocol_issues": [],
+      "findings": [],
+      "notes": [
+        "The normal returned-response cleanup account is read with the stated stream_with_context caveat and conditional app-context ownership.",
+        "The production 500-response comparison describes the default nonpropagating configuration. Explicit PROPAGATE_EXCEPTIONS can also make wsgi_app re-raise. The helper cleanup/outer-handler distinction is correct."
+      ],
+      "source_before_sha256": "69deacaac98eeee2d843909fb10a87d3c144413444b5b390de1f6ff447c881ac",
+      "source_after_sha256": "69deacaac98eeee2d843909fb10a87d3c144413444b5b390de1f6ff447c881ac",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "d12e211126f8254447f8c1a7dac5bc9bff1caccd4f5838ff97050c2e01484f5d",
+      "sdk_trace_sha256": "ad73b91c2aab745b74793fad822c6968d2522c2ef542d1d76947f481abb3caff",
+      "workflow_artifact": "codegraph_matched_workflow_v1_07.json",
+      "workflow_artifact_sha256": "bcb7e5af411c4bea22e3cfda6dbe826a28993a11cf72f0defd096ab6d8a07dc8",
+      "observation_tool_use_ids": [
+        "toolu_014sGCJGvdMGtYxzF9wTRDwA",
+        "toolu_01XUVmuJ5DBJHv8XKFSZ4Vrm",
+        "toolu_0183rWySsKhxsCUS4qKi9nsK"
+      ],
+      "source_evidence": [
+        {
+          "source_evidence_id": "61c04956b8463056da07a31f3b1107096b1b6d3648bd981a5317b7a73996f7c0",
+          "source_snapshot_sha256": "69deacaac98eeee2d843909fb10a87d3c144413444b5b390de1f6ff447c881ac"
+        },
+        {
+          "source_evidence_id": "88659351bd0e679bd443da5af6373317c679bca8984a727a6703b42f9b04bf1d",
+          "source_snapshot_sha256": "69deacaac98eeee2d843909fb10a87d3c144413444b5b390de1f6ff447c881ac"
+        },
+        {
+          "source_evidence_id": "6bf00f2c283d001628b062bfbb7729b6cea7b7213982140847a651d8e030f445",
+          "source_snapshot_sha256": "69deacaac98eeee2d843909fb10a87d3c144413444b5b390de1f6ff447c881ac"
+        },
+        {
+          "source_evidence_id": "29a0150c7025db4258fbd230a3aaad0ea856b2f980f95c97e924e262cc337512",
+          "source_snapshot_sha256": "69deacaac98eeee2d843909fb10a87d3c144413444b5b390de1f6ff447c881ac"
+        },
+        {
+          "source_evidence_id": "dbf59a7b899129ddc35010181579db69d8c0502cb33efae00c26cd56ad296290",
+          "source_snapshot_sha256": "69deacaac98eeee2d843909fb10a87d3c144413444b5b390de1f6ff447c881ac"
+        },
+        {
+          "source_evidence_id": "b8ea4d705f12a58d61aa4d4049217b8f2bc93eadc18162e37264dd83a756c257",
+          "source_snapshot_sha256": "69deacaac98eeee2d843909fb10a87d3c144413444b5b390de1f6ff447c881ac"
+        }
+      ]
+    }
+  ],
+  "limits": "No independent external adjudication or complete ContextBench read score. Original source criterion ambiguity is retained; corrected judgments are separate retrospective diagnostics."
+}

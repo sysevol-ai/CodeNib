@@ -105,6 +105,8 @@ class SCIPPythonGraphDecoder:
                 v["unified_name"] = name
             elif file_path and ":" in name:
                 symbol_part = name.split(":", 1)[1]
+                symbol_part = re.sub(r"\(_codenib_l\d+_c\d+\)", "()", symbol_part)
+                symbol_part = re.sub(r"@codenib-l\d+-c\d+", "", symbol_part)
                 v["unified_name"] = f"{file_path}:{symbol_part}"
 
     def _process_document(self, document_text):
@@ -214,23 +216,8 @@ class SCIPPythonGraphDecoder:
             if len(parts) > 1:
                 symbol_part = parts[1]
 
-                # Handle class and method patterns
-                if "#" in symbol_part:
-                    # Split on # to separate class from method
-                    class_method_parts = symbol_part.split("#", 1)
-                    class_name = class_method_parts[0]
-
-                    if len(class_method_parts) > 1 and class_method_parts[1]:
-                        # Has method after #
-                        method_part = class_method_parts[1].rstrip(".")
-                        unified = f"{module_path}:{class_name}.{method_part}"
-                    else:
-                        # Just class (ends with #)
-                        unified = f"{module_path}:{class_name}"
-                else:
-                    # Function (no # symbol)
-                    func_name = symbol_part.rstrip(".")
-                    unified = f"{module_path}:{func_name}"
+                symbol_part = symbol_part.replace("#", ".").rstrip(".")
+                unified = f"{module_path}:{symbol_part}"
             else:
                 unified = module_path
         else:
@@ -251,6 +238,15 @@ class SCIPPythonGraphDecoder:
             Symbol type: NODE_TYPE_CLASS, NODE_TYPE_METHOD, NODE_TYPE_FIELD,
             or NODE_TYPE_FUNCTION
         """
+        if original_symbol:
+            if original_symbol.endswith("#"):
+                return NODE_TYPE_CLASS
+            callable_match = re.search(r"[^.#/]+\([^)]*\)\.$", original_symbol)
+            if callable_match:
+                parent = original_symbol[: callable_match.start()]
+                return NODE_TYPE_METHOD if parent.endswith("#") else NODE_TYPE_FUNCTION
+            if original_symbol.endswith("."):
+                return NODE_TYPE_FIELD
         if ":" in unified_symbol:
             symbol_part = unified_symbol.split(":", 1)[1]
             if "." in symbol_part:
@@ -330,7 +326,7 @@ class SCIPPythonGraphDecoder:
                 module_path = module_match.group(1)
                 file_path = module_path.replace(".", "/") + ".py"
 
-                if symbol_roles == 8:
+                if symbol_roles & 8 and not symbol_roles & 1:
                     self.code_graph._add_edge(
                         self.code_graph.current_scope,
                         file_path,
@@ -341,7 +337,7 @@ class SCIPPythonGraphDecoder:
                 return
 
         # Update current scope if this is a definition with enclosing range
-        if symbol_roles == 1 and enclosing_ranges and len(enclosing_ranges) >= 4:
+        if symbol_roles & 1 and enclosing_ranges and len(enclosing_ranges) >= 4:
             scope_start_line = int(enclosing_ranges[0])
             scope_end_line = int(enclosing_ranges[2])
 
@@ -369,7 +365,7 @@ class SCIPPythonGraphDecoder:
                     raise
 
         # Handle definition with no enclosing range
-        elif symbol_roles == 1:
+        elif symbol_roles & 1:
             self.logger.scip_debug(
                 f"Adding symbol without enclosing range: {unified_symbol}, "
                 f"current scope: {self.code_graph.current_scope}"
@@ -382,7 +378,7 @@ class SCIPPythonGraphDecoder:
             )
 
         # Handle reference (symbol_roles == 8)
-        elif symbol_roles == 8:
+        elif symbol_roles & 8:
             self.code_graph.add_symbol_reference(
                 unified_symbol,
                 module_path,

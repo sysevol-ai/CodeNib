@@ -48,6 +48,14 @@ For the adoption, OpenRouter, and Wiki preview program, use
 `docs/adoption_roadmap.md` as the durable objective record. Keep shipping
 CodeGraph capabilities separate from experimental grep/Jev results, and
 update the relevant milestone when its acceptance gates or PR status change.
+The immediate CodeGraph product priority is the real-workflow net-benefit
+gate in A0 of that roadmap, with the pilot contract in
+`docs/experiments/codegraph_net_benefit.md`. Keep workflow acceptance,
+matched task outcomes, and observed repeat use separate from retrieval scores
+and demonstrations. Record a promotion, narrowed scope, or no-go decision;
+setting up the study does not complete the program. Preserve source-identity
+checks and the Storage Scope Guard while improving working-tree usability.
+
 The public repository entry must produce a navigable Repo Wiki through the
 existing Wiki pipeline. A source browser or a short AI explanation does not
 satisfy that outcome. Generation progress must reflect actual work; completed
@@ -217,6 +225,14 @@ reader. A page is not a record of how the work was done.
   first appears, and then use it consistently. A reader should be able to follow
   the explanation without knowing class names, module paths, run IDs, or
   experiment-arm labels.
+- Write product documentation, not an experiment report. A page says what
+  something is, when to use it, how to run it, and what it achieved, in that
+  order. State a result in a sentence or a small table with its scope, then
+  stop. Run provenance (dates, commits, seeds, digests, token and time
+  figures), protocol mechanics (preflight gates, denominators, fallbacks), and
+  lists of caveats go in a collapsed `??? note` block at the end of the
+  section, on the harness reference page, or in the excluded
+  `docs/experiments/` log, never in the main text.
 - Keep only what the reader needs. Cut internal history, and cut caveats that
   do not change what the reader would do. Move implementation detail to the
   reference or harness page where it belongs. Do not paste lab-notebook prose
@@ -224,9 +240,10 @@ reader. A page is not a record of how the work was done.
 - Keep pages current. Replace an outdated statement in place; do not append
   "update" notes or a chronology. Experiment logs belong in the excluded
   `docs/experiments/` tree or in the PR.
-- Scope every claim. A result names the benchmark and what it scores, the method
-  and its setup, and the sample size, and it links to the evidence. Do not
-  present a research-script result as product behavior.
+- Scope every claim briefly. A result names the benchmark, the method and the
+  setup difference that matters, and the sample size, in the same sentence,
+  and it links to the evidence. Do not present a research-script result as
+  product behavior.
 - Use short paragraphs with one idea each. Use a table to compare items with the
   same fields, and prose to explain why. Avoid chains of footnotes and stacked
   qualifiers.
@@ -271,6 +288,11 @@ reader. A page is not a record of how the work was done.
   separately from behavioral failures; retain all original selected outcomes.
   Change grading methodology only in a separate, explicit protocol, and keep
   reference material and grading feedback outside model inputs.
+- A committed Docker image can retain bind destinations in `Config.Volumes`.
+  Bind the active workspace once and mask only other inherited destinations;
+  masking the active bind again causes a duplicate-mount failure. Record each
+  returned container identity before startup or inspection, verify its owner
+  label before removal, and clean up only that invocation's identities.
 
 ## Critical Code Conventions
 
@@ -281,6 +303,11 @@ reader. A page is not a record of how the work was done.
 - `.c` files use the `cpp` chunker; there is no separate C chunker.
 - Graph node and edge types are centralized in `codenib/types.py`. Use the
   constants and helpers there instead of hard-coded string literals.
+- Describe `dependency_subgraph` as bounded incoming/outgoing static references
+  in public copy and tool reference pages. Legacy `callers`/`callees` labels do
+  not make every edge an invocation: fields, types and function values also
+  produce references. Keep documentation tables aligned with MCP semantics;
+  source inspection must support call-path and runtime claims.
 - Persisted graph schema changes require updating `_SCHEMA_VERSION` in
   `codenib/graph/code_graph.py` and checking C++ decoder parity under `core/`.
 - New languages should flow through the language registry instead of adding

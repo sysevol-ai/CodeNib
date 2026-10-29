@@ -1,7 +1,7 @@
 # Adoption and distribution roadmap
 
 Owner: CodeNib product, retrieval, and documentation maintainers.
-Reviewed: 2026-09-29. Status: active.
+Reviewed: 2026-10-28 (Pacific). Status: active.
 
 ## Outcome and product decision
 
@@ -10,12 +10,18 @@ source-linked output, and try it on their own repository. Public Wiki pages
 are a shareable preview and an acquisition channel. The primary activation
 event is a successful, source-linked agent query on the user's repository.
 
-The next retrieval path is model-planned grep followed by Jev reranking,
-using the user's OpenRouter account for both model operations. It must not
-require embeddings, a GPU, or a completed semantic graph before the first
-query. Typed graph navigation remains a separate strength, available when
-its language provider is ready. BM25 remains supported; it is not the new
-quality claim or the proposed default onboarding experience.
+The immediate product priority is A0: establish whether CodeGraph improves
+real coding tasks after setup, indexing and source-update costs are included.
+The pilot targets at least 20% improvement in a preselected task-time or
+model-usage endpoint with no reduction in task acceptance. It must support
+an evidence-based promotion, narrower product scope, or no-go decision.
+
+Model-planned grep followed by Jev remains a candidate retrieval path under
+A2/A3, using the user's OpenRouter account. It must not require embeddings,
+a GPU, or a completed graph before the first query. Typed graph navigation
+remains supported when its language provider is ready. Promoting an onboarding
+default requires its own matched product evidence; neither the grep/Jev
+research result nor graph-free ContextBench outcomes settle A0.
 
 The shipping `codegraph init` path and the experimental grep/Jev result must
 remain clearly distinguished until that route passes the product gates.
@@ -37,6 +43,113 @@ Using the caller's agent to plan grep is a separate, unevaluated variant.
 | Related work | #777/#778 improve the Jev blog evidence; #773 changes blog layout. | Preserve their ownership; do not duplicate their chart or hardware corrections. Merged #770/#752 supply optional Wiki image generation and contextual repository diagrams; they are independent of the visitor/adoption acceptance gates. |
 
 ## Delivery order and acceptance gates
+
+### A0 — Prove CodeGraph's net benefit in daily coding
+
+Status: active; goal and pilot decision contract established on 2026-10-26
+(Pacific). Target decision review: 2026-11-09. The source-contract audit is
+complete and [#875](https://github.com/sysevol-ai/CodeNib/pull/875) is merged.
+Offline workflow reproduction and dirty initialization are verified;
+[#877](https://github.com/sysevol-ai/CodeNib/pull/877) is merged. A source-query
+guard merged in [#878](https://github.com/sysevol-ai/CodeNib/pull/878) rejects
+stale local facts, including mid-query edits. The #871 reproduction confirms
+a Python provider identity collision; the shared graph-artifact guard merged
+in [#879](https://github.com/sysevol-ai/CodeNib/pull/879) rejects cyclic
+containment instead of serving those facts. The
+[identity recovery](experiments/codegraph_python_identity.md) now retains
+physical Python definitions, parameters and owned fields, using source syntax
+and positional LSP evidence when compiler IDs cross scopes. Strict product
+builds, complete serial/native parity and real MCP queries cover the original
+IPython case and the failed pytest admission. These fixes are source changes,
+not part of the published 0.2.4 package.
+Bounded representative source queries and the executable/runtime binding now
+pass. All twelve matched workflows complete, and all twelve captured repairs
+pass the selected original native grading. The completed source review retains
+four observations with an ambiguous original criterion and finds no complete
+eligible alternative under the frozen material-error rule. Promotion is held.
+Local manifest sessions now reload explicitly rebuilt indexes without a new
+connection; a real SCIP/BM25 fixture verifies edits, creates, deletes and renames.
+The [recovery-error delivery fix](experiments/codegraph_mcp_recovery.md)
+([#890](https://github.com/sysevol-ai/CodeNib/pull/890)) keeps
+rebuild/retry instructions visible through MCP 2.3 exception masking. Real
+Requests, Flask and pytest controls retain stale rejection and source-current
+queries after explicit rebuilding in the same process; no agent inference ran.
+The separate [prompted agent recovery probe](experiments/codegraph_agent_recovery_v1.md)
+([#892](https://github.com/sysevol-ai/CodeNib/pull/892)) now observes three agent
+sessions receive that error, rebuild through the CLI and retry
+successfully in their original MCP process. Its three controlled edits take
+31.910–43.647 seconds for the complete changed-source request. This is recovery
+evidence, with explicit tool use requested; complete answer quality, voluntary
+use and comparative benefit remain separate gates. The
+[static-reference interpretation fix](experiments/codegraph_reference_semantics.md)
+([#893](https://github.com/sysevol-ai/CodeNib/pull/893)) addresses
+[#891](https://github.com/sysevol-ai/CodeNib/issues/891) with explicit
+reference directions, meaning and coverage in the model-facing reply. It
+preserves the underlying relationships and does not establish better model
+answers or comparative benefit.
+[Peer source admission](experiments/codegraph_peer_source_admission.md) now
+verifies unattended startup and complete original lookup bodies for Serena and
+Codegraph on all three pinned sources. All twelve controls remain recorded,
+including preparation/controller failures and a separate Codegraph source
+omission. Separate [common-runtime controls](experiments/codegraph_common_runtime_admission.md)
+now bind all four arms to identical project environments per source, retain
+actual installation/initialization and source-addition update costs, and verify
+current lookup/helper bodies. Codegraph's immediate pending replies remain
+failed; separate bounded same-connection retries succeed. A separate
+[prospective v2 protocol](experiments/codegraph_matched_protocol_v2.md) now
+freezes the full source-checked rubric, current candidate, exact executable,
+runtime identities and unchanged benefit/accounting gates before new inference.
+The [independent v2 execution](experiments/codegraph_matched_run_v2.md) completes
+all sixty SDK tasks, all twelve original native repairs and 48 source-preserving
+read-only tasks with every optional product connected. Its
+[completed assessment](experiments/codegraph_matched_assessment_v2.md) accepts
+34 explanations and rejects fourteen, with no ambiguous criterion. Total
+accepted tasks are Native 13/15, Serena 12/15, Codegraph 10/15 and CodeNib 11/15.
+Every alternative still has a material explanation error; the frozen rule
+admits no complete eligible baseline. Hold promotion and comparative-efficiency
+claims. CodeNib receives no voluntary MCP or CLI call in this cohort; successful
+setup and native fallback do not establish graph efficacy. Preserve both
+cohorts rather than repeat these exposed tasks to seek a positive outcome.
+Automatic source-driven rebuilding, broader provider correctness and external
+repeat-use observations remain open. This does not close the milestone.
+Tracking issue: [#874](https://github.com/sysevol-ai/CodeNib/issues/874).
+The detailed contract is [the internal pilot plan](experiments/codegraph_net_benefit.md).
+
+Owner: CodeNib product and CodeGraph maintainers. Prioritize a useful first
+source-linked query, reliable queries after edits, and measurable task
+benefit. Admit new languages, backends or evaluation routes only when they
+remove a recorded pilot/user blocker or meet an existing explicit obligation.
+Existing maintenance and the A1-A6 contracts remain in force.
+
+| Gate | Current outcome | Next acceptance |
+| --- | --- | --- |
+| G0: baseline | Source-baseline and candidate SCIP/BM25/MCP fixtures cover clean/warm setup, dirty first use and modified/created/deleted/renamed-file rebuilds. A separately installed, hash-verified public PyPI 0.2.4 wheel confirms dirty-init rejection and stale facts in an existing MCP session after editing. Registration CLIs are isolated stand-ins; MCP is real, dependencies/toolchain warm and no model runs in these controls. Fifteen bounded query observations check five Requests/Flask definitions, position lookups and graph roots against source; two short-name ambiguities remain recorded. [Original receipts](experiments/codegraph_workflow_2026_10_26.json), [installed-release control](experiments/codegraph_pilot_admission.md), [execution/source checks](experiments/codegraph_execution_2026_10_27.json). | Broader provider correctness remains open; these source checks and fixture timings do not establish complete graph accuracy or whole-task benefit. Preserve the original failed admission as a historical control. |
+| G1: daily workflow | Dirty initialization (#877), the eleven-tool stale-fact guard (#878, closing #876) and graph-integrity guard (#879) are merged. Local MCP sessions reload explicitly rebuilt, source-authenticated indexes without reconnecting, preserving delivery and worker ownership. [Reload receipts](experiments/codegraph_reload_2026_10_27.json) cover edit/create/rename/delete, stale-query rejection and unchanged source/Git state. [Python identity recovery](experiments/codegraph_python_identity.md) separates nested definitions, parameters, repeated classes and owned fields before both decoders run. The original IPython snapshot and pytest admission now build through the strict product route; full serial/native parity and exact MCP definition/reference checks pass. Both saved graphs have no containment cycles or multiple parents. Static shared-binding targets, source-only definitions and unmapped attributes stay explicit in generation reports; raw SCIP is retained. [Recovery-error delivery](experiments/codegraph_mcp_recovery.md) keeps rebuilding instructions visible through MCP 2.3. The separately frozen [agent recovery probe](experiments/codegraph_agent_recovery_v1.md) meets its bounded recovery criteria on all three sources, preserving edits and the original MCP process. Six SDK queries retain complete request/rebuild costs, 464,526 normalized tokens and a $0.6462027 SDK estimate; invoice charges remain unknown. [Reference semantics](experiments/codegraph_reference_semantics.md) now distinguish indexed references from invocation and complete runtime coverage in the tool description, instructions and reply. A real strict Flask control retains all legacy nodes/edges and source anchors alongside the new guidance. [Installed release verification](https://github.com/sysevol-ai/CodeNib/pull/899) checks stale rejection and source-current queries after explicit rebuilding in the original MCP session. Upgrade checks distinguish a compatible BM25 view from an identity change requiring one rebuild, then require unchanged-view reuse. Both installed graph and upgrade gates run on relevant pull requests. The shared CI setup prepares the pinned positional Python LSP provider required for identity recovery. Canonical chunk/BM25 checks retain all source chunk IDs and spans; graph-backed BM25 separately retains physical graph IDs, including distinct property accessors. | Extend provider/source coverage and representative update workflows beyond the bounded source-addition controls. The completed v2 assessment does not establish voluntary CodeNib use or comparative benefit despite successful setup; prioritize a real source-linked task before another efficacy cohort. Full rebuilding remains explicit; automatic source-driven rebuilding and external validation remain open. The source fixes are unreleased and do not change either frozen cohort. |
+| G2: matched benefit | The original [v1 assessment](experiments/codegraph_matched_assessment_v1.md) retains 29 accepted explanations, fifteen rejected and four protocol-unassessable observations, twelve repair passes and its insufficient-evidence decision. The independent [v2 execution and assessment](experiments/codegraph_matched_assessment_v2.md), prospectively frozen in #896, complete all sixty tasks and twelve native repairs with all optional-product setups connected. Fresh source review accepts 34/48 explanations and rejects fourteen, with no ambiguous criterion. Total task acceptance is Native 13/15, Serena 12/15, Codegraph 10/15 and CodeNib 11/15; every alternative has a material error, so the frozen rule admits no complete eligible baseline. CodeNib receives no voluntary MCP or CLI call; Serena also receives zero, while Codegraph has six MCP attempts. CodeNib observed time is 667.005 s versus Native 511.724 s, descriptively 30.3% higher without quality parity. The v2 SDK estimate is $9.9928829; invoice charges remain unknown and the authorized ceiling remains $500. All 34 frozen inputs and 140 preceding tracked JSON artifacts retain their bytes. | Hold promotion and comparative-efficiency claims; no 20% gain is established. Preserve both complete cohorts and source-error findings. Prioritize an actual source-linked task and observed repeat use before another efficacy cohort, without forced calls, post-hoc eligibility changes or repeated exposed tasks to seek a positive result. External use and broader G1 coverage remain separate gates. |
+| G3: repeat use | The user confirms no recruitment program is currently available; no external participant is enrolled. SDK probes are maintainer-operated connectivity checks; the pilot contract now contains an unsent invitation/consent hand-off. | Five consenting users attempt setup on their own repositories; observe a first successful source-linked query and seven days of actual use, targeting voluntary return by at least three. Confirm recruitment and consent; keep missing observations explicit. |
+| G4: product decision | Hold promotion after both bounded cohorts yield insufficient evidence. Keep claims scoped to source-current typed navigation and bounded indexed relationships where the provider is ready, with explicit rebuild costs. The v2 tools all connect, but CodeNib is unused on all three sources; native fallback outcomes do not establish intrinsic graph efficacy. Preserve v1 failed setup/reconnect costs and every v2 outcome. Defer unrelated language/backend and default-rollout expansion. | A real source-linked user task, representative G1 coverage, a valid prospective benefit gate and five-user repeat-use evidence remain required before promotion. The bounded hold decision is reconciled; A0 and tracking issue #874 remain active. |
+
+Preserve task acceptance and record any additional serious correctness error
+as a promotion blocker. Retain complete denominators, actual costs and
+unavailable outcomes. Static ARB scores, graph-query speed, the Requests clip,
+ContextBench rank and website clicks cannot substitute for G2 or G3.
+
+The authorized API ceiling is $500; native account SDK/MCP connectivity is
+verified. Task/model/tool policy, limits, accounting and the executable/runtime
+binding are frozen. Both cohorts' execution and source/native assessments are
+complete; the original criterion defect and v1 outcomes remain explicitly
+retained. The prospective benefit gate remains unmet. Public entry and MCP
+guidance now describe bounded static-reference navigation, distinguish a first
+connection check from ordinary tool choice, and include indexing/rebuild costs
+in task-fit guidance. The repository-tool comparison promises no call-graph
+equivalence or precision advantage. This implements the bounded scope decision
+without adding benefit evidence or changing either cohort. Open gates are a
+real source-linked task and observed reuse, broader provider coverage,
+representative source-update workflows, a valid matched benefit gate and
+participant recruitment/consent.
+These do not block offline reproduction and the workflow fixes. If the review date arrives
+before evidence is complete, report the open gates rather than treating an
+unrun trial as a performance failure or an achieved benefit.
 
 ### A1 — Make the existing product understandable
 
@@ -448,6 +561,10 @@ tests; redaction coverage at observable HTTP/log/export boundaries; private
 code disclosure; no automatic billed retry after budget exhaustion.
 
 ### A4 — Show the benefit on the user's own repository
+
+The matched task-benefit study and repeat-use decision now belong to A0 and
+its pilot contract. This recording remains a demonstration, with its original
+measurement limits; it is not a separate proof of the A0 outcome.
 
 Status: the actual CodeGraph/Claude Code recording and first-screen media are
 merged in [#788](https://github.com/sysevol-ai/CodeNib/pull/788) as `dc2b4df0`,

@@ -2,24 +2,16 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Dependency / impact analysis over the code call-graph.
+"""Bounded dependency neighborhoods over indexed static references.
 
-This is the structural-analysis use of the code graph — the regime where there
-is *no grep substitute*: a human (or agent) cannot eyeball-grep a transitive
-call closure. It answers the questions the graph is uniquely good at:
+``impact`` follows incoming references, ``dependencies`` outgoing references,
+and ``subgraph`` both. Calls, field accesses, type uses and function values can
+all contribute references. Inspect source to distinguish actual invocations;
+these walks establish neither runtime control flow nor complete call coverage.
 
-  - ``impact(symbol)``       — who is (transitively) affected if I change X?
-                               (the blast radius — transitive callers)
-  - ``dependencies(symbol)`` — what does X (transitively) rely on?
-                               (transitive callees)
-  - ``call_path(a, b)``      — how does control flow from A to B?
-  - ``subgraph(symbol)``     — a compact neighborhood as nodes+edges, ready to
-                               render in a frontend dependency view.
-
-Built on :class:`RepoDependencySearcher` (1-hop, edge-typed) + BFS, and on
-:meth:`CodeGraph.resolve_symbol` so callers pass a readable symbol
-(``popGenericCommand``) rather than a content-hash identity key. Results are
-compact and readable; callers ``file_read`` the few they care about.
+The traversal uses :class:`RepoDependencySearcher` and BFS. Existing public
+caller/callee names remain aliases for reference direction. ``call_path`` is a
+legacy diagnostic over directed graph paths, not a reference-only call proof.
 """
 
 from __future__ import annotations
@@ -32,7 +24,7 @@ from ..types import EDGE_TYPE_REFERENCE, is_symbol_node, node_is_reference_only
 from .code_graph import CodeGraph
 from .traverse_graph import NeighborScanBudget, RepoDependencySearcher
 
-# Call/use edges (X references Y). The other edge type, ``contain`` (file→symbol
+# Index references (X references Y). The other edge type, ``contain`` (file→symbol
 # nesting), is structural, not a dependency — excluded from impact by default.
 _REFERENCE_EDGES = {EDGE_TYPE_REFERENCE}
 _DEFAULT_MAX_EDGES = 1000
@@ -75,7 +67,7 @@ class DependencyResult:
     """Structured, frontend-ready dependency/impact result."""
 
     root: str  # unique result label of the queried symbol
-    direction: str  # "callers" | "callees" | "both"
+    direction: str  # Legacy "callers" / "callees" labels mean reference direction.
     nodes: List[DepNode] = field(default_factory=list)
     edges: List[DepEdge] = field(default_factory=list)
     truncated: bool = False
@@ -116,10 +108,7 @@ class DependencyAnalyzer:
         max_nodes: int = 100,
         max_edges: int = _DEFAULT_MAX_EDGES,
     ) -> DependencyResult:
-        """Blast radius: everything that (transitively) CALLS *symbol*.
-
-        "If I change this function, what might break?" — transitive callers.
-        """
+        """Potential dependents reached through incoming index references."""
         return self._bfs(symbol, "backward", "callers", max_depth, max_nodes, max_edges)
 
     def dependencies(
@@ -129,7 +118,7 @@ class DependencyAnalyzer:
         max_nodes: int = 100,
         max_edges: int = _DEFAULT_MAX_EDGES,
     ) -> DependencyResult:
-        """What *symbol* (transitively) depends on — transitive callees."""
+        """Indexed dependencies reached through outgoing references."""
         return self._bfs(symbol, "forward", "callees", max_depth, max_nodes, max_edges)
 
     def subgraph(
@@ -139,7 +128,7 @@ class DependencyAnalyzer:
         max_nodes: int = 200,
         max_edges: int = _DEFAULT_MAX_EDGES,
     ) -> DependencyResult:
-        """Compact callers+callees neighborhood for a frontend dependency view."""
+        """Compact incoming/outgoing reference neighborhood."""
         return self._bfs(
             symbol,
             "both",
@@ -150,7 +139,7 @@ class DependencyAnalyzer:
         )
 
     def call_path(self, from_symbol: str, to_symbol: str) -> DependencyResult:
-        """Shortest call path from *from_symbol* to *to_symbol* (empty if none)."""
+        """Legacy directed graph path; may include containment, not runtime calls."""
         a, a_c = self.code_graph.resolve_symbol(from_symbol)
         b, b_c = self.code_graph.resolve_symbol(to_symbol)
         root = self.code_graph.display_name(a) if a else from_symbol

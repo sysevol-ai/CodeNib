@@ -1,0 +1,1357 @@
+{
+  "schema_version": 1,
+  "recorded_utc": "2026-10-28T05:36:18.045005+00:00",
+  "instance_id": "psf__requests-1921",
+  "review_method": "One unblinded maintainer-agent source review against original captured answers and exact source versions. Controller excerpts are ground truth, not model-read credit.",
+  "task_sha256": "76f170aaaacee775009fc01d7eedac9bb74d2e73d21c158fe7dee9a78a8d5bd6",
+  "policy_sha256": "da562c62849d8bc3937dc6dde1c1a2205609ceba7988d6367b2f18e135bebe41",
+  "source_evidence": {
+    "78bc00dd265f72601b564828680429bc297c4d2f5c7e0343946937c8646b3e1a": {
+      "file": "requests/sessions.py",
+      "sha256": "32e30eadf91367b3aefb90e8541cf3fc20d3d950a16828c0101f4232d36a78a9",
+      "start_line": 260,
+      "end_line": 297,
+      "text": "    def prepare_request(self, request):\n        \"\"\"Constructs a :class:`PreparedRequest <PreparedRequest>` for\n        transmission and returns it. The :class:`PreparedRequest` has settings\n        merged from the :class:`Request <Request>` instance and those of the\n        :class:`Session`.\n\n        :param request: :class:`Request` instance to prepare with this\n            session's settings.\n        \"\"\"\n        cookies = request.cookies or {}\n\n        # Bootstrap CookieJar.\n        if not isinstance(cookies, cookielib.CookieJar):\n            cookies = cookiejar_from_dict(cookies)\n\n        # Merge with session cookies\n        merged_cookies = merge_cookies(\n            merge_cookies(RequestsCookieJar(), self.cookies), cookies)\n\n\n        # Set environment's basic authentication if not explicitly set.\n        auth = request.auth\n        if self.trust_env and not auth and not self.auth:\n            auth = get_netrc_auth(request.url)\n\n        p = PreparedRequest()\n        p.prepare(\n            method=request.method.upper(),\n            url=request.url,\n            files=request.files,\n            data=request.data,\n            headers=merge_setting(request.headers, self.headers, dict_class=CaseInsensitiveDict),\n            params=merge_setting(request.params, self.params),\n            auth=merge_setting(auth, self.auth),\n            cookies=merged_cookies,\n            hooks=merge_hooks(request.hooks, self.hooks),\n        )\n        return p",
+      "line_base": 1
+    },
+    "2ec237a52acbc1457b8df6a01c671dd791cc3ab3cd66d5b0c1bfb85e3c4f6994": {
+      "file": "requests/sessions.py",
+      "sha256": "32e30eadf91367b3aefb90e8541cf3fc20d3d950a16828c0101f4232d36a78a9",
+      "start_line": 34,
+      "end_line": 78,
+      "text": "def merge_setting(request_setting, session_setting, dict_class=OrderedDict):\n    \"\"\"\n    Determines appropriate setting for a given request, taking into account the\n    explicit setting on that request, and the setting in the session. If a\n    setting is a dictionary, they will be merged together using `dict_class`\n    \"\"\"\n\n    if session_setting is None:\n        return request_setting\n\n    if request_setting is None:\n        return session_setting\n\n    # Bypass if not a dictionary (e.g. verify)\n    if not (\n            isinstance(session_setting, Mapping) and\n            isinstance(request_setting, Mapping)\n    ):\n        return request_setting\n\n    merged_setting = dict_class(to_key_val_list(session_setting))\n    merged_setting.update(to_key_val_list(request_setting))\n\n    # Remove keys that are set to None.\n    for (k, v) in request_setting.items():\n        if v is None:\n            del merged_setting[k]\n\n    return merged_setting\n\n\ndef merge_hooks(request_hooks, session_hooks, dict_class=OrderedDict):\n    \"\"\"\n    Properly merges both requests and session hooks.\n\n    This is necessary because when request_hooks == {'response': []}, the\n    merge breaks Session hooks entirely.\n    \"\"\"\n    if session_hooks is None or session_hooks.get('response') == []:\n        return request_hooks\n\n    if request_hooks is None or request_hooks.get('response') == []:\n        return session_hooks\n\n    return merge_setting(request_hooks, session_hooks, dict_class)",
+      "line_base": 1
+    },
+    "9c014b48781211239241cedcf1c5ddb94ec337651b9a2602693effe0524fa8d8": {
+      "file": "requests/cookies.py",
+      "sha256": "06330ab6b23c4d7403e68415793a18b64441175e3d788f395215ac046c2c25a7",
+      "start_line": 435,
+      "end_line": 454,
+      "text": "def merge_cookies(cookiejar, cookies):\n    \"\"\"Add cookies to cookiejar and returns a merged CookieJar.\n\n    :param cookiejar: CookieJar object to add the cookies to.\n    :param cookies: Dictionary or CookieJar object to be added.\n    \"\"\"\n    if not isinstance(cookiejar, cookielib.CookieJar):\n        raise ValueError('You can only merge into CookieJar')\n    \n    if isinstance(cookies, dict):\n        cookiejar = cookiejar_from_dict(\n            cookies, cookiejar=cookiejar, overwrite=False)\n    elif isinstance(cookies, cookielib.CookieJar):\n        try:\n            cookiejar.update(cookies)\n        except AttributeError:\n            for cookie_in_jar in cookies:\n                cookiejar.set_cookie(cookie_in_jar)\n\n    return cookiejar",
+      "line_base": 1
+    },
+    "4597cabde2f2da2141260a48f6330eecaba3d9bdabd9a644425188ab7b02eb86": {
+      "file": "requests/sessions.py",
+      "sha256": "32e30eadf91367b3aefb90e8541cf3fc20d3d950a16828c0101f4232d36a78a9",
+      "start_line": 343,
+      "end_line": 391,
+      "text": "        method = builtin_str(method)\n\n        # Create the Request.\n        req = Request(\n            method = method.upper(),\n            url = url,\n            headers = headers,\n            files = files,\n            data = data or {},\n            params = params or {},\n            auth = auth,\n            cookies = cookies,\n            hooks = hooks,\n        )\n        prep = self.prepare_request(req)\n\n        proxies = proxies or {}\n\n        # Gather clues from the surrounding environment.\n        if self.trust_env:\n            # Set environment's proxies.\n            env_proxies = get_environ_proxies(url) or {}\n            for (k, v) in env_proxies.items():\n                proxies.setdefault(k, v)\n\n            # Look for configuration.\n            if not verify and verify is not False:\n                verify = os.environ.get('REQUESTS_CA_BUNDLE')\n\n            # Curl compatibility.\n            if not verify and verify is not False:\n                verify = os.environ.get('CURL_CA_BUNDLE')\n\n        # Merge all the kwargs.\n        proxies = merge_setting(proxies, self.proxies)\n        stream = merge_setting(stream, self.stream)\n        verify = merge_setting(verify, self.verify)\n        cert = merge_setting(cert, self.cert)\n\n        # Send the request.\n        send_kwargs = {\n            'stream': stream,\n            'timeout': timeout,\n            'verify': verify,\n            'cert': cert,\n            'proxies': proxies,\n            'allow_redirects': allow_redirects,\n        }\n        resp = self.send(prep, **send_kwargs)",
+      "line_base": 1
+    },
+    "b1b2a7feefc69727d6e1581c5887eb14d8eeb186f455c81f3cd3d55f74c91c32": {
+      "file": "requests/models.py",
+      "sha256": "91153287286b3bc2018f8739e40dbaaee4c23cf5d7ca95b6ac661e0ac2ca9c33",
+      "start_line": 289,
+      "end_line": 303,
+      "text": "    def prepare(self, method=None, url=None, headers=None, files=None,\n                data=None, params=None, auth=None, cookies=None, hooks=None):\n        \"\"\"Prepares the entire request with the given parameters.\"\"\"\n\n        self.prepare_method(method)\n        self.prepare_url(url, params)\n        self.prepare_headers(headers)\n        self.prepare_cookies(cookies)\n        self.prepare_body(data, files)\n        self.prepare_auth(auth, url)\n        # Note that prepare_auth must be last to enable authentication schemes\n        # such as OAuth to work on a fully prepared request.\n\n        # This MUST go after prepare_auth. Authenticators could add a hook\n        self.prepare_hooks(hooks)",
+      "line_base": 1
+    },
+    "0a5857e81abaef7cbdc2b2a6dd7efe0456fe230b11e6fbeaf1a2ff0cb07e0a70": {
+      "file": "requests/sessions.py",
+      "sha256": "32e30eadf91367b3aefb90e8541cf3fc20d3d950a16828c0101f4232d36a78a9",
+      "start_line": 464,
+      "end_line": 540,
+      "text": "    def send(self, request, **kwargs):\n        \"\"\"Send a given PreparedRequest.\"\"\"\n        # Set defaults that the hooks can utilize to ensure they always have\n        # the correct parameters to reproduce the previous request.\n        kwargs.setdefault('stream', self.stream)\n        kwargs.setdefault('verify', self.verify)\n        kwargs.setdefault('cert', self.cert)\n        kwargs.setdefault('proxies', self.proxies)\n\n        # It's possible that users might accidentally send a Request object.\n        # Guard against that specific failure case.\n        if not isinstance(request, PreparedRequest):\n            raise ValueError('You can only send PreparedRequests.')\n\n        # Set up variables needed for resolve_redirects and dispatching of hooks\n        allow_redirects = kwargs.pop('allow_redirects', True)\n        stream = kwargs.get('stream')\n        timeout = kwargs.get('timeout')\n        verify = kwargs.get('verify')\n        cert = kwargs.get('cert')\n        proxies = kwargs.get('proxies')\n        hooks = request.hooks\n\n        # Get the appropriate adapter to use\n        adapter = self.get_adapter(url=request.url)\n\n        # Start time (approximately) of the request\n        start = datetime.utcnow()\n\n        # Send the request\n        r = adapter.send(request, **kwargs)\n\n        # Total elapsed time of the request (approximately)\n        r.elapsed = datetime.utcnow() - start\n\n        # Response manipulation hooks\n        r = dispatch_hook('response', hooks, r, **kwargs)\n\n        # Persist cookies\n        if r.history:\n\n            # If the hooks create history then we want those cookies too\n            for resp in r.history:\n                extract_cookies_to_jar(self.cookies, resp.request, resp.raw)\n\n        extract_cookies_to_jar(self.cookies, request, r.raw)\n\n        # Redirect resolving generator.\n        gen = self.resolve_redirects(r, request,\n            stream=stream,\n            timeout=timeout,\n            verify=verify,\n            cert=cert,\n            proxies=proxies)\n\n        # Resolve redirects if allowed.\n        history = [resp for resp in gen] if allow_redirects else []\n\n        # Shuffle things around if there's history.\n        if history:\n            # Insert the first (original) request at the start\n            history.insert(0, r)\n            # Get the last request made\n            r = history.pop()\n            r.history = tuple(history)\n\n        return r\n\n    def get_adapter(self, url):\n        \"\"\"Returns the appropriate connnection adapter for the given URL.\"\"\"\n        for (prefix, adapter) in self.adapters.items():\n\n            if url.lower().startswith(prefix):\n                return adapter\n\n        # Nothing matches :-/\n        raise InvalidSchema(\"No connection adapters were found for '%s'\" % url)",
+      "line_base": 1
+    },
+    "05fa9d010c165e1e511aa0124ac8d542ce4d1f52b4356a3ebc2b734305e82f98": {
+      "file": "requests/adapters.py",
+      "sha256": "4002f9ad2c04ceeaece4fe2ac23148cc74086de515f0eb1498a06f796e2bf899",
+      "start_line": 294,
+      "end_line": 396,
+      "text": "    def send(self, request, stream=False, timeout=None, verify=True, cert=None, proxies=None):\n        \"\"\"Sends PreparedRequest object. Returns Response object.\n\n        :param request: The :class:`PreparedRequest <PreparedRequest>` being sent.\n        :param stream: (optional) Whether to stream the request content.\n        :param timeout: (optional) The timeout on the request.\n        :param verify: (optional) Whether to verify SSL certificates.\n        :param cert: (optional) Any user-provided SSL certificate to be trusted.\n        :param proxies: (optional) The proxies dictionary to apply to the request.\n        \"\"\"\n\n        conn = self.get_connection(request.url, proxies)\n\n        self.cert_verify(conn, request.url, verify, cert)\n        url = self.request_url(request, proxies)\n        self.add_headers(request)\n\n        chunked = not (request.body is None or 'Content-Length' in request.headers)\n\n        if stream:\n            timeout = TimeoutSauce(connect=timeout)\n        else:\n            timeout = TimeoutSauce(connect=timeout, read=timeout)\n\n        try:\n            if not chunked:\n                resp = conn.urlopen(\n                    method=request.method,\n                    url=url,\n                    body=request.body,\n                    headers=request.headers,\n                    redirect=False,\n                    assert_same_host=False,\n                    preload_content=False,\n                    decode_content=False,\n                    retries=self.max_retries,\n                    timeout=timeout\n                )\n\n            # Send the request.\n            else:\n                if hasattr(conn, 'proxy_pool'):\n                    conn = conn.proxy_pool\n\n                low_conn = conn._get_conn(timeout=timeout)\n\n                try:\n                    low_conn.putrequest(request.method,\n                                        url,\n                                        skip_accept_encoding=True)\n\n                    for header, value in request.headers.items():\n                        low_conn.putheader(header, value)\n\n                    low_conn.endheaders()\n\n                    for i in request.body:\n                        low_conn.send(hex(len(i))[2:].encode('utf-8'))\n                        low_conn.send(b'\\r\\n')\n                        low_conn.send(i)\n                        low_conn.send(b'\\r\\n')\n                    low_conn.send(b'0\\r\\n\\r\\n')\n\n                    r = low_conn.getresponse()\n                    resp = HTTPResponse.from_httplib(\n                        r,\n                        pool=conn,\n                        connection=low_conn,\n                        preload_content=False,\n                        decode_content=False\n                    )\n                except:\n                    # If we hit any problems here, clean up the connection.\n                    # Then, reraise so that we can handle the actual exception.\n                    low_conn.close()\n                    raise\n                else:\n                    # All is well, return the connection to the pool.\n                    conn._put_conn(low_conn)\n\n        except socket.error as sockerr:\n            raise ConnectionError(sockerr, request=request)\n\n        except MaxRetryError as e:\n            raise ConnectionError(e, request=request)\n\n        except _ProxyError as e:\n            raise ProxyError(e)\n\n        except (_SSLError, _HTTPError) as e:\n            if isinstance(e, _SSLError):\n                raise SSLError(e, request=request)\n            elif isinstance(e, TimeoutError):\n                raise Timeout(e, request=request)\n            else:\n                raise\n\n        r = self.build_response(request, resp)\n\n        if not stream:\n            r.content\n\n        return r",
+      "line_base": 1
+    },
+    "6c5c79c5d37cbbbd8bf5ffb6e52cf4ac37e20be2fc3380dc3298f01c70869906": {
+      "file": "requests/sessions.py",
+      "sha256": "32e30eadf91367b3aefb90e8541cf3fc20d3d950a16828c0101f4232d36a78a9",
+      "start_line": 82,
+      "end_line": 182,
+      "text": "    def resolve_redirects(self, resp, req, stream=False, timeout=None,\n                          verify=True, cert=None, proxies=None):\n        \"\"\"Receives a Response. Returns a generator of Responses.\"\"\"\n\n        i = 0\n\n        while resp.is_redirect:\n            prepared_request = req.copy()\n\n            resp.content  # Consume socket so it can be released\n\n            if i >= self.max_redirects:\n                raise TooManyRedirects('Exceeded %s redirects.' % self.max_redirects)\n\n            # Release the connection back into the pool.\n            resp.close()\n\n            url = resp.headers['location']\n            method = req.method\n\n            # Handle redirection without scheme (see: RFC 1808 Section 4)\n            if url.startswith('//'):\n                parsed_rurl = urlparse(resp.url)\n                url = '%s:%s' % (parsed_rurl.scheme, url)\n\n            # The scheme should be lower case...\n            parsed = urlparse(url)\n            url = parsed.geturl()\n\n            # Facilitate non-RFC2616-compliant 'location' headers\n            # (e.g. '/path/to/resource' instead of 'http://domain.tld/path/to/resource')\n            # Compliant with RFC3986, we percent encode the url.\n            if not urlparse(url).netloc:\n                url = urljoin(resp.url, requote_uri(url))\n            else:\n                url = requote_uri(url)\n\n            prepared_request.url = to_native_string(url)\n\n            # http://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html#sec10.3.4\n            if (resp.status_code == codes.see_other and\n                    method != 'HEAD'):\n                method = 'GET'\n\n            # Do what the browsers do, despite standards...\n            # First, turn 302s into GETs.\n            if resp.status_code == codes.found and method != 'HEAD':\n                method = 'GET'\n\n            # Second, if a POST is responded to with a 301, turn it into a GET.\n            # This bizarre behaviour is explained in Issue 1704.\n            if resp.status_code == codes.moved and method == 'POST':\n                method = 'GET'\n\n            prepared_request.method = method\n\n            # https://github.com/kennethreitz/requests/issues/1084\n            if resp.status_code not in (codes.temporary, codes.resume):\n                if 'Content-Length' in prepared_request.headers:\n                    del prepared_request.headers['Content-Length']\n\n                prepared_request.body = None\n\n            headers = prepared_request.headers\n            try:\n                del headers['Cookie']\n            except KeyError:\n                pass\n\n            extract_cookies_to_jar(prepared_request._cookies, prepared_request, resp.raw)\n            prepared_request._cookies.update(self.cookies)\n            prepared_request.prepare_cookies(prepared_request._cookies)\n\n            if 'Authorization' in headers:\n                # If we get redirected to a new host, we should strip out any\n                #\u00a0authentication headers.\n                original_parsed = urlparse(resp.request.url)\n                redirect_parsed = urlparse(url)\n\n                if (original_parsed.hostname != redirect_parsed.hostname):\n                    del headers['Authorization']\n\n            # .netrc might have more auth for us.\n            new_auth = get_netrc_auth(url) if self.trust_env else None\n            if new_auth is not None:\n                prepared_request.prepare_auth(new_auth)\n\n            resp = self.send(\n                prepared_request,\n                stream=stream,\n                timeout=timeout,\n                verify=verify,\n                cert=cert,\n                proxies=proxies,\n                allow_redirects=False,\n            )\n\n            extract_cookies_to_jar(self.cookies, prepared_request, resp.raw)\n\n            i += 1\n            yield resp",
+      "line_base": 1
+    },
+    "069908d625ed1c53f80f989ac93a7e641dd023820d2afd91e17219662a02bbe6": {
+      "file": "requests/api.py",
+      "sha256": "46295d2e64e1951dc134523a0b76d2d5bbf15791bae5e84256b0469181de8c3b",
+      "start_line": 41,
+      "end_line": 44,
+      "text": "    \"\"\"\n\n    session = sessions.Session()\n    return session.request(method=method, url=url, **kwargs)",
+      "line_base": 1
+    },
+    "ee9ae59c9af6f6222eeeb4ccdfb67de308497590e7d323e5e32b684e779ef794": {
+      "file": "requests/sessions.py",
+      "sha256": "32e30eadf91367b3aefb90e8541cf3fc20d3d950a16828c0101f4232d36a78a9",
+      "start_line": 377,
+      "end_line": 391,
+      "text": "        proxies = merge_setting(proxies, self.proxies)\n        stream = merge_setting(stream, self.stream)\n        verify = merge_setting(verify, self.verify)\n        cert = merge_setting(cert, self.cert)\n\n        # Send the request.\n        send_kwargs = {\n            'stream': stream,\n            'timeout': timeout,\n            'verify': verify,\n            'cert': cert,\n            'proxies': proxies,\n            'allow_redirects': allow_redirects,\n        }\n        resp = self.send(prep, **send_kwargs)",
+      "line_base": 1
+    },
+    "6b132d744fa507080dc0c64d86155d3412f86c16765eb65849b24bbf4ddc7dc6": {
+      "file": "requests/sessions.py",
+      "sha256": "32e30eadf91367b3aefb90e8541cf3fc20d3d950a16828c0101f4232d36a78a9",
+      "start_line": 169,
+      "end_line": 177,
+      "text": "            resp = self.send(\n                prepared_request,\n                stream=stream,\n                timeout=timeout,\n                verify=verify,\n                cert=cert,\n                proxies=proxies,\n                allow_redirects=False,\n            )",
+      "line_base": 1
+    },
+    "a3d6a1869f81e0487ff293664232217edc9faa08737213eeaa531d0282eb1e8e": {
+      "file": "requests/sessions.py",
+      "sha256": "32e30eadf91367b3aefb90e8541cf3fc20d3d950a16828c0101f4232d36a78a9",
+      "start_line": 464,
+      "end_line": 530,
+      "text": "    def send(self, request, **kwargs):\n        \"\"\"Send a given PreparedRequest.\"\"\"\n        # Set defaults that the hooks can utilize to ensure they always have\n        # the correct parameters to reproduce the previous request.\n        kwargs.setdefault('stream', self.stream)\n        kwargs.setdefault('verify', self.verify)\n        kwargs.setdefault('cert', self.cert)\n        kwargs.setdefault('proxies', self.proxies)\n\n        # It's possible that users might accidentally send a Request object.\n        # Guard against that specific failure case.\n        if not isinstance(request, PreparedRequest):\n            raise ValueError('You can only send PreparedRequests.')\n\n        # Set up variables needed for resolve_redirects and dispatching of hooks\n        allow_redirects = kwargs.pop('allow_redirects', True)\n        stream = kwargs.get('stream')\n        timeout = kwargs.get('timeout')\n        verify = kwargs.get('verify')\n        cert = kwargs.get('cert')\n        proxies = kwargs.get('proxies')\n        hooks = request.hooks\n\n        # Get the appropriate adapter to use\n        adapter = self.get_adapter(url=request.url)\n\n        # Start time (approximately) of the request\n        start = datetime.utcnow()\n\n        # Send the request\n        r = adapter.send(request, **kwargs)\n\n        # Total elapsed time of the request (approximately)\n        r.elapsed = datetime.utcnow() - start\n\n        # Response manipulation hooks\n        r = dispatch_hook('response', hooks, r, **kwargs)\n\n        # Persist cookies\n        if r.history:\n\n            # If the hooks create history then we want those cookies too\n            for resp in r.history:\n                extract_cookies_to_jar(self.cookies, resp.request, resp.raw)\n\n        extract_cookies_to_jar(self.cookies, request, r.raw)\n\n        # Redirect resolving generator.\n        gen = self.resolve_redirects(r, request,\n            stream=stream,\n            timeout=timeout,\n            verify=verify,\n            cert=cert,\n            proxies=proxies)\n\n        # Resolve redirects if allowed.\n        history = [resp for resp in gen] if allow_redirects else []\n\n        # Shuffle things around if there's history.\n        if history:\n            # Insert the first (original) request at the start\n            history.insert(0, r)\n            # Get the last request made\n            r = history.pop()\n            r.history = tuple(history)\n\n        return r",
+      "line_base": 1
+    },
+    "100249b99fde9f130a11b406a42cdbdccc1e24c55115708d8afaf328e39f19ea": {
+      "file": "requests/auth.py",
+      "sha256": "c766c5a872b72e46e6eea3d4ca1fdd02a60b4c34e8b418bed736bd12909d0345",
+      "start_line": 149,
+      "end_line": 182,
+      "text": "    def handle_401(self, r, **kwargs):\n        \"\"\"Takes the given response and tries digest-auth, if needed.\"\"\"\n\n        if self.pos is not None:\n            # Rewind the file position indicator of the body to where\n            # it was to resend the request.\n            r.request.body.seek(self.pos)\n        num_401_calls = getattr(self, 'num_401_calls', 1)\n        s_auth = r.headers.get('www-authenticate', '')\n\n        if 'digest' in s_auth.lower() and num_401_calls < 2:\n\n            setattr(self, 'num_401_calls', num_401_calls + 1)\n            pat = re.compile(r'digest ', flags=re.IGNORECASE)\n            self.chal = parse_dict_header(pat.sub('', s_auth, count=1))\n\n            # Consume content and release the original connection\n            # to allow our new request to reuse the same one.\n            r.content\n            r.raw.release_conn()\n            prep = r.request.copy()\n            extract_cookies_to_jar(prep._cookies, r.request, r.raw)\n            prep.prepare_cookies(prep._cookies)\n\n            prep.headers['Authorization'] = self.build_digest_header(\n                prep.method, prep.url)\n            _r = r.connection.send(prep, **kwargs)\n            _r.history.append(r)\n            _r.request = prep\n\n            return _r\n\n        setattr(self, 'num_401_calls', 1)\n        return r",
+      "line_base": 1
+    },
+    "8e9507ffb40e18b504f6bfbf43fdb8ae080e94d3996ad3499cc16a5dc2977649": {
+      "file": "requests/adapters.py",
+      "sha256": "4002f9ad2c04ceeaece4fe2ac23148cc74086de515f0eb1498a06f796e2bf899",
+      "start_line": 294,
+      "end_line": 303,
+      "text": "    def send(self, request, stream=False, timeout=None, verify=True, cert=None, proxies=None):\n        \"\"\"Sends PreparedRequest object. Returns Response object.\n\n        :param request: The :class:`PreparedRequest <PreparedRequest>` being sent.\n        :param stream: (optional) Whether to stream the request content.\n        :param timeout: (optional) The timeout on the request.\n        :param verify: (optional) Whether to verify SSL certificates.\n        :param cert: (optional) Any user-provided SSL certificate to be trusted.\n        :param proxies: (optional) The proxies dictionary to apply to the request.\n        \"\"\"",
+      "line_base": 1
+    },
+    "a9fe215737a875bbbba3cfece0db05bd38d536bb20e3b6eddd625abf95ce4eb0": {
+      "file": "test_requests.py",
+      "sha256": "37ef77c0f9c3bddee646e2e3fd496e1a114daf6e8b05d3e47897ebc2e0d7630e",
+      "start_line": 115,
+      "end_line": 119,
+      "text": "    def test_HTTP_302_ALLOW_REDIRECT_GET(self):\n        r = requests.get(httpbin('redirect', '1'))\n        assert r.status_code == 200\n        assert r.history[0].status_code == 302\n        assert r.history[0].is_redirect",
+      "line_base": 1
+    },
+    "28d4e62d6d2784cd9e6140bd6867c9d90a30fcbbddad257796aafdbecbadbb5f": {
+      "file": "test_requests.py",
+      "sha256": "37ef77c0f9c3bddee646e2e3fd496e1a114daf6e8b05d3e47897ebc2e0d7630e",
+      "start_line": 505,
+      "end_line": 517,
+      "text": "    def test_prepared_request_hook(self):\n        def hook(resp, **kwargs):\n            resp.hook_working = True\n            return resp\n\n        req = requests.Request('GET', HTTPBIN, hooks={'response': hook})\n        prep = req.prepare()\n\n        s = requests.Session()\n        s.proxies = getproxies()\n        resp = s.send(prep)\n\n        assert hasattr(resp, 'hook_working')",
+      "line_base": 1
+    },
+    "7d6765a51832725441c3e3981bdbc82ebee1077bead8e30bc0e375f30946d0b9": {
+      "file": "test_requests.py",
+      "sha256": "37ef77c0f9c3bddee646e2e3fd496e1a114daf6e8b05d3e47897ebc2e0d7630e",
+      "start_line": 208,
+      "end_line": 212,
+      "text": "    def test_requests_in_history_are_not_overridden(self):\n        resp = requests.get(httpbin('redirect/3'))\n        urls = [r.url for r in resp.history]\n        req_urls = [r.request.url for r in resp.history]\n        assert urls == req_urls",
+      "line_base": 1
+    },
+    "11e334cc4aea4e17a6bc3647ab73b829ba8ce69fc986c21421d955cb4701c088": {
+      "file": "test_requests.py",
+      "sha256": "37ef77c0f9c3bddee646e2e3fd496e1a114daf6e8b05d3e47897ebc2e0d7630e",
+      "start_line": 519,
+      "end_line": 534,
+      "text": "    def test_prepared_from_session(self):\n        class DummyAuth(requests.auth.AuthBase):\n            def __call__(self, r):\n                r.headers['Dummy-Auth-Test'] = 'dummy-auth-test-ok'\n                return r\n\n        req = requests.Request('GET', httpbin('headers'))\n        assert not req.auth\n\n        s = requests.Session()\n        s.auth = DummyAuth()\n\n        prep = s.prepare_request(req)\n        resp = s.send(prep)\n\n        assert resp.json()['headers']['Dummy-Auth-Test'] == 'dummy-auth-test-ok'",
+      "line_base": 1
+    },
+    "47a03788ff8c1ab3f3835151cac16fdf0a06e0aeac430be1fbd414746745bc99": {
+      "file": "requests/_pilot_post_edit.py",
+      "sha256": "91ae1a3d5561b96db5590260d4e20b68db8a3a693c19965d2c92cb3e062d087e",
+      "start_line": 1,
+      "end_line": 5,
+      "text": "from .models import Request\nfrom .sessions import Session\n\ndef prepare_probe_request(url: str):\n    return Session().prepare_request(Request(\"GET\", url))",
+      "line_base": 1
+    },
+    "b658994685ff4ccf1941a45a7831e4c29290e6b8d81de19d892221c2fb41652a": {
+      "file": "requests/sessions.py",
+      "sha256": "8396869f56d924cf8d0387909a1251e6e1e281fc13889ae54c2d4209810741f5",
+      "start_line": 203,
+      "end_line": 252,
+      "text": "    def __init__(self):\n\n        #: A case-insensitive dictionary of headers to be sent on each\n        #: :class:`Request <Request>` sent from this\n        #: :class:`Session <Session>`.\n        self.headers = default_headers()\n\n        #: Default Authentication tuple or object to attach to\n        #: :class:`Request <Request>`.\n        self.auth = None\n\n        #: Dictionary mapping protocol to the URL of the proxy (e.g.\n        #: {'http': 'foo.bar:3128'}) to be used on each\n        #: :class:`Request <Request>`.\n        self.proxies = {}\n\n        #: Event-handling hooks.\n        self.hooks = default_hooks()\n\n        #: Dictionary of querystring data to attach to each\n        #: :class:`Request <Request>`. The dictionary values may be lists for\n        #: representing multivalued query parameters.\n        self.params = {}\n\n        #: Stream response content default.\n        self.stream = False\n\n        #: SSL Verification default.\n        self.verify = True\n\n        #: SSL certificate default.\n        self.cert = None\n\n        #: Maximum number of redirects allowed. If the request exceeds this\n        #: limit, a :class:`TooManyRedirects` exception is raised.\n        self.max_redirects = DEFAULT_REDIRECT_LIMIT\n\n        #: Should we trust the environment?\n        self.trust_env = True\n\n        #: A CookieJar containing all currently outstanding cookies set on this\n        #: session. By default it is a\n        #: :class:`RequestsCookieJar <requests.cookies.RequestsCookieJar>`, but\n        #: may be any other ``cookielib.CookieJar`` compatible object.\n        self.cookies = cookiejar_from_dict({})\n\n        # Default connection adapters.\n        self.adapters = OrderedDict()\n        self.mount('https://', HTTPAdapter())\n        self.mount('http://', HTTPAdapter())",
+      "line_base": 1
+    },
+    "4851f5af8537e52242426cdfb8c2e5605c7a10f888fe4ca35e4b7e4aca174360": {
+      "file": "requests/sessions.py",
+      "sha256": "8396869f56d924cf8d0387909a1251e6e1e281fc13889ae54c2d4209810741f5",
+      "start_line": 260,
+      "end_line": 297,
+      "text": "    def prepare_request(self, request):\n        \"\"\"Constructs a :class:`PreparedRequest <PreparedRequest>` for\n        transmission and returns it. The :class:`PreparedRequest` has settings\n        merged from the :class:`Request <Request>` instance and those of the\n        :class:`Session`.\n\n        :param request: :class:`Request` instance to prepare with this\n            session's settings.\n        \"\"\"\n        cookies = request.cookies or {}\n\n        # Bootstrap CookieJar.\n        if not isinstance(cookies, cookielib.CookieJar):\n            cookies = cookiejar_from_dict(cookies)\n\n        # Merge with session cookies\n        merged_cookies = merge_cookies(\n            merge_cookies(RequestsCookieJar(), self.cookies), cookies)\n\n\n        # Set environment's basic authentication if not explicitly set.\n        auth = request.auth\n        if self.trust_env and not auth and not self.auth:\n            auth = get_netrc_auth(request.url)\n\n        p = PreparedRequest()\n        p.prepare(\n            method=request.method.upper(),\n            url=request.url,\n            files=request.files,\n            data=request.data,\n            headers=merge_setting(request.headers, self.headers, dict_class=CaseInsensitiveDict),\n            params=merge_setting(request.params, self.params),\n            auth=merge_setting(auth, self.auth),\n            cookies=merged_cookies,\n            hooks=merge_hooks(request.hooks, self.hooks),\n        )\n        return p",
+      "line_base": 1
+    },
+    "268e354cc9b7b4f326c2f7d3c9a58d0fcbc4bc6d487d28bfdd30b8dee3986aaf": {
+      "file": "requests/adapters.py",
+      "sha256": "4002f9ad2c04ceeaece4fe2ac23148cc74086de515f0eb1498a06f796e2bf899",
+      "start_line": 305,
+      "end_line": 331,
+      "text": "        conn = self.get_connection(request.url, proxies)\n\n        self.cert_verify(conn, request.url, verify, cert)\n        url = self.request_url(request, proxies)\n        self.add_headers(request)\n\n        chunked = not (request.body is None or 'Content-Length' in request.headers)\n\n        if stream:\n            timeout = TimeoutSauce(connect=timeout)\n        else:\n            timeout = TimeoutSauce(connect=timeout, read=timeout)\n\n        try:\n            if not chunked:\n                resp = conn.urlopen(\n                    method=request.method,\n                    url=url,\n                    body=request.body,\n                    headers=request.headers,\n                    redirect=False,\n                    assert_same_host=False,\n                    preload_content=False,\n                    decode_content=False,\n                    retries=self.max_retries,\n                    timeout=timeout\n                )",
+      "line_base": 1
+    },
+    "a5db663ca22f8142aa9c92445047a879c24b18b6efad4a485edf469d4c7c8732": {
+      "file": "requests/sessions.py",
+      "sha256": "f80b9581b7ab076e89b98d760adfe759dbf6c45734051bf787497cc0a490b735",
+      "start_line": 203,
+      "end_line": 252,
+      "text": "    def __init__(self):\n\n        #: A case-insensitive dictionary of headers to be sent on each\n        #: :class:`Request <Request>` sent from this\n        #: :class:`Session <Session>`.\n        self.headers = default_headers()\n\n        #: Default Authentication tuple or object to attach to\n        #: :class:`Request <Request>`.\n        self.auth = None\n\n        #: Dictionary mapping protocol to the URL of the proxy (e.g.\n        #: {'http': 'foo.bar:3128'}) to be used on each\n        #: :class:`Request <Request>`.\n        self.proxies = {}\n\n        #: Event-handling hooks.\n        self.hooks = default_hooks()\n\n        #: Dictionary of querystring data to attach to each\n        #: :class:`Request <Request>`. The dictionary values may be lists for\n        #: representing multivalued query parameters.\n        self.params = {}\n\n        #: Stream response content default.\n        self.stream = False\n\n        #: SSL Verification default.\n        self.verify = True\n\n        #: SSL certificate default.\n        self.cert = None\n\n        #: Maximum number of redirects allowed. If the request exceeds this\n        #: limit, a :class:`TooManyRedirects` exception is raised.\n        self.max_redirects = DEFAULT_REDIRECT_LIMIT\n\n        #: Should we trust the environment?\n        self.trust_env = True\n\n        #: A CookieJar containing all currently outstanding cookies set on this\n        #: session. By default it is a\n        #: :class:`RequestsCookieJar <requests.cookies.RequestsCookieJar>`, but\n        #: may be any other ``cookielib.CookieJar`` compatible object.\n        self.cookies = cookiejar_from_dict({})\n\n        # Default connection adapters.\n        self.adapters = OrderedDict()\n        self.mount('https://', HTTPAdapter())\n        self.mount('http://', HTTPAdapter())",
+      "line_base": 1
+    },
+    "2eb5c0bd258ac2f20c4f72dd0e713b51cf07efc315195b82fcb8428126d7c672": {
+      "file": "requests/sessions.py",
+      "sha256": "f80b9581b7ab076e89b98d760adfe759dbf6c45734051bf787497cc0a490b735",
+      "start_line": 260,
+      "end_line": 297,
+      "text": "    def prepare_request(self, request):\n        \"\"\"Constructs a :class:`PreparedRequest <PreparedRequest>` for\n        transmission and returns it. The :class:`PreparedRequest` has settings\n        merged from the :class:`Request <Request>` instance and those of the\n        :class:`Session`.\n\n        :param request: :class:`Request` instance to prepare with this\n            session's settings.\n        \"\"\"\n        cookies = request.cookies or {}\n\n        # Bootstrap CookieJar.\n        if not isinstance(cookies, cookielib.CookieJar):\n            cookies = cookiejar_from_dict(cookies)\n\n        # Merge with session cookies\n        merged_cookies = merge_cookies(\n            merge_cookies(RequestsCookieJar(), self.cookies), cookies)\n\n\n        # Set environment's basic authentication if not explicitly set.\n        auth = request.auth\n        if self.trust_env and not auth and not self.auth:\n            auth = get_netrc_auth(request.url)\n\n        p = PreparedRequest()\n        p.prepare(\n            method=request.method.upper(),\n            url=request.url,\n            files=request.files,\n            data=request.data,\n            headers=merge_setting(request.headers, self.headers, dict_class=CaseInsensitiveDict),\n            params=merge_setting(request.params, self.params),\n            auth=merge_setting(auth, self.auth),\n            cookies=merged_cookies,\n            hooks=merge_hooks(request.hooks, self.hooks),\n        )\n        return p",
+      "line_base": 1
+    }
+  },
+  "reviews": [
+    {
+      "workflow_index": 0,
+      "arm": "serena",
+      "task_id": "psf__requests-1921-lookup",
+      "kind": "lookup",
+      "criteria": [
+        {
+          "criterion": "Identify Session.prepare_request in requests/sessions.py, not Request.prepare as the session-merging implementation.",
+          "met": true,
+          "rationale": "Names Session.prepare_request with its current definition range."
+        },
+        {
+          "criterion": "Describe headers, cookies and authentication/session defaults from the actual implementation.",
+          "met": true,
+          "rationale": "Describes case-insensitive header merge, fresh cookie jar layering and request/session/netrc authentication conditions."
+        },
+        {
+          "criterion": "Cite a valid definition range and support the stated behavior.",
+          "met": true,
+          "rationale": "The cited definition, return and merge-helper behavior match the captured pre-repair source."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "protocol_issues": [],
+      "findings": [],
+      "notes": [],
+      "source_before_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "source_after_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "0824b74e306329b54b2f18e0349a8200370d3a6e29985976a40984d4dfc01106",
+      "sdk_trace_sha256": "fbffaada17eb03aa1edb4a8d780adbbcacb6e33733db7428943a3a1176695c1b",
+      "workflow_artifact": "codegraph_matched_workflow_v1_00.json",
+      "workflow_artifact_sha256": "e57554cff4c57dd93be3d530833429c87e89768c024a34ebec0b3910e557d34b",
+      "observation_tool_use_ids": [
+        "toolu_017iEHeusvVferyRyt2B7tc3",
+        "toolu_018squ6XXRqSFzLruxmL6iSX",
+        "toolu_01QkR3fXkaqotq3gDz2inbuk"
+      ],
+      "source_evidence": [
+        {
+          "source_evidence_id": "78bc00dd265f72601b564828680429bc297c4d2f5c7e0343946937c8646b3e1a",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "2ec237a52acbc1457b8df6a01c671dd791cc3ab3cd66d5b0c1bfb85e3c4f6994",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "9c014b48781211239241cedcf1c5ddb94ec337651b9a2602693effe0524fa8d8",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        }
+      ]
+    },
+    {
+      "workflow_index": 1,
+      "arm": "codenib",
+      "task_id": "psf__requests-1921-lookup",
+      "kind": "lookup",
+      "criteria": [
+        {
+          "criterion": "Identify Session.prepare_request in requests/sessions.py, not Request.prepare as the session-merging implementation.",
+          "met": true,
+          "rationale": "Names Session.prepare_request with its current definition range."
+        },
+        {
+          "criterion": "Describe headers, cookies and authentication/session defaults from the actual implementation.",
+          "met": true,
+          "rationale": "Describes case-insensitive header merge, fresh cookie jar layering and request/session/netrc authentication conditions."
+        },
+        {
+          "criterion": "Cite a valid definition range and support the stated behavior.",
+          "met": true,
+          "rationale": "The cited definition, return and merge-helper behavior match the captured pre-repair source."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "protocol_issues": [],
+      "findings": [],
+      "notes": [],
+      "source_before_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "source_after_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "05242c18249f7c50bd1d853661c4c99c1c30527b6d47887fcb7fde6d66ef5006",
+      "sdk_trace_sha256": "8d74a25a71991b50305680ca9be69a4579848093a2741cc14fc6b4478d4a75be",
+      "workflow_artifact": "codegraph_matched_workflow_v1_01.json",
+      "workflow_artifact_sha256": "ffc7941c16b9ad9ce1faac6cc716d3dc84694623f2c2b87cbaaa45b1393ebbe9",
+      "observation_tool_use_ids": [
+        "toolu_012YFgFZ1UGRBZAXJT2TrzN1",
+        "toolu_01GoeX1zmBH9oKfov3cXJ1p4",
+        "toolu_011UGL1p61VDy8DsMHenYpj8",
+        "toolu_01EWMnhRUQ3WqUUnas7pnRua"
+      ],
+      "source_evidence": [
+        {
+          "source_evidence_id": "78bc00dd265f72601b564828680429bc297c4d2f5c7e0343946937c8646b3e1a",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "2ec237a52acbc1457b8df6a01c671dd791cc3ab3cd66d5b0c1bfb85e3c4f6994",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "9c014b48781211239241cedcf1c5ddb94ec337651b9a2602693effe0524fa8d8",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        }
+      ]
+    },
+    {
+      "workflow_index": 2,
+      "arm": "codegraph",
+      "task_id": "psf__requests-1921-lookup",
+      "kind": "lookup",
+      "criteria": [
+        {
+          "criterion": "Identify Session.prepare_request in requests/sessions.py, not Request.prepare as the session-merging implementation.",
+          "met": true,
+          "rationale": "Names Session.prepare_request with its current definition range."
+        },
+        {
+          "criterion": "Describe headers, cookies and authentication/session defaults from the actual implementation.",
+          "met": true,
+          "rationale": "Describes case-insensitive header merge, fresh cookie jar layering and request/session/netrc authentication conditions."
+        },
+        {
+          "criterion": "Cite a valid definition range and support the stated behavior.",
+          "met": true,
+          "rationale": "The cited definition, return and merge-helper behavior match the captured pre-repair source."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "protocol_issues": [],
+      "findings": [],
+      "notes": [],
+      "source_before_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "source_after_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "46ed64eec3ab45a4417a5e096091adf4919005f44fbe496504eb304bd6f30202",
+      "sdk_trace_sha256": "d6393412c113d94db55c9ef8537591dfcc0f2c52d11737fa151e587f654d1a78",
+      "workflow_artifact": "codegraph_matched_workflow_v1_02.json",
+      "workflow_artifact_sha256": "7d07c74cc28759a6c7d1554576f13f937e9c7c294477e6bd1d888fb25f5de2ae",
+      "observation_tool_use_ids": [
+        "toolu_01Ayqq4Wn8SbLLDb9GC4Nn6v"
+      ],
+      "source_evidence": [
+        {
+          "source_evidence_id": "78bc00dd265f72601b564828680429bc297c4d2f5c7e0343946937c8646b3e1a",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "2ec237a52acbc1457b8df6a01c671dd791cc3ab3cd66d5b0c1bfb85e3c4f6994",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "9c014b48781211239241cedcf1c5ddb94ec337651b9a2602693effe0524fa8d8",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        }
+      ]
+    },
+    {
+      "workflow_index": 3,
+      "arm": "native",
+      "task_id": "psf__requests-1921-lookup",
+      "kind": "lookup",
+      "criteria": [
+        {
+          "criterion": "Identify Session.prepare_request in requests/sessions.py, not Request.prepare as the session-merging implementation.",
+          "met": true,
+          "rationale": "Names Session.prepare_request with its current definition range."
+        },
+        {
+          "criterion": "Describe headers, cookies and authentication/session defaults from the actual implementation.",
+          "met": true,
+          "rationale": "Describes case-insensitive header merge, fresh cookie jar layering and request/session/netrc authentication conditions."
+        },
+        {
+          "criterion": "Cite a valid definition range and support the stated behavior.",
+          "met": true,
+          "rationale": "The cited definition, return and merge-helper behavior match the captured pre-repair source."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "protocol_issues": [],
+      "findings": [],
+      "notes": [],
+      "source_before_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "source_after_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "7a326d00b7b4ff41eb1325e2e3f73f2752bb2691b5cbbe13d38a3f31331d1dc5",
+      "sdk_trace_sha256": "837002e5a468ef8aafa893cefe9c3393e0a1bfd18d88493600740a2efb90d8e2",
+      "workflow_artifact": "codegraph_matched_workflow_v1_03.json",
+      "workflow_artifact_sha256": "441b4de344cb2818e1d3ec0fdcf800aec62b392fe8e684fbec4772021ab3d031",
+      "observation_tool_use_ids": [
+        "toolu_01CS39sTa9MimwbktwKPAkEh",
+        "toolu_01KtvT6FDghd6TuMHYFfDw1z"
+      ],
+      "source_evidence": [
+        {
+          "source_evidence_id": "78bc00dd265f72601b564828680429bc297c4d2f5c7e0343946937c8646b3e1a",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "2ec237a52acbc1457b8df6a01c671dd791cc3ab3cd66d5b0c1bfb85e3c4f6994",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "9c014b48781211239241cedcf1c5ddb94ec337651b9a2602693effe0524fa8d8",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        }
+      ]
+    },
+    {
+      "workflow_index": 0,
+      "arm": "serena",
+      "task_id": "psf__requests-1921-flow",
+      "kind": "flow",
+      "criteria": [
+        {
+          "criterion": "Connect Session.request to Session.prepare_request and PreparedRequest.prepare.",
+          "met": true,
+          "rationale": "Connects Session.request preparation with PreparedRequest.prepare in source order."
+        },
+        {
+          "criterion": "Connect Session.send, get_adapter and HTTPAdapter.send to the underlying connection/urllib3 transport call.",
+          "met": true,
+          "rationale": "Connects send, URL-prefix adapter selection and the urlopen/manual-chunked transport branches."
+        },
+        {
+          "criterion": "Explain Session.resolve_redirects returning through send, including redirect control, without treating adapter selection as one unconditional runtime target.",
+          "met": true,
+          "rationale": "Explains the recursive send re-entry with allow_redirects=False, generator consumption and dynamic adapter selection."
+        },
+        {
+          "criterion": "Cite the relevant sessions, models and adapters source boundaries.",
+          "met": true,
+          "rationale": "Provides the required sessions/models/adapters boundaries matching the captured source."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "protocol_issues": [],
+      "findings": [
+        {
+          "category": "extra_citation_error",
+          "serious": false,
+          "quote": "requests/api.py:17-28",
+          "explanation": "The optional API wrapper call is at lines43-44; line28 is parameter documentation. The required Session/models/adapter path is correctly identified and cited."
+        }
+      ],
+      "notes": [
+        "The phrase previous prepared request is read as the supplied req; resolve_redirects copies the original req each iteration. No claim of a new prepare_request call is made."
+      ],
+      "source_before_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "source_after_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "2e63462888ea6dc0f4b3586e90a9e49e0ab6d412fe83a6dbb144274e7228f27b",
+      "sdk_trace_sha256": "ffc598f8cd500fd5f8a299d0e89e50e7e064c9219c5c5069938d362c64641b86",
+      "workflow_artifact": "codegraph_matched_workflow_v1_00.json",
+      "workflow_artifact_sha256": "e57554cff4c57dd93be3d530833429c87e89768c024a34ebec0b3910e557d34b",
+      "observation_tool_use_ids": [
+        "toolu_01KDUi3Exgn43PXpP8465M2o",
+        "toolu_0171GZWtYyxvbZRgfPEo47dR",
+        "toolu_01YPkgbt5QfA7Wb8PrJz7hdL",
+        "toolu_01VEr7qrAqTG2KX44E4JuTRZ",
+        "toolu_019mQSs41aHYZhwVftEnAke4"
+      ],
+      "source_evidence": [
+        {
+          "source_evidence_id": "4597cabde2f2da2141260a48f6330eecaba3d9bdabd9a644425188ab7b02eb86",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "78bc00dd265f72601b564828680429bc297c4d2f5c7e0343946937c8646b3e1a",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "b1b2a7feefc69727d6e1581c5887eb14d8eeb186f455c81f3cd3d55f74c91c32",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "0a5857e81abaef7cbdc2b2a6dd7efe0456fe230b11e6fbeaf1a2ff0cb07e0a70",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "05fa9d010c165e1e511aa0124ac8d542ce4d1f52b4356a3ebc2b734305e82f98",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "6c5c79c5d37cbbbd8bf5ffb6e52cf4ac37e20be2fc3380dc3298f01c70869906",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "069908d625ed1c53f80f989ac93a7e641dd023820d2afd91e17219662a02bbe6",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        }
+      ]
+    },
+    {
+      "workflow_index": 1,
+      "arm": "codenib",
+      "task_id": "psf__requests-1921-flow",
+      "kind": "flow",
+      "criteria": [
+        {
+          "criterion": "Connect Session.request to Session.prepare_request and PreparedRequest.prepare.",
+          "met": true,
+          "rationale": "Connects Session.request preparation with PreparedRequest.prepare in source order."
+        },
+        {
+          "criterion": "Connect Session.send, get_adapter and HTTPAdapter.send to the underlying connection/urllib3 transport call.",
+          "met": true,
+          "rationale": "Connects send, URL-prefix adapter selection and the urlopen/manual-chunked transport branches."
+        },
+        {
+          "criterion": "Explain Session.resolve_redirects returning through send, including redirect control, without treating adapter selection as one unconditional runtime target.",
+          "met": true,
+          "rationale": "Explains the recursive send re-entry with allow_redirects=False, generator consumption and dynamic adapter selection."
+        },
+        {
+          "criterion": "Cite the relevant sessions, models and adapters source boundaries.",
+          "met": true,
+          "rationale": "Provides the required sessions/models/adapters boundaries matching the captured source."
+        }
+      ],
+      "accepted": false,
+      "serious_error": true,
+      "protocol_issues": [],
+      "findings": [
+        {
+          "category": "incorrect_redirect_method_condition",
+          "serious": true,
+          "quote": "changes the method: 303 \u2192 GET, 302 \u2192 GET, and 301 + POST \u2192 GET",
+          "explanation": "The asserted 302/303 rewrite omits the explicit HEAD guard and is not qualified elsewhere in the redirect explanation. sessions.py:122-129 preserves HEAD. For HEAD with an enabled 302/303 redirect, the stated outgoing method is wrong; this is a material transport-flow claim under the frozen rule."
+        }
+      ],
+      "notes": [
+        "All requested graph/transport edges are covered. The additional false HTTP behavior makes the task unaccepted; no CodeNib MCP call caused this assistant error."
+      ],
+      "source_before_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "source_after_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "725dab374a1ebd11e1a2c96f0fe52b1fe878b58bac18d4abd9d7b16b3d875e6b",
+      "sdk_trace_sha256": "675e5290de69521990b9b10521d95b1c5faee88fd90f3512a8d8d9ad8374f164",
+      "workflow_artifact": "codegraph_matched_workflow_v1_01.json",
+      "workflow_artifact_sha256": "ffc7941c16b9ad9ce1faac6cc716d3dc84694623f2c2b87cbaaa45b1393ebbe9",
+      "observation_tool_use_ids": [
+        "toolu_01HiDSZeLrA1JmdmB7eTAjCP",
+        "toolu_01VTuWRKiP1oSzcGoBd4Unq7",
+        "toolu_0135ofnePR4ysok3i1R1vNHs",
+        "toolu_01QVBexN24p4WvtEi7U7b49i",
+        "toolu_01QmB8UcKE9orpDUA78uLZYA",
+        "toolu_01YWJeeiLXReGhJyVFctLoXF",
+        "toolu_019MAoNhmMPk8vRQjAStBXcC"
+      ],
+      "source_evidence": [
+        {
+          "source_evidence_id": "4597cabde2f2da2141260a48f6330eecaba3d9bdabd9a644425188ab7b02eb86",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "78bc00dd265f72601b564828680429bc297c4d2f5c7e0343946937c8646b3e1a",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "b1b2a7feefc69727d6e1581c5887eb14d8eeb186f455c81f3cd3d55f74c91c32",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "0a5857e81abaef7cbdc2b2a6dd7efe0456fe230b11e6fbeaf1a2ff0cb07e0a70",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "05fa9d010c165e1e511aa0124ac8d542ce4d1f52b4356a3ebc2b734305e82f98",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "6c5c79c5d37cbbbd8bf5ffb6e52cf4ac37e20be2fc3380dc3298f01c70869906",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "069908d625ed1c53f80f989ac93a7e641dd023820d2afd91e17219662a02bbe6",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        }
+      ]
+    },
+    {
+      "workflow_index": 2,
+      "arm": "codegraph",
+      "task_id": "psf__requests-1921-flow",
+      "kind": "flow",
+      "criteria": [
+        {
+          "criterion": "Connect Session.request to Session.prepare_request and PreparedRequest.prepare.",
+          "met": true,
+          "rationale": "Connects Session.request preparation with PreparedRequest.prepare in source order."
+        },
+        {
+          "criterion": "Connect Session.send, get_adapter and HTTPAdapter.send to the underlying connection/urllib3 transport call.",
+          "met": true,
+          "rationale": "Connects send, URL-prefix adapter selection and the urlopen/manual-chunked transport branches."
+        },
+        {
+          "criterion": "Explain Session.resolve_redirects returning through send, including redirect control, without treating adapter selection as one unconditional runtime target.",
+          "met": true,
+          "rationale": "Explains the recursive send re-entry with allow_redirects=False, generator consumption and dynamic adapter selection."
+        },
+        {
+          "criterion": "Cite the relevant sessions, models and adapters source boundaries.",
+          "met": true,
+          "rationale": "Provides the required sessions/models/adapters boundaries matching the captured source."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "protocol_issues": [],
+      "findings": [],
+      "notes": [
+        "No recursion is read in its explicit local context as no recursively consumed redirect generator; the answer separately describes the nested send call and allow_redirects=False correctly."
+      ],
+      "source_before_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "source_after_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "7f83aa2a9bfbeb24f93046ba186c91a400315578e711d46403a03fa283c29485",
+      "sdk_trace_sha256": "8ae2483ca20feff8084c829111aef853b50ad67c3e407e489e10e6b023f4445c",
+      "workflow_artifact": "codegraph_matched_workflow_v1_02.json",
+      "workflow_artifact_sha256": "7d07c74cc28759a6c7d1554576f13f937e9c7c294477e6bd1d888fb25f5de2ae",
+      "observation_tool_use_ids": [
+        "toolu_01RywKXfn7VkV5RfaTurMtzJ",
+        "toolu_01MUsAkXMxtDPSK68bUNwD1B",
+        "toolu_018ngcj6jStYxYVuqcuKb1vi",
+        "toolu_01N73gxjFYhGFVCjM43WaE9T",
+        "toolu_01Umsb28xJyxnz3gm7pgGLT5",
+        "toolu_011HxAzmyY1cuZw1ieWYCibh",
+        "toolu_01AFCYM1AQY2Ly9oWcd6XCaG",
+        "toolu_01AufKaN61bdjGiKM9a8YZ67"
+      ],
+      "source_evidence": [
+        {
+          "source_evidence_id": "4597cabde2f2da2141260a48f6330eecaba3d9bdabd9a644425188ab7b02eb86",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "78bc00dd265f72601b564828680429bc297c4d2f5c7e0343946937c8646b3e1a",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "b1b2a7feefc69727d6e1581c5887eb14d8eeb186f455c81f3cd3d55f74c91c32",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "0a5857e81abaef7cbdc2b2a6dd7efe0456fe230b11e6fbeaf1a2ff0cb07e0a70",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "05fa9d010c165e1e511aa0124ac8d542ce4d1f52b4356a3ebc2b734305e82f98",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "6c5c79c5d37cbbbd8bf5ffb6e52cf4ac37e20be2fc3380dc3298f01c70869906",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "069908d625ed1c53f80f989ac93a7e641dd023820d2afd91e17219662a02bbe6",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        }
+      ]
+    },
+    {
+      "workflow_index": 3,
+      "arm": "native",
+      "task_id": "psf__requests-1921-flow",
+      "kind": "flow",
+      "criteria": [
+        {
+          "criterion": "Connect Session.request to Session.prepare_request and PreparedRequest.prepare.",
+          "met": true,
+          "rationale": "Connects Session.request preparation with PreparedRequest.prepare in source order."
+        },
+        {
+          "criterion": "Connect Session.send, get_adapter and HTTPAdapter.send to the underlying connection/urllib3 transport call.",
+          "met": true,
+          "rationale": "Connects send, URL-prefix adapter selection and the urlopen/manual-chunked transport branches."
+        },
+        {
+          "criterion": "Explain Session.resolve_redirects returning through send, including redirect control, without treating adapter selection as one unconditional runtime target.",
+          "met": true,
+          "rationale": "Explains the recursive send re-entry with allow_redirects=False, generator consumption and dynamic adapter selection."
+        },
+        {
+          "criterion": "Cite the relevant sessions, models and adapters source boundaries.",
+          "met": true,
+          "rationale": "Provides the required sessions/models/adapters boundaries matching the captured source."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "protocol_issues": [],
+      "findings": [],
+      "notes": [
+        "Some detailed redirect line intervals drift by about two lines; the cited containing method and the required send/adapter/model boundaries remain valid."
+      ],
+      "source_before_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "source_after_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "c383ddbac5654c77b7765ef2b9d18e0d4303cb77314b413d57c9c634fa98d72a",
+      "sdk_trace_sha256": "afc04bb175e9612ac774012434e13d44554d45789f0f926cbc5f3acdbd0385e1",
+      "workflow_artifact": "codegraph_matched_workflow_v1_03.json",
+      "workflow_artifact_sha256": "441b4de344cb2818e1d3ec0fdcf800aec62b392fe8e684fbec4772021ab3d031",
+      "observation_tool_use_ids": [
+        "toolu_01B3BVwugKPcuhKecZo5qYQR",
+        "toolu_01R7JZAS39YpYQGMGvwCQNvS",
+        "toolu_016cRsMsfjCEgZSuZyx9kQrU",
+        "toolu_01AYZiD3gMrDoMQkJeZEm8bq",
+        "toolu_01VtwQ2yq3z736pPNDLm4aN6"
+      ],
+      "source_evidence": [
+        {
+          "source_evidence_id": "4597cabde2f2da2141260a48f6330eecaba3d9bdabd9a644425188ab7b02eb86",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "78bc00dd265f72601b564828680429bc297c4d2f5c7e0343946937c8646b3e1a",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "b1b2a7feefc69727d6e1581c5887eb14d8eeb186f455c81f3cd3d55f74c91c32",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "0a5857e81abaef7cbdc2b2a6dd7efe0456fe230b11e6fbeaf1a2ff0cb07e0a70",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "05fa9d010c165e1e511aa0124ac8d542ce4d1f52b4356a3ebc2b734305e82f98",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "6c5c79c5d37cbbbd8bf5ffb6e52cf4ac37e20be2fc3380dc3298f01c70869906",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "069908d625ed1c53f80f989ac93a7e641dd023820d2afd91e17219662a02bbe6",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        }
+      ]
+    },
+    {
+      "workflow_index": 0,
+      "arm": "serena",
+      "task_id": "psf__requests-1921-impact",
+      "kind": "impact",
+      "criteria": [
+        {
+          "criterion": "Identify production direct callers Session.request and Session.resolve_redirects with their actual argument handling.",
+          "met": true,
+          "rationale": "Identifies Session.request and resolve_redirects, their explicit forwarding dictionaries/arguments and the hard-coded inner allow_redirects=False."
+        },
+        {
+          "criterion": "Explain the redirect consequence and distinguish the adapter transport call from callers of Session.send.",
+          "met": true,
+          "rationale": "Distinguishes the dynamic adapter call and digest hook from direct Session.send callers and describes redirect re-entry."
+        },
+        {
+          "criterion": "Locate two actual existing source tests that exercise direct sending or redirect behavior, with valid citations and correct descriptions.",
+          "met": false,
+          "rationale": "Genuine tests are located, but an explicit protection claim is not supported by their actual assertions; see the quoted finding."
+        }
+      ],
+      "accepted": false,
+      "serious_error": false,
+      "protocol_issues": [],
+      "findings": [
+        {
+          "category": "overstated_test_protection",
+          "serious": false,
+          "quote": "still produces exactly one flat history entry",
+          "explanation": "The cited redirect test checks status, history[0].status_code and is_redirect; it has no length or flat-history assertion. A duplicated extra history entry can satisfy all its assertions. The required correct protection description is overstated."
+        }
+      ],
+      "notes": [],
+      "source_before_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "source_after_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "1799b67feae548d65095c0e926df876bdd1bc6a615894ce9ce8f37c194a822a2",
+      "sdk_trace_sha256": "f6ab4af5e9322b8179416b3f05540868f2a4e33ddc5031cb3f1ddbd0ef308449",
+      "workflow_artifact": "codegraph_matched_workflow_v1_00.json",
+      "workflow_artifact_sha256": "e57554cff4c57dd93be3d530833429c87e89768c024a34ebec0b3910e557d34b",
+      "observation_tool_use_ids": [
+        "toolu_01QgbtXnikXUKhN6txduMmA3",
+        "toolu_01NaTnRuaACRUZRC1JaPsypF",
+        "toolu_012X6rU1jwpQoA13ryGUsvt3"
+      ],
+      "source_evidence": [
+        {
+          "source_evidence_id": "ee9ae59c9af6f6222eeeb4ccdfb67de308497590e7d323e5e32b684e779ef794",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "6b132d744fa507080dc0c64d86155d3412f86c16765eb65849b24bbf4ddc7dc6",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "a3d6a1869f81e0487ff293664232217edc9faa08737213eeaa531d0282eb1e8e",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "100249b99fde9f130a11b406a42cdbdccc1e24c55115708d8afaf328e39f19ea",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "8e9507ffb40e18b504f6bfbf43fdb8ae080e94d3996ad3499cc16a5dc2977649",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "a9fe215737a875bbbba3cfece0db05bd38d536bb20e3b6eddd625abf95ce4eb0",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "28d4e62d6d2784cd9e6140bd6867c9d90a30fcbbddad257796aafdbecbadbb5f",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        }
+      ]
+    },
+    {
+      "workflow_index": 1,
+      "arm": "codenib",
+      "task_id": "psf__requests-1921-impact",
+      "kind": "impact",
+      "criteria": [
+        {
+          "criterion": "Identify production direct callers Session.request and Session.resolve_redirects with their actual argument handling.",
+          "met": true,
+          "rationale": "Identifies Session.request and resolve_redirects, their explicit forwarding dictionaries/arguments and the hard-coded inner allow_redirects=False."
+        },
+        {
+          "criterion": "Explain the redirect consequence and distinguish the adapter transport call from callers of Session.send.",
+          "met": true,
+          "rationale": "Distinguishes the dynamic adapter call and digest hook from direct Session.send callers and describes redirect re-entry."
+        },
+        {
+          "criterion": "Locate two actual existing source tests that exercise direct sending or redirect behavior, with valid citations and correct descriptions.",
+          "met": false,
+          "rationale": "Genuine tests are located, but an explicit protection claim is not supported by their actual assertions; see the quoted finding."
+        }
+      ],
+      "accepted": false,
+      "serious_error": false,
+      "protocol_issues": [],
+      "findings": [
+        {
+          "category": "overstated_test_protection",
+          "serious": false,
+          "quote": "the nested chains would leave `history` shorter or out of order, and this test or the next one would fail.",
+          "explanation": "The selected history test compares two lists built from the same history; matching reordering or even empty history still satisfies it. It does not establish the claimed length/order protection. The next related single-hop test also does not assert the length/order of the three-hop history."
+        }
+      ],
+      "notes": [
+        "The broad statement that all send_kwargs were merged is imprecise: timeout/allow_redirects are forwarded directly. The same answer explicitly states no timeout session default; the actual caller signatures and options are given correctly."
+      ],
+      "source_before_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "source_after_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "04b42a7fe85e5a7b7cbd6a217a584de33efa1b4b05efeebbe76bc85f08ad13fa",
+      "sdk_trace_sha256": "989902a4411291252118722bf4335659e14d0125eec613273dd360ae836260d3",
+      "workflow_artifact": "codegraph_matched_workflow_v1_01.json",
+      "workflow_artifact_sha256": "ffc7941c16b9ad9ce1faac6cc716d3dc84694623f2c2b87cbaaa45b1393ebbe9",
+      "observation_tool_use_ids": [
+        "toolu_01U3YbC34zqpsgLAsALuQ4SA",
+        "toolu_0198kvuFdVbX1Y5xkURs8Tzq",
+        "toolu_01LMFgGgYnLR3bbU1G5jThmc",
+        "toolu_017xJAis5MWAtP4keMW9u4xM",
+        "toolu_014fQiv4SHrSbpmrmDKhDxz3",
+        "toolu_01PVTKuMZvXxEwNgd5EF7ZHp",
+        "toolu_01Nb3Je8NphrhJ1bwZxMunaa",
+        "toolu_01T4679WHZTfji8rMTFg3zmF"
+      ],
+      "source_evidence": [
+        {
+          "source_evidence_id": "ee9ae59c9af6f6222eeeb4ccdfb67de308497590e7d323e5e32b684e779ef794",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "6b132d744fa507080dc0c64d86155d3412f86c16765eb65849b24bbf4ddc7dc6",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "a3d6a1869f81e0487ff293664232217edc9faa08737213eeaa531d0282eb1e8e",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "100249b99fde9f130a11b406a42cdbdccc1e24c55115708d8afaf328e39f19ea",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "8e9507ffb40e18b504f6bfbf43fdb8ae080e94d3996ad3499cc16a5dc2977649",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "a9fe215737a875bbbba3cfece0db05bd38d536bb20e3b6eddd625abf95ce4eb0",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "28d4e62d6d2784cd9e6140bd6867c9d90a30fcbbddad257796aafdbecbadbb5f",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "7d6765a51832725441c3e3981bdbc82ebee1077bead8e30bc0e375f30946d0b9",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        }
+      ]
+    },
+    {
+      "workflow_index": 2,
+      "arm": "codegraph",
+      "task_id": "psf__requests-1921-impact",
+      "kind": "impact",
+      "criteria": [
+        {
+          "criterion": "Identify production direct callers Session.request and Session.resolve_redirects with their actual argument handling.",
+          "met": true,
+          "rationale": "Identifies Session.request and resolve_redirects, their explicit forwarding dictionaries/arguments and the hard-coded inner allow_redirects=False."
+        },
+        {
+          "criterion": "Explain the redirect consequence and distinguish the adapter transport call from callers of Session.send.",
+          "met": true,
+          "rationale": "Distinguishes the dynamic adapter call and digest hook from direct Session.send callers and describes redirect re-entry."
+        },
+        {
+          "criterion": "Locate two actual existing source tests that exercise direct sending or redirect behavior, with valid citations and correct descriptions.",
+          "met": false,
+          "rationale": "Genuine tests are located, but an explicit protection claim is not supported by their actual assertions; see the quoted finding."
+        }
+      ],
+      "accepted": false,
+      "serious_error": false,
+      "protocol_issues": [],
+      "findings": [
+        {
+          "category": "overstated_test_protection",
+          "serious": false,
+          "quote": "That path works only because of the defaults at `sessions.py:468-471` and because a missing `allow_redirects` falls back to `True`",
+          "explanation": "The selected test sends to the nonredirect headers endpoint and asserts the Dummy-Auth-Test header. Changing the absent-flag default to False would still permit that behavior. It does not protect the claimed necessity of the True redirect default."
+        }
+      ],
+      "notes": [],
+      "source_before_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "source_after_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "eeb40bee4bab49805e990e7074a468526cd52108cd7be81c46156141b7c052e4",
+      "sdk_trace_sha256": "74ff74a977bb90fce385396d84e236ef0d3aac6c3242dc567be4bbd4b1df10f5",
+      "workflow_artifact": "codegraph_matched_workflow_v1_02.json",
+      "workflow_artifact_sha256": "7d07c74cc28759a6c7d1554576f13f937e9c7c294477e6bd1d888fb25f5de2ae",
+      "observation_tool_use_ids": [
+        "toolu_01EH9cbMqHEVJsi41cQZiepB",
+        "toolu_0124eV1axKM91ih3biT61MYq",
+        "toolu_01NgSc7RLTtWqzcXpMwxhNG8",
+        "toolu_01KQnT2RfLUxAHkU7roPgyfy"
+      ],
+      "source_evidence": [
+        {
+          "source_evidence_id": "ee9ae59c9af6f6222eeeb4ccdfb67de308497590e7d323e5e32b684e779ef794",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "6b132d744fa507080dc0c64d86155d3412f86c16765eb65849b24bbf4ddc7dc6",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "a3d6a1869f81e0487ff293664232217edc9faa08737213eeaa531d0282eb1e8e",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "100249b99fde9f130a11b406a42cdbdccc1e24c55115708d8afaf328e39f19ea",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "8e9507ffb40e18b504f6bfbf43fdb8ae080e94d3996ad3499cc16a5dc2977649",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "a9fe215737a875bbbba3cfece0db05bd38d536bb20e3b6eddd625abf95ce4eb0",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "11e334cc4aea4e17a6bc3647ab73b829ba8ce69fc986c21421d955cb4701c088",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        }
+      ]
+    },
+    {
+      "workflow_index": 3,
+      "arm": "native",
+      "task_id": "psf__requests-1921-impact",
+      "kind": "impact",
+      "criteria": [
+        {
+          "criterion": "Identify production direct callers Session.request and Session.resolve_redirects with their actual argument handling.",
+          "met": true,
+          "rationale": "Identifies Session.request and resolve_redirects, their explicit forwarding dictionaries/arguments and the hard-coded inner allow_redirects=False."
+        },
+        {
+          "criterion": "Explain the redirect consequence and distinguish the adapter transport call from callers of Session.send.",
+          "met": true,
+          "rationale": "Distinguishes the dynamic adapter call and digest hook from direct Session.send callers and describes redirect re-entry."
+        },
+        {
+          "criterion": "Locate two actual existing source tests that exercise direct sending or redirect behavior, with valid citations and correct descriptions.",
+          "met": true,
+          "rationale": "Provides genuine direct-send and redirect tests with valid source ranges and actual behavior descriptions."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "protocol_issues": [],
+      "findings": [
+        {
+          "category": "imprecise_option_grouping",
+          "serious": false,
+          "quote": "The first four were merged from session settings and the environment",
+          "explanation": "The listed first four include timeout; actual merges are proxies/stream/verify/cert. The answer separately and correctly states that timeout has no session default, and gives both actual direct call contracts. This grouping error does not change its operative propagation account."
+        }
+      ],
+      "notes": [
+        "The direct-send test is described as exercising the current no-kwargs path, not as asserting every default. The valid redirect test assertions are stated. It does not independently pin the True default, exact history length or every forwarded option."
+      ],
+      "source_before_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "source_after_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "0583d87e5d90e2b93f75c1e63c9eba98f05df084a7c592f6de568c65f99d6163",
+      "sdk_trace_sha256": "a35f8ea6bf4efc7cc88bb88228b11522f5f39f5b7aca5748fc56539a8b332c1b",
+      "workflow_artifact": "codegraph_matched_workflow_v1_03.json",
+      "workflow_artifact_sha256": "441b4de344cb2818e1d3ec0fdcf800aec62b392fe8e684fbec4772021ab3d031",
+      "observation_tool_use_ids": [
+        "toolu_0138c4MfLS5arU12EAhCUgVq",
+        "toolu_01FQPaaHLN98Vb397aibCv18",
+        "toolu_013FZVrndSdcwdFDBi21uVpt"
+      ],
+      "source_evidence": [
+        {
+          "source_evidence_id": "ee9ae59c9af6f6222eeeb4ccdfb67de308497590e7d323e5e32b684e779ef794",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "6b132d744fa507080dc0c64d86155d3412f86c16765eb65849b24bbf4ddc7dc6",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "a3d6a1869f81e0487ff293664232217edc9faa08737213eeaa531d0282eb1e8e",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "100249b99fde9f130a11b406a42cdbdccc1e24c55115708d8afaf328e39f19ea",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "8e9507ffb40e18b504f6bfbf43fdb8ae080e94d3996ad3499cc16a5dc2977649",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "a9fe215737a875bbbba3cfece0db05bd38d536bb20e3b6eddd625abf95ce4eb0",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "11e334cc4aea4e17a6bc3647ab73b829ba8ce69fc986c21421d955cb4701c088",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        },
+        {
+          "source_evidence_id": "7d6765a51832725441c3e3981bdbc82ebee1077bead8e30bc0e375f30946d0b9",
+          "source_snapshot_sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea"
+        }
+      ]
+    },
+    {
+      "workflow_index": 0,
+      "arm": "serena",
+      "task_id": "psf__requests-1921-post_edit",
+      "kind": "post_edit",
+      "criteria": [
+        {
+          "criterion": "Cite the newly added helper and its call to Session.prepare_request.",
+          "met": true,
+          "rationale": "Quotes the newly added current helper and identifies Session.prepare_request."
+        },
+        {
+          "criterion": "Explain that it creates a PreparedRequest without calling Session.send or the adapter transport.",
+          "met": true,
+          "rationale": "Correctly separates PreparedRequest construction from Session.send and adapter transport, including the local netrc caveat."
+        },
+        {
+          "criterion": "Cite current helper and production definitions; do not present pre-edit graph facts as current.",
+          "met": true,
+          "rationale": "Current helper and production definition ranges match the post-repair snapshot; the answer uses current source rather than claiming an old graph was refreshed."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "protocol_issues": [],
+      "findings": [],
+      "notes": [],
+      "source_before_sha256": "2c8c49b4148bb72bce755b7cfaaeb2f7493dfbc2be460138833159b2e40cbd66",
+      "source_after_sha256": "2c8c49b4148bb72bce755b7cfaaeb2f7493dfbc2be460138833159b2e40cbd66",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "45f6f04fc9d62cb95742d851bd3597c38464e77ce865f459c3c42174e13cba39",
+      "sdk_trace_sha256": "f5067ca8d68b6d46b33ce9f3cbcbc1b61a3e424bd9da9ea0c4c3303ecf21a323",
+      "workflow_artifact": "codegraph_matched_workflow_v1_00.json",
+      "workflow_artifact_sha256": "e57554cff4c57dd93be3d530833429c87e89768c024a34ebec0b3910e557d34b",
+      "observation_tool_use_ids": [
+        "toolu_0132j6a119PsTC5KDW7AX42C",
+        "toolu_012sqpLFZNFnDnaAWD8A7rsk",
+        "toolu_01KmEMqmFchhdUKD5eCHDsep",
+        "toolu_016xqW9NnuJeKrJVQj1ibjXL"
+      ],
+      "source_evidence": [
+        {
+          "source_evidence_id": "47a03788ff8c1ab3f3835151cac16fdf0a06e0aeac430be1fbd414746745bc99",
+          "source_snapshot_sha256": "2c8c49b4148bb72bce755b7cfaaeb2f7493dfbc2be460138833159b2e40cbd66"
+        },
+        {
+          "source_evidence_id": "b658994685ff4ccf1941a45a7831e4c29290e6b8d81de19d892221c2fb41652a",
+          "source_snapshot_sha256": "2c8c49b4148bb72bce755b7cfaaeb2f7493dfbc2be460138833159b2e40cbd66"
+        },
+        {
+          "source_evidence_id": "4851f5af8537e52242426cdfb8c2e5605c7a10f888fe4ca35e4b7e4aca174360",
+          "source_snapshot_sha256": "2c8c49b4148bb72bce755b7cfaaeb2f7493dfbc2be460138833159b2e40cbd66"
+        },
+        {
+          "source_evidence_id": "b1b2a7feefc69727d6e1581c5887eb14d8eeb186f455c81f3cd3d55f74c91c32",
+          "source_snapshot_sha256": "2c8c49b4148bb72bce755b7cfaaeb2f7493dfbc2be460138833159b2e40cbd66"
+        },
+        {
+          "source_evidence_id": "268e354cc9b7b4f326c2f7d3c9a58d0fcbc4bc6d487d28bfdd30b8dee3986aaf",
+          "source_snapshot_sha256": "2c8c49b4148bb72bce755b7cfaaeb2f7493dfbc2be460138833159b2e40cbd66"
+        }
+      ]
+    },
+    {
+      "workflow_index": 1,
+      "arm": "codenib",
+      "task_id": "psf__requests-1921-post_edit",
+      "kind": "post_edit",
+      "criteria": [
+        {
+          "criterion": "Cite the newly added helper and its call to Session.prepare_request.",
+          "met": true,
+          "rationale": "Quotes the newly added current helper and identifies Session.prepare_request."
+        },
+        {
+          "criterion": "Explain that it creates a PreparedRequest without calling Session.send or the adapter transport.",
+          "met": true,
+          "rationale": "Correctly separates PreparedRequest construction from Session.send and adapter transport, including the local netrc caveat."
+        },
+        {
+          "criterion": "Cite current helper and production definitions; do not present pre-edit graph facts as current.",
+          "met": true,
+          "rationale": "Current helper and production definition ranges match the post-repair snapshot; the answer uses current source rather than claiming an old graph was refreshed."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "protocol_issues": [],
+      "findings": [],
+      "notes": [],
+      "source_before_sha256": "73ad9e0f7984402f6d467e669e787bbf68a6899bed01699b5e8ec77b40ac35f6",
+      "source_after_sha256": "73ad9e0f7984402f6d467e669e787bbf68a6899bed01699b5e8ec77b40ac35f6",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "d8563528c06dae152c9ed07d1193ddb25fa63614a4cb49f99cb23dc89872607b",
+      "sdk_trace_sha256": "20dfb37ffcd6d2e19fc6bd8db84ae8eb056423d7ad0933c8ef9638843336fe65",
+      "workflow_artifact": "codegraph_matched_workflow_v1_01.json",
+      "workflow_artifact_sha256": "ffc7941c16b9ad9ce1faac6cc716d3dc84694623f2c2b87cbaaa45b1393ebbe9",
+      "observation_tool_use_ids": [
+        "toolu_01UCRgVsE2UCqd8tn5Ty9225",
+        "toolu_01Nndgmmnz4g6wkpYPgg8DWA",
+        "toolu_01LHz3qnKTfcGy3hJyHPiDCC",
+        "toolu_01JvaEESx6ApBuiYS8UgDvoD",
+        "toolu_01VapkEfjGgAXeJU1CFGfKwd",
+        "toolu_014TBipzpGiwPNC5afAJ6GF8",
+        "toolu_01MWPQnuwSXsom6mrSWiVs72"
+      ],
+      "source_evidence": [
+        {
+          "source_evidence_id": "47a03788ff8c1ab3f3835151cac16fdf0a06e0aeac430be1fbd414746745bc99",
+          "source_snapshot_sha256": "73ad9e0f7984402f6d467e669e787bbf68a6899bed01699b5e8ec77b40ac35f6"
+        },
+        {
+          "source_evidence_id": "a5db663ca22f8142aa9c92445047a879c24b18b6efad4a485edf469d4c7c8732",
+          "source_snapshot_sha256": "73ad9e0f7984402f6d467e669e787bbf68a6899bed01699b5e8ec77b40ac35f6"
+        },
+        {
+          "source_evidence_id": "2eb5c0bd258ac2f20c4f72dd0e713b51cf07efc315195b82fcb8428126d7c672",
+          "source_snapshot_sha256": "73ad9e0f7984402f6d467e669e787bbf68a6899bed01699b5e8ec77b40ac35f6"
+        },
+        {
+          "source_evidence_id": "b1b2a7feefc69727d6e1581c5887eb14d8eeb186f455c81f3cd3d55f74c91c32",
+          "source_snapshot_sha256": "73ad9e0f7984402f6d467e669e787bbf68a6899bed01699b5e8ec77b40ac35f6"
+        },
+        {
+          "source_evidence_id": "268e354cc9b7b4f326c2f7d3c9a58d0fcbc4bc6d487d28bfdd30b8dee3986aaf",
+          "source_snapshot_sha256": "73ad9e0f7984402f6d467e669e787bbf68a6899bed01699b5e8ec77b40ac35f6"
+        }
+      ]
+    },
+    {
+      "workflow_index": 2,
+      "arm": "codegraph",
+      "task_id": "psf__requests-1921-post_edit",
+      "kind": "post_edit",
+      "criteria": [
+        {
+          "criterion": "Cite the newly added helper and its call to Session.prepare_request.",
+          "met": true,
+          "rationale": "Quotes the newly added current helper and identifies Session.prepare_request."
+        },
+        {
+          "criterion": "Explain that it creates a PreparedRequest without calling Session.send or the adapter transport.",
+          "met": true,
+          "rationale": "Correctly separates PreparedRequest construction from Session.send and adapter transport, including the local netrc caveat."
+        },
+        {
+          "criterion": "Cite current helper and production definitions; do not present pre-edit graph facts as current.",
+          "met": true,
+          "rationale": "Current helper and production definition ranges match the post-repair snapshot; the answer uses current source rather than claiming an old graph was refreshed."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "protocol_issues": [],
+      "findings": [],
+      "notes": [],
+      "source_before_sha256": "c4c8c0ea02f30953075a45d85ee01b5fea2436158f8d0e2f60d3dbfe5e121c57",
+      "source_after_sha256": "c4c8c0ea02f30953075a45d85ee01b5fea2436158f8d0e2f60d3dbfe5e121c57",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "7c536e605caee2e6fdfdeee058d793c3df26d52600b8a664739d85f152a98dc7",
+      "sdk_trace_sha256": "2d71d1d741237825f2322dd719ff08e4402f801a156dd042fcc30a52214a92b8",
+      "workflow_artifact": "codegraph_matched_workflow_v1_02.json",
+      "workflow_artifact_sha256": "7d07c74cc28759a6c7d1554576f13f937e9c7c294477e6bd1d888fb25f5de2ae",
+      "observation_tool_use_ids": [
+        "toolu_01BenmxGeuNcAQAV8TtZPGYq",
+        "toolu_0115knx1uMNQpRLv8oqePjc6",
+        "toolu_01AubsCCxjV2RmSveXjuJw5H",
+        "toolu_01Xro8mJww5dchCg47ahyrou"
+      ],
+      "source_evidence": [
+        {
+          "source_evidence_id": "47a03788ff8c1ab3f3835151cac16fdf0a06e0aeac430be1fbd414746745bc99",
+          "source_snapshot_sha256": "c4c8c0ea02f30953075a45d85ee01b5fea2436158f8d0e2f60d3dbfe5e121c57"
+        },
+        {
+          "source_evidence_id": "b658994685ff4ccf1941a45a7831e4c29290e6b8d81de19d892221c2fb41652a",
+          "source_snapshot_sha256": "c4c8c0ea02f30953075a45d85ee01b5fea2436158f8d0e2f60d3dbfe5e121c57"
+        },
+        {
+          "source_evidence_id": "4851f5af8537e52242426cdfb8c2e5605c7a10f888fe4ca35e4b7e4aca174360",
+          "source_snapshot_sha256": "c4c8c0ea02f30953075a45d85ee01b5fea2436158f8d0e2f60d3dbfe5e121c57"
+        },
+        {
+          "source_evidence_id": "b1b2a7feefc69727d6e1581c5887eb14d8eeb186f455c81f3cd3d55f74c91c32",
+          "source_snapshot_sha256": "c4c8c0ea02f30953075a45d85ee01b5fea2436158f8d0e2f60d3dbfe5e121c57"
+        },
+        {
+          "source_evidence_id": "268e354cc9b7b4f326c2f7d3c9a58d0fcbc4bc6d487d28bfdd30b8dee3986aaf",
+          "source_snapshot_sha256": "c4c8c0ea02f30953075a45d85ee01b5fea2436158f8d0e2f60d3dbfe5e121c57"
+        }
+      ]
+    },
+    {
+      "workflow_index": 3,
+      "arm": "native",
+      "task_id": "psf__requests-1921-post_edit",
+      "kind": "post_edit",
+      "criteria": [
+        {
+          "criterion": "Cite the newly added helper and its call to Session.prepare_request.",
+          "met": true,
+          "rationale": "Quotes the newly added current helper and identifies Session.prepare_request."
+        },
+        {
+          "criterion": "Explain that it creates a PreparedRequest without calling Session.send or the adapter transport.",
+          "met": true,
+          "rationale": "Correctly separates PreparedRequest construction from Session.send and adapter transport, including the local netrc caveat."
+        },
+        {
+          "criterion": "Cite current helper and production definitions; do not present pre-edit graph facts as current.",
+          "met": true,
+          "rationale": "Current helper and production definition ranges match the post-repair snapshot; the answer uses current source rather than claiming an old graph was refreshed."
+        }
+      ],
+      "accepted": true,
+      "serious_error": false,
+      "protocol_issues": [],
+      "findings": [
+        {
+          "category": "nonmaterial_constructor_order",
+          "serious": false,
+          "quote": "1. **`Request(\"GET\", url)`**",
+          "explanation": "The receiver Session() is evaluated before the Request argument. This numbered ordering is reversed, but both constructors are local initialization here; the requested next preparation method and no-network boundary remain correct."
+        }
+      ],
+      "notes": [],
+      "source_before_sha256": "2c8c49b4148bb72bce755b7cfaaeb2f7493dfbc2be460138833159b2e40cbd66",
+      "source_after_sha256": "2c8c49b4148bb72bce755b7cfaaeb2f7493dfbc2be460138833159b2e40cbd66",
+      "read_only_source_preserved": true,
+      "sdk_terminal_success": true,
+      "answer_sha256": "567c3f38e545f9fbecf7987662fa96191755de631d7e2a83b9b2bedf0531cba7",
+      "sdk_trace_sha256": "24156ae7257ae41ec1daf1240d246b9587e18b9620fb02cdded3b2e0fd801bed",
+      "workflow_artifact": "codegraph_matched_workflow_v1_03.json",
+      "workflow_artifact_sha256": "441b4de344cb2818e1d3ec0fdcf800aec62b392fe8e684fbec4772021ab3d031",
+      "observation_tool_use_ids": [
+        "toolu_01JWLwBN3tgfVmri2hKqdBr7",
+        "toolu_01NFDKQjJN7XdSbEmbFonaWq",
+        "toolu_01SHQujrTLPqEE6MVSWcwRC2"
+      ],
+      "source_evidence": [
+        {
+          "source_evidence_id": "47a03788ff8c1ab3f3835151cac16fdf0a06e0aeac430be1fbd414746745bc99",
+          "source_snapshot_sha256": "2c8c49b4148bb72bce755b7cfaaeb2f7493dfbc2be460138833159b2e40cbd66"
+        },
+        {
+          "source_evidence_id": "b658994685ff4ccf1941a45a7831e4c29290e6b8d81de19d892221c2fb41652a",
+          "source_snapshot_sha256": "2c8c49b4148bb72bce755b7cfaaeb2f7493dfbc2be460138833159b2e40cbd66"
+        },
+        {
+          "source_evidence_id": "4851f5af8537e52242426cdfb8c2e5605c7a10f888fe4ca35e4b7e4aca174360",
+          "source_snapshot_sha256": "2c8c49b4148bb72bce755b7cfaaeb2f7493dfbc2be460138833159b2e40cbd66"
+        },
+        {
+          "source_evidence_id": "b1b2a7feefc69727d6e1581c5887eb14d8eeb186f455c81f3cd3d55f74c91c32",
+          "source_snapshot_sha256": "2c8c49b4148bb72bce755b7cfaaeb2f7493dfbc2be460138833159b2e40cbd66"
+        },
+        {
+          "source_evidence_id": "268e354cc9b7b4f326c2f7d3c9a58d0fcbc4bc6d487d28bfdd30b8dee3986aaf",
+          "source_snapshot_sha256": "2c8c49b4148bb72bce755b7cfaaeb2f7493dfbc2be460138833159b2e40cbd66"
+        }
+      ]
+    }
+  ],
+  "limits": "No independent external adjudication or complete ContextBench read score. Original source criterion ambiguity is retained; corrected judgments are separate retrospective diagnostics."
+}

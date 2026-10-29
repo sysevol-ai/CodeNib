@@ -7,7 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 
 <div align="center">
   <img src="https://raw.githubusercontent.com/sysevol-ai/CodeNib/main/assets/codenib_logo.svg" alt="CodeNib" width="440">
-  <h1>Find the right code. Trace the calls.</h1>
+  <h1>Find the right code. Follow its references.</h1>
   <p>Give Claude Code and Codex source context and typed graph navigation across languages.</p>
   <p>
     <strong>71.4% code-block Recall@5 on 100 real issues.</strong><br>
@@ -69,7 +69,8 @@ above. Language toolchain and project prerequisites vary.
 ## Why CodeNib
 
 - **Inspect the evidence.** Retrieve bounded code context with file and line
-  references, then follow callers, callees, definitions, and references.
+  references, then navigate definitions and static references. Read the source
+  at each reference before describing a call path.
 - **Use the same tools across languages.** The registry tracks 14 language
   entries, including 12 with graph backends. Check capability and setup
   differences in the [language matrix](https://docs.codenib.ai/language_capabilities/).
@@ -82,16 +83,22 @@ above. Language toolchain and project prerequisites vary.
 
 ## How it compares
 
-What an agent can ask each tool, checked against upstream docs on 2026-09-28.
-This compares capabilities, not benchmark scores.
+What an agent can ask each tool. Peer interfaces were checked against upstream
+docs on 2026-09-28. This compares capabilities, not benchmark scores.
 
-| Tool | Ask in plain language | Callers/callees beyond one hop | Relationships resolved by | Runs |
+| Tool | Ask in plain language | Relationships beyond one hop | Relationships resolved by | Runs |
 | --- | --- | --- | --- | --- |
 | grep / read | No; literal or regex | No | Text match | Local |
-| **CodeNib CodeGraph** | Yes; ranked source anchors (`explore_context`) | Yes; one call, depth ≤ 8 (`dependency_subgraph`) | SCIP/LSP indexers (compiler-resolved) | Local |
+| **CodeNib CodeGraph** | Yes; ranked source anchors (`explore_context`) | Incoming/outgoing static references; one `dependency_subgraph` call, depth ≤ 8 | SCIP/LSP indexers (compiler-resolved) | Local |
 | [Serena](https://github.com/oraios/serena) | No; symbol name or regex | One level per call (`find_referencing_symbols`) | Live language server or IDE | Local |
 | [CodeGraph (colbymchenry)](https://github.com/colbymchenry/codegraph) | Yes; FTS5 full-text (`codegraph_explore`) | Yes; call paths in `codegraph_explore` | Tree-sitter AST extraction | Local; telemetry opt-out |
 | [DeepWiki public MCP](https://docs.devin.ai/work-with-devin/deepwiki-mcp) | Yes; generated answers (`ask_question`) | No structured graph tools | Generated Wiki | Hosted |
+
+CodeNib's indexed references can include calls, fields, type uses and function
+values. Inspect the source to establish which references invoke a function;
+external and dynamic relationships may be missing. For a known string or file,
+your agent's native search and reads remain useful. Include indexing and rebuild
+costs when assessing graph navigation on your own tasks.
 
 None of these repository tools needs its own model or API key; your agent
 uses its own model. [Detailed comparison, sources and boundaries](https://docs.codenib.ai/comparison/).

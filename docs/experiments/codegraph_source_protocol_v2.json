@@ -1,0 +1,23 @@
+{
+  "schema_version": 2,
+  "recorded_utc": "2026-10-28T05:36:18.045005+00:00",
+  "status": "retrospective diagnostic protocol; not frozen before original inference",
+  "original_task_sha256": "76f170aaaacee775009fc01d7eedac9bb74d2e73d21c158fe7dee9a78a8d5bd6",
+  "original_policy_sha256": "da562c62849d8bc3937dc6dde1c1a2205609ceba7988d6367b2f18e135bebe41",
+  "change": {
+    "task_id": "pytest-dev__pytest-5809-impact",
+    "original_criterion": "Identify call_runtest_hook and collect_one_node as production CallInfo.from_call call sites.",
+    "corrected_criterion": "Identify call_runtest_hook and pytest_make_collect_report as direct CallInfo.from_call call sites; explain collect_one_node as upstream hook-dispatch entry and report consumer.",
+    "reason": "collect_one_node has no from_call invocation; the direct collection call is pytest_make_collect_report at runner.py:253. The original wording confuses an upstream entry/consumer with a direct site.",
+    "affected_original_observations": 4
+  },
+  "scope": "Keep all original tasks/answers/native outcomes. Leave the ambiguous original item unassessable, never zero or a model error. The corrected diagnostic is post hoc and cannot establish the prospective promotion gate.",
+  "unchanged": [
+    "All other frozen source criteria",
+    "Native repair tests/parser/grading",
+    "Task membership/order/attempts",
+    "All captured SDK/tool observations",
+    "Wall-time/usage formulas"
+  ],
+  "future_execution": "Any prospective corrected cohort needs a separate pre-inference freeze and source-checked rubric/actual arm preparation on every selected repository."
+}

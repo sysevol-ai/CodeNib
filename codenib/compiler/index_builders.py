@@ -314,7 +314,10 @@ class BM25IndexBuilder:
     ) -> Dict[str, Any]:
         identity = {
             # v8 refuses skipped files and retains non-symbol source context.
-            "builder_schema": 8,
+            # v9 adds camelCase parts to tokens (BM25 tokenizer code-v2), so
+            # schema-8 views rebuild on the next update instead of keeping
+            # the old tokenization.
+            "builder_schema": 9,
             "languages": list(self.languages),
             "max_k": self.max_k,
             "max_lines_per_chunk": self.max_lines_per_chunk,
@@ -2064,7 +2067,7 @@ class SymbolGraphBuilder:
     ) -> Dict[str, Any]:
         graph_languages = self.languages or [self.language]
         return {
-            "builder_schema": 6,
+            "builder_schema": 8,
             "languages": list(graph_languages),
             "graph_route": self.graph_route,
             "exclude_patterns": sorted(self.exclude_patterns),

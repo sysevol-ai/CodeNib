@@ -25,15 +25,15 @@ import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, nullcontext
 from pathlib import Path
-from threading import Event
-from typing import TYPE_CHECKING, Annotated, Any, Literal, Optional
+from threading import Event, RLock
+from typing import TYPE_CHECKING, Annotated, Any, Callable, Literal, Optional
 
 from pydantic import Field
 
 from .._version import package_version
 from ..compiler.manifest import RepoManifest
 from ..log_utils import set_console_log_level
-from .context import ServerContext
+from .context import IndexedQueryError, ServerContext
 from .explore_session import ExploreSessionLedger, ExploreSessionRuntime
 from .prompts import (
     CODENIB_EXPLORE_GUIDE,
@@ -66,7 +66,7 @@ from .tools.dependency import dependency_subgraph_impl
 from .tools.explore import explore_context_impl
 from .tools.lsp import lsp_definition_impl, lsp_references_impl, lsp_route_impl
 from .tools.search import search_bm25_impl, search_context_impl, search_regex_impl
-from .tools.search import search_semantic as _search_semantic_impl
+from .tools.search import search_semantic_impl as _search_semantic_impl
 from .tools.search import search_zoekt_impl
 from .tools.source import read_source_impl
 
@@ -80,8 +80,9 @@ logger = logging.getLogger(__name__)
 # while specializing the server with opt-in tool visibility.
 MCPServer = ToolSurfaceMCPServer
 
-# Global context is set once at startup before the event loop runs tools.
+# Local rebuilds replace the context between indexed calls under this lock.
 _ctx: Optional[ServerContext] = None
+_context_lock = RLock()
 _SearchText = Annotated[str, Field(min_length=1)]
 _SearchQuery = Annotated[
     str,
@@ -125,6 +126,8 @@ async def _mcp_lifespan(
     finally:
         if ctx is not None and runtime is not None:
             ctx.end_explore_session(runtime)
+            if _ctx is not None and _ctx is not ctx:
+                _ctx.end_explore_session(runtime)
 
 
 def get_context() -> ServerContext:
@@ -132,6 +135,57 @@ def get_context() -> ServerContext:
     if _ctx is None:
         raise RuntimeError("ServerContext not initialized. Call init_server() first.")
     return _ctx
+
+
+def _indexed_tool_call(function: Callable[..., Any], ctx: ServerContext, *args) -> Any:
+    """Keep one index generation alive through the final source check.
+
+    Local refresh and indexed calls share ``_context_lock``. A replacement
+    becomes visible at ``_ctx = new_context`` only after loading/authentication
+    and old-runtime cleanup. A queued call follows that replacement, never the
+    closed context it captured earlier. Lock order is context, compiler (while
+    loading), then query/view/source; the compiler lock is released before old
+    context cleanup. Failed loading retains the existing context and uses the
+    startup loader's retryable cleanup ownership.
+    """
+
+    with _context_lock:
+        ctx = _refresh_local_context(ctx)
+        with ctx.indexed_query():
+            return function(ctx, *args)
+
+
+def _refresh_local_context(ctx: ServerContext) -> ServerContext:
+    """Follow a published local rebuild without altering snapshot contexts.
+
+    The caller owns ``_context_lock``. Reuse the startup loader and its exact
+    source/artifact checks; no indexing or model request is started here.
+    """
+
+    if not isinstance(ctx, ServerContext) or ctx._local_manifest_path is None:
+        return ctx
+    current = get_context()
+    if (
+        current._local_manifest_path != ctx._local_manifest_path
+        or current.manifest.repo_path != ctx.manifest.repo_path
+    ):
+        raise IndexedQueryError("MCP repository was reconfigured; retry the query")
+    path = current._local_manifest_path
+    published = RepoManifest.load(path)
+    if published.to_dict() != current.manifest.to_dict():
+        from filelock import Timeout
+
+        # Preserve the connection's ledger, call lock and abandoned-worker
+        # barrier, including when the first explore call races this reload.
+        current.ensure_explore_session()
+        try:
+            _init_server(path, _reload=True)
+        except Timeout as exc:
+            raise IndexedQueryError(
+                "Indexes are being rebuilt; retry the query"
+            ) from exc
+        return get_context()
+    return current
 
 
 # MCPServer configures the process-wide root logger while it is constructed.
@@ -222,7 +276,11 @@ async def explore_context(
     """Compose repository context and commit delivery history atomically."""
 
     ctx = get_context()
-    runtime = ctx.ensure_explore_session()
+    # Reload cleanup holds the old view lock. Session lookup must wait in a
+    # worker so cancellation/status remain responsive on the MCP event loop.
+    runtime = await asyncio.to_thread(
+        ctx.ensure_explore_session, _loop=asyncio.get_running_loop()
+    )
     async with runtime.call_lock:
         await _wait_for_abandoned_explore_worker(runtime)
         cancelled = Event()
@@ -246,6 +304,7 @@ async def explore_context(
             )
         else:
             work = asyncio.to_thread(
+                _indexed_tool_call,
                 explore_context_impl,
                 ctx,
                 query,
@@ -298,6 +357,7 @@ async def search_context(
     if _ctx is None:
         raise RuntimeError("Server not initialized")
     return await asyncio.to_thread(
+        _indexed_tool_call,
         search_context_impl,
         _ctx,
         query,
@@ -329,12 +389,14 @@ async def semantic_search(
     """
     if _ctx is None:
         raise RuntimeError("Server not initialized")
-    return await _search_semantic_impl(
-        ctx=_ctx,
-        query=query,
-        top_k=top_k,
-        level=level if level else "l2",
-        score_threshold=score_threshold if score_threshold > 0 else None,
+    return await asyncio.to_thread(
+        _indexed_tool_call,
+        _search_semantic_impl,
+        _ctx,
+        query,
+        top_k,
+        level if level else "l2",
+        score_threshold if score_threshold > 0 else None,
     )
 
 
@@ -356,7 +418,9 @@ async def search_bm25(
     """BM25 keyword search over indexed code symbols."""
     if _ctx is None:
         raise RuntimeError("Server not initialized")
-    return await asyncio.to_thread(search_bm25_impl, _ctx, query, top_k, filter_test)
+    return await asyncio.to_thread(
+        _indexed_tool_call, search_bm25_impl, _ctx, query, top_k, filter_test
+    )
 
 
 @mcp.tool(
@@ -381,6 +445,7 @@ async def search_regex(
     if _ctx is None:
         raise RuntimeError("Server not initialized")
     return await asyncio.to_thread(
+        _indexed_tool_call,
         search_regex_impl,
         _ctx,
         pattern,
@@ -411,6 +476,7 @@ async def search_zoekt(
     if _ctx is None:
         raise RuntimeError("Server not initialized")
     return await asyncio.to_thread(
+        _indexed_tool_call,
         search_zoekt_impl,
         _ctx,
         query,
@@ -422,15 +488,16 @@ async def search_zoekt(
 @mcp.tool(
     name="dependency_subgraph",
     description=(
-        "Return the call-graph dependency subgraph for a symbol as nodes+edges "
-        "JSON. direction='impact' = transitive callers (blast radius: what may "
-        "break if you change it); 'dependencies' = transitive callees (what it "
-        "relies on); 'both' = 1-hop caller+callee neighborhood (for a dependency "
-        "view). The structural 'who calls X / what does X reach' question that "
-        "grep/keyword search cannot answer; backs impact analysis and dependency "
-        "visualization. max_nodes includes the queried root; max_edges bounds "
-        "relationships independently. Symbols are fuzzy-matched; unresolved "
-        "names return a note."
+        "Return a bounded indexed static-reference subgraph as nodes+edges JSON. "
+        "direction='impact' follows incoming references; 'dependencies' follows "
+        "outgoing references; 'both' follows both, up to depth hops. References "
+        "can include calls, fields, type uses and function values; they do not "
+        "prove invocation. External and dynamic calls may be missing. Inspect "
+        "source call sites before describing runtime behavior. Legacy result "
+        "direction labels callers/callees mean incoming/outgoing references; "
+        "semantics reports their interpretation and coverage. max_nodes includes "
+        "the queried root; max_edges separately bounds relationships. Symbols "
+        "are fuzzy-matched; unresolved names return a note."
     ),
 )
 async def dependency_subgraph(
@@ -440,10 +507,11 @@ async def dependency_subgraph(
     max_nodes: _SearchTopK = 60,
     max_edges: _DependencyEdges = 400,
 ) -> dict[str, Any]:
-    """Call-graph subgraph for *symbol*, bounded by node and edge budgets."""
+    """Static-reference subgraph, bounded by node, edge and depth budgets."""
     if _ctx is None:
         raise RuntimeError("Server not initialized")
     return await asyncio.to_thread(
+        _indexed_tool_call,
         dependency_subgraph_impl,
         _ctx,
         symbol,
@@ -474,6 +542,7 @@ async def lsp_definition(
     if _ctx is None:
         raise RuntimeError("Server not initialized")
     return await asyncio.to_thread(
+        _indexed_tool_call,
         lsp_definition_impl,
         _ctx,
         file_path,
@@ -505,6 +574,7 @@ async def lsp_references(
     if _ctx is None:
         raise RuntimeError("Server not initialized")
     return await asyncio.to_thread(
+        _indexed_tool_call,
         lsp_references_impl,
         _ctx,
         file_path,
@@ -536,6 +606,7 @@ async def lsp_route(
     if _ctx is None:
         raise RuntimeError("Server not initialized")
     return await asyncio.to_thread(
+        _indexed_tool_call,
         lsp_route_impl,
         _ctx,
         symbols,
@@ -563,6 +634,7 @@ async def read_source(
     if _ctx is None:
         raise RuntimeError("Server not initialized")
     return await asyncio.to_thread(
+        _indexed_tool_call,
         read_source_impl,
         _ctx,
         file_path,
@@ -582,30 +654,49 @@ async def get_manifest() -> dict[str, Any]:
     """Return the repo manifest as a dict."""
     if _ctx is None:
         raise RuntimeError("Server not initialized")
-    source_verified = _ctx.verify_source_status()
-    result = _ctx.manifest.to_dict()
-    explore_runtime = getattr(_ctx, "explore_runtime", None)
+    return await asyncio.to_thread(_manifest_response)
+
+
+def _manifest_response() -> dict[str, Any]:
+    # Status must remain responsive while an indexed provider is running.
+    # When busy, describe the last published context instead of waiting for
+    # its query; a source check still marks any changed content unverified.
+    acquired = _context_lock.acquire(blocking=False)
+    try:
+        ctx = get_context()
+        if acquired:
+            ctx = _refresh_local_context(ctx)
+        return _manifest_response_for(ctx)
+    finally:
+        if acquired:
+            _context_lock.release()
+
+
+def _manifest_response_for(ctx: ServerContext) -> dict[str, Any]:
+    source_verified = ctx.verify_source_status()
+    result = ctx.manifest.to_dict()
+    explore_runtime = getattr(ctx, "explore_runtime", None)
     explore_session = (
         explore_runtime.ledger.stats()
         if isinstance(explore_runtime, ExploreSessionRuntime)
         else ExploreSessionLedger().stats()
     )
     result["runtime"] = {
-        "loaded_views": sorted(_ctx.loaded_views),
-        "view_errors": dict(sorted(_ctx.errors.items())),
+        "loaded_views": sorted(ctx.loaded_views),
+        "view_errors": dict(sorted(ctx.errors.items())),
         "tool_surface": mcp.tool_surface,
         "explore_session": explore_session,
         "source_read": {
             "verified": source_verified,
-            "error": _ctx.source_error,
-            "verification_scope": _ctx.source_verification_scope,
+            "error": ctx.source_error,
+            "verification_scope": ctx.source_verification_scope,
             "commit_verified": False,
             "checkout_state": "not-attested",
         },
-        "lsp_provider": dict(_ctx.lsp_provider_selection),
+        "lsp_provider": dict(ctx.lsp_provider_selection),
     }
-    if _ctx.artifact is not None:
-        result["artifact"] = dict(_ctx.artifact)
+    if ctx.artifact is not None:
+        result["artifact"] = dict(ctx.artifact)
     return result
 
 
@@ -796,6 +887,25 @@ def init_server(
     Raises:
         FileNotFoundError: if ``manifest_path`` does not exist.
     """
+    with _context_lock:
+        _init_server(
+            manifest_path,
+            artifact=artifact,
+            artifact_binding=artifact_binding,
+            source_binding=source_binding,
+        )
+
+
+def _init_server(
+    manifest_path: RepoManifest | str | Path,
+    *,
+    artifact: dict[str, Any] | None = None,
+    artifact_binding: ContextArtifactBinding | None = None,
+    source_binding: RepositorySourceBinding | None = None,
+    _reload: bool = False,
+) -> None:
+    """Load and publish under the caller's context lock; never build indexes."""
+
     global _ctx
     resolved_manifest_path: Path | None = None
     if isinstance(manifest_path, RepoManifest):
@@ -817,7 +927,10 @@ def init_server(
         # Artifact bindings intentionally skip this branch and remain inert.
         from filelock import FileLock
 
-        compiler_lock = FileLock(str(resolved.parent / ".index-compiler.lock"))
+        compiler_lock = FileLock(
+            str(resolved.parent / ".index-compiler.lock"),
+            timeout=0 if _reload else -1,
+        )
 
     from ..artifacts.runtime import (
         SourceBindingCleanupOwner,
@@ -851,6 +964,13 @@ def init_server(
         with compiler_lock:
             if resolved_manifest_path is not None:
                 manifest = RepoManifest.load(resolved_manifest_path)
+            if _reload:
+                from ..source_fingerprint import lexical_repository_path
+
+                if _ctx is None or lexical_repository_path(
+                    manifest.repo_path
+                ) != lexical_repository_path(_ctx.manifest.repo_path):
+                    raise RuntimeError("Rebuilt manifest names a different repository")
 
             from ..compiler.manifest_source import (
                 capture_repository_source_for_manifest,
@@ -948,6 +1068,12 @@ def init_server(
                             ),
                         )
 
+            if _reload and not verified:
+                raise RuntimeError(
+                    "Rebuilt indexes do not match current source; run "
+                    "`codenib codegraph init` and retry. " + str(source_error)
+                )
+
             new_context = ServerContext.load(
                 manifest,
                 artifact=artifact,
@@ -957,6 +1083,8 @@ def init_server(
             )
             new_context.source_error = source_error
             portable_artifact = artifact is not None or artifact_binding is not None
+            if not portable_artifact:
+                new_context._local_manifest_path = resolved_manifest_path
             new_context.configure_lsp_provider(
                 allow_native=new_context.source_verified and not portable_artifact,
                 native_disabled_reason=(
@@ -967,7 +1095,12 @@ def init_server(
             )
 
         if _ctx is not None:
-            _ctx.close()
+            if _reload:
+                _ctx.close(_preserve_explore_session=True)
+                new_context.explore_runtime = _ctx.explore_runtime
+                new_context._explore_loop = _ctx._explore_loop
+            else:
+                _ctx.close()
         _ctx = new_context
         if not _ctx.source_verified:
             logger.warning("Source reads disabled: %s", _ctx.source_error)

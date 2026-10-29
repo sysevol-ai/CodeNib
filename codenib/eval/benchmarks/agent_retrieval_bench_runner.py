@@ -7,12 +7,16 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
+import os
+import re
+import shutil
 import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from filelock import FileLock, Timeout
 
@@ -31,11 +35,16 @@ from codenib.dataset.agent_retrieval_bench import (
 
 from .agent_retrieval_bench import (
     ARB_UPSTREAM_REVISION,
+    BM25CorpusIndex,
+    distribution,
     evaluate_official,
     implementation_receipt,
     json_digest,
-    rank_bm25,
+    retrieval_usage,
+    run_environment,
+    sample_split,
     summarize,
+    upstream_revision,
     validate_upstream,
 )
 from .policy_compat import write_json_atomic
@@ -171,12 +180,25 @@ def evaluate(
     predictions: list[dict[str, Any]],
     upstream: Path,
     python: str,
+    access: str = "released-corpus",
 ) -> dict[str, Any]:
+    """Score with the pinned evaluator.
+
+    Full-source rankings may name files outside the released candidate set;
+    those are dropped before cutoffs and counted. Released-corpus rankings
+    must name only released files.
+    """
+    if access not in SOURCE_ACCESS:
+        raise ValueError(f"unknown source access: {access}")
     by_id = prediction_map(predictions, prepared)
     jobs = []
     for record in prepared["cases"]:
         sample = record["sample"]
-        job = {"sample": sample, "prediction": by_id.get(sample["id"])}
+        job = {
+            "sample": sample,
+            "prediction": by_id.get(sample["id"]),
+            "restrict_to_candidates": access == "full-source",
+        }
         try:
             path, _rows = checked_corpus(prepared, record)
             job.update(corpus_path=str(path), corpus_sha256=record["corpus"]["sha256"])
@@ -184,11 +206,15 @@ def evaluate(
             job["error"] = f"{type(exc).__name__}: {exc}"
         jobs.append(job)
     rows = evaluate_official(jobs, upstream, python)
+    for row in rows:
+        row["split"] = sample_split(row["sample_id"])
     return {
         "schema_version": 1,
-        "evaluator_revision": ARB_UPSTREAM_REVISION,
+        "evaluator_revision": upstream_revision(upstream),
+        "scoring_revision": ARB_UPSTREAM_REVISION,
         "protocol": {
             "mode": "static-positive",
+            "source_access": access,
             "candidate_filter": "all_files",
             "mrr_ranking": "full supplied file ranking; see per-case ranking_depth",
             "bcy_rank_depth": 20,
@@ -196,10 +222,393 @@ def evaluate(
             "bcy_tokenizer": "regex_code_tokenizer_v1",
             "bcy_text": "released kind=file chunks",
             "denominator": "all selected samples; errors contribute zero",
+            "split": "dev when the first byte of sha256(sample_id) is even",
         },
         "summary": summarize(rows),
         "cases": rows,
     }
+
+
+METHODS = ("bm25", "dense", "hybrid", "zoekt", "graph_expansion", "rerank")
+SOURCE_ACCESS = ("released-corpus", "full-source")
+GRAPH_TOOLS = (
+    "scip-python",
+    "scip-go",
+    "scip-typescript",
+    "rust-analyzer",
+    "scip-java",
+)
+
+
+DEFAULT_EMBEDDING = "Qwen/Qwen3-Embedding-0.6B"
+
+
+def rerank_options(args: argparse.Namespace) -> dict[str, Any] | None:
+    """Rerank stage inputs from the CLI; a non-default model needs its revision."""
+    model = getattr(args, "rerank_model", None)
+    if model and not getattr(args, "rerank_revision", None):
+        raise ValueError("--rerank-model needs --rerank-revision")
+    options = {
+        "base": getattr(args, "rerank_base", None),
+        "model": model,
+        "revision": getattr(args, "rerank_revision", None),
+        "top_k": getattr(args, "rerank_top_k", None),
+        "max_length": getattr(args, "rerank_max_length", None),
+        "batch_size": getattr(args, "rerank_batch_size", None),
+    }
+    return {key: value for key, value in options.items() if value is not None} or None
+
+
+def embedding_options(args: argparse.Namespace) -> dict[str, Any] | None:
+    """Dense overrides from the CLI; a non-default model needs its revision."""
+    model = getattr(args, "embedding_model", None)
+    revision = getattr(args, "embedding_revision", None)
+    if model and not revision:
+        raise ValueError("--embedding-model needs --embedding-revision")
+    options = {
+        "model": model,
+        "revision": revision,
+        "max_seq_length": getattr(args, "max_seq_length", None),
+        "batch_size": getattr(args, "embedding_batch_size", None),
+        "query_prompt": getattr(args, "query_prompt", None),
+    }
+    return {key: value for key, value in options.items() if value is not None} or None
+
+
+QUERY_PROMPTS = ("none", "registry")
+
+
+def dense_query_prompt(source: str, model: str) -> dict[str, str]:
+    """The instruction prepended to dense queries, as encoder options.
+
+    ``none`` matches ARB's embedding baseline. ``registry`` uses the query
+    instruction CodeNib registers for the model, as text or as the name of one
+    of the model's own prompts, so the run reflects CodeNib's own
+    configuration rather than one tuned on ARB.
+    """
+    if source == "none":
+        return {"query_prompt": ""}
+    if source != "registry":
+        raise ValueError(f"--query-prompt must be one of {QUERY_PROMPTS}")
+    from codenib.index.embedding.prompt_registry import resolve_prompts
+
+    registered = resolve_prompts(model)
+    # ARB's dense methods embed chunks without an instruction; a model that
+    # also expects one on documents would see only half of its pair.
+    if registered.get("document_prompt") or registered.get("document_prompt_name"):
+        raise ValueError(
+            f"CodeNib registers a document instruction for {model} too, "
+            "and ARB dense runs embed chunks without one"
+        )
+    # The registry lets text take precedence over a prompt name.
+    for key in ("query_prompt", "query_prompt_name"):
+        if registered.get(key):
+            return {key: str(registered[key])}
+    raise ValueError(f"CodeNib registers no query instruction for {model}")
+
+
+def zoekt_bin_dir(explicit: Path | None) -> Path:
+    if explicit is not None:
+        candidates = [explicit]
+    else:
+        found = shutil.which("zoekt-index")
+        tools = os.environ.get("CODENIB_SCIP_TOOLS_DIR")
+        candidates = [Path(found).parent] if found else []
+        if tools:
+            candidates.append(Path(tools) / "go-tools" / "bin")
+    for directory in candidates:
+        if all((directory / name).is_file() for name in ("zoekt-index", "zoekt")):
+            return directory.resolve()
+    raise ValueError("zoekt-index and zoekt not found; run `make zoekt-tool`")
+
+
+def source_access(method: str) -> str:
+    return "full-source" if method == "graph_expansion" else "released-corpus"
+
+
+def _require(module: str, extra: str, method: str) -> None:
+    try:
+        importlib.import_module(module)
+    except ImportError as exc:
+        raise ValueError(
+            f"{method} needs `pip install 'codenib[{extra}]'`: {exc}"
+        ) from exc
+
+
+def method_config(
+    method: str,
+    *,
+    zoekt_bin: Path | None = None,
+    device: str | None = None,
+    embedding: dict[str, Any] | None = None,
+    rerank: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Static identity of a native method; part of the resume receipt.
+
+    It also preflights optional dependencies, so a missing extra fails before
+    any case is attempted.
+    """
+    if method not in METHODS:
+        raise ValueError(f"unknown ARB method: {method}")
+    from . import _arb_methods as methods
+
+    temporary = "temporary directory, removed after each snapshot"
+
+    if method in ("dense", "hybrid"):
+        for module in ("sentence_transformers", "faiss"):
+            _require(module, "semantic", method)
+        resolved, dtype = methods.dense_precision(device)
+        options = {
+            "model": methods.DENSE_MODEL,
+            "revision": methods.DENSE_REVISION,
+            "max_seq_length": methods.DENSE_MAX_SEQ_LENGTH,
+            "batch_size": methods.DENSE_BATCH_SIZE,
+            **{
+                key: value
+                for key, value in (embedding or {}).items()
+                if value is not None
+            },
+        }
+        prompt = dense_query_prompt(
+            options.pop("query_prompt", "none"), str(options["model"])
+        )
+        if not re.fullmatch(r"[0-9a-f]{40}", str(options["revision"])):
+            raise ValueError("--embedding-revision must be a 40-character commit SHA")
+        for key in ("max_seq_length", "batch_size"):
+            value = options[key]
+            if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+                raise ValueError(f"dense {key} must be a positive integer")
+        config: dict[str, Any] = {
+            **options,
+            "device": resolved,
+            "dtype": dtype,
+            **prompt,
+            "index_location": "memory",
+        }
+        if method == "hybrid":
+            config["fusion"] = f"file-level weighted RRF, k={methods.HYBRID_RRF_K}"
+        return config
+    if method == "rerank":
+        _require("transformers", "semantic", method)
+        from codenib.index.rerank.cross_encoder import _QWEN_DEFAULT_INSTRUCTION
+
+        options = {
+            "model": methods.RERANK_MODEL,
+            "revision": methods.RERANK_REVISION,
+            "top_k": methods.RERANK_TOP_K,
+            "max_length": None,
+            "batch_size": methods.RERANK_BATCH_SIZE,
+            **{
+                key: value for key, value in (rerank or {}).items() if value is not None
+            },
+        }
+        qwen = "Qwen3-Reranker" in str(options["model"])
+        # Other cross-encoders keep their own positional limit unless given one.
+        if options["max_length"] is None and qwen:
+            options["max_length"] = methods.RERANK_MAX_LENGTH
+        base = options.pop("base", None)
+        loaded = options.pop("base_run", None)
+        if base is None:
+            raise ValueError("rerank needs --rerank-base, a completed run to rerank")
+        base_config, base_predictions = loaded or load_rerank_base(Path(base))
+        if not re.fullmatch(r"[0-9a-f]{40}", str(options["revision"])):
+            raise ValueError("--rerank-revision must be a 40-character commit SHA")
+        for key in ("top_k", "max_length", "batch_size"):
+            value = options[key]
+            if key == "max_length" and value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+                raise ValueError(f"rerank {key} must be a positive integer")
+        resolved, dtype = methods.dense_precision(device)
+        return {
+            **options,
+            "device": resolved,
+            "dtype": dtype,
+            "instruction": _QWEN_DEFAULT_INSTRUCTION if qwen else None,
+            "document": "file path, newline, released file text",
+            "fusion": (
+                "file-level RRF of the base and reranked orders over the top "
+                f"files, k={methods.HYBRID_RRF_K}"
+            ),
+            "base": {
+                "method": base_config.get("method"),
+                "method_config": base_config.get("method_config"),
+                "config_sha256": json_digest(base_config),
+                "predictions_sha256": json_digest(base_predictions),
+            },
+            "index_location": "memory",
+        }
+    if method == "zoekt":
+        directory = zoekt_bin_dir(zoekt_bin)
+        # The binaries identify the build; their -version flag needs a path.
+        return {
+            "binaries_sha256": {
+                name: sha256_file(directory / name) for name in ("zoekt-index", "zoekt")
+            },
+            "max_terms": methods.ZOEKT_MAX_TERMS,
+            "index_location": temporary,
+        }
+    if method == "graph_expansion":
+        _require("igraph", "graph", method)
+        from codenib.toolchains import resolve_command
+
+        # Resolve as the graph builder does: managed toolchain first, then PATH.
+        tools = {name: resolve_command(name) for name in GRAPH_TOOLS}
+        return {
+            "seed_files": methods.GRAPH_SEED_FILES,
+            "neighbor_files": methods.GRAPH_NEIGHBOR_FILES,
+            "build_timeout_seconds": methods.GRAPH_BUILD_TIMEOUT,
+            "min_language_share": methods.GRAPH_MIN_LANGUAGE_SHARE,
+            "toolchain_sha256": {
+                name: sha256_file(Path(path)) for name, path in tools.items() if path
+            },
+            "index_location": f"{temporary}; source checkouts kept in --workspace",
+        }
+    return {"index_location": "memory"}
+
+
+def load_rerank_base(base: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """The receipt and rankings of the completed run that ``rerank`` reorders.
+
+    Read once, under the base run's lock, and only after its final report
+    exists, so a run still being written is never reranked.
+    """
+    try:
+        lock = FileLock(str(base / ".run.lock"), timeout=0)
+        lock.acquire()
+    except Timeout as exc:
+        raise ValueError(f"--rerank-base {base} is still running") from exc
+    except OSError:
+        lock = None  # A read-only directory has no writer to wait for.
+    try:
+        if not (base / "results.json").is_file():
+            raise ValueError(f"--rerank-base {base} is not a completed run")
+        config = json.loads((base / "config.json").read_text(encoding="utf-8"))
+        predictions = load_predictions(base / "predictions.json")
+    finally:
+        if lock is not None:
+            lock.release()
+    if config.get("source_access") != "released-corpus":
+        raise ValueError("--rerank-base must be a released-corpus run")
+    return config, predictions
+
+
+def method_indexer(
+    method: str,
+    config: dict[str, Any],
+    *,
+    zoekt_bin: Path | None = None,
+    workspace: Path | None = None,
+) -> Callable[[list[dict[str, Any]]], Any]:
+    """Build one snapshot index for a native method.
+
+    Dense methods load their embedding model on the first build of a process;
+    that build's index carries ``model_load_seconds``.
+    """
+    if method == "bm25":
+        return lambda corpus: BM25CorpusIndex(corpus)
+    from . import _arb_methods as methods
+
+    if method == "zoekt":
+        directory = zoekt_bin_dir(zoekt_bin)
+        return lambda corpus: methods.ZoektCorpusIndex(corpus, directory)
+    if method == "rerank":
+        rerankers: list[Any] = []
+
+        def build_rerank(corpus: list[dict[str, Any]]) -> Any:
+            loaded = None
+            if not rerankers:
+                rerankers.append(methods.Reranker(config))
+                loaded = rerankers[0].load_seconds
+            index = methods.RerankCorpusIndex(corpus, rerankers[0], config["top_k"])
+            index.model_load_seconds = loaded
+            return index
+
+        return build_rerank
+    if method == "graph_expansion":
+        if workspace is None:
+            raise ValueError("graph_expansion needs --workspace for source checkouts")
+        root = workspace.resolve()
+        root.mkdir(parents=True, exist_ok=True)
+
+        def build_graph(corpus: list[dict[str, Any]]) -> Any:
+            return methods.GraphExpansionIndex(
+                corpus,
+                repo=corpus[0]["repo"],
+                base_commit=corpus[0]["base_commit"],
+                workspace=root,
+            )
+
+        return build_graph
+    encoders: list[Any] = []
+
+    def build(corpus: list[dict[str, Any]]) -> Any:
+        loaded = None
+        if not encoders:
+            encoders.append(methods.DenseEncoder(config))
+            loaded = encoders[0].load_seconds
+        index_type = (
+            methods.DenseCorpusIndex if method == "dense" else methods.HybridCorpusIndex
+        )
+        index = index_type(corpus, encoders[0])
+        index.model_load_seconds = loaded
+        return index
+
+    return build
+
+
+def embedding_usage(
+    predictions: list[dict[str, Any]], config: dict[str, Any]
+) -> dict[str, Any]:
+    """Model use summed over checkpointed builds, so resumes keep earlier work."""
+    built = [row for row in predictions if row.get("index_built")]
+
+    def dense_size(row: dict[str, Any]) -> dict[str, Any]:
+        size = row["index_size"]
+        return size.get("dense", size)
+
+    loads = [
+        row["model_load_seconds"] for row in predictions if "model_load_seconds" in row
+    ]
+    return {
+        "model": config["model"],
+        "revision": config["revision"],
+        "model_loads": len(loads),
+        "model_load_seconds": distribution(loads),
+        "encoded_documents": sum(dense_size(row)["encoded_documents"] for row in built),
+        "reused_documents": sum(dense_size(row)["reused_documents"] for row in built),
+    }
+
+
+def by_corpus(cases: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Group cases by corpus snapshot, in first-appearance order."""
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for position, record in enumerate(cases):
+        key = record["corpus"].get("sha256") or f"unprepared:{position}"
+        groups.setdefault(key, []).append(record)
+    return [record for group in groups.values() for record in group]
+
+
+def graph_usage(predictions: list[dict[str, Any]]) -> dict[str, Any]:
+    built = [row for row in predictions if row.get("index_built")]
+    return {
+        "samples_with_graph": sum(row.get("graph_used") is True for row in predictions),
+        "snapshots_with_graph": sum(
+            bool(row["index_size"]["graph"].get("vertices")) for row in built
+        ),
+        "removed_non_candidate_paths": sum(
+            row.get("removed_non_candidate_paths", 0) for row in predictions
+        ),
+        "source_fetch_seconds": distribution(
+            [row["source_fetch_seconds"] for row in built]
+        ),
+    }
+
+
+def close_index(index: Any) -> None:
+    close = getattr(index, "close", None)
+    if close is not None:
+        close()
 
 
 def execute(
@@ -210,6 +619,13 @@ def execute(
     pred_path: Path | None = None,
     resume: bool = False,
     evaluator_python: str = sys.executable,
+    method: str = "bm25",
+    zoekt_bin: Path | None = None,
+    device: str | None = None,
+    workspace: Path | None = None,
+    access: str | None = None,
+    embedding: dict[str, Any] | None = None,
+    rerank: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """One writer per output directory; completed cases survive interruption.
 
@@ -222,18 +638,48 @@ def execute(
     """
     prepared = load_prepared(prepared_path)
     upstream = validate_upstream(upstream)
+    if pred_path is None:
+        if access not in (None, source_access(method)):
+            raise ValueError(f"{method} reads {source_access(method)} source")
+        access = source_access(method)
+    access = access or "released-corpus"
     external = load_predictions(pred_path) if pred_path else None
     if external is not None:
         prediction_map(external, prepared)
+    base_run = None
+    if method == "rerank" and pred_path is None and (rerank or {}).get("base"):
+        # One read of the base serves both its receipt and its rankings.
+        base_run = load_rerank_base(Path(rerank["base"]))
+        rerank = {**rerank, "base_run": base_run}
     config = {
         "prepared_sha256": json_digest(prepared),
-        "method": "external-file-ranking" if pred_path else "codenib-bm25",
+        "method": "external-file-ranking" if pred_path else f"codenib-{method}",
+        "method_config": (
+            None
+            if pred_path
+            else method_config(
+                method,
+                zoekt_bin=zoekt_bin,
+                device=device,
+                embedding=embedding,
+                rerank=rerank,
+            )
+        ),
         "candidate_filter": "all_files",
-        "upstream_revision": ARB_UPSTREAM_REVISION,
+        "source_access": access,
+        "upstream_revision": upstream_revision(upstream),
+        "scoring_revision": ARB_UPSTREAM_REVISION,
         "implementation": implementation_receipt(),
         "evaluator_python": evaluator_python,
         "external_predictions_sha256": json_digest(external) if pred_path else None,
     }
+    base_rankings = None
+    if base_run is not None:
+        base_config, base_predictions = base_run
+        # The base must rank these exact cases, so both runs score the same input.
+        if base_config.get("prepared_sha256") != config["prepared_sha256"]:
+            raise ValueError("--rerank-base ranked other prepared cases")
+        base_rankings = prediction_map(base_predictions, prepared)
     output.mkdir(parents=True, exist_ok=True)
     with FileLock(str(output / ".run.lock"), timeout=0):
         config_path = output / "config.json"
@@ -271,7 +717,14 @@ def execute(
             elif predictions_path.exists():
                 raise ValueError("native predictions have no recovery checkpoint")
             completed = prediction_map(predictions, prepared)
-            for record in prepared["cases"]:
+            build_index = method_indexer(
+                method,
+                config["method_config"],
+                zoekt_bin=zoekt_bin,
+                workspace=workspace,
+            )
+            index_key, index = None, None
+            for record in by_corpus(prepared["cases"]):
                 case = ARBCase.from_record(record["release"], record["sample"])
                 if case.sample_id in completed:
                     continue
@@ -281,11 +734,58 @@ def execute(
                     "base_commit": case.sample["base_commit"],
                     "status": "error",
                     "ranked_files": [],
+                    "index_built": False,
+                    "tool_calls": 0,
                 }
+                base = None
+                if base_rankings is not None:
+                    base = base_rankings.get(case.sample_id) or {"status": "missing"}
+                    # Known before any build or check can fail; unknown for an
+                    # external base, never assumed to be 0.
+                    prediction["base_tool_calls"] = base.get("tool_calls")
                 started = time.perf_counter()
                 try:
-                    _path, corpus = checked_corpus(prepared, record)
-                    prediction["ranked_files"] = rank_bm25(case.query_text, corpus)
+                    if base is not None and base.get("status") != "ok":
+                        # Rejected before any build or call, so it costs none.
+                        raise ValueError("the base run has no ranking for this case")
+                    key = record["corpus"].get("sha256")
+                    if index is None or key != index_key:
+                        # Release the previous snapshot before the next cold build.
+                        close_index(index)
+                        index_key, index = None, None
+                        _path, corpus = checked_corpus(prepared, record)
+                        loaded = time.perf_counter()
+                        index = build_index(corpus)
+                        index_key = key
+                        prediction.update(
+                            index_built=True,
+                            corpus_load_seconds=loaded - started,
+                            index_build_seconds=index.build_seconds,
+                            index_size=index.size,
+                        )
+                        if hasattr(index, "fetch_seconds"):
+                            prediction["source_fetch_seconds"] = index.fetch_seconds
+                        if getattr(index, "model_load_seconds", None) is not None:
+                            prediction["model_load_seconds"] = index.model_load_seconds
+                    # A failed search is still an attempted call with latency.
+                    prediction["tool_calls"] = 1
+                    queried = time.perf_counter()
+                    try:
+                        if base is None:
+                            prediction["ranked_files"] = index.rank(case.query_text)
+                        else:
+                            # The index sees the query and base ranking, never gold.
+                            prediction["ranked_files"] = index.rerank(
+                                case.query_text, base["ranked_files"]
+                            )
+                    finally:
+                        prediction["query_seconds"] = time.perf_counter() - queried
+                        prediction["tool_calls"] = index.tool_calls
+                        if hasattr(index, "graph_used"):
+                            prediction["graph_used"] = index.graph_used
+                            prediction["removed_non_candidate_paths"] = (
+                                index.removed_non_candidate_paths
+                            )
                     prediction["status"] = "ok"
                 except Exception as exc:
                     prediction["error"] = f"{type(exc).__name__}: {exc}"
@@ -301,12 +801,31 @@ def execute(
                 )
                 write_json_atomic(predictions_path, predictions)
                 print(f"{case.sample_id}: {prediction['status']}", file=sys.stderr)
+            close_index(index)
             # Recreate a missing, stale or edited public export from the checkpoint.
             write_json_atomic(predictions_path, predictions)
-        result = evaluate(prepared, predictions, upstream, evaluator_python)
+        result = evaluate(prepared, predictions, upstream, evaluator_python, access)
         result["provenance"] = config
         if external is None:
-            result["retrieval_usage"] = {"model_calls": 0, "api_cost_usd": 0.0}
+            result["retrieval_usage"] = retrieval_usage(predictions)
+            if method in ("dense", "hybrid"):
+                result["retrieval_usage"]["embedding"] = embedding_usage(
+                    predictions, config["method_config"]
+                )
+            if method == "graph_expansion":
+                result["retrieval_usage"]["graph"] = graph_usage(predictions)
+            if method == "rerank":
+                known = [
+                    row["base_tool_calls"]
+                    for row in predictions
+                    if row.get("base_tool_calls") is not None
+                ]
+                # tool_calls counts this stage; the base run's calls stay apart.
+                result["retrieval_usage"]["base_tool_calls"] = {
+                    "known": distribution(known),
+                    "unknown_samples": len(predictions) - len(known),
+                }
+            result["environment"] = run_environment()
         write_json_atomic(result_path, result)
     return result
 
@@ -327,6 +846,80 @@ def main(argv: list[str] | None = None) -> int:
         command.add_argument("--upstream", type=Path, required=True)
         command.add_argument("--evaluator-python", default=sys.executable)
         command.add_argument("--resume", action="store_true")
+        if name == "run":
+            command.add_argument("--method", choices=METHODS, default="bm25")
+            command.add_argument(
+                "--zoekt-bin-dir",
+                type=Path,
+                help="directory holding zoekt-index and zoekt (default: PATH, "
+                "then $CODENIB_SCIP_TOOLS_DIR/go-tools/bin)",
+            )
+            command.add_argument("--device", help="dense model device (default: auto)")
+            command.add_argument(
+                "--embedding-model",
+                help=f"dense model on Hugging Face (default: {DEFAULT_EMBEDDING})",
+            )
+            command.add_argument(
+                "--embedding-revision",
+                help="40-character model commit; required with --embedding-model",
+            )
+            command.add_argument(
+                "--max-seq-length",
+                type=int,
+                help="dense token limit for queries and chunks (default: 512)",
+            )
+            command.add_argument(
+                "--embedding-batch-size",
+                type=int,
+                help="dense batch size (default: 64)",
+            )
+            command.add_argument(
+                "--query-prompt",
+                choices=QUERY_PROMPTS,
+                help="dense query instruction: none, as ARB's embedding baseline "
+                "(default), or CodeNib's registered instruction for the model",
+            )
+            command.add_argument(
+                "--rerank-base",
+                type=Path,
+                help="rerank: a completed released-corpus run whose rankings to rerank",
+            )
+            command.add_argument(
+                "--rerank-model",
+                help="rerank: cross-encoder model (default: Qwen/Qwen3-Reranker-4B)",
+            )
+            command.add_argument(
+                "--rerank-revision",
+                help="rerank: 40-character commit of --rerank-model (required with it)",
+            )
+            command.add_argument(
+                "--rerank-top-k",
+                type=int,
+                help="rerank: base files to rescore (default: 50)",
+            )
+            command.add_argument(
+                "--rerank-max-length",
+                type=int,
+                help="rerank: token limit per query and file (default: 8192 for "
+                "Qwen3-Reranker, the model's own limit otherwise)",
+            )
+            command.add_argument(
+                "--rerank-batch-size",
+                type=int,
+                help="rerank: pairs per forward pass (default: 4)",
+            )
+            command.add_argument(
+                "--workspace",
+                type=Path,
+                help="graph_expansion: directory for base-commit source checkouts",
+            )
+        else:
+            command.add_argument(
+                "--source-access",
+                choices=SOURCE_ACCESS,
+                default="released-corpus",
+                help="full-source drops ranked files outside the released set",
+            )
         if name == "evaluate":
             command.add_argument("--pred", type=Path, required=True)
     args = parser.parse_args(argv)
@@ -353,6 +946,13 @@ def main(argv: list[str] | None = None) -> int:
             pred_path=getattr(args, "pred", None),
             resume=args.resume,
             evaluator_python=args.evaluator_python,
+            method=getattr(args, "method", "bm25"),
+            zoekt_bin=getattr(args, "zoekt_bin_dir", None),
+            device=getattr(args, "device", None),
+            workspace=getattr(args, "workspace", None),
+            access=getattr(args, "source_access", None),
+            embedding=embedding_options(args),
+            rerank=rerank_options(args),
         )
         print(json.dumps(result["summary"], indent=2))
         return 1 if result["summary"]["overall"]["failed"] else 0

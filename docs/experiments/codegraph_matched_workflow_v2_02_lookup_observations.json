@@ -1,0 +1,100 @@
+{
+  "scope": "Exact captured v2 tool requests and delivered user/tool messages; no task acceptance or complete source-read score.",
+  "workflow_index": 2,
+  "task_id": "psf__requests-1921-lookup",
+  "kind": "lookup",
+  "raw_sdk_trace_sha256": "cc6291d5642fb49a111429a6b9481a9846732406a5224658e0071247939e232c",
+  "raw_sdk_trace_bytes": 28441,
+  "init": [
+    {
+      "type": "SystemMessage",
+      "subtype": "init",
+      "data": {
+        "model": "claude-opus-5-5",
+        "apiKeySource": "none",
+        "tools": [
+          "Bash",
+          "Edit",
+          "Glob",
+          "Grep",
+          "Read",
+          "ToolSearch",
+          "Write",
+          "mcp__study__codegraph_explore"
+        ],
+        "mcp_servers": [
+          {
+            "name": "study",
+            "status": "connected",
+            "source": "dynamic"
+          }
+        ],
+        "claude_code_version": "2.1.310"
+      }
+    }
+  ],
+  "rate_events": [
+    {
+      "type": "RateLimitEvent",
+      "data": {
+        "rate_limit_info": {
+          "status": "allowed",
+          "resets_at": 1793204400,
+          "rate_limit_type": "five_hour",
+          "utilization": null,
+          "overage_status": "rejected",
+          "overage_resets_at": null,
+          "overage_disabled_reason": "org_level_disabled",
+          "raw": {
+            "status": "allowed",
+            "resetsAt": 1793204400,
+            "rateLimitType": "five_hour",
+            "overageStatus": "rejected",
+            "overageDisabledReason": "org_level_disabled",
+            "isUsingOverage": false,
+            "unifiedWindows": {
+              "five_hour": {
+                "utilization": 0.01,
+                "resetsAt": 1793204400,
+                "status": "allowed"
+              },
+              "seven_day": {
+                "utilization": 0.45,
+                "resetsAt": 1793278800,
+                "status": "allowed"
+              }
+            }
+          }
+        },
+        "uuid": "1521dc23-403b-4ac9-88f2-576228a00df0",
+        "session_id": "a4a4250e-b900-4c3a-b566-4e444e4a77dc"
+      }
+    }
+  ],
+  "tool_calls_in_first_observed_order": [
+    {
+      "id": "toolu_01E1rAY7MBHDE4i4tYoCy6ds",
+      "name": "mcp__study__codegraph_explore",
+      "input": {
+        "query": "Session.prepare_request merge_setting merge_hooks"
+      }
+    }
+  ],
+  "delivered_user_tool_messages_in_order": [
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_01E1rAY7MBHDE4i4tYoCy6ds",
+          "content": [
+            {
+              "type": "text",
+              "text": "**Exploration: Session.prepare_request merge_setting merge_hooks**\n\nFound 49 symbols across 3 files.\n\n**Blast radius \u2014 what depends on these (update/verify before editing)**\n\n- `prepare_request` (requests/sessions.py:260) \u2014 4 callers in `requests/sessions.py`; tests: `test_requests.py`\n- `merge_hooks` (requests/sessions.py:65) \u2014 1 caller in `requests/sessions.py`; tested via callers: `test_requests.py`\n- `merge_setting` (requests/sessions.py:34) \u2014 3 callers in `requests/sessions.py`; tested via callers: `test_requests.py`\n- `HOOKS` (requests/hooks.py:17) \u2014 1 caller in `requests/hooks.py`; no tests found within 3 caller hops\n- `prepare_hooks` (requests/models.py:497) \u2014 1 caller in `requests/models.py`; tested via callers: `test_requests.py`\n\n**Source Code**\n\n> The code below is the **verbatim, current on-disk source** of these files \u2014 re-read from disk on this call and line-numbered, byte-for-byte identical to what the Read tool returns. It is NOT a summary, outline, or stale cache. Treat each block as a Read you have already performed: do not Read a file shown here.\n\n**`requests/sessions.py`** \u2014 calls(calls), cookiejar_from_dict(calls), mount(calls), HTTPAdapter(instantiates), extends(extends), +43 more\n\n```python\n31\tfrom .models import REDIRECT_STATI\n32\t\n33\t\n34\tdef merge_setting(request_setting, session_setting, dict_class=OrderedDict):\n35\t    \"\"\"\n36\t    Determines appropriate setting for a given request, taking into account the\n37\t    explicit setting on that request, and the setting in the session. If a\n38\t    setting is a dictionary, they will be merged together using `dict_class`\n39\t    \"\"\"\n40\t\n41\t    if session_setting is None:\n42\t        return request_setting\n43\t\n44\t    if request_setting is None:\n45\t        return session_setting\n46\t\n47\t    # Bypass if not a dictionary (e.g. verify)\n48\t    if not (\n49\t            isinstance(session_setting, Mapping) and\n50\t            isinstance(request_setting, Mapping)\n51\t    ):\n52\t        return request_setting\n53\t\n54\t    merged_setting = dict_class(to_key_val_list(session_setting))\n55\t    merged_setting.update(to_key_val_list(request_setting))\n56\t\n57\t    # Remove keys that are set to None.\n58\t    for (k, v) in request_setting.items():\n59\t        if v is None:\n60\t            del merged_setting[k]\n61\t\n62\t    return merged_setting\n63\t\n64\t\n65\tdef merge_hooks(request_hooks, session_hooks, dict_class=OrderedDict):\n66\t    \"\"\"\n67\t    Properly merges both requests and session hooks.\n68\t\n69\t    This is necessary because when request_hooks == {'response': []}, the\n70\t    merge breaks Session hooks entirely.\n71\t    \"\"\"\n72\t    if session_hooks is None or session_hooks.get('response') == []:\n73\t        return request_hooks\n74\t\n75\t    if request_hooks is None or request_hooks.get('response') == []:\n76\t        return session_hooks\n77\t\n78\t    return merge_setting(request_hooks, session_hooks, dict_class)\n79\t\n80\t\n81\tclass SessionRedirectMixin(object):\n\n... (gap) ...\n\n255\t        return self\n256\t\n257\t    def __exit__(self, *args):\n258\t        self.close()\n259\t\n260\t    def prepare_request(self, request):\n261\t        \"\"\"Constructs a :class:`PreparedRequest <PreparedRequest>` for\n262\t        transmission and returns it. The :class:`PreparedRequest` has settings\n263\t        merged from the :class:`Request <Request>` instance and those of the\n264\t        :class:`Session`.\n265\t\n266\t        :param request: :class:`Request` instance to prepare with this\n267\t            session's settings.\n268\t        \"\"\"\n269\t        cookies = request.cookies or {}\n270\t\n271\t        # Bootstrap CookieJar.\n272\t        if not isinstance(cookies, cookielib.CookieJar):\n273\t            cookies = cookiejar_from_dict(cookies)\n274\t\n275\t        # Merge with session cookies\n276\t        merged_cookies = merge_cookies(\n277\t            merge_cookies(RequestsCookieJar(), self.cookies), cookies)\n278\t\n279\t\n280\t        # Set environment's basic authentication if not explicitly set.\n281\t        auth = request.auth\n282\t        if self.trust_env and not auth and not self.auth:\n283\t            auth = get_netrc_auth(request.url)\n284\t\n285\t        p = PreparedRequest()\n286\t        p.prepare(\n287\t            method=request.method.upper(),\n288\t            url=request.url,\n289\t            files=request.files,\n290\t            data=request.data,\n291\t            headers=merge_setting(request.headers, self.headers, dict_class=CaseInsensitiveDict),\n292\t            params=merge_setting(request.params, self.params),\n293\t            auth=merge_setting(auth, self.auth),\n294\t            cookies=merged_cookies,\n295\t            hooks=merge_hooks(request.hooks, self.hooks),\n296\t        )\n297\t        return p\n298\t\n299\t    def request(self, method, url,\n300\t        params=None,\n301\t        data=None,\n302\t        headers=None,\n303\t        cookies=None,\n304\t        files=None,\n305\t        auth=None,\n306\t        timeout=None,\n307\t        allow_redirects=True,\n308\t        proxies=None,\n309\t        hooks=None,\n310\t        stream=None,\n311\t        verify=None,\n312\t        cert=None):\n313\t        \"\"\"Constructs a :class:`Request <Request>`, prepares it and sends it.\n314\t        Returns :class:`Response <Response>` object.\n315\t\n316\t        :param method: method for the new :class:`Request` object.\n317\t        :param url: URL for the new :class:`Request` object.\n318\t        :param params: (optional) Dictionary or bytes to be sent in the query\n319\t            string for the :class:`Request`.\n320\t        :param data: (optional) Dictionary or bytes to send in the body of the\n321\t            :class:`Request`.\n322\t        :param headers: (optional) Dictionary of HTTP Headers to send with the\n323\t            :class:`Request`.\n324\t        :param cookies: (optional) Dict or CookieJar object to send with the\n325\t            :class:`Request`.\n326\t        :param files: (optional) Dictionary of 'filename': file-like-objects\n327\t            for multipart encoding upload.\n328\t        :param auth: (optional) Auth tuple or callable to enable\n329\t            Basic/Digest/Custom HTTP Auth.\n330\t        :param timeout: (optional) Float describing the timeout of the\n331\t            request.\n332\t        :param allow_redirects: (optional) Boolean. Set to True by default.\n333\t        :param proxies: (optional) Dictionary mapping protocol to the URL of\n334\t            the proxy.\n335\t        :param stream: (optional) whether to immediately download the response\n336\t            content. Defaults to ``False``.\n337\t        :param verify: (optional) if ``True``, the SSL cert will be verified.\n338\t            A CA_BUNDLE path can also be provided.\n339\t        :param cert: (optional) if String, path to ssl client cert file (.pem).\n340\t            If Tuple, ('cert', 'key') pair.\n341\t        \"\"\"\n342\t\n343\t        method = builtin_str(method)\n344\t\n345\t        # Create the Request.\n346\t        req = Request(\n347\t            method = method.upper(),\n348\t            url = url,\n349\t            headers = headers,\n350\t            files = files,\n351\t            data = data or {},\n352\t            params = params or {},\n353\t            auth = auth,\n354\t            cookies = cookies,\n355\t            hooks = hooks,\n356\t        )\n357\t        prep = self.prepare_request(req)\n358\t\n359\t        proxies = proxies or {}\n360\t\n361\t        # Gather clues from the surrounding environment.\n362\t        if self.trust_env:\n363\t            # Set environment's proxies.\n364\t            env_proxies = get_environ_proxies(url) or {}\n365\t            for (k, v) in env_proxies.items():\n366\t                proxies.setdefault(k, v)\n367\t\n368\t            # Look for configuration.\n369\t            if not verify and verify is not False:\n370\t                verify = os.environ.get('REQUESTS_CA_BUNDLE')\n371\t\n372\t            # Curl compatibility.\n373\t            if not verify and verify is not False:\n374\t                verify = os.environ.get('CURL_CA_BUNDLE')\n375\t\n376\t        # Merge all the kwargs.\n377\t        proxies = merge_setting(proxies, self.proxies)\n378\t        stream = merge_setting(stream, self.stream)\n379\t        verify = merge_setting(verify, self.verify)\n380\t        cert = merge_setting(cert, self.cert)\n381\t\n382\t        # Send the request.\n383\t        send_kwargs = {\n384\t            'stream': stream,\n385\t            'timeout': timeout,\n386\t            'verify': verify,\n387\t            'cert': cert,\n388\t            'proxies': proxies,\n389\t            'allow_redirects': allow_redirects,\n390\t        }\n391\t        resp = self.send(prep, **send_kwargs)\n392\t\n393\t        return resp\n394\t\n395\t    def get(self, url, **kwargs):\n396\t        \"\"\"Sends a GET request. Returns :class:`Response` object.\n397\t\n398\t        :param url: URL for the new :class:`Request` object.\n399\t        :param \\*\\*kwargs: Optional arguments that ``request`` takes.\n400\t        \"\"\"\n401\t\n402\t        kwargs.setdefault('allow_redirects', True)\n403\t        return self.request('GET', url, **kwargs)\n404\t\n405\t    def options(self, url, **kwargs):\n406\t        \"\"\"Sends a OPTIONS request. Returns :class:`Response` object.\n```\n\n**`requests/models.py`** \u2014 calls(calls), instantiates(instantiates), to_key_val_list(calls), builtin_str(calls), _encode_params(calls), +39 more\n\n```python\n154\t        return body, content_type\n155\t\n156\t\n157\tclass RequestHooksMixin(object):\n158\t    def register_hook(self, event, hook):\n159\t        \"\"\"Properly register a hook.\"\"\"\n160\t\n161\t        if event not in self.hooks:\n162\t            raise ValueError('Unsupported event specified, with event name \"%s\"' % (event))\n163\t\n164\t        if isinstance(hook, collections.Callable):\n165\t            self.hooks[event].append(hook)\n166\t        elif hasattr(hook, '__iter__'):\n167\t            self.hooks[event].extend(h for h in hook if isinstance(h, collections.Callable))\n168\t\n169\t    def deregister_hook(self, event, hook):\n170\t        \"\"\"Deregister a previously registered hook.\n171\t        Returns True if the hook existed, False if not.\n172\t        \"\"\"\n173\t\n174\t        try:\n175\t            self.hooks[event].remove(hook)\n176\t            return True\n177\t        except ValueError:\n178\t            return False\n179\t\n180\t\n181\tclass Request(RequestHooksMixin):\n\n... (gap) ...\n\n286\t        #: dictionary of callback hooks, for internal usage.\n287\t        self.hooks = default_hooks()\n288\t\n289\t    def prepare(self, method=None, url=None, headers=None, files=None,\n290\t                data=None, params=None, auth=None, cookies=None, hooks=None):\n291\t        \"\"\"Prepares the entire request with the given parameters.\"\"\"\n292\t\n293\t        self.prepare_method(method)\n294\t        self.prepare_url(url, params)\n295\t        self.prepare_headers(headers)\n296\t        self.prepare_cookies(cookies)\n297\t        self.prepare_body(data, files)\n298\t        self.prepare_auth(auth, url)\n299\t        # Note that prepare_auth must be last to enable authentication schemes\n300\t        # such as OAuth to work on a fully prepared request.\n301\t\n302\t        # This MUST go after prepare_auth. Authenticators could add a hook\n303\t        self.prepare_hooks(hooks)\n304\t\n305\t    def __repr__(self):\n306\t        return '<PreparedRequest [%s]>' % (self.method)\n\n... (gap) ...\n\n315\t        p.hooks = self.hooks\n316\t        return p\n317\t\n318\t    def prepare_method(self, method):\n319\t        \"\"\"Prepares the given HTTP method.\"\"\"\n320\t        self.method = method\n321\t        if self.method is not None:\n322\t            self.method = self.method.upper()\n323\t\n324\t    def prepare_url(self, url, params):\n325\t        \"\"\"Prepares the given HTTP URL.\"\"\"\n\n... (gap) ...\n\n387\t        url = requote_uri(urlunparse([scheme, netloc, path, None, query, fragment]))\n388\t        self.url = url\n389\t\n390\t    def prepare_headers(self, headers):\n391\t        \"\"\"Prepares the given HTTP headers.\"\"\"\n392\t\n393\t        if headers:\n394\t            self.headers = CaseInsensitiveDict((to_native_string(name), value) for name, value in headers.items())\n395\t        else:\n396\t            self.headers = CaseInsensitiveDict()\n397\t\n398\t    def prepare_body(self, data, files):\n399\t        \"\"\"Prepares the given HTTP body data.\"\"\"\n\n... (gap) ...\n\n482\t            # Recompute Content-Length\n483\t            self.prepare_content_length(self.body)\n484\t\n485\t    def prepare_cookies(self, cookies):\n486\t        \"\"\"Prepares the given HTTP cookie data.\"\"\"\n487\t\n488\t        if isinstance(cookies, cookielib.CookieJar):\n489\t            self._cookies = cookies\n490\t        else:\n491\t            self._cookies = cookiejar_from_dict(cookies)\n492\t\n493\t        cookie_header = get_cookie_header(self._cookies, self)\n494\t        if cookie_header is not None:\n495\t            self.headers['Cookie'] = cookie_header\n496\t\n497\t    def prepare_hooks(self, hooks):\n498\t        \"\"\"Prepares the given hooks.\"\"\"\n499\t        for event in hooks:\n500\t            self.register_hook(event, hooks[event])\n501\t\n502\t\n503\tclass Response(object):\n```\n\n**`requests/utils.py`** \u2014 super_len(function), get_netrc_auth(function), to_key_val_list(function), default_headers(function), CaseInsensitiveDict(instantiates), +2 more\n\n```python\n466\t    return True\n467\t\n468\t\n469\tdef get_environ_proxies(url):\n470\t    \"\"\"Return a dict of environment proxies.\"\"\"\n471\t\n472\t    get_proxy = lambda k: os.environ.get(k) or os.environ.get(k.upper())\n473\t\n474\t    # First check whether no_proxy is defined. If it is, check that the URL\n475\t    # we're getting isn't in the no_proxy list.\n476\t    no_proxy = get_proxy('no_proxy')\n477\t    netloc = urlparse(url).netloc\n478\t\n479\t    if no_proxy:\n480\t        # We need to check whether we match here. We need to see if we match\n481\t        # the end of the netloc, both with and without the port.\n482\t        no_proxy = no_proxy.replace(' ', '').split(',')\n483\t\n484\t        ip = netloc.split(':')[0]\n485\t        if is_ipv4_address(ip):\n486\t            for proxy_ip in no_proxy:\n487\t                if is_valid_cidr(proxy_ip):\n488\t                    if address_in_network(ip, proxy_ip):\n489\t                        return {}\n490\t        else:\n491\t            for host in no_proxy:\n492\t                if netloc.endswith(host) or netloc.split(':')[0].endswith(host):\n493\t                    # The URL does match something in no_proxy, so we don't want\n494\t                    # to apply the proxies on this URL.\n495\t                    return {}\n496\t\n497\t    # If the system proxy settings indicate that this URL should be bypassed,\n498\t    # don't proxy.\n```\n\n**Not shown above \u2014 explore these names for their source**\n\n- requests/structures.py: CaseInsensitiveDict:37\n- requests/cookies.py: merge_cookies:435, cookiejar_from_dict:415, RequestsCookieJar:159, get_cookie_header:131\n- requests/hooks.py: HOOKS:17, default_hooks:20\n- test_requests.py: test_session_hooks_are_used_with_no_request_hooks:486, test_session_hooks_are_overriden_by_request_hooks:495, test_prepared_from_session:519, test_params_are_added_before_fragment:86\n- requests/packages/urllib3/packages/ordered_dict.py: setdefault:191, OrderedDict:17\n- requests/api.py: request:17\n- requests/adapters.py: HTTPAdapter:48\n- requests/auth.py: __call__:184\n- requests/compat.py: builtin_str:95\n\n> Some file sections were trimmed for size. Elided symbols are named inside gap markers as `name (file:line)` and preferred in the file header \u2014 run another `codegraph_explore` (or `codegraph_node`) with those exact names for their source."
+            }
+          ],
+          "is_error": null
+        }
+      ]
+    }
+  ]
+}

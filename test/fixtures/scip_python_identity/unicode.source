@@ -1,0 +1,12 @@
+def left(): return 1
+def right(): return 2
+class Example:
+    def 运行(self, flag):
+        if flag:
+            def 运行(x=1):
+                return left() + x
+        else:
+            def 运行(x=2):
+                return right() + x
+        return ("🚀", 运行())[1]
+def external(): return ("🚀", Example().运行(True))[1]

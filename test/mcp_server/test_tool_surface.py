@@ -14,12 +14,13 @@ from mcp import Client
 
 from codenib.compiler.manifest import RepoManifest
 from codenib.mcp import server as server_mod
-from codenib.mcp.context import ServerContext
+from codenib.mcp.context import IndexedQueryError, ServerContext
 from codenib.mcp.explore_bounds import (
     MAX_EXPLORE_CALL_RESULT_BYTES,
     call_tool_result_bytes,
 )
 from codenib.mcp.tool_surface import ToolSurfaceMCPServer, normalize_tool_surface
+from codenib.source_fingerprint import capture_repository_source
 
 
 def test_explore_surface_lists_and_accepts_only_composed_tool() -> None:
@@ -82,6 +83,31 @@ def test_tool_surface_normalization_rejects_unknown_value() -> None:
         normalize_tool_surface("minimal")
 
 
+def test_recovery_reply_excludes_internal_diagnostics() -> None:
+    server = ToolSurfaceMCPServer("surface-test")
+
+    @server.tool()
+    def source_query() -> str:
+        raise IndexedQueryError("Rebuild and retry.", "private provider diagnostics")
+
+    response = asyncio.run(server.call_tool("source_query", {}))
+    assert response.is_error is True
+    assert response.structured_content is None
+    assert response.content[0].text == "Rebuild and retry."
+
+
+def test_unexpected_failure_keeps_the_sdk_error_path() -> None:
+    server = ToolSurfaceMCPServer("surface-test")
+
+    @server.tool()
+    def source_query() -> str:
+        raise RuntimeError("unexpected provider failure")
+
+    with pytest.raises(Exception) as caught:
+        asyncio.run(server.call_tool("source_query", {}))
+    assert isinstance(caught.value.__cause__, RuntimeError)
+
+
 @pytest.mark.parametrize("mode", ["auto", "legacy"])
 @pytest.mark.parametrize(
     ("surface", "expected"),
@@ -136,10 +162,16 @@ def test_actual_server_surface_works_with_modern_and_legacy_clients(
         assert hidden_error is True
 
 
-def test_sequential_clients_get_independent_explore_ledgers(monkeypatch) -> None:
+def test_sequential_clients_get_independent_explore_ledgers(
+    monkeypatch, tmp_path
+) -> None:
     original_surface = server_mod.mcp.tool_surface
     original_ctx = server_mod._ctx
-    ctx = ServerContext(manifest=RepoManifest(repo_path="/repo"))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "sample.py").write_text("def sample():\n    return 1\n")
+    ctx = ServerContext(manifest=RepoManifest(repo_path=str(repo)))
+    ctx._install_repository_source(capture_repository_source(repo))
     server_mod._ctx = ctx
     server_mod.configure_tool_surface("explore")
     monkeypatch.setattr(

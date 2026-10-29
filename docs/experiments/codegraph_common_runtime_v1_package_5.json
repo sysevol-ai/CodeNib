@@ -1,0 +1,20 @@
+{
+  "original_file": "neutral-image-audit.json",
+  "original_sha256": "a6a588ee15e0548578dfa97e902f47fcc71b54ebf40b4a110bc24da5143c236a",
+  "receipt": {
+    "scope": "Neutral image source-access metadata audit only",
+    "owner": "4d39135860c04919bfa98409f9b9d58c",
+    "image": "sha256:ac3aeb4416832db7147d67ee205a1e1da97f5f13d73a587e0cd4457af5acb791",
+    "container_id": "cc0559f8cbfc1cc455d0fcc8de3983e5b5c4db266a5a123304aa0d5084f64861",
+    "command": {
+      "argv": [
+        "/opt/pilot-runtimes/python/bin/python3.13",
+        "-c",
+        "from pathlib import Path;import json,shutil;print(json.dumps({\"testbed_children\":sorted(p.name for p in Path(\"/testbed\").iterdir()) if Path(\"/testbed\").exists() else None,\"repo_git\":Path(\"/testbed/.git\").exists(),\"optional_clis\":{n:shutil.which(n) for n in (\"codenib\",\"serena\",\"codegraph\")}}))"
+      ],
+      "exit_code": 0,
+      "output": "{\"testbed_children\": [], \"repo_git\": false, \"optional_clis\": {\"codenib\": null, \"serena\": null, \"codegraph\": null}}\n"
+    },
+    "container_removed": true
+  }
+}

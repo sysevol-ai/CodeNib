@@ -29,8 +29,10 @@ TestPyPI dispatches additionally run the heavier installed-service gates:
    and closes one real `LocalWorkspaceProvider` generation.
 6. Builds a real BM25 index through the installed `codenib` command.
 7. Installs the public 0.2.2 package, materializes its catalog into a portable
-   context artifact, upgrades to the candidate wheel, verifies that the BM25
-   view and materialized artifact remain reusable, and proves that the
+   context artifact, upgrades to the candidate wheel and verifies the saved
+   artifact. A compatible BM25 builder identity must reuse its view; an
+   incompatible identity must rebuild once, then reuse the current view on
+   the next unchanged indexing request. The check also proves that the
    Wiki-only `codenib.storage` facade replaced the retired generic package and
    CLI commands.
 8. Exercises the installed Wiki and MCP services end to end. Modern and legacy
@@ -39,9 +41,15 @@ TestPyPI dispatches additionally run the heavier installed-service gates:
 9. Runs sparse Ask through a local OpenAI-compatible endpoint, including a
    real BM25 tool call, final answer, and source citation, without installing
    semantic or graph extras.
-10. Installs the graph extra and a pinned Python SCIP provider, then verifies
-   repository-aware diagnostics, a real caller-to-callee graph edge, source
-   anchors, and the installed Dependency Map API.
+10. Installs the graph extra and pinned Python graph providers, then verifies
+   repository-aware diagnostics, a source-checked static-reference edge,
+   source anchors and the installed Dependency Map API. An uncommitted edit
+   must reject stale queries; explicit rebuilding must preserve the edit and
+   registrations and make the new graph queryable in the original MCP session.
+
+Pull requests run the sparse Ask, CodeGraph onboarding and upgrade checks as
+well as distribution and ABI verification. The complete installation and
+Wiki/MCP service matrix also runs on `main`, version tags and manual releases.
 
 Each wheel builds on its native architecture: `ubuntu-latest` for x86-64 and
 `ubuntu-24.04-arm` for AArch64. Both are ephemeral GitHub-hosted runners and

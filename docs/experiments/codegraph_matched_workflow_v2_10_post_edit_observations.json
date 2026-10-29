@@ -1,0 +1,97 @@
+{
+  "scope": "Exact captured v2 tool requests and delivered user/tool messages; no task acceptance or complete source-read score.",
+  "workflow_index": 10,
+  "task_id": "pytest-dev__pytest-5809-post_edit",
+  "kind": "post_edit",
+  "raw_sdk_trace_sha256": "44509d78504f0857bad2fbd719986dfe8ebc35f21162c22f94a3cf94b86f6236",
+  "raw_sdk_trace_bytes": 17878,
+  "init": [
+    {
+      "type": "SystemMessage",
+      "subtype": "init",
+      "data": {
+        "model": "claude-opus-5-5",
+        "apiKeySource": "none",
+        "tools": [
+          "Bash",
+          "Edit",
+          "Glob",
+          "Grep",
+          "Read",
+          "ToolSearch",
+          "Write",
+          "mcp__study__codegraph_explore"
+        ],
+        "mcp_servers": [
+          {
+            "name": "study",
+            "status": "connected",
+            "source": "dynamic"
+          }
+        ],
+        "claude_code_version": "2.1.310"
+      }
+    }
+  ],
+  "rate_events": [],
+  "tool_calls_in_first_observed_order": [
+    {
+      "id": "toolu_01SgDHNNb4G7PQTWvbS2Nr3J",
+      "name": "Grep",
+      "input": {
+        "pattern": "capture_probe_result",
+        "output_mode": "content",
+        "-n": true
+      }
+    },
+    {
+      "id": "toolu_01BB3t5orJMRf9XovWpUPQGL",
+      "name": "Bash",
+      "input": {
+        "command": "cat -n src/_pytest/_pilot_post_edit.py; grep -rn \"_pilot_post_edit\\|capture_probe\" --include=*.py --include=*.cfg --include=*.toml --include=*.ini . | grep -v \"^./.codegraph\"; sed -n 200,234p src/_pytest/runner.py | cat -n | sed 's/^ *\\([0-9]*\\)/\\1+199/' | head -0; git status --short",
+        "description": "Show helper file, any references, and git status"
+      }
+    },
+    {
+      "id": "toolu_01KA8M1xo22NfYptUFXhbBar",
+      "name": "Read",
+      "input": {
+        "file_path": "src/_pytest/runner.py",
+        "offset": 202,
+        "limit": 32
+      }
+    }
+  ],
+  "delivered_user_tool_messages_in_order": [
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_01SgDHNNb4G7PQTWvbS2Nr3J",
+          "content": "src/_pytest/_pilot_post_edit.py:3:def capture_probe_result(function):",
+          "is_error": null
+        }
+      ]
+    },
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_01BB3t5orJMRf9XovWpUPQGL",
+          "content": "     1\tfrom .runner import CallInfo\n     2\t\n     3\tdef capture_probe_result(function):\n     4\t    return CallInfo.from_call(function, \"call\")\n./src/_pytest/_pilot_post_edit.py:3:def capture_probe_result(function):\nA  changelog/5806.bugfix.rst\nM  src/_pytest/pastebin.py\nM  testing/test_pastebin.py\n?? .codegraph/\n?? src/_pytest/_pilot_post_edit.py",
+          "is_error": false
+        }
+      ]
+    },
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_01KA8M1xo22NfYptUFXhbBar",
+          "content": "202\t@attr.s(repr=False)\n203\tclass CallInfo(object):\n204\t    \"\"\" Result/Exception info a function invocation. \"\"\"\n205\t\n206\t    _result = attr.ib()\n207\t    # Optional[ExceptionInfo]\n208\t    excinfo = attr.ib()\n209\t    start = attr.ib()\n210\t    stop = attr.ib()\n211\t    when = attr.ib()\n212\t\n213\t    @property\n214\t    def result(self):\n215\t        if self.excinfo is not None:\n216\t            raise AttributeError(\"{!r} has no valid result\".format(self))\n217\t        return self._result\n218\t\n219\t    @classmethod\n220\t    def from_call(cls, func, when, reraise=None):\n221\t        #: context of invocation: one of \"setup\", \"call\",\n222\t        #: \"teardown\", \"memocollect\"\n223\t        start = time()\n224\t        excinfo = None\n225\t        try:\n226\t            result = func()\n227\t        except:  # noqa\n228\t            excinfo = ExceptionInfo.from_current()\n229\t            if reraise is not None and excinfo.errisinstance(reraise):\n230\t                raise\n231\t            result = None\n232\t        stop = time()\n233\t        return cls(start=start, stop=stop, when=when, result=result, excinfo=excinfo)",
+          "is_error": null
+        }
+      ]
+    }
+  ]
+}

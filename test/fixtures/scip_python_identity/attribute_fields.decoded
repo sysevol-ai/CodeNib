@@ -1,0 +1,192 @@
+metadata {
+  tool_info {
+    name: "scip-python"
+    version: "0.6.6"
+  }
+  project_root: "file:///tmp/codenib-python-identity-20261027/captured-regressions6/attribute_fields/repo"
+  text_document_encoding: UTF8
+}
+documents {
+  relative_path: "nested.py"
+  occurrences {
+    range: 0
+    range: 0
+    range: 0
+    symbol: "scip-python python identity c57455d58803d931740e02fc5ba83cc24f2460cc nested/__init__:"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 0
+    range: 4
+    range: 7
+    symbol: "scip-python python identity c57455d58803d931740e02fc5ba83cc24f2460cc nested/one()."
+    symbol_roles: 1
+    enclosing_range: 0
+    enclosing_range: 0
+    enclosing_range: 4
+    enclosing_range: 25
+  }
+  occurrences {
+    range: 1
+    range: 10
+    range: 16
+    symbol: "scip-python python identity c57455d58803d931740e02fc5ba83cc24f2460cc nested/one().Config#"
+    symbol_roles: 1
+    enclosing_range: 1
+    enclosing_range: 4
+    enclosing_range: 3
+    enclosing_range: 26
+  }
+  occurrences {
+    range: 2
+    range: 12
+    range: 20
+    symbol: "scip-python python identity c57455d58803d931740e02fc5ba83cc24f2460cc nested/one().Config#__init__()."
+    symbol_roles: 1
+    enclosing_range: 2
+    enclosing_range: 8
+    enclosing_range: 3
+    enclosing_range: 26
+  }
+  occurrences {
+    range: 2
+    range: 21
+    range: 25
+    symbol: "scip-python python identity c57455d58803d931740e02fc5ba83cc24f2460cc nested/one().Config#__init__().(self)"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 3
+    range: 12
+    range: 16
+    symbol: "scip-python python identity c57455d58803d931740e02fc5ba83cc24f2460cc nested/one().Config#__init__().(self)"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 3
+    range: 17
+    range: 22
+    symbol: "scip-python python identity c57455d58803d931740e02fc5ba83cc24f2460cc nested/Config#value."
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 4
+    range: 11
+    range: 17
+    symbol: "scip-python python identity c57455d58803d931740e02fc5ba83cc24f2460cc nested/one().Config#"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 4
+    range: 20
+    range: 25
+    symbol: "scip-python python identity c57455d58803d931740e02fc5ba83cc24f2460cc nested/Config#value."
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 5
+    range: 4
+    range: 7
+    symbol: "scip-python python identity c57455d58803d931740e02fc5ba83cc24f2460cc nested/two()."
+    symbol_roles: 1
+    enclosing_range: 5
+    enclosing_range: 0
+    enclosing_range: 9
+    enclosing_range: 25
+  }
+  occurrences {
+    range: 6
+    range: 10
+    range: 16
+    symbol: "scip-python python identity c57455d58803d931740e02fc5ba83cc24f2460cc nested/two().Config#"
+    symbol_roles: 1
+    enclosing_range: 6
+    enclosing_range: 4
+    enclosing_range: 8
+    enclosing_range: 26
+  }
+  occurrences {
+    range: 7
+    range: 12
+    range: 20
+    symbol: "scip-python python identity c57455d58803d931740e02fc5ba83cc24f2460cc nested/two().Config#__init__()."
+    symbol_roles: 1
+    enclosing_range: 7
+    enclosing_range: 8
+    enclosing_range: 8
+    enclosing_range: 26
+  }
+  occurrences {
+    range: 7
+    range: 21
+    range: 25
+    symbol: "scip-python python identity c57455d58803d931740e02fc5ba83cc24f2460cc nested/two().Config#__init__().(self)"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 8
+    range: 12
+    range: 16
+    symbol: "scip-python python identity c57455d58803d931740e02fc5ba83cc24f2460cc nested/two().Config#__init__().(self)"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 8
+    range: 17
+    range: 22
+    symbol: "scip-python python identity c57455d58803d931740e02fc5ba83cc24f2460cc nested/Config#value."
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 9
+    range: 11
+    range: 17
+    symbol: "scip-python python identity c57455d58803d931740e02fc5ba83cc24f2460cc nested/two().Config#"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 9
+    range: 20
+    range: 25
+    symbol: "scip-python python identity c57455d58803d931740e02fc5ba83cc24f2460cc nested/Config#value."
+    symbol_roles: 8
+  }
+  symbols {
+    symbol: "scip-python python identity c57455d58803d931740e02fc5ba83cc24f2460cc nested/__init__:"
+    documentation: "(module) nested"
+  }
+  symbols {
+    symbol: "scip-python python identity c57455d58803d931740e02fc5ba83cc24f2460cc nested/one()."
+    documentation: "```python\ndef one(): # -> int:\n```"
+  }
+  symbols {
+    symbol: "scip-python python identity c57455d58803d931740e02fc5ba83cc24f2460cc nested/one().Config#"
+    documentation: "```python\nclass Config:\n```"
+  }
+  symbols {
+    symbol: "scip-python python identity c57455d58803d931740e02fc5ba83cc24f2460cc nested/one().Config#__init__()."
+    documentation: "```python\ndef __init__(\n  self\n) -> None:\n```"
+  }
+  symbols {
+    symbol: "scip-python python identity c57455d58803d931740e02fc5ba83cc24f2460cc nested/one().Config#__init__().(self)"
+  }
+  symbols {
+    symbol: "scip-python python identity c57455d58803d931740e02fc5ba83cc24f2460cc nested/Config#value."
+    documentation: "```python\n(variable) value: Literal[1]\n```"
+  }
+  symbols {
+    symbol: "scip-python python identity c57455d58803d931740e02fc5ba83cc24f2460cc nested/two()."
+    documentation: "```python\ndef two(): # -> int:\n```"
+  }
+  symbols {
+    symbol: "scip-python python identity c57455d58803d931740e02fc5ba83cc24f2460cc nested/two().Config#"
+    documentation: "```python\nclass Config:\n```"
+  }
+  symbols {
+    symbol: "scip-python python identity c57455d58803d931740e02fc5ba83cc24f2460cc nested/two().Config#__init__()."
+    documentation: "```python\ndef __init__(\n  self\n) -> None:\n```"
+  }
+  symbols {
+    symbol: "scip-python python identity c57455d58803d931740e02fc5ba83cc24f2460cc nested/two().Config#__init__().(self)"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "original_file": "wheel-receipt.json",
+  "original_sha256": "012c91f2e5dd4ac850e67ad98a9d582bfd868efba8a9a121d8d0a62bfd5d9647",
+  "receipt": {
+    "filename": "codenib-0.2.4-cp310-abi3-linux_aarch64.whl",
+    "sha256": "5f53ef1e1118c3acfa7a2fa48c0c589dfeb5fe98e56c24a27b475e275e10f8c1",
+    "bytes": 3649099,
+    "source_commit": "733343e8e1f8ada6ed74ddf8860ac65754a897a5",
+    "version_label": "0.2.4 source candidate; not the public PyPI wheel",
+    "all_package_python_files_match_source": true,
+    "python_file_count": 484,
+    "native_extension_present": false
+  }
+}

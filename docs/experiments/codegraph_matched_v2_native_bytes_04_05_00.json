@@ -1,0 +1,12 @@
+{
+  "relative_native_path": "grade/logs/codenib-c36883757df5/matched-v2-serena/pallets__flask-5014/report.json",
+  "whole_file_sha256": "3eda050954e5a8e2b324027bcb9f05268316a417098ad6fe648df8a15b96cd80",
+  "whole_file_bytes": 5685,
+  "part": 0,
+  "parts": 1,
+  "content_encoding": "gzip+base64",
+  "gzip_mtime": 0,
+  "gzip_bytes": 678,
+  "base64_bytes": "H4sIAAAAAAACA72YTYvbMBCG7/kVS85x3UJ7yW0vhUJpC9tbCEKRx7FYWXL10U1Y8t87sh3vep1SsEfNQf4Y8cyryVgj6Xl1h791w5UC7xgrFXeP2af3Hz6ut3fPrbHv4EXFpGPfjAY0lVw52Ly1w0k679DsbZhaXRACnCuDUmfGm0ZJKKZ9LTijft+yeEA4c5774EbqWuvn+y9f2c/v7Mf9w8PE2vbo/aNxNzG+OMhjyw4qQGOl9u5dc95u23dQN/7MNK+BaeMZhsw8oc4Ja7+Z+i65VMHGyO32I+tl3Hkd5acdxvCOuQaELKVgYK2xrOK6UFIf1xsqbnBgqeGYONTIxkIpT8xh7le7LM/yPS0yzxIgE8gsjUGl2CYA5x2ZWnOWH7htmySaO3q8TeUhsYP/MII8uQvy/yFYxQooeVBYrShgjTVxTjZ2Ls5jcVEcbxlOam2Nk2Imqh9YD2E1PzF+hMW6FJb2uYqM91BMK+dimmOlNXUsCTNZXUknSAdrggeECGO5x9okgvOoDHTRGOyZhsqepK9iPOaqHkCDi4VpwkqpPMyl8KIgIr2hdIGKGUOnbDHzJu/6kojJy9h2aUTB/2sciHUPsW2nw1SiqRwM8PhEIXIBZ8SgzXsS4g0aZfTTZnwizemynR4vjPZw8tcVz/zt16DxqMyBq7kVEn6FeF0sJ24rSWEky0KNDa51BtMyjMCF14GLR2ZsMbu0RhZGph9fXKqD2+UNt6B9lotKqiKLh0Rts0/hZKD37kidvIKPxkQ7EuMrwA2NMzX4Cs3Ezlw4FKbmUs/Nu1ZFO110ul6IM4FBS/y2Xu2a2uX7TJgDVeLHesQdCS5apdGL93A4Rl7H7532MO96Jhmv/zzMIzk2TOBpNb67rC5/AOVZIlw1FgAA",
+  "scope": "Exact original native grading bytes under lossless compression; concatenate decoded gzip pieces, decompress, then verify the whole-file hash. No outcome replacement or repair regrade."
+}

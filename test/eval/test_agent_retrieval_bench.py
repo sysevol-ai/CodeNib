@@ -5,6 +5,7 @@
 """ARB boundaries: query isolation, corpus identity, scoring, and recovery."""
 
 import copy
+import hashlib
 import json
 import os
 import subprocess
@@ -107,6 +108,23 @@ def prepared_file(root, tmp_path):
     path = tmp_path / "prepared.json"
     path.write_text(json.dumps(prepared))
     return path, prepared
+
+
+def fake_index(rank):
+    """BM25CorpusIndex stand-in that delegates each query to ``rank``."""
+
+    class Index:
+        build_seconds = 0.5
+        tool_calls = 1
+        size = {"documents": 2, "tokens": 6, "vocabulary": 3, "indexed_text_bytes": 9}
+
+        def __init__(self, corpus):
+            self.corpus = corpus
+
+        def rank(self, query):
+            return rank(query, self.corpus)
+
+    return Index
 
 
 def predictions(prepared):
@@ -239,6 +257,11 @@ def test_chunk_dedup_before_file_cutoff_and_line_conversion(released_data, monke
     ]
 
     class Index:
+        retriever = SimpleNamespace(
+            size=lambda: {"documents": 0, "tokens": 0, "vocabulary": 0},
+            documents=[],
+        )
+
         def __init__(self, *, chunks, max_k):
             assert max_k == len(corpus)
             assert chunks[0].start_line == chunks[0].end_line == 0
@@ -254,6 +277,36 @@ def test_chunk_dedup_before_file_cutoff_and_line_conversion(released_data, monke
     ranked = arb.rank_bm25("query only", corpus)
     assert ranked[:3] == ["LICENSE", "tests/check.py", "src/target.py"]
     assert len(ranked) == len(corpus)
+
+
+def test_corpus_index_reports_size_and_matches_one_shot_ranking(released_data):
+    path = corpus_manifest(released_data, "v2_code2test")[(REPO, COMMIT)]
+    corpus = load_corpus(path, REPO, COMMIT)
+    index = arb.BM25CorpusIndex(corpus)
+    assert index.size["documents"] == len(corpus)
+    assert index.size["tokens"] >= index.size["vocabulary"] > 0
+    assert index.size["indexed_text_bytes"] > 0
+    assert index.build_seconds >= 0
+    query = "needle important regression"
+    assert index.rank(query) == arb.rank_bm25(query, corpus)
+
+
+def test_sample_split_uses_first_digest_byte():
+    for sample_id in ("0a4b3f17ec58d3405b1c9a47", "code2test", "trace2code"):
+        even = hashlib.sha256(sample_id.encode()).digest()[0] % 2 == 0
+        assert arb.sample_split(sample_id) == ("dev" if even else "heldout")
+
+
+def test_cases_grouped_by_corpus_in_first_appearance_order():
+    cases = [
+        {"sample": {"id": "a"}, "corpus": {"sha256": "x"}},
+        {"sample": {"id": "b"}, "corpus": {"sha256": "y"}},
+        {"sample": {"id": "c"}, "corpus": {"error": "missing"}},
+        {"sample": {"id": "d"}, "corpus": {"sha256": "x"}},
+        {"sample": {"id": "e"}, "corpus": {"error": "missing"}},
+    ]
+    order = [record["sample"]["id"] for record in runner.by_corpus(cases)]
+    assert order == ["a", "d", "b", "c", "e"]
 
 
 def test_input_drift_and_prediction_identity(released_data):
@@ -283,6 +336,7 @@ def test_adapter_changes_invalidate_receipt_despite_same_dataset_basename(monkey
 @pytest.fixture
 def fake_evaluator(monkeypatch):
     monkeypatch.setattr(runner, "validate_upstream", lambda path: path)
+    monkeypatch.setattr(runner, "upstream_revision", lambda path: "f" * 40)
     monkeypatch.setattr(runner, "implementation_receipt", lambda: {"implementation": 1})
 
     def score(jobs, *args):
@@ -329,7 +383,7 @@ def test_interrupted_run_resume_and_drift(
             raise KeyboardInterrupt
         return [row["path"] for row in corpus]
 
-    monkeypatch.setattr(runner, "rank_bm25", rank)
+    monkeypatch.setattr(runner, "BM25CorpusIndex", fake_index(rank))
     output = tmp_path / "run"
     with pytest.raises(KeyboardInterrupt):
         runner.execute(path, output, tmp_path)
@@ -368,7 +422,9 @@ def test_resume_rebuilds_edited_export_from_native_checkpoint(
     modified[0][field] = value
     (output / "predictions.json").write_text(json.dumps(modified))
     monkeypatch.setattr(
-        runner, "rank_bm25", lambda *args: pytest.fail("completed retrieval rerun")
+        runner,
+        "BM25CorpusIndex",
+        lambda *args: pytest.fail("completed retrieval rerun"),
     )
     result = runner.execute(path, output, tmp_path, resume=True)
     assert result["summary"]["overall"]["valid"] == 4
@@ -406,7 +462,7 @@ def test_checkpoint_survives_interrupted_public_export(
         calls.append(query)
         return [row["path"] for row in corpus]
 
-    monkeypatch.setattr(runner, "rank_bm25", rank)
+    monkeypatch.setattr(runner, "BM25CorpusIndex", fake_index(rank))
     monkeypatch.setattr(runner, "write_json_atomic", interrupt_export)
     with pytest.raises(KeyboardInterrupt):
         runner.execute(path, output, tmp_path)
@@ -443,6 +499,39 @@ def test_cli_invalid_upstream_exits_without_traceback(
     assert "Traceback" not in error
 
 
+def test_shared_snapshot_built_once_with_separate_costs(
+    released_data, tmp_path, fake_evaluator, monkeypatch
+):
+    path, _prepared = prepared_file(released_data, tmp_path)
+    builds = []
+
+    class Index(fake_index(lambda query, corpus: [row["path"] for row in corpus])):
+        def __init__(self, corpus):
+            builds.append(len(corpus))
+            super().__init__(corpus)
+
+    monkeypatch.setattr(runner, "BM25CorpusIndex", Index)
+    result = runner.execute(path, tmp_path / "run", tmp_path)
+    rows = runner.load_predictions(tmp_path / "run" / "predictions.json")
+    # The four synthetic releases carry byte-identical corpora.
+    assert len(builds) == 1
+    assert [row["index_built"] for row in rows] == [True, False, False, False]
+    assert rows[0]["index_build_seconds"] == 0.5
+    assert rows[0]["index_size"]["documents"] == 2
+    assert all("index_size" not in row for row in rows[1:])
+    assert all(row["tool_calls"] == 1 and row["query_seconds"] >= 0 for row in rows)
+    usage = result["retrieval_usage"]
+    assert usage["index_builds"] == 1
+    assert usage["index_build_seconds"]["total"] == 0.5
+    assert usage["index_size"]["tokens"]["max"] == 6
+    assert usage["query_seconds"]["count"] == 4
+    assert usage["model_calls"] == 0
+    assert result["environment"]["cpu_count"] >= 1
+    splits = result["summary"]["by_split"]
+    assert sum(group["selected"] for group in splits.values()) == 4
+    assert {row["split"] for row in result["cases"]} == set(splits)
+
+
 def test_failed_retrieval_checkpoint_is_not_silently_retried(
     released_data, tmp_path, fake_evaluator, monkeypatch
 ):
@@ -453,34 +542,108 @@ def test_failed_retrieval_checkpoint_is_not_silently_retried(
         calls.append(query)
         raise RuntimeError("retrieval unavailable")
 
-    monkeypatch.setattr(runner, "rank_bm25", fail)
+    monkeypatch.setattr(runner, "BM25CorpusIndex", fake_index(fail))
     output = tmp_path / "run"
     result = runner.execute(path, output, tmp_path)
     assert result["summary"]["overall"]["failed"] == 4
     runner.execute(path, output, tmp_path, resume=True)
     assert len(calls) == 4
-    assert all(
-        "retrieval unavailable" in row["error"]
-        for row in runner.load_predictions(output / "predictions.json")
+    rows = runner.load_predictions(output / "predictions.json")
+    assert all("retrieval unavailable" in row["error"] for row in rows)
+    # Failed searches still count as attempted calls with measured latency.
+    assert all(row["tool_calls"] == 1 and row["query_seconds"] >= 0 for row in rows)
+    assert result["retrieval_usage"]["tool_calls"]["total"] == 4
+    assert result["retrieval_usage"]["query_seconds"]["count"] == 4
+
+
+def _commit(checkout, files, message):
+    for name, text in files.items():
+        path = checkout / "src/agent_retrieval_bench" / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if text is None:
+            path.unlink()
+        else:
+            path.write_text(text)
+    subprocess.run(["git", "-C", str(checkout), "add", "-A"], check=True)
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(checkout),
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.com",
+            "commit",
+            "-qm",
+            message,
+        ],
+        check=True,
     )
+    return subprocess.check_output(
+        ["git", "-C", str(checkout), "rev-parse", "HEAD"], text=True
+    ).strip()
 
 
 @pytest.mark.parametrize(
-    "revision,dirty",
+    "changed,accepted",
     [
-        ("b" * 40, ""),
-        (arb.ARB_UPSTREAM_REVISION, " M src/agent_retrieval_bench/baseline.py"),
+        ({"closed_tool_eval.py": "tool = 2\n"}, True),
+        ({"baseline.py": "from .io import read\nscore = 2\n"}, False),
+        # io.py is reached only through baseline's import.
+        ({"io.py": "def read():\n    return 2\n"}, False),
+        ({"io.py": None}, False),
+        ({"bcy_curve.py": "def broken(:\n"}, False),
     ],
 )
-def test_unpinned_or_modified_evaluator_rejected(
-    tmp_path, monkeypatch, revision, dirty
+def test_later_evaluator_accepted_only_with_identical_scoring_code(
+    tmp_path, monkeypatch, changed, accepted
 ):
-    def git(command, **kwargs):
-        return revision if "rev-parse" in command else dirty
+    checkout = tmp_path / "upstream"
+    subprocess.run(["git", "init", "-q", str(checkout)], check=True)
+    pinned = _commit(
+        checkout,
+        {
+            "__init__.py": "",
+            "baseline.py": "from .io import read\nscore = 1\n",
+            "bcy_curve.py": "from agent_retrieval_bench import baseline\n",
+            "io.py": "def read():\n    return 1\n",
+            "closed_tool_eval.py": "tool = 1\n",
+        },
+        "pinned",
+    )
+    monkeypatch.setattr(arb, "ARB_UPSTREAM_REVISION", pinned)
+    assert arb.scoring_sources(checkout, pinned) == [
+        f"src/agent_retrieval_bench/{name}"
+        for name in ("__init__.py", "baseline.py", "bcy_curve.py", "io.py")
+    ]
+    later = _commit(checkout, changed, "later")
+    if accepted:
+        assert arb.validate_upstream(checkout) == checkout
+        assert arb.upstream_revision(checkout) == later
+    else:
+        with pytest.raises(ValueError, match="scoring code differs"):
+            arb.validate_upstream(checkout)
 
-    monkeypatch.setattr(arb.subprocess, "check_output", git)
-    with pytest.raises(ValueError):
-        arb.validate_upstream(tmp_path)
+
+def test_evaluator_without_pinned_history_or_clean_source_rejected(
+    tmp_path, monkeypatch
+):
+    checkout = tmp_path / "upstream"
+    subprocess.run(["git", "init", "-q", str(checkout)], check=True)
+    first = _commit(checkout, {"__init__.py": "", "bcy_curve.py": ""}, "first")
+    _commit(checkout, {"bcy_curve.py": "x = 1\n"}, "later")
+    pinned = arb.upstream_revision(checkout)
+    # The pinned object exists, but HEAD on a side branch does not descend from it.
+    subprocess.run(["git", "-C", str(checkout), "checkout", "-q", first], check=True)
+    _commit(checkout, {"closed_tool_eval.py": ""}, "side branch")
+    monkeypatch.setattr(arb, "ARB_UPSTREAM_REVISION", pinned)
+    with pytest.raises(ValueError, match="descend from it"):
+        arb.validate_upstream(checkout)
+    monkeypatch.setattr(arb, "ARB_UPSTREAM_REVISION", arb.upstream_revision(checkout))
+    (checkout / "src/agent_retrieval_bench/bcy_curve.py").write_text("edited\n")
+    with pytest.raises(ValueError, match="clean"):
+        arb.validate_upstream(checkout)
 
 
 @pytest.mark.parametrize("flag", ["--skip-worktree", "--assume-unchanged"])
@@ -534,7 +697,9 @@ def test_offline_evaluation_no_retrieval_and_no_stale_report(
     pred = tmp_path / "external.jsonl"
     write_rows(pred, predictions(prepared))
     monkeypatch.setattr(
-        runner, "rank_bm25", lambda *args: pytest.fail("offline rescore retrieved")
+        runner,
+        "BM25CorpusIndex",
+        lambda *args: pytest.fail("offline rescore retrieved"),
     )
     output = tmp_path / "rescore"
     runner.execute(path, output, tmp_path, pred_path=pred)
@@ -621,3 +786,142 @@ def test_canonical_bcy_content_boundary_and_file_dedup(released_data, upstream):
     assert row["metrics"]["BCY@4000"] == 0
     assert row["metrics"]["BCY@8000"] == 1
     assert row["packed"]["4000"]["used_tokens"] == 4000
+
+
+def test_full_source_access_reaches_scorer_and_report(
+    released_data, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(runner, "validate_upstream", lambda path: path)
+    monkeypatch.setattr(runner, "upstream_revision", lambda path: "f" * 40)
+    seen = []
+
+    def score(jobs, *args):
+        seen.extend(job["restrict_to_candidates"] for job in jobs)
+        return [
+            {
+                "sample_id": job["sample"]["id"],
+                "task_type": job["sample"]["task_type"],
+                "status": "ok",
+                "metrics": dict.fromkeys(arb.METRICS, 1.0),
+            }
+            for job in jobs
+        ]
+
+    monkeypatch.setattr(runner, "evaluate_official", score)
+    prepared = runner.prepare(released_data)
+    result = runner.evaluate(
+        prepared, predictions(prepared), tmp_path, sys.executable, "full-source"
+    )
+    assert seen == [True] * 4
+    assert result["protocol"]["source_access"] == "full-source"
+    with pytest.raises(ValueError, match="source access"):
+        runner.evaluate(prepared, [], tmp_path, sys.executable, "checkout")
+
+
+def test_native_method_fixes_its_source_access(released_data, tmp_path, monkeypatch):
+    monkeypatch.setattr(runner, "validate_upstream", lambda path: path)
+    monkeypatch.setattr(runner, "upstream_revision", lambda path: "f" * 40)
+    path, _prepared = prepared_file(released_data, tmp_path)
+    with pytest.raises(ValueError, match="released-corpus"):
+        runner.execute(path, tmp_path / "run", tmp_path, access="full-source")
+    with pytest.raises(ValueError, match="--workspace"):
+        runner.method_indexer("graph_expansion", {})
+
+
+def test_rerank_reorders_a_completed_base_run(
+    released_data, tmp_path, fake_evaluator, monkeypatch
+):
+    from codenib.eval.benchmarks import _arb_methods as methods
+
+    path, _prepared = prepared_file(released_data, tmp_path)
+    base = tmp_path / "base"
+    runner.execute(path, base, tmp_path)
+    base_rows = {
+        row["sample_id"]: row
+        for row in runner.load_predictions(base / "predictions.json")
+    }
+    scored = []
+
+    class Reranker:
+        load_seconds = 0.1
+
+        def __init__(self, config):
+            self.model = self
+
+        def score(self, query, docs):
+            scored.append((query, docs))
+            return [float(doc.startswith("src/anchor.py\n")) for doc in docs]
+
+    monkeypatch.setattr(methods, "Reranker", Reranker)
+    monkeypatch.setattr(methods, "dense_precision", lambda device: ("cpu", "float32"))
+    output = tmp_path / "rerank"
+    result = runner.execute(
+        path, output, tmp_path, method="rerank", rerank={"base": base, "top_k": 5}
+    )
+    assert result["summary"]["overall"]["valid"] == 4
+    assert result["retrieval_usage"]["base_tool_calls"]["unknown_samples"] == 0
+    for row in runner.load_predictions(output / "predictions.json"):
+        prior = base_rows[row["sample_id"]]
+        assert set(row["ranked_files"][:5]) == set(prior["ranked_files"][:5])
+        assert row["ranked_files"][5:] == prior["ranked_files"][5:]
+        assert (row["tool_calls"], row["base_tool_calls"]) == (1, prior["tool_calls"])
+    # The reranker sees the query text and released file text, never gold.
+    assert all(
+        len(docs) == 5 and "PRIVATE_GOLD" not in str(docs) for _q, docs in scored
+    )
+    receipt = json.loads((output / "config.json").read_text())["method_config"]
+    assert receipt["base"]["predictions_sha256"] == runner.json_digest(
+        runner.load_predictions(base / "predictions.json")
+    )
+    # An external base records no tool calls; they stay unknown, not zero.
+    external = tmp_path / "external.json"
+    rows = predictions(_prepared)
+    # A failed base record can still report the calls it made.
+    rows[0].update(status="error", ranked_files=[], tool_calls=2)
+    external.write_text(json.dumps(rows))
+    runner.execute(path, tmp_path / "ext", tmp_path, pred_path=external)
+    result = runner.execute(
+        path,
+        tmp_path / "ext-rerank",
+        tmp_path,
+        method="rerank",
+        rerank={"base": tmp_path / "ext"},
+    )
+    usage = result["retrieval_usage"]["base_tool_calls"]
+    assert (usage["known"]["total"], usage["unknown_samples"]) == (2, 3)
+    reranked = runner.load_predictions(tmp_path / "ext-rerank" / "predictions.json")
+    assert [row["status"] for row in reranked].count("error") == 1
+    # The rejected case made no rerank call and built nothing.
+    failed = next(row for row in reranked if row["status"] == "error")
+    assert (failed["tool_calls"], failed["index_built"]) == (0, False)
+    assert failed["base_tool_calls"] == 2
+    # The partial external rankings stay partial.
+    assert all(
+        len(row["ranked_files"]) == 3 for row in reranked if row["status"] == "ok"
+    )
+    # A base over other prepared cases is refused.
+    other = json.loads(path.read_text())
+    other["cases"] = other["cases"][:1]
+    other_path = tmp_path / "other.json"
+    other_path.write_text(json.dumps(other))
+    with pytest.raises(ValueError, match="other prepared cases"):
+        runner.execute(
+            other_path, tmp_path / "x", tmp_path, method="rerank", rerank={"base": base}
+        )
+
+
+@pytest.mark.integration
+def test_official_full_source_scores_only_released_files(released_data, upstream):
+    prepared = runner.prepare(released_data)
+    pred = predictions(prepared)
+    pred[0]["ranked_files"] = ["vendor/full_source_only.py"] + pred[0]["ranked_files"]
+    strict = runner.evaluate(prepared, pred, upstream, sys.executable)
+    assert strict["cases"][0]["status"] == "error"
+    full = runner.evaluate(prepared, pred, upstream, sys.executable, "full-source")
+    reference = runner.evaluate(
+        prepared, predictions(prepared), upstream, sys.executable
+    )
+    assert full["cases"][0]["status"] == "ok"
+    assert full["cases"][0]["removed_non_candidate_paths"] == 1
+    # The dropped file consumes no rank before cutoffs.
+    assert full["cases"][0]["metrics"] == reference["cases"][0]["metrics"]

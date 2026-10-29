@@ -1,0 +1,2613 @@
+{
+  "generation": "driver-validation-v2-admitted",
+  "original_receipt_sha256": "2d6d404e6d8444b494fbb75b06cb51db59d6058bb8c2d6fbfd0e00ab7837f27b",
+  "receipt": {
+    "workflow": {
+      "workflow_index": 5,
+      "instance_id": "pallets__flask-5014",
+      "arm": "codegraph"
+    },
+    "owner": "ac43ea71ad3c",
+    "created_utc": "2026-10-28T13:56:07.363107+00:00",
+    "prepare_only": true,
+    "commands": [
+      {
+        "label": "common-directories",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/05-pallets__flask-5014-codegraph/workspace",
+          "ad917c6970572508fe27753bb85245e5f58d4613e0858d57fc26c0b0675fcc1a",
+          "mkdir",
+          "-p",
+          "/opt/pilot-tools/bin",
+          "/opt/pilot-inputs",
+          "/opt/pilot-state"
+        ],
+        "returncode": 0,
+        "seconds": 0.059972694143652916,
+        "log": "common-directories.log",
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "common-git",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/05-pallets__flask-5014-codegraph/workspace",
+          "ad917c6970572508fe27753bb85245e5f58d4613e0858d57fc26c0b0675fcc1a",
+          "git",
+          "config",
+          "--global",
+          "--add",
+          "safe.directory",
+          "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/05-pallets__flask-5014-codegraph/workspace"
+        ],
+        "returncode": 0,
+        "seconds": 0.04733584448695183,
+        "log": "common-git.log",
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "common-project",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/05-pallets__flask-5014-codegraph/workspace",
+          "ad917c6970572508fe27753bb85245e5f58d4613e0858d57fc26c0b0675fcc1a",
+          "/opt/miniconda3/envs/testbed/bin/python",
+          "-m",
+          "pip",
+          "install",
+          "-e",
+          "."
+        ],
+        "returncode": 0,
+        "seconds": 1.1698687952011824,
+        "log": "common-project.log",
+        "log_sha256": "144e0ea193b68242cbf2fd957a41f71e2a1646969a3e2d822e59c589f85008cd"
+      },
+      {
+        "label": "common-workspace-owner",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/05-pallets__flask-5014-codegraph/workspace",
+          "ad917c6970572508fe27753bb85245e5f58d4613e0858d57fc26c0b0675fcc1a",
+          "chown",
+          "-R",
+          "1001:1001",
+          "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/05-pallets__flask-5014-codegraph/workspace"
+        ],
+        "returncode": 0,
+        "seconds": 0.04846157506108284,
+        "log": "common-workspace-owner.log",
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "install-product",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/05-pallets__flask-5014-codegraph/workspace",
+          "ad917c6970572508fe27753bb85245e5f58d4613e0858d57fc26c0b0675fcc1a",
+          "npm",
+          "install",
+          "--global",
+          "--prefix",
+          "/opt/pilot-tools/npm",
+          "@colbymchenry/codegraph@1.6.2"
+        ],
+        "returncode": 0,
+        "seconds": 4.151823891326785,
+        "log": "install-product.log",
+        "log_sha256": "3c57b5365a0112cd7e6f986d54ab5a98db8c78d6c9f727fb0c89846261762d2b"
+      },
+      {
+        "label": "launcher",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/05-pallets__flask-5014-codegraph/workspace",
+          "ad917c6970572508fe27753bb85245e5f58d4613e0858d57fc26c0b0675fcc1a",
+          "ln",
+          "-s",
+          "/opt/pilot-tools/npm/bin/codegraph",
+          "/opt/pilot-tools/bin/codegraph"
+        ],
+        "returncode": 0,
+        "seconds": 0.058470483869314194,
+        "log": "launcher.log",
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "bundle",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/05-pallets__flask-5014-codegraph/workspace",
+          "ad917c6970572508fe27753bb85245e5f58d4613e0858d57fc26c0b0675fcc1a",
+          "codegraph",
+          "--version"
+        ],
+        "returncode": 0,
+        "seconds": 0.16221236437559128,
+        "log": "bundle.log",
+        "log_sha256": "a2d5e268fe70979caccd895156b3d33bd61a3cc7e660ab7a5b07066849b3e248"
+      },
+      {
+        "label": "initialize-product",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/05-pallets__flask-5014-codegraph/workspace",
+          "ad917c6970572508fe27753bb85245e5f58d4613e0858d57fc26c0b0675fcc1a",
+          "/bin/bash",
+          "-lc",
+          "umask 002\ncodegraph init --yes /tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/05-pallets__flask-5014-codegraph/workspace"
+        ],
+        "returncode": 0,
+        "seconds": 1.360145729035139,
+        "log": "initialize-product.log",
+        "log_sha256": "eb7cf1c3cc69d162bd9cedc304b14257aa70f55f7c90e328c0de7d958d15966a"
+      },
+      {
+        "label": "verify-target-identity",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/05-pallets__flask-5014-codegraph/workspace",
+          "ad917c6970572508fe27753bb85245e5f58d4613e0858d57fc26c0b0675fcc1a",
+          "/opt/miniconda3/envs/testbed/bin/python",
+          "-c",
+          "import importlib.metadata as m,json,sys;print(json.dumps({\"python\":sys.version,\"packages\":sorted({(d.metadata[\"Name\"],d.version) for d in m.distributions()})}))"
+        ],
+        "returncode": 0,
+        "seconds": 0.10028891265392303,
+        "log": "verify-target-identity.log",
+        "log_sha256": "2e89290cb04be301e47ec0cc4554d474ce122f8684cffb118dba3fde3c829be0"
+      },
+      {
+        "label": "verify-product-identity",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/05-pallets__flask-5014-codegraph/workspace",
+          "ad917c6970572508fe27753bb85245e5f58d4613e0858d57fc26c0b0675fcc1a",
+          "node",
+          "-e",
+          "const fs=require(\"fs\"),path=require(\"path\"),crypto=require(\"crypto\");let base=\"/opt/pilot-tools/npm/lib/node_modules/@colbymchenry/codegraph\",files={};function walk(p){for(const e of fs.readdirSync(p,{withFileTypes:true})){let q=path.join(p,e.name);if(e.isDirectory())walk(q);else if(e.isFile())files[q]=crypto.createHash(\"sha256\").update(fs.readFileSync(q)).digest(\"hex\")}}walk(base);console.log(JSON.stringify({node:process.version,package:require(base+\"/package.json\").version,package_files:files}))"
+        ],
+        "returncode": 0,
+        "seconds": 0.35158850997686386,
+        "log": "verify-product-identity.log",
+        "log_sha256": "6f1404d8f95e599b224a95a72b38dfef54a63cbcbba9b0284ca7f9ecfa912341"
+      },
+      {
+        "label": "ownership-probe",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/05-pallets__flask-5014-codegraph/workspace",
+          "f47d2494ace5657827b2a1d8f867fe243605982d340726c1483b94b915abaa40",
+          "/bin/bash",
+          "-lc",
+          "umask 002\npython -c 'from pathlib import Path; Path('\"'\"'ownership-probe.py'\"'\"').write_text('\"'\"'value = 1\\n'\"'\"')'"
+        ],
+        "returncode": 0,
+        "seconds": 0.12666128762066364,
+        "log": "ownership-probe.log",
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    ],
+    "phases": [],
+    "sessions": [],
+    "api_invoice_cost_usd": null,
+    "http_request_count": null,
+    "owned_containers": [
+      "ad917c6970572508fe27753bb85245e5f58d4613e0858d57fc26c0b0675fcc1a",
+      "f47d2494ace5657827b2a1d8f867fe243605982d340726c1483b94b915abaa40"
+    ],
+    "cohort_stop_reason": null,
+    "driver_sha256": "1293e68f51d448b4154b80b1dfbe716720c4297f9934ef993470a3fffccfb962",
+    "scope_sha256": "4c11983fdc26b5854f49968d1da139745050b0a0b2699d9f5777aa8bc559a192",
+    "policy_sha256": "2e62fdcfc0ef7fcf1638ddcafe48fa06b1cdef9decc8e80ffee9bf257c528d9a",
+    "tasks_sha256": "c4049564e326455310a53d9a78f9be88014a3b2c08998cfef5a37c7df034c4f8",
+    "auth": {
+      "loggedIn": true,
+      "authMethod": "claude.ai",
+      "subscriptionType": "max"
+    },
+    "sdk": "0.2.174",
+    "neutral_image": "sha256:82d039276bd7fa3d25cefd6732f5fcf105163ee1a5dc24ebb13c3a9e514f1258",
+    "common_source": {
+      "path": "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/05-pallets__flask-5014-codegraph/common-source.json",
+      "sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd",
+      "source_digest": "4f1f1961e0018ca6d7701269b76d3746ebf32df4c8eabfd08fea37dcc548dcaf",
+      "file_count": 251,
+      "head": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d"
+    },
+    "common_prepare_seconds": 1.6568341869860888,
+    "clock_started_utc": "2026-10-28T13:56:09.024782+00:00",
+    "setup": {
+      "started_utc": "2026-10-28T13:56:09.024790+00:00",
+      "ready": true,
+      "seconds": 5.7338749803602695
+    },
+    "target_identity": {
+      "python": "3.11.18 (main, Oct 26 2026, 18:14:43) [GCC 14.3.0]",
+      "packages": [
+        [
+          "Babel",
+          "2.12.1"
+        ],
+        [
+          "Flask",
+          "2.3.0.dev0"
+        ],
+        [
+          "Jinja2",
+          "3.1.2"
+        ],
+        [
+          "MarkupSafe",
+          "2.1.1"
+        ],
+        [
+          "Pallets-Sphinx-Themes",
+          "2.0.3"
+        ],
+        [
+          "PyYAML",
+          "6.0"
+        ],
+        [
+          "Pygments",
+          "2.15.0"
+        ],
+        [
+          "Sphinx",
+          "4.5.0"
+        ],
+        [
+          "Werkzeug",
+          "2.3.7"
+        ],
+        [
+          "alabaster",
+          "0.7.13"
+        ],
+        [
+          "asgiref",
+          "3.6.0"
+        ],
+        [
+          "build",
+          "0.10.0"
+        ],
+        [
+          "cachetools",
+          "5.3.0"
+        ],
+        [
+          "certifi",
+          "2022.12.7"
+        ],
+        [
+          "cffi",
+          "1.15.1"
+        ],
+        [
+          "cfgv",
+          "3.3.1"
+        ],
+        [
+          "chardet",
+          "5.1.0"
+        ],
+        [
+          "charset-normalizer",
+          "3.1.0"
+        ],
+        [
+          "click",
+          "8.1.3"
+        ],
+        [
+          "colorama",
+          "0.4.6"
+        ],
+        [
+          "cryptography",
+          "40.0.1"
+        ],
+        [
+          "distlib",
+          "0.3.6"
+        ],
+        [
+          "docutils",
+          "0.17.1"
+        ],
+        [
+          "filelock",
+          "3.11.0"
+        ],
+        [
+          "identify",
+          "2.5.22"
+        ],
+        [
+          "idna",
+          "3.4"
+        ],
+        [
+          "imagesize",
+          "1.4.1"
+        ],
+        [
+          "iniconfig",
+          "2.0.0"
+        ],
+        [
+          "itsdangerous",
+          "2.1.2"
+        ],
+        [
+          "mypy",
+          "1.2.0"
+        ],
+        [
+          "mypy-extensions",
+          "1.0.0"
+        ],
+        [
+          "nodeenv",
+          "1.7.0"
+        ],
+        [
+          "packaging",
+          "23.0"
+        ],
+        [
+          "pip",
+          "26.2.2"
+        ],
+        [
+          "pip-compile-multi",
+          "2.6.2"
+        ],
+        [
+          "pip-tools",
+          "6.13.0"
+        ],
+        [
+          "platformdirs",
+          "3.2.0"
+        ],
+        [
+          "pluggy",
+          "1.0.0"
+        ],
+        [
+          "pre-commit",
+          "3.2.2"
+        ],
+        [
+          "pycparser",
+          "2.21"
+        ],
+        [
+          "pyproject_api",
+          "1.5.1"
+        ],
+        [
+          "pyproject_hooks",
+          "1.0.0"
+        ],
+        [
+          "pytest",
+          "7.3.0"
+        ],
+        [
+          "python-dotenv",
+          "1.0.0"
+        ],
+        [
+          "requests",
+          "2.28.2"
+        ],
+        [
+          "setuptools",
+          "70.0.0"
+        ],
+        [
+          "snowballstemmer",
+          "2.2.0"
+        ],
+        [
+          "sphinx-issues",
+          "3.0.1"
+        ],
+        [
+          "sphinx-tabs",
+          "3.3.1"
+        ],
+        [
+          "sphinxcontrib-applehelp",
+          "1.0.4"
+        ],
+        [
+          "sphinxcontrib-devhelp",
+          "1.0.2"
+        ],
+        [
+          "sphinxcontrib-htmlhelp",
+          "2.0.1"
+        ],
+        [
+          "sphinxcontrib-jsmath",
+          "1.0.1"
+        ],
+        [
+          "sphinxcontrib-log-cabinet",
+          "1.0.1"
+        ],
+        [
+          "sphinxcontrib-qthelp",
+          "1.0.3"
+        ],
+        [
+          "sphinxcontrib-serializinghtml",
+          "1.1.5"
+        ],
+        [
+          "toposort",
+          "1.10"
+        ],
+        [
+          "tox",
+          "4.4.11"
+        ],
+        [
+          "types-contextvars",
+          "2.4.7.2"
+        ],
+        [
+          "types-dataclasses",
+          "0.6.6"
+        ],
+        [
+          "types-setuptools",
+          "67.6.0.7"
+        ],
+        [
+          "typing_extensions",
+          "4.5.0"
+        ],
+        [
+          "urllib3",
+          "1.26.15"
+        ],
+        [
+          "virtualenv",
+          "20.21.0"
+        ],
+        [
+          "wheel",
+          "0.40.0"
+        ]
+      ]
+    },
+    "product_identity_matches_admission": true,
+    "prepared_image": "sha256:bff7eb8a2c4423e5984cab95a2c349e7e51d1c5a01de0118d05ca8bc8512fa00",
+    "observed_container": {
+      "id": "f47d2494ace5657827b2a1d8f867fe243605982d340726c1483b94b915abaa40",
+      "network_disabled": true,
+      "network_mode": "none",
+      "memory_bytes": 4294967296,
+      "nano_cpus": 2000000000,
+      "pids_limit": 256,
+      "mounts": [
+        {
+          "Type": "bind",
+          "Source": "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/05-pallets__flask-5014-codegraph/workspace",
+          "Destination": "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/05-pallets__flask-5014-codegraph/workspace",
+          "Mode": "rw",
+          "RW": true,
+          "Propagation": "rprivate"
+        }
+      ]
+    },
+    "pre_model_source": {
+      "path": "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/05-pallets__flask-5014-codegraph/pre-model-source.json",
+      "sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd",
+      "source_digest": "4f1f1961e0018ca6d7701269b76d3746ebf32df4c8eabfd08fea37dcc548dcaf",
+      "file_count": 251,
+      "head": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d"
+    },
+    "setup_patch": {
+      "path": "pre-model.patch",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "attribution": "whole workspace diff; includes any separately recorded setup metadata"
+    },
+    "shared_native_edit_verified": true,
+    "source_lookup_probe": {
+      "name": "codegraph_explore",
+      "arguments": {
+        "query": "process_response src/flask/app.py"
+      },
+      "reply": {
+        "meta": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "**Exploration: process_response src/flask/app.py**\n\nFound 99 symbols across 4 files. 1 file pinned from the query.\n\n**Blast radius \u2014 what depends on these (update/verify before editing)**\n\n- `process_response` (src/flask/app.py:1996) \u2014 1 caller in `src/flask/app.py`; tested via callers: `tests/test_reqctx.py`\n- `Response` (src/flask/wrappers.py:136) \u2014 15 callers in `src/flask/__init__.py`, `src/flask/app.py`, `src/flask/helpers.py`, `src/flask/json/__init__.py` +4 more; tests: `tests/typing/typing_app_decorators.py`, `tests/typing/typing_route.py`\n- `ResponseClass` (src/flask/typing.py:43) \u2014 1 caller in `src/flask/typing.py`; no tests found within 3 caller hops\n\n**Source Code**\n\n> The code below is the **verbatim, current on-disk source** of these files \u2014 re-read from disk on this call and line-numbered, byte-for-byte identical to what the Read tool returns. It is NOT a summary, outline, or stale cache. Treat each block as a Read you have already performed: do not Read a file shown here.\n\n**`src/flask/app.py`** \u2014 setupmethod(decorates), ensure_sync(calls), instantiates(instantiates), decorator(function), decorator(references), +110 more\n\n```python\n362\t    #: :class:`~flask.sessions.SecureCookieSessionInterface` is used here.\n363\t    #:\n364\t    #: .. versionadded:: 0.8\n365\t    session_interface: SessionInterface = SecureCookieSessionInterface()\n366\t\n367\t    def __init__(\n368\t        self,\n\n... (gap) ...\n\n386\t        )\n387\t\n388\t        if instance_path is None:\n389\t            instance_path = self.auto_find_instance_path()\n390\t        elif not os.path.isabs(instance_path):\n391\t            raise ValueError(\n392\t                \"If an instance path is provided it must be absolute.\"\n\n... (gap) ...\n\n401\t        #: The configuration dictionary as :class:`Config`.  This behaves\n402\t        #: exactly like a regular dictionary but supports additional methods\n403\t        #: to load a config from files.\n404\t        self.config = self.make_config(instance_relative_config)\n405\t\n406\t        #: An instance of :attr:`aborter_class` created by\n407\t        #: :meth:`make_aborter`. This is called by :func:`flask.abort`\n\n... (gap) ...\n\n409\t        #:\n410\t        #: .. versionadded:: 2.2\n411\t        #:     Moved from ``flask.abort``, which calls this object.\n412\t        self.aborter = self.make_aborter()\n413\t\n414\t        self.json: JSONProvider = self.json_provider_class(self)\n415\t        \"\"\"Provides access to JSON methods. Functions in ``flask.json``\n\n... (gap) ...\n\n508\t            # Use a weakref to avoid creating a reference cycle between the app\n509\t            # and the view function (see #3761).\n510\t            self_ref = weakref.ref(self)\n511\t            self.add_url_rule(\n512\t                f\"{self.static_url_path}/<path:filename>\",\n513\t                endpoint=\"static\",\n514\t                host=static_host,\n\n... (gap) ...\n\n573\t\n574\t        .. versionadded:: 0.3\n575\t        \"\"\"\n576\t        return create_logger(self)\n577\t\n578\t    @cached_property\n579\t    def jinja_env(self) -> Environment:\n\n... (gap) ...\n\n583\t        accessed. Changing :attr:`jinja_options` after that will have no\n584\t        effect.\n585\t        \"\"\"\n586\t        return self.create_jinja_environment()\n587\t\n588\t    @property\n589\t    def got_first_request(self) -> bool:\n\n... (gap) ...\n\n617\t        if instance_relative:\n618\t            root_path = self.instance_path\n619\t        defaults = dict(self.default_config)\n620\t        defaults[\"DEBUG\"] = get_debug_flag()\n621\t        return self.config_class(root_path, defaults)\n622\t\n623\t    def make_aborter(self) -> Aborter:\n\n... (gap) ...\n\n640\t\n641\t        .. versionadded:: 0.8\n642\t        \"\"\"\n643\t        prefix, package_path = find_package(self.import_name)\n644\t        if prefix is None:\n645\t            return os.path.join(package_path, \"instance\")\n646\t        return os.path.join(prefix, \"var\", f\"{self.name}-instance\")\n\n... (gap) ...\n\n672\t        options = dict(self.jinja_options)\n673\t\n674\t        if \"autoescape\" not in options:\n675\t            options[\"autoescape\"] = self.select_jinja_autoescape\n676\t\n677\t        if \"auto_reload\" not in options:\n678\t            auto_reload = self.config[\"TEMPLATES_AUTO_RELOAD\"]\n\n... (gap) ...\n\n685\t        rv = self.jinja_environment(self, **options)\n686\t        rv.globals.update(\n687\t            url_for=self.url_for,\n688\t            get_flashed_messages=get_flashed_messages,\n689\t            config=self.config,\n690\t            # request, session and g are normally added with the\n691\t            # context processor for efficiency reasons but for imported\n\n... (gap) ...\n\n694\t            session=session,\n695\t            g=g,\n696\t        )\n697\t        rv.policies[\"json.dumps_function\"] = self.json.dumps\n698\t        return rv\n699\t\n700\t    def create_global_jinja_loader(self) -> DispatchingJinjaLoader:\n\n... (gap) ...\n\n708\t\n709\t        .. versionadded:: 0.7\n710\t        \"\"\"\n711\t        return DispatchingJinjaLoader(self)\n712\t\n713\t    def select_jinja_autoescape(self, filename: str) -> bool:\n714\t        \"\"\"Returns ``True`` if autoescaping should be active for the given\n\n... (gap) ...\n\n860\t\n861\t            return\n862\t\n863\t        if get_load_dotenv(load_dotenv):\n864\t            cli.load_dotenv()\n865\t\n866\t            # if set, env var overrides existing value\n867\t            if \"FLASK_DEBUG\" in os.environ:\n\n... (gap) ...\n\n1225\t        return f\n1226\t\n1227\t    @setupmethod\n1228\t    def shell_context_processor(\n1229\t        self, f: T_shell_context_processor\n1230\t    ) -> T_shell_context_processor:\n1231\t        \"\"\"Registers a shell context processor function.\n1232\t\n1233\t        .. versionadded:: 0.11\n1234\t        \"\"\"\n1235\t        self.shell_context_processors.append(f)\n1236\t        return f\n1237\t\n1238\t    def _find_error_handler(self, e: Exception) -> t.Optional[ft.ErrorHandlerCallable]:\n1239\t        \"\"\"Return a registered error handler for an exception in this order:\n\n... (gap) ...\n\n1501\t            rv = self.handle_user_exception(e)\n1502\t        return self.finalize_request(rv)\n1503\t\n1504\t    def finalize_request(\n1505\t        self,\n1506\t        rv: t.Union[ft.ResponseReturnValue, HTTPException],\n1507\t        from_error_handler: bool = False,\n1508\t    ) -> Response:\n1509\t        \"\"\"Given the return value from a view function this finalizes\n1510\t        the request by converting it into a response and invoking the\n1511\t        postprocessing functions.  This is invoked for both normal\n1512\t        request dispatching as well as error handlers.\n1513\t\n1514\t        Because this means that it might be called as a result of a\n1515\t        failure a special safe mode is available which can be enabled\n1516\t        with the `from_error_handler` flag.  If enabled, failures in\n1517\t        response processing will be logged and otherwise ignored.\n1518\t\n1519\t        :internal:\n1520\t        \"\"\"\n1521\t        response = self.make_response(rv)\n1522\t        try:\n1523\t            response = self.process_response(response)\n1524\t            request_finished.send(self, response=response)\n1525\t        except Exception:\n1526\t            if not from_error_handler:\n1527\t                raise\n1528\t            self.logger.exception(\n1529\t                \"Request finalizing failed with an error while handling an error\"\n1530\t            )\n1531\t        return response\n1532\t\n1533\t    def make_default_options_response(self) -> Response:\n1534\t        \"\"\"This method is called to create the default ``OPTIONS`` response.\n\n... (gap) ...\n\n1553\t        \"\"\"\n1554\t        return False\n1555\t\n1556\t    def ensure_sync(self, func: t.Callable) -> t.Callable:\n1557\t        \"\"\"Ensure that the function is synchronous for WSGI workers.\n1558\t        Plain ``def`` functions are returned as-is. ``async def``\n1559\t        functions are wrapped to run and wait for the response.\n1560\t\n1561\t        Override this method to change how the app runs async views.\n1562\t\n1563\t        .. versionadded:: 2.0\n1564\t        \"\"\"\n1565\t        if iscoroutinefunction(func):\n1566\t            return self.async_to_sync(func)\n1567\t\n1568\t        return func\n1569\t\n1570\t    def async_to_sync(\n1571\t        self, func: t.Callable[..., t.Coroutine]\n\n... (gap) ...\n\n1993\t\n1994\t        return None\n1995\t\n1996\t    def process_response(self, response: Response) -> Response:\n1997\t        \"\"\"Can be overridden in order to modify the response object\n1998\t        before it's sent to the WSGI server.  By default this will\n1999\t        call all the :meth:`after_request` decorated functions.\n2000\t\n2001\t        .. versionchanged:: 0.5\n2002\t           As of Flask 0.5 the functions registered for after request\n2003\t           execution are called in reverse order of registration.\n2004\t\n2005\t        :param response: a :attr:`response_class` object.\n2006\t        :return: a new response object or the same, has to be an\n2007\t                 instance of :attr:`response_class`.\n2008\t        \"\"\"\n2009\t        ctx = request_ctx._get_current_object()  # type: ignore[attr-defined]\n2010\t\n2011\t        for func in ctx._after_request_functions:\n2012\t            response = self.ensure_sync(func)(response)\n2013\t\n2014\t        for name in chain(request.blueprints, (None,)):\n2015\t            if name in self.after_request_funcs:\n2016\t                for func in reversed(self.after_request_funcs[name]):\n2017\t                    response = self.ensure_sync(func)(response)\n2018\t\n2019\t        if not self.session_interface.is_null_session(ctx.session):\n2020\t            self.session_interface.save_session(self, ctx.session, response)\n2021\t\n2022\t        return response\n2023\t\n2024\t    def do_teardown_request(\n2025\t        self, exc: t.Optional[BaseException] = _sentinel  # type: ignore\n```\n\n**`src/flask/typing.py`** \u2014 imports(imports), ErrorHandlerCallable(variable), RouteCallable(variable), AfterRequestCallable(variable), BeforeRequestCallable(variable), +6 more\n\n```python\n6\t    from werkzeug.wrappers import Response  # noqa: F401\n7\t\n8\t# The possible types that are directly convertible or are a Response object.\n9\tResponseValue = t.Union[\n10\t    \"Response\",\n11\t    str,\n12\t    bytes,\n13\t    t.List[t.Any],\n14\t    # Only dict is actually accepted, but Mapping allows for TypedDict.\n15\t    t.Mapping[str, t.Any],\n16\t    t.Iterator[str],\n17\t    t.Iterator[bytes],\n18\t]\n19\t\n20\t# the possible types for an individual HTTP header\n21\t# This should be a Union, but mypy doesn't pass unless it's a TypeVar.\n22\tHeaderValue = t.Union[str, t.List[str], t.Tuple[str, ...]]\n23\t\n24\t# the possible types for HTTP headers\n25\tHeadersValue = t.Union[\n26\t    \"Headers\",\n27\t    t.Mapping[str, HeaderValue],\n28\t    t.Sequence[t.Tuple[str, HeaderValue]],\n29\t]\n30\t\n31\t# The possible types returned by a route function.\n32\tResponseReturnValue = t.Union[\n33\t    ResponseValue,\n34\t    t.Tuple[ResponseValue, HeadersValue],\n35\t    t.Tuple[ResponseValue, int],\n36\t    t.Tuple[ResponseValue, int, HeadersValue],\n37\t    \"WSGIApplication\",\n38\t]\n39\t\n40\t# Allow any subclass of werkzeug.Response, such as the one from Flask,\n41\t# as a callback argument. Using werkzeug.Response directly makes a\n42\t# callback annotated with flask.Response fail type checking.\n43\tResponseClass = t.TypeVar(\"ResponseClass\", bound=\"Response\")\n44\t\n45\tAppOrBlueprintKey = t.Optional[str]  # The App key is None, whereas blueprints are named\n46\tAfterRequestCallable = t.Union[\n47\t    t.Callable[[ResponseClass], ResponseClass],\n48\t    t.Callable[[ResponseClass], t.Awaitable[ResponseClass]],\n49\t]\n50\tBeforeFirstRequestCallable = t.Union[\n51\t    t.Callable[[], None], t.Callable[[], t.Awaitable[None]]\n52\t]\n53\tBeforeRequestCallable = t.Union[\n54\t    t.Callable[[], t.Optional[ResponseReturnValue]],\n55\t    t.Callable[[], t.Awaitable[t.Optional[ResponseReturnValue]]],\n56\t]\n57\tShellContextProcessorCallable = t.Callable[[], t.Dict[str, t.Any]]\n58\tTeardownCallable = t.Union[\n59\t    t.Callable[[t.Optional[BaseException]], None],\n```\n\n**`src/flask/json/provider.py`** \u2014 dumps(calls), dumps(method), loads(calls), loads(method), JSONProvider(class), +14 more\n\n```python\n2\t\n3\timport dataclasses\n4\timport decimal\n5\timport json\n6\timport typing as t\n7\timport uuid\n8\timport weakref\n9\tfrom datetime import date\n10\t\n11\tfrom werkzeug.http import http_date\n12\t\n13\tif t.TYPE_CHECKING:  # pragma: no cover\n14\t    from ..app import Flask\n15\t    from ..wrappers import Response\n16\t\n17\t\n\n... (gap) ...\n\n71\t        \"\"\"\n72\t        return self.loads(fp.read(), **kwargs)\n73\t\n74\t    def _prepare_response_obj(\n75\t        self, args: t.Tuple[t.Any, ...], kwargs: t.Dict[str, t.Any]\n76\t    ) -> t.Any:\n77\t        if args and kwargs:\n78\t            raise TypeError(\"app.json.response() takes either args or kwargs, not both\")\n79\t\n80\t        if not args and not kwargs:\n81\t            return None\n82\t\n83\t        if len(args) == 1:\n84\t            return args[0]\n85\t\n86\t        return args or kwargs\n87\t\n88\t    def response(self, *args: t.Any, **kwargs: t.Any) -> Response:\n89\t        \"\"\"Serialize the given arguments as JSON, and return a\n90\t        :class:`~flask.Response` object with the ``application/json``\n91\t        mimetype.\n92\t\n93\t        The :func:`~flask.json.jsonify` function calls this method for\n94\t        the current application.\n95\t\n96\t        Either positional or keyword arguments can be given, not both.\n97\t        If no arguments are given, ``None`` is serialized.\n98\t\n99\t        :param args: A single value to serialize, or multiple values to\n100\t            treat as a list to serialize.\n101\t        :param kwargs: Treat as a dict to serialize.\n102\t        \"\"\"\n103\t        obj = self._prepare_response_obj(args, kwargs)\n104\t        return self._app.response_class(self.dumps(obj), mimetype=\"application/json\")\n105\t\n106\t\n107\tdef _default(o: t.Any) -> t.Any:\n\n... (gap) ...\n\n164\t    mimetype = \"application/json\"\n165\t    \"\"\"The mimetype set in :meth:`response`.\"\"\"\n166\t\n167\t    def dumps(self, obj: t.Any, **kwargs: t.Any) -> str:\n168\t        \"\"\"Serialize data as JSON to a string.\n169\t\n170\t        Keyword arguments are passed to :func:`json.dumps`. Sets some\n171\t        parameter defaults from the :attr:`default`,\n172\t        :attr:`ensure_ascii`, and :attr:`sort_keys` attributes.\n173\t\n174\t        :param obj: The data to serialize.\n175\t        :param kwargs: Passed to :func:`json.dumps`.\n176\t        \"\"\"\n177\t        kwargs.setdefault(\"default\", self.default)\n178\t        kwargs.setdefault(\"ensure_ascii\", self.ensure_ascii)\n179\t        kwargs.setdefault(\"sort_keys\", self.sort_keys)\n180\t        return json.dumps(obj, **kwargs)\n181\t\n182\t    def loads(self, s: str | bytes, **kwargs: t.Any) -> t.Any:\n183\t        \"\"\"Deserialize data as JSON from a string or bytes.\n\n... (gap) ...\n\n187\t        \"\"\"\n188\t        return json.loads(s, **kwargs)\n189\t\n190\t    def response(self, *args: t.Any, **kwargs: t.Any) -> Response:\n191\t        \"\"\"Serialize the given arguments as JSON, and return a\n192\t        :class:`~flask.Response` object with it. The response mimetype\n193\t        will be \"application/json\" and can be changed with\n194\t        :attr:`mimetype`.\n195\t\n196\t        If :attr:`compact` is ``False`` or debug mode is enabled, the\n197\t        output will be formatted to be easier to read.\n198\t\n199\t        Either positional or keyword arguments can be given, not both.\n200\t        If no arguments are given, ``None`` is serialized.\n201\t\n202\t        :param args: A single value to serialize, or multiple values to\n203\t            treat as a list to serialize.\n204\t        :param kwargs: Treat as a dict to serialize.\n205\t        \"\"\"\n206\t        obj = self._prepare_response_obj(args, kwargs)\n207\t        dump_args: t.Dict[str, t.Any] = {}\n208\t\n209\t        if (self.compact is None and self._app.debug) or self.compact is False:\n210\t            dump_args.setdefault(\"indent\", 2)\n211\t        else:\n212\t            dump_args.setdefault(\"separators\", (\",\", \":\"))\n213\t\n214\t        return self._app.response_class(\n215\t            f\"{self.dumps(obj, **dump_args)}\\n\", mimetype=self.mimetype\n216\t        )\n217\t\n```\n\n**`src/flask/wrappers.py`** \u2014 max_cookie_size(method), Response(class)\n\n```python\n133\t            raise BadRequest() from e\n134\t\n135\t\n136\tclass Response(ResponseBase):\n137\t    \"\"\"The response object that is used by default in Flask.  Works like the\n138\t    response object from Werkzeug but is set to have an HTML mimetype by\n139\t    default.  Quite often you don't have to create this object yourself because\n140\t    :meth:`~flask.Flask.make_response` will take care of that for you.\n141\t\n142\t    If you want to replace the response object used you can subclass this and\n143\t    set :attr:`~flask.Flask.response_class` to your subclass.\n144\t\n145\t    .. versionchanged:: 1.0\n146\t        JSON support is added to the response, like the request. This is useful\n147\t        when testing to get the test client response data as JSON.\n148\t\n149\t    .. versionchanged:: 1.0\n150\t\n151\t        Added :attr:`max_cookie_size`.\n152\t    \"\"\"\n153\t\n154\t    default_mimetype = \"text/html\"\n155\t\n156\t    json_module = json\n157\t\n158\t    autocorrect_location_header = False\n159\t\n160\t    @property\n161\t    def max_cookie_size(self) -> int:  # type: ignore\n162\t        \"\"\"Read-only view of the :data:`MAX_COOKIE_SIZE` config key.\n163\t\n164\t        See :attr:`~werkzeug.wrappers.Response.max_cookie_size` in\n165\t        Werkzeug's docs.\n166\t        \"\"\"\n167\t        if current_app:\n168\t            return current_app.config[\"MAX_COOKIE_SIZE\"]\n169\t\n170\t        # return Werkzeug's default when not in an app context\n171\t        return super().max_cookie_size\n172\t\n```\n\n\n> Some file sections were trimmed for size. Elided symbols are named inside gap markers as `name (file:line)` and preferred in the file header \u2014 run another `codegraph_explore` (or `codegraph_node`) with those exact names for their source.",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": null,
+        "is_error": false,
+        "result_type": "complete"
+      },
+      "file_sha256": "d439102c7658f90f896556c557df89501f2c98ad498d6317453f10ef58508710"
+    },
+    "status": "prepared_no_inference",
+    "observed_workflow_seconds": 8.9901975505054,
+    "unattempted_tasks": [
+      "pallets__flask-5014-lookup",
+      "pallets__flask-5014-flow",
+      "pallets__flask-5014-impact",
+      "pallets__flask-5014-repair",
+      "pallets__flask-5014-post_edit"
+    ],
+    "cleanup": [
+      {
+        "id": "f47d2494ace5657827b2a1d8f867fe243605982d340726c1483b94b915abaa40",
+        "removed": true
+      },
+      {
+        "id": "ad917c6970572508fe27753bb85245e5f58d4613e0858d57fc26c0b0675fcc1a",
+        "removed": true
+      }
+    ],
+    "finished_utc": "2026-10-28T13:56:18.105421+00:00"
+  },
+  "source_snapshots": {
+    "common_source": {
+      "head": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d",
+      "files": {
+        ".editorconfig": {
+          "sha256": "759961cac46ae6f8b823e4b377435d2e04311e7026e462976ff54c352eee6f2b",
+          "bytes": 217
+        },
+        ".flake8": {
+          "sha256": "869445d8583ec77eaf2b3409f550db3262cd30bd2fc1fa96a2bbfe3fb0bdfd2c",
+          "bytes": 544
+        },
+        ".github/ISSUE_TEMPLATE/bug-report.md": {
+          "sha256": "32b0383ca3cdc7f812aee06b863deb64cb3240c3001a26ac3c46811433b65cc6",
+          "bytes": 607
+        },
+        ".github/ISSUE_TEMPLATE/config.yml": {
+          "sha256": "59db6f9003216c0477af5278f0bd3dfbb4f46c982f5a13708de58272727ef36e",
+          "bytes": 489
+        },
+        ".github/ISSUE_TEMPLATE/feature-request.md": {
+          "sha256": "09f7166294a022f7926f32a0c3a785706b3e777f53586dd2cfdf07ee172410b6",
+          "bytes": 416
+        },
+        ".github/SECURITY.md": {
+          "sha256": "63ed773064a5d44324c4be42661a27ab30a13f323181733b7b42f59504852ab9",
+          "bytes": 914
+        },
+        ".github/dependabot.yml": {
+          "sha256": "fe27cc0e9c91980474bf2e6c4bbb7c035bb71b781c7fff67a4fa142fbe6c4eed",
+          "bytes": 167
+        },
+        ".github/pull_request_template.md": {
+          "sha256": "37497840677a8fe41c0e24ec7dde8b298a728fcbf94dc62eee29326bbd49ca84",
+          "bytes": 971
+        },
+        ".github/workflows/lock.yaml": {
+          "sha256": "de2154d7ca918ebbb767d86be64e847905c540600c50c0cf9d778e5f2352db70",
+          "bytes": 616
+        },
+        ".github/workflows/publish.yaml": {
+          "sha256": "47df6d05881411805fd079419cb5fc60006122d8ba135b5d4a61af1f360a0589",
+          "bytes": 2654
+        },
+        ".github/workflows/tests.yaml": {
+          "sha256": "a216dc85fef5d788a96f2ad8cf1afdd66771b8dbf9f816de6ade9d5ddd7d42dc",
+          "bytes": 2101
+        },
+        ".gitignore": {
+          "sha256": "ea91eb6582fa6fbd39f24287a2fe6f63353bf3eaea58d0f123704820e95df742",
+          "bytes": 207
+        },
+        ".pre-commit-config.yaml": {
+          "sha256": "baa35bdeb5f94f1674d105560014af8c0041367c7c782b35ad65bdb679342b55",
+          "bytes": 1026
+        },
+        ".readthedocs.yaml": {
+          "sha256": "dd47a46c7c3027f89216b0a9c2f2ea91275cc7dd2717f6a271a661a29beb2b1a",
+          "bytes": 209
+        },
+        "CHANGES.rst": {
+          "sha256": "d48be7a6bea42e9aec3810f1031694d06fc3ac44d474bea60051d8d0d1caa7a0",
+          "bytes": 65888
+        },
+        "CODE_OF_CONDUCT.md": {
+          "sha256": "3b3eee7b9db5c0c0a27b60a60883dd706dc954b5dcb25264ff1611ef87426c79",
+          "bytes": 3358
+        },
+        "CONTRIBUTING.rst": {
+          "sha256": "762453ef55412d0333b746647132194174bd112c29b408e2024e8e2c7eb8a7e2",
+          "bytes": 6685
+        },
+        "LICENSE.rst": {
+          "sha256": "489a8e1108509ed98a37bb983e11e0f7e1d31f0bd8f99a79c8448e7ff37d07ea",
+          "bytes": 1475
+        },
+        "MANIFEST.in": {
+          "sha256": "ce56a352e8d1f1fde8a753c15d815888c93e720f7e28452c3ecdeb9aab8e3581",
+          "bytes": 206
+        },
+        "README.rst": {
+          "sha256": "dfc60b903c5e01d7b3078fc938c362769dc9bfaf1263a817d55690fd5c3e3b03",
+          "bytes": 2158
+        },
+        "artwork/LICENSE.rst": {
+          "sha256": "2e63a3bd3a1f97e2fa9fa33bbf4f61bbb56ee16beb125b5346b0012388dc3b49",
+          "bytes": 780
+        },
+        "artwork/logo-full.svg": {
+          "sha256": "0fec920ef33dc9ec541c056bc6504e9d78c75c867ffe895f66cee888946dbd92",
+          "bytes": 78447
+        },
+        "artwork/logo-lineart.svg": {
+          "sha256": "c4705ec9f523299ad815780e874be62c3627cea0a67db9a8cbd8b1bc3a78d0f5",
+          "bytes": 8119
+        },
+        "docs/Makefile": {
+          "sha256": "8b6587b859607f200f116e2cb043fc358e1c3a26c326b563bf348453cfc68307",
+          "bytes": 634
+        },
+        "docs/_static/debugger.png": {
+          "sha256": "2979c9c95ae0fe68a6f5c0055833744daa735f56d3495ee5a41c139ad8567c56",
+          "bytes": 207889
+        },
+        "docs/_static/flask-icon.png": {
+          "sha256": "e115744446f9a617797781fac18f8b92149370a0ce0c648b449b5a55e979384b",
+          "bytes": 6933
+        },
+        "docs/_static/flask-logo.png": {
+          "sha256": "e3b1802e68cdd1ebc02f0132c1f8097c109d38867dc44f1813c064181312ff5f",
+          "bytes": 14703
+        },
+        "docs/_static/no.png": {
+          "sha256": "bc59d3c5cbfe58a7bee295a5d0eb2a200b78201e20c24f393050f2134d9eb10f",
+          "bytes": 259
+        },
+        "docs/_static/pycharm-run-config.png": {
+          "sha256": "eba3aab19b6969a1268e93b91e19a856430aabe14f90c3ff1228043d88682704",
+          "bytes": 99654
+        },
+        "docs/_static/yes.png": {
+          "sha256": "8e82a0553eb614cce4dca6c60d77626febf3769eb00e0d926f9b54d5a88c5876",
+          "bytes": 241
+        },
+        "docs/api.rst": {
+          "sha256": "e394f7b80abf581e2e46b5a1cd7bd640653b6ad1cfa876af4349619fae77596d",
+          "bytes": 22385
+        },
+        "docs/appcontext.rst": {
+          "sha256": "f18b338976b18abb5f0068a76eeb36c70d21d3a47677a48c9e5677d23f34a7a1",
+          "bytes": 5174
+        },
+        "docs/async-await.rst": {
+          "sha256": "739dc650532abd7b1903b85d81248137b45ad25c7b657cc06ace27e93cd0a851",
+          "bytes": 5112
+        },
+        "docs/blueprints.rst": {
+          "sha256": "0efbff2912d81e24df4e1d9400657a153cbbfe93c9d3035a6e51ae6ba2d34734",
+          "bytes": 12559
+        },
+        "docs/changes.rst": {
+          "sha256": "94c7e3657f8795af8f66d20fb6208f83df46bce9cab9b82d2c16ad961a87f7e0",
+          "bytes": 45
+        },
+        "docs/cli.rst": {
+          "sha256": "e8e5e9b220a5159e9c9c8b413de499aa5a51cd0ca487681e2352bbdf6f9b0cda",
+          "bytes": 16701
+        },
+        "docs/conf.py": {
+          "sha256": "313d256d8bb99009fddbb137d6753be041634d3df722e7b01fa35eaa485cc5b5",
+          "bytes": 3370
+        },
+        "docs/config.rst": {
+          "sha256": "e064c784e0b69c06f16727cfea552e1dd28345ffeae30815b61992913b634ace",
+          "bytes": 24408
+        },
+        "docs/contributing.rst": {
+          "sha256": "87d5c7434971ff248a817426c2a84940b3c3ed51251ddcaed6bb8a7d85afad80",
+          "bytes": 33
+        },
+        "docs/debugging.rst": {
+          "sha256": "2ab0afa292130d00def05d1c6eef75030476734f541f7471a269583c8edb84ff",
+          "bytes": 2951
+        },
+        "docs/deploying/apache-httpd.rst": {
+          "sha256": "676271e9f5f3b317eb282a8b3888d502813e58e8247791d7a56210e6194d4728",
+          "bytes": 2364
+        },
+        "docs/deploying/asgi.rst": {
+          "sha256": "bb29483e443a2e9325e42b2406a1941bec338358018a25f547dd53d890682a63",
+          "bytes": 673
+        },
+        "docs/deploying/eventlet.rst": {
+          "sha256": "d93ca6cce56fc2bde5a31a7f13ee7e7bc1ab642721344cf9beb0fe374ff4e879",
+          "bytes": 2404
+        },
+        "docs/deploying/gevent.rst": {
+          "sha256": "e542fb5acda27dda113082a4caaaf3bc6b029c3e6f7671611a35905a9740c077",
+          "bytes": 2417
+        },
+        "docs/deploying/gunicorn.rst": {
+          "sha256": "653799579fa07e492b14c8549f9be00b82be817d0b22a65b1f6fd3b74a8ec484",
+          "bytes": 4042
+        },
+        "docs/deploying/index.rst": {
+          "sha256": "2608f551ae1583260af8248c963db3e78cc71d736c17beb57239aa4e6920d63c",
+          "bytes": 3186
+        },
+        "docs/deploying/mod_wsgi.rst": {
+          "sha256": "852707fa7eac584cc0715d1bd5dca3d531b4a2688a2c30241db7b7aff27a652d",
+          "bytes": 2813
+        },
+        "docs/deploying/nginx.rst": {
+          "sha256": "baae442b157057d9f331ef8c2de16065cf3de2e5d6f9b0448e8f74912612e666",
+          "bytes": 2316
+        },
+        "docs/deploying/proxy_fix.rst": {
+          "sha256": "d7da21c812c72a8a8b3d8c74240df3593f626c3b285f64488d4dc81365a4b855",
+          "bytes": 1365
+        },
+        "docs/deploying/uwsgi.rst": {
+          "sha256": "82668e3aa6927b0a88bd5b6e5da06ea6852877e5cd7fe4c02520eb33f61494d0",
+          "bytes": 4768
+        },
+        "docs/deploying/waitress.rst": {
+          "sha256": "f8d6ae27d97a678374125089de144c2d0ef6ca950abfdd2c43aa98f3d31e62d5",
+          "bytes": 2336
+        },
+        "docs/design.rst": {
+          "sha256": "50623cdef4a04bcce46713ed55b5229820b769ecce70ffa5304cea74fa087d74",
+          "bytes": 11074
+        },
+        "docs/errorhandling.rst": {
+          "sha256": "641f43eade9c2e34c1a8809b6bbf8183ef2e40f07e9224129c744d170b213981",
+          "bytes": 18376
+        },
+        "docs/extensiondev.rst": {
+          "sha256": "40fbf588b4b2b66e74ffd7177cb361d46a9d560f77eb1660c7ad56827ea3f812",
+          "bytes": 12788
+        },
+        "docs/extensions.rst": {
+          "sha256": "ccf9b1eb72261ba34b9dd76a483ee3979091916bab0d3b79f7fe4667f418d42d",
+          "bytes": 1372
+        },
+        "docs/index.rst": {
+          "sha256": "ad1156c3cf161fa633b67c8e6dbdc2ab2d6369ef8f84babe8416f74a0e2f3015",
+          "bytes": 2026
+        },
+        "docs/installation.rst": {
+          "sha256": "ae77a1914256a9f9bf594fe9623310cc4ecda1eb45da53cc3a39639b6acd7050",
+          "bytes": 3781
+        },
+        "docs/license.rst": {
+          "sha256": "7535eac513edd12fb8e33f203c6a403549629e34b363418cdbd6c6ea5464515d",
+          "bytes": 398
+        },
+        "docs/lifecycle.rst": {
+          "sha256": "e056e80bc5cbe46cf616c335b08fc0fd6aad513f3fb1f8fe2d02807dfe0c504c",
+          "bytes": 8947
+        },
+        "docs/logging.rst": {
+          "sha256": "aa114b98ea50fc8c50bc6209d8d645f694b31916df896483c1f17c3d14bdc855",
+          "bytes": 5910
+        },
+        "docs/make.bat": {
+          "sha256": "28aa5a45fae5d43d8a0e7e3d656e42a592b30d05a0838521bef6216d450b93b9",
+          "bytes": 760
+        },
+        "docs/patterns/appdispatch.rst": {
+          "sha256": "8b1d28d947e89098c60af126db6f3031d147cc762923dcc4ca7df9553194b7ef",
+          "bytes": 6914
+        },
+        "docs/patterns/appfactories.rst": {
+          "sha256": "4e475f0fbcb825a503315fe2d96b6a9e74db7b93b67439b73400eee47f4e4569",
+          "bytes": 4098
+        },
+        "docs/patterns/caching.rst": {
+          "sha256": "69f3d64582f923c04eb89dfd4112bef1173d0a5352b94832c891cb36633bafe1",
+          "bytes": 653
+        },
+        "docs/patterns/celery.rst": {
+          "sha256": "d38d301a9a97ffba6fbc3d10269c0c07afb9e9974fdc04115abfafb3a3dbd9de",
+          "bytes": 8670
+        },
+        "docs/patterns/deferredcallbacks.rst": {
+          "sha256": "b9d44479bb2af5827b5ee0a953ab3138db11dda8d1cd7ada68963b55b5031adf",
+          "bytes": 1848
+        },
+        "docs/patterns/favicon.rst": {
+          "sha256": "0315c8700dc97bf31359ea8131cac7bbedd07a1d6388ac97f0580314df75dade",
+          "bytes": 2071
+        },
+        "docs/patterns/fileuploads.rst": {
+          "sha256": "1db4e08f5a4435abb41946314bb35d5d0b3e86723db02961ba5bd8f9f9f9a556",
+          "bytes": 7297
+        },
+        "docs/patterns/flashing.rst": {
+          "sha256": "5802f174e23a0392bee1e52bdc90ea6c6d658cc74a6f6401e174661aa2a7c01f",
+          "bytes": 4536
+        },
+        "docs/patterns/index.rst": {
+          "sha256": "e41c5117727b09d67aac1f6917e810484c82ae467f2c9c77bc19e300ed948c9d",
+          "bytes": 961
+        },
+        "docs/patterns/javascript.rst": {
+          "sha256": "7dbe476916c39b7d17466c3b8ba92d79cdd8987c845b7267781dfeccfb7e8d35",
+          "bytes": 8964
+        },
+        "docs/patterns/jquery.rst": {
+          "sha256": "3bf6ce863472c428f9c3ce23f542b3e8b95ddc7bce64d6a60bd8ca2b93293656",
+          "bytes": 96
+        },
+        "docs/patterns/lazyloading.rst": {
+          "sha256": "cddcdbf43a1c32ff59d890672cf568770e837f53ff8879f62a5796f3e34c5087",
+          "bytes": 3847
+        },
+        "docs/patterns/methodoverrides.rst": {
+          "sha256": "d5a7d8b280a4e61016ee4be39e8c15e5b209076720e9235b357e48473fa07a56",
+          "bytes": 1456
+        },
+        "docs/patterns/mongoengine.rst": {
+          "sha256": "78490f31e89af2beb6565313c67b41a178e2416c748afe4fa98a194992004f9e",
+          "bytes": 2858
+        },
+        "docs/patterns/packages.rst": {
+          "sha256": "81876700c50a3e2d505568732f8266bc91afb6b793f0be3beafe1a22d7d21a6d",
+          "bytes": 4107
+        },
+        "docs/patterns/requestchecksum.rst": {
+          "sha256": "de35760b81ceb3a402fba66ff4d899aa1efcfdf4f240ce3a075ea3b123aa4a3e",
+          "bytes": 1861
+        },
+        "docs/patterns/singlepageapplications.rst": {
+          "sha256": "363abbdf6ee25f665e6e4ed86da02ba3d79b730f623be082647789123fd2d208",
+          "bytes": 731
+        },
+        "docs/patterns/sqlalchemy.rst": {
+          "sha256": "60a45ae8047f3aa901d14f6f93063611a0867b4588ef00340e0753d89544be77",
+          "bytes": 7336
+        },
+        "docs/patterns/sqlite3.rst": {
+          "sha256": "6ee6fcaa12dcf1ce11b3883d1e4d1a0f1a413958679649da5ac0ce9d3b06b533",
+          "bytes": 4956
+        },
+        "docs/patterns/streaming.rst": {
+          "sha256": "c21cc62e464fd92e7d37dc62a817d89d5684382b27b1c8613ad3c13bf09fa8ef",
+          "bytes": 2635
+        },
+        "docs/patterns/subclassing.rst": {
+          "sha256": "5f7e400c7970951eb104df5a2d9613c8986a3b05c16bf622d7d1a6ddc69d720b",
+          "bytes": 676
+        },
+        "docs/patterns/templateinheritance.rst": {
+          "sha256": "f41b40dea855682d9435edf0ff3a27b5f4267492325b8ba447c419e649373e70",
+          "bytes": 2197
+        },
+        "docs/patterns/urlprocessors.rst": {
+          "sha256": "816aa72b588023fbed0f46986cd413132040b8d0a144596781cd3c2fd2a865e5",
+          "bytes": 4306
+        },
+        "docs/patterns/viewdecorators.rst": {
+          "sha256": "2e461ba65df1ba86c01b49f20b5c118d75544796ba637c8bebe8c4789c761144",
+          "bytes": 6318
+        },
+        "docs/patterns/wtforms.rst": {
+          "sha256": "13e7666545c4ed60f7825fe9b5f9237da25d313da7da6ed39418b4f031adfb8c",
+          "bytes": 4709
+        },
+        "docs/quickstart.rst": {
+          "sha256": "884564779240e5b9ad913875a8d18e1ac612d0ebe97204d68f0aa1f7c10ccbdd",
+          "bytes": 32281
+        },
+        "docs/reqcontext.rst": {
+          "sha256": "7caa53bef4158cb84578d917985a4adeb5df891e1b86c0d0d0930d0bae989f2c",
+          "bytes": 9388
+        },
+        "docs/security.rst": {
+          "sha256": "071f46568b0a148c32db938a44d8b2e627cb8a7db21f89888ee2a983b05132b7",
+          "bytes": 10737
+        },
+        "docs/server.rst": {
+          "sha256": "7e40bf214d31eb88b8a1df96607457398809bca6eb857aba546282c0c76d28db",
+          "bytes": 3654
+        },
+        "docs/shell.rst": {
+          "sha256": "10a86c0b756ee35d77620867255ecc658e05525aba9b987be153dccc607a4dab",
+          "bytes": 3646
+        },
+        "docs/signals.rst": {
+          "sha256": "45236414f96c9297a2a8d60c30abc0b21d03c3155890704e11e739a15a45d86a",
+          "bytes": 7067
+        },
+        "docs/templating.rst": {
+          "sha256": "4cbda042253e832df9b95f57fe1d4e6767f076f98fbd25c5a802536d8279d642",
+          "bytes": 7787
+        },
+        "docs/testing.rst": {
+          "sha256": "80883af068924f1f8ef959b0c292ab14eac9aa4b055144d9d6a5c634c9e55e6a",
+          "bytes": 10425
+        },
+        "docs/tutorial/blog.rst": {
+          "sha256": "e38d7c41b6cfc3a20ade1f8318ba2a48e6e658ea0be93f5ff4523868e7e83ee4",
+          "bytes": 11387
+        },
+        "docs/tutorial/database.rst": {
+          "sha256": "88b87c26f014c5ab042687afb51ebcb2040019229f95879115ba4dd30fbfdab3",
+          "bytes": 6719
+        },
+        "docs/tutorial/deploy.rst": {
+          "sha256": "20293623ad985fe72e06523a8f851bb253beccb84c0362708284ec484ca7be97",
+          "bytes": 3699
+        },
+        "docs/tutorial/factory.rst": {
+          "sha256": "47d67dbd5278da36613b7c045a35fc5744563d222d9c4b871c0c07901a844f45",
+          "bytes": 5921
+        },
+        "docs/tutorial/flaskr_edit.png": {
+          "sha256": "5bce7fb2fd68beeb77204b908573e282ad3654a738635803cef2634460bbdbf4",
+          "bytes": 13259
+        },
+        "docs/tutorial/flaskr_index.png": {
+          "sha256": "5bf89de3839acc5b7426ffcc29c3630d367033afa9c47c1f1647bd0d83b92051",
+          "bytes": 11675
+        },
+        "docs/tutorial/flaskr_login.png": {
+          "sha256": "1963095522d1eab0c6dc563d9376eb6ff997879c9895bb41709fe9a309aeb91b",
+          "bytes": 7455
+        },
+        "docs/tutorial/index.rst": {
+          "sha256": "c97b064670686bbb002a720174cbf5feaaa5c615fa317c1cbb901bb214eb81ac",
+          "bytes": 2061
+        },
+        "docs/tutorial/install.rst": {
+          "sha256": "82898bcf31826adebcf319c2b6ca85a4354e8b060215cb6b11ddc5c9e862bf45",
+          "bytes": 3393
+        },
+        "docs/tutorial/layout.rst": {
+          "sha256": "6b1c0b4e5c08d296703c26dd642dbed4097e0745b44d6d175e2a5debd0eed3fd",
+          "bytes": 2942
+        },
+        "docs/tutorial/next.rst": {
+          "sha256": "035d30c638eb8e2596738efd8033d370bc6642e357d43b24c104b9cba4761ad5",
+          "bytes": 1631
+        },
+        "docs/tutorial/static.rst": {
+          "sha256": "233079012d511e3640b35abfe69014e2cab668027e3ade0e31deb03350f6157b",
+          "bytes": 3170
+        },
+        "docs/tutorial/templates.rst": {
+          "sha256": "3d06b3eeb8bc02a6e30ed95fd579dc4e0fcf59986ecac7f3181648f5611a5f7f",
+          "bytes": 6961
+        },
+        "docs/tutorial/tests.rst": {
+          "sha256": "2fd6e84543d49346d504d87e17e99e0969b5848e9932f6f2118445cfdb08a374",
+          "bytes": 18265
+        },
+        "docs/tutorial/views.rst": {
+          "sha256": "7f1856b2432fb9ae865063d1b441fb1f41cabc09f09296ca755ee9152ed2d9af",
+          "bytes": 10920
+        },
+        "docs/views.rst": {
+          "sha256": "225deb1feed5e285a23c151c1ffd9ae7be3106b436f94d2f3f179c2b438b01d6",
+          "bytes": 10270
+        },
+        "examples/celery/README.md": {
+          "sha256": "c31bd98ee22d28e11f183815dfe5727342260d0582a3a5e89ab552c5611d34c8",
+          "bytes": 950
+        },
+        "examples/celery/make_celery.py": {
+          "sha256": "ff32ebf85ef8791fc07177ffe2dad6020fad34a4a57831d37a8bd8531f6e6707",
+          "bytes": 102
+        },
+        "examples/celery/pyproject.toml": {
+          "sha256": "b4ac3540881f44a97e88d52828016761e4ecb9f7802977ed19fd8d84db7f822a",
+          "bytes": 315
+        },
+        "examples/celery/requirements.txt": {
+          "sha256": "3af0dfc4ded483426be750bb7383c412b98ccc7f8870ee66278781139d68910c",
+          "bytes": 1044
+        },
+        "examples/celery/src/task_app/__init__.py": {
+          "sha256": "172de995eb076d7ea1911f20bf4c2fcb72dbc3d7eee3e5796c4cdfa2dfd486ab",
+          "bytes": 1019
+        },
+        "examples/celery/src/task_app/tasks.py": {
+          "sha256": "d2c365c8ed2f5abf0b5b109361ebe58941559b7d67e57f96d6a6b7bd69970364",
+          "bytes": 484
+        },
+        "examples/celery/src/task_app/templates/index.html": {
+          "sha256": "2ca135b39b9e685a164001abd6d8acb985fec1e126c2a6f36fffbd59b2117f10",
+          "bytes": 2909
+        },
+        "examples/celery/src/task_app/views.py": {
+          "sha256": "cb9f3c9ebbb359bae6d49f55fd717700062691d2be60f1700e2abf7060082704",
+          "bytes": 954
+        },
+        "examples/javascript/.gitignore": {
+          "sha256": "33e8459e8e10c3260d9b06a2d3a256306cbc154708601d734bff17c42109b319",
+          "bytes": 119
+        },
+        "examples/javascript/LICENSE.rst": {
+          "sha256": "489a8e1108509ed98a37bb983e11e0f7e1d31f0bd8f99a79c8448e7ff37d07ea",
+          "bytes": 1475
+        },
+        "examples/javascript/MANIFEST.in": {
+          "sha256": "e246d1d9b5462efbacea58ba34089c07eeb93c6370514b84a79bfa0f290d590a",
+          "bytes": 80
+        },
+        "examples/javascript/README.rst": {
+          "sha256": "2fecf3aa4491175c6beeb793441ae9969b441f65a6086d0ad3b6af46ad52b165",
+          "bytes": 1082
+        },
+        "examples/javascript/js_example/__init__.py": {
+          "sha256": "ea2307cfd406f1b66de1537bc11eecc7d9ff2bf098b65befbe52e99a52ca2b09",
+          "bytes": 97
+        },
+        "examples/javascript/js_example/templates/base.html": {
+          "sha256": "08d0064958cae81c9b2b30e50ba233195d211316b7e44988fad6ebfa4b42decd",
+          "bytes": 1178
+        },
+        "examples/javascript/js_example/templates/fetch.html": {
+          "sha256": "47c946da9cad2e382ffb69dd9cbde239dce4223e1128cc4b2292d396d3b0a4ca",
+          "bytes": 852
+        },
+        "examples/javascript/js_example/templates/jquery.html": {
+          "sha256": "4fa2ef87d2f563ff3bfe54429eac4bdbb674aeebe1377efe38b3cba9d96f1643",
+          "bytes": 666
+        },
+        "examples/javascript/js_example/templates/xhr.html": {
+          "sha256": "e0f2cbefc4be46244d9fc787a47c16dcecaabf26b91409ada20c5669861fa763",
+          "bytes": 933
+        },
+        "examples/javascript/js_example/views.py": {
+          "sha256": "d8952097a08a6dfae3be6d86359108c8cc62b7d26ab092bec1eb9143cd2a1bb0",
+          "bytes": 438
+        },
+        "examples/javascript/pyproject.toml": {
+          "sha256": "135221e79dc275033fde7b2c3afd6ee75650bf02a8e2a25c0a437f4116cf7bc2",
+          "bytes": 636
+        },
+        "examples/javascript/tests/conftest.py": {
+          "sha256": "aff1ac8ea5b7c6e4d7adf67a0eae5c13cbb9adf38e1a2434e6cc7e6824c56b11",
+          "bytes": 216
+        },
+        "examples/javascript/tests/test_js_example.py": {
+          "sha256": "0668636eada4707d4fdd78185433ed9835bac39f335eebfacb7994d2df60c20e",
+          "bytes": 725
+        },
+        "examples/tutorial/.gitignore": {
+          "sha256": "33e8459e8e10c3260d9b06a2d3a256306cbc154708601d734bff17c42109b319",
+          "bytes": 119
+        },
+        "examples/tutorial/LICENSE.rst": {
+          "sha256": "489a8e1108509ed98a37bb983e11e0f7e1d31f0bd8f99a79c8448e7ff37d07ea",
+          "bytes": 1475
+        },
+        "examples/tutorial/MANIFEST.in": {
+          "sha256": "888da39f79f0ed0726aef4ebb0d306233e0246e33acccbeec37e052ea62c7aab",
+          "bytes": 122
+        },
+        "examples/tutorial/README.rst": {
+          "sha256": "e6c7aa25f5a857ce3b30c0b2a2d0d7a25bbf0f1c96d700e1bad2868c7ea231f5",
+          "bytes": 1273
+        },
+        "examples/tutorial/flaskr/__init__.py": {
+          "sha256": "8b5a321932c3b2ddeb440e5d023c8beae394cd134f4bb3ce5ba80d65038b4281",
+          "bytes": 1430
+        },
+        "examples/tutorial/flaskr/auth.py": {
+          "sha256": "6d77ebafa6443dc1b43ee26f212ad2fa810ceab4a161a164b8ebe4a61184b7c2",
+          "bytes": 3302
+        },
+        "examples/tutorial/flaskr/blog.py": {
+          "sha256": "ffa97ae3827518ea3ef22e8cfcedabb6d757407714fc9ad8e03b4eb05b744bc7",
+          "bytes": 3317
+        },
+        "examples/tutorial/flaskr/db.py": {
+          "sha256": "69fffb53092c30fa0d9b08f12fa970a2c4d3e8adb28727ec62affe237f21bff2",
+          "bytes": 1199
+        },
+        "examples/tutorial/flaskr/schema.sql": {
+          "sha256": "c23021b8a5229cedd3191825850e963f393790a794d31ac2f83846a0c5d559f7",
+          "bytes": 498
+        },
+        "examples/tutorial/flaskr/static/style.css": {
+          "sha256": "b7724c7981be21b5a13484c8f7eb9df306f06a88406db3dc7619b80aa040e372",
+          "bytes": 1696
+        },
+        "examples/tutorial/flaskr/templates/auth/login.html": {
+          "sha256": "f0d4ee341a19c8f9d51a66c5da624e687e58de7e3fb2ca41c6f5b8d07e20a6c1",
+          "bytes": 424
+        },
+        "examples/tutorial/flaskr/templates/auth/register.html": {
+          "sha256": "53da308c1d62f057613ec8e445eb70e89404288f503156102d1e3e39ec5b2153",
+          "bytes": 428
+        },
+        "examples/tutorial/flaskr/templates/base.html": {
+          "sha256": "a3c74c6ba8ae95bd3b4b63c0bcf5712944c5b954578514c1316a248db0949b07",
+          "bytes": 752
+        },
+        "examples/tutorial/flaskr/templates/blog/create.html": {
+          "sha256": "f41e3166cfd09d41a88def1896fb93631e707b0d9968b14ccb00953263e20025",
+          "bytes": 447
+        },
+        "examples/tutorial/flaskr/templates/blog/index.html": {
+          "sha256": "67cdf10979b06f697953477d0ee8043e56a11ebe87b03b307ada12d13a240617",
+          "bytes": 790
+        },
+        "examples/tutorial/flaskr/templates/blog/update.html": {
+          "sha256": "0e16cd0d933914628e890411dcddd7527fb96b5a7c9113390d93b3e79b44b5ad",
+          "bytes": 690
+        },
+        "examples/tutorial/pyproject.toml": {
+          "sha256": "f46f0dd8c1d4a7643f8ae00679a8322a8b4ffbfc591db0c4a66054895d6cfb19",
+          "bytes": 621
+        },
+        "examples/tutorial/tests/conftest.py": {
+          "sha256": "2778b7c035d917bb0909ec6ee2f9d61ccba030ff8ae635ff65a52c133ec5afca",
+          "bytes": 1454
+        },
+        "examples/tutorial/tests/data.sql": {
+          "sha256": "244a542220a64bdbf9bd3340f8280551b95e6d3248ead974fdd0a07a7dd06a0c",
+          "bytes": 394
+        },
+        "examples/tutorial/tests/test_auth.py": {
+          "sha256": "cbbe178c9980d8499561d8eae72f01b8abeead2fa10c9d5f71427da4af38a938",
+          "bytes": 2070
+        },
+        "examples/tutorial/tests/test_blog.py": {
+          "sha256": "a4c01c486e86aed522c3ade398bf4016f6ef59bbada2c7c5f69eb55ce297877c",
+          "bytes": 2503
+        },
+        "examples/tutorial/tests/test_db.py": {
+          "sha256": "324baea21b981575b4e6d92b6517f21ec2ad86a6138010863a9fcfb4f984e649",
+          "bytes": 616
+        },
+        "examples/tutorial/tests/test_factory.py": {
+          "sha256": "1906cfed379afe315b6ad7db3c71c951ac87c53b57b28b04b5b6c84df2a79e01",
+          "bytes": 298
+        },
+        "pyproject.toml": {
+          "sha256": "738b80e461d53775a148faa291d4b66d8b715aee674d749827002616c760b01b",
+          "bytes": 2556
+        },
+        "requirements/build.in": {
+          "sha256": "f10ec3ffef16a8dace9b58801e0da28819c98af4c8933410d7e7cacc952f9e9b",
+          "bytes": 6
+        },
+        "requirements/build.txt": {
+          "sha256": "94edfac456f84acf5c99f10a7bea00e027b51284da6a8172b4bc4cf786defba8",
+          "bytes": 294
+        },
+        "requirements/dev.in": {
+          "sha256": "4a55617a2d5ae90a3dcd50b0bb9055f55e77462c93af8d6b98e6d66c3a683a1c",
+          "bytes": 69
+        },
+        "requirements/dev.txt": {
+          "sha256": "7443981a5ca905e1082145ef4bfc525dd6f788d5ed5c9390b86fbb3853defbd5",
+          "bytes": 1178
+        },
+        "requirements/docs.in": {
+          "sha256": "11b236fc3c336a0816687f8c8f907f4cdffe3da1c4e60940e67c1bdad25c4b47",
+          "bytes": 230
+        },
+        "requirements/docs.txt": {
+          "sha256": "3381d4e77e681780150461db92e1341bb05865c71d1d62d5e4a364127358ee8b",
+          "bytes": 1413
+        },
+        "requirements/tests-pallets-min.in": {
+          "sha256": "7ec68da70bb0df51cbc8207d4c254a130e044a56f5d907ba8f3a8acbd79dc3d1",
+          "bytes": 81
+        },
+        "requirements/tests-pallets-min.txt": {
+          "sha256": "6cb8a57706ada641641dd8230c3afbf1b4bc7c1ee68cdd17f4820326b668cf8e",
+          "bytes": 484
+        },
+        "requirements/tests.in": {
+          "sha256": "1ecbca947aa57fbb2f52a6229179cf99226f4ee050ca4063b28edfd9dcf00931",
+          "bytes": 100
+        },
+        "requirements/tests.txt": {
+          "sha256": "8e377f7d02ba13bdd2cba784814d7a8a169a6bb6cf2893a277c42c2e100d3772",
+          "bytes": 649
+        },
+        "requirements/typing.in": {
+          "sha256": "7473c420ff6ad3207f3e7187f04e4b1c62dfbffa40a93d314ff16fafff9945a5",
+          "bytes": 71
+        },
+        "requirements/typing.txt": {
+          "sha256": "cca5b70cf1fef660c53504ce63874ea39198188486079c35131f6c5fd7c33edd",
+          "bytes": 610
+        },
+        "src/flask/__init__.py": {
+          "sha256": "cb74621666b9ca1383af7591214a0e48917428a8b808d8d04cdbb8591bcc89a7",
+          "bytes": 3495
+        },
+        "src/flask/__main__.py": {
+          "sha256": "6d8b7d7846a845059d7a3107143f11131f63c5511d669b44085b15ec5e3d2279",
+          "bytes": 30
+        },
+        "src/flask/app.py": {
+          "sha256": "d439102c7658f90f896556c557df89501f2c98ad498d6317453f10ef58508710",
+          "bytes": 88074
+        },
+        "src/flask/blueprints.py": {
+          "sha256": "9d296c3a0dffffbafd59ef15290a6d4c2061a470f3ad2b00709388d35d1dddc0",
+          "bytes": 24356
+        },
+        "src/flask/cli.py": {
+          "sha256": "a4b9a758e6defc6e3f640150761ee4830a8f3314579b8a1485a51206924c7aae",
+          "bytes": 33532
+        },
+        "src/flask/config.py": {
+          "sha256": "584fd038985cd82c1ab2e6e7d9934cbbf99d0b9e25086ef15177567a3040188e",
+          "bytes": 12791
+        },
+        "src/flask/ctx.py": {
+          "sha256": "6c611042e176fdc1ea67764d31e31e106f0738b2640e52fcf2ed810710ab45aa",
+          "bytes": 14829
+        },
+        "src/flask/debughelpers.py": {
+          "sha256": "fd1bc02f74d6e65a8c25e0955ad4d4eab483242ee39d16812fa3849159a8a325",
+          "bytes": 5511
+        },
+        "src/flask/globals.py": {
+          "sha256": "33342ac58f569f596c2c47eab863b37af7d3203134135a11aed845bdf28d3f3d",
+          "bytes": 2930
+        },
+        "src/flask/helpers.py": {
+          "sha256": "efa15481302a200fabae2498f5e6ff9ae002906bd0ad9550b91a32269d4a4c1e",
+          "bytes": 24847
+        },
+        "src/flask/json/__init__.py": {
+          "sha256": "a5db69a0ad9bd1bd6eed2c5bc777de33b55686c236d25d72180bdb616c5ac6f7",
+          "bytes": 5572
+        },
+        "src/flask/json/provider.py": {
+          "sha256": "43324b473bce7096def0847139f97a4f53f763326983a58f5a91f56cc83b04ea",
+          "bytes": 7643
+        },
+        "src/flask/json/tag.py": {
+          "sha256": "7f2b371c12ecb161ee300209b9371fd8ad1b0ada2c78f04a5c85804991048e75",
+          "bytes": 8857
+        },
+        "src/flask/logging.py": {
+          "sha256": "5989e0d1b2d3452fc226ba1c19c08b26989b1dfd65ca01c4fe983e2a8508438c",
+          "bytes": 2293
+        },
+        "src/flask/py.typed": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        "src/flask/scaffold.py": {
+          "sha256": "12d4caff83fd4f57d51c2d29ec0a873508ac035f596a100d1729edccd18d04ac",
+          "bytes": 35380
+        },
+        "src/flask/sessions.py": {
+          "sha256": "ebaa06944faff6269cf9e6f9e2d14ddc82c08c9d4579eb871d6c3df1455aa317",
+          "bytes": 15847
+        },
+        "src/flask/signals.py": {
+          "sha256": "1fb4300dc88af9db41c629e32a97b1a6094fd04ea4d0c2482e21564c8b5f9aa5",
+          "bytes": 2136
+        },
+        "src/flask/templating.py": {
+          "sha256": "3591a3224d577b651e48697ef9ae9a8fff57c8f2f52dfcdf31bbaf055e04bc75",
+          "bytes": 7421
+        },
+        "src/flask/testing.py": {
+          "sha256": "af8e2e80145fdf669988c666bbdb1e617713cc1cb538899ca636835c76d36177",
+          "bytes": 10599
+        },
+        "src/flask/typing.py": {
+          "sha256": "2a0c5e81317dbfd5afba89e0785f0ba2822fa593dabb31ababd6577f78019587",
+          "bytes": 2969
+        },
+        "src/flask/views.py": {
+          "sha256": "2ee96db562f8a30545960c2b262f0608d3388a70b7c5bb36201958df56dd092e",
+          "bytes": 6765
+        },
+        "src/flask/wrappers.py": {
+          "sha256": "7a5ded9f52e049457478d1a060c8ca2024f923ba862606e9221bdc8b89ebc10f",
+          "bytes": 5702
+        },
+        "tests/conftest.py": {
+          "sha256": "6a85cb938e48d53c7ec978c953d8a6236ae5723541fb3f1c8d73dfa05262fece",
+          "bytes": 5265
+        },
+        "tests/static/config.json": {
+          "sha256": "28d7be9c2566e893e5e2da9eec54951032b55485fefc36ab4d53fa97b271c981",
+          "bytes": 54
+        },
+        "tests/static/config.toml": {
+          "sha256": "1551d036dd594e88079db2179d045df595760af46dd6c80c11ef828fa2f7a02a",
+          "bytes": 35
+        },
+        "tests/static/index.html": {
+          "sha256": "7f6f02fe6b981005a81f27dab9bc6d8be4cb074c0c8c5647208ddef5346c9ac2",
+          "bytes": 22
+        },
+        "tests/templates/_macro.html": {
+          "sha256": "5c0daa9f0a49a4eddab928d994a5ce0f3794e057278a6d7689ee6531778bf26b",
+          "bytes": 55
+        },
+        "tests/templates/context_template.html": {
+          "sha256": "857bc7cdd820b2aa8ed9e5d195be848460d34f33c842271a324d8489bcda8034",
+          "bytes": 36
+        },
+        "tests/templates/escaping_template.html": {
+          "sha256": "3913ccdd020e22efe55aff4cd74d5b3c766df9b9b2f018aedbaeb7680a0ee748",
+          "bytes": 147
+        },
+        "tests/templates/mail.txt": {
+          "sha256": "f1ff63d4fc54a3f75e19bae926e0ddae28b5eaa13ec6d57d454ea660f544ffae",
+          "bytes": 14
+        },
+        "tests/templates/nested/nested.txt": {
+          "sha256": "efa3e5343b700d55a364c3c746506a497f798d8e767bf45664224a65f4569005",
+          "bytes": 11
+        },
+        "tests/templates/non_escaping_template.txt": {
+          "sha256": "a1bf0b2dc534994c5cd3e2eddee3d81b7c9be229dfc35c57284507576c0fe214",
+          "bytes": 169
+        },
+        "tests/templates/simple_template.html": {
+          "sha256": "7746a4931590d544240e22f8e5bf2752f084d0aa4be7bf43862a1896fef5ddb1",
+          "bytes": 23
+        },
+        "tests/templates/template_filter.html": {
+          "sha256": "1e499ffeb7db1bdb46ad1a26ca8b37bd0d87f2e7ebc1ef81d912fed8b7c525a0",
+          "bytes": 26
+        },
+        "tests/templates/template_test.html": {
+          "sha256": "8376605103743da3a2cf6f3dfc0c4d78fdc809f476f688336d09777c2bf12bff",
+          "bytes": 51
+        },
+        "tests/test_appctx.py": {
+          "sha256": "16dbad01d4ccbc2f811f8718b0bfced28c1d0cde1f8fc357f480dd73b05aef67",
+          "bytes": 5029
+        },
+        "tests/test_apps/.env": {
+          "sha256": "3739562018bb8d8aeddbb540fb4c53e61af5385fb4d3b613e784057c3129ccc0",
+          "bytes": 33
+        },
+        "tests/test_apps/.flaskenv": {
+          "sha256": "8933d1515cd054314d9f79b2295ac7833604768cb91e2762607a5560609ea6ac",
+          "bytes": 28
+        },
+        "tests/test_apps/blueprintapp/__init__.py": {
+          "sha256": "87622ebc37bcfe87d81be1437e4b97a4c2a8341eb3df38461dd37a0b89db07d3",
+          "bytes": 256
+        },
+        "tests/test_apps/blueprintapp/apps/__init__.py": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        "tests/test_apps/blueprintapp/apps/admin/__init__.py": {
+          "sha256": "5e849dc6984b0b3944ea687e40d96da9d5a9f42e32aa5b4035dedef4558ad83d",
+          "bytes": 366
+        },
+        "tests/test_apps/blueprintapp/apps/admin/static/css/test.css": {
+          "sha256": "1750c6f80056de8eb2003f4d73a23357d89879f65e387867e7dd34f4b3096e86",
+          "bytes": 18
+        },
+        "tests/test_apps/blueprintapp/apps/admin/static/test.txt": {
+          "sha256": "95c3e2ba78ba2d1febc399b1ca3466cfc88c7227e249236a3c5948ae62cace36",
+          "bytes": 11
+        },
+        "tests/test_apps/blueprintapp/apps/admin/templates/admin/index.html": {
+          "sha256": "d8e592e9062ac5a6ab9d901690bbda9b43f6412a1d44d900e8cd397843952f0e",
+          "bytes": 21
+        },
+        "tests/test_apps/blueprintapp/apps/frontend/__init__.py": {
+          "sha256": "1630cefb5d073808e8b4164e4d910f69aee57a93eaee53debb575e7e7aabb83f",
+          "bytes": 327
+        },
+        "tests/test_apps/blueprintapp/apps/frontend/templates/frontend/index.html": {
+          "sha256": "85c0bb0ce45263118d2b90c0202571d41785565cda6a7c5c2213834309bdaf08",
+          "bytes": 24
+        },
+        "tests/test_apps/cliapp/__init__.py": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        "tests/test_apps/cliapp/app.py": {
+          "sha256": "b0c37142ff064f6d7f3ca21b8acec34a0657cf1a7c354178d5e3acc0879c7467",
+          "bytes": 52
+        },
+        "tests/test_apps/cliapp/factory.py": {
+          "sha256": "3a93cd69f200848e8ffef6b2abdaa5803fb5044981ab64297f8c7d6541820570",
+          "bytes": 169
+        },
+        "tests/test_apps/cliapp/importerrorapp.py": {
+          "sha256": "5ad812b09337f9699cd2b6aeebfd7d6f14045451de846b0503d746a34ce8a8c4",
+          "bytes": 73
+        },
+        "tests/test_apps/cliapp/inner1/__init__.py": {
+          "sha256": "d3885f0114c83025a754fb3a8582634946541c9aeb72fe4f90af27554a6d4c83",
+          "bytes": 55
+        },
+        "tests/test_apps/cliapp/inner1/inner2/__init__.py": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        "tests/test_apps/cliapp/inner1/inner2/flask.py": {
+          "sha256": "570567aafaf185348cffa097d904b964c44fe1a92c5ec82488b97e3d93dbab38",
+          "bytes": 47
+        },
+        "tests/test_apps/cliapp/message.txt": {
+          "sha256": "f41c9f8b6285b72bbd8f18a781c679d49741835c0ac49b5cd953768002e191de",
+          "bytes": 38
+        },
+        "tests/test_apps/cliapp/multiapp.py": {
+          "sha256": "0580225ea4edb705c2e412c5ac6bd27d659cc239f0243467a33eaa9ee74675fc",
+          "bytes": 67
+        },
+        "tests/test_apps/helloworld/hello.py": {
+          "sha256": "42722083156af9f3eb82e3a88403f4191b9dfcb5f9e1c3432e79f02827b0ccf1",
+          "bytes": 104
+        },
+        "tests/test_apps/helloworld/wsgi.py": {
+          "sha256": "c1d5a162364e71546a8a8b76eb7fba0381582b8546ad14189f6431e647b7a547",
+          "bytes": 36
+        },
+        "tests/test_apps/subdomaintestmodule/__init__.py": {
+          "sha256": "441b37bad390ba774ec6f41b2b2c24357aa66dd469633829a415b710f10dccf3",
+          "bytes": 74
+        },
+        "tests/test_apps/subdomaintestmodule/static/hello.txt": {
+          "sha256": "e4fbc4e56428293f5d5e439367adef7c6f45d22032b324e64935f4740e2e8902",
+          "bytes": 16
+        },
+        "tests/test_async.py": {
+          "sha256": "0a6a50bfd651581478abe8cda5c94aba6d70df35567a220aabc7ba08202d471c",
+          "bytes": 3335
+        },
+        "tests/test_basic.py": {
+          "sha256": "e1087ccff5d7fd00f30a3a2ab0e94860896adaa10c68fbb5f06e653bc206ae5b",
+          "bytes": 52815
+        },
+        "tests/test_blueprints.py": {
+          "sha256": "804b98bbb71ccce566ab78a15cb141793ebbaee3c1b3bb591d9dab04c9940f4a",
+          "bytes": 28799
+        },
+        "tests/test_cli.py": {
+          "sha256": "8be854106ba28dc85ec6e95cde140d7910ba236569efe3bd6327f951860cdbc4",
+          "bytes": 19341
+        },
+        "tests/test_config.py": {
+          "sha256": "4ba589e57daac5e42566c849a9a37a0086bec3793f71d481c724e41a603a0dca",
+          "bytes": 7859
+        },
+        "tests/test_converters.py": {
+          "sha256": "4f529ca6ee85a88c487a488807ff30cb8e4672307b9017f348174a67a5984347",
+          "bytes": 1093
+        },
+        "tests/test_helpers.py": {
+          "sha256": "91a9f89c0fbfc8ad7fff560d959ccfae77a8afd9a947f861246c7ecd16dd26a2",
+          "bytes": 10090
+        },
+        "tests/test_instance_config.py": {
+          "sha256": "863b937b8b215c5243b54f9a80c40601ce63e1032a0cc2fbd71215c6acc94fc6",
+          "bytes": 3770
+        },
+        "tests/test_json.py": {
+          "sha256": "9133dcc027c1458348dcc10cf7f3c587f168966922cc4789811ae0eb4c018bf2",
+          "bytes": 9284
+        },
+        "tests/test_json_tag.py": {
+          "sha256": "019a2cd9b43245667b178e023dbd3541086f561677c32f06fa2eb85fd81aff65",
+          "bytes": 1998
+        },
+        "tests/test_logging.py": {
+          "sha256": "311ea43751a836c3d585a40f08fa54a60d783a232aa50c5ea1225b689e9ac683",
+          "bytes": 2529
+        },
+        "tests/test_regression.py": {
+          "sha256": "2749a17454a9aa8a610a2213d739046488af06fe742da1c06802d00ab28a3bf8",
+          "bytes": 712
+        },
+        "tests/test_reqctx.py": {
+          "sha256": "8c19e1468ed3360efccef5e5ea886377cfe5baf8bb259b34dc84ee993974a764",
+          "bytes": 8691
+        },
+        "tests/test_session_interface.py": {
+          "sha256": "d3990141744f27683503ffc17f46042b9fe0b10119c77e414ea47795079b7dba",
+          "bytes": 792
+        },
+        "tests/test_signals.py": {
+          "sha256": "c43524c0c0c59d972b39638b5eb96976cfb55a35e2ca7546ead60f3f43e89854",
+          "bytes": 5012
+        },
+        "tests/test_subclassing.py": {
+          "sha256": "0d325f8099e38403287a0cd8f1e184884beb5c345ac894300f2aa469a04cbd10",
+          "bytes": 475
+        },
+        "tests/test_templating.py": {
+          "sha256": "d20c5f1f67fdc81ed0f9fdaf450b699fa9cb787e2eb1b40637b4c758a1e20e19",
+          "bytes": 12323
+        },
+        "tests/test_testing.py": {
+          "sha256": "5a3d48e13e7c1ecbd977b0d6ce74fbcd10d5bc90d0cb5f9206a79ee986d33442",
+          "bytes": 10850
+        },
+        "tests/test_user_error_handler.py": {
+          "sha256": "f05213bb275e08d354bf9750eb3a37aeb8fc713a8beee7edcdd3078d11af9d60",
+          "bytes": 8436
+        },
+        "tests/test_views.py": {
+          "sha256": "46a65aa50e962b7c047485e96f33a8a502a394d5097c5adee1239cba10d24566",
+          "bytes": 6698
+        },
+        "tests/typing/typing_app_decorators.py": {
+          "sha256": "dac75620ec452dcb01c76c9f7b070a842e0527261f1a255eb7533b583cd7d31e",
+          "bytes": 635
+        },
+        "tests/typing/typing_error_handler.py": {
+          "sha256": "6ca69ec7b4813dfac97080cfb49b9c2d41acab44351e86620e337e1f25674604",
+          "bytes": 647
+        },
+        "tests/typing/typing_route.py": {
+          "sha256": "fd0cf3b76c74c40e89a87f98471d59b502425e57791d17bce5331356ec303344",
+          "bytes": 2569
+        },
+        "tox.ini": {
+          "sha256": "bd9cbdb045badd28c4d854929feaa081da17b1539cc8935dd03e6723d3928c90",
+          "bytes": 1281
+        }
+      }
+    },
+    "pre_model_source": {
+      "head": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d",
+      "files": {
+        ".editorconfig": {
+          "sha256": "759961cac46ae6f8b823e4b377435d2e04311e7026e462976ff54c352eee6f2b",
+          "bytes": 217
+        },
+        ".flake8": {
+          "sha256": "869445d8583ec77eaf2b3409f550db3262cd30bd2fc1fa96a2bbfe3fb0bdfd2c",
+          "bytes": 544
+        },
+        ".github/ISSUE_TEMPLATE/bug-report.md": {
+          "sha256": "32b0383ca3cdc7f812aee06b863deb64cb3240c3001a26ac3c46811433b65cc6",
+          "bytes": 607
+        },
+        ".github/ISSUE_TEMPLATE/config.yml": {
+          "sha256": "59db6f9003216c0477af5278f0bd3dfbb4f46c982f5a13708de58272727ef36e",
+          "bytes": 489
+        },
+        ".github/ISSUE_TEMPLATE/feature-request.md": {
+          "sha256": "09f7166294a022f7926f32a0c3a785706b3e777f53586dd2cfdf07ee172410b6",
+          "bytes": 416
+        },
+        ".github/SECURITY.md": {
+          "sha256": "63ed773064a5d44324c4be42661a27ab30a13f323181733b7b42f59504852ab9",
+          "bytes": 914
+        },
+        ".github/dependabot.yml": {
+          "sha256": "fe27cc0e9c91980474bf2e6c4bbb7c035bb71b781c7fff67a4fa142fbe6c4eed",
+          "bytes": 167
+        },
+        ".github/pull_request_template.md": {
+          "sha256": "37497840677a8fe41c0e24ec7dde8b298a728fcbf94dc62eee29326bbd49ca84",
+          "bytes": 971
+        },
+        ".github/workflows/lock.yaml": {
+          "sha256": "de2154d7ca918ebbb767d86be64e847905c540600c50c0cf9d778e5f2352db70",
+          "bytes": 616
+        },
+        ".github/workflows/publish.yaml": {
+          "sha256": "47df6d05881411805fd079419cb5fc60006122d8ba135b5d4a61af1f360a0589",
+          "bytes": 2654
+        },
+        ".github/workflows/tests.yaml": {
+          "sha256": "a216dc85fef5d788a96f2ad8cf1afdd66771b8dbf9f816de6ade9d5ddd7d42dc",
+          "bytes": 2101
+        },
+        ".gitignore": {
+          "sha256": "ea91eb6582fa6fbd39f24287a2fe6f63353bf3eaea58d0f123704820e95df742",
+          "bytes": 207
+        },
+        ".pre-commit-config.yaml": {
+          "sha256": "baa35bdeb5f94f1674d105560014af8c0041367c7c782b35ad65bdb679342b55",
+          "bytes": 1026
+        },
+        ".readthedocs.yaml": {
+          "sha256": "dd47a46c7c3027f89216b0a9c2f2ea91275cc7dd2717f6a271a661a29beb2b1a",
+          "bytes": 209
+        },
+        "CHANGES.rst": {
+          "sha256": "d48be7a6bea42e9aec3810f1031694d06fc3ac44d474bea60051d8d0d1caa7a0",
+          "bytes": 65888
+        },
+        "CODE_OF_CONDUCT.md": {
+          "sha256": "3b3eee7b9db5c0c0a27b60a60883dd706dc954b5dcb25264ff1611ef87426c79",
+          "bytes": 3358
+        },
+        "CONTRIBUTING.rst": {
+          "sha256": "762453ef55412d0333b746647132194174bd112c29b408e2024e8e2c7eb8a7e2",
+          "bytes": 6685
+        },
+        "LICENSE.rst": {
+          "sha256": "489a8e1108509ed98a37bb983e11e0f7e1d31f0bd8f99a79c8448e7ff37d07ea",
+          "bytes": 1475
+        },
+        "MANIFEST.in": {
+          "sha256": "ce56a352e8d1f1fde8a753c15d815888c93e720f7e28452c3ecdeb9aab8e3581",
+          "bytes": 206
+        },
+        "README.rst": {
+          "sha256": "dfc60b903c5e01d7b3078fc938c362769dc9bfaf1263a817d55690fd5c3e3b03",
+          "bytes": 2158
+        },
+        "artwork/LICENSE.rst": {
+          "sha256": "2e63a3bd3a1f97e2fa9fa33bbf4f61bbb56ee16beb125b5346b0012388dc3b49",
+          "bytes": 780
+        },
+        "artwork/logo-full.svg": {
+          "sha256": "0fec920ef33dc9ec541c056bc6504e9d78c75c867ffe895f66cee888946dbd92",
+          "bytes": 78447
+        },
+        "artwork/logo-lineart.svg": {
+          "sha256": "c4705ec9f523299ad815780e874be62c3627cea0a67db9a8cbd8b1bc3a78d0f5",
+          "bytes": 8119
+        },
+        "docs/Makefile": {
+          "sha256": "8b6587b859607f200f116e2cb043fc358e1c3a26c326b563bf348453cfc68307",
+          "bytes": 634
+        },
+        "docs/_static/debugger.png": {
+          "sha256": "2979c9c95ae0fe68a6f5c0055833744daa735f56d3495ee5a41c139ad8567c56",
+          "bytes": 207889
+        },
+        "docs/_static/flask-icon.png": {
+          "sha256": "e115744446f9a617797781fac18f8b92149370a0ce0c648b449b5a55e979384b",
+          "bytes": 6933
+        },
+        "docs/_static/flask-logo.png": {
+          "sha256": "e3b1802e68cdd1ebc02f0132c1f8097c109d38867dc44f1813c064181312ff5f",
+          "bytes": 14703
+        },
+        "docs/_static/no.png": {
+          "sha256": "bc59d3c5cbfe58a7bee295a5d0eb2a200b78201e20c24f393050f2134d9eb10f",
+          "bytes": 259
+        },
+        "docs/_static/pycharm-run-config.png": {
+          "sha256": "eba3aab19b6969a1268e93b91e19a856430aabe14f90c3ff1228043d88682704",
+          "bytes": 99654
+        },
+        "docs/_static/yes.png": {
+          "sha256": "8e82a0553eb614cce4dca6c60d77626febf3769eb00e0d926f9b54d5a88c5876",
+          "bytes": 241
+        },
+        "docs/api.rst": {
+          "sha256": "e394f7b80abf581e2e46b5a1cd7bd640653b6ad1cfa876af4349619fae77596d",
+          "bytes": 22385
+        },
+        "docs/appcontext.rst": {
+          "sha256": "f18b338976b18abb5f0068a76eeb36c70d21d3a47677a48c9e5677d23f34a7a1",
+          "bytes": 5174
+        },
+        "docs/async-await.rst": {
+          "sha256": "739dc650532abd7b1903b85d81248137b45ad25c7b657cc06ace27e93cd0a851",
+          "bytes": 5112
+        },
+        "docs/blueprints.rst": {
+          "sha256": "0efbff2912d81e24df4e1d9400657a153cbbfe93c9d3035a6e51ae6ba2d34734",
+          "bytes": 12559
+        },
+        "docs/changes.rst": {
+          "sha256": "94c7e3657f8795af8f66d20fb6208f83df46bce9cab9b82d2c16ad961a87f7e0",
+          "bytes": 45
+        },
+        "docs/cli.rst": {
+          "sha256": "e8e5e9b220a5159e9c9c8b413de499aa5a51cd0ca487681e2352bbdf6f9b0cda",
+          "bytes": 16701
+        },
+        "docs/conf.py": {
+          "sha256": "313d256d8bb99009fddbb137d6753be041634d3df722e7b01fa35eaa485cc5b5",
+          "bytes": 3370
+        },
+        "docs/config.rst": {
+          "sha256": "e064c784e0b69c06f16727cfea552e1dd28345ffeae30815b61992913b634ace",
+          "bytes": 24408
+        },
+        "docs/contributing.rst": {
+          "sha256": "87d5c7434971ff248a817426c2a84940b3c3ed51251ddcaed6bb8a7d85afad80",
+          "bytes": 33
+        },
+        "docs/debugging.rst": {
+          "sha256": "2ab0afa292130d00def05d1c6eef75030476734f541f7471a269583c8edb84ff",
+          "bytes": 2951
+        },
+        "docs/deploying/apache-httpd.rst": {
+          "sha256": "676271e9f5f3b317eb282a8b3888d502813e58e8247791d7a56210e6194d4728",
+          "bytes": 2364
+        },
+        "docs/deploying/asgi.rst": {
+          "sha256": "bb29483e443a2e9325e42b2406a1941bec338358018a25f547dd53d890682a63",
+          "bytes": 673
+        },
+        "docs/deploying/eventlet.rst": {
+          "sha256": "d93ca6cce56fc2bde5a31a7f13ee7e7bc1ab642721344cf9beb0fe374ff4e879",
+          "bytes": 2404
+        },
+        "docs/deploying/gevent.rst": {
+          "sha256": "e542fb5acda27dda113082a4caaaf3bc6b029c3e6f7671611a35905a9740c077",
+          "bytes": 2417
+        },
+        "docs/deploying/gunicorn.rst": {
+          "sha256": "653799579fa07e492b14c8549f9be00b82be817d0b22a65b1f6fd3b74a8ec484",
+          "bytes": 4042
+        },
+        "docs/deploying/index.rst": {
+          "sha256": "2608f551ae1583260af8248c963db3e78cc71d736c17beb57239aa4e6920d63c",
+          "bytes": 3186
+        },
+        "docs/deploying/mod_wsgi.rst": {
+          "sha256": "852707fa7eac584cc0715d1bd5dca3d531b4a2688a2c30241db7b7aff27a652d",
+          "bytes": 2813
+        },
+        "docs/deploying/nginx.rst": {
+          "sha256": "baae442b157057d9f331ef8c2de16065cf3de2e5d6f9b0448e8f74912612e666",
+          "bytes": 2316
+        },
+        "docs/deploying/proxy_fix.rst": {
+          "sha256": "d7da21c812c72a8a8b3d8c74240df3593f626c3b285f64488d4dc81365a4b855",
+          "bytes": 1365
+        },
+        "docs/deploying/uwsgi.rst": {
+          "sha256": "82668e3aa6927b0a88bd5b6e5da06ea6852877e5cd7fe4c02520eb33f61494d0",
+          "bytes": 4768
+        },
+        "docs/deploying/waitress.rst": {
+          "sha256": "f8d6ae27d97a678374125089de144c2d0ef6ca950abfdd2c43aa98f3d31e62d5",
+          "bytes": 2336
+        },
+        "docs/design.rst": {
+          "sha256": "50623cdef4a04bcce46713ed55b5229820b769ecce70ffa5304cea74fa087d74",
+          "bytes": 11074
+        },
+        "docs/errorhandling.rst": {
+          "sha256": "641f43eade9c2e34c1a8809b6bbf8183ef2e40f07e9224129c744d170b213981",
+          "bytes": 18376
+        },
+        "docs/extensiondev.rst": {
+          "sha256": "40fbf588b4b2b66e74ffd7177cb361d46a9d560f77eb1660c7ad56827ea3f812",
+          "bytes": 12788
+        },
+        "docs/extensions.rst": {
+          "sha256": "ccf9b1eb72261ba34b9dd76a483ee3979091916bab0d3b79f7fe4667f418d42d",
+          "bytes": 1372
+        },
+        "docs/index.rst": {
+          "sha256": "ad1156c3cf161fa633b67c8e6dbdc2ab2d6369ef8f84babe8416f74a0e2f3015",
+          "bytes": 2026
+        },
+        "docs/installation.rst": {
+          "sha256": "ae77a1914256a9f9bf594fe9623310cc4ecda1eb45da53cc3a39639b6acd7050",
+          "bytes": 3781
+        },
+        "docs/license.rst": {
+          "sha256": "7535eac513edd12fb8e33f203c6a403549629e34b363418cdbd6c6ea5464515d",
+          "bytes": 398
+        },
+        "docs/lifecycle.rst": {
+          "sha256": "e056e80bc5cbe46cf616c335b08fc0fd6aad513f3fb1f8fe2d02807dfe0c504c",
+          "bytes": 8947
+        },
+        "docs/logging.rst": {
+          "sha256": "aa114b98ea50fc8c50bc6209d8d645f694b31916df896483c1f17c3d14bdc855",
+          "bytes": 5910
+        },
+        "docs/make.bat": {
+          "sha256": "28aa5a45fae5d43d8a0e7e3d656e42a592b30d05a0838521bef6216d450b93b9",
+          "bytes": 760
+        },
+        "docs/patterns/appdispatch.rst": {
+          "sha256": "8b1d28d947e89098c60af126db6f3031d147cc762923dcc4ca7df9553194b7ef",
+          "bytes": 6914
+        },
+        "docs/patterns/appfactories.rst": {
+          "sha256": "4e475f0fbcb825a503315fe2d96b6a9e74db7b93b67439b73400eee47f4e4569",
+          "bytes": 4098
+        },
+        "docs/patterns/caching.rst": {
+          "sha256": "69f3d64582f923c04eb89dfd4112bef1173d0a5352b94832c891cb36633bafe1",
+          "bytes": 653
+        },
+        "docs/patterns/celery.rst": {
+          "sha256": "d38d301a9a97ffba6fbc3d10269c0c07afb9e9974fdc04115abfafb3a3dbd9de",
+          "bytes": 8670
+        },
+        "docs/patterns/deferredcallbacks.rst": {
+          "sha256": "b9d44479bb2af5827b5ee0a953ab3138db11dda8d1cd7ada68963b55b5031adf",
+          "bytes": 1848
+        },
+        "docs/patterns/favicon.rst": {
+          "sha256": "0315c8700dc97bf31359ea8131cac7bbedd07a1d6388ac97f0580314df75dade",
+          "bytes": 2071
+        },
+        "docs/patterns/fileuploads.rst": {
+          "sha256": "1db4e08f5a4435abb41946314bb35d5d0b3e86723db02961ba5bd8f9f9f9a556",
+          "bytes": 7297
+        },
+        "docs/patterns/flashing.rst": {
+          "sha256": "5802f174e23a0392bee1e52bdc90ea6c6d658cc74a6f6401e174661aa2a7c01f",
+          "bytes": 4536
+        },
+        "docs/patterns/index.rst": {
+          "sha256": "e41c5117727b09d67aac1f6917e810484c82ae467f2c9c77bc19e300ed948c9d",
+          "bytes": 961
+        },
+        "docs/patterns/javascript.rst": {
+          "sha256": "7dbe476916c39b7d17466c3b8ba92d79cdd8987c845b7267781dfeccfb7e8d35",
+          "bytes": 8964
+        },
+        "docs/patterns/jquery.rst": {
+          "sha256": "3bf6ce863472c428f9c3ce23f542b3e8b95ddc7bce64d6a60bd8ca2b93293656",
+          "bytes": 96
+        },
+        "docs/patterns/lazyloading.rst": {
+          "sha256": "cddcdbf43a1c32ff59d890672cf568770e837f53ff8879f62a5796f3e34c5087",
+          "bytes": 3847
+        },
+        "docs/patterns/methodoverrides.rst": {
+          "sha256": "d5a7d8b280a4e61016ee4be39e8c15e5b209076720e9235b357e48473fa07a56",
+          "bytes": 1456
+        },
+        "docs/patterns/mongoengine.rst": {
+          "sha256": "78490f31e89af2beb6565313c67b41a178e2416c748afe4fa98a194992004f9e",
+          "bytes": 2858
+        },
+        "docs/patterns/packages.rst": {
+          "sha256": "81876700c50a3e2d505568732f8266bc91afb6b793f0be3beafe1a22d7d21a6d",
+          "bytes": 4107
+        },
+        "docs/patterns/requestchecksum.rst": {
+          "sha256": "de35760b81ceb3a402fba66ff4d899aa1efcfdf4f240ce3a075ea3b123aa4a3e",
+          "bytes": 1861
+        },
+        "docs/patterns/singlepageapplications.rst": {
+          "sha256": "363abbdf6ee25f665e6e4ed86da02ba3d79b730f623be082647789123fd2d208",
+          "bytes": 731
+        },
+        "docs/patterns/sqlalchemy.rst": {
+          "sha256": "60a45ae8047f3aa901d14f6f93063611a0867b4588ef00340e0753d89544be77",
+          "bytes": 7336
+        },
+        "docs/patterns/sqlite3.rst": {
+          "sha256": "6ee6fcaa12dcf1ce11b3883d1e4d1a0f1a413958679649da5ac0ce9d3b06b533",
+          "bytes": 4956
+        },
+        "docs/patterns/streaming.rst": {
+          "sha256": "c21cc62e464fd92e7d37dc62a817d89d5684382b27b1c8613ad3c13bf09fa8ef",
+          "bytes": 2635
+        },
+        "docs/patterns/subclassing.rst": {
+          "sha256": "5f7e400c7970951eb104df5a2d9613c8986a3b05c16bf622d7d1a6ddc69d720b",
+          "bytes": 676
+        },
+        "docs/patterns/templateinheritance.rst": {
+          "sha256": "f41b40dea855682d9435edf0ff3a27b5f4267492325b8ba447c419e649373e70",
+          "bytes": 2197
+        },
+        "docs/patterns/urlprocessors.rst": {
+          "sha256": "816aa72b588023fbed0f46986cd413132040b8d0a144596781cd3c2fd2a865e5",
+          "bytes": 4306
+        },
+        "docs/patterns/viewdecorators.rst": {
+          "sha256": "2e461ba65df1ba86c01b49f20b5c118d75544796ba637c8bebe8c4789c761144",
+          "bytes": 6318
+        },
+        "docs/patterns/wtforms.rst": {
+          "sha256": "13e7666545c4ed60f7825fe9b5f9237da25d313da7da6ed39418b4f031adfb8c",
+          "bytes": 4709
+        },
+        "docs/quickstart.rst": {
+          "sha256": "884564779240e5b9ad913875a8d18e1ac612d0ebe97204d68f0aa1f7c10ccbdd",
+          "bytes": 32281
+        },
+        "docs/reqcontext.rst": {
+          "sha256": "7caa53bef4158cb84578d917985a4adeb5df891e1b86c0d0d0930d0bae989f2c",
+          "bytes": 9388
+        },
+        "docs/security.rst": {
+          "sha256": "071f46568b0a148c32db938a44d8b2e627cb8a7db21f89888ee2a983b05132b7",
+          "bytes": 10737
+        },
+        "docs/server.rst": {
+          "sha256": "7e40bf214d31eb88b8a1df96607457398809bca6eb857aba546282c0c76d28db",
+          "bytes": 3654
+        },
+        "docs/shell.rst": {
+          "sha256": "10a86c0b756ee35d77620867255ecc658e05525aba9b987be153dccc607a4dab",
+          "bytes": 3646
+        },
+        "docs/signals.rst": {
+          "sha256": "45236414f96c9297a2a8d60c30abc0b21d03c3155890704e11e739a15a45d86a",
+          "bytes": 7067
+        },
+        "docs/templating.rst": {
+          "sha256": "4cbda042253e832df9b95f57fe1d4e6767f076f98fbd25c5a802536d8279d642",
+          "bytes": 7787
+        },
+        "docs/testing.rst": {
+          "sha256": "80883af068924f1f8ef959b0c292ab14eac9aa4b055144d9d6a5c634c9e55e6a",
+          "bytes": 10425
+        },
+        "docs/tutorial/blog.rst": {
+          "sha256": "e38d7c41b6cfc3a20ade1f8318ba2a48e6e658ea0be93f5ff4523868e7e83ee4",
+          "bytes": 11387
+        },
+        "docs/tutorial/database.rst": {
+          "sha256": "88b87c26f014c5ab042687afb51ebcb2040019229f95879115ba4dd30fbfdab3",
+          "bytes": 6719
+        },
+        "docs/tutorial/deploy.rst": {
+          "sha256": "20293623ad985fe72e06523a8f851bb253beccb84c0362708284ec484ca7be97",
+          "bytes": 3699
+        },
+        "docs/tutorial/factory.rst": {
+          "sha256": "47d67dbd5278da36613b7c045a35fc5744563d222d9c4b871c0c07901a844f45",
+          "bytes": 5921
+        },
+        "docs/tutorial/flaskr_edit.png": {
+          "sha256": "5bce7fb2fd68beeb77204b908573e282ad3654a738635803cef2634460bbdbf4",
+          "bytes": 13259
+        },
+        "docs/tutorial/flaskr_index.png": {
+          "sha256": "5bf89de3839acc5b7426ffcc29c3630d367033afa9c47c1f1647bd0d83b92051",
+          "bytes": 11675
+        },
+        "docs/tutorial/flaskr_login.png": {
+          "sha256": "1963095522d1eab0c6dc563d9376eb6ff997879c9895bb41709fe9a309aeb91b",
+          "bytes": 7455
+        },
+        "docs/tutorial/index.rst": {
+          "sha256": "c97b064670686bbb002a720174cbf5feaaa5c615fa317c1cbb901bb214eb81ac",
+          "bytes": 2061
+        },
+        "docs/tutorial/install.rst": {
+          "sha256": "82898bcf31826adebcf319c2b6ca85a4354e8b060215cb6b11ddc5c9e862bf45",
+          "bytes": 3393
+        },
+        "docs/tutorial/layout.rst": {
+          "sha256": "6b1c0b4e5c08d296703c26dd642dbed4097e0745b44d6d175e2a5debd0eed3fd",
+          "bytes": 2942
+        },
+        "docs/tutorial/next.rst": {
+          "sha256": "035d30c638eb8e2596738efd8033d370bc6642e357d43b24c104b9cba4761ad5",
+          "bytes": 1631
+        },
+        "docs/tutorial/static.rst": {
+          "sha256": "233079012d511e3640b35abfe69014e2cab668027e3ade0e31deb03350f6157b",
+          "bytes": 3170
+        },
+        "docs/tutorial/templates.rst": {
+          "sha256": "3d06b3eeb8bc02a6e30ed95fd579dc4e0fcf59986ecac7f3181648f5611a5f7f",
+          "bytes": 6961
+        },
+        "docs/tutorial/tests.rst": {
+          "sha256": "2fd6e84543d49346d504d87e17e99e0969b5848e9932f6f2118445cfdb08a374",
+          "bytes": 18265
+        },
+        "docs/tutorial/views.rst": {
+          "sha256": "7f1856b2432fb9ae865063d1b441fb1f41cabc09f09296ca755ee9152ed2d9af",
+          "bytes": 10920
+        },
+        "docs/views.rst": {
+          "sha256": "225deb1feed5e285a23c151c1ffd9ae7be3106b436f94d2f3f179c2b438b01d6",
+          "bytes": 10270
+        },
+        "examples/celery/README.md": {
+          "sha256": "c31bd98ee22d28e11f183815dfe5727342260d0582a3a5e89ab552c5611d34c8",
+          "bytes": 950
+        },
+        "examples/celery/make_celery.py": {
+          "sha256": "ff32ebf85ef8791fc07177ffe2dad6020fad34a4a57831d37a8bd8531f6e6707",
+          "bytes": 102
+        },
+        "examples/celery/pyproject.toml": {
+          "sha256": "b4ac3540881f44a97e88d52828016761e4ecb9f7802977ed19fd8d84db7f822a",
+          "bytes": 315
+        },
+        "examples/celery/requirements.txt": {
+          "sha256": "3af0dfc4ded483426be750bb7383c412b98ccc7f8870ee66278781139d68910c",
+          "bytes": 1044
+        },
+        "examples/celery/src/task_app/__init__.py": {
+          "sha256": "172de995eb076d7ea1911f20bf4c2fcb72dbc3d7eee3e5796c4cdfa2dfd486ab",
+          "bytes": 1019
+        },
+        "examples/celery/src/task_app/tasks.py": {
+          "sha256": "d2c365c8ed2f5abf0b5b109361ebe58941559b7d67e57f96d6a6b7bd69970364",
+          "bytes": 484
+        },
+        "examples/celery/src/task_app/templates/index.html": {
+          "sha256": "2ca135b39b9e685a164001abd6d8acb985fec1e126c2a6f36fffbd59b2117f10",
+          "bytes": 2909
+        },
+        "examples/celery/src/task_app/views.py": {
+          "sha256": "cb9f3c9ebbb359bae6d49f55fd717700062691d2be60f1700e2abf7060082704",
+          "bytes": 954
+        },
+        "examples/javascript/.gitignore": {
+          "sha256": "33e8459e8e10c3260d9b06a2d3a256306cbc154708601d734bff17c42109b319",
+          "bytes": 119
+        },
+        "examples/javascript/LICENSE.rst": {
+          "sha256": "489a8e1108509ed98a37bb983e11e0f7e1d31f0bd8f99a79c8448e7ff37d07ea",
+          "bytes": 1475
+        },
+        "examples/javascript/MANIFEST.in": {
+          "sha256": "e246d1d9b5462efbacea58ba34089c07eeb93c6370514b84a79bfa0f290d590a",
+          "bytes": 80
+        },
+        "examples/javascript/README.rst": {
+          "sha256": "2fecf3aa4491175c6beeb793441ae9969b441f65a6086d0ad3b6af46ad52b165",
+          "bytes": 1082
+        },
+        "examples/javascript/js_example/__init__.py": {
+          "sha256": "ea2307cfd406f1b66de1537bc11eecc7d9ff2bf098b65befbe52e99a52ca2b09",
+          "bytes": 97
+        },
+        "examples/javascript/js_example/templates/base.html": {
+          "sha256": "08d0064958cae81c9b2b30e50ba233195d211316b7e44988fad6ebfa4b42decd",
+          "bytes": 1178
+        },
+        "examples/javascript/js_example/templates/fetch.html": {
+          "sha256": "47c946da9cad2e382ffb69dd9cbde239dce4223e1128cc4b2292d396d3b0a4ca",
+          "bytes": 852
+        },
+        "examples/javascript/js_example/templates/jquery.html": {
+          "sha256": "4fa2ef87d2f563ff3bfe54429eac4bdbb674aeebe1377efe38b3cba9d96f1643",
+          "bytes": 666
+        },
+        "examples/javascript/js_example/templates/xhr.html": {
+          "sha256": "e0f2cbefc4be46244d9fc787a47c16dcecaabf26b91409ada20c5669861fa763",
+          "bytes": 933
+        },
+        "examples/javascript/js_example/views.py": {
+          "sha256": "d8952097a08a6dfae3be6d86359108c8cc62b7d26ab092bec1eb9143cd2a1bb0",
+          "bytes": 438
+        },
+        "examples/javascript/pyproject.toml": {
+          "sha256": "135221e79dc275033fde7b2c3afd6ee75650bf02a8e2a25c0a437f4116cf7bc2",
+          "bytes": 636
+        },
+        "examples/javascript/tests/conftest.py": {
+          "sha256": "aff1ac8ea5b7c6e4d7adf67a0eae5c13cbb9adf38e1a2434e6cc7e6824c56b11",
+          "bytes": 216
+        },
+        "examples/javascript/tests/test_js_example.py": {
+          "sha256": "0668636eada4707d4fdd78185433ed9835bac39f335eebfacb7994d2df60c20e",
+          "bytes": 725
+        },
+        "examples/tutorial/.gitignore": {
+          "sha256": "33e8459e8e10c3260d9b06a2d3a256306cbc154708601d734bff17c42109b319",
+          "bytes": 119
+        },
+        "examples/tutorial/LICENSE.rst": {
+          "sha256": "489a8e1108509ed98a37bb983e11e0f7e1d31f0bd8f99a79c8448e7ff37d07ea",
+          "bytes": 1475
+        },
+        "examples/tutorial/MANIFEST.in": {
+          "sha256": "888da39f79f0ed0726aef4ebb0d306233e0246e33acccbeec37e052ea62c7aab",
+          "bytes": 122
+        },
+        "examples/tutorial/README.rst": {
+          "sha256": "e6c7aa25f5a857ce3b30c0b2a2d0d7a25bbf0f1c96d700e1bad2868c7ea231f5",
+          "bytes": 1273
+        },
+        "examples/tutorial/flaskr/__init__.py": {
+          "sha256": "8b5a321932c3b2ddeb440e5d023c8beae394cd134f4bb3ce5ba80d65038b4281",
+          "bytes": 1430
+        },
+        "examples/tutorial/flaskr/auth.py": {
+          "sha256": "6d77ebafa6443dc1b43ee26f212ad2fa810ceab4a161a164b8ebe4a61184b7c2",
+          "bytes": 3302
+        },
+        "examples/tutorial/flaskr/blog.py": {
+          "sha256": "ffa97ae3827518ea3ef22e8cfcedabb6d757407714fc9ad8e03b4eb05b744bc7",
+          "bytes": 3317
+        },
+        "examples/tutorial/flaskr/db.py": {
+          "sha256": "69fffb53092c30fa0d9b08f12fa970a2c4d3e8adb28727ec62affe237f21bff2",
+          "bytes": 1199
+        },
+        "examples/tutorial/flaskr/schema.sql": {
+          "sha256": "c23021b8a5229cedd3191825850e963f393790a794d31ac2f83846a0c5d559f7",
+          "bytes": 498
+        },
+        "examples/tutorial/flaskr/static/style.css": {
+          "sha256": "b7724c7981be21b5a13484c8f7eb9df306f06a88406db3dc7619b80aa040e372",
+          "bytes": 1696
+        },
+        "examples/tutorial/flaskr/templates/auth/login.html": {
+          "sha256": "f0d4ee341a19c8f9d51a66c5da624e687e58de7e3fb2ca41c6f5b8d07e20a6c1",
+          "bytes": 424
+        },
+        "examples/tutorial/flaskr/templates/auth/register.html": {
+          "sha256": "53da308c1d62f057613ec8e445eb70e89404288f503156102d1e3e39ec5b2153",
+          "bytes": 428
+        },
+        "examples/tutorial/flaskr/templates/base.html": {
+          "sha256": "a3c74c6ba8ae95bd3b4b63c0bcf5712944c5b954578514c1316a248db0949b07",
+          "bytes": 752
+        },
+        "examples/tutorial/flaskr/templates/blog/create.html": {
+          "sha256": "f41e3166cfd09d41a88def1896fb93631e707b0d9968b14ccb00953263e20025",
+          "bytes": 447
+        },
+        "examples/tutorial/flaskr/templates/blog/index.html": {
+          "sha256": "67cdf10979b06f697953477d0ee8043e56a11ebe87b03b307ada12d13a240617",
+          "bytes": 790
+        },
+        "examples/tutorial/flaskr/templates/blog/update.html": {
+          "sha256": "0e16cd0d933914628e890411dcddd7527fb96b5a7c9113390d93b3e79b44b5ad",
+          "bytes": 690
+        },
+        "examples/tutorial/pyproject.toml": {
+          "sha256": "f46f0dd8c1d4a7643f8ae00679a8322a8b4ffbfc591db0c4a66054895d6cfb19",
+          "bytes": 621
+        },
+        "examples/tutorial/tests/conftest.py": {
+          "sha256": "2778b7c035d917bb0909ec6ee2f9d61ccba030ff8ae635ff65a52c133ec5afca",
+          "bytes": 1454
+        },
+        "examples/tutorial/tests/data.sql": {
+          "sha256": "244a542220a64bdbf9bd3340f8280551b95e6d3248ead974fdd0a07a7dd06a0c",
+          "bytes": 394
+        },
+        "examples/tutorial/tests/test_auth.py": {
+          "sha256": "cbbe178c9980d8499561d8eae72f01b8abeead2fa10c9d5f71427da4af38a938",
+          "bytes": 2070
+        },
+        "examples/tutorial/tests/test_blog.py": {
+          "sha256": "a4c01c486e86aed522c3ade398bf4016f6ef59bbada2c7c5f69eb55ce297877c",
+          "bytes": 2503
+        },
+        "examples/tutorial/tests/test_db.py": {
+          "sha256": "324baea21b981575b4e6d92b6517f21ec2ad86a6138010863a9fcfb4f984e649",
+          "bytes": 616
+        },
+        "examples/tutorial/tests/test_factory.py": {
+          "sha256": "1906cfed379afe315b6ad7db3c71c951ac87c53b57b28b04b5b6c84df2a79e01",
+          "bytes": 298
+        },
+        "pyproject.toml": {
+          "sha256": "738b80e461d53775a148faa291d4b66d8b715aee674d749827002616c760b01b",
+          "bytes": 2556
+        },
+        "requirements/build.in": {
+          "sha256": "f10ec3ffef16a8dace9b58801e0da28819c98af4c8933410d7e7cacc952f9e9b",
+          "bytes": 6
+        },
+        "requirements/build.txt": {
+          "sha256": "94edfac456f84acf5c99f10a7bea00e027b51284da6a8172b4bc4cf786defba8",
+          "bytes": 294
+        },
+        "requirements/dev.in": {
+          "sha256": "4a55617a2d5ae90a3dcd50b0bb9055f55e77462c93af8d6b98e6d66c3a683a1c",
+          "bytes": 69
+        },
+        "requirements/dev.txt": {
+          "sha256": "7443981a5ca905e1082145ef4bfc525dd6f788d5ed5c9390b86fbb3853defbd5",
+          "bytes": 1178
+        },
+        "requirements/docs.in": {
+          "sha256": "11b236fc3c336a0816687f8c8f907f4cdffe3da1c4e60940e67c1bdad25c4b47",
+          "bytes": 230
+        },
+        "requirements/docs.txt": {
+          "sha256": "3381d4e77e681780150461db92e1341bb05865c71d1d62d5e4a364127358ee8b",
+          "bytes": 1413
+        },
+        "requirements/tests-pallets-min.in": {
+          "sha256": "7ec68da70bb0df51cbc8207d4c254a130e044a56f5d907ba8f3a8acbd79dc3d1",
+          "bytes": 81
+        },
+        "requirements/tests-pallets-min.txt": {
+          "sha256": "6cb8a57706ada641641dd8230c3afbf1b4bc7c1ee68cdd17f4820326b668cf8e",
+          "bytes": 484
+        },
+        "requirements/tests.in": {
+          "sha256": "1ecbca947aa57fbb2f52a6229179cf99226f4ee050ca4063b28edfd9dcf00931",
+          "bytes": 100
+        },
+        "requirements/tests.txt": {
+          "sha256": "8e377f7d02ba13bdd2cba784814d7a8a169a6bb6cf2893a277c42c2e100d3772",
+          "bytes": 649
+        },
+        "requirements/typing.in": {
+          "sha256": "7473c420ff6ad3207f3e7187f04e4b1c62dfbffa40a93d314ff16fafff9945a5",
+          "bytes": 71
+        },
+        "requirements/typing.txt": {
+          "sha256": "cca5b70cf1fef660c53504ce63874ea39198188486079c35131f6c5fd7c33edd",
+          "bytes": 610
+        },
+        "src/flask/__init__.py": {
+          "sha256": "cb74621666b9ca1383af7591214a0e48917428a8b808d8d04cdbb8591bcc89a7",
+          "bytes": 3495
+        },
+        "src/flask/__main__.py": {
+          "sha256": "6d8b7d7846a845059d7a3107143f11131f63c5511d669b44085b15ec5e3d2279",
+          "bytes": 30
+        },
+        "src/flask/app.py": {
+          "sha256": "d439102c7658f90f896556c557df89501f2c98ad498d6317453f10ef58508710",
+          "bytes": 88074
+        },
+        "src/flask/blueprints.py": {
+          "sha256": "9d296c3a0dffffbafd59ef15290a6d4c2061a470f3ad2b00709388d35d1dddc0",
+          "bytes": 24356
+        },
+        "src/flask/cli.py": {
+          "sha256": "a4b9a758e6defc6e3f640150761ee4830a8f3314579b8a1485a51206924c7aae",
+          "bytes": 33532
+        },
+        "src/flask/config.py": {
+          "sha256": "584fd038985cd82c1ab2e6e7d9934cbbf99d0b9e25086ef15177567a3040188e",
+          "bytes": 12791
+        },
+        "src/flask/ctx.py": {
+          "sha256": "6c611042e176fdc1ea67764d31e31e106f0738b2640e52fcf2ed810710ab45aa",
+          "bytes": 14829
+        },
+        "src/flask/debughelpers.py": {
+          "sha256": "fd1bc02f74d6e65a8c25e0955ad4d4eab483242ee39d16812fa3849159a8a325",
+          "bytes": 5511
+        },
+        "src/flask/globals.py": {
+          "sha256": "33342ac58f569f596c2c47eab863b37af7d3203134135a11aed845bdf28d3f3d",
+          "bytes": 2930
+        },
+        "src/flask/helpers.py": {
+          "sha256": "efa15481302a200fabae2498f5e6ff9ae002906bd0ad9550b91a32269d4a4c1e",
+          "bytes": 24847
+        },
+        "src/flask/json/__init__.py": {
+          "sha256": "a5db69a0ad9bd1bd6eed2c5bc777de33b55686c236d25d72180bdb616c5ac6f7",
+          "bytes": 5572
+        },
+        "src/flask/json/provider.py": {
+          "sha256": "43324b473bce7096def0847139f97a4f53f763326983a58f5a91f56cc83b04ea",
+          "bytes": 7643
+        },
+        "src/flask/json/tag.py": {
+          "sha256": "7f2b371c12ecb161ee300209b9371fd8ad1b0ada2c78f04a5c85804991048e75",
+          "bytes": 8857
+        },
+        "src/flask/logging.py": {
+          "sha256": "5989e0d1b2d3452fc226ba1c19c08b26989b1dfd65ca01c4fe983e2a8508438c",
+          "bytes": 2293
+        },
+        "src/flask/py.typed": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        "src/flask/scaffold.py": {
+          "sha256": "12d4caff83fd4f57d51c2d29ec0a873508ac035f596a100d1729edccd18d04ac",
+          "bytes": 35380
+        },
+        "src/flask/sessions.py": {
+          "sha256": "ebaa06944faff6269cf9e6f9e2d14ddc82c08c9d4579eb871d6c3df1455aa317",
+          "bytes": 15847
+        },
+        "src/flask/signals.py": {
+          "sha256": "1fb4300dc88af9db41c629e32a97b1a6094fd04ea4d0c2482e21564c8b5f9aa5",
+          "bytes": 2136
+        },
+        "src/flask/templating.py": {
+          "sha256": "3591a3224d577b651e48697ef9ae9a8fff57c8f2f52dfcdf31bbaf055e04bc75",
+          "bytes": 7421
+        },
+        "src/flask/testing.py": {
+          "sha256": "af8e2e80145fdf669988c666bbdb1e617713cc1cb538899ca636835c76d36177",
+          "bytes": 10599
+        },
+        "src/flask/typing.py": {
+          "sha256": "2a0c5e81317dbfd5afba89e0785f0ba2822fa593dabb31ababd6577f78019587",
+          "bytes": 2969
+        },
+        "src/flask/views.py": {
+          "sha256": "2ee96db562f8a30545960c2b262f0608d3388a70b7c5bb36201958df56dd092e",
+          "bytes": 6765
+        },
+        "src/flask/wrappers.py": {
+          "sha256": "7a5ded9f52e049457478d1a060c8ca2024f923ba862606e9221bdc8b89ebc10f",
+          "bytes": 5702
+        },
+        "tests/conftest.py": {
+          "sha256": "6a85cb938e48d53c7ec978c953d8a6236ae5723541fb3f1c8d73dfa05262fece",
+          "bytes": 5265
+        },
+        "tests/static/config.json": {
+          "sha256": "28d7be9c2566e893e5e2da9eec54951032b55485fefc36ab4d53fa97b271c981",
+          "bytes": 54
+        },
+        "tests/static/config.toml": {
+          "sha256": "1551d036dd594e88079db2179d045df595760af46dd6c80c11ef828fa2f7a02a",
+          "bytes": 35
+        },
+        "tests/static/index.html": {
+          "sha256": "7f6f02fe6b981005a81f27dab9bc6d8be4cb074c0c8c5647208ddef5346c9ac2",
+          "bytes": 22
+        },
+        "tests/templates/_macro.html": {
+          "sha256": "5c0daa9f0a49a4eddab928d994a5ce0f3794e057278a6d7689ee6531778bf26b",
+          "bytes": 55
+        },
+        "tests/templates/context_template.html": {
+          "sha256": "857bc7cdd820b2aa8ed9e5d195be848460d34f33c842271a324d8489bcda8034",
+          "bytes": 36
+        },
+        "tests/templates/escaping_template.html": {
+          "sha256": "3913ccdd020e22efe55aff4cd74d5b3c766df9b9b2f018aedbaeb7680a0ee748",
+          "bytes": 147
+        },
+        "tests/templates/mail.txt": {
+          "sha256": "f1ff63d4fc54a3f75e19bae926e0ddae28b5eaa13ec6d57d454ea660f544ffae",
+          "bytes": 14
+        },
+        "tests/templates/nested/nested.txt": {
+          "sha256": "efa3e5343b700d55a364c3c746506a497f798d8e767bf45664224a65f4569005",
+          "bytes": 11
+        },
+        "tests/templates/non_escaping_template.txt": {
+          "sha256": "a1bf0b2dc534994c5cd3e2eddee3d81b7c9be229dfc35c57284507576c0fe214",
+          "bytes": 169
+        },
+        "tests/templates/simple_template.html": {
+          "sha256": "7746a4931590d544240e22f8e5bf2752f084d0aa4be7bf43862a1896fef5ddb1",
+          "bytes": 23
+        },
+        "tests/templates/template_filter.html": {
+          "sha256": "1e499ffeb7db1bdb46ad1a26ca8b37bd0d87f2e7ebc1ef81d912fed8b7c525a0",
+          "bytes": 26
+        },
+        "tests/templates/template_test.html": {
+          "sha256": "8376605103743da3a2cf6f3dfc0c4d78fdc809f476f688336d09777c2bf12bff",
+          "bytes": 51
+        },
+        "tests/test_appctx.py": {
+          "sha256": "16dbad01d4ccbc2f811f8718b0bfced28c1d0cde1f8fc357f480dd73b05aef67",
+          "bytes": 5029
+        },
+        "tests/test_apps/.env": {
+          "sha256": "3739562018bb8d8aeddbb540fb4c53e61af5385fb4d3b613e784057c3129ccc0",
+          "bytes": 33
+        },
+        "tests/test_apps/.flaskenv": {
+          "sha256": "8933d1515cd054314d9f79b2295ac7833604768cb91e2762607a5560609ea6ac",
+          "bytes": 28
+        },
+        "tests/test_apps/blueprintapp/__init__.py": {
+          "sha256": "87622ebc37bcfe87d81be1437e4b97a4c2a8341eb3df38461dd37a0b89db07d3",
+          "bytes": 256
+        },
+        "tests/test_apps/blueprintapp/apps/__init__.py": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        "tests/test_apps/blueprintapp/apps/admin/__init__.py": {
+          "sha256": "5e849dc6984b0b3944ea687e40d96da9d5a9f42e32aa5b4035dedef4558ad83d",
+          "bytes": 366
+        },
+        "tests/test_apps/blueprintapp/apps/admin/static/css/test.css": {
+          "sha256": "1750c6f80056de8eb2003f4d73a23357d89879f65e387867e7dd34f4b3096e86",
+          "bytes": 18
+        },
+        "tests/test_apps/blueprintapp/apps/admin/static/test.txt": {
+          "sha256": "95c3e2ba78ba2d1febc399b1ca3466cfc88c7227e249236a3c5948ae62cace36",
+          "bytes": 11
+        },
+        "tests/test_apps/blueprintapp/apps/admin/templates/admin/index.html": {
+          "sha256": "d8e592e9062ac5a6ab9d901690bbda9b43f6412a1d44d900e8cd397843952f0e",
+          "bytes": 21
+        },
+        "tests/test_apps/blueprintapp/apps/frontend/__init__.py": {
+          "sha256": "1630cefb5d073808e8b4164e4d910f69aee57a93eaee53debb575e7e7aabb83f",
+          "bytes": 327
+        },
+        "tests/test_apps/blueprintapp/apps/frontend/templates/frontend/index.html": {
+          "sha256": "85c0bb0ce45263118d2b90c0202571d41785565cda6a7c5c2213834309bdaf08",
+          "bytes": 24
+        },
+        "tests/test_apps/cliapp/__init__.py": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        "tests/test_apps/cliapp/app.py": {
+          "sha256": "b0c37142ff064f6d7f3ca21b8acec34a0657cf1a7c354178d5e3acc0879c7467",
+          "bytes": 52
+        },
+        "tests/test_apps/cliapp/factory.py": {
+          "sha256": "3a93cd69f200848e8ffef6b2abdaa5803fb5044981ab64297f8c7d6541820570",
+          "bytes": 169
+        },
+        "tests/test_apps/cliapp/importerrorapp.py": {
+          "sha256": "5ad812b09337f9699cd2b6aeebfd7d6f14045451de846b0503d746a34ce8a8c4",
+          "bytes": 73
+        },
+        "tests/test_apps/cliapp/inner1/__init__.py": {
+          "sha256": "d3885f0114c83025a754fb3a8582634946541c9aeb72fe4f90af27554a6d4c83",
+          "bytes": 55
+        },
+        "tests/test_apps/cliapp/inner1/inner2/__init__.py": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        "tests/test_apps/cliapp/inner1/inner2/flask.py": {
+          "sha256": "570567aafaf185348cffa097d904b964c44fe1a92c5ec82488b97e3d93dbab38",
+          "bytes": 47
+        },
+        "tests/test_apps/cliapp/message.txt": {
+          "sha256": "f41c9f8b6285b72bbd8f18a781c679d49741835c0ac49b5cd953768002e191de",
+          "bytes": 38
+        },
+        "tests/test_apps/cliapp/multiapp.py": {
+          "sha256": "0580225ea4edb705c2e412c5ac6bd27d659cc239f0243467a33eaa9ee74675fc",
+          "bytes": 67
+        },
+        "tests/test_apps/helloworld/hello.py": {
+          "sha256": "42722083156af9f3eb82e3a88403f4191b9dfcb5f9e1c3432e79f02827b0ccf1",
+          "bytes": 104
+        },
+        "tests/test_apps/helloworld/wsgi.py": {
+          "sha256": "c1d5a162364e71546a8a8b76eb7fba0381582b8546ad14189f6431e647b7a547",
+          "bytes": 36
+        },
+        "tests/test_apps/subdomaintestmodule/__init__.py": {
+          "sha256": "441b37bad390ba774ec6f41b2b2c24357aa66dd469633829a415b710f10dccf3",
+          "bytes": 74
+        },
+        "tests/test_apps/subdomaintestmodule/static/hello.txt": {
+          "sha256": "e4fbc4e56428293f5d5e439367adef7c6f45d22032b324e64935f4740e2e8902",
+          "bytes": 16
+        },
+        "tests/test_async.py": {
+          "sha256": "0a6a50bfd651581478abe8cda5c94aba6d70df35567a220aabc7ba08202d471c",
+          "bytes": 3335
+        },
+        "tests/test_basic.py": {
+          "sha256": "e1087ccff5d7fd00f30a3a2ab0e94860896adaa10c68fbb5f06e653bc206ae5b",
+          "bytes": 52815
+        },
+        "tests/test_blueprints.py": {
+          "sha256": "804b98bbb71ccce566ab78a15cb141793ebbaee3c1b3bb591d9dab04c9940f4a",
+          "bytes": 28799
+        },
+        "tests/test_cli.py": {
+          "sha256": "8be854106ba28dc85ec6e95cde140d7910ba236569efe3bd6327f951860cdbc4",
+          "bytes": 19341
+        },
+        "tests/test_config.py": {
+          "sha256": "4ba589e57daac5e42566c849a9a37a0086bec3793f71d481c724e41a603a0dca",
+          "bytes": 7859
+        },
+        "tests/test_converters.py": {
+          "sha256": "4f529ca6ee85a88c487a488807ff30cb8e4672307b9017f348174a67a5984347",
+          "bytes": 1093
+        },
+        "tests/test_helpers.py": {
+          "sha256": "91a9f89c0fbfc8ad7fff560d959ccfae77a8afd9a947f861246c7ecd16dd26a2",
+          "bytes": 10090
+        },
+        "tests/test_instance_config.py": {
+          "sha256": "863b937b8b215c5243b54f9a80c40601ce63e1032a0cc2fbd71215c6acc94fc6",
+          "bytes": 3770
+        },
+        "tests/test_json.py": {
+          "sha256": "9133dcc027c1458348dcc10cf7f3c587f168966922cc4789811ae0eb4c018bf2",
+          "bytes": 9284
+        },
+        "tests/test_json_tag.py": {
+          "sha256": "019a2cd9b43245667b178e023dbd3541086f561677c32f06fa2eb85fd81aff65",
+          "bytes": 1998
+        },
+        "tests/test_logging.py": {
+          "sha256": "311ea43751a836c3d585a40f08fa54a60d783a232aa50c5ea1225b689e9ac683",
+          "bytes": 2529
+        },
+        "tests/test_regression.py": {
+          "sha256": "2749a17454a9aa8a610a2213d739046488af06fe742da1c06802d00ab28a3bf8",
+          "bytes": 712
+        },
+        "tests/test_reqctx.py": {
+          "sha256": "8c19e1468ed3360efccef5e5ea886377cfe5baf8bb259b34dc84ee993974a764",
+          "bytes": 8691
+        },
+        "tests/test_session_interface.py": {
+          "sha256": "d3990141744f27683503ffc17f46042b9fe0b10119c77e414ea47795079b7dba",
+          "bytes": 792
+        },
+        "tests/test_signals.py": {
+          "sha256": "c43524c0c0c59d972b39638b5eb96976cfb55a35e2ca7546ead60f3f43e89854",
+          "bytes": 5012
+        },
+        "tests/test_subclassing.py": {
+          "sha256": "0d325f8099e38403287a0cd8f1e184884beb5c345ac894300f2aa469a04cbd10",
+          "bytes": 475
+        },
+        "tests/test_templating.py": {
+          "sha256": "d20c5f1f67fdc81ed0f9fdaf450b699fa9cb787e2eb1b40637b4c758a1e20e19",
+          "bytes": 12323
+        },
+        "tests/test_testing.py": {
+          "sha256": "5a3d48e13e7c1ecbd977b0d6ce74fbcd10d5bc90d0cb5f9206a79ee986d33442",
+          "bytes": 10850
+        },
+        "tests/test_user_error_handler.py": {
+          "sha256": "f05213bb275e08d354bf9750eb3a37aeb8fc713a8beee7edcdd3078d11af9d60",
+          "bytes": 8436
+        },
+        "tests/test_views.py": {
+          "sha256": "46a65aa50e962b7c047485e96f33a8a502a394d5097c5adee1239cba10d24566",
+          "bytes": 6698
+        },
+        "tests/typing/typing_app_decorators.py": {
+          "sha256": "dac75620ec452dcb01c76c9f7b070a842e0527261f1a255eb7533b583cd7d31e",
+          "bytes": 635
+        },
+        "tests/typing/typing_error_handler.py": {
+          "sha256": "6ca69ec7b4813dfac97080cfb49b9c2d41acab44351e86620e337e1f25674604",
+          "bytes": 647
+        },
+        "tests/typing/typing_route.py": {
+          "sha256": "fd0cf3b76c74c40e89a87f98471d59b502425e57791d17bce5331356ec303344",
+          "bytes": 2569
+        },
+        "tox.ini": {
+          "sha256": "bd9cbdb045badd28c4d854929feaa081da17b1539cc8935dd03e6723d3928c90",
+          "bytes": 1281
+        }
+      }
+    }
+  },
+  "mcp_stderr": {
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "text": ""
+  }
+}

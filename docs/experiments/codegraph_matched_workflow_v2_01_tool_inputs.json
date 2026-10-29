@@ -1,0 +1,752 @@
+{
+  "scope": "Original pre-tool requests, permissions, effective scoped inputs and SDK output registration receipts. Post-tool response bytes are retained in original hooks and delivered model/tool observations, not duplicated here.",
+  "raw_hooks_sha256": "4169fcf3e62f79e696d18fea22c94c7ecd47db3ce0809eefbfce39abf928c29a",
+  "raw_hooks_bytes": 196312,
+  "pre_tool_and_output_registration_events": [
+    {
+      "event": "pre",
+      "tool": "Grep",
+      "tool_use_id": "toolu_01QT2LMRCqePAMFCeCuzTo4D",
+      "original_input": {
+        "pattern": "def prepare_request",
+        "output_mode": "content"
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "557c5603-cb55-49be-9530-892dea630125",
+      "decision": "allow",
+      "effective_input": {
+        "pattern": "def prepare_request",
+        "output_mode": "content",
+        "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace"
+      },
+      "phase": "lookup"
+    },
+    {
+      "event": "pre",
+      "tool": "Read",
+      "tool_use_id": "toolu_01EC65t3QFjAvNEqqpaHSArU",
+      "original_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/requests/sessions.py",
+        "offset": 30,
+        "limit": 270
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "557c5603-cb55-49be-9530-892dea630125",
+      "decision": "allow",
+      "effective_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/requests/sessions.py",
+        "offset": 30,
+        "limit": 270
+      },
+      "phase": "lookup"
+    },
+    {
+      "event": "pre",
+      "tool": "Grep",
+      "tool_use_id": "toolu_01NNeRpAMgn6tbC46jona2tz",
+      "original_input": {
+        "pattern": "def merge_cookies",
+        "output_mode": "content",
+        "-A": 20
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "557c5603-cb55-49be-9530-892dea630125",
+      "decision": "allow",
+      "effective_input": {
+        "pattern": "def merge_cookies",
+        "output_mode": "content",
+        "-A": 20,
+        "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace"
+      },
+      "phase": "lookup"
+    },
+    {
+      "event": "pre",
+      "tool": "Grep",
+      "tool_use_id": "toolu_01P8zhgdbvPfPJjArCYMH5VR",
+      "original_input": {
+        "pattern": "def (request|prepare_request|send|resolve_redirects|merge_environment_settings|get_adapter|mount|prepare|get_connection|urlopen|build_response|cert_verify|request_url|add_headers|rebuild_auth|rebuild_proxies)\\b|\\.send\\(|resolve_redirects\\(|prepare_request\\(|get_adapter\\(|\\.prepare\\(|get_connection\\(|\\.urlopen\\(|build_response\\(|merge_environment_settings\\(|_urlopen",
+        "path": "requests",
+        "glob": "*.py",
+        "output_mode": "content"
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "4e0106b4-be5e-4341-af9c-a6f1d949018b",
+      "decision": "allow",
+      "effective_input": {
+        "pattern": "def (request|prepare_request|send|resolve_redirects|merge_environment_settings|get_adapter|mount|prepare|get_connection|urlopen|build_response|cert_verify|request_url|add_headers|rebuild_auth|rebuild_proxies)\\b|\\.send\\(|resolve_redirects\\(|prepare_request\\(|get_adapter\\(|\\.prepare\\(|get_connection\\(|\\.urlopen\\(|build_response\\(|merge_environment_settings\\(|_urlopen",
+        "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/requests",
+        "glob": "*.py",
+        "output_mode": "content"
+      },
+      "phase": "flow"
+    },
+    {
+      "event": "pre",
+      "tool": "Read",
+      "tool_use_id": "toolu_011u5kZp6FqdoBdAYqBuKPC6",
+      "original_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/requests/sessions.py",
+        "offset": 80,
+        "limit": 490
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "4e0106b4-be5e-4341-af9c-a6f1d949018b",
+      "decision": "allow",
+      "effective_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/requests/sessions.py",
+        "offset": 80,
+        "limit": 490
+      },
+      "phase": "flow"
+    },
+    {
+      "event": "pre",
+      "tool": "Read",
+      "tool_use_id": "toolu_01C6V6RGmHgjxFwTV2J9Ka9s",
+      "original_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/requests/adapters.py",
+        "offset": 50,
+        "limit": 345
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "4e0106b4-be5e-4341-af9c-a6f1d949018b",
+      "decision": "allow",
+      "effective_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/requests/adapters.py",
+        "offset": 50,
+        "limit": 345
+      },
+      "phase": "flow"
+    },
+    {
+      "event": "pre",
+      "tool": "Read",
+      "tool_use_id": "toolu_01RYDj1nRHqK6FRpZrDLpus8",
+      "original_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/requests/models.py",
+        "offset": 286,
+        "limit": 40
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "4e0106b4-be5e-4341-af9c-a6f1d949018b",
+      "decision": "allow",
+      "effective_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/requests/models.py",
+        "offset": 286,
+        "limit": 40
+      },
+      "phase": "flow"
+    },
+    {
+      "event": "pre",
+      "tool": "Read",
+      "tool_use_id": "toolu_01C3nZ9z2WKdJzh5S93bZ7F9",
+      "original_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/requests/api.py",
+        "offset": 40,
+        "limit": 10
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "4e0106b4-be5e-4341-af9c-a6f1d949018b",
+      "decision": "allow",
+      "effective_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/requests/api.py",
+        "offset": 40,
+        "limit": 10
+      },
+      "phase": "flow"
+    },
+    {
+      "event": "pre",
+      "tool": "Grep",
+      "tool_use_id": "toolu_016AWnZzJoSNcdS5yd3NY87U",
+      "original_input": {
+        "pattern": "def (connection_from_url|connection_from_host|_new_pool|merge_setting|dispatch_hook|is_redirect)|def handle_401|register_hook\\('response'",
+        "path": "requests",
+        "output_mode": "content",
+        "-A": 3
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "4e0106b4-be5e-4341-af9c-a6f1d949018b",
+      "decision": "allow",
+      "effective_input": {
+        "pattern": "def (connection_from_url|connection_from_host|_new_pool|merge_setting|dispatch_hook|is_redirect)|def handle_401|register_hook\\('response'",
+        "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/requests",
+        "output_mode": "content",
+        "-A": 3
+      },
+      "phase": "flow"
+    },
+    {
+      "event": "pre",
+      "tool": "Read",
+      "tool_use_id": "toolu_014LSGzJMvNpstoyA3Pw2AQF",
+      "original_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/requests/packages/urllib3/poolmanager.py",
+        "offset": 71,
+        "limit": 65
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "4e0106b4-be5e-4341-af9c-a6f1d949018b",
+      "decision": "allow",
+      "effective_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/requests/packages/urllib3/poolmanager.py",
+        "offset": 71,
+        "limit": 65
+      },
+      "phase": "flow"
+    },
+    {
+      "event": "pre",
+      "tool": "Read",
+      "tool_use_id": "toolu_01VAeum6MTi9zaSPZ1Ly1tVC",
+      "original_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/requests/models.py",
+        "offset": 600,
+        "limit": 12
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "4e0106b4-be5e-4341-af9c-a6f1d949018b",
+      "decision": "allow",
+      "effective_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/requests/models.py",
+        "offset": 600,
+        "limit": 12
+      },
+      "phase": "flow"
+    },
+    {
+      "event": "pre",
+      "tool": "Read",
+      "tool_use_id": "toolu_01SZ6bQPhGG8QiM4D89MYRC2",
+      "original_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/requests/auth.py",
+        "offset": 149,
+        "limit": 45
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "4e0106b4-be5e-4341-af9c-a6f1d949018b",
+      "decision": "allow",
+      "effective_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/requests/auth.py",
+        "offset": 149,
+        "limit": 45
+      },
+      "phase": "flow"
+    },
+    {
+      "event": "pre",
+      "tool": "Grep",
+      "tool_use_id": "toolu_016cHJvSPqEzsc69JojGM7Cu",
+      "original_input": {
+        "pattern": "\\.send\\(|resolve_redirects|allow_redirects",
+        "path": ".",
+        "glob": "!requests/packages/**",
+        "output_mode": "content"
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "4e0106b4-be5e-4341-af9c-a6f1d949018b",
+      "decision": "allow",
+      "effective_input": {
+        "pattern": "\\.send\\(|resolve_redirects|allow_redirects",
+        "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace",
+        "glob": "!requests/packages/**",
+        "output_mode": "content"
+      },
+      "phase": "impact"
+    },
+    {
+      "event": "pre",
+      "tool": "Grep",
+      "tool_use_id": "toolu_01FhJSnj8ZwgoW8STAbzTahj",
+      "original_input": {
+        "pattern": "def test.*(redirect|send|digest|history|prepared)",
+        "path": "test_requests.py",
+        "output_mode": "content",
+        "-i": true
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "4e0106b4-be5e-4341-af9c-a6f1d949018b",
+      "decision": "allow",
+      "effective_input": {
+        "pattern": "def test.*(redirect|send|digest|history|prepared)",
+        "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/test_requests.py",
+        "output_mode": "content",
+        "-i": true
+      },
+      "phase": "impact"
+    },
+    {
+      "event": "pre",
+      "tool": "Read",
+      "tool_use_id": "toolu_017KHtQbZGSwfUnHNpo8bRNJ",
+      "original_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/test_requests.py",
+        "offset": 95,
+        "limit": 40
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "4e0106b4-be5e-4341-af9c-a6f1d949018b",
+      "decision": "allow",
+      "effective_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/test_requests.py",
+        "offset": 95,
+        "limit": 40
+      },
+      "phase": "impact"
+    },
+    {
+      "event": "pre",
+      "tool": "Read",
+      "tool_use_id": "toolu_01BSomKxd6bY3mLuERneGejs",
+      "original_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/test_requests.py",
+        "offset": 145,
+        "limit": 75
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "4e0106b4-be5e-4341-af9c-a6f1d949018b",
+      "decision": "allow",
+      "effective_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/test_requests.py",
+        "offset": 145,
+        "limit": 75
+      },
+      "phase": "impact"
+    },
+    {
+      "event": "pre",
+      "tool": "Read",
+      "tool_use_id": "toolu_0188G3SyMYJC8zpcpd7VNCWP",
+      "original_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/test_requests.py",
+        "offset": 505,
+        "limit": 32
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "4e0106b4-be5e-4341-af9c-a6f1d949018b",
+      "decision": "allow",
+      "effective_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/test_requests.py",
+        "offset": 505,
+        "limit": 32
+      },
+      "phase": "impact"
+    },
+    {
+      "event": "pre",
+      "tool": "Read",
+      "tool_use_id": "toolu_01S7uKUT7VXdK97YsqRuMeeb",
+      "original_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/test_requests.py",
+        "offset": 715,
+        "limit": 50
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "4e0106b4-be5e-4341-af9c-a6f1d949018b",
+      "decision": "allow",
+      "effective_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/test_requests.py",
+        "offset": 715,
+        "limit": 50
+      },
+      "phase": "impact"
+    },
+    {
+      "event": "pre",
+      "tool": "Read",
+      "tool_use_id": "toolu_019CokNVXQRyreCEjb4Eb8ff",
+      "original_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/test_requests.py",
+        "offset": 281,
+        "limit": 44
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "4e0106b4-be5e-4341-af9c-a6f1d949018b",
+      "decision": "allow",
+      "effective_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/test_requests.py",
+        "offset": 281,
+        "limit": 44
+      },
+      "phase": "impact"
+    },
+    {
+      "event": "pre",
+      "tool": "Read",
+      "tool_use_id": "toolu_01KRPSx6KYZxMn6FP2rp7cAM",
+      "original_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/requests/hooks.py",
+        "offset": 29,
+        "limit": 18
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "4e0106b4-be5e-4341-af9c-a6f1d949018b",
+      "decision": "allow",
+      "effective_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/requests/hooks.py",
+        "offset": 29,
+        "limit": 18
+      },
+      "phase": "impact"
+    },
+    {
+      "event": "pre",
+      "tool": "Read",
+      "tool_use_id": "toolu_013frAknqopBF3YaziLR2zUM",
+      "original_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/requests/sessions.py",
+        "offset": 34,
+        "limit": 46
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "4e0106b4-be5e-4341-af9c-a6f1d949018b",
+      "decision": "allow",
+      "effective_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/requests/sessions.py",
+        "offset": 34,
+        "limit": 46
+      },
+      "phase": "repair"
+    },
+    {
+      "event": "pre",
+      "tool": "Grep",
+      "tool_use_id": "toolu_01UFrP1so7GuaAbJFDshVYif",
+      "original_input": {
+        "pattern": "headers = \\{\\} if|if headers is None|headers = headers",
+        "path": "requests/models.py",
+        "output_mode": "content"
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "4e0106b4-be5e-4341-af9c-a6f1d949018b",
+      "decision": "allow",
+      "effective_input": {
+        "pattern": "headers = \\{\\} if|if headers is None|headers = headers",
+        "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/requests/models.py",
+        "output_mode": "content"
+      },
+      "phase": "repair"
+    },
+    {
+      "event": "pre",
+      "tool": "Grep",
+      "tool_use_id": "toolu_014zaDjaLhtzjTBma8Qk24Qi",
+      "original_input": {
+        "pattern": "def test_.*header|merge_setting",
+        "path": "test_requests.py",
+        "output_mode": "content",
+        "-i": true
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "4e0106b4-be5e-4341-af9c-a6f1d949018b",
+      "decision": "allow",
+      "effective_input": {
+        "pattern": "def test_.*header|merge_setting",
+        "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/test_requests.py",
+        "output_mode": "content",
+        "-i": true
+      },
+      "phase": "repair"
+    },
+    {
+      "event": "pre",
+      "tool": "Read",
+      "tool_use_id": "toolu_01NBz8VM4XwFZiNgpfFjxMSR",
+      "original_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/test_requests.py",
+        "offset": 798,
+        "limit": 26
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "4e0106b4-be5e-4341-af9c-a6f1d949018b",
+      "decision": "allow",
+      "effective_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/test_requests.py",
+        "offset": 798,
+        "limit": 26
+      },
+      "phase": "repair"
+    },
+    {
+      "event": "pre",
+      "tool": "Edit",
+      "tool_use_id": "toolu_01SKjYEtZvpe8BTVwtEe5jTC",
+      "original_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/requests/sessions.py",
+        "old_string": "    # Remove keys that are set to None.\n    for (k, v) in request_setting.items():\n        if v is None:\n            del merged_setting[k]",
+        "new_string": "    # Remove keys that are set to None, whether by the request or the session.\n    none_keys = [k for (k, v) in merged_setting.items() if v is None]\n    for key in none_keys:\n        del merged_setting[key]",
+        "replace_all": false
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "4e0106b4-be5e-4341-af9c-a6f1d949018b",
+      "decision": "allow",
+      "effective_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/requests/sessions.py",
+        "old_string": "    # Remove keys that are set to None.\n    for (k, v) in request_setting.items():\n        if v is None:\n            del merged_setting[k]",
+        "new_string": "    # Remove keys that are set to None, whether by the request or the session.\n    none_keys = [k for (k, v) in merged_setting.items() if v is None]\n    for key in none_keys:\n        del merged_setting[key]",
+        "replace_all": false
+      },
+      "phase": "repair"
+    },
+    {
+      "event": "pre",
+      "tool": "Edit",
+      "tool_use_id": "toolu_01BCzjzGUKAZkV8rSCJK85CU",
+      "original_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/test_requests.py",
+        "old_string": "        assert 'foo' not in r.request.headers\n\n    def test_params_are_merged_case_sensitive(self):",
+        "new_string": "        assert 'foo' not in r.request.headers\n\n    def test_session_header_set_to_none_is_not_sent(self):\n        s = requests.Session()\n        s.headers['Accept-Encoding'] = None\n        s.headers['foo'] = None\n        r = s.get(httpbin('get'))\n        assert 'Accept-Encoding' not in r.request.headers\n        assert 'foo' not in r.request.headers\n        # A request-level value still overrides the session's None.\n        r = s.get(httpbin('get'), headers={'foo': 'bar'})\n        assert r.request.headers['foo'] == 'bar'\n\n    def test_params_are_merged_case_sensitive(self):",
+        "replace_all": false
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "4e0106b4-be5e-4341-af9c-a6f1d949018b",
+      "decision": "allow",
+      "effective_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/test_requests.py",
+        "old_string": "        assert 'foo' not in r.request.headers\n\n    def test_params_are_merged_case_sensitive(self):",
+        "new_string": "        assert 'foo' not in r.request.headers\n\n    def test_session_header_set_to_none_is_not_sent(self):\n        s = requests.Session()\n        s.headers['Accept-Encoding'] = None\n        s.headers['foo'] = None\n        r = s.get(httpbin('get'))\n        assert 'Accept-Encoding' not in r.request.headers\n        assert 'foo' not in r.request.headers\n        # A request-level value still overrides the session's None.\n        r = s.get(httpbin('get'), headers={'foo': 'bar'})\n        assert r.request.headers['foo'] == 'bar'\n\n    def test_params_are_merged_case_sensitive(self):",
+        "replace_all": false
+      },
+      "phase": "repair"
+    },
+    {
+      "event": "pre",
+      "tool": "Bash",
+      "tool_use_id": "toolu_017hTzbUqb4QSTDUCF2XLzkc",
+      "original_input": {
+        "command": "pytest test_requests.py -q 2>&1 | tail -15",
+        "timeout": 300000,
+        "description": "Run the requests test suite"
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "4e0106b4-be5e-4341-af9c-a6f1d949018b",
+      "decision": "allow",
+      "effective_input": {
+        "command": "docker exec -i -w /tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace 549163f719cb4de7bb93cc3105b9b576c521b5fe95a3c26f6572692bf8a2b8c8 /bin/bash -lc 'umask 002\npytest test_requests.py -q 2>&1 | tail -15'",
+        "timeout": 300000,
+        "description": "Run the requests test suite"
+      },
+      "phase": "repair"
+    },
+    {
+      "event": "pre",
+      "tool": "Bash",
+      "tool_use_id": "toolu_01Dcf1YUoGVzLxbkAJQMRxAi",
+      "original_input": {
+        "command": "git status --short && git diff --stat",
+        "description": "Show changed files"
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "4e0106b4-be5e-4341-af9c-a6f1d949018b",
+      "decision": "allow",
+      "effective_input": {
+        "command": "docker exec -i -w /tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace 549163f719cb4de7bb93cc3105b9b576c521b5fe95a3c26f6572692bf8a2b8c8 /bin/bash -lc 'umask 002\ngit status --short && git diff --stat'",
+        "description": "Show changed files"
+      },
+      "phase": "repair"
+    },
+    {
+      "event": "pre",
+      "tool": "Grep",
+      "tool_use_id": "toolu_01PARXd86yv1kFXebxe7wUJC",
+      "original_input": {
+        "pattern": "prepare_probe_request",
+        "path": ".",
+        "output_mode": "content",
+        "-n": true
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "4e0106b4-be5e-4341-af9c-a6f1d949018b",
+      "decision": "allow",
+      "effective_input": {
+        "pattern": "prepare_probe_request",
+        "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace",
+        "output_mode": "content",
+        "-n": true
+      },
+      "phase": "post_edit"
+    },
+    {
+      "event": "pre",
+      "tool": "Read",
+      "tool_use_id": "toolu_01P3TRnkekFBi4S9eCXr7byQ",
+      "original_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/requests/_pilot_post_edit.py"
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "4e0106b4-be5e-4341-af9c-a6f1d949018b",
+      "decision": "allow",
+      "effective_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/requests/_pilot_post_edit.py"
+      },
+      "phase": "post_edit"
+    },
+    {
+      "event": "pre",
+      "tool": "Bash",
+      "tool_use_id": "toolu_0177pNCXogtzzDtrKE4kEinR",
+      "original_input": {
+        "command": "git status --short; git log --oneline -1",
+        "description": "Show working tree status"
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "4e0106b4-be5e-4341-af9c-a6f1d949018b",
+      "decision": "allow",
+      "effective_input": {
+        "command": "docker exec -i -w /tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace 549163f719cb4de7bb93cc3105b9b576c521b5fe95a3c26f6572692bf8a2b8c8 /bin/bash -lc 'umask 002\ngit status --short; git log --oneline -1'",
+        "description": "Show working tree status"
+      },
+      "phase": "post_edit"
+    },
+    {
+      "event": "pre",
+      "tool": "Read",
+      "tool_use_id": "toolu_01VxgGdcDEfEfwF42TL69BvH",
+      "original_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/requests/packages/urllib3/poolmanager.py",
+        "offset": 60,
+        "limit": 11
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "4e0106b4-be5e-4341-af9c-a6f1d949018b",
+      "decision": "allow",
+      "effective_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/requests/packages/urllib3/poolmanager.py",
+        "offset": 60,
+        "limit": 11
+      },
+      "phase": "post_edit"
+    },
+    {
+      "event": "pre",
+      "tool": "Grep",
+      "tool_use_id": "toolu_014xzpMAAabS34cCJJvXZdnJ",
+      "original_input": {
+        "pattern": "def (prepare_url|prepare_headers|prepare_cookies|prepare_body|prepare_auth|prepare_hooks|get_netrc_auth)|socket|urlopen|\\.send\\(",
+        "path": "requests",
+        "glob": "{models,utils}.py",
+        "output_mode": "content"
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "4e0106b4-be5e-4341-af9c-a6f1d949018b",
+      "decision": "allow",
+      "effective_input": {
+        "pattern": "def (prepare_url|prepare_headers|prepare_cookies|prepare_body|prepare_auth|prepare_hooks|get_netrc_auth)|socket|urlopen|\\.send\\(",
+        "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/requests",
+        "glob": "{models,utils}.py",
+        "output_mode": "content"
+      },
+      "phase": "post_edit"
+    },
+    {
+      "event": "pre",
+      "tool": "Read",
+      "tool_use_id": "toolu_01EnLgJd2vEAAEjVZpvJH37y",
+      "original_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/requests/utils.py",
+        "offset": 68,
+        "limit": 12
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "4e0106b4-be5e-4341-af9c-a6f1d949018b",
+      "decision": "allow",
+      "effective_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/requests/utils.py",
+        "offset": 68,
+        "limit": 12
+      },
+      "phase": "post_edit"
+    },
+    {
+      "event": "pre",
+      "tool": "Read",
+      "tool_use_id": "toolu_01PRAG77vVEp3SUwfZSDdUAQ",
+      "original_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/requests/utils.py",
+        "offset": 496,
+        "limit": 22
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "4e0106b4-be5e-4341-af9c-a6f1d949018b",
+      "decision": "allow",
+      "effective_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/01-psf__requests-1921-codenib/workspace/requests/utils.py",
+        "offset": 496,
+        "limit": 22
+      },
+      "phase": "post_edit"
+    }
+  ]
+}

@@ -18,10 +18,11 @@ import logging
 import math
 import sys
 from collections.abc import Callable, Iterable
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from threading import RLock
-from typing import TYPE_CHECKING, Any, Dict, Mapping, Optional
+from typing import TYPE_CHECKING, Any, Dict, Iterator, Mapping, Optional
 
 from .._atomic_directory import (
     PublicationDirectoryReader,
@@ -63,6 +64,18 @@ _MAX_ARTIFACT_DOCUMENTS_BYTES = 256 * 1024 * 1024
 _VIEW_DEPENDENCIES = {
     "regex_index": frozenset({"symbol_graph"}),
 }
+
+
+class IndexedQueryError(RuntimeError):
+    """An indexed-query rejection with explicit, client-safe recovery text.
+
+    Keep diagnostic details on the exception for local logging. The MCP
+    boundary sends only ``public_message``, even when its SDK masks exceptions.
+    """
+
+    def __init__(self, public_message: str, detail: str = "") -> None:
+        self.public_message = public_message.rstrip()
+        super().__init__(self.public_message + (f" {detail}" if detail else ""))
 
 
 def _running_event_loop() -> asyncio.AbstractEventLoop | None:
@@ -318,6 +331,7 @@ class ServerContext:
         default="local_source_not_verified", init=False, repr=False
     )
     _view_lock: RLock = field(default_factory=RLock, init=False, repr=False)
+    _query_lock: RLock = field(default_factory=RLock, init=False, repr=False)
     _native_index_authorization: Optional[NativeIndexAuthorization] = field(
         default=None,
         repr=False,
@@ -335,6 +349,7 @@ class ServerContext:
         init=False,
         repr=False,
     )
+    _local_manifest_path: Path | None = field(default=None, init=False, repr=False)
 
     def _install_zoekt_snapshot(self, snapshot: ZoektShardSnapshot) -> None:
         """Publish snapshot ownership before a cancellation can escape."""
@@ -404,15 +419,69 @@ class ServerContext:
     def verify_source_status(self) -> bool:
         """Refresh whole-tree source truth before publishing verified status."""
 
-        if self._source_binding is None:
+        source = self._source_binding
+        if source is None:
             return False
         try:
-            self._source_binding.authenticated_identity_snapshot()
+            source.authenticated_identity_snapshot()
         except Exception as exc:
-            self.source_error = self._source_binding.failure_reason or str(exc)
+            self.source_error = source.failure_reason or str(exc)
             return False
         self.source_error = None
         return True
+
+    @contextmanager
+    def indexed_query(self) -> Iterator[None]:
+        """Deliver local indexed facts only while their source remains current.
+
+        A query owns runtime resources until its final source check accepts
+        the result; close waits on the same query lock. Lock order is query,
+        then view (when needed), then source verification. Session bookkeeping
+        uses only the view lock, so workers must not retain it while calling
+        providers: that would block the MCP event loop on session lookup.
+        A mid-query edit discards the result. Portable artifacts retain snapshot
+        semantics;
+        grep/Jev captures current source independently on each request.
+        """
+
+        with self._query_lock:
+            if (
+                self.artifact is not None
+                or self._artifact_binding is not None
+                or self.grep_jev is not None
+            ):
+                yield
+                return
+            source = self._source_binding
+            recovery = (
+                "Run `codenib codegraph init` for this repository and retry; "
+                "this MCP connection reloads rebuilt indexes. "
+                if self._local_manifest_path is not None
+                else "Run `codenib codegraph init` for this repository and "
+                "restart its CodeNib MCP server. "
+            )
+            if source is None:
+                raise IndexedQueryError(
+                    "Indexed source is unavailable. " + recovery,
+                    self.source_error or "source binding is unverified",
+                )
+
+            def require_current_source() -> None:
+                try:
+                    source.verify_snapshot()
+                except (OSError, RuntimeError, ValueError) as exc:
+                    self.source_error = source.failure_reason or str(exc)
+                    raise IndexedQueryError(
+                        "Indexed source changed. " + recovery, self.source_error
+                    ) from exc
+
+            require_current_source()
+            try:
+                yield
+            finally:
+                # Verify on failure too, without poisoning unchanged source
+                # merely because a provider rejected a query or was cancelled.
+                require_current_source()
 
     @classmethod
     def load(
@@ -686,15 +755,21 @@ class ServerContext:
                 if getattr(self, view, None) is None
             }
 
-    def close(self) -> None:
-        """Release runtime resources owned by this context."""
+    def close(self, *, _preserve_explore_session: bool = False) -> None:
+        """Release runtime resources owned by this context.
 
-        with self._view_lock:
+        Only the serialized MCP reloader preserves a connection runtime; it
+        transfers that ledger/barrier to the replacement after cleanup succeeds.
+        Normal close still ends the session and releases every resource.
+        """
+
+        with self._query_lock, self._view_lock:
             deferred: BaseException | None = None
-            try:
-                self.end_explore_session()
-            except BaseException as exc:  # noqa: B036 - visit every runtime owner
-                deferred = exc
+            if not _preserve_explore_session:
+                try:
+                    self.end_explore_session()
+                except BaseException as exc:  # noqa: B036 - visit every runtime owner
+                    deferred = exc
             self.lsp_provider = None
             if self.zoekt is not None:
                 try:
@@ -764,13 +839,15 @@ class ServerContext:
                 previous.close()
             return runtime
 
-    def ensure_explore_session(self) -> ExploreSessionRuntime:
+    def ensure_explore_session(
+        self, *, _loop: asyncio.AbstractEventLoop | None = None
+    ) -> ExploreSessionRuntime:
         """Return the connection runtime, creating one for direct embeddings."""
 
         from .explore_session import ExploreSessionRuntime
 
         with self._view_lock:
-            loop = _running_event_loop()
+            loop = _loop if _loop is not None else _running_event_loop()
             if self.explore_runtime is None or (
                 loop is not None
                 and self._explore_loop is not None

@@ -71,6 +71,16 @@ def score_jobs(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
             cache = CorpusFileCache(
                 {(sample["repo"], sample["base_commit"]): corpus_path}
             )
+            if job.get("restrict_to_candidates"):
+                # Full-source rankings score only released candidate files.
+                kept = [
+                    path
+                    for path in ranked
+                    if cache.file_text(sample["repo"], sample["base_commit"], path)
+                    is not None
+                ]
+                row["removed_non_candidate_paths"] = len(ranked) - len(kept)
+                ranked = kept
             gold = target_gold_files(sample)
             if not gold:
                 raise ValueError("positive task has no official gold files")

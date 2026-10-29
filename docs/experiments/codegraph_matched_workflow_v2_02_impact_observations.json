@@ -1,0 +1,92 @@
+{
+  "scope": "Exact captured v2 tool requests and delivered user/tool messages; no task acceptance or complete source-read score.",
+  "workflow_index": 2,
+  "task_id": "psf__requests-1921-impact",
+  "kind": "impact",
+  "raw_sdk_trace_sha256": "e7648090266c90f78849d0abbeb34e434c5a460a3cc5f8a406d71ef5455b7556",
+  "raw_sdk_trace_bytes": 28981,
+  "init": [
+    {
+      "type": "SystemMessage",
+      "subtype": "init",
+      "data": {
+        "model": "claude-opus-5-5",
+        "apiKeySource": "none",
+        "tools": [
+          "Bash",
+          "Edit",
+          "Glob",
+          "Grep",
+          "Read",
+          "ToolSearch",
+          "Write",
+          "mcp__study__codegraph_explore"
+        ],
+        "mcp_servers": [
+          {
+            "name": "study",
+            "status": "connected",
+            "source": "dynamic"
+          }
+        ],
+        "claude_code_version": "2.1.310"
+      }
+    }
+  ],
+  "rate_events": [],
+  "tool_calls_in_first_observed_order": [
+    {
+      "id": "toolu_01QtTnawpt6591fPJFmdHLdY",
+      "name": "Bash",
+      "input": {
+        "command": "cd /tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/02-psf__requests-1921-codegraph/workspace; grep -rn \"\\.send(\" requests/*.py; echo ---; grep -n \"\\.send(\\|resolve_redirects\\|def test.*redirect\\|def test_cannot_send\\|def test_prepared_from_session\\|allow_redirects\" test_requests.py"
+      }
+    },
+    {
+      "id": "toolu_01WyggLi4RtRTqRdF6hCSHxA",
+      "name": "Bash",
+      "input": {
+        "command": "cd /tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/02-psf__requests-1921-codegraph/workspace; sed -n 98,115p test_requests.py; echo ---; sed -n 145,152p test_requests.py; echo ---; sed -n 505,535p test_requests.py; echo ---; sed -n 715,762p test_requests.py; echo; sed -n 160,180p requests/auth.py"
+      }
+    },
+    {
+      "id": "toolu_01UyF8Ddgxys5AopfBWa4ZG5",
+      "name": "Bash",
+      "input": {
+        "command": "cd /tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/02-psf__requests-1921-codegraph/workspace; sed -n 115,121p test_requests.py"
+      }
+    }
+  ],
+  "delivered_user_tool_messages_in_order": [
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_01QtTnawpt6591fPJFmdHLdY",
+          "content": "requests/adapters.py:351:                        low_conn.send(hex(len(i))[2:].encode('utf-8'))\nrequests/adapters.py:352:                        low_conn.send(b'\\r\\n')\nrequests/adapters.py:353:                        low_conn.send(i)\nrequests/adapters.py:354:                        low_conn.send(b'\\r\\n')\nrequests/adapters.py:355:                    low_conn.send(b'0\\r\\n\\r\\n')\nrequests/auth.py:175:            _r = r.connection.send(prep, **kwargs)\nrequests/models.py:269:      >>> s.send(r)\nrequests/sessions.py:169:            resp = self.send(\nrequests/sessions.py:391:        resp = self.send(prep, **send_kwargs)\nrequests/sessions.py:494:        r = adapter.send(request, **kwargs)\n---\n103:            r = s.send(r.prepare())\n111:        r = s.send(r.prepare())\n145:    def test_cookie_sent_on_redirect(self):\n417:    def test_pyopenssl_redirect(self):\n515:        resp = s.send(prep)\n519:    def test_prepared_from_session(self):\n532:        resp = s.send(prep)\n717:    def test_cannot_send_unprepared_requests(self):\n720:            requests.Session().send(r)\n739:        r = s.send(r.prepare())\n755:    def test_uppercase_scheme_redirect(self):",
+          "is_error": false
+        }
+      ]
+    },
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_01WyggLi4RtRTqRdF6hCSHxA",
+          "content": "        schemes = ['http://', 'HTTP://', 'hTTp://', 'HttP://',\n                   'https://', 'HTTPS://', 'hTTps://', 'HttPs://']\n        for scheme in schemes:\n            url = scheme + parts.netloc + parts.path\n            r = requests.Request('GET', url)\n            r = s.send(r.prepare())\n            assert r.status_code == 200, 'failed for scheme {0}'.format(scheme)\n\n    def test_HTTP_200_OK_GET_ALTERNATIVE(self):\n        r = requests.Request('GET', httpbin('get'))\n        s = requests.Session()\n        s.proxies = getproxies()\n\n        r = s.send(r.prepare())\n\n        assert r.status_code == 200\n\n    def test_HTTP_302_ALLOW_REDIRECT_GET(self):\n---\n    def test_cookie_sent_on_redirect(self):\n        s = requests.session()\n        s.get(httpbin('cookies/set?foo=bar'))\n        r = s.get(httpbin('redirect/1'))  # redirects to httpbin('get')\n        assert 'Cookie' in r.json()['headers']\n\n    def test_cookie_removed_on_expire(self):\n        s = requests.session()\n---\n    def test_prepared_request_hook(self):\n        def hook(resp, **kwargs):\n            resp.hook_working = True\n            return resp\n\n        req = requests.Request('GET', HTTPBIN, hooks={'response': hook})\n        prep = req.prepare()\n\n        s = requests.Session()\n        s.proxies = getproxies()\n        resp = s.send(prep)\n\n        assert hasattr(resp, 'hook_working')\n\n    def test_prepared_from_session(self):\n        class DummyAuth(requests.auth.AuthBase):\n            def __call__(self, r):\n                r.headers['Dummy-Auth-Test'] = 'dummy-auth-test-ok'\n                return r\n\n        req = requests.Request('GET', httpbin('headers'))\n        assert not req.auth\n\n        s = requests.Session()\n        s.auth = DummyAuth()\n\n        prep = s.prepare_request(req)\n        resp = s.send(prep)\n\n        assert resp.json()['headers']['Dummy-Auth-Test'] == 'dummy-auth-test-ok'\n\n---\n        assert ('user', 'pass#pass') == requests.utils.get_auth_from_url(url)\n\n    def test_cannot_send_unprepared_requests(self):\n        r = requests.Request(url=HTTPBIN)\n        with pytest.raises(ValueError):\n            requests.Session().send(r)\n\n    def test_http_error(self):\n        error = requests.exceptions.HTTPError()\n        assert not error.response\n        response = requests.Response()\n        error = requests.exceptions.HTTPError(response=response)\n        assert error.response == response\n        error = requests.exceptions.HTTPError('message', response=response)\n        assert str(error) == 'message'\n        assert error.response == response\n\n    def test_session_pickling(self):\n        r = requests.Request('GET', httpbin('get'))\n        s = requests.Session()\n\n        s = pickle.loads(pickle.dumps(s))\n        s.proxies = getproxies()\n\n        r = s.send(r.prepare())\n        assert r.status_code == 200\n\n    def test_fixes_1329(self):\n        \"\"\"\n        Ensure that header updates are done case-insensitively.\n        \"\"\"\n        s = requests.Session()\n        s.headers.update({'ACCEPT': 'BOGUS'})\n        s.headers.update({'accept': 'application/json'})\n        r = s.get(httpbin('get'))\n        headers = r.request.headers\n        assert headers['accept'] == 'application/json'\n        assert headers['Accept'] == 'application/json'\n        assert headers['ACCEPT'] == 'application/json'\n\n    def test_uppercase_scheme_redirect(self):\n        parts = urlparse(httpbin('html'))\n        url = \"HTTP://\" + parts.netloc + parts.path\n        r = requests.get(httpbin('redirect-to'), params={'url': url})\n        assert r.status_code == 200\n        assert r.url.lower() == url.lower()\n\n    def test_transport_adapter_ordering(self):\n\n\n            setattr(self, 'num_401_calls', num_401_calls + 1)\n            pat = re.compile(r'digest ', flags=re.IGNORECASE)\n            self.chal = parse_dict_header(pat.sub('', s_auth, count=1))\n\n            # Consume content and release the original connection\n            # to allow our new request to reuse the same one.\n            r.content\n            r.raw.release_conn()\n            prep = r.request.copy()\n            extract_cookies_to_jar(prep._cookies, r.request, r.raw)\n            prep.prepare_cookies(prep._cookies)\n\n            prep.headers['Authorization'] = self.build_digest_header(\n                prep.method, prep.url)\n            _r = r.connection.send(prep, **kwargs)\n            _r.history.append(r)\n            _r.request = prep\n\n            return _r",
+          "is_error": false
+        }
+      ]
+    },
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_01UyF8Ddgxys5AopfBWa4ZG5",
+          "content": "    def test_HTTP_302_ALLOW_REDIRECT_GET(self):\n        r = requests.get(httpbin('redirect', '1'))\n        assert r.status_code == 200\n        assert r.history[0].status_code == 302\n        assert r.history[0].is_redirect\n\n    # def test_HTTP_302_ALLOW_REDIRECT_POST(self):",
+          "is_error": false
+        }
+      ]
+    }
+  ]
+}

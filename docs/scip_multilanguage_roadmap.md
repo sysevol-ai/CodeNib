@@ -66,6 +66,20 @@ The regression reproduces the old failure; 206 related tests pass. This fixes
 LSP selection, while the active SCIP provider's missing property-assignment
 definitions remain a separate limitation. No backend or schema is promoted.
 
+Python definition identities in the active SCIP route are recovered from the
+indexed source before serial and C++ decoding. Same-named nested definitions,
+alternative class members and constructor fields retain separate locations;
+cross-scope compiler collisions use positional LSP evidence. Shared lexical
+bindings keep a static target set, and source-only definitions are explicit.
+The [identity decision and execution record](experiments/codegraph_python_identity.md)
+cover the original IPython snapshot, failed pytest admission and captured
+regressions. Both complete saved graphs have serial/native parity and no
+multiple containment parents. Builder schema 8 invalidates old manifest-bound
+artifacts; persisted graph layout remains schema 5. Graph setup now includes
+the existing basedpyright provider. This is unreleased source correctness work
+for [#871](https://github.com/sysevol-ai/CodeNib/issues/871), not a backend,
+acceleration or task-benefit promotion. The A0 objective remains active.
+
 ## Archived Layered Goal
 
 The completed multi-language SCIP cold-start and acceleration program required:

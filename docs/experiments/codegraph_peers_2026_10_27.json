@@ -1,0 +1,920 @@
+{
+  "schema_version": 1,
+  "recorded_utc": "2026-10-27T23:33:57Z",
+  "scope": "No-model maintainer readiness probes, not matched task results, default-daemon validation, external adoption or released CodeNib control. Failures and corrected harness attempts are retained.",
+  "codenib_source_reference": "6021f87418fd3bafcefae408e630bca28522a618",
+  "fixture_notes": "Same five-line Python source in separate temporary Git repositories; controlled rename on disk. One-second wait is a probe condition, not an update-latency measurement.",
+  "peer_packages": {
+    "serena": {
+      "package": "serena-agent",
+      "version": "2.1.0",
+      "requires_python": "<3.15,>=3.11",
+      "artifacts": [
+        {
+          "filename": "serena_agent-2.1.0-py3-none-any.whl",
+          "sha256": "cc6ae542c39b4de5d98cdf35a4ceb0b551f316c5f22e9d0f0b0c5f35d6b95d87",
+          "url": "https://files.pythonhosted.org/packages/6f/95/0905a379bcde1d307b05627a2ff4ccabf18b98af3ed25da4a800c01fbd52/serena_agent-2.1.0-py3-none-any.whl"
+        },
+        {
+          "filename": "serena_agent-2.1.0.tar.gz",
+          "sha256": "312c8c7cb3fa70e3fa7fe4685e09594e31e9a9d7d090d59136a0faf2fa939a91",
+          "url": "https://files.pythonhosted.org/packages/32/ef/872f87ec7bff916d0653a9bc061e80b1b9ad3fa9d408903fdbea6a9a3ac4/serena_agent-2.1.0.tar.gz"
+        }
+      ],
+      "python": "3.13.18",
+      "python_language_server": "Pyright 1.1.403",
+      "interface": "REPL",
+      "context": "claude-code"
+    },
+    "colbymchenry_codegraph": {
+      "name": "@colbymchenry/codegraph",
+      "version": "1.6.2",
+      "gitHead": "6560052a6f856855d3f71eee838fd66ccfa4285d",
+      "dist": {
+        "shasum": "372b7b4f0190197b07d444116d6692240883a2d5",
+        "tarball": "https://registry.npmjs.org/@colbymchenry/codegraph/-/codegraph-1.6.2.tgz",
+        "fileCount": 265,
+        "integrity": "sha512-hODH/mGnCf3IUMs6rzktv/zbecJIKJfdZAYHZ9mqecb0G7ZkHaA8CZafDVnswANFEL1YFcG+lfAwc5SIXzUH6Q==",
+        "signatures": [
+          {
+            "sig": "MEUCIQCXBBBpppboNP8DdGGnfEj3MDhuWZzm0REPpIK+abpiZQIgAquCAppT4zgaCTIvjFb9A+IEvwtD/qczvJOn6pDx10w=",
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+          },
+          {
+            "sig": "MEQCIAaDl2zcxCaMcRjXgUDm5LPRBdPiY7JQhmFfCJOXqy1hAiBI5mx0E1wsnBVIWrOmDxlemuK+kjdVC0xmlqEXiGuNvQ==",
+            "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+          }
+        ],
+        "attestations": {
+          "url": "https://registry.npmjs.org/-/npm/v1/attestations/@colbymchenry%2fcodegraph@1.6.2",
+          "provenance": {
+            "predicateType": "https://slsa.dev/provenance/v1"
+          }
+        },
+        "unpackedSize": 1208076
+      }
+    }
+  },
+  "records": {
+    "serena-install-receipt.json": {
+      "command": [
+        "/tmp/codenib-peer-preflight-20261027/bootstrap/bin/uv",
+        "tool",
+        "install",
+        "--python",
+        "3.13",
+        "serena-agent==2.1.0"
+      ],
+      "environment_overrides": {
+        "UV_TOOL_DIR": "/tmp/codenib-peer-preflight-20261027/uv-tools",
+        "UV_TOOL_BIN_DIR": "/tmp/codenib-peer-preflight-20261027/bin",
+        "UV_CACHE_DIR": "/tmp/codenib-peer-preflight-20261027/uv-cache",
+        "UV_PYTHON_INSTALL_DIR": "/tmp/codenib-peer-preflight-20261027/python"
+      },
+      "duration_seconds": 2.2863469030708075,
+      "returncode": 0,
+      "output": "Downloading cpython-3.13.18-linux-aarch64-gnu (download) (28.1MiB)\n Downloaded cpython-3.13.18-linux-aarch64-gnu (download)\nResolved 74 packages in 672ms\nDownloading pillow (6.2MiB)\nDownloading pydantic-core (1.8MiB)\nDownloading serena-agent (1.1MiB)\nDownloading tiktoken (1.1MiB)\nDownloading cryptography (4.5MiB)\n   Building proxy-tools==0.1.0\n Downloaded tiktoken\n Downloaded serena-agent\n Downloaded pydantic-core\n      Built proxy-tools==0.1.0\n Downloaded cryptography\n Downloaded pillow\nPrepared 74 packages in 275ms\nInstalled 74 packages in 11ms\n + annotated-types==0.8.0\n + anthropic==0.117.0\n + anyio==4.15.1\n + attrs==26.1.0\n + beautifulsoup4==4.14.2\n + blinker==1.9.0\n + bottle==0.13.4\n + cattrs==26.2.1\n + certifi==2026.10.23\n + cffi==2.1.1\n + charset-normalizer==3.5.2\n + click==8.3.1\n + cryptography==50.0.0\n + distro==1.9.0\n + docstring-parser==0.17.0\n + filelock==3.25.2\n + flask==3.1.3\n + h11==0.16.0\n + httpcore==1.0.9\n + httpcore2==2.16.0\n + httpx==0.28.1\n + httpx2==2.16.0\n + idna==3.20\n + itsdangerous==2.2.0\n + jinja2==3.1.6\n + jiter==0.18.0\n + joblib==1.5.1\n + jsonschema==4.26.0\n + jsonschema-specifications==2025.9.1\n + lsprotocol==2025.0.0\n + markupsafe==3.0.4\n + mcp==2.2.0\n + mcp-types==2.2.0\n + mslex==1.3.0\n + opentelemetry-api==1.45.1\n + oslex==2.0.0\n + overrides==7.7.0\n + pathspec==0.12.1\n + pillow==13.0.0\n + proxy-tools==0.1.0\n + psutil==7.0.0\n + pycparser==3.12\n + pydantic==2.12.5\n + pydantic-core==2.41.5\n + pygls==2.1.1\n + pyjwt==2.15.1\n + pystray==0.19.5\n + python-dotenv==1.2.2\n + python-multipart==0.0.31\n + python-xlib==0.33\n + pywebview==6.2\n + pyyaml==6.0.2\n + referencing==0.37.0\n + regex==2026.2.28\n + requests==2.33.0\n + rpds-py==2026.9.1\n + ruamel-yaml==0.18.14\n + ruamel-yaml-clib==0.2.15\n + sensai-utils==1.5.0\n + serena-agent==2.1.0\n + six==1.17.0\n + sniffio==1.3.1\n + soupsieve==3.0.4\n + sse-starlette==3.6.0\n + starlette==1.3.1\n + tiktoken==0.12.0\n + tqdm==4.67.1\n + truststore==0.10.5\n + types-pyyaml==6.0.12.20250516\n + typing-extensions==4.16.0\n + typing-inspection==0.4.4\n + urllib3==2.8.0\n + uvicorn==0.54.0\n + werkzeug==3.1.7\nInstalled 3 executables: serena, serena-agent, serena-hooks\nwarning: `/tmp/codenib-peer-preflight-20261027/bin` is not on your PATH. To use installed tools, run `export PATH=\"/tmp/codenib-peer-preflight-20261027/bin:$PATH\"` or `uv tool update-shell`.\n",
+      "kind": "preflight isolated installation, not matched cold setup"
+    },
+    "codegraph-install-receipt.json": {
+      "command": [
+        "node",
+        "/tmp/codenib-peer-preflight-20261027/codegraph-npm/package/npm-shim.js",
+        "--version"
+      ],
+      "environment_overrides": {
+        "CODEGRAPH_INSTALL_DIR": "/tmp/codenib-peer-preflight-20261027/codegraph-runtime",
+        "CODEGRAPH_TELEMETRY": "0",
+        "DO_NOT_TRACK": "1"
+      },
+      "duration_seconds": 3.267142942175269,
+      "returncode": 0,
+      "output": "codegraph: platform bundle missing (registry did not provide @colbymchenry/codegraph-linux-arm64).\ncodegraph: downloading codegraph-linux-arm64.tar.gz from GitHub Releases (1.6.2)...\ncodegraph: checksum verified.\ncodegraph: bundle ready.\n1.6.2\n",
+      "kind": "preflight download/launch, not matched cold setup"
+    },
+    "serena-discovery.json": {
+      "scope": "readiness only, no model or matched task",
+      "peer": "serena",
+      "source": "def sdk_probe_calculate(values):\n    return sum(values)\n\ndef sdk_probe_checkout(values):\n    return sdk_probe_calculate(values)\n",
+      "events": [],
+      "setup": {
+        "command": [
+          "/tmp/codenib-peer-preflight-20261027/bin/serena",
+          "project",
+          "create",
+          "/tmp/codenib-peer-preflight-20261027/serena-repository",
+          "--index"
+        ],
+        "seconds": 0.532150249928236,
+        "returncode": 1,
+        "stdout": "Generated project with language servers {python} at /tmp/codenib-peer-preflight-20261027/serena-repository/.serena/project.yml.\nIndexing project...\nIndexing symbols in Project[root='/tmp/codenib-peer-preflight-20261027/serena-repository', name=serena-repository] …\nERROR 2026-10-27 16:28:28,078 sensai.util.logging:__exit__:342 - Language server startup (ls_id=python) failed after 0.002 seconds\nERROR 2026-10-27 16:28:28,078 serena.ls_manager:_start_language_server:133 - Error starting language server python: Could not find 'uvx' or 'uv' in PATH. Install uv (https://docs.astral.sh/uv/).\nTraceback (most recent call last):\n  File \"/tmp/codenib-peer-preflight-20261027/uv-tools/serena-agent/lib/python3.13/site-packages/serena/ls_manager.py\", line 128, in _start_language_server\n    self.language_server = factory.create_language_server(self.ls_id)\n                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^\n  File \"/tmp/codenib-peer-preflight-20261027/uv-tools/serena-agent/lib/python3.13/site-packages/serena/ls_manager.py\", line 64, in create_language_server\n    return SolidLanguageServer.create(\n           ~~~~~~~~~~~~~~~~~~~~~~~~~~^\n        ls_config,\n        ^^^^^^^^^^\n    ...<6 lines>...\n        ),\n        ^^\n    )\n    ^\n  File \"/tmp/codenib-peer-preflight-20261027/uv-tools/serena-agent/lib/python3.13/site-packages/solidlsp/ls.py\", line 486, in create\n    ls = ls_class(config, repository_root_path, solidlsp_settings)\n  File \"/tmp/codenib-peer-preflight-20261027/uv-tools/serena-agent/lib/python3.13/site-packages/solidlsp/language_servers/pyright_server.py\", line 35, in __init__\n    super().__init__(\n    ~~~~~~~~~~~~~~~~^\n        config,\n        ^^^^^^^\n    ...<3 lines>...\n        solidlsp_settings,\n        ^^^^^^^^^^^^^^^^^^\n    )\n    ^\n  File \"/tmp/codenib-peer-preflight-20261027/uv-tools/serena-agent/lib/python3.13/site-packages/solidlsp/ls.py\", line 582, in __init__\n    self.server = self._create_language_server_interface(logging_fn)\n                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^\n  File \"/tmp/codenib-peer-preflight-20261027/uv-tools/serena-agent/lib/python3.13/site-packages/solidlsp/ls.py\", line 658, in _create_language_server_interface\n    process_launch_info = self._get_process_launch_info()\n  File \"/tmp/codenib-peer-preflight-20261027/uv-tools/serena-agent/lib/python3.13/site-packages/solidlsp/ls.py\", line 642, in _get_process_launch_info\n    self._process_launch_info = self._create_process_launch_info()\n                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^\n  File \"/tmp/codenib-peer-preflight-20261027/uv-tools/serena-agent/lib/python3.13/site-packages/solidlsp/ls.py\", line 636, in _create_process_launch_info\n    cmd = dependency_provider.create_launch_command()\n  File \"/tmp/codenib-peer-preflight-20261027/uv-tools/serena-agent/lib/python3.13/site-packages/solidlsp/dependency_provider.py\", line 115, in create_launch_command\n    base_command = self._create_default_base_command()\n  File \"/tmp/codenib-peer-preflight-20261027/uv-tools/serena-agent/lib/python3.13/site-packages/solidlsp/dependency_provider.py\", line 282, in _create_default_base_command\n    return self._build_uvx_base_command(self._package, version, self._entrypoint)\n           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/tmp/codenib-peer-preflight-20261027/uv-tools/serena-agent/lib/python3.13/site-packages/solidlsp/dependency_provider.py\", line 257, in _build_uvx_base_command\n    raise RuntimeError(\"Could not find 'uvx' or 'uv' in PATH. Install uv (https://docs.astral.sh/uv/).\")\nRuntimeError: Could not find 'uvx' or 'uv' in PATH. Install uv (https://docs.astral.sh/uv/).\n",
+        "stderr": "Traceback (most recent call last):\n  File \"/tmp/codenib-peer-preflight-20261027/bin/serena\", line 10, in <module>\n    sys.exit(top_level())\n             ~~~~~~~~~^^\n  File \"/tmp/codenib-peer-preflight-20261027/uv-tools/serena-agent/lib/python3.13/site-packages/click/core.py\", line 1485, in __call__\n    return self.main(*args, **kwargs)\n           ~~~~~~~~~^^^^^^^^^^^^^^^^^\n  File \"/tmp/codenib-peer-preflight-20261027/uv-tools/serena-agent/lib/python3.13/site-packages/click/core.py\", line 1406, in main\n    rv = self.invoke(ctx)\n  File \"/tmp/codenib-peer-preflight-20261027/uv-tools/serena-agent/lib/python3.13/site-packages/click/core.py\", line 1873, in invoke\n    return _process_result(sub_ctx.command.invoke(sub_ctx))\n                           ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^\n  File \"/tmp/codenib-peer-preflight-20261027/uv-tools/serena-agent/lib/python3.13/site-packages/click/core.py\", line 1873, in invoke\n    return _process_result(sub_ctx.command.invoke(sub_ctx))\n                           ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^\n  File \"/tmp/codenib-peer-preflight-20261027/uv-tools/serena-agent/lib/python3.13/site-packages/click/core.py\", line 1269, in invoke\n    return ctx.invoke(self.callback, **ctx.params)\n           ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/tmp/codenib-peer-preflight-20261027/uv-tools/serena-agent/lib/python3.13/site-packages/click/core.py\", line 824, in invoke\n    return callback(*args, **kwargs)\n  File \"/tmp/codenib-peer-preflight-20261027/uv-tools/serena-agent/lib/python3.13/site-packages/serena/cli.py\", line 842, in create\n    ProjectCommands._index_project(registered_project, log_level, timeout=timeout)\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/tmp/codenib-peer-preflight-20261027/uv-tools/serena-agent/lib/python3.13/site-packages/serena/cli.py\", line 912, in _index_project\n    ls_mgr = proj.create_language_server_manager()\n  File \"/tmp/codenib-peer-preflight-20261027/uv-tools/serena-agent/lib/python3.13/site-packages/serena/project.py\", line 690, in create_language_server_manager\n    self.language_server_manager = LanguageServerManager.from_languages(self.project_config.language_servers, factory, self)\n                                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/tmp/codenib-peer-preflight-20261027/uv-tools/serena-agent/lib/python3.13/site-packages/serena/ls_manager.py\", line 165, in from_languages\n    raise LanguageServerManagerInitialisationError(f\"Failed to start {len(exceptions)} language server(s):\\n{failure_messages}\")\nserena.ls_manager.LanguageServerManagerInitialisationError: Failed to start 1 language server(s):\npython: Could not find 'uvx' or 'uv' in PATH. Install uv (https://docs.astral.sh/uv/).\n"
+      },
+      "server": {
+        "command": "/tmp/codenib-peer-preflight-20261027/bin/serena",
+        "args": [
+          "start-mcp-server",
+          "--project",
+          "/tmp/codenib-peer-preflight-20261027/serena-repository",
+          "--context",
+          "claude-code",
+          "--agent-interface",
+          "REPL",
+          "--enable-web-dashboard",
+          "False",
+          "--enable-gui-log-window",
+          "False",
+          "--open-web-dashboard",
+          "False"
+        ],
+        "cwd": "/tmp/codenib-peer-preflight-20261027/serena-repository",
+        "environment_overrides": {
+          "SERENA_HOME": "/tmp/codenib-peer-preflight-20261027/serena-state"
+        }
+      },
+      "error": {
+        "type": "ExceptionGroup",
+        "message": "unhandled errors in a TaskGroup (1 sub-exception)",
+        "traceback": "  + Exception Group Traceback (most recent call last):\n  |   File \"/tmp/codenib-peer-preflight-20261027/peer-discover.py\", line 41, in <module>\n  |     asyncio.run(asyncio.wait_for(main(),timeout=120))\n  |   File \"/usr/lib/python3.12/asyncio/runners.py\", line 194, in run\n  |     return runner.run(main)\n  |            ^^^^^^^^^^^^^^^^\n  |   File \"/usr/lib/python3.12/asyncio/runners.py\", line 118, in run\n  |     return self._loop.run_until_complete(task)\n  |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  |   File \"/usr/lib/python3.12/asyncio/base_events.py\", line 687, in run_until_complete\n  |     return future.result()\n  |            ^^^^^^^^^^^^^^^\n  |   File \"/usr/lib/python3.12/asyncio/tasks.py\", line 520, in wait_for\n  |     return await fut\n  |            ^^^^^^^^^\n  |   File \"/tmp/codenib-peer-preflight-20261027/peer-discover.py\", line 35, in main\n  |     async with Client(transport,mode='auto',cache=None) as client:\n  |   File \"/tmp/codenib-sdk-probe-20261027/venv/lib/python3.12/site-packages/mcp/client/client.py\", line 480, in __aexit__\n  |     await self._exit_stack.__aexit__(exc_type, exc_val, exc_tb)\n  |   File \"/usr/lib/python3.12/contextlib.py\", line 754, in __aexit__\n  |     raise exc_details[1]\n  |   File \"/usr/lib/python3.12/contextlib.py\", line 737, in __aexit__\n  |     cb_suppress = await cb(*exc_details)\n  |                   ^^^^^^^^^^^^^^^^^^^^^^\n  |   File \"/usr/lib/python3.12/contextlib.py\", line 231, in __aexit__\n  |     await self.gen.athrow(value)\n  |   File \"/tmp/codenib-sdk-probe-20261027/venv/lib/python3.12/site-packages/mcp/client/stdio.py\", line 201, in stdio_client\n  |     async with anyio.create_task_group() as tg:\n  |   File \"/tmp/codenib-sdk-probe-20261027/venv/lib/python3.12/site-packages/anyio/_backends/_asyncio.py\", line 847, in __aexit__\n  |     raise BaseExceptionGroup(\n  | ExceptionGroup: unhandled errors in a TaskGroup (1 sub-exception)\n  +-+---------------- 1 ----------------\n    | Exception Group Traceback (most recent call last):\n    |   File \"/tmp/codenib-sdk-probe-20261027/venv/lib/python3.12/site-packages/mcp/client/stdio.py\", line 205, in stdio_client\n    |     yield read_stream, write_stream\n    |   File \"/usr/lib/python3.12/contextlib.py\", line 737, in __aexit__\n    |     cb_suppress = await cb(*exc_details)\n    |                   ^^^^^^^^^^^^^^^^^^^^^^\n    |   File \"/tmp/codenib-sdk-probe-20261027/venv/lib/python3.12/site-packages/mcp/client/session.py\", line 514, in __aexit__\n    |     result = await self._task_group.__aexit__(exc_type, exc_val, exc_tb)\n    |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    |   File \"/tmp/codenib-sdk-probe-20261027/venv/lib/python3.12/site-packages/anyio/_backends/_asyncio.py\", line 847, in __aexit__\n    |     raise BaseExceptionGroup(\n    | ExceptionGroup: unhandled errors in a TaskGroup (1 sub-exception)\n    +-+---------------- 1 ----------------\n      | Traceback (most recent call last):\n      |   File \"/tmp/codenib-peer-preflight-20261027/peer-discover.py\", line 37, in main\n      |     record['tools']=[tool.model_dump(mode='json') for tool in tools]\n      |                      ^^^^^^^^^^^^^^^\n      | AttributeError: 'tuple' object has no attribute 'model_dump'\n      +------------------------------------\n"
+      },
+      "git_status": "?? .serena/\n"
+    },
+    "codegraph-discovery.json": {
+      "scope": "readiness only, no model or matched task",
+      "peer": "codegraph",
+      "source": "def sdk_probe_calculate(values):\n    return sum(values)\n\ndef sdk_probe_checkout(values):\n    return sdk_probe_calculate(values)\n",
+      "events": [],
+      "setup": {
+        "command": [
+          "/tmp/codenib-peer-preflight-20261027/codegraph-runtime/bundles/linux-arm64-1.6.2/bin/codegraph",
+          "init",
+          "--yes",
+          "/tmp/codenib-peer-preflight-20261027/codegraph-repository"
+        ],
+        "seconds": 0.4660923592746258,
+        "returncode": 0,
+        "stdout": "┌  Initializing CodeGraph\n│\n◆  Initialized in /tmp/codenib-peer-preflight-20261027/codegraph-repository\n│\nScanning files...\nParsing code...\nResolving refs...\nLinking dynamic dispatch...\n│\n◆  Indexed 1 files\n│\n●  3 nodes, 3 edges in 124ms\n│\n└  Done\n\n",
+        "stderr": ""
+      },
+      "mode_note": "Direct single-writer preflight to avoid changing the real user daemon registry; not a measured default-daemon condition.",
+      "server": {
+        "command": "/tmp/codenib-peer-preflight-20261027/codegraph-runtime/bundles/linux-arm64-1.6.2/bin/codegraph",
+        "args": [
+          "serve",
+          "--mcp"
+        ],
+        "cwd": "/tmp/codenib-peer-preflight-20261027/codegraph-repository",
+        "environment_overrides": {
+          "CODEGRAPH_INSTALL_DIR": "/tmp/codenib-peer-preflight-20261027/codegraph-runtime",
+          "CODEGRAPH_TELEMETRY": "0",
+          "DO_NOT_TRACK": "1",
+          "CODEGRAPH_NO_DAEMON": "1"
+        }
+      },
+      "error": {
+        "type": "ExceptionGroup",
+        "message": "unhandled errors in a TaskGroup (1 sub-exception)",
+        "traceback": "  + Exception Group Traceback (most recent call last):\n  |   File \"/tmp/codenib-peer-preflight-20261027/peer-discover.py\", line 41, in <module>\n  |     asyncio.run(asyncio.wait_for(main(),timeout=120))\n  |   File \"/usr/lib/python3.12/asyncio/runners.py\", line 194, in run\n  |     return runner.run(main)\n  |            ^^^^^^^^^^^^^^^^\n  |   File \"/usr/lib/python3.12/asyncio/runners.py\", line 118, in run\n  |     return self._loop.run_until_complete(task)\n  |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  |   File \"/usr/lib/python3.12/asyncio/base_events.py\", line 687, in run_until_complete\n  |     return future.result()\n  |            ^^^^^^^^^^^^^^^\n  |   File \"/usr/lib/python3.12/asyncio/tasks.py\", line 520, in wait_for\n  |     return await fut\n  |            ^^^^^^^^^\n  |   File \"/tmp/codenib-peer-preflight-20261027/peer-discover.py\", line 35, in main\n  |     async with Client(transport,mode='auto',cache=None) as client:\n  |   File \"/tmp/codenib-sdk-probe-20261027/venv/lib/python3.12/site-packages/mcp/client/client.py\", line 480, in __aexit__\n  |     await self._exit_stack.__aexit__(exc_type, exc_val, exc_tb)\n  |   File \"/usr/lib/python3.12/contextlib.py\", line 754, in __aexit__\n  |     raise exc_details[1]\n  |   File \"/usr/lib/python3.12/contextlib.py\", line 737, in __aexit__\n  |     cb_suppress = await cb(*exc_details)\n  |                   ^^^^^^^^^^^^^^^^^^^^^^\n  |   File \"/usr/lib/python3.12/contextlib.py\", line 231, in __aexit__\n  |     await self.gen.athrow(value)\n  |   File \"/tmp/codenib-sdk-probe-20261027/venv/lib/python3.12/site-packages/mcp/client/stdio.py\", line 201, in stdio_client\n  |     async with anyio.create_task_group() as tg:\n  |   File \"/tmp/codenib-sdk-probe-20261027/venv/lib/python3.12/site-packages/anyio/_backends/_asyncio.py\", line 847, in __aexit__\n  |     raise BaseExceptionGroup(\n  | ExceptionGroup: unhandled errors in a TaskGroup (1 sub-exception)\n  +-+---------------- 1 ----------------\n    | Exception Group Traceback (most recent call last):\n    |   File \"/tmp/codenib-sdk-probe-20261027/venv/lib/python3.12/site-packages/mcp/client/stdio.py\", line 205, in stdio_client\n    |     yield read_stream, write_stream\n    |   File \"/usr/lib/python3.12/contextlib.py\", line 737, in __aexit__\n    |     cb_suppress = await cb(*exc_details)\n    |                   ^^^^^^^^^^^^^^^^^^^^^^\n    |   File \"/tmp/codenib-sdk-probe-20261027/venv/lib/python3.12/site-packages/mcp/client/session.py\", line 514, in __aexit__\n    |     result = await self._task_group.__aexit__(exc_type, exc_val, exc_tb)\n    |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    |   File \"/tmp/codenib-sdk-probe-20261027/venv/lib/python3.12/site-packages/anyio/_backends/_asyncio.py\", line 847, in __aexit__\n    |     raise BaseExceptionGroup(\n    | ExceptionGroup: unhandled errors in a TaskGroup (1 sub-exception)\n    +-+---------------- 1 ----------------\n      | Traceback (most recent call last):\n      |   File \"/tmp/codenib-peer-preflight-20261027/peer-discover.py\", line 37, in main\n      |     record['tools']=[tool.model_dump(mode='json') for tool in tools]\n      |                      ^^^^^^^^^^^^^^^\n      | AttributeError: 'tuple' object has no attribute 'model_dump'\n      +------------------------------------\n"
+      },
+      "git_status": "?? .codegraph/\n"
+    },
+    "serena-session.json": {
+      "scope": "no-model readiness; corrected list_tools result handling; first harness error retained separately",
+      "peer": "serena",
+      "server": {
+        "command": "/tmp/codenib-peer-preflight-20261027/bin/serena",
+        "args": [
+          "start-mcp-server",
+          "--project",
+          "/tmp/codenib-peer-preflight-20261027/serena-repository",
+          "--context",
+          "claude-code",
+          "--agent-interface",
+          "REPL",
+          "--enable-web-dashboard",
+          "False",
+          "--enable-gui-log-window",
+          "False",
+          "--open-web-dashboard",
+          "False"
+        ],
+        "cwd": "/tmp/codenib-peer-preflight-20261027/serena-repository",
+        "environment_overrides": {
+          "SERENA_HOME": "/tmp/codenib-peer-preflight-20261027/serena-state"
+        }
+      },
+      "events": [
+        {
+          "tool": "initial_instructions",
+          "reply": {
+            "sha256_of_sorted_utf8_json": "36c95a596cbeaec38b8b0c2c35f2f7f88889c79fb5d037bc939e8f786fb842cf",
+            "note": "Raw vendor instructions retained locally; REPL description and facade schema remain below."
+          }
+        }
+      ],
+      "tools": [
+        {
+          "name": "initial_instructions",
+          "title": "Initial Instructions",
+          "description": "Provides the 'Serena Instructions Manual', which contains essential information on how to use the Serena toolbox,\nand the Serena session ID.",
+          "input_schema": {
+            "type": "object",
+            "properties": {},
+            "title": "applyArguments"
+          },
+          "execution": null,
+          "output_schema": null,
+          "icons": null,
+          "annotations": {
+            "title": "Initial Instructions",
+            "read_only_hint": true,
+            "destructive_hint": false,
+            "idempotent_hint": null,
+            "open_world_hint": null
+          },
+          "meta": null
+        },
+        {
+          "name": "serena_repl",
+          "title": "Serena Repl",
+          "description": "Executes the given Python code in a REPL, which provides access to all of Serena's functionality\n(symbol & reference search, file overviews, editing, refactoring, inspections, etc.).\n\nSerena's functionality is provided through an object `s`.\nThe functionality is organised in facades, which are attributes of `s`.\n\nDocumentation: Use `s.info(\"<facade>\")` when you will use a facade's functionality (it documents all common\noperations at once) and `s.info(\"<facade>.<method>\")` for a single or a rarely needed operation. Several items\ncan be requested in one call, e.g. `s.info(\"lsp\", \"edit.replace_content\")`.\n`s.info(\"<facade>\")` documents the facade's operations only, not their result types. The facade listing\nprovides result types (`method -> Type`); request their documentation via `s.info(\"<Type>\")`, which\nincludes the types they contain, ONLY if you intend to process results in code (filter, aggregate, chain\ncalls).\n\nThe code is executed like a notebook cell: if its last statement is an expression, the expression's value is\nthe result. Results of facade methods are rendered in a form optimised for you; lists are rendered element-wise,\nstrings are passed through unchanged.\nYou cannot use `print` or other output functions to return content; only use the last expression to return content.\n\nOutput size: methods with a `max_answer_chars` parameter limit the size of the rendered result (-1 uses the\nconfigured default). If the limit is exceeded, a shortened result (or no content) is rendered instead;\nadjust the limit only if there is no other way to obtain the content required for the task (e.g. by\nnarrowing the query or processing the result in code and returning only what is needed).\n\nPersistence: variables, functions and classes defined at the top level of your code persist across calls\nwithin your session (like the cells of a notebook), so you can reuse results and define helper functions once.\n`s.vars()` lists the persisted items, `s.clear()` removes them. Do not store facades (`s.<facade>`) in\nvariables; access them via `s` at call time. Do not keep large results longer than needed. Returns the representation of the returned value, or the error if execution failed\nAvailable facades:\ns.cfg: Serena's configuration and session state (incl. the dashboard)\n  methods: get_current_config\ns.fs: the project's files as units (as opposed to their content, see `edit`)\n  methods: create_text_file, find_file, list_dir -> DirectoryListing, read_file -> FileContent, search_for_pattern -> PatternMatches\ns.edit: modifying content within existing files (independent of the language backend)\n  methods: insert_after_symbol, insert_before_symbol, replace_content, replace_in_files -> ReplacementPreview, replace_symbol_body\ns.mem: project memories, i.e. persistent notes for future tasks\n  methods: delete_memory, edit_memory, list_memories -> MemoryList, onboarding, read_memory, rename_memory, write_memory\ns.shell: execution of shell commands\n  methods: execute_shell_command -> ShellCommandOutput\ns.lsp: symbol-level operations on the codebase backed by language servers\n  methods: find_declaration -> LspSymbol, find_implementations -> LspSymbolCollection, find_referencing_symbols -> LspReferenceCollection, find_symbol -> LspSymbolCollection, get_diagnostics_for_file -> LspDiagnostics, get_symbols_overview -> LspSymbolCollection, rename_symbol, safe_delete_symbol.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "session": {
+                "title": "Session",
+                "type": "string",
+                "description": "Your Serena session id, as provided in Serena's instructions (call `initial_instructions` if you do not have one)."
+              },
+              "code": {
+                "title": "Code",
+                "type": "string",
+                "description": "The Python code to execute."
+              }
+            },
+            "required": [
+              "session",
+              "code"
+            ],
+            "title": "applyArguments"
+          },
+          "execution": null,
+          "output_schema": null,
+          "icons": null,
+          "annotations": {
+            "title": "Serena Repl",
+            "read_only_hint": false,
+            "destructive_hint": true,
+            "idempotent_hint": null,
+            "open_world_hint": null
+          },
+          "meta": null
+        }
+      ],
+      "connection_seconds": 0.4389316011220217
+    },
+    "codegraph-session.json": {
+      "scope": "no-model readiness; corrected list_tools result handling; first harness error retained separately",
+      "peer": "codegraph",
+      "server": {
+        "command": "/tmp/codenib-peer-preflight-20261027/codegraph-runtime/bundles/linux-arm64-1.6.2/bin/codegraph",
+        "args": [
+          "serve",
+          "--mcp"
+        ],
+        "cwd": "/tmp/codenib-peer-preflight-20261027/codegraph-repository",
+        "environment_overrides": {
+          "CODEGRAPH_INSTALL_DIR": "/tmp/codenib-peer-preflight-20261027/codegraph-runtime",
+          "CODEGRAPH_TELEMETRY": "0",
+          "DO_NOT_TRACK": "1",
+          "CODEGRAPH_NO_DAEMON": "1"
+        }
+      },
+      "events": [],
+      "tools": [
+        {
+          "name": "codegraph_explore",
+          "title": null,
+          "description": "PRIMARY TOOL — call FIRST for almost any question OR before an edit: how does X work, architecture, a bug, where/what is X, surveying an area, or the symbols you are about to change. Returns the verbatim source of the relevant symbols grouped by file in ONE capped call (Read-equivalent — treat the shown source as already Read; do NOT re-open those files), plus the call path among them. Query can be a natural-language question OR a bag of symbol/file names. Usually the ONLY call you need — more accurate context, in far fewer tokens and round-trips than a search/Read/Grep loop. Exploration guidance — advisory only, NOT a quota: ~1 focused calls usually cover this project (1 files indexed), and extra calls are never rejected or rate-limited.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string",
+                "description": "Symbol names, file names, or short code terms to explore (e.g., \"AuthService loginUser session-manager\", \"GraphTraverser BFS impact traversal.ts\"). For a flow question, name the symbols spanning the flow (e.g. \"mutateElement renderScene\"). A natural-language question works too — no prior codegraph_search needed."
+              },
+              "maxFiles": {
+                "type": "number",
+                "description": "Maximum number of files to include source code from (default: 12)",
+                "default": 12
+              },
+              "projectPath": {
+                "type": "string",
+                "description": "Absolute path to the project to query (or any directory inside it) — codegraph uses the nearest .codegraph/ index at or above that path. Omit to use this session's default project. Pass it to query a second codebase, or when the server root has no index of its own (e.g. a monorepo where only sub-projects are indexed, so there is no default project)."
+              }
+            },
+            "required": [
+              "query"
+            ]
+          },
+          "execution": null,
+          "output_schema": null,
+          "icons": null,
+          "annotations": {
+            "title": null,
+            "read_only_hint": true,
+            "destructive_hint": false,
+            "idempotent_hint": true,
+            "open_world_hint": false
+          },
+          "meta": {
+            "anthropic/alwaysLoad": true
+          }
+        }
+      ],
+      "connection_seconds": 0.21732543781399727
+    },
+    "serena-update.json": {
+      "scope": "no-model readiness and external-disk-edit probe; not a matched benefit trial",
+      "peer": "serena",
+      "server": {
+        "command": "/tmp/codenib-peer-preflight-20261027/bin/serena",
+        "args": [
+          "start-mcp-server",
+          "--project",
+          "/tmp/codenib-peer-preflight-20261027/serena-repository",
+          "--context",
+          "claude-code",
+          "--agent-interface",
+          "REPL",
+          "--enable-web-dashboard",
+          "False",
+          "--enable-gui-log-window",
+          "False",
+          "--open-web-dashboard",
+          "False"
+        ],
+        "cwd": "/tmp/codenib-peer-preflight-20261027/serena-repository",
+        "environment_overrides": {
+          "SERENA_HOME": "/tmp/codenib-peer-preflight-20261027/serena-state"
+        }
+      },
+      "events": [
+        {
+          "phase": "initial",
+          "source_sha256": "f702354716de7b88046506906ce067a9effdbe06a39de8ecb7f8bda11c0a0a89",
+          "source_text": "def sdk_probe_calculate(values):\n    return sum(values)\n\ndef sdk_probe_checkout(values):\n    return sdk_probe_calculate(values)\n",
+          "tool": "serena_repl",
+          "arguments": {
+            "session": "298a0d3c",
+            "code": "print(lsp.find_symbol(name_path_pattern=\"sdk_probe_checkout\", relative_path=\"probe.py\", include_body=True))"
+          },
+          "seconds": 0.1001846008002758,
+          "reply": {
+            "meta": {
+              "io.modelcontextprotocol/serverInfo": {
+                "name": "Serena",
+                "version": "2.1.0",
+                "websiteUrl": "https://oraios.github.io/serena"
+              }
+            },
+            "content": [
+              {
+                "type": "text",
+                "text": "NameError: name 'lsp' is not defined\n  line 1: print(lsp.find_symbol(name_path_pattern=\"sdk_probe_checkout\", relative_path=\"probe.py\", include_body=True))",
+                "annotations": null,
+                "meta": null
+              }
+            ],
+            "structured_content": null,
+            "is_error": false,
+            "result_type": "complete"
+          }
+        },
+        {
+          "phase": "same_session_after_external_edit",
+          "source_sha256": "db8c9cb7b30c1ba4eb31b267abf1827ffbf4371ce8617f1e18e892cd26dfbcc7",
+          "source_text": "def sdk_probe_calculate_v2(values):\n    return sum(values)\n\ndef sdk_probe_checkout(values):\n    return sdk_probe_calculate_v2(values)\n",
+          "tool": "serena_repl",
+          "arguments": {
+            "session": "298a0d3c",
+            "code": "print(lsp.find_symbol(name_path_pattern=\"sdk_probe_checkout\", relative_path=\"probe.py\", include_body=True))"
+          },
+          "seconds": 0.0074197519570589066,
+          "reply": {
+            "meta": {
+              "io.modelcontextprotocol/serverInfo": {
+                "name": "Serena",
+                "version": "2.1.0",
+                "websiteUrl": "https://oraios.github.io/serena"
+              }
+            },
+            "content": [
+              {
+                "type": "text",
+                "text": "NameError: name 'lsp' is not defined\n  line 1: print(lsp.find_symbol(name_path_pattern=\"sdk_probe_checkout\", relative_path=\"probe.py\", include_body=True))",
+                "annotations": null,
+                "meta": null
+              }
+            ],
+            "structured_content": null,
+            "is_error": false,
+            "result_type": "complete"
+          }
+        }
+      ],
+      "remediation": "Expose the uv prerequisite on the child PATH; original setup failure and harness list_tools error retained.",
+      "index_retry": {
+        "command": [
+          "/tmp/codenib-peer-preflight-20261027/bin/serena",
+          "project",
+          "index",
+          "/tmp/codenib-peer-preflight-20261027/serena-repository"
+        ],
+        "seconds": 1.2304502855986357,
+        "returncode": 0,
+        "stdout": "Indexing symbols in Project[root='/tmp/codenib-peer-preflight-20261027/serena-repository', name=serena-repository] …\nIndexed files per language: python=1\n",
+        "stderr": "\nIndexing:   0%|          | 0/1 [00:00<?, ?it/s]\nIndexing: 100%|██████████| 1/1 [00:00<00:00, 13.87it/s]\n"
+      },
+      "server_environment_overrides": {
+        "SERENA_HOME": "/tmp/codenib-peer-preflight-20261027/serena-state",
+        "PATH": "/tmp/codenib-peer-preflight-20261027/bootstrap/bin:/home/zhongming/.local/bin:/usr/local/cuda/bin:/opt/bin/:/home/zhongming/.codex/packages/app-server-daemon/releases/0.165.0-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0-linux/codex-arg0MplG5g:/home/zhongming/.codex/tmp/arg0-linux/codex-arg0NyjhTb:/home/zhongming/.codex/packages/app-server-daemon/releases/0.164.0-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0-linux/codex-arg08ZE9kl:/home/zhongming/.codex/packages/app-server-daemon/releases/0.163.0-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0/codex-arg0zIi1Uh:/home/zhongming/.codex/packages/app-server-daemon/releases/0.162.1-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0/codex-arg0DbviHb:/home/zhongming/.codex/packages/app-server-daemon/releases/0.162.0-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0/codex-arg0BnhYWi:/home/zhongming/.codex/packages/app-server-daemon/releases/0.161.0-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0/codex-arg0JFdS0s:/home/zhongming/.codex/packages/app-server-daemon/releases/0.160.1-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0/codex-arg0dMws8R:/home/zhongming/.codex/packages/app-server-daemon/releases/0.160.0-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0/codex-arg0hNw7TM:/home/zhongming/.codex/packages/app-server-daemon/releases/0.159.3-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0/codex-arg0AU5H85:/home/zhongming/.codex/packages/app-server-daemon/releases/0.159.2-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0/codex-arg0pabQoQ:/home/zhongming/.codex/packages/app-server-daemon/releases/0.159.1-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0/codex-arg0XLN0vr:/home/zhongming/.codex/packages/app-server-daemon/releases/0.159.0-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0/codex-arg05deWrE:/home/zhongming/.codex/packages/app-server-daemon/releases/0.158.0-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0/codex-arg05YrRMK:/home/zhongming/.codex/packages/standalone/releases/0.158.0-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.local/bin:/home/zhongming/.vscode-server/data/User/globalStorage/github.copilot-chat/debugCommand:/home/zhongming/.vscode-server/data/User/globalStorage/github.copilot-chat/copilotCli:/home/zhongming/.vscode-server/cli/servers/Stable-0958016b2af9f09bb4257e0df4a95e2f90590f9f/server/bin/remote-cli:/home/zhongming/.cargo/bin:/home/zhongming/.local/bin:/usr/local/cuda/bin:/opt/bin/:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin",
+        "UV_CACHE_DIR": "/tmp/codenib-peer-preflight-20261027/uv-cache",
+        "UV_TOOL_DIR": "/tmp/codenib-peer-preflight-20261027/uv-tools",
+        "UV_PYTHON_INSTALL_DIR": "/tmp/codenib-peer-preflight-20261027/python"
+      },
+      "instructions": {
+        "sha256_of_sorted_utf8_json": "2940cf44485f4445d75798afbcf0806b1063c2196a95f3282f09cfd6b301ffc5",
+        "note": "Raw reply retained in the local receipt; no model consumed it in this readiness probe."
+      },
+      "git_status": " M probe.py\n?? .serena/\n"
+    },
+    "codegraph-update.json": {
+      "scope": "no-model readiness and external-disk-edit probe; not a matched benefit trial",
+      "peer": "codegraph",
+      "server": {
+        "command": "/tmp/codenib-peer-preflight-20261027/codegraph-runtime/bundles/linux-arm64-1.6.2/bin/codegraph",
+        "args": [
+          "serve",
+          "--mcp"
+        ],
+        "cwd": "/tmp/codenib-peer-preflight-20261027/codegraph-repository",
+        "environment_overrides": {
+          "CODEGRAPH_INSTALL_DIR": "/tmp/codenib-peer-preflight-20261027/codegraph-runtime",
+          "CODEGRAPH_TELEMETRY": "0",
+          "DO_NOT_TRACK": "1",
+          "CODEGRAPH_NO_DAEMON": "1"
+        }
+      },
+      "events": [
+        {
+          "phase": "initial",
+          "source_sha256": "f702354716de7b88046506906ce067a9effdbe06a39de8ecb7f8bda11c0a0a89",
+          "source_text": "def sdk_probe_calculate(values):\n    return sum(values)\n\ndef sdk_probe_checkout(values):\n    return sdk_probe_calculate(values)\n",
+          "tool": "codegraph_explore",
+          "arguments": {
+            "query": "sdk_probe_checkout"
+          },
+          "seconds": 0.2481621466577053,
+          "reply": {
+            "meta": null,
+            "content": [
+              {
+                "type": "text",
+                "text": "**Exploration: sdk_probe_checkout**\n\nFound 2 symbols across 1 file.\n\n**Blast radius — what depends on these (update/verify before editing)**\n\n- `sdk_probe_calculate` (probe.py:1) — 1 caller in `probe.py`; no tests found within 3 caller hops\n\n**Source Code**\n\n> The code below is the **verbatim, current on-disk source** of these files — re-read from disk on this call and line-numbered, byte-for-byte identical to what the Read tool returns. It is NOT a summary, outline, or stale cache. Treat each block as a Read you have already performed: do not Read a file shown here.\n\n**`probe.py`** — sdk_probe_checkout(function), sdk_probe_calculate(function)\n\n```python\n1\tdef sdk_probe_calculate(values):\n2\t    return sum(values)\n3\t\n4\tdef sdk_probe_checkout(values):\n5\t    return sdk_probe_calculate(values)\n```\n",
+                "annotations": null,
+                "meta": null
+              }
+            ],
+            "structured_content": null,
+            "is_error": false,
+            "result_type": "complete"
+          }
+        },
+        {
+          "phase": "same_session_after_external_edit",
+          "source_sha256": "db8c9cb7b30c1ba4eb31b267abf1827ffbf4371ce8617f1e18e892cd26dfbcc7",
+          "source_text": "def sdk_probe_calculate_v2(values):\n    return sum(values)\n\ndef sdk_probe_checkout(values):\n    return sdk_probe_calculate_v2(values)\n",
+          "tool": "codegraph_explore",
+          "arguments": {
+            "query": "sdk_probe_checkout"
+          },
+          "seconds": 0.0960088986903429,
+          "reply": {
+            "meta": null,
+            "content": [
+              {
+                "type": "text",
+                "text": "**Exploration: sdk_probe_checkout**\n\nFound 2 symbols across 1 file.\n\n**Blast radius — what depends on these (update/verify before editing)**\n\n- `sdk_probe_calculate_v2` (probe.py:1) — 1 caller in `probe.py`; no tests found within 3 caller hops\n\n**Source Code**\n\n> The code below is the **verbatim, current on-disk source** of these files — re-read from disk on this call and line-numbered, byte-for-byte identical to what the Read tool returns. It is NOT a summary, outline, or stale cache. Treat each block as a Read you have already performed: do not Read a file shown here.\n\n**`probe.py`** — sdk_probe_checkout(function), sdk_probe_calculate_v2(function)\n\n```python\n1\tdef sdk_probe_calculate_v2(values):\n2\t    return sum(values)\n3\t\n4\tdef sdk_probe_checkout(values):\n5\t    return sdk_probe_calculate_v2(values)\n```\n",
+                "annotations": null,
+                "meta": null
+              }
+            ],
+            "structured_content": null,
+            "is_error": false,
+            "result_type": "complete"
+          }
+        }
+      ],
+      "server_environment_overrides": {
+        "PATH": "/home/zhongming/.local/bin:/usr/local/cuda/bin:/opt/bin/:/home/zhongming/.codex/packages/app-server-daemon/releases/0.165.0-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0-linux/codex-arg0MplG5g:/home/zhongming/.codex/tmp/arg0-linux/codex-arg0NyjhTb:/home/zhongming/.codex/packages/app-server-daemon/releases/0.164.0-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0-linux/codex-arg08ZE9kl:/home/zhongming/.codex/packages/app-server-daemon/releases/0.163.0-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0/codex-arg0zIi1Uh:/home/zhongming/.codex/packages/app-server-daemon/releases/0.162.1-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0/codex-arg0DbviHb:/home/zhongming/.codex/packages/app-server-daemon/releases/0.162.0-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0/codex-arg0BnhYWi:/home/zhongming/.codex/packages/app-server-daemon/releases/0.161.0-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0/codex-arg0JFdS0s:/home/zhongming/.codex/packages/app-server-daemon/releases/0.160.1-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0/codex-arg0dMws8R:/home/zhongming/.codex/packages/app-server-daemon/releases/0.160.0-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0/codex-arg0hNw7TM:/home/zhongming/.codex/packages/app-server-daemon/releases/0.159.3-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0/codex-arg0AU5H85:/home/zhongming/.codex/packages/app-server-daemon/releases/0.159.2-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0/codex-arg0pabQoQ:/home/zhongming/.codex/packages/app-server-daemon/releases/0.159.1-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0/codex-arg0XLN0vr:/home/zhongming/.codex/packages/app-server-daemon/releases/0.159.0-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0/codex-arg05deWrE:/home/zhongming/.codex/packages/app-server-daemon/releases/0.158.0-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0/codex-arg05YrRMK:/home/zhongming/.codex/packages/standalone/releases/0.158.0-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.local/bin:/home/zhongming/.vscode-server/data/User/globalStorage/github.copilot-chat/debugCommand:/home/zhongming/.vscode-server/data/User/globalStorage/github.copilot-chat/copilotCli:/home/zhongming/.vscode-server/cli/servers/Stable-0958016b2af9f09bb4257e0df4a95e2f90590f9f/server/bin/remote-cli:/home/zhongming/.cargo/bin:/home/zhongming/.local/bin:/usr/local/cuda/bin:/opt/bin/:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin",
+        "CODEGRAPH_INSTALL_DIR": "/tmp/codenib-peer-preflight-20261027/codegraph-runtime",
+        "CODEGRAPH_TELEMETRY": "0",
+        "DO_NOT_TRACK": "1",
+        "CODEGRAPH_NO_DAEMON": "1"
+      },
+      "git_status": " M probe.py\n?? .codegraph/\n"
+    },
+    "serena-update-v2.json": {
+      "scope": "corrected no-model REPL probe; original harness errors retained, not matched benefit",
+      "peer": "serena",
+      "server": {
+        "command": "/tmp/codenib-peer-preflight-20261027/bin/serena",
+        "args": [
+          "start-mcp-server",
+          "--project",
+          "/tmp/codenib-peer-preflight-20261027/serena-repository",
+          "--context",
+          "claude-code",
+          "--agent-interface",
+          "REPL",
+          "--enable-web-dashboard",
+          "False",
+          "--enable-gui-log-window",
+          "False",
+          "--open-web-dashboard",
+          "False"
+        ],
+        "cwd": "/tmp/codenib-peer-preflight-20261027/serena-repository",
+        "environment_overrides": {
+          "SERENA_HOME": "/tmp/codenib-peer-preflight-20261027/serena-state"
+        }
+      },
+      "events": [
+        {
+          "phase": "initial",
+          "source_sha256": "f702354716de7b88046506906ce067a9effdbe06a39de8ecb7f8bda11c0a0a89",
+          "source_text": "def sdk_probe_calculate(values):\n    return sum(values)\n\ndef sdk_probe_checkout(values):\n    return sdk_probe_calculate(values)\n",
+          "tool": "serena_repl",
+          "arguments": {
+            "session": "3752de02",
+            "code": "s.lsp.find_symbol(name_path_pattern=\"sdk_probe_checkout\", relative_path=\"probe.py\", include_body=True)"
+          },
+          "seconds": 0.10259717889130116,
+          "reply": {
+            "meta": {
+              "io.modelcontextprotocol/serverInfo": {
+                "name": "Serena",
+                "version": "2.1.0",
+                "websiteUrl": "https://oraios.github.io/serena"
+              }
+            },
+            "content": [
+              {
+                "type": "text",
+                "text": "[{\"name_path\": \"sdk_probe_checkout\", \"kind\": \"Function\", \"relative_path\": \"probe.py\", \"body_location\": {\"start_line\": 3, \"end_line\": 4}, \"body\": \"def sdk_probe_checkout(values):\\n    return sdk_probe_calculate(values)\"}]",
+                "annotations": null,
+                "meta": null
+              }
+            ],
+            "structured_content": null,
+            "is_error": false,
+            "result_type": "complete"
+          }
+        },
+        {
+          "phase": "same_session_after_external_edit",
+          "source_sha256": "db8c9cb7b30c1ba4eb31b267abf1827ffbf4371ce8617f1e18e892cd26dfbcc7",
+          "source_text": "def sdk_probe_calculate_v2(values):\n    return sum(values)\n\ndef sdk_probe_checkout(values):\n    return sdk_probe_calculate_v2(values)\n",
+          "tool": "serena_repl",
+          "arguments": {
+            "session": "3752de02",
+            "code": "s.lsp.find_symbol(name_path_pattern=\"sdk_probe_checkout\", relative_path=\"probe.py\", include_body=True)"
+          },
+          "seconds": 0.17129114270210266,
+          "reply": {
+            "meta": {
+              "io.modelcontextprotocol/serverInfo": {
+                "name": "Serena",
+                "version": "2.1.0",
+                "websiteUrl": "https://oraios.github.io/serena"
+              }
+            },
+            "content": [
+              {
+                "type": "text",
+                "text": "[{\"name_path\": \"sdk_probe_checkout\", \"kind\": \"Function\", \"relative_path\": \"probe.py\", \"body_location\": {\"start_line\": 3, \"end_line\": 4}, \"body\": \"def sdk_probe_checkout(values):\\n    return sdk_probe_calculate_v2(values)\"}]",
+                "annotations": null,
+                "meta": null
+              }
+            ],
+            "structured_content": null,
+            "is_error": false,
+            "result_type": "complete"
+          }
+        }
+      ],
+      "fixture_reset": "Restore the captured original source before a fresh connection; prior failed observations remain in serena-update.json.",
+      "remediation": "Expose the uv prerequisite on the child PATH; original setup failure and harness list_tools error retained.",
+      "index_retry": {
+        "command": [
+          "/tmp/codenib-peer-preflight-20261027/bin/serena",
+          "project",
+          "index",
+          "/tmp/codenib-peer-preflight-20261027/serena-repository"
+        ],
+        "seconds": 0.837016087025404,
+        "returncode": 0,
+        "stdout": "Indexing symbols in Project[root='/tmp/codenib-peer-preflight-20261027/serena-repository', name=serena-repository] …\nIndexed files per language: python=1\n",
+        "stderr": "\nIndexing:   0%|          | 0/1 [00:00<?, ?it/s]\nIndexing: 100%|██████████| 1/1 [00:00<00:00, 4232.40it/s]\n"
+      },
+      "server_environment_overrides": {
+        "SERENA_HOME": "/tmp/codenib-peer-preflight-20261027/serena-state",
+        "PATH": "/tmp/codenib-peer-preflight-20261027/bootstrap/bin:/home/zhongming/.local/bin:/usr/local/cuda/bin:/opt/bin/:/home/zhongming/.codex/packages/app-server-daemon/releases/0.165.0-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0-linux/codex-arg0MplG5g:/home/zhongming/.codex/tmp/arg0-linux/codex-arg0NyjhTb:/home/zhongming/.codex/packages/app-server-daemon/releases/0.164.0-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0-linux/codex-arg08ZE9kl:/home/zhongming/.codex/packages/app-server-daemon/releases/0.163.0-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0/codex-arg0zIi1Uh:/home/zhongming/.codex/packages/app-server-daemon/releases/0.162.1-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0/codex-arg0DbviHb:/home/zhongming/.codex/packages/app-server-daemon/releases/0.162.0-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0/codex-arg0BnhYWi:/home/zhongming/.codex/packages/app-server-daemon/releases/0.161.0-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0/codex-arg0JFdS0s:/home/zhongming/.codex/packages/app-server-daemon/releases/0.160.1-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0/codex-arg0dMws8R:/home/zhongming/.codex/packages/app-server-daemon/releases/0.160.0-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0/codex-arg0hNw7TM:/home/zhongming/.codex/packages/app-server-daemon/releases/0.159.3-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0/codex-arg0AU5H85:/home/zhongming/.codex/packages/app-server-daemon/releases/0.159.2-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0/codex-arg0pabQoQ:/home/zhongming/.codex/packages/app-server-daemon/releases/0.159.1-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0/codex-arg0XLN0vr:/home/zhongming/.codex/packages/app-server-daemon/releases/0.159.0-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0/codex-arg05deWrE:/home/zhongming/.codex/packages/app-server-daemon/releases/0.158.0-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0/codex-arg05YrRMK:/home/zhongming/.codex/packages/standalone/releases/0.158.0-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.local/bin:/home/zhongming/.vscode-server/data/User/globalStorage/github.copilot-chat/debugCommand:/home/zhongming/.vscode-server/data/User/globalStorage/github.copilot-chat/copilotCli:/home/zhongming/.vscode-server/cli/servers/Stable-0958016b2af9f09bb4257e0df4a95e2f90590f9f/server/bin/remote-cli:/home/zhongming/.cargo/bin:/home/zhongming/.local/bin:/usr/local/cuda/bin:/opt/bin/:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin",
+        "UV_CACHE_DIR": "/tmp/codenib-peer-preflight-20261027/uv-cache",
+        "UV_TOOL_DIR": "/tmp/codenib-peer-preflight-20261027/uv-tools",
+        "UV_PYTHON_INSTALL_DIR": "/tmp/codenib-peer-preflight-20261027/python"
+      },
+      "instructions": {
+        "sha256_of_sorted_utf8_json": "192f4783d257a54fc8f9bee9eeb95a868f5eb197a197789f89fbfefe19d8c74f",
+        "note": "Raw reply retained in the local receipt; no model consumed it in this readiness probe."
+      },
+      "facade_schema": {
+        "meta": {
+          "io.modelcontextprotocol/serverInfo": {
+            "name": "Serena",
+            "version": "2.1.0",
+            "websiteUrl": "https://oraios.github.io/serena"
+          }
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "lsp.find_symbol(name_path_pattern: str, depth: int = 0, relative_path: str = '', include_body: bool = False, include_info: bool = False, include_kinds: Sequence[int] = (), exclude_kinds: Sequence[int] = (), substring_matching: bool = False, max_matches: int = -1, max_answer_chars: int = -1) -> LspSymbolCollection\nFinds symbols and code entities (classes, methods, etc.) based on the given name path pattern.\n\nThe returned symbol information can be used for edits or further queries.\nSpecify `depth > 0` to also retrieve children/descendants (e.g., methods of a class).\n\nA name path is a path in the symbol tree *within a source file*.\nFor example, the method `my_method` defined in class `MyClass` would have the name path `MyClass/my_method`.\nIf a symbol is overloaded (e.g., in Java), a 0-based index is appended (e.g. \"MyClass/my_method[0]\") to\nuniquely identify it.\n\nTo search for a symbol, you provide a name path pattern that is used to match against name paths.\nIt can be\n * a simple name (e.g. \"method\"), which will match any symbol with that name\n * a relative path like \"class/method\", which will match any symbol with that name path suffix\n * an absolute name path \"/class/method\" (absolute name path), which requires an exact match of the full name path within the source file.\nAppend an index `[i]` to match a specific overload only, e.g. \"MyClass/my_method[1]\".\n\n:param name_path_pattern: the name path matching pattern (see above)\n:param depth: depth up to which descendants shall be retrieved (e.g. use 1 to also retrieve immediate children;\n    for the case where the symbol is a class, this will return its methods).\n    Ignored if `include_body=True`. Default 0.\n:param relative_path: (optional) restrict search to this file or directory. If None, searches entire codebase.\n    If a directory is passed, the search will be restricted to the files in that directory.\n    If a file is passed, the search will be restricted to that file.\n    If you have some knowledge about the codebase, you should use this parameter, as it will significantly\n    speed up the search as well as reduce the number of results.\n:param include_body: If True, include the symbol's source code. Use judiciously.\n:param include_info: whether to include additional info (hover-like, typically including docstring and signature),\n    about the symbol (ignored if include_body is True). Info is never included for child symbols.\n    Note: Depending on the language, this can be slow (e.g., C/C++).\n:param include_kinds: (optional) limits results to the given LSP symbol kinds (integers, i.e. values of `SymbolKind`)\n:param exclude_kinds: (optional) list of LSP symbol kinds (integers, i.e. values of `SymbolKind`) to exclude.\n:param substring_matching: If True, use substring matching for the last segment of `name_path_pattern`\n    (i.e. the name of the symbol, e.g. \"foo\" in \"Class/foo\" or \"my_method\" in \"my_method\").\n:param max_matches: Maximum number of permitted matches. If exceeded, an error containing a shortened result is raised,\n     which allows refining the search. -1 (default) means no limit. Set to 1 to search for a unique symbol.\n:return: the symbols (with locations) matching the name path pattern\nType documentation: `s.info(\"LspSymbolCollection\")`\n",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": null,
+        "is_error": false,
+        "result_type": "complete"
+      },
+      "git_status": " M probe.py\n?? .serena/\n"
+    },
+    "serena-update-v3.json": {
+      "scope": "corrected no-model REPL probe; original harness errors retained, not matched benefit",
+      "peer": "serena",
+      "server": {
+        "command": "/tmp/codenib-peer-preflight-20261027/bin/serena",
+        "args": [
+          "start-mcp-server",
+          "--project",
+          "/tmp/codenib-peer-preflight-20261027/serena-repository",
+          "--context",
+          "claude-code",
+          "--agent-interface",
+          "REPL",
+          "--enable-web-dashboard",
+          "False",
+          "--enable-gui-log-window",
+          "False",
+          "--open-web-dashboard",
+          "False"
+        ],
+        "cwd": "/tmp/codenib-peer-preflight-20261027/serena-repository",
+        "environment_overrides": {
+          "SERENA_HOME": "/tmp/codenib-peer-preflight-20261027/serena-state"
+        }
+      },
+      "events": [
+        {
+          "phase": "initial",
+          "source_sha256": "f702354716de7b88046506906ce067a9effdbe06a39de8ecb7f8bda11c0a0a89",
+          "source_text": "def sdk_probe_calculate(values):\n    return sum(values)\n\ndef sdk_probe_checkout(values):\n    return sdk_probe_calculate(values)\n",
+          "tool": "serena_repl",
+          "arguments": {
+            "session": "9e1a0081",
+            "code": "s.lsp.find_symbol(name_path_pattern=\"sdk_probe_checkout\", relative_path=\"probe.py\", include_body=True)"
+          },
+          "seconds": 0.10133900493383408,
+          "reply": {
+            "meta": {
+              "io.modelcontextprotocol/serverInfo": {
+                "name": "Serena",
+                "version": "2.1.0",
+                "websiteUrl": "https://oraios.github.io/serena"
+              }
+            },
+            "content": [
+              {
+                "type": "text",
+                "text": "[{\"name_path\": \"sdk_probe_checkout\", \"kind\": \"Function\", \"relative_path\": \"probe.py\", \"body_location\": {\"start_line\": 3, \"end_line\": 4}, \"body\": \"def sdk_probe_checkout(values):\\n    return sdk_probe_calculate(values)\"}]",
+                "annotations": null,
+                "meta": null
+              }
+            ],
+            "structured_content": null,
+            "is_error": false,
+            "result_type": "complete"
+          }
+        },
+        {
+          "phase": "same_session_after_external_edit",
+          "source_sha256": "db8c9cb7b30c1ba4eb31b267abf1827ffbf4371ce8617f1e18e892cd26dfbcc7",
+          "source_text": "def sdk_probe_calculate_v2(values):\n    return sum(values)\n\ndef sdk_probe_checkout(values):\n    return sdk_probe_calculate_v2(values)\n",
+          "tool": "serena_repl",
+          "arguments": {
+            "session": "9e1a0081",
+            "code": "s.lsp.find_symbol(name_path_pattern=\"sdk_probe_checkout\", relative_path=\"probe.py\", include_body=True)"
+          },
+          "seconds": 0.17668859101831913,
+          "reply": {
+            "meta": {
+              "io.modelcontextprotocol/serverInfo": {
+                "name": "Serena",
+                "version": "2.1.0",
+                "websiteUrl": "https://oraios.github.io/serena"
+              }
+            },
+            "content": [
+              {
+                "type": "text",
+                "text": "[{\"name_path\": \"sdk_probe_checkout\", \"kind\": \"Function\", \"relative_path\": \"probe.py\", \"body_location\": {\"start_line\": 3, \"end_line\": 4}, \"body\": \"def sdk_probe_checkout(values):\\n    return sdk_probe_calculate_v2(values)\"}]",
+                "annotations": null,
+                "meta": null
+              }
+            ],
+            "structured_content": null,
+            "is_error": false,
+            "result_type": "complete"
+          }
+        },
+        {
+          "phase": "reference_schema",
+          "tool": "serena_repl",
+          "arguments": {
+            "session": "9e1a0081",
+            "code": "s.info(\"lsp.find_referencing_symbols\")"
+          },
+          "seconds": 0.10428491234779358,
+          "source_sha256": "db8c9cb7b30c1ba4eb31b267abf1827ffbf4371ce8617f1e18e892cd26dfbcc7",
+          "reply": {
+            "meta": {
+              "io.modelcontextprotocol/serverInfo": {
+                "name": "Serena",
+                "version": "2.1.0",
+                "websiteUrl": "https://oraios.github.io/serena"
+              }
+            },
+            "content": [
+              {
+                "type": "text",
+                "text": "lsp.find_referencing_symbols(name_path: str, relative_path: str, include_kinds: Sequence[int] = (), exclude_kinds: Sequence[int] = (), max_answer_chars: int = -1) -> LspReferenceCollection\nFinds references to the symbol at the given `name_path`.\n\nThe result will contain metadata about the referencing symbols as well as a short code snippet around the reference.\n\n:param name_path: name path of the symbol\n:param relative_path: the relative path to the file containing the symbol for which to find references.\n:param include_kinds: (optional) limits results to the given LSP symbol kinds (integers, i.e. values of `SymbolKind`)\n:param exclude_kinds: optional list of LSP symbol kinds (integers, i.e. values of `SymbolKind`) to exclude.\n:return: the references to the symbol\nType documentation: `s.info(\"LspReferenceCollection\")`\n",
+                "annotations": null,
+                "meta": null
+              }
+            ],
+            "structured_content": null,
+            "is_error": false,
+            "result_type": "complete"
+          }
+        },
+        {
+          "phase": "new_definition",
+          "tool": "serena_repl",
+          "arguments": {
+            "session": "9e1a0081",
+            "code": "s.lsp.find_symbol(name_path_pattern=\"sdk_probe_calculate_v2\", relative_path=\"probe.py\", include_body=True)"
+          },
+          "seconds": 0.10080058872699738,
+          "source_sha256": "db8c9cb7b30c1ba4eb31b267abf1827ffbf4371ce8617f1e18e892cd26dfbcc7",
+          "reply": {
+            "meta": {
+              "io.modelcontextprotocol/serverInfo": {
+                "name": "Serena",
+                "version": "2.1.0",
+                "websiteUrl": "https://oraios.github.io/serena"
+              }
+            },
+            "content": [
+              {
+                "type": "text",
+                "text": "[{\"name_path\": \"sdk_probe_calculate_v2\", \"kind\": \"Function\", \"relative_path\": \"probe.py\", \"body_location\": {\"start_line\": 0, \"end_line\": 1}, \"body\": \"def sdk_probe_calculate_v2(values):\\n    return sum(values)\"}]",
+                "annotations": null,
+                "meta": null
+              }
+            ],
+            "structured_content": null,
+            "is_error": false,
+            "result_type": "complete"
+          }
+        },
+        {
+          "phase": "new_references",
+          "tool": "serena_repl",
+          "arguments": {
+            "session": "9e1a0081",
+            "code": "s.lsp.find_referencing_symbols(name_path=\"sdk_probe_calculate_v2\", relative_path=\"probe.py\")"
+          },
+          "seconds": 2.1093712132424116,
+          "source_sha256": "db8c9cb7b30c1ba4eb31b267abf1827ffbf4371ce8617f1e18e892cd26dfbcc7",
+          "reply": {
+            "meta": {
+              "io.modelcontextprotocol/serverInfo": {
+                "name": "Serena",
+                "version": "2.1.0",
+                "websiteUrl": "https://oraios.github.io/serena"
+              }
+            },
+            "content": [
+              {
+                "type": "text",
+                "text": "{\"probe.py\": {\"Function\": [{\"name_path\": \"sdk_probe_checkout\", \"body_location\": {\"start_line\": 3, \"end_line\": 4}, \"content_around_reference\": \"...   3:def sdk_probe_checkout(values):\\n  >   4:    return sdk_probe_calculate_v2(values)\\n...   5:\"}]}}",
+                "annotations": null,
+                "meta": null
+              }
+            ],
+            "structured_content": null,
+            "is_error": false,
+            "result_type": "complete"
+          }
+        }
+      ],
+      "fixture_reset": "Restore the captured original source before a fresh connection; prior failed observations remain in serena-update.json.",
+      "remediation": "Expose the uv prerequisite on the child PATH; original setup failure and harness list_tools error retained.",
+      "index_retry": {
+        "command": [
+          "/tmp/codenib-peer-preflight-20261027/bin/serena",
+          "project",
+          "index",
+          "/tmp/codenib-peer-preflight-20261027/serena-repository"
+        ],
+        "seconds": 0.8926090616732836,
+        "returncode": 0,
+        "stdout": "Indexing symbols in Project[root='/tmp/codenib-peer-preflight-20261027/serena-repository', name=serena-repository] …\nIndexed files per language: python=1\n",
+        "stderr": "\nIndexing:   0%|          | 0/1 [00:00<?, ?it/s]\nIndexing: 100%|██████████| 1/1 [00:00<00:00, 13.33it/s]\n"
+      },
+      "server_environment_overrides": {
+        "SERENA_HOME": "/tmp/codenib-peer-preflight-20261027/serena-state",
+        "PATH": "/tmp/codenib-peer-preflight-20261027/bootstrap/bin:/home/zhongming/.local/bin:/usr/local/cuda/bin:/opt/bin/:/home/zhongming/.codex/packages/app-server-daemon/releases/0.165.0-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0-linux/codex-arg0MplG5g:/home/zhongming/.codex/tmp/arg0-linux/codex-arg0NyjhTb:/home/zhongming/.codex/packages/app-server-daemon/releases/0.164.0-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0-linux/codex-arg08ZE9kl:/home/zhongming/.codex/packages/app-server-daemon/releases/0.163.0-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0/codex-arg0zIi1Uh:/home/zhongming/.codex/packages/app-server-daemon/releases/0.162.1-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0/codex-arg0DbviHb:/home/zhongming/.codex/packages/app-server-daemon/releases/0.162.0-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0/codex-arg0BnhYWi:/home/zhongming/.codex/packages/app-server-daemon/releases/0.161.0-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0/codex-arg0JFdS0s:/home/zhongming/.codex/packages/app-server-daemon/releases/0.160.1-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0/codex-arg0dMws8R:/home/zhongming/.codex/packages/app-server-daemon/releases/0.160.0-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0/codex-arg0hNw7TM:/home/zhongming/.codex/packages/app-server-daemon/releases/0.159.3-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0/codex-arg0AU5H85:/home/zhongming/.codex/packages/app-server-daemon/releases/0.159.2-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0/codex-arg0pabQoQ:/home/zhongming/.codex/packages/app-server-daemon/releases/0.159.1-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0/codex-arg0XLN0vr:/home/zhongming/.codex/packages/app-server-daemon/releases/0.159.0-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0/codex-arg05deWrE:/home/zhongming/.codex/packages/app-server-daemon/releases/0.158.0-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.codex/tmp/arg0/codex-arg05YrRMK:/home/zhongming/.codex/packages/standalone/releases/0.158.0-aarch64-unknown-linux-musl/codex-path:/home/zhongming/.local/bin:/home/zhongming/.vscode-server/data/User/globalStorage/github.copilot-chat/debugCommand:/home/zhongming/.vscode-server/data/User/globalStorage/github.copilot-chat/copilotCli:/home/zhongming/.vscode-server/cli/servers/Stable-0958016b2af9f09bb4257e0df4a95e2f90590f9f/server/bin/remote-cli:/home/zhongming/.cargo/bin:/home/zhongming/.local/bin:/usr/local/cuda/bin:/opt/bin/:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin",
+        "UV_CACHE_DIR": "/tmp/codenib-peer-preflight-20261027/uv-cache",
+        "UV_TOOL_DIR": "/tmp/codenib-peer-preflight-20261027/uv-tools",
+        "UV_PYTHON_INSTALL_DIR": "/tmp/codenib-peer-preflight-20261027/python"
+      },
+      "instructions": {
+        "sha256_of_sorted_utf8_json": "5f81513196b84fc2d863ce2e75cf5998fa34c6998e8e8a42601d3a658fc572fc",
+        "note": "Raw reply retained in the local receipt; no model consumed it in this readiness probe."
+      },
+      "facade_schema": {
+        "meta": {
+          "io.modelcontextprotocol/serverInfo": {
+            "name": "Serena",
+            "version": "2.1.0",
+            "websiteUrl": "https://oraios.github.io/serena"
+          }
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "lsp.find_symbol(name_path_pattern: str, depth: int = 0, relative_path: str = '', include_body: bool = False, include_info: bool = False, include_kinds: Sequence[int] = (), exclude_kinds: Sequence[int] = (), substring_matching: bool = False, max_matches: int = -1, max_answer_chars: int = -1) -> LspSymbolCollection\nFinds symbols and code entities (classes, methods, etc.) based on the given name path pattern.\n\nThe returned symbol information can be used for edits or further queries.\nSpecify `depth > 0` to also retrieve children/descendants (e.g., methods of a class).\n\nA name path is a path in the symbol tree *within a source file*.\nFor example, the method `my_method` defined in class `MyClass` would have the name path `MyClass/my_method`.\nIf a symbol is overloaded (e.g., in Java), a 0-based index is appended (e.g. \"MyClass/my_method[0]\") to\nuniquely identify it.\n\nTo search for a symbol, you provide a name path pattern that is used to match against name paths.\nIt can be\n * a simple name (e.g. \"method\"), which will match any symbol with that name\n * a relative path like \"class/method\", which will match any symbol with that name path suffix\n * an absolute name path \"/class/method\" (absolute name path), which requires an exact match of the full name path within the source file.\nAppend an index `[i]` to match a specific overload only, e.g. \"MyClass/my_method[1]\".\n\n:param name_path_pattern: the name path matching pattern (see above)\n:param depth: depth up to which descendants shall be retrieved (e.g. use 1 to also retrieve immediate children;\n    for the case where the symbol is a class, this will return its methods).\n    Ignored if `include_body=True`. Default 0.\n:param relative_path: (optional) restrict search to this file or directory. If None, searches entire codebase.\n    If a directory is passed, the search will be restricted to the files in that directory.\n    If a file is passed, the search will be restricted to that file.\n    If you have some knowledge about the codebase, you should use this parameter, as it will significantly\n    speed up the search as well as reduce the number of results.\n:param include_body: If True, include the symbol's source code. Use judiciously.\n:param include_info: whether to include additional info (hover-like, typically including docstring and signature),\n    about the symbol (ignored if include_body is True). Info is never included for child symbols.\n    Note: Depending on the language, this can be slow (e.g., C/C++).\n:param include_kinds: (optional) limits results to the given LSP symbol kinds (integers, i.e. values of `SymbolKind`)\n:param exclude_kinds: (optional) list of LSP symbol kinds (integers, i.e. values of `SymbolKind`) to exclude.\n:param substring_matching: If True, use substring matching for the last segment of `name_path_pattern`\n    (i.e. the name of the symbol, e.g. \"foo\" in \"Class/foo\" or \"my_method\" in \"my_method\").\n:param max_matches: Maximum number of permitted matches. If exceeded, an error containing a shortened result is raised,\n     which allows refining the search. -1 (default) means no limit. Set to 1 to search for a unique symbol.\n:return: the symbols (with locations) matching the name path pattern\nType documentation: `s.info(\"LspSymbolCollection\")`\n",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": null,
+        "is_error": false,
+        "result_type": "complete"
+      },
+      "git_status": " M probe.py\n?? .serena/\n"
+    }
+  },
+  "harnesses": {
+    "peer-discover.py": {
+      "sha256": "0f8a9b7e27ed150e94a2b8c88d8f08b4bb3542f4bea63ea5228e1842803a9e40",
+      "source": "import asyncio, json, os, subprocess, sys, time, traceback\nfrom pathlib import Path\nfrom mcp import Client, StdioServerParameters\nfrom mcp.client.stdio import stdio_client\nROOT = Path('/tmp/codenib-peer-preflight-20261027')\nPEER = sys.argv[1]\nREPO = ROOT / (PEER + '-repository')\nREPO.mkdir(exist_ok=True)\nSOURCE = \"def sdk_probe_calculate(values):\\n    return sum(values)\\n\\ndef sdk_probe_checkout(values):\\n    return sdk_probe_calculate(values)\\n\"\n(REPO / 'probe.py').write_text(SOURCE)\nfor cmd in (['git','init','-q'], ['git','add','probe.py'], ['git','-c','user.name=Fixture','-c','user.email=fixture@example.invalid','commit','-qm','fixture']):\n    subprocess.run(cmd,cwd=REPO,check=True,capture_output=True)\nenv = os.environ.copy()\nrecord = {'scope':'readiness only, no model or matched task', 'peer':PEER, 'source': SOURCE, 'events':[]}\nif PEER == 'serena':\n    env['SERENA_HOME'] = str(ROOT/'serena-state')\n    cmd = [str(ROOT/'bin/serena'),'project','create',str(REPO),'--index']\n    start=time.monotonic(); result=subprocess.run(cmd,env=env,text=True,capture_output=True,timeout=120)\n    record['setup']={'command':cmd,'seconds':time.monotonic()-start,'returncode':result.returncode,'stdout':result.stdout,'stderr':result.stderr}\n    command = str(ROOT/'bin/serena')\n    args = ['start-mcp-server','--project',str(REPO),'--context','claude-code','--agent-interface','REPL','--enable-web-dashboard','False','--enable-gui-log-window','False','--open-web-dashboard','False']\nelse:\n    env.update(CODEGRAPH_INSTALL_DIR=str(ROOT/'codegraph-runtime'),CODEGRAPH_TELEMETRY='0',DO_NOT_TRACK='1',CODEGRAPH_NO_DAEMON='1')\n    command = str(ROOT/'codegraph-runtime/bundles/linux-arm64-1.6.2/bin/codegraph')\n    cmd = [command,'init','--yes',str(REPO)]\n    start=time.monotonic(); result=subprocess.run(cmd,cwd=REPO,env=env,text=True,capture_output=True,timeout=120)\n    record['setup']={'command':cmd,'seconds':time.monotonic()-start,'returncode':result.returncode,'stdout':result.stdout,'stderr':result.stderr}\n    record['mode_note']='Direct single-writer preflight to avoid changing the real user daemon registry; not a measured default-daemon condition.'\n    args=['serve','--mcp']\nrecord['server']={'command':command,'args':args,'cwd':str(REPO),'environment_overrides':{k:env[k] for k in ('SERENA_HOME','CODEGRAPH_INSTALL_DIR','CODEGRAPH_TELEMETRY','DO_NOT_TRACK','CODEGRAPH_NO_DAEMON') if k in env}}\nasync def main():\n    start=time.monotonic()\n    with (ROOT/(PEER+'-mcp.stderr')).open('w') as errors:\n        transport=stdio_client(StdioServerParameters(command=command,args=args,env=env,cwd=REPO),errlog=errors)\n        async with Client(transport,mode='auto',cache=None) as client:\n            tools=await client.list_tools()\n            record['tools']=[tool.model_dump(mode='json') for tool in tools]\n            record['connection_seconds']=time.monotonic()-start\n            print(PEER, [t.name for t in tools])\ntry:\n    asyncio.run(asyncio.wait_for(main(),timeout=120))\nexcept Exception as exc:\n    record['error']={'type':type(exc).__name__,'message':str(exc),'traceback':traceback.format_exc()}\n    print(PEER,'FAILED',type(exc).__name__,str(exc))\nfinally:\n    record['git_status']=subprocess.check_output(['git','status','--porcelain'],cwd=REPO,text=True)\n    (ROOT/(PEER+'-discovery.json')).write_text(json.dumps(record,indent=2))\n"
+    },
+    "peer-session.py": {
+      "sha256": "b23c0a1df654f44660e7bf1b4d873d03194e52cc0dea2479823ff5e82660c089",
+      "source": "import asyncio, json, os, sys, time, traceback\nfrom pathlib import Path\nfrom mcp import Client, StdioServerParameters\nfrom mcp.client.stdio import stdio_client\nROOT=Path('/tmp/codenib-peer-preflight-20261027')\nPEER=sys.argv[1]\noriginal=json.loads((ROOT/(PEER+'-discovery.json')).read_text())\nserver=original['server'];env=dict(os.environ,**server['environment_overrides'])\nrecord={'scope':'no-model readiness; corrected list_tools result handling; first harness error retained separately', 'peer':PEER,'server':server,'events':[]}\nasync def main():\n    start=time.monotonic()\n    with (ROOT/(PEER+'-session.stderr')).open('w') as errors:\n        transport=stdio_client(StdioServerParameters(command=server['command'],args=server['args'],cwd=server['cwd'],env=env),errlog=errors)\n        async with Client(transport,mode='auto',cache=None) as client:\n            result=await client.list_tools();tools=result.tools\n            record['tools']=[t.model_dump(mode='json') for t in tools]\n            record['connection_seconds']=time.monotonic()-start\n            print(PEER,[(t.name,t.input_schema) for t in tools])\n            if any(t.name=='initial_instructions' for t in tools):\n                reply=await client.call_tool('initial_instructions',arguments={})\n                record['events'].append({'tool':'initial_instructions','reply':reply.model_dump(mode='json')})\ntry:\n    asyncio.run(asyncio.wait_for(main(),timeout=90))\nexcept Exception as exc:\n    record['error']={'type':type(exc).__name__,'message':str(exc),'traceback':traceback.format_exc()};print('ERROR',type(exc).__name__,str(exc))\nfinally:\n    (ROOT/(PEER+'-session.json')).write_text(json.dumps(record,indent=2))\n"
+    },
+    "peer-update.py": {
+      "sha256": "877b10dd640b5a9a91078e8b7e38447db17fa7ba50a76d5f0fada80595434374",
+      "source": "import asyncio, hashlib, json, os, re, subprocess, sys, time, traceback\nfrom pathlib import Path\nfrom mcp import Client, StdioServerParameters\nfrom mcp.client.stdio import stdio_client\nROOT=Path('/tmp/codenib-peer-preflight-20261027'); PEER=sys.argv[1]\noriginal=json.loads((ROOT/(PEER+'-discovery.json')).read_text()); server=original['server']; repo=Path(server['cwd'])\nenv=dict(os.environ,**server['environment_overrides'])\nrecord={'scope':'no-model readiness and external-disk-edit probe; not a matched benefit trial', 'peer':PEER,'server':server,'events':[]}\nif PEER=='serena':\n    env.update(PATH=str(ROOT/'bootstrap/bin')+os.pathsep+env['PATH'],UV_CACHE_DIR=str(ROOT/'uv-cache'),UV_TOOL_DIR=str(ROOT/'uv-tools'),UV_PYTHON_INSTALL_DIR=str(ROOT/'python'))\n    record['remediation']='Expose the uv prerequisite on the child PATH; original setup failure and harness list_tools error retained.'\n    command=[str(ROOT/'bin/serena'),'project','index',str(repo)]\n    start=time.monotonic(); result=subprocess.run(command,cwd=repo,env=env,text=True,capture_output=True,timeout=120)\n    record['index_retry']={'command':command,'seconds':time.monotonic()-start,'returncode':result.returncode,'stdout':result.stdout,'stderr':result.stderr}\nrecord['server_environment_overrides']={k:env[k] for k in ('SERENA_HOME','PATH','UV_CACHE_DIR','UV_TOOL_DIR','UV_PYTHON_INSTALL_DIR','CODEGRAPH_INSTALL_DIR','CODEGRAPH_TELEMETRY','DO_NOT_TRACK','CODEGRAPH_NO_DAEMON') if k in env}\nasync def main():\n    with (ROOT/(PEER+'-update.stderr')).open('w') as errors:\n        transport=stdio_client(StdioServerParameters(command=server['command'],args=server['args'],cwd=repo,env=env),errlog=errors)\n        async with Client(transport,mode='auto',cache=None) as client:\n            session_id=None\n            if PEER=='serena':\n                reply=await client.call_tool('initial_instructions',arguments={})\n                payload=reply.model_dump(mode='json');record['instructions']=payload\n                text=''.join(block.get('text','') for block in payload['content'])\n                session_id=re.search(r'session id is `([^`]+)`',text).group(1)\n            async def query(label):\n                source=(repo/'probe.py').read_bytes()\n                if PEER=='serena':\n                    name='serena_repl';args={'session':session_id,'code':'print(lsp.find_symbol(name_path_pattern=\"sdk_probe_checkout\", relative_path=\"probe.py\", include_body=True))'}\n                else:\n                    name='codegraph_explore';args={'query':'sdk_probe_checkout'}\n                start=time.monotonic();reply=await client.call_tool(name,arguments=args)\n                payload=reply.model_dump(mode='json')\n                record['events'].append({'phase':label,'source_sha256':hashlib.sha256(source).hexdigest(),'source_text':source.decode(),'tool':name,'arguments':args,'seconds':time.monotonic()-start,'reply':payload})\n                print(PEER,label,'error=',payload['is_error'],str(payload.get('structured_content') or payload.get('content'))[:1000])\n            await query('initial')\n            path=repo/'probe.py';before=path.read_text();after=before.replace('sdk_probe_calculate','sdk_probe_calculate_v2')\n            assert before!=after\n            path.write_text(after)\n            await asyncio.sleep(1.0)\n            await query('same_session_after_external_edit')\ntry:\n    asyncio.run(asyncio.wait_for(main(),timeout=120))\nexcept Exception as exc:\n    record['error']={'type':type(exc).__name__,'message':str(exc),'traceback':traceback.format_exc()};print('ERROR',type(exc).__name__,str(exc))\nfinally:\n    record['git_status']=subprocess.check_output(['git','status','--porcelain'],cwd=repo,text=True)\n    (ROOT/(PEER+'-update.json')).write_text(json.dumps(record,indent=2))\n"
+    },
+    "peer-update-v2.py": {
+      "sha256": "cf52f048b5a679209b079c922a18db27ab1a63c90d028fc87f1f4bedb15c8141",
+      "source": "import asyncio, hashlib, json, os, re, subprocess, sys, time, traceback\nfrom pathlib import Path\nfrom mcp import Client, StdioServerParameters\nfrom mcp.client.stdio import stdio_client\nROOT=Path('/tmp/codenib-peer-preflight-20261027'); PEER=sys.argv[1]\noriginal=json.loads((ROOT/(PEER+'-discovery.json')).read_text()); server=original['server']; repo=Path(server['cwd'])\nenv=dict(os.environ,**server['environment_overrides'])\nrecord={'scope':'corrected no-model REPL probe; original harness errors retained, not matched benefit', 'peer':PEER,'server':server,'events':[]}\n(repo/'probe.py').write_text(original['source'])\nrecord['fixture_reset']='Restore the captured original source before a fresh connection; prior failed observations remain in serena-update.json.'\nif PEER=='serena':\n    env.update(PATH=str(ROOT/'bootstrap/bin')+os.pathsep+env['PATH'],UV_CACHE_DIR=str(ROOT/'uv-cache'),UV_TOOL_DIR=str(ROOT/'uv-tools'),UV_PYTHON_INSTALL_DIR=str(ROOT/'python'))\n    record['remediation']='Expose the uv prerequisite on the child PATH; original setup failure and harness list_tools error retained.'\n    command=[str(ROOT/'bin/serena'),'project','index',str(repo)]\n    start=time.monotonic(); result=subprocess.run(command,cwd=repo,env=env,text=True,capture_output=True,timeout=120)\n    record['index_retry']={'command':command,'seconds':time.monotonic()-start,'returncode':result.returncode,'stdout':result.stdout,'stderr':result.stderr}\nrecord['server_environment_overrides']={k:env[k] for k in ('SERENA_HOME','PATH','UV_CACHE_DIR','UV_TOOL_DIR','UV_PYTHON_INSTALL_DIR','CODEGRAPH_INSTALL_DIR','CODEGRAPH_TELEMETRY','DO_NOT_TRACK','CODEGRAPH_NO_DAEMON') if k in env}\nasync def main():\n    with (ROOT/(PEER+'-update-v2.stderr')).open('w') as errors:\n        transport=stdio_client(StdioServerParameters(command=server['command'],args=server['args'],cwd=repo,env=env),errlog=errors)\n        async with Client(transport,mode='auto',cache=None) as client:\n            session_id=None\n            if PEER=='serena':\n                reply=await client.call_tool('initial_instructions',arguments={})\n                payload=reply.model_dump(mode='json');record['instructions']=payload\n                text=''.join(block.get('text','') for block in payload['content'])\n                session_id=re.search(r'session id is `([^`]+)`',text).group(1)\n                info=await client.call_tool('serena_repl',arguments={'session':session_id,'code':'s.info(\"lsp.find_symbol\")'})\n                record['facade_schema']=info.model_dump(mode='json')\n            async def query(label):\n                source=(repo/'probe.py').read_bytes()\n                if PEER=='serena':\n                    name='serena_repl';args={'session':session_id,'code':'s.lsp.find_symbol(name_path_pattern=\"sdk_probe_checkout\", relative_path=\"probe.py\", include_body=True)'}\n                else:\n                    name='codegraph_explore';args={'query':'sdk_probe_checkout'}\n                start=time.monotonic();reply=await client.call_tool(name,arguments=args)\n                payload=reply.model_dump(mode='json')\n                record['events'].append({'phase':label,'source_sha256':hashlib.sha256(source).hexdigest(),'source_text':source.decode(),'tool':name,'arguments':args,'seconds':time.monotonic()-start,'reply':payload})\n                print(PEER,label,'error=',payload['is_error'],str(payload.get('structured_content') or payload.get('content'))[:1000])\n            await query('initial')\n            path=repo/'probe.py';before=path.read_text();after=before.replace('sdk_probe_calculate','sdk_probe_calculate_v2')\n            assert before!=after\n            path.write_text(after)\n            await asyncio.sleep(1.0)\n            await query('same_session_after_external_edit')\ntry:\n    asyncio.run(asyncio.wait_for(main(),timeout=120))\nexcept Exception as exc:\n    record['error']={'type':type(exc).__name__,'message':str(exc),'traceback':traceback.format_exc()};print('ERROR',type(exc).__name__,str(exc))\nfinally:\n    record['git_status']=subprocess.check_output(['git','status','--porcelain'],cwd=repo,text=True)\n    (ROOT/(PEER+'-update-v2.json')).write_text(json.dumps(record,indent=2))\n"
+    },
+    "peer-update-v3.py": {
+      "sha256": "7259652a98d9d5cf4daabccc6e5aabd160ce831306f43483645c8a79be330d5b",
+      "source": "import asyncio, hashlib, json, os, re, subprocess, sys, time, traceback\nfrom pathlib import Path\nfrom mcp import Client, StdioServerParameters\nfrom mcp.client.stdio import stdio_client\nROOT=Path('/tmp/codenib-peer-preflight-20261027'); PEER=sys.argv[1]\noriginal=json.loads((ROOT/(PEER+'-discovery.json')).read_text()); server=original['server']; repo=Path(server['cwd'])\nenv=dict(os.environ,**server['environment_overrides'])\nrecord={'scope':'corrected no-model REPL probe; original harness errors retained, not matched benefit', 'peer':PEER,'server':server,'events':[]}\n(repo/'probe.py').write_text(original['source'])\nrecord['fixture_reset']='Restore the captured original source before a fresh connection; prior failed observations remain in serena-update.json.'\nif PEER=='serena':\n    env.update(PATH=str(ROOT/'bootstrap/bin')+os.pathsep+env['PATH'],UV_CACHE_DIR=str(ROOT/'uv-cache'),UV_TOOL_DIR=str(ROOT/'uv-tools'),UV_PYTHON_INSTALL_DIR=str(ROOT/'python'))\n    record['remediation']='Expose the uv prerequisite on the child PATH; original setup failure and harness list_tools error retained.'\n    command=[str(ROOT/'bin/serena'),'project','index',str(repo)]\n    start=time.monotonic(); result=subprocess.run(command,cwd=repo,env=env,text=True,capture_output=True,timeout=120)\n    record['index_retry']={'command':command,'seconds':time.monotonic()-start,'returncode':result.returncode,'stdout':result.stdout,'stderr':result.stderr}\nrecord['server_environment_overrides']={k:env[k] for k in ('SERENA_HOME','PATH','UV_CACHE_DIR','UV_TOOL_DIR','UV_PYTHON_INSTALL_DIR','CODEGRAPH_INSTALL_DIR','CODEGRAPH_TELEMETRY','DO_NOT_TRACK','CODEGRAPH_NO_DAEMON') if k in env}\nasync def main():\n    with (ROOT/(PEER+'-update-v3.stderr')).open('w') as errors:\n        transport=stdio_client(StdioServerParameters(command=server['command'],args=server['args'],cwd=repo,env=env),errlog=errors)\n        async with Client(transport,mode='auto',cache=None) as client:\n            session_id=None\n            if PEER=='serena':\n                reply=await client.call_tool('initial_instructions',arguments={})\n                payload=reply.model_dump(mode='json');record['instructions']=payload\n                text=''.join(block.get('text','') for block in payload['content'])\n                session_id=re.search(r'session id is `([^`]+)`',text).group(1)\n                info=await client.call_tool('serena_repl',arguments={'session':session_id,'code':'s.info(\"lsp.find_symbol\")'})\n                record['facade_schema']=info.model_dump(mode='json')\n            async def query(label):\n                source=(repo/'probe.py').read_bytes()\n                if PEER=='serena':\n                    name='serena_repl';args={'session':session_id,'code':'s.lsp.find_symbol(name_path_pattern=\"sdk_probe_checkout\", relative_path=\"probe.py\", include_body=True)'}\n                else:\n                    name='codegraph_explore';args={'query':'sdk_probe_checkout'}\n                start=time.monotonic();reply=await client.call_tool(name,arguments=args)\n                payload=reply.model_dump(mode='json')\n                record['events'].append({'phase':label,'source_sha256':hashlib.sha256(source).hexdigest(),'source_text':source.decode(),'tool':name,'arguments':args,'seconds':time.monotonic()-start,'reply':payload})\n                print(PEER,label,'error=',payload['is_error'],str(payload.get('structured_content') or payload.get('content'))[:1000])\n            await query('initial')\n            path=repo/'probe.py';before=path.read_text();after=before.replace('sdk_probe_calculate','sdk_probe_calculate_v2')\n            assert before!=after\n            path.write_text(after)\n            await asyncio.sleep(1.0)\n            await query('same_session_after_external_edit')\n            if PEER=='serena':\n                for label,code in (\n                    ('reference_schema','s.info(\"lsp.find_referencing_symbols\")'),\n                    ('new_definition','s.lsp.find_symbol(name_path_pattern=\"sdk_probe_calculate_v2\", relative_path=\"probe.py\", include_body=True)'),\n                    ('new_references','s.lsp.find_referencing_symbols(name_path=\"sdk_probe_calculate_v2\", relative_path=\"probe.py\")')\n                ):\n                    start=time.monotonic();reply=await client.call_tool('serena_repl',arguments={'session':session_id,'code':code})\n                    payload=reply.model_dump(mode='json')\n                    record['events'].append({'phase':label,'tool':'serena_repl','arguments':{'session':session_id,'code':code},'seconds':time.monotonic()-start,'source_sha256':hashlib.sha256((repo/'probe.py').read_bytes()).hexdigest(),'reply':payload})\n                    print(PEER,label,str(payload.get('structured_content') or payload.get('content'))[:1000])\ntry:\n    asyncio.run(asyncio.wait_for(main(),timeout=120))\nexcept Exception as exc:\n    record['error']={'type':type(exc).__name__,'message':str(exc),'traceback':traceback.format_exc()};print('ERROR',type(exc).__name__,str(exc))\nfinally:\n    record['git_status']=subprocess.check_output(['git','status','--porcelain'],cwd=repo,text=True)\n    (ROOT/(PEER+'-update-v3.json')).write_text(json.dumps(record,indent=2))\n"
+    }
+  },
+  "remaining_gates": [
+    "Default-daemon readiness in isolated execution",
+    "Representative real repositories and #871 scope",
+    "Exact SDK model/settings and token normalization",
+    "Prospective tasks, acceptance fixtures, ordering, timeout and setup/update amortization",
+    "External-user recruitment and seven-day observations"
+  ]
+}

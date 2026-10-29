@@ -16088,8 +16088,15 @@ def test_project_directory_ownership_subtree_matches_capture_without_io(
     def unexpected_io(*_args: object, **_kwargs: object) -> object:
         raise AssertionError("subtree ownership projection performed I/O")
 
+    # os is shared process-wide. Replacing its functions also breaks xdist's
+    # control threads and pytest reporting; guard only this module's binding.
+    guarded_os = SimpleNamespace(**vars(atomic_module.os))
     for name in ("open", "read", "stat", "fstat", "scandir"):
-        monkeypatch.setattr(atomic_module.os, name, unexpected_io)
+        setattr(guarded_os, name, unexpected_io)
+    monkeypatch.setattr(atomic_module, "os", guarded_os)
+
+    # Independent I/O remains available while projection's calls are blocked.
+    assert stat.S_ISDIR(os.stat(selected).st_mode)
 
     assert (
         atomic_module.project_directory_ownership_subtree(

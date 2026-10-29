@@ -1282,7 +1282,7 @@ jobs:
 
   upgrade-smoke:
     name: Upgrade from CodeNib 0.2.2
-    if: inputs.full
+    if: inputs.full || github.event_name == 'pull_request'
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -1434,7 +1434,7 @@ jobs:
 
   graph-smoke:
     name: Installed CodeGraph and agent onboarding
-    if: inputs.full
+    if: inputs.full || github.event_name == 'pull_request'
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -1468,10 +1468,10 @@ jobs:
             dist --print-compatible-wheel)"
           "$GRAPH_VENV/bin/python" -m pip install "${WHEEL}[graph,mcp]"
 
-      - name: Provision the Python SCIP provider
+      - name: Provision the Python graph providers
         run: |
           SCIP_ROOT="$RUNNER_TEMP/codenib-scip-python-${{ github.run_id }}-${{ github.run_attempt }}"
-          npm install --prefix "$SCIP_ROOT" "@sourcegraph/scip-python@0.6.6"
+          npm install --prefix "$SCIP_ROOT" "@sourcegraph/scip-python@0.6.6" "basedpyright@1.39.8"
           echo "$SCIP_ROOT/node_modules/.bin" >> "$GITHUB_PATH"
 
       - name: Verify graph dependency boundary

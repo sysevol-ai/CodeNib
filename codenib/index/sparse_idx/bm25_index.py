@@ -364,6 +364,15 @@ def _split_source_lines(source_text: str) -> List[str]:
     return lines
 
 
+# Lower-to-upper (getUser) and acronym-to-word (HTTPServer) boundaries.
+_CAMEL_BOUNDARY = re.compile(r"(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
+# Persisted indexes record the tokenizer that built their documents, and
+# queries use the same one. Indexes without the field predate camelCase parts.
+BM25_TOKENIZER_LEGACY = "code-v1"
+BM25_TOKENIZER = "code-v2"
+BM25_TOKENIZERS = frozenset({BM25_TOKENIZER_LEGACY, BM25_TOKENIZER})
+
+
 @dataclass(slots=True)
 class Document:
     """Minimal document shape shared with existing retrieval consumers."""
@@ -389,6 +398,16 @@ class BM25Retriever:
         k: int,
     ) -> BM25Retriever:
         return cls(documents, k=k)
+
+    def size(self) -> dict[str, int]:
+        """Indexed documents, tokens, and distinct terms."""
+        if self._index is None:
+            return {"documents": 0, "tokens": 0, "vocabulary": 0}
+        return {
+            "documents": self._index.corpus_size,
+            "tokens": int(sum(self._index.doc_len)),
+            "vocabulary": len(self._index.idf),
+        }
 
     def invoke(self, query: str) -> List[Document]:
         if self._index is None:
@@ -520,6 +539,7 @@ class BM25CodeIndexer:
 
         self.retriever = None
         self._documents_prepared = False
+        self.tokenizer = BM25_TOKENIZER
         self.code_graph: CodeGraph = None
         self.project_root = project_root
         self.source_mode = SOURCE_MODE_LEGACY_DIRECT
@@ -549,7 +569,8 @@ class BM25CodeIndexer:
         Args:
             code_graph: CodeGraph instance containing nodes to index
         """
-        # Reset the index
+        # Reset the index; a full build always uses the current tokenizer.
+        self.tokenizer = BM25_TOKENIZER
         self.documents = []
         self.nodes = []
         self.code_graph = code_graph
@@ -608,7 +629,8 @@ class BM25CodeIndexer:
     ) -> None:
         """Prepare canonical chunk documents without constructing BM25Okapi."""
 
-        # Reset the index
+        # Reset the index; a full build always uses the current tokenizer.
+        self.tokenizer = BM25_TOKENIZER
         self.documents = []
         self.nodes = []
         self.code_graph = None
@@ -841,8 +863,13 @@ class BM25CodeIndexer:
             processed_tokens = []
             for token in tokens:
                 if token:
-                    # Lowercase all tokens for better matching
+                    # Keep the whole identifier for exact matches, then add its
+                    # camelCase parts so prose like "user name" finds
+                    # getUserName. Legacy indexes tokenize queries as built.
                     processed_tokens.append(token.lower())
+                    parts = _CAMEL_BOUNDARY.split(token)
+                    if self.tokenizer == BM25_TOKENIZER and len(parts) > 1:
+                        processed_tokens.extend(part.lower() for part in parts if part)
 
             # Join with spaces to create searchable terms
             return " ".join(filter(None, processed_tokens))
@@ -1238,6 +1265,7 @@ class BM25CodeIndexer:
             ),
             "max_k": self.max_k,
             "language": self.language,
+            "tokenizer": self.tokenizer,
         }
         metadata_file = os.path.join(directory_path, "bm25_metadata.json")
         _write_json_interruptibly(
@@ -1301,6 +1329,9 @@ class BM25CodeIndexer:
             raise ValueError("BM25 language must be a non-empty string")
         if project_root is not None and not isinstance(project_root, str):
             raise ValueError("BM25 project_root must be a string or null")
+        tokenizer = metadata.get("tokenizer", BM25_TOKENIZER_LEGACY)
+        if not isinstance(tokenizer, str) or tokenizer not in BM25_TOKENIZERS:
+            raise ValueError(f"BM25 tokenizer is not supported: {tokenizer!r}")
         if source_mode not in _SOURCE_MODES:
             raise ValueError(f"unsupported BM25 source mode: {source_mode!r}")
 
@@ -1312,6 +1343,7 @@ class BM25CodeIndexer:
         self._documents_prepared = False
         self.max_k = max_k
         self.language = language
+        self.tokenizer = tokenizer
 
         # Reconstruct Document objects one decoded element at a time.
         self.documents = []

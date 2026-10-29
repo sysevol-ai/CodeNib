@@ -1,0 +1,457 @@
+{
+  "scope": "Original pre-tool requests, permissions, effective scoped inputs and SDK output registration receipts. Post-tool response bytes are retained in original hooks and delivered model/tool observations, not duplicated here.",
+  "raw_hooks_sha256": "2b91127799d545c46334a63196e77f828ebb207b1698a2866be9de96e59957a1",
+  "raw_hooks_bytes": 214229,
+  "pre_tool_and_output_registration_events": [
+    {
+      "event": "pre",
+      "tool": "Grep",
+      "tool_use_id": "toolu_01KYxGAJbkvYjzAUNDjMB7ug",
+      "original_input": {
+        "pattern": "def prepare_request|def merge_setting|def merge_hooks",
+        "path": "requests/sessions.py",
+        "output_mode": "content"
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "67cd7662-1962-4039-9111-513baffd6404",
+      "decision": "allow",
+      "effective_input": {
+        "pattern": "def prepare_request|def merge_setting|def merge_hooks",
+        "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/03-psf__requests-1921-native/workspace/requests/sessions.py",
+        "output_mode": "content"
+      },
+      "phase": "lookup"
+    },
+    {
+      "event": "pre",
+      "tool": "Read",
+      "tool_use_id": "toolu_01WiJA7LWEdxJUfaxQtW2dvT",
+      "original_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/03-psf__requests-1921-native/workspace/requests/sessions.py",
+        "offset": 30,
+        "limit": 270
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "67cd7662-1962-4039-9111-513baffd6404",
+      "decision": "allow",
+      "effective_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/03-psf__requests-1921-native/workspace/requests/sessions.py",
+        "offset": 30,
+        "limit": 270
+      },
+      "phase": "lookup"
+    },
+    {
+      "event": "pre",
+      "tool": "Grep",
+      "tool_use_id": "toolu_01R3rQksBREg212WjWjuwcxo",
+      "original_input": {
+        "pattern": "prepare_request\\(|merge_environment|merge_setting\\(",
+        "path": "requests/sessions.py",
+        "output_mode": "content"
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "67cd7662-1962-4039-9111-513baffd6404",
+      "decision": "allow",
+      "effective_input": {
+        "pattern": "prepare_request\\(|merge_environment|merge_setting\\(",
+        "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/03-psf__requests-1921-native/workspace/requests/sessions.py",
+        "output_mode": "content"
+      },
+      "phase": "lookup"
+    },
+    {
+      "event": "pre",
+      "tool": "Bash",
+      "tool_use_id": "toolu_01TKpuPZ3gcr4h98mSJ4eHee",
+      "original_input": {
+        "command": "cd requests && grep -n \"def \\|self.send\\|adapter\\|resolve_redirects\\|prepare_\\|merge_\\|get_adapter\\|\\.send(\" sessions.py | head -120"
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "29c99fb0-30ec-444d-afb9-b7d70451404d",
+      "decision": "allow",
+      "effective_input": {
+        "command": "docker exec -i -w /tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/03-psf__requests-1921-native/workspace e56d41e7b028114d8d822f4b4533b24e7a6d8da152c8261d145551ab4201882b /bin/bash -lc 'umask 002\ncd requests && grep -n \"def \\|self.send\\|adapter\\|resolve_redirects\\|prepare_\\|merge_\\|get_adapter\\|\\.send(\" sessions.py | head -120'"
+      },
+      "phase": "flow"
+    },
+    {
+      "event": "pre",
+      "tool": "Bash",
+      "tool_use_id": "toolu_014tjjmnpLtd9Hx2zuxWmba5",
+      "original_input": {
+        "command": "cd requests && sed -n 80,200p sessions.py; sed -n 245,395p sessions.py; sed -n 460,560p sessions.py"
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "29c99fb0-30ec-444d-afb9-b7d70451404d",
+      "decision": "allow",
+      "effective_input": {
+        "command": "docker exec -i -w /tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/03-psf__requests-1921-native/workspace e56d41e7b028114d8d822f4b4533b24e7a6d8da152c8261d145551ab4201882b /bin/bash -lc 'umask 002\ncd requests && sed -n 80,200p sessions.py; sed -n 245,395p sessions.py; sed -n 460,560p sessions.py'"
+      },
+      "phase": "flow"
+    },
+    {
+      "event": "pre",
+      "tool": "Bash",
+      "tool_use_id": "toolu_01WT6wcqLnPUjQM5XarkQUk1",
+      "original_input": {
+        "command": "cd requests && grep -n \"def \\|urlopen\\|get_connection\\|connection_from_url\\|proxy_manager_for\\|request_url\\|add_headers\\|cert_verify\\|build_response\\|_get_conn\\|low_conn\" adapters.py; grep -n \"def prepare\\b\\|def prepare(\\|self.prepare_\\|def prepare_\" models.py; grep -n \"def request\\|session\\.\\|return request(\" api.py"
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "29c99fb0-30ec-444d-afb9-b7d70451404d",
+      "decision": "allow",
+      "effective_input": {
+        "command": "docker exec -i -w /tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/03-psf__requests-1921-native/workspace e56d41e7b028114d8d822f4b4533b24e7a6d8da152c8261d145551ab4201882b /bin/bash -lc 'umask 002\ncd requests && grep -n \"def \\|urlopen\\|get_connection\\|connection_from_url\\|proxy_manager_for\\|request_url\\|add_headers\\|cert_verify\\|build_response\\|_get_conn\\|low_conn\" adapters.py; grep -n \"def prepare\\b\\|def prepare(\\|self.prepare_\\|def prepare_\" models.py; grep -n \"def request\\|session\\.\\|return request(\" api.py'"
+      },
+      "phase": "flow"
+    },
+    {
+      "event": "pre",
+      "tool": "Bash",
+      "tool_use_id": "toolu_01HyHakmrhbuaWUKRbGtL4Cr",
+      "original_input": {
+        "command": "cd requests && sed -n 100,125p adapters.py; sed -n 158,400p adapters.py; sed -n 286,305p models.py; sed -n 460,500p models.py; sed -n 518,525p models.py; grep -n \"is_redirect\" -A6 models.py | head; grep -n \"def dispatch_hook\" -A25 hooks.py"
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "29c99fb0-30ec-444d-afb9-b7d70451404d",
+      "decision": "allow",
+      "effective_input": {
+        "command": "docker exec -i -w /tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/03-psf__requests-1921-native/workspace e56d41e7b028114d8d822f4b4533b24e7a6d8da152c8261d145551ab4201882b /bin/bash -lc 'umask 002\ncd requests && sed -n 100,125p adapters.py; sed -n 158,400p adapters.py; sed -n 286,305p models.py; sed -n 460,500p models.py; sed -n 518,525p models.py; grep -n \"is_redirect\" -A6 models.py | head; grep -n \"def dispatch_hook\" -A25 hooks.py'"
+      },
+      "phase": "flow"
+    },
+    {
+      "event": "pre",
+      "tool": "Bash",
+      "tool_use_id": "toolu_01QB57d4dpyxnM6TryhTSud1",
+      "original_input": {
+        "command": "cd requests && grep -n \"^class \\|def copy\\|def __init__\\|def path_url\" models.py adapters.py; sed -n 121,157p adapters.py | grep -n \"conn\\.\\|https\"; sed -n 596,602p models.py; grep -n \"REDIRECT_STATI\" models.py | head -2"
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "29c99fb0-30ec-444d-afb9-b7d70451404d",
+      "decision": "allow",
+      "effective_input": {
+        "command": "docker exec -i -w /tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/03-psf__requests-1921-native/workspace e56d41e7b028114d8d822f4b4533b24e7a6d8da152c8261d145551ab4201882b /bin/bash -lc 'umask 002\ncd requests && grep -n \"^class \\|def copy\\|def __init__\\|def path_url\" models.py adapters.py; sed -n 121,157p adapters.py | grep -n \"conn\\.\\|https\"; sed -n 596,602p models.py; grep -n \"REDIRECT_STATI\" models.py | head -2'"
+      },
+      "phase": "flow"
+    },
+    {
+      "event": "pre",
+      "tool": "Bash",
+      "tool_use_id": "toolu_01QgyhQbAvmeKmKRxKR34FfE",
+      "original_input": {
+        "command": "grep -rn \"\\.send(\" --include=*.py requests/ | grep -v \"packages/\" ; grep -n \"\\.send(\\|resolve_redirects\\|allow_redirects\\|history\" test_requests.py | head -60"
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "29c99fb0-30ec-444d-afb9-b7d70451404d",
+      "decision": "allow",
+      "effective_input": {
+        "command": "docker exec -i -w /tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/03-psf__requests-1921-native/workspace e56d41e7b028114d8d822f4b4533b24e7a6d8da152c8261d145551ab4201882b /bin/bash -lc 'umask 002\ngrep -rn \"\\.send(\" --include=*.py requests/ | grep -v \"packages/\" ; grep -n \"\\.send(\\|resolve_redirects\\|allow_redirects\\|history\" test_requests.py | head -60'"
+      },
+      "phase": "impact"
+    },
+    {
+      "event": "pre",
+      "tool": "Bash",
+      "tool_use_id": "toolu_01N8R23M9CNoyep8C68oz1oY",
+      "original_input": {
+        "command": "sed -n 150,200p requests/auth.py; sed -n 98,122p test_requests.py; sed -n 160,215p test_requests.py; sed -n 505,540p test_requests.py; sed -n 712,745p test_requests.py"
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "29c99fb0-30ec-444d-afb9-b7d70451404d",
+      "decision": "allow",
+      "effective_input": {
+        "command": "docker exec -i -w /tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/03-psf__requests-1921-native/workspace e56d41e7b028114d8d822f4b4533b24e7a6d8da152c8261d145551ab4201882b /bin/bash -lc 'umask 002\nsed -n 150,200p requests/auth.py; sed -n 98,122p test_requests.py; sed -n 160,215p test_requests.py; sed -n 505,540p test_requests.py; sed -n 712,745p test_requests.py'"
+      },
+      "phase": "impact"
+    },
+    {
+      "event": "pre",
+      "tool": "Bash",
+      "tool_use_id": "toolu_01YTCmWU6adKFkWzfs3m4Mq2",
+      "original_input": {
+        "command": "grep -n \"def handle_401\\|register_hook\" requests/auth.py; grep -n \"def test_HTTP_302_ALLOW_REDIRECT_GET\\|def test_prepared_request_hook\\|def test_cannot_send_unprepared\\|def test_DIGEST\\|def test_cookie_persists_via_api\\|def test_requests_in_history\" test_requests.py"
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "29c99fb0-30ec-444d-afb9-b7d70451404d",
+      "decision": "allow",
+      "effective_input": {
+        "command": "docker exec -i -w /tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/03-psf__requests-1921-native/workspace e56d41e7b028114d8d822f4b4533b24e7a6d8da152c8261d145551ab4201882b /bin/bash -lc 'umask 002\ngrep -n \"def handle_401\\|register_hook\" requests/auth.py; grep -n \"def test_HTTP_302_ALLOW_REDIRECT_GET\\|def test_prepared_request_hook\\|def test_cannot_send_unprepared\\|def test_DIGEST\\|def test_cookie_persists_via_api\\|def test_requests_in_history\" test_requests.py'"
+      },
+      "phase": "impact"
+    },
+    {
+      "event": "pre",
+      "tool": "Read",
+      "tool_use_id": "toolu_012Kzwsdq1uS5XAvupNpzjgP",
+      "original_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/03-psf__requests-1921-native/workspace/requests/sessions.py",
+        "offset": 34,
+        "limit": 30
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "29c99fb0-30ec-444d-afb9-b7d70451404d",
+      "decision": "allow",
+      "effective_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/03-psf__requests-1921-native/workspace/requests/sessions.py",
+        "offset": 34,
+        "limit": 30
+      },
+      "phase": "repair"
+    },
+    {
+      "event": "pre",
+      "tool": "Bash",
+      "tool_use_id": "toolu_01JViGXzvsJQ4aSsySuJNGnC",
+      "original_input": {
+        "command": "sed -n 204,235p requests/models.py; grep -n \"merge_setting\\|def test_.*header\" test_requests.py | head -30"
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "29c99fb0-30ec-444d-afb9-b7d70451404d",
+      "decision": "allow",
+      "effective_input": {
+        "command": "docker exec -i -w /tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/03-psf__requests-1921-native/workspace e56d41e7b028114d8d822f4b4533b24e7a6d8da152c8261d145551ab4201882b /bin/bash -lc 'umask 002\nsed -n 204,235p requests/models.py; grep -n \"merge_setting\\|def test_.*header\" test_requests.py | head -30'"
+      },
+      "phase": "repair"
+    },
+    {
+      "event": "pre",
+      "tool": "Edit",
+      "tool_use_id": "toolu_01N1MtZXYsPyuTuKnFjgxvag",
+      "original_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/03-psf__requests-1921-native/workspace/requests/sessions.py",
+        "old_string": "    # Remove keys that are set to None.\n    for (k, v) in request_setting.items():\n        if v is None:\n            del merged_setting[k]",
+        "new_string": "    # Remove keys that are set to None, whether by the request or the session.\n    none_keys = [k for (k, v) in merged_setting.items() if v is None]\n    for key in none_keys:\n        del merged_setting[key]",
+        "replace_all": false
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "29c99fb0-30ec-444d-afb9-b7d70451404d",
+      "decision": "allow",
+      "effective_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/03-psf__requests-1921-native/workspace/requests/sessions.py",
+        "old_string": "    # Remove keys that are set to None.\n    for (k, v) in request_setting.items():\n        if v is None:\n            del merged_setting[k]",
+        "new_string": "    # Remove keys that are set to None, whether by the request or the session.\n    none_keys = [k for (k, v) in merged_setting.items() if v is None]\n    for key in none_keys:\n        del merged_setting[key]",
+        "replace_all": false
+      },
+      "phase": "repair"
+    },
+    {
+      "event": "pre",
+      "tool": "Read",
+      "tool_use_id": "toolu_01PPiDzBHRbNdWFZBwAUWqdS",
+      "original_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/03-psf__requests-1921-native/workspace/test_requests.py",
+        "offset": 795,
+        "limit": 25
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "29c99fb0-30ec-444d-afb9-b7d70451404d",
+      "decision": "allow",
+      "effective_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/03-psf__requests-1921-native/workspace/test_requests.py",
+        "offset": 795,
+        "limit": 25
+      },
+      "phase": "repair"
+    },
+    {
+      "event": "pre",
+      "tool": "Edit",
+      "tool_use_id": "toolu_01CVjYPod5hNAuCWCmGu1aa6",
+      "original_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/03-psf__requests-1921-native/workspace/test_requests.py",
+        "old_string": "        assert 'foo' not in r.request.headers\n\n    def test_params_are_merged_case_sensitive(self):",
+        "new_string": "        assert 'foo' not in r.request.headers\n\n    def test_session_header_set_to_none_is_not_sent(self):\n        s = requests.Session()\n        s.headers['Accept-Encoding'] = None\n        r = s.get(httpbin('get'))\n        assert 'Accept-Encoding' not in r.request.headers\n        assert 'Accept-Encoding' not in r.json()['headers']\n\n    def test_params_are_merged_case_sensitive(self):",
+        "replace_all": false
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "29c99fb0-30ec-444d-afb9-b7d70451404d",
+      "decision": "allow",
+      "effective_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/03-psf__requests-1921-native/workspace/test_requests.py",
+        "old_string": "        assert 'foo' not in r.request.headers\n\n    def test_params_are_merged_case_sensitive(self):",
+        "new_string": "        assert 'foo' not in r.request.headers\n\n    def test_session_header_set_to_none_is_not_sent(self):\n        s = requests.Session()\n        s.headers['Accept-Encoding'] = None\n        r = s.get(httpbin('get'))\n        assert 'Accept-Encoding' not in r.request.headers\n        assert 'Accept-Encoding' not in r.json()['headers']\n\n    def test_params_are_merged_case_sensitive(self):",
+        "replace_all": false
+      },
+      "phase": "repair"
+    },
+    {
+      "event": "pre",
+      "tool": "Bash",
+      "tool_use_id": "toolu_012kkfasnpnp46Wapf3zDnLe",
+      "original_input": {
+        "command": "pytest test_requests.py -k \"none_is_not_sent or header_remove\" -q 2>&1 | tail -20"
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "29c99fb0-30ec-444d-afb9-b7d70451404d",
+      "decision": "allow",
+      "effective_input": {
+        "command": "docker exec -i -w /tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/03-psf__requests-1921-native/workspace e56d41e7b028114d8d822f4b4533b24e7a6d8da152c8261d145551ab4201882b /bin/bash -lc 'umask 002\npytest test_requests.py -k \"none_is_not_sent or header_remove\" -q 2>&1 | tail -20'"
+      },
+      "phase": "repair"
+    },
+    {
+      "event": "pre",
+      "tool": "Edit",
+      "tool_use_id": "toolu_01DerwsjoywaNf3BubL2Q35j",
+      "original_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/03-psf__requests-1921-native/workspace/test_requests.py",
+        "old_string": "        assert 'Accept-Encoding' not in r.json()['headers']",
+        "new_string": "        # The transport may add its own default, but never the string \"None\".\n        assert r.json()['headers'].get('Accept-Encoding') != 'None'",
+        "replace_all": false
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "29c99fb0-30ec-444d-afb9-b7d70451404d",
+      "decision": "allow",
+      "effective_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/03-psf__requests-1921-native/workspace/test_requests.py",
+        "old_string": "        assert 'Accept-Encoding' not in r.json()['headers']",
+        "new_string": "        # The transport may add its own default, but never the string \"None\".\n        assert r.json()['headers'].get('Accept-Encoding') != 'None'",
+        "replace_all": false
+      },
+      "phase": "repair"
+    },
+    {
+      "event": "pre",
+      "tool": "Bash",
+      "tool_use_id": "toolu_011ahTtPgHMEYLos2PFncWWK",
+      "original_input": {
+        "command": "git stash -q -- requests/sessions.py && pytest test_requests.py -k none_is_not_sent -q 2>&1 | grep -E \"passed|failed\"; git stash pop -q && pytest test_requests.py -q 2>&1 | grep -E \"passed|failed|FAIL\"; git status --short"
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "29c99fb0-30ec-444d-afb9-b7d70451404d",
+      "decision": "allow",
+      "effective_input": {
+        "command": "docker exec -i -w /tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/03-psf__requests-1921-native/workspace e56d41e7b028114d8d822f4b4533b24e7a6d8da152c8261d145551ab4201882b /bin/bash -lc 'umask 002\ngit stash -q -- requests/sessions.py && pytest test_requests.py -k none_is_not_sent -q 2>&1 | grep -E \"passed|failed\"; git stash pop -q && pytest test_requests.py -q 2>&1 | grep -E \"passed|failed|FAIL\"; git status --short'"
+      },
+      "phase": "repair"
+    },
+    {
+      "event": "pre",
+      "tool": "Grep",
+      "tool_use_id": "toolu_01T3ioWDgNwaCQViEpEFfRfA",
+      "original_input": {
+        "pattern": "prepare_probe_request",
+        "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/03-psf__requests-1921-native/workspace",
+        "output_mode": "content"
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "29c99fb0-30ec-444d-afb9-b7d70451404d",
+      "decision": "allow",
+      "effective_input": {
+        "pattern": "prepare_probe_request",
+        "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/03-psf__requests-1921-native/workspace",
+        "output_mode": "content"
+      },
+      "phase": "post_edit"
+    },
+    {
+      "event": "pre",
+      "tool": "Bash",
+      "tool_use_id": "toolu_01XFqwK16nm65xSd3ikXHPZE",
+      "original_input": {
+        "command": "git status --short && git diff --stat"
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "29c99fb0-30ec-444d-afb9-b7d70451404d",
+      "decision": "allow",
+      "effective_input": {
+        "command": "docker exec -i -w /tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/03-psf__requests-1921-native/workspace e56d41e7b028114d8d822f4b4533b24e7a6d8da152c8261d145551ab4201882b /bin/bash -lc 'umask 002\ngit status --short && git diff --stat'"
+      },
+      "phase": "post_edit"
+    },
+    {
+      "event": "pre",
+      "tool": "Read",
+      "tool_use_id": "toolu_01VMhJ419CHBnczEbZhADJoB",
+      "original_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/03-psf__requests-1921-native/workspace/requests/_pilot_post_edit.py"
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "29c99fb0-30ec-444d-afb9-b7d70451404d",
+      "decision": "allow",
+      "effective_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/03-psf__requests-1921-native/workspace/requests/_pilot_post_edit.py"
+      },
+      "phase": "post_edit"
+    },
+    {
+      "event": "pre",
+      "tool": "Bash",
+      "tool_use_id": "toolu_01SUbEwYSqSWmFs8PyN4egAV",
+      "original_input": {
+        "command": "grep -rn \"_pilot_post_edit\" --include=*.py . ; grep -n \"def prepare\\b\\|def prepare(\" requests/models.py; sed -n 236,252p requests/models.py"
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "29c99fb0-30ec-444d-afb9-b7d70451404d",
+      "decision": "allow",
+      "effective_input": {
+        "command": "docker exec -i -w /tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/03-psf__requests-1921-native/workspace e56d41e7b028114d8d822f4b4533b24e7a6d8da152c8261d145551ab4201882b /bin/bash -lc 'umask 002\ngrep -rn \"_pilot_post_edit\" --include=*.py . ; grep -n \"def prepare\\b\\|def prepare(\" requests/models.py; sed -n 236,252p requests/models.py'"
+      },
+      "phase": "post_edit"
+    },
+    {
+      "event": "pre",
+      "tool": "Bash",
+      "tool_use_id": "toolu_01W7PKfSpADkCxTMYMYGQjxY",
+      "original_input": {
+        "command": "grep -n \"def __init__\\|def prepare_request\\|p.prepare(\\|return p$\\|def request\\|prep = self.prepare_request\\|resp = self.send\\|def send\\|adapter.send\\|self.mount\\|get_netrc_auth(request.url)\" requests/sessions.py; grep -n \"PoolManager(\\|init_poolmanager(\" requests/adapters.py"
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "29c99fb0-30ec-444d-afb9-b7d70451404d",
+      "decision": "allow",
+      "effective_input": {
+        "command": "docker exec -i -w /tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/03-psf__requests-1921-native/workspace e56d41e7b028114d8d822f4b4533b24e7a6d8da152c8261d145551ab4201882b /bin/bash -lc 'umask 002\ngrep -n \"def __init__\\|def prepare_request\\|p.prepare(\\|return p$\\|def request\\|prep = self.prepare_request\\|resp = self.send\\|def send\\|adapter.send\\|self.mount\\|get_netrc_auth(request.url)\" requests/sessions.py; grep -n \"PoolManager(\\|init_poolmanager(\" requests/adapters.py'"
+      },
+      "phase": "post_edit"
+    }
+  ]
+}

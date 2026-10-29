@@ -56,7 +56,7 @@ without launching the live server after construction.
 
 | Language | Graph construction | Optional live LSP |
 |---|---|---|
-| Python | `scip-python` | `basedpyright-langserver` |
+| Python | `scip-python`; source checkouts also require the Python LSP | `basedpyright-langserver` |
 | JavaScript / TypeScript | `scip-typescript` | `typescript-language-server` |
 | Go | `scip-go` | `gopls` |
 | Rust | `rust-analyzer scip` | `rust-analyzer` |
@@ -67,6 +67,42 @@ without launching the live server after construction.
 | C# | `scip-dotnet` | `csharp-ls` |
 | Ruby | `scip-ruby`, with Ruby LSP fallback | `ruby-lsp` |
 | PHP | project-local `scip-php`, with Intelephense fallback | `intelephense` |
+
+Python graph construction in current source checkouts also needs
+`basedpyright-langserver`; `codenib toolchain install --scope graph` installs
+both providers. This definition-identity recovery is not in the published
+0.2.4 package. After upgrading a source checkout, rebuild with `codenib index
+/path/to/repository --preset graph`.
+
+Source builds keep separate locations for same-named nested functions,
+repeated class declarations and their members. A shared name can have several
+static definition locations, including conditional definitions and property
+accessors. These are possible source targets, not an execution trace. Source
+syntax supplies definitions; reference locations come from compiler output.
+The build consults the Python LSP when a compiler ID spans different scopes.
+Saved queries use the resulting index. An unresolved identity repair keeps the
+graph unavailable; independently built BM25 search remains usable.
+
+Go graphs include `_test.go` files. A repository with nested `go.mod` files is
+indexed one module at a time; the modules are merged into one graph, with each
+package named by its directory and references resolved across modules. A
+repository needs a root `go.mod`; a workspace with only a root `go.work` is not
+indexed.
+
+The root module is indexed under the active `go.work` when that workspace uses
+the root, and without it otherwise. A nested module the root run already
+covered is not indexed again. Each remaining nested module keeps the workspace
+if it is a member and runs on its own `go.mod` if not; one that fails to index
+is skipped with a warning. Local `replace` directives, including those in
+`go.work`, map their paths to the module directories they point at. A module
+path declared in several directories keeps each copy under its own directory,
+and references to it from other modules stay unresolved. Directories the `go`
+command ignores (`vendor`, `testdata`, and names starting with `.` or `_`) are
+not searched for modules.
+
+Incremental patches query `gopls` in the edited file's own module, so patching
+a nested-module file can drop references that cross module boundaries; a full
+rebuild restores them.
 
 The manager handles pinned npm, Go, Rustup, .NET tool, and RubyGem providers
 when their host runtime is present. OS packages such as clangd, JDKs, and build

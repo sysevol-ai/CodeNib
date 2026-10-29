@@ -1,0 +1,12 @@
+{
+  "relative_native_path": "grade/resolution.json",
+  "whole_file_sha256": "59a50559fb25c45e1560a1b8d2139b5d6a0574012e6b1d637ef57b8ec14347ba",
+  "whole_file_bytes": 1370,
+  "part": 0,
+  "parts": 1,
+  "content_encoding": "gzip+base64",
+  "gzip_mtime": 0,
+  "gzip_bytes": 466,
+  "base64_bytes": "H4sIAAAAAAACA7VUTWvbQBC9+1cYnRPXmNipdQuFQqG0geQWwrBajdKhq91ld2THhPz37OjDlkOSQ53qoBXvPb2ZfdrR02Q6zchGVlYjUJnl08zvGCOfl7gB6J+XX+fr7Ey0SclNFNlDUCWWHRowOrNBeZ1Dgy2mnWVFFoOI4xaLGW6Umb3jPtOuREvFuSovl0pXeqlXVWdeJ8aAVsZI3XmLWcW0QQjoXeCEPiVw+n7rg0AkivUfoAi/nMVEVMrEtuERi48UOY42M+JiozXGWDXG7EB5b+ho263yjThaXBqKsI9w6Ckx369+/ITb33B9dXNzxEjkXcUE343g3o7swxdZwavIWJBNAef5bUKuBcjzltQBFSNY3Ha6bGR0fzYuVikyTZBg7u73+PNBkkmH/6PTb8pzKtw3LG30h+sUm3RmTvawzoKKmqhTA+Mjn5Df8KVl/SC/f/wqn+A6Ga9yb+tkrogY0pmG/VyDoZr4cJDTUNZ44rCLC/LWhb9QUlSFeTVEe1Z+ClLLyhT3HFoOO+/I8mivWY21CzsopHzCLxbri/XqcrFeDY7KOtC+ncjFfLh60lMZu30Ku1wd4tjaoyxCqnKY+Mnz5AVa+H/WWgUAAA==",
+  "scope": "Exact original native grading bytes under lossless compression; concatenate decoded gzip pieces, decompress, then verify the whole-file hash. No outcome replacement or repair regrade."
+}

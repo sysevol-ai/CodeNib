@@ -6,12 +6,17 @@
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import importlib.metadata
 import json
+import math
+import os
 import platform
+import statistics
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -23,17 +28,12 @@ METRICS = ("Recall@5", "Recall@10", "Recall@20", "MRR") + tuple(
 )
 
 
-def rank_bm25(query_text: str, corpus: list[dict[str, Any]]) -> list[str]:
-    """All released chunks -> full chunk ranking -> first-hit file ranking.
-
-    The only task input is query_text. In particular this function cannot use
-    gold, fix commits, hard negatives, or given-file annotations as filters.
-    """
+def corpus_chunks(corpus: list[dict[str, Any]]) -> list[Any]:
+    """Every released row as a CodeChunk; identities stay unique per row."""
     from codenib.code_chunking.base import CodeChunk
-    from codenib.index.sparse_idx.bm25_index import BM25CodeIndexer
     from codenib.types import NODE_TYPE_FILE, NODE_TYPE_SYMBOL
 
-    chunks = [
+    return [
         CodeChunk(
             content=row["text"],
             start_line=row["start_line"] - 1,
@@ -46,14 +46,65 @@ def rank_bm25(query_text: str, corpus: list[dict[str, Any]]) -> list[str]:
         )
         for number, row in enumerate(corpus)
     ]
-    index = BM25CodeIndexer(chunks=chunks, max_k=len(chunks))
-    nodes = index.search(
-        query_text, top_k=len(chunks), filter_test=False, return_code_content=False
-    )
-    ranked = list(dict.fromkeys(node.file for node in nodes))
-    if set(ranked) != {row["path"] for row in corpus}:
-        raise ValueError("BM25 did not return the complete corpus file ranking")
+
+
+def complete_file_ranking(files: Any, corpus_paths: set[str]) -> list[str]:
+    ranked = list(dict.fromkeys(files))
+    if set(ranked) != corpus_paths:
+        raise ValueError("retrieval did not return the complete corpus file ranking")
     return ranked
+
+
+class BM25CorpusIndex:
+    """One in-memory BM25 index over every chunk of a released corpus snapshot.
+
+    Construction is the cold index build; ``rank`` is one query. Samples that
+    share a snapshot reuse the index, so build and query costs stay separable.
+    """
+
+    tool_calls = 1
+
+    def __init__(self, corpus: list[dict[str, Any]]):
+        from codenib.index.sparse_idx.bm25_index import BM25CodeIndexer
+
+        started = time.perf_counter()
+        chunks = corpus_chunks(corpus)
+        self._paths = {row["path"] for row in corpus}
+        self._top_k = len(chunks)
+        self._index = BM25CodeIndexer(chunks=chunks, max_k=self._top_k)
+        self.build_seconds = time.perf_counter() - started
+        retriever = self._index.retriever
+        self.size = {
+            **retriever.size(),
+            "indexed_text_bytes": sum(
+                len(document.page_content.encode("utf-8"))
+                for document in retriever.documents
+            ),
+        }
+
+    def rank(self, query_text: str) -> list[str]:
+        """Full chunk ranking -> first-hit file ranking over the whole corpus.
+
+        The only task input is query_text. In particular this cannot use gold,
+        fix commits, hard negatives, or given-file annotations as filters.
+        """
+        nodes = self._index.search(
+            query_text,
+            top_k=self._top_k,
+            filter_test=False,
+            return_code_content=False,
+        )
+        return complete_file_ranking((node.file for node in nodes), self._paths)
+
+
+def rank_bm25(query_text: str, corpus: list[dict[str, Any]]) -> list[str]:
+    return BM25CorpusIndex(corpus).rank(query_text)
+
+
+def sample_split(sample_id: str) -> str:
+    """Deterministic half split, shared with ARB community results."""
+    digest = hashlib.sha256(sample_id.encode("utf-8")).digest()
+    return "dev" if digest[0] % 2 == 0 else "heldout"
 
 
 def implementation_receipt() -> dict[str, Any]:
@@ -64,32 +115,117 @@ def implementation_receipt() -> dict[str, Any]:
         Path(__file__),
         Path(__file__).with_name("agent_retrieval_bench_runner.py"),
         Path(__file__).with_name("_arb_evaluate.py"),
+        Path(__file__).with_name("_arb_methods.py"),
         Path(dataset.__file__),
         Path(bm25.__file__),
     ]
     package_root = Path(__file__).resolve().parents[2]
+    # Methods delegate to vector, fusion, and graph code across the package,
+    # so the receipt also binds every CodeNib source file.
+    sources = hashlib.sha256()
+    for path in sorted(package_root.rglob("*.py")):
+        sources.update(str(path.relative_to(package_root)).encode("utf-8"))
+        sources.update(sha256_file(path).encode("ascii"))
     return {
         "files": {
             str(path.resolve().relative_to(package_root)): sha256_file(path)
             for path in files
         },
+        "codenib_sources_sha256": sources.hexdigest(),
         "python": platform.python_version(),
-        "packages": {
-            name: importlib.metadata.version(name) for name in ("rank-bm25", "numpy")
-        },
+        "packages": {name: _version(name) for name in RECEIPT_PACKAGES},
     }
 
 
+RECEIPT_PACKAGES = (
+    "rank-bm25",
+    "numpy",
+    "torch",
+    "transformers",
+    "sentence-transformers",
+    "faiss-cpu",
+    "igraph",
+    "protobuf",
+    # The Java and PHP SCIP decoders parse sources with tree-sitter.
+    "tree-sitter",
+    "tree-sitter-language-pack",
+)
+
+
+def _version(name: str) -> str | None:
+    try:
+        return importlib.metadata.version(name)
+    except importlib.metadata.PackageNotFoundError:
+        return None
+
+
+PACKAGE = "agent_retrieval_bench"
+_SCORER_ENTRY_POINTS = ("__init__.py", "baseline.py", "bcy_curve.py")
+
+
+def scoring_sources(checkout: Path, revision: str) -> list[str]:
+    """Evaluator files the scorer imports at ``revision``, transitively.
+
+    The scorer bridge imports ``baseline`` and ``bcy_curve``; this follows
+    every static import inside the package from those entry points, reading
+    the pinned revision so a later deletion still appears as a difference.
+    """
+    seen: set[str] = set()
+    pending = list(_SCORER_ENTRY_POINTS)
+    while pending:
+        name = pending.pop()
+        path = f"src/{PACKAGE}/{name}"
+        if name in seen:
+            continue
+        try:
+            text = _upstream_git(checkout, "show", f"{revision}:{path}")
+        except subprocess.CalledProcessError:
+            continue
+        seen.add(name)
+        try:
+            tree = ast.parse(text)
+        except SyntaxError as exc:
+            raise ValueError(f"cannot parse ARB scorer source {path}: {exc}") from exc
+        for node in ast.walk(tree):
+            modules: list[str] = []
+            if isinstance(node, ast.ImportFrom):
+                parts = (node.module or "").split(".")
+                if node.level == 1 or (node.level == 0 and parts[0] == PACKAGE):
+                    tail = parts[1:] if node.level == 0 else [p for p in parts if p]
+                    modules = [".".join(tail)] if tail else [a.name for a in node.names]
+            elif isinstance(node, ast.Import):
+                modules = [
+                    alias.name.split(".", 1)[1]
+                    for alias in node.names
+                    if alias.name.startswith(PACKAGE + ".")
+                ]
+            pending.extend(module.replace(".", "/") + ".py" for module in modules)
+    return sorted(f"src/{PACKAGE}/{name}" for name in seen)
+
+
+def _upstream_git(checkout: Path, *args: str) -> str:
+    return subprocess.check_output(
+        ["git", "-C", str(checkout), *args], text=True
+    ).strip()
+
+
+def upstream_revision(checkout: Path) -> str:
+    return _upstream_git(checkout, "rev-parse", "HEAD")
+
+
 def validate_upstream(checkout: Path) -> Path:
+    """Accept a clean checkout whose scoring code matches the pinned revision.
+
+    The pinned revision passes as is. A later revision passes when it descends
+    from the pinned commit and every file the scorer imports is unchanged,
+    so updates to unrelated evaluators do not block scoring. Reports record
+    both the checkout's revision and the pinned scoring revision.
+    """
     checkout = checkout.resolve()
 
     def git(*args: str) -> str:
-        return subprocess.check_output(
-            ["git", "-C", str(checkout), *args], text=True
-        ).strip()
+        return _upstream_git(checkout, *args)
 
-    if git("rev-parse", "HEAD") != ARB_UPSTREAM_REVISION:
-        raise ValueError(f"ARB evaluator must be pinned to {ARB_UPSTREAM_REVISION}")
     if git("status", "--porcelain", "--untracked-files=all", "--", "src"):
         raise ValueError("ARB evaluator source must be clean")
     if any(
@@ -99,6 +235,26 @@ def validate_upstream(checkout: Path) -> Path:
         raise ValueError("ARB evaluator source has hidden Git index flags")
     if not (checkout / "src/agent_retrieval_bench/bcy_curve.py").is_file():
         raise ValueError("ARB evaluator package is missing")
+    if git("rev-parse", "HEAD") != ARB_UPSTREAM_REVISION:
+        try:
+            git("merge-base", "--is-ancestor", ARB_UPSTREAM_REVISION, "HEAD")
+        except subprocess.CalledProcessError as exc:
+            raise ValueError(
+                f"ARB evaluator must be {ARB_UPSTREAM_REVISION} or descend from it"
+            ) from exc
+        changed = git(
+            "diff",
+            "--name-only",
+            ARB_UPSTREAM_REVISION,
+            "HEAD",
+            "--",
+            *scoring_sources(checkout, ARB_UPSTREAM_REVISION),
+        )
+        if changed:
+            raise ValueError(
+                f"ARB scoring code differs from {ARB_UPSTREAM_REVISION[:8]}: "
+                + ", ".join(changed.split())
+            )
     return checkout
 
 
@@ -158,7 +314,99 @@ def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
             task: group([row for row in rows if row["task_type"] == task])
             for task in sorted({row["task_type"] for row in rows})
         },
+        "by_split": {
+            split: group([row for row in rows if row["split"] == split])
+            for split in sorted({row["split"] for row in rows})
+        },
     }
+
+
+def distribution(values: list[float]) -> dict[str, float] | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    return {
+        "count": len(ordered),
+        "total": sum(ordered),
+        "median": statistics.median(ordered),
+        "p95": ordered[math.ceil(0.95 * len(ordered)) - 1],
+        "max": ordered[-1],
+    }
+
+
+def _flatten(value: dict[str, Any], prefix: str = "") -> dict[str, float]:
+    """Nested numeric sizes, e.g. a hybrid's ``dense.documents``.
+
+    Descriptive fields such as graph languages or errors are not sizes.
+    """
+    flat: dict[str, float] = {}
+    for key, item in value.items():
+        if isinstance(item, dict):
+            flat.update(_flatten(item, f"{prefix}{key}."))
+        elif isinstance(item, (int, float)) and not isinstance(item, bool):
+            flat[f"{prefix}{key}"] = item
+    return flat
+
+
+def retrieval_usage(predictions: list[dict[str, Any]]) -> dict[str, Any]:
+    """Cold index builds, per-sample queries, and calls, never folded together.
+
+    A resumed run keeps the timings recorded before the interruption, so a
+    snapshot whose samples straddle it can count more than one build.
+    """
+    built = [row for row in predictions if row.get("index_built")]
+    queried = [row for row in predictions if "query_seconds" in row]
+    index_sizes = [_flatten(row["index_size"]) for row in built]
+    return {
+        "index_builds": len(built),
+        "corpus_load_seconds": distribution(
+            [row["corpus_load_seconds"] for row in built]
+        ),
+        "index_build_seconds": distribution(
+            [row["index_build_seconds"] for row in built]
+        ),
+        "index_size": {
+            field: distribution(
+                [sizes[field] for sizes in index_sizes if field in sizes]
+            )
+            for field in dict.fromkeys(
+                field for sizes in index_sizes for field in sizes
+            )
+        },
+        "query_seconds": distribution([row["query_seconds"] for row in queried]),
+        "tool_calls": distribution([row.get("tool_calls", 0) for row in predictions]),
+        "model_calls": 0,
+        "api_cost_usd": 0.0,
+    }
+
+
+def run_environment() -> dict[str, Any]:
+    cpu = platform.processor() or platform.machine()
+    try:
+        with open("/proc/cpuinfo", encoding="utf-8") as handle:
+            cpu = next(
+                line.split(":", 1)[1].strip()
+                for line in handle
+                if line.startswith("model name")
+            )
+    except (OSError, StopIteration):
+        pass
+    environment: dict[str, Any] = {
+        "platform": platform.platform(),
+        "cpu": cpu,
+        "cpu_count": os.cpu_count(),
+    }
+    try:
+        import resource
+    except ImportError:  # pragma: no cover - Windows
+        return environment
+    # ru_maxrss is kilobytes on Linux and bytes on macOS. It covers only the
+    # final process of a resumed run.
+    scale = 1 if sys.platform == "darwin" else 1024
+    environment["peak_rss_bytes"] = (
+        resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * scale
+    )
+    return environment
 
 
 def json_digest(value: Any) -> str:

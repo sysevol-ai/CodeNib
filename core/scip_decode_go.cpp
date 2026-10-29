@@ -160,8 +160,6 @@ SCIPGoDecoder::process_document(const std::string &document_block) const {
   }
   if (!ends_with(file_path, ".go"))
     return Subgraph{};
-  if (ends_with(file_path, "_test.go"))
-    return Subgraph{};
 
   SubgraphBuilder builder;
   builder.add_file_hierarchy(file_path);

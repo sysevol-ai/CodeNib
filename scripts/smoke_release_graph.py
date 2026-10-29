@@ -19,7 +19,7 @@ import traceback
 import urllib.parse
 from contextlib import nullcontext
 from pathlib import Path
-from typing import Sequence
+from typing import Any, Sequence
 
 from smoke_release_services import (
     _free_port,
@@ -50,6 +50,8 @@ def _fixture_repository(root: Path) -> Path:
     _run(["git", "init", "--quiet"], cwd=repo)
     _run(["git", "config", "user.email", "release-smoke@example.invalid"], cwd=repo)
     _run(["git", "config", "user.name", "CodeNib Release Smoke"], cwd=repo)
+    _run(["git", "config", "gc.auto", "0"], cwd=repo)
+    _run(["git", "config", "maintenance.auto", "false"], cwd=repo)
     _run(["git", "add", "."], cwd=repo)
     _run(["git", "commit", "--quiet", "-m", "initial fixture"], cwd=repo)
     return repo
@@ -147,12 +149,29 @@ def _assert_codemap(
             _stop_process_group(process)
 
 
+def _assert_dependency_target(result: Any, *, callee: str) -> dict[str, Any]:
+    payload = _structured_result(result)
+    dependency = payload.get("result", payload)
+    names = {str(node.get("name") or "") for node in dependency.get("nodes", [])}
+    if not any(name.endswith(f":{callee}()") for name in names):
+        raise RuntimeError(
+            "CodeGraph MCP dependency traversal did not reach the callee: "
+            f"{dependency!r}"
+        )
+    if not dependency.get("edges"):
+        raise RuntimeError(
+            f"CodeGraph MCP dependency traversal has no edge: {dependency!r}"
+        )
+    return dependency
+
+
 async def _assert_codegraph_mcp_async(
     root: Path,
     repo: Path,
     *,
     executable: str,
     env: dict[str, str],
+    callee: str = "release_sum",
 ) -> None:
     from mcp import Client, StdioServerParameters
     from mcp.client.stdio import stdio_client
@@ -186,22 +205,7 @@ async def _assert_codegraph_mcp_async(
                         "max_edges": 24,
                     },
                 )
-                dependency_payload = _structured_result(dependency)
-                dependency_result = dependency_payload.get("result", dependency_payload)
-                node_names = {
-                    str(node.get("name") or "")
-                    for node in dependency_result.get("nodes", [])
-                }
-                if not any("release_sum" in name for name in node_names):
-                    raise RuntimeError(
-                        "CodeGraph MCP dependency traversal did not reach the "
-                        f"callee: {dependency_result!r}"
-                    )
-                if not dependency_result.get("edges"):
-                    raise RuntimeError(
-                        f"CodeGraph MCP dependency traversal has no edge: "
-                        f"{dependency_result!r}"
-                    )
+                _assert_dependency_target(dependency, callee=callee)
 
                 explored = await client.call_tool(
                     "explore_context",
@@ -250,6 +254,7 @@ def _assert_codegraph_mcp(
     *,
     executable: str,
     env: dict[str, str],
+    callee: str = "release_sum",
 ) -> None:
     print("+", executable, "mcp", str(repo), "--tool-surface", "full", flush=True)
     asyncio.run(
@@ -258,8 +263,105 @@ def _assert_codegraph_mcp(
             repo,
             executable=executable,
             env=env,
+            callee=callee,
         )
     )
+
+
+def _assert_dirty_reinitialization(
+    root: Path,
+    repo: Path,
+    *,
+    executable: str,
+    env: dict[str, str],
+    agent_state: Path,
+) -> None:
+    """Reject stale facts, then load the edited graph in the original session."""
+
+    from mcp import Client, StdioServerParameters
+    from mcp.client.stdio import stdio_client
+
+    async def verify() -> None:
+        parameters = StdioServerParameters(
+            command=executable,
+            args=["mcp", str(repo), "--tool-surface", "full"],
+            cwd=root,
+            env=env,
+        )
+        with (root / "codegraph-stale-mcp.log").open("w") as errors:
+            transport = stdio_client(parameters, errlog=errors)
+            async with Client(transport, mode="auto", cache=None) as client:
+                arguments = {
+                    "symbol": "release_workflow",
+                    "direction": "dependencies",
+                    "depth": 1,
+                    "max_nodes": 12,
+                    "max_edges": 24,
+                }
+                _assert_dependency_target(
+                    await client.call_tool("dependency_subgraph", arguments=arguments),
+                    callee="release_sum",
+                )
+
+                async def reject_old_facts() -> None:
+                    result = await client.call_tool(
+                        "dependency_subgraph", arguments=arguments
+                    )
+                    message = " ".join(
+                        getattr(part, "text", "") for part in result.content
+                    )
+                    if (
+                        not result.is_error
+                        or result.structured_content is not None
+                        or "codenib codegraph init" not in message
+                        or "retry" not in message
+                        or "reloads rebuilt indexes" not in message
+                    ):
+                        raise RuntimeError(f"stale graph was not rejected: {result!r}")
+
+                source = repo / "calculator.py"
+                changed = source.read_text(encoding="utf-8").replace(
+                    "release_sum", "release_sum_updated"
+                )
+                source.write_text(changed, encoding="utf-8")
+                status = _run(
+                    ["git", "status", "--porcelain"], cwd=repo, env=env
+                ).stdout
+                if not status:
+                    raise RuntimeError("dirty fixture has no uncommitted edit")
+                await reject_old_facts()
+                registrations = json.loads(agent_state.read_text(encoding="utf-8"))
+                _run(
+                    [
+                        executable,
+                        "codegraph",
+                        "init",
+                        str(repo),
+                        "--language",
+                        "python",
+                    ],
+                    cwd=root,
+                    env=env,
+                )
+                if (
+                    source.read_text(encoding="utf-8") != changed
+                    or status
+                    != _run(["git", "status", "--porcelain"], cwd=repo, env=env).stdout
+                ):
+                    raise RuntimeError("CodeGraph init changed the existing user edit")
+                if json.loads(agent_state.read_text(encoding="utf-8")).get(
+                    "adds"
+                ) != registrations.get("adds"):
+                    raise RuntimeError("dirty init rewrote an agent registration")
+                _assert_dependency_target(
+                    await client.call_tool("dependency_subgraph", arguments=arguments),
+                    callee="release_sum_updated",
+                )
+        await _assert_codegraph_mcp_async(
+            root, repo, executable=executable, env=env, callee="release_sum_updated"
+        )
+
+    asyncio.run(verify())
 
 
 _FAKE_AGENT_CLIENT = r"""#!/usr/bin/env python3
@@ -406,6 +508,9 @@ def smoke(root: Path, *, executable: str = "codenib") -> None:
 
     _assert_codegraph_mcp(root, repo, executable=executable, env=env)
     _assert_codemap(root, repo, executable=executable, env=env)
+    _assert_dirty_reinitialization(
+        root, repo, executable=executable, env=env, agent_state=agent_state
+    )
     _run(
         [executable, "codegraph", "uninstall", str(repo)],
         cwd=root,

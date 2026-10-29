@@ -1,0 +1,12 @@
+{
+  "relative_native_path": "grade/stdout/call-0001/capture.json",
+  "whole_file_sha256": "18d6bf04feb58e8599f4fc6e3e14648b2ef9255051b682af4ab82efca8f497ea",
+  "whole_file_bytes": 334,
+  "part": 0,
+  "parts": 1,
+  "content_encoding": "gzip+base64",
+  "gzip_mtime": 0,
+  "gzip_bytes": 184,
+  "base64_bytes": "H4sIAAAAAAACA7WOyw6CMBBF93wFYe2i0KFQf6aZTgch4WHaEl/x360SXRi37ibn3sw9tyzPixAxcrHPC1qm48jp3m3YM06Gzz2uIbJLjehXfmUeT8ZeIocEZamgLfWHhx6rWj3/2RqkFqQYkAl0A0pZCSxlKUkKR0SWU+qQoXFWstMd2RZBVACCG9g85sVPOA5XdmaNXftz97vzLweMwzIb6nE+pKm3SYdj4OyePQDMqftiTgEAAA==",
+  "scope": "Exact original native grading bytes under lossless compression; concatenate decoded gzip pieces, decompress, then verify the whole-file hash. No outcome replacement or repair regrade."
+}

@@ -1,0 +1,12 @@
+{
+  "relative_native_path": "config.json",
+  "whole_file_sha256": "e717baccd37228799b0ed7201c8a79ba1a1c450e85b1dea54ee094147e862b33",
+  "whole_file_bytes": 229,
+  "part": 0,
+  "parts": 1,
+  "content_encoding": "gzip+base64",
+  "gzip_mtime": 0,
+  "gzip_bytes": 186,
+  "base64_bytes": "H4sIAAAAAAACA02MMQ7CMAxF956iyoxE6iZOwkFYkWs7EInS0pQJcXdaiYHpS+/p/XfTtmbReTKn1sw1Hxd9vrSu1Rx2U6fXwrq7sy4lF5V/fuFpHMu6655jVA9WCBwp5tBjgkTB2xhQA3pHzNz/8jLOdx31sdJapsfWvz8/Tle9FNkf643A4ylCYEbBmDOBDClYTrq9W1JxQZyHHtCylTRg14nEwcK2HjsB8MmZ5tN8ARTYmFflAAAA",
+  "scope": "Exact original native grading bytes under lossless compression; concatenate decoded gzip pieces, decompress, then verify the whole-file hash. No outcome replacement or repair regrade."
+}

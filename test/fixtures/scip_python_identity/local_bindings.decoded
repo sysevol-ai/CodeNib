@@ -1,0 +1,374 @@
+metadata {
+  tool_info {
+    name: "scip-python"
+    version: "0.6.6"
+  }
+  project_root: "file:///tmp/codenib-python-identity-20261027/captured-regressions3/local_bindings/repo"
+  text_document_encoding: UTF8
+}
+documents {
+  relative_path: "nested.py"
+  occurrences {
+    range: 0
+    range: 0
+    range: 0
+    symbol: "scip-python python identity 927b157e0e155bb9b8c1e4575afeea06efa60c8e nested/__init__:"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 0
+    range: 4
+    range: 11
+    symbol: "scip-python python identity 927b157e0e155bb9b8c1e4575afeea06efa60c8e nested/example()."
+    symbol_roles: 1
+    enclosing_range: 0
+    enclosing_range: 0
+    enclosing_range: 12
+    enclosing_range: 29
+  }
+  occurrences {
+    range: 1
+    range: 4
+    range: 11
+    symbol: "local 0"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 1
+    range: 14
+    range: 20
+    symbol: "scip-python python python-stdlib 3.11 builtins/object#"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 2
+    range: 8
+    range: 15
+    symbol: "local 0"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 2
+    range: 16
+    range: 21
+    symbol: "scip-python python identity 927b157e0e155bb9b8c1e4575afeea06efa60c8e nested/example().handler().(value)"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 3
+    range: 15
+    range: 20
+    symbol: "scip-python python identity 927b157e0e155bb9b8c1e4575afeea06efa60c8e nested/example().handler().(value)"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 4
+    range: 4
+    range: 9
+    symbol: "local 1"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 4
+    range: 12
+    range: 19
+    symbol: "local 0"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 5
+    range: 8
+    range: 11
+    symbol: "local 2"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 6
+    range: 8
+    range: 13
+    symbol: "local 1"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 6
+    range: 16
+    range: 19
+    symbol: "local 2"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 7
+    range: 10
+    range: 13
+    symbol: "local 2"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 8
+    range: 12
+    range: 17
+    symbol: "scip-python python identity 927b157e0e155bb9b8c1e4575afeea06efa60c8e nested/example().key#enter()."
+    symbol_roles: 1
+    enclosing_range: 8
+    enclosing_range: 8
+    enclosing_range: 9
+    enclosing_range: 20
+  }
+  occurrences {
+    range: 8
+    range: 18
+    range: 22
+    symbol: "scip-python python identity 927b157e0e155bb9b8c1e4575afeea06efa60c8e nested/example().key#enter().(self)"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 10
+    range: 10
+    range: 15
+    symbol: "scip-python python identity 927b157e0e155bb9b8c1e4575afeea06efa60c8e nested/example()._().(value)"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 11
+    range: 15
+    range: 20
+    symbol: "scip-python python identity 927b157e0e155bb9b8c1e4575afeea06efa60c8e nested/example()._().(value)"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 12
+    range: 11
+    range: 16
+    symbol: "local 1"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 12
+    range: 18
+    range: 21
+    symbol: "local 2"
+    symbol_roles: 8
+  }
+  symbols {
+    symbol: "scip-python python identity 927b157e0e155bb9b8c1e4575afeea06efa60c8e nested/__init__:"
+    documentation: "(module) nested"
+  }
+  symbols {
+    symbol: "scip-python python identity 927b157e0e155bb9b8c1e4575afeea06efa60c8e nested/example()."
+    documentation: "```python\ndef example(): # -> tuple[Type[key] | Literal[1], key, Literal[1]]:\n```"
+  }
+  symbols {
+    symbol: "local 0"
+    documentation: "```python\nnested.example.handler\n```"
+  }
+  symbols {
+    symbol: "scip-python python identity 927b157e0e155bb9b8c1e4575afeea06efa60c8e nested/example().handler()."
+    documentation: "```python\ndef handler(\n  value\n):\n```"
+  }
+  symbols {
+    symbol: "scip-python python identity 927b157e0e155bb9b8c1e4575afeea06efa60c8e nested/example().handler().(value)"
+  }
+  symbols {
+    symbol: "local 1"
+    documentation: "```python\nbuiltins.int\n```"
+  }
+  symbols {
+    symbol: "scip-python python identity 927b157e0e155bb9b8c1e4575afeea06efa60c8e nested/example().key#enter()."
+    documentation: "```python\ndef enter(\n  self\n): # -> Literal[1]:\n```"
+  }
+  symbols {
+    symbol: "scip-python python identity 927b157e0e155bb9b8c1e4575afeea06efa60c8e nested/example().key#enter().(self)"
+  }
+  symbols {
+    symbol: "scip-python python identity 927b157e0e155bb9b8c1e4575afeea06efa60c8e nested/example()._()."
+    documentation: "```python\ndef _(\n  value\n):\n```"
+  }
+  symbols {
+    symbol: "scip-python python identity 927b157e0e155bb9b8c1e4575afeea06efa60c8e nested/example()._().(value)"
+  }
+}
+documents {
+  relative_path: "other.py"
+  occurrences {
+    range: 0
+    range: 0
+    range: 0
+    symbol: "scip-python python identity 927b157e0e155bb9b8c1e4575afeea06efa60c8e other/__init__:"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 0
+    range: 4
+    range: 11
+    symbol: "scip-python python identity 927b157e0e155bb9b8c1e4575afeea06efa60c8e other/example()."
+    symbol_roles: 1
+    enclosing_range: 0
+    enclosing_range: 0
+    enclosing_range: 12
+    enclosing_range: 29
+  }
+  occurrences {
+    range: 1
+    range: 4
+    range: 11
+    symbol: "local 0"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 1
+    range: 14
+    range: 20
+    symbol: "scip-python python python-stdlib 3.11 builtins/object#"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 2
+    range: 8
+    range: 15
+    symbol: "local 0"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 2
+    range: 16
+    range: 21
+    symbol: "scip-python python identity 927b157e0e155bb9b8c1e4575afeea06efa60c8e other/example().handler().(value)"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 3
+    range: 15
+    range: 20
+    symbol: "scip-python python identity 927b157e0e155bb9b8c1e4575afeea06efa60c8e other/example().handler().(value)"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 4
+    range: 4
+    range: 9
+    symbol: "local 1"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 4
+    range: 12
+    range: 19
+    symbol: "local 0"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 5
+    range: 8
+    range: 11
+    symbol: "local 2"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 6
+    range: 8
+    range: 13
+    symbol: "local 1"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 6
+    range: 16
+    range: 19
+    symbol: "local 2"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 7
+    range: 10
+    range: 13
+    symbol: "local 2"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 8
+    range: 12
+    range: 17
+    symbol: "scip-python python identity 927b157e0e155bb9b8c1e4575afeea06efa60c8e other/example().key#enter()."
+    symbol_roles: 1
+    enclosing_range: 8
+    enclosing_range: 8
+    enclosing_range: 9
+    enclosing_range: 20
+  }
+  occurrences {
+    range: 8
+    range: 18
+    range: 22
+    symbol: "scip-python python identity 927b157e0e155bb9b8c1e4575afeea06efa60c8e other/example().key#enter().(self)"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 10
+    range: 10
+    range: 15
+    symbol: "scip-python python identity 927b157e0e155bb9b8c1e4575afeea06efa60c8e other/example()._().(value)"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 11
+    range: 15
+    range: 20
+    symbol: "scip-python python identity 927b157e0e155bb9b8c1e4575afeea06efa60c8e other/example()._().(value)"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 12
+    range: 11
+    range: 16
+    symbol: "local 1"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 12
+    range: 18
+    range: 21
+    symbol: "local 2"
+    symbol_roles: 8
+  }
+  symbols {
+    symbol: "scip-python python identity 927b157e0e155bb9b8c1e4575afeea06efa60c8e other/__init__:"
+    documentation: "(module) other"
+  }
+  symbols {
+    symbol: "scip-python python identity 927b157e0e155bb9b8c1e4575afeea06efa60c8e other/example()."
+    documentation: "```python\ndef example(): # -> tuple[Type[key] | Literal[1], key, Literal[1]]:\n```"
+  }
+  symbols {
+    symbol: "local 0"
+    documentation: "```python\nother.example.handler\n```"
+  }
+  symbols {
+    symbol: "scip-python python identity 927b157e0e155bb9b8c1e4575afeea06efa60c8e other/example().handler()."
+    documentation: "```python\ndef handler(\n  value\n):\n```"
+  }
+  symbols {
+    symbol: "scip-python python identity 927b157e0e155bb9b8c1e4575afeea06efa60c8e other/example().handler().(value)"
+  }
+  symbols {
+    symbol: "local 1"
+    documentation: "```python\nbuiltins.int\n```"
+  }
+  symbols {
+    symbol: "scip-python python identity 927b157e0e155bb9b8c1e4575afeea06efa60c8e other/example().key#enter()."
+    documentation: "```python\ndef enter(\n  self\n): # -> Literal[1]:\n```"
+  }
+  symbols {
+    symbol: "scip-python python identity 927b157e0e155bb9b8c1e4575afeea06efa60c8e other/example().key#enter().(self)"
+  }
+  symbols {
+    symbol: "scip-python python identity 927b157e0e155bb9b8c1e4575afeea06efa60c8e other/example()._()."
+    documentation: "```python\ndef _(\n  value\n):\n```"
+  }
+  symbols {
+    symbol: "scip-python python identity 927b157e0e155bb9b8c1e4575afeea06efa60c8e other/example()._().(value)"
+  }
+}
+external_symbols {
+  symbol: "scip-python python python-stdlib 3.11 builtins/object#"
+  documentation: "```python\nclass object()\n```"
+}
