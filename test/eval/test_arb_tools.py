@@ -6,6 +6,7 @@
 
 import json
 import subprocess
+import sys
 import time
 
 import pytest
@@ -494,6 +495,80 @@ def test_backend_identity_covers_launcher_arguments(monkeypatch, tmp_path):
     second = tools._graph_tools()["java:scip"]
     assert first["command"] == ["java", "-jar", str(jar)]
     assert first["argument_files_sha256"] != second["argument_files_sha256"]
+
+
+def _script(path, body):
+    path.write_text(f"#!{sys.executable}\nimport sys\n{body}\n")
+    path.chmod(0o755)
+    return str(path)
+
+
+def test_backend_identity_covers_python_module_packages(monkeypatch, tmp_path):
+    package = tmp_path / "site" / "fake_scip"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text("")
+    (package / "__main__.py").write_text("VERSION = 1\n")
+    monkeypatch.setenv("PYTHONPATH", str(tmp_path / "site"))
+    monkeypatch.setenv("CODENIB_JAVA_SCIP_CMD", f"{sys.executable} -m fake_scip.cli")
+    first = tools._graph_tools()["java:scip"]["loaded_backend"]
+    (package / "__main__.py").write_text("VERSION = 2\n")
+    second = tools._graph_tools()["java:scip"]["loaded_backend"]
+
+    assert first["target"] == "fake_scip"
+    assert first["path"] == str(package)
+    assert first["sha256"] and first["sha256"] != second["sha256"]
+
+
+def test_backend_identity_covers_the_rustup_toolchain_binary(tmp_path):
+    binary = tmp_path / "rust-analyzer"
+    binary.write_bytes(b"v1")
+    rustup = _script(
+        tmp_path / "rustup",
+        f"if sys.argv[1:4] == ['which', '--toolchain', 'nightly']:\n"
+        f"    print({str(binary)!r})\n"
+        f"else:\n"
+        f"    sys.exit(1)",
+    )
+    command = ["rustup", "run", "nightly", "rust-analyzer"]
+    first = tools._loaded_backend(command, rustup)
+    binary.write_bytes(b"v2")
+    second = tools._loaded_backend(command, rustup)
+    missing = tools._loaded_backend(["rustup", "run", "stable", "x"], rustup)
+
+    assert first["path"] == str(binary)
+    assert first["sha256"] != second["sha256"]
+    assert missing["target"] == "stable/x" and missing["sha256"] is None
+
+
+def test_backend_identity_covers_the_npx_package_version(tmp_path):
+    version = tmp_path / "version"
+    version.write_text("1.0.0")
+    npx = _script(
+        tmp_path / "npx",
+        f"assert sys.argv[1:] == ['--no-install', 'scip-ts', '--version']\n"
+        f"print(open({str(version)!r}).read())",
+    )
+    first = tools._loaded_backend(["npx", "--yes", "scip-ts", "index"], npx)
+    version.write_text("1.1.0")
+    second = tools._loaded_backend(["npx", "-p", "scip-ts", "scip-ts"], npx)
+
+    assert first == {"launcher": "npx", "target": "scip-ts", "version": "1.0.0"}
+    assert second["version"] == "1.1.0"
+
+
+def test_unresolvable_or_direct_backends_never_fail_the_identity(tmp_path):
+    failing = _script(tmp_path / "python3", "sys.exit(3)")
+    loaded = tools._loaded_backend([failing, "-m", "absent"], failing)
+
+    assert loaded == {
+        "launcher": "python -m",
+        "target": "absent",
+        "path": None,
+        "sha256": None,
+    }
+    assert tools._loaded_backend(["scip-go"], "/usr/bin/scip-go") is None
+    assert tools._loaded_backend(["rustup", "run", "nightly"], failing) is None
+    assert tools._loaded_backend(["npx", "x"], None) is None
 
 
 def test_receipts_are_replaced_atomically(tmp_path):
