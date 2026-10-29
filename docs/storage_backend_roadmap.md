@@ -177,8 +177,8 @@ delete implementation, scripts, switches, and dedicated tests.
 
 | Milestone | Status | Authorized result |
 | --- | --- | --- |
-| H1: BM25 publication proof | Experimental through 2026-10-04 | One source-only SQLite WAL + local CAS round trip |
-| H2: Portable multi-view snapshot | Gated on H1 promotion and a second real view consumer | Immutable BM25/FAISS/igraph generations without changing their query formats |
+| H1: BM25 publication proof | Deleted 2026-10-29; no consumer by the 2026-10-04 deadline | Evidence record only |
+| H2: Portable multi-view snapshot | Gated on a promoted BM25 publication proof and a second real view consumer | Immutable BM25/FAISS/igraph generations without changing their query formats |
 | H3: Jobs and hot switch | Gated on continuous-update product demand | Bounded jobs and validated request-pinned activation |
 | H4: Cross-file xref de-materialization | Gated on measured graph-update cost and parity plan | Unresolved monikers plus bounded query-time resolution |
 | H5: Per-file content addressing | Gated on H4 parity and reuse evidence | Context-bound reusable file units and version manifests |
@@ -187,42 +187,20 @@ delete implementation, scripts, switches, and dedicated tests.
 
 ### H1: BM25 Publication Proof
 
-Status: in progress as an `experimental` source-checkout surface.
+Status: deleted on 2026-10-29.
 
-Owner: index/artifact maintainers. Decision deadline: 2026-10-04.
+H1 stored one verified BM25-only portable artifact as an immutable archive in a
+local SHA-256 CAS, with generation, snapshot, and ref identity in a private
+four-table SQLite WAL catalog, and exported it back to the ordinary portable
+format. It passed its benchmark, failure and concurrency matrix,
+portable-artifact compatibility, and wheel-isolation gates.
 
-Allowed surface:
-
-- `scripts/experimental/hybrid_index/`;
-- `scripts/experimental/index_persistence.py`;
-- focused tests under `test/scripts/hybrid_index/` and the developer-script
-  command test;
-- the evidence record in `docs/experiments/hybrid_index_h1.md`.
-
-H1 accepts exactly one verified BM25-only portable context artifact. It stores
-one deterministic archive in a local SHA-256 CAS and records one immutable
-generation, one single-generation snapshot, and a compare-and-swap ref in a
-private four-table SQLite WAL catalog. It can export the pinned snapshot back
-to the ordinary portable format.
-
-H1 has no stable API, package export, official CLI command, configuration,
-Web/MCP route, jobs, leases, GC, overlay, remote adapter, or backend registry.
-The experiment uses constructor composition with exactly one implementation.
-
-Open gates:
-
-- [ ] name a current non-test consumer;
-- [x] record representative direct-artifact versus persisted-round-trip
-      latency, RSS, and retained-byte results;
-- [x] pass the failure and concurrency matrix in the H1 evidence record;
-- [x] prove the exported artifact passes the existing verifier and ordinary
-      BM25/MCP query path without the store;
-- [x] prove wheels and stable imports contain no experimental module or command;
-- [ ] make an explicit promote-or-delete decision by 2026-10-04.
-
-If any promotion gate remains open at the deadline, delete the H1
-implementation, executable script, and dedicated tests. H2 must not start from
-an unpromoted H1.
+At the 2026-10-04 deadline two gates were still open: no current non-test
+consumer was named, and no promotion decision was made. As this roadmap
+required, the implementation, developer script, and dedicated tests were
+deleted; release validation now rejects their paths as retired. The schema,
+failure matrix, and benchmark receipt remain in
+`docs/experiments/hybrid_index_h1.md`. H2 must not start from H1.
 
 ### H2: Portable Multi-view Snapshot
 
@@ -284,17 +262,17 @@ or speculative authorization system.
 
 ## Tracking
 
-Issue #765 owns the bounded H1 evidence and its 2026-10-04
-promote-or-delete decision; PR #766 carries the source-only implementation and
-evidence. The tracker references historical #199, foundation #535, and
-subtraction #753-#762 without reopening those scopes. Do not use the stale
+Issue #765 tracked the bounded H1 evidence and its 2026-10-04
+promote-or-delete decision; PR #766 carried the source-only implementation,
+which was deleted on 2026-10-29. The tracker references historical #199,
+foundation #535, and subtraction #753-#762 without reopening those scopes. Do not use the stale
 `feat/storage-catalog-foundation` branch as a base.
 
 Issue #749 owns the post-v0.2.3 retirement of the legacy Wiki JSON cache path;
 PR #767 carries that subtraction. It does not authorize changes to H1 or any
 H2-H7 work.
 
-The detailed H1 schema, linearization points, failure matrix, commands, and
-benchmark receipt live in
+The detailed H1 schema, linearization points, failure matrix, and benchmark
+receipt live in
 `docs/experiments/hybrid_index_h1.md`. Replace milestone status with current
 evidence; keep implementation chronology in Git history and PRs.

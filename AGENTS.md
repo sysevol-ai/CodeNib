@@ -33,7 +33,7 @@ For the current multi-language SCIP cold-start and acceleration program, use
 whenever a backend is promoted, a C++ acceleration gate changes, or a related
 issue/PR is closed.
 
-For the storage boundary and the time-bounded hybrid-index experiment, use
+For the storage boundary and the gated persistence hypotheses, use
 `docs/storage_backend_roadmap.md` as the durable objective record. Update it
 whenever the Wiki database boundary changes, an experiment gate changes, or a
 related issue or PR is reconciled.
@@ -105,20 +105,12 @@ scroll long excerpts only inside the source pane.
 - Keep built-in Wiki generation waiting bounded without stealing an owner's
   lock or starting duplicate work. Maintenance audits and dry runs must not
   mutate the source database or broaden the public storage facade.
-- One exception is authorized through 2026-10-04: the source-checkout-only H1
-  experiment under `scripts/experimental/hybrid_index/`, its developer script,
-  and focused tests. H1 accepts exactly one verified BM25-only portable
-  artifact, stores its immutable archive in one local SHA-256 CAS, and records
-  generation, snapshot, and ref identity in one private four-table SQLite WAL
-  catalog. It must not be installed under `codenib`, shipped in a wheel,
-  imported by product code, exposed by the official CLI, or wired into Web,
-  MCP, configuration, or a default route.
-- The H1 owner is the index/artifact maintainers. By 2026-10-04 they must either
-  promote it through an explicit scope decision backed by a current non-test
-  consumer, a representative benchmark, portable-artifact compatibility, and
-  the recorded safety gates, or delete its implementation, executable script,
-  and dedicated tests while retaining the decision record. Default-off or
-  source-only status is not permission to keep an unevaluated experiment.
+- The source-checkout-only H1 hybrid-index experiment was deleted on
+  2026-10-29: its 2026-10-04 deadline passed without a current non-test
+  consumer or a promotion decision. Its evidence stays in
+  `docs/experiments/hybrid_index_h1.md`; do not restore its implementation,
+  developer script, or tests. Default-off or source-only status is not
+  permission to keep an unevaluated experiment.
 - H2-H7 are demand-gated hypotheses, not implementation authorization. Do not
   add FAISS/igraph persistence, jobs, leases, hot switching, per-file CAS,
   xref de-materialization, GC, overlays, PostgreSQL, object storage, shared ANN,

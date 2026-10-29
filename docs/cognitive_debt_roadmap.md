@@ -729,15 +729,13 @@ source and manifest contracts
 
 Wiki consumer -> WikiStore -> SQLiteWikiStore
 manifest-bound views -> BM25 / FAISS / igraph / portable file artifacts
-source-only H1 experiment -> published artifact contracts
 labs and experiments -> published contracts only
 ```
 
 `web` must not own Wiki domain behavior, MCP must not own the reusable
 repository runtime, and `compiler` and `artifacts` must not import each other.
 Generic catalog, snapshot, job, lease, and object-store machinery is not on a
-protected product path. The bounded H1 experiment is evidence-gathering outside
-the installed package, not another product runtime.
+protected product path.
 
 ## Workstreams
 
@@ -863,7 +861,9 @@ and manifest-bound artifacts; no generic storage surface remains.
 
 ### S1E: Time-bounded hybrid-index evidence
 
-Status: experimental through 2026-10-04.
+Status: complete. H1 was deleted on 2026-10-29 because its 2026-10-04 deadline
+passed without a non-test consumer or a promotion decision; the evidence record
+remains in `docs/experiments/hybrid_index_h1.md`.
 
 Owner: index/artifact maintainers.
 
@@ -967,6 +967,7 @@ Status: pending.
 | 2026-09-03 | Publish the subtraction as v0.2.3 and reserve `codenib.storage` for the Wiki database | `WikiStore` is the only product database contract, while the old package name remains the clearest public entry point | Add one lazy Wiki-only module with an exact export list; keep all generic submodules, protocols, catalogs, and CAS implementations retired |
 | 2026-09-03 | Authorize one source-only BM25 H1 evidence experiment without reopening the stable storage boundary | `docs/experiments/hybrid_index_h1.md` records its schema, linearization points, verified failure matrix, commands, and diagnostic benchmark | Keep it outside the wheel and product routes; promote through an explicit demand-backed decision or delete code, script, and tests by 2026-10-04 |
 | 2026-09-05 | End the one-release Wiki JSON compatibility window | The v0.2.3 release notes and #749 record the migration window; production compositions already inject the Wiki store | Delete the legacy implementation and compatibility tests; preserve SQLite data and the `WikiStore` API |
+| 2026-10-29 | Delete the H1 hybrid-index experiment | The 2026-10-04 promote-or-delete deadline in #765 passed with no current non-test consumer and no promotion decision | Remove the implementation, developer script, dedicated tests, and wheel exemption; release validation rejects their paths; keep `docs/experiments/hybrid_index_h1.md` |
 
 ## Completion Gate
 

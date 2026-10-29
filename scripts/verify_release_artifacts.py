@@ -52,6 +52,7 @@ _COMPILED_BINARY_SUFFIXES = (
 _RETIRED_RUNTIME_PREFIXES = (
     "codenib/index/persistence/",
     "codenib/storage/",
+    "scripts/experimental/hybrid_index/",
 )
 _RETIRED_RUNTIME_MEMBERS = frozenset(
     {
@@ -65,10 +66,9 @@ _RETIRED_RUNTIME_MEMBERS = frozenset(
         "codenib/facts/clangd.py",
         "codenib/facts/generation.py",
         "codenib/facts/storage.py",
+        "scripts/experimental/index_persistence.py",
     }
 )
-_SOURCE_ONLY_WHEEL_PREFIXES = ("scripts/experimental/hybrid_index/",)
-_SOURCE_ONLY_WHEEL_MEMBERS = frozenset({"scripts/experimental/index_persistence.py"})
 
 
 def validate_readme_citation(readme: str) -> None:
@@ -233,17 +233,6 @@ def _validate_wheel(wheel: Path, name: str, version: str) -> None:
             raise ReleaseValidationError(
                 f"{wheel.name} contains retired storage runtime files: "
                 + ", ".join(retired)
-            )
-        source_only = sorted(
-            member
-            for member in members
-            if member in _SOURCE_ONLY_WHEEL_MEMBERS
-            or any(member.startswith(prefix) for prefix in _SOURCE_ONLY_WHEEL_PREFIXES)
-        )
-        if source_only:
-            raise ReleaseValidationError(
-                f"{wheel.name} contains source-only experimental files: "
-                + ", ".join(source_only)
             )
         if not any(
             member.startswith("codenib/web/frontend/assets/") and member.endswith(".js")
