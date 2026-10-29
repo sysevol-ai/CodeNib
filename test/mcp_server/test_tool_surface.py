@@ -61,6 +61,27 @@ def test_full_surface_preserves_all_registered_tools() -> None:
     }
 
 
+def test_explore_preload_metadata_preserves_sdk_definitions_and_other_metadata():
+    server = ToolSurfaceMCPServer("surface-test")
+
+    @server.tool(name="explore_context", meta={"test/provenance": "retained"})
+    async def explore_context(query: str) -> str:
+        return query
+
+    server.set_tool_surface("explore", preload_explore=True)
+    advertised = asyncio.run(server.list_tools())[0]
+    assert advertised.model_dump(by_alias=True)["_meta"] == {
+        "test/provenance": "retained",
+        "anthropic/alwaysLoad": True,
+    }
+
+    for surface in ("full", "explore"):
+        server.set_tool_surface(surface, preload_explore=False)
+        assert asyncio.run(server.list_tools())[0].meta == {
+            "test/provenance": "retained"
+        }
+
+
 def test_explore_surface_fails_closed_if_a_tool_bypasses_response_bound() -> None:
     server = ToolSurfaceMCPServer("surface-test", tool_surface="explore")
 
@@ -132,19 +153,26 @@ def test_unexpected_failure_keeps_the_sdk_error_path() -> None:
         ),
     ],
 )
+@pytest.mark.parametrize("preload_explore", [True, False])
 def test_actual_server_surface_works_with_modern_and_legacy_clients(
     mode: Literal["auto", "legacy"],
     surface: str,
     expected: set[str],
+    preload_explore: bool,
 ) -> None:
     original_surface = server_mod.mcp.tool_surface
+    original_preload = server_mod.mcp.preload_explore
     original_ctx = server_mod._ctx
     server_mod._ctx = None
-    server_mod.configure_tool_surface(surface)
+    server_mod.configure_tool_surface(surface, preload_explore=preload_explore)
 
     async def list_names() -> tuple[set[str], bool | None]:
         async with Client(server_mod.mcp, mode=mode, cache=None) as client:
             tools = await client.list_tools()
+            for tool in tools.tools:
+                assert bool((tool.meta or {}).get("anthropic/alwaysLoad")) is (
+                    surface == "explore" and preload_explore
+                )
             hidden_error = None
             if surface == "explore":
                 hidden = await client.call_tool("search_context", {"query": "x"})
@@ -155,7 +183,9 @@ def test_actual_server_surface_works_with_modern_and_legacy_clients(
         names, hidden_error = asyncio.run(list_names())
     finally:
         server_mod._ctx = original_ctx
-        server_mod.configure_tool_surface(original_surface)
+        server_mod.configure_tool_surface(
+            original_surface, preload_explore=original_preload
+        )
 
     assert names == expected
     if surface == "explore":

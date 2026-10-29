@@ -121,7 +121,12 @@ observed CodeNib/Serena time gap. Removing that cost alone still does not meet
 the benefit gate. The first opt-in candidate exposes the existing composed
 exploration tool through managed initialization. Deferred startup, actual
 voluntary use and two prospectively frozen confirmation sets remain open;
-this candidate has no measured task-efficiency advantage. The original paid
+this candidate has no measured task-efficiency advantage. The
+[indexed discovery control](experiments/codegraph_discovery_preload_2026_10_29.json)
+requests upfront loading of the single exploration tool on supporting Claude
+clients, with client override and the full/grep discovery policies retained.
+This verifies producer metadata rather than actual model schema delivery or
+voluntary use. The original paid
 API ceiling and separate five-user adoption gate remain in force.
 Tracking issue: [#874](https://github.com/sysevol-ai/CodeNib/issues/874).
 The detailed contract is [the internal pilot plan](experiments/codegraph_net_benefit.md).

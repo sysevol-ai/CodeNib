@@ -75,7 +75,11 @@ codenib codegraph init . --tool-surface explore
 ```
 
 This mode exposes `explore_context`; choose `--tool-surface full` for separate
-search, dependency, source-read and LSP tools. New registrations use `full` by
+search, dependency, source-read and LSP tools. In this single-entry mode,
+CodeNib asks supporting Claude Code clients to load the entry upfront. Client
+settings can override that request; the agent still chooses whether to call
+it. See [Claude Code's tool-discovery controls](https://code.claude.com/docs/en/mcp#mark-a-tool-to-load-upfront-or-stay-deferred).
+New registrations use `full` by
 default. Repeated initialization retains the existing selection. To change
 it, run `codenib codegraph uninstall .` before initializing again. Both modes
 build the same indexes; the smaller tool list does not establish lower task

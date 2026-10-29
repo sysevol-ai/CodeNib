@@ -1,0 +1,182 @@
+{
+  "schema": 1,
+  "scope": "model-free discovery control for the opt-in indexed exploration tool; not effective Claude HTTP tool-schema delivery, actual voluntary use or an efficiency result",
+  "base_candidate_commit": "fa0f1315dd6dc7c8a14ac55480b19b6127e07732",
+  "date": "2026-10-29",
+  "protocol_basis": {
+    "official_doc": "https://code.claude.com/docs/en/mcp#mark-a-tool-to-load-upfront-or-stay-deferred",
+    "default_discovery": "Tool definitions may be deferred behind ToolSearch; names and server instructions alone do not establish full schema delivery.",
+    "producer_hint": "tools/list _meta[anthropic/alwaysLoad]=true",
+    "client_override": "Client configuration can override the preload request; other clients choose their own loading policy."
+  },
+  "candidate": {
+    "scope": "indexed --tool-surface explore only; full tools and the user-funded grep/Jev route retain their discovery behavior",
+    "instructions": "State implementation lookup, cross-file symbol reference and change-impact use cases; keep native exact-file/text operations available.",
+    "sdk_definitions_mutated": false,
+    "unrelated_metadata_preserved": true,
+    "source_files": {
+      "codenib/mcp/tool_surface.py": "410bc0ebb1b5cc6307e42f16170b711291d03f214475ed0522c85e6e2eb112f6",
+      "codenib/mcp/server.py": "7cbca81d3a02a8a808e9195e1637d954279b28a7ef42ba9d1cbcab62a358ef68",
+      "codenib/mcp/prompts.py": "530358cefa1153b0f940520b02c36594a0772bdcd25dc2d82c10d446c79fbed8",
+      "test/mcp_server/test_tool_surface.py": "f8fc755a437679d7a1e9789dc9befac2fb4c2382be0831dfb59b8de05a933090",
+      "test/mcp_server/test_grep_jev.py": "ba56c23d6781e7c73e9b4b0f9c2e745d6db5eb8e241141735c270527c30bef8c"
+    }
+  },
+  "protocol_probe": {
+    "scope": "producer protocol metadata only; not Claude HTTP schema delivery or model use",
+    "mcp_version": "2.3.0",
+    "cases": [
+      {
+        "mode": "auto",
+        "surface": "full",
+        "preload_requested": false,
+        "advertised_tools": [
+          "dependency_subgraph",
+          "explore_context",
+          "get_manifest",
+          "lsp_definition",
+          "lsp_references",
+          "lsp_route",
+          "read_source",
+          "search_bm25",
+          "search_context",
+          "search_regex",
+          "search_semantic",
+          "search_zoekt"
+        ],
+        "preload_hint_tools": [],
+        "listing_response_bytes": 12660,
+        "response_sha256": "ef37a67a464af3160f84a75a6bd67b6faba46d36deb09470538fe162c88dcb29"
+      },
+      {
+        "mode": "auto",
+        "surface": "full",
+        "preload_requested": true,
+        "advertised_tools": [
+          "dependency_subgraph",
+          "explore_context",
+          "get_manifest",
+          "lsp_definition",
+          "lsp_references",
+          "lsp_route",
+          "read_source",
+          "search_bm25",
+          "search_context",
+          "search_regex",
+          "search_semantic",
+          "search_zoekt"
+        ],
+        "preload_hint_tools": [],
+        "listing_response_bytes": 12660,
+        "response_sha256": "ef37a67a464af3160f84a75a6bd67b6faba46d36deb09470538fe162c88dcb29"
+      },
+      {
+        "mode": "auto",
+        "surface": "explore",
+        "preload_requested": false,
+        "advertised_tools": [
+          "explore_context"
+        ],
+        "preload_hint_tools": [],
+        "listing_response_bytes": 1422,
+        "response_sha256": "21d0838815a68f07127ec359b6c2cb60c5ee784ebc9bc06b3d002e4c1e428056"
+      },
+      {
+        "mode": "auto",
+        "surface": "explore",
+        "preload_requested": true,
+        "advertised_tools": [
+          "explore_context"
+        ],
+        "preload_hint_tools": [
+          "explore_context"
+        ],
+        "listing_response_bytes": 1447,
+        "response_sha256": "4291cdff61b25d3d3078661e63f53307166d989ff7bf53ec0faa49cbb714d8a4"
+      },
+      {
+        "mode": "legacy",
+        "surface": "full",
+        "preload_requested": false,
+        "advertised_tools": [
+          "dependency_subgraph",
+          "explore_context",
+          "get_manifest",
+          "lsp_definition",
+          "lsp_references",
+          "lsp_route",
+          "read_source",
+          "search_bm25",
+          "search_context",
+          "search_regex",
+          "search_semantic",
+          "search_zoekt"
+        ],
+        "preload_hint_tools": [],
+        "listing_response_bytes": 12589,
+        "response_sha256": "ae508eab83d07b2cbd42682685138ab7172fb3d04d8e968fd8e37af6608e43e8"
+      },
+      {
+        "mode": "legacy",
+        "surface": "full",
+        "preload_requested": true,
+        "advertised_tools": [
+          "dependency_subgraph",
+          "explore_context",
+          "get_manifest",
+          "lsp_definition",
+          "lsp_references",
+          "lsp_route",
+          "read_source",
+          "search_bm25",
+          "search_context",
+          "search_regex",
+          "search_semantic",
+          "search_zoekt"
+        ],
+        "preload_hint_tools": [],
+        "listing_response_bytes": 12589,
+        "response_sha256": "ae508eab83d07b2cbd42682685138ab7172fb3d04d8e968fd8e37af6608e43e8"
+      },
+      {
+        "mode": "legacy",
+        "surface": "explore",
+        "preload_requested": false,
+        "advertised_tools": [
+          "explore_context"
+        ],
+        "preload_hint_tools": [],
+        "listing_response_bytes": 1351,
+        "response_sha256": "3e1aee96293fd054ef87f99cbe7f81cf87c7988552f50589c41d0ffb6a839764"
+      },
+      {
+        "mode": "legacy",
+        "surface": "explore",
+        "preload_requested": true,
+        "advertised_tools": [
+          "explore_context"
+        ],
+        "preload_hint_tools": [
+          "explore_context"
+        ],
+        "listing_response_bytes": 1376,
+        "response_sha256": "fafca365b27073bbae81a7145aa8acc1f5c12b08bac6b5901c1a87d951e454c1"
+      }
+    ]
+  },
+  "checks": {
+    "mcp_2_0_related_passed": 582,
+    "mcp_2_0_skipped": 7,
+    "mcp_2_3_related_passed": 129,
+    "preexisting_evidence_preserved": 385,
+    "frozen_inputs_preserved": 34,
+    "new_model_calls": 0
+  },
+  "remaining_questions": [
+    "Does a supported Claude client actually deliver the requested single tool upfront under the recorded effective configuration?",
+    "Does the agent choose that tool without an instruction to call it?",
+    "Does useful use reduce source reads, model rounds, complete workflow time and usage without quality loss?",
+    "Can startup/index/update work be reduced while preserving source authority and complete accounting?"
+  ],
+  "confirmation_policy": "A discovery-control diagnostic is separate from prospective independent benefit confirmation; do not regrade either frozen cohort or force tool use and label it natural adoption."
+}

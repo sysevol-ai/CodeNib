@@ -58,7 +58,10 @@ Work proceeds through these gates:
    provider or partial graph must remain explicit.
 3. Test tool discovery and useful query composition. The first candidate wires
    the existing explore-only tool list into managed agent initialization,
-   preserving the default full list and registration ownership. Model-free
+   preserving the default full list and registration ownership. Its indexed
+   single-entry mode now requests upfront loading through the documented
+   Claude tool metadata, with an explicit client override. The user-funded
+   grep/Jev route keeps its existing discovery policy. Model-free
    registration/protocol checks establish functionality only. Record optional
    tool use and reading/model turns before attributing an effect to this mode.
 4. Use exposed sources only for development diagnostics. Freeze independent
@@ -81,7 +84,8 @@ establish efficacy. A failed or inconclusive iteration stays recorded and
 informs the next specific hypothesis; it does not become an achieved advantage.
 
 Current state: original-cost attribution is complete; the opt-in discovery
-candidate passes local registration/protocol checks. Deferred startup, voluntary use,
+candidate passes local registration/protocol checks. Its preload request is
+verified as a protocol hint, not as actual schema delivery to a model. Deferred startup, voluntary use,
 both independent confirmation sets and external adoption remain open.
 
 ## Product question and decision

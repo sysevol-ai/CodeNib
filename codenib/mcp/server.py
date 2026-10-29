@@ -208,10 +208,10 @@ finally:
         _root_logger.removeHandler(_import_logging_guard)
 
 
-def configure_tool_surface(value: str) -> str:
+def configure_tool_surface(value: str, *, preload_explore: bool = True) -> str:
     """Apply one surface consistently to discovery, calls, and instructions."""
 
-    surface = mcp.set_tool_surface(value)
+    surface = mcp.set_tool_surface(value, preload_explore=preload_explore)
     mcp._lowlevel_server.instructions = (  # noqa: SLF001 - SDK has no setter
         CODENIB_EXPLORE_INSTRUCTIONS
         if surface == TOOL_SURFACE_EXPLORE
@@ -867,7 +867,7 @@ def init_grep_jev_server(repository: str, config) -> None:
     if _ctx is not None:
         _ctx.close()
     _ctx = ServerContext(manifest=RepoManifest(repo_path=str(root)), grep_jev=config)
-    configure_tool_surface(TOOL_SURFACE_EXPLORE)
+    configure_tool_surface(TOOL_SURFACE_EXPLORE, preload_explore=False)
     mcp._lowlevel_server.instructions = CODENIB_GREP_INSTRUCTIONS
 
 

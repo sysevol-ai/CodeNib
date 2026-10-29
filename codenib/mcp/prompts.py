@@ -16,8 +16,11 @@ CODENIB_FULL_INSTRUCTIONS = (
 )
 
 CODENIB_EXPLORE_INSTRUCTIONS = (
-    "CodeNib provides one bounded repository exploration operation. Use "
-    "explore_context with a repository question and optional symbol seeds. "
+    "CodeNib helps locate implementations, follow cross-file symbol references, "
+    "and assess change impact. For these questions, explore_context combines "
+    "ranked search, indexed relationships, and source excerpts in one call. "
+    "Provide a repository question and optional known symbol names. Native "
+    "file reads and exact text search remain useful for a known file or string. "
     "Inspect its plan, source identity, diagnostics, and session usage before "
     "drawing conclusions. Dependency expansion follows indexed static "
     "references, which may include fields, types and function values. Inspect "
