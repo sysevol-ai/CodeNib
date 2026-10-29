@@ -2,7 +2,7 @@
 
 [Agent Retrieval Bench](https://github.com/eyuansu62/agent-retrieval-bench)
 (ARB) asks a retriever to rank the files a coding agent needs next for four
-workflow signals. `codenib-arb` runs five CodeNib retrieval methods on all four
+workflow signals. `codenib-arb` runs six CodeNib retrieval methods on all four
 positive tasks and scores their rankings with ARB's own evaluator. It can also
 score file rankings produced by any other tool.
 
@@ -32,98 +32,136 @@ agent trajectories are not covered. No method calls a model API.
 | Scorer | Official functions called directly (Recall@k, MRR, BCY) |
 | Setup | ARB checkout and verified release download |
 | CodeNib entry point | `codenib-arb` |
-| Evidence | [Measured](#results); five methods on all 345 samples |
+| Evidence | [Measured](#results); six methods on all 345 samples |
 | Upstream | <https://github.com/eyuansu62/agent-retrieval-bench> |
 <!-- END CODENIB_SUPPORT_MATRIX:card:arb -->
 
 ## Results
 
-On all 345 positive samples, dense retrieval puts gold files earliest (the best
-Recall@5, MRR, and BCY), and fusing it with BM25 raises Recall@20 but lowers MRR. CodeNib's BM25 trails ARB's
-own BM25 baseline; the cause is a tokenizer gap
-([#856](https://github.com/sysevol-ai/CodeNib/issues/856)), not the protocol.
+On all 345 positive samples, a dense ranking reranked by a cross-encoder puts
+gold files earliest on every metric. `rerank` rescores the top 50 files of a
+dense run with Qwen3-Reranker-4B; over the Qwen3-Embedding-4B ranking it
+reaches Recall@20 0.80 and BCY@8k 0.56. Without reranking, the 4B embedding
+model leads. CodeNib's BM25 now matches ARB's own BM25 baseline.
 
 | Method | Source | Recall@5 | Recall@20 | MRR | BCY@8k |
 | --- | --- | ---: | ---: | ---: | ---: |
-| `dense` | Released corpus | 0.2940 | 0.5736 | 0.2425 | 0.3355 |
-| `hybrid` | Released corpus | 0.2804 | 0.5972 | 0.2144 | 0.3101 |
+| `rerank` over `dense` 4B | Released corpus | 0.5149 | 0.8006 | 0.3293 | 0.5590 |
+| `rerank` over `dense` 0.6B | Released corpus | 0.4983 | 0.7836 | 0.3190 | 0.5443 |
+| `dense` 4B | Released corpus | 0.3984 | 0.7248 | 0.2827 | 0.4356 |
+| `hybrid` (0.6B) | Released corpus | 0.3324 | 0.6925 | 0.2447 | 0.3476 |
+| `dense` 0.6B | Released corpus | 0.3884 | 0.6841 | 0.2774 | 0.4111 |
+| `bm25` | Released corpus | 0.1923 | 0.4490 | 0.1553 | 0.2191 |
 | `zoekt` | Released corpus | 0.2498 | 0.4400 | 0.1605 | 0.2569 |
-| `bm25` | Released corpus | 0.1543 | 0.3889 | 0.1211 | 0.1659 |
-| `graph_expansion` | Full source | 0.1543 | 0.3498 | 0.1197 | 0.1659 |
+| `graph_expansion` | Full source | 0.1923 | 0.4890 | 0.1617 | 0.2227 |
 | ARB BM25 (control) | Released corpus | 0.1899 | 0.4452 | 0.1520 | 0.2051 |
 
 Each row is one run of every sample with no failures; scores are means over all
-345 samples. Graph expansion ran as two concurrent shards of the same commit on
-disjoint snapshots, scored together with `codenib-arb evaluate --source-access
-full-source`. The control row reruns ARB's `eval-baseline --ranker bm25` on the
-same machine and reproduces ARB's published BM25 row. Graph expansion reads more
+345 samples. 0.6B and 4B name the Qwen3-Embedding model behind the dense
+ranking; both ran with the model's query instruction and a 2,048-token limit,
+as described [below](#retrieval-methods). `hybrid` fuses BM25 with the 0.6B
+ranking. The control row reruns ARB's `eval-baseline --ranker bm25` on the same
+machine and reproduces ARB's published BM25 row. Graph expansion reads more
 than the released corpus, so it is a separate condition rather than a peer of
 the other rows.
+
+Reranking raises Recall@20 and BCY@8k over either dense ranking. After
+reranking, the larger embedding model adds only 0.017 Recall@20, within noise,
+so the 0.6B ranking with the reranker gives nearly the same result in under
+half the embedding build time. Fusing BM25 into the 0.6B ranking does not raise Recall@20
+significantly and lowers BCY@8k. Paired differences, with 95% bootstrap
+intervals over repositories:
+
+| Comparison | Recall@20 | MRR | BCY@8k |
+| --- | --- | --- | --- |
+| `rerank` over 0.6B − `dense` 0.6B | +0.100 (+0.065 to +0.131) | +0.042 (−0.015 to +0.087) | +0.133 (+0.055 to +0.204) |
+| `rerank` over 4B − `dense` 4B | +0.076 (+0.042 to +0.120) | +0.047 (+0.006 to +0.079) | +0.123 (+0.037 to +0.202) |
+| `rerank` over 4B − `rerank` over 0.6B | +0.017 (−0.005 to +0.036) | +0.010 (−0.027 to +0.036) | +0.015 (−0.035 to +0.047) |
+| `dense` 4B − `dense` 0.6B | +0.041 (−0.002 to +0.074) | +0.005 (−0.033 to +0.040) | +0.024 (−0.037 to +0.071) |
+| `hybrid` − `dense` 0.6B | +0.008 (−0.028 to +0.044) | −0.033 (−0.078 to +0.004) | −0.064 (−0.090 to −0.019) |
 
 Recall@20 by task:
 
 | Method | code2test (106) | comment2context (80) | trace2code (101) | edit2ripple (58) |
 | --- | ---: | ---: | ---: | ---: |
-| `dense` | 0.690 | 0.550 | 0.480 | 0.556 |
-| `hybrid` | 0.607 | 0.627 | 0.561 | 0.601 |
+| `rerank` over `dense` 4B | 0.835 | 0.663 | 0.926 | 0.711 |
+| `rerank` over `dense` 0.6B | 0.797 | 0.694 | 0.896 | 0.687 |
+| `dense` 4B | 0.780 | 0.579 | 0.799 | 0.697 |
+| `hybrid` (0.6B) | 0.659 | 0.662 | 0.767 | 0.664 |
+| `dense` 0.6B | 0.726 | 0.571 | 0.744 | 0.658 |
+| `bm25` | 0.286 | 0.533 | 0.541 | 0.470 |
 | `zoekt` | 0.304 | 0.325 | 0.607 | 0.556 |
-| `bm25` | 0.299 | 0.529 | 0.391 | 0.356 |
-| `graph_expansion` | 0.209 | 0.506 | 0.416 | 0.276 |
+| `graph_expansion` | 0.299 | 0.544 | 0.620 | 0.532 |
 
-No method was tuned on ARB. Recall@20 / MRR on the dev and held-out halves
+Earlier runs on these samples informed three settings: the dense token limit
+and query instruction, compared on all samples, and rerank's fusion with the
+base order rather than the reranker's order alone, chosen on the dev half.
+Nothing else was tuned on ARB. Recall@20 / MRR on the dev and held-out halves
 (164 and 181 samples, defined [below](#metric-contract)):
 
 | Method | Dev | Held-out |
 | --- | ---: | ---: |
-| `dense` | 0.5526 / 0.2340 | 0.5925 / 0.2502 |
-| `hybrid` | 0.6105 / 0.2342 | 0.5852 / 0.1964 |
+| `rerank` over `dense` 4B | 0.8057 / 0.3507 | 0.7960 / 0.3099 |
+| `rerank` over `dense` 0.6B | 0.7876 / 0.3280 | 0.7799 / 0.3108 |
+| `dense` 4B | 0.7193 / 0.2805 | 0.7297 / 0.2848 |
+| `hybrid` (0.6B) | 0.7133 / 0.2549 | 0.6736 / 0.2354 |
+| `dense` 0.6B | 0.6728 / 0.2793 | 0.6943 / 0.2757 |
+| `bm25` | 0.4776 / 0.1665 | 0.4231 / 0.1452 |
 | `zoekt` | 0.4542 / 0.1589 | 0.4273 / 0.1619 |
-| `bm25` | 0.4233 / 0.1359 | 0.3577 / 0.1077 |
-| `graph_expansion` | 0.3704 / 0.1329 | 0.3310 / 0.1077 |
+| `graph_expansion` | 0.5139 / 0.1729 | 0.4664 / 0.1515 |
 
-Graph expansion built a code graph for 190 of the 218 snapshots, covering 290
-samples. Seventeen transformers snapshots and one diffusers snapshot hit
-CodeNib's 600-second scip-python limit; the Java indexer produced no graph for
-five spring-boot snapshots and one mockito snapshot; two scrapy, one gin, and
-one numpy snapshot also produced none. Those samples rank by BM25. On the 290 samples with a graph, it
-lowered Recall@20 by 0.047 against BM25 (95% bootstrap interval −0.085 to
-−0.007). MRR fell by 0.002 (−0.005 to +0.002), and BCY@8k showed no net change
-(−0.016 to +0.014). It helped trace2code (0.416 against
-0.391) and hurt code2test, partly because the Go graphs in this run omitted
-test files.
-Adding 15 reference neighbors after five BM25 seeds displaces better BM25
-candidates; deciding when to follow references is left to an interactive
-agent.
+On the held-out half alone, reranking still raises Recall@20 over either dense
+ranking (+0.086 over 0.6B, +0.066 over 4B, both intervals above zero), and the
+4B base still adds 0.016 after reranking (−0.009 to +0.032).
+
+Graph expansion built a code graph for 185 of the 218 snapshots, covering 279
+samples. Seventeen transformers snapshots and six diffusers snapshots hit
+CodeNib's 600-second scip-python limit. The limit is wall-clock time, so
+coverage depends on host load: five of those diffusers snapshots finished
+within it in the earlier run, when the host was less busy. The Java indexer
+produced no graph for five spring-boot snapshots and one mockito snapshot; two
+scrapy, one gin, and one numpy snapshot also produced none. Those samples rank
+by BM25. On the 279 samples with a graph, expansion raised Recall@20 by 0.049
+against BM25 (95% bootstrap interval −0.017 to +0.094), MRR by 0.008 (−0.001
+to +0.014), and BCY@8k by 0.004 (−0.014 to +0.030). Almost all of the Recall@20
+gain is in gin, etcd, and caddy, Go repositories whose graphs now include test
+files; in the earlier run, before they did, expansion lowered Recall@20 by
+0.047. Elsewhere, adding 15 reference neighbors after five BM25 seeds still
+displaces better BM25 candidates about as often as it finds new gold files;
+deciding when to follow references is left to an interactive agent.
 
 Costs. Cold builds are the total over all 218 corpus snapshots; the largest
 index is the biggest single snapshot; query times are per sample:
 
 | Method | Cold builds, total | Largest index | Query median / p95 | Tool calls per sample |
 | --- | ---: | --- | --- | ---: |
-| `bm25` | 437 s | 160k chunks, 13.4M tokens, in memory | 0.40 s / 11.97 s | 1 |
-| `dense` | 4,035 s | 160k vectors, 665 MB, in memory | 0.15 s / 1.76 s | 1 |
-| `hybrid` | 4,365 s | both of the above | 0.55 s / 11.96 s | 2 |
-| `zoekt` | 1,315 s | 276 MB on disk (9.2 GB for all snapshots) | 0.67 s / 2.37 s | 14.4 |
-| `graph_expansion` | 22,541 s, plus 419 s fetching source | graph of 160k vertices, 343k reference edges | 0.33 s / 9.16 s | 1.8 |
+| `rerank` (either base) | 2 s, loading released text | None; scores 50 of up to 11k files | 7.6 s / 14.5 s | 1, plus the base run's 1 |
+| `dense` 4B | 8,266 s | 162k vectors, 1.66 GB, in memory | 0.15 s / 1.83 s | 1 |
+| `dense` 0.6B | 3,892 s | 162k vectors, 665 MB, in memory | 0.15 s / 2.01 s | 1 |
+| `hybrid` (0.6B) | 4,489 s | BM25 and 0.6B indexes | 0.76 s / 14.74 s | 2 |
+| `bm25` | 710 s | 162k chunks, 14.3M tokens, in memory | 0.44 s / 12.04 s | 1 |
+| `zoekt` | 1,409 s | 276 MB on disk (9.2 GB for all snapshots) | 0.67 s / 2.32 s | 14.3 |
+| `graph_expansion` | 25,399 s, plus 613 s fetching source | graph of 160k vertices, 343k reference edges | 0.46 s / 14.02 s | 1.8 |
 
-Dense builds embed each distinct chunk text once per run: 0.90M of the 6.2M
-released chunks were embedded and the rest reused, so a snapshot's cost depends
-on which snapshots of its repository came before it. No method made a model
-API call; dense and hybrid ran Qwen3-Embedding-0.6B locally.
+A reranked run adds its stage's cost to the base run's. Dense builds embed each
+distinct chunk text once per run: 0.90M of the 6.2M released chunks were
+embedded and the rest reused, so a snapshot's cost depends on which snapshots
+of its repository came before it. No method made a model API call; the
+embedding models and the reranker ran locally.
 
-The runs used tag [`arb/2026-10-22/methods`](https://github.com/sysevol-ai/CodeNib/tree/arb/2026-10-22/methods)
+The runs used tag [`arb/2026-10-24/methods`](https://github.com/sysevol-ai/CodeNib/tree/arb/2026-10-24/methods)
 on one host (Intel Xeon Gold 5416S, 64 cores, one H100 shared with other jobs),
 with CPU and GPU methods running at the same time, so treat timings as
 indicative. The [results receipt](../assets/arb_full.json) holds every
 method's configuration, per-sample metrics, ranking depths, and costs; the
-full rankings are published at [`sysevol-ai/codenib-arb-rankings`](https://huggingface.co/datasets/sysevol-ai/codenib-arb-rankings/tree/8be160b7258a803bc7e6d21a7f3ef0f981bdd382) with checksums for offline
+full rankings are published at [`sysevol-ai/codenib-arb-rankings`](https://huggingface.co/datasets/sysevol-ai/codenib-arb-rankings/tree/9ac10c350738533b5444cf4e68ac9a3b83531d24) with checksums for offline
 rescoring.
 
-ARB lists these results, with the rankings and rescoring instructions, under
-its [community results](https://github.com/eyuansu62/agent-retrieval-bench/blob/main/docs/community_results.md#codenib);
-its maintainers rescored all five methods independently. An earlier
-eight-sample compatibility check is kept in the
-[smoke receipt](../assets/arb_smoke.json).
+ARB's [community results](https://github.com/eyuansu62/agent-retrieval-bench/blob/main/docs/community_results.md#codenib)
+list CodeNib's earlier five-method run (tag `arb/2026-10-22/methods`), which
+its maintainers rescored independently; that run cut dense queries at 512
+tokens and predates the BM25 tokenizer fix. An earlier eight-sample
+compatibility check is kept in the [smoke receipt](../assets/arb_smoke.json).
 
 ## Pins and preparation
 
@@ -231,18 +269,21 @@ condition described below.
 | Method | Index per snapshot | Ranking |
 | --- | --- | --- |
 | `bm25` (default) | CodeNib BM25 over every released file and symbol chunk | Every chunk ranked; each file takes the rank of its first chunk |
-| `dense` | Exact inner-product search over Qwen3-Embedding-0.6B vectors of every chunk | Same first-hit file ranking |
+| `dense` | Exact inner-product search over Qwen3-Embedding vectors of every chunk (0.6B unless another model is chosen) | Same first-hit file ranking |
 | `hybrid` | Both indexes above | CodeNib's file-level weighted RRF (k = 60) of the two file rankings |
 | `zoekt` | Zoekt trigram index of every file and symbol chunk | One Zoekt query per code-like term in the query; files ordered by matched terms, then first match |
 | `graph_expansion` | BM25 as above, plus a CodeNib code graph of the full source | The top five BM25 files, then up to 15 files connected to them by code references, then the rest in BM25 order |
 | `rerank` | None; it reads a completed run | The base run's top 50 files rescored by Qwen3-Reranker-4B and fused with the base order by file-level RRF (k = 60); the other files keep the base order |
 
-The dense model uses no query or document instruction, as ARB's own embedding
-baseline does, and applies a 512-token limit to queries as well as chunks.
-With the pinned tokenizer, 124 of the 345 queries are longer and are cut: 15 of
-106 code2test, 2 of 80 comment2context, 52 of 101 trace2code, and 55 of 58
-edit2ripple. BM25 and graph expansion read the full query, and `hybrid` cuts
-it only in its dense branch. On a GPU the model runs in bfloat16. `--embedding-model` with
+By default the dense model uses no query or document instruction, as ARB's own
+embedding baseline does, and applies a 512-token limit to queries as well as
+chunks. With the pinned tokenizer that cuts 124 of the 345 queries: 15 of 106
+code2test, 2 of 80 comment2context, 52 of 101 trace2code, and 55 of 58
+edit2ripple. The published results instead pass `--max-seq-length 2048
+--embedding-batch-size 16 --query-prompt registry`, which prepends the
+model's registered query instruction; at 2,048 tokens only 12 of the 58
+edit2ripple queries are cut. BM25 and graph expansion read the full query, and
+`hybrid` cuts it only in its dense branch. On a GPU the model runs in bfloat16. `--embedding-model` with
 `--embedding-revision` (a 40-character commit) selects another
 SentenceTransformers model, and `--max-seq-length` and `--embedding-batch-size`
 change the token limit and batch size; each run records them. `--query-prompt registry` prepends the query instruction that CodeNib registers for the model, given as text or as the name of one of the model's own prompts, and the run records it. Models registered with a document instruction as well are refused, because chunks are embedded without one. Each distinct chunk text is embedded once per run, because
@@ -302,9 +343,7 @@ files and is built in a child process with a 30-minute limit. It never installs
 dependencies or runs project setup, but the Rust and Java indexers run the
 project's own build tooling. If no graph can be built, the sample is ranked by
 BM25 and recorded with `graph_used: false`. Fetching source is reported as
-`source_fetch_seconds`, apart from the build. The results above were
-measured when CodeNib's Go graph omitted `_test.go` files, so expansion there
-could not propose Go tests; Go graphs now include them.
+`source_fetch_seconds`, apart from the build.
 
 Current graph loading also rejects cyclic source containment and records the
 failure before using BM25. A compiler provider can conflate nested definitions
@@ -364,8 +403,8 @@ reuse that index. The 345 samples use 218 distinct corpora.
 | --- | --- |
 | Cold index build | `index_build_seconds` and `index_size` on the sample that triggered the build; `corpus_load_seconds` and, for `graph_expansion`, `source_fetch_seconds` separately |
 | Query latency | `query_seconds` on every sample |
-| Tool calls | `tool_calls` per sample: one search for `bm25` and `dense`, two for `hybrid` and for `graph_expansion` with a graph, one per term for `zoekt` |
-| Model usage | No API calls (`model_calls` is 0). `dense` and `hybrid` run a local embedding model; `retrieval_usage.embedding` records its revision, loads, and encoded and reused chunks |
+| Tool calls | `tool_calls` per sample: one search for `bm25` and `dense`, two for `hybrid` and for `graph_expansion` with a graph, one per term for `zoekt`, one scoring call for `rerank`, which also records the base run's as `base_tool_calls` |
+| Model usage | No API calls (`model_calls` is 0). `dense` and `hybrid` run a local embedding model; `retrieval_usage.embedding` records its revision, loads, and encoded and reused chunks. `rerank` runs a local cross-encoder recorded in its method configuration |
 | Context budget | Not applicable: every method returns a file ranking, and BCY packs released text at its fixed budgets |
 
 `index_size` depends on the method: BM25 documents, tokens, vocabulary, and
@@ -388,7 +427,6 @@ These routes are candidates for later adapters:
 | Existing CodeNib capability | Proposed comparison |
 | --- | --- |
 | Zoekt and graph tools inside an agent loop | Multi-round exact symbol, path, trace, and relationship search |
-| Retrieve → rerank | Candidate ordering with a model at fixed budgets |
 
 Before comparing agent strategies, fix the model, tool permissions, query
 budget, and final context budget. Report index build time and size separately
@@ -402,10 +440,10 @@ describe.
 
 ARB's `indexed_interactive` mode lets a policy call index lookups next to
 `list_dir`, `grep`, `read_file`, and `submit`, under the same budgets. CodeNib
-supplies the lookups as an ARB tool provider. The mode is not in the ARB
-revision pinned above for static scores; it is proposed in
-[agent-retrieval-bench#12](https://github.com/eyuansu62/agent-retrieval-bench/pull/12),
-so run it from a checkout that includes that change:
+supplies the lookups as an ARB tool provider. The mode was added in
+[agent-retrieval-bench#12](https://github.com/eyuansu62/agent-retrieval-bench/pull/12)
+(`ae4091a2`), after the revision pinned above for static scores, so run it
+from a checkout that includes that commit:
 
 ```bash
 arb eval-closed-tool-llm ... --mode indexed_interactive \

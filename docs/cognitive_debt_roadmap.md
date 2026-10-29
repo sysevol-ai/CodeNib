@@ -774,22 +774,25 @@ index size apart from per-sample query time, tool calls, and model usage; every
 report also carries the shared dev/held-out split.
 
 Upstream ARB merged the docs/example contribution (eyuansu62/agent-retrieval-bench#9)
-and reproduced its smoke independently. Native runs now cover five methods on
-all 345 samples (`bm25`, `dense`, `hybrid`, `zoekt` on the released corpus;
-`graph_expansion` on full source), bound to tag `arb/2026-10-22/methods`, with
-rankings published for offline rescoring. Graph expansion lowered Recall@20
-against BM25 on the samples with a graph; CodeNib BM25 trails ARB's BM25 because
-of a tokenizer gap (#856).
+and reproduced its smoke independently. The first native runs covered five
+methods on all 345 samples, bound to tag `arb/2026-10-22/methods`; ARB merged
+them as a community result (eyuansu62/agent-retrieval-bench#10) after
+rescoring all 13,800 per-sample cells and documenting that dense and hybrid cut
+124 queries at the encoder's 512-token limit.
 
-ARB merged the results as a community result (eyuansu62/agent-retrieval-bench#10)
-after rescoring all 13,800 per-sample cells and documenting that dense and
-hybrid cut 124 queries at the encoder's 512-token limit.
+The current runs cover six methods (`bm25`, `dense` with the 0.6B and 4B
+embedding models, `hybrid`, `zoekt`, and `rerank` over each dense run on the
+released corpus; `graph_expansion` on full source), bound to tag
+`arb/2026-10-24/methods`, with rankings published for offline rescoring. They
+include the BM25 tokenizer fix (#856), the dense query instruction at a
+2,048-token limit, and the Go test graphs. Reranking the 4B dense ranking
+reaches Recall@20 0.80; graph expansion now edges past BM25 within noise, the
+gain coming from Go repositories.
 
 Open gates: the indexed-interactive comparison proposed in
 eyuansu62/agent-retrieval-bench#11, which holds the agent model and budgets
-fixed and stays separate from ARB's closed-tool diagnostic; the BM25 tokenizer
-fix (#856); and selective/abstention evaluation. Line/span scores remain out of
-scope.
+fixed and stays separate from ARB's closed-tool diagnostic; and
+selective/abstention evaluation. Line/span scores remain out of scope.
 
 ### S0: High-confidence subtraction
 
