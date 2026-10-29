@@ -225,12 +225,16 @@ class LSPClient:
         project_root: str,
         language: str,
         init_options: Optional[dict] = None,
+        path_prefix: Optional[str] = None,
     ):
         self.command = command
         self.project_root = Path(project_root).resolve()
         self.root_uri = self.project_root.as_uri()
         self.language = language
         self.init_options = init_options
+        # Directory searched before the server's managed PATH, e.g. to pin the
+        # interpreter a Python server probes for import search paths.
+        self.path_prefix = path_prefix
         self.process: Optional[subprocess.Popen] = None
         self._next_id = 1
         self._opened_files: set[str] = set()
@@ -274,6 +278,10 @@ class LSPClient:
         """
         logger.info(f"Starting LSP server: {' '.join(self.command)}")
         env = _lsp_process_env(self.language, self.project_root)
+        if self.path_prefix:
+            env["PATH"] = os.pathsep.join(
+                part for part in (self.path_prefix, env.get("PATH")) if part
+            )
         self.process = subprocess.Popen(
             self.command,
             stdin=subprocess.PIPE,

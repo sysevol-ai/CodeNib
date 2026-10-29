@@ -6,6 +6,8 @@
 
 import copy
 import json
+import os
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -501,7 +503,7 @@ def test_resolver_startup_failure_or_cancellation_always_shuts_down(
     shutdowns = []
 
     class FailingClient:
-        def __init__(self, *_):
+        def __init__(self, *_args, **_kwargs):
             pass
 
         @staticmethod
@@ -523,6 +525,47 @@ def test_resolver_startup_failure_or_cancellation_always_shuts_down(
 
     assert len(shutdowns) == 1
     assert index.SerializeToString() == original
+
+
+def test_resolver_provider_sees_only_the_standard_library(tmp_path, monkeypatch):
+    from codenib import toolchains
+    from codenib.graph.incremental import lsp_client
+
+    index = _fixture(tmp_path)
+    probes = []
+
+    class ProbingClient:
+        def __init__(self, *_args, path_prefix=None):
+            self.path_prefix = path_prefix
+
+        @staticmethod
+        def get_lsp_command(_):
+            return ["basedpyright-langserver", "--stdio"]
+
+        def start(self, **_kwargs):
+            # basedpyright asks python3 on PATH for its import search paths.
+            env = {"PATH": os.pathsep.join([self.path_prefix, os.environ["PATH"]])}
+            probe = subprocess.run(
+                ["python3", "-c", "import json, sys; print(json.dumps(sys.path))"],
+                env=env,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            probes.append((self.path_prefix, json.loads(probe.stdout)))
+            raise RuntimeError("stop after the probe")
+
+        def shutdown(self):
+            pass
+
+    monkeypatch.setattr(lsp_client, "LSPClient", ProbingClient)
+    monkeypatch.setattr(toolchains, "resolve_command", lambda _: "/tools/basedpyright")
+    with pytest.raises(RuntimeError, match="stop after the probe"):
+        normalize_python_index(index, tmp_path)
+
+    [(prefix, search_paths)] = probes
+    assert not [path for path in search_paths if "-packages" in path]
+    assert not Path(prefix).exists()
 
 
 def test_expired_recovery_budget_does_not_start_a_provider(tmp_path, monkeypatch):
