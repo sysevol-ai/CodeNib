@@ -14,6 +14,7 @@ SPDX-License-Identifier: Apache-2.0
 | Owner | index/artifact maintainers |
 | Decision date | 2026-09-03 |
 | Promote-or-delete deadline | 2026-10-04 |
+| Outcome | deleted on 2026-10-29; no consumer or promotion decision by the deadline |
 | Tracker | #765 |
 | Implementation PR | #766 |
 | Stable API or CLI | none |
@@ -24,7 +25,8 @@ H1 asks one narrow question: does a local SQLite WAL control plane plus a local
 content-addressed archive improve a real BM25 workflow enough to justify a
 maintained persistence boundary? It does not reopen the stable storage API.
 
-The candidate lives only in:
+The candidate lived only in these paths until its deletion on 2026-10-29. The
+commands below need a checkout from before that date:
 
 - `scripts/experimental/hybrid_index/`;
 - `scripts/experimental/index_persistence.py`;
