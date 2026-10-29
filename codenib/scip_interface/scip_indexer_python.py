@@ -55,6 +55,43 @@ def _scip_python_index_timeout() -> float:
     return timeout
 
 
+def _read_varint(handle) -> Optional[int]:
+    value = shift = 0
+    while True:
+        byte = handle.read(1)
+        if not byte:
+            return None
+        value |= (byte[0] & 0x7F) << shift
+        if byte[0] < 0x80:
+            return value
+        shift += 7
+
+
+def _scip_index_has_documents(path: Path) -> bool:
+    """Return whether a SCIP index holds at least one complete document.
+
+    Every top-level ``Index`` field is length-delimited, so this reads field
+    headers and skips their payloads instead of parsing a large cached index.
+    """
+
+    try:
+        size = path.stat().st_size
+        with path.open("rb") as handle:
+            while (tag := _read_varint(handle)) is not None:
+                length = _read_varint(handle)
+                if tag & 0x7 != 2 or length is None:
+                    return False
+                end = handle.tell() + length
+                if end > size:
+                    return False
+                if tag >> 3 == 2:
+                    return True
+                handle.seek(end)
+    except OSError:
+        return False
+    return False
+
+
 def _run_checked_with_timeout(cmd, *, timeout, **popen_kwargs):
     """Like ``subprocess.run(cmd, check=True, timeout=...)`` but kills the whole
     process group on timeout or caller cancellation.
@@ -185,7 +222,7 @@ class SCIPPythonIndexer(SCIPIndexerBase):
         else:
             cmd.extend(["--project-name", self.project_root.name])
 
-        cmd.extend(["--output", str(self.index_file)])
+        cmd.extend(["--output", str(self._pending_index_file)])
 
         if self._direct_indexer_path:
             # Repository-context serving does not expose navigation into the
@@ -201,6 +238,38 @@ class SCIPPythonIndexer(SCIPIndexerBase):
             cmd.extend(["--target-only", target_dir])
 
         return cmd
+
+    @property
+    def _pending_index_file(self) -> Path:
+        """Where scip-python writes until the run has ended.
+
+        scip-python writes index metadata first and then each document as it
+        is emitted, so a run killed from outside (job timeout, OOM, SIGKILL)
+        would otherwise leave a truncated ``index.scip`` for the cache paths.
+        """
+        return self.index_file.with_name(self.index_file.name + ".partial")
+
+    def _discard_index_without_documents(self) -> None:
+        """Drop a document-free ``index.scip`` and every cache built from it.
+
+        Before publication was atomic, an interrupted run left its
+        metadata-only prefix at ``index.scip``; the cache paths then reused it,
+        and the graph decoded from it, as an empty graph without an error.
+        """
+
+        if not self.index_file.is_file() or _scip_index_has_documents(self.index_file):
+            return
+        logger.warning(
+            "Discarding SCIP index without documents at %s and its derived caches",
+            self.index_file,
+        )
+        for path in (
+            self.index_file,
+            self.decoded_file,
+            self.graph_file,
+            self.lsp_index_file,
+        ):
+            path.unlink(missing_ok=True)
 
     def _has_project_pyright_config(self) -> bool:
         """Return whether the project already owns Pyright configuration."""
@@ -304,6 +373,8 @@ class SCIPPythonIndexer(SCIPIndexerBase):
         if self.index_file.exists():
             self.index_file.unlink()
             logger.info("Removed pre-existing SCIP index before generation")
+        pending = self._pending_index_file
+        pending.unlink(missing_ok=True)
         if not self._check_indexer_available():
             self.index_generation_report = {
                 "backend": "scip-python",
@@ -331,6 +402,8 @@ class SCIPPythonIndexer(SCIPIndexerBase):
         duration = section.duration
 
         if success:
+            if pending.exists():
+                os.replace(pending, self.index_file)
             document_count = self._usable_index_document_count()
             self.index_generation_report = {
                 "backend": "scip-python",
@@ -344,8 +417,9 @@ class SCIPPythonIndexer(SCIPIndexerBase):
             return True
         else:
             logger.error(f"Index generation failed after {duration:.2f} seconds")
-            document_count = self._usable_index_document_count()
+            document_count = self._usable_index_document_count(pending)
             if allow_partial_index and document_count > 0:
+                os.replace(pending, self.index_file)
                 self.index_generation_report = {
                     "backend": "scip-python",
                     "status": "partial",
@@ -360,8 +434,8 @@ class SCIPPythonIndexer(SCIPIndexerBase):
                 return False
             # Never let the generic pipeline mistake an unvalidated partial file
             # for a complete graph unless the caller explicitly opted into repair.
-            if self.index_file.exists():
-                self.index_file.unlink()
+            if pending.exists():
+                pending.unlink()
                 logger.info("Removed partial index file")
             self.index_generation_report = {
                 "backend": "scip-python",
@@ -372,10 +446,11 @@ class SCIPPythonIndexer(SCIPIndexerBase):
             }
             return False
 
-    def _usable_index_document_count(self) -> int:
+    def _usable_index_document_count(self, path: Optional[Path] = None) -> int:
         """Count path-addressable documents in a parseable SCIP artifact."""
 
-        if not self.index_file.is_file():
+        path = path or self.index_file
+        if not path.is_file():
             return 0
         try:
             from google.protobuf.message import DecodeError
@@ -383,7 +458,7 @@ class SCIPPythonIndexer(SCIPIndexerBase):
             from .scip_pb2 import Index
 
             index = Index()
-            index.ParseFromString(self.index_file.read_bytes())
+            index.ParseFromString(path.read_bytes())
         except (OSError, DecodeError, ValueError):
             return 0
         return sum(bool(document.relative_path) for document in index.documents)
@@ -478,6 +553,8 @@ class SCIPPythonIndexer(SCIPIndexerBase):
         kwargs.pop("compdb_path", None)
         kwargs.pop("show_compiler_diagnostics", None)
 
+        if skip_level is not None:
+            self._discard_index_without_documents()
         return super().run_pipeline(
             output_file=output_file,
             skip_level=skip_level,

@@ -238,7 +238,7 @@ def test_scip_python_only_preserves_partial_index_when_opted_in(
         payload.metadata.tool_info.name = "scip-python"
         payload.metadata.tool_info.version = "0.6.6"
         payload.documents.add().relative_path = "partial.py"
-        indexer.index_file.write_bytes(payload.SerializeToString())
+        indexer._pending_index_file.write_bytes(payload.SerializeToString())
         return False
 
     monkeypatch.setattr(indexer, "_run_direct", failed_run)
@@ -263,7 +263,7 @@ def test_scip_python_rejects_metadata_only_partial_index(monkeypatch, tmp_path):
         payload = Index()
         payload.metadata.tool_info.name = "scip-python"
         payload.metadata.tool_info.version = "0.6.6"
-        indexer.index_file.write_bytes(payload.SerializeToString())
+        indexer._pending_index_file.write_bytes(payload.SerializeToString())
         return False
 
     monkeypatch.setattr(indexer, "_run_direct", failed_run)
@@ -287,7 +287,7 @@ def test_scip_python_rejects_pathless_partial_document(monkeypatch, tmp_path):
     def failed_run(*_args, **_kwargs):
         payload = Index()
         payload.documents.add()
-        indexer.index_file.write_bytes(payload.SerializeToString())
+        indexer._pending_index_file.write_bytes(payload.SerializeToString())
         return False
 
     monkeypatch.setattr(indexer, "_run_direct", failed_run)
@@ -317,3 +317,94 @@ def test_scip_python_does_not_preserve_an_index_from_an_earlier_run(
         "partial": False,
         "document_count": 0,
     }
+
+
+def _metadata_only_index() -> bytes:
+    payload = Index()
+    payload.metadata.tool_info.name = "scip-python"
+    payload.metadata.tool_info.version = "0.6.6"
+    return payload.SerializeToString()
+
+
+def _index_with_document() -> bytes:
+    payload = Index()
+    payload.metadata.tool_info.name = "scip-python"
+    payload.documents.add().relative_path = "module.py"
+    return payload.SerializeToString()
+
+
+def test_scip_python_publishes_the_index_only_after_the_run(monkeypatch, tmp_path):
+    indexer = SCIPPythonIndexer(tmp_path, output_dir=tmp_path / "out")
+    indexer._direct_indexer_path = "/tools/scip-python"
+    monkeypatch.setattr(indexer, "_check_indexer_available", lambda: True)
+
+    def run(cmd, *_args, **_kwargs):
+        output = Path(cmd[cmd.index("--output") + 1])
+        assert output == indexer._pending_index_file
+        output.write_bytes(_index_with_document())
+        assert not indexer.index_file.exists()
+        return True
+
+    monkeypatch.setattr(indexer, "_run_direct", run)
+
+    assert indexer.generate_index() is True
+    assert indexer.index_file.read_bytes() == _index_with_document()
+    assert not indexer._pending_index_file.exists()
+    assert indexer.index_generation_report["document_count"] == 1
+
+
+def test_scip_python_interrupted_run_leaves_no_index(monkeypatch, tmp_path):
+    indexer = SCIPPythonIndexer(tmp_path, output_dir=tmp_path / "out")
+    indexer._direct_indexer_path = "/tools/scip-python"
+    monkeypatch.setattr(indexer, "_check_indexer_available", lambda: True)
+
+    def killed_run(*_args, **_kwargs):
+        indexer._pending_index_file.write_bytes(_metadata_only_index())
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(indexer, "_run_direct", killed_run)
+    with pytest.raises(KeyboardInterrupt):
+        indexer.generate_index()
+    assert not indexer.index_file.exists()
+
+    monkeypatch.setattr(indexer, "_run_direct", lambda *_args, **_kwargs: False)
+    assert indexer.generate_index() is False
+    assert not indexer._pending_index_file.exists()
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [
+        (b"", False),
+        (_metadata_only_index(), False),
+        (_index_with_document(), True),
+        (_index_with_document()[:-3], False),
+        (b"\xff\xff\xff", False),
+    ],
+    ids=["empty", "metadata-only", "document", "truncated-document", "garbage"],
+)
+def test_scip_index_document_probe(tmp_path, payload, expected):
+    path = tmp_path / "index.scip"
+    path.write_bytes(payload)
+
+    assert scip_indexer_python._scip_index_has_documents(path) is expected
+
+
+@pytest.mark.parametrize("has_documents", [False, True])
+def test_scip_python_cached_pipeline_discards_index_without_documents(
+    monkeypatch, tmp_path, has_documents
+):
+    indexer = SCIPPythonIndexer(tmp_path, output_dir=tmp_path / "out")
+    indexer.index_file.write_bytes(
+        _index_with_document() if has_documents else _metadata_only_index()
+    )
+    derived = [indexer.decoded_file, indexer.graph_file, indexer.lsp_index_file]
+    for path in derived:
+        path.write_bytes(b"derived")
+    monkeypatch.setattr(
+        scip_indexer_base.SCIPIndexerBase,
+        "run_pipeline",
+        lambda self, **_kwargs: [p.exists() for p in [self.index_file, *derived]],
+    )
+
+    assert indexer.run_pipeline(skip_level="graph") == [has_documents] * 4
