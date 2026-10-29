@@ -95,6 +95,15 @@ def _resolver(root, observed):
     return resolve
 
 
+def _outside_family(root):
+    # `left` is a declaration, but not one of the `run` family.
+    def resolve(file, *_):
+        start = {"line": 0, "character": 4}
+        return [{"uri": (root / file).as_uri(), "range": {"start": start}}]
+
+    return resolve
+
+
 def test_captured_definitions_and_branch_targets_are_recovered(tmp_path):
     index = _fixture(tmp_path)
     observed = []
@@ -136,13 +145,91 @@ def test_recovery_is_idempotent_without_another_lsp_query(tmp_path):
     assert report["changed_symbol_families"] == 0
 
 
+@pytest.mark.parametrize(
+    "case", sorted({path.name.split(".")[0] for path in CAPTURES.glob("*.decoded")})
+)
+def test_recovering_a_recovered_index_changes_nothing(tmp_path, case):
+    # Cached builds rerun recovery on the already-normalized index.decoded.
+    index, resolve, _ = _captured_fixture(tmp_path, case)
+    normalize_python_index(index, tmp_path, resolve_definitions=resolve)
+    first = index.SerializeToString()
+
+    report = normalize_python_index(
+        index,
+        tmp_path,
+        resolve_definitions=lambda *_: pytest.fail(
+            "normalized identities need no query"
+        ),
+    )
+
+    assert index.SerializeToString() == first
+    assert report["changed_symbol_families"] == 0
+
+
 def test_unresolved_target_never_publishes_a_partial_repair(tmp_path):
     index = _fixture(tmp_path)
     original = index.SerializeToString()
 
-    with pytest.raises(ValueError, match="reference is unresolved"):
-        normalize_python_index(index, tmp_path, resolve_definitions=lambda *_: [])
+    with pytest.raises(ValueError, match="target is unresolved"):
+        normalize_python_index(
+            index, tmp_path, resolve_definitions=_outside_family(tmp_path)
+        )
 
+    assert index.SerializeToString() == original
+
+
+def test_reference_without_a_provider_definition_keeps_the_static_family(
+    tmp_path,
+):
+    index = _fixture(tmp_path)
+    report = normalize_python_index(index, tmp_path, resolve_definitions=lambda *_: [])
+
+    rows = index.documents[0].occurrences
+    definitions = {
+        row.symbol
+        for row in rows
+        if row.symbol_roles & 1 and row.range[:2] in ([7, 8], [9, 16], [12, 16])
+    }
+    assert len(definitions) == 3
+    assert {row.symbol for row in rows if row.range[0] == 14} == definitions
+    [query] = report["unanswered_definition_queries"]
+    assert (query["file"], query["line"], query["character"]) == ("nested.py", 14, 15)
+
+
+def test_provider_timeout_never_publishes_a_repair(tmp_path, monkeypatch):
+    from codenib import toolchains
+    from codenib.graph.incremental import lsp_client
+
+    index = _fixture(tmp_path)
+    original = index.SerializeToString()
+    shutdowns = []
+
+    class TimingOutClient:
+        _last_error = None
+
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        @staticmethod
+        def get_lsp_command(_):
+            return ["basedpyright-langserver", "--stdio"]
+
+        def start(self, **_kwargs):
+            return {"capabilities": {"positionEncoding": "utf-16"}}
+
+        def definition(self, *_args, **_kwargs):
+            self._last_error = {"code": -1, "message": "timeout"}
+            return []
+
+        def shutdown(self):
+            shutdowns.append(self)
+
+    monkeypatch.setattr(lsp_client, "LSPClient", TimingOutClient)
+    monkeypatch.setattr(toolchains, "resolve_command", lambda _: "/tools/basedpyright")
+    with pytest.raises(RuntimeError, match="definition query failed .*timeout"):
+        normalize_python_index(index, tmp_path)
+
+    assert len(shutdowns) == 1
     assert index.SerializeToString() == original
 
 
@@ -447,7 +534,7 @@ def test_failed_recovery_preserves_decoded_input_and_clears_writer_receipts(
         python_identity,
         "normalize_python_index",
         lambda payload, root, **kwargs: normalize(
-            payload, root, resolve_definitions=lambda *_: [], **kwargs
+            payload, root, resolve_definitions=_outside_family(root), **kwargs
         ),
     )
 

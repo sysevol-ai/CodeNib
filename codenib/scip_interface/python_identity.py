@@ -8,8 +8,10 @@ scip-python can flatten nested functions into their enclosing class and mark
 later definitions as reads. Source syntax supplies physical definitions;
 compiler occurrences supply references. A lexical binding retains all its
 physical declarations. Positional LSP definitions distinguish provider IDs
-that span different lexical bindings. Source-only definitions are reported;
-no reference is invented for them. The raw compiler artifact is retained.
+that span different lexical bindings; a reference the provider finds no
+definition for keeps the ID's static declarations and is reported. Source-only
+definitions are reported; no reference is invented for them. The raw compiler
+artifact is retained.
 """
 
 from __future__ import annotations
@@ -485,7 +487,16 @@ def normalize_python_index(
                 continue
             originals = {occurrence.symbol for occurrence in matching}
             if len(originals) != 1:
-                raise ValueError("Python definition has conflicting provider symbols")
+                if not any(o.symbol_roles & _DEFINITION for o in matching):
+                    # An earlier recovery expanded this reference to every
+                    # static target, e.g. `self.value = v` for a property's
+                    # getter and setter. It declares none of them.
+                    continue
+                raise ValueError(
+                    "Python definition has conflicting provider symbols at "
+                    f"{relative}:{declaration.start[0] + 1}:{declaration.start[1]} "
+                    f"({sorted(originals)!r})"
+                )
             declaration.occurrence = matching[0]
             declaration.original = matching[0].symbol
             if declaration.kind == "attribute":
@@ -632,6 +643,7 @@ def normalize_python_index(
     }
     queries = 0
     restored = 0
+    unanswered = []
     provider = None
     deadline = time.monotonic() + _REPAIR_TIMEOUT
     with ExitStack() as cleanup:
@@ -687,9 +699,17 @@ def normalize_python_index(
                 raise RuntimeError(
                     "Python identity recovery exceeded its 120s deadline"
                 )
-            return client.definition(
+            locations = client.definition(
                 str(source.path), line, character, timeout=min(10.0, remaining)
             )
+            error = client._last_error
+            if not locations and error and error.get("code") not in (None, -2):
+                # Only a null or empty result means no definition was found.
+                raise RuntimeError(
+                    "Python identity definition query failed at "
+                    f"{relative}:{line + 1} ({error.get('message', 'unknown')})"
+                )
+            return locations
 
         for document in candidate.documents:
             relative = document.relative_path
@@ -781,10 +801,18 @@ def normalize_python_index(
                             )
                         if target not in targets:
                             targets.append(target)
-                    if not targets:
-                        raise ValueError(
-                            "Python identity reference is unresolved at "
-                            f"{relative}:{position[0] + 1}"
+                    if not locations:
+                        # The provider cannot always infer a receiver (sympy
+                        # reassigns `f` ten times before `f.per`). Keep every
+                        # static declaration, as for one shared binding.
+                        targets = [d for _, d in family]
+                        unanswered.append(
+                            {
+                                "file": relative,
+                                "line": position[0],
+                                "character": position[1],
+                                "symbol": occurrence.symbol,
+                            }
                         )
                 for target in targets:
                     copy = type(occurrence)()
@@ -816,6 +844,7 @@ def normalize_python_index(
         "physical_declarations": len(all_declarations),
         "restored_definition_roles": restored,
         "positional_definition_queries": queries,
+        "unanswered_definition_queries": unanswered,
         "local_binding_families": sum(bool(scope) for scope, _ in changed),
         "local_binding_semantics": "all_source_declarations_for_compiler_binding",
         "shared_lexical_binding_families": len(shared_binding_families),
