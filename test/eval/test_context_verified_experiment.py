@@ -13,6 +13,28 @@ import pytest
 from scripts import contextbench_verified as verified
 
 
+class EphemeralCollectionsClient(SimpleNamespace):
+    """Match DockerClient's fresh facade and stable API creation boundary."""
+
+    @property
+    def containers(self):
+        return SimpleNamespace(
+            create=lambda **kwargs: self.api.create_container(**kwargs),
+            get=getattr(self, "get_container", None),
+        )
+
+
+def inspected_creation(kwargs):
+    return {
+        "Name": "/" + kwargs["name"],
+        "Config": {
+            "NetworkDisabled": kwargs.get("network_disabled", False),
+            "Entrypoint": kwargs.get("entrypoint"),
+        },
+        "HostConfig": dict(kwargs.get("host_config", {})),
+    }
+
+
 @pytest.mark.parametrize("suffix", [".json", ".jsonl"])
 def test_verified_native_identity_requires_repo_commit_and_unique_task(
     tmp_path, suffix
@@ -83,29 +105,65 @@ def test_unified_grade_delegates_verified_and_joins_search_usage(monkeypatch, tm
 
 def test_native_client_only_creates_its_owner_with_bounded_resources():
     calls = []
-    client = SimpleNamespace(
-        containers=SimpleNamespace(create=lambda **kw: calls.append(kw))
+
+    def create(**kwargs):
+        calls.append(kwargs)
+        return {"Id": "created"}
+
+    client = EphemeralCollectionsClient(
+        api=SimpleNamespace(
+            create_container=create,
+            inspect_container=lambda identity: inspected_creation(calls[-1]),
+        ),
     )
-    verified.owned_native_client(client, "owned")
-    with pytest.raises(ValueError, match="owner"):
-        client.containers.create(name="other")
+    cached_collection = client.containers
+    assert cached_collection is not client.containers
+    observed = {}
+    verified.owned_native_client(client, "owned", observed=observed)
+    for collection in (cached_collection, client.containers):
+        with pytest.raises(ValueError, match="owner"):
+            collection.create(name="other")
     assert not calls
-    client.containers.create(name="owned", entrypoint=["sleep"], network_disabled=False)
+    original_host_config = {"Binds": ["source:/testbed:ro"], "Memory": 1}
+    cached_collection.create(
+        name="owned",
+        entrypoint=["sleep"],
+        network_disabled=False,
+        host_config=original_host_config,
+        networking_config={"bridge": {}},
+    )
     assert calls == [
         {
             "name": "owned",
             "entrypoint": [],
             "network_disabled": True,
-            "mem_limit": "4g",
-            "nano_cpus": 2_000_000_000,
-            "pids_limit": 256,
+            "host_config": {
+                "Binds": ["source:/testbed:ro"],
+                "NetworkMode": "none",
+                "Memory": 4 * 1024**3,
+                "NanoCpus": 2_000_000_000,
+                "PidsLimit": 256,
+            },
         }
     ]
+    assert original_host_config == {"Binds": ["source:/testbed:ro"], "Memory": 1}
+    assert observed == {
+        "name": "owned",
+        "network_disabled": True,
+        "network_mode": "none",
+        "entrypoint": [],
+        "memory_bytes": 4 * 1024**3,
+        "nano_cpus": 2_000_000_000,
+        "pids_limit": 256,
+    }
 
 
-@pytest.mark.parametrize("outcome", [True, False, "incomplete", "exception", "cleanup"])
+@pytest.mark.parametrize(
+    "outcome", [True, False, "incomplete", "exception", "cleanup", "isolation"]
+)
+@pytest.mark.parametrize("image_arch", ["amd64", "arm64"])
 def test_native_grader_records_real_status_and_exact_owner_cleanup(
-    monkeypatch, tmp_path, outcome
+    monkeypatch, tmp_path, outcome, image_arch
 ):
     run = tmp_path / "solver"
     run.mkdir()
@@ -157,21 +215,37 @@ def test_native_grader_records_real_status_and_exact_owner_cleanup(
 
         live[name] = SimpleNamespace(remove=remove)
         created.append(kwargs)
-        return live[name]
+        return {"Id": name}
 
     def get(name):
         if name not in live:
             raise NotFound(name)
         return live[name]
 
-    client = SimpleNamespace(
-        images=SimpleNamespace(get=lambda name: image_id if name == image_id else None),
-        containers=SimpleNamespace(create=create, get=get),
+    def inspect_container(identity):
+        assert identity == created[-1]["name"]
+        actual = inspected_creation(created[-1])
+        if outcome == "isolation":
+            actual["HostConfig"]["NetworkMode"] = "bridge"
+        return actual
+
+    client = EphemeralCollectionsClient(
+        images=SimpleNamespace(
+            get=lambda name: SimpleNamespace(
+                attrs={"Os": "linux", "Architecture": image_arch}
+            )
+        ),
+        api=SimpleNamespace(
+            create_container=create,
+            inspect_container=inspect_container,
+        ),
+        get_container=get,
     )
 
     @dataclasses.dataclass
     class Spec:
         instance_id: str
+        arch: str
 
         @property
         def eval_script(self):
@@ -183,6 +257,7 @@ def test_native_grader_records_real_status_and_exact_owner_cleanup(
     def run_instance(spec, pred, rm, rebuild, actual_client, run_id, timeout):
         assert pred == prediction and not rm and not rebuild and timeout == 900
         assert spec.instance_image_key == image_id
+        assert spec.arch == ("x86_64" if image_arch == "amd64" else "arm64")
         actual_client.containers.create(name=spec.get_instance_container_name(run_id))
         if outcome == "exception":
             raise RuntimeError("fixture native failure")
@@ -219,7 +294,7 @@ def test_native_grader_records_real_status_and_exact_owner_cleanup(
         "swebench.harness.test_spec.test_spec",
         SimpleNamespace(
             TestSpec=Spec,
-            make_test_spec=lambda row, namespace: Spec(row["instance_id"]),
+            make_test_spec=lambda row, namespace, arch: Spec(row["instance_id"], arch),
         ),
     )
     args = SimpleNamespace(
@@ -231,10 +306,24 @@ def test_native_grader_records_real_status_and_exact_owner_cleanup(
         with pytest.raises(RuntimeError, match="incomplete"):
             verified.grade_verified(args)
     record = json.loads((args.output / "resolution.json").read_text())
+    grading_config = json.loads((args.output / "config.json").read_text())
+    assert grading_config["image_platform"] == {
+        "os": "linux",
+        "architecture": image_arch,
+    }
+    assert grading_config["native_architecture"] == (
+        "x86_64" if image_arch == "amd64" else "arm64"
+    )
     assert record["instance_id"] == "canonical"
     assert record["status"] == ("graded" if type(outcome) is bool else "error")
     assert record["resolved"] is (outcome is True)
     assert record["owned_container_removed"] is (outcome != "cleanup")
     assert created[0]["name"] == record["container"]
     assert created[0]["entrypoint"] == [] and created[0]["network_disabled"]
+    observed = record["observed_container_limits"]
+    assert observed["name"] == record["container"]
+    assert observed["network_mode"] == ("bridge" if outcome == "isolation" else "none")
+    if outcome == "isolation":
+        assert record["error_class"] == "RuntimeError"
+        assert "isolation was not applied" in record["error"]
     assert bool(live) is (outcome == "cleanup")

@@ -1,0 +1,12 @@
+{
+  "relative_native_path": "grade/stdout/scope.json",
+  "whole_file_sha256": "683965aa807e2883c10f88932ba6458d5adf0605363750cf183744ad59cfb7e3",
+  "whole_file_bytes": 200,
+  "part": 0,
+  "parts": 1,
+  "content_encoding": "gzip+base64",
+  "gzip_mtime": 0,
+  "gzip_bytes": 169,
+  "base64_bytes": "H4sIAAAAAAACA02Nyw7CIBBF9/0K0rULYEoh/ooxBIapNqlgeCQmxn+X1o3bc27ueQ+MjaW6SuOZjbilQmE87ZBehK2mbEtqGcmWu5Nq3leSezeDQgNBoPJaYVg8cCAD2uCEZKQn4hz8ov0MBHqihZxDFEp5KX7/jxTaRtavMazxZjOVHuvxM6u50TFB96yti87EAVoM2a2Rgv1Tl+vwGb64mqX1yAAAAA==",
+  "scope": "Exact original native grading bytes under lossless compression; concatenate decoded gzip pieces, decompress, then verify the whole-file hash. No outcome replacement or repair regrade."
+}

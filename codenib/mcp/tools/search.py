@@ -193,7 +193,7 @@ def search_context_impl(
 # ------------------------------------------------------------------
 
 
-async def search_semantic(
+def search_semantic_impl(
     ctx: ServerContext,
     query: str,
     top_k: int = 10,
@@ -235,8 +235,7 @@ async def search_semantic(
             "error": "Vector index not loaded. Re-run indexing with embedding enabled."
         }
 
-    results = await asyncio.to_thread(
-        ctx.vector.search_with_content,
+    results = ctx.vector.search_with_content(
         query=normalized_query,
         top_k=top_k,
         level=normalized_level,
@@ -250,6 +249,21 @@ async def search_semantic(
         elif isinstance(node_dict.get("score"), (int, float)):
             node_dict["score"] = float(node_dict["score"])
     return result_dicts
+
+
+async def search_semantic(
+    ctx: ServerContext,
+    query: str,
+    top_k: int = 10,
+    level: Optional[str] = None,
+    score_threshold: Optional[float] = None,
+    transform: Optional[str] = None,
+) -> list[dict] | dict[str, str]:
+    """Run semantic retrieval without blocking the caller's event loop."""
+
+    return await asyncio.to_thread(
+        search_semantic_impl, ctx, query, top_k, level, score_threshold, transform
+    )
 
 
 # ------------------------------------------------------------------

@@ -73,7 +73,7 @@ collection, joins, or custom runs rather than as scored benchmarks.
 | [SWE-bench Lite](datasets.md#swe-bench-lite) | L1 Localization | Real issues; find the code the golden patch changed | Python | `SwebenchDataset` | [Runnable](../agent_integrations.md#fixed-swe-bench-lite-coverage); dataset revision and a 50-case selection are pinned for paired policy runs |
 | [Loc-Bench v1](datasets.md#loc-bench-v1) | L1 Localization | Real issues, including features, performance, and security; find the code the golden patch changed | Python | `LocbenchDataset` | Runnable |
 | [SWE-Explore](swe_explore.md) | L1 Localization | Rank the source regions an issue needs | Seven languages in the fixed 20-case set | `codenib-swe-explore-benchmark` | [Pinned](swe_explore.md); scorer agrees with the official evaluator |
-| [Agent Retrieval Bench](agent_retrieval_bench.md) | L1 Localization | Four static tasks; code→test, comment→context, trace→code, edit→ripple | Mixed; multi-language repositories | `codenib-arb` | [Measured](agent_retrieval_bench.md#results); five methods on all 345 samples |
+| [Agent Retrieval Bench](agent_retrieval_bench.md) | L1 Localization | Four static tasks; code→test, comment→context, trace→code, edit→ripple | Mixed; multi-language repositories | `codenib-arb` | [Measured](agent_retrieval_bench.md#results); six methods on all 345 samples |
 | [ContextBench](contextbench.md) | L2 Agent context | Real issues; an agent explores, and everything it reads is scored | C, C++, Go, Java, JavaScript, Python, Rust, TypeScript | `codenib-contextbench` | [Measured](contextbench-results.md); 500 canonical tasks with a research route; leaderboard review pending |
 | [ContextBench Pass@1](#l3-resolution) | L3 Resolution | The same tasks; a solver writes a patch, and native tests judge it | C, C++, Go, Java, JavaScript, Python, Rust, TypeScript | `scripts/benchmark_context_solver.py`, `scripts/contextbench_verified.py` | [Measured](contextbench-results.md); 388/500 resolved with a research route; leaderboard review pending |
 | [DeepSWE](#l3-resolution) | L3 Resolution | Solve the task in a container; an external harness runs the solver | Set by the external harness | `codenib.eval.benchmarks.deepswe`, `python -m scripts.guardian.deepswe.results` | Tested; artifact analysis only; no published result |
@@ -99,7 +99,7 @@ Numbered notes follow each table.
 | A · Dense | [Runnable](grep_jev.md#what-was-measured)<sup>5</sup> | Runnable | Runnable | Runnable | Runnable | [Measured](agent_retrieval_bench.md#results)<sup>6</sup> |
 | A · Hybrid (RRF) | [Runnable](grep_jev.md#what-was-measured)<sup>7</sup> | — | Runnable | Runnable | Runnable | [Measured](agent_retrieval_bench.md#results)<sup>8</sup> |
 | A · Graph expansion | Runnable | — | Runnable | Runnable | Runnable | [Measured](agent_retrieval_bench.md#results)<sup>9</sup> |
-| A · Retrieve → rerank | [Measured](grep_jev.md#what-was-measured)<sup>10</sup> | — | Runnable | Runnable | Runnable | — |
+| A · Retrieve → rerank | [Measured](grep_jev.md#what-was-measured)<sup>10</sup> | — | Runnable | Runnable | Runnable | [Runnable](agent_retrieval_bench.md#retrieval-methods)<sup>11</sup> |
 | A · Planner `auto` | Runnable | — | Runnable | Runnable | Runnable | — |
 | B · Model-planned grep → Jev | [Measured](grep_jev.md) | — | — | — | — | — |
 | C · CodeNib agent | Runnable | Runnable | Runnable | Runnable | — | — |
@@ -114,6 +114,7 @@ Numbered notes follow each table.
 8. **Hybrid (RRF) × ARB.** All 345 samples; file-level RRF of the BM25 and dense rankings.
 9. **Graph expansion × ARB.** All 345 samples, full-source condition; a graph for 190 of 218 snapshots; lower Recall@20 than BM25 on the samples with a graph.
 10. **Retrieve → rerank × Base.** Measured through the frozen-candidate research scripts `benchmark_jev_base.py` and `benchmark_jev_dense.py`, not through `RetrieveRerankPipeline`.
+11. **Retrieve → rerank × ARB.** `--method rerank` over a completed released-corpus run.
 <!-- END CODENIB_SUPPORT_MATRIX:grid:L1:CodeNib -->
 
 The embedding-model and reranker sweeps on CodeNib Base have complete

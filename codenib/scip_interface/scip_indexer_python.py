@@ -5,12 +5,16 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """SCIP indexer for Python projects using scip-python."""
+import hashlib
 import json
 import math
 import os
+import shlex
 import shutil
 import signal
 import subprocess
+import sys
+import tempfile
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator, List, Optional, Union
@@ -51,6 +55,43 @@ def _scip_python_index_timeout() -> float:
         )
         return float(_SCIP_PYTHON_INDEX_TIMEOUT_S)
     return timeout
+
+
+def _read_varint(handle) -> Optional[int]:
+    value = shift = 0
+    while True:
+        byte = handle.read(1)
+        if not byte:
+            return None
+        value |= (byte[0] & 0x7F) << shift
+        if byte[0] < 0x80:
+            return value
+        shift += 7
+
+
+def _scip_index_has_documents(path: Path) -> bool:
+    """Return whether a SCIP index holds at least one complete document.
+
+    Every top-level ``Index`` field is length-delimited, so this reads field
+    headers and skips their payloads instead of parsing a large cached index.
+    """
+
+    try:
+        size = path.stat().st_size
+        with path.open("rb") as handle:
+            while (tag := _read_varint(handle)) is not None:
+                length = _read_varint(handle)
+                if tag & 0x7 != 2 or length is None:
+                    return False
+                end = handle.tell() + length
+                if end > size:
+                    return False
+                if tag >> 3 == 2:
+                    return True
+                handle.seek(end)
+    except OSError:
+        return False
+    return False
 
 
 def _run_checked_with_timeout(cmd, *, timeout, **popen_kwargs):
@@ -94,6 +135,54 @@ def _run_checked_with_timeout(cmd, *, timeout, **popen_kwargs):
                 retcode, cmd, output=stdout, stderr=stderr
             )
     return subprocess.CompletedProcess(proc.args, retcode, stdout, stderr)
+
+
+@contextmanager
+def _stdlib_only_python_shims(
+    shim_parent: Optional[Path] = None,
+) -> Iterator[Optional[str]]:
+    """Yield a directory whose ``python3``/``python`` see only the stdlib.
+
+    Pyright, and the basedpyright server built on it, ask ``python3`` (then
+    ``python``) on ``PATH`` for their import search paths. Inheriting the
+    caller's environment lets them type-evaluate the repository against
+    whatever that environment installs; on scikit-learn, current numpy/scipy
+    stubs turn a 36 s index into one that does not finish in 25 minutes. The
+    shims run the caller's own interpreter with ``-I -S``, so the probe reports
+    the standard library only, like the dependency-free interpreter of the
+    managed Conda fallback. Prepend the directory to ``PATH``; ``None`` means
+    no interpreter path is known and the environment is left as it is.
+    """
+
+    if not sys.executable:
+        yield None
+        return
+    script = f'#!/bin/sh\nexec {shlex.quote(sys.executable)} -I -S "$@"\n'
+    with tempfile.TemporaryDirectory(
+        prefix="python-shims-", dir=shim_parent
+    ) as shim_dir:
+        for name in ("python3", "python"):
+            shim = Path(shim_dir) / name
+            shim.write_text(script, encoding="utf-8")
+            shim.chmod(0o755)
+        yield shim_dir
+
+
+@contextmanager
+def _stdlib_only_python(
+    env: dict[str, str], shim_parent: Path
+) -> Iterator[dict[str, str]]:
+    """Return ``env`` with stdlib-only Python shims ahead of ``PATH``."""
+
+    with _stdlib_only_python_shims(shim_parent) as shim_dir:
+        if shim_dir is None:
+            yield env
+            return
+        isolated = dict(env)
+        isolated["PATH"] = os.pathsep.join(
+            part for part in (shim_dir, env.get("PATH")) if part
+        )
+        yield isolated
 
 
 class SCIPPythonIndexer(SCIPIndexerBase):
@@ -158,6 +247,7 @@ class SCIPPythonIndexer(SCIPIndexerBase):
         cwd: Optional[str] = None,
         project_name: Optional[str] = None,
         target_dir: Optional[str] = None,
+        output_file: Optional[Path] = None,
         **kwargs,
     ) -> List[str]:
         """
@@ -167,6 +257,7 @@ class SCIPPythonIndexer(SCIPIndexerBase):
             cwd: Working directory to run the index command
             project_name: Project name to use in the index
             target_dir: Optional subdirectory to target for indexing
+            output_file: Where scip-python writes (defaults to ``index_file``)
             **kwargs: Additional arguments (ignored)
 
         Returns:
@@ -183,7 +274,7 @@ class SCIPPythonIndexer(SCIPIndexerBase):
         else:
             cmd.extend(["--project-name", self.project_root.name])
 
-        cmd.extend(["--output", str(self.index_file)])
+        cmd.extend(["--output", str(output_file or self.index_file)])
 
         if self._direct_indexer_path:
             # Repository-context serving does not expose navigation into the
@@ -199,6 +290,38 @@ class SCIPPythonIndexer(SCIPIndexerBase):
             cmd.extend(["--target-only", target_dir])
 
         return cmd
+
+    @property
+    def _pending_index_file(self) -> Path:
+        """Where scip-python writes until the run has ended.
+
+        scip-python writes index metadata first and then each document as it
+        is emitted, so a run killed from outside (job timeout, OOM, SIGKILL)
+        would otherwise leave a truncated ``index.scip`` for the cache paths.
+        """
+        return self.index_file.with_name(self.index_file.name + ".partial")
+
+    def _discard_index_without_documents(self) -> None:
+        """Drop a document-free ``index.scip`` and every cache built from it.
+
+        Before publication was atomic, an interrupted run left its
+        metadata-only prefix at ``index.scip``; the cache paths then reused it,
+        and the graph decoded from it, as an empty graph without an error.
+        """
+
+        if not self.index_file.is_file() or _scip_index_has_documents(self.index_file):
+            return
+        logger.warning(
+            "Discarding SCIP index without documents at %s and its derived caches",
+            self.index_file,
+        )
+        for path in (
+            self.index_file,
+            self.decoded_file,
+            self.graph_file,
+            self.lsp_index_file,
+        ):
+            path.unlink(missing_ok=True)
 
     def _has_project_pyright_config(self) -> bool:
         """Return whether the project already owns Pyright configuration."""
@@ -302,6 +425,8 @@ class SCIPPythonIndexer(SCIPIndexerBase):
         if self.index_file.exists():
             self.index_file.unlink()
             logger.info("Removed pre-existing SCIP index before generation")
+        pending = self._pending_index_file
+        pending.unlink(missing_ok=True)
         if not self._check_indexer_available():
             self.index_generation_report = {
                 "backend": "scip-python",
@@ -316,6 +441,7 @@ class SCIPPythonIndexer(SCIPIndexerBase):
             cwd=cwd or str(self.project_root),
             project_name=project_name,
             target_dir=target_dir,
+            output_file=pending,
         )
 
         logger.debug(f"Running command: {' '.join(cmd)}")
@@ -329,6 +455,8 @@ class SCIPPythonIndexer(SCIPIndexerBase):
         duration = section.duration
 
         if success:
+            if pending.exists():
+                os.replace(pending, self.index_file)
             document_count = self._usable_index_document_count()
             self.index_generation_report = {
                 "backend": "scip-python",
@@ -342,8 +470,9 @@ class SCIPPythonIndexer(SCIPIndexerBase):
             return True
         else:
             logger.error(f"Index generation failed after {duration:.2f} seconds")
-            document_count = self._usable_index_document_count()
+            document_count = self._usable_index_document_count(pending)
             if allow_partial_index and document_count > 0:
+                os.replace(pending, self.index_file)
                 self.index_generation_report = {
                     "backend": "scip-python",
                     "status": "partial",
@@ -358,8 +487,8 @@ class SCIPPythonIndexer(SCIPIndexerBase):
                 return False
             # Never let the generic pipeline mistake an unvalidated partial file
             # for a complete graph unless the caller explicitly opted into repair.
-            if self.index_file.exists():
-                self.index_file.unlink()
+            if pending.exists():
+                pending.unlink()
                 logger.info("Removed partial index file")
             self.index_generation_report = {
                 "backend": "scip-python",
@@ -370,10 +499,11 @@ class SCIPPythonIndexer(SCIPIndexerBase):
             }
             return False
 
-    def _usable_index_document_count(self) -> int:
+    def _usable_index_document_count(self, path: Optional[Path] = None) -> int:
         """Count path-addressable documents in a parseable SCIP artifact."""
 
-        if not self.index_file.is_file():
+        path = path or self.index_file
+        if not path.is_file():
             return 0
         try:
             from google.protobuf.message import DecodeError
@@ -381,10 +511,78 @@ class SCIPPythonIndexer(SCIPIndexerBase):
             from .scip_pb2 import Index
 
             index = Index()
-            index.ParseFromString(self.index_file.read_bytes())
+            index.ParseFromString(path.read_bytes())
         except (OSError, DecodeError, ValueError):
             return 0
         return sum(bool(document.relative_path) for document in index.documents)
+
+    def process_index(self, output_file: Optional[str] = None):
+        """Recover identities before serial/core share the decoded input.
+
+        The compiler owns publication of the output directory. Do not replace
+        a decoded input that changed during recovery; the derived-file publish
+        point is the final atomic replace, before the shared consumer seals it.
+        """
+
+        from google.protobuf.text_format import MessageToString, Parse
+
+        from .python_identity import normalize_python_index
+        from .scip_pb2 import Index
+
+        self.decoded_input_receipt = None
+        self.graph_output_receipt = None
+        temporary = None
+        try:
+            from ..compiler.artifact_fingerprints import regular_file_fingerprint
+
+            before = regular_file_fingerprint(self.decoded_file)
+            payload = self.decoded_file.read_bytes()
+            if before != {
+                "size": len(payload),
+                "sha256": hashlib.sha256(payload).hexdigest(),
+            }:
+                raise RuntimeError(
+                    "decoded SCIP input changed before identity recovery"
+                )
+            index = Parse(payload.decode("utf-8"), Index())
+            del payload
+            with self.profiler.section("process_index.python_identity"):
+                report = normalize_python_index(
+                    index,
+                    self.project_root,
+                    path_allowed=self._path_allowed,
+                )
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=self.decoded_file.parent,
+                prefix=".python-identity-",
+                delete=False,
+            ) as handle:
+                temporary = Path(handle.name)
+                handle.write(MessageToString(index, as_utf8=True))
+            if regular_file_fingerprint(self.decoded_file) != before:
+                raise RuntimeError(
+                    "decoded SCIP input changed during identity recovery"
+                )
+            os.replace(temporary, self.decoded_file)
+            if self.index_generation_report is not None:
+                self.index_generation_report["identity_recovery"] = {
+                    "status": "complete",
+                    **report,
+                }
+        except Exception as exc:
+            logger.error("Python SCIP identity recovery failed: %s", exc)
+            if self.index_generation_report is not None:
+                self.index_generation_report["identity_recovery"] = {
+                    "status": "failed",
+                    "error": str(exc),
+                }
+            return None
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
+        return super().process_index(output_file)
 
     def run_pipeline(
         self,
@@ -408,6 +606,8 @@ class SCIPPythonIndexer(SCIPIndexerBase):
         kwargs.pop("compdb_path", None)
         kwargs.pop("show_compiler_diagnostics", None)
 
+        if skip_level is not None:
+            self._discard_index_without_documents()
         return super().run_pipeline(
             output_file=output_file,
             skip_level=skip_level,
@@ -432,13 +632,15 @@ class SCIPPythonIndexer(SCIPIndexerBase):
         """Run an explicitly resolved scip-python without creating an environment."""
 
         work_dir = Path(cwd if cwd else self.project_root).resolve()
+        self.output_dir.mkdir(parents=True, exist_ok=True)
         try:
-            _run_checked_with_timeout(
-                cmd,
-                cwd=work_dir,
-                env=self._subprocess_env(),
-                timeout=_scip_python_index_timeout(),
-            )
+            with _stdlib_only_python(self._subprocess_env(), self.output_dir) as env:
+                _run_checked_with_timeout(
+                    cmd,
+                    cwd=work_dir,
+                    env=env,
+                    timeout=_scip_python_index_timeout(),
+                )
             return True
         except subprocess.TimeoutExpired as exc:
             logger.error(

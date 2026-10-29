@@ -2,19 +2,14 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Dependency / impact subgraph tool (#133, #19).
-
-Exposes the call-graph's structural-analysis value over MCP: given a symbol,
-return its dependency subgraph as frontend-ready nodes+edges JSON — the
-"who calls X / what breaks if I change X" question grep cannot answer, and the
-backing data for a DeepWiki-style dependency view.
-"""
+"""Bounded navigation over indexed static references between symbols."""
 
 from __future__ import annotations
 
 from typing import Any, Dict
 
 from ...agent.boundary import AGENT_LINE_OFFSET
+from ...types import EDGE_TYPE_REFERENCE
 from ._validation import (
     MAX_DEPENDENCY_EDGES,
     MAX_GRAPH_DEPTH,
@@ -34,10 +29,11 @@ def dependency_subgraph_impl(
 ) -> Dict[str, Any]:
     """Return ``DependencyAnalyzer`` output as a JSON dict.
 
-    direction: ``impact`` (transitive callers / blast radius), ``dependencies``
-    (transitive callees), or ``both`` (1-hop caller+callee neighborhood, for a
-    dependency view). Returns ``{"error": ...}`` when the symbol graph is
-    unavailable, so callers can recover gracefully.
+    ``impact`` follows incoming references, ``dependencies`` outgoing references,
+    and ``both`` a neighborhood bounded by ``depth``. Legacy caller/callee
+    aliases and result labels remain compatible. Reference edges can include
+    calls, fields, types and function values; they do not establish invocation.
+    Returns ``{"error": ...}`` when the symbol graph is unavailable.
     """
     symbol = required_text(symbol, name="symbol")
     depth = bounded_integer(depth, name="depth", maximum=MAX_GRAPH_DEPTH)
@@ -94,4 +90,23 @@ def dependency_subgraph_impl(
         line = node.get("line")
         if isinstance(line, int) and not isinstance(line, bool):
             node["line"] = line + AGENT_LINE_OFFSET
-    return payload
+    return {
+        "semantics": {
+            "edge_type": EDGE_TYPE_REFERENCE,
+            "reference_direction": {
+                "impact": "incoming",
+                "dependencies": "outgoing",
+                "both": "both",
+            }[operation],
+            "interpretation": (
+                "Indexed static references can include calls, field access, "
+                "type use and function values. An edge does not prove that "
+                "the target is invoked; inspect the source call site."
+            ),
+            "coverage": (
+                "External and dynamic calls may be missing. This is not a "
+                "runtime trace or a guarantee of complete call coverage."
+            ),
+        },
+        **payload,
+    }

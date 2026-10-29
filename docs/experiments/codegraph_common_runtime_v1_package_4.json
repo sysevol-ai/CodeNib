@@ -1,0 +1,19 @@
+{
+  "original_file": "packaging-runtime-inspection.json",
+  "original_sha256": "b08f75078ef7af84c41a20c7c37d5117739b0dd6d8438326eb250993f731a67a",
+  "receipt": {
+    "scope": "Model-free packaging-runtime inspection",
+    "owner": "e41f2fd8450643ae894c345646428b22",
+    "container_id": "870aa8a2f67c3d4578fd098a30bf82a447ada88fef171c7229635dac898187d7",
+    "command": {
+      "args": [
+        "/opt/pilot-runtimes/python/bin/python3.13",
+        "-c",
+        "import sysconfig,shutil,json;from pathlib import Path; p=sysconfig.get_paths()[\"include\"];print(json.dumps({\"include\":p,\"header_exists\":(Path(p)/\"Python.h\").exists(),\"gcc\":shutil.which(\"gcc\"),\"cc\":sysconfig.get_config_var(\"CC\")}))"
+      ],
+      "exit_code": 0,
+      "output": "{\"include\": \"/opt/pilot-runtimes/python/include/python3.13\", \"header_exists\": true, \"gcc\": \"/usr/bin/gcc\", \"cc\": \"cc -pthread\"}\n"
+    },
+    "container_removed": true
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "provider": {
+    "name": "basedpyright",
+    "version": "1.39.8"
+  },
+  "queries": [
+    {
+      "request": [
+        "nested.py",
+        4,
+        20
+      ],
+      "response": [
+        {
+          "range": {
+            "start": {
+              "line": 3,
+              "character": 17
+            },
+            "end": {
+              "line": 3,
+              "character": 22
+            }
+          },
+          "uri_relative": "nested.py"
+        }
+      ]
+    },
+    {
+      "request": [
+        "nested.py",
+        9,
+        20
+      ],
+      "response": [
+        {
+          "range": {
+            "start": {
+              "line": 8,
+              "character": 17
+            },
+            "end": {
+              "line": 8,
+              "character": 22
+            }
+          },
+          "uri_relative": "nested.py"
+        }
+      ]
+    }
+  ]
+}

@@ -154,7 +154,7 @@ benchmarks:
     entry:
       - cli: codenib-arb
     level: Measured
-    level_note: five methods on all 345 samples
+    level_note: six methods on all 345 samples
     results: evaluation/agent_retrieval_bench.md#results
     page: evaluation/agent_retrieval_bench.md
     modules:
@@ -354,6 +354,10 @@ methods:
       swebench_lite: {level: Runnable}
       locbench_v1: {level: Runnable}
       swe_explore: {level: Runnable}
+      arb:
+        level: Runnable
+        note: "`--method rerank` over a completed released-corpus run."
+        link: evaluation/agent_retrieval_bench.md#retrieval-methods
 
   - id: planner_auto
     name: Planner `auto`
@@ -503,7 +507,7 @@ methods:
         - python: codenib/clients/locagent_agent.py:LocAgentAgent
         - path: examples/locagent_loc_agent.py
       results:
-        text: "SWE-bench Lite, 50 cases, one run: file Acc@1 0.78"
+        text: "SWE-bench Lite, 50 issues: file Accuracy@1 0.78"
         link: agent_integrations.md#locagent-on-swe-bench-lite
       page: agent_integrations.md#locagent
     modules:
@@ -589,9 +593,6 @@ methods:
       entry:
         - python: codenib/clients/orcaloca_agent.py:OrcaLocaAgent
         - path: examples/orcaloca_loc_agent.py
-      results:
-        text: "SWE-bench Lite, 4-case paired smoke: both backends matched 4/4"
-        link: agent_integrations.md#orcaloca-paired-smoke
       page: agent_integrations.md#orcaloca
     modules:
       - codenib/eval/benchmarks/orcaloca.py

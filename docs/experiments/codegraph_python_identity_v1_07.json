@@ -1,0 +1,1493 @@
+{
+  "scope": "Source-checkout developer correctness regression on a pinned historically exposed source. Warm SCIP 0.6.6 and basedpyright 1.39.8. Fresh strict product SCIP/BM25 build, real stdio MCP, serial/native parity. No model inference, task score, external users, or product-benefit claim.",
+  "case": "pytest",
+  "observed_at_utc": "2026-10-28T09:09:51.685976+00:00",
+  "base_commit": "7b8a1daae69cef196ee0f7f70c59354bf8fb7508",
+  "implementation_sha256": {
+    "codenib/scip_interface/python_identity.py": "3c31e1ed04c660c98372aadf23f7473cb28024436fb3c0e63fdda9e9ec271059",
+    "codenib/scip_interface/scip_indexer_python.py": "1953f66f743d3e9e4bc424420fde5d4078dfe75d70b65e4fb0554c899a54a13e",
+    "codenib/scip_interface/scip_decode_python.py": "e4379c4fe27b4c4614d2aeffb604a59187a77e65927f9c7fc38564da53a1d020",
+    "codenib/scip_interface/lsp_occurrence_index.py": "7a27b0cd6419b116d3400f734d0ffc899dac73c709338ecc9e06d274a9269667",
+    "codenib/graph/incremental/lsp_client.py": "dba51dfd1e5c1430710c2b2b80948f9bacb7c1586f917c2a2a37038c162a360d",
+    "codenib/compiler/index_builders.py": "83624480deb4735247e41307d28a818e571086b5c11954ac2d2cf97e69d63bff",
+    "core/scip_decode_python.cpp": "8b6574facc6aa1e9538cf830c8b8771d40ef2c6e9985cb2e6c24df23396b63fd"
+  },
+  "native_module": "/home/zhongming/CodeNib-codegraph-benefit/build/core/codenib_core.cpython-312-aarch64-linux-gnu.so",
+  "calls": [
+    {
+      "name": "lsp_definition",
+      "arguments": {
+        "file_path": "testing/test_pytester.py",
+        "line": 40,
+        "character": 50
+      },
+      "payload": {
+        "meta": {
+          "io.modelcontextprotocol/serverInfo": {
+            "name": "codenib",
+            "version": "0.2.4"
+          }
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"node_name\": \"testing/test_pytester.py:33\",\n  \"type\": \"definition\",\n  \"file\": \"testing/test_pytester.py\",\n  \"node_id\": \"testing/test_pytester.py:33:definition\",\n  \"start_line\": 33,\n  \"end_line\": 33,\n  \"score\": 1.0,\n  \"content\": \"lsp definition\",\n  \"lsp_provider\": {\n    \"provider\": \"codenib_static_index\",\n    \"capability\": \"definition\",\n    \"status\": \"ok\",\n    \"lsp_method\": \"textDocument/definition\",\n    \"behavior_contract\": \"static_scip_occurrence_lsp_v1\",\n    \"position_granularity\": \"character\",\n    \"backend\": \"persisted-symbol-graph-v1\",\n    \"index_snapshot\": \"symbol_graph:/tmp/codenib-python-identity-20261027/pytest-source:5700:11390\",\n    \"fallback_reason\": \"repository_source_policy_requires_persisted_graph\",\n    \"position_encoding\": \"UTF8\"\n  }\n}",
+            "annotations": null,
+            "meta": null
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"node_name\": \"testing/test_pytester.py:46\",\n  \"type\": \"definition\",\n  \"file\": \"testing/test_pytester.py\",\n  \"node_id\": \"testing/test_pytester.py:46:definition\",\n  \"start_line\": 46,\n  \"end_line\": 46,\n  \"score\": 1.0,\n  \"content\": \"lsp definition\",\n  \"lsp_provider\": {\n    \"provider\": \"codenib_static_index\",\n    \"capability\": \"definition\",\n    \"status\": \"ok\",\n    \"lsp_method\": \"textDocument/definition\",\n    \"behavior_contract\": \"static_scip_occurrence_lsp_v1\",\n    \"position_granularity\": \"character\",\n    \"backend\": \"persisted-symbol-graph-v1\",\n    \"index_snapshot\": \"symbol_graph:/tmp/codenib-python-identity-20261027/pytest-source:5700:11390\",\n    \"fallback_reason\": \"repository_source_policy_requires_persisted_graph\",\n    \"position_encoding\": \"UTF8\"\n  }\n}",
+            "annotations": null,
+            "meta": null
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"node_name\": \"testing/test_pytester.py:58\",\n  \"type\": \"definition\",\n  \"file\": \"testing/test_pytester.py\",\n  \"node_id\": \"testing/test_pytester.py:58:definition\",\n  \"start_line\": 58,\n  \"end_line\": 58,\n  \"score\": 1.0,\n  \"content\": \"lsp definition\",\n  \"lsp_provider\": {\n    \"provider\": \"codenib_static_index\",\n    \"capability\": \"definition\",\n    \"status\": \"ok\",\n    \"lsp_method\": \"textDocument/definition\",\n    \"behavior_contract\": \"static_scip_occurrence_lsp_v1\",\n    \"position_granularity\": \"character\",\n    \"backend\": \"persisted-symbol-graph-v1\",\n    \"index_snapshot\": \"symbol_graph:/tmp/codenib-python-identity-20261027/pytest-source:5700:11390\",\n    \"fallback_reason\": \"repository_source_policy_requires_persisted_graph\",\n    \"position_encoding\": \"UTF8\"\n  }\n}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "result": [
+            {
+              "node_name": "testing/test_pytester.py:33",
+              "type": "definition",
+              "file": "testing/test_pytester.py",
+              "node_id": "testing/test_pytester.py:33:definition",
+              "start_line": 33,
+              "end_line": 33,
+              "score": 1.0,
+              "content": "lsp definition",
+              "lsp_provider": {
+                "provider": "codenib_static_index",
+                "capability": "definition",
+                "status": "ok",
+                "lsp_method": "textDocument/definition",
+                "behavior_contract": "static_scip_occurrence_lsp_v1",
+                "position_granularity": "character",
+                "backend": "persisted-symbol-graph-v1",
+                "index_snapshot": "symbol_graph:/tmp/codenib-python-identity-20261027/pytest-source:5700:11390",
+                "fallback_reason": "repository_source_policy_requires_persisted_graph",
+                "position_encoding": "UTF8"
+              }
+            },
+            {
+              "node_name": "testing/test_pytester.py:46",
+              "type": "definition",
+              "file": "testing/test_pytester.py",
+              "node_id": "testing/test_pytester.py:46:definition",
+              "start_line": 46,
+              "end_line": 46,
+              "score": 1.0,
+              "content": "lsp definition",
+              "lsp_provider": {
+                "provider": "codenib_static_index",
+                "capability": "definition",
+                "status": "ok",
+                "lsp_method": "textDocument/definition",
+                "behavior_contract": "static_scip_occurrence_lsp_v1",
+                "position_granularity": "character",
+                "backend": "persisted-symbol-graph-v1",
+                "index_snapshot": "symbol_graph:/tmp/codenib-python-identity-20261027/pytest-source:5700:11390",
+                "fallback_reason": "repository_source_policy_requires_persisted_graph",
+                "position_encoding": "UTF8"
+              }
+            },
+            {
+              "node_name": "testing/test_pytester.py:58",
+              "type": "definition",
+              "file": "testing/test_pytester.py",
+              "node_id": "testing/test_pytester.py:58:definition",
+              "start_line": 58,
+              "end_line": 58,
+              "score": 1.0,
+              "content": "lsp definition",
+              "lsp_provider": {
+                "provider": "codenib_static_index",
+                "capability": "definition",
+                "status": "ok",
+                "lsp_method": "textDocument/definition",
+                "behavior_contract": "static_scip_occurrence_lsp_v1",
+                "position_granularity": "character",
+                "backend": "persisted-symbol-graph-v1",
+                "index_snapshot": "symbol_graph:/tmp/codenib-python-identity-20261027/pytest-source:5700:11390",
+                "fallback_reason": "repository_source_policy_requires_persisted_graph",
+                "position_encoding": "UTF8"
+              }
+            }
+          ]
+        },
+        "is_error": false,
+        "result_type": "complete"
+      },
+      "seconds": 0.06738143041729927
+    },
+    {
+      "name": "lsp_definition",
+      "arguments": {
+        "file_path": "testing/test_pytester.py",
+        "line": 55,
+        "character": 50
+      },
+      "payload": {
+        "meta": {
+          "io.modelcontextprotocol/serverInfo": {
+            "name": "codenib",
+            "version": "0.2.4"
+          }
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"node_name\": \"testing/test_pytester.py:33\",\n  \"type\": \"definition\",\n  \"file\": \"testing/test_pytester.py\",\n  \"node_id\": \"testing/test_pytester.py:33:definition\",\n  \"start_line\": 33,\n  \"end_line\": 33,\n  \"score\": 1.0,\n  \"content\": \"lsp definition\",\n  \"lsp_provider\": {\n    \"provider\": \"codenib_static_index\",\n    \"capability\": \"definition\",\n    \"status\": \"ok\",\n    \"lsp_method\": \"textDocument/definition\",\n    \"behavior_contract\": \"static_scip_occurrence_lsp_v1\",\n    \"position_granularity\": \"character\",\n    \"backend\": \"persisted-symbol-graph-v1\",\n    \"index_snapshot\": \"symbol_graph:/tmp/codenib-python-identity-20261027/pytest-source:5700:11390\",\n    \"fallback_reason\": \"repository_source_policy_requires_persisted_graph\",\n    \"position_encoding\": \"UTF8\"\n  }\n}",
+            "annotations": null,
+            "meta": null
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"node_name\": \"testing/test_pytester.py:46\",\n  \"type\": \"definition\",\n  \"file\": \"testing/test_pytester.py\",\n  \"node_id\": \"testing/test_pytester.py:46:definition\",\n  \"start_line\": 46,\n  \"end_line\": 46,\n  \"score\": 1.0,\n  \"content\": \"lsp definition\",\n  \"lsp_provider\": {\n    \"provider\": \"codenib_static_index\",\n    \"capability\": \"definition\",\n    \"status\": \"ok\",\n    \"lsp_method\": \"textDocument/definition\",\n    \"behavior_contract\": \"static_scip_occurrence_lsp_v1\",\n    \"position_granularity\": \"character\",\n    \"backend\": \"persisted-symbol-graph-v1\",\n    \"index_snapshot\": \"symbol_graph:/tmp/codenib-python-identity-20261027/pytest-source:5700:11390\",\n    \"fallback_reason\": \"repository_source_policy_requires_persisted_graph\",\n    \"position_encoding\": \"UTF8\"\n  }\n}",
+            "annotations": null,
+            "meta": null
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"node_name\": \"testing/test_pytester.py:58\",\n  \"type\": \"definition\",\n  \"file\": \"testing/test_pytester.py\",\n  \"node_id\": \"testing/test_pytester.py:58:definition\",\n  \"start_line\": 58,\n  \"end_line\": 58,\n  \"score\": 1.0,\n  \"content\": \"lsp definition\",\n  \"lsp_provider\": {\n    \"provider\": \"codenib_static_index\",\n    \"capability\": \"definition\",\n    \"status\": \"ok\",\n    \"lsp_method\": \"textDocument/definition\",\n    \"behavior_contract\": \"static_scip_occurrence_lsp_v1\",\n    \"position_granularity\": \"character\",\n    \"backend\": \"persisted-symbol-graph-v1\",\n    \"index_snapshot\": \"symbol_graph:/tmp/codenib-python-identity-20261027/pytest-source:5700:11390\",\n    \"fallback_reason\": \"repository_source_policy_requires_persisted_graph\",\n    \"position_encoding\": \"UTF8\"\n  }\n}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "result": [
+            {
+              "node_name": "testing/test_pytester.py:33",
+              "type": "definition",
+              "file": "testing/test_pytester.py",
+              "node_id": "testing/test_pytester.py:33:definition",
+              "start_line": 33,
+              "end_line": 33,
+              "score": 1.0,
+              "content": "lsp definition",
+              "lsp_provider": {
+                "provider": "codenib_static_index",
+                "capability": "definition",
+                "status": "ok",
+                "lsp_method": "textDocument/definition",
+                "behavior_contract": "static_scip_occurrence_lsp_v1",
+                "position_granularity": "character",
+                "backend": "persisted-symbol-graph-v1",
+                "index_snapshot": "symbol_graph:/tmp/codenib-python-identity-20261027/pytest-source:5700:11390",
+                "fallback_reason": "repository_source_policy_requires_persisted_graph",
+                "position_encoding": "UTF8"
+              }
+            },
+            {
+              "node_name": "testing/test_pytester.py:46",
+              "type": "definition",
+              "file": "testing/test_pytester.py",
+              "node_id": "testing/test_pytester.py:46:definition",
+              "start_line": 46,
+              "end_line": 46,
+              "score": 1.0,
+              "content": "lsp definition",
+              "lsp_provider": {
+                "provider": "codenib_static_index",
+                "capability": "definition",
+                "status": "ok",
+                "lsp_method": "textDocument/definition",
+                "behavior_contract": "static_scip_occurrence_lsp_v1",
+                "position_granularity": "character",
+                "backend": "persisted-symbol-graph-v1",
+                "index_snapshot": "symbol_graph:/tmp/codenib-python-identity-20261027/pytest-source:5700:11390",
+                "fallback_reason": "repository_source_policy_requires_persisted_graph",
+                "position_encoding": "UTF8"
+              }
+            },
+            {
+              "node_name": "testing/test_pytester.py:58",
+              "type": "definition",
+              "file": "testing/test_pytester.py",
+              "node_id": "testing/test_pytester.py:58:definition",
+              "start_line": 58,
+              "end_line": 58,
+              "score": 1.0,
+              "content": "lsp definition",
+              "lsp_provider": {
+                "provider": "codenib_static_index",
+                "capability": "definition",
+                "status": "ok",
+                "lsp_method": "textDocument/definition",
+                "behavior_contract": "static_scip_occurrence_lsp_v1",
+                "position_granularity": "character",
+                "backend": "persisted-symbol-graph-v1",
+                "index_snapshot": "symbol_graph:/tmp/codenib-python-identity-20261027/pytest-source:5700:11390",
+                "fallback_reason": "repository_source_policy_requires_persisted_graph",
+                "position_encoding": "UTF8"
+              }
+            }
+          ]
+        },
+        "is_error": false,
+        "result_type": "complete"
+      },
+      "seconds": 0.02223782055079937
+    },
+    {
+      "name": "read_source",
+      "arguments": {
+        "file_path": "testing/test_pytester.py",
+        "start_line": 33,
+        "end_line": 58
+      },
+      "payload": {
+        "meta": {
+          "io.modelcontextprotocol/serverInfo": {
+            "name": "codenib",
+            "version": "0.2.4"
+          }
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"testing/test_pytester.py\",\n  \"start_line\": 33,\n  \"end_line\": 58,\n  \"content\": \"    class rep(object):\\n        excinfo = None\\n        passed = False\\n        failed = True\\n        skipped = False\\n        when = \\\"call\\\"\\n\\n    recorder.hook.pytest_runtest_logreport(report=rep)\\n    failures = recorder.getfailures()\\n    assert failures == [rep]\\n    failures = recorder.getfailures()\\n    assert failures == [rep]\\n\\n    class rep(object):\\n        excinfo = None\\n        passed = False\\n        failed = False\\n        skipped = True\\n        when = \\\"call\\\"\\n\\n    rep.passed = False\\n    rep.skipped = True\\n    recorder.hook.pytest_runtest_logreport(report=rep)\\n\\n    modcol = testdir.getmodulecol(\\\"\\\")\\n    rep = modcol.config.hook.pytest_make_collect_report(collector=modcol)\\n\",\n  \"content_projection\": {\n    \"truncated\": false,\n    \"original_chars\": 680,\n    \"returned_chars\": 680,\n    \"strategy\": \"complete\"\n  },\n  \"source\": {\n    \"repository\": \"/tmp/codenib-python-identity-20261027/pytest-source\",\n    \"commit\": \"8aba863a634f40560e25055d179220f0eefabe9a\",\n    \"source_fingerprint\": \"sha256-v2:745ad6a5e222883d3fa91d1cbcbd3625e78d8b6a24e5bf7cdd749ea2c4d9a88d\",\n    \"verified\": true,\n    \"verification_scope\": \"content-bytes\",\n    \"commit_verified\": false,\n    \"checkout_state\": \"not-attested\"\n  }\n}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "file": "testing/test_pytester.py",
+          "start_line": 33,
+          "end_line": 58,
+          "content": "    class rep(object):\n        excinfo = None\n        passed = False\n        failed = True\n        skipped = False\n        when = \"call\"\n\n    recorder.hook.pytest_runtest_logreport(report=rep)\n    failures = recorder.getfailures()\n    assert failures == [rep]\n    failures = recorder.getfailures()\n    assert failures == [rep]\n\n    class rep(object):\n        excinfo = None\n        passed = False\n        failed = False\n        skipped = True\n        when = \"call\"\n\n    rep.passed = False\n    rep.skipped = True\n    recorder.hook.pytest_runtest_logreport(report=rep)\n\n    modcol = testdir.getmodulecol(\"\")\n    rep = modcol.config.hook.pytest_make_collect_report(collector=modcol)\n",
+          "content_projection": {
+            "truncated": false,
+            "original_chars": 680,
+            "returned_chars": 680,
+            "strategy": "complete"
+          },
+          "source": {
+            "repository": "/tmp/codenib-python-identity-20261027/pytest-source",
+            "commit": "8aba863a634f40560e25055d179220f0eefabe9a",
+            "source_fingerprint": "sha256-v2:745ad6a5e222883d3fa91d1cbcbd3625e78d8b6a24e5bf7cdd749ea2c4d9a88d",
+            "verified": true,
+            "verification_scope": "content-bytes",
+            "commit_verified": false,
+            "checkout_state": "not-attested"
+          }
+        },
+        "is_error": false,
+        "result_type": "complete"
+      },
+      "seconds": 0.037846991792321205
+    },
+    {
+      "name": "search_bm25",
+      "arguments": {
+        "query": "pytest_make_collect_report",
+        "top_k": 8
+      },
+      "payload": {
+        "meta": {
+          "io.modelcontextprotocol/serverInfo": {
+            "name": "codenib",
+            "version": "0.2.4"
+          }
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"node_name\": \"src/_pytest/hookspec.py:pytest_make_collect_report()\",\n  \"type\": \"function\",\n  \"file\": \"src/_pytest/hookspec.py\",\n  \"node_id\": \"src/_pytest/hookspec.py:pytest_make_collect_report()\",\n  \"start_line\": 234,\n  \"end_line\": 238,\n  \"score\": 0.0,\n  \"content\": \"@hookspec(firstresult=True)\\ndef pytest_make_collect_report(collector):\\n    \\\"\\\"\\\" perform ``collector.collect()`` and return a CollectReport.\\n\\n    Stops at first non-None result, see :ref:`firstresult` \\\"\\\"\\\"\\n\"\n}",
+            "annotations": null,
+            "meta": null
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"node_name\": \"src/_pytest/capture.py:CaptureManager.pytest_make_collect_report()\",\n  \"type\": \"method\",\n  \"file\": \"src/_pytest/capture.py\",\n  \"node_id\": \"src/_pytest/capture.py:CaptureManager.pytest_make_collect_report()\",\n  \"start_line\": 206,\n  \"end_line\": 219,\n  \"score\": 0.0,\n  \"content\": \"    @pytest.hookimpl(hookwrapper=True)\\n    def pytest_make_collect_report(self, collector):\\n        if isinstance(collector, pytest.File):\\n            self.resume_global_capture()\\n            outcome = yield\\n            self.suspend_global_capture()\\n            out, err = self.read_global_capture()\\n            rep = outcome.get_result()\\n            if out:\\n                rep.sections.append((\\\"Captured stdout\\\", out))\\n            if err:\\n                rep.sections.append((\\\"Captured stderr\\\", err))\\n        else:\\n            yield\\n\"\n}",
+            "annotations": null,
+            "meta": null
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"node_name\": \"src/_pytest/runner.py:pytest_make_collect_report()\",\n  \"type\": \"function\",\n  \"file\": \"src/_pytest/runner.py\",\n  \"node_id\": \"src/_pytest/runner.py:pytest_make_collect_report()\",\n  \"start_line\": 252,\n  \"end_line\": 275,\n  \"score\": 0.0,\n  \"content\": \"def pytest_make_collect_report(collector):\\n    call = CallInfo.from_call(lambda: list(collector.collect()), \\\"collect\\\")\\n    longrepr = None\\n    if not call.excinfo:\\n        outcome = \\\"passed\\\"\\n    else:\\n        from _pytest import nose\\n\\n        skip_exceptions = (Skipped,) + nose.get_skip_exceptions()\\n        if call.excinfo.errisinstance(skip_exceptions):\\n            outcome = \\\"skipped\\\"\\n            r = collector._repr_failure_py(call.excinfo, \\\"line\\\").reprcrash\\n            longrepr = (str(r.path), r.lineno, r.message)\\n        else:\\n            outcome = \\\"failed\\\"\\n            errorinfo = collector.repr_failure(call.excinfo)\\n            if not hasattr(errorinfo, \\\"toterminal\\\"):\\n                errorinfo = CollectErrorRepr(errorinfo)\\n            longrepr = errorinfo\\n    rep = CollectReport(\\n        collector.nodeid, outcome, longrepr, getattr(call, \\\"result\\\", None)\\n    )\\n    rep.call = call  # see collect_one_node\\n    return rep\\n\"\n}",
+            "annotations": null,
+            "meta": null
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"node_name\": \"src/_pytest/runner.py:collect_one_node()\",\n  \"type\": \"function\",\n  \"file\": \"src/_pytest/runner.py\",\n  \"node_id\": \"src/_pytest/runner.py:collect_one_node()\",\n  \"start_line\": 368,\n  \"end_line\": 375,\n  \"score\": 0.0,\n  \"content\": \"def collect_one_node(collector):\\n    ihook = collector.ihook\\n    ihook.pytest_collectstart(collector=collector)\\n    rep = ihook.pytest_make_collect_report(collector=collector)\\n    call = rep.__dict__.pop(\\\"call\\\", None)\\n    if call and check_interactive_exception(call, rep):\\n        ihook.pytest_exception_interact(node=collector, call=call, report=rep)\\n    return rep\\n\"\n}",
+            "annotations": null,
+            "meta": null
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"node_name\": \"src/_pytest/reports.py:CollectReport.__repr__()\",\n  \"type\": \"method\",\n  \"file\": \"src/_pytest/reports.py\",\n  \"node_id\": \"src/_pytest/reports.py:CollectReport.__repr__()\",\n  \"start_line\": 404,\n  \"end_line\": 409,\n  \"score\": 0.0,\n  \"content\": \"    def __repr__(self):\\n        return \\\"<CollectReport %r lenresult=%s outcome=%r>\\\" % (\\n            self.nodeid,\\n            len(self.result),\\n            self.outcome,\\n        )\\n\"\n}",
+            "annotations": null,
+            "meta": null
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"node_name\": \"src/_pytest/main.py:Session.collect()\",\n  \"type\": \"method\",\n  \"file\": \"src/_pytest/main.py\",\n  \"node_id\": \"src/_pytest/main.py:Session.collect()\",\n  \"start_line\": 537,\n  \"end_line\": 550,\n  \"score\": 0.0,\n  \"content\": \"    def collect(self):\\n        for initialpart in self._initialparts:\\n            arg = \\\"::\\\".join(map(str, initialpart))\\n            self.trace(\\\"processing argument\\\", arg)\\n            self.trace.root.indent += 1\\n            try:\\n                for x in self._collect(arg):\\n                    yield x\\n            except NoMatch:\\n                # we are inside a make_report hook so\\n                # we cannot directly pass through the exception\\n                self._notfound.append((arg, sys.exc_info()[1]))\\n\\n            self.trace.root.indent -= 1\\n\"\n}",
+            "annotations": null,
+            "meta": null
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"node_name\": \"src/_pytest/junitxml.py:LogXML.pytest_collectreport()\",\n  \"type\": \"method\",\n  \"file\": \"src/_pytest/junitxml.py\",\n  \"node_id\": \"src/_pytest/junitxml.py:LogXML.pytest_collectreport()\",\n  \"start_line\": 637,\n  \"end_line\": 643,\n  \"score\": 0.0,\n  \"content\": \"    def pytest_collectreport(self, report):\\n        if not report.passed:\\n            reporter = self._opentestcase(report)\\n            if report.failed:\\n                reporter.append_collect_error(report)\\n            else:\\n                reporter.append_collect_skipped(report)\\n\"\n}",
+            "annotations": null,
+            "meta": null
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"node_name\": \"src/_pytest/reports.py:pytest_report_from_serializable()\",\n  \"type\": \"function\",\n  \"file\": \"src/_pytest/reports.py\",\n  \"node_id\": \"src/_pytest/reports.py:pytest_report_from_serializable()\",\n  \"start_line\": 427,\n  \"end_line\": 435,\n  \"score\": 0.0,\n  \"content\": \"def pytest_report_from_serializable(data):\\n    if \\\"_report_type\\\" in data:\\n        if data[\\\"_report_type\\\"] == \\\"TestReport\\\":\\n            return TestReport._from_json(data)\\n        elif data[\\\"_report_type\\\"] == \\\"CollectReport\\\":\\n            return CollectReport._from_json(data)\\n        assert False, \\\"Unknown report_type unserialize data: {}\\\".format(\\n            data[\\\"_report_type\\\"]\\n        )\\n\"\n}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "result": [
+            {
+              "node_name": "src/_pytest/hookspec.py:pytest_make_collect_report()",
+              "type": "function",
+              "file": "src/_pytest/hookspec.py",
+              "node_id": "src/_pytest/hookspec.py:pytest_make_collect_report()",
+              "start_line": 234,
+              "end_line": 238,
+              "score": 0.0,
+              "content": "@hookspec(firstresult=True)\ndef pytest_make_collect_report(collector):\n    \"\"\" perform ``collector.collect()`` and return a CollectReport.\n\n    Stops at first non-None result, see :ref:`firstresult` \"\"\"\n"
+            },
+            {
+              "node_name": "src/_pytest/capture.py:CaptureManager.pytest_make_collect_report()",
+              "type": "method",
+              "file": "src/_pytest/capture.py",
+              "node_id": "src/_pytest/capture.py:CaptureManager.pytest_make_collect_report()",
+              "start_line": 206,
+              "end_line": 219,
+              "score": 0.0,
+              "content": "    @pytest.hookimpl(hookwrapper=True)\n    def pytest_make_collect_report(self, collector):\n        if isinstance(collector, pytest.File):\n            self.resume_global_capture()\n            outcome = yield\n            self.suspend_global_capture()\n            out, err = self.read_global_capture()\n            rep = outcome.get_result()\n            if out:\n                rep.sections.append((\"Captured stdout\", out))\n            if err:\n                rep.sections.append((\"Captured stderr\", err))\n        else:\n            yield\n"
+            },
+            {
+              "node_name": "src/_pytest/runner.py:pytest_make_collect_report()",
+              "type": "function",
+              "file": "src/_pytest/runner.py",
+              "node_id": "src/_pytest/runner.py:pytest_make_collect_report()",
+              "start_line": 252,
+              "end_line": 275,
+              "score": 0.0,
+              "content": "def pytest_make_collect_report(collector):\n    call = CallInfo.from_call(lambda: list(collector.collect()), \"collect\")\n    longrepr = None\n    if not call.excinfo:\n        outcome = \"passed\"\n    else:\n        from _pytest import nose\n\n        skip_exceptions = (Skipped,) + nose.get_skip_exceptions()\n        if call.excinfo.errisinstance(skip_exceptions):\n            outcome = \"skipped\"\n            r = collector._repr_failure_py(call.excinfo, \"line\").reprcrash\n            longrepr = (str(r.path), r.lineno, r.message)\n        else:\n            outcome = \"failed\"\n            errorinfo = collector.repr_failure(call.excinfo)\n            if not hasattr(errorinfo, \"toterminal\"):\n                errorinfo = CollectErrorRepr(errorinfo)\n            longrepr = errorinfo\n    rep = CollectReport(\n        collector.nodeid, outcome, longrepr, getattr(call, \"result\", None)\n    )\n    rep.call = call  # see collect_one_node\n    return rep\n"
+            },
+            {
+              "node_name": "src/_pytest/runner.py:collect_one_node()",
+              "type": "function",
+              "file": "src/_pytest/runner.py",
+              "node_id": "src/_pytest/runner.py:collect_one_node()",
+              "start_line": 368,
+              "end_line": 375,
+              "score": 0.0,
+              "content": "def collect_one_node(collector):\n    ihook = collector.ihook\n    ihook.pytest_collectstart(collector=collector)\n    rep = ihook.pytest_make_collect_report(collector=collector)\n    call = rep.__dict__.pop(\"call\", None)\n    if call and check_interactive_exception(call, rep):\n        ihook.pytest_exception_interact(node=collector, call=call, report=rep)\n    return rep\n"
+            },
+            {
+              "node_name": "src/_pytest/reports.py:CollectReport.__repr__()",
+              "type": "method",
+              "file": "src/_pytest/reports.py",
+              "node_id": "src/_pytest/reports.py:CollectReport.__repr__()",
+              "start_line": 404,
+              "end_line": 409,
+              "score": 0.0,
+              "content": "    def __repr__(self):\n        return \"<CollectReport %r lenresult=%s outcome=%r>\" % (\n            self.nodeid,\n            len(self.result),\n            self.outcome,\n        )\n"
+            },
+            {
+              "node_name": "src/_pytest/main.py:Session.collect()",
+              "type": "method",
+              "file": "src/_pytest/main.py",
+              "node_id": "src/_pytest/main.py:Session.collect()",
+              "start_line": 537,
+              "end_line": 550,
+              "score": 0.0,
+              "content": "    def collect(self):\n        for initialpart in self._initialparts:\n            arg = \"::\".join(map(str, initialpart))\n            self.trace(\"processing argument\", arg)\n            self.trace.root.indent += 1\n            try:\n                for x in self._collect(arg):\n                    yield x\n            except NoMatch:\n                # we are inside a make_report hook so\n                # we cannot directly pass through the exception\n                self._notfound.append((arg, sys.exc_info()[1]))\n\n            self.trace.root.indent -= 1\n"
+            },
+            {
+              "node_name": "src/_pytest/junitxml.py:LogXML.pytest_collectreport()",
+              "type": "method",
+              "file": "src/_pytest/junitxml.py",
+              "node_id": "src/_pytest/junitxml.py:LogXML.pytest_collectreport()",
+              "start_line": 637,
+              "end_line": 643,
+              "score": 0.0,
+              "content": "    def pytest_collectreport(self, report):\n        if not report.passed:\n            reporter = self._opentestcase(report)\n            if report.failed:\n                reporter.append_collect_error(report)\n            else:\n                reporter.append_collect_skipped(report)\n"
+            },
+            {
+              "node_name": "src/_pytest/reports.py:pytest_report_from_serializable()",
+              "type": "function",
+              "file": "src/_pytest/reports.py",
+              "node_id": "src/_pytest/reports.py:pytest_report_from_serializable()",
+              "start_line": 427,
+              "end_line": 435,
+              "score": 0.0,
+              "content": "def pytest_report_from_serializable(data):\n    if \"_report_type\" in data:\n        if data[\"_report_type\"] == \"TestReport\":\n            return TestReport._from_json(data)\n        elif data[\"_report_type\"] == \"CollectReport\":\n            return CollectReport._from_json(data)\n        assert False, \"Unknown report_type unserialize data: {}\".format(\n            data[\"_report_type\"]\n        )\n"
+            }
+          ]
+        },
+        "is_error": false,
+        "result_type": "complete"
+      },
+      "seconds": 0.04058654233813286
+    },
+    {
+      "name": "get_manifest",
+      "arguments": {},
+      "payload": {
+        "meta": {
+          "io.modelcontextprotocol/serverInfo": {
+            "name": "codenib",
+            "version": "0.2.4"
+          }
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"version\": \"1.2\",\n  \"repo\": {\n    \"path\": \"/tmp/codenib-python-identity-20261027/pytest-source\",\n    \"commit\": \"8aba863a634f40560e25055d179220f0eefabe9a\",\n    \"last_indexed_commit\": \"8aba863a634f40560e25055d179220f0eefabe9a\",\n    \"source_fingerprint\": \"sha256-v2:745ad6a5e222883d3fa91d1cbcbd3625e78d8b6a24e5bf7cdd749ea2c4d9a88d\",\n    \"last_indexed_source_fingerprint\": \"sha256-v2:745ad6a5e222883d3fa91d1cbcbd3625e78d8b6a24e5bf7cdd749ea2c4d9a88d\",\n    \"languages\": [\n      \"python\"\n    ],\n    \"file_count\": 423,\n    \"source_selection\": {\n      \"schema\": \"codenib.repository-source-selection.v1\",\n      \"repository_filter_policy\": 4,\n      \"exclude_subtrees\": []\n    },\n    \"last_indexed_source_selection_digest\": \"sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4\"\n  },\n  \"indexes\": {\n    \"bm25\": {\n      \"index_type\": \"bm25\",\n      \"path\": \"/tmp/codenib-python-identity-20261027/pytest-workflow2/.codenib/repositories/pytest-source-2d1ba6ddae24/indexes/bm25\",\n      \"built_at\": \"2026-10-28T09:09:52.087462+00:00\",\n      \"built_at_epoch\": 1793178592.087462,\n      \"status\": \"fresh\",\n      \"config\": {\n        \"builder_schema\": 9,\n        \"languages\": [\n          \"python\"\n        ],\n        \"max_k\": 128,\n        \"max_lines_per_chunk\": 300,\n        \"chunking_failure_policy\": \"fail\",\n        \"include_header_epilogue\": true,\n        \"repository_filter_policy\": 4,\n        \"source_selection_digest\": \"sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4\",\n        \"artifact_file_fingerprints\": {\n          \"documents.json\": {\n            \"size\": 1788537,\n            \"sha256\": \"ea95ca6674a52cfa45c3e9f3a1f626b0b5096260abe73f73de6668d616e8df72\"\n          },\n          \"bm25_metadata.json\": {\n            \"size\": 142,\n            \"sha256\": \"3de14bb84f1417c6954a0ef0d54550a293f51141a2085a98ecf71e384c7b850d\"\n          }\n        },\n        \"chunk_count\": 1950,\n        \"source_file_count\": 105,\n        \"file_count\": 1950\n      },\n      \"metadata\": {\n        \"builder_schema\": 9,\n        \"languages\": [\n          \"python\"\n        ],\n        \"max_k\": 128,\n        \"max_lines_per_chunk\": 300,\n        \"chunking_failure_policy\": \"fail\",\n        \"include_header_epilogue\": true,\n        \"repository_filter_policy\": 4,\n        \"source_selection_digest\": \"sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4\",\n        \"artifact_file_fingerprints\": {\n          \"documents.json\": {\n            \"size\": 1788537,\n            \"sha256\": \"ea95ca6674a52cfa45c3e9f3a1f626b0b5096260abe73f73de6668d616e8df72\"\n          },\n          \"bm25_metadata.json\": {\n            \"size\": 142,\n            \"sha256\": \"3de14bb84f1417c6954a0ef0d54550a293f51141a2085a98ecf71e384c7b850d\"\n          }\n        },\n        \"chunk_count\": 1950,\n        \"source_file_count\": 105,\n        \"file_count\": 1950,\n        \"build_duration_seconds\": 0.31\n      },\n      \"commit\": \"8aba863a634f40560e25055d179220f0eefabe9a\",\n      \"source_fingerprint\": \"sha256-v2:745ad6a5e222883d3fa91d1cbcbd3625e78d8b6a24e5bf7cdd749ea2c4d9a88d\",\n      \"source_selection_digest\": \"sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4\"\n    },\n    \"symbol_graph\": {\n      \"index_type\": \"symbol_graph\",\n      \"path\": \"/tmp/codenib-python-identity-20261027/pytest-workflow2/.codenib/repositories/pytest-source-2d1ba6ddae24/indexes/symbol_graph\",\n      \"built_at\": \"2026-10-28T09:10:14.608719+00:00\",\n      \"built_at_epoch\": 1793178614.608719,\n      \"status\": \"fresh\",\n      \"config\": {\n        \"builder_schema\": 8,\n        \"languages\": [\n          \"python\"\n        ],\n        \"graph_route\": \"active\",\n        \"exclude_patterns\": [\n          \"**/.codenib_cache/**\",\n          \"**/.env/**\",\n          \"**/.git/**\",\n          \"**/.hg/**\",\n          \"**/.mypy_cache/**\",\n          \"**/.next/**\",\n          \"**/.pytest_cache/**\",\n          \"**/.ruff_cache/**\",\n          \"**/.svn/**\",\n          \"**/.tox/**\",\n          \"**/.venv/**\",\n          \"**/__pycache__/**\",\n          \"**/build/**\",\n          \"**/dist/**\",\n          \"**/env/**\",\n          \"**/htmlcov/**\",\n          \"**/node_modules/**\",\n          \"**/site/**\",\n          \"**/target/**\",\n          \"**/third_party/**\",\n          \"**/vendor/**\",\n          \"**/venv/**\",\n          \".codenib_cache/**\",\n          \".env/**\",\n          \".git/**\",\n          \".hg/**\",\n          \".mypy_cache/**\",\n          \".next/**\",\n          \".pytest_cache/**\",\n          \".ruff_cache/**\",\n          \".svn/**\",\n          \".tox/**\",\n          \".venv/**\",\n          \"__pycache__/**\",\n          \"build/**\",\n          \"dist/**\",\n          \"env/**\",\n          \"htmlcov/**\",\n          \"node_modules/**\",\n          \"site/**\",\n          \"target/**\",\n          \"third_party/**\",\n          \"vendor/**\",\n          \"venv/**\"\n        ],\n        \"allow_partial_languages\": false,\n        \"allow_partial_index\": false,\n        \"source_coverage_fallback\": false,\n        \"allow_project_preparation\": false,\n        \"target_dir\": null,\n        \"repository_filter_policy\": 4,\n        \"source_selection_digest\": \"sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4\",\n        \"node_count\": 5700,\n        \"edge_count\": 11390,\n        \"language\": \"python\",\n        \"available_languages\": [\n          \"python\"\n        ],\n        \"compiler_available_languages\": [\n          \"python\"\n        ],\n        \"index_generation_reports\": {\n          \"python\": {\n            \"backend\": \"scip-python\",\n            \"status\": \"complete\",\n            \"complete\": true,\n            \"partial\": false,\n            \"document_count\": 199,\n            \"identity_recovery\": {\n              \"status\": \"complete\",\n              \"schema\": 1,\n              \"source_file_count\": 199,\n              \"changed_symbol_families\": 277,\n              \"physical_declarations\": 11964,\n              \"restored_definition_roles\": 78,\n              \"positional_definition_queries\": 205,\n              \"local_binding_families\": 8,\n              \"local_binding_semantics\": \"all_source_declarations_for_compiler_binding\",\n              \"shared_lexical_binding_families\": 229,\n              \"utf8_replacement_sources\": [],\n              \"source_only_definitions\": [],\n              \"unmapped_attribute_definitions\": [],\n              \"definition_provider\": {\n                \"command\": [\n                  \"/tmp/codenib-codegraph-identity-next/toolchain/basedpyright-langserver\",\n                  \"--stdio\"\n                ],\n                \"server_info\": {\n                  \"name\": \"basedpyright\",\n                  \"version\": \"1.39.8\"\n                },\n                \"position_encoding\": \"utf-16\"\n              },\n              \"position_encoding\": \"UTF8\",\n              \"source_sha256\": {\n                \"doc/en/example/assertion/failure_demo.py\": \"179fe70e93238cf337e1fcc7f1ee2a4713365af8080ccf523188cf68eaa50d62\",\n                \"src/_pytest/_argcomplete.py\": \"0d4adea61c524b2dca00aba6cfb2e6526b898ce0a24e9848e9b1bd597f2a84ea\",\n                \"src/_pytest/compat.py\": \"359ab9e7c361fe00f10af329110c27088378017551f309d7aecdc0d6e9025ad7\",\n                \"src/_pytest/doctest.py\": \"1b9720ba115d45c7913dcd925a7911e881f81eda5034a457bc4352abf5399416\",\n                \"src/_pytest/fixtures.py\": \"fcd30bdf87a377b075437a7ef959eefc83f556cdc4f1b1ced9706dd5281e130e\",\n                \"src/_pytest/helpconfig.py\": \"dfad39d5b9d550f8599f9971c0e064d7d1ad2bf7f9a4e879a9a5cc10cbcc2816\",\n                \"src/_pytest/junitxml.py\": \"228e1ce795d6ec85f6c0f16af773ee0a9dcbcb2cdd2ba86cb80d46467725fe59\",\n                \"src/_pytest/main.py\": \"9b76ec4f59d76da3eee52435c8094629c2119510712a99756975d83e9efedc43\",\n                \"src/_pytest/pathlib.py\": \"3173da781594c4357150d8b162406496d7084302db8405aea7956361c569360d\",\n                \"src/_pytest/pytester.py\": \"5c341cc25d6cad15914d0425158b2cd0c7ce2e8dd64fa52c3e9b1c7a3b81eb23\",\n                \"src/_pytest/python.py\": \"c30ae40f482c3354e6e1af768463340fb605552af26955f72b6452c979f6bc32\",\n                \"src/_pytest/python_api.py\": \"6a50d39335b188c4f050015c15f23b192b555034c504d739346695bb74b67b6b\",\n                \"src/_pytest/recwarn.py\": \"9ad5ce60e045bdf75c3ce0daec2e9a4ee5faeb4a689242dad7ba651aa274be23\",\n                \"src/_pytest/reports.py\": \"8093291ac30a5fedb2a94a12bd3384824e6a94f3ebb2359b391b9d04180c2a01\",\n                \"src/_pytest/terminal.py\": \"42ef2d87690e777d044c45ae59e7211de8f0c6c4d4b340f1505a0020d7608147\",\n                \"src/_pytest/_code/code.py\": \"ce632096c03135c370169086c3c4de165a02fa92cef852d90be96f3003e7b6e9\",\n                \"src/_pytest/_io/saferepr.py\": \"6d932b44a9c5a21f64f4ca558d9a2ff93446b34e286a4409a5d423fe093e558b\",\n                \"src/_pytest/assertion/rewrite.py\": \"976799c6bdf8172ab89fdb2750511800ae3b6f9a8f2fc782aeb63c57c5e73ba9\",\n                \"src/_pytest/assertion/util.py\": \"de08c56cac7b1686feefc4d43088a8a9b92af974ed2cb36c651de324f1275a49\",\n                \"testing/acceptance_test.py\": \"8fc8ddcd4a690304a2ac66a0db872c7fd086c2301c1f35396d0c65da8bd08981\",\n                \"testing/test_assertion.py\": \"61c0cc6393574b9e1c740580e8cea980d5a0e0d4c72dfeb6a7a3d395f422a04a\",\n                \"testing/test_assertrewrite.py\": \"bac4f4c0145de9510a2d49cc97fd6a2b99490898b6ff0b4a6e61f10b93146eeb\",\n                \"testing/test_cacheprovider.py\": \"217cc0c29b2957ebf10b054bb77146ec6fd98fc8bb79309de3497327a3facc88\",\n                \"testing/test_compat.py\": \"eeedab89abe367839bdb08b3e6f72a177fba0365a2b19d6a5ab29cfcfe4c018b\",\n                \"testing/test_conftest.py\": \"8f964641b09ac376cb669e34c22dbebec369f601aca2edf5f8055604d239b99d\",\n                \"testing/test_doctest.py\": \"9df5f1dd08aa6b2e8789cd456118c754106eace61cc030583c2da97c2cef2e24\",\n                \"testing/test_junitxml.py\": \"a47fdfa2a8830a72f9e464c0b58eb08d1578b9d45b8bb98d50e197b13b0c3626\",\n                \"testing/test_mark.py\": \"22cce6a3ce3d660ce787db5bf8876add6617cdb2028d80a0d0567240642fd2f8\",\n                \"testing/test_nodes.py\": \"a19b2a34f77b75614f4ffbdede849c57cf625282189eb2e9be7957adfd8886de\",\n                \"testing/test_parseopt.py\": \"a146bba960104837a10fdb8594eb715db8070b7c46884288554054896c77d12c\",\n                \"testing/test_pastebin.py\": \"e3fb56e1d80d8c818f6df9b4bc1bdef70a2f927e93d169a302f2cbd0dc16ddaa\",\n                \"testing/test_pathlib.py\": \"9dcb9adecf61e1594df46f1aa8eb563283fe3ffb36d3d62e27fb25ec754e24d5\",\n                \"testing/test_pdb.py\": \"0f1c697ab178ec54a0443a5cf1b79c26aa6dacacfd7677cfa58a2c54cc0a4937\",\n                \"testing/test_pytester.py\": \"9b24573569c2c5a6b16025196c8aabee713b6fbce782b9076db6957b8b826648\",\n                \"testing/test_recwarn.py\": \"201407b2ac1113786d779af89a644b1254833237b57ef4dd49e6e95bfe012540\",\n                \"testing/test_runner.py\": \"4b602d3e0b61e05f1a1ae312b85bef38b56d72a0cf22846dad3a9589abf7a4c6\",\n                \"testing/test_session.py\": \"6831aa8157f496dfccd644e55811af73839cca87fde68bc1319109918fb8417e\",\n                \"testing/test_tmpdir.py\": \"babef2652e5deaf48e9629e17e34cbb0931ea82cca2c6732993a6563cc4653cb\",\n                \"testing/code/test_excinfo.py\": \"a7dfb6a3b2990cb6757f91ba41c4dc1b60d654cdd0d5d3f91ac6d3eaee196154\",\n                \"testing/code/test_source.py\": \"3c4979c9035ff7f95f0eb170a4cb59879240125f5a38e016e681cca7c1bd6e52\",\n                \"testing/freeze/tox_run.py\": \"b0e62784bd3957fa8284062ff2eed907bef770c7d3e7d47cbb90f9bb0440c9d9\",\n                \"testing/io/test_saferepr.py\": \"ef7cb31b74fc369306a91301d2f666575703be74c01238d24b513e474d22676d\",\n                \"testing/python/collect.py\": \"d230c4a742829c433ba679a5e363a726c0cefefe71c0706ea95c98d39f63ff9b\",\n                \"testing/python/fixtures.py\": \"023a0f4f72920f7020093f379175e3d204745d022ccdf8cafdcb6a7d87826f01\",\n                \"testing/python/integration.py\": \"31c5b0aa3affd6280985c60696a34a68fd0debe76f3630f9f837ea0c6d8d7c5d\",\n                \"testing/python/metafunc.py\": \"25be14a44e38a9ccd44355b1ac26584c0844145233a1fe612c6d477c92b25f0c\"\n              }\n            }\n          }\n        },\n        \"scip_decoded_artifacts\": {\n          \"python\": {\n            \"relative_path\": \"index.decoded\",\n            \"size\": 16962722,\n            \"sha256\": \"273404261499e74be7891668eea9a8b1d91cb3a06c6ac9a17bc37cba2b74774f\"\n          }\n        },\n        \"graph_artifact\": {\n          \"relative_path\": \"graph.pkl\",\n          \"size\": 1291395,\n          \"sha256\": \"87a1bd01e77209b0014938583629d587b92c6617b21b5c7cbc7a32e2af37f4cf\"\n        },\n        \"lsp_occurrence_artifact\": {\n          \"relative_path\": \"lsp_index.pkl\",\n          \"size\": 9406544,\n          \"sha256\": \"77660e81932754cda1669ee3e9d36e05044d5b073411ac2c86474369a39a9890\"\n        },\n        \"query_surface_sha256\": \"f6712645def1efbc52130cd6474070c076e492e820cef980f9d5e5b3237e76da\",\n        \"update_mode\": \"full_rebuild\",\n        \"partial_index\": false,\n        \"failed_languages\": {},\n        \"partial\": false,\n        \"source_selection_report\": {\n          \"source_selection_digest\": \"sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4\",\n          \"nodes_before\": 5700,\n          \"nodes_after\": 5700,\n          \"edges_before\": 11390,\n          \"edges_after\": 11390,\n          \"removed_excluded_path_count\": 0,\n          \"excluded_path_count_after\": 0,\n          \"invalid_path_count_before\": 0,\n          \"invalid_path_count_after\": 0\n        }\n      },\n      \"metadata\": {\n        \"builder_schema\": 8,\n        \"languages\": [\n          \"python\"\n        ],\n        \"graph_route\": \"active\",\n        \"exclude_patterns\": [\n          \"**/.codenib_cache/**\",\n          \"**/.env/**\",\n          \"**/.git/**\",\n          \"**/.hg/**\",\n          \"**/.mypy_cache/**\",\n          \"**/.next/**\",\n          \"**/.pytest_cache/**\",\n          \"**/.ruff_cache/**\",\n          \"**/.svn/**\",\n          \"**/.tox/**\",\n          \"**/.venv/**\",\n          \"**/__pycache__/**\",\n          \"**/build/**\",\n          \"**/dist/**\",\n          \"**/env/**\",\n          \"**/htmlcov/**\",\n          \"**/node_modules/**\",\n          \"**/site/**\",\n          \"**/target/**\",\n          \"**/third_party/**\",\n          \"**/vendor/**\",\n          \"**/venv/**\",\n          \".codenib_cache/**\",\n          \".env/**\",\n          \".git/**\",\n          \".hg/**\",\n          \".mypy_cache/**\",\n          \".next/**\",\n          \".pytest_cache/**\",\n          \".ruff_cache/**\",\n          \".svn/**\",\n          \".tox/**\",\n          \".venv/**\",\n          \"__pycache__/**\",\n          \"build/**\",\n          \"dist/**\",\n          \"env/**\",\n          \"htmlcov/**\",\n          \"node_modules/**\",\n          \"site/**\",\n          \"target/**\",\n          \"third_party/**\",\n          \"vendor/**\",\n          \"venv/**\"\n        ],\n        \"allow_partial_languages\": false,\n        \"allow_partial_index\": false,\n        \"source_coverage_fallback\": false,\n        \"allow_project_preparation\": false,\n        \"target_dir\": null,\n        \"repository_filter_policy\": 4,\n        \"source_selection_digest\": \"sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4\",\n        \"node_count\": 5700,\n        \"edge_count\": 11390,\n        \"language\": \"python\",\n        \"available_languages\": [\n          \"python\"\n        ],\n        \"compiler_available_languages\": [\n          \"python\"\n        ],\n        \"index_generation_reports\": {\n          \"python\": {\n            \"backend\": \"scip-python\",\n            \"status\": \"complete\",\n            \"complete\": true,\n            \"partial\": false,\n            \"document_count\": 199,\n            \"identity_recovery\": {\n              \"status\": \"complete\",\n              \"schema\": 1,\n              \"source_file_count\": 199,\n              \"changed_symbol_families\": 277,\n              \"physical_declarations\": 11964,\n              \"restored_definition_roles\": 78,\n              \"positional_definition_queries\": 205,\n              \"local_binding_families\": 8,\n              \"local_binding_semantics\": \"all_source_declarations_for_compiler_binding\",\n              \"shared_lexical_binding_families\": 229,\n              \"utf8_replacement_sources\": [],\n              \"source_only_definitions\": [],\n              \"unmapped_attribute_definitions\": [],\n              \"definition_provider\": {\n                \"command\": [\n                  \"/tmp/codenib-codegraph-identity-next/toolchain/basedpyright-langserver\",\n                  \"--stdio\"\n                ],\n                \"server_info\": {\n                  \"name\": \"basedpyright\",\n                  \"version\": \"1.39.8\"\n                },\n                \"position_encoding\": \"utf-16\"\n              },\n              \"position_encoding\": \"UTF8\",\n              \"source_sha256\": {\n                \"doc/en/example/assertion/failure_demo.py\": \"179fe70e93238cf337e1fcc7f1ee2a4713365af8080ccf523188cf68eaa50d62\",\n                \"src/_pytest/_argcomplete.py\": \"0d4adea61c524b2dca00aba6cfb2e6526b898ce0a24e9848e9b1bd597f2a84ea\",\n                \"src/_pytest/compat.py\": \"359ab9e7c361fe00f10af329110c27088378017551f309d7aecdc0d6e9025ad7\",\n                \"src/_pytest/doctest.py\": \"1b9720ba115d45c7913dcd925a7911e881f81eda5034a457bc4352abf5399416\",\n                \"src/_pytest/fixtures.py\": \"fcd30bdf87a377b075437a7ef959eefc83f556cdc4f1b1ced9706dd5281e130e\",\n                \"src/_pytest/helpconfig.py\": \"dfad39d5b9d550f8599f9971c0e064d7d1ad2bf7f9a4e879a9a5cc10cbcc2816\",\n                \"src/_pytest/junitxml.py\": \"228e1ce795d6ec85f6c0f16af773ee0a9dcbcb2cdd2ba86cb80d46467725fe59\",\n                \"src/_pytest/main.py\": \"9b76ec4f59d76da3eee52435c8094629c2119510712a99756975d83e9efedc43\",\n                \"src/_pytest/pathlib.py\": \"3173da781594c4357150d8b162406496d7084302db8405aea7956361c569360d\",\n                \"src/_pytest/pytester.py\": \"5c341cc25d6cad15914d0425158b2cd0c7ce2e8dd64fa52c3e9b1c7a3b81eb23\",\n                \"src/_pytest/python.py\": \"c30ae40f482c3354e6e1af768463340fb605552af26955f72b6452c979f6bc32\",\n                \"src/_pytest/python_api.py\": \"6a50d39335b188c4f050015c15f23b192b555034c504d739346695bb74b67b6b\",\n                \"src/_pytest/recwarn.py\": \"9ad5ce60e045bdf75c3ce0daec2e9a4ee5faeb4a689242dad7ba651aa274be23\",\n                \"src/_pytest/reports.py\": \"8093291ac30a5fedb2a94a12bd3384824e6a94f3ebb2359b391b9d04180c2a01\",\n                \"src/_pytest/terminal.py\": \"42ef2d87690e777d044c45ae59e7211de8f0c6c4d4b340f1505a0020d7608147\",\n                \"src/_pytest/_code/code.py\": \"ce632096c03135c370169086c3c4de165a02fa92cef852d90be96f3003e7b6e9\",\n                \"src/_pytest/_io/saferepr.py\": \"6d932b44a9c5a21f64f4ca558d9a2ff93446b34e286a4409a5d423fe093e558b\",\n                \"src/_pytest/assertion/rewrite.py\": \"976799c6bdf8172ab89fdb2750511800ae3b6f9a8f2fc782aeb63c57c5e73ba9\",\n                \"src/_pytest/assertion/util.py\": \"de08c56cac7b1686feefc4d43088a8a9b92af974ed2cb36c651de324f1275a49\",\n                \"testing/acceptance_test.py\": \"8fc8ddcd4a690304a2ac66a0db872c7fd086c2301c1f35396d0c65da8bd08981\",\n                \"testing/test_assertion.py\": \"61c0cc6393574b9e1c740580e8cea980d5a0e0d4c72dfeb6a7a3d395f422a04a\",\n                \"testing/test_assertrewrite.py\": \"bac4f4c0145de9510a2d49cc97fd6a2b99490898b6ff0b4a6e61f10b93146eeb\",\n                \"testing/test_cacheprovider.py\": \"217cc0c29b2957ebf10b054bb77146ec6fd98fc8bb79309de3497327a3facc88\",\n                \"testing/test_compat.py\": \"eeedab89abe367839bdb08b3e6f72a177fba0365a2b19d6a5ab29cfcfe4c018b\",\n                \"testing/test_conftest.py\": \"8f964641b09ac376cb669e34c22dbebec369f601aca2edf5f8055604d239b99d\",\n                \"testing/test_doctest.py\": \"9df5f1dd08aa6b2e8789cd456118c754106eace61cc030583c2da97c2cef2e24\",\n                \"testing/test_junitxml.py\": \"a47fdfa2a8830a72f9e464c0b58eb08d1578b9d45b8bb98d50e197b13b0c3626\",\n                \"testing/test_mark.py\": \"22cce6a3ce3d660ce787db5bf8876add6617cdb2028d80a0d0567240642fd2f8\",\n                \"testing/test_nodes.py\": \"a19b2a34f77b75614f4ffbdede849c57cf625282189eb2e9be7957adfd8886de\",\n                \"testing/test_parseopt.py\": \"a146bba960104837a10fdb8594eb715db8070b7c46884288554054896c77d12c\",\n                \"testing/test_pastebin.py\": \"e3fb56e1d80d8c818f6df9b4bc1bdef70a2f927e93d169a302f2cbd0dc16ddaa\",\n                \"testing/test_pathlib.py\": \"9dcb9adecf61e1594df46f1aa8eb563283fe3ffb36d3d62e27fb25ec754e24d5\",\n                \"testing/test_pdb.py\": \"0f1c697ab178ec54a0443a5cf1b79c26aa6dacacfd7677cfa58a2c54cc0a4937\",\n                \"testing/test_pytester.py\": \"9b24573569c2c5a6b16025196c8aabee713b6fbce782b9076db6957b8b826648\",\n                \"testing/test_recwarn.py\": \"201407b2ac1113786d779af89a644b1254833237b57ef4dd49e6e95bfe012540\",\n                \"testing/test_runner.py\": \"4b602d3e0b61e05f1a1ae312b85bef38b56d72a0cf22846dad3a9589abf7a4c6\",\n                \"testing/test_session.py\": \"6831aa8157f496dfccd644e55811af73839cca87fde68bc1319109918fb8417e\",\n                \"testing/test_tmpdir.py\": \"babef2652e5deaf48e9629e17e34cbb0931ea82cca2c6732993a6563cc4653cb\",\n                \"testing/code/test_excinfo.py\": \"a7dfb6a3b2990cb6757f91ba41c4dc1b60d654cdd0d5d3f91ac6d3eaee196154\",\n                \"testing/code/test_source.py\": \"3c4979c9035ff7f95f0eb170a4cb59879240125f5a38e016e681cca7c1bd6e52\",\n                \"testing/freeze/tox_run.py\": \"b0e62784bd3957fa8284062ff2eed907bef770c7d3e7d47cbb90f9bb0440c9d9\",\n                \"testing/io/test_saferepr.py\": \"ef7cb31b74fc369306a91301d2f666575703be74c01238d24b513e474d22676d\",\n                \"testing/python/collect.py\": \"d230c4a742829c433ba679a5e363a726c0cefefe71c0706ea95c98d39f63ff9b\",\n                \"testing/python/fixtures.py\": \"023a0f4f72920f7020093f379175e3d204745d022ccdf8cafdcb6a7d87826f01\",\n                \"testing/python/integration.py\": \"31c5b0aa3affd6280985c60696a34a68fd0debe76f3630f9f837ea0c6d8d7c5d\",\n                \"testing/python/metafunc.py\": \"25be14a44e38a9ccd44355b1ac26584c0844145233a1fe612c6d477c92b25f0c\"\n              }\n            }\n          }\n        },\n        \"scip_decoded_artifacts\": {\n          \"python\": {\n            \"relative_path\": \"index.decoded\",\n            \"size\": 16962722,\n            \"sha256\": \"273404261499e74be7891668eea9a8b1d91cb3a06c6ac9a17bc37cba2b74774f\"\n          }\n        },\n        \"graph_artifact\": {\n          \"relative_path\": \"graph.pkl\",\n          \"size\": 1291395,\n          \"sha256\": \"87a1bd01e77209b0014938583629d587b92c6617b21b5c7cbc7a32e2af37f4cf\"\n        },\n        \"lsp_occurrence_artifact\": {\n          \"relative_path\": \"lsp_index.pkl\",\n          \"size\": 9406544,\n          \"sha256\": \"77660e81932754cda1669ee3e9d36e05044d5b073411ac2c86474369a39a9890\"\n        },\n        \"query_surface_sha256\": \"f6712645def1efbc52130cd6474070c076e492e820cef980f9d5e5b3237e76da\",\n        \"update_mode\": \"full_rebuild\",\n        \"partial_index\": false,\n        \"failed_languages\": {},\n        \"partial\": false,\n        \"source_selection_report\": {\n          \"source_selection_digest\": \"sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4\",\n          \"nodes_before\": 5700,\n          \"nodes_after\": 5700,\n          \"edges_before\": 11390,\n          \"edges_after\": 11390,\n          \"removed_excluded_path_count\": 0,\n          \"excluded_path_count_after\": 0,\n          \"invalid_path_count_before\": 0,\n          \"invalid_path_count_after\": 0\n        },\n        \"build_duration_seconds\": 22.52\n      },\n      \"commit\": \"8aba863a634f40560e25055d179220f0eefabe9a\",\n      \"source_fingerprint\": \"sha256-v2:745ad6a5e222883d3fa91d1cbcbd3625e78d8b6a24e5bf7cdd749ea2c4d9a88d\",\n      \"source_selection_digest\": \"sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4\"\n    }\n  },\n  \"capabilities\": {\n    \"sparse_search\": true,\n    \"dense_search\": false,\n    \"hybrid_search\": false,\n    \"symbol_navigation\": true\n  },\n  \"compiled_at\": \"2026-10-28T09:10:14.677641+00:00\",\n  \"compiled_at_epoch\": 1793178614.677641,\n  \"runtime\": {\n    \"loaded_views\": [\n      \"bm25\",\n      \"regex_index\",\n      \"symbol_graph\"\n    ],\n    \"view_errors\": {},\n    \"tool_surface\": \"full\",\n    \"explore_session\": {\n      \"calls\": 0,\n      \"ranges\": 0,\n      \"max_ranges\": 160,\n      \"evictions\": 0\n    },\n    \"source_read\": {\n      \"verified\": true,\n      \"error\": null,\n      \"verification_scope\": \"content-bytes\",\n      \"commit_verified\": false,\n      \"checkout_state\": \"not-attested\"\n    },\n    \"lsp_provider\": {\n      \"provider\": \"codenib_static_index\",\n      \"backend\": \"persisted-symbol-graph-v1\",\n      \"status\": \"ok\",\n      \"index_snapshot\": \"symbol_graph:/tmp/codenib-python-identity-20261027/pytest-source:5700:11390\",\n      \"fallback_reason\": \"repository_source_policy_requires_persisted_graph\",\n      \"capabilities\": {\n        \"definition\": true,\n        \"references\": true,\n        \"route\": true\n      }\n    }\n  }\n}",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": {
+          "version": "1.2",
+          "repo": {
+            "path": "/tmp/codenib-python-identity-20261027/pytest-source",
+            "commit": "8aba863a634f40560e25055d179220f0eefabe9a",
+            "last_indexed_commit": "8aba863a634f40560e25055d179220f0eefabe9a",
+            "source_fingerprint": "sha256-v2:745ad6a5e222883d3fa91d1cbcbd3625e78d8b6a24e5bf7cdd749ea2c4d9a88d",
+            "last_indexed_source_fingerprint": "sha256-v2:745ad6a5e222883d3fa91d1cbcbd3625e78d8b6a24e5bf7cdd749ea2c4d9a88d",
+            "languages": [
+              "python"
+            ],
+            "file_count": 423,
+            "source_selection": {
+              "schema": "codenib.repository-source-selection.v1",
+              "repository_filter_policy": 4,
+              "exclude_subtrees": []
+            },
+            "last_indexed_source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4"
+          },
+          "indexes": {
+            "bm25": {
+              "index_type": "bm25",
+              "path": "/tmp/codenib-python-identity-20261027/pytest-workflow2/.codenib/repositories/pytest-source-2d1ba6ddae24/indexes/bm25",
+              "built_at": "2026-10-28T09:09:52.087462+00:00",
+              "built_at_epoch": 1793178592.087462,
+              "status": "fresh",
+              "config": {
+                "builder_schema": 9,
+                "languages": [
+                  "python"
+                ],
+                "max_k": 128,
+                "max_lines_per_chunk": 300,
+                "chunking_failure_policy": "fail",
+                "include_header_epilogue": true,
+                "repository_filter_policy": 4,
+                "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+                "artifact_file_fingerprints": {
+                  "documents.json": {
+                    "size": 1788537,
+                    "sha256": "ea95ca6674a52cfa45c3e9f3a1f626b0b5096260abe73f73de6668d616e8df72"
+                  },
+                  "bm25_metadata.json": {
+                    "size": 142,
+                    "sha256": "3de14bb84f1417c6954a0ef0d54550a293f51141a2085a98ecf71e384c7b850d"
+                  }
+                },
+                "chunk_count": 1950,
+                "source_file_count": 105,
+                "file_count": 1950
+              },
+              "metadata": {
+                "builder_schema": 9,
+                "languages": [
+                  "python"
+                ],
+                "max_k": 128,
+                "max_lines_per_chunk": 300,
+                "chunking_failure_policy": "fail",
+                "include_header_epilogue": true,
+                "repository_filter_policy": 4,
+                "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+                "artifact_file_fingerprints": {
+                  "documents.json": {
+                    "size": 1788537,
+                    "sha256": "ea95ca6674a52cfa45c3e9f3a1f626b0b5096260abe73f73de6668d616e8df72"
+                  },
+                  "bm25_metadata.json": {
+                    "size": 142,
+                    "sha256": "3de14bb84f1417c6954a0ef0d54550a293f51141a2085a98ecf71e384c7b850d"
+                  }
+                },
+                "chunk_count": 1950,
+                "source_file_count": 105,
+                "file_count": 1950,
+                "build_duration_seconds": 0.31
+              },
+              "commit": "8aba863a634f40560e25055d179220f0eefabe9a",
+              "source_fingerprint": "sha256-v2:745ad6a5e222883d3fa91d1cbcbd3625e78d8b6a24e5bf7cdd749ea2c4d9a88d",
+              "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4"
+            },
+            "symbol_graph": {
+              "index_type": "symbol_graph",
+              "path": "/tmp/codenib-python-identity-20261027/pytest-workflow2/.codenib/repositories/pytest-source-2d1ba6ddae24/indexes/symbol_graph",
+              "built_at": "2026-10-28T09:10:14.608719+00:00",
+              "built_at_epoch": 1793178614.608719,
+              "status": "fresh",
+              "config": {
+                "builder_schema": 8,
+                "languages": [
+                  "python"
+                ],
+                "graph_route": "active",
+                "exclude_patterns": [
+                  "**/.codenib_cache/**",
+                  "**/.env/**",
+                  "**/.git/**",
+                  "**/.hg/**",
+                  "**/.mypy_cache/**",
+                  "**/.next/**",
+                  "**/.pytest_cache/**",
+                  "**/.ruff_cache/**",
+                  "**/.svn/**",
+                  "**/.tox/**",
+                  "**/.venv/**",
+                  "**/__pycache__/**",
+                  "**/build/**",
+                  "**/dist/**",
+                  "**/env/**",
+                  "**/htmlcov/**",
+                  "**/node_modules/**",
+                  "**/site/**",
+                  "**/target/**",
+                  "**/third_party/**",
+                  "**/vendor/**",
+                  "**/venv/**",
+                  ".codenib_cache/**",
+                  ".env/**",
+                  ".git/**",
+                  ".hg/**",
+                  ".mypy_cache/**",
+                  ".next/**",
+                  ".pytest_cache/**",
+                  ".ruff_cache/**",
+                  ".svn/**",
+                  ".tox/**",
+                  ".venv/**",
+                  "__pycache__/**",
+                  "build/**",
+                  "dist/**",
+                  "env/**",
+                  "htmlcov/**",
+                  "node_modules/**",
+                  "site/**",
+                  "target/**",
+                  "third_party/**",
+                  "vendor/**",
+                  "venv/**"
+                ],
+                "allow_partial_languages": false,
+                "allow_partial_index": false,
+                "source_coverage_fallback": false,
+                "allow_project_preparation": false,
+                "target_dir": null,
+                "repository_filter_policy": 4,
+                "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+                "node_count": 5700,
+                "edge_count": 11390,
+                "language": "python",
+                "available_languages": [
+                  "python"
+                ],
+                "compiler_available_languages": [
+                  "python"
+                ],
+                "index_generation_reports": {
+                  "python": {
+                    "backend": "scip-python",
+                    "status": "complete",
+                    "complete": true,
+                    "partial": false,
+                    "document_count": 199,
+                    "identity_recovery": {
+                      "status": "complete",
+                      "schema": 1,
+                      "source_file_count": 199,
+                      "changed_symbol_families": 277,
+                      "physical_declarations": 11964,
+                      "restored_definition_roles": 78,
+                      "positional_definition_queries": 205,
+                      "local_binding_families": 8,
+                      "local_binding_semantics": "all_source_declarations_for_compiler_binding",
+                      "shared_lexical_binding_families": 229,
+                      "utf8_replacement_sources": [],
+                      "source_only_definitions": [],
+                      "unmapped_attribute_definitions": [],
+                      "definition_provider": {
+                        "command": [
+                          "/tmp/codenib-codegraph-identity-next/toolchain/basedpyright-langserver",
+                          "--stdio"
+                        ],
+                        "server_info": {
+                          "name": "basedpyright",
+                          "version": "1.39.8"
+                        },
+                        "position_encoding": "utf-16"
+                      },
+                      "position_encoding": "UTF8",
+                      "source_sha256": {
+                        "doc/en/example/assertion/failure_demo.py": "179fe70e93238cf337e1fcc7f1ee2a4713365af8080ccf523188cf68eaa50d62",
+                        "src/_pytest/_argcomplete.py": "0d4adea61c524b2dca00aba6cfb2e6526b898ce0a24e9848e9b1bd597f2a84ea",
+                        "src/_pytest/compat.py": "359ab9e7c361fe00f10af329110c27088378017551f309d7aecdc0d6e9025ad7",
+                        "src/_pytest/doctest.py": "1b9720ba115d45c7913dcd925a7911e881f81eda5034a457bc4352abf5399416",
+                        "src/_pytest/fixtures.py": "fcd30bdf87a377b075437a7ef959eefc83f556cdc4f1b1ced9706dd5281e130e",
+                        "src/_pytest/helpconfig.py": "dfad39d5b9d550f8599f9971c0e064d7d1ad2bf7f9a4e879a9a5cc10cbcc2816",
+                        "src/_pytest/junitxml.py": "228e1ce795d6ec85f6c0f16af773ee0a9dcbcb2cdd2ba86cb80d46467725fe59",
+                        "src/_pytest/main.py": "9b76ec4f59d76da3eee52435c8094629c2119510712a99756975d83e9efedc43",
+                        "src/_pytest/pathlib.py": "3173da781594c4357150d8b162406496d7084302db8405aea7956361c569360d",
+                        "src/_pytest/pytester.py": "5c341cc25d6cad15914d0425158b2cd0c7ce2e8dd64fa52c3e9b1c7a3b81eb23",
+                        "src/_pytest/python.py": "c30ae40f482c3354e6e1af768463340fb605552af26955f72b6452c979f6bc32",
+                        "src/_pytest/python_api.py": "6a50d39335b188c4f050015c15f23b192b555034c504d739346695bb74b67b6b",
+                        "src/_pytest/recwarn.py": "9ad5ce60e045bdf75c3ce0daec2e9a4ee5faeb4a689242dad7ba651aa274be23",
+                        "src/_pytest/reports.py": "8093291ac30a5fedb2a94a12bd3384824e6a94f3ebb2359b391b9d04180c2a01",
+                        "src/_pytest/terminal.py": "42ef2d87690e777d044c45ae59e7211de8f0c6c4d4b340f1505a0020d7608147",
+                        "src/_pytest/_code/code.py": "ce632096c03135c370169086c3c4de165a02fa92cef852d90be96f3003e7b6e9",
+                        "src/_pytest/_io/saferepr.py": "6d932b44a9c5a21f64f4ca558d9a2ff93446b34e286a4409a5d423fe093e558b",
+                        "src/_pytest/assertion/rewrite.py": "976799c6bdf8172ab89fdb2750511800ae3b6f9a8f2fc782aeb63c57c5e73ba9",
+                        "src/_pytest/assertion/util.py": "de08c56cac7b1686feefc4d43088a8a9b92af974ed2cb36c651de324f1275a49",
+                        "testing/acceptance_test.py": "8fc8ddcd4a690304a2ac66a0db872c7fd086c2301c1f35396d0c65da8bd08981",
+                        "testing/test_assertion.py": "61c0cc6393574b9e1c740580e8cea980d5a0e0d4c72dfeb6a7a3d395f422a04a",
+                        "testing/test_assertrewrite.py": "bac4f4c0145de9510a2d49cc97fd6a2b99490898b6ff0b4a6e61f10b93146eeb",
+                        "testing/test_cacheprovider.py": "217cc0c29b2957ebf10b054bb77146ec6fd98fc8bb79309de3497327a3facc88",
+                        "testing/test_compat.py": "eeedab89abe367839bdb08b3e6f72a177fba0365a2b19d6a5ab29cfcfe4c018b",
+                        "testing/test_conftest.py": "8f964641b09ac376cb669e34c22dbebec369f601aca2edf5f8055604d239b99d",
+                        "testing/test_doctest.py": "9df5f1dd08aa6b2e8789cd456118c754106eace61cc030583c2da97c2cef2e24",
+                        "testing/test_junitxml.py": "a47fdfa2a8830a72f9e464c0b58eb08d1578b9d45b8bb98d50e197b13b0c3626",
+                        "testing/test_mark.py": "22cce6a3ce3d660ce787db5bf8876add6617cdb2028d80a0d0567240642fd2f8",
+                        "testing/test_nodes.py": "a19b2a34f77b75614f4ffbdede849c57cf625282189eb2e9be7957adfd8886de",
+                        "testing/test_parseopt.py": "a146bba960104837a10fdb8594eb715db8070b7c46884288554054896c77d12c",
+                        "testing/test_pastebin.py": "e3fb56e1d80d8c818f6df9b4bc1bdef70a2f927e93d169a302f2cbd0dc16ddaa",
+                        "testing/test_pathlib.py": "9dcb9adecf61e1594df46f1aa8eb563283fe3ffb36d3d62e27fb25ec754e24d5",
+                        "testing/test_pdb.py": "0f1c697ab178ec54a0443a5cf1b79c26aa6dacacfd7677cfa58a2c54cc0a4937",
+                        "testing/test_pytester.py": "9b24573569c2c5a6b16025196c8aabee713b6fbce782b9076db6957b8b826648",
+                        "testing/test_recwarn.py": "201407b2ac1113786d779af89a644b1254833237b57ef4dd49e6e95bfe012540",
+                        "testing/test_runner.py": "4b602d3e0b61e05f1a1ae312b85bef38b56d72a0cf22846dad3a9589abf7a4c6",
+                        "testing/test_session.py": "6831aa8157f496dfccd644e55811af73839cca87fde68bc1319109918fb8417e",
+                        "testing/test_tmpdir.py": "babef2652e5deaf48e9629e17e34cbb0931ea82cca2c6732993a6563cc4653cb",
+                        "testing/code/test_excinfo.py": "a7dfb6a3b2990cb6757f91ba41c4dc1b60d654cdd0d5d3f91ac6d3eaee196154",
+                        "testing/code/test_source.py": "3c4979c9035ff7f95f0eb170a4cb59879240125f5a38e016e681cca7c1bd6e52",
+                        "testing/freeze/tox_run.py": "b0e62784bd3957fa8284062ff2eed907bef770c7d3e7d47cbb90f9bb0440c9d9",
+                        "testing/io/test_saferepr.py": "ef7cb31b74fc369306a91301d2f666575703be74c01238d24b513e474d22676d",
+                        "testing/python/collect.py": "d230c4a742829c433ba679a5e363a726c0cefefe71c0706ea95c98d39f63ff9b",
+                        "testing/python/fixtures.py": "023a0f4f72920f7020093f379175e3d204745d022ccdf8cafdcb6a7d87826f01",
+                        "testing/python/integration.py": "31c5b0aa3affd6280985c60696a34a68fd0debe76f3630f9f837ea0c6d8d7c5d",
+                        "testing/python/metafunc.py": "25be14a44e38a9ccd44355b1ac26584c0844145233a1fe612c6d477c92b25f0c"
+                      }
+                    }
+                  }
+                },
+                "scip_decoded_artifacts": {
+                  "python": {
+                    "relative_path": "index.decoded",
+                    "size": 16962722,
+                    "sha256": "273404261499e74be7891668eea9a8b1d91cb3a06c6ac9a17bc37cba2b74774f"
+                  }
+                },
+                "graph_artifact": {
+                  "relative_path": "graph.pkl",
+                  "size": 1291395,
+                  "sha256": "87a1bd01e77209b0014938583629d587b92c6617b21b5c7cbc7a32e2af37f4cf"
+                },
+                "lsp_occurrence_artifact": {
+                  "relative_path": "lsp_index.pkl",
+                  "size": 9406544,
+                  "sha256": "77660e81932754cda1669ee3e9d36e05044d5b073411ac2c86474369a39a9890"
+                },
+                "query_surface_sha256": "f6712645def1efbc52130cd6474070c076e492e820cef980f9d5e5b3237e76da",
+                "update_mode": "full_rebuild",
+                "partial_index": false,
+                "failed_languages": {},
+                "partial": false,
+                "source_selection_report": {
+                  "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+                  "nodes_before": 5700,
+                  "nodes_after": 5700,
+                  "edges_before": 11390,
+                  "edges_after": 11390,
+                  "removed_excluded_path_count": 0,
+                  "excluded_path_count_after": 0,
+                  "invalid_path_count_before": 0,
+                  "invalid_path_count_after": 0
+                }
+              },
+              "metadata": {
+                "builder_schema": 8,
+                "languages": [
+                  "python"
+                ],
+                "graph_route": "active",
+                "exclude_patterns": [
+                  "**/.codenib_cache/**",
+                  "**/.env/**",
+                  "**/.git/**",
+                  "**/.hg/**",
+                  "**/.mypy_cache/**",
+                  "**/.next/**",
+                  "**/.pytest_cache/**",
+                  "**/.ruff_cache/**",
+                  "**/.svn/**",
+                  "**/.tox/**",
+                  "**/.venv/**",
+                  "**/__pycache__/**",
+                  "**/build/**",
+                  "**/dist/**",
+                  "**/env/**",
+                  "**/htmlcov/**",
+                  "**/node_modules/**",
+                  "**/site/**",
+                  "**/target/**",
+                  "**/third_party/**",
+                  "**/vendor/**",
+                  "**/venv/**",
+                  ".codenib_cache/**",
+                  ".env/**",
+                  ".git/**",
+                  ".hg/**",
+                  ".mypy_cache/**",
+                  ".next/**",
+                  ".pytest_cache/**",
+                  ".ruff_cache/**",
+                  ".svn/**",
+                  ".tox/**",
+                  ".venv/**",
+                  "__pycache__/**",
+                  "build/**",
+                  "dist/**",
+                  "env/**",
+                  "htmlcov/**",
+                  "node_modules/**",
+                  "site/**",
+                  "target/**",
+                  "third_party/**",
+                  "vendor/**",
+                  "venv/**"
+                ],
+                "allow_partial_languages": false,
+                "allow_partial_index": false,
+                "source_coverage_fallback": false,
+                "allow_project_preparation": false,
+                "target_dir": null,
+                "repository_filter_policy": 4,
+                "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+                "node_count": 5700,
+                "edge_count": 11390,
+                "language": "python",
+                "available_languages": [
+                  "python"
+                ],
+                "compiler_available_languages": [
+                  "python"
+                ],
+                "index_generation_reports": {
+                  "python": {
+                    "backend": "scip-python",
+                    "status": "complete",
+                    "complete": true,
+                    "partial": false,
+                    "document_count": 199,
+                    "identity_recovery": {
+                      "status": "complete",
+                      "schema": 1,
+                      "source_file_count": 199,
+                      "changed_symbol_families": 277,
+                      "physical_declarations": 11964,
+                      "restored_definition_roles": 78,
+                      "positional_definition_queries": 205,
+                      "local_binding_families": 8,
+                      "local_binding_semantics": "all_source_declarations_for_compiler_binding",
+                      "shared_lexical_binding_families": 229,
+                      "utf8_replacement_sources": [],
+                      "source_only_definitions": [],
+                      "unmapped_attribute_definitions": [],
+                      "definition_provider": {
+                        "command": [
+                          "/tmp/codenib-codegraph-identity-next/toolchain/basedpyright-langserver",
+                          "--stdio"
+                        ],
+                        "server_info": {
+                          "name": "basedpyright",
+                          "version": "1.39.8"
+                        },
+                        "position_encoding": "utf-16"
+                      },
+                      "position_encoding": "UTF8",
+                      "source_sha256": {
+                        "doc/en/example/assertion/failure_demo.py": "179fe70e93238cf337e1fcc7f1ee2a4713365af8080ccf523188cf68eaa50d62",
+                        "src/_pytest/_argcomplete.py": "0d4adea61c524b2dca00aba6cfb2e6526b898ce0a24e9848e9b1bd597f2a84ea",
+                        "src/_pytest/compat.py": "359ab9e7c361fe00f10af329110c27088378017551f309d7aecdc0d6e9025ad7",
+                        "src/_pytest/doctest.py": "1b9720ba115d45c7913dcd925a7911e881f81eda5034a457bc4352abf5399416",
+                        "src/_pytest/fixtures.py": "fcd30bdf87a377b075437a7ef959eefc83f556cdc4f1b1ced9706dd5281e130e",
+                        "src/_pytest/helpconfig.py": "dfad39d5b9d550f8599f9971c0e064d7d1ad2bf7f9a4e879a9a5cc10cbcc2816",
+                        "src/_pytest/junitxml.py": "228e1ce795d6ec85f6c0f16af773ee0a9dcbcb2cdd2ba86cb80d46467725fe59",
+                        "src/_pytest/main.py": "9b76ec4f59d76da3eee52435c8094629c2119510712a99756975d83e9efedc43",
+                        "src/_pytest/pathlib.py": "3173da781594c4357150d8b162406496d7084302db8405aea7956361c569360d",
+                        "src/_pytest/pytester.py": "5c341cc25d6cad15914d0425158b2cd0c7ce2e8dd64fa52c3e9b1c7a3b81eb23",
+                        "src/_pytest/python.py": "c30ae40f482c3354e6e1af768463340fb605552af26955f72b6452c979f6bc32",
+                        "src/_pytest/python_api.py": "6a50d39335b188c4f050015c15f23b192b555034c504d739346695bb74b67b6b",
+                        "src/_pytest/recwarn.py": "9ad5ce60e045bdf75c3ce0daec2e9a4ee5faeb4a689242dad7ba651aa274be23",
+                        "src/_pytest/reports.py": "8093291ac30a5fedb2a94a12bd3384824e6a94f3ebb2359b391b9d04180c2a01",
+                        "src/_pytest/terminal.py": "42ef2d87690e777d044c45ae59e7211de8f0c6c4d4b340f1505a0020d7608147",
+                        "src/_pytest/_code/code.py": "ce632096c03135c370169086c3c4de165a02fa92cef852d90be96f3003e7b6e9",
+                        "src/_pytest/_io/saferepr.py": "6d932b44a9c5a21f64f4ca558d9a2ff93446b34e286a4409a5d423fe093e558b",
+                        "src/_pytest/assertion/rewrite.py": "976799c6bdf8172ab89fdb2750511800ae3b6f9a8f2fc782aeb63c57c5e73ba9",
+                        "src/_pytest/assertion/util.py": "de08c56cac7b1686feefc4d43088a8a9b92af974ed2cb36c651de324f1275a49",
+                        "testing/acceptance_test.py": "8fc8ddcd4a690304a2ac66a0db872c7fd086c2301c1f35396d0c65da8bd08981",
+                        "testing/test_assertion.py": "61c0cc6393574b9e1c740580e8cea980d5a0e0d4c72dfeb6a7a3d395f422a04a",
+                        "testing/test_assertrewrite.py": "bac4f4c0145de9510a2d49cc97fd6a2b99490898b6ff0b4a6e61f10b93146eeb",
+                        "testing/test_cacheprovider.py": "217cc0c29b2957ebf10b054bb77146ec6fd98fc8bb79309de3497327a3facc88",
+                        "testing/test_compat.py": "eeedab89abe367839bdb08b3e6f72a177fba0365a2b19d6a5ab29cfcfe4c018b",
+                        "testing/test_conftest.py": "8f964641b09ac376cb669e34c22dbebec369f601aca2edf5f8055604d239b99d",
+                        "testing/test_doctest.py": "9df5f1dd08aa6b2e8789cd456118c754106eace61cc030583c2da97c2cef2e24",
+                        "testing/test_junitxml.py": "a47fdfa2a8830a72f9e464c0b58eb08d1578b9d45b8bb98d50e197b13b0c3626",
+                        "testing/test_mark.py": "22cce6a3ce3d660ce787db5bf8876add6617cdb2028d80a0d0567240642fd2f8",
+                        "testing/test_nodes.py": "a19b2a34f77b75614f4ffbdede849c57cf625282189eb2e9be7957adfd8886de",
+                        "testing/test_parseopt.py": "a146bba960104837a10fdb8594eb715db8070b7c46884288554054896c77d12c",
+                        "testing/test_pastebin.py": "e3fb56e1d80d8c818f6df9b4bc1bdef70a2f927e93d169a302f2cbd0dc16ddaa",
+                        "testing/test_pathlib.py": "9dcb9adecf61e1594df46f1aa8eb563283fe3ffb36d3d62e27fb25ec754e24d5",
+                        "testing/test_pdb.py": "0f1c697ab178ec54a0443a5cf1b79c26aa6dacacfd7677cfa58a2c54cc0a4937",
+                        "testing/test_pytester.py": "9b24573569c2c5a6b16025196c8aabee713b6fbce782b9076db6957b8b826648",
+                        "testing/test_recwarn.py": "201407b2ac1113786d779af89a644b1254833237b57ef4dd49e6e95bfe012540",
+                        "testing/test_runner.py": "4b602d3e0b61e05f1a1ae312b85bef38b56d72a0cf22846dad3a9589abf7a4c6",
+                        "testing/test_session.py": "6831aa8157f496dfccd644e55811af73839cca87fde68bc1319109918fb8417e",
+                        "testing/test_tmpdir.py": "babef2652e5deaf48e9629e17e34cbb0931ea82cca2c6732993a6563cc4653cb",
+                        "testing/code/test_excinfo.py": "a7dfb6a3b2990cb6757f91ba41c4dc1b60d654cdd0d5d3f91ac6d3eaee196154",
+                        "testing/code/test_source.py": "3c4979c9035ff7f95f0eb170a4cb59879240125f5a38e016e681cca7c1bd6e52",
+                        "testing/freeze/tox_run.py": "b0e62784bd3957fa8284062ff2eed907bef770c7d3e7d47cbb90f9bb0440c9d9",
+                        "testing/io/test_saferepr.py": "ef7cb31b74fc369306a91301d2f666575703be74c01238d24b513e474d22676d",
+                        "testing/python/collect.py": "d230c4a742829c433ba679a5e363a726c0cefefe71c0706ea95c98d39f63ff9b",
+                        "testing/python/fixtures.py": "023a0f4f72920f7020093f379175e3d204745d022ccdf8cafdcb6a7d87826f01",
+                        "testing/python/integration.py": "31c5b0aa3affd6280985c60696a34a68fd0debe76f3630f9f837ea0c6d8d7c5d",
+                        "testing/python/metafunc.py": "25be14a44e38a9ccd44355b1ac26584c0844145233a1fe612c6d477c92b25f0c"
+                      }
+                    }
+                  }
+                },
+                "scip_decoded_artifacts": {
+                  "python": {
+                    "relative_path": "index.decoded",
+                    "size": 16962722,
+                    "sha256": "273404261499e74be7891668eea9a8b1d91cb3a06c6ac9a17bc37cba2b74774f"
+                  }
+                },
+                "graph_artifact": {
+                  "relative_path": "graph.pkl",
+                  "size": 1291395,
+                  "sha256": "87a1bd01e77209b0014938583629d587b92c6617b21b5c7cbc7a32e2af37f4cf"
+                },
+                "lsp_occurrence_artifact": {
+                  "relative_path": "lsp_index.pkl",
+                  "size": 9406544,
+                  "sha256": "77660e81932754cda1669ee3e9d36e05044d5b073411ac2c86474369a39a9890"
+                },
+                "query_surface_sha256": "f6712645def1efbc52130cd6474070c076e492e820cef980f9d5e5b3237e76da",
+                "update_mode": "full_rebuild",
+                "partial_index": false,
+                "failed_languages": {},
+                "partial": false,
+                "source_selection_report": {
+                  "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+                  "nodes_before": 5700,
+                  "nodes_after": 5700,
+                  "edges_before": 11390,
+                  "edges_after": 11390,
+                  "removed_excluded_path_count": 0,
+                  "excluded_path_count_after": 0,
+                  "invalid_path_count_before": 0,
+                  "invalid_path_count_after": 0
+                },
+                "build_duration_seconds": 22.52
+              },
+              "commit": "8aba863a634f40560e25055d179220f0eefabe9a",
+              "source_fingerprint": "sha256-v2:745ad6a5e222883d3fa91d1cbcbd3625e78d8b6a24e5bf7cdd749ea2c4d9a88d",
+              "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4"
+            }
+          },
+          "capabilities": {
+            "sparse_search": true,
+            "dense_search": false,
+            "hybrid_search": false,
+            "symbol_navigation": true
+          },
+          "compiled_at": "2026-10-28T09:10:14.677641+00:00",
+          "compiled_at_epoch": 1793178614.677641,
+          "runtime": {
+            "loaded_views": [
+              "bm25",
+              "regex_index",
+              "symbol_graph"
+            ],
+            "view_errors": {},
+            "tool_surface": "full",
+            "explore_session": {
+              "calls": 0,
+              "ranges": 0,
+              "max_ranges": 160,
+              "evictions": 0
+            },
+            "source_read": {
+              "verified": true,
+              "error": null,
+              "verification_scope": "content-bytes",
+              "commit_verified": false,
+              "checkout_state": "not-attested"
+            },
+            "lsp_provider": {
+              "provider": "codenib_static_index",
+              "backend": "persisted-symbol-graph-v1",
+              "status": "ok",
+              "index_snapshot": "symbol_graph:/tmp/codenib-python-identity-20261027/pytest-source:5700:11390",
+              "fallback_reason": "repository_source_policy_requires_persisted_graph",
+              "capabilities": {
+                "definition": true,
+                "references": true,
+                "route": true
+              }
+            }
+          }
+        },
+        "is_error": false,
+        "result_type": "complete"
+      },
+      "seconds": 0.014088084921240807
+    }
+  ],
+  "checks": [
+    {
+      "kind": "exact_definition",
+      "file": "testing/test_pytester.py",
+      "line": 40,
+      "character": 50,
+      "expected_lines": [
+        33,
+        46,
+        58
+      ]
+    },
+    {
+      "kind": "exact_definition",
+      "file": "testing/test_pytester.py",
+      "line": 55,
+      "character": 50,
+      "expected_lines": [
+        33,
+        46,
+        58
+      ]
+    }
+  ],
+  "source_before": {
+    "file_count": 423,
+    "file_manifest_sha256": "0cee50b4c7826be554215ebc55b44c7bf0e221846d8a7c13a2795d44ca02e936",
+    "commit": "8aba863a634f40560e25055d179220f0eefabe9a",
+    "git_status": ""
+  },
+  "build_seconds": 22.96890819258988,
+  "failed_views": [],
+  "manifest": {
+    "version": "1.2",
+    "repo": {
+      "path": "/tmp/codenib-python-identity-20261027/pytest-source",
+      "commit": "8aba863a634f40560e25055d179220f0eefabe9a",
+      "last_indexed_commit": "8aba863a634f40560e25055d179220f0eefabe9a",
+      "source_fingerprint": "sha256-v2:745ad6a5e222883d3fa91d1cbcbd3625e78d8b6a24e5bf7cdd749ea2c4d9a88d",
+      "last_indexed_source_fingerprint": "sha256-v2:745ad6a5e222883d3fa91d1cbcbd3625e78d8b6a24e5bf7cdd749ea2c4d9a88d",
+      "languages": [
+        "python"
+      ],
+      "file_count": 423,
+      "source_selection": {
+        "schema": "codenib.repository-source-selection.v1",
+        "repository_filter_policy": 4,
+        "exclude_subtrees": []
+      },
+      "last_indexed_source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4"
+    },
+    "indexes": {
+      "bm25": {
+        "index_type": "bm25",
+        "path": "/tmp/codenib-python-identity-20261027/pytest-workflow2/.codenib/repositories/pytest-source-2d1ba6ddae24/indexes/bm25",
+        "built_at": "2026-10-28T09:09:52.087462+00:00",
+        "built_at_epoch": 1793178592.087462,
+        "status": "fresh",
+        "config": {
+          "builder_schema": 9,
+          "languages": [
+            "python"
+          ],
+          "max_k": 128,
+          "max_lines_per_chunk": 300,
+          "chunking_failure_policy": "fail",
+          "include_header_epilogue": true,
+          "repository_filter_policy": 4,
+          "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+          "artifact_file_fingerprints": {
+            "documents.json": {
+              "size": 1788537,
+              "sha256": "ea95ca6674a52cfa45c3e9f3a1f626b0b5096260abe73f73de6668d616e8df72"
+            },
+            "bm25_metadata.json": {
+              "size": 142,
+              "sha256": "3de14bb84f1417c6954a0ef0d54550a293f51141a2085a98ecf71e384c7b850d"
+            }
+          },
+          "chunk_count": 1950,
+          "source_file_count": 105,
+          "file_count": 1950
+        },
+        "metadata": {
+          "builder_schema": 9,
+          "languages": [
+            "python"
+          ],
+          "max_k": 128,
+          "max_lines_per_chunk": 300,
+          "chunking_failure_policy": "fail",
+          "include_header_epilogue": true,
+          "repository_filter_policy": 4,
+          "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+          "artifact_file_fingerprints": {
+            "documents.json": {
+              "size": 1788537,
+              "sha256": "ea95ca6674a52cfa45c3e9f3a1f626b0b5096260abe73f73de6668d616e8df72"
+            },
+            "bm25_metadata.json": {
+              "size": 142,
+              "sha256": "3de14bb84f1417c6954a0ef0d54550a293f51141a2085a98ecf71e384c7b850d"
+            }
+          },
+          "chunk_count": 1950,
+          "source_file_count": 105,
+          "file_count": 1950,
+          "build_duration_seconds": 0.31
+        },
+        "commit": "8aba863a634f40560e25055d179220f0eefabe9a",
+        "source_fingerprint": "sha256-v2:745ad6a5e222883d3fa91d1cbcbd3625e78d8b6a24e5bf7cdd749ea2c4d9a88d",
+        "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4"
+      },
+      "symbol_graph": {
+        "index_type": "symbol_graph",
+        "path": "/tmp/codenib-python-identity-20261027/pytest-workflow2/.codenib/repositories/pytest-source-2d1ba6ddae24/indexes/symbol_graph",
+        "built_at": "2026-10-28T09:10:14.608719+00:00",
+        "built_at_epoch": 1793178614.608719,
+        "status": "fresh",
+        "config": {
+          "builder_schema": 8,
+          "languages": [
+            "python"
+          ],
+          "graph_route": "active",
+          "exclude_patterns": [
+            "**/.codenib_cache/**",
+            "**/.env/**",
+            "**/.git/**",
+            "**/.hg/**",
+            "**/.mypy_cache/**",
+            "**/.next/**",
+            "**/.pytest_cache/**",
+            "**/.ruff_cache/**",
+            "**/.svn/**",
+            "**/.tox/**",
+            "**/.venv/**",
+            "**/__pycache__/**",
+            "**/build/**",
+            "**/dist/**",
+            "**/env/**",
+            "**/htmlcov/**",
+            "**/node_modules/**",
+            "**/site/**",
+            "**/target/**",
+            "**/third_party/**",
+            "**/vendor/**",
+            "**/venv/**",
+            ".codenib_cache/**",
+            ".env/**",
+            ".git/**",
+            ".hg/**",
+            ".mypy_cache/**",
+            ".next/**",
+            ".pytest_cache/**",
+            ".ruff_cache/**",
+            ".svn/**",
+            ".tox/**",
+            ".venv/**",
+            "__pycache__/**",
+            "build/**",
+            "dist/**",
+            "env/**",
+            "htmlcov/**",
+            "node_modules/**",
+            "site/**",
+            "target/**",
+            "third_party/**",
+            "vendor/**",
+            "venv/**"
+          ],
+          "allow_partial_languages": false,
+          "allow_partial_index": false,
+          "source_coverage_fallback": false,
+          "allow_project_preparation": false,
+          "target_dir": null,
+          "repository_filter_policy": 4,
+          "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+          "node_count": 5700,
+          "edge_count": 11390,
+          "language": "python",
+          "available_languages": [
+            "python"
+          ],
+          "compiler_available_languages": [
+            "python"
+          ],
+          "index_generation_reports": {
+            "python": {
+              "backend": "scip-python",
+              "status": "complete",
+              "complete": true,
+              "partial": false,
+              "document_count": 199,
+              "identity_recovery": {
+                "status": "complete",
+                "schema": 1,
+                "source_file_count": 199,
+                "changed_symbol_families": 277,
+                "physical_declarations": 11964,
+                "restored_definition_roles": 78,
+                "positional_definition_queries": 205,
+                "local_binding_families": 8,
+                "local_binding_semantics": "all_source_declarations_for_compiler_binding",
+                "shared_lexical_binding_families": 229,
+                "utf8_replacement_sources": [],
+                "source_only_definitions": [],
+                "unmapped_attribute_definitions": [],
+                "definition_provider": {
+                  "command": [
+                    "/tmp/codenib-codegraph-identity-next/toolchain/basedpyright-langserver",
+                    "--stdio"
+                  ],
+                  "server_info": {
+                    "name": "basedpyright",
+                    "version": "1.39.8"
+                  },
+                  "position_encoding": "utf-16"
+                },
+                "position_encoding": "UTF8",
+                "source_sha256": {
+                  "doc/en/example/assertion/failure_demo.py": "179fe70e93238cf337e1fcc7f1ee2a4713365af8080ccf523188cf68eaa50d62",
+                  "src/_pytest/_argcomplete.py": "0d4adea61c524b2dca00aba6cfb2e6526b898ce0a24e9848e9b1bd597f2a84ea",
+                  "src/_pytest/compat.py": "359ab9e7c361fe00f10af329110c27088378017551f309d7aecdc0d6e9025ad7",
+                  "src/_pytest/doctest.py": "1b9720ba115d45c7913dcd925a7911e881f81eda5034a457bc4352abf5399416",
+                  "src/_pytest/fixtures.py": "fcd30bdf87a377b075437a7ef959eefc83f556cdc4f1b1ced9706dd5281e130e",
+                  "src/_pytest/helpconfig.py": "dfad39d5b9d550f8599f9971c0e064d7d1ad2bf7f9a4e879a9a5cc10cbcc2816",
+                  "src/_pytest/junitxml.py": "228e1ce795d6ec85f6c0f16af773ee0a9dcbcb2cdd2ba86cb80d46467725fe59",
+                  "src/_pytest/main.py": "9b76ec4f59d76da3eee52435c8094629c2119510712a99756975d83e9efedc43",
+                  "src/_pytest/pathlib.py": "3173da781594c4357150d8b162406496d7084302db8405aea7956361c569360d",
+                  "src/_pytest/pytester.py": "5c341cc25d6cad15914d0425158b2cd0c7ce2e8dd64fa52c3e9b1c7a3b81eb23",
+                  "src/_pytest/python.py": "c30ae40f482c3354e6e1af768463340fb605552af26955f72b6452c979f6bc32",
+                  "src/_pytest/python_api.py": "6a50d39335b188c4f050015c15f23b192b555034c504d739346695bb74b67b6b",
+                  "src/_pytest/recwarn.py": "9ad5ce60e045bdf75c3ce0daec2e9a4ee5faeb4a689242dad7ba651aa274be23",
+                  "src/_pytest/reports.py": "8093291ac30a5fedb2a94a12bd3384824e6a94f3ebb2359b391b9d04180c2a01",
+                  "src/_pytest/terminal.py": "42ef2d87690e777d044c45ae59e7211de8f0c6c4d4b340f1505a0020d7608147",
+                  "src/_pytest/_code/code.py": "ce632096c03135c370169086c3c4de165a02fa92cef852d90be96f3003e7b6e9",
+                  "src/_pytest/_io/saferepr.py": "6d932b44a9c5a21f64f4ca558d9a2ff93446b34e286a4409a5d423fe093e558b",
+                  "src/_pytest/assertion/rewrite.py": "976799c6bdf8172ab89fdb2750511800ae3b6f9a8f2fc782aeb63c57c5e73ba9",
+                  "src/_pytest/assertion/util.py": "de08c56cac7b1686feefc4d43088a8a9b92af974ed2cb36c651de324f1275a49",
+                  "testing/acceptance_test.py": "8fc8ddcd4a690304a2ac66a0db872c7fd086c2301c1f35396d0c65da8bd08981",
+                  "testing/test_assertion.py": "61c0cc6393574b9e1c740580e8cea980d5a0e0d4c72dfeb6a7a3d395f422a04a",
+                  "testing/test_assertrewrite.py": "bac4f4c0145de9510a2d49cc97fd6a2b99490898b6ff0b4a6e61f10b93146eeb",
+                  "testing/test_cacheprovider.py": "217cc0c29b2957ebf10b054bb77146ec6fd98fc8bb79309de3497327a3facc88",
+                  "testing/test_compat.py": "eeedab89abe367839bdb08b3e6f72a177fba0365a2b19d6a5ab29cfcfe4c018b",
+                  "testing/test_conftest.py": "8f964641b09ac376cb669e34c22dbebec369f601aca2edf5f8055604d239b99d",
+                  "testing/test_doctest.py": "9df5f1dd08aa6b2e8789cd456118c754106eace61cc030583c2da97c2cef2e24",
+                  "testing/test_junitxml.py": "a47fdfa2a8830a72f9e464c0b58eb08d1578b9d45b8bb98d50e197b13b0c3626",
+                  "testing/test_mark.py": "22cce6a3ce3d660ce787db5bf8876add6617cdb2028d80a0d0567240642fd2f8",
+                  "testing/test_nodes.py": "a19b2a34f77b75614f4ffbdede849c57cf625282189eb2e9be7957adfd8886de",
+                  "testing/test_parseopt.py": "a146bba960104837a10fdb8594eb715db8070b7c46884288554054896c77d12c",
+                  "testing/test_pastebin.py": "e3fb56e1d80d8c818f6df9b4bc1bdef70a2f927e93d169a302f2cbd0dc16ddaa",
+                  "testing/test_pathlib.py": "9dcb9adecf61e1594df46f1aa8eb563283fe3ffb36d3d62e27fb25ec754e24d5",
+                  "testing/test_pdb.py": "0f1c697ab178ec54a0443a5cf1b79c26aa6dacacfd7677cfa58a2c54cc0a4937",
+                  "testing/test_pytester.py": "9b24573569c2c5a6b16025196c8aabee713b6fbce782b9076db6957b8b826648",
+                  "testing/test_recwarn.py": "201407b2ac1113786d779af89a644b1254833237b57ef4dd49e6e95bfe012540",
+                  "testing/test_runner.py": "4b602d3e0b61e05f1a1ae312b85bef38b56d72a0cf22846dad3a9589abf7a4c6",
+                  "testing/test_session.py": "6831aa8157f496dfccd644e55811af73839cca87fde68bc1319109918fb8417e",
+                  "testing/test_tmpdir.py": "babef2652e5deaf48e9629e17e34cbb0931ea82cca2c6732993a6563cc4653cb",
+                  "testing/code/test_excinfo.py": "a7dfb6a3b2990cb6757f91ba41c4dc1b60d654cdd0d5d3f91ac6d3eaee196154",
+                  "testing/code/test_source.py": "3c4979c9035ff7f95f0eb170a4cb59879240125f5a38e016e681cca7c1bd6e52",
+                  "testing/freeze/tox_run.py": "b0e62784bd3957fa8284062ff2eed907bef770c7d3e7d47cbb90f9bb0440c9d9",
+                  "testing/io/test_saferepr.py": "ef7cb31b74fc369306a91301d2f666575703be74c01238d24b513e474d22676d",
+                  "testing/python/collect.py": "d230c4a742829c433ba679a5e363a726c0cefefe71c0706ea95c98d39f63ff9b",
+                  "testing/python/fixtures.py": "023a0f4f72920f7020093f379175e3d204745d022ccdf8cafdcb6a7d87826f01",
+                  "testing/python/integration.py": "31c5b0aa3affd6280985c60696a34a68fd0debe76f3630f9f837ea0c6d8d7c5d",
+                  "testing/python/metafunc.py": "25be14a44e38a9ccd44355b1ac26584c0844145233a1fe612c6d477c92b25f0c"
+                }
+              }
+            }
+          },
+          "scip_decoded_artifacts": {
+            "python": {
+              "relative_path": "index.decoded",
+              "size": 16962722,
+              "sha256": "273404261499e74be7891668eea9a8b1d91cb3a06c6ac9a17bc37cba2b74774f"
+            }
+          },
+          "graph_artifact": {
+            "relative_path": "graph.pkl",
+            "size": 1291395,
+            "sha256": "87a1bd01e77209b0014938583629d587b92c6617b21b5c7cbc7a32e2af37f4cf"
+          },
+          "lsp_occurrence_artifact": {
+            "relative_path": "lsp_index.pkl",
+            "size": 9406544,
+            "sha256": "77660e81932754cda1669ee3e9d36e05044d5b073411ac2c86474369a39a9890"
+          },
+          "query_surface_sha256": "f6712645def1efbc52130cd6474070c076e492e820cef980f9d5e5b3237e76da",
+          "update_mode": "full_rebuild",
+          "partial_index": false,
+          "failed_languages": {},
+          "partial": false,
+          "source_selection_report": {
+            "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+            "nodes_before": 5700,
+            "nodes_after": 5700,
+            "edges_before": 11390,
+            "edges_after": 11390,
+            "removed_excluded_path_count": 0,
+            "excluded_path_count_after": 0,
+            "invalid_path_count_before": 0,
+            "invalid_path_count_after": 0
+          }
+        },
+        "metadata": {
+          "builder_schema": 8,
+          "languages": [
+            "python"
+          ],
+          "graph_route": "active",
+          "exclude_patterns": [
+            "**/.codenib_cache/**",
+            "**/.env/**",
+            "**/.git/**",
+            "**/.hg/**",
+            "**/.mypy_cache/**",
+            "**/.next/**",
+            "**/.pytest_cache/**",
+            "**/.ruff_cache/**",
+            "**/.svn/**",
+            "**/.tox/**",
+            "**/.venv/**",
+            "**/__pycache__/**",
+            "**/build/**",
+            "**/dist/**",
+            "**/env/**",
+            "**/htmlcov/**",
+            "**/node_modules/**",
+            "**/site/**",
+            "**/target/**",
+            "**/third_party/**",
+            "**/vendor/**",
+            "**/venv/**",
+            ".codenib_cache/**",
+            ".env/**",
+            ".git/**",
+            ".hg/**",
+            ".mypy_cache/**",
+            ".next/**",
+            ".pytest_cache/**",
+            ".ruff_cache/**",
+            ".svn/**",
+            ".tox/**",
+            ".venv/**",
+            "__pycache__/**",
+            "build/**",
+            "dist/**",
+            "env/**",
+            "htmlcov/**",
+            "node_modules/**",
+            "site/**",
+            "target/**",
+            "third_party/**",
+            "vendor/**",
+            "venv/**"
+          ],
+          "allow_partial_languages": false,
+          "allow_partial_index": false,
+          "source_coverage_fallback": false,
+          "allow_project_preparation": false,
+          "target_dir": null,
+          "repository_filter_policy": 4,
+          "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+          "node_count": 5700,
+          "edge_count": 11390,
+          "language": "python",
+          "available_languages": [
+            "python"
+          ],
+          "compiler_available_languages": [
+            "python"
+          ],
+          "index_generation_reports": {
+            "python": {
+              "backend": "scip-python",
+              "status": "complete",
+              "complete": true,
+              "partial": false,
+              "document_count": 199,
+              "identity_recovery": {
+                "status": "complete",
+                "schema": 1,
+                "source_file_count": 199,
+                "changed_symbol_families": 277,
+                "physical_declarations": 11964,
+                "restored_definition_roles": 78,
+                "positional_definition_queries": 205,
+                "local_binding_families": 8,
+                "local_binding_semantics": "all_source_declarations_for_compiler_binding",
+                "shared_lexical_binding_families": 229,
+                "utf8_replacement_sources": [],
+                "source_only_definitions": [],
+                "unmapped_attribute_definitions": [],
+                "definition_provider": {
+                  "command": [
+                    "/tmp/codenib-codegraph-identity-next/toolchain/basedpyright-langserver",
+                    "--stdio"
+                  ],
+                  "server_info": {
+                    "name": "basedpyright",
+                    "version": "1.39.8"
+                  },
+                  "position_encoding": "utf-16"
+                },
+                "position_encoding": "UTF8",
+                "source_sha256": {
+                  "doc/en/example/assertion/failure_demo.py": "179fe70e93238cf337e1fcc7f1ee2a4713365af8080ccf523188cf68eaa50d62",
+                  "src/_pytest/_argcomplete.py": "0d4adea61c524b2dca00aba6cfb2e6526b898ce0a24e9848e9b1bd597f2a84ea",
+                  "src/_pytest/compat.py": "359ab9e7c361fe00f10af329110c27088378017551f309d7aecdc0d6e9025ad7",
+                  "src/_pytest/doctest.py": "1b9720ba115d45c7913dcd925a7911e881f81eda5034a457bc4352abf5399416",
+                  "src/_pytest/fixtures.py": "fcd30bdf87a377b075437a7ef959eefc83f556cdc4f1b1ced9706dd5281e130e",
+                  "src/_pytest/helpconfig.py": "dfad39d5b9d550f8599f9971c0e064d7d1ad2bf7f9a4e879a9a5cc10cbcc2816",
+                  "src/_pytest/junitxml.py": "228e1ce795d6ec85f6c0f16af773ee0a9dcbcb2cdd2ba86cb80d46467725fe59",
+                  "src/_pytest/main.py": "9b76ec4f59d76da3eee52435c8094629c2119510712a99756975d83e9efedc43",
+                  "src/_pytest/pathlib.py": "3173da781594c4357150d8b162406496d7084302db8405aea7956361c569360d",
+                  "src/_pytest/pytester.py": "5c341cc25d6cad15914d0425158b2cd0c7ce2e8dd64fa52c3e9b1c7a3b81eb23",
+                  "src/_pytest/python.py": "c30ae40f482c3354e6e1af768463340fb605552af26955f72b6452c979f6bc32",
+                  "src/_pytest/python_api.py": "6a50d39335b188c4f050015c15f23b192b555034c504d739346695bb74b67b6b",
+                  "src/_pytest/recwarn.py": "9ad5ce60e045bdf75c3ce0daec2e9a4ee5faeb4a689242dad7ba651aa274be23",
+                  "src/_pytest/reports.py": "8093291ac30a5fedb2a94a12bd3384824e6a94f3ebb2359b391b9d04180c2a01",
+                  "src/_pytest/terminal.py": "42ef2d87690e777d044c45ae59e7211de8f0c6c4d4b340f1505a0020d7608147",
+                  "src/_pytest/_code/code.py": "ce632096c03135c370169086c3c4de165a02fa92cef852d90be96f3003e7b6e9",
+                  "src/_pytest/_io/saferepr.py": "6d932b44a9c5a21f64f4ca558d9a2ff93446b34e286a4409a5d423fe093e558b",
+                  "src/_pytest/assertion/rewrite.py": "976799c6bdf8172ab89fdb2750511800ae3b6f9a8f2fc782aeb63c57c5e73ba9",
+                  "src/_pytest/assertion/util.py": "de08c56cac7b1686feefc4d43088a8a9b92af974ed2cb36c651de324f1275a49",
+                  "testing/acceptance_test.py": "8fc8ddcd4a690304a2ac66a0db872c7fd086c2301c1f35396d0c65da8bd08981",
+                  "testing/test_assertion.py": "61c0cc6393574b9e1c740580e8cea980d5a0e0d4c72dfeb6a7a3d395f422a04a",
+                  "testing/test_assertrewrite.py": "bac4f4c0145de9510a2d49cc97fd6a2b99490898b6ff0b4a6e61f10b93146eeb",
+                  "testing/test_cacheprovider.py": "217cc0c29b2957ebf10b054bb77146ec6fd98fc8bb79309de3497327a3facc88",
+                  "testing/test_compat.py": "eeedab89abe367839bdb08b3e6f72a177fba0365a2b19d6a5ab29cfcfe4c018b",
+                  "testing/test_conftest.py": "8f964641b09ac376cb669e34c22dbebec369f601aca2edf5f8055604d239b99d",
+                  "testing/test_doctest.py": "9df5f1dd08aa6b2e8789cd456118c754106eace61cc030583c2da97c2cef2e24",
+                  "testing/test_junitxml.py": "a47fdfa2a8830a72f9e464c0b58eb08d1578b9d45b8bb98d50e197b13b0c3626",
+                  "testing/test_mark.py": "22cce6a3ce3d660ce787db5bf8876add6617cdb2028d80a0d0567240642fd2f8",
+                  "testing/test_nodes.py": "a19b2a34f77b75614f4ffbdede849c57cf625282189eb2e9be7957adfd8886de",
+                  "testing/test_parseopt.py": "a146bba960104837a10fdb8594eb715db8070b7c46884288554054896c77d12c",
+                  "testing/test_pastebin.py": "e3fb56e1d80d8c818f6df9b4bc1bdef70a2f927e93d169a302f2cbd0dc16ddaa",
+                  "testing/test_pathlib.py": "9dcb9adecf61e1594df46f1aa8eb563283fe3ffb36d3d62e27fb25ec754e24d5",
+                  "testing/test_pdb.py": "0f1c697ab178ec54a0443a5cf1b79c26aa6dacacfd7677cfa58a2c54cc0a4937",
+                  "testing/test_pytester.py": "9b24573569c2c5a6b16025196c8aabee713b6fbce782b9076db6957b8b826648",
+                  "testing/test_recwarn.py": "201407b2ac1113786d779af89a644b1254833237b57ef4dd49e6e95bfe012540",
+                  "testing/test_runner.py": "4b602d3e0b61e05f1a1ae312b85bef38b56d72a0cf22846dad3a9589abf7a4c6",
+                  "testing/test_session.py": "6831aa8157f496dfccd644e55811af73839cca87fde68bc1319109918fb8417e",
+                  "testing/test_tmpdir.py": "babef2652e5deaf48e9629e17e34cbb0931ea82cca2c6732993a6563cc4653cb",
+                  "testing/code/test_excinfo.py": "a7dfb6a3b2990cb6757f91ba41c4dc1b60d654cdd0d5d3f91ac6d3eaee196154",
+                  "testing/code/test_source.py": "3c4979c9035ff7f95f0eb170a4cb59879240125f5a38e016e681cca7c1bd6e52",
+                  "testing/freeze/tox_run.py": "b0e62784bd3957fa8284062ff2eed907bef770c7d3e7d47cbb90f9bb0440c9d9",
+                  "testing/io/test_saferepr.py": "ef7cb31b74fc369306a91301d2f666575703be74c01238d24b513e474d22676d",
+                  "testing/python/collect.py": "d230c4a742829c433ba679a5e363a726c0cefefe71c0706ea95c98d39f63ff9b",
+                  "testing/python/fixtures.py": "023a0f4f72920f7020093f379175e3d204745d022ccdf8cafdcb6a7d87826f01",
+                  "testing/python/integration.py": "31c5b0aa3affd6280985c60696a34a68fd0debe76f3630f9f837ea0c6d8d7c5d",
+                  "testing/python/metafunc.py": "25be14a44e38a9ccd44355b1ac26584c0844145233a1fe612c6d477c92b25f0c"
+                }
+              }
+            }
+          },
+          "scip_decoded_artifacts": {
+            "python": {
+              "relative_path": "index.decoded",
+              "size": 16962722,
+              "sha256": "273404261499e74be7891668eea9a8b1d91cb3a06c6ac9a17bc37cba2b74774f"
+            }
+          },
+          "graph_artifact": {
+            "relative_path": "graph.pkl",
+            "size": 1291395,
+            "sha256": "87a1bd01e77209b0014938583629d587b92c6617b21b5c7cbc7a32e2af37f4cf"
+          },
+          "lsp_occurrence_artifact": {
+            "relative_path": "lsp_index.pkl",
+            "size": 9406544,
+            "sha256": "77660e81932754cda1669ee3e9d36e05044d5b073411ac2c86474369a39a9890"
+          },
+          "query_surface_sha256": "f6712645def1efbc52130cd6474070c076e492e820cef980f9d5e5b3237e76da",
+          "update_mode": "full_rebuild",
+          "partial_index": false,
+          "failed_languages": {},
+          "partial": false,
+          "source_selection_report": {
+            "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+            "nodes_before": 5700,
+            "nodes_after": 5700,
+            "edges_before": 11390,
+            "edges_after": 11390,
+            "removed_excluded_path_count": 0,
+            "excluded_path_count_after": 0,
+            "invalid_path_count_before": 0,
+            "invalid_path_count_after": 0
+          },
+          "build_duration_seconds": 22.52
+        },
+        "commit": "8aba863a634f40560e25055d179220f0eefabe9a",
+        "source_fingerprint": "sha256-v2:745ad6a5e222883d3fa91d1cbcbd3625e78d8b6a24e5bf7cdd749ea2c4d9a88d",
+        "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4"
+      }
+    },
+    "capabilities": {
+      "sparse_search": true,
+      "dense_search": false,
+      "hybrid_search": false,
+      "symbol_navigation": true
+    },
+    "compiled_at": "2026-10-28T09:10:14.677641+00:00",
+    "compiled_at_epoch": 1793178614.677641
+  },
+  "source_after_build": {
+    "file_count": 423,
+    "file_manifest_sha256": "0cee50b4c7826be554215ebc55b44c7bf0e221846d8a7c13a2795d44ca02e936",
+    "commit": "8aba863a634f40560e25055d179220f0eefabe9a",
+    "git_status": ""
+  },
+  "graph": {
+    "nodes": 5700,
+    "edges": 11390,
+    "native_parity": "complete",
+    "self_containment": 0,
+    "multiple_containment_parents": []
+  },
+  "source_after_queries": {
+    "file_count": 423,
+    "file_manifest_sha256": "0cee50b4c7826be554215ebc55b44c7bf0e221846d8a7c13a2795d44ca02e936",
+    "commit": "8aba863a634f40560e25055d179220f0eefabe9a",
+    "git_status": ""
+  },
+  "status": "passed"
+}

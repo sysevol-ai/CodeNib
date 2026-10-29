@@ -1,0 +1,12 @@
+{
+  "relative_native_path": "grade/eval.sh",
+  "whole_file_sha256": "98a45d135800c49fc0c71411389cfa2c5d7d8f912af849c9c4ebe6dc4c612da6",
+  "whole_file_bytes": 1322,
+  "part": 0,
+  "parts": 1,
+  "content_encoding": "gzip+base64",
+  "gzip_mtime": 0,
+  "gzip_bytes": 613,
+  "base64_bytes": "H4sIAAAAAAACA61Ty27bMBC88yu26UEOFEmx7NhxkBQJULenNkCTWxAItLiSiCqkSlJOjP58l5Jl53Uo0PKyy+XOcDgkP35IVlIlK24rZtFB1D5paGSDBZc1s7o1OUKiG5c8SCVzrQSfdAieO7nmDllXg2EKDq1boWC5gGTIS+mA2gpZQhSVtV7xmhIuBFheYCykwdxps9kjXqOt4661fVrpxy6JciI1GBeyxm9a4EXBa4sgZFHAJD89xZP0WPB0ynFWzCezRbrg85Pj0/kM57OTKc/zfCL+5YTNxlVaQfTg/QKpSGNdQ9yftsL8p27dXwvpWDODv1qKNm42HQ1vmnoD0RoiOD8PltdfsvF4OkkXk3S6GKcB685KlvrW5DUDrN6UWBRF73SyMAzf6768hCgdj49mEPowngJVBBYvxWZSZZW0/gIzbjBT2mV6jcZIIVCNLNbF4RmDYRAsa01t4QLuTLwliakChTZgyEhqsU28pbzfI7m1aBz04IsdEQMW+uWdsAq5QGMzrTKL1kqKj9JV2XetcKfQonKDtnDY4eDg4LMGWgZaFrAl8pJueqJ4KHlC8ISw5jWdICbonoe2hU5gb+UWPDp80TFw3QVXeY6Ni5Yq10KqMrgnsOfetxPVc8IffTIKvi5vgyMIKueasyTxgV5urE2ZlOiCZ/s1Bhti8Nv61LuwZRtRfNa4NfmNps4VMsKjB+Us7C9n53xL2IyXZG3mDFe2oKbdA9hfpId7g34z9vpNszMIPvkBN46TjluihevWNa0L/I/z08hcvf0uO9ySLu4F6j/9xz+U5yaAKgUAAA==",
+  "scope": "Exact original native grading bytes under lossless compression; concatenate decoded gzip pieces, decompress, then verify the whole-file hash. No outcome replacement or repair regrade."
+}

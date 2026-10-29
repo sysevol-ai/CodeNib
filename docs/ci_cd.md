@@ -26,7 +26,9 @@ GitHub Actions has ten workflow files:
   dispatch (with an optional `delete_unused` input that removes labels absent
   from `labels.yml`).
 - `.github/workflows/release-verify.yml` is the reusable distribution, Python
-  compatibility, installed CLI, Wiki, and MCP verification pipeline.
+  compatibility, installed CLI, Wiki, and MCP verification pipeline. Relevant
+  pull requests run the installed CodeGraph and upgrade gates as well as
+  sparse Ask; the complete matrix also runs on `main` and release triggers.
 - `.github/workflows/release-test.yml` manually verifies and publishes a
   candidate through the trusted TestPyPI environment.
 - `.github/workflows/release.yml` invokes the same verification pipeline and
@@ -434,7 +436,9 @@ use the `./.github/actions/setup-env` composite action, which provisions:
   `preinstall-cpu-torch`, `torch-version`, and `torch-index-url`, so non-GPU
   jobs do not accidentally download CUDA wheels through transitive embedding
   dependencies.
-- **SCIP Python** — built from the `third_party/scip-python` submodule.
+- **SCIP Python** — built from the `third_party/scip-python` submodule and
+  installed once per submodule revision under the runner's toolchain cache.
+  Setup fails if any other `scip-python` on `PATH` shadows that build.
 - **Rust** — stable + a pinned nightly toolchain with the `rust-analyzer`
   component (toggle `install-rust`).
 - **scip-typescript + yarn** — installed via npm (toggle `install-scip-typescript`).

@@ -17,9 +17,10 @@ import stat
 import subprocess
 import sys
 from collections import Counter
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable, Sequence
+from typing import Callable, Iterable, Iterator, Sequence
 
 from ._version import package_version
 from .provider_routes import (
@@ -2506,18 +2507,69 @@ def _codegraph_checkout_snapshot(repo_path: Path) -> bytes:
     return bytes(result.stdout)
 
 
-def _require_unchanged_codegraph_checkout(
-    repo_path: Path,
-    expected: bytes,
-    *,
-    stage: str,
-) -> None:
-    observed = _codegraph_checkout_snapshot(repo_path)
-    if observed != expected:
+@contextmanager
+def _codegraph_checkout_guard(repo_path: Path) -> Iterator[Callable[[str], None]]:
+    """Preserve visible source content and Git status across initialization.
+
+    A phase succeeds only if its postcondition matches the captured source
+    and status. Status alone misses another edit to an already dirty path.
+    Reuse a pinned root across fresh captures so a restored temporary provider
+    config is allowed, but replacing the checkout root is not. The default
+    source selection also guards visible custom-excluded source. Source and
+    root descriptors close within this call; no recovery state survives it.
+    """
+
+    from .compiler.checkout_identity import checkout_commit
+    from .paths import repo_index_dir
+    from .source_fingerprint import (
+        capture_repository_source,
+        pin_repository_source_root,
+    )
+
+    def source_fingerprint(authority):
+        with capture_repository_source(
+            repo_path,
+            exclude_roots=(repo_index_dir(repo_path),),
+            expected_root_authority=authority,
+        ) as source:
+            return source.fingerprint
+
+    try:
+        authority = pin_repository_source_root(repo_path)
+    except (OSError, RuntimeError, ValueError) as exc:
         raise CLIError(
-            f"CodeGraph {stage} changed the target checkout; inspect `git status` "
-            "and restore or commit the affected files before retrying"
-        )
+            f"CodeGraph cannot inspect the current working tree: {exc}"
+        ) from exc
+    with authority:
+        status = _codegraph_checkout_snapshot(repo_path)
+        commit = checkout_commit(repo_path)
+        try:
+            fingerprint = source_fingerprint(authority)
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise CLIError(
+                f"CodeGraph cannot inspect the current working tree: {exc}"
+            ) from exc
+
+        def require_unchanged(stage: str) -> None:
+            message = (
+                f"CodeGraph {stage} changed the target checkout; inspect `git diff` "
+                "and `git status` before retrying"
+            )
+            try:
+                observed_fingerprint = source_fingerprint(authority)
+                observed_status = _codegraph_checkout_snapshot(repo_path)
+                observed_commit = checkout_commit(repo_path)
+            except (OSError, RuntimeError, ValueError) as exc:
+                raise CLIError(message) from exc
+            if (
+                observed_fingerprint != fingerprint
+                or observed_status != status
+                or observed_commit != commit
+            ):
+                raise CLIError(message)
+
+        require_unchanged("source inspection")
+        yield require_unchanged
 
 
 def _run_codegraph_init(args: argparse.Namespace) -> int:
@@ -2553,133 +2605,115 @@ def _run_codegraph_init(args: argparse.Namespace) -> int:
         server,
         receipt,
     )
-    checkout_snapshot = _codegraph_checkout_snapshot(repo_path)
-    if checkout_snapshot:
-        raise CLIError(
-            "CodeGraph initialization requires a clean Git checkout; commit or "
-            "stash tracked and untracked changes before retrying"
-        )
-    plan = _codegraph_toolchain_plan(repo_path, languages)
-
-    if args.dry_run:
-        try:
-            commands, manual = install_requirements(
-                plan.missing,
-                root=plan.root,
-                dry_run=True,
-            )
-        except RuntimeError as exc:
-            raise CLIError(str(exc)) from exc
-        print(f"Repository: {repo_path}")
-        print(f"Languages:  {', '.join(languages)}")
-        print(
-            "Source selection: "
-            f"{resolved_selection.action} "
-            f"({_source_selection_display(resolved_selection.selection)})"
-        )
-        print("Planned CodeGraph actions:")
-        for command in commands:
-            print(f"  toolchain: {shlex.join(command)}")
-        for item in manual:
-            print(f"  prerequisite: {item}")
-        project_blockers = [
-            note.removeprefix("MISSING: ")
-            for note in plan.notes
-            if note.startswith("MISSING:")
-        ]
-        for blocker in project_blockers:
-            print(f"  prerequisite: {blocker}")
-        print("  index: bm25, symbol_graph")
-        for client in clients:
-            action = "reuse" if observed[client].matches else "add"
-            print(f"  {client}: {action} {server.name}")
-        ready_after_install = not manual and not project_blockers
-        print(
-            "Readiness:  "
-            + ("ready after planned tool install" if ready_after_install else "blocked")
-        )
-        print("Dry run complete; no tools, indexes, receipts, or clients changed.")
-        return 0 if ready_after_install else 1
-
-    _require_modules(
-        ("igraph", "google.protobuf", "mcp"),
-        extra="graph,mcp",
-        feature="CodeGraph agent onboarding",
-    )
-    if plan.missing:
-        try:
-            commands, manual = install_requirements(plan.missing, root=plan.root)
-        except RuntimeError as exc:
-            raise CLIError(str(exc)) from exc
-        if commands:
-            print("Installed graph tools:")
-            for command in commands:
-                print(f"  {shlex.join(command)}")
-        if manual:
-            raise CLIError("CodeGraph needs manual prerequisites: " + "; ".join(manual))
+    with _codegraph_checkout_guard(repo_path) as check_checkout:
         plan = _codegraph_toolchain_plan(repo_path, languages)
-    if not plan.ready:
-        raise CLIError(
-            "CodeGraph toolchain is not ready: " + _codegraph_plan_detail(plan)
-        )
-    _require_unchanged_codegraph_checkout(
-        repo_path,
-        checkout_snapshot,
-        stage="toolchain setup",
-    )
 
-    _check_view_dependencies(("bm25", "symbol_graph"))
-    try:
-        manifest, failed = index_repository(
-            repo_path,
-            languages=languages,
-            views=("bm25", "symbol_graph"),
-            source_selection=resolved_selection.selection,
-            rebuild=args.rebuild,
-            allow_graph_project_preparation=False,
-            allow_partial_graph_languages=False,
-        )
-    except (OSError, RuntimeError, ValueError) as exc:
-        _require_unchanged_codegraph_checkout(
-            repo_path,
-            checkout_snapshot,
-            stage="indexing",
-        )
-        raise CLIError(str(exc)) from exc
-    _require_unchanged_codegraph_checkout(
-        repo_path,
-        checkout_snapshot,
-        stage="indexing",
-    )
-    _print_index_summary(manifest, ("bm25", "symbol_graph"))
-    if failed:
-        raise CLIError("CodeGraph indexing failed for: " + ", ".join(failed))
+        if args.dry_run:
+            try:
+                commands, manual = install_requirements(
+                    plan.missing,
+                    root=plan.root,
+                    dry_run=True,
+                )
+            except RuntimeError as exc:
+                raise CLIError(str(exc)) from exc
+            print(f"Repository: {repo_path}")
+            print(f"Languages:  {', '.join(languages)}")
+            print(
+                "Source selection: "
+                f"{resolved_selection.action} "
+                f"({_source_selection_display(resolved_selection.selection)})"
+            )
+            print("Planned CodeGraph actions:")
+            for command in commands:
+                print(f"  toolchain: {shlex.join(command)}")
+            for item in manual:
+                print(f"  prerequisite: {item}")
+            project_blockers = [
+                note.removeprefix("MISSING: ")
+                for note in plan.notes
+                if note.startswith("MISSING:")
+            ]
+            for blocker in project_blockers:
+                print(f"  prerequisite: {blocker}")
+            print("  index: bm25, symbol_graph")
+            for client in clients:
+                action = "reuse" if observed[client].matches else "add"
+                print(f"  {client}: {action} {server.name}")
+            ready_after_install = not manual and not project_blockers
+            print(
+                "Readiness:  "
+                + (
+                    "ready after planned tool install"
+                    if ready_after_install
+                    else "blocked"
+                )
+            )
+            check_checkout("planning")
+            print("Dry run complete; no tools, indexes, receipts, or clients changed.")
+            return 0 if ready_after_install else 1
 
-    try:
-        configure_client_registrations(repo_path, clients, server, receipt)
-    except (CodeGraphOnboardingError, OSError) as exc:
-        _require_unchanged_codegraph_checkout(
-            repo_path,
-            checkout_snapshot,
-            stage="agent registration",
+        _require_modules(
+            ("igraph", "google.protobuf", "mcp"),
+            extra="graph,mcp",
+            feature="CodeGraph agent onboarding",
         )
-        raise _codegraph_error(exc) from exc
-    _require_unchanged_codegraph_checkout(
-        repo_path,
-        checkout_snapshot,
-        stage="agent registration",
-    )
+        if plan.missing:
+            try:
+                commands, manual = install_requirements(plan.missing, root=plan.root)
+            except RuntimeError as exc:
+                raise CLIError(str(exc)) from exc
+            if commands:
+                print("Installed graph tools:")
+                for command in commands:
+                    print(f"  {shlex.join(command)}")
+            if manual:
+                raise CLIError(
+                    "CodeGraph needs manual prerequisites: " + "; ".join(manual)
+                )
+            plan = _codegraph_toolchain_plan(repo_path, languages)
+        if not plan.ready:
+            raise CLIError(
+                "CodeGraph toolchain is not ready: " + _codegraph_plan_detail(plan)
+            )
+        check_checkout("toolchain setup")
 
-    print("\nCodeGraph is ready for coding agents.")
-    print(f"MCP server: {server.name}")
-    print(f"Clients:    {', '.join(clients)}")
-    print("Excluded:   " + _source_selection_display(resolved_selection.selection))
-    print(f"Status:     codenib codegraph status {shlex.quote(str(repo_path))}")
-    print(
-        "Try asking your agent to use explore_context before editing and "
-        "dependency_subgraph for impact analysis."
-    )
-    return 0
+        _check_view_dependencies(("bm25", "symbol_graph"))
+        try:
+            manifest, failed = index_repository(
+                repo_path,
+                languages=languages,
+                views=("bm25", "symbol_graph"),
+                source_selection=resolved_selection.selection,
+                rebuild=args.rebuild,
+                allow_graph_project_preparation=False,
+                allow_partial_graph_languages=False,
+            )
+        except (OSError, RuntimeError, ValueError) as exc:
+            check_checkout("indexing")
+            raise CLIError(str(exc)) from exc
+        check_checkout("indexing")
+        _print_index_summary(manifest, ("bm25", "symbol_graph"))
+        if failed:
+            raise CLIError("CodeGraph indexing failed for: " + ", ".join(failed))
+
+        try:
+            configure_client_registrations(repo_path, clients, server, receipt)
+        except (CodeGraphOnboardingError, OSError) as exc:
+            check_checkout("agent registration")
+            raise _codegraph_error(exc) from exc
+        check_checkout("agent registration")
+
+        print("\nCodeGraph is ready for coding agents.")
+        print(f"MCP server: {server.name}")
+        print(f"Clients:    {', '.join(clients)}")
+        print("Excluded:   " + _source_selection_display(resolved_selection.selection))
+        print(f"Status:     codenib codegraph status {shlex.quote(str(repo_path))}")
+        print(
+            "Try asking your agent to use explore_context before editing and "
+            "dependency_subgraph for impact analysis."
+        )
+        return 0
 
 
 def _run_grep_init(args: argparse.Namespace) -> int:

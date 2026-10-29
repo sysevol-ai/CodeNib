@@ -1,0 +1,146 @@
+{
+  "scope": "Source-checkout developer correctness regression on a pinned historically exposed source. Warm SCIP 0.6.6 and basedpyright 1.39.8. Fresh strict product SCIP/BM25 build, real stdio MCP, serial/native parity. No model inference, task score, external users, or product-benefit claim.",
+  "case": "ipython",
+  "observed_at_utc": "2026-10-28T09:09:50.465505+00:00",
+  "base_commit": "7b8a1daae69cef196ee0f7f70c59354bf8fb7508",
+  "implementation_sha256": {
+    "codenib/scip_interface/python_identity.py": "3c31e1ed04c660c98372aadf23f7473cb28024436fb3c0e63fdda9e9ec271059",
+    "codenib/scip_interface/scip_indexer_python.py": "1953f66f743d3e9e4bc424420fde5d4078dfe75d70b65e4fb0554c899a54a13e",
+    "codenib/scip_interface/scip_decode_python.py": "e4379c4fe27b4c4614d2aeffb604a59187a77e65927f9c7fc38564da53a1d020",
+    "codenib/scip_interface/lsp_occurrence_index.py": "7a27b0cd6419b116d3400f734d0ffc899dac73c709338ecc9e06d274a9269667",
+    "codenib/graph/incremental/lsp_client.py": "dba51dfd1e5c1430710c2b2b80948f9bacb7c1586f917c2a2a37038c162a360d",
+    "codenib/compiler/index_builders.py": "83624480deb4735247e41307d28a818e571086b5c11954ac2d2cf97e69d63bff",
+    "core/scip_decode_python.cpp": "8b6574facc6aa1e9538cf830c8b8771d40ef2c6e9985cb2e6c24df23396b63fd"
+  },
+  "native_module": "/home/zhongming/CodeNib-codegraph-benefit/build/core/codenib_core.cpython-312-aarch64-linux-gnu.so",
+  "calls": [],
+  "checks": [],
+  "source_before": {
+    "file_count": 475,
+    "file_manifest_sha256": "c0303a19211a77e7b901e61f1602f4dc0504030d31085f7045fff384a43c1a14",
+    "commit": "cd483f2f927c09be71dd5885618d7b2443a81b7a",
+    "git_status": ""
+  },
+  "build_seconds": 22.500556632876396,
+  "failed_views": [
+    "symbol_graph"
+  ],
+  "manifest": {
+    "version": "1.2",
+    "repo": {
+      "path": "/tmp/codenib-python-identity-20261027/ipython-source",
+      "commit": "cd483f2f927c09be71dd5885618d7b2443a81b7a",
+      "last_indexed_commit": "",
+      "source_fingerprint": "sha256-v2:2fb40ad03ee0e0d6258e6d132cbf0c678f7d98d09d4e0dc2b172317bcaaec914",
+      "last_indexed_source_fingerprint": "",
+      "languages": [
+        "python"
+      ],
+      "file_count": 475,
+      "source_selection": {
+        "schema": "codenib.repository-source-selection.v1",
+        "repository_filter_policy": 4,
+        "exclude_subtrees": []
+      },
+      "last_indexed_source_selection_digest": ""
+    },
+    "indexes": {
+      "bm25": {
+        "index_type": "bm25",
+        "path": "/tmp/codenib-python-identity-20261027/ipython-workflow5/.codenib/repositories/ipython-source-b119e3d510a9/indexes/bm25",
+        "built_at": "2026-10-28T09:09:51.041345+00:00",
+        "built_at_epoch": 1793178591.041345,
+        "status": "fresh",
+        "config": {
+          "builder_schema": 9,
+          "languages": [
+            "python"
+          ],
+          "max_k": 128,
+          "max_lines_per_chunk": 300,
+          "chunking_failure_policy": "fail",
+          "include_header_epilogue": true,
+          "repository_filter_policy": 4,
+          "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+          "artifact_file_fingerprints": {
+            "documents.json": {
+              "size": 2589978,
+              "sha256": "27a7af3473981a57a121dfc38dbabf5324244636d5a6de2dbcf67107c4d0ac34"
+            },
+            "bm25_metadata.json": {
+              "size": 143,
+              "sha256": "3b13809dec3874a6058332fb1e9d636e48b4a4af24aae8f61563813885fedd8f"
+            }
+          },
+          "chunk_count": 2279,
+          "source_file_count": 194,
+          "file_count": 2279
+        },
+        "metadata": {
+          "builder_schema": 9,
+          "languages": [
+            "python"
+          ],
+          "max_k": 128,
+          "max_lines_per_chunk": 300,
+          "chunking_failure_policy": "fail",
+          "include_header_epilogue": true,
+          "repository_filter_policy": 4,
+          "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+          "artifact_file_fingerprints": {
+            "documents.json": {
+              "size": 2589978,
+              "sha256": "27a7af3473981a57a121dfc38dbabf5324244636d5a6de2dbcf67107c4d0ac34"
+            },
+            "bm25_metadata.json": {
+              "size": 143,
+              "sha256": "3b13809dec3874a6058332fb1e9d636e48b4a4af24aae8f61563813885fedd8f"
+            }
+          },
+          "chunk_count": 2279,
+          "source_file_count": 194,
+          "file_count": 2279,
+          "build_duration_seconds": 0.47
+        },
+        "commit": "cd483f2f927c09be71dd5885618d7b2443a81b7a",
+        "source_fingerprint": "sha256-v2:2fb40ad03ee0e0d6258e6d132cbf0c678f7d98d09d4e0dc2b172317bcaaec914",
+        "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4"
+      },
+      "symbol_graph": {
+        "index_type": "symbol_graph",
+        "path": "/tmp/codenib-python-identity-20261027/ipython-workflow5/.codenib/repositories/ipython-source-b119e3d510a9/indexes/symbol_graph",
+        "built_at": "2026-10-28T09:10:12.894117+00:00",
+        "built_at_epoch": 1793178612.894117,
+        "status": "failed",
+        "config": {},
+        "metadata": {
+          "build_duration_seconds": 21.85,
+          "error": "symbol graph builder returned no graph (python: indexer returned no graph)"
+        },
+        "commit": "",
+        "source_fingerprint": "",
+        "source_selection_digest": ""
+      }
+    },
+    "capabilities": {
+      "sparse_search": true,
+      "dense_search": false,
+      "hybrid_search": false,
+      "symbol_navigation": false
+    },
+    "compiled_at": "2026-10-28T09:10:12.984125+00:00",
+    "compiled_at_epoch": 1793178612.984125
+  },
+  "source_after_build": {
+    "file_count": 475,
+    "file_manifest_sha256": "c0303a19211a77e7b901e61f1602f4dc0504030d31085f7045fff384a43c1a14",
+    "commit": "cd483f2f927c09be71dd5885618d7b2443a81b7a",
+    "git_status": ""
+  },
+  "status": "failed",
+  "failure": {
+    "type": "AssertionError",
+    "message": "['symbol_graph']",
+    "trace": "Traceback (most recent call last):\n  File \"/tmp/codenib-python-identity-20261027/workflow_identity.py\", line 177, in <module>\n    asyncio.run(main())\n  File \"/usr/lib/python3.12/asyncio/runners.py\", line 194, in run\n    return runner.run(main)\n           ^^^^^^^^^^^^^^^^\n  File \"/usr/lib/python3.12/asyncio/runners.py\", line 118, in run\n    return self._loop.run_until_complete(task)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/lib/python3.12/asyncio/base_events.py\", line 687, in run_until_complete\n    return future.result()\n           ^^^^^^^^^^^^^^^\n  File \"/tmp/codenib-python-identity-20261027/workflow_identity.py\", line 101, in main\n    assert not failed, failed\n           ^^^^^^^^^^\nAssertionError: ['symbol_graph']\n"
+  }
+}

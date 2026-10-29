@@ -1,0 +1,232 @@
+{
+  "scope": "Exact launch/archive/native grading/summary implementations and retained setup failure logs. Native protocol remains the pinned existing Verified adapter; no feedback went to model tasks.",
+  "files": {
+    "continue-matched-v1.py": {
+      "sha256": "bf822057899ef232fc0556b684b5f87e1b65ef5b30d968c3a20b5e4031e3e373",
+      "text": "\"\"\"Launch the frozen remaining workflows in order; no retries or grading feedback.\"\"\"\nimport datetime\nimport hashlib\nimport json\nimport subprocess\nimport sys\nimport time\nfrom pathlib import Path\n\nROOT = Path('/tmp/codenib-matched-pilot-20261027')\nPYTHON = '/tmp/codenib-sdk-probe-20261027/venv/bin/python'\nDRIVER = ROOT / 'run-matched-v1.py'\nPLAN = json.loads((ROOT / 'matched-policy-v3.json').read_text())['execution_order']['workflows']\nOUT = ROOT / 'sequential-launch-v1.json'\nassert not OUT.exists()\nrecord = {'started_utc': datetime.datetime.now(datetime.timezone.utc).isoformat(),\n          'launcher_sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),\n          'driver_sha256': hashlib.sha256(DRIVER.read_bytes()).hexdigest(),\n          'first_workflow': 'Already running independently; await its final receipt.',\n          'launches': [], 'stop_reason': None}\ndef save():\n    OUT.write_text(json.dumps(record, indent=2) + '\\n')\ndef receipt(index):\n    row = PLAN[index]\n    return ROOT / 'matched-runs-v1' / f\"{index:02d}-{row['instance_id']}-{row['arm']}\" / 'receipt.json'\ndef prior_ok(index):\n    d = json.loads(receipt(index).read_text())\n    if not d.get('finished_utc'):\n        return False\n    if d.get('cohort_stop_reason'):\n        raise RuntimeError(f\"Workflow {index}: {d['cohort_stop_reason']}\")\n    if not d.get('cleanup') or not all(x.get('removed') for x in d['cleanup']):\n        raise RuntimeError(f'Workflow {index}: cleanup incomplete')\n    return True\nsave()\ntry:\n    start = time.monotonic()\n    while not prior_ok(0):\n        if time.monotonic() - start > 3600:\n            raise TimeoutError('First workflow has no final receipt')\n        time.sleep(10)\n    for index in range(1, len(PLAN)):\n        assert prior_ok(index - 1)\n        assert not receipt(index).parent.exists(), 'An attempt already exists; never retry'\n        entry = {'workflow': PLAN[index], 'started_utc': datetime.datetime.now(datetime.timezone.utc).isoformat(),\n                 'argv': [PYTHON, str(DRIVER), '--index', str(index)]}\n        record['launches'].append(entry)\n        save()\n        log = ROOT / f'matched-workflow-{index:02d}.log'\n        print('START', index, PLAN[index], flush=True)\n        with log.open('x') as stream:\n            result = subprocess.run(entry['argv'], stdout=stream, stderr=subprocess.STDOUT,\n                                    cwd='/home/zhongming/CodeNib-codegraph-benefit')\n        entry['returncode'] = result.returncode\n        entry['finished_utc'] = datetime.datetime.now(datetime.timezone.utc).isoformat()\n        entry['log_sha256'] = hashlib.sha256(log.read_bytes()).hexdigest()\n        save()\n        if result.returncode:\n            raise RuntimeError(f'Workflow {index}: driver exit {result.returncode}')\n        assert prior_ok(index), 'Driver returned without a completed receipt'\n        d = json.loads(receipt(index).read_text())\n        print('END', index, d.get('status'), round(d.get('observed_workflow_seconds', 0), 2), flush=True)\nexcept Exception as exc:\n    record['stop_reason'] = {'type': type(exc).__name__, 'message': str(exc)}\n    save()\n    print('STOP', record['stop_reason'], flush=True)\n    sys.exit(2)\nfinally:\n    record['finished_utc'] = datetime.datetime.now(datetime.timezone.utc).isoformat()\n    save()\n"
+    },
+    "archive-matched-v1.py": {
+      "sha256": "2dbc78c39808249c3020431bf0c183a3ea345d9eedf6c437e0a48a5ce0865b3b",
+      "text": "\"\"\"Archive completed workflow evidence without modifying original captures.\"\"\"\nimport copy\nimport hashlib\nimport json\nfrom pathlib import Path\nROOT = Path('/tmp/codenib-matched-pilot-20261027')\nDEST = Path('/home/zhongming/CodeNib-codegraph-benefit/docs/experiments')\ndef sha(path):\n    return hashlib.sha256(path.read_bytes()).hexdigest()\nfor path in sorted((ROOT / 'matched-runs-v1').glob('*/receipt.json')):\n    raw = json.loads(path.read_text())\n    if not raw.get('finished_utc'):\n        continue\n    index = raw['workflow']['workflow_index']\n    out = DEST / f'codegraph_matched_workflow_v1_{index:02d}.json'\n    if out.exists():\n        existing = json.loads(out.read_text())\n        assert existing['original_receipt_sha256'] == sha(path)\n        continue\n    folder = path.parent\n    projection = copy.deepcopy(raw)\n    # Phase results preserve all terminal data and final answers. Session final\n    # usage is kept too; only duplicate answer strings/results are cross-linked.\n    for session in projection['sessions']:\n        relevant = [p for p in raw['phases'] if p['session'] == session['name'] and p.get('result')]\n        session['results'] = [{'phase_result_reference': p['kind']} for p in relevant]\n        if session.get('final_result') and relevant:\n            session['final_result']['result'] = {'phase_answer_reference': relevant[-1]['kind']}\n    observations = {}\n    source_captures = {}\n    for phase in raw['phases']:\n        for key in ('source_before', 'source_after'):\n            item = phase.get(key)\n            if not item:\n                continue\n            source = Path(item['path'])\n            assert sha(source) == item['sha256']\n            source_captures.setdefault(item['sha256'], {'text': source.read_text(), 'original_names': []})['original_names'].append(source.name)\n        if not phase.get('trace'):\n            continue\n        trace = folder / phase['trace']['path']\n        assert sha(trace) == phase['trace']['sha256']\n        calls, deliveries = {}, []\n        init, rates = [], []\n        for line in trace.read_text().splitlines():\n            row = json.loads(line)\n            if row.get('type') == 'AssistantMessage':\n                for block in row.get('content', []):\n                    if 'name' in block and 'id' in block:\n                        if block['id'] in calls:\n                            assert calls[block['id']] == block\n                        calls[block['id']] = block\n            elif row.get('type') == 'UserMessage':\n                deliveries.append(row)\n            elif row.get('type') == 'SystemMessage':\n                init.append(row)\n            elif row.get('type') == 'RateLimitEvent':\n                rates.append(row)\n        observations[phase['kind']] = {'raw_sdk_trace_sha256': sha(trace),\n            'raw_sdk_trace_bytes': trace.stat().st_size,\n            'init': init, 'rate_events': rates,\n            'tool_calls_in_first_observed_order': list(calls.values()),\n            'delivered_user_tool_messages_in_order': deliveries}\n    value = {'schema_version': 1,\n        'scope': 'Completed model execution and delivered tool observations; task acceptance and native repair grading are separate.',\n        'original_receipt': str(path), 'original_receipt_sha256': sha(path),\n        'receipt_projection': projection,\n        'projection_rule': 'All phase results kept. Duplicate session result/answer text is linked to its phase. Assistant intermediate prose and stream usage events remain in the hash-bound original SDK traces; they are not summed as cumulative usage.',\n        'source_snapshot_captures_by_sha256': source_captures,\n        'phase_observations': observations,\n        'repair_patch': (folder / 'repair.patch').read_text() if (folder / 'repair.patch').exists() else None,\n        'setup_patch': (folder / 'pre-model.patch').read_text() if (folder / 'pre-model.patch').exists() else None,\n        'source_credit': 'No complete ContextBench read score. Delivered shell output remains unattributed until version/file mapping is verified.',\n        'archive_implementation_sha256': sha(Path(__file__))}\n    data = json.dumps(value, indent=2) + '\\n'\n    assert len(data.encode()) < 500 * 1024, (out.name, len(data.encode()))\n    out.write_text(data)\n    print(out.name, out.stat().st_size, sha(out), flush=True)\n"
+    },
+    "grade-matched-v1.py": {
+      "sha256": "5706d8768f52f5ba551ee8a7ade206dec6b528e10b140fdade3f74cc74437104",
+      "text": "\"\"\"Grade captured repair patches after the model batch, without model feedback.\"\"\"\nimport argparse\nimport datetime\nimport hashlib\nimport json\nimport sys\nimport traceback\nfrom pathlib import Path\nsys.path.insert(0, '/home/zhongming/CodeNib-codegraph-benefit')\nfrom scripts.contextbench_verified import grade_verified\nROOT = Path('/tmp/codenib-matched-pilot-20261027')\nOUT = ROOT / 'matched-native-grades-v1'\nPLAN = json.loads((ROOT / 'matched-policy-v3.json').read_text())['execution_order']['workflows']\nCASES = {r['instance_id']: r for r in json.loads((ROOT / 'controller-native-cases.json').read_text())}\nIMAGES = {\n    'psf__requests-1921': 'sha256:827cc6d68ffa2db970c9e7360aed47d4523260c0d9b611dd8b0211d561d22594',\n    'pallets__flask-5014': 'sha256:59ff7bb5c0259b48764aeefce0099158d2096bc59e1fba72b70d9587e34bfcf1',\n    'pytest-dev__pytest-5809': 'sha256:5b464afbad93f2f7c71294e528159c6629bbda9625bad92324b31f5892745e49',\n}\ndef write(path, value):\n    path.write_text(json.dumps(value, indent=2) + '\\n')\ndef sha(path):\n    return hashlib.sha256(path.read_bytes()).hexdigest()\nlaunch = json.loads((ROOT / 'sequential-launch-v1.json').read_text())\nassert launch.get('finished_utc'), 'Do not grade or feed back while model execution is active'\nassert not OUT.exists(), 'Never overwrite a grading attempt'\nOUT.mkdir()\nrecords = []\nfor row in PLAN:\n    idx, case = row['workflow_index'], row['instance_id']\n    folder = ROOT / 'matched-runs-v1' / f\"{idx:02d}-{case}-{row['arm']}\"\n    record = {'workflow': row, 'started_utc': datetime.datetime.now(datetime.timezone.utc).isoformat(),\n              'model_feedback': 'None; model batch ended before grading.'}\n    records.append(record)\n    receipt = folder / 'receipt.json'\n    if not receipt.exists():\n        record['status'] = 'workflow_unattempted'\n        write(OUT / 'summary.json', records)\n        continue\n    d = json.loads(receipt.read_text())\n    assert d.get('finished_utc')\n    record['workflow_receipt_sha256'] = sha(receipt)\n    phase = next((x for x in d['phases'] if x['kind'] == 'repair'), None)\n    if phase is None or not phase.get('submission'):\n        record['status'] = 'repair_unattempted_or_uncaptured'\n        write(OUT / 'summary.json', records)\n        continue\n    patchfile = folder / phase['submission']['path']\n    assert sha(patchfile) == phase['submission']['sha256']\n    patch = patchfile.read_text()\n    record['patch_sha256'] = sha(patchfile)\n    record['sdk_terminal_success'] = phase.get('status') == 'sdk_completed_pending_acceptance'\n    target = OUT / f'{idx:02d}-{case}-{row[\"arm\"]}'\n    target.mkdir()\n    config = {'repo': CASES[case]['repo'], 'source': 'Verified',\n              'source_commit': CASES[case]['base_commit'], 'implementation': {},\n              'image_id': IMAGES[case]}\n    solver = {'instance_id': case, 'original_inst_id': case, 'model_patch': patch}\n    prediction = [{'instance_id': case, 'model_patch': patch,\n                   'model_name_or_path': f\"matched-v1-{row['arm']}\"}]\n    for name, value in [('config.json', config), ('solver.json', solver), ('predictions.json', prediction)]:\n        write(target / name, value)\n    print('GRADE', idx, row['arm'], case, flush=True)\n    try:\n        grade_verified(argparse.Namespace(solver_run=target, dataset=ROOT / 'controller-native-cases.json',\n                                         output=target / 'grade', timeout=300))\n        record['status'] = 'graded'\n    except Exception as exc:\n        record['status'] = 'grading_error'\n        record['error'] = {'type': type(exc).__name__, 'message': str(exc), 'traceback': traceback.format_exc()}\n    resultpath = target / 'grade/resolution.json'\n    if resultpath.exists():\n        record['native_result'] = json.loads(resultpath.read_text())\n        record['native_result_sha256'] = sha(resultpath)\n    record['finished_utc'] = datetime.datetime.now(datetime.timezone.utc).isoformat()\n    write(OUT / 'summary.json', records)\n    print('RESULT', idx, record['status'], record.get('native_result', {}).get('resolved'), flush=True)\n"
+    },
+    "wait-grade-matched-v1.py": {
+      "sha256": "b937b012f37055052fdadc399fe20aca141d1593b2b9db802e73ca7660f05455",
+      "text": "\"\"\"Start native grading only after the sequential model launcher has ended.\"\"\"\nimport json\nimport subprocess\nimport time\nfrom pathlib import Path\nROOT = Path('/tmp/codenib-matched-pilot-20261027')\nstart = time.monotonic()\nwhile True:\n    data = json.loads((ROOT / 'sequential-launch-v1.json').read_text())\n    if data.get('finished_utc'):\n        break\n    if time.monotonic() - start > 18000:\n        raise TimeoutError('Model batch still active; grading remains unstarted')\n    time.sleep(10)\nwith (ROOT / 'matched-native-grades-v1.log').open('x') as stream:\n    result = subprocess.run([str(ROOT / 'grader/bin/python'), str(ROOT / 'grade-matched-v1.py')],\n                            cwd='/home/zhongming/CodeNib-codegraph-benefit',\n                            stdout=stream, stderr=subprocess.STDOUT)\nraise SystemExit(result.returncode)\n"
+    },
+    "summarize-matched-v1.py": {
+      "sha256": "c532ef2046a84c2cb14b2814ae16d5f0d536e3f1cff5613e63ca2b2b4d108c09",
+      "text": "\"\"\"Describe frozen executions and original native outcomes; leave source scoring open.\"\"\"\nimport copy\nimport datetime\nimport hashlib\nimport json\nfrom pathlib import Path\nROOT = Path('/tmp/codenib-matched-pilot-20261027')\nDEST = Path('/home/zhongming/CodeNib-codegraph-benefit/docs/experiments')\nPLAN = json.loads((ROOT / 'matched-policy-v3.json').read_text())['execution_order']['workflows']\nARMS = ['native', 'serena', 'codegraph', 'codenib']\ndef sha(path):\n    return hashlib.sha256(path.read_bytes()).hexdigest()\ndef dump(path, value):\n    text = json.dumps(value, indent=2) + '\\n'\n    assert len(text.encode()) < 500 * 1024\n    path.write_text(text)\nlaunch = json.loads((ROOT / 'sequential-launch-v1.json').read_text())\nassert launch.get('finished_utc') and not launch.get('stop_reason')\ngrades = json.loads((ROOT / 'matched-native-grades-v1/summary.json').read_text())\nassert len(grades) == len(PLAN) == 12\nby_index = {x['workflow']['workflow_index']: x for x in grades}\nrows = []\nmodels = set()\nreadonly = []\nfor row in PLAN:\n    index, case, arm = row['workflow_index'], row['instance_id'], row['arm']\n    folder = ROOT / 'matched-runs-v1' / f'{index:02d}-{case}-{arm}'\n    receipt = folder / 'receipt.json'\n    d = json.loads(receipt.read_text())\n    assert d.get('finished_utc') and not d.get('cohort_stop_reason')\n    assert d['status'] == 'model_execution_complete_pending_grading'\n    assert len(d['phases']) == 5 and len(d['sessions']) == 2\n    assert all(x.get('removed') for x in d['cleanup'])\n    tokens, estimate, calls = 0, 0.0, {}\n    for session in d['sessions']:\n        assert session['usage_complete']\n        assert session['init']['model'] == 'claude-opus-5-5'\n        assert session['init']['apiKeySource'] == 'none'\n        final = session['final_result']\n        calculated = sum(v[key] for v in final['model_usage'].values() for key in\n                         ['inputTokens', 'cacheCreationInputTokens', 'cacheReadInputTokens', 'outputTokens'])\n        assert calculated == session['normalized_tokens']\n        tokens += calculated\n        estimate += final['total_cost_usd']\n    for phase in d['phases']:\n        assert phase['status'] == 'sdk_completed_pending_acceptance'\n        trace = folder / phase['trace']['path']\n        assert sha(trace) == phase['trace']['sha256']\n        for line in trace.read_text().splitlines():\n            message = json.loads(line)\n            if message.get('type') == 'AssistantMessage':\n                models.add(message['model'])\n                for block in message['content']:\n                    if block.get('name'):\n                        calls[block['id']] = block['name']\n        if phase['kind'] != 'repair':\n            readonly.append({'workflow_index': index, 'task_id': phase['task_id'],\n                             'source_bytes_preserved': phase['read_only_source_preserved'],\n                             'acceptance': 'pending_source_rubric_review'})\n    artifact = DEST / f'codegraph_matched_workflow_v1_{index:02d}.json'\n    assert artifact.exists()\n    native = by_index[index]\n    repair = native.get('native_result', {})\n    rows.append({'workflow': row, 'receipt_sha256': sha(receipt),\n        'observed_workflow_seconds': d['observed_workflow_seconds'],\n        'setup_ready': d['setup']['ready'], 'setup_seconds': d['setup']['seconds'],\n        'normalized_recorded_tokens': tokens, 'sdk_estimate_usd': estimate,\n        'optional_mcp_attempts': sum(name.startswith('mcp__') for name in calls.values()),\n        'unique_native_or_mcp_attempts': len(calls),\n        'phase_seconds': {p['kind']: p['seconds'] for p in d['phases']},\n        'repair_native_status': native['status'],\n        'repair_native_resolved': repair.get('resolved'),\n        'repair_accepted': bool(native['sdk_terminal_success'] and native['status'] == 'graded' and repair.get('resolved')),\n        'evidence_artifact': artifact.name, 'evidence_sha256': sha(artifact)})\nassert models == {'claude-opus-5-5'}\nvalue = {'schema_version': 1, 'recorded_utc': datetime.datetime.now(datetime.timezone.utc).isoformat(),\n    'status': 'model_execution_complete_native_repair_graded_source_acceptance_pending',\n    'execution_binding_sha256': sha(ROOT / 'execution-binding-v1.json'),\n    'model_assistant_observed_models': sorted(models),\n    'workflows': rows, 'native_grading': grades,\n    'read_only_tasks': readonly, 'complete_penalized_primary': None,\n    'strongest_eligible_alternative': None, 'benefit_gate': 'unassessed_pending_all_source_rubrics',\n    'api_invoice_cost_usd': None, 'http_request_count': None,\n    'sdk_estimate_usd': sum(x['sdk_estimate_usd'] for x in rows),\n    'normalized_recorded_tokens': sum(x['normalized_recorded_tokens'] for x in rows),\n    'scope': 'Three paired, historically exposed Python repositories. Raw observed time is unpenalized and source acceptance is pending. No unseen-population or complete ContextBench source-read score.',\n    'analysis_implementation_sha256': sha(Path(__file__))}\ndump(DEST / 'codegraph_matched_execution_v1.json', value)\ncontroller = {'scope': 'Exact launch/archive/native grading/summary implementations and retained setup failure logs. Native protocol remains the pinned existing Verified adapter; no feedback went to model tasks.',\n    'files': {}, 'sequential_launch': launch, 'setup_failure_logs': {}}\nfor name in ['continue-matched-v1.py', 'archive-matched-v1.py', 'grade-matched-v1.py', 'wait-grade-matched-v1.py', 'summarize-matched-v1.py']:\n    p = ROOT / name\n    controller['files'][name] = {'sha256': sha(p), 'text': p.read_text()}\nfor row in PLAN:\n    folder = ROOT / 'matched-runs-v1' / f\"{row['workflow_index']:02d}-{row['instance_id']}-{row['arm']}\"\n    d = json.loads((folder / 'receipt.json').read_text())\n    for cmd in d['commands']:\n        if cmd.get('returncode') != 0:\n            path = folder / cmd['log']\n            assert sha(path) == cmd['log_sha256']\n            controller['setup_failure_logs'][str(path)] = {'sha256': sha(path), 'text': path.read_text()}\ndump(DEST / 'codegraph_matched_controller_v1.json', controller)\nlookup = {(r['workflow']['instance_id'], r['workflow']['arm']): r for r in rows}\ncases = list(dict.fromkeys(r['instance_id'] for r in PLAN))\nnative_passes = sum(r['repair_accepted'] for r in rows)\nbody = ['# CodeGraph matched pilot execution', '',\n    f'All twelve frozen workflows completed their five model tasks. The original native repair grader resolves {native_passes}/12 captured repairs. Source-rubric acceptance for the 48 explanation tasks remains open, so the complete benefit gate is unassessed.', '',\n    'The [execution summary](codegraph_matched_execution_v1.json) retains every workflow, native outcome and pending source task. The [controller archive](codegraph_matched_controller_v1.json) retains exact post-processing code and failed setup output. The [pre-inference archive](codegraph_execution_2026_10_27.json) binds the executable, candidate wheel, CLI and runtime before the first query.', '',\n    '## Observed execution', '',\n    'Times include product installation/indexing, both SDK sessions and all five tasks. Common machine/source/project-dependency preparation and later grading are excluded under the [frozen policy](codegraph_matched_policy_v3.json). These are observed, unpenalized times; rejected tasks still require the frozen timeout penalty after source review.', '',\n    '| Source case | Native | Serena | Codegraph | CodeNib |', '| --- | ---: | ---: | ---: | ---: |']\nfor case in cases:\n    cells = []\n    for arm in ARMS:\n        r = lookup[(case, arm)]\n        cells.append(f\"[{r['observed_workflow_seconds']:.1f} s]({r['evidence_artifact']})\")\n    body.append('| ' + case + ' | ' + ' | '.join(cells) + ' |')\nbody += ['', '## Tool availability and use', '',\n    'Optional MCP attempts count unique captured tool-use IDs. An unused tool stays in its assigned arm. Native read/search/edit/shell tools remained available throughout.', '',\n    '| Source case | Serena attempts | Codegraph attempts | CodeNib attempts |', '| --- | ---: | ---: | ---: |']\nfor case in cases:\n    body.append('| ' + case + ' | ' + ' | '.join(str(lookup[(case, a)]['optional_mcp_attempts']) for a in ARMS[1:]) + ' |')\nbody += ['', 'CodeNib initializes graphs for Requests and Flask. Its pytest initialization fails on the retained containment/definition-identity collision (#871). That workflow continues with native tools under the frozen failed-setup policy, and retains all 26.7 seconds of setup. This does not demonstrate graph recovery or automatic refresh.', '',\n    '## Original native repair outcomes', '',\n    'The unchanged selected SWE-bench Verified 4.1.0 tests, parser and grading run on the exact captured repair patch and pinned arm64 control image. Native grading begins after the model batch ends. Reference patches and grading feedback never enter model inputs.', '',\n    '| Source case | Native | Serena | Codegraph | CodeNib |', '| --- | --- | --- | --- | --- |']\nfor case in cases:\n    values = []\n    for arm in ARMS:\n        r = lookup[(case, arm)]\n        values.append('pass' if r['repair_accepted'] else ('error' if r['repair_native_status'] != 'graded' else 'fail'))\n    body.append('| ' + case + ' | ' + ' | '.join(values) + ' |')\nbody += ['', '## Accounting and remaining gates', '',\n    f\"All 24 sessions report the actual `claude-opus-5-5` assistant with native Claude Max authentication and no API-key source. Final cumulative usage is counted once per session across main and auxiliary models, including cache creation/read and output. The cohort records {value['normalized_recorded_tokens']:,} tokens and ${value['sdk_estimate_usd']:.6f} in SDK estimates. These estimates are separate from invoices; per-task cash charges and complete HTTP request counts remain unknown. No paid API fallback is enabled.\", '',\n    f\"{sum(x['source_bytes_preserved'] for x in readonly)}/48 read-only tasks preserve the recorded source bytes. Applying each frozen source rubric remains necessary before accepted-task counts, the strongest eligible alternative, timeout penalties, cluster uncertainty or the 20% promotion gate can be reported.\", '',\n    'This cohort contains three historically exposed Python source snapshots and one attempt per task. It supports a bounded pilot decision after acceptance review. Broader graph correctness (#871), manual rebuild/reconnect costs and five external users with seven-day repeat-use observations remain open. No external participant is enrolled.', '',\n    'The workflow fixes and this candidate are on source main; the public PyPI 0.2.4 package is unchanged. Adoption A0 remains active under [#874](https://github.com/sysevol-ai/CodeNib/issues/874).', '']\n(DEST / 'codegraph_matched_run_v1.md').write_text('\\n'.join(body))\nprint(json.dumps({'native_repairs_resolved': native_passes, 'workflow_count': len(rows), 'source_acceptance': 'pending', 'normalized_tokens': value['normalized_recorded_tokens'], 'sdk_estimate_usd': value['sdk_estimate_usd']}))\n"
+    }
+  },
+  "sequential_launch": {
+    "started_utc": "2026-10-28T04:04:55.273686+00:00",
+    "launcher_sha256": "bf822057899ef232fc0556b684b5f87e1b65ef5b30d968c3a20b5e4031e3e373",
+    "driver_sha256": "9317cc97054f93183dbb0a41f08f2bf2b54b9189ad3b1d29b4adc1d2fd4b4f19",
+    "first_workflow": "Already running independently; await its final receipt.",
+    "launches": [
+      {
+        "workflow": {
+          "workflow_index": 1,
+          "instance_id": "psf__requests-1921",
+          "arm": "codenib"
+        },
+        "started_utc": "2026-10-28T04:04:55.274465+00:00",
+        "argv": [
+          "/tmp/codenib-sdk-probe-20261027/venv/bin/python",
+          "/tmp/codenib-matched-pilot-20261027/run-matched-v1.py",
+          "--index",
+          "1"
+        ],
+        "returncode": 0,
+        "finished_utc": "2026-10-28T04:08:30.015254+00:00",
+        "log_sha256": "3ec20d2ac40bf87734653c79819386b8a028fcb1fa8783f2648ce1199a9002f4"
+      },
+      {
+        "workflow": {
+          "workflow_index": 2,
+          "instance_id": "psf__requests-1921",
+          "arm": "codegraph"
+        },
+        "started_utc": "2026-10-28T04:08:30.016420+00:00",
+        "argv": [
+          "/tmp/codenib-sdk-probe-20261027/venv/bin/python",
+          "/tmp/codenib-matched-pilot-20261027/run-matched-v1.py",
+          "--index",
+          "2"
+        ],
+        "returncode": 0,
+        "finished_utc": "2026-10-28T04:11:28.376943+00:00",
+        "log_sha256": "d6ca45f140a67a3f6f8bed42fbbd5bf90d11bf702089fabcd98bec281ed8aced"
+      },
+      {
+        "workflow": {
+          "workflow_index": 3,
+          "instance_id": "psf__requests-1921",
+          "arm": "native"
+        },
+        "started_utc": "2026-10-28T04:11:28.378110+00:00",
+        "argv": [
+          "/tmp/codenib-sdk-probe-20261027/venv/bin/python",
+          "/tmp/codenib-matched-pilot-20261027/run-matched-v1.py",
+          "--index",
+          "3"
+        ],
+        "returncode": 0,
+        "finished_utc": "2026-10-28T04:14:00.336253+00:00",
+        "log_sha256": "ec2f4d6b041f357044b9d73a435a502531cd1c47f829d5148aa3589eac8276c3"
+      },
+      {
+        "workflow": {
+          "workflow_index": 4,
+          "instance_id": "pallets__flask-5014",
+          "arm": "serena"
+        },
+        "started_utc": "2026-10-28T04:14:00.337373+00:00",
+        "argv": [
+          "/tmp/codenib-sdk-probe-20261027/venv/bin/python",
+          "/tmp/codenib-matched-pilot-20261027/run-matched-v1.py",
+          "--index",
+          "4"
+        ],
+        "returncode": 0,
+        "finished_utc": "2026-10-28T04:17:13.173412+00:00",
+        "log_sha256": "12fc094df597b2fb1cdf6324d3d40591f5debfe96dc98f29279424188a72afe2"
+      },
+      {
+        "workflow": {
+          "workflow_index": 5,
+          "instance_id": "pallets__flask-5014",
+          "arm": "codegraph"
+        },
+        "started_utc": "2026-10-28T04:17:13.174601+00:00",
+        "argv": [
+          "/tmp/codenib-sdk-probe-20261027/venv/bin/python",
+          "/tmp/codenib-matched-pilot-20261027/run-matched-v1.py",
+          "--index",
+          "5"
+        ],
+        "returncode": 0,
+        "finished_utc": "2026-10-28T04:19:52.446848+00:00",
+        "log_sha256": "e138951913f4504a64846e3697fb9337939c47ad3d5059eee4225158bf7e1c9c"
+      },
+      {
+        "workflow": {
+          "workflow_index": 6,
+          "instance_id": "pallets__flask-5014",
+          "arm": "native"
+        },
+        "started_utc": "2026-10-28T04:19:52.448219+00:00",
+        "argv": [
+          "/tmp/codenib-sdk-probe-20261027/venv/bin/python",
+          "/tmp/codenib-matched-pilot-20261027/run-matched-v1.py",
+          "--index",
+          "6"
+        ],
+        "returncode": 0,
+        "finished_utc": "2026-10-28T04:22:51.170368+00:00",
+        "log_sha256": "97ad3ce97f2fbf13ce180af96f5f109ad231d5173363b3ff8496e29b5c2388ca"
+      },
+      {
+        "workflow": {
+          "workflow_index": 7,
+          "instance_id": "pallets__flask-5014",
+          "arm": "codenib"
+        },
+        "started_utc": "2026-10-28T04:22:51.171563+00:00",
+        "argv": [
+          "/tmp/codenib-sdk-probe-20261027/venv/bin/python",
+          "/tmp/codenib-matched-pilot-20261027/run-matched-v1.py",
+          "--index",
+          "7"
+        ],
+        "returncode": 0,
+        "finished_utc": "2026-10-28T04:26:42.701931+00:00",
+        "log_sha256": "fa806c96660c593e657319aa45dd207bc0d053ea411b2403386a7fa995ecfa16"
+      },
+      {
+        "workflow": {
+          "workflow_index": 8,
+          "instance_id": "pytest-dev__pytest-5809",
+          "arm": "codenib"
+        },
+        "started_utc": "2026-10-28T04:26:42.703223+00:00",
+        "argv": [
+          "/tmp/codenib-sdk-probe-20261027/venv/bin/python",
+          "/tmp/codenib-matched-pilot-20261027/run-matched-v1.py",
+          "--index",
+          "8"
+        ],
+        "returncode": 0,
+        "finished_utc": "2026-10-28T04:29:42.697914+00:00",
+        "log_sha256": "45d44834a85631e2f7341995c22cb1849e74991b3ba1bfc52e91371db89fb815"
+      },
+      {
+        "workflow": {
+          "workflow_index": 9,
+          "instance_id": "pytest-dev__pytest-5809",
+          "arm": "native"
+        },
+        "started_utc": "2026-10-28T04:29:42.699127+00:00",
+        "argv": [
+          "/tmp/codenib-sdk-probe-20261027/venv/bin/python",
+          "/tmp/codenib-matched-pilot-20261027/run-matched-v1.py",
+          "--index",
+          "9"
+        ],
+        "returncode": 0,
+        "finished_utc": "2026-10-28T04:31:57.255266+00:00",
+        "log_sha256": "caa01d9c205eeace208365c60cf48378b25e4bfa06ebc0e0efee5d3b3a0da712"
+      },
+      {
+        "workflow": {
+          "workflow_index": 10,
+          "instance_id": "pytest-dev__pytest-5809",
+          "arm": "codegraph"
+        },
+        "started_utc": "2026-10-28T04:31:57.256453+00:00",
+        "argv": [
+          "/tmp/codenib-sdk-probe-20261027/venv/bin/python",
+          "/tmp/codenib-matched-pilot-20261027/run-matched-v1.py",
+          "--index",
+          "10"
+        ],
+        "returncode": 0,
+        "finished_utc": "2026-10-28T04:35:05.265269+00:00",
+        "log_sha256": "94f3c444a3116d747e2c64c9ac2c144ab3af622324354d8dbc92c7df047a2f82"
+      },
+      {
+        "workflow": {
+          "workflow_index": 11,
+          "instance_id": "pytest-dev__pytest-5809",
+          "arm": "serena"
+        },
+        "started_utc": "2026-10-28T04:35:05.266493+00:00",
+        "argv": [
+          "/tmp/codenib-sdk-probe-20261027/venv/bin/python",
+          "/tmp/codenib-matched-pilot-20261027/run-matched-v1.py",
+          "--index",
+          "11"
+        ],
+        "returncode": 0,
+        "finished_utc": "2026-10-28T04:38:10.434482+00:00",
+        "log_sha256": "23b68aee149276e1039b68894787f3892c04815c7effe625fe2927c2e062fb3d"
+      }
+    ],
+    "stop_reason": null,
+    "finished_utc": "2026-10-28T04:38:10.435465+00:00"
+  },
+  "setup_failure_logs": {
+    "/tmp/codenib-matched-pilot-20261027/matched-runs-v1/08-pytest-dev__pytest-5809-codenib/initialize-product.log": {
+      "sha256": "9f9b88d991052f7250389587c9550c015e7c546a546f674046824da6fd099e0d",
+      "text": "\nadded 42 packages in 5s\nLoading configuration file at /tmp/codenib-matched-pilot-20261027/matched-runs-v1/08-pytest-dev__pytest-5809-codenib/workspace/pyrightconfig.json\nAssuming Python version 3.9\nAssuming Python platform Linux\nNo include entries specified; assuming /tmp/codenib-matched-pilot-20261027/matched-runs-v1/08-pytest-dev__pytest-5809-codenib/workspace\n(04:26:55) Total Project Files 200\n(04:26:55) Indexing /tmp/codenib-matched-pilot-20261027/matched-runs-v1/08-pytest-dev__pytest-5809-codenib/workspace with version 8aba863a634f40560e25055d179220f0eefabe9a\n(04:26:55) Parse and search for dependencies\n(04:26:58) Index workspace and track project files\n(04:26:58) Analyze project and dependencies\n(04:26:59) Parse and emit SCIP\n(04:27:00)   - (39/200): /tmp/codenib-matched-pilot-20261027/matched-runs-v1/08-pytest-dev__pytest-5809-codenib/workspace/src/_pytest/debugging.py\n(04:27:01)   - (55/200): /tmp/codenib-matched-pilot-20261027/matched-runs-v1/08-pytest-dev__pytest-5809-codenib/workspace/src/_pytest/pytester.py\n(04:27:02)   - (67/200): /tmp/codenib-matched-pilot-20261027/matched-runs-v1/08-pytest-dev__pytest-5809-codenib/workspace/src/_pytest/tmpdir.py\n(04:27:04)   - (95/200): /tmp/codenib-matched-pilot-20261027/matched-runs-v1/08-pytest-dev__pytest-5809-codenib/workspace/testing/test_cacheprovider.py\n(04:27:05)   - (130/200): /tmp/codenib-matched-pilot-20261027/matched-runs-v1/08-pytest-dev__pytest-5809-codenib/workspace/testing/code/test_source.py\n(04:27:05) Writing external symbols to SCIP index\n(04:27:05) Sucessfully wrote SCIP index to /opt/pilot-state/.codenib/repositories/workspace-b5e6a31695ec/indexes/symbol_graph/index.scip\nInstalled graph tools:\n  npm install --prefix /opt/pilot-tools/.codenib/toolchains/node-tools --no-audit --no-fund @sourcegraph/scip-python@0.6.6\nRepository: /tmp/codenib-matched-pilot-20261027/matched-runs-v1/08-pytest-dev__pytest-5809-codenib/workspace\nLanguages:  python\nExcluded:   none\nManifest:   /opt/pilot-state/.codenib/repositories/workspace-b5e6a31695ec/indexes/repo_manifest.json\nViews:\n  bm25           fresh (1.66s)\n  symbol_graph   failed (16.61s)\nnpm warn deprecated inflight@1.0.6: This module is not supported, and leaks memory. Do not use it. Check out lru-cache if you want a good and tested way to coalesce async requests by a key value, which is much more comprehensive and powerful.\nnpm warn deprecated glob@7.2.3: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me\nnpm notice\nnpm notice New major version of npm available! 10.9.8 -> 12.2.1\nnpm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.1\nnpm notice To update run: npm install -g npm@12.2.1\nnpm notice\nINFO     Successfully loaded python language parser from                        \n         tree-sitter-language-pack                                              \nINFO     Chunking repository:                                                   \n         /tmp/codenib-matched-pilot-20261027/matched-runs-v1/08-pytest-dev__pyte\n         st-5809-codenib/workspace                                              \nINFO     Target languages: python                                               \nINFO     Found 114 files to process                                             \nINFO     Successfully processed 114/114 files                                   \nINFO     Generated 1951 total chunks                                            \nINFO     Collected 1829 unique nodes                                            \nINFO     Initialized LSIndexer for python at                                    \n         /tmp/codenib-matched-pilot-20261027/matched-runs-v1/08-pytest-dev__pyte\n         st-5809-codenib/workspace (route=active)                               \nINFO     Generating SCIP index                                                  \nINFO     Using scip-python from                                                 \n         /opt/pilot-tools/.codenib/toolchains/node-tools/node_modules/.bin/scip-\n         python                                                                 \nINFO     Applying 44 temporary Pyright exclusions                               \nINFO     Successfully generated SCIP index at                                   \n         /opt/pilot-state/.codenib/repositories/workspace-b5e6a31695ec/indexes/s\n         ymbol_graph/index.scip                                                 \nINFO     Index generation took: 10.60 seconds                                   \nINFO     Decoding SCIP index                                                    \nINFO     Successfully decoded SCIP index to                                     \n         /opt/pilot-state/.codenib/repositories/workspace-b5e6a31695ec/indexes/s\n         ymbol_graph/index.decoded                                              \nINFO     \u23f1\ufe0f  Index decoding took: 0.61 seconds                                  \nINFO     Starting SCIP index processing (backend=serial)...                     \nINFO     Starting SCIP Python decode from                                       \n         /opt/pilot-state/.codenib/repositories/workspace-b5e6a31695ec/indexes/s\n         ymbol_graph/index.decoded                                              \nERROR    Error processing SCIP index: Cannot use symbol graph: containment cycle\n         detected; the provider's scope/definition identities need correction   \nINFO     [scip_python_indexer] profiler summary: 10.597s total across 6         \n         section(s)                                                             \nINFO       generate_index                           total=10.597s count=  1     \n         avg=10.597s min=10.597s max=10.597s                                    \nINFO       process_index.build_lsp_occurrence_index total= 2.609s count=  1 avg=\n         2.609s min= 2.609s max= 2.609s                                         \nINFO       process_index.decode                     total= 2.012s count=  1 avg=\n         2.012s min= 2.012s max= 2.012s                                         \nINFO       decode_index                             total= 0.612s count=  1 avg=\n         0.612s min= 0.612s max= 0.612s                                         \nINFO       process_index.build_range_indexes        total= 0.011s count=  1 avg=\n         0.011s min= 0.011s max= 0.011s                                         \nINFO       process_index.save_graph                 total= 0.002s count=  1 avg=\n         0.002s min= 0.002s max= 0.002s, errors=1                               \nFailed to build symbol_graph: symbol graph builder returned no graph (python: indexer returned no graph)\nNot all indexes reached source 8aba863a634f; last indexed identity was preserved\nerror: CodeGraph indexing failed for: symbol_graph\n"
+    },
+    "/tmp/codenib-matched-pilot-20261027/matched-runs-v1/11-pytest-dev__pytest-5809-serena/initialize-product.log": {
+      "sha256": "4adc466fb2f32a6a93c1a0109917e2cab81340cda5361e5a471a4da8758847b4",
+      "text": "No existing project found for '/tmp/codenib-matched-pilot-20261027/matched-runs-v1/11-pytest-dev__pytest-5809-serena/workspace'. Attempting auto-creation ...\nDetected and enabled main language server 'python' (99.50% of source files).\nAdditionally detected 1 other applicable language servers.\n\nNote: Enable only servers for languages you need symbolic retrieval/editing capabilities for.\n      Additional language servers use resources and some may require additional\n      system-level installations/configuration (see Serena documentation).\n\nWhich additional language servers do you want to enable?\nEnable pascal (0.50% of source files)? [y/N] Project configuration auto-generation failed after 0.016 seconds\nError: EOF when reading a line\n"
+    }
+  }
+}

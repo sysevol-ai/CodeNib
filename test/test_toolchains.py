@@ -117,6 +117,7 @@ def test_repository_plan_uses_language_registry_for_graph_and_lsp(
         (item.scope, item.executable, item.resolved) for item in plan.requirements
     ] == [
         ("graph", "scip-python", "/managed/scip-python"),
+        ("graph", "basedpyright-langserver", "/managed/basedpyright-langserver"),
         ("lsp", "basedpyright-langserver", "/managed/basedpyright-langserver"),
     ]
 

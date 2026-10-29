@@ -1,0 +1,1444 @@
+{
+  "schema_version": 2,
+  "scope": "Independent prospectively frozen v2 model execution. Original v1 remains unchanged; source/native acceptance is separate.",
+  "original_receipt": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/06-pallets__flask-5014-native/receipt.json",
+  "original_receipt_sha256": "3c31d334ac6fbeb1a0ce8d9226af7d5756b9894721e51d7197a7c89961aa2c3c",
+  "receipt_projection": {
+    "workflow": {
+      "workflow_index": 6,
+      "instance_id": "pallets__flask-5014",
+      "arm": "native"
+    },
+    "owner": "b568ab116a2a",
+    "created_utc": "2026-10-28T14:31:56.395141+00:00",
+    "prepare_only": false,
+    "commands": [
+      {
+        "label": "common-directories",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/06-pallets__flask-5014-native/workspace",
+          "ff3efc0ccb0d0336d2b3bf16218d32b2127054392f8be87bb5499f33cb921e26",
+          "mkdir",
+          "-p",
+          "/opt/pilot-tools/bin",
+          "/opt/pilot-inputs",
+          "/opt/pilot-state"
+        ],
+        "returncode": 0,
+        "seconds": 0.04987654276192188,
+        "log": "common-directories.log",
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "common-git",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/06-pallets__flask-5014-native/workspace",
+          "ff3efc0ccb0d0336d2b3bf16218d32b2127054392f8be87bb5499f33cb921e26",
+          "git",
+          "config",
+          "--global",
+          "--add",
+          "safe.directory",
+          "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/06-pallets__flask-5014-native/workspace"
+        ],
+        "returncode": 0,
+        "seconds": 0.04894435033202171,
+        "log": "common-git.log",
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "common-project",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/06-pallets__flask-5014-native/workspace",
+          "ff3efc0ccb0d0336d2b3bf16218d32b2127054392f8be87bb5499f33cb921e26",
+          "/opt/miniconda3/envs/testbed/bin/python",
+          "-m",
+          "pip",
+          "install",
+          "-e",
+          "."
+        ],
+        "returncode": 0,
+        "seconds": 1.1747322641313076,
+        "log": "common-project.log",
+        "log_sha256": "c18a246429787bc26de1281458ea6fedcdc28d1e8378cbda59d53f50e5adf705"
+      },
+      {
+        "label": "common-workspace-owner",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/06-pallets__flask-5014-native/workspace",
+          "ff3efc0ccb0d0336d2b3bf16218d32b2127054392f8be87bb5499f33cb921e26",
+          "chown",
+          "-R",
+          "1001:1001",
+          "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/06-pallets__flask-5014-native/workspace"
+        ],
+        "returncode": 0,
+        "seconds": 0.04036014713346958,
+        "log": "common-workspace-owner.log",
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "verify-target-identity",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/06-pallets__flask-5014-native/workspace",
+          "ff3efc0ccb0d0336d2b3bf16218d32b2127054392f8be87bb5499f33cb921e26",
+          "/opt/miniconda3/envs/testbed/bin/python",
+          "-c",
+          "import importlib.metadata as m,json,sys;print(json.dumps({\"python\":sys.version,\"packages\":sorted({(d.metadata[\"Name\"],d.version) for d in m.distributions()})}))"
+        ],
+        "returncode": 0,
+        "seconds": 0.08518241345882416,
+        "log": "verify-target-identity.log",
+        "log_sha256": "2e89290cb04be301e47ec0cc4554d474ce122f8684cffb118dba3fde3c829be0"
+      }
+    ],
+    "phases": [
+      {
+        "task_id": "pallets__flask-5014-lookup",
+        "kind": "lookup",
+        "started_utc": "2026-10-28T14:31:58.935812+00:00",
+        "prompt_sha256": "2070ec04d0fc3c38a09789eee0913e51b399af92472bf93da046cb14688061aa",
+        "source_before": {
+          "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/06-pallets__flask-5014-native/lookup-before-source.json",
+          "sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd",
+          "source_digest": "4f1f1961e0018ca6d7701269b76d3746ebf32df4c8eabfd08fea37dcc548dcaf",
+          "file_count": 251,
+          "head": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d"
+        },
+        "stream_output_tokens": 2284,
+        "session": "cold",
+        "result": {
+          "subtype": "success",
+          "duration_ms": 23868,
+          "duration_api_ms": 24462,
+          "is_error": false,
+          "num_turns": 8,
+          "session_id": "caf95ec9-c15b-4aa5-8479-428eefa6ec0f",
+          "stop_reason": "end_turn",
+          "total_cost_usd": 0.1065074,
+          "usage": {
+            "input_tokens": 12,
+            "cache_creation_input_tokens": 6270,
+            "cache_read_input_tokens": 52376,
+            "output_tokens": 2284,
+            "output_tokens_details": {
+              "thinking_tokens": 164
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            },
+            "service_tier": "standard",
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 6270,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "inference_geo": "global",
+            "iterations": [
+              {
+                "input_tokens": 2,
+                "output_tokens": 1242,
+                "cache_read_input_tokens": 10991,
+                "cache_creation_input_tokens": 389,
+                "cache_creation": {
+                  "ephemeral_5m_input_tokens": 0,
+                  "ephemeral_1h_input_tokens": 389
+                },
+                "type": "message"
+              }
+            ],
+            "speed": "standard",
+            "fallback_credit": null
+          },
+          "result": "Flask runs `after_request` callbacks in `Flask.process_response`, defined at `src/flask/app.py:1996-2022`. The ordering below comes from reading the code; I didn't run anything to trace it.\n\n**Where it's called from**\n\n`Flask.finalize_request` (`src/flask/app.py:1504`) calls `self.process_response(response)` at `src/flask/app.py:1523`. Right after that it sends the `request_finished` signal (line 1524).\n\n**The loop, `src/flask/app.py:2009-2022`**\n\n```python\n2009        ctx = request_ctx._get_current_object()\n2011        for func in ctx._after_request_functions:\n2012            response = self.ensure_sync(func)(response)\n2014        for name in chain(request.blueprints, (None,)):\n2015            if name in self.after_request_funcs:\n2016                for func in reversed(self.after_request_funcs[name]):\n2017                    response = self.ensure_sync(func)(response)\n2019        if not self.session_interface.is_null_session(ctx.session):\n2020            self.session_interface.save_session(self, ctx.session, response)\n2022        return response\n```\n\n**Order of execution**\n\n1. **Per-request callbacks run first, in the order they were registered** (lines 2011-2012). `after_this_request` adds functions to the request context's list with `ctx._after_request_functions.append(f)` (`src/flask/ctx.py:142`). That list is created at `src/flask/ctx.py:322`. The loop goes through it forwards, with no `reversed`, so these run first-in, first-out.\n\n2. **Registered callbacks run next, grouped by scope from the innermost blueprint out to the app** (line 2014). The scopes come from `chain(request.blueprints, (None,))`:\n   - `request.blueprints` (`src/flask/wrappers.py:95-109`) returns `_split_blueprint_path(self.blueprint)`.\n   - `_split_blueprint_path` (`src/flask/helpers.py:678-684`) puts the full dotted name first and then each parent name, e.g. `\"parent.child\"` \u2192 `[\"parent.child\", \"parent\"]`.\n   - The `None` key comes last. It holds app-wide callbacks: both `@app.after_request` (`src/flask/scaffold.py:576`) and `Blueprint.after_app_request`, which writes to `app.after_request_funcs[None]` (`src/flask/blueprints.py:561`).\n   - A blueprint's own `@bp.after_request` functions are filed under that blueprint's name when it is registered (`src/flask/blueprints.py:350`).\n\n   So the order is: the nested blueprint, then its parent blueprint(s), then the application.\n\n3. **Within each scope, callbacks run last-registered first** (line 2016, `reversed(...)`). The docstring states this behaviour at lines 2001-2003 (\"called in reverse order of registration\", since 0.5).\n\n**Other details**\n\n- Each callback gets the response returned by the previous one, and its return value replaces it (lines 2012 and 2017).\n- `ensure_sync` lets async callbacks be called from this synchronous code.\n- The session is saved only after every callback has run (lines 2019-2020), so callbacks can still change the session.\n\n**Overall order:** `after_this_request` callbacks (oldest first) \u2192 innermost blueprint \u2192 each parent blueprint \u2192 app-level callbacks, with each registered group running newest first.",
+          "structured_output": null,
+          "model_usage": {
+            "claude-haiku-5-5": {
+              "inputTokens": 1342,
+              "outputTokens": 20,
+              "cacheReadInputTokens": 0,
+              "cacheCreationInputTokens": 0,
+              "webSearchRequests": 0,
+              "costUSD": 0.0001442,
+              "contextWindow": 1000000,
+              "maxOutputTokens": 128000,
+              "thinkingTokens": 0,
+              "canonicalModel": "claude-haiku-5-5",
+              "provider": "firstParty",
+              "costBasis": "list"
+            },
+            "claude-opus-5-5": {
+              "inputTokens": 12,
+              "outputTokens": 2284,
+              "cacheReadInputTokens": 52376,
+              "cacheCreationInputTokens": 6270,
+              "webSearchRequests": 0,
+              "costUSD": 0.10636319999999999,
+              "contextWindow": 1000000,
+              "maxOutputTokens": 128000,
+              "thinkingTokens": 164,
+              "canonicalModel": "claude-opus-5-5",
+              "provider": "firstParty",
+              "costBasis": "list"
+            }
+          },
+          "permission_denials": [],
+          "deferred_tool_use": null,
+          "errors": null,
+          "api_error_status": null,
+          "uuid": "0733b5e3-7693-4ae6-8588-666dc7aab077",
+          "terminal_reason": "completed",
+          "origin": null
+        },
+        "status": "sdk_completed_pending_acceptance",
+        "seconds": 23.882408061996102,
+        "source_after": {
+          "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/06-pallets__flask-5014-native/lookup-after-source.json",
+          "sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd",
+          "source_digest": "4f1f1961e0018ca6d7701269b76d3746ebf32df4c8eabfd08fea37dcc548dcaf",
+          "file_count": 251,
+          "head": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d"
+        },
+        "read_only_source_preserved": true,
+        "trace": {
+          "path": "lookup-sdk.jsonl",
+          "sha256": "829d4e4cfe6fe58035a35603d61c06b812535fc5e6a2cc91086075f3dbca7ed1"
+        }
+      },
+      {
+        "task_id": "pallets__flask-5014-flow",
+        "kind": "flow",
+        "started_utc": "2026-10-28T14:32:23.563237+00:00",
+        "prompt_sha256": "67f012a4bc40d0209cbfa4c62c4b6465032a35de27a53382b2f5cfeb852364e3",
+        "source_before": {
+          "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/06-pallets__flask-5014-native/flow-before-source.json",
+          "sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd",
+          "source_digest": "4f1f1961e0018ca6d7701269b76d3746ebf32df4c8eabfd08fea37dcc548dcaf",
+          "file_count": 251,
+          "head": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d"
+        },
+        "stream_output_tokens": 4218,
+        "session": "return",
+        "result": {
+          "subtype": "success",
+          "duration_ms": 47832,
+          "duration_api_ms": 48067,
+          "is_error": false,
+          "num_turns": 5,
+          "session_id": "44ad264f-52f5-44b1-a4b4-3ec72786e489",
+          "stop_reason": "end_turn",
+          "total_cost_usd": 0.2104893,
+          "usage": {
+            "input_tokens": 10,
+            "cache_creation_input_tokens": 14168,
+            "cache_read_input_tokens": 62981,
+            "output_tokens": 4218,
+            "output_tokens_details": {
+              "thinking_tokens": 101
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            },
+            "service_tier": "standard",
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 14168,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "inference_geo": "global",
+            "iterations": [
+              {
+                "input_tokens": 2,
+                "output_tokens": 2930,
+                "cache_read_input_tokens": 20411,
+                "cache_creation_input_tokens": 578,
+                "cache_creation": {
+                  "ephemeral_5m_input_tokens": 0,
+                  "ephemeral_1h_input_tokens": 578
+                },
+                "type": "message"
+              }
+            ],
+            "speed": "standard",
+            "fallback_credit": null
+          },
+          "result": "This trace comes from reading the code; I didn't run a request or debugger, so it shows the control flow but not a captured runtime trace. Paths are under `src/flask/`. No files were changed.\n\n## 1. Entry: `Flask.__call__` \u2192 `wsgi_app`\n- **`app.py:2223-2228`**: `__call__` only calls `self.wsgi_app(environ, start_response)`. Keeping the two separate lets middleware wrap `app.wsgi_app`.\n- **`app.py:2175-2221`**: `wsgi_app` runs the whole request lifecycle:\n  - **2200**: `ctx = self.request_context(environ)` builds a `RequestContext` (`app.py:2103-2118`).\n  - **2204**: `ctx.push()`\n  - **2205**: `response = self.full_dispatch_request()`\n  - **2206-2211**: an `Exception` that escapes is passed to `handle_exception` (`app.py:1363+`, which sends `got_request_exception`). A `BaseException` is saved in `error` and re-raised.\n  - **2212**: `return response(environ, start_response)`. The Werkzeug `Response` object is itself a WSGI app, so calling it with `start_response` produces the iterable the server sends.\n  - **2213-2221** (`finally`): the debugger can keep the context alive (2214-2216), `should_ignore_error` is checked (2218-2219), then `ctx.pop(error)` runs.\n\n## 2. Request-context creation and push (`ctx.py`)\n- **`RequestContext.__init__`, `ctx.py:300-324`**:\n  - Builds `app.request_class(environ)`.\n  - Calls `app.create_url_adapter(request)` (`app.py:1872+`, which uses `url_map.bind_to_environ`). If that raises an `HTTPException`, it is stored as `request.routing_exception`.\n  - Sets up the `_after_request_functions` list.\n- **`RequestContext.push`, `ctx.py:356-383`**:\n  1. If no app context for this app is active, it creates and pushes one with `app.app_context()`. `AppContext.push` (`ctx.py:242-245`) sets `_cv_app` and sends `appcontext_pushed`.\n  2. It sets `_cv_request` (line 367). From this point the `request`, `request_ctx` and `session` proxies in `globals.py:60-69` resolve.\n  3. It opens the session with `session_interface.open_session`, falling back to `make_null_session` (`ctx.py:373-378`; implementations in `sessions.py:158, 360`).\n  4. It calls `match_request()` (`ctx.py:346-354`). This runs `url_adapter.match(return_rule=True)` and sets `request.url_rule` and `request.view_args`, or stores `routing_exception`.\n\n## 3. Dispatch: `full_dispatch_request`, `app.py:1486-1502`\n- Sets `_got_first_request = True`.\n- **1496**: `request_started.send(self)` is a blinker signal.\n- **1497**: `preprocess_request()` runs the before-request step.\n- **1498-1499**: if that returns `None`, `dispatch_request()` runs.\n- **1500-1501**: an exception goes to `handle_user_exception` (`app.py:1331-1361`). That function goes to `handle_http_exception` or a registered error handler, or re-raises. The handler's result becomes `rv`.\n- **1502**: `finalize_request(rv)`\n\n### Before-request: `preprocess_request`, `app.py:1969-1994`\n- Scopes are `(None, *reversed(request.blueprints))`, meaning the app first and then blueprints from outer to inner (`request.blueprints` is at `wrappers.py:95`).\n- It first calls every `url_value_preprocessors[name]` function with `(endpoint, view_args)`.\n- It then calls every `before_request_funcs[name]` function through `ensure_sync`. The first non-`None` return value short-circuits: it replaces the view's return value and the view never runs.\n\n### View: `dispatch_request`, `app.py:1461-1484`\n- If `routing_exception` is set, it calls `raise_routing_exception` (`app.py:1433-1459`). This raises, for example, a 404 or 405, which is caught in `full_dispatch_request`.\n- An `OPTIONS` request on a rule with `provide_automatic_options` gets `make_default_options_response()` (`app.py:1533+`).\n- Otherwise, **line 1484**: `self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)`.\n  - `ensure_sync` (`app.py:1556-1568`) wraps `async def` views with `async_to_sync`.\n\n## 4. Response path: `finalize_request`, `app.py:1504-1531`\n- **`make_response(rv)`, `app.py:1732-1870`**: turns `str`, `bytes`, `dict`, `list`, tuple, iterator, or WSGI callable results into `response_class`. It applies tuple status and headers at 1859-1868.\n- **`process_response`, `app.py:1996-2022`**, runs after-request processing in this order:\n  1. Per-request `ctx._after_request_functions`, registered with `after_this_request` (`ctx.py:113+`).\n  2. `after_request_funcs` over `chain(request.blueprints, (None,))`, so innermost blueprint first and the app last, each list in reverse registration order.\n  3. `session_interface.save_session(...)`, unless the session is a null session (`sessions.py:170, 376`).\n- `request_finished.send(self, response=response)` follows. An exception here re-raises unless `from_error_handler=True`, in which case it is only logged.\n\nThe response goes back through `full_dispatch_request` to `wsgi_app`, which runs `response(environ, start_response)` at line 2212.\n\n## 5. Cleanup: `RequestContext.pop`, `ctx.py:385-420`\nThis runs from the `finally` block in `wsgi_app`, so it happens even after an unhandled error:\n- When the last push is being popped (`clear_request`):\n  - `app.do_teardown_request(exc)` (`app.py:2024-2055`) runs `teardown_request_funcs` innermost blueprint first, then the app, each in reverse order, and sends `request_tearing_down`.\n  - Then `request.close()` runs.\n- It resets `_cv_request` (407) and clears `environ[\"werkzeug.request\"]`.\n- If this context pushed the app context, it calls `app_ctx.pop(exc)` (`ctx.py:247-263`). That runs `do_teardown_appcontext` (`app.py:2057-2079`, `teardown_appcontext_funcs` in reverse, then the `appcontext_tearing_down` signal), resets `_cv_app`, and sends `appcontext_popped`.\n\n## Callback dispatch versus what the trace actually shows\n- **Fixed calls** (direct method calls, static evidence): `__call__` \u2192 `wsgi_app` \u2192 `request_context`/`push` \u2192 `full_dispatch_request` \u2192 `preprocess_request` \u2192 `dispatch_request` \u2192 `finalize_request` \u2192 `make_response` \u2192 `process_response` \u2192 `response(environ, start_response)` \u2192 `pop` \u2192 `do_teardown_request` \u2192 `AppContext.pop` \u2192 `do_teardown_appcontext`.\n- **Registry or callback dispatch** (which code runs depends on what users registered):\n  - `view_functions[endpoint]`, filled by `add_url_rule` (`scaffold.py:526`, `app.py:1076`).\n  - `before_request_funcs`, `after_request_funcs`, `teardown_request_funcs` and `url_value_preprocessors`, filled by the decorators at `scaffold.py:532-652`.\n  - Error handlers from `_find_error_handler` (`app.py:1238`).\n  - `session_interface` methods, which can be overridden.\n  - Blinker signals (`request_started`, `request_finished`, `request_tearing_down`, `appcontext_*`), whose receivers can't be known statically.\n  - Overridable hooks: `ensure_sync`, `match_request`, `should_ignore_error`, and middleware that replaces `app.wsgi_app`.\n\nBecause of these dispatch points, the sequence above is the framework's skeleton, not a full trace of every function a given app executes. In particular:\n- If the response body is streamed, part of the iteration can happen after `ctx.pop` unless the view uses `stream_with_context`.\n- The test client or debugger can delay the pop through `werkzeug.debug.preserve_context`.",
+          "structured_output": null,
+          "model_usage": {
+            "claude-haiku-5-5": {
+              "inputTokens": 1371,
+              "outputTokens": 24,
+              "cacheReadInputTokens": 0,
+              "cacheCreationInputTokens": 0,
+              "webSearchRequests": 0,
+              "costUSD": 0.0001491,
+              "contextWindow": 1000000,
+              "maxOutputTokens": 128000,
+              "thinkingTokens": 0,
+              "canonicalModel": "claude-haiku-5-5",
+              "provider": "firstParty",
+              "costBasis": "list"
+            },
+            "claude-opus-5-5": {
+              "inputTokens": 10,
+              "outputTokens": 4218,
+              "cacheReadInputTokens": 62981,
+              "cacheCreationInputTokens": 14168,
+              "webSearchRequests": 0,
+              "costUSD": 0.21034019999999998,
+              "contextWindow": 1000000,
+              "maxOutputTokens": 128000,
+              "thinkingTokens": 101,
+              "canonicalModel": "claude-opus-5-5",
+              "provider": "firstParty",
+              "costBasis": "list"
+            }
+          },
+          "permission_denials": [],
+          "deferred_tool_use": null,
+          "errors": null,
+          "api_error_status": null,
+          "uuid": "64f37897-724b-4f3d-8c0a-bc2c7c312df2",
+          "terminal_reason": "completed",
+          "origin": null
+        },
+        "status": "sdk_completed_pending_acceptance",
+        "seconds": 47.847096832469106,
+        "source_after": {
+          "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/06-pallets__flask-5014-native/flow-after-source.json",
+          "sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd",
+          "source_digest": "4f1f1961e0018ca6d7701269b76d3746ebf32df4c8eabfd08fea37dcc548dcaf",
+          "file_count": 251,
+          "head": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d"
+        },
+        "read_only_source_preserved": true,
+        "trace": {
+          "path": "flow-sdk.jsonl",
+          "sha256": "c6427e9794fd59a000022d4a7ba27bd485bb95f37789c02a56c1c6a25ddb2e9d"
+        }
+      },
+      {
+        "task_id": "pallets__flask-5014-impact",
+        "kind": "impact",
+        "started_utc": "2026-10-28T14:33:11.452306+00:00",
+        "prompt_sha256": "b8d0a610f8fd7b8030529ef0c245ea4c15e8f7230ee1c5045509991afc74d63a",
+        "source_before": {
+          "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/06-pallets__flask-5014-native/impact-before-source.json",
+          "sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd",
+          "source_digest": "4f1f1961e0018ca6d7701269b76d3746ebf32df4c8eabfd08fea37dcc548dcaf",
+          "file_count": 251,
+          "head": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d"
+        },
+        "stream_output_tokens": 3879,
+        "session": "return",
+        "result": {
+          "subtype": "success",
+          "duration_ms": 44495,
+          "duration_api_ms": 91980,
+          "is_error": false,
+          "num_turns": 6,
+          "session_id": "44ad264f-52f5-44b1-a4b4-3ec72786e489",
+          "stop_reason": "end_turn",
+          "total_cost_usd": 0.4102217,
+          "usage": {
+            "input_tokens": 10,
+            "cache_creation_input_tokens": 11918,
+            "cache_read_input_tokens": 133842,
+            "output_tokens": 3879,
+            "output_tokens_details": {
+              "thinking_tokens": 294
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            },
+            "service_tier": "standard",
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 11918,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "inference_geo": "global",
+            "iterations": [
+              {
+                "input_tokens": 2,
+                "output_tokens": 2895,
+                "cache_read_input_tokens": 31987,
+                "cache_creation_input_tokens": 920,
+                "cache_creation": {
+                  "ephemeral_5m_input_tokens": 0,
+                  "ephemeral_1h_input_tokens": 920
+                },
+                "type": "message"
+              }
+            ],
+            "speed": "standard",
+            "fallback_credit": null
+          },
+          "result": "# Reviewing a change to callback order in `Flask.process_response`\n\nTwo existing tests would catch a change in the order: `test_before_after_request_order` (`tests/test_basic.py:826-861`) and `test_request_signals` (`tests/test_signals.py:61-103`). But no test I found pins down the two most likely orderings to change: `after_this_request` callbacks versus `@after_request` callbacks, and blueprint versus app callbacks. This comes from reading the code and tests; I didn't run anything or change any files.\n\n## The current order (`src/flask/app.py:1996-2022`)\n\n```\n2009  ctx = request_ctx._get_current_object()\n2011  for func in ctx._after_request_functions:            # (1) per-request, in registration order\n2012      response = self.ensure_sync(func)(response)\n2014  for name in chain(request.blueprints, (None,)):       # (2) innermost blueprint \u2192 parents \u2192 app\n2015      if name in self.after_request_funcs:\n2016          for func in reversed(self.after_request_funcs[name]):   # each scope in reverse order\n2017              response = self.ensure_sync(func)(response)\n2019  if not self.session_interface.is_null_session(ctx.session):\n2020      self.session_interface.save_session(self, ctx.session, response)   # (3) session saved last\n```\n\nEach callback receives the previous callback's return value, so changing the order changes the final response. It also changes whether the session cookie is written after the last callback has run.\n\n## Registration mechanisms to review\n\n| Mechanism | Where it is stored | Source |\n|---|---|---|\n| `flask.after_this_request(f)` | `RequestContext._after_request_functions`, a plain list that exists only for the current request. Raises `RuntimeError` if no request context is active. | `src/flask/ctx.py:113-143` (append at 142); list created at `src/flask/ctx.py:321` |\n| `app.after_request` / `bp.after_request` | `self.after_request_funcs.setdefault(None, []).append(f)` | `src/flask/scaffold.py:559-577` |\n| `bp.after_app_request` | Deferred; adds to the **app's** `None` key, so it runs for every request, not just this blueprint's | `src/flask/blueprints.py:556-562` |\n| Blueprint registration merge | `extend()` renames the key `None` to the blueprint's dotted name (for example `parent.child`) and appends to the parent's dict | `src/flask/blueprints.py:325-331`, `350` |\n| Which scopes apply to a request | `request.blueprints`, the current blueprint plus its parents, innermost first | `src/flask/wrappers.py:94-112` |\n| Async callbacks | Each callback is wrapped by `ensure_sync` | `src/flask/app.py:1556-1568` |\n| What runs after `process_response` | `request_finished` signal in `finalize_request` | `src/flask/app.py:1521-1524` |\n\nTwo other places depend on this order:\n- **Error handling.** `finalize_request(..., from_error_handler=True)` logs exceptions from these callbacks instead of raising them (`src/flask/app.py:1520-1530`).\n- **Documentation.** The `after_request` docstring says later callbacks are skipped once one raises (`src/flask/scaffold.py:565-568`). `process_response` has a versionchanged note about the reverse order (`src/flask/app.py:2002-2004`).\n\n## How teardown differs from after-request processing\n\n- **Different stage and caller.** `do_teardown_request` (`src/flask/app.py:2024-2055`) is called from `RequestContext.pop` (`src/flask/ctx.py:393-398`), inside the `finally` block of `wsgi_app` (`src/flask/app.py:2213-2221`). `process_response` is called from `finalize_request`. So teardown runs even when the response was never finalized.\n- **Different arguments and return values.** Teardown functions receive `exc` and their return values are ignored (`src/flask/scaffold.py:599-605`). After-request functions receive the response and must return one.\n- **Separate storage.** `teardown_request_funcs` (`src/flask/scaffold.py:610`) and `bp.teardown_app_request` (`src/flask/blueprints.py:566-572`) have their own storage. There is no per-request equivalent of `after_this_request` for teardown.\n- **Same iteration pattern, different loop.** Teardown also uses `chain(request.blueprints, (None,))` with `reversed(...)` (`src/flask/app.py:2050-2053`). That loop is in a different function, so changing `process_response` doesn't change teardown order. The tests below check both, and their teardown assertions should keep passing.\n\n## Two existing tests\n\n### 1. `tests/test_basic.py:826-861`, `test_before_after_request_order`\n- **Registration:** `after1` appends `4` (lines 837-840) and is registered before `after2`, which appends `3` (lines 842-845). The teardowns follow the same pattern: `finish1` appends `6` and `finish2` appends `5` (lines 847-853).\n- **Assertion:** line 861 asserts `called == [1, 2, 3, 4, 5, 6]`.\n  - Before-request callbacks run in registration order (`preprocess_request`, `src/flask/app.py:1986-1992`).\n  - After-request callbacks run in reverse registration order, because of `reversed(...)` at `src/flask/app.py:2016`.\n  - All after-request callbacks finish before any teardown, because teardown runs later from `ctx.pop`.\n  - Teardowns also run in reverse (`src/flask/app.py:2052`).\n- **Effect of a reorder:** this test fails if the order within the app's `None` scope stops being reversed, or if after-request processing is moved after teardown.\n\n### 2. `tests/test_signals.py:61-103`, `test_request_signals`\n- **Setup:** an app `after_request` handler appends `\"after-handler\"` and replaces the body with `\"stuff\"` (lines 76-80). A `request_finished` receiver asserts `response.data == b\"stuff\"` (line 69) and appends `\"after-signal\"`.\n- **Assertions:**\n  - Line 92 asserts that the client received `b\"stuff\"`.\n  - Lines 94-100 assert the order `before-signal, before-handler, handler, after-handler, after-signal`.\n  - This shows that `request_finished.send(...)` (`src/flask/app.py:1524`) runs after `process_response` returns, and that the signal sees the response the callbacks changed.\n- **Effect of a reorder:** this test fails if reordering moves any callback after the signal or stops returning the callback-modified response.\n\n## Other related tests that don't pin the order\n- `tests/test_basic.py:737-749`, `test_after_request_processing`: only asserts that the `X-Foo` header set by an `after_this_request` callback appears (line 749). It uses only one callback, so it says nothing about ordering.\n- `tests/test_blueprints.py:690-718`: asserts `[\"before\", \"after\", \"teardown\"]` for a single blueprint (line 718). It doesn't compare blueprint and app callbacks.\n- `tests/test_blueprints.py:836+`, `test_nested_callback_order`: checks nested app \u2192 parent \u2192 child order, but only for `before_request`, `teardown_request` and context processors. It registers no `after_request`.\n- `tests/test_async.py:97+`: checks that async app and blueprint `after_request` functions are called, not their order.\n\n## What isn't tested\nI found no test asserting:\n- that `after_this_request` callbacks run before app and blueprint `after_request` callbacks, or that they run in registration order (`src/flask/app.py:2011`);\n- that a blueprint's `after_request` runs before the app's, or that a child blueprint's runs before its parent's (`chain(request.blueprints, (None,))` at `src/flask/app.py:2014`);\n- that `save_session` sees the final response.\n\nIf someone changes this order, these three cases are where to add tests, alongside the two tests above.",
+          "structured_output": null,
+          "model_usage": {
+            "claude-haiku-5-5": {
+              "inputTokens": 1371,
+              "outputTokens": 24,
+              "cacheReadInputTokens": 0,
+              "cacheCreationInputTokens": 0,
+              "webSearchRequests": 0,
+              "costUSD": 0.0001491,
+              "contextWindow": 1000000,
+              "maxOutputTokens": 128000,
+              "thinkingTokens": 0,
+              "canonicalModel": "claude-haiku-5-5",
+              "provider": "firstParty",
+              "costBasis": "list"
+            },
+            "claude-opus-5-5": {
+              "inputTokens": 20,
+              "outputTokens": 8097,
+              "cacheReadInputTokens": 196823,
+              "cacheCreationInputTokens": 26086,
+              "webSearchRequests": 0,
+              "costUSD": 0.4100726,
+              "contextWindow": 1000000,
+              "maxOutputTokens": 128000,
+              "thinkingTokens": 395,
+              "canonicalModel": "claude-opus-5-5",
+              "provider": "firstParty",
+              "costBasis": "list"
+            }
+          },
+          "permission_denials": [],
+          "deferred_tool_use": null,
+          "errors": null,
+          "api_error_status": null,
+          "uuid": "181f5d94-3a78-49af-aa42-9cbebfd5f3af",
+          "terminal_reason": "completed",
+          "origin": null
+        },
+        "status": "sdk_completed_pending_acceptance",
+        "seconds": 44.50713383592665,
+        "source_after": {
+          "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/06-pallets__flask-5014-native/impact-after-source.json",
+          "sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd",
+          "source_digest": "4f1f1961e0018ca6d7701269b76d3746ebf32df4c8eabfd08fea37dcc548dcaf",
+          "file_count": 251,
+          "head": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d"
+        },
+        "read_only_source_preserved": true,
+        "trace": {
+          "path": "impact-sdk.jsonl",
+          "sha256": "9ac362a6df9bf1eaf38c4137d5ec33f8c5efe4dcd3530b607c6ba6cb9d70458e"
+        }
+      },
+      {
+        "task_id": "pallets__flask-5014-repair",
+        "kind": "repair",
+        "started_utc": "2026-10-28T14:33:56.000445+00:00",
+        "prompt_sha256": "58f62ff72e56f9b79276b433c9fc5ce1ef5e3d0de347a7831a68b6e29dc9ca00",
+        "source_before": {
+          "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/06-pallets__flask-5014-native/repair-before-source.json",
+          "sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd",
+          "source_digest": "4f1f1961e0018ca6d7701269b76d3746ebf32df4c8eabfd08fea37dcc548dcaf",
+          "file_count": 251,
+          "head": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d"
+        },
+        "stream_output_tokens": 2042,
+        "session": "return",
+        "result": {
+          "subtype": "success",
+          "duration_ms": 32949,
+          "duration_api_ms": 120740,
+          "is_error": false,
+          "num_turns": 9,
+          "session_id": "44ad264f-52f5-44b1-a4b4-3ec72786e489",
+          "stop_reason": "end_turn",
+          "total_cost_usd": 0.5491859,
+          "usage": {
+            "input_tokens": 12,
+            "cache_creation_input_tokens": 6741,
+            "cache_read_input_tokens": 220741,
+            "output_tokens": 2042,
+            "output_tokens_details": {
+              "thinking_tokens": 91
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            },
+            "service_tier": "standard",
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 6741,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "inference_geo": "global",
+            "iterations": [
+              {
+                "input_tokens": 2,
+                "output_tokens": 538,
+                "cache_read_input_tokens": 39166,
+                "cache_creation_input_tokens": 482,
+                "cache_creation": {
+                  "ephemeral_5m_input_tokens": 0,
+                  "ephemeral_1h_input_tokens": 482
+                },
+                "type": "message"
+              }
+            ],
+            "speed": "standard",
+            "fallback_credit": null
+          },
+          "result": "Creating a `Blueprint` with an empty name now raises `ValueError(\"'name' may not be empty.\")`. The blueprint tests pass; the full suite has 8 failures that also occur without my change.\n\n**Changes:**\n- **`src/flask/blueprints.py:193-194`**: in `Blueprint.__init__`, a `ValueError` is raised if `name` is empty. It runs just before the existing check that rejects dots in the name, so both name checks sit together.\n- **`tests/test_blueprints.py:259-261`**: new regression test `test_empty_name_not_allowed`, which asserts that `flask.Blueprint(\"\", __name__)` raises `ValueError`.\n- **`CHANGES.rst`**: added an entry under \"Unreleased\". I left off the `:issue:` reference because the issue's number isn't in the checkout; add it if you have it.\n\n**Verification:**\n- `pytest tests/test_blueprints.py`: all 60 tests pass, including the new one.\n- Full `pytest tests`: 467 passed, 10 skipped, 8 failed. I stashed my changes and ran it again: the same 8 tests fail and the only difference is one fewer pass (my new test). The failures are:\n  - three session/`SERVER_NAME` assertions in `tests/test_basic.py`;\n  - `DeprecationWarning` errors in `tests/test_json.py::test_modified_url_encoding` and four session tests in `tests/test_testing.py`.\n\n  They look like a mismatch with the installed dependency versions, unrelated to blueprints.\n\nNothing is committed; the changes are in the working tree.",
+          "structured_output": null,
+          "model_usage": {
+            "claude-haiku-5-5": {
+              "inputTokens": 1371,
+              "outputTokens": 24,
+              "cacheReadInputTokens": 0,
+              "cacheCreationInputTokens": 0,
+              "webSearchRequests": 0,
+              "costUSD": 0.0001491,
+              "contextWindow": 1000000,
+              "maxOutputTokens": 128000,
+              "thinkingTokens": 0,
+              "canonicalModel": "claude-haiku-5-5",
+              "provider": "firstParty",
+              "costBasis": "list"
+            },
+            "claude-opus-5-5": {
+              "inputTokens": 32,
+              "outputTokens": 10139,
+              "cacheReadInputTokens": 417564,
+              "cacheCreationInputTokens": 32827,
+              "webSearchRequests": 0,
+              "costUSD": 0.5490368,
+              "contextWindow": 1000000,
+              "maxOutputTokens": 128000,
+              "thinkingTokens": 486,
+              "canonicalModel": "claude-opus-5-5",
+              "provider": "firstParty",
+              "costBasis": "list"
+            }
+          },
+          "permission_denials": [],
+          "deferred_tool_use": null,
+          "errors": null,
+          "api_error_status": null,
+          "uuid": "73531cde-3380-4c87-a143-f0b61a7fdc5d",
+          "terminal_reason": "completed",
+          "origin": null
+        },
+        "status": "sdk_completed_pending_acceptance",
+        "seconds": 32.957407385110855,
+        "source_after": {
+          "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/06-pallets__flask-5014-native/repair-after-source.json",
+          "sha256": "7060fb83d21aace691c5b2b7e9657079231d5dfaad0700d212108f459f5312f6",
+          "source_digest": "7019b16a955a001d4ce141aa3b3963922a39ddd9ecf934ee679ebbd567794a38",
+          "file_count": 251,
+          "head": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d"
+        },
+        "read_only_source_preserved": false,
+        "submission": {
+          "path": "repair.patch",
+          "sha256": "5bdcb258f2c26e805863ab1427626dab60a73910001cdd3ea50fa701ca436096",
+          "bytes": 1357,
+          "attribution": "whole workspace diff; includes any separately recorded setup metadata"
+        },
+        "trace": {
+          "path": "repair-sdk.jsonl",
+          "sha256": "0dbc60c516d013e190b5878547a1365ae95f96eb06fd384036d170dec0d4860e"
+        }
+      },
+      {
+        "task_id": "pallets__flask-5014-post_edit",
+        "kind": "post_edit",
+        "started_utc": "2026-10-28T14:34:29.002108+00:00",
+        "prompt_sha256": "57c0e027dc4b7eb40560f7c7c2ff8f54974fb1c80214ac5663b28b9c12145e8e",
+        "source_before": {
+          "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/06-pallets__flask-5014-native/post_edit-before-source.json",
+          "sha256": "d123354ba95c9e2bf659279a456a11a79971adbcad798f448d3440969e7ef880",
+          "source_digest": "2993282a6d44343699dc95613098a9991ab3b80a0806cbe23353073b303f18f3",
+          "file_count": 252,
+          "head": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d"
+        },
+        "stream_output_tokens": 2077,
+        "session": "return",
+        "result": {
+          "subtype": "success",
+          "duration_ms": 25014,
+          "duration_api_ms": 145426,
+          "is_error": false,
+          "num_turns": 4,
+          "session_id": "44ad264f-52f5-44b1-a4b4-3ec72786e489",
+          "stop_reason": "end_turn",
+          "total_cost_usd": 0.6405975,
+          "usage": {
+            "input_tokens": 8,
+            "cache_creation_input_tokens": 2192,
+            "cache_read_input_tokens": 161518,
+            "output_tokens": 2077,
+            "output_tokens_details": {
+              "thinking_tokens": 161
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            },
+            "service_tier": "standard",
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 2192,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "inference_geo": "global",
+            "iterations": [
+              {
+                "input_tokens": 2,
+                "output_tokens": 1461,
+                "cache_read_input_tokens": 40873,
+                "cache_creation_input_tokens": 967,
+                "cache_creation": {
+                  "ephemeral_5m_input_tokens": 0,
+                  "ephemeral_1h_input_tokens": 967
+                },
+                "type": "message"
+              }
+            ],
+            "speed": "standard",
+            "fallback_credit": null
+          },
+          "result": "`dispatch_probe_request` does not start a WSGI server. It runs the view in the same process and returns the Flask `Response` object without calling it as a WSGI app. This comes from reading the code; I didn't run it.\n\n## Where it is\n\nIt is defined in `src/flask/_pilot_post_edit.py:1-5`, which is untracked (`??` in `git status`):\n\n```python\n1  from .app import Flask\n2\n3  def dispatch_probe_request(app: Flask, path: str = \"/\"):\n4      with app.test_request_context(path):\n5          return app.full_dispatch_request()\n```\n\nNothing else in the repository references it. It isn't exported from `src/flask/__init__.py`, so you can only use it by importing `flask._pilot_post_edit` directly.\n\n## Server or in-process dispatch?\n\nIt never opens a socket and never calls `run_simple` or `app.run`.\n- **Request setup:** `test_request_context(path)` (`src/flask/app.py:2119-2173`) creates a fake WSGI environ with `EnvironBuilder` (`src/flask/testing.py:23`, called at `src/flask/app.py:2168`). It then wraps that environ in a `RequestContext` through `self.request_context(...)` (line 2171), and closes the builder at line 2173.\n- **Dispatch:** `app.full_dispatch_request()` (`src/flask/app.py:1486-1502`) runs in the same thread:\n  - before-request callbacks through `preprocess_request` (line 1497);\n  - the view through `dispatch_request` (line 1499), if no before-request callback returned a value;\n  - error handling, then `finalize_request` (line 1502), which builds the response and runs after-request callbacks.\n\nIt skips both ends of the normal path, `Flask.__call__` and `wsgi_app`:\n- `handle_exception` is never called. In `wsgi_app` it handles exceptions that escape `full_dispatch_request` (`src/flask/app.py:2206-2208`). Here those exceptions go straight to the caller.\n- `response(environ, start_response)` (`src/flask/app.py:2212`) is never called, so no WSGI status, headers or body iterable is produced.\n\n## Cleanup boundary\n\nThe `with` block is the cleanup boundary:\n- **Entry:** `RequestContext.__enter__` (`src/flask/ctx.py:422-424`) calls `push()` (`src/flask/ctx.py:356-383`). That pushes an app context if needed, sets `_cv_request`, opens the session and matches the URL.\n- **Exit:** after `full_dispatch_request()` returns its `Response`, the `return` leaves the block. `__exit__` (`src/flask/ctx.py:426-432`) then calls `self.pop(exc_value)`. `RequestContext.pop` (`src/flask/ctx.py:385-420`) then:\n  - calls `app.do_teardown_request(exc)` (line 399), which runs the teardown callbacks;\n  - closes the request;\n  - resets `_cv_request`;\n  - calls `app_ctx.pop(exc)` (line 415), which runs app-context teardown.\n\nCleanup therefore finishes before the caller receives the response. Unlike `wsgi_app`, there is no `werkzeug.debug.preserve_context` hook and no `should_ignore_error` filter (compare `src/flask/app.py:2213-2221`). The exception passed to teardown is whatever `__exit__` receives.\n\nThe returned response can outlive its context. If its body is a generator that reads `request` or `session` without `stream_with_context`, iterating it later will fail because the context has already been popped.\n\n## Next production call\n\nWhen the context is entered, the next call from Flask's production code is `app.full_dispatch_request()` (`src/flask/app.py:1486`). That is the same method the production path calls at `src/flask/app.py:2205`. From there the same chain runs that I traced in my first answer: `preprocess_request`, then `dispatch_request` (`ensure_sync(view_functions[endpoint])`), then `finalize_request`, `make_response` and `process_response`.\n\nThat chain is fixed. Which callbacks and view actually run depends on what the app registered, so this is static evidence, not a runtime trace.",
+          "structured_output": null,
+          "model_usage": {
+            "claude-haiku-5-5": {
+              "inputTokens": 1371,
+              "outputTokens": 24,
+              "cacheReadInputTokens": 0,
+              "cacheCreationInputTokens": 0,
+              "webSearchRequests": 0,
+              "costUSD": 0.0001491,
+              "contextWindow": 1000000,
+              "maxOutputTokens": 128000,
+              "thinkingTokens": 0,
+              "canonicalModel": "claude-haiku-5-5",
+              "provider": "firstParty",
+              "costBasis": "list"
+            },
+            "claude-opus-5-5": {
+              "inputTokens": 40,
+              "outputTokens": 12216,
+              "cacheReadInputTokens": 579082,
+              "cacheCreationInputTokens": 35019,
+              "webSearchRequests": 0,
+              "costUSD": 0.6404484,
+              "contextWindow": 1000000,
+              "maxOutputTokens": 128000,
+              "thinkingTokens": 647,
+              "canonicalModel": "claude-opus-5-5",
+              "provider": "firstParty",
+              "costBasis": "list"
+            }
+          },
+          "permission_denials": [],
+          "deferred_tool_use": null,
+          "errors": null,
+          "api_error_status": null,
+          "uuid": "2715b445-0981-48cf-9668-977167c14e7f",
+          "terminal_reason": "completed",
+          "origin": null
+        },
+        "status": "sdk_completed_pending_acceptance",
+        "seconds": 25.020461155101657,
+        "source_after": {
+          "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/06-pallets__flask-5014-native/post_edit-after-source.json",
+          "sha256": "d123354ba95c9e2bf659279a456a11a79971adbcad798f448d3440969e7ef880",
+          "source_digest": "2993282a6d44343699dc95613098a9991ab3b80a0806cbe23353073b303f18f3",
+          "file_count": 252,
+          "head": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d"
+        },
+        "read_only_source_preserved": true,
+        "trace": {
+          "path": "post_edit-sdk.jsonl",
+          "sha256": "f1567293372e9d683ea79ea50a09a549a63473cdef9c5977cc89946046178f50"
+        }
+      }
+    ],
+    "sessions": [
+      {
+        "name": "cold",
+        "started_utc": "2026-10-28T14:31:58.523804+00:00",
+        "budget_requested_usd": 20.0,
+        "rate_events": [
+          {
+            "rate_limit_info": {
+              "status": "allowed",
+              "resets_at": 1793204400,
+              "rate_limit_type": "five_hour",
+              "utilization": null,
+              "overage_status": "rejected",
+              "overage_resets_at": null,
+              "overage_disabled_reason": "org_level_disabled",
+              "raw": {
+                "status": "allowed",
+                "resetsAt": 1793204400,
+                "rateLimitType": "five_hour",
+                "overageStatus": "rejected",
+                "overageDisabledReason": "org_level_disabled",
+                "isUsingOverage": false,
+                "unifiedWindows": {
+                  "five_hour": {
+                    "utilization": 0.02,
+                    "resetsAt": 1793204400,
+                    "status": "allowed"
+                  },
+                  "seven_day": {
+                    "utilization": 0.45,
+                    "resetsAt": 1793278800,
+                    "status": "allowed"
+                  }
+                }
+              }
+            },
+            "uuid": "ee603229-690d-452b-8c4d-3c9dc3950db1",
+            "session_id": "caf95ec9-c15b-4aa5-8479-428eefa6ec0f"
+          }
+        ],
+        "results": [
+          {
+            "phase_result_reference": "lookup"
+          }
+        ],
+        "init": {
+          "model": "claude-opus-5-5",
+          "apiKeySource": "none",
+          "tools": [
+            "Bash",
+            "Edit",
+            "Glob",
+            "Grep",
+            "Read",
+            "ToolSearch",
+            "Write"
+          ],
+          "mcp_servers": [],
+          "claude_code_version": "2.1.310"
+        },
+        "connect_seconds": 0.4115002676844597,
+        "latest_query_result_complete": true,
+        "closed": true,
+        "seconds": 24.572892975062132,
+        "usage_complete": true,
+        "final_result": {
+          "subtype": "success",
+          "duration_ms": 23868,
+          "duration_api_ms": 24462,
+          "is_error": false,
+          "num_turns": 8,
+          "session_id": "caf95ec9-c15b-4aa5-8479-428eefa6ec0f",
+          "stop_reason": "end_turn",
+          "total_cost_usd": 0.1065074,
+          "usage": {
+            "input_tokens": 12,
+            "cache_creation_input_tokens": 6270,
+            "cache_read_input_tokens": 52376,
+            "output_tokens": 2284,
+            "output_tokens_details": {
+              "thinking_tokens": 164
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            },
+            "service_tier": "standard",
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 6270,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "inference_geo": "global",
+            "iterations": [
+              {
+                "input_tokens": 2,
+                "output_tokens": 1242,
+                "cache_read_input_tokens": 10991,
+                "cache_creation_input_tokens": 389,
+                "cache_creation": {
+                  "ephemeral_5m_input_tokens": 0,
+                  "ephemeral_1h_input_tokens": 389
+                },
+                "type": "message"
+              }
+            ],
+            "speed": "standard",
+            "fallback_credit": null
+          },
+          "result": {
+            "phase_answer_reference": "lookup"
+          },
+          "structured_output": null,
+          "model_usage": {
+            "claude-haiku-5-5": {
+              "inputTokens": 1342,
+              "outputTokens": 20,
+              "cacheReadInputTokens": 0,
+              "cacheCreationInputTokens": 0,
+              "webSearchRequests": 0,
+              "costUSD": 0.0001442,
+              "contextWindow": 1000000,
+              "maxOutputTokens": 128000,
+              "thinkingTokens": 0,
+              "canonicalModel": "claude-haiku-5-5",
+              "provider": "firstParty",
+              "costBasis": "list"
+            },
+            "claude-opus-5-5": {
+              "inputTokens": 12,
+              "outputTokens": 2284,
+              "cacheReadInputTokens": 52376,
+              "cacheCreationInputTokens": 6270,
+              "webSearchRequests": 0,
+              "costUSD": 0.10636319999999999,
+              "contextWindow": 1000000,
+              "maxOutputTokens": 128000,
+              "thinkingTokens": 164,
+              "canonicalModel": "claude-opus-5-5",
+              "provider": "firstParty",
+              "costBasis": "list"
+            }
+          },
+          "permission_denials": [],
+          "deferred_tool_use": null,
+          "errors": null,
+          "api_error_status": null,
+          "uuid": "0733b5e3-7693-4ae6-8588-666dc7aab077",
+          "terminal_reason": "completed",
+          "origin": null
+        },
+        "normalized_tokens": 62304,
+        "sdk_estimate_usd": 0.1065074
+      },
+      {
+        "name": "return",
+        "started_utc": "2026-10-28T14:32:23.097753+00:00",
+        "budget_requested_usd": 19.8934926,
+        "rate_events": [
+          {
+            "rate_limit_info": {
+              "status": "allowed",
+              "resets_at": 1793204400,
+              "rate_limit_type": "five_hour",
+              "utilization": null,
+              "overage_status": "rejected",
+              "overage_resets_at": null,
+              "overage_disabled_reason": "org_level_disabled",
+              "raw": {
+                "status": "allowed",
+                "resetsAt": 1793204400,
+                "rateLimitType": "five_hour",
+                "overageStatus": "rejected",
+                "overageDisabledReason": "org_level_disabled",
+                "isUsingOverage": false,
+                "unifiedWindows": {
+                  "five_hour": {
+                    "utilization": 0.02,
+                    "resetsAt": 1793204400,
+                    "status": "allowed"
+                  },
+                  "seven_day": {
+                    "utilization": 0.45,
+                    "resetsAt": 1793278800,
+                    "status": "allowed"
+                  }
+                }
+              }
+            },
+            "uuid": "ca714087-7ef7-4144-b49a-ea661d7732ed",
+            "session_id": "44ad264f-52f5-44b1-a4b4-3ec72786e489"
+          },
+          {
+            "rate_limit_info": {
+              "status": "allowed",
+              "resets_at": 1793204400,
+              "rate_limit_type": "five_hour",
+              "utilization": null,
+              "overage_status": "rejected",
+              "overage_resets_at": null,
+              "overage_disabled_reason": "org_level_disabled",
+              "raw": {
+                "status": "allowed",
+                "resetsAt": 1793204400,
+                "rateLimitType": "five_hour",
+                "overageStatus": "rejected",
+                "overageDisabledReason": "org_level_disabled",
+                "isUsingOverage": false,
+                "unifiedWindows": {
+                  "five_hour": {
+                    "utilization": 0.03,
+                    "resetsAt": 1793204400,
+                    "status": "allowed"
+                  },
+                  "seven_day": {
+                    "utilization": 0.45,
+                    "resetsAt": 1793278800,
+                    "status": "allowed"
+                  }
+                }
+              }
+            },
+            "uuid": "f7b0091c-6c20-4f10-8e59-9e3c1001a45e",
+            "session_id": "44ad264f-52f5-44b1-a4b4-3ec72786e489"
+          }
+        ],
+        "results": [
+          {
+            "phase_result_reference": "flow"
+          },
+          {
+            "phase_result_reference": "impact"
+          },
+          {
+            "phase_result_reference": "repair"
+          },
+          {
+            "phase_result_reference": "post_edit"
+          }
+        ],
+        "init": {
+          "model": "claude-opus-5-5",
+          "apiKeySource": "none",
+          "tools": [
+            "Bash",
+            "Edit",
+            "Glob",
+            "Grep",
+            "Read",
+            "ToolSearch",
+            "Write"
+          ],
+          "mcp_servers": [],
+          "claude_code_version": "2.1.310"
+        },
+        "connect_seconds": 0.4557804223150015,
+        "latest_query_result_complete": true,
+        "closed": true,
+        "seconds": 151.1758777666837,
+        "usage_complete": true,
+        "final_result": {
+          "subtype": "success",
+          "duration_ms": 25014,
+          "duration_api_ms": 145426,
+          "is_error": false,
+          "num_turns": 4,
+          "session_id": "44ad264f-52f5-44b1-a4b4-3ec72786e489",
+          "stop_reason": "end_turn",
+          "total_cost_usd": 0.6405975,
+          "usage": {
+            "input_tokens": 8,
+            "cache_creation_input_tokens": 2192,
+            "cache_read_input_tokens": 161518,
+            "output_tokens": 2077,
+            "output_tokens_details": {
+              "thinking_tokens": 161
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            },
+            "service_tier": "standard",
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 2192,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "inference_geo": "global",
+            "iterations": [
+              {
+                "input_tokens": 2,
+                "output_tokens": 1461,
+                "cache_read_input_tokens": 40873,
+                "cache_creation_input_tokens": 967,
+                "cache_creation": {
+                  "ephemeral_5m_input_tokens": 0,
+                  "ephemeral_1h_input_tokens": 967
+                },
+                "type": "message"
+              }
+            ],
+            "speed": "standard",
+            "fallback_credit": null
+          },
+          "result": {
+            "phase_answer_reference": "post_edit"
+          },
+          "structured_output": null,
+          "model_usage": {
+            "claude-haiku-5-5": {
+              "inputTokens": 1371,
+              "outputTokens": 24,
+              "cacheReadInputTokens": 0,
+              "cacheCreationInputTokens": 0,
+              "webSearchRequests": 0,
+              "costUSD": 0.0001491,
+              "contextWindow": 1000000,
+              "maxOutputTokens": 128000,
+              "thinkingTokens": 0,
+              "canonicalModel": "claude-haiku-5-5",
+              "provider": "firstParty",
+              "costBasis": "list"
+            },
+            "claude-opus-5-5": {
+              "inputTokens": 40,
+              "outputTokens": 12216,
+              "cacheReadInputTokens": 579082,
+              "cacheCreationInputTokens": 35019,
+              "webSearchRequests": 0,
+              "costUSD": 0.6404484,
+              "contextWindow": 1000000,
+              "maxOutputTokens": 128000,
+              "thinkingTokens": 647,
+              "canonicalModel": "claude-opus-5-5",
+              "provider": "firstParty",
+              "costBasis": "list"
+            }
+          },
+          "permission_denials": [],
+          "deferred_tool_use": null,
+          "errors": null,
+          "api_error_status": null,
+          "uuid": "2715b445-0981-48cf-9668-977167c14e7f",
+          "terminal_reason": "completed",
+          "origin": null
+        },
+        "normalized_tokens": 627752,
+        "sdk_estimate_usd": 0.6405975
+      }
+    ],
+    "api_invoice_cost_usd": null,
+    "http_request_count": null,
+    "owned_containers": [
+      "ff3efc0ccb0d0336d2b3bf16218d32b2127054392f8be87bb5499f33cb921e26",
+      "869c848649047a12648aeac0e98fff10902de9817bd6ea7673b968befcded45e"
+    ],
+    "cohort_stop_reason": null,
+    "driver_sha256": "1293e68f51d448b4154b80b1dfbe716720c4297f9934ef993470a3fffccfb962",
+    "scope_sha256": "4c11983fdc26b5854f49968d1da139745050b0a0b2699d9f5777aa8bc559a192",
+    "policy_sha256": "cb373c0a407fbbc89bd4b12e30076b81b3aa9e77dc46cd017b7a32255f8b604a",
+    "tasks_sha256": "218eb7085da807c3cb067ef742ff7ceff161910dad18c676458a5b599d2d45ea",
+    "auth": {
+      "loggedIn": true,
+      "authMethod": "claude.ai",
+      "subscriptionType": "max"
+    },
+    "sdk": "0.2.174",
+    "neutral_image": "sha256:82d039276bd7fa3d25cefd6732f5fcf105163ee1a5dc24ebb13c3a9e514f1258",
+    "common_source": {
+      "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/06-pallets__flask-5014-native/common-source.json",
+      "sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd",
+      "source_digest": "4f1f1961e0018ca6d7701269b76d3746ebf32df4c8eabfd08fea37dcc548dcaf",
+      "file_count": 251,
+      "head": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d"
+    },
+    "common_prepare_seconds": 1.6518255434930325,
+    "clock_started_utc": "2026-10-28T14:31:58.051881+00:00",
+    "setup": {
+      "started_utc": "2026-10-28T14:31:58.051889+00:00",
+      "ready": true,
+      "seconds": 0.0006913598626852036
+    },
+    "target_identity": {
+      "python": "3.11.18 (main, Oct 26 2026, 18:14:43) [GCC 14.3.0]",
+      "packages": [
+        [
+          "Babel",
+          "2.12.1"
+        ],
+        [
+          "Flask",
+          "2.3.0.dev0"
+        ],
+        [
+          "Jinja2",
+          "3.1.2"
+        ],
+        [
+          "MarkupSafe",
+          "2.1.1"
+        ],
+        [
+          "Pallets-Sphinx-Themes",
+          "2.0.3"
+        ],
+        [
+          "PyYAML",
+          "6.0"
+        ],
+        [
+          "Pygments",
+          "2.15.0"
+        ],
+        [
+          "Sphinx",
+          "4.5.0"
+        ],
+        [
+          "Werkzeug",
+          "2.3.7"
+        ],
+        [
+          "alabaster",
+          "0.7.13"
+        ],
+        [
+          "asgiref",
+          "3.6.0"
+        ],
+        [
+          "build",
+          "0.10.0"
+        ],
+        [
+          "cachetools",
+          "5.3.0"
+        ],
+        [
+          "certifi",
+          "2022.12.7"
+        ],
+        [
+          "cffi",
+          "1.15.1"
+        ],
+        [
+          "cfgv",
+          "3.3.1"
+        ],
+        [
+          "chardet",
+          "5.1.0"
+        ],
+        [
+          "charset-normalizer",
+          "3.1.0"
+        ],
+        [
+          "click",
+          "8.1.3"
+        ],
+        [
+          "colorama",
+          "0.4.6"
+        ],
+        [
+          "cryptography",
+          "40.0.1"
+        ],
+        [
+          "distlib",
+          "0.3.6"
+        ],
+        [
+          "docutils",
+          "0.17.1"
+        ],
+        [
+          "filelock",
+          "3.11.0"
+        ],
+        [
+          "identify",
+          "2.5.22"
+        ],
+        [
+          "idna",
+          "3.4"
+        ],
+        [
+          "imagesize",
+          "1.4.1"
+        ],
+        [
+          "iniconfig",
+          "2.0.0"
+        ],
+        [
+          "itsdangerous",
+          "2.1.2"
+        ],
+        [
+          "mypy",
+          "1.2.0"
+        ],
+        [
+          "mypy-extensions",
+          "1.0.0"
+        ],
+        [
+          "nodeenv",
+          "1.7.0"
+        ],
+        [
+          "packaging",
+          "23.0"
+        ],
+        [
+          "pip",
+          "26.2.2"
+        ],
+        [
+          "pip-compile-multi",
+          "2.6.2"
+        ],
+        [
+          "pip-tools",
+          "6.13.0"
+        ],
+        [
+          "platformdirs",
+          "3.2.0"
+        ],
+        [
+          "pluggy",
+          "1.0.0"
+        ],
+        [
+          "pre-commit",
+          "3.2.2"
+        ],
+        [
+          "pycparser",
+          "2.21"
+        ],
+        [
+          "pyproject_api",
+          "1.5.1"
+        ],
+        [
+          "pyproject_hooks",
+          "1.0.0"
+        ],
+        [
+          "pytest",
+          "7.3.0"
+        ],
+        [
+          "python-dotenv",
+          "1.0.0"
+        ],
+        [
+          "requests",
+          "2.28.2"
+        ],
+        [
+          "setuptools",
+          "70.0.0"
+        ],
+        [
+          "snowballstemmer",
+          "2.2.0"
+        ],
+        [
+          "sphinx-issues",
+          "3.0.1"
+        ],
+        [
+          "sphinx-tabs",
+          "3.3.1"
+        ],
+        [
+          "sphinxcontrib-applehelp",
+          "1.0.4"
+        ],
+        [
+          "sphinxcontrib-devhelp",
+          "1.0.2"
+        ],
+        [
+          "sphinxcontrib-htmlhelp",
+          "2.0.1"
+        ],
+        [
+          "sphinxcontrib-jsmath",
+          "1.0.1"
+        ],
+        [
+          "sphinxcontrib-log-cabinet",
+          "1.0.1"
+        ],
+        [
+          "sphinxcontrib-qthelp",
+          "1.0.3"
+        ],
+        [
+          "sphinxcontrib-serializinghtml",
+          "1.1.5"
+        ],
+        [
+          "toposort",
+          "1.10"
+        ],
+        [
+          "tox",
+          "4.4.11"
+        ],
+        [
+          "types-contextvars",
+          "2.4.7.2"
+        ],
+        [
+          "types-dataclasses",
+          "0.6.6"
+        ],
+        [
+          "types-setuptools",
+          "67.6.0.7"
+        ],
+        [
+          "typing_extensions",
+          "4.5.0"
+        ],
+        [
+          "urllib3",
+          "1.26.15"
+        ],
+        [
+          "virtualenv",
+          "20.21.0"
+        ],
+        [
+          "wheel",
+          "0.40.0"
+        ]
+      ]
+    },
+    "prepared_image": "sha256:727c8de48c7edffd607c18ec3caff97854e58a6ea205e145245788b450c6ebd9",
+    "observed_container": {
+      "id": "869c848649047a12648aeac0e98fff10902de9817bd6ea7673b968befcded45e",
+      "network_disabled": true,
+      "network_mode": "none",
+      "memory_bytes": 4294967296,
+      "nano_cpus": 2000000000,
+      "pids_limit": 256,
+      "mounts": [
+        {
+          "Type": "bind",
+          "Source": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/06-pallets__flask-5014-native/workspace",
+          "Destination": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/06-pallets__flask-5014-native/workspace",
+          "Mode": "rw",
+          "RW": true,
+          "Propagation": "rprivate"
+        }
+      ]
+    },
+    "pre_model_source": {
+      "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/06-pallets__flask-5014-native/pre-model-source.json",
+      "sha256": "24db9290838b1086117d3285b9b6d8797d20bd90545e4ff9d13c11cf1a26b3cd",
+      "source_digest": "4f1f1961e0018ca6d7701269b76d3746ebf32df4c8eabfd08fea37dcc548dcaf",
+      "file_count": 251,
+      "head": "7ee9ceb71e868944a46e1ff00b506772a53a4f1d"
+    },
+    "setup_patch": {
+      "path": "pre-model.patch",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "attribution": "whole workspace diff; includes any separately recorded setup metadata"
+    },
+    "observed_effort_levels": [
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium",
+      "medium"
+    ],
+    "controlled_edit": {
+      "apply_before": "pallets__flask-5014-post_edit",
+      "path": "src/flask/_pilot_post_edit.py",
+      "source": "from .app import Flask\n\ndef dispatch_probe_request(app: Flask, path: str = \"/\"):\n    with app.test_request_context(path):\n        return app.full_dispatch_request()\n",
+      "sha256": "585d6863900b4bda76016c8a65eb04807b29ef0e1cdd8fd5bfec82c6050f323a",
+      "classification": "identical controlled synthetic source addition in every arm; no task outcome or runtime-benefit claim from the edit alone",
+      "rule": "Capture the repair patch before adding this file. Never overwrite an existing file; an unexpected collision is a recorded controller failure. Keep the same return-session MCP connection for the follow-up.",
+      "applied_utc": "2026-10-28T14:34:29.002100+00:00"
+    },
+    "status": "model_execution_complete_pending_grading",
+    "observed_workflow_seconds": 176.23251961357892,
+    "unattempted_tasks": [],
+    "cleanup": [
+      {
+        "id": "869c848649047a12648aeac0e98fff10902de9817bd6ea7673b968befcded45e",
+        "removed": true
+      },
+      {
+        "id": "ff3efc0ccb0d0336d2b3bf16218d32b2127054392f8be87bb5499f33cb921e26",
+        "removed": true
+      }
+    ],
+    "finished_utc": "2026-10-28T14:34:54.360359+00:00"
+  },
+  "projection_rule": "Phase results/answers retained; duplicate cumulative session answers link to their phase. Exact tool deliveries, original pre-tool inputs and source snapshots are separately hash-bound. Intermediate visible prose/stream usage remain in the original SDK traces and are not summed as cumulative usage.",
+  "phase_observations": {
+    "lookup": {
+      "artifact": "codegraph_matched_workflow_v2_06_lookup_observations.json",
+      "sha256": "4d43782b215b6a9db6e03bc8434ca7dfd459da9903a3709f44dfd9625447f20c"
+    },
+    "flow": {
+      "artifact": "codegraph_matched_workflow_v2_06_flow_observations.json",
+      "sha256": "830cb113120e40da84c00d4e6f9dbc8e7ecdae1fa895c3195105482dfc173745"
+    },
+    "impact": {
+      "artifact": "codegraph_matched_workflow_v2_06_impact_observations.json",
+      "sha256": "7fdc7dd8f0b9aff02b9ffb6c31e68f9f5264ab4760ea62bbb6ac228fdc502cf7"
+    },
+    "repair": {
+      "artifact": "codegraph_matched_workflow_v2_06_repair_observations.json",
+      "sha256": "3d8db494686a513ff0f6e788017d586ff5e55e4dc4266731fa7878e02dd7e6f4"
+    },
+    "post_edit": {
+      "artifact": "codegraph_matched_workflow_v2_06_post_edit_observations.json",
+      "sha256": "00a91ce07b2718668898531c75ebea754fb1df8020b930526534601ba514d764"
+    }
+  },
+  "source_snapshots": {
+    "artifact": "codegraph_matched_workflow_v2_06_sources.json",
+    "sha256": "d412bd3bf8ccac6436b5bc8090eda91e461de20455a9219dbb449307690bd137"
+  },
+  "original_tool_inputs": {
+    "artifact": "codegraph_matched_workflow_v2_06_tool_inputs.json",
+    "sha256": "c1afdad0f528d82e5649bf2fb34487890f29874426513de5e66c9c76ab366db1"
+  },
+  "repair_patch": "diff --git a/CHANGES.rst b/CHANGES.rst\nindex 498d5e5..0e2057e 100644\n--- a/CHANGES.rst\n+++ b/CHANGES.rst\n@@ -35,6 +35,7 @@ Unreleased\n -   Ensure subdomains are applied with nested blueprints. :issue:`4834`\n -   ``config.from_file`` can use ``text=False`` to indicate that the parser wants a\n     binary file instead. :issue:`4989`\n+-   If a blueprint is created with an empty name it raises a ``ValueError``.\n \n \n Version 2.2.4\ndiff --git a/src/flask/blueprints.py b/src/flask/blueprints.py\nindex eb50585..1aa8256 100644\n--- a/src/flask/blueprints.py\n+++ b/src/flask/blueprints.py\n@@ -190,6 +190,9 @@ class Blueprint(Scaffold):\n             root_path=root_path,\n         )\n \n+        if not name:\n+            raise ValueError(\"'name' may not be empty.\")\n+\n         if \".\" in name:\n             raise ValueError(\"'name' may not contain a dot '.' character.\")\n \ndiff --git a/tests/test_blueprints.py b/tests/test_blueprints.py\nindex d46b769..76cee66 100644\n--- a/tests/test_blueprints.py\n+++ b/tests/test_blueprints.py\n@@ -256,6 +256,11 @@ def test_dotted_name_not_allowed(app, client):\n         flask.Blueprint(\"app.ui\", __name__)\n \n \n+def test_empty_name_not_allowed(app, client):\n+    with pytest.raises(ValueError):\n+        flask.Blueprint(\"\", __name__)\n+\n+\n def test_dotted_names_from_app(app, client):\n     test = flask.Blueprint(\"test\", __name__)\n \n",
+  "setup_patch": "",
+  "source_credit": "No complete ContextBench read score. Arbitrary shell output remains unattributed until source-version/file mapping is verified.",
+  "archive_implementation_sha256": "66794e05d95a0d45a394ddb96575491190e1566a64a9a1c4f709c18e1540a6a7"
+}

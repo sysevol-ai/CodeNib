@@ -1,0 +1,85 @@
+{
+  "scope": "Exact captured v2 tool requests and delivered user/tool messages; no task acceptance or complete source-read score.",
+  "workflow_index": 3,
+  "task_id": "psf__requests-1921-impact",
+  "kind": "impact",
+  "raw_sdk_trace_sha256": "68fc7089536d32a904a15e42f0388b271bc0e3d7956d617d63bceb13db3d228a",
+  "raw_sdk_trace_bytes": 33488,
+  "init": [
+    {
+      "type": "SystemMessage",
+      "subtype": "init",
+      "data": {
+        "model": "claude-opus-5-5",
+        "apiKeySource": "none",
+        "tools": [
+          "Bash",
+          "Edit",
+          "Glob",
+          "Grep",
+          "Read",
+          "ToolSearch",
+          "Write"
+        ],
+        "mcp_servers": [],
+        "claude_code_version": "2.1.310"
+      }
+    }
+  ],
+  "rate_events": [],
+  "tool_calls_in_first_observed_order": [
+    {
+      "id": "toolu_01QgyhQbAvmeKmKRxKR34FfE",
+      "name": "Bash",
+      "input": {
+        "command": "grep -rn \"\\.send(\" --include=*.py requests/ | grep -v \"packages/\" ; grep -n \"\\.send(\\|resolve_redirects\\|allow_redirects\\|history\" test_requests.py | head -60"
+      }
+    },
+    {
+      "id": "toolu_01N8R23M9CNoyep8C68oz1oY",
+      "name": "Bash",
+      "input": {
+        "command": "sed -n 150,200p requests/auth.py; sed -n 98,122p test_requests.py; sed -n 160,215p test_requests.py; sed -n 505,540p test_requests.py; sed -n 712,745p test_requests.py"
+      }
+    },
+    {
+      "id": "toolu_01YTCmWU6adKFkWzfs3m4Mq2",
+      "name": "Bash",
+      "input": {
+        "command": "grep -n \"def handle_401\\|register_hook\" requests/auth.py; grep -n \"def test_HTTP_302_ALLOW_REDIRECT_GET\\|def test_prepared_request_hook\\|def test_cannot_send_unprepared\\|def test_DIGEST\\|def test_cookie_persists_via_api\\|def test_requests_in_history\" test_requests.py"
+      }
+    }
+  ],
+  "delivered_user_tool_messages_in_order": [
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_01QgyhQbAvmeKmKRxKR34FfE",
+          "content": "requests/sessions.py:169:            resp = self.send(\nrequests/sessions.py:391:        resp = self.send(prep, **send_kwargs)\nrequests/sessions.py:494:        r = adapter.send(request, **kwargs)\nrequests/adapters.py:351:                        low_conn.send(hex(len(i))[2:].encode('utf-8'))\nrequests/adapters.py:352:                        low_conn.send(b'\\r\\n')\nrequests/adapters.py:353:                        low_conn.send(i)\nrequests/adapters.py:354:                        low_conn.send(b'\\r\\n')\nrequests/adapters.py:355:                    low_conn.send(b'0\\r\\n\\r\\n')\nrequests/auth.py:175:            _r = r.connection.send(prep, **kwargs)\nrequests/models.py:269:      >>> s.send(r)\n103:            r = s.send(r.prepare())\n111:        r = s.send(r.prepare())\n118:        assert r.history[0].status_code == 302\n119:        assert r.history[0].is_redirect\n173:        assert 'foo' in r.history[0].request.headers['Cookie']\n208:    def test_requests_in_history_are_not_overridden(self):\n210:        urls = [r.url for r in resp.history]\n211:        req_urls = [r.request.url for r in resp.history]\n515:        resp = s.send(prep)\n532:        resp = s.send(prep)\n720:            requests.Session().send(r)\n739:        r = s.send(r.prepare())",
+          "is_error": false
+        }
+      ]
+    },
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_01N8R23M9CNoyep8C68oz1oY",
+          "content": "        \"\"\"Takes the given response and tries digest-auth, if needed.\"\"\"\n\n        if self.pos is not None:\n            # Rewind the file position indicator of the body to where\n            # it was to resend the request.\n            r.request.body.seek(self.pos)\n        num_401_calls = getattr(self, 'num_401_calls', 1)\n        s_auth = r.headers.get('www-authenticate', '')\n\n        if 'digest' in s_auth.lower() and num_401_calls < 2:\n\n            setattr(self, 'num_401_calls', num_401_calls + 1)\n            pat = re.compile(r'digest ', flags=re.IGNORECASE)\n            self.chal = parse_dict_header(pat.sub('', s_auth, count=1))\n\n            # Consume content and release the original connection\n            # to allow our new request to reuse the same one.\n            r.content\n            r.raw.release_conn()\n            prep = r.request.copy()\n            extract_cookies_to_jar(prep._cookies, r.request, r.raw)\n            prep.prepare_cookies(prep._cookies)\n\n            prep.headers['Authorization'] = self.build_digest_header(\n                prep.method, prep.url)\n            _r = r.connection.send(prep, **kwargs)\n            _r.history.append(r)\n            _r.request = prep\n\n            return _r\n\n        setattr(self, 'num_401_calls', 1)\n        return r\n\n    def __call__(self, r):\n        # If we have a saved nonce, skip the 401\n        if self.last_nonce:\n            r.headers['Authorization'] = self.build_digest_header(r.method, r.url)\n        try:\n            self.pos = r.body.tell()\n        except AttributeError:\n            pass\n        r.register_hook('response', self.handle_401)\n        return r\n        schemes = ['http://', 'HTTP://', 'hTTp://', 'HttP://',\n                   'https://', 'HTTPS://', 'hTTps://', 'HttPs://']\n        for scheme in schemes:\n            url = scheme + parts.netloc + parts.path\n            r = requests.Request('GET', url)\n            r = s.send(r.prepare())\n            assert r.status_code == 200, 'failed for scheme {0}'.format(scheme)\n\n    def test_HTTP_200_OK_GET_ALTERNATIVE(self):\n        r = requests.Request('GET', httpbin('get'))\n        s = requests.Session()\n        s.proxies = getproxies()\n\n        r = s.send(r.prepare())\n\n        assert r.status_code == 200\n\n    def test_HTTP_302_ALLOW_REDIRECT_GET(self):\n        r = requests.get(httpbin('redirect', '1'))\n        assert r.status_code == 200\n        assert r.history[0].status_code == 302\n        assert r.history[0].is_redirect\n\n    # def test_HTTP_302_ALLOW_REDIRECT_POST(self):\n    #     r = requests.post(httpbin('status', '302'), data={'some': 'data'})\n            }\n        )\n        assert 'foo' not in s.cookies\n\n    def test_cookie_quote_wrapped(self):\n        s = requests.session()\n        s.get(httpbin('cookies/set?foo=\"bar:baz\"'))\n        assert s.cookies['foo'] == '\"bar:baz\"'\n\n    def test_cookie_persists_via_api(self):\n        s = requests.session()\n        r = s.get(httpbin('redirect/1'), cookies={'foo': 'bar'})\n        assert 'foo' in r.request.headers['Cookie']\n        assert 'foo' in r.history[0].request.headers['Cookie']\n\n    def test_request_cookie_overrides_session_cookie(self):\n        s = requests.session()\n        s.cookies['foo'] = 'bar'\n        r = s.get(httpbin('cookies'), cookies={'foo': 'baz'})\n        assert r.json()['cookies']['foo'] == 'baz'\n        # Session cookie should not be modified\n        assert s.cookies['foo'] == 'bar'\n\n    def test_request_cookies_not_persisted(self):\n        s = requests.session()\n        s.get(httpbin('cookies'), cookies={'foo': 'baz'})\n        # Sending a request with cookies should not add cookies to the session\n        assert not s.cookies\n\n    def test_generic_cookiejar_works(self):\n        cj = cookielib.CookieJar()\n        cookiejar_from_dict({'foo': 'bar'}, cj)\n        s = requests.session()\n        s.cookies = cj\n        r = s.get(httpbin('cookies'))\n        # Make sure the cookie was sent\n        assert r.json()['cookies']['foo'] == 'bar'\n        # Make sure the session cj is still the custom one\n        assert s.cookies is cj\n\n    def test_param_cookiejar_works(self):\n        cj = cookielib.CookieJar()\n        cookiejar_from_dict({'foo' : 'bar'}, cj)\n        s = requests.session()\n        r = s.get(httpbin('cookies'), cookies=cj)\n        # Make sure the cookie was sent\n        assert r.json()['cookies']['foo'] == 'bar'\n\n    def test_requests_in_history_are_not_overridden(self):\n        resp = requests.get(httpbin('redirect/3'))\n        urls = [r.url for r in resp.history]\n        req_urls = [r.request.url for r in resp.history]\n        assert urls == req_urls\n\n    def test_user_agent_transfers(self):\n\n    def test_prepared_request_hook(self):\n        def hook(resp, **kwargs):\n            resp.hook_working = True\n            return resp\n\n        req = requests.Request('GET', HTTPBIN, hooks={'response': hook})\n        prep = req.prepare()\n\n        s = requests.Session()\n        s.proxies = getproxies()\n        resp = s.send(prep)\n\n        assert hasattr(resp, 'hook_working')\n\n    def test_prepared_from_session(self):\n        class DummyAuth(requests.auth.AuthBase):\n            def __call__(self, r):\n                r.headers['Dummy-Auth-Test'] = 'dummy-auth-test-ok'\n                return r\n\n        req = requests.Request('GET', httpbin('headers'))\n        assert not req.auth\n\n        s = requests.Session()\n        s.auth = DummyAuth()\n\n        prep = s.prepare_request(req)\n        resp = s.send(prep)\n\n        assert resp.json()['headers']['Dummy-Auth-Test'] == 'dummy-auth-test-ok'\n\n    def test_links(self):\n        r = requests.Response()\n        r.headers = {\n            'cache-control': 'public, max-age=60, s-maxage=60',\n            'connection': 'keep-alive',\n\n    def test_get_auth_from_url_encoded_hashes(self):\n        url = 'http://user:pass%23pass@complex.url.com/path?query=yes'\n        assert ('user', 'pass#pass') == requests.utils.get_auth_from_url(url)\n\n    def test_cannot_send_unprepared_requests(self):\n        r = requests.Request(url=HTTPBIN)\n        with pytest.raises(ValueError):\n            requests.Session().send(r)\n\n    def test_http_error(self):\n        error = requests.exceptions.HTTPError()\n        assert not error.response\n        response = requests.Response()\n        error = requests.exceptions.HTTPError(response=response)\n        assert error.response == response\n        error = requests.exceptions.HTTPError('message', response=response)\n        assert str(error) == 'message'\n        assert error.response == response\n\n    def test_session_pickling(self):\n        r = requests.Request('GET', httpbin('get'))\n        s = requests.Session()\n\n        s = pickle.loads(pickle.dumps(s))\n        s.proxies = getproxies()\n\n        r = s.send(r.prepare())\n        assert r.status_code == 200\n\n    def test_fixes_1329(self):\n        \"\"\"\n        Ensure that header updates are done case-insensitively.\n        \"\"\"",
+          "is_error": false
+        }
+      ]
+    },
+    {
+      "type": "UserMessage",
+      "content": [
+        {
+          "tool_use_id": "toolu_01YTCmWU6adKFkWzfs3m4Mq2",
+          "content": "149:    def handle_401(self, r, **kwargs):\n192:        r.register_hook('response', self.handle_401)\n115:    def test_HTTP_302_ALLOW_REDIRECT_GET(self):\n169:    def test_cookie_persists_via_api(self):\n208:    def test_requests_in_history_are_not_overridden(self):\n281:    def test_DIGEST_HTTP_200_OK_GET(self):\n297:    def test_DIGEST_AUTH_RETURNS_COOKIE(self):\n306:    def test_DIGEST_AUTH_SETS_SESSION_COOKIES(self):\n313:    def test_DIGEST_STREAM(self):\n324:    def test_DIGESTAUTH_WRONG_HTTP_401_GET(self):\n340:    def test_DIGESTAUTH_QUOTES_QOP_VALUE(self):\n505:    def test_prepared_request_hook(self):\n717:    def test_cannot_send_unprepared_requests(self):",
+          "is_error": false
+        }
+      ]
+    }
+  ]
+}

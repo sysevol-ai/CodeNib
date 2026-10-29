@@ -161,7 +161,7 @@ Only tools whose backing views are fresh and available can return results.
 | `search_bm25` | `bm25` | symbol | Exact names and keyword lookups |
 | `search_regex` | `regex_index`, derived from `symbol_graph` at load | file / symbol | Structural pattern matching |
 | `search_zoekt` | `zoekt` | file | Fast substring or regex search over files |
-| `dependency_subgraph` | `symbol_graph` | call graph | Caller impact, callee dependencies, or a one-hop neighborhood |
+| `dependency_subgraph` | `symbol_graph` | static-reference subgraph | Bounded incoming/outgoing references across symbols |
 | `lsp_definition` | runtime LSP provider or `symbol_graph` fallback | location | Static go-to-definition-shaped lookup |
 | `lsp_references` | runtime LSP provider or `symbol_graph` fallback | locations | Static find-references-shaped lookup |
 | `lsp_route` | runtime LSP provider or `symbol_graph` fallback | locations | Compact route anchors from symbol seeds or a bounded query fallback |
@@ -171,6 +171,15 @@ Only tools whose backing views are fresh and available can return results.
 All source locations returned by MCP use 1-based line numbers. Search tools
 reject blank query text, cap it at 16,000 characters, and accept `top_k` values
 from 1 through 100.
+
+For `dependency_subgraph`, `impact` follows incoming references,
+`dependencies` follows outgoing references, and `both` follows both directions.
+References may represent calls, fields, types or function values. Read the
+source before describing an invocation or runtime path; external and dynamic
+relationships may be missing. Source builds from `main` include `semantics`
+with this scope and direction; published 0.2.4 retains the older response shape
+and legacy `callers`/`callees` labels. See [CodeGraph](codegraph.md) for the
+release and source-update boundaries.
 
 `explore_context` accepts a query, optional symbol seeds, a bounded `top_k`, a
 `fast`/`balanced`/`thorough` budget, dependency direction, and test/dependency

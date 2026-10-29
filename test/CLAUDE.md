@@ -45,6 +45,10 @@ executables and SCIP/Fact/clangd Python gates through `make core-test`) — see
 
 ## Gotchas
 
+- For a module-local no-I/O check, replace that module's `os` binding with a
+  guarded proxy. Do not replace process-wide `os.open`, `os.read`, or
+  `os.stat`: pytest-xdist control threads and reporting still need them, and
+  can exit the worker instead of producing a test failure.
 - **Package shadowing**: a `test/<name>/__init__.py` whose `<name>` matches a
   top-level package (e.g. `scripts/`) shadows that real package under pytest's
   rootdir import mode. Two independently-green PRs can break once merged — when a

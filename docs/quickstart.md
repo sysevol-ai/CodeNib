@@ -85,8 +85,11 @@ codenib codegraph status /path/to/repository
 codenib codegraph status /path/to/repository --json
 ```
 
-Ask the agent to use `explore_context` before editing and
-`dependency_subgraph` when evaluating callers, callees, or change impact.
+For a first connection check, ask the agent to use `explore_context` on a
+question from your repository. Follow relevant static references with
+`dependency_subgraph`, then inspect the source before describing calls or
+change impact. Known files and exact strings can still be read or searched
+with the agent's native tools.
 See [Agent-ready CodeGraph](codegraph.md) for exact tool examples and safe
 uninstall behavior.
 

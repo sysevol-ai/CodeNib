@@ -12,6 +12,11 @@ local and model-free: it combines ranked BM25 retrieval with SCIP- or
 clangd-backed symbol relationships, definitions, references, dependencies, and
 bounded source reads.
 
+Use it for repeated definition, reference and cross-file navigation questions.
+Your agent's native text search and file reads can handle a known string or
+file directly. Include initial indexing and later rebuilds when assessing
+whether graph navigation helps your own workflow.
+
 ## One-command setup
 
 Install CodeNib 0.2.4 with the graph runtime and official MCP SDK:
@@ -20,6 +25,11 @@ Install CodeNib 0.2.4 with the graph runtime and official MCP SDK:
 python -m pip install "codenib[graph,mcp]==0.2.4"
 codenib codegraph init /absolute/path/to/repository
 ```
+
+Published 0.2.4 requires a clean Git checkout for initialization. Source builds
+from `main` add dirty-checkout initialization and per-query stale-index
+rejection, then reload rebuilt indexes within the same MCP connection. These
+fixes await a package release.
 
 The initializer detects repository languages and installed agent clients. It
 then installs package-managed graph providers, builds `bm25` and
@@ -34,8 +44,10 @@ CodeNib does not edit Codex TOML, Claude JSON, `.mcp.json`, `AGENTS.md`, or
 readable repository slug plus a path digest makes the server name unique, so
 several checkouts can coexist.
 
-Initialization requires a clean Git working tree and verifies the same status
-again after indexing and native client registration. CodeNib may install its
+On `main`, initialization accepts uncommitted edits, including new, deleted and
+renamed files. It indexes the current working tree and checks that visible source
+content, the Git commit and status remain unchanged through toolchain setup,
+indexing and native client registration. CodeNib may install its
 own pinned language provider below `CODENIB_SCIP_TOOLS_DIR`, but this product
 path does not run a repository package manager, generate a compilation
 database, or prepare project-local dependencies. If a graph provider needs an
@@ -106,26 +118,43 @@ another directory, device paths, and prefix lookalikes remain rejected.
 
 ## Use it from an agent
 
-Start broad questions with `explore_context`. It composes ranked retrieval,
-symbol routing, dependency expansion, and verified source windows under one
-response budget:
+Choose a question from the repository you are working on:
+
+| What you need | Start with |
+| --- | --- |
+| A known file, error string or identifier | Native file reads or text search |
+| A definition or its reference locations | `lsp_definition` or `lsp_references`, then inspect the source |
+| Related code for a broader question | `explore_context`, then follow relevant static references |
+
+For a first connection check, explicitly request `explore_context`. It composes
+ranked retrieval, symbol routing, dependency expansion and verified source
+windows under one response budget. This example assumes your repository
+implements request retries:
 
 > Use CodeNib's `explore_context` to explain where request retries are
 > implemented. Cite the returned source paths and lines before proposing an
 > edit.
 
-Use `dependency_subgraph` for structural questions that keyword search cannot
-answer:
+Use a symbol returned by that lookup to follow indexed static references:
 
-> Use `dependency_subgraph` on `RetryPolicy.execute` with direction `impact`
-> and depth 2. Summarize callers that could change if its behavior changes.
+> Use `dependency_subgraph` on the symbol you found, with direction `impact`
+> and depth 2. Summarize incoming references and inspect their source call sites
+> before explaining which functions actually invoke it.
+
+References can come from calls, fields, type annotations or function values.
+Source builds from `main` add `semantics` with that scope and the incoming/outgoing
+reference direction. Published 0.2.4 keeps the older result format. Existing
+`callers`/`callees` result labels retain their legacy names.
+External and dynamic calls may be missing; an empty neighborhood does not prove
+there are no callers. Use the returned paths and lines with `read_source` to
+check actual invocations and behavior.
 
 Useful full-surface tools include:
 
 | Tool | Product use |
 | --- | --- |
 | `explore_context` | Bounded, source-verified context for a repository question |
-| `dependency_subgraph` | Callers, callees, and one-hop dependency neighborhoods |
+| `dependency_subgraph` | Bounded incoming/outgoing static-reference neighborhoods |
 | `search_bm25` | Exact identifiers and keywords |
 | `search_regex` | Patterns over CodeGraph file and symbol nodes |
 | `lsp_definition` / `lsp_references` | Static navigation backed by the graph or a verified live provider |
@@ -150,7 +179,17 @@ the complete path is ready:
 codenib codegraph status /absolute/path/to/repository --json
 ```
 
-After source changes, rerun `init`. Views whose complete identities remain
+Source builds from `main` reject indexed queries after source changes. Rerun
+`codenib codegraph init /absolute/path/to/repository`, then retry in the same
+agent connection. The server loads the published indexes after checking that
+they match current source. If the compiler is still publishing, retry after it
+finishes. Queries do not start an index build.
+
+Published 0.2.4 requires a clean checkout for rebuilding. Stop its CodeNib MCP
+server, rerun `init`, and restart the server to load the result. A running
+0.2.4 session can return stale facts after an edit.
+
+Views whose complete identities remain
 current are reused; affected requested views rebuild atomically. File-level
 delta repair is currently disabled until it can use the same pinned source
 authority. Force a clean graph rebuild only when deliberately changing a
@@ -171,10 +210,10 @@ question about authentication during redirects with source anchors at
 and
 [`should_strip_auth`, lines 127–157](https://github.com/psf/requests/blob/b25c87d7cb8d6a18a37fa12442b5f883f9e41741/src/requests/sessions.py#L127-L157).
 One `dependency_subgraph` call with `direction="impact"` and depth 4 then
-returns the caller chain `Session.request()` → `Session.send()` →
+returns the indexed reference chain `Session.request()` → `Session.send()` →
 `resolve_redirects()` → `rebuild_auth()`, plus the entry points
 `requests.request()` in `api.py` and seven `Session` HTTP-verb methods.
-A language server's call hierarchy answers one level per request.
+This is a selected, source-checkable path; it is not a complete runtime trace.
 
 The recording runs CodeNib main commit
 [`f7060886`](https://github.com/sysevol-ai/CodeNib/commit/f70608869ff4fff982a43da8f6a776fd9decbc18)
@@ -250,11 +289,17 @@ provider boundary.
   the environment that provides the `codenib` command.
 - **Manual graph prerequisite:** follow the reported provider instruction, run
   `codenib doctor . --require graph`, then rerun initialization.
-- **Dirty checkout:** commit or stash tracked and untracked files. CodeNib
-  checks again after each mutating phase and stops before reporting readiness
-  if a provider or client changes the checkout.
+- **Checkout changed during initialization:** inspect `git diff` and
+  `git status`. Initialization accepts existing edits, but stops if visible
+  source, the Git commit or status changes during setup. Retry after the
+  concurrent work has finished.
 - **Source identity mismatch:** rerun `codenib codegraph init .` for the current
   checkout rather than serving a stale graph.
+- **Containment cycle:** the language provider has reported an impossible
+  source hierarchy. SCIP Python 0.6.6 can merge an enclosing method and a
+  same-named nested function ([#871](https://github.com/sysevol-ai/CodeNib/issues/871)).
+  CodeNib rejects that graph. Use source search while definition identity is
+  unresolved; BM25 indexing can still succeed independently of the graph.
 - **Generated subtree should be omitted:** rerun `init` with one or more exact
   `--exclude-dir PATH` values. The values replace the persisted custom set;
   inspect them with `codegraph status` before serving the graph.

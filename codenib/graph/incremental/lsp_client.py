@@ -225,12 +225,16 @@ class LSPClient:
         project_root: str,
         language: str,
         init_options: Optional[dict] = None,
+        path_prefix: Optional[str] = None,
     ):
         self.command = command
         self.project_root = Path(project_root).resolve()
         self.root_uri = self.project_root.as_uri()
         self.language = language
         self.init_options = init_options
+        # Directory searched before the server's managed PATH, e.g. to pin the
+        # interpreter a Python server probes for import search paths.
+        self.path_prefix = path_prefix
         self.process: Optional[subprocess.Popen] = None
         self._next_id = 1
         self._opened_files: set[str] = set()
@@ -260,16 +264,24 @@ class LSPClient:
 
     # ── Lifecycle ─────────────────────────────────────────────
 
-    def start(self, skip_probe: bool = False) -> dict:
+    def start(
+        self, skip_probe: bool = False, *, initialize_timeout: float = 120.0
+    ) -> dict:
         """Start the LSP server and send initialize/initialized.
 
         Args:
             skip_probe: If True, skip the blocking readiness probe.
                 Use this when starting early for warm-up — the server
                 will analyze the project in the background.
+            initialize_timeout: Maximum wait for the initialize reply. A caller
+                with its own overall deadline can pass its remaining budget.
         """
         logger.info(f"Starting LSP server: {' '.join(self.command)}")
         env = _lsp_process_env(self.language, self.project_root)
+        if self.path_prefix:
+            env["PATH"] = os.pathsep.join(
+                part for part in (self.path_prefix, env.get("PATH")) if part
+            )
         self.process = subprocess.Popen(
             self.command,
             stdin=subprocess.PIPE,
@@ -319,7 +331,7 @@ class LSPClient:
         if init_opts:
             params["initializationOptions"] = init_opts
 
-        result = self._request("initialize", params, timeout=120)
+        result = self._request("initialize", params, timeout=initialize_timeout)
         self._notify("initialized", {})
 
         commands = (

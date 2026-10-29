@@ -38,6 +38,11 @@ DENSE_REVISION = "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3"
 DENSE_MAX_SEQ_LENGTH = 512
 DENSE_BATCH_SIZE = 64
 HYBRID_RRF_K = 60
+RERANK_MODEL = "Qwen/Qwen3-Reranker-4B"
+RERANK_REVISION = "22e683669bc0f0bd69640a1354a6d0aebcfeede5"
+RERANK_TOP_K = 50
+RERANK_MAX_LENGTH = 8192
+RERANK_BATCH_SIZE = 4
 ZOEKT_MAX_TERMS = 32
 _SYMBOL_DIR = "__codenib_arb_symbols__"
 
@@ -191,6 +196,83 @@ class HybridCorpusIndex:
         ]
         fused = merge_file_rankings(branches, rrf_k=HYBRID_RRF_K)
         return complete_file_ranking((node.file for node in fused), self._paths)
+
+
+class Reranker:
+    """One cross-encoder, loaded once and shared by every snapshot index."""
+
+    def __init__(self, config: dict[str, Any]):
+        from codenib.index.rerank.cross_encoder import build_reranker
+
+        started = time.perf_counter()
+        options = {"max_length": config["max_length"]} if config["max_length"] else {}
+        self.model = build_reranker(
+            config["model"],
+            revision=config["revision"],
+            batch_size=config["batch_size"],
+            device=config["device"],
+            torch_dtype=config["dtype"],
+            **options,
+        )
+        self.load_seconds = time.perf_counter() - started
+
+
+class RerankCorpusIndex:
+    """Reorders a base ranking's top files with a cross-encoder.
+
+    Each file is scored as its path and released text, which the model
+    truncates to its length limit. The scored order is fused with the base
+    order by file-level RRF, and files below ``top_k`` keep the base order.
+    The result holds exactly the base ranking's files.
+    """
+
+    tool_calls = 1
+
+    def __init__(self, corpus: list[dict[str, Any]], reranker: Reranker, top_k: int):
+        started = time.perf_counter()
+        self._paths = {row["path"] for row in corpus}
+        self._texts = {
+            row["path"]: row.get("text") or ""
+            for row in corpus
+            if row.get("kind") == "file"
+        }
+        self._reranker = reranker
+        self._top_k = top_k
+        self.build_seconds = time.perf_counter() - started
+        self.size = {"files": len(self._paths), "top_k": top_k}
+
+    def rerank(self, query_text: str, base: list[str]) -> list[str]:
+        from codenib.ops.retrieve import merge_file_rankings
+        from codenib.types import QueriedNode
+
+        # The evaluator keeps a path's first occurrence; so does the head.
+        ranking = list(dict.fromkeys(base))
+        head, tail = ranking[: self._top_k], ranking[self._top_k :]
+        model = self._reranker.model
+        before = getattr(model, "oom_fallbacks", 0)
+        scores = model.score(
+            query_text, [f"{path}\n{self._texts.get(path, '')}" for path in head]
+        )
+        # A file the model could not score is a failed case, not a zero score.
+        unscored = getattr(model, "oom_fallbacks", 0) - before
+        if unscored:
+            raise RuntimeError(f"the reranker ran out of memory on {unscored} files")
+        order = [
+            head[i] for i in sorted(range(len(head)), key=lambda i: (-scores[i], i))
+        ]
+        branches = [
+            [
+                QueriedNode(node_name=path, type=NODE_TYPE_FILE, file=path)
+                for path in ranking
+            ]
+            for ranking in (head, order)
+        ]
+        fused = merge_file_rankings(branches, rrf_k=HYBRID_RRF_K)
+        reranked = [*(node.file for node in fused), *tail]
+        # Exactly the base's files, which may be fewer than the corpus.
+        if sorted(reranked) != sorted(ranking):
+            raise ValueError("reranking changed the base ranking's files")
+        return reranked
 
 
 _BACKTICK = re.compile(r"`([^`\n]{2,60})`")
@@ -617,7 +699,7 @@ class GraphExpansionIndex:
                 }
             if report.get("graph"):
                 self._graph = CodeGraph.load_graph(report["graph"])
-        except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
+        except (OSError, RuntimeError, ValueError, subprocess.TimeoutExpired) as exc:
             graph_size["error"] = f"{type(exc).__name__}: {exc}"[:500]
 
     def _adjacent(self, vertex: int, edge_type: str, mode: str) -> list[int]:
@@ -629,16 +711,26 @@ class GraphExpansionIndex:
         ]
 
     def _file_symbols(self, path: str) -> list[int]:
-        """The file vertex and every symbol it contains, transitively."""
+        """The file vertex and every symbol it contains, transitively, once each.
+
+        Containment is not always a tree: nested definitions that share a
+        qualified name collapse into one vertex, which can then contain itself.
+        """
         start = self._graph.name_to_vertex.get(path)
         if start is None:
             return []
         found, pending = [start], [start]
+        seen = {start}
         while pending:
             for child in self._adjacent(pending.pop(), EDGE_TYPE_CONTAIN, "out"):
-                if self._graph.graph.vs[child]["type"] != NODE_TYPE_FILE:
-                    found.append(child)
-                    pending.append(child)
+                if (
+                    child in seen
+                    or self._graph.graph.vs[child]["type"] == NODE_TYPE_FILE
+                ):
+                    continue
+                seen.add(child)
+                found.append(child)
+                pending.append(child)
         return found
 
     def _vertex_file(self, vertex: int) -> str | None:

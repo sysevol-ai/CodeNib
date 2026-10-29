@@ -1,0 +1,313 @@
+{
+  "recorded_utc": "2026-10-28T15:15:59.569680+00:00",
+  "scope": "Post-run archive/accounting verification, not a new model/native attempt or source adjudication.",
+  "checks": {
+    "frozen_inputs_unchanged": 34,
+    "preceding_tracked_artifacts_unchanged": 140,
+    "sdk_tasks_complete": 60,
+    "sessions_closed_with_final_usage": 24,
+    "optional_sessions_connected": 18,
+    "read_only_source_preserved": 48,
+    "fresh_source_reviews": 48,
+    "frozen_criterion_applications": 160,
+    "native_repairs_resolved": 12,
+    "native_original_files_byte_reconstructed": 180,
+    "new_json_parse_and_size_checks": 242,
+    "accepted_task_and_penalty_totals_match": true,
+    "baseline_eligibility_matches_frozen_rule": true
+  },
+  "selected_native_outcomes": [
+    {
+      "workflow_index": 0,
+      "tier": "FAIL_TO_PASS",
+      "success": 6,
+      "failure": 0
+    },
+    {
+      "workflow_index": 0,
+      "tier": "PASS_TO_PASS",
+      "success": 107,
+      "failure": 0
+    },
+    {
+      "workflow_index": 0,
+      "tier": "FAIL_TO_FAIL",
+      "success": 0,
+      "failure": 0
+    },
+    {
+      "workflow_index": 0,
+      "tier": "PASS_TO_FAIL",
+      "success": 0,
+      "failure": 0
+    },
+    {
+      "workflow_index": 1,
+      "tier": "FAIL_TO_PASS",
+      "success": 6,
+      "failure": 0
+    },
+    {
+      "workflow_index": 1,
+      "tier": "PASS_TO_PASS",
+      "success": 107,
+      "failure": 0
+    },
+    {
+      "workflow_index": 1,
+      "tier": "FAIL_TO_FAIL",
+      "success": 0,
+      "failure": 0
+    },
+    {
+      "workflow_index": 1,
+      "tier": "PASS_TO_FAIL",
+      "success": 0,
+      "failure": 0
+    },
+    {
+      "workflow_index": 2,
+      "tier": "FAIL_TO_PASS",
+      "success": 6,
+      "failure": 0
+    },
+    {
+      "workflow_index": 2,
+      "tier": "PASS_TO_PASS",
+      "success": 107,
+      "failure": 0
+    },
+    {
+      "workflow_index": 2,
+      "tier": "FAIL_TO_FAIL",
+      "success": 0,
+      "failure": 0
+    },
+    {
+      "workflow_index": 2,
+      "tier": "PASS_TO_FAIL",
+      "success": 0,
+      "failure": 0
+    },
+    {
+      "workflow_index": 3,
+      "tier": "FAIL_TO_PASS",
+      "success": 6,
+      "failure": 0
+    },
+    {
+      "workflow_index": 3,
+      "tier": "PASS_TO_PASS",
+      "success": 107,
+      "failure": 0
+    },
+    {
+      "workflow_index": 3,
+      "tier": "FAIL_TO_FAIL",
+      "success": 0,
+      "failure": 0
+    },
+    {
+      "workflow_index": 3,
+      "tier": "PASS_TO_FAIL",
+      "success": 0,
+      "failure": 0
+    },
+    {
+      "workflow_index": 4,
+      "tier": "FAIL_TO_PASS",
+      "success": 1,
+      "failure": 0
+    },
+    {
+      "workflow_index": 4,
+      "tier": "PASS_TO_PASS",
+      "success": 59,
+      "failure": 0
+    },
+    {
+      "workflow_index": 4,
+      "tier": "FAIL_TO_FAIL",
+      "success": 0,
+      "failure": 0
+    },
+    {
+      "workflow_index": 4,
+      "tier": "PASS_TO_FAIL",
+      "success": 0,
+      "failure": 0
+    },
+    {
+      "workflow_index": 5,
+      "tier": "FAIL_TO_PASS",
+      "success": 1,
+      "failure": 0
+    },
+    {
+      "workflow_index": 5,
+      "tier": "PASS_TO_PASS",
+      "success": 59,
+      "failure": 0
+    },
+    {
+      "workflow_index": 5,
+      "tier": "FAIL_TO_FAIL",
+      "success": 0,
+      "failure": 0
+    },
+    {
+      "workflow_index": 5,
+      "tier": "PASS_TO_FAIL",
+      "success": 0,
+      "failure": 0
+    },
+    {
+      "workflow_index": 6,
+      "tier": "FAIL_TO_PASS",
+      "success": 1,
+      "failure": 0
+    },
+    {
+      "workflow_index": 6,
+      "tier": "PASS_TO_PASS",
+      "success": 59,
+      "failure": 0
+    },
+    {
+      "workflow_index": 6,
+      "tier": "FAIL_TO_FAIL",
+      "success": 0,
+      "failure": 0
+    },
+    {
+      "workflow_index": 6,
+      "tier": "PASS_TO_FAIL",
+      "success": 0,
+      "failure": 0
+    },
+    {
+      "workflow_index": 7,
+      "tier": "FAIL_TO_PASS",
+      "success": 1,
+      "failure": 0
+    },
+    {
+      "workflow_index": 7,
+      "tier": "PASS_TO_PASS",
+      "success": 59,
+      "failure": 0
+    },
+    {
+      "workflow_index": 7,
+      "tier": "FAIL_TO_FAIL",
+      "success": 0,
+      "failure": 0
+    },
+    {
+      "workflow_index": 7,
+      "tier": "PASS_TO_FAIL",
+      "success": 0,
+      "failure": 0
+    },
+    {
+      "workflow_index": 8,
+      "tier": "FAIL_TO_PASS",
+      "success": 1,
+      "failure": 0
+    },
+    {
+      "workflow_index": 8,
+      "tier": "PASS_TO_PASS",
+      "success": 3,
+      "failure": 0
+    },
+    {
+      "workflow_index": 8,
+      "tier": "FAIL_TO_FAIL",
+      "success": 0,
+      "failure": 0
+    },
+    {
+      "workflow_index": 8,
+      "tier": "PASS_TO_FAIL",
+      "success": 0,
+      "failure": 0
+    },
+    {
+      "workflow_index": 9,
+      "tier": "FAIL_TO_PASS",
+      "success": 1,
+      "failure": 0
+    },
+    {
+      "workflow_index": 9,
+      "tier": "PASS_TO_PASS",
+      "success": 3,
+      "failure": 0
+    },
+    {
+      "workflow_index": 9,
+      "tier": "FAIL_TO_FAIL",
+      "success": 0,
+      "failure": 0
+    },
+    {
+      "workflow_index": 9,
+      "tier": "PASS_TO_FAIL",
+      "success": 0,
+      "failure": 0
+    },
+    {
+      "workflow_index": 10,
+      "tier": "FAIL_TO_PASS",
+      "success": 1,
+      "failure": 0
+    },
+    {
+      "workflow_index": 10,
+      "tier": "PASS_TO_PASS",
+      "success": 3,
+      "failure": 0
+    },
+    {
+      "workflow_index": 10,
+      "tier": "FAIL_TO_FAIL",
+      "success": 0,
+      "failure": 0
+    },
+    {
+      "workflow_index": 10,
+      "tier": "PASS_TO_FAIL",
+      "success": 0,
+      "failure": 0
+    },
+    {
+      "workflow_index": 11,
+      "tier": "FAIL_TO_PASS",
+      "success": 1,
+      "failure": 0
+    },
+    {
+      "workflow_index": 11,
+      "tier": "PASS_TO_PASS",
+      "success": 3,
+      "failure": 0
+    },
+    {
+      "workflow_index": 11,
+      "tier": "FAIL_TO_FAIL",
+      "success": 0,
+      "failure": 0
+    },
+    {
+      "workflow_index": 11,
+      "tier": "PASS_TO_FAIL",
+      "success": 0,
+      "failure": 0
+    }
+  ],
+  "implementation": {
+    "sha256": "053607869ecccaff532b27fa21dac5a694f841d39e404766213e0208b569b964",
+    "text": "\"\"\"Independently check archived bytes, denominators and frozen accounting.\"\"\"\nimport base64\nimport gzip\nimport hashlib\nimport json\nimport math\nfrom datetime import datetime, timezone\nfrom pathlib import Path\n\nROOT = Path(__file__).parent\nDEST = Path('/home/zhongming/CodeNib-codegraph-benefit/docs/experiments')\n\n\ndef sha(path):\n    return hashlib.sha256(Path(path).read_bytes()).hexdigest()\n\n\ndef checked(ref):\n    path = DEST / ref.get('artifact', ref.get('path', ''))\n    assert sha(path) == ref['sha256'], path\n    return json.loads(path.read_text())\n\n\npolicy = json.loads((ROOT / 'matched-policy-v4.json').read_text())\ntasks = {t['task_id']: t for t in json.loads((ROOT / 'matched-tasks-v2.json').read_text())['tasks']}\nbinding = json.loads((ROOT / 'execution-binding-v2.json').read_text())\nassert all(sha(p) == h for p, h in binding['files'].items())\nprior = json.loads((ROOT / 'pre-results-tracked-artifacts.json').read_text())\nassert all(sha(DEST.parent.parent / p) == h for p, h in prior.items())\nexecution = json.loads((DEST / 'codegraph_matched_execution_v2.json').read_text())\nassessment = json.loads((DEST / 'codegraph_matched_assessment_v2.json').read_text())\nassert execution['status'] == 'model_execution_complete_pending_grading'\nassert len(execution['workflows']) == 12\nassert len(execution['read_only_tasks']) == 48\nassert all(r['source_bytes_preserved'] is True for r in execution['read_only_tasks'])\nassert all(p['sdk_terminal_success'] for r in execution['workflows'] for p in r['phases'])\nassert sum(len(r['phases']) for r in execution['workflows']) == 60\nassert sum(len(r['sessions']) for r in execution['workflows']) == 24\ntokens, estimates, connected = 0, 0.0, 0\nfor workflow in execution['workflows']:\n    for session in workflow['sessions']:\n        assert session['closed'] and session['usage_complete']\n        assert session['actual_init']['model'] == 'claude-opus-5-5'\n        assert session['actual_init']['apiKeySource'] == 'none'\n        tokens += session['normalized_tokens']\n        estimates += session['sdk_estimate_usd']\n        if workflow['workflow']['arm'] != 'native':\n            assert session['actual_init']['mcp_servers'] == [{'name': 'study', 'status': 'connected', 'source': 'dynamic'}]\n            connected += 1\nassert tokens == execution['normalized_recorded_tokens'] == 9389337\nassert math.isclose(estimates, execution['sdk_estimate_usd'], abs_tol=1e-10)\nassert connected == 18\nmanifest = json.loads((DEST / 'codegraph_matched_v2_capture_manifest.json').read_text())\narchives = {}\nfor ref in manifest['workflows']:\n    archived = checked(ref)\n    idx = archived['receipt_projection']['workflow']['workflow_index']\n    archives[idx] = archived\n    assert sha(archived['original_receipt']) == archived['original_receipt_sha256']\n    for part in archived['phase_observations'].values():\n        checked(part)\n    checked(archived['source_snapshots'])\n    checked(archived['original_tool_inputs'])\nnative_files = 0\nfor row in execution['native_grading']['original_files']:\n    for item in row['files']:\n        payloads = [checked(part) for part in item['parts']]\n        payloads.sort(key=lambda p: p['part'])\n        assert [p['part'] for p in payloads] == list(range(len(payloads)))\n        encoded = b''.join(base64.b64decode(p['base64_bytes']) for p in payloads)\n        assert all(p['content_encoding'] == 'gzip+base64' for p in payloads)\n        raw = gzip.decompress(encoded)\n        assert len(raw) == item['bytes'] and hashlib.sha256(raw).hexdigest() == item['sha256']\n        native_files += 1\ngrades = execution['native_grading']['summary']\nassert len(grades) == 12\nselected_native_outcomes = []\nfor grade in grades:\n    assert grade['status'] == 'graded' and grade['sdk_terminal_success']\n    result = grade['native_result']\n    assert result['resolved'] is True\n    report = result['native_report'][result['instance_id']]\n    assert report['patch_successfully_applied'] and report['resolved']\n    for tier, outcomes in report['tests_status'].items():\n        assert outcomes['failure'] == []\n        selected_native_outcomes.append({'workflow_index': grade['workflow']['workflow_index'], 'tier': tier, 'success': len(outcomes['success']), 'failure': 0})\nreviews = []\nfor ref in assessment['assessment_artifacts'].values():\n    case = checked(ref)\n    for row in case['reviews']:\n        archived = archives[row['workflow_index']]\n        phase = next(p for p in archived['receipt_projection']['phases'] if p['kind'] == row['kind'])\n        answer = phase['result']['result']\n        assert hashlib.sha256(answer.encode()).hexdigest() == row['answer_sha256']\n        assert [c['criterion'] for c in row['criteria']] == tasks[row['task_id']]['acceptance']['all_required']\n        assert all(f['quote'] in answer for f in row['findings'])\n        assert row['sdk_terminal_success'] and row['read_only_source_preserved']\n        expected = False if any(c['met'] is False for c in row['criteria']) or row['serious_error'] else None if any(c['met'] is None for c in row['criteria']) else True\n        assert row['accepted'] is expected\n        for anchor in row['source_evidence']:\n            assert anchor['source_evidence_id'] in case['source_evidence']\n        reviews.append(row)\nassert len(reviews) == 48 and len({(r['workflow_index'], r['kind']) for r in reviews}) == 48\nassert sum(len(r['criteria']) for r in reviews) == 160\nassert sum(r['accepted'] is True for r in reviews) == 34\nassert sum(r['accepted'] is False for r in reviews) == 14\nfor workflow in assessment['workflows']:\n    expected = workflow['observed_seconds'] + sum(max(0, t['frozen_deadline_seconds'] - t['observed_seconds']) for t in workflow['tasks'] if t['accepted'] is False)\n    assert math.isclose(workflow['penalized_seconds'], expected, abs_tol=1e-9)\nfor arm, summary in assessment['arm_summary'].items():\n    rows = [r for r in assessment['workflows'] if r['workflow']['arm'] == arm]\n    assert summary['accepted'] == sum(t['accepted'] is True for r in rows for t in r['tasks'])\n    assert summary['serious_error_tasks'] == sum(t['serious_error'] for r in rows for t in r['tasks'])\n    assert math.isclose(summary['penalized_seconds'], sum(r['penalized_seconds'] for r in rows), abs_tol=1e-9)\nmaximum = max(assessment['arm_summary'][a]['accepted'] for a in ['native', 'serena', 'codegraph'])\neligible = [a for a in ['native', 'serena', 'codegraph'] if assessment['arm_summary'][a]['accepted'] == maximum and assessment['arm_summary'][a]['serious_error_tasks'] == 0 and assessment['arm_summary'][a]['unassessable'] == 0]\nassert maximum == 13 and not eligible\nassert assessment['frozen_gate']['outcome'] == 'insufficient_evidence'\nnew_files = [p for p in DEST.glob('codegraph*.json') if str(p.relative_to(DEST.parent.parent)) not in prior]\nfor path in new_files:\n    json.loads(path.read_text())\n    assert path.stat().st_size < 500 * 1024, path\nvalue = {'recorded_utc': datetime.now(timezone.utc).isoformat(), 'scope': 'Post-run archive/accounting verification, not a new model/native attempt or source adjudication.',\n    'checks': {'frozen_inputs_unchanged': len(binding['files']), 'preceding_tracked_artifacts_unchanged': len(prior),\n        'sdk_tasks_complete': 60, 'sessions_closed_with_final_usage': 24, 'optional_sessions_connected': connected,\n        'read_only_source_preserved': 48, 'fresh_source_reviews': len(reviews), 'frozen_criterion_applications': 160,\n        'native_repairs_resolved': 12, 'native_original_files_byte_reconstructed': native_files,\n        'new_json_parse_and_size_checks': len(new_files), 'accepted_task_and_penalty_totals_match': True, 'baseline_eligibility_matches_frozen_rule': True},\n    'selected_native_outcomes': selected_native_outcomes,\n    'implementation': {'sha256': sha(__file__), 'text': Path(__file__).read_text()}}\npath = DEST / 'codegraph_matched_v2_validation.json'\nassert not path.exists()\npath.write_text(json.dumps(value, indent=2) + '\\n')\nprint(json.dumps(value['checks']))\n"
+  }
+}

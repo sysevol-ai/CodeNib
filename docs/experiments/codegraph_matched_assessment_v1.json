@@ -1,0 +1,1171 @@
+{
+  "schema_version": 1,
+  "recorded_utc": "2026-10-28T05:36:18.045005+00:00",
+  "scope": "Original frozen-policy adjudication with four protocol-unassessable tasks; separate retrospective criterion correction and descriptive timing.",
+  "original_task_sha256": "76f170aaaacee775009fc01d7eedac9bb74d2e73d21c158fe7dee9a78a8d5bd6",
+  "original_policy_sha256": "da562c62849d8bc3937dc6dde1c1a2205609ceba7988d6367b2f18e135bebe41",
+  "original_execution_sha256": "14333c3c473c9a89cf4c746446ee72bcf01edf4423edee6e2f6b1356cf59b6a5",
+  "assessment_artifacts": {
+    "psf__requests-1921": {
+      "path": "codegraph_source_assessment_v1_requests.json",
+      "sha256": "b2d29fa354934c58288d06a0b83a416d9a5fdf6a923bf680dc3b898018153f6e"
+    },
+    "pallets__flask-5014": {
+      "path": "codegraph_source_assessment_v1_flask.json",
+      "sha256": "18d4732d7442615b51f14e794b9968d57346644d2310780fcce859597a5bdf6d"
+    },
+    "pytest-dev__pytest-5809": {
+      "path": "codegraph_source_assessment_v1_pytest.json",
+      "sha256": "9addbb2197d63479f09cd258c885fe70f05603ba5501709d498f611aa11a79ae"
+    }
+  },
+  "source_counts": {
+    "accepted_known": 29,
+    "rejected_known": 15,
+    "protocol_unassessable": 4,
+    "reviewed": 48
+  },
+  "native_repairs_accepted": 12,
+  "arm_summary": {
+    "native": {
+      "accepted_original_known": 12,
+      "unassessable_original": 1,
+      "accepted_original_interpretation_bounds": [
+        12,
+        13
+      ],
+      "rejected_original_known": 2,
+      "serious_error_tasks": 2,
+      "accepted_retrospective_v2": 13,
+      "observed_seconds": 457.9113541599363,
+      "original_primary_interpretation_bounds_seconds": [
+        1095.3493338208646,
+        1411.4796634167433
+      ],
+      "retrospective_v2_penalized_seconds": 1095.3493338208646,
+      "normalized_recorded_tokens": 2227905,
+      "sdk_estimate_usd": 2.3748849000000005
+    },
+    "serena": {
+      "accepted_original_known": 10,
+      "unassessable_original": 1,
+      "accepted_original_interpretation_bounds": [
+        10,
+        11
+      ],
+      "rejected_original_known": 4,
+      "serious_error_tasks": 2,
+      "accepted_retrospective_v2": 11,
+      "observed_seconds": 579.2103490047157,
+      "original_primary_interpretation_bounds_seconds": [
+        1834.3691538609564,
+        2150.0905717294663
+      ],
+      "retrospective_v2_penalized_seconds": 1834.3691538609564,
+      "normalized_recorded_tokens": 2194470,
+      "sdk_estimate_usd": 2.4530409
+    },
+    "codegraph": {
+      "accepted_original_known": 9,
+      "unassessable_original": 1,
+      "accepted_original_interpretation_bounds": [
+        9,
+        10
+      ],
+      "rejected_original_known": 5,
+      "serious_error_tasks": 4,
+      "accepted_retrospective_v2": 10,
+      "observed_seconds": 518.4144954793155,
+      "original_primary_interpretation_bounds_seconds": [
+        1938.709275700152,
+        2244.2075966857374
+      ],
+      "retrospective_v2_penalized_seconds": 1938.709275700152,
+      "normalized_recorded_tokens": 2337058,
+      "sdk_estimate_usd": 2.6298056
+    },
+    "codenib": {
+      "accepted_original_known": 10,
+      "unassessable_original": 1,
+      "accepted_original_interpretation_bounds": [
+        10,
+        11
+      ],
+      "rejected_original_known": 4,
+      "serious_error_tasks": 3,
+      "accepted_retrospective_v2": 11,
+      "observed_seconds": 618.9202735647559,
+      "original_primary_interpretation_bounds_seconds": [
+        1880.034619545564,
+        2190.752524483949
+      ],
+      "retrospective_v2_penalized_seconds": 1880.034619545564,
+      "normalized_recorded_tokens": 2199881,
+      "sdk_estimate_usd": 2.4229102000000005
+    }
+  },
+  "workflows": [
+    {
+      "workflow": {
+        "workflow_index": 0,
+        "instance_id": "psf__requests-1921",
+        "arm": "serena"
+      },
+      "tasks": [
+        {
+          "task_id": "psf__requests-1921-lookup",
+          "kind": "lookup",
+          "accepted_original": true,
+          "accepted_retrospective_v2": true,
+          "serious_error": false,
+          "protocol_issues": [],
+          "observed_seconds": 21.803123701363802,
+          "frozen_deadline_seconds": 180,
+          "penalty_if_rejected_seconds": 158.1968762986362,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 25.333094856515526
+        },
+        {
+          "task_id": "psf__requests-1921-flow",
+          "kind": "flow",
+          "accepted_original": true,
+          "accepted_retrospective_v2": true,
+          "serious_error": false,
+          "protocol_issues": [],
+          "observed_seconds": 54.583028519526124,
+          "frozen_deadline_seconds": 360,
+          "penalty_if_rejected_seconds": 305.4169714804739,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 58.11299967467785
+        },
+        {
+          "task_id": "psf__requests-1921-impact",
+          "kind": "impact",
+          "accepted_original": false,
+          "accepted_retrospective_v2": false,
+          "serious_error": false,
+          "protocol_issues": [],
+          "observed_seconds": 37.07677641697228,
+          "frozen_deadline_seconds": 360,
+          "penalty_if_rejected_seconds": 322.9232235830277,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 40.60674757212401
+        },
+        {
+          "task_id": "psf__requests-1921-repair",
+          "kind": "repair",
+          "accepted_original": true,
+          "accepted_retrospective_v2": true,
+          "serious_error": false,
+          "protocol_issues": [],
+          "observed_seconds": 41.132107712328434,
+          "frozen_deadline_seconds": 720,
+          "penalty_if_rejected_seconds": 678.8678922876716,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 44.66207886748016
+        },
+        {
+          "task_id": "psf__requests-1921-post_edit",
+          "kind": "post_edit",
+          "accepted_original": true,
+          "accepted_retrospective_v2": true,
+          "serious_error": false,
+          "protocol_issues": [],
+          "observed_seconds": 33.864790154621005,
+          "frozen_deadline_seconds": 180,
+          "penalty_if_rejected_seconds": 146.135209845379,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 37.39476130977273
+        }
+      ],
+      "observed_seconds": 206.10968228057027,
+      "known_penalty_seconds": 322.9232235830277,
+      "unassessable_penalty_upper_seconds": 0,
+      "original_primary_interpretation_bounds_seconds": [
+        529.032905863598,
+        529.032905863598
+      ],
+      "retrospective_v2_penalized_seconds": 529.032905863598,
+      "normalized_recorded_tokens": 670253,
+      "sdk_estimate_usd": 0.8289243000000001,
+      "non_phase_overhead_seconds": 17.649855775758624
+    },
+    {
+      "workflow": {
+        "workflow_index": 1,
+        "instance_id": "psf__requests-1921",
+        "arm": "codenib"
+      },
+      "tasks": [
+        {
+          "task_id": "psf__requests-1921-lookup",
+          "kind": "lookup",
+          "accepted_original": true,
+          "accepted_retrospective_v2": true,
+          "serious_error": false,
+          "protocol_issues": [],
+          "observed_seconds": 15.972957901656628,
+          "frozen_deadline_seconds": 180,
+          "penalty_if_rejected_seconds": 164.02704209834337,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 21.417163146659732
+        },
+        {
+          "task_id": "psf__requests-1921-flow",
+          "kind": "flow",
+          "accepted_original": false,
+          "accepted_retrospective_v2": false,
+          "serious_error": true,
+          "protocol_issues": [],
+          "observed_seconds": 45.94020373933017,
+          "frozen_deadline_seconds": 360,
+          "penalty_if_rejected_seconds": 314.0597962606698,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 51.38440898433328
+        },
+        {
+          "task_id": "psf__requests-1921-impact",
+          "kind": "impact",
+          "accepted_original": false,
+          "accepted_retrospective_v2": false,
+          "serious_error": false,
+          "protocol_issues": [],
+          "observed_seconds": 44.28258291259408,
+          "frozen_deadline_seconds": 360,
+          "penalty_if_rejected_seconds": 315.7174170874059,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 49.726788157597184
+        },
+        {
+          "task_id": "psf__requests-1921-repair",
+          "kind": "repair",
+          "accepted_original": true,
+          "accepted_retrospective_v2": true,
+          "serious_error": false,
+          "protocol_issues": [],
+          "observed_seconds": 57.3643501419574,
+          "frozen_deadline_seconds": 720,
+          "penalty_if_rejected_seconds": 662.6356498580426,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 62.808555386960506
+        },
+        {
+          "task_id": "psf__requests-1921-post_edit",
+          "kind": "post_edit",
+          "accepted_original": true,
+          "accepted_retrospective_v2": true,
+          "serious_error": false,
+          "protocol_issues": [],
+          "observed_seconds": 21.499391738325357,
+          "frozen_deadline_seconds": 180,
+          "penalty_if_rejected_seconds": 158.50060826167464,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 26.94359698332846
+        }
+      ],
+      "observed_seconds": 212.28051265887916,
+      "known_penalty_seconds": 629.7772133480757,
+      "unassessable_penalty_upper_seconds": 0,
+      "original_primary_interpretation_bounds_seconds": [
+        842.0577260069549,
+        842.0577260069549
+      ],
+      "retrospective_v2_penalized_seconds": 842.0577260069549,
+      "normalized_recorded_tokens": 796251,
+      "sdk_estimate_usd": 0.908329,
+      "non_phase_overhead_seconds": 27.22102622501552
+    },
+    {
+      "workflow": {
+        "workflow_index": 2,
+        "instance_id": "psf__requests-1921",
+        "arm": "codegraph"
+      },
+      "tasks": [
+        {
+          "task_id": "psf__requests-1921-lookup",
+          "kind": "lookup",
+          "accepted_original": true,
+          "accepted_retrospective_v2": true,
+          "serious_error": false,
+          "protocol_issues": [],
+          "observed_seconds": 17.8744757771492,
+          "frozen_deadline_seconds": 180,
+          "penalty_if_rejected_seconds": 162.1255242228508,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 19.680829614773394
+        },
+        {
+          "task_id": "psf__requests-1921-flow",
+          "kind": "flow",
+          "accepted_original": true,
+          "accepted_retrospective_v2": true,
+          "serious_error": false,
+          "protocol_issues": [],
+          "observed_seconds": 53.88449519686401,
+          "frozen_deadline_seconds": 360,
+          "penalty_if_rejected_seconds": 306.115504803136,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 55.6908490344882
+        },
+        {
+          "task_id": "psf__requests-1921-impact",
+          "kind": "impact",
+          "accepted_original": false,
+          "accepted_retrospective_v2": false,
+          "serious_error": false,
+          "protocol_issues": [],
+          "observed_seconds": 40.27609808743,
+          "frozen_deadline_seconds": 360,
+          "penalty_if_rejected_seconds": 319.72390191257,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 42.082451925054194
+        },
+        {
+          "task_id": "psf__requests-1921-repair",
+          "kind": "repair",
+          "accepted_original": true,
+          "accepted_retrospective_v2": true,
+          "serious_error": false,
+          "protocol_issues": [],
+          "observed_seconds": 25.27919215708971,
+          "frozen_deadline_seconds": 720,
+          "penalty_if_rejected_seconds": 694.7208078429103,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 27.085545994713904
+        },
+        {
+          "task_id": "psf__requests-1921-post_edit",
+          "kind": "post_edit",
+          "accepted_original": true,
+          "accepted_retrospective_v2": true,
+          "serious_error": false,
+          "protocol_issues": [],
+          "observed_seconds": 29.63286490365863,
+          "frozen_deadline_seconds": 180,
+          "penalty_if_rejected_seconds": 150.36713509634137,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 31.439218741282822
+        }
+      ],
+      "observed_seconds": 175.9788953103125,
+      "known_penalty_seconds": 319.72390191257,
+      "unassessable_penalty_upper_seconds": 0,
+      "original_primary_interpretation_bounds_seconds": [
+        495.7027972228825,
+        495.7027972228825
+      ],
+      "retrospective_v2_penalized_seconds": 495.7027972228825,
+      "normalized_recorded_tokens": 751340,
+      "sdk_estimate_usd": 0.8995414999999999,
+      "non_phase_overhead_seconds": 9.031769188120961
+    },
+    {
+      "workflow": {
+        "workflow_index": 3,
+        "instance_id": "psf__requests-1921",
+        "arm": "native"
+      },
+      "tasks": [
+        {
+          "task_id": "psf__requests-1921-lookup",
+          "kind": "lookup",
+          "accepted_original": true,
+          "accepted_retrospective_v2": true,
+          "serious_error": false,
+          "protocol_issues": [],
+          "observed_seconds": 12.686265081167221,
+          "frozen_deadline_seconds": 180,
+          "penalty_if_rejected_seconds": 167.31373491883278,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 13.039813049137592
+        },
+        {
+          "task_id": "psf__requests-1921-flow",
+          "kind": "flow",
+          "accepted_original": true,
+          "accepted_retrospective_v2": true,
+          "serious_error": false,
+          "protocol_issues": [],
+          "observed_seconds": 44.245546674355865,
+          "frozen_deadline_seconds": 360,
+          "penalty_if_rejected_seconds": 315.75445332564414,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 44.599094642326236
+        },
+        {
+          "task_id": "psf__requests-1921-impact",
+          "kind": "impact",
+          "accepted_original": true,
+          "accepted_retrospective_v2": true,
+          "serious_error": false,
+          "protocol_issues": [],
+          "observed_seconds": 37.78720801882446,
+          "frozen_deadline_seconds": 360,
+          "penalty_if_rejected_seconds": 322.21279198117554,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 38.14075598679483
+        },
+        {
+          "task_id": "psf__requests-1921-repair",
+          "kind": "repair",
+          "accepted_original": true,
+          "accepted_retrospective_v2": true,
+          "serious_error": false,
+          "protocol_issues": [],
+          "observed_seconds": 31.27863158658147,
+          "frozen_deadline_seconds": 720,
+          "penalty_if_rejected_seconds": 688.7213684134185,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 31.63217955455184
+        },
+        {
+          "task_id": "psf__requests-1921-post_edit",
+          "kind": "post_edit",
+          "accepted_original": true,
+          "accepted_retrospective_v2": true,
+          "serious_error": false,
+          "protocol_issues": [],
+          "observed_seconds": 21.793839594349265,
+          "frozen_deadline_seconds": 180,
+          "penalty_if_rejected_seconds": 158.20616040565073,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 22.147387562319636
+        }
+      ],
+      "observed_seconds": 149.55923079513013,
+      "known_penalty_seconds": 0,
+      "unassessable_penalty_upper_seconds": 0,
+      "original_primary_interpretation_bounds_seconds": [
+        149.55923079513013,
+        149.55923079513013
+      ],
+      "retrospective_v2_penalized_seconds": 149.55923079513013,
+      "normalized_recorded_tokens": 573870,
+      "sdk_estimate_usd": 0.6899033,
+      "non_phase_overhead_seconds": 1.7677398398518562
+    },
+    {
+      "workflow": {
+        "workflow_index": 4,
+        "instance_id": "pallets__flask-5014",
+        "arm": "serena"
+      },
+      "tasks": [
+        {
+          "task_id": "pallets__flask-5014-lookup",
+          "kind": "lookup",
+          "accepted_original": true,
+          "accepted_retrospective_v2": true,
+          "serious_error": false,
+          "protocol_issues": [],
+          "observed_seconds": 21.289568945765495,
+          "frozen_deadline_seconds": 180,
+          "penalty_if_rejected_seconds": 158.7104310542345,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 24.871889897063376
+        },
+        {
+          "task_id": "pallets__flask-5014-flow",
+          "kind": "flow",
+          "accepted_original": false,
+          "accepted_retrospective_v2": false,
+          "serious_error": true,
+          "protocol_issues": [],
+          "observed_seconds": 51.703837685287,
+          "frozen_deadline_seconds": 360,
+          "penalty_if_rejected_seconds": 308.296162314713,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 55.28615863658488
+        },
+        {
+          "task_id": "pallets__flask-5014-impact",
+          "kind": "impact",
+          "accepted_original": false,
+          "accepted_retrospective_v2": false,
+          "serious_error": false,
+          "protocol_issues": [],
+          "observed_seconds": 42.552584355697036,
+          "frozen_deadline_seconds": 360,
+          "penalty_if_rejected_seconds": 317.44741564430296,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 46.134905306994916
+        },
+        {
+          "task_id": "pallets__flask-5014-repair",
+          "kind": "repair",
+          "accepted_original": true,
+          "accepted_retrospective_v2": true,
+          "serious_error": false,
+          "protocol_issues": [],
+          "observed_seconds": 28.067511836066842,
+          "frozen_deadline_seconds": 720,
+          "penalty_if_rejected_seconds": 691.9324881639332,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 31.649832787364723
+        },
+        {
+          "task_id": "pallets__flask-5014-post_edit",
+          "kind": "post_edit",
+          "accepted_original": true,
+          "accepted_retrospective_v2": true,
+          "serious_error": false,
+          "protocol_issues": [],
+          "observed_seconds": 28.791200660169125,
+          "frozen_deadline_seconds": 180,
+          "penalty_if_rejected_seconds": 151.20879933983088,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 32.373521611467005
+        }
+      ],
+      "observed_seconds": 190.3163082394749,
+      "known_penalty_seconds": 625.743577959016,
+      "unassessable_penalty_upper_seconds": 0,
+      "original_primary_interpretation_bounds_seconds": [
+        816.0598861984909,
+        816.0598861984909
+      ],
+      "retrospective_v2_penalized_seconds": 816.0598861984909,
+      "normalized_recorded_tokens": 902175,
+      "sdk_estimate_usd": 0.9257975,
+      "non_phase_overhead_seconds": 17.911604756489396
+    },
+    {
+      "workflow": {
+        "workflow_index": 5,
+        "instance_id": "pallets__flask-5014",
+        "arm": "codegraph"
+      },
+      "tasks": [
+        {
+          "task_id": "pallets__flask-5014-lookup",
+          "kind": "lookup",
+          "accepted_original": true,
+          "accepted_retrospective_v2": true,
+          "serious_error": false,
+          "protocol_issues": [],
+          "observed_seconds": 19.833058001473546,
+          "frozen_deadline_seconds": 180,
+          "penalty_if_rejected_seconds": 160.16694199852645,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 21.742254276946188
+        },
+        {
+          "task_id": "pallets__flask-5014-flow",
+          "kind": "flow",
+          "accepted_original": false,
+          "accepted_retrospective_v2": false,
+          "serious_error": true,
+          "protocol_issues": [],
+          "observed_seconds": 42.860639590770006,
+          "frozen_deadline_seconds": 360,
+          "penalty_if_rejected_seconds": 317.13936040923,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 44.769835866242644
+        },
+        {
+          "task_id": "pallets__flask-5014-impact",
+          "kind": "impact",
+          "accepted_original": false,
+          "accepted_retrospective_v2": false,
+          "serious_error": true,
+          "protocol_issues": [],
+          "observed_seconds": 36.42745605297387,
+          "frozen_deadline_seconds": 360,
+          "penalty_if_rejected_seconds": 323.57254394702613,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 38.336652328446505
+        },
+        {
+          "task_id": "pallets__flask-5014-repair",
+          "kind": "repair",
+          "accepted_original": true,
+          "accepted_retrospective_v2": true,
+          "serious_error": false,
+          "protocol_issues": [],
+          "observed_seconds": 24.842124171555042,
+          "frozen_deadline_seconds": 720,
+          "penalty_if_rejected_seconds": 695.157875828445,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 26.751320447027684
+        },
+        {
+          "task_id": "pallets__flask-5014-post_edit",
+          "kind": "post_edit",
+          "accepted_original": true,
+          "accepted_retrospective_v2": true,
+          "serious_error": false,
+          "protocol_issues": [],
+          "observed_seconds": 23.361967289820313,
+          "frozen_deadline_seconds": 180,
+          "penalty_if_rejected_seconds": 156.6380327101797,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 25.271163565292955
+        }
+      ],
+      "observed_seconds": 156.87122648395598,
+      "known_penalty_seconds": 640.7119043562561,
+      "unassessable_penalty_upper_seconds": 0,
+      "original_primary_interpretation_bounds_seconds": [
+        797.5831308402121,
+        797.5831308402121
+      ],
+      "retrospective_v2_penalized_seconds": 797.5831308402121,
+      "normalized_recorded_tokens": 689820,
+      "sdk_estimate_usd": 0.7911366999999998,
+      "non_phase_overhead_seconds": 9.545981377363205
+    },
+    {
+      "workflow": {
+        "workflow_index": 6,
+        "instance_id": "pallets__flask-5014",
+        "arm": "native"
+      },
+      "tasks": [
+        {
+          "task_id": "pallets__flask-5014-lookup",
+          "kind": "lookup",
+          "accepted_original": true,
+          "accepted_retrospective_v2": true,
+          "serious_error": false,
+          "protocol_issues": [],
+          "observed_seconds": 25.27111666277051,
+          "frozen_deadline_seconds": 180,
+          "penalty_if_rejected_seconds": 154.7288833372295,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 25.672266678512095
+        },
+        {
+          "task_id": "pallets__flask-5014-flow",
+          "kind": "flow",
+          "accepted_original": false,
+          "accepted_retrospective_v2": false,
+          "serious_error": true,
+          "protocol_issues": [],
+          "observed_seconds": 44.9185778722167,
+          "frozen_deadline_seconds": 360,
+          "penalty_if_rejected_seconds": 315.0814221277833,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 45.31972788795829
+        },
+        {
+          "task_id": "pallets__flask-5014-impact",
+          "kind": "impact",
+          "accepted_original": true,
+          "accepted_retrospective_v2": true,
+          "serious_error": false,
+          "protocol_issues": [],
+          "observed_seconds": 51.956968769431114,
+          "frozen_deadline_seconds": 360,
+          "penalty_if_rejected_seconds": 308.0430312305689,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 52.3581187851727
+        },
+        {
+          "task_id": "pallets__flask-5014-repair",
+          "kind": "repair",
+          "accepted_original": true,
+          "accepted_retrospective_v2": true,
+          "serious_error": false,
+          "protocol_issues": [],
+          "observed_seconds": 26.85040688700974,
+          "frozen_deadline_seconds": 720,
+          "penalty_if_rejected_seconds": 693.1495931129903,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 27.251556902751325
+        },
+        {
+          "task_id": "pallets__flask-5014-post_edit",
+          "kind": "post_edit",
+          "accepted_original": true,
+          "accepted_retrospective_v2": true,
+          "serious_error": false,
+          "protocol_issues": [],
+          "observed_seconds": 25.246144015341997,
+          "frozen_deadline_seconds": 180,
+          "penalty_if_rejected_seconds": 154.753855984658,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 25.647294031083582
+        }
+      ],
+      "observed_seconds": 176.248964285478,
+      "known_penalty_seconds": 315.0814221277833,
+      "unassessable_penalty_upper_seconds": 0,
+      "original_primary_interpretation_bounds_seconds": [
+        491.3303864132613,
+        491.3303864132613
+      ],
+      "retrospective_v2_penalized_seconds": 491.3303864132613,
+      "normalized_recorded_tokens": 1128537,
+      "sdk_estimate_usd": 1.0255247000000003,
+      "non_phase_overhead_seconds": 2.0057500787079334
+    },
+    {
+      "workflow": {
+        "workflow_index": 7,
+        "instance_id": "pallets__flask-5014",
+        "arm": "codenib"
+      },
+      "tasks": [
+        {
+          "task_id": "pallets__flask-5014-lookup",
+          "kind": "lookup",
+          "accepted_original": true,
+          "accepted_retrospective_v2": true,
+          "serious_error": false,
+          "protocol_issues": [],
+          "observed_seconds": 22.134920567274094,
+          "frozen_deadline_seconds": 180,
+          "penalty_if_rejected_seconds": 157.8650794327259,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 27.35903837531805
+        },
+        {
+          "task_id": "pallets__flask-5014-flow",
+          "kind": "flow",
+          "accepted_original": false,
+          "accepted_retrospective_v2": false,
+          "serious_error": true,
+          "protocol_issues": [],
+          "observed_seconds": 57.01934185996652,
+          "frozen_deadline_seconds": 360,
+          "penalty_if_rejected_seconds": 302.9806581400335,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 62.24345966801047
+        },
+        {
+          "task_id": "pallets__flask-5014-impact",
+          "kind": "impact",
+          "accepted_original": true,
+          "accepted_retrospective_v2": true,
+          "serious_error": false,
+          "protocol_issues": [],
+          "observed_seconds": 57.3510141633451,
+          "frozen_deadline_seconds": 360,
+          "penalty_if_rejected_seconds": 302.6489858366549,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 62.575131971389055
+        },
+        {
+          "task_id": "pallets__flask-5014-repair",
+          "kind": "repair",
+          "accepted_original": true,
+          "accepted_retrospective_v2": true,
+          "serious_error": false,
+          "protocol_issues": [],
+          "observed_seconds": 34.29072165861726,
+          "frozen_deadline_seconds": 720,
+          "penalty_if_rejected_seconds": 685.7092783413827,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 39.514839466661215
+        },
+        {
+          "task_id": "pallets__flask-5014-post_edit",
+          "kind": "post_edit",
+          "accepted_original": true,
+          "accepted_retrospective_v2": true,
+          "serious_error": false,
+          "protocol_issues": [],
+          "observed_seconds": 32.13237205892801,
+          "frozen_deadline_seconds": 180,
+          "penalty_if_rejected_seconds": 147.867627941072,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 37.35648986697197
+        }
+      ],
+      "observed_seconds": 229.04895934835076,
+      "known_penalty_seconds": 302.9806581400335,
+      "unassessable_penalty_upper_seconds": 0,
+      "original_primary_interpretation_bounds_seconds": [
+        532.0296174883842,
+        532.0296174883842
+      ],
+      "retrospective_v2_penalized_seconds": 532.0296174883842,
+      "normalized_recorded_tokens": 714776,
+      "sdk_estimate_usd": 0.8125995000000001,
+      "non_phase_overhead_seconds": 26.120589040219784
+    },
+    {
+      "workflow": {
+        "workflow_index": 8,
+        "instance_id": "pytest-dev__pytest-5809",
+        "arm": "codenib"
+      },
+      "tasks": [
+        {
+          "task_id": "pytest-dev__pytest-5809-lookup",
+          "kind": "lookup",
+          "accepted_original": true,
+          "accepted_retrospective_v2": true,
+          "serious_error": false,
+          "protocol_issues": [],
+          "observed_seconds": 21.681244865059853,
+          "frozen_deadline_seconds": 180,
+          "penalty_if_rejected_seconds": 158.31875513494015,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 28.28197483792901
+        },
+        {
+          "task_id": "pytest-dev__pytest-5809-flow",
+          "kind": "flow",
+          "accepted_original": false,
+          "accepted_retrospective_v2": false,
+          "serious_error": true,
+          "protocol_issues": [],
+          "observed_seconds": 31.643525507301092,
+          "frozen_deadline_seconds": 360,
+          "penalty_if_rejected_seconds": 328.3564744926989,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 38.24425548017025
+        },
+        {
+          "task_id": "pytest-dev__pytest-5809-impact",
+          "kind": "impact",
+          "accepted_original": null,
+          "accepted_retrospective_v2": true,
+          "serious_error": false,
+          "protocol_issues": [
+            {
+              "id": "pytest_collection_callsite_wording",
+              "original_criterion": "Identify call_runtest_hook and collect_one_node as production CallInfo.from_call call sites.",
+              "source_fact": "The direct collection invocation is pytest_make_collect_report at runner.py:253. collect_one_node at368-375 invokes the report hook and consumes rep.call.",
+              "disposition": "Unassessable original item; no zero or model-error label. Any corrected diagnostic is separate and retrospective."
+            }
+          ],
+          "observed_seconds": 49.28209506161511,
+          "frozen_deadline_seconds": 360,
+          "penalty_if_rejected_seconds": 310.7179049383849,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 55.88282503448427
+        },
+        {
+          "task_id": "pytest-dev__pytest-5809-repair",
+          "kind": "repair",
+          "accepted_original": true,
+          "accepted_retrospective_v2": true,
+          "serious_error": false,
+          "protocol_issues": [],
+          "observed_seconds": 16.87673278339207,
+          "frozen_deadline_seconds": 720,
+          "penalty_if_rejected_seconds": 703.1232672166079,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 23.47746275626123
+        },
+        {
+          "task_id": "pytest-dev__pytest-5809-post_edit",
+          "kind": "post_edit",
+          "accepted_original": true,
+          "accepted_retrospective_v2": true,
+          "serious_error": false,
+          "protocol_issues": [],
+          "observed_seconds": 25.103553475812078,
+          "frozen_deadline_seconds": 180,
+          "penalty_if_rejected_seconds": 154.89644652418792,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 31.704283448681235
+        }
+      ],
+      "observed_seconds": 177.590801557526,
+      "known_penalty_seconds": 328.3564744926989,
+      "unassessable_penalty_upper_seconds": 310.7179049383849,
+      "original_primary_interpretation_bounds_seconds": [
+        505.9472760502249,
+        816.6651809886098
+      ],
+      "retrospective_v2_penalized_seconds": 505.9472760502249,
+      "normalized_recorded_tokens": 688854,
+      "sdk_estimate_usd": 0.7019817000000002,
+      "non_phase_overhead_seconds": 33.00364986434579
+    },
+    {
+      "workflow": {
+        "workflow_index": 9,
+        "instance_id": "pytest-dev__pytest-5809",
+        "arm": "native"
+      },
+      "tasks": [
+        {
+          "task_id": "pytest-dev__pytest-5809-lookup",
+          "kind": "lookup",
+          "accepted_original": true,
+          "accepted_retrospective_v2": true,
+          "serious_error": false,
+          "protocol_issues": [],
+          "observed_seconds": 19.8909525051713,
+          "frozen_deadline_seconds": 180,
+          "penalty_if_rejected_seconds": 160.1090474948287,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 20.327446120232345
+        },
+        {
+          "task_id": "pytest-dev__pytest-5809-flow",
+          "kind": "flow",
+          "accepted_original": false,
+          "accepted_retrospective_v2": false,
+          "serious_error": true,
+          "protocol_issues": [],
+          "observed_seconds": 37.64344246685505,
+          "frozen_deadline_seconds": 360,
+          "penalty_if_rejected_seconds": 322.35655753314495,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 38.079936081916095
+        },
+        {
+          "task_id": "pytest-dev__pytest-5809-impact",
+          "kind": "impact",
+          "accepted_original": null,
+          "accepted_retrospective_v2": true,
+          "serious_error": false,
+          "protocol_issues": [
+            {
+              "id": "pytest_collection_callsite_wording",
+              "original_criterion": "Identify call_runtest_hook and collect_one_node as production CallInfo.from_call call sites.",
+              "source_fact": "The direct collection invocation is pytest_make_collect_report at runner.py:253. collect_one_node at368-375 invokes the report hook and consumes rep.call.",
+              "disposition": "Unassessable original item; no zero or model-error label. Any corrected diagnostic is separate and retrospective."
+            }
+          ],
+          "observed_seconds": 43.86967040412128,
+          "frozen_deadline_seconds": 360,
+          "penalty_if_rejected_seconds": 316.1303295958787,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 44.306164019182326
+        },
+        {
+          "task_id": "pytest-dev__pytest-5809-repair",
+          "kind": "repair",
+          "accepted_original": true,
+          "accepted_retrospective_v2": true,
+          "serious_error": false,
+          "protocol_issues": [],
+          "observed_seconds": 12.850071776658297,
+          "frozen_deadline_seconds": 720,
+          "penalty_if_rejected_seconds": 707.1499282233417,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 13.286565391719341
+        },
+        {
+          "task_id": "pytest-dev__pytest-5809-post_edit",
+          "kind": "post_edit",
+          "accepted_original": true,
+          "accepted_retrospective_v2": true,
+          "serious_error": false,
+          "protocol_issues": [],
+          "observed_seconds": 15.666553851217031,
+          "frozen_deadline_seconds": 180,
+          "penalty_if_rejected_seconds": 164.33344614878297,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 16.103047466278078
+        }
+      ],
+      "observed_seconds": 132.10315907932818,
+      "known_penalty_seconds": 322.35655753314495,
+      "unassessable_penalty_upper_seconds": 316.1303295958787,
+      "original_primary_interpretation_bounds_seconds": [
+        454.45971661247313,
+        770.5900462083519
+      ],
+      "retrospective_v2_penalized_seconds": 454.45971661247313,
+      "normalized_recorded_tokens": 525498,
+      "sdk_estimate_usd": 0.6594569000000001,
+      "non_phase_overhead_seconds": 2.1824680753052235
+    },
+    {
+      "workflow": {
+        "workflow_index": 10,
+        "instance_id": "pytest-dev__pytest-5809",
+        "arm": "codegraph"
+      },
+      "tasks": [
+        {
+          "task_id": "pytest-dev__pytest-5809-lookup",
+          "kind": "lookup",
+          "accepted_original": false,
+          "accepted_retrospective_v2": false,
+          "serious_error": true,
+          "protocol_issues": [],
+          "observed_seconds": 24.200172467157245,
+          "frozen_deadline_seconds": 180,
+          "penalty_if_rejected_seconds": 155.79982753284276,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 26.26447114907205
+        },
+        {
+          "task_id": "pytest-dev__pytest-5809-flow",
+          "kind": "flow",
+          "accepted_original": false,
+          "accepted_retrospective_v2": false,
+          "serious_error": true,
+          "protocol_issues": [],
+          "observed_seconds": 55.94085358083248,
+          "frozen_deadline_seconds": 360,
+          "penalty_if_rejected_seconds": 304.0591464191675,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 58.00515226274729
+        },
+        {
+          "task_id": "pytest-dev__pytest-5809-impact",
+          "kind": "impact",
+          "accepted_original": null,
+          "accepted_retrospective_v2": true,
+          "serious_error": false,
+          "protocol_issues": [
+            {
+              "id": "pytest_collection_callsite_wording",
+              "original_criterion": "Identify call_runtest_hook and collect_one_node as production CallInfo.from_call call sites.",
+              "source_fact": "The direct collection invocation is pytest_make_collect_report at runner.py:253. collect_one_node at368-375 invokes the report hook and consumes rep.call.",
+              "disposition": "Unassessable original item; no zero or model-error label. Any corrected diagnostic is separate and retrospective."
+            }
+          ],
+          "observed_seconds": 54.50167901441455,
+          "frozen_deadline_seconds": 360,
+          "penalty_if_rejected_seconds": 305.49832098558545,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 56.565977696329355
+        },
+        {
+          "task_id": "pytest-dev__pytest-5809-repair",
+          "kind": "repair",
+          "accepted_original": true,
+          "accepted_retrospective_v2": true,
+          "serious_error": false,
+          "protocol_issues": [],
+          "observed_seconds": 21.45247815735638,
+          "frozen_deadline_seconds": 720,
+          "penalty_if_rejected_seconds": 698.5475218426436,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 23.516776839271188
+        },
+        {
+          "task_id": "pytest-dev__pytest-5809-post_edit",
+          "kind": "post_edit",
+          "accepted_original": true,
+          "accepted_retrospective_v2": true,
+          "serious_error": false,
+          "protocol_issues": [],
+          "observed_seconds": 19.147697055712342,
+          "frozen_deadline_seconds": 180,
+          "penalty_if_rejected_seconds": 160.85230294428766,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 21.21199573762715
+        }
+      ],
+      "observed_seconds": 185.56437368504703,
+      "known_penalty_seconds": 459.8589739520103,
+      "unassessable_penalty_upper_seconds": 305.49832098558545,
+      "original_primary_interpretation_bounds_seconds": [
+        645.4233476370573,
+        950.9216686226428
+      ],
+      "retrospective_v2_penalized_seconds": 645.4233476370573,
+      "normalized_recorded_tokens": 895898,
+      "sdk_estimate_usd": 0.9391274000000002,
+      "non_phase_overhead_seconds": 10.321493409574032
+    },
+    {
+      "workflow": {
+        "workflow_index": 11,
+        "instance_id": "pytest-dev__pytest-5809",
+        "arm": "serena"
+      },
+      "tasks": [
+        {
+          "task_id": "pytest-dev__pytest-5809-lookup",
+          "kind": "lookup",
+          "accepted_original": true,
+          "accepted_retrospective_v2": true,
+          "serious_error": false,
+          "protocol_issues": [],
+          "observed_seconds": 30.291575986891985,
+          "frozen_deadline_seconds": 180,
+          "penalty_if_rejected_seconds": 149.70842401310802,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 32.383000223338605
+        },
+        {
+          "task_id": "pytest-dev__pytest-5809-flow",
+          "kind": "flow",
+          "accepted_original": false,
+          "accepted_retrospective_v2": false,
+          "serious_error": true,
+          "protocol_issues": [],
+          "observed_seconds": 53.50799668580294,
+          "frozen_deadline_seconds": 360,
+          "penalty_if_rejected_seconds": 306.49200331419706,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 55.59942092224956
+        },
+        {
+          "task_id": "pytest-dev__pytest-5809-impact",
+          "kind": "impact",
+          "accepted_original": null,
+          "accepted_retrospective_v2": true,
+          "serious_error": false,
+          "protocol_issues": [
+            {
+              "id": "pytest_collection_callsite_wording",
+              "original_criterion": "Identify call_runtest_hook and collect_one_node as production CallInfo.from_call call sites.",
+              "source_fact": "The direct collection invocation is pytest_make_collect_report at runner.py:253. collect_one_node at368-375 invokes the report hook and consumes rep.call.",
+              "disposition": "Unassessable original item; no zero or model-error label. Any corrected diagnostic is separate and retrospective."
+            }
+          ],
+          "observed_seconds": 44.27858213149011,
+          "frozen_deadline_seconds": 360,
+          "penalty_if_rejected_seconds": 315.7214178685099,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 46.37000636793673
+        },
+        {
+          "task_id": "pytest-dev__pytest-5809-repair",
+          "kind": "repair",
+          "accepted_original": true,
+          "accepted_retrospective_v2": true,
+          "serious_error": false,
+          "protocol_issues": [],
+          "observed_seconds": 19.93830255791545,
+          "frozen_deadline_seconds": 720,
+          "penalty_if_rejected_seconds": 700.0616974420846,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 22.02972679436207
+        },
+        {
+          "task_id": "pytest-dev__pytest-5809-post_edit",
+          "kind": "post_edit",
+          "accepted_original": true,
+          "accepted_retrospective_v2": true,
+          "serious_error": false,
+          "protocol_issues": [],
+          "observed_seconds": 24.310779940336943,
+          "frozen_deadline_seconds": 180,
+          "penalty_if_rejected_seconds": 155.68922005966306,
+          "descriptive_phase_plus_one_fifth_overhead_seconds": 26.402204176783563
+        }
+      ],
+      "observed_seconds": 182.78435848467052,
+      "known_penalty_seconds": 306.49200331419706,
+      "unassessable_penalty_upper_seconds": 315.7214178685099,
+      "original_primary_interpretation_bounds_seconds": [
+        489.2763617988676,
+        804.9977796673775
+      ],
+      "retrospective_v2_penalized_seconds": 489.2763617988676,
+      "normalized_recorded_tokens": 622042,
+      "sdk_estimate_usd": 0.6983191,
+      "non_phase_overhead_seconds": 10.457121182233095
+    }
+  ],
+  "frozen_gate": {
+    "outcome": "insufficient_evidence",
+    "eligible_complete_alternatives": [],
+    "strongest_eligible_alternative": null,
+    "primary_improvement": null,
+    "reason": "Every alternative has material source errors. The original collection-callsite item is additionally ambiguous for one task per arm. The frozen rule therefore admits no strongest complete eligible alternative.",
+    "promotion": "held; source acceptance and material-error conditions do not pass",
+    "external_repeat_use": "not_started_no_participant",
+    "G1": "provider identity recovery and automatic refresh remain open"
+  },
+  "retrospective_v2": {
+    "protocol_artifact": "codegraph_source_protocol_v2.json",
+    "protocol_sha256": "33d40d67da41464d05c2085bc943d2fb628f79c69d78f5dd4474ec815b6cd38f",
+    "scope": "Post-hoc diagnostic only; original item/statuses retained. No new model calls or prospective gain claim.",
+    "all_alternatives_have_serious_errors": true
+  },
+  "descriptive_raw_time_pairs": {
+    "native": {
+      "scope": "Descriptive raw unpenalized time only; not a selected eligible primary alternative.",
+      "cluster_ratios": [
+        1.4193741939584201,
+        1.2995762005009592,
+        1.3443342520740356
+      ],
+      "cohort_ratio": 1.3516159141766628,
+      "repository_bootstrap_95_percentile_interval": [
+        1.2995762005009592,
+        1.4193741939584201
+      ],
+      "draws": 10000,
+      "seed": "codenib-matched-execution-2026-10-27-v1",
+      "generator": "Python random.Random, string seed version2",
+      "statistic": "ratio of paired resampled repository totals; n=3 clusters, not15 independent tasks"
+    },
+    "serena": {
+      "scope": "Descriptive raw unpenalized time only; not a selected eligible primary alternative.",
+      "cluster_ratios": [
+        1.0299395463135437,
+        1.203517246983052,
+        0.971586425828772
+      ],
+      "cohort_ratio": 1.0685587276337096,
+      "repository_bootstrap_95_percentile_interval": [
+        0.971586425828772,
+        1.203517246983052
+      ],
+      "draws": 10000,
+      "seed": "codenib-matched-execution-2026-10-27-v1",
+      "generator": "Python random.Random, string seed version2",
+      "statistic": "ratio of paired resampled repository totals; n=3 clusters, not15 independent tasks"
+    },
+    "codegraph": {
+      "scope": "Descriptive raw unpenalized time only; not a selected eligible primary alternative.",
+      "cluster_ratios": [
+        1.2062839256068414,
+        1.4601081694977172,
+        0.9570306952289541
+      ],
+      "cohort_ratio": 1.193871465713,
+      "repository_bootstrap_95_percentile_interval": [
+        0.9570306952289541,
+        1.4601081694977172
+      ],
+      "draws": 10000,
+      "seed": "codenib-matched-execution-2026-10-27-v1",
+      "generator": "Python random.Random, string seed version2",
+      "statistic": "ratio of paired resampled repository totals; n=3 clusters, not15 independent tasks"
+    }
+  },
+  "bounds_note": "Original interpretation bounds are not confidence intervals; they retain the unassessable task instead of assigning it zero or a model failure.",
+  "subgroup_overhead_rule": "Each task receives one fifth of its actual non-phase workflow overhead, as frozen; this allocation is descriptive only.",
+  "api_invoice_cost_usd": null,
+  "http_request_count": null,
+  "analysis_implementation_sha256": "2f19b255c8829fb05538994abb3b91445b368abb674095e91fa472267f120faf"
+}

@@ -1,0 +1,1384 @@
+{
+  "generation": "driver-validation-v2-admitted",
+  "original_receipt_sha256": "ec6ab46cf5ee32574abda3f33fd70c9b7568b72524f82a6cdee7d55e1fbdc71a",
+  "receipt": {
+    "workflow": {
+      "workflow_index": 0,
+      "instance_id": "psf__requests-1921",
+      "arm": "serena"
+    },
+    "owner": "cae35a976116",
+    "created_utc": "2026-10-28T13:54:44.930139+00:00",
+    "prepare_only": true,
+    "commands": [
+      {
+        "label": "common-directories",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/00-psf__requests-1921-serena/workspace",
+          "920622f391a3a1641496898054006fe4f74ce1ff6df5a9f3b2ccb356f9de0fd2",
+          "mkdir",
+          "-p",
+          "/opt/pilot-tools/bin",
+          "/opt/pilot-inputs",
+          "/opt/pilot-state"
+        ],
+        "returncode": 0,
+        "seconds": 0.0580699872225523,
+        "log": "common-directories.log",
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "common-git",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/00-psf__requests-1921-serena/workspace",
+          "920622f391a3a1641496898054006fe4f74ce1ff6df5a9f3b2ccb356f9de0fd2",
+          "git",
+          "config",
+          "--global",
+          "--add",
+          "safe.directory",
+          "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/00-psf__requests-1921-serena/workspace"
+        ],
+        "returncode": 0,
+        "seconds": 0.04336710087954998,
+        "log": "common-git.log",
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "common-project",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/00-psf__requests-1921-serena/workspace",
+          "920622f391a3a1641496898054006fe4f74ce1ff6df5a9f3b2ccb356f9de0fd2",
+          "/opt/miniconda3/envs/testbed/bin/python",
+          "-m",
+          "pip",
+          "install",
+          "."
+        ],
+        "returncode": 0,
+        "seconds": 1.072450913488865,
+        "log": "common-project.log",
+        "log_sha256": "6d50f4f138e54ca0249f87ad1484e49075d4022cee97046b1b1c5f86013caaf1"
+      },
+      {
+        "label": "common-workspace-owner",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/00-psf__requests-1921-serena/workspace",
+          "920622f391a3a1641496898054006fe4f74ce1ff6df5a9f3b2ccb356f9de0fd2",
+          "chown",
+          "-R",
+          "1001:1001",
+          "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/00-psf__requests-1921-serena/workspace"
+        ],
+        "returncode": 0,
+        "seconds": 0.04200466722249985,
+        "log": "common-workspace-owner.log",
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "install-product",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/00-psf__requests-1921-serena/workspace",
+          "920622f391a3a1641496898054006fe4f74ce1ff6df5a9f3b2ccb356f9de0fd2",
+          "uv",
+          "tool",
+          "install",
+          "--python",
+          "/opt/pilot-runtimes/python/bin/python3.13",
+          "--with",
+          "pyright==1.1.403",
+          "serena-agent==2.1.0",
+          "--constraints",
+          "/opt/pilot-inputs/serena-constraints.txt"
+        ],
+        "returncode": 0,
+        "seconds": 1.2228087428957224,
+        "log": "install-product.log",
+        "log_sha256": "29b56c0fada21ad80948e9d297fa1ccf32262298b2478fb0d50268efbfd9a5ca"
+      },
+      {
+        "label": "prepare-python-provider",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/00-psf__requests-1921-serena/workspace",
+          "920622f391a3a1641496898054006fe4f74ce1ff6df5a9f3b2ccb356f9de0fd2",
+          "uv",
+          "tool",
+          "run",
+          "-p",
+          "3.13",
+          "--from",
+          "pyright==1.1.403",
+          "pyright",
+          "--version"
+        ],
+        "returncode": 0,
+        "seconds": 1.3394083473831415,
+        "log": "prepare-python-provider.log",
+        "log_sha256": "b9fda57931f4576a8122598add92dff632aaa78273930c93aeaa113adbc64d3f"
+      },
+      {
+        "label": "initialize-product",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/00-psf__requests-1921-serena/workspace",
+          "920622f391a3a1641496898054006fe4f74ce1ff6df5a9f3b2ccb356f9de0fd2",
+          "/bin/bash",
+          "-lc",
+          "umask 002\nserena project create --language python --name matched-cae35a976116 /tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/00-psf__requests-1921-serena/workspace"
+        ],
+        "returncode": 0,
+        "seconds": 1.342560177668929,
+        "log": "initialize-product.log",
+        "log_sha256": "8d2008d5c4e8c4a426751592d68a974fb5b9a3e21a3e0bc4c93c4966138a82c2"
+      },
+      {
+        "label": "verify-target-identity",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/00-psf__requests-1921-serena/workspace",
+          "920622f391a3a1641496898054006fe4f74ce1ff6df5a9f3b2ccb356f9de0fd2",
+          "/opt/miniconda3/envs/testbed/bin/python",
+          "-c",
+          "import importlib.metadata as m,json,sys;print(json.dumps({\"python\":sys.version,\"packages\":sorted({(d.metadata[\"Name\"],d.version) for d in m.distributions()})}))"
+        ],
+        "returncode": 0,
+        "seconds": 0.10314369946718216,
+        "log": "verify-target-identity.log",
+        "log_sha256": "6e24a3c019355251755ba80a035af2b0ee0b6a0ca641e60c2ca35eea1fd59a7d"
+      },
+      {
+        "label": "verify-product-identity",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/00-psf__requests-1921-serena/workspace",
+          "920622f391a3a1641496898054006fe4f74ce1ff6df5a9f3b2ccb356f9de0fd2",
+          "/opt/pilot-tools/uv/serena-agent/bin/python",
+          "-c",
+          "import os;os.chdir(\"/opt\");import importlib.metadata as m,json,sys;from pathlib import Path;result={\"python\":sys.version,\"packages\":dict(sorted((d.metadata[\"Name\"],d.version) for d in m.distributions()))};print(json.dumps(result))"
+        ],
+        "returncode": 0,
+        "seconds": 0.12380780652165413,
+        "log": "verify-product-identity.log",
+        "log_sha256": "20fbfce4343add74b795d00ebfaf92915b0957f0bd71540efd745524e3ede72f"
+      },
+      {
+        "label": "ownership-probe",
+        "argv": [
+          "docker",
+          "exec",
+          "-w",
+          "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/00-psf__requests-1921-serena/workspace",
+          "f85a436e595dcba0c3fae7865826abb9f65142b6089286dd0eeb25e85e59ecf3",
+          "/bin/bash",
+          "-lc",
+          "umask 002\npython -c 'from pathlib import Path; Path('\"'\"'ownership-probe.py'\"'\"').write_text('\"'\"'value = 1\\n'\"'\"')'"
+        ],
+        "returncode": 0,
+        "seconds": 0.13845374807715416,
+        "log": "ownership-probe.log",
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    ],
+    "phases": [],
+    "sessions": [],
+    "api_invoice_cost_usd": null,
+    "http_request_count": null,
+    "owned_containers": [
+      "920622f391a3a1641496898054006fe4f74ce1ff6df5a9f3b2ccb356f9de0fd2",
+      "f85a436e595dcba0c3fae7865826abb9f65142b6089286dd0eeb25e85e59ecf3"
+    ],
+    "cohort_stop_reason": null,
+    "driver_sha256": "1293e68f51d448b4154b80b1dfbe716720c4297f9934ef993470a3fffccfb962",
+    "scope_sha256": "4c11983fdc26b5854f49968d1da139745050b0a0b2699d9f5777aa8bc559a192",
+    "policy_sha256": "2e62fdcfc0ef7fcf1638ddcafe48fa06b1cdef9decc8e80ffee9bf257c528d9a",
+    "tasks_sha256": "c4049564e326455310a53d9a78f9be88014a3b2c08998cfef5a37c7df034c4f8",
+    "auth": {
+      "loggedIn": true,
+      "authMethod": "claude.ai",
+      "subscriptionType": "max"
+    },
+    "sdk": "0.2.174",
+    "neutral_image": "sha256:ac3aeb4416832db7147d67ee205a1e1da97f5f13d73a587e0cd4457af5acb791",
+    "common_source": {
+      "path": "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/00-psf__requests-1921-serena/common-source.json",
+      "sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "source_digest": "9d62fa6c6020866d1179df058f73b19587e44f70063bd3ca06f8153a2573491a",
+      "file_count": 121,
+      "head": "3c88e520da24ae6f736929a750876e7654accc3d"
+    },
+    "common_prepare_seconds": 1.5232428964227438,
+    "clock_started_utc": "2026-10-28T13:54:46.458702+00:00",
+    "setup": {
+      "started_utc": "2026-10-28T13:54:46.458714+00:00",
+      "ready": true,
+      "seconds": 3.910242011770606
+    },
+    "target_identity": {
+      "python": "3.9.25 (main, Nov  3 2025, 22:33:42) \n[GCC 11.2.0]",
+      "packages": [
+        [
+          "Pygments",
+          "2.19.1"
+        ],
+        [
+          "atomicwrites",
+          "1.4.1"
+        ],
+        [
+          "attrs",
+          "26.1.0"
+        ],
+        [
+          "exceptiongroup",
+          "1.3.0"
+        ],
+        [
+          "iniconfig",
+          "2.1.0"
+        ],
+        [
+          "more-itertools",
+          "10.8.0"
+        ],
+        [
+          "packaging",
+          "25.0"
+        ],
+        [
+          "pip",
+          "26.0.1"
+        ],
+        [
+          "pluggy",
+          "0.13.1"
+        ],
+        [
+          "py",
+          "1.11.0"
+        ],
+        [
+          "pytest",
+          "4.6.11"
+        ],
+        [
+          "requests",
+          "2.3.0"
+        ],
+        [
+          "setuptools",
+          "80.9.0"
+        ],
+        [
+          "six",
+          "1.17.0"
+        ],
+        [
+          "tomli",
+          "2.2.1"
+        ],
+        [
+          "typing_extensions",
+          "4.15.0"
+        ],
+        [
+          "wcwidth",
+          "0.9.4"
+        ],
+        [
+          "wheel",
+          "0.45.1"
+        ]
+      ]
+    },
+    "product_identity_matches_admission": true,
+    "prepared_image": "sha256:74a64ec6d14840694f45a0c33480a83b96f5e4047eb012ca6c71c88727c16e55",
+    "observed_container": {
+      "id": "f85a436e595dcba0c3fae7865826abb9f65142b6089286dd0eeb25e85e59ecf3",
+      "network_disabled": true,
+      "network_mode": "none",
+      "memory_bytes": 4294967296,
+      "nano_cpus": 2000000000,
+      "pids_limit": 256,
+      "mounts": [
+        {
+          "Type": "bind",
+          "Source": "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/00-psf__requests-1921-serena/workspace",
+          "Destination": "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/00-psf__requests-1921-serena/workspace",
+          "Mode": "rw",
+          "RW": true,
+          "Propagation": "rprivate"
+        }
+      ]
+    },
+    "pre_model_source": {
+      "path": "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/00-psf__requests-1921-serena/pre-model-source.json",
+      "sha256": "a8f587d342405d7702215cf026ac19fcbe1772d1443f2e793949daea79c76bea",
+      "source_digest": "9d62fa6c6020866d1179df058f73b19587e44f70063bd3ca06f8153a2573491a",
+      "file_count": 121,
+      "head": "3c88e520da24ae6f736929a750876e7654accc3d"
+    },
+    "setup_patch": {
+      "path": "pre-model.patch",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "attribution": "whole workspace diff; includes any separately recorded setup metadata"
+    },
+    "shared_native_edit_verified": true,
+    "source_lookup_probe": {
+      "name": "serena_repl",
+      "arguments": {
+        "session": "4f022e26",
+        "code": "s.lsp.find_symbol(name_path_pattern='Session/prepare_request', relative_path='requests/sessions.py', include_body=True)"
+      },
+      "reply": {
+        "meta": {
+          "io.modelcontextprotocol/serverInfo": {
+            "name": "Serena",
+            "version": "2.1.0",
+            "websiteUrl": "https://oraios.github.io/serena"
+          }
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "[{\"name_path\": \"Session/prepare_request\", \"kind\": \"Method\", \"relative_path\": \"requests/sessions.py\", \"body_location\": {\"start_line\": 259, \"end_line\": 296}, \"body\": \"def prepare_request(self, request):\\n        \\\"\\\"\\\"Constructs a :class:`PreparedRequest <PreparedRequest>` for\\n        transmission and returns it. The :class:`PreparedRequest` has settings\\n        merged from the :class:`Request <Request>` instance and those of the\\n        :class:`Session`.\\n\\n        :param request: :class:`Request` instance to prepare with this\\n            session's settings.\\n        \\\"\\\"\\\"\\n        cookies = request.cookies or {}\\n\\n        # Bootstrap CookieJar.\\n        if not isinstance(cookies, cookielib.CookieJar):\\n            cookies = cookiejar_from_dict(cookies)\\n\\n        # Merge with session cookies\\n        merged_cookies = merge_cookies(\\n            merge_cookies(RequestsCookieJar(), self.cookies), cookies)\\n\\n\\n        # Set environment's basic authentication if not explicitly set.\\n        auth = request.auth\\n        if self.trust_env and not auth and not self.auth:\\n            auth = get_netrc_auth(request.url)\\n\\n        p = PreparedRequest()\\n        p.prepare(\\n            method=request.method.upper(),\\n            url=request.url,\\n            files=request.files,\\n            data=request.data,\\n            headers=merge_setting(request.headers, self.headers, dict_class=CaseInsensitiveDict),\\n            params=merge_setting(request.params, self.params),\\n            auth=merge_setting(auth, self.auth),\\n            cookies=merged_cookies,\\n            hooks=merge_hooks(request.hooks, self.hooks),\\n        )\\n        return p\"}]",
+            "annotations": null,
+            "meta": null
+          }
+        ],
+        "structured_content": null,
+        "is_error": false,
+        "result_type": "complete"
+      },
+      "file_sha256": "32e30eadf91367b3aefb90e8541cf3fc20d3d950a16828c0101f4232d36a78a9"
+    },
+    "status": "prepared_no_inference",
+    "observed_workflow_seconds": 15.755612084642053,
+    "unattempted_tasks": [
+      "psf__requests-1921-lookup",
+      "psf__requests-1921-flow",
+      "psf__requests-1921-impact",
+      "psf__requests-1921-repair",
+      "psf__requests-1921-post_edit"
+    ],
+    "cleanup": [
+      {
+        "id": "f85a436e595dcba0c3fae7865826abb9f65142b6089286dd0eeb25e85e59ecf3",
+        "removed": true
+      },
+      {
+        "id": "920622f391a3a1641496898054006fe4f74ce1ff6df5a9f3b2ccb356f9de0fd2",
+        "removed": true
+      }
+    ],
+    "finished_utc": "2026-10-28T13:55:02.305853+00:00"
+  },
+  "source_snapshots": {
+    "common_source": {
+      "head": "3c88e520da24ae6f736929a750876e7654accc3d",
+      "files": {
+        ".gitignore": {
+          "sha256": "cad5fe62e70ddb73af88feb33f5a5169d5af491879b3830616bf21a04cdbdf28",
+          "bytes": 203
+        },
+        "AUTHORS.rst": {
+          "sha256": "28487561897eb533c0b3dacf5717a645b63bb779eeb3a17bb136ea33707759be",
+          "bytes": 3564
+        },
+        "HISTORY.rst": {
+          "sha256": "241974d3f1fc22a8439a440bfa388f0e231f85e9a08370d56a23cdcee5c6c874",
+          "bytes": 20576
+        },
+        "LICENSE": {
+          "sha256": "89478f1915fbb6b6585a685d071bf006ba5649d2615fab787f66e9693c622ae4",
+          "bytes": 581
+        },
+        "MANIFEST.in": {
+          "sha256": "588abc6c5050b10ef1629e67ca79e7eb57febb26c41bb995d6224828f8ca0bc1",
+          "bytes": 100
+        },
+        "Makefile": {
+          "sha256": "c6d89b7c95ea8535803d6b961ff78fd164804eacdaf49badf60a13b553ee315a",
+          "bytes": 913
+        },
+        "NOTICE": {
+          "sha256": "548eb62c9f5f5f7a121d15f26bb0d6a5ebb0cf7260584e0529ad65c56b39e83d",
+          "bytes": 2795
+        },
+        "README.rst": {
+          "sha256": "fb7ad6162349f0548c822b7ab3ac75129b8dd8ab27dfc45b7e39529335b740e4",
+          "bytes": 3050
+        },
+        "docs/MANIFEST.in": {
+          "sha256": "293a8936089ee64bb0728018eee77ad422bb92be40e1ea70c1361a0ea53b1d16",
+          "bytes": 38
+        },
+        "docs/Makefile": {
+          "sha256": "612c28d4c5ccb2731ba2386e358ba0c50d4564f94409cfb0cafd507cb7216c1c",
+          "bytes": 5569
+        },
+        "docs/_static/requests-sidebar.png": {
+          "sha256": "5321117037e924e82d22ba484fa19f9ee64d95cab1b650958ec5d94f9aff68e1",
+          "bytes": 12001
+        },
+        "docs/_templates/sidebarintro.html": {
+          "sha256": "bc5d196bba888bcb5bcaa8e39efd56e4a4d3ae030daf4f4fdc3bf22db3dd9e90",
+          "bytes": 1631
+        },
+        "docs/_templates/sidebarlogo.html": {
+          "sha256": "56a7487ed201d4c0dba22a9722552ec43555cc7bc6176e57aded0c3f37da6c32",
+          "bytes": 1006
+        },
+        "docs/_themes/.gitignore": {
+          "sha256": "f27660c4ec6efa86aac4d61036c5f495e9438805a6f63be44f17db003979a06f",
+          "bytes": 22
+        },
+        "docs/_themes/LICENSE": {
+          "sha256": "6afc9d58f919ab52f4806a895a37aefe4d263f8e52278e6a1e87c5d7ec82299c",
+          "bytes": 1861
+        },
+        "docs/_themes/README.rst": {
+          "sha256": "7e91e1410eb502112c2b346a248104bbdc68ee4dad1e382517ef14a563610197",
+          "bytes": 743
+        },
+        "docs/_themes/flask_theme_support.py": {
+          "sha256": "bba3677c6eeb99f678e808e90142a025b798b7658bac1ab4632591df8441d209",
+          "bytes": 4875
+        },
+        "docs/_themes/kr/layout.html": {
+          "sha256": "1aeb7715214e019a8bd27b01a423cefaaa0ec5ccbc9a28aaa401530814185ea7",
+          "bytes": 2774
+        },
+        "docs/_themes/kr/relations.html": {
+          "sha256": "e64e488e5cd09c680a5968e6c72d03b1b15f81631577c122b00bbbee94a79f92",
+          "bytes": 590
+        },
+        "docs/_themes/kr/static/flasky.css_t": {
+          "sha256": "d0587869c6049f67fe5163b1b5ad64f35f385279201eb7277daaadb1e5617f82",
+          "bytes": 8272
+        },
+        "docs/_themes/kr/theme.conf": {
+          "sha256": "6f9423779600222e465f99360c0ee9e8b87de6523c2ddcbd6b5d39edb4b4726d",
+          "bytes": 121
+        },
+        "docs/_themes/kr_small/layout.html": {
+          "sha256": "c0d6e1bbfc53181ec280327f7f4bd66f0899eaaee0e42640666311c6eb0ea9f3",
+          "bytes": 683
+        },
+        "docs/_themes/kr_small/static/flasky.css_t": {
+          "sha256": "6f8dd4dcaa0df7966b9d48ec80b4d2563b68d7408d3017f7de70a7ca5ec94fde",
+          "bytes": 4587
+        },
+        "docs/_themes/kr_small/theme.conf": {
+          "sha256": "e2202373ab211e1c5a2552d99fba96cc70cc90e0865c6954c16fcd0253312ecf",
+          "bytes": 184
+        },
+        "docs/api.rst": {
+          "sha256": "754f7d7bc0d876a11be7ac0bb3eff54197eba46125714c80f809c292074a153c",
+          "bytes": 7347
+        },
+        "docs/community/faq.rst": {
+          "sha256": "ff4bc4dae77e701b19938a275ed70b3b4f3b1e3812ea04a75735a81ca490932b",
+          "bytes": 3272
+        },
+        "docs/community/out-there.rst": {
+          "sha256": "c81acb873203d8c849834ea674436fa49494ce726d50aa921ce2891004b08166",
+          "bytes": 1448
+        },
+        "docs/community/support.rst": {
+          "sha256": "10a4926d22ad0898546ddd5eff2eb1f37d96091d51fcf0a13b8b755de2cf0981",
+          "bytes": 817
+        },
+        "docs/community/updates.rst": {
+          "sha256": "db473c9143a593f0a042e29bb5a3c0b81eebb26a088c4cae6030003b686618e0",
+          "bytes": 709
+        },
+        "docs/conf.py": {
+          "sha256": "ac552c9e83906e8547f6c3a53bbd164ab04dcd384de164f7096e3fade202a6e5",
+          "bytes": 8133
+        },
+        "docs/dev/authors.rst": {
+          "sha256": "fca9beca6d06486a750884fc0dd3befccdb3293f3c1e54ca7a8fb5dca4bef8b5",
+          "bytes": 49
+        },
+        "docs/dev/internals.rst": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        "docs/dev/philosophy.rst": {
+          "sha256": "a29b5e1650f8895655e37766fdddcefe0e9655e9c0ccd46fd58b2d589b7c7d0b",
+          "bytes": 1787
+        },
+        "docs/dev/todo.rst": {
+          "sha256": "821bc6e29a87dc0b036e88932d6f49dbfd2d95ff08f97dfcac84554b9f49cd00",
+          "bytes": 1901
+        },
+        "docs/index.rst": {
+          "sha256": "980fa4d51ee8710ed8f9b03197797fd2f91a8489944adeefcfaef6603a02d436",
+          "bytes": 3801
+        },
+        "docs/make.bat": {
+          "sha256": "4016647c49f700d4fe8ddbd6d5be5b0b7e65d465d60414e7541f0f1970c9b025",
+          "bytes": 5100
+        },
+        "docs/requirements.txt": {
+          "sha256": "eacd39a02669d178c5a3e4b35b2ffa04951ddf82864f3058ddbb96c67b7e8205",
+          "bytes": 14
+        },
+        "docs/user/advanced.rst": {
+          "sha256": "5eb89c59647744ae4d54646886b059d9e95c14afc5aefddb905eb9bd4b0e38a9",
+          "bytes": 24949
+        },
+        "docs/user/authentication.rst": {
+          "sha256": "9161a54d57f8b91a153543b43468e29089230def4ba420e887a50ca05984c61a",
+          "bytes": 4219
+        },
+        "docs/user/install.rst": {
+          "sha256": "bcc7a4f5607e465aee67383c923b83c6aa974271e3a05fb8a6aef71749b89466",
+          "bytes": 1537
+        },
+        "docs/user/intro.rst": {
+          "sha256": "53bd32e686ac7cd0a941708309c2c03988100f35b8fdd3e118d79d52839b577d",
+          "bytes": 1191
+        },
+        "docs/user/quickstart.rst": {
+          "sha256": "a0b3110df2489919c30ebb216bf59a767c1aabd80ca9736fb07b83f07d94ecf7",
+          "bytes": 13459
+        },
+        "ext/requests-logo.ai": {
+          "sha256": "1eb6f876f90f2092675e717bf615a6f3f0eb595fdce3309327835e9a395d8a2b",
+          "bytes": 212865
+        },
+        "requests/__init__.py": {
+          "sha256": "465e36de457e3014c50e24ed10e2623fd0ae6ae6c54a2f2b1daab3ab5281374c",
+          "bytes": 1856
+        },
+        "requests/adapters.py": {
+          "sha256": "4002f9ad2c04ceeaece4fe2ac23148cc74086de515f0eb1498a06f796e2bf899",
+          "bytes": 14742
+        },
+        "requests/api.py": {
+          "sha256": "46295d2e64e1951dc134523a0b76d2d5bbf15791bae5e84256b0469181de8c3b",
+          "bytes": 4333
+        },
+        "requests/auth.py": {
+          "sha256": "c766c5a872b72e46e6eea3d4ca1fdd02a60b4c34e8b418bed736bd12909d0345",
+          "bytes": 6123
+        },
+        "requests/cacert.pem": {
+          "sha256": "6a4eeafeaf28cc7750f5f7f6ed4f84d6f08dacb8ac151412332f732647694253",
+          "bytes": 308434
+        },
+        "requests/certs.py": {
+          "sha256": "c126aa8523680748a0a7a0dafa15b0d23b5720229705b2fc692f6cc2d865b79d",
+          "bytes": 544
+        },
+        "requests/compat.py": {
+          "sha256": "246ac93d5d9819ab73c2b7b197d912b7c67c42d9856e84591fdcb0b0b2bf30c0",
+          "bytes": 2556
+        },
+        "requests/cookies.py": {
+          "sha256": "06330ab6b23c4d7403e68415793a18b64441175e3d788f395215ac046c2c25a7",
+          "bytes": 16686
+        },
+        "requests/exceptions.py": {
+          "sha256": "cfedd0a6271a7cab4887ce5b30468294bd8ea4d3ddb1ce933fff3729cb1587c6",
+          "bytes": 1877
+        },
+        "requests/hooks.py": {
+          "sha256": "f6f362ba244745de50cba057ff4a751f736c5330e8d4cfc76854760052f8d538",
+          "bytes": 820
+        },
+        "requests/models.py": {
+          "sha256": "91153287286b3bc2018f8739e40dbaaee4c23cf5d7ca95b6ac661e0ac2ca9c33",
+          "bytes": 26224
+        },
+        "requests/packages/README.rst": {
+          "sha256": "6184621991b784af0fa9fa860be44bcf322622c18864f3ae134244abe74c7f14",
+          "bytes": 434
+        },
+        "requests/packages/__init__.py": {
+          "sha256": "69791b3428ccfd686bc91068704e00680fe9efe093c4be4b3aeb58ed7cca9b8b",
+          "bytes": 62
+        },
+        "requests/packages/chardet/__init__.py": {
+          "sha256": "f3edfd0e0daa12ea1de4334ded131d9f665838ef73154ddf15f684f348835867",
+          "bytes": 1295
+        },
+        "requests/packages/chardet/big5freq.py": {
+          "sha256": "0fca13773f8633b260f13b1a5890e6eb9bccfce2c70b7c6e6faa94277ace82c4",
+          "bytes": 82594
+        },
+        "requests/packages/chardet/big5prober.py": {
+          "sha256": "5d7f7a0befba58a616dfa98bfb3ee925202d735ebd67c648981c823f8a4437d0",
+          "bytes": 1684
+        },
+        "requests/packages/chardet/chardetect.py": {
+          "sha256": "f20f9d45203dedb484e8cdb94ea7b5ae828ab65dd71d2327aa2eaf4f3a47355d",
+          "bytes": 1141
+        },
+        "requests/packages/chardet/chardistribution.py": {
+          "sha256": "714011405af5a132d778908342b0d19143fbefc02f48cce14829c6f152c2579f",
+          "bytes": 9226
+        },
+        "requests/packages/chardet/charsetgroupprober.py": {
+          "sha256": "d252a4ed5139d7a7e0330d75f6d35e7c5a8b3b129f204f567dd929213ebd38a5",
+          "bytes": 3791
+        },
+        "requests/packages/chardet/charsetprober.py": {
+          "sha256": "678f28d8a88e8f6dc536a607f05ab3847e66d6a766deb23c0dc4e6d98aad9258",
+          "bytes": 1902
+        },
+        "requests/packages/chardet/codingstatemachine.py": {
+          "sha256": "13ce6b6211d5330f710c4255822421a743a72c6afa8b6afcffb40e58c2931f4f",
+          "bytes": 2318
+        },
+        "requests/packages/chardet/compat.py": {
+          "sha256": "e669bacab1f079fd49106e4ec643c9952ab99648cb56910687788f805064a643",
+          "bytes": 1157
+        },
+        "requests/packages/chardet/constants.py": {
+          "sha256": "f949d8f14ec43fbcfd7d3c9dd3dcaadf9044912144014022bfda217750d6d6ce",
+          "bytes": 1335
+        },
+        "requests/packages/chardet/cp949prober.py": {
+          "sha256": "14cbdd2f207b7de8cf5d1b136dc6bb2cad4fdd152fbecb268d43726847f3f336",
+          "bytes": 1782
+        },
+        "requests/packages/chardet/escprober.py": {
+          "sha256": "ab94dc40a795ab7d56c6b5bb4aff328e96648c4a1a1cef12f7610967d868772b",
+          "bytes": 3187
+        },
+        "requests/packages/chardet/escsm.py": {
+          "sha256": "ee296310a37c9574e1f091573d44b09626cc9e8e91ea4b2ae1ebcbc5b9337eba",
+          "bytes": 7839
+        },
+        "requests/packages/chardet/eucjpprober.py": {
+          "sha256": "e48a5f4848c06fb87785c18c77a76453cd0ef74d02d8deb192edbcadd6052ae7",
+          "bytes": 3678
+        },
+        "requests/packages/chardet/euckrfreq.py": {
+          "sha256": "4f9b1a2b99889b2486e728103edb29ea8dae2ae968b82c189b61253b216426a5",
+          "bytes": 45978
+        },
+        "requests/packages/chardet/euckrprober.py": {
+          "sha256": "5a8edd9d9e44af0fe70781fe9b96a53223b13ae2549861e5c0249a1aa1310d90",
+          "bytes": 1675
+        },
+        "requests/packages/chardet/euctwfreq.py": {
+          "sha256": "1bf234056f62d70d0e35e794c0862a57bfd4d3d6ee20776a87ec0d1d56aa97b2",
+          "bytes": 34872
+        },
+        "requests/packages/chardet/euctwprober.py": {
+          "sha256": "ba94b63fa1ae4f9ba33b15d8c3e4492dc4fb0383d3ba8dbb28650a538519a484",
+          "bytes": 1676
+        },
+        "requests/packages/chardet/gb2312freq.py": {
+          "sha256": "336805768fea43f06c952b44721acf5b90ab3c464469c0b4bb20cbc38a24fa46",
+          "bytes": 36011
+        },
+        "requests/packages/chardet/gb2312prober.py": {
+          "sha256": "5569e3a116bcdd8e95ea873331ac7252bd2ecb8f220a70b69f393dcdf1084477",
+          "bytes": 1681
+        },
+        "requests/packages/chardet/hebrewprober.py": {
+          "sha256": "f2976851fb155dffcbe019c975efc17b04ba1f6c889d5e7af3c7aed271612c76",
+          "bytes": 13359
+        },
+        "requests/packages/chardet/jisfreq.py": {
+          "sha256": "65c2f84797a41c76cfd8a09819a915301b222aa659640001ce1c22fae4643a9b",
+          "bytes": 47315
+        },
+        "requests/packages/chardet/jpcntx.py": {
+          "sha256": "f5f27da12d0151aadc7593724b09b3551b93d37b18742952985c170e3df254d8",
+          "bytes": 19104
+        },
+        "requests/packages/chardet/langbulgarianmodel.py": {
+          "sha256": "6723ec03bf7a31256161d7d684c0a0296724ba900a0272aa59c1370a5dde8faa",
+          "bytes": 12784
+        },
+        "requests/packages/chardet/langcyrillicmodel.py": {
+          "sha256": "7e471de4ebe8814a7e1ab34358064f82462c491083da89a8b4012faa39662ca1",
+          "bytes": 17725
+        },
+        "requests/packages/chardet/langgreekmodel.py": {
+          "sha256": "407332df5087fe8b7aed40ad9aeac210aa8ac765b0a1a2abc3660261804ad8bc",
+          "bytes": 12628
+        },
+        "requests/packages/chardet/langhebrewmodel.py": {
+          "sha256": "e004a5e6fcca24f9e0e07dbbf151cab51602d374e94297a79474dcb26647d6b1",
+          "bytes": 11318
+        },
+        "requests/packages/chardet/langhungarianmodel.py": {
+          "sha256": "497c2e533878f7f70178c5e1b2144776b865933d13f3fa59595fe976a04a3459",
+          "bytes": 12536
+        },
+        "requests/packages/chardet/langthaimodel.py": {
+          "sha256": "fa4edd8e1ddd18a9e00069eddd67eea0937b69c0dc59c98700fa2385a51deeae",
+          "bytes": 11275
+        },
+        "requests/packages/chardet/latin1prober.py": {
+          "sha256": "83aee0a99db3f3d2d43a547b059100878fa9e5ad72196b2cf675b2f0508d9bc4",
+          "bytes": 5241
+        },
+        "requests/packages/chardet/mbcharsetprober.py": {
+          "sha256": "f6b3828c356c992329e9eeeadaccaa6a4db68fb96b6d466126131e7b681b54bd",
+          "bytes": 3268
+        },
+        "requests/packages/chardet/mbcsgroupprober.py": {
+          "sha256": "48747334f2e90d77cc24b03ca61087554d1682a6e00c23710d03289465ffef29",
+          "bytes": 1967
+        },
+        "requests/packages/chardet/mbcssm.py": {
+          "sha256": "52e880e0873cbc47345e94ca0e77aa672887d93c06b85559c4ec5625ea775ffe",
+          "bytes": 19608
+        },
+        "requests/packages/chardet/sbcharsetprober.py": {
+          "sha256": "5ead25383a899c3831825062408e01a931623db9fadfed1ae57340e7e855bbb5",
+          "bytes": 4793
+        },
+        "requests/packages/chardet/sbcsgroupprober.py": {
+          "sha256": "f212f21fc4401be6a8841a3ba3f29c896560468e36644ff312db8d1b524c4582",
+          "bytes": 3291
+        },
+        "requests/packages/chardet/sjisprober.py": {
+          "sha256": "d518e94362d4da0be8101ff83bcdfdc434157215b1d9f1bf0bbfef5e1e763f92",
+          "bytes": 3734
+        },
+        "requests/packages/chardet/universaldetector.py": {
+          "sha256": "1a465dc0dc8d7db1560bc235baa9f3ca139417b7dabd60aa08e2aa750971ea04",
+          "bytes": 6831
+        },
+        "requests/packages/chardet/utf8prober.py": {
+          "sha256": "eed74d646ac963b8d95010f8f3718632488fd13c7c169f9c1af587a00b229478",
+          "bytes": 2652
+        },
+        "requests/packages/urllib3/__init__.py": {
+          "sha256": "b0b20abfd7462630e5a225575010635c3596abc6cceba91cbd31f6494fd664a8",
+          "bytes": 1701
+        },
+        "requests/packages/urllib3/_collections.py": {
+          "sha256": "611616dfcaacea619583d2b0ff2fdeb4fd278784911ab2ccea4be922b5f73f0a",
+          "bytes": 3111
+        },
+        "requests/packages/urllib3/connection.py": {
+          "sha256": "5af01865997b6e8c0265603bb75051830fa2d7f57b37555f89f61215f14c16c6",
+          "bytes": 5659
+        },
+        "requests/packages/urllib3/connectionpool.py": {
+          "sha256": "faeab17e36f3139609bb8a0506e53c174c48cc77c6c9d69c1026233d6cf4ef32",
+          "bytes": 25767
+        },
+        "requests/packages/urllib3/contrib/__init__.py": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        "requests/packages/urllib3/contrib/ntlmpool.py": {
+          "sha256": "549f868f1a58213c528f8503297d22aaf1f069ab72836440dcf693ca6e56a7ac",
+          "bytes": 4741
+        },
+        "requests/packages/urllib3/contrib/pyopenssl.py": {
+          "sha256": "f011a1d9173bdc86dc16f0b025929422768c5e42d9d71b0b6996ee3928251df1",
+          "bytes": 13871
+        },
+        "requests/packages/urllib3/exceptions.py": {
+          "sha256": "dc4af7e589b8c6b7f9c4d7533d520000d45d45551fe35bae32c342e2ca4f9347",
+          "bytes": 3274
+        },
+        "requests/packages/urllib3/fields.py": {
+          "sha256": "52eb88dc819fc47c0ea0a71bc39152e98b98ddfe32b82bd02edba649a22282be",
+          "bytes": 5976
+        },
+        "requests/packages/urllib3/filepost.py": {
+          "sha256": "b563d8df71e714cfd13e9114f4f1eff43df89faef0f1946df34652b1622fd0a9",
+          "bytes": 2512
+        },
+        "requests/packages/urllib3/packages/__init__.py": {
+          "sha256": "10a09300e8d9b4f47f1c2e747bb5fc852e63e1b90590df3b5d9393f967697eeb",
+          "bytes": 74
+        },
+        "requests/packages/urllib3/packages/ordered_dict.py": {
+          "sha256": "1ed1e986d4ad265a2bcd0aa821ab7ccd41f496a2e7b38d7a81f48ef72fda4804",
+          "bytes": 8936
+        },
+        "requests/packages/urllib3/packages/six.py": {
+          "sha256": "53eacef9606b152f0fc4779a99297aa242828ea3c5d7c3618996f4a8f67aed73",
+          "bytes": 11628
+        },
+        "requests/packages/urllib3/packages/ssl_match_hostname/__init__.py": {
+          "sha256": "0ecb345326fef8f57f22eeccfd2d74c78afe6d6a6e766e6621124d88e2772b4a",
+          "bytes": 459
+        },
+        "requests/packages/urllib3/packages/ssl_match_hostname/_implementation.py": {
+          "sha256": "7cadbc937ee12fbf83efdbfd88cd9f1e034af50d4fc3433ba9544be2b91f1634",
+          "bytes": 3778
+        },
+        "requests/packages/urllib3/poolmanager.py": {
+          "sha256": "6cc60774d6952393b862b247af54fab44d9160710ccccdbf2b4713cbbbb35f63",
+          "bytes": 8977
+        },
+        "requests/packages/urllib3/request.py": {
+          "sha256": "7174dcaebf5de7446ddb5dd95cb8027f9dca356c5ee0b43c971495d470586bd1",
+          "bytes": 5808
+        },
+        "requests/packages/urllib3/response.py": {
+          "sha256": "69a0b04bdd5fe69daa8c08d18abf41f1b093420c8fd59abb5f861d9c74eafbcc",
+          "bytes": 10537
+        },
+        "requests/packages/urllib3/util.py": {
+          "sha256": "87ca3f11220369c7292d62062af1ce80f0d4fe67c71061408ddf766c0c8db676",
+          "bytes": 21407
+        },
+        "requests/sessions.py": {
+          "sha256": "32e30eadf91367b3aefb90e8541cf3fc20d3d950a16828c0101f4232d36a78a9",
+          "bytes": 19902
+        },
+        "requests/status_codes.py": {
+          "sha256": "2d8a6a2efe0010ab933dbcbe412be097f808edf7159540ea481727748c17f908",
+          "bytes": 3136
+        },
+        "requests/structures.py": {
+          "sha256": "9fb92004e5099d05d64c9a518744b36b892e5a1b963249f7593678236e7f0119",
+          "bytes": 3575
+        },
+        "requests/utils.py": {
+          "sha256": "c38f1858cb796264436c06185e957437dba5f89ad3c54c9176c8515236d3fd0f",
+          "bytes": 19653
+        },
+        "requirements.txt": {
+          "sha256": "878c487bab1e59dc96e58d6268f03aeb70a644b1c549b11a087f7ae06e9ad57f",
+          "bytes": 61
+        },
+        "setup.cfg": {
+          "sha256": "13fb77272894ca43a3edcf58f4eb59d606a8c3a42331b8a56fde94ec606a4159",
+          "bytes": 22
+        },
+        "setup.py": {
+          "sha256": "4264d70db4af18d3ac44519037a5855d300cd2d24318ecf838f6bb84de1546f4",
+          "bytes": 1602
+        },
+        "test_requests.py": {
+          "sha256": "37ef77c0f9c3bddee646e2e3fd496e1a114daf6e8b05d3e47897ebc2e0d7630e",
+          "bytes": 40990
+        }
+      }
+    },
+    "pre_model_source": {
+      "head": "3c88e520da24ae6f736929a750876e7654accc3d",
+      "files": {
+        ".gitignore": {
+          "sha256": "cad5fe62e70ddb73af88feb33f5a5169d5af491879b3830616bf21a04cdbdf28",
+          "bytes": 203
+        },
+        "AUTHORS.rst": {
+          "sha256": "28487561897eb533c0b3dacf5717a645b63bb779eeb3a17bb136ea33707759be",
+          "bytes": 3564
+        },
+        "HISTORY.rst": {
+          "sha256": "241974d3f1fc22a8439a440bfa388f0e231f85e9a08370d56a23cdcee5c6c874",
+          "bytes": 20576
+        },
+        "LICENSE": {
+          "sha256": "89478f1915fbb6b6585a685d071bf006ba5649d2615fab787f66e9693c622ae4",
+          "bytes": 581
+        },
+        "MANIFEST.in": {
+          "sha256": "588abc6c5050b10ef1629e67ca79e7eb57febb26c41bb995d6224828f8ca0bc1",
+          "bytes": 100
+        },
+        "Makefile": {
+          "sha256": "c6d89b7c95ea8535803d6b961ff78fd164804eacdaf49badf60a13b553ee315a",
+          "bytes": 913
+        },
+        "NOTICE": {
+          "sha256": "548eb62c9f5f5f7a121d15f26bb0d6a5ebb0cf7260584e0529ad65c56b39e83d",
+          "bytes": 2795
+        },
+        "README.rst": {
+          "sha256": "fb7ad6162349f0548c822b7ab3ac75129b8dd8ab27dfc45b7e39529335b740e4",
+          "bytes": 3050
+        },
+        "docs/MANIFEST.in": {
+          "sha256": "293a8936089ee64bb0728018eee77ad422bb92be40e1ea70c1361a0ea53b1d16",
+          "bytes": 38
+        },
+        "docs/Makefile": {
+          "sha256": "612c28d4c5ccb2731ba2386e358ba0c50d4564f94409cfb0cafd507cb7216c1c",
+          "bytes": 5569
+        },
+        "docs/_static/requests-sidebar.png": {
+          "sha256": "5321117037e924e82d22ba484fa19f9ee64d95cab1b650958ec5d94f9aff68e1",
+          "bytes": 12001
+        },
+        "docs/_templates/sidebarintro.html": {
+          "sha256": "bc5d196bba888bcb5bcaa8e39efd56e4a4d3ae030daf4f4fdc3bf22db3dd9e90",
+          "bytes": 1631
+        },
+        "docs/_templates/sidebarlogo.html": {
+          "sha256": "56a7487ed201d4c0dba22a9722552ec43555cc7bc6176e57aded0c3f37da6c32",
+          "bytes": 1006
+        },
+        "docs/_themes/.gitignore": {
+          "sha256": "f27660c4ec6efa86aac4d61036c5f495e9438805a6f63be44f17db003979a06f",
+          "bytes": 22
+        },
+        "docs/_themes/LICENSE": {
+          "sha256": "6afc9d58f919ab52f4806a895a37aefe4d263f8e52278e6a1e87c5d7ec82299c",
+          "bytes": 1861
+        },
+        "docs/_themes/README.rst": {
+          "sha256": "7e91e1410eb502112c2b346a248104bbdc68ee4dad1e382517ef14a563610197",
+          "bytes": 743
+        },
+        "docs/_themes/flask_theme_support.py": {
+          "sha256": "bba3677c6eeb99f678e808e90142a025b798b7658bac1ab4632591df8441d209",
+          "bytes": 4875
+        },
+        "docs/_themes/kr/layout.html": {
+          "sha256": "1aeb7715214e019a8bd27b01a423cefaaa0ec5ccbc9a28aaa401530814185ea7",
+          "bytes": 2774
+        },
+        "docs/_themes/kr/relations.html": {
+          "sha256": "e64e488e5cd09c680a5968e6c72d03b1b15f81631577c122b00bbbee94a79f92",
+          "bytes": 590
+        },
+        "docs/_themes/kr/static/flasky.css_t": {
+          "sha256": "d0587869c6049f67fe5163b1b5ad64f35f385279201eb7277daaadb1e5617f82",
+          "bytes": 8272
+        },
+        "docs/_themes/kr/theme.conf": {
+          "sha256": "6f9423779600222e465f99360c0ee9e8b87de6523c2ddcbd6b5d39edb4b4726d",
+          "bytes": 121
+        },
+        "docs/_themes/kr_small/layout.html": {
+          "sha256": "c0d6e1bbfc53181ec280327f7f4bd66f0899eaaee0e42640666311c6eb0ea9f3",
+          "bytes": 683
+        },
+        "docs/_themes/kr_small/static/flasky.css_t": {
+          "sha256": "6f8dd4dcaa0df7966b9d48ec80b4d2563b68d7408d3017f7de70a7ca5ec94fde",
+          "bytes": 4587
+        },
+        "docs/_themes/kr_small/theme.conf": {
+          "sha256": "e2202373ab211e1c5a2552d99fba96cc70cc90e0865c6954c16fcd0253312ecf",
+          "bytes": 184
+        },
+        "docs/api.rst": {
+          "sha256": "754f7d7bc0d876a11be7ac0bb3eff54197eba46125714c80f809c292074a153c",
+          "bytes": 7347
+        },
+        "docs/community/faq.rst": {
+          "sha256": "ff4bc4dae77e701b19938a275ed70b3b4f3b1e3812ea04a75735a81ca490932b",
+          "bytes": 3272
+        },
+        "docs/community/out-there.rst": {
+          "sha256": "c81acb873203d8c849834ea674436fa49494ce726d50aa921ce2891004b08166",
+          "bytes": 1448
+        },
+        "docs/community/support.rst": {
+          "sha256": "10a4926d22ad0898546ddd5eff2eb1f37d96091d51fcf0a13b8b755de2cf0981",
+          "bytes": 817
+        },
+        "docs/community/updates.rst": {
+          "sha256": "db473c9143a593f0a042e29bb5a3c0b81eebb26a088c4cae6030003b686618e0",
+          "bytes": 709
+        },
+        "docs/conf.py": {
+          "sha256": "ac552c9e83906e8547f6c3a53bbd164ab04dcd384de164f7096e3fade202a6e5",
+          "bytes": 8133
+        },
+        "docs/dev/authors.rst": {
+          "sha256": "fca9beca6d06486a750884fc0dd3befccdb3293f3c1e54ca7a8fb5dca4bef8b5",
+          "bytes": 49
+        },
+        "docs/dev/internals.rst": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        "docs/dev/philosophy.rst": {
+          "sha256": "a29b5e1650f8895655e37766fdddcefe0e9655e9c0ccd46fd58b2d589b7c7d0b",
+          "bytes": 1787
+        },
+        "docs/dev/todo.rst": {
+          "sha256": "821bc6e29a87dc0b036e88932d6f49dbfd2d95ff08f97dfcac84554b9f49cd00",
+          "bytes": 1901
+        },
+        "docs/index.rst": {
+          "sha256": "980fa4d51ee8710ed8f9b03197797fd2f91a8489944adeefcfaef6603a02d436",
+          "bytes": 3801
+        },
+        "docs/make.bat": {
+          "sha256": "4016647c49f700d4fe8ddbd6d5be5b0b7e65d465d60414e7541f0f1970c9b025",
+          "bytes": 5100
+        },
+        "docs/requirements.txt": {
+          "sha256": "eacd39a02669d178c5a3e4b35b2ffa04951ddf82864f3058ddbb96c67b7e8205",
+          "bytes": 14
+        },
+        "docs/user/advanced.rst": {
+          "sha256": "5eb89c59647744ae4d54646886b059d9e95c14afc5aefddb905eb9bd4b0e38a9",
+          "bytes": 24949
+        },
+        "docs/user/authentication.rst": {
+          "sha256": "9161a54d57f8b91a153543b43468e29089230def4ba420e887a50ca05984c61a",
+          "bytes": 4219
+        },
+        "docs/user/install.rst": {
+          "sha256": "bcc7a4f5607e465aee67383c923b83c6aa974271e3a05fb8a6aef71749b89466",
+          "bytes": 1537
+        },
+        "docs/user/intro.rst": {
+          "sha256": "53bd32e686ac7cd0a941708309c2c03988100f35b8fdd3e118d79d52839b577d",
+          "bytes": 1191
+        },
+        "docs/user/quickstart.rst": {
+          "sha256": "a0b3110df2489919c30ebb216bf59a767c1aabd80ca9736fb07b83f07d94ecf7",
+          "bytes": 13459
+        },
+        "ext/requests-logo.ai": {
+          "sha256": "1eb6f876f90f2092675e717bf615a6f3f0eb595fdce3309327835e9a395d8a2b",
+          "bytes": 212865
+        },
+        "requests/__init__.py": {
+          "sha256": "465e36de457e3014c50e24ed10e2623fd0ae6ae6c54a2f2b1daab3ab5281374c",
+          "bytes": 1856
+        },
+        "requests/adapters.py": {
+          "sha256": "4002f9ad2c04ceeaece4fe2ac23148cc74086de515f0eb1498a06f796e2bf899",
+          "bytes": 14742
+        },
+        "requests/api.py": {
+          "sha256": "46295d2e64e1951dc134523a0b76d2d5bbf15791bae5e84256b0469181de8c3b",
+          "bytes": 4333
+        },
+        "requests/auth.py": {
+          "sha256": "c766c5a872b72e46e6eea3d4ca1fdd02a60b4c34e8b418bed736bd12909d0345",
+          "bytes": 6123
+        },
+        "requests/cacert.pem": {
+          "sha256": "6a4eeafeaf28cc7750f5f7f6ed4f84d6f08dacb8ac151412332f732647694253",
+          "bytes": 308434
+        },
+        "requests/certs.py": {
+          "sha256": "c126aa8523680748a0a7a0dafa15b0d23b5720229705b2fc692f6cc2d865b79d",
+          "bytes": 544
+        },
+        "requests/compat.py": {
+          "sha256": "246ac93d5d9819ab73c2b7b197d912b7c67c42d9856e84591fdcb0b0b2bf30c0",
+          "bytes": 2556
+        },
+        "requests/cookies.py": {
+          "sha256": "06330ab6b23c4d7403e68415793a18b64441175e3d788f395215ac046c2c25a7",
+          "bytes": 16686
+        },
+        "requests/exceptions.py": {
+          "sha256": "cfedd0a6271a7cab4887ce5b30468294bd8ea4d3ddb1ce933fff3729cb1587c6",
+          "bytes": 1877
+        },
+        "requests/hooks.py": {
+          "sha256": "f6f362ba244745de50cba057ff4a751f736c5330e8d4cfc76854760052f8d538",
+          "bytes": 820
+        },
+        "requests/models.py": {
+          "sha256": "91153287286b3bc2018f8739e40dbaaee4c23cf5d7ca95b6ac661e0ac2ca9c33",
+          "bytes": 26224
+        },
+        "requests/packages/README.rst": {
+          "sha256": "6184621991b784af0fa9fa860be44bcf322622c18864f3ae134244abe74c7f14",
+          "bytes": 434
+        },
+        "requests/packages/__init__.py": {
+          "sha256": "69791b3428ccfd686bc91068704e00680fe9efe093c4be4b3aeb58ed7cca9b8b",
+          "bytes": 62
+        },
+        "requests/packages/chardet/__init__.py": {
+          "sha256": "f3edfd0e0daa12ea1de4334ded131d9f665838ef73154ddf15f684f348835867",
+          "bytes": 1295
+        },
+        "requests/packages/chardet/big5freq.py": {
+          "sha256": "0fca13773f8633b260f13b1a5890e6eb9bccfce2c70b7c6e6faa94277ace82c4",
+          "bytes": 82594
+        },
+        "requests/packages/chardet/big5prober.py": {
+          "sha256": "5d7f7a0befba58a616dfa98bfb3ee925202d735ebd67c648981c823f8a4437d0",
+          "bytes": 1684
+        },
+        "requests/packages/chardet/chardetect.py": {
+          "sha256": "f20f9d45203dedb484e8cdb94ea7b5ae828ab65dd71d2327aa2eaf4f3a47355d",
+          "bytes": 1141
+        },
+        "requests/packages/chardet/chardistribution.py": {
+          "sha256": "714011405af5a132d778908342b0d19143fbefc02f48cce14829c6f152c2579f",
+          "bytes": 9226
+        },
+        "requests/packages/chardet/charsetgroupprober.py": {
+          "sha256": "d252a4ed5139d7a7e0330d75f6d35e7c5a8b3b129f204f567dd929213ebd38a5",
+          "bytes": 3791
+        },
+        "requests/packages/chardet/charsetprober.py": {
+          "sha256": "678f28d8a88e8f6dc536a607f05ab3847e66d6a766deb23c0dc4e6d98aad9258",
+          "bytes": 1902
+        },
+        "requests/packages/chardet/codingstatemachine.py": {
+          "sha256": "13ce6b6211d5330f710c4255822421a743a72c6afa8b6afcffb40e58c2931f4f",
+          "bytes": 2318
+        },
+        "requests/packages/chardet/compat.py": {
+          "sha256": "e669bacab1f079fd49106e4ec643c9952ab99648cb56910687788f805064a643",
+          "bytes": 1157
+        },
+        "requests/packages/chardet/constants.py": {
+          "sha256": "f949d8f14ec43fbcfd7d3c9dd3dcaadf9044912144014022bfda217750d6d6ce",
+          "bytes": 1335
+        },
+        "requests/packages/chardet/cp949prober.py": {
+          "sha256": "14cbdd2f207b7de8cf5d1b136dc6bb2cad4fdd152fbecb268d43726847f3f336",
+          "bytes": 1782
+        },
+        "requests/packages/chardet/escprober.py": {
+          "sha256": "ab94dc40a795ab7d56c6b5bb4aff328e96648c4a1a1cef12f7610967d868772b",
+          "bytes": 3187
+        },
+        "requests/packages/chardet/escsm.py": {
+          "sha256": "ee296310a37c9574e1f091573d44b09626cc9e8e91ea4b2ae1ebcbc5b9337eba",
+          "bytes": 7839
+        },
+        "requests/packages/chardet/eucjpprober.py": {
+          "sha256": "e48a5f4848c06fb87785c18c77a76453cd0ef74d02d8deb192edbcadd6052ae7",
+          "bytes": 3678
+        },
+        "requests/packages/chardet/euckrfreq.py": {
+          "sha256": "4f9b1a2b99889b2486e728103edb29ea8dae2ae968b82c189b61253b216426a5",
+          "bytes": 45978
+        },
+        "requests/packages/chardet/euckrprober.py": {
+          "sha256": "5a8edd9d9e44af0fe70781fe9b96a53223b13ae2549861e5c0249a1aa1310d90",
+          "bytes": 1675
+        },
+        "requests/packages/chardet/euctwfreq.py": {
+          "sha256": "1bf234056f62d70d0e35e794c0862a57bfd4d3d6ee20776a87ec0d1d56aa97b2",
+          "bytes": 34872
+        },
+        "requests/packages/chardet/euctwprober.py": {
+          "sha256": "ba94b63fa1ae4f9ba33b15d8c3e4492dc4fb0383d3ba8dbb28650a538519a484",
+          "bytes": 1676
+        },
+        "requests/packages/chardet/gb2312freq.py": {
+          "sha256": "336805768fea43f06c952b44721acf5b90ab3c464469c0b4bb20cbc38a24fa46",
+          "bytes": 36011
+        },
+        "requests/packages/chardet/gb2312prober.py": {
+          "sha256": "5569e3a116bcdd8e95ea873331ac7252bd2ecb8f220a70b69f393dcdf1084477",
+          "bytes": 1681
+        },
+        "requests/packages/chardet/hebrewprober.py": {
+          "sha256": "f2976851fb155dffcbe019c975efc17b04ba1f6c889d5e7af3c7aed271612c76",
+          "bytes": 13359
+        },
+        "requests/packages/chardet/jisfreq.py": {
+          "sha256": "65c2f84797a41c76cfd8a09819a915301b222aa659640001ce1c22fae4643a9b",
+          "bytes": 47315
+        },
+        "requests/packages/chardet/jpcntx.py": {
+          "sha256": "f5f27da12d0151aadc7593724b09b3551b93d37b18742952985c170e3df254d8",
+          "bytes": 19104
+        },
+        "requests/packages/chardet/langbulgarianmodel.py": {
+          "sha256": "6723ec03bf7a31256161d7d684c0a0296724ba900a0272aa59c1370a5dde8faa",
+          "bytes": 12784
+        },
+        "requests/packages/chardet/langcyrillicmodel.py": {
+          "sha256": "7e471de4ebe8814a7e1ab34358064f82462c491083da89a8b4012faa39662ca1",
+          "bytes": 17725
+        },
+        "requests/packages/chardet/langgreekmodel.py": {
+          "sha256": "407332df5087fe8b7aed40ad9aeac210aa8ac765b0a1a2abc3660261804ad8bc",
+          "bytes": 12628
+        },
+        "requests/packages/chardet/langhebrewmodel.py": {
+          "sha256": "e004a5e6fcca24f9e0e07dbbf151cab51602d374e94297a79474dcb26647d6b1",
+          "bytes": 11318
+        },
+        "requests/packages/chardet/langhungarianmodel.py": {
+          "sha256": "497c2e533878f7f70178c5e1b2144776b865933d13f3fa59595fe976a04a3459",
+          "bytes": 12536
+        },
+        "requests/packages/chardet/langthaimodel.py": {
+          "sha256": "fa4edd8e1ddd18a9e00069eddd67eea0937b69c0dc59c98700fa2385a51deeae",
+          "bytes": 11275
+        },
+        "requests/packages/chardet/latin1prober.py": {
+          "sha256": "83aee0a99db3f3d2d43a547b059100878fa9e5ad72196b2cf675b2f0508d9bc4",
+          "bytes": 5241
+        },
+        "requests/packages/chardet/mbcharsetprober.py": {
+          "sha256": "f6b3828c356c992329e9eeeadaccaa6a4db68fb96b6d466126131e7b681b54bd",
+          "bytes": 3268
+        },
+        "requests/packages/chardet/mbcsgroupprober.py": {
+          "sha256": "48747334f2e90d77cc24b03ca61087554d1682a6e00c23710d03289465ffef29",
+          "bytes": 1967
+        },
+        "requests/packages/chardet/mbcssm.py": {
+          "sha256": "52e880e0873cbc47345e94ca0e77aa672887d93c06b85559c4ec5625ea775ffe",
+          "bytes": 19608
+        },
+        "requests/packages/chardet/sbcharsetprober.py": {
+          "sha256": "5ead25383a899c3831825062408e01a931623db9fadfed1ae57340e7e855bbb5",
+          "bytes": 4793
+        },
+        "requests/packages/chardet/sbcsgroupprober.py": {
+          "sha256": "f212f21fc4401be6a8841a3ba3f29c896560468e36644ff312db8d1b524c4582",
+          "bytes": 3291
+        },
+        "requests/packages/chardet/sjisprober.py": {
+          "sha256": "d518e94362d4da0be8101ff83bcdfdc434157215b1d9f1bf0bbfef5e1e763f92",
+          "bytes": 3734
+        },
+        "requests/packages/chardet/universaldetector.py": {
+          "sha256": "1a465dc0dc8d7db1560bc235baa9f3ca139417b7dabd60aa08e2aa750971ea04",
+          "bytes": 6831
+        },
+        "requests/packages/chardet/utf8prober.py": {
+          "sha256": "eed74d646ac963b8d95010f8f3718632488fd13c7c169f9c1af587a00b229478",
+          "bytes": 2652
+        },
+        "requests/packages/urllib3/__init__.py": {
+          "sha256": "b0b20abfd7462630e5a225575010635c3596abc6cceba91cbd31f6494fd664a8",
+          "bytes": 1701
+        },
+        "requests/packages/urllib3/_collections.py": {
+          "sha256": "611616dfcaacea619583d2b0ff2fdeb4fd278784911ab2ccea4be922b5f73f0a",
+          "bytes": 3111
+        },
+        "requests/packages/urllib3/connection.py": {
+          "sha256": "5af01865997b6e8c0265603bb75051830fa2d7f57b37555f89f61215f14c16c6",
+          "bytes": 5659
+        },
+        "requests/packages/urllib3/connectionpool.py": {
+          "sha256": "faeab17e36f3139609bb8a0506e53c174c48cc77c6c9d69c1026233d6cf4ef32",
+          "bytes": 25767
+        },
+        "requests/packages/urllib3/contrib/__init__.py": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        "requests/packages/urllib3/contrib/ntlmpool.py": {
+          "sha256": "549f868f1a58213c528f8503297d22aaf1f069ab72836440dcf693ca6e56a7ac",
+          "bytes": 4741
+        },
+        "requests/packages/urllib3/contrib/pyopenssl.py": {
+          "sha256": "f011a1d9173bdc86dc16f0b025929422768c5e42d9d71b0b6996ee3928251df1",
+          "bytes": 13871
+        },
+        "requests/packages/urllib3/exceptions.py": {
+          "sha256": "dc4af7e589b8c6b7f9c4d7533d520000d45d45551fe35bae32c342e2ca4f9347",
+          "bytes": 3274
+        },
+        "requests/packages/urllib3/fields.py": {
+          "sha256": "52eb88dc819fc47c0ea0a71bc39152e98b98ddfe32b82bd02edba649a22282be",
+          "bytes": 5976
+        },
+        "requests/packages/urllib3/filepost.py": {
+          "sha256": "b563d8df71e714cfd13e9114f4f1eff43df89faef0f1946df34652b1622fd0a9",
+          "bytes": 2512
+        },
+        "requests/packages/urllib3/packages/__init__.py": {
+          "sha256": "10a09300e8d9b4f47f1c2e747bb5fc852e63e1b90590df3b5d9393f967697eeb",
+          "bytes": 74
+        },
+        "requests/packages/urllib3/packages/ordered_dict.py": {
+          "sha256": "1ed1e986d4ad265a2bcd0aa821ab7ccd41f496a2e7b38d7a81f48ef72fda4804",
+          "bytes": 8936
+        },
+        "requests/packages/urllib3/packages/six.py": {
+          "sha256": "53eacef9606b152f0fc4779a99297aa242828ea3c5d7c3618996f4a8f67aed73",
+          "bytes": 11628
+        },
+        "requests/packages/urllib3/packages/ssl_match_hostname/__init__.py": {
+          "sha256": "0ecb345326fef8f57f22eeccfd2d74c78afe6d6a6e766e6621124d88e2772b4a",
+          "bytes": 459
+        },
+        "requests/packages/urllib3/packages/ssl_match_hostname/_implementation.py": {
+          "sha256": "7cadbc937ee12fbf83efdbfd88cd9f1e034af50d4fc3433ba9544be2b91f1634",
+          "bytes": 3778
+        },
+        "requests/packages/urllib3/poolmanager.py": {
+          "sha256": "6cc60774d6952393b862b247af54fab44d9160710ccccdbf2b4713cbbbb35f63",
+          "bytes": 8977
+        },
+        "requests/packages/urllib3/request.py": {
+          "sha256": "7174dcaebf5de7446ddb5dd95cb8027f9dca356c5ee0b43c971495d470586bd1",
+          "bytes": 5808
+        },
+        "requests/packages/urllib3/response.py": {
+          "sha256": "69a0b04bdd5fe69daa8c08d18abf41f1b093420c8fd59abb5f861d9c74eafbcc",
+          "bytes": 10537
+        },
+        "requests/packages/urllib3/util.py": {
+          "sha256": "87ca3f11220369c7292d62062af1ce80f0d4fe67c71061408ddf766c0c8db676",
+          "bytes": 21407
+        },
+        "requests/sessions.py": {
+          "sha256": "32e30eadf91367b3aefb90e8541cf3fc20d3d950a16828c0101f4232d36a78a9",
+          "bytes": 19902
+        },
+        "requests/status_codes.py": {
+          "sha256": "2d8a6a2efe0010ab933dbcbe412be097f808edf7159540ea481727748c17f908",
+          "bytes": 3136
+        },
+        "requests/structures.py": {
+          "sha256": "9fb92004e5099d05d64c9a518744b36b892e5a1b963249f7593678236e7f0119",
+          "bytes": 3575
+        },
+        "requests/utils.py": {
+          "sha256": "c38f1858cb796264436c06185e957437dba5f89ad3c54c9176c8515236d3fd0f",
+          "bytes": 19653
+        },
+        "requirements.txt": {
+          "sha256": "878c487bab1e59dc96e58d6268f03aeb70a644b1c549b11a087f7ae06e9ad57f",
+          "bytes": 61
+        },
+        "setup.cfg": {
+          "sha256": "13fb77272894ca43a3edcf58f4eb59d606a8c3a42331b8a56fde94ec606a4159",
+          "bytes": 22
+        },
+        "setup.py": {
+          "sha256": "4264d70db4af18d3ac44519037a5855d300cd2d24318ecf838f6bb84de1546f4",
+          "bytes": 1602
+        },
+        "test_requests.py": {
+          "sha256": "37ef77c0f9c3bddee646e2e3fd496e1a114daf6e8b05d3e47897ebc2e0d7630e",
+          "bytes": 40990
+        }
+      }
+    }
+  },
+  "mcp_stderr": {
+    "sha256": "9ccc4480001e28f776f6dbae5250eee502e28e3bc167894e520f56b6a0c40847",
+    "text": "INFO  2026-10-28 13:54:59,467 [MainThread] serena.cli:start_mcp_server:432 - Initializing Serena MCP server\nINFO  2026-10-28 13:54:59,468 [MainThread] serena.cli:start_mcp_server:433 - Storing logs in /opt/pilot-tools/serena-state/logs/2026-10-28/mcp_20261028-135459_19.txt\nINFO  2026-10-28 13:54:59,469 [MainThread] serena.config.serena_config:from_config_file:1079 - Loading Serena configuration from /opt/pilot-tools/serena-state/serena_config.yml\nINFO  2026-10-28 13:54:59,495 [MainThread] serena.agent:__init__:647 - Will record tool usage statistics with token count estimator: CHAR_COUNT.\nINFO  2026-10-28 13:54:59,496 [MainThread] serena.agent:__init__:651 - Starting Serena server (version=2.1.0, process id=19, parent process id=0; language backend=LSP); Python version=3.13.18, platform=Linux-6.17.0-1026-nvidia-aarch64-with-glibc2.35\nINFO  2026-10-28 13:54:59,496 [MainThread] serena.agent:__init__:655 - Configuration file: /opt/pilot-tools/serena-state/serena_config.yml\nINFO  2026-10-28 13:54:59,496 [MainThread] serena.agent:__init__:656 - Available projects: matched-cae35a976116\nINFO  2026-10-28 13:54:59,496 [MainThread] serena.agent:__init__:657 - Loaded tools (53): create_text_file, replace_content, replace_in_files, delete_lines, replace_lines, insert_at_line, replace_symbol_body, insert_after_symbol, insert_before_symbol, read_file, list_dir, find_file, search_for_pattern, restart_language_server, get_symbols_overview, find_symbol, find_referencing_symbols, find_implementations, find_declaration, get_diagnostics_for_file, get_diagnostics_for_symbol, rename_symbol, safe_delete_symbol, write_memory, read_memory, list_memories, delete_memory, rename_memory, edit_memory, execute_shell_command, open_dashboard, activate_project, remove_project, get_current_config, onboarding, initial_instructions, serena_info, jet_brains_find_symbol, jet_brains_move, jet_brains_safe_delete, jet_brains_inline_symbol, jet_brains_find_referencing_symbols, jet_brains_get_symbols_overview, jet_brains_type_hierarchy, jet_brains_find_declaration, jet_brains_find_implementations, jet_brains_rename, jet_brains_debug, jet_brains_run_inspections, jet_brains_list_inspections, list_queryable_projects, query_project, serena_repl\nINFO  2026-10-28 13:54:59,496 [MainThread] serena.config.serena_config:determine_language_backend:1595 - Using language backend from global configuration: LSP\nINFO  2026-10-28 13:54:59,496 [MainThread] serena.config.serena_config:determine_agent_interface:1584 - Using agent interface 'REPL' (global configuration)\nINFO  2026-10-28 13:54:59,506 [MainThread] serena.config.serena_config:start:329 - Loading project instance for RegisteredProject[project_root=/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/00-psf__requests-1921-serena/workspace, project_config=ProjectConfig[project_name=matched-cae35a976116]] starting ...\nINFO  2026-10-28 13:54:59,506 [MainThread] serena.project:__init__:54 - Serena project data folder: /tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/00-psf__requests-1921-serena/workspace/.serena\nINFO  2026-10-28 13:54:59,506 [MainThread] serena.project:__init__:76 - Creating .gitignore file in /tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/00-psf__requests-1921-serena/workspace/.serena/.gitignore\nINFO  2026-10-28 13:54:59,506 [gather-ignorespec[matched-cae35a976116]] serena.project:start:329 - Gathering ignore spec for project matched-cae35a976116 starting ...\nINFO  2026-10-28 13:54:59,506 [MainThread] serena.config.serena_config:stop:336 - Loading project instance for RegisteredProject[project_root=/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/00-psf__requests-1921-serena/workspace, project_config=ProjectConfig[project_name=matched-cae35a976116]] completed in 0.000 seconds\nINFO  2026-10-28 13:54:59,506 [gather-ignorespec[matched-cae35a976116]] serena.project:_gather_ignorespec:102 - Using 1 ignored paths from the global configuration.\nINFO  2026-10-28 13:54:59,506 [MainThread] serena.agent:activate_project_from_path_or_name:1535 - Found registered project 'matched-cae35a976116' at path /tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/00-psf__requests-1921-serena/workspace\nINFO  2026-10-28 13:54:59,506 [gather-ignorespec[matched-cae35a976116]] serena.util.file_system:start:329 - Loading of .gitignore files starting ...\nINFO  2026-10-28 13:54:59,507 [MainThread] serena.agent:_activate_project:1423 - Activating matched-cae35a976116 at /tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/00-psf__requests-1921-serena/workspace\nINFO  2026-10-28 13:54:59,507 [MainThread] serena.task_executor:issue_task:219 - Scheduling Task-1:init_project_services\nINFO  2026-10-28 13:54:59,507 [MainThread] serena.agent:_update_active_modes:1287 - Active modes (2): editing, interactive\nINFO  2026-10-28 13:54:59,507 [MainThread] serena.agent:__init__:708 - Number of exposed tools: 2. Exposed tools: ['initial_instructions', 'serena_repl']\nINFO  2026-10-28 13:54:59,507 [MainThread] serena.agent:_update_active_tools:1310 - Active tools (2): initial_instructions, serena_repl\nINFO  2026-10-28 13:54:59,507 [gather-ignorespec[matched-cae35a976116]] serena.util.file_system:_load_gitignore_files:306 - Processing .gitignore file: /tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/00-psf__requests-1921-serena/workspace/.gitignore\nINFO  2026-10-28 13:54:59,508 [MainThread] serena.mcp:create_mcp_server:413 - MCP server initial instructions:\nCRITICAL: Before starting to work on a coding task, call the `initial_instructions` tool to read the 'Serena Instructions Manual'.\nINFO  2026-10-28 13:54:59,510 [MainThread] serena.cli:start_mcp_server:475 - Starting MCP server \u2026\nINFO  2026-10-28 13:54:59,510 [gather-ignorespec[matched-cae35a976116]] serena.util.file_system:_load_gitignore_files:306 - Processing .gitignore file: /tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/00-psf__requests-1921-serena/workspace/.serena/.gitignore\nINFO  2026-10-28 13:54:59,511 [gather-ignorespec[matched-cae35a976116]] serena.util.file_system:_load_gitignore_files:306 - Processing .gitignore file: /tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/00-psf__requests-1921-serena/workspace/docs/_themes/.gitignore\nWARNING 2026-10-28 13:54:59,511 [Thread-2 (send_usage_info)] serena.agent:send_usage_info:767 - Failed to send usage info: HTTPSConnectionPool(host='oraios-software.de', port=443): Max retries exceeded with url: /serena_usage.php?os=Linux&dashboard=0&version=2.1.0&backend=LSP&context=claude-code&agent_interface=REPL (Caused by NameResolutionError(\"HTTPSConnection(host='oraios-software.de', port=443): Failed to resolve 'oraios-software.de' ([Errno -3] Temporary failure in name resolution)\"))\nINFO  2026-10-28 13:54:59,512 [gather-ignorespec[matched-cae35a976116]] serena.util.file_system:stop:336 - Loading of .gitignore files completed in 0.006 seconds\nINFO  2026-10-28 13:54:59,512 [gather-ignorespec[matched-cae35a976116]] serena.project:stop:336 - Gathering ignore spec for project matched-cae35a976116 completed in 0.006 seconds\nINFO  2026-10-28 13:54:59,583 [MainThread] serena.repl.repl:__init__:73 - Registered 6/7 facades: ['cfg', 'fs', 'edit', 'mem', 'shell', 'lsp']\nINFO  2026-10-28 13:54:59,585 [MainThread] serena.mcp:_set_mcp_tools:340 - Starting MCP server with 2 tools: ['initial_instructions', 'serena_repl']\nINFO  2026-10-28 13:54:59,585 [MainThread] serena.mcp:server_lifespan:436 - MCP server lifetime setup complete\nINFO  2026-10-28 13:54:59,590 [AnyIO worker thread] serena.tools.tools_base:apply_ex:321 - Failed to get client info: 'InitializeRequestParams' object has no attribute 'clientInfo'.\nINFO  2026-10-28 13:54:59,590 [AnyIO worker thread] serena.task_executor:issue_task:219 - Scheduling Task-2:InitialInstructionsTool\nINFO  2026-10-28 13:54:59,597 [SerenaAgentTaskExecutor] serena.task_executor:_process_task_queue:141 - Starting execution of Task-1:init_project_services\nINFO  2026-10-28 13:54:59,597 [Task-1:init_project_services] serena.task_executor:start:329 - Task-1:init_project_services starting ...\nINFO  2026-10-28 13:54:59,597 [Task-1:init_project_services] serena.lsp.lsp_backend:start:329 - Language server initialization starting ...\nINFO  2026-10-28 13:54:59,597 [Task-1:init_project_services] serena.project:create_language_server_manager:667 - Creating language server manager for /tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/00-psf__requests-1921-serena/workspace\nINFO  2026-10-28 13:54:59,598 [StartLS:python] sensai.util.logging:start:329 - Language server startup (ls_id=python) starting ...\nINFO  2026-10-28 13:54:59,598 [StartLS:python] serena.ls_manager:create_language_server:63 - Creating language server instance for /tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/00-psf__requests-1921-serena/workspace, language=python.\nINFO  2026-10-28 13:54:59,607 [StartLS:python] solidlsp.ls:start:3290 - Starting language server python for /tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/00-psf__requests-1921-serena/workspace\nINFO  2026-10-28 13:54:59,607 [StartLS:python] solidlsp.language_servers.pyright_server:_start_server:217 - Starting pyright-langserver server process\nINFO  2026-10-28 13:54:59,607 [StartLS:python] solidlsp.ls_process:_start:528 - Starting language server process via command: ['/usr/local/bin/uv', 'tool', 'run', '-p', '3.13', '--from', 'pyright==1.1.403', 'pyright-langserver', '--stdio']\nINFO  2026-10-28 13:54:59,616 [StartLS:python] solidlsp.initialize_params:_apply_updates:76 - Workspace folders: ['/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/00-psf__requests-1921-serena/workspace']\nINFO  2026-10-28 13:54:59,616 [StartLS:python] solidlsp.language_servers.pyright_server:_start_server:223 - Sending initialize request from LSP client to pyright server and awaiting response\nINFO  2026-10-28 13:54:59,938 [LSP-stdout-reader:python] solidlsp.language_servers.pyright_server:window_log_message:139 - LSP: window/logMessage: Pyright language server 1.1.403 starting\nINFO  2026-10-28 13:54:59,939 [LSP-stdout-reader:python] solidlsp.language_servers.pyright_server:window_log_message:139 - LSP: window/logMessage: Server root directory: file:///opt/pilot-state/uv-cache/archive-v0/IzAO9IuSo7ihL0b4/lib/python3.13/site-packages/pyright/dist/dist\nINFO  2026-10-28 13:54:59,940 [LSP-stdout-reader:python] solidlsp.language_servers.pyright_server:window_log_message:139 - LSP: window/logMessage: Starting service instance \"workspace\"\nINFO  2026-10-28 13:54:59,941 [StartLS:python] solidlsp.language_servers.pyright_server:_start_server:225 - Received initialize response from pyright server: {'capabilities': {'textDocumentSync': 2, 'definitionProvider': {'workDoneProgress': True}, 'declarationProvider': {'workDoneProgress': True}, 'typeDefinitionProvider': {'workDoneProgress': True}, 'referencesProvider': {'workDoneProgress': True}, 'documentSymbolProvider': {'workDoneProgress': True}, 'workspaceSymbolProvider': {'workDoneProgress': True}, 'hoverProvider': {'workDoneProgress': True}, 'documentHighlightProvider': {'workDoneProgress': True}, 'renameProvider': {'prepareProvider': True, 'workDoneProgress': True}, 'completionProvider': {'triggerCharacters': ['.', '[', '\"', \"'\"], 'resolveProvider': True, 'workDoneProgress': True, 'completionItem': {'labelDetailsSupport': True}}, 'signatureHelpProvider': {'triggerCharacters': ['(', ',', ')'], 'workDoneProgress': True}, 'codeActionProvider': {'codeActionKinds': ['quickfix', 'source.organizeImports'], 'workDoneProgress': True}, 'executeCommandProvider': {'commands': [], 'workDoneProgress': True}, 'callHierarchyProvider': True, 'workspace': {'workspaceFolders': {'supported': True, 'changeNotifications': True}}}}\nINFO  2026-10-28 13:54:59,941 [StartLS:python] solidlsp.language_servers.pyright_server:_start_server:237 - Waiting up to 60.0s for Pyright to complete initial workspace analysis...\nINFO  2026-10-28 13:55:00,004 [LSP-stdout-reader:python] solidlsp.language_servers.pyright_server:window_log_message:139 - LSP: window/logMessage: No include entries specified; assuming /tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/00-psf__requests-1921-serena/workspace\nINFO  2026-10-28 13:55:00,004 [LSP-stdout-reader:python] solidlsp.language_servers.pyright_server:window_log_message:139 - LSP: window/logMessage: Auto-excluding **/node_modules\nINFO  2026-10-28 13:55:00,004 [LSP-stdout-reader:python] solidlsp.language_servers.pyright_server:window_log_message:139 - LSP: window/logMessage: Auto-excluding **/__pycache__\nINFO  2026-10-28 13:55:00,004 [LSP-stdout-reader:python] solidlsp.language_servers.pyright_server:window_log_message:139 - LSP: window/logMessage: Auto-excluding **/.*\nINFO  2026-10-28 13:55:00,004 [LSP-stdout-reader:python] solidlsp.language_servers.pyright_server:window_log_message:139 - LSP: window/logMessage: Assuming Python version 3.13.18.final.0\nINFO  2026-10-28 13:55:00,004 [LSP-stdout-reader:python] solidlsp.language_servers.pyright_server:window_log_message:139 - LSP: window/logMessage: Found 148 source files\nINFO  2026-10-28 13:55:00,004 [LSP-stdout-reader:python] solidlsp.language_servers.pyright_server:window_log_message:144 - Pyright workspace scanning complete\nINFO  2026-10-28 13:55:00,004 [StartLS:python] solidlsp.language_servers.pyright_server:_start_server:239 - Pyright initial analysis complete, server ready\nINFO  2026-10-28 13:55:00,004 [StartLS:python] sensai.util.logging:stop:336 - Language server startup (ls_id=python) completed in 0.407 seconds\nINFO  2026-10-28 13:55:00,005 [Task-1:init_project_services] sensai.util.logging:start:329 - Initialising file change notifier (polling for baseline) starting ...\nINFO  2026-10-28 13:55:00,008 [Task-1:init_project_services] sensai.util.logging:stop:336 - Initialising file change notifier (polling for baseline) completed in 0.003 seconds\nINFO  2026-10-28 13:55:00,008 [Task-1:init_project_services] serena.lsp.lsp_backend:stop:336 - Language server initialization completed in 0.411 seconds\nINFO  2026-10-28 13:55:00,008 [Task-1:init_project_services] serena.task_executor:stop:336 - Task-1:init_project_services completed in 0.411 seconds\nINFO  2026-10-28 13:55:00,008 [SerenaAgentTaskExecutor] serena.task_executor:_process_task_queue:141 - Starting execution of Task-2:InitialInstructionsTool\nINFO  2026-10-28 13:55:00,009 [Task-2:InitialInstructionsTool] serena.task_executor:start:329 - Task-2:InitialInstructionsTool starting ...\nINFO  2026-10-28 13:55:00,009 [Task-2:InitialInstructionsTool] serena.tools.tools_base:_log_tool_application:256 - initial_instructions: \nINFO  2026-10-28 13:55:00,009 [Task-2:InitialInstructionsTool] serena.session:get_session:72 - Created session 4f022e26 (1 sessions)\nINFO  2026-10-28 13:55:00,016 [Task-2:InitialInstructionsTool] serena.tools.tools_base:task:377 - Result: <serena>\nYou have semantic coding functions/tools that you rely on heavily. Work resource-efficiently: don't read or\ngenerate content the task doesn't need.\n\nSome tasks require understanding a large part of the codebase; others need only a few symbols or a\nsingle file. Avoid reading whole files unless necessary \u2014 acquire information step by step, using\nthe symbolic functions to get an overview of symbols and their relations, then reading only the bodies\nyou need. Once you have read a full file, there is no point re-analysing it with the symbolic read\ntools \u2014 you already have it. \n\nFor searches beyond named symbols, you can use `fs.search_for_pattern` and flexible search for patterns in the codebase. In this way, you can first find candidates for symbols or files to explore,\nand then proceed with symbolic operations.\n\n\n\nSymbols are identified by their `name_path` and `relative_path`.\nYou can get an overview of the symbols in a file by using `lsp.get_symbols_overview`, or search for a specific symbol with `lsp.find_symbol`.\nYou only read the bodies of symbols when you need to (e.g. if you want to fully understand or edit it).\nFor example, if you are working with Python code and already know that you need to read the body of the constructor of the class Foo, you can directly\nuse `lsp.find_symbol` with name path pattern `Foo/__init__` and `include_body=True`. If you don't know yet which methods in `Foo` you need to read or edit,\nyou can use `lsp.find_symbol` with name path pattern `Foo`, `include_body=False` and `depth=1` to get all (top-level) members of `Foo` before proceeding\nto read the desired methods with `include_body=True`.\nYou can understand relationships between symbols by using `lsp.find_referencing_symbols`.\n\n\nYou generally have access to memories and it may be useful for you to read them.\nYou infer whether memories are relevant based on their names.\n\n\nLine numbers returned by Serena's tools are 0-based!\n\nSerena executes tool calls one at a time internally, even when you request several at once. So whenever you have\nindependent operations to perform, you can safely issue them as parallel tool calls in a single turn: they are applied\nin the order issued and cannot race with or corrupt one another, and batching them this way saves round-trips. Every\nseparate round-trip re-sends the whole growing context, so maximizing parallel tool calls is the single biggest lever\non cost \u2014 err on the side of batching. Only call tools sequentially when one genuinely depends on the result of another.\n\nThe context and modes of operation are described below. These determine how to interact with your user\nand which kinds of interactions are expected of you.\n\n<context>\nYou are running in a CLI coding agent context where file operations, basic (line-based) edits and reads \nas well as shell commands are handled by your own, internal tools.\n\nYou have access to Serena's code intelligence tools that exploit the symbolic \nstructure of the code and are much more efficient than your own tools for most coding scenarios.\nIf you are working on any coding task and if Serena's tools are deferred, you\nshould load them all immediately, before performing any read, grep or bash commands.\nIf Serena's tools can be used to achieve your task, you should prioritize them.\n**CRITICAL**: If you haven't seen Serena's tools yet, you should use the tool search tool to load all of them\n**right now**.\nFor exploring and reading code in a token-efficient manner, use Serena's code-centric overview and symbolic search tools.\nFor edits, prefer Serena's editing tools since they are more token efficient.\nEspecially when editing code you have read through Serena, **ALWAYS** use Serena's tools for editing, because your built-in tools will deny such edits (they will assume you haven't read the content).\n**CRITICAL**: Never use a tool before having read its schema via the tool-search tool!\n\n**CRITICAL**: You have an preference for relying on your own tools like grep, read and edit. It is of paramount \nimportance that you overcome this preference and instead develop a preference for using Serena's tools since they\nare superior for most coding tasks. Follow the following rules:\n\nFor any code files:\n- Read           -> FORBIDDEN for discovery. Use get_symbols_overview, then find_symbol with include_body. \n                    You may use read only if you already have an overview of the file and if reading whole symbols\n                    is inappropriate (e.g. a few lines of code).\n- Glob (by name) -> Allowed for discovery only.\n- Grep (content) -> Allowed for discovery only; follow up reads or reference searches must be Serena.\n- Edit           -> FORBIDDEN. Use replace_symbol_body / insert_*_symbol / replace_content.\n\nDisallowed reasoning. Do NOT use any of the following to justify Read/Edit on a code file:\n  - \"I already know the path\"\n  - \"one Read call is faster than three Serena calls\"\n  - \"the built-in tool description says to use Read for known paths\"\nIf you catch yourself reaching for one of these, that is the signal to switch to Serena.\n</context>\n\n\n<mode name=\"editing\">\nUse the symbolic editing tools for precise, structure-aware code modifications.\n\n**Refactoring tools**\nFor operations on existing symbols, prefer the dedicated refactoring tools over hand-edits:\n`lsp.rename_symbol` and `lsp.safe_delete_symbol` \u2014\nthey are reference-aware and update or check all usages atomically. When such a tool returns success, the\nrefactoring is already complete and consistent across all declarations, references, overrides and imports \u2014\ntrust it: do not re-read the changed files or re-run the build / test suite just to confirm the refactor\nitself propagated, this would be wasted effort.\n  \nApart from those refactoring tools, you have two main approaches for editing code: (a) editing at the symbol level and (b) file-based editing.\nThe symbol-based approach is appropriate if you need to adjust an entire symbol, e.g. a method, a class, a function, etc.\nIt is not appropriate if you need to adjust just a few lines of code within a larger symbol.\n\n**Symbolic editing**\nUse symbolic retrieval tools to identify the symbols you need to edit.\nIf you need to replace the definition of a symbol, use the `edit.replace_symbol_body` tool.\nIf you want to add some new code at the end of the file, use the `edit.insert_after_symbol` tool with the last top-level symbol in the file. \nSimilarly, you can use `edit.insert_before_symbol` with the first top-level symbol in the file to insert code at the beginning of a file.\nYou can understand relationships between symbols by using the `lsp.find_referencing_symbols` tool. If not explicitly requested otherwise by the user,\nyou make sure that when you edit a symbol, the change is either backward-compatible or you find and update all references as needed.\nThe `lsp.find_referencing_symbols` tool will give you code snippets around the references as well as symbolic information.\nThese edits are reliable: once a tool returns without error the change is applied, so you do not need to re-read the file just to confirm it.\n\n\n**File-based editing**\nThe `edit.replace_content` tool allows you to perform regex-based replacements within files (as well as simple string replacements).\nThis is your primary tool for editing code whenever replacing or deleting a whole symbol would be a more expensive operation,\ne.g. if you need to adjust just a few lines of code within a method.\nIn `regex` mode, wildcards like `start.*?end` let you match a span without quoting its full text; an ambiguous match\nreturns an error you can refine, so a tight wildcard pattern is both cheaper and safe.\nFor several small edits within one file, prefer a batch of targeted `edit.replace_content` calls over rewriting the whole\nfile: rewriting has to re-emit the file's entire contents, whereas each targeted edit emits only the changed text.\nFor the SAME edit across many files, use `edit.replace_in_files`, which applies\nit everywhere in one call \u2014 equally safe and transparent: its `dry_run` mode first previews every change as a diff with a\nper-occurrence id, so you can then apply all of them or just a chosen subset.\n</mode>\n\n<mode name=\"interactive\">\nYou should engage with the user throughout the task, asking for clarification whenever anything is unclear, \ninsufficiently specified, or ambiguous. \nWhen you're uncertain about a decision, present options to the user and ask for guidance rather than making assumptions. \nFocus on providing informative results for intermediate steps, such that the user can follow along with your progress and\nprovide feedback as needed.\nThis applies unless the user explicitly stated they are unavailable/instructs you to proceed without asking questions.\n</mode>\n\n\nYou have hereby read the 'Serena Instructions Manual' and do not need to read it again.\n\n<active-project>\nThe project with name 'matched-cae35a976116' at /tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/00-psf__requests-1921-serena/workspace is activated.\nActive language servers: python.\nFile encoding: utf-8.\nOnboarding has not been performed yet. Ask the user whether to perform onboarding and if so, call `mem.onboarding`.\n</active-project>\n\n<session>\nYour Serena session id is `4f022e26`. Pass it as the `session` parameter to tools which require it.\n</session>\n</serena>\nINFO  2026-10-28 13:55:00,016 [Task-2:InitialInstructionsTool] serena.task_executor:stop:336 - Task-2:InitialInstructionsTool completed in 0.007 seconds\nINFO  2026-10-28 13:55:00,023 [AnyIO worker thread] serena.tools.tools_base:apply_ex:321 - Failed to get client info: 'InitializeRequestParams' object has no attribute 'clientInfo'.\nINFO  2026-10-28 13:55:00,023 [AnyIO worker thread] serena.task_executor:issue_task:219 - Scheduling Task-3:SerenaReplTool\nINFO  2026-10-28 13:55:00,117 [SerenaAgentTaskExecutor] serena.task_executor:_process_task_queue:141 - Starting execution of Task-3:SerenaReplTool\nINFO  2026-10-28 13:55:00,118 [Task-3:SerenaReplTool] serena.task_executor:start:329 - Task-3:SerenaReplTool starting ...\nINFO  2026-10-28 13:55:00,118 [Task-3:SerenaReplTool] serena.tools.tools_base:_log_tool_application:256 - serena_repl: session='4f022e26'\ns.lsp.find_symbol(name_path_pattern='Session/prepare_request', relative_path='requests/sessions.py', include_body=True)\nINFO  2026-10-28 13:55:00,196 [Task-3:SerenaReplTool] serena.tools.tools_base:task:377 - Result: [{\"name_path\": \"Session/prepare_request\", \"kind\": \"Method\", \"relative_path\": \"requests/sessions.py\", \"body_location\": {\"start_line\": 259, \"end_line\": 296}, \"body\": \"def prepare_request(self, request):\\n        \\\"\\\"\\\"Constructs a :class:`PreparedRequest <PreparedRequest>` for\\n        transmission and returns it. The :class:`PreparedRequest` has settings\\n        merged from the :class:`Request <Request>` instance and those of the\\n        :class:`Session`.\\n\\n        :param request: :class:`Request` instance to prepare with this\\n            session's settings.\\n        \\\"\\\"\\\"\\n        cookies = request.cookies or {}\\n\\n        # Bootstrap CookieJar.\\n        if not isinstance(cookies, cookielib.CookieJar):\\n            cookies = cookiejar_from_dict(cookies)\\n\\n        # Merge with session cookies\\n        merged_cookies = merge_cookies(\\n            merge_cookies(RequestsCookieJar(), self.cookies), cookies)\\n\\n\\n        # Set environment's basic authentication if not explicitly set.\\n        auth = request.auth\\n        if self.trust_env and not auth and not self.auth:\\n            auth = get_netrc_auth(request.url)\\n\\n        p = PreparedRequest()\\n        p.prepare(\\n            method=request.method.upper(),\\n            url=request.url,\\n            files=request.files,\\n            data=request.data,\\n            headers=merge_setting(request.headers, self.headers, dict_class=CaseInsensitiveDict),\\n            params=merge_setting(request.params, self.params),\\n            auth=merge_setting(auth, self.auth),\\n            cookies=merged_cookies,\\n            hooks=merge_hooks(request.hooks, self.hooks),\\n        )\\n        return p\"}]\nINFO  2026-10-28 13:55:00,197 [Task-3:SerenaReplTool] solidlsp.ls:_save_raw_document_symbols_cache:3115 - Saving updated raw document symbols cache to /tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/00-psf__requests-1921-serena/workspace/.serena/cache/python/raw_document_symbols.pkl\nINFO  2026-10-28 13:55:00,198 [Task-3:SerenaReplTool] solidlsp.ls:_save_document_symbols_cache:3180 - Saving updated document symbols cache to /tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/00-psf__requests-1921-serena/workspace/.serena/cache/python/document_symbols.pkl\nINFO  2026-10-28 13:55:00,198 [Task-3:SerenaReplTool] serena.task_executor:stop:336 - Task-3:SerenaReplTool completed in 0.080 seconds\nINFO  2026-10-28 13:55:00,203 [MainThread] serena.mcp:server_lifespan:443 - MCP server shutting down\nINFO  2026-10-28 13:55:00,204 [MainThread] serena.agent:on_shutdown:1667 - SerenaAgent is shutting down ...\nINFO  2026-10-28 13:55:00,204 [MainThread] serena.agent:on_shutdown:1677 - Shutting down active project 'matched-cae35a976116' ...\nINFO  2026-10-28 13:55:00,204 [MainThread] serena.ls_manager:_stop_language_server:248 - Stopping language server for language python ...\nINFO  2026-10-28 13:55:00,204 [MainThread] solidlsp.ls_process:stop:244 - Initiating shutdown with a 2.0s timeout...\nINFO  2026-10-28 13:55:00,204 [Thread-3 (_send_shutdown)] solidlsp.ls_process:_send_shutdown:255 - Sending shutdown request to server\nINFO  2026-10-28 13:55:00,204 [Thread-3 (_send_shutdown)] solidlsp.ls_process:_send_shutdown:257 - Received shutdown response from server\nINFO  2026-10-28 13:55:00,205 [Thread-3 (_send_shutdown)] solidlsp.ls_process:_send_shutdown:258 - Sending exit notification to server\nINFO  2026-10-28 13:55:00,205 [Thread-3 (_send_shutdown)] solidlsp.ls_process:_send_shutdown:260 - Sent exit notification to server\nINFO  2026-10-28 13:55:00,219 [LSP-stderr-reader:python] solidlsp.ls_process:_read_ls_process_stderr:660 - Language server stderr reader thread has terminated\nINFO  2026-10-28 13:55:00,219 [LSP-stdout-reader:python] solidlsp.ls_process:_read_ls_process_stdout:633 - Language server stdout reader thread has terminated\n"
+  }
+}

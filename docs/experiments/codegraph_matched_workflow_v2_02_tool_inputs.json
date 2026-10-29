@@ -1,0 +1,394 @@
+{
+  "scope": "Original pre-tool requests, permissions, effective scoped inputs and SDK output registration receipts. Post-tool response bytes are retained in original hooks and delivered model/tool observations, not duplicated here.",
+  "raw_hooks_sha256": "cbc9e3d8be3e7e9bddb16d4583cd3dafff8215cc4a1a02cc449b1a9f659071a3",
+  "raw_hooks_bytes": 164186,
+  "pre_tool_and_output_registration_events": [
+    {
+      "event": "pre",
+      "tool": "mcp__study__codegraph_explore",
+      "tool_use_id": "toolu_01E1rAY7MBHDE4i4tYoCy6ds",
+      "original_input": {
+        "query": "Session.prepare_request merge_setting merge_hooks"
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "a4a4250e-b900-4c3a-b566-4e444e4a77dc",
+      "decision": "allow",
+      "effective_input": {
+        "query": "Session.prepare_request merge_setting merge_hooks"
+      },
+      "phase": "lookup"
+    },
+    {
+      "event": "pre",
+      "tool": "mcp__study__codegraph_explore",
+      "tool_use_id": "toolu_01JnGjr32MTHPnWfRVeyCCXN",
+      "original_input": {
+        "query": "Session.request Session.send Session.prepare_request get_adapter HTTPAdapter.send resolve_redirects PreparedRequest.prepare"
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "1ff5a9b0-9462-4b48-9721-b7973202f41f",
+      "decision": "allow",
+      "effective_input": {
+        "query": "Session.request Session.send Session.prepare_request get_adapter HTTPAdapter.send resolve_redirects PreparedRequest.prepare"
+      },
+      "phase": "flow"
+    },
+    {
+      "event": "pre",
+      "tool": "Read",
+      "tool_use_id": "toolu_013tjL3fdZZNHiY13ov3S2se",
+      "original_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/02-psf__requests-1921-codegraph/workspace/requests/sessions.py",
+        "offset": 81,
+        "limit": 104
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "1ff5a9b0-9462-4b48-9721-b7973202f41f",
+      "decision": "allow",
+      "effective_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/02-psf__requests-1921-codegraph/workspace/requests/sessions.py",
+        "offset": 81,
+        "limit": 104
+      },
+      "phase": "flow"
+    },
+    {
+      "event": "pre",
+      "tool": "Read",
+      "tool_use_id": "toolu_019Q73aHEVhhHcAoZ9Tt1BfF",
+      "original_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/02-psf__requests-1921-codegraph/workspace/requests/sessions.py",
+        "offset": 460,
+        "limit": 110
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "1ff5a9b0-9462-4b48-9721-b7973202f41f",
+      "decision": "allow",
+      "effective_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/02-psf__requests-1921-codegraph/workspace/requests/sessions.py",
+        "offset": 460,
+        "limit": 110
+      },
+      "phase": "flow"
+    },
+    {
+      "event": "pre",
+      "tool": "Read",
+      "tool_use_id": "toolu_01HKmXpjoMkT12EFfacCcd5c",
+      "original_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/02-psf__requests-1921-codegraph/workspace/requests/adapters.py",
+        "offset": 195,
+        "limit": 100
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "1ff5a9b0-9462-4b48-9721-b7973202f41f",
+      "decision": "allow",
+      "effective_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/02-psf__requests-1921-codegraph/workspace/requests/adapters.py",
+        "offset": 195,
+        "limit": 100
+      },
+      "phase": "flow"
+    },
+    {
+      "event": "pre",
+      "tool": "Bash",
+      "tool_use_id": "toolu_01VokAzynhafoGqomj9kESii",
+      "original_input": {
+        "command": "cd /tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/02-psf__requests-1921-codegraph/workspace; sed -n 240,252p requests/sessions.py; echo ---; sed -n 17,46p requests/api.py | grep -n \"session\\|return\" ; echo ---; sed -n 377,400p requests/adapters.py; grep -n \"def get_connection\\|def build_response\\|def cert_verify\\|def init_poolmanager\" requests/adapters.py; grep -n \"def dispatch_hook\" -A15 requests/hooks.py"
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "1ff5a9b0-9462-4b48-9721-b7973202f41f",
+      "decision": "allow",
+      "effective_input": {
+        "command": "docker exec -i -w /tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/02-psf__requests-1921-codegraph/workspace 81cf1f5d11a293a32815c5a2d9f35af9eb6ec39effd7944072bb5bcb5e9620d6 /bin/bash -lc 'umask 002\ncd /tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/02-psf__requests-1921-codegraph/workspace; sed -n 240,252p requests/sessions.py; echo ---; sed -n 17,46p requests/api.py | grep -n \"session\\|return\" ; echo ---; sed -n 377,400p requests/adapters.py; grep -n \"def get_connection\\|def build_response\\|def cert_verify\\|def init_poolmanager\" requests/adapters.py; grep -n \"def dispatch_hook\" -A15 requests/hooks.py'"
+      },
+      "phase": "flow"
+    },
+    {
+      "event": "pre",
+      "tool": "Bash",
+      "tool_use_id": "toolu_01BfNGjN9QrtPBenZA4xnEk7",
+      "original_input": {
+        "command": "cd /tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/02-psf__requests-1921-codegraph/workspace; sed -n 158,192p requests/adapters.py | grep -n \"connection\\|request\\|return\"; grep -n \"connection.send\\|register_hook\\|def handle_401\\|def __call__\" requests/auth.py"
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "1ff5a9b0-9462-4b48-9721-b7973202f41f",
+      "decision": "allow",
+      "effective_input": {
+        "command": "docker exec -i -w /tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/02-psf__requests-1921-codegraph/workspace 81cf1f5d11a293a32815c5a2d9f35af9eb6ec39effd7944072bb5bcb5e9620d6 /bin/bash -lc 'umask 002\ncd /tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/02-psf__requests-1921-codegraph/workspace; sed -n 158,192p requests/adapters.py | grep -n \"connection\\|request\\|return\"; grep -n \"connection.send\\|register_hook\\|def handle_401\\|def __call__\" requests/auth.py'"
+      },
+      "phase": "flow"
+    },
+    {
+      "event": "pre",
+      "tool": "Bash",
+      "tool_use_id": "toolu_01QtTnawpt6591fPJFmdHLdY",
+      "original_input": {
+        "command": "cd /tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/02-psf__requests-1921-codegraph/workspace; grep -rn \"\\.send(\" requests/*.py; echo ---; grep -n \"\\.send(\\|resolve_redirects\\|def test.*redirect\\|def test_cannot_send\\|def test_prepared_from_session\\|allow_redirects\" test_requests.py"
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "1ff5a9b0-9462-4b48-9721-b7973202f41f",
+      "decision": "allow",
+      "effective_input": {
+        "command": "docker exec -i -w /tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/02-psf__requests-1921-codegraph/workspace 81cf1f5d11a293a32815c5a2d9f35af9eb6ec39effd7944072bb5bcb5e9620d6 /bin/bash -lc 'umask 002\ncd /tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/02-psf__requests-1921-codegraph/workspace; grep -rn \"\\.send(\" requests/*.py; echo ---; grep -n \"\\.send(\\|resolve_redirects\\|def test.*redirect\\|def test_cannot_send\\|def test_prepared_from_session\\|allow_redirects\" test_requests.py'"
+      },
+      "phase": "impact"
+    },
+    {
+      "event": "pre",
+      "tool": "Bash",
+      "tool_use_id": "toolu_01WyggLi4RtRTqRdF6hCSHxA",
+      "original_input": {
+        "command": "cd /tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/02-psf__requests-1921-codegraph/workspace; sed -n 98,115p test_requests.py; echo ---; sed -n 145,152p test_requests.py; echo ---; sed -n 505,535p test_requests.py; echo ---; sed -n 715,762p test_requests.py; echo; sed -n 160,180p requests/auth.py"
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "1ff5a9b0-9462-4b48-9721-b7973202f41f",
+      "decision": "allow",
+      "effective_input": {
+        "command": "docker exec -i -w /tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/02-psf__requests-1921-codegraph/workspace 81cf1f5d11a293a32815c5a2d9f35af9eb6ec39effd7944072bb5bcb5e9620d6 /bin/bash -lc 'umask 002\ncd /tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/02-psf__requests-1921-codegraph/workspace; sed -n 98,115p test_requests.py; echo ---; sed -n 145,152p test_requests.py; echo ---; sed -n 505,535p test_requests.py; echo ---; sed -n 715,762p test_requests.py; echo; sed -n 160,180p requests/auth.py'"
+      },
+      "phase": "impact"
+    },
+    {
+      "event": "pre",
+      "tool": "Bash",
+      "tool_use_id": "toolu_01UyF8Ddgxys5AopfBWa4ZG5",
+      "original_input": {
+        "command": "cd /tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/02-psf__requests-1921-codegraph/workspace; sed -n 115,121p test_requests.py"
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "1ff5a9b0-9462-4b48-9721-b7973202f41f",
+      "decision": "allow",
+      "effective_input": {
+        "command": "docker exec -i -w /tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/02-psf__requests-1921-codegraph/workspace 81cf1f5d11a293a32815c5a2d9f35af9eb6ec39effd7944072bb5bcb5e9620d6 /bin/bash -lc 'umask 002\ncd /tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/02-psf__requests-1921-codegraph/workspace; sed -n 115,121p test_requests.py'"
+      },
+      "phase": "impact"
+    },
+    {
+      "event": "pre",
+      "tool": "Read",
+      "tool_use_id": "toolu_015rpo8iQ83FWcMvsZHCwMCj",
+      "original_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/02-psf__requests-1921-codegraph/workspace/requests/sessions.py",
+        "offset": 34,
+        "limit": 30
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "1ff5a9b0-9462-4b48-9721-b7973202f41f",
+      "decision": "allow",
+      "effective_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/02-psf__requests-1921-codegraph/workspace/requests/sessions.py",
+        "offset": 34,
+        "limit": 30
+      },
+      "phase": "repair"
+    },
+    {
+      "event": "pre",
+      "tool": "Grep",
+      "tool_use_id": "toolu_014WprBpGj3WyNHWcjmPAi4k",
+      "original_input": {
+        "pattern": "None|def test_fixes_1329|def test_header_remove_is_case_insensitive|def test_params_are_merged_case_sensitive",
+        "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/02-psf__requests-1921-codegraph/workspace/test_requests.py",
+        "output_mode": "content",
+        "-C": 0
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "1ff5a9b0-9462-4b48-9721-b7973202f41f",
+      "decision": "allow",
+      "effective_input": {
+        "pattern": "None|def test_fixes_1329|def test_header_remove_is_case_insensitive|def test_params_are_merged_case_sensitive",
+        "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/02-psf__requests-1921-codegraph/workspace/test_requests.py",
+        "output_mode": "content",
+        "-C": 0
+      },
+      "phase": "repair"
+    },
+    {
+      "event": "pre",
+      "tool": "Read",
+      "tool_use_id": "toolu_01TvW68Gqua7NxRj1ofUHdnm",
+      "original_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/02-psf__requests-1921-codegraph/workspace/test_requests.py",
+        "offset": 796,
+        "limit": 20
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "1ff5a9b0-9462-4b48-9721-b7973202f41f",
+      "decision": "allow",
+      "effective_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/02-psf__requests-1921-codegraph/workspace/test_requests.py",
+        "offset": 796,
+        "limit": 20
+      },
+      "phase": "repair"
+    },
+    {
+      "event": "pre",
+      "tool": "Edit",
+      "tool_use_id": "toolu_01QXUHW1aLqraBx4bEx1r5rK",
+      "original_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/02-psf__requests-1921-codegraph/workspace/requests/sessions.py",
+        "old_string": "    # Remove keys that are set to None.\n    for (k, v) in request_setting.items():\n        if v is None:\n            del merged_setting[k]",
+        "new_string": "    # Remove keys that are set to None, whether by the request or the session.\n    none_keys = [k for (k, v) in merged_setting.items() if v is None]\n    for key in none_keys:\n        del merged_setting[key]",
+        "replace_all": false
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "1ff5a9b0-9462-4b48-9721-b7973202f41f",
+      "decision": "allow",
+      "effective_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/02-psf__requests-1921-codegraph/workspace/requests/sessions.py",
+        "old_string": "    # Remove keys that are set to None.\n    for (k, v) in request_setting.items():\n        if v is None:\n            del merged_setting[k]",
+        "new_string": "    # Remove keys that are set to None, whether by the request or the session.\n    none_keys = [k for (k, v) in merged_setting.items() if v is None]\n    for key in none_keys:\n        del merged_setting[key]",
+        "replace_all": false
+      },
+      "phase": "repair"
+    },
+    {
+      "event": "pre",
+      "tool": "Edit",
+      "tool_use_id": "toolu_01HRsWLRqHDC93g5fQ4aerBB",
+      "original_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/02-psf__requests-1921-codegraph/workspace/test_requests.py",
+        "old_string": "        assert 'foo' not in r.request.headers\n\n    def test_params_are_merged_case_sensitive(self):",
+        "new_string": "        assert 'foo' not in r.request.headers\n\n    def test_session_header_set_to_none_is_not_sent(self):\n        s = requests.Session()\n        s.headers['Accept-Encoding'] = None\n        prep = s.prepare_request(requests.Request('GET', httpbin('get')))\n        assert 'Accept-Encoding' not in prep.headers\n\n    def test_params_are_merged_case_sensitive(self):",
+        "replace_all": false
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "1ff5a9b0-9462-4b48-9721-b7973202f41f",
+      "decision": "allow",
+      "effective_input": {
+        "file_path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/02-psf__requests-1921-codegraph/workspace/test_requests.py",
+        "old_string": "        assert 'foo' not in r.request.headers\n\n    def test_params_are_merged_case_sensitive(self):",
+        "new_string": "        assert 'foo' not in r.request.headers\n\n    def test_session_header_set_to_none_is_not_sent(self):\n        s = requests.Session()\n        s.headers['Accept-Encoding'] = None\n        prep = s.prepare_request(requests.Request('GET', httpbin('get')))\n        assert 'Accept-Encoding' not in prep.headers\n\n    def test_params_are_merged_case_sensitive(self):",
+        "replace_all": false
+      },
+      "phase": "repair"
+    },
+    {
+      "event": "pre",
+      "tool": "Bash",
+      "tool_use_id": "toolu_01QcuHouhCr9orE1dG7ZHCNL",
+      "original_input": {
+        "command": "cd /tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/02-psf__requests-1921-codegraph/workspace; git stash -q && pytest -q test_requests.py -k session_header_set_to_none 2>&1 | tail -3; git stash pop -q && git status --short && pytest -q test_requests.py 2>&1 | tail -5",
+        "timeout": 600000
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "1ff5a9b0-9462-4b48-9721-b7973202f41f",
+      "decision": "allow",
+      "effective_input": {
+        "command": "docker exec -i -w /tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/02-psf__requests-1921-codegraph/workspace 81cf1f5d11a293a32815c5a2d9f35af9eb6ec39effd7944072bb5bcb5e9620d6 /bin/bash -lc 'umask 002\ncd /tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/02-psf__requests-1921-codegraph/workspace; git stash -q && pytest -q test_requests.py -k session_header_set_to_none 2>&1 | tail -3; git stash pop -q && git status --short && pytest -q test_requests.py 2>&1 | tail -5'",
+        "timeout": 600000
+      },
+      "phase": "repair"
+    },
+    {
+      "event": "pre",
+      "tool": "Bash",
+      "tool_use_id": "toolu_01VZzxLoAy8S7DVDmQZVrq1w",
+      "original_input": {
+        "command": "cd /tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/02-psf__requests-1921-codegraph/workspace; git stash push -q requests/sessions.py && pytest -q test_requests.py -k \"session_header_set_to_none or header_remove\" 2>&1 | grep -E \"passed|failed|assert\"; git stash pop -q; git diff --stat",
+        "timeout": 300000
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "1ff5a9b0-9462-4b48-9721-b7973202f41f",
+      "decision": "allow",
+      "effective_input": {
+        "command": "docker exec -i -w /tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/02-psf__requests-1921-codegraph/workspace 81cf1f5d11a293a32815c5a2d9f35af9eb6ec39effd7944072bb5bcb5e9620d6 /bin/bash -lc 'umask 002\ncd /tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/02-psf__requests-1921-codegraph/workspace; git stash push -q requests/sessions.py && pytest -q test_requests.py -k \"session_header_set_to_none or header_remove\" 2>&1 | grep -E \"passed|failed|assert\"; git stash pop -q; git diff --stat'",
+        "timeout": 300000
+      },
+      "phase": "repair"
+    },
+    {
+      "event": "pre",
+      "tool": "Grep",
+      "tool_use_id": "toolu_015uMEdkXYvrrNQDBgoaNvsG",
+      "original_input": {
+        "pattern": "prepare_probe_request",
+        "output_mode": "content",
+        "-n": true
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "1ff5a9b0-9462-4b48-9721-b7973202f41f",
+      "decision": "allow",
+      "effective_input": {
+        "pattern": "prepare_probe_request",
+        "output_mode": "content",
+        "-n": true,
+        "path": "/tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/02-psf__requests-1921-codegraph/workspace"
+      },
+      "phase": "post_edit"
+    },
+    {
+      "event": "pre",
+      "tool": "Bash",
+      "tool_use_id": "toolu_01P1QFays78p5D9x4vtk3VnU",
+      "original_input": {
+        "command": "cd /tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/02-psf__requests-1921-codegraph/workspace; cat -n requests/_pilot_post_edit.py; git status --short; grep -rn \"_pilot_post_edit\" --include=*.py . ; grep -n \"def prepare\\b\\|def prepare(self\" requests/models.py; grep -n \"class Request\\b\\|class Request(\" requests/models.py"
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "1ff5a9b0-9462-4b48-9721-b7973202f41f",
+      "decision": "allow",
+      "effective_input": {
+        "command": "docker exec -i -w /tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/02-psf__requests-1921-codegraph/workspace 81cf1f5d11a293a32815c5a2d9f35af9eb6ec39effd7944072bb5bcb5e9620d6 /bin/bash -lc 'umask 002\ncd /tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/02-psf__requests-1921-codegraph/workspace; cat -n requests/_pilot_post_edit.py; git status --short; grep -rn \"_pilot_post_edit\" --include=*.py . ; grep -n \"def prepare\\b\\|def prepare(self\" requests/models.py; grep -n \"class Request\\b\\|class Request(\" requests/models.py'"
+      },
+      "phase": "post_edit"
+    },
+    {
+      "event": "pre",
+      "tool": "Bash",
+      "tool_use_id": "toolu_01ESKPjnLYkJswbADo7P7yjV",
+      "original_input": {
+        "command": "cd /tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/02-psf__requests-1921-codegraph/workspace; grep -n \"def prepare_request\\|p = PreparedRequest\\|p.prepare(\\|return p$\\|def request(\\|prep = self.prepare_request\\|resp = self.send(prep\\|def send\\|adapter.send(\" requests/sessions.py; sed -n 181,184p requests/models.py; sed -n 205,240p requests/models.py | grep -n \"def __init__\\|self\\.\\(method\\|url\\) =\"; grep -n \"def __init__\\|init_poolmanager(\\|self.poolmanager = \\|conn.urlopen\\|_get_conn\" requests/adapters.py"
+      },
+      "effective_effort": {
+        "level": "medium"
+      },
+      "session_id": "1ff5a9b0-9462-4b48-9721-b7973202f41f",
+      "decision": "allow",
+      "effective_input": {
+        "command": "docker exec -i -w /tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/02-psf__requests-1921-codegraph/workspace 81cf1f5d11a293a32815c5a2d9f35af9eb6ec39effd7944072bb5bcb5e9620d6 /bin/bash -lc 'umask 002\ncd /tmp/codenib-matched-pilot-v2-20261028/matched-runs-v2/02-psf__requests-1921-codegraph/workspace; grep -n \"def prepare_request\\|p = PreparedRequest\\|p.prepare(\\|return p$\\|def request(\\|prep = self.prepare_request\\|resp = self.send(prep\\|def send\\|adapter.send(\" requests/sessions.py; sed -n 181,184p requests/models.py; sed -n 205,240p requests/models.py | grep -n \"def __init__\\|self\\.\\(method\\|url\\) =\"; grep -n \"def __init__\\|init_poolmanager(\\|self.poolmanager = \\|conn.urlopen\\|_get_conn\" requests/adapters.py'"
+      },
+      "phase": "post_edit"
+    }
+  ]
+}

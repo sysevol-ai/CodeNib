@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
@@ -50,6 +51,8 @@ def _initialize_git_repository(repo: Path) -> None:
         ["git", "-C", str(repo), "config", "user.name", "CodeNib Test"],
         check=True,
     )
+    for key, value in (("gc.auto", "0"), ("maintenance.auto", "false")):
+        subprocess.run(["git", "-C", str(repo), "config", key, value], check=True)
     subprocess.run(["git", "-C", str(repo), "add", "sample.py"], check=True)
     subprocess.run(
         ["git", "-C", str(repo), "commit", "-qm", "test fixture"],
@@ -446,15 +449,27 @@ def _ready_plan(repo: Path) -> SimpleNamespace:
     )
 
 
+@pytest.mark.parametrize(
+    "change", ("clean", "modified", "untracked", "deleted", "renamed")
+)
 def test_init_is_idempotent_and_writes_no_repository_files(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
+    change: str,
 ) -> None:
     import codenib.codegraph_onboarding as onboarding
 
     repo = _repository(tmp_path)
     _initialize_git_repository(repo)
+    if change == "modified":
+        (repo / "sample.py").write_text("def sample():\n    return 2\n")
+    elif change == "untracked":
+        (repo / "new.py").write_text("new_value = 2\n")
+    elif change == "deleted":
+        (repo / "sample.py").unlink()
+    elif change == "renamed":
+        (repo / "sample.py").rename(repo / "renamed.py")
     monkeypatch.setenv("CODENIB_HOME", str(tmp_path / "state"))
     configured: dict[str, MCPServerSpec] = {}
     additions: list[str] = []
@@ -504,8 +519,12 @@ def test_init_is_idempotent_and_writes_no_repository_files(
 
     monkeypatch.setattr(cli, "index_repository", index_repository)
     monkeypatch.setattr(cli, "_print_index_summary", lambda *_args: None)
-    args = cli.build_parser().parse_args(["codegraph", "init", str(repo)])
+    args = cli.build_parser().parse_args(
+        ["codegraph", "init", str(repo), "--language", "python"]
+    )
     initial = sorted(path.relative_to(repo) for path in repo.rglob("*"))
+    initial_source = {path.name: path.read_bytes() for path in repo.glob("*.py")}
+    initial_status = cli._codegraph_checkout_snapshot(repo)
 
     assert cli._run_codegraph_init(args) == 0
     assert cli._run_codegraph_init(args) == 0
@@ -520,18 +539,45 @@ def test_init_is_idempotent_and_writes_no_repository_files(
     assert all(call["allow_graph_project_preparation"] is False for call in index_calls)
     assert all(call["allow_partial_graph_languages"] is False for call in index_calls)
     assert sorted(path.relative_to(repo) for path in repo.rglob("*")) == initial
+    assert {
+        path.name: path.read_bytes() for path in repo.glob("*.py")
+    } == initial_source
+    assert cli._codegraph_checkout_snapshot(repo) == initial_status
     assert "CodeGraph is ready" in capsys.readouterr().out
 
 
-def test_init_rejects_dirty_checkout_before_toolchain_or_index_work(
+@pytest.mark.parametrize("stage", ("toolchain setup", "indexing", "agent registration"))
+@pytest.mark.parametrize("excluded", (False, True))
+def test_init_rejects_another_edit_to_an_already_dirty_file(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    stage: str,
+    excluded: bool,
 ) -> None:
     import codenib.codegraph_onboarding as onboarding
+    import codenib.source_fingerprint as fingerprints
 
     repo = _repository(tmp_path)
     _initialize_git_repository(repo)
-    (repo / "untracked.py").write_text("value = 1\n", encoding="utf-8")
+    target = repo / "sample.py"
+    selection_args: list[str] = []
+    if excluded:
+        (repo / "excluded").mkdir()
+        target = repo / "excluded" / "untracked.py"
+        selection_args = ["--exclude-dir", "excluded"]
+    target.write_text("value = 1\n", encoding="utf-8")
+    initial_status = cli._codegraph_checkout_snapshot(repo)
+    monkeypatch.setenv("CODENIB_HOME", str(tmp_path / "state"))
+    bindings = []
+    capture = fingerprints.capture_repository_source
+
+    def capture_source(*args, **kwargs):
+        binding = capture(*args, **kwargs)
+        bindings.append(binding)
+        return binding
+
+    monkeypatch.setattr(fingerprints, "capture_repository_source", capture_source)
     monkeypatch.setattr(
         onboarding,
         "resolve_requested_clients",
@@ -554,15 +600,91 @@ def test_init_rejects_dirty_checkout_before_toolchain_or_index_work(
             client, True, False, False, "not configured"
         ),
     )
-    monkeypatch.setattr(
-        cli,
-        "_codegraph_toolchain_plan",
-        lambda *_args: pytest.fail("dirty checkout must fail before toolchain work"),
-    )
-    args = cli.build_parser().parse_args(["codegraph", "init", str(repo)])
 
-    with pytest.raises(cli.CLIError, match="clean Git checkout"):
+    def phase(current):
+        if current == stage:
+            target.write_text("value = 2\n", encoding="utf-8")
+
+    def plan(*_args):
+        phase("toolchain setup")
+        return _ready_plan(repo)
+
+    def index(*_args, **_kwargs):
+        phase("indexing")
+        return _manifest(repo), []
+
+    def configure(*_args):
+        phase("agent registration")
+
+    monkeypatch.setattr(cli, "_codegraph_toolchain_plan", plan)
+    monkeypatch.setattr(cli, "_require_modules", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(cli, "_check_view_dependencies", lambda *_args: None)
+    monkeypatch.setattr(cli, "index_repository", index)
+    monkeypatch.setattr(cli, "_print_index_summary", lambda *_args: None)
+    monkeypatch.setattr(onboarding, "configure_client_registrations", configure)
+    args = cli.build_parser().parse_args(
+        ["codegraph", "init", str(repo), "--language", "python", *selection_args]
+    )
+
+    with pytest.raises(cli.CLIError, match=f"{stage} changed the target checkout"):
         cli._run_codegraph_init(args)
+
+    # This was invisible to the former status-only transaction check.
+    assert cli._codegraph_checkout_snapshot(repo) == initial_status
+    assert target.read_text() == "value = 2\n"
+    assert bindings and all(binding.closed for binding in bindings)
+    assert "CodeGraph is ready" not in capsys.readouterr().out
+
+
+def test_checkout_guard_allows_restored_temporary_provider_config(
+    tmp_path: Path,
+) -> None:
+    repo = _repository(tmp_path)
+    _initialize_git_repository(repo)
+
+    with cli._codegraph_checkout_guard(repo) as check_checkout:
+        config = repo / "pyrightconfig.json"
+        config.write_text('{"exclude": ["vendor"]}\n')
+        config.unlink()
+        check_checkout("indexing")
+
+
+def test_checkout_guard_rejects_replacement_with_identical_source(
+    tmp_path: Path,
+) -> None:
+    repo = _repository(tmp_path)
+    _initialize_git_repository(repo)
+    replacement = tmp_path / "replacement"
+    shutil.copytree(repo, replacement)
+
+    with cli._codegraph_checkout_guard(repo) as check_checkout:
+        repo.rename(tmp_path / "original")
+        replacement.rename(repo)
+        with pytest.raises(cli.CLIError, match="indexing changed the target checkout"):
+            check_checkout("indexing")
+
+
+def test_checkout_guard_rejects_commit_drift_without_source_changes(
+    tmp_path: Path,
+) -> None:
+    repo = _repository(tmp_path)
+    _initialize_git_repository(repo)
+
+    with cli._codegraph_checkout_guard(repo) as check_checkout:
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                str(repo),
+                "commit",
+                "--allow-empty",
+                "-qm",
+                "another commit",
+            ],
+            check=True,
+        )
+        with pytest.raises(cli.CLIError, match="indexing changed the target checkout"):
+            check_checkout("indexing")
 
 
 def test_repeated_auto_init_redetects_graph_languages_from_current_checkout(

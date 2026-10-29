@@ -1,0 +1,79 @@
+{
+  "schema_version": 2,
+  "status": "admitted_before_inference",
+  "recorded_utc": "2026-10-28T14:04:01.806001+00:00",
+  "cohort_version": 2,
+  "files": {
+    "/tmp/codenib-matched-pilot-v2-20261028/run-matched-v2.py": "1293e68f51d448b4154b80b1dfbe716720c4297f9934ef993470a3fffccfb962",
+    "/tmp/codenib-matched-pilot-v2-20261028/native-scope-v4.py": "4c11983fdc26b5854f49968d1da139745050b0a0b2699d9f5777aa8bc559a192",
+    "/tmp/codenib-matched-pilot-v2-20261028/matched-policy-v4.json": "cb373c0a407fbbc89bd4b12e30076b81b3aa9e77dc46cd017b7a32255f8b604a",
+    "/tmp/codenib-matched-pilot-v2-20261028/matched-tasks-v2.json": "218eb7085da807c3cb067ef742ff7ceff161910dad18c676458a5b599d2d45ea",
+    "/tmp/codenib-matched-pilot-v2-20261028/rubric-source-review-v2.json": "fd806c4c78266e101734766b0e7fb16849a8d21db531b8b348dd735cd432b48e",
+    "/tmp/codenib-matched-pilot-v2-20261028/expected-product-identities.json": "81a23497051032140942040976de6c86d1a56c8dc3e386f141c090596face9e0",
+    "/tmp/codenib-matched-pilot-v2-20261028/expected-target-identities.json": "36d5d61dff67d6c47499d6346e8f015c8745c5818303abe682503bb147084f97",
+    "/tmp/codenib-matched-pilot-v2-20261028/constraints/serena.txt": "285128bcc3313d7a3fe88b4b455aa4506744e0b2c0d290fa44b8a9c65c22be3e",
+    "/tmp/codenib-matched-pilot-v2-20261028/constraints/codenib.txt": "17077f17027c09d80709cd2ad11c279a52b61343e90f59033e44900e471b4ce2",
+    "/tmp/codenib-matched-pilot-v2-20261028/launch_v2.py": "2551de0c11930e68e9458e5f731e2fbc2e4b550f3460f7b0ea01f11996323236",
+    "/tmp/codenib-matched-pilot-v2-20261028/grade-matched-v2.py": "8a6d9c87002ad3d6d12862812fdeeabf21fec7b9b7b65e1c07be41f6d6660bcc",
+    "/tmp/codenib-matched-pilot-v2-20261028/candidate-wheel/codenib-0.2.4-cp310-abi3-linux_aarch64.whl": "40586ca073a0d100a99b4478bdaa0f37b42fae55e93e2a39c860ee3a2b4d5e76",
+    "/home/zhongming/.local/bin/claude": "9c64d9a7442436b65fcd7cc02c1aa0051bb5a7041e7788576ed3b5f29c447d54",
+    "/home/zhongming/CodeNib-codegraph-benefit/scripts/contextbench_verified.py": "405156e613d2a7fd78cb8fcdca7b1ca119928b044a6058cb7ac4c3905832a536",
+    "/home/zhongming/CodeNib-codegraph-benefit/scripts/benchmark_context_claude.py": "c050cf9d04f3afa47e1a742955949c5c7f9c2b6ca511527a44a880ed7373ec89",
+    "/tmp/codenib-matched-pilot-v2-20261028/controller-native-cases.json": "e5ad174339bbe90380a729a582efa2b53a4ec61d8b98172497d9f4896b994f03",
+    "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/00-psf__requests-1921-serena/receipt.json": "ec6ab46cf5ee32574abda3f33fd70c9b7568b72524f82a6cdee7d55e1fbdc71a",
+    "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/01-psf__requests-1921-codenib/receipt.json": "897180e456d0bea46652bfd106e197ac69a7a6bab604bde8555424ef3126d431",
+    "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/02-psf__requests-1921-codegraph/receipt.json": "d09e542c6f9001eac0dc3f246ea131128c5e68e532cde1326683af29e7d63b4a",
+    "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/03-psf__requests-1921-native/receipt.json": "a7f880a87907dae3f42f966f191ef0597ce19e535fa87fad112ac02d85b18d9d",
+    "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/04-pallets__flask-5014-serena/receipt.json": "0d384c6657796791ea415cee96b7b7656009b253f21f7bd2217c8b7601661d28",
+    "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/05-pallets__flask-5014-codegraph/receipt.json": "2d6d404e6d8444b494fbb75b06cb51db59d6058bb8c2d6fbfd0e00ab7837f27b",
+    "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/06-pallets__flask-5014-native/receipt.json": "d58346d11fa0c99df7bbfcf1e56ec9b43c4e13a7e142dc609d7cb9ef7a06b04a",
+    "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/07-pallets__flask-5014-codenib/receipt.json": "e4aa68942ab1c9479b819805e96cf4e53a448dd1861b7b3e0680a33ae79a8680",
+    "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/08-pytest-dev__pytest-5809-codenib/receipt.json": "9d59c924fb115d2b834c4d6b4694c48c1fb3e99b0b039e07c8cc0856025f3c15",
+    "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/09-pytest-dev__pytest-5809-native/receipt.json": "af0e585d597bd870ffa5583974cc8f7442cbeafcfdb7069e01b22f152a28e072",
+    "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/10-pytest-dev__pytest-5809-codegraph/receipt.json": "03df721886ccc4c7d7d97a0e3f237b763c684a289841e7682fd2328f8d94b769",
+    "/tmp/codenib-matched-pilot-v2-20261028/driver-validation-v2-admitted/11-pytest-dev__pytest-5809-serena/receipt.json": "5f24a8a1553e055f362f5eb8caeb0fd2df13b369b02b6feeab8737c100939c50",
+    "/tmp/codenib-matched-pilot-v2-20261028/prepare-batch-admitted.json": "aca4af306526fa2822c51395dd12662a6facacafa02511d53bf09274634cc114",
+    "/tmp/codenib-matched-pilot-v2-20261028/driver-conformance-v2-admitted/receipt.json": "601d10f46bc13eb8d476529f636c4b79597ad8040c8c1cfb60671cb4788dbc1e",
+    "/tmp/codenib-matched-pilot-v2-20261028/driver-usage-conformance-v2-admitted/assessment.json": "145a70a54b57d0ae7e6b90e4fe11e00a91d3060a7ff7a446c75704191b70f06b",
+    "/tmp/codenib-matched-pilot-v2-20261028/terminal-conformance/assessment.json": "2073e07aa7a8293d11a6d0c984f7c33a5acc1ec335d7017f98e031fecd5b391e",
+    "/tmp/codenib-matched-pilot-v2-20261028/native-controls-arm64-v1-summary.json": "df35da8cbd0665e4865355a7cb5cf300887f6da10ae7b55b028ffd3b1eee9149",
+    "/tmp/codenib-matched-pilot-v2-20261028/native-controls-arm64-pytest-v3-summary.json": "c826b0c903d853de3d8d3bd63252d97ac89c36f9a905fefc98c8f1d222d7fb7e"
+  },
+  "task_images": {
+    "psf__requests-1921": {
+      "id": "sha256:ac3aeb4416832db7147d67ee205a1e1da97f5f13d73a587e0cd4457af5acb791",
+      "os": "linux",
+      "architecture": "arm64"
+    },
+    "pallets__flask-5014": {
+      "id": "sha256:82d039276bd7fa3d25cefd6732f5fcf105163ee1a5dc24ebb13c3a9e514f1258",
+      "os": "linux",
+      "architecture": "arm64"
+    },
+    "pytest-dev__pytest-5809": {
+      "id": "sha256:cd4894bd827b6f2fc079498778ab78d03673ec3ba86855756190e7932ef15f49",
+      "os": "linux",
+      "architecture": "arm64"
+    }
+  },
+  "controller": {
+    "python": "3.12",
+    "claude_agent_sdk": "0.2.174",
+    "docker": "7.2.0"
+  },
+  "product_candidate_commit": "733343e8e1f8ada6ed74ddf8860ac65754a897a5",
+  "source_baseline": "3b3aaf5bd7a8b9cd1faa42d8d8c05e827b587bf2",
+  "preflight_draft_policy_sha256": "2e62fdcfc0ef7fcf1638ddcafe48fa06b1cdef9decc8e80ffee9bf257c528d9a",
+  "preflight_draft_tasks_sha256": "c4049564e326455310a53d9a78f9be88014a3b2c08998cfef5a37c7df034c4f8",
+  "finalization_changes": "Only descriptive status/freeze timestamps and their file-hash references change after the twelve exact-driver preparations. Product/agent/runtime/time/budget/order/endpoints/task criteria and source support are identical.",
+  "readiness": {
+    "exact_driver_preparations": 12,
+    "source_definitions_tests": 48,
+    "explanation_criteria": 40,
+    "native_empty_reference_controls": 6,
+    "invalid_terminals_rejected": 14,
+    "confirmed_preflight_containers_absent": 24
+  },
+  "run_manifest_not_results": true,
+  "matched_inference_started": false
+}

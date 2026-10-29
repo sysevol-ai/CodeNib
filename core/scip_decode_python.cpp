@@ -63,7 +63,12 @@ void SCIPPythonDecoder::postprocess_records(SCIPDecodedRecords &records) {
     }
     auto colon = v.name.find(':');
     if (colon != std::string::npos && v.file.has_value() && !v.file->empty()) {
-      v.unified_name = *v.file + ":" + v.name.substr(colon + 1);
+      auto symbol = v.name.substr(colon + 1);
+      static const re2::RE2 method_marker(R"re2(\(_codenib_l\d+_c\d+\))re2");
+      static const re2::RE2 class_marker(R"re2(@codenib-l\d+-c\d+)re2");
+      re2::RE2::GlobalReplace(&symbol, method_marker, "()");
+      re2::RE2::GlobalReplace(&symbol, class_marker, "");
+      v.unified_name = *v.file + ":" + symbol;
     }
   }
 }
@@ -116,21 +121,32 @@ SCIPPythonDecoder::unify_symbol_name(const std::string &symbol) const {
   if (symbol_part.empty())
     return module;
 
-  auto hash = symbol_part.find('#');
-  if (hash != std::string::npos) {
-    std::string cls = symbol_part.substr(0, hash);
-    std::string rest = symbol_part.substr(hash + 1);
-    rest = rstrip_periods(rest);
-    if (!rest.empty())
-      return module + ":" + cls + "." + rest;
-    return module + ":" + cls;
-  }
+  std::replace(symbol_part.begin(), symbol_part.end(), '#', '.');
   return module + ":" + rstrip_periods(symbol_part);
 }
 
 std::string
 SCIPPythonDecoder::classify_symbol_type(const std::string &unified,
                                         const std::string &original) const {
+  if (!original.empty()) {
+    if (original.back() == '#')
+      return NODE_TYPE_CLASS;
+    static const re2::RE2 callable_re(R"re2(([^.#/]+\([^)]*\)\.))re2");
+    re2::StringPiece remaining(original);
+    std::string callable;
+    std::string terminal;
+    while (re2::RE2::FindAndConsume(&remaining, callable_re, &callable)) {
+      if (remaining.empty())
+        terminal = callable;
+    }
+    if (!terminal.empty()) {
+      const auto offset = original.size() - terminal.size();
+      return offset > 0 && original[offset - 1] == '#' ? NODE_TYPE_METHOD
+                                                       : NODE_TYPE_FUNCTION;
+    }
+    if (original.back() == '.')
+      return NODE_TYPE_FIELD;
+  }
   auto colon = unified.find(':');
   if (colon != std::string::npos) {
     std::string sym_part = unified.substr(colon + 1);
@@ -170,13 +186,13 @@ void SCIPPythonDecoder::process_symbol(const std::string &symbol, int line,
   std::string unified = unify_symbol_name(cleaned);
   std::string symbol_type = classify_symbol_type(unified, cleaned);
 
-  const bool is_definition = symbol_roles == 1;
-  const bool is_reference = symbol_roles == 8;
+  const bool is_definition = (symbol_roles & 1) != 0;
+  const bool is_reference = (symbol_roles & 8) != 0 && !is_definition;
 
-  if (unified.find("/__init__") != std::string::npos) {
+  if (cleaned.find("/__init__") != std::string::npos) {
     re2::RE2 init_re(R"re2((.+)/(?:__init__))re2");
     std::string module_dir;
-    if (re2::RE2::PartialMatch(unified, init_re, &module_dir)) {
+    if (re2::RE2::PartialMatch(cleaned, init_re, &module_dir)) {
       std::replace(module_dir.begin(), module_dir.end(), '.', '/');
       std::string file = module_dir + ".py";
       if (is_reference) {

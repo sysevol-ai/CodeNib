@@ -18,6 +18,7 @@ import pytest
 from codenib.compiler.manifest import RepoManifest
 from codenib.mcp import server as server_mod
 from codenib.mcp.context import ServerContext
+from codenib.source_fingerprint import capture_repository_source
 from codenib.types import NodeInfo
 
 
@@ -72,6 +73,19 @@ def _empty_explore_response() -> dict:
         "relationships": [],
         "diagnostics": [],
     }
+
+
+@pytest.fixture
+def bound_context(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "sample.py").write_text("def sample():\n    return 1\n")
+    ctx = ServerContext(manifest=RepoManifest(repo_path=str(repo)))
+    ctx._install_repository_source(capture_repository_source(repo))
+    try:
+        yield ctx
+    finally:
+        ctx.close()
 
 
 def test_search_bm25_tool() -> None:
@@ -242,8 +256,10 @@ def test_mcp_lifespan_creates_and_discards_connection_runtime() -> None:
     asyncio.run(run_lifespan())
 
 
-def test_explore_context_serializes_calls_and_commits_in_order(monkeypatch) -> None:
-    ctx = ServerContext(manifest=RepoManifest(repo_path="/repo"))
+def test_explore_context_serializes_calls_and_commits_in_order(
+    monkeypatch, bound_context
+) -> None:
+    ctx = bound_context
     server_mod._ctx = ctx
     state_lock = threading.Lock()
     active = 0
@@ -275,8 +291,10 @@ def test_explore_context_serializes_calls_and_commits_in_order(monkeypatch) -> N
     assert ctx.explore_runtime.ledger.stats()["calls"] == 2
 
 
-def test_explore_context_failure_does_not_commit_ledger(monkeypatch) -> None:
-    ctx = ServerContext(manifest=RepoManifest(repo_path="/repo"))
+def test_explore_context_failure_does_not_commit_ledger(
+    monkeypatch, bound_context
+) -> None:
+    ctx = bound_context
     server_mod._ctx = ctx
 
     def fail(*_args, **_kwargs):
@@ -291,8 +309,10 @@ def test_explore_context_failure_does_not_commit_ledger(monkeypatch) -> None:
     assert ctx.explore_runtime.ledger.stats()["calls"] == 0
 
 
-def test_explore_context_cancellation_does_not_commit_ledger(monkeypatch) -> None:
-    ctx = ServerContext(manifest=RepoManifest(repo_path="/repo"))
+def test_explore_context_cancellation_does_not_commit_ledger(
+    monkeypatch, bound_context
+) -> None:
+    ctx = bound_context
     server_mod._ctx = ctx
     started = threading.Event()
     second_started = threading.Event()
@@ -304,7 +324,7 @@ def test_explore_context_cancellation_does_not_commit_ledger(monkeypatch) -> Non
         call_count += 1
         if call_count == 1:
             started.set()
-            release.wait(timeout=2)
+            assert release.wait(timeout=5)
         else:
             second_started.set()
         return _empty_explore_response()
@@ -320,6 +340,8 @@ def test_explore_context_cancellation_does_not_commit_ledger(monkeypatch) -> Non
         next_task = asyncio.create_task(server_mod.explore_context("next"))
         await asyncio.sleep(0.02)
         assert not second_started.is_set()
+        manifest = await server_mod.get_manifest()
+        assert manifest["runtime"]["source_read"]["verified"] is True
         release.set()
         assert await asyncio.to_thread(second_started.wait, 0.5)
         result = await next_task
@@ -332,6 +354,38 @@ def test_explore_context_cancellation_does_not_commit_ledger(monkeypatch) -> Non
 
     assert ctx.explore_runtime is not None
     assert ctx.explore_runtime.ledger.stats()["calls"] == 1
+
+
+def test_queued_exploration_does_not_block_event_loop(
+    monkeypatch, bound_context
+) -> None:
+    server_mod._ctx = bound_context
+    started = threading.Event()
+    release = threading.Event()
+
+    def implementation(*_args):
+        started.set()
+        assert release.wait(5), "the event loop must release the active worker"
+        return _empty_explore_response()
+
+    monkeypatch.setattr(server_mod, "explore_context_impl", implementation)
+
+    async def run_calls():
+        active = asyncio.create_task(server_mod.explore_context("first"))
+        try:
+            assert await asyncio.to_thread(started.wait, 5)
+            queued = asyncio.create_task(server_mod.explore_context("queued"))
+            await asyncio.sleep(0)
+            manifest = await server_mod.get_manifest()
+            assert manifest["runtime"]["source_read"]["verified"] is True
+            queued.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await queued
+        finally:
+            release.set()
+            await active
+
+    asyncio.run(run_calls())
 
 
 def test_search_bm25_raises_without_ctx() -> None:

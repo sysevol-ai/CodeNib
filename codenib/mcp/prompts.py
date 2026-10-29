@@ -9,14 +9,19 @@ CODENIB_FULL_INSTRUCTIONS = (
     "Start with explore_context to retrieve, navigate, expand dependencies, "
     "and inspect verified source in one call. The full surface also exposes "
     "lower-level search, LSP-shaped navigation, dependency, source, and "
-    "manifest tools when one operation must be forced explicitly."
+    "manifest tools when one operation must be forced explicitly. Graph "
+    "dependencies are indexed static references, including fields, type uses "
+    "and function values. They do not prove invocation or complete runtime "
+    "coverage; inspect source call sites before describing calls."
 )
 
 CODENIB_EXPLORE_INSTRUCTIONS = (
     "CodeNib provides one bounded repository exploration operation. Use "
     "explore_context with a repository question and optional symbol seeds. "
     "Inspect its plan, source identity, diagnostics, and session usage before "
-    "drawing conclusions."
+    "drawing conclusions. Dependency expansion follows indexed static "
+    "references, which may include fields, types and function values. Inspect "
+    "source to establish invocation; external and dynamic calls may be absent."
 )
 
 CODENIB_GREP_INSTRUCTIONS = (
@@ -66,7 +71,10 @@ Best default for repository exploration. It reports the concrete retrieval and
 route plan, groups bounded source windows by file, and degrades unavailable
 providers through explicit diagnostics. Optional symbol seeds improve route
 and dependency precision; repeated verified ranges may use stable per-session
-pointers instead of retransmitting identical source.
+pointers instead of retransmitting identical source. Dependency expansion
+follows indexed static references, including field, type and function-value
+uses. Inspect source call sites to establish invocation; external and dynamic
+calls may be absent.
 
 ### search_context
 Best lower-level ranked search. It returns the selected route, indexed commit,
@@ -76,6 +84,14 @@ retrieval path or `budget="thorough"` when graph expansion is available.
 Examples:
 - "where is retry backoff implemented"
 - "who calls `refresh_credentials` and how is failure handled"
+
+### dependency_subgraph
+Follow incoming (`impact`) or outgoing (`dependencies`) indexed static
+references, or use `both` for a neighborhood bounded by `depth`. Results retain
+legacy `callers`/`callees` labels; `semantics.reference_direction` states the
+reference direction. Edges may include calls, fields, type uses and function
+values. Inspect source call sites to identify actual invocations. External and
+dynamic calls may be absent; an empty result does not prove there are no callers.
 
 ### search_bm25
 Best for **keyword / exact-name** lookups.  Use when you know (or can guess)
@@ -130,6 +146,7 @@ HEAD is attested.
 | General repository question | explore_context |
 | Force ranked retrieval without composed source windows | search_context |
 | Know the exact symbol name | search_bm25 |
+| Follow indexed static references between symbols | dependency_subgraph |
 | Looking for a pattern across CodeGraph file/symbol nodes | search_regex |
 | Force vector similarity for a natural-language query | search_semantic |
 | Need structural filters (by file glob or node type) | search_regex |

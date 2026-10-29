@@ -1,0 +1,15 @@
+{
+  "original_file": "host-wheel-audit.json",
+  "original_sha256": "db246e9c8a20ab5b7e74789578c3fb5f59c3f8a0c73e66909afe84acdeb331b9",
+  "receipt": {
+    "scope": "Read-only post-run audit of excluded host wheel and its configured builder headers; original wheel is retained unchanged",
+    "python": "3.12.3 (main, Jun 19 2026, 12:46:00) [GCC 13.3.0]",
+    "compiler": "aarch64-linux-gnu-gcc",
+    "compiler_resolves": "/usr/bin/aarch64-linux-gnu-gcc",
+    "configured_header": "/usr/include/python3.12/Python.h",
+    "header_exists": false,
+    "wheel_sha256": "5f53ef1e1118c3acfa7a2fa48c0c589dfeb5fe98e56c24a27b475e275e10f8c1",
+    "native_extensions": [],
+    "selected_for_workflow": false
+  }
+}

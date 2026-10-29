@@ -1,0 +1,12 @@
+{
+  "relative_native_path": "grade/config.json",
+  "whole_file_sha256": "82658683d40ebde64eca90a2861ec708c10b22379c61d196717870099b4aed35",
+  "whole_file_bytes": 2144,
+  "part": 0,
+  "parts": 1,
+  "content_encoding": "gzip+base64",
+  "gzip_mtime": 0,
+  "gzip_bytes": 1147,
+  "base64_bytes": "H4sIAAAAAAACA41Vy5LbOAy85ytcPq9nSPCdj9jjXlUgAI5VsSVFkiebSuXfF7I9ifOq2vJFougG0ehufnm32+2X8fQqczdfhv373f55PU/PNLIMfT2ccaWj8GHqT+N6eIUDGIjWQH5++zLg2r/K4WVGlkV3PBtzmJbWdbN8vMiyLgdbwB4WmWXA/V8P9ZYjQohbSaQsbHP1PpSUffPJ2gbGSKuuVkdSSwGoronz1tSQoMVaEqEBSjW3G+w0C/e09uPwAG0ro48x+OKdc+KkQfDE0dkYWwNOTUoQTJ5sAF89OygNhChZaYbu0IwrLrI+4EpAtkkxS61SjMsGExQMGaQh1ODQC0XLuZZsE/iSuDSfi567+GbcDfdGXnfEeZBl6ZSVRY+/4fsn+2R+u+mIy1EW3fNFP+rn+/qzjq+TVzxdcKPgafq8wcQSSjPVixdsJZWUbAtQas5KReFmGVEpyLGSh2KbCIEkJcHUlpSH6wkeivBIH3R0l7U/LfcSuhWjC5QdWwo1BWIdm3GSXcrkSTJUEWOcItaoI0hemiCSMh4q2D+UqJf+xPcSAVLOHmpUktllHUEroRVHxQam7Fmgqnoa5CilIoqtKrpsWopZfPY/l9jE2g8vd/ScGwUVW8UWC2BwPiTrCykVnqllYJ0o+9xKNmAxF48mJ4YUmg64/YJ+Gl+6CWdV/PI8fV6P34bhoYXohZVlR2BTsGmTTzOFo0rNoRNiChkpUNsOkZhi9Qlz4KTW+LnQqvbqlkno+9O9UitYXcymWDVLMgxYoyiDOtoQbbQtJ0kGwQRbQorJWbIA4qzJYJrHP1f6oaFa1UTRJLbFAauyA6pxOeqPoFnKEVWAEJLLoVLeGPSmqEfIkI/llzI0DsuKw7o8d10/9GvX3Qvp6ZpAVPGqoRJnbLkF2lJCswEIo/YWvADZquYWrzMHQO9rZuPFhT8X+qEfErWmGB2IKxvh3nP2FKwLMTjTAmNIauKoeeW0LxdC1ABpXKEVk6D+XObRJrTNsnkbXPAtGE+OkIAzbDnntCXHgcioF1OFBAI5R6f8Zt0aTMx7hf56zYP+jC/S9byh3gLpfYZEpLTntklVo9FQkeTUL8I+sdezgkrMcKnRWlYSVcl20wIDaJ/7B+DphGsb5/P3hBm3tNmf+uHy71uHONOxX4XWyyzXBJ/P0X8/4j2yfr/rumNLq1sLb1dNCF478Ixq5NsendKK/SDztdNPUp+2fHv69XZ5+h8Y3ak/9+tDbg6yfhrnDxv2MA7fku4s53G+2fXlbY2my/ZHuL9OPV9fQ/zW8NqfZbysuuqMua4g47T+cMt5dVuIEq1TP6bGmo56d6kuMFVL6hy95HQw3mM0Qb8l1PR0RZ/dlkrx1pBWmS5rt844LNM4P95J4GLhDS6rp1uiSBroWR1tsqqzqeLsxpZ6UZNAYxIja+QxuqpZiXBnbKFxuk7r7+sQd//I3LdeeDdtN/41CnY4TaeerhfNDgfejXP/0g942t2TdTcOp8/7d1/f/QfZrJ4EYAgAAA==",
+  "scope": "Exact original native grading bytes under lossless compression; concatenate decoded gzip pieces, decompress, then verify the whole-file hash. No outcome replacement or repair regrade."
+}

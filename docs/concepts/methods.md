@@ -223,6 +223,6 @@ as checkout source.
 | Claude Code or Codex, no model budget for CodeNib | [`codenib codegraph init`](../codegraph.md): BM25 plus the symbol graph over MCP |
 | An OpenRouter key and no index | [Model-planned grep → Jev](../guides/grep-jev.md) |
 | Your own pipeline that needs ranked regions | `RepositoryContextExplorer` with `policy="auto"`, or a fixed policy for an ablation |
-| A question about callers, impact, or dependencies | MCP `dependency_subgraph`, or the `graph` policy |
+| A question about static references or change-impact candidates | MCP `dependency_subgraph`, or the `graph` policy; inspect the related source before concluding which functions are invoked |
 | A published localization agent to reproduce, or to run on CodeNib's index | [Reproduced agents](../agent_integrations.md) |
 | Your own agent loop | [Agent skills](../agent_skills.md) and `AgentRunner` |

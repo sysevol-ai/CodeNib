@@ -256,7 +256,7 @@ scip-jvm-compat-system-deps-ubuntu:
 	sudo apt-get update
 	sudo apt-get install -y $(SCIP_JDK_COMPAT_PACKAGES)
 
-active-scip-tools: scip-python-tool scip-typescript-tool node-workspace-tools scip-go-tool rust-tool scip-clang-tool scip-java-tool gradle-tool scip-dotnet-tool
+active-scip-tools: scip-python-tool python-lsp-tool scip-typescript-tool node-workspace-tools scip-go-tool rust-tool scip-clang-tool scip-java-tool gradle-tool scip-dotnet-tool
 	@$(MAKE) --no-print-directory active-scip-env
 
 active-lsp-tools: python-lsp-tool ty-tool typescript-lsp-tool gopls-tool clangd-tool
@@ -433,6 +433,7 @@ core-test: core-build
 	PYTHONPATH="build/core:$$PYTHONPATH" python -c 'import sys; import codenib_core as core; required = ("decode_clangd_fact_query_index", "clangd_fact_query_contract", "clangd_fact_query_snapshot"); missing = [name for name in required if not hasattr(core, name)]; missing and sys.exit(f"codenib_core missing required bindings: {missing}")'
 	PYTHONPATH="build/core:$$PYTHONPATH" python -m pytest -q \
 		test/scip/test_scip_core.py \
+		test/scip/test_python_identity.py \
 		test/scip/test_scip_core_registry.py \
 		test/scip/test_fact_batch_buffer.py \
 		test/scip/test_fact_query_index.py \

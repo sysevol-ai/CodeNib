@@ -1,0 +1,14 @@
+def left(): return 1
+def right(): return 2
+class Graph:
+    def order(self):
+        def visit():
+            return left()
+        return visit()
+    def check(self):
+        def visit():
+            return right()
+        return visit()
+    def visit(self):
+        return 0
+def external(): return Graph().visit()

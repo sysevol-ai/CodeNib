@@ -65,6 +65,14 @@ task. Scoring invokes no model or native test. The
 and [prior231 summary](../assets/contextbench_final_context_partial231_summary.json)
 remain available with their original populations and hashes.
 
+Native Verified grading has a separate configuration limitation:
+[#882](https://github.com/sysevol-ai/CodeNib/issues/882) reproduces a lost
+container-creation guard in the earlier adapter. Its requested isolation and
+resource limits were not enforced with Docker SDK 7.2.0. Keep the original
+resolution counts and raw outcomes; treat earlier elapsed times from this
+adapter as measurements with unverified resource constraints. New grading
+reports record the daemon's observed limits before test execution.
+
 The canonical500 batches with completed grading and settled fees retain
 **500 unique first candidate attempts:388 natively resolved and112 unresolved**.
 They comprise 174 Verified, 54 Pro, 116 Poly and 156 Multi tasks. The Multi group
@@ -4364,7 +4372,14 @@ usage remain explicit.
 
 The `grade` command requires an isolated `swebench==4.1.0` environment and the
 corresponding native Verified dataset row in JSON format. It uses the native test
-script, reference test patch and resolution grader on the exact solver image:
+script, reference test patch and resolution grader on the exact solver image.
+The current Verified adapter checks the unique container owner, disables
+networking and verifies 4 GiB, two CPUs and 256 PIDs against the daemon before
+starting tests. `resolution.json` retains `observed_container_limits`, including
+failed inspection, and cleanup remains tied to the recorded owner. Earlier
+reports without that observation do not prove enforced limits;
+[#882](https://github.com/sysevol-ai/CodeNib/issues/882) retains the retrospective
+diagnostic. Frozen outcomes are preserved without rescoring.
 
 ```bash
 python scripts/benchmark_context_solver.py grade \

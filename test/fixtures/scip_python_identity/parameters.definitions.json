@@ -1,0 +1,484 @@
+{
+  "provider": {
+    "name": "basedpyright",
+    "version": "1.39.8"
+  },
+  "queries": [
+    {
+      "request": [
+        "nested.py",
+        4,
+        16
+      ],
+      "response": [
+        {
+          "range": {
+            "start": {
+              "line": 3,
+              "character": 24
+            },
+            "end": {
+              "line": 3,
+              "character": 25
+            }
+          },
+          "uri_relative": "nested.py"
+        },
+        {
+          "range": {
+            "start": {
+              "line": 4,
+              "character": 16
+            },
+            "end": {
+              "line": 4,
+              "character": 17
+            }
+          },
+          "uri_relative": "nested.py"
+        }
+      ]
+    },
+    {
+      "request": [
+        "nested.py",
+        4,
+        24
+      ],
+      "response": [
+        {
+          "range": {
+            "start": {
+              "line": 3,
+              "character": 24
+            },
+            "end": {
+              "line": 3,
+              "character": 25
+            }
+          },
+          "uri_relative": "nested.py"
+        },
+        {
+          "range": {
+            "start": {
+              "line": 4,
+              "character": 16
+            },
+            "end": {
+              "line": 4,
+              "character": 17
+            }
+          },
+          "uri_relative": "nested.py"
+        }
+      ]
+    },
+    {
+      "request": [
+        "nested.py",
+        5,
+        23
+      ],
+      "response": [
+        {
+          "range": {
+            "start": {
+              "line": 3,
+              "character": 24
+            },
+            "end": {
+              "line": 3,
+              "character": 25
+            }
+          },
+          "uri_relative": "nested.py"
+        },
+        {
+          "range": {
+            "start": {
+              "line": 4,
+              "character": 16
+            },
+            "end": {
+              "line": 4,
+              "character": 17
+            }
+          },
+          "uri_relative": "nested.py"
+        }
+      ]
+    },
+    {
+      "request": [
+        "nested.py",
+        8,
+        16
+      ],
+      "response": [
+        {
+          "range": {
+            "start": {
+              "line": 7,
+              "character": 24
+            },
+            "end": {
+              "line": 7,
+              "character": 25
+            }
+          },
+          "uri_relative": "nested.py"
+        },
+        {
+          "range": {
+            "start": {
+              "line": 8,
+              "character": 16
+            },
+            "end": {
+              "line": 8,
+              "character": 17
+            }
+          },
+          "uri_relative": "nested.py"
+        },
+        {
+          "range": {
+            "start": {
+              "line": 11,
+              "character": 20
+            },
+            "end": {
+              "line": 11,
+              "character": 21
+            }
+          },
+          "uri_relative": "nested.py"
+        }
+      ]
+    },
+    {
+      "request": [
+        "nested.py",
+        8,
+        25
+      ],
+      "response": [
+        {
+          "range": {
+            "start": {
+              "line": 7,
+              "character": 24
+            },
+            "end": {
+              "line": 7,
+              "character": 25
+            }
+          },
+          "uri_relative": "nested.py"
+        },
+        {
+          "range": {
+            "start": {
+              "line": 8,
+              "character": 16
+            },
+            "end": {
+              "line": 8,
+              "character": 17
+            }
+          },
+          "uri_relative": "nested.py"
+        },
+        {
+          "range": {
+            "start": {
+              "line": 11,
+              "character": 20
+            },
+            "end": {
+              "line": 11,
+              "character": 21
+            }
+          },
+          "uri_relative": "nested.py"
+        }
+      ]
+    },
+    {
+      "request": [
+        "nested.py",
+        10,
+        29
+      ],
+      "response": [
+        {
+          "range": {
+            "start": {
+              "line": 7,
+              "character": 24
+            },
+            "end": {
+              "line": 7,
+              "character": 25
+            }
+          },
+          "uri_relative": "nested.py"
+        },
+        {
+          "range": {
+            "start": {
+              "line": 8,
+              "character": 16
+            },
+            "end": {
+              "line": 8,
+              "character": 17
+            }
+          },
+          "uri_relative": "nested.py"
+        },
+        {
+          "range": {
+            "start": {
+              "line": 11,
+              "character": 20
+            },
+            "end": {
+              "line": 11,
+              "character": 21
+            }
+          },
+          "uri_relative": "nested.py"
+        }
+      ]
+    },
+    {
+      "request": [
+        "nested.py",
+        11,
+        20
+      ],
+      "response": [
+        {
+          "range": {
+            "start": {
+              "line": 7,
+              "character": 24
+            },
+            "end": {
+              "line": 7,
+              "character": 25
+            }
+          },
+          "uri_relative": "nested.py"
+        },
+        {
+          "range": {
+            "start": {
+              "line": 8,
+              "character": 16
+            },
+            "end": {
+              "line": 8,
+              "character": 17
+            }
+          },
+          "uri_relative": "nested.py"
+        },
+        {
+          "range": {
+            "start": {
+              "line": 11,
+              "character": 20
+            },
+            "end": {
+              "line": 11,
+              "character": 21
+            }
+          },
+          "uri_relative": "nested.py"
+        }
+      ]
+    },
+    {
+      "request": [
+        "nested.py",
+        11,
+        29
+      ],
+      "response": [
+        {
+          "range": {
+            "start": {
+              "line": 7,
+              "character": 24
+            },
+            "end": {
+              "line": 7,
+              "character": 25
+            }
+          },
+          "uri_relative": "nested.py"
+        },
+        {
+          "range": {
+            "start": {
+              "line": 8,
+              "character": 16
+            },
+            "end": {
+              "line": 8,
+              "character": 17
+            }
+          },
+          "uri_relative": "nested.py"
+        },
+        {
+          "range": {
+            "start": {
+              "line": 11,
+              "character": 20
+            },
+            "end": {
+              "line": 11,
+              "character": 21
+            }
+          },
+          "uri_relative": "nested.py"
+        }
+      ]
+    },
+    {
+      "request": [
+        "nested.py",
+        12,
+        27
+      ],
+      "response": [
+        {
+          "range": {
+            "start": {
+              "line": 7,
+              "character": 24
+            },
+            "end": {
+              "line": 7,
+              "character": 25
+            }
+          },
+          "uri_relative": "nested.py"
+        },
+        {
+          "range": {
+            "start": {
+              "line": 8,
+              "character": 16
+            },
+            "end": {
+              "line": 8,
+              "character": 17
+            }
+          },
+          "uri_relative": "nested.py"
+        },
+        {
+          "range": {
+            "start": {
+              "line": 11,
+              "character": 20
+            },
+            "end": {
+              "line": 11,
+              "character": 21
+            }
+          },
+          "uri_relative": "nested.py"
+        }
+      ]
+    },
+    {
+      "request": [
+        "nested.py",
+        13,
+        33
+      ],
+      "response": [
+        {
+          "range": {
+            "start": {
+              "line": 7,
+              "character": 24
+            },
+            "end": {
+              "line": 7,
+              "character": 25
+            }
+          },
+          "uri_relative": "nested.py"
+        },
+        {
+          "range": {
+            "start": {
+              "line": 8,
+              "character": 16
+            },
+            "end": {
+              "line": 8,
+              "character": 17
+            }
+          },
+          "uri_relative": "nested.py"
+        },
+        {
+          "range": {
+            "start": {
+              "line": 11,
+              "character": 20
+            },
+            "end": {
+              "line": 11,
+              "character": 21
+            }
+          },
+          "uri_relative": "nested.py"
+        }
+      ]
+    },
+    {
+      "request": [
+        "nested.py",
+        14,
+        15
+      ],
+      "response": [
+        {
+          "range": {
+            "start": {
+              "line": 3,
+              "character": 16
+            },
+            "end": {
+              "line": 3,
+              "character": 23
+            }
+          },
+          "uri_relative": "nested.py"
+        },
+        {
+          "range": {
+            "start": {
+              "line": 7,
+              "character": 16
+            },
+            "end": {
+              "line": 7,
+              "character": 23
+            }
+          },
+          "uri_relative": "nested.py"
+        }
+      ]
+    }
+  ]
+}
