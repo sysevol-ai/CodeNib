@@ -197,6 +197,7 @@ class SCIPPythonIndexer(SCIPIndexerBase):
         cwd: Optional[str] = None,
         project_name: Optional[str] = None,
         target_dir: Optional[str] = None,
+        output_file: Optional[Path] = None,
         **kwargs,
     ) -> List[str]:
         """
@@ -206,6 +207,7 @@ class SCIPPythonIndexer(SCIPIndexerBase):
             cwd: Working directory to run the index command
             project_name: Project name to use in the index
             target_dir: Optional subdirectory to target for indexing
+            output_file: Where scip-python writes (defaults to ``index_file``)
             **kwargs: Additional arguments (ignored)
 
         Returns:
@@ -222,7 +224,7 @@ class SCIPPythonIndexer(SCIPIndexerBase):
         else:
             cmd.extend(["--project-name", self.project_root.name])
 
-        cmd.extend(["--output", str(self._pending_index_file)])
+        cmd.extend(["--output", str(output_file or self.index_file)])
 
         if self._direct_indexer_path:
             # Repository-context serving does not expose navigation into the
@@ -389,6 +391,7 @@ class SCIPPythonIndexer(SCIPIndexerBase):
             cwd=cwd or str(self.project_root),
             project_name=project_name,
             target_dir=target_dir,
+            output_file=pending,
         )
 
         logger.debug(f"Running command: {' '.join(cmd)}")
