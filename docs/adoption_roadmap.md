@@ -112,6 +112,17 @@ setup and native fallback do not establish graph efficacy. Preserve both
 cohorts rather than repeat these exposed tasks to seek a positive outcome.
 Automatic source-driven rebuilding, broader provider correctness and external
 repeat-use observations remain open. This does not close the milestone.
+The maintainer has authorized continued iteration toward repeatable benefit.
+The [current iteration objective](experiments/codegraph_net_benefit.md#current-iteration-objective)
+keeps both cohorts frozen and separates developer diagnostics from independent
+confirmation. The [v2 cost attribution](experiments/codegraph_cost_attribution_v2_2026_10_29.json)
+binds all twelve original receipts: extra setup accounts for 74.2% of the
+observed CodeNib/Serena time gap. Removing that cost alone still does not meet
+the benefit gate. The first opt-in candidate exposes the existing composed
+exploration tool through managed initialization. Deferred startup, actual
+voluntary use and two prospectively frozen confirmation sets remain open;
+this candidate has no measured task-efficiency advantage. The original paid
+API ceiling and separate five-user adoption gate remain in force.
 Tracking issue: [#874](https://github.com/sysevol-ai/CodeNib/issues/874).
 The detailed contract is [the internal pilot plan](experiments/codegraph_net_benefit.md).
 

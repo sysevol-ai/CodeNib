@@ -1,0 +1,526 @@
+{
+  "schema": 1,
+  "scope": "retrospective model-free cost attribution on twelve frozen v2 workflows; not a rescore, new cohort or causal efficacy estimate",
+  "inputs": {
+    "execution_sha256": "e471c84d3cef7efd4dd156ecadfd5f4d8b372f03a1768fe864d0b6a5f66f8226",
+    "script_sha256": "ace9e4c32ed6a180c20b8b8721985054e193522106e8346aabee9c5394d2e71c",
+    "captured_receipts_verified": 12
+  },
+  "workflows": [
+    {
+      "workflow": {
+        "workflow_index": 0,
+        "instance_id": "psf__requests-1921",
+        "arm": "serena"
+      },
+      "receipt_sha256": "9f1ec5bac774f673517313db3ee19af28f4ffe2d95c6525e35c34666d5e59fc2",
+      "observed_workflow_seconds": 161.5585236866027,
+      "setup_seconds": 3.9424591436982155,
+      "setup_commands_seconds": {
+        "install-product": 1.2729889508336782,
+        "prepare-python-provider": 1.3419493529945612,
+        "initialize-product": 1.3226647563278675
+      },
+      "setup_other_seconds": 0.004856083542108536,
+      "task_phase_seconds": {
+        "lookup": 15.502863636240363,
+        "flow": 47.69760560058057,
+        "impact": 29.398555021733046,
+        "repair": 29.13489092513919,
+        "post_edit": 26.07734702527523
+      },
+      "session_and_orchestration_remainder_seconds": 9.804802333936095,
+      "normalized_recorded_tokens": 606755,
+      "optional_mcp_attempts": 0,
+      "tool_attempts_by_name": {
+        "Bash": 2,
+        "Edit": 2,
+        "Grep": 11,
+        "Read": 11
+      }
+    },
+    {
+      "workflow": {
+        "workflow_index": 1,
+        "instance_id": "psf__requests-1921",
+        "arm": "codenib"
+      },
+      "receipt_sha256": "79a74d79bf9ea925b3524352393141da7d2e36da27695bb23f16ceb7703df6ca",
+      "observed_workflow_seconds": 211.10780091024935,
+      "setup_seconds": 22.79721488803625,
+      "setup_commands_seconds": {
+        "product-venv": 0.08936561271548271,
+        "install-product": 1.0239982567727566,
+        "prepare-language-providers": 7.877670630812645,
+        "initialize-product": 13.742172166705132
+      },
+      "setup_other_seconds": 0.06400822103023529,
+      "task_phase_seconds": {
+        "lookup": 24.03068190999329,
+        "flow": 53.28283401951194,
+        "impact": 38.82884632796049,
+        "repair": 30.99251195974648,
+        "post_edit": 32.47764045931399
+      },
+      "session_and_orchestration_remainder_seconds": 8.698071345686913,
+      "normalized_recorded_tokens": 955676,
+      "optional_mcp_attempts": 0,
+      "tool_attempts_by_name": {
+        "Bash": 3,
+        "Edit": 2,
+        "Grep": 10,
+        "Read": 20
+      }
+    },
+    {
+      "workflow": {
+        "workflow_index": 2,
+        "instance_id": "psf__requests-1921",
+        "arm": "codegraph"
+      },
+      "receipt_sha256": "41ddc977bead2723c5265b1c1aac0b3fcf150e3fdbe02d523998cc14a1ddbc19",
+      "observed_workflow_seconds": 165.27693963237107,
+      "setup_seconds": 6.461266634985805,
+      "setup_commands_seconds": {
+        "install-product": 5.196735432371497,
+        "initialize-product": 1.0595660209655762
+      },
+      "setup_other_seconds": 0.20496518164873123,
+      "task_phase_seconds": {
+        "lookup": 11.199523298069835,
+        "flow": 46.55664340220392,
+        "impact": 31.161778895184398,
+        "repair": 41.31990110129118,
+        "post_edit": 24.237008206546307
+      },
+      "session_and_orchestration_remainder_seconds": 4.340818094089627,
+      "normalized_recorded_tokens": 651981,
+      "optional_mcp_attempts": 2,
+      "tool_attempts_by_name": {
+        "Bash": 9,
+        "Edit": 2,
+        "Grep": 2,
+        "Read": 5,
+        "mcp__study__codegraph_explore": 2
+      }
+    },
+    {
+      "workflow": {
+        "workflow_index": 3,
+        "instance_id": "psf__requests-1921",
+        "arm": "native"
+      },
+      "receipt_sha256": "97952d06f6bafb1f74646877fe53389f3551ea10aa50440ae2b4b19af21c7bf4",
+      "observed_workflow_seconds": 167.05358208343387,
+      "setup_seconds": 0.0002906396985054016,
+      "setup_commands_seconds": {},
+      "setup_other_seconds": 0.0002906396985054016,
+      "task_phase_seconds": {
+        "lookup": 18.26679326966405,
+        "flow": 49.561358412727714,
+        "impact": 33.269751004874706,
+        "repair": 39.149959249421954,
+        "post_edit": 24.882395569235086
+      },
+      "session_and_orchestration_remainder_seconds": 1.9230339378118515,
+      "normalized_recorded_tokens": 680514,
+      "optional_mcp_attempts": 0,
+      "tool_attempts_by_name": {
+        "Bash": 14,
+        "Edit": 3,
+        "Grep": 3,
+        "Read": 4
+      }
+    },
+    {
+      "workflow": {
+        "workflow_index": 4,
+        "instance_id": "pallets__flask-5014",
+        "arm": "serena"
+      },
+      "receipt_sha256": "2172d3c774bed3b3c0e2bc6b88f5d70ff09ba3e5dd28c828dfb4dd41c12f03ad",
+      "observed_workflow_seconds": 243.24901112914085,
+      "setup_seconds": 3.9534773603081703,
+      "setup_commands_seconds": {
+        "install-product": 1.2085155490785837,
+        "prepare-python-provider": 1.3730823937803507,
+        "initialize-product": 1.3660898245871067
+      },
+      "setup_other_seconds": 0.005789592862129211,
+      "task_phase_seconds": {
+        "lookup": 30.41268691048026,
+        "flow": 55.373016465455294,
+        "impact": 49.27473138459027,
+        "repair": 56.72998574748635,
+        "post_edit": 37.224807946011424
+      },
+      "session_and_orchestration_remainder_seconds": 10.280305314809084,
+      "normalized_recorded_tokens": 879695,
+      "optional_mcp_attempts": 0,
+      "tool_attempts_by_name": {
+        "Bash": 5,
+        "Edit": 4,
+        "Grep": 13,
+        "Read": 18
+      }
+    },
+    {
+      "workflow": {
+        "workflow_index": 5,
+        "instance_id": "pallets__flask-5014",
+        "arm": "codegraph"
+      },
+      "receipt_sha256": "f376fa759e467101fa7f1d53904e85da68c4ea029492b7c68f2d7a8c4b9bbdfc",
+      "observed_workflow_seconds": 215.15648145787418,
+      "setup_seconds": 7.008459851145744,
+      "setup_commands_seconds": {
+        "install-product": 5.457686414942145,
+        "initialize-product": 1.3494655564427376
+      },
+      "setup_other_seconds": 0.2013078797608614,
+      "task_phase_seconds": {
+        "lookup": 38.16444426961243,
+        "flow": 45.592240896075964,
+        "impact": 46.34080488048494,
+        "repair": 38.61932163499296,
+        "post_edit": 35.318874744698405
+      },
+      "session_and_orchestration_remainder_seconds": 4.112335180863738,
+      "normalized_recorded_tokens": 1071293,
+      "optional_mcp_attempts": 2,
+      "tool_attempts_by_name": {
+        "Bash": 3,
+        "Edit": 3,
+        "Grep": 13,
+        "Read": 17,
+        "mcp__study__codegraph_explore": 2
+      }
+    },
+    {
+      "workflow": {
+        "workflow_index": 6,
+        "instance_id": "pallets__flask-5014",
+        "arm": "native"
+      },
+      "receipt_sha256": "3c31d334ac6fbeb1a0ce8d9226af7d5756b9894721e51d7197a7c89961aa2c3c",
+      "observed_workflow_seconds": 176.23251961357892,
+      "setup_seconds": 0.0006913598626852036,
+      "setup_commands_seconds": {},
+      "setup_other_seconds": 0.0006913598626852036,
+      "task_phase_seconds": {
+        "lookup": 23.882408061996102,
+        "flow": 47.847096832469106,
+        "impact": 44.50713383592665,
+        "repair": 32.957407385110855,
+        "post_edit": 25.020461155101657
+      },
+      "session_and_orchestration_remainder_seconds": 2.0173209831118584,
+      "normalized_recorded_tokens": 690056,
+      "optional_mcp_attempts": 0,
+      "tool_attempts_by_name": {
+        "Bash": 15,
+        "Edit": 4,
+        "Grep": 4,
+        "Read": 4
+      }
+    },
+    {
+      "workflow": {
+        "workflow_index": 7,
+        "instance_id": "pallets__flask-5014",
+        "arm": "codenib"
+      },
+      "receipt_sha256": "61757ed442467d1dd27b73cf276848ce2f183303e1ddfe357c59490647041608",
+      "observed_workflow_seconds": 246.90138574503362,
+      "setup_seconds": 24.153266994282603,
+      "setup_commands_seconds": {
+        "product-venv": 0.08098261803388596,
+        "install-product": 0.9051566980779171,
+        "prepare-language-providers": 7.727306429296732,
+        "initialize-product": 15.372064135968685
+      },
+      "setup_other_seconds": 0.06775711290538311,
+      "task_phase_seconds": {
+        "lookup": 43.34633335284889,
+        "flow": 61.15872233733535,
+        "impact": 39.91746187582612,
+        "repair": 41.686449563130736,
+        "post_edit": 28.39584239013493
+      },
+      "session_and_orchestration_remainder_seconds": 8.243309231474996,
+      "normalized_recorded_tokens": 858094,
+      "optional_mcp_attempts": 0,
+      "tool_attempts_by_name": {
+        "Bash": 3,
+        "Edit": 4,
+        "Grep": 14,
+        "Read": 23
+      }
+    },
+    {
+      "workflow": {
+        "workflow_index": 8,
+        "instance_id": "pytest-dev__pytest-5809",
+        "arm": "codenib"
+      },
+      "receipt_sha256": "ba95e21a1d163a8feb988ce684c8ab19e9c37fc5f8eb24e18188e6a990f5cf59",
+      "observed_workflow_seconds": 208.9959034062922,
+      "setup_seconds": 38.36654594540596,
+      "setup_commands_seconds": {
+        "product-venv": 0.09076648950576782,
+        "install-product": 0.7321655806154013,
+        "prepare-language-providers": 7.729762883856893,
+        "initialize-product": 29.746675718575716
+      },
+      "setup_other_seconds": 0.06717527285218239,
+      "task_phase_seconds": {
+        "lookup": 22.4453060682863,
+        "flow": 47.3728011213243,
+        "impact": 57.99484615214169,
+        "repair": 17.638282399624586,
+        "post_edit": 16.651594014838338
+      },
+      "session_and_orchestration_remainder_seconds": 8.526527704671025,
+      "normalized_recorded_tokens": 757468,
+      "optional_mcp_attempts": 0,
+      "tool_attempts_by_name": {
+        "Bash": 2,
+        "Edit": 2,
+        "Grep": 15,
+        "Read": 26
+      }
+    },
+    {
+      "workflow": {
+        "workflow_index": 9,
+        "instance_id": "pytest-dev__pytest-5809",
+        "arm": "native"
+      },
+      "receipt_sha256": "e9e717916d5d8e1419b7a29054da4221819b7a9d7f816f00442ce90c195d3142",
+      "observed_workflow_seconds": 168.43810460343957,
+      "setup_seconds": 0.00030489638447761536,
+      "setup_commands_seconds": {},
+      "setup_other_seconds": 0.00030489638447761536,
+      "task_phase_seconds": {
+        "lookup": 25.108468536287546,
+        "flow": 51.452874053269625,
+        "impact": 45.09280460886657,
+        "repair": 18.719914773479104,
+        "post_edit": 25.822094732895494
+      },
+      "session_and_orchestration_remainder_seconds": 2.241643002256751,
+      "normalized_recorded_tokens": 744973,
+      "optional_mcp_attempts": 0,
+      "tool_attempts_by_name": {
+        "Bash": 16,
+        "Edit": 2,
+        "Grep": 5,
+        "Read": 2,
+        "Write": 1
+      }
+    },
+    {
+      "workflow": {
+        "workflow_index": 10,
+        "instance_id": "pytest-dev__pytest-5809",
+        "arm": "codegraph"
+      },
+      "receipt_sha256": "05ac2153f3ea6eee87e7b361c2049e0bf1ddebf885491ce387c4efd4d9e3bfa7",
+      "observed_workflow_seconds": 146.2110257409513,
+      "setup_seconds": 6.671499574556947,
+      "setup_commands_seconds": {
+        "install-product": 4.266891395673156,
+        "initialize-product": 2.217567650601268
+      },
+      "setup_other_seconds": 0.18704052828252316,
+      "task_phase_seconds": {
+        "lookup": 17.235768172889948,
+        "flow": 45.623848374933004,
+        "impact": 39.98928362876177,
+        "repair": 14.552992474287748,
+        "post_edit": 17.90360797010362
+      },
+      "session_and_orchestration_remainder_seconds": 4.2340255454182625,
+      "normalized_recorded_tokens": 787702,
+      "optional_mcp_attempts": 2,
+      "tool_attempts_by_name": {
+        "Bash": 10,
+        "Edit": 2,
+        "Grep": 6,
+        "Read": 3,
+        "Write": 1,
+        "mcp__study__codegraph_explore": 2
+      }
+    },
+    {
+      "workflow": {
+        "workflow_index": 11,
+        "instance_id": "pytest-dev__pytest-5809",
+        "arm": "serena"
+      },
+      "receipt_sha256": "405f52eb697d6263ebb0b7acbc47a7c5e9ebc7cc69bc2046b33077cb70422836",
+      "observed_workflow_seconds": 163.19168573990464,
+      "setup_seconds": 4.00228370167315,
+      "setup_commands_seconds": {
+        "install-product": 1.2925038076937199,
+        "prepare-python-provider": 1.3535112012177706,
+        "initialize-product": 1.3515206817537546
+      },
+      "setup_other_seconds": 0.004748011007905006,
+      "task_phase_seconds": {
+        "lookup": 20.1890977229923,
+        "flow": 39.86672073788941,
+        "impact": 47.61938222497702,
+        "repair": 22.825767884030938,
+        "post_edit": 18.965786231681705
+      },
+      "session_and_orchestration_remainder_seconds": 9.722647236660123,
+      "normalized_recorded_tokens": 705130,
+      "optional_mcp_attempts": 0,
+      "tool_attempts_by_name": {
+        "Bash": 2,
+        "Edit": 2,
+        "Grep": 12,
+        "Read": 23,
+        "Write": 2
+      }
+    }
+  ],
+  "arms": {
+    "codegraph": {
+      "workflow_count": 3,
+      "observed_workflow_seconds": 526.6444468311965,
+      "setup_seconds": 20.141226060688496,
+      "setup_commands_seconds": {
+        "install-product": 14.921313242986798,
+        "initialize-product": 4.626599228009582
+      },
+      "task_phase_seconds": {
+        "lookup": 66.59973574057221,
+        "flow": 137.7727326732129,
+        "impact": 117.4918674044311,
+        "repair": 94.49221521057189,
+        "post_edit": 77.45949092134833
+      },
+      "session_and_orchestration_remainder_seconds": 12.687178820371628,
+      "normalized_recorded_tokens": 2510976,
+      "optional_mcp_attempts": 6,
+      "tool_attempts_by_name": {
+        "Bash": 22,
+        "Edit": 7,
+        "Grep": 21,
+        "Read": 25,
+        "mcp__study__codegraph_explore": 6,
+        "Write": 1
+      }
+    },
+    "codenib": {
+      "workflow_count": 3,
+      "observed_workflow_seconds": 667.0050900615752,
+      "setup_seconds": 85.31702782772481,
+      "setup_commands_seconds": {
+        "product-venv": 0.2611147202551365,
+        "install-product": 2.661320535466075,
+        "prepare-language-providers": 23.33473994396627,
+        "initialize-product": 58.86091202124953
+      },
+      "task_phase_seconds": {
+        "lookup": 89.82232133112848,
+        "flow": 161.8143574781716,
+        "impact": 136.7411543559283,
+        "repair": 90.3172439225018,
+        "post_edit": 77.52507686428726
+      },
+      "session_and_orchestration_remainder_seconds": 25.467908281832933,
+      "normalized_recorded_tokens": 2571238,
+      "optional_mcp_attempts": 0,
+      "tool_attempts_by_name": {
+        "Bash": 8,
+        "Edit": 8,
+        "Grep": 39,
+        "Read": 69
+      }
+    },
+    "native": {
+      "workflow_count": 3,
+      "observed_workflow_seconds": 511.72420630045235,
+      "setup_seconds": 0.0012868959456682205,
+      "setup_commands_seconds": {},
+      "task_phase_seconds": {
+        "lookup": 67.2576698679477,
+        "flow": 148.86132929846644,
+        "impact": 122.86968944966793,
+        "repair": 90.82728140801191,
+        "post_edit": 75.72495145723224
+      },
+      "session_and_orchestration_remainder_seconds": 6.181997923180461,
+      "normalized_recorded_tokens": 2115543,
+      "optional_mcp_attempts": 0,
+      "tool_attempts_by_name": {
+        "Bash": 45,
+        "Edit": 9,
+        "Grep": 12,
+        "Read": 10,
+        "Write": 1
+      }
+    },
+    "serena": {
+      "workflow_count": 3,
+      "observed_workflow_seconds": 567.9992205556482,
+      "setup_seconds": 11.898220205679536,
+      "setup_commands_seconds": {
+        "install-product": 3.774008307605982,
+        "prepare-python-provider": 4.0685429479926825,
+        "initialize-product": 4.040275262668729
+      },
+      "task_phase_seconds": {
+        "lookup": 66.10464826971292,
+        "flow": 142.93734280392528,
+        "impact": 126.29266863130033,
+        "repair": 108.69064455665648,
+        "post_edit": 82.26794120296836
+      },
+      "session_and_orchestration_remainder_seconds": 29.807754885405302,
+      "normalized_recorded_tokens": 2191580,
+      "optional_mcp_attempts": 0,
+      "tool_attempts_by_name": {
+        "Bash": 9,
+        "Edit": 8,
+        "Grep": 36,
+        "Read": 52,
+        "Write": 2
+      }
+    }
+  },
+  "descriptive_comparisons": {
+    "serena": {
+      "observed_workflow_gap_seconds": 99.00586950592697,
+      "setup_gap_seconds": 73.41880762204528,
+      "setup_share_of_observed_gap": 0.7415601518216056,
+      "task_phase_gap_seconds": 29.926908487454057,
+      "session_and_orchestration_gap_seconds": -4.339846603572369
+    },
+    "native": {
+      "observed_workflow_gap_seconds": 155.28088376112282,
+      "setup_gap_seconds": 85.31574093177915,
+      "setup_share_of_observed_gap": 0.549428486400329,
+      "task_phase_gap_seconds": 50.679232470691204,
+      "session_and_orchestration_gap_seconds": 19.285910358652472
+    }
+  },
+  "zero_candidate_setup_estimate": {
+    "assumption": "remove all candidate setup and hold every recorded model, tool and session duration fixed; an optimistic arithmetic scenario, not a run",
+    "candidate_seconds": 581.6880622338504,
+    "serena_observed_seconds": 567.9992205556482,
+    "serena_twenty_percent_target_seconds": 454.39937644451857
+  },
+  "limitations": [
+    "Three exposed repository clusters; original quality/eligibility failure remains.",
+    "CodeNib and Serena receive no optional MCP or product CLI calls.",
+    "Task-phase wall time combines inference, native tools and client scheduling.",
+    "Initialization includes indexing, source checks and registration; it is not pure graph compiler time.",
+    "Advertised tools do not establish which full schemas reached the model.",
+    "No latency difference is attributed to an unused graph query or tool schema.",
+    "No frozen outcomes, source-read credit, costs or inputs are changed."
+  ]
+}

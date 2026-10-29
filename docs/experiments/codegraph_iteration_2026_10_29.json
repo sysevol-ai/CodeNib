@@ -1,0 +1,136 @@
+{
+  "schema": 1,
+  "scope": "first authorized engineering iteration toward repeatable benefit; no new model run or achieved efficiency claim",
+  "goal_request_date": "2026-10-29",
+  "objective": "Continue product iteration until correctness-preserving whole-task advantage is independently repeated over the strongest eligible Serena/native comparator. Keep external adoption separate.",
+  "goal_tool_attempt": {
+    "previous_status": "blocked",
+    "create_goal_result": "rejected: unfinished goal exists",
+    "old_goal_falsely_completed": false,
+    "repository_iteration_contract": "docs/experiments/codegraph_net_benefit.md#current-iteration-objective"
+  },
+  "cost_attribution": {
+    "artifact": "docs/experiments/codegraph_cost_attribution_v2_2026_10_29.json",
+    "sha256": "1eef164de1bb9cb7bdfed16a6165c27952b7348d8aa5f597f45328ff0744a353",
+    "captured_receipts_verified": 12
+  },
+  "candidate": {
+    "behavior": "opt-in managed registration exposes the existing explore_context-only surface; default full tools and retained registrations remain available",
+    "setup_or_index_work_deferred": false,
+    "task_efficiency_measured": false,
+    "source_files": {
+      "codenib/cli.py": "3fe2214ed20742e1f6e8acbc118e3b0fc4f0b9f6d1af1434879906c4a8bd6c39",
+      "codenib/codegraph_onboarding.py": "d4ce2564b2014e9297fc90d6517fc63a0131b2d3de622bfe6703db0edefc6579",
+      "test/test_codegraph_onboarding.py": "6a487f8b46db82264fb0ec49c9e59e8c5a7fe4c0ceda12cf1848aa7e127f6654"
+    }
+  },
+  "protocol_probe": {
+    "scope": "model-free MCP registration-to-protocol listing check; listing bytes are not delivered model tokens or efficacy",
+    "mcp_version": "2.0.0",
+    "results": [
+      {
+        "mode": "auto",
+        "surface": "full",
+        "server_argv": [
+          "/opt/codenib/bin/codenib",
+          "mcp",
+          "/tmp/codenib-benefit-iteration-20261029",
+          "--tool-surface",
+          "full"
+        ],
+        "advertised_tools": [
+          "dependency_subgraph",
+          "explore_context",
+          "get_manifest",
+          "lsp_definition",
+          "lsp_references",
+          "lsp_route",
+          "read_source",
+          "search_bm25",
+          "search_context",
+          "search_regex",
+          "search_semantic",
+          "search_zoekt"
+        ],
+        "tool_count": 12,
+        "serialized_tool_listing_bytes": 12491
+      },
+      {
+        "mode": "auto",
+        "surface": "explore",
+        "server_argv": [
+          "/opt/codenib/bin/codenib",
+          "mcp",
+          "/tmp/codenib-benefit-iteration-20261029",
+          "--tool-surface",
+          "explore"
+        ],
+        "advertised_tools": [
+          "explore_context"
+        ],
+        "tool_count": 1,
+        "serialized_tool_listing_bytes": 1253
+      },
+      {
+        "mode": "legacy",
+        "surface": "full",
+        "server_argv": [
+          "/opt/codenib/bin/codenib",
+          "mcp",
+          "/tmp/codenib-benefit-iteration-20261029",
+          "--tool-surface",
+          "full"
+        ],
+        "advertised_tools": [
+          "dependency_subgraph",
+          "explore_context",
+          "get_manifest",
+          "lsp_definition",
+          "lsp_references",
+          "lsp_route",
+          "read_source",
+          "search_bm25",
+          "search_context",
+          "search_regex",
+          "search_semantic",
+          "search_zoekt"
+        ],
+        "tool_count": 12,
+        "serialized_tool_listing_bytes": 12491
+      },
+      {
+        "mode": "legacy",
+        "surface": "explore",
+        "server_argv": [
+          "/opt/codenib/bin/codenib",
+          "mcp",
+          "/tmp/codenib-benefit-iteration-20261029",
+          "--tool-surface",
+          "explore"
+        ],
+        "advertised_tools": [
+          "explore_context"
+        ],
+        "tool_count": 1,
+        "serialized_tool_listing_bytes": 1253
+      }
+    ]
+  },
+  "verification": {
+    "related_cli_mcp_onboarding_source_reload_tests_passed": 240,
+    "support_matrix_check": "passed",
+    "preserved_preceding_evidence_count": 383,
+    "preserved_frozen_input_count": 34,
+    "new_model_calls": 0,
+    "pinned_hooks": "passed",
+    "strict_mkdocs": "passed",
+    "public_docs_boundary": "passed"
+  },
+  "open_gates": [
+    "defer unused startup with source authority and complete first-use costs",
+    "observe voluntary discovery and useful query effects",
+    "freeze and pass an independent held-out comparison with no quality regression and at least 20% whole-task wall-time gain",
+    "repeat on a second independent frozen confirmation set",
+    "five consenting external repeat users remain a separate adoption gate; no outreach authorized"
+  ]
+}
