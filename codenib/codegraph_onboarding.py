@@ -198,6 +198,7 @@ def make_server_spec(
     command: str,
     command_prefix: Sequence[str] = (),
     retrieval_route: str = "indexed",
+    tool_surface: str = "full",
 ) -> MCPServerSpec:
     """Build one exact, credential-free MCP command for a checkout."""
 
@@ -209,13 +210,18 @@ def make_server_spec(
     return MCPServerSpec(
         name=codegraph_server_name(repo, retrieval_route=retrieval_route),
         command=command,
-        args=tuple(command_prefix) + _server_suffix(repo, retrieval_route),
+        args=tuple(command_prefix)
+        + _server_suffix(repo, retrieval_route, tool_surface=tool_surface),
     )
 
 
-def _server_suffix(repository: Path, retrieval_route: str) -> tuple[str, ...]:
+def _server_suffix(
+    repository: Path, retrieval_route: str, *, tool_surface: str = "full"
+) -> tuple[str, ...]:
+    if tool_surface not in {"full", "explore"}:
+        raise CodeGraphOnboardingError("unsupported managed MCP tool surface")
     if retrieval_route == "indexed":
-        return ("mcp", str(repository), "--tool-surface", "full")
+        return ("mcp", str(repository), "--tool-surface", tool_surface)
     if retrieval_route == "grep-jev":
         return ("mcp", str(repository), "--retrieval-route", "grep-jev")
     raise CodeGraphOnboardingError("unsupported managed retrieval route")
@@ -223,13 +229,15 @@ def _server_suffix(repository: Path, retrieval_route: str) -> tuple[str, ...]:
 
 def _server_route(server: MCPServerSpec, repository: Path) -> str:
     for route in ("indexed", "grep-jev"):
-        suffix = _server_suffix(repository, route)
-        if (
-            server.args[-len(suffix) :] == suffix
-            and server.args[: -len(suffix)] in ((), ("-m", "codenib"))
-            and server.name == codegraph_server_name(repository, retrieval_route=route)
-        ):
-            return route
+        for surface in ("full", "explore") if route == "indexed" else ("full",):
+            suffix = _server_suffix(repository, route, tool_surface=surface)
+            if (
+                server.args[-len(suffix) :] == suffix
+                and server.args[: -len(suffix)] in ((), ("-m", "codenib"))
+                and server.name
+                == codegraph_server_name(repository, retrieval_route=route)
+            ):
+                return route
     raise CodeGraphOnboardingError("managed MCP server command is malformed")
 
 
@@ -356,9 +364,13 @@ def load_codegraph_receipt(
         raise CodeGraphOnboardingError(
             "CodeGraph integration receipt has an unexpected server name"
         )
-    suffix = _server_suffix(repo, retrieval_route)
-    prefix = server.args[: -len(suffix)]
-    if server.args[-len(suffix) :] != suffix or prefix not in ((), ("-m", "codenib")):
+    try:
+        observed_route = _server_route(server, repo)
+    except CodeGraphOnboardingError as exc:
+        raise CodeGraphOnboardingError(
+            "CodeGraph integration receipt has an unexpected MCP command"
+        ) from exc
+    if observed_route != retrieval_route:
         raise CodeGraphOnboardingError(
             "CodeGraph integration receipt has an unexpected MCP command"
         )

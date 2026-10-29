@@ -67,6 +67,20 @@ Running the same initialization again reuses a current index and matching
 native registrations. CodeNib refuses to overwrite an unmanaged server with
 the same name or a managed registration whose command has drifted.
 
+Source builds also let you expose a single composed exploration tool to your
+agent:
+
+```bash
+codenib codegraph init . --tool-surface explore
+```
+
+This mode exposes `explore_context`; choose `--tool-surface full` for separate
+search, dependency, source-read and LSP tools. New registrations use `full` by
+default. Repeated initialization retains the existing selection. To change
+it, run `codenib codegraph uninstall .` before initializing again. Both modes
+build the same indexes; the smaller tool list does not establish lower task
+cost or better answers. This option awaits a package release.
+
 ## Select the repository source surface
 
 Generated or vendored subtrees can be excluded with a repeatable, exact

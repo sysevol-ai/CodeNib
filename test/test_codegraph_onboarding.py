@@ -171,13 +171,18 @@ def test_auto_client_resolution_is_stable_and_requires_a_client() -> None:
         )
 
 
+@pytest.mark.parametrize("tool_surface", ["full", "explore"])
 def test_receipt_round_trip_is_private_and_deterministic(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    tool_surface: str,
 ) -> None:
     repo = _repository(tmp_path)
     monkeypatch.setenv("CODENIB_HOME", str(tmp_path / "state"))
-    receipt = CodeGraphReceipt(repo, _server(repo), ()).with_client(
+    server = make_server_spec(
+        repo, command="/opt/codenib/bin/codenib", tool_surface=tool_surface
+    )
+    receipt = CodeGraphReceipt(repo, server, ()).with_client(
         "codex", state="configured"
     )
 
@@ -219,6 +224,38 @@ def test_receipt_validation_fails_closed(
 
     with pytest.raises(CodeGraphOnboardingError, match="receipt"):
         load_codegraph_receipt(repo)
+
+
+def test_reinitialization_retains_selected_tools_without_replacing_registration(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _repository(tmp_path)
+    monkeypatch.setenv("CODENIB_HOME", str(tmp_path / "state"))
+    server = make_server_spec(
+        repo, command="/opt/codenib/bin/codenib", tool_surface="explore"
+    )
+    receipt = CodeGraphReceipt(repo, server, ()).with_client(
+        "claude", state="configured"
+    )
+    path = write_codegraph_receipt(receipt)
+    before = path.read_bytes()
+
+    for flags in ([], ["--tool-surface", "explore"]):
+        args = cli.build_parser().parse_args(["codegraph", "init", str(repo), *flags])
+        assert cli._codegraph_spec_for_args(repo, args) == (server, receipt)
+
+    args = cli.build_parser().parse_args(
+        ["codegraph", "init", str(repo), "--tool-surface", "full"]
+    )
+    with pytest.raises(cli.CLIError, match="--tool-surface differs"):
+        cli._codegraph_spec_for_args(repo, args)
+
+    assert path.read_bytes() == before
+
+
+def test_managed_server_rejects_an_unknown_tool_surface(tmp_path: Path) -> None:
+    with pytest.raises(CodeGraphOnboardingError, match="tool surface"):
+        make_server_spec(tmp_path, command="/codenib", tool_surface="unknown")
 
 
 class _NativeClientHarness:
@@ -282,12 +319,16 @@ class _NativeClientHarness:
 
 
 @pytest.mark.parametrize("client", ["codex", "claude"])
+@pytest.mark.parametrize("tool_surface", ["full", "explore"])
 def test_native_client_add_inspect_remove_contract(
     tmp_path: Path,
     client: str,
+    tool_surface: str,
 ) -> None:
     repo = _repository(tmp_path, "repo with spaces")
-    server = _server(repo)
+    server = make_server_spec(
+        repo, command="/opt/codenib/bin/codenib", tool_surface=tool_surface
+    )
     native = _NativeClientHarness()
 
     missing = inspect_client_registration(
@@ -349,7 +390,10 @@ def test_native_client_inspection_does_not_treat_cli_failure_as_absent(
         )
 
 
-def test_server_command_must_report_the_active_codenib_version(tmp_path: Path) -> None:
+@pytest.mark.parametrize("tool_surface", ["full", "explore"])
+def test_server_command_must_report_the_active_codenib_version(
+    tmp_path: Path, tool_surface: str
+) -> None:
     from codenib._version import package_version
 
     repo = _repository(tmp_path)
@@ -357,6 +401,7 @@ def test_server_command_must_report_the_active_codenib_version(tmp_path: Path) -
         repo,
         command="/python",
         command_prefix=("-m", "codenib"),
+        tool_surface=tool_surface,
     )
     commands: list[tuple[str, ...]] = []
 

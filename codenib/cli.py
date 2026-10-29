@@ -2385,6 +2385,13 @@ def _codegraph_spec_for_args(repo_path: Path, args: argparse.Namespace):
     try:
         receipt = load_codegraph_receipt(repo_path)
         explicit = getattr(args, "server_command", None)
+        requested_surface = getattr(args, "tool_surface", None)
+        retained_surface = receipt.server.args[-1] if receipt is not None else "full"
+        if receipt is not None and requested_surface not in (None, retained_surface):
+            raise CodeGraphOnboardingError(
+                "--tool-surface differs from the managed MCP registration; run "
+                "`codenib codegraph uninstall` before changing it"
+            )
         if receipt is not None and explicit is None:
             return receipt.server, receipt
         command, prefix = resolve_codenib_command(explicit)
@@ -2392,6 +2399,7 @@ def _codegraph_spec_for_args(repo_path: Path, args: argparse.Namespace):
             repo_path,
             command=command,
             command_prefix=prefix,
+            tool_surface=requested_surface or retained_surface,
         )
         if receipt is not None and receipt.server != server:
             raise CodeGraphOnboardingError(
@@ -2707,12 +2715,16 @@ def _run_codegraph_init(args: argparse.Namespace) -> int:
         print("\nCodeGraph is ready for coding agents.")
         print(f"MCP server: {server.name}")
         print(f"Clients:    {', '.join(clients)}")
+        print(f"Tools:      {server.args[-1]}")
         print("Excluded:   " + _source_selection_display(resolved_selection.selection))
         print(f"Status:     codenib codegraph status {shlex.quote(str(repo_path))}")
-        print(
-            "Try asking your agent to use explore_context before editing and "
-            "dependency_subgraph for impact analysis."
-        )
+        if server.args[-1] == "explore":
+            print("Try asking your agent to use explore_context before editing.")
+        else:
+            print(
+                "Try asking your agent to use explore_context before editing and "
+                "dependency_subgraph for impact analysis."
+            )
         return 0
 
 
@@ -3831,6 +3843,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--rebuild",
         action="store_true",
         help="force a clean rebuild of the graph views",
+    )
+    codegraph_init_parser.add_argument(
+        "--tool-surface",
+        choices=("full", "explore"),
+        default=None,
+        help=(
+            "expose all navigation tools or only explore_context; "
+            "new registrations default to full and existing registrations retain "
+            "their selected tools"
+        ),
     )
     _add_source_selection_arguments(codegraph_init_parser)
     codegraph_init_parser.add_argument(
