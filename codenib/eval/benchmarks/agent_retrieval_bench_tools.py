@@ -29,6 +29,7 @@ arms that share a prebuilt cache.
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import re
 import shutil
@@ -500,11 +501,120 @@ def _flag(value: bool | str) -> bool:
     raise ValueError(f"expected true or false, got {value!r}")
 
 
+_LAUNCH_PROBE_TIMEOUT = 15.0
+_FIND_MODULE = (
+    "import importlib.util, sys; "
+    "spec = importlib.util.find_spec(sys.argv[1]); "
+    "print(spec.origin if spec and spec.origin else '')"
+)
+
+
+def _probe(args: list[str]) -> str | None:
+    """First stdout line of a successful command, or None."""
+    try:
+        done = subprocess.run(
+            args,
+            capture_output=True,
+            text=True,
+            timeout=_LAUNCH_PROBE_TIMEOUT,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    lines = done.stdout.strip().splitlines()
+    return lines[0].strip() if done.returncode == 0 and lines else None
+
+
+def _sha256_tree(root: Path) -> str:
+    from .agent_retrieval_bench import sha256_file
+
+    digest = hashlib.sha256()
+    for path in sorted(root.rglob("*")):
+        if path.is_file() and "__pycache__" not in path.parts:
+            digest.update(path.relative_to(root).as_posix().encode() + b"\0")
+            digest.update(sha256_file(path).encode("ascii"))
+    return digest.hexdigest()
+
+
+def _loaded_backend(
+    command: list[str], executable: str | None
+) -> dict[str, Any] | None:
+    """Identify the backend a launcher loads itself, which neither the
+    launcher's hash nor its file arguments cover (#866): the binary
+    `rustup run <toolchain> <tool>` resolves to, the top-level package of
+    `<python> -m <module>`, or the version `npx <package>` reports. A backend
+    that cannot be resolved, such as one not installed, gets null values;
+    other commands, and a launcher that is itself missing, return None."""
+    from .agent_retrieval_bench import sha256_file
+
+    if not executable:
+        return None
+    name = Path(command[0]).name.lower()
+    arguments = command[1:]
+    if name.startswith("rustup") and arguments[:1] == ["run"]:
+        rest = [argument for argument in arguments[1:] if not argument.startswith("-")]
+        if len(rest) < 2:
+            return None
+        toolchain, tool = rest[:2]
+        path = _probe([executable, "which", "--toolchain", toolchain, tool])
+        resolved = Path(path) if path else None
+        return {
+            "launcher": "rustup",
+            "target": f"{toolchain}/{tool}",
+            "path": path,
+            "sha256": (
+                sha256_file(resolved) if resolved and resolved.is_file() else None
+            ),
+        }
+    if name.startswith("python") and "-m" in arguments:
+        position = arguments.index("-m")
+        if position + 1 >= len(arguments) or not all(
+            argument.startswith("-") for argument in arguments[:position]
+        ):
+            return None
+        package = arguments[position + 1].split(".")[0]
+        origin = _probe([executable, "-c", _FIND_MODULE, package])
+        path = Path(origin) if origin else None
+        if path is not None and path.name == "__init__.py":
+            path = path.parent
+        sha256 = None
+        if path is not None and path.is_dir():
+            sha256 = _sha256_tree(path)
+        elif path is not None and path.is_file():
+            sha256 = sha256_file(path)
+        return {
+            "launcher": "python -m",
+            "target": package,
+            "path": str(path) if path else None,
+            "sha256": sha256,
+        }
+    if name in {"npx", "npx.cmd"}:
+        package = None
+        for index, argument in enumerate(arguments):
+            if argument in {"-p", "--package"} and index + 1 < len(arguments):
+                package = arguments[index + 1]
+                break
+            if argument.startswith("--package="):
+                package = argument.split("=", 1)[1]
+                break
+        if package is None:
+            package = next((a for a in arguments if not a.startswith("-")), None)
+        if package is None:
+            return None
+        return {
+            "launcher": "npx",
+            "target": package,
+            "version": _probe([executable, "--no-install", package, "--version"]),
+        }
+    return None
+
+
 def _graph_tools() -> dict[str, dict[str, Any]]:
     """Every graph backend command the language registry can run: each graph
     language's SCIP and LSP command, with environment overrides applied, and
     the SHA-256 of its executable and of any file its arguments name (such as
-    a launcher's JAR)."""
+    a launcher's JAR). A backend its launcher loads indirectly is identified
+    by `_loaded_backend`."""
     from codenib.languages import (
         LANGUAGE_SPECS,
         lsp_command_for_language,
@@ -535,13 +645,16 @@ def _graph_tools() -> dict[str, dict[str, Any]]:
                 if Path(argument).is_file()
             }
             # Keyed by kind: SCIP and LSP may share a launcher such as java.
-            backends[f"{spec.graph_language}:{kind}"] = {
+            entry = backends[f"{spec.graph_language}:{kind}"] = {
                 "command": list(command),
                 "executable_sha256": (
                     sha256_file(Path(executable)) if executable else None
                 ),
                 "argument_files_sha256": files,
             }
+            loaded = _loaded_backend(list(command), executable)
+            if loaded is not None:
+                entry["loaded_backend"] = loaded
     return backends
 
 

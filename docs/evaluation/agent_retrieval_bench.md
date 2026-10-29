@@ -475,9 +475,10 @@ inside a published graph or checkout. A later run reuses a build, and reports
 its original build and checkout-fetch times with `cached: true`, only when the
 build matches: the CodeNib sources, Python and package versions, each graph
 backend's command and executable, and the graph settings. A backend that its
-launcher loads indirectly, such as `python -m`, `npx`, or `rustup run`, is
-identified only by its command, so use a new cache after upgrading one. A
-failed or partial build is retried on the next run, and a retry that covers
+launcher loads indirectly is covered too: the SHA-256 of the binary
+`rustup run` resolves to and of the package `python -m` imports, and the
+version `npx` reports. A backend that cannot be resolved is recorded as null,
+so installing it later starts a new build. A failed or partial build is retried on the next run, and a retry that covers
 fewer languages keeps the earlier graph, with the retry's cost and, under
 `retry`, its outcome in the status; set `--tool-provider-option
 retry_failed=false` to keep failures, so that arms sharing a prebuilt cache see
