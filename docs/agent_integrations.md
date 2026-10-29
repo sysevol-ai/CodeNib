@@ -572,8 +572,9 @@ scores.
 The paired runner checks whether an agent localizes as well on CodeNib's index
 as on its own. It holds the agent, model, prompt, cases, and iteration budget
 fixed, and swaps only the backend: `native` or `codenib`. It supports LocAgent
-and OrcaLoca. A four-issue OrcaLoca run found the same files and functions with
-both backends, which confirms the swap works end to end.
+and OrcaLoca. In a four-issue OrcaLoca run, both backends matched the
+golden-patch files and functions by OrcaLoca's File Match and Function Match,
+which confirms the swap works end to end.
 
 ```bash
 python scripts/analysis/compare_agent_integrations.py locagent \
