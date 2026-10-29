@@ -72,29 +72,42 @@ runs:
     - name: Build and install scip-python
       shell: bash -l {0}
       run: |
+        set -euo pipefail
         git submodule update --init --recursive third_party/scip-python
         SCIP_PYTHON_SHA="$(git -C third_party/scip-python rev-parse HEAD)"
         TOOLCHAIN_CACHE="${{ github.workspace }}/../.cache/codenib-toolchains"
-        MARKER="$TOOLCHAIN_CACHE/scip-python.sha"
-        mkdir -p "$TOOLCHAIN_CACHE"
-        if [ -f "$MARKER" ] \
-          && grep -qx "$SCIP_PYTHON_SHA" "$MARKER" \
-          && conda run -n scip-env bash -lc \
-            'command -v scip-python >/dev/null 2>&1'; then
+        # scip-env is recreated per job, and a host-wide scip-python on PATH
+        # used to satisfy a cache probe against it, so jobs silently ran that
+        # binary instead of this submodule. Keep one install per revision.
+        # The runner normalizes GITHUB_PATH entries, so drop the `..` here too
+        # for the resolution check below to compare equal paths.
+        SCIP_PYTHON_PREFIX="$(realpath -m "$TOOLCHAIN_CACHE")/scip-python/$SCIP_PYTHON_SHA"
+        SCIP_PYTHON_BIN="$SCIP_PYTHON_PREFIX/bin/scip-python"
+        if [ -x "$SCIP_PYTHON_BIN" ]; then
           echo "[scip-python] cached revision $SCIP_PYTHON_SHA"
-          exit 0
+        else
+          STAGE="$SCIP_PYTHON_PREFIX.tmp.$$"
+          trap 'rm -rf "$STAGE"' EXIT
+          rm -rf "$STAGE"
+          mkdir -p "$STAGE"
+          # prepack builds dist/ and copies README/LICENSE into the submodule
+          # before the tarball is written; clean removes them afterwards.
+          conda run -n scip-env bash -lc "
+            set -euo pipefail
+            cd third_party/scip-python
+            npm ci
+            cd packages/pyright-scip
+            npm ci
+            npm pack --pack-destination '$STAGE'
+            npm install -g --prefix '$STAGE' '$STAGE'/sourcegraph-scip-python-*.tgz
+            npm run clean
+          "
+          rm -rf "$SCIP_PYTHON_PREFIX"
+          mv "$STAGE" "$SCIP_PYTHON_PREFIX"
         fi
-        conda run -n scip-env bash -lc "
-          set -euo pipefail
-          cd third_party/scip-python
-          npm ci
-          cd packages/pyright-scip
-          npm ci
-          npm run build
-          npm install -g .
-        "
-        printf '%s\n' "$SCIP_PYTHON_SHA" > "$MARKER.tmp.$$"
-        mv "$MARKER.tmp.$$" "$MARKER"
+        echo "$SCIP_PYTHON_PREFIX/bin" >> "$GITHUB_PATH"
+        echo "CODENIB_CI_SCIP_PYTHON=$SCIP_PYTHON_BIN" >> "$GITHUB_ENV"
+        "$SCIP_PYTHON_BIN" --version
 
     - name: Install dependencies
       shell: bash -l {0}
@@ -231,3 +244,14 @@ runs:
         else
           echo "WARN: apt-get not available; skipping bear install"
         fi
+
+    - name: Verify pinned scip-python resolution
+      shell: bash -l {0}
+      run: |
+        # Later steps prepend tool directories; none may shadow the pinned build.
+        actual="$(command -v scip-python || true)"
+        if [ "$actual" != "$CODENIB_CI_SCIP_PYTHON" ]; then
+          echo "::error::scip-python resolves to '${actual:-nothing}', not the pinned submodule build at $CODENIB_CI_SCIP_PYTHON"
+          exit 1
+        fi
+        scip-python --version
