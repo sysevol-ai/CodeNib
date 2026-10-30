@@ -105,12 +105,19 @@ retain a full-source SymPy failure at two CPUs/4 GiB. A smaller 2,560 MiB V8
 heap also fails; the 32 GiB reference completes a first graph request in
 852.887 seconds with sampled Node RSS peaking at 11,490,196 KiB. Neither
 diagnostic changes product memory defaults, source coverage, decoder parity
-or an acceleration gate. The candidate instead avoids an unrequested graph
+or an acceleration gate. Merged [#920](https://github.com/sysevol-ai/CodeNib/pull/920) avoids an unrequested graph
 for a cold deferred exploration query, returning verified ranked source with
 dependencies disabled. Explicit graph requests keep their costs and failures;
 ready graphs are reused. Live LSP probes do not establish reference coverage
 and no new provider route, language or C++ backend is promoted. Both
 independent whole-task confirmations remain open.
+
+The #920 main unit/integration, twenty release verifiers and Docs pass.
+Its serial/native/consumer/slow jobs are conditionally skipped for this changed
+surface; they do not repeat #917's executed full chain. The separately frozen
+development comparison retains the original graph resource failures and
+charges any actual graph preparation or update. Its source-first operator
+admission is not a new compiler or acceleration gate.
 
 ## Archived Layered Goal
 

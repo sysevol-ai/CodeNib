@@ -1,6 +1,6 @@
 # Source-first exploration in deferred graph mode
 
-The candidate makes an ordinary cold `explore_context` query return verified
+Merged [#920](https://github.com/sysevol-ai/CodeNib/pull/920) makes an ordinary cold `explore_context` query return verified
 ranked source before asking the user to pay for a complete graph. It changes
 the default work performed by the opted-in deferred mode; it does not accelerate
 an equivalent graph computation or establish an advantage over another product.
@@ -96,8 +96,10 @@ The candidate passes 8,946 unit cases with 24 skips, and 433 MCP 2.3 cases with
 seven skips. Strict MkDocs, public-document boundaries and the support matrix
 pass. The installation/controller/resource observations, original failures and
 exact scripts are retained in the [evidence packet](codegraph_source_default_2026_10_30.json).
-Local controls do not establish remote release acceptance or a public package
-release.
+The reviewed tree is unchanged in merge `da0f6ec7`. Main unit/integration,
+all twenty release verifiers and Docs pass. Serial/native/consumer/slow jobs
+are conditionally skipped for this changed surface, distinct from #917's
+executed full chain. The public package is unchanged.
 
 The first old-input integrity check verifies all 5,855 original entries. A
 subsequent check detects that the shared `~/.local/bin/claude` launcher now
@@ -115,8 +117,10 @@ satisfy either independent success confirmation. The reserved second set stays
 unopened; fix another disjoint set before any independent confirmation runs.
 The initial admission packet remains immutable and records the original plan.
 
-Fifteen draft tasks and the common four-arm runner exist, but there is no new
-pre-inference model/runtime/resource seal or comparative result. Keep the
+The separately [sealed development protocol](codegraph_source_first_protocol.md)
+admits all twelve exact-controller preparations and fixes fifteen tasks before
+new inference. It includes bounded SDK interruption/terminal draining and
+explicit incomplete-usage handling. It adds no comparative result. Keep the
 whole-workflow endpoint, correctness parity, serious-error rule, 20% improvement
 threshold and normalized-usage guard. The previous stopped cohort stays closed.
 Five-user external enrollment remains zero and no outreach is authorized.
