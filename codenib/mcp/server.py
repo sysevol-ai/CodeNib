@@ -325,13 +325,11 @@ async def _wait_for_abandoned_explore_worker(
 @mcp.tool(
     name="explore_context",
     description=(
-        "Find implementations and related source across files for a repository "
-        "question. Use to trace how code connects, inspect symbol definitions "
-        "and references, or assess a change's impact. Returns bounded source "
-        "excerpts with source verification and coverage diagnostics. Indexed "
-        "references are static; inspect code before treating them as runtime "
-        "calls. In on-demand graph mode, omit symbols and set "
-        "include_dependencies=false for search only; "
+        "Recommended bounded repository exploration. Composes ranked retrieval, "
+        "the selected LSP-shaped route, dependency expansion, and verified source "
+        "windows. Returns the concrete provider plan, source identity, independent "
+        "diagnostics, and per-connection delivery usage. In on-demand graph mode, "
+        "omit symbols and set include_dependencies=false for retrieval alone; "
         "symbols or include_dependencies=true prepare the graph on first use."
     ),
 )

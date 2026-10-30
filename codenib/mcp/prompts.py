@@ -16,15 +16,15 @@ CODENIB_FULL_INSTRUCTIONS = (
 )
 
 CODENIB_EXPLORE_INSTRUCTIONS = (
-    "Use explore_context for repository questions that need implementations "
-    "and related code across files: locating a feature, following symbol "
-    "references, or assessing a proposed change. Ask the question in query; "
-    "known symbol names are optional. The response includes source excerpts "
-    "and bounded indexed relationships. Native file reads and exact text "
-    "search remain useful for a known file or string. Check source verification "
-    "and coverage diagnostics before relying on a result. Indexed references "
-    "can include fields, types and function values; inspect source to establish "
-    "invocation. External and dynamic calls may be absent."
+    "CodeNib helps locate implementations, follow cross-file symbol references, "
+    "and assess change impact. For these questions, explore_context combines "
+    "ranked search, indexed relationships, and source excerpts in one call. "
+    "Provide a repository question and optional known symbol names. Native "
+    "file reads and exact text search remain useful for a known file or string. "
+    "Inspect its plan, source identity, diagnostics, and session usage before "
+    "drawing conclusions. Dependency expansion follows indexed static "
+    "references, which may include fields, types and function values. Inspect "
+    "source to establish invocation; external and dynamic calls may be absent."
 )
 
 CODENIB_GREP_INSTRUCTIONS = (

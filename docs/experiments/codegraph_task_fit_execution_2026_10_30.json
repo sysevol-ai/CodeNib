@@ -1,0 +1,411 @@
+{
+  "schema": "codenib.task-fit-execution.v1",
+  "status": "stopped incomplete; no comparative result",
+  "protocol": "codegraph_task_fit_protocol_2026_10_30.json",
+  "execution_binding_sha256": "0c1efe12940b3d78bdac347cf5620188ef89704bc5aec91fa85deb108458fffd",
+  "assessment": {
+    "status": "stopped incomplete; no comparative benefit result",
+    "planned_conditions": 5,
+    "planned_tasks": 15,
+    "attempted_tasks": 4,
+    "successful_original_sdk_terminals": 3,
+    "timeout_tasks": 1,
+    "unattempted_tasks": 11,
+    "source_criterion_instances_evaluated": 8,
+    "source_criterion_instances_passed": 6,
+    "accepted_source_explanations": 0,
+    "source_explanations_evaluated": 2,
+    "source_review": "One unblinded maintainer-agent review against captured pre/post source; no independent external adjudication.",
+    "outcomes": [
+      {
+        "arm": "codegraph",
+        "planned_tasks": 3,
+        "source_reviews": [
+          {
+            "task": "lookup",
+            "word_count": 648,
+            "within_word_limit": true,
+            "successful_terminal": true,
+            "criteria": [
+              {
+                "criterion": 1,
+                "passed": false,
+                "reason": "The central name/span diagnosis is correct, but the cited active Python SCIP recovery is described as potentially merging accessors into one graph vertex. It retains distinct physical definitions and a static reference target union."
+              },
+              {
+                "criterion": 2,
+                "passed": true,
+                "reason": "Traces ranked canonical IDs and unchanged source spans through NodeInfo/QueriedNode and the shared resolver with actual source citations."
+              },
+              {
+                "criterion": 3,
+                "passed": true,
+                "reason": "Identifies the MCP search and retrieve/rerank consumers, with additional actual consumers."
+              },
+              {
+                "criterion": 4,
+                "passed": false,
+                "reason": "Correct 0-based internal/display +1 conventions, but the proposed containment/overlap repair does not state physical-ID precedence and refusal when source identity evidence is absent or non-unique."
+              }
+            ],
+            "accepted": false,
+            "serious_source_error": true,
+            "quote": "where getter and setter may legitimately be one vertex",
+            "counterexample": "source-audit/properties-v3/receipt.json"
+          },
+          {
+            "task": "review",
+            "word_count": 705,
+            "within_word_limit": false,
+            "successful_terminal": true,
+            "criteria": [
+              {
+                "criterion": 1,
+                "passed": true,
+                "reason": "Correct real consumers, planner graph/budget/index conditions and shared expansion chain."
+              },
+              {
+                "criterion": 2,
+                "passed": true,
+                "reason": "Correct exact-ID precedence, unique exact file/span definition selection and refusal paths in the captured patch."
+              },
+              {
+                "criterion": 3,
+                "passed": true,
+                "reason": "Correct stored 0-based ranges, display conversion and query-side repair without a mandatory graph-format rebuild. This is not a claim that changed-source guards or artifact schema checks can be ignored."
+              },
+              {
+                "criterion": 4,
+                "passed": true,
+                "reason": "Keeps static reference/containment semantics separate from runtime calls and accurately distinguishes observed local tests from unexecuted provider/consumer coverage."
+              }
+            ],
+            "accepted": false,
+            "serious_source_error": false,
+            "reason": "The prospective 650-word limit is exceeded; this alone is an instruction failure, not a serious source error."
+          }
+        ],
+        "status": "model_execution_complete_pending_grading",
+        "attempted_tasks": 3,
+        "observed_seconds": 477.2891515120864,
+        "all_source_preserved_in_readonly_tasks": true,
+        "voluntary_mcp_attempts": 3,
+        "completed_mcp_hooks": 3,
+        "usage_complete": true,
+        "normalized_tokens": 2502526,
+        "sdk_estimate_usd": 1.9231682,
+        "complete_session_token_lower_bound": 2502526,
+        "complete_session_estimate_lower_bound": 1.9231682,
+        "native_repair": {
+          "accepted": true,
+          "outcome": "26 passed",
+          "captured_source_matches": true,
+          "original_test_overlay": {
+            "original_sha256": "205b92d7bec1692d01792b14a9537fd70b779836254c497fd5aa0a550e93636b",
+            "captured_sha256": "23c58032b16a35172f46c0df2e875f2873abdef12e1340d85c0c8f45cc013902",
+            "captured_edit_preserved": true
+          }
+        },
+        "accepted_tasks": 1,
+        "serious_error_tasks": 1,
+        "deadline_penalty_seconds": 436.29256336018443,
+        "observed_plus_deadline_penalty_seconds": 913.5817148722708
+      },
+      {
+        "arm": "codenib",
+        "planned_tasks": 3,
+        "source_reviews": [
+          {
+            "task": "lookup",
+            "accepted": false,
+            "source_quality": "unassessed: no original final answer or successful terminal",
+            "serious_source_error": null,
+            "reason": "300-second timeout and missing final SDK usage"
+          }
+        ],
+        "status": "error",
+        "attempted_tasks": 1,
+        "observed_seconds": 331.22363394498825,
+        "all_source_preserved_in_readonly_tasks": true,
+        "voluntary_mcp_attempts": 1,
+        "completed_mcp_hooks": 1,
+        "usage_complete": false,
+        "normalized_tokens": null,
+        "sdk_estimate_usd": null,
+        "complete_session_token_lower_bound": 0,
+        "complete_session_estimate_lower_bound": 0,
+        "native_repair": {
+          "accepted": null,
+          "outcome": "not attempted after stop"
+        },
+        "accepted_tasks": 0,
+        "serious_error_tasks": null,
+        "main_stream_usage_lower_bound": {
+          "tokens": 174158,
+          "response_frames": 10,
+          "frames": {
+            "msg_011CgYNE1vqFddFSajymkuob": {
+              "model": "claude-opus-5-5",
+              "usage": {
+                "input_tokens": 2,
+                "cache_creation_input_tokens": 8691,
+                "cache_read_input_tokens": 0,
+                "output_tokens": 104
+              }
+            },
+            "msg_011CgYNEDsBSjWjEEGz7ZGnf": {
+              "model": "claude-opus-5-5",
+              "usage": {
+                "input_tokens": 2,
+                "cache_creation_input_tokens": 1629,
+                "cache_read_input_tokens": 8691,
+                "output_tokens": 111
+              }
+            },
+            "msg_011CgYNZbVDkqcYxXiHQtBdj": {
+              "model": "claude-opus-5-5",
+              "usage": {
+                "input_tokens": 2,
+                "cache_creation_input_tokens": 1156,
+                "cache_read_input_tokens": 10320,
+                "output_tokens": 266
+              }
+            },
+            "msg_011CgYNZsgnjA76UzRP3Tmet": {
+              "model": "claude-opus-5-5",
+              "usage": {
+                "input_tokens": 2,
+                "cache_creation_input_tokens": 445,
+                "cache_read_input_tokens": 11476,
+                "output_tokens": 149
+              }
+            },
+            "msg_011CgYNa6PGvZSxdvjn5a8Qf": {
+              "model": "claude-opus-5-5",
+              "usage": {
+                "input_tokens": 2,
+                "cache_creation_input_tokens": 448,
+                "cache_read_input_tokens": 11921,
+                "output_tokens": 104
+              }
+            },
+            "msg_011CgYNaPtj8tc2gv4qgtggd": {
+              "model": "claude-opus-5-5",
+              "usage": {
+                "input_tokens": 2,
+                "cache_creation_input_tokens": 6348,
+                "cache_read_input_tokens": 12369,
+                "output_tokens": 292
+              }
+            },
+            "msg_011CgYNajEpTgN86BSXtGGoE": {
+              "model": "claude-opus-5-5",
+              "usage": {
+                "input_tokens": 2,
+                "cache_creation_input_tokens": 420,
+                "cache_read_input_tokens": 18717,
+                "output_tokens": 297
+              }
+            },
+            "msg_011CgYNb1swSXr5vUAXmfHqv": {
+              "model": "claude-opus-5-5",
+              "usage": {
+                "input_tokens": 2,
+                "cache_creation_input_tokens": 5513,
+                "cache_read_input_tokens": 19137,
+                "output_tokens": 375
+              }
+            },
+            "msg_011CgYNbTKPjk9GfHBy71qmk": {
+              "model": "claude-opus-5-5",
+              "usage": {
+                "input_tokens": 2,
+                "cache_creation_input_tokens": 1011,
+                "cache_read_input_tokens": 24650,
+                "output_tokens": 150
+              }
+            },
+            "msg_011CgYNbfkzpwb5VZxGV3Dqm": {
+              "model": "claude-opus-5-5",
+              "usage": {
+                "input_tokens": 2,
+                "cache_creation_input_tokens": 3683,
+                "cache_read_input_tokens": 25661,
+                "output_tokens": 4
+              }
+            }
+          },
+          "scope": "Unique observed main-model response frames only; maximum cumulative counter per frame/component. Missing auxiliary/final counters remain unknown; not complete normalized usage or HTTP request count."
+        },
+        "deadline_penalty_seconds": 840.0,
+        "observed_plus_deadline_penalty_seconds": 1171.2236339449883
+      },
+      {
+        "arm": "serena",
+        "planned_tasks": 3,
+        "source_reviews": [],
+        "status": "not attempted after frozen stop",
+        "attempted_tasks": 0,
+        "accepted_tasks": null,
+        "observed_seconds": null,
+        "deadline_penalty_seconds": 1140,
+        "normalized_tokens": null,
+        "sdk_estimate_usd": null
+      },
+      {
+        "arm": "codenib_control",
+        "planned_tasks": 3,
+        "source_reviews": [],
+        "status": "not attempted after frozen stop",
+        "attempted_tasks": 0,
+        "accepted_tasks": null,
+        "observed_seconds": null,
+        "deadline_penalty_seconds": 1140,
+        "normalized_tokens": null,
+        "sdk_estimate_usd": null
+      },
+      {
+        "arm": "native",
+        "planned_tasks": 3,
+        "source_reviews": [],
+        "status": "not attempted after frozen stop",
+        "attempted_tasks": 0,
+        "accepted_tasks": null,
+        "observed_seconds": null,
+        "deadline_penalty_seconds": 1140,
+        "normalized_tokens": null,
+        "sdk_estimate_usd": null
+      }
+    ],
+    "complete_session_normalized_tokens_lower_bound": 2502526,
+    "complete_session_sdk_estimate_usd_lower_bound": 1.9231682,
+    "round_usage_complete": false,
+    "invoices": "unknown",
+    "http_request_count": "unknown",
+    "prior_recorded_sdk_estimate_usd": 22.4119693,
+    "cumulative_complete_session_sdk_estimate_usd_lower_bound": 24.3351375,
+    "diagnosis": {
+      "source_path": "/home/zhongming/.claude/projects/-tmp-codenib-codegraph-task-fit-20261030-runs-01-source-seed-repair-development-codenib-workspace/29d2cb51-ef06-48be-9b18-7ff2e7ad7d98/tool-results/mcp-study-explore_context-1793361063233.txt",
+      "tool_use_id": "toolu_01MQsB2J7MzGkMRVWdPhYqqT",
+      "session_id": "29d2cb51-ef06-48be-9b18-7ff2e7ad7d98",
+      "source_sha256": "ea6321aab3ba78593a2680d0dee60449e765633cda3bb599ba20a5a60c44892d",
+      "bytes": 82346,
+      "mcp_duration_ms": 259874,
+      "source_type": "dict",
+      "delivery": "Original SDK tool result is a spill-file wrapper. This later copy does not establish complete model delivery or read credit.",
+      "controller_boundary": "The frozen bridge mirrors authenticated native Bash persistedOutputPath files, but does not register MCP spill files. The attempted Bash jq therefore runs in the container without that host file.",
+      "original_timeout_unchanged": true,
+      "new_model_calls": 0,
+      "top_level_keys": [
+        "query",
+        "plan",
+        "source",
+        "summary",
+        "files",
+        "relationships",
+        "diagnostics"
+      ],
+      "source": {
+        "repository": "/tmp/codenib-codegraph-task-fit-20261030/runs/01-source-seed-repair-development-codenib/workspace",
+        "commit": "f088498fac79dd5092ee2c8d9a027878de31ef0b",
+        "source_fingerprint": "sha256-v2:c41e8ede59f217b61c517b6de1df6cb1073c1bad4b2aa90dbc9ac37b10115b6c",
+        "verified": true
+      }
+    },
+    "interpretation": "CodeNib voluntarily attempts one tool call; no unchanged-wording control is executed, so no selection effect is established. The cold 259.874-second call and inaccessible SDK spill are both observed before the 300-second failure. No counterfactual timing partitions their effects. Do not attribute the entire failure to the product or infer a whole-task gain.",
+    "decision": "Hold metadata promotion, retain the frozen partial trial, and repair cold latency plus authenticated MCP spill delivery before another prospectively sealed model round. Two independent confirmation sets and external 0/5 reuse remain open.",
+    "source_diagnostic_attempts": [
+      "v1 missing companion fixture: controller error retained",
+      "v2 counted parameter declarations as accessor definitions: controller error retained",
+      "v3 binds nested.py plus function-symbol anchors and verifies two physical graph nodes; retrospective diagnostic only"
+    ]
+  },
+  "integrity": {
+    "sealed_trial_inputs": 4831,
+    "older_frozen_inputs": 1024,
+    "older_bindings": [
+      {
+        "path": "/tmp/codenib-matched-pilot-v2-20261028/execution-binding-v2.json",
+        "sha256": "c0a684ea39796d8334109edf674dad71e8311ed8976ca9f121cd669d9f20d40c",
+        "files_verified": 34
+      },
+      {
+        "path": "/tmp/codenib-codegraph-adoption-dev-20261030/execution-binding-dev1.json",
+        "sha256": "49c1c152dc372e75d109f02fa2c7be3373a4eab088e355e9341ed45746a04c3d",
+        "files_verified": 990
+      }
+    ],
+    "preceding_tracked_json": 402
+  },
+  "verified_absent_owned_containers": 41,
+  "archives": 448,
+  "unique_payloads": 210,
+  "format": "Whole-file identical_to aliases retain each original path, byte count and SHA256. Reconstruct in archive order; no source-file identities are merged.",
+  "large_artifacts": "Original admission index-artifacts.tar archives stay local, with exact paths, byte counts and SHA256 in their original receipts; they are not embedded in public JSON.",
+  "prior_public_protocol_packet": "The original oversized pre-inference public packet reconstructs byte for byte from its unchanged protocol index/three parts; prior-protocol-reconstruction.json records the proof instead of recursively encoding the same packet.",
+  "parts": [
+    {
+      "path": "codegraph_task_fit_execution_2026_10_30.part01.json",
+      "sha256": "83e2792b09375c3c881682a84d5db21b7fb5dd842cb1b88ab9f978b2532381d6",
+      "bytes": 290353,
+      "archives": 37
+    },
+    {
+      "path": "codegraph_task_fit_execution_2026_10_30.part02.json",
+      "sha256": "1150c854435c270749f6c0a49cc2e7a16cddd5f5f0ffad5b1aa2101f08c07c0e",
+      "bytes": 241101,
+      "archives": 123
+    },
+    {
+      "path": "codegraph_task_fit_execution_2026_10_30.part03.json",
+      "sha256": "2c6329dfb26a963d065bf011766ca6a37c1c6e98346546e5c2797efb3c5d4f26",
+      "bytes": 241401,
+      "archives": 89
+    },
+    {
+      "path": "codegraph_task_fit_execution_2026_10_30.part04.json",
+      "sha256": "559b64171835bc4511e56d366bf3f94676c2090ffcf21938703755f597209509",
+      "bytes": 236738,
+      "archives": 52
+    },
+    {
+      "path": "codegraph_task_fit_execution_2026_10_30.part05.json",
+      "sha256": "f209a9ed42af03fb34e5c0a6e21dba7ad6dc36fe8572f42d324d43b7682bd56d",
+      "bytes": 76773,
+      "archives": 4
+    },
+    {
+      "path": "codegraph_task_fit_execution_2026_10_30.part06.json",
+      "sha256": "7c6bfdbd6e9e04a31a28fa59784f7521fc9c22ea509faca2dc4a7e05fec711aa",
+      "bytes": 355760,
+      "archives": 1
+    },
+    {
+      "path": "codegraph_task_fit_execution_2026_10_30.part07.json",
+      "sha256": "5ef7f0a87873c44b2fec36ce4832bda53cf34c3cfe9084210fff1de7fdaf9317",
+      "bytes": 257612,
+      "archives": 67
+    },
+    {
+      "path": "codegraph_task_fit_execution_2026_10_30.part08.json",
+      "sha256": "be8a31007252870297ae6d2cfca744d4b5c1c5e70018591557243c277637b015",
+      "bytes": 170150,
+      "archives": 10
+    },
+    {
+      "path": "codegraph_task_fit_execution_2026_10_30.part09.json",
+      "sha256": "8bda8bd7f22bc470233b572fde51af7a8eb85352a6d3987786c6c7b62c93f43b",
+      "bytes": 280770,
+      "archives": 28
+    },
+    {
+      "path": "codegraph_task_fit_execution_2026_10_30.part10.json",
+      "sha256": "247b6d378e99ca1cab3f9e193735366997317f7d54f01a50e0936fb1ad45e90f",
+      "bytes": 197339,
+      "archives": 37
+    }
+  ],
+  "new_model_calls_during_grading_packaging": 0,
+  "original_failures_and_caps_unchanged": true,
+  "product_code_candidate_held": true
+}

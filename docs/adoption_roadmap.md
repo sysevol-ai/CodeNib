@@ -210,25 +210,30 @@ returns verified MCP source and two bounded relationships, preserving all
 cost, not a speed result. Fifty-three identity cases and 8,904 unit cases
 (24 skips) pass. Seventeen executed PR checks pass, with eight verified
 conditional skips and no unresolved review thread. Both failed admissions
-remain failed. No inference, package release or benefit claim is added.
+remain failed. Main [release verification](https://github.com/sysevol-ai/CodeNib/actions/runs/41046600526)
+passes all 20 verifier jobs, with five tag-only publication skips. The actual
+[Full CI chain](https://github.com/sysevol-ai/CodeNib/actions/runs/41046600343)
+passes unit, integration, serial integration, native SCIP and graph-consumer
+jobs; model-dependent slow tests are conditionally skipped. That source repair
+adds no inference, package release or benefit claim.
 
-The [task-fit development protocol](experiments/codegraph_task_fit_protocol.md)
-compares the original four product types plus unchanged CodeNib wording on one
-known source-identity repair. A committed candidate changes only exploration
-descriptions/instructions. All five final operator admissions pass with the
-same source/runtime; CodeNib's 485 installed Python files match each selected
-wheel, the backend/native bytes agree, and producer schemas differ only in the
-intended metadata. A controller audit found the earlier intended control
-installed the candidate too; those original failures are not a metadata
-comparison. Final admission uses the corrected selector and byte checks.
-Thirty-nine discovery contracts and 432 MCP 2.3 cases (seven skips) pass.
-The same 26 native cases execute in empty/reference controls (six fail/twenty
-pass versus twenty-six pass). The separate 4,831-input seal completes at
-2026-10-30 11:33:05 UTC before any model call; 23 lossless files in three parts
-retain the protocol and admissions. This exposed self-repository case cannot
-satisfy either independent
-confirmation set or the external-user gate. Retain every first-use/failure
-cost and all earlier negative outcomes.
+The [task-fit development result](experiments/codegraph_task_fit_result.md)
+stops under its frozen missing-usage rule: Codegraph completes three model
+tasks, but the candidate CodeNib diagnosis reaches 300 seconds without a final
+SDK result. Eleven planned tasks remain unattempted; there is no comparative
+benefit result. All five final admissions and the 4,831-input pre-inference seal
+remain retained, together with the earlier candidate-for-control installation
+mistake. CodeNib voluntarily attempts one MCP call taking 259.874 seconds; its
+82,336-character result spills to a host file that the isolated Bash bridge
+does not mirror. Keep real cold latency separate from that controller defect.
+The full saved payload is not full model-read evidence. Codegraph's captured
+repair passes all 26 original selected tests; its diagnosis has a material SCIP
+identity error and its review exceeds the 650-word limit. Complete-session
+usage is a lower bound of 2,502,526 normalized tokens and $1.9231682 SDK estimates;
+CodeNib's final counters and invoices remain unknown. Hold the wording candidate
+outside product code, repair cold latency and authenticated MCP spill delivery,
+then use a separately frozen future round. Original cohorts, every failure/cost,
+both independent confirmation gates and external enrollment at 0/5 remain open.
 Tracking issue: [#874](https://github.com/sysevol-ai/CodeNib/issues/874).
 The detailed contract is [the internal pilot plan](experiments/codegraph_net_benefit.md).
 
