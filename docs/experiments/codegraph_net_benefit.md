@@ -96,8 +96,12 @@ take 8.29/8.31 seconds and later graph updates take 8.31/8.25 seconds. Eager
 initialization takes 9.36/9.58 seconds. These are component observations, not
 complete task timings or an advantage claim. All four earlier failed controls,
 including the exact temporary-provider-config source-binding failure, remain
-archived alongside the corrected controls. Full local unit verification passes
-8,885 cases with 25 skips; MCP 2.3 passes 320 related checks. Remote acceptance,
+archived alongside the corrected controls. The candidate is now rebased onto
+current `main`, including its subsequent SCIP runtime and identity repairs.
+[Current-base verification](codegraph_deferred_current_main_2026_10_30.json)
+passes both preparation modes on fresh Requests indexes, 8,871 unit cases with
+25 skips, and 320 related MCP 2.3 checks. The resolved provider package trees
+are unchanged before and after those controls. Remote acceptance,
 representative preparation/update coverage, voluntary use, both independent
 confirmation sets and external adoption remain open. The goal is active.
 

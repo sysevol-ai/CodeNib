@@ -133,8 +133,12 @@ tools are preinstalled and native registration is substituted. Initialization
 falls to about 1.36 seconds in these two deferred controls, while their first
 graph query costs about 8.3 seconds; graph update costs remain recorded. These
 component observations establish neither whole-task savings nor a benefit over
-Serena. The candidate passes 8,885 local unit cases (25 skips) and 320 related
-MCP 2.3 checks; all earlier failures and both frozen cohorts remain unchanged.
+Serena. The candidate is rebased onto current `main`, whose subsequent SCIP
+repairs close #901. Its [current-base verification](experiments/codegraph_deferred_current_main_2026_10_30.json)
+passes both preparation modes on fresh Requests indexes, 8,871 local unit cases
+(25 skips) and 320 related MCP 2.3 checks. All earlier failures and both frozen
+cohorts remain unchanged; the source-seed and historical-runtime draft PRs are
+separate from this candidate.
 Remote acceptance, representative preparation/update coverage and actual
 use remain open. The original paid
 API ceiling and separate five-user adoption gate remain in force.
