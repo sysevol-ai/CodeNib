@@ -36,23 +36,25 @@ SPDX-License-Identifier: Apache-2.0
   font-display: swap;
 }
 
-/* Light page chrome around the dark evidence example. */
+/* Light page chrome around the dark evidence example. The same neutral greys
+   and single blue as the demo (web/app/globals.css). */
 :root {
   /* Read by the shared example component (shadow DOM) for its type. */
   --font-geist-sans: "Geist";
   --font-geist-mono: "Geist Mono";
-  --bg: #f8fafc;
+  --bg: #ffffff;
   --surface: #ffffff;
-  --subtle: #f1f5f9;
-  --line: #e2e8f0;
-  --ink: #0f172a;
-  --ink-2: #475569;
-  --ink-3: #64748b;
-  --accent: #0e7490;
+  --subtle: #f8f9fa;
+  --line: #dadce0;
+  --line-strong: #bdc1c6;
+  --ink: #1f1f1f;
+  --ink-2: #5f6368;
+  --ink-3: #80868b;
+  --accent: #0b57d0;
+  --accent-hover: #0842a0;
   --accent-ink: #ffffff;
-  --shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 12px 32px rgba(15, 23, 42, 0.06);
-  --r-box: 16px;   /* containers */
-  --r-ui: 10px;    /* interactive */
+  --r-box: 10px;   /* containers */
+  --r-ui: 6px;     /* interactive */
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -75,8 +77,7 @@ img { max-width: 100%; height: auto; display: block; }
 /* Page chrome only: the example has its own header and footer. */
 body > header {
   position: sticky; top: 0; z-index: 20;
-  background: color-mix(in srgb, var(--bg) 82%, transparent);
-  backdrop-filter: blur(12px);
+  background: var(--bg);
   border-bottom: 1px solid var(--line);
 }
 .nav { display: flex; align-items: center; gap: 28px; height: 64px; }
@@ -91,33 +92,23 @@ body > header {
   display: inline-flex; align-items: center; gap: 8px;
   font-size: 14.5px; font-weight: 540; white-space: nowrap;
   padding: 9px 18px; border-radius: var(--r-ui);
-  transition: transform .15s, box-shadow .15s, background .15s, border-color .15s;
+  transition: background .15s, border-color .15s;
 }
-.btn:active { transform: translateY(1px) scale(0.99); }
 .btn-primary { background: var(--accent); color: var(--accent-ink); }
-.btn-primary:hover { box-shadow: 0 4px 16px rgba(14, 116, 144, 0.18); transform: translateY(-1px); }
-.btn-ghost { border: 1px solid var(--line); color: var(--ink); background: var(--surface); }
-.btn-ghost:hover { border-color: var(--ink-3); transform: translateY(-1px); }
+.btn-primary:hover { background: var(--accent-hover); }
+.btn-ghost { border: 1px solid var(--line-strong); color: var(--ink); background: var(--surface); }
+.btn-ghost:hover { border-color: var(--ink-3); background: var(--subtle); }
 .btn-lg { font-size: 15.5px; padding: 12px 24px; }
 
 /* ---- hero: question, explanation, calls, source ---- */
 .stage {
-  --h-text: #e6edf7; --h-soft: #b6c2d4; --h-muted: #a9b8cc;
-  --h-line: rgba(148, 163, 184, 0.16); --h-line-strong: rgba(148, 163, 184, 0.32);
-  --h-accent: #60a5fa; --h-trace: #22d3ee;
+  --h-text: #e8eaed; --h-soft: #bdc1c6; --h-muted: #9aa0a6;
+  --h-line: rgba(232, 234, 237, 0.12); --h-line-strong: rgba(232, 234, 237, 0.26);
+  --h-accent: #8ab4f8; --h-trace: #8ab4f8;
   position: relative; overflow: hidden;
   padding: clamp(28px, 3.5vw, 48px) 0;
   color: var(--h-text);
-  background:
-    radial-gradient(1100px 520px at 78% -8%, rgba(59, 130, 246, 0.24), transparent 62%),
-    radial-gradient(900px 420px at -6% 64%, rgba(34, 211, 238, 0.1), transparent 60%),
-    #070b14;
-}
-.stage::before {
-  content: ""; position: absolute; inset: 0; pointer-events: none;
-  background-image: radial-gradient(rgba(148, 163, 184, 0.14) 1px, transparent 1px);
-  background-size: 24px 24px;
-  mask-image: linear-gradient(to bottom, #000 0, #000 70%, transparent 100%);
+  background: #121315;
 }
 .stage-row {
   position: relative; width: 100%;
@@ -125,29 +116,30 @@ body > header {
   column-gap: clamp(32px, 4.5vw, 72px); align-items: stretch;
 }
 .stage-intro { min-width: 0; padding-top: 18px; }
-.stage-eyebrow { color: var(--h-trace); font-size: 12px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; }
-.stage-intro h1 { margin: 16px 0 20px; color: #fff; font-size: clamp(2.4rem, 3.7vw, 3.4rem); font-weight: 650; line-height: 1.08; letter-spacing: -0.045em; text-wrap: balance; }
-.stage-intro h1 span { color: var(--h-trace); }
+.stage-intro h1 { margin: 0 0 20px; color: #fff; font-size: clamp(2.4rem, 3.7vw, 3.4rem); font-weight: 650; line-height: 1.08; letter-spacing: -0.045em; text-wrap: balance; }
 .stage-sub { max-width: 46ch; color: var(--h-soft); font-size: 17px; line-height: 1.65; }
 .stage-ctas { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
-.stage .btn-primary { background: var(--h-trace); color: #07131d; }
+.stage .btn-primary { background: var(--h-accent); color: #062e6f; }
+.stage .btn-primary:hover { background: #aecbfa; }
 .stage .btn-ghost { background: transparent; border-color: var(--h-line-strong); color: var(--h-text); }
+.stage .btn-ghost:hover { background: rgba(255, 255, 255, 0.06); border-color: var(--h-soft); }
 .stage-note { margin-top: 12px; color: var(--h-muted); font-size: 13px; }
 .example-tasks { display: grid; gap: 8px; margin-top: 30px; }
 .example-tasks > p { color: var(--h-soft); font-size: 13px; font-weight: 600; margin-bottom: 2px; }
 .example-tasks button { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 44px; padding: 11px 14px; border: 1px solid var(--h-line); border-radius: var(--r-ui); background: rgba(255, 255, 255, 0.03); color: var(--h-soft); font: inherit; font-size: 14px; line-height: 1.45; cursor: pointer; text-align: left; }
-.example-tasks button::after { content: "→"; color: var(--h-trace); }
-.example-tasks button:hover, .example-tasks button[aria-pressed="true"] { border-color: var(--h-trace); background: rgba(34, 211, 238, 0.08); color: #fff; }
+.example-tasks button::after { content: "→"; color: var(--h-accent); }
+.example-tasks button:hover { border-color: var(--h-line-strong); background: rgba(255, 255, 255, 0.05); color: #fff; }
+.example-tasks button[aria-pressed="true"] { border-color: var(--h-accent); background: rgba(138, 180, 248, 0.1); color: #fff; }
 .example-tasks button:focus-visible { outline: 3px solid var(--h-trace); outline-offset: 3px; }
 html:not(.js) .example-tasks { display: none; }
 .stage-evidence { min-width: 0; }
 .repository-handoff { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: clamp(32px, 4.5vw, 72px); align-items: start; }
 .repository-handoff .section-sub { font-size: 16px; }
-.repo-entry { padding: 24px; border: 1px solid var(--line); border-radius: var(--r-box); background: var(--surface); box-shadow: var(--shadow); }
+.repo-entry { padding: 24px; border: 1px solid var(--line); border-radius: var(--r-box); background: var(--surface); }
 .repo-entry label { display: block; font-size: 14px; font-weight: 600; margin-bottom: 8px; }
 .repo-entry-row { display: flex; gap: 8px; }
-.repo-entry input { min-width: 0; flex: 1; font: inherit; font-size: 15px; padding: 13px 16px; border: 1px solid #cbd5e1; border-radius: 8px; background: var(--surface); color: var(--ink); }
-.repo-entry input::placeholder { color: #64748b; }
+.repo-entry input { min-width: 0; flex: 1; font: inherit; font-size: 15px; padding: 13px 16px; border: 1px solid var(--line-strong); border-radius: var(--r-ui); background: var(--surface); color: var(--ink); }
+.repo-entry input::placeholder { color: var(--ink-2); }
 .repo-entry input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .repo-entry button { font: inherit; font-size: 15px; font-weight: 600; border: 0; cursor: pointer; padding: 12px 20px; }
 .repo-entry button:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
@@ -158,9 +150,11 @@ html:not(.js) .example-tasks { display: none; }
    properties it reads. */
 .stage codenib-explorer {
   display: block; min-width: 0;
-  --bg-surface: rgba(10, 15, 28, 0.9); --bg-muted: rgba(255, 255, 255, 0.03);
-  --border-subtle: rgba(148, 163, 184, 0.2); --text-primary: #e6edf7;
-  --text-secondary: #b6c2d4; --accent: #67e8f9; --accent-soft: rgba(34, 211, 238, 0.1);
+  --bg-surface: #1a1b1e; --bg-muted: rgba(255, 255, 255, 0.03);
+  --border-subtle: rgba(232, 234, 237, 0.14); --text-primary: #e8eaed;
+  --text-secondary: #bdc1c6; --accent: #8ab4f8; --accent-soft: rgba(138, 180, 248, 0.14);
+  --explore-code-bg: #111214; --explore-code-rule: rgba(232, 234, 237, 0.12);
+  --explore-code-line: rgba(138, 180, 248, 0.16); --explore-code-mark: #8ab4f8;
 }
 .agent-handoff { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: clamp(32px, 4.5vw, 72px); align-items: start; }
 .agent-handoff .setup { margin-top: 0; }
@@ -168,19 +162,19 @@ html:not(.js) .example-tasks { display: none; }
 /* Static product preview: visiting the landing page never loads the demo. */
 .frame {
   border: 1px solid var(--line); border-radius: var(--r-box);
-  background: var(--surface); box-shadow: var(--shadow); overflow: hidden;
+  background: var(--surface); overflow: hidden;
 }
 .frame-bar {
   display: flex; align-items: center; justify-content: space-between;
   padding: 10px 16px; border-bottom: 1px solid var(--line);
   background: var(--subtle); color: var(--ink-2); font-size: 12px;
 }
-.agent-demo { display: block; width: 100%; height: auto; background: #0b1523; }
+.agent-demo { display: block; width: 100%; height: auto; background: #121315; }
 .preview-caption { padding: 12px 16px; font-size: 13px; color: var(--ink-2); }
-.evidence { margin-top: 24px; padding: 20px 24px; border-left: 3px solid var(--accent); border-radius: 0 var(--r-ui) var(--r-ui) 0; background: var(--subtle); font-size: 14px; color: var(--ink-2); }
-.evidence strong { display: block; font-size: 20px; color: var(--ink); letter-spacing: -.02em; margin-bottom: 4px; }
+.evidence { margin-top: 24px; padding: 16px 20px; border: 1px solid var(--line); border-radius: var(--r-ui); background: var(--subtle); font-size: 15px; color: var(--ink-2); }
+.evidence strong { color: var(--ink); font-weight: 600; }
 .evidence a, .text-link { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
-.setup pre { overflow-x: auto; margin: 20px 0; padding: 18px; background: var(--ink); color: #f8fafc; border-radius: var(--r-ui); font-size: 13px; }
+.setup pre { overflow-x: auto; margin: 20px 0; padding: 18px; background: #121315; color: #e8eaed; border-radius: var(--r-ui); font-size: 13px; }
 .setup p { margin-top: 14px; color: var(--ink-2); font-size: 15px; }
 .setup code { font-family: "Geist Mono", ui-monospace, monospace; }
 a:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; }
@@ -192,15 +186,17 @@ h2 { font-size: clamp(1.7rem, 3vw, 2.3rem); font-weight: 620; letter-spacing: -0
 .section-sub { margin-top: 12px; color: var(--ink-2); font-size: 16.5px; max-width: 58ch; }
 
 /* Product paths */
-.bento { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 32px; }
+/* Three paths as a ruled row, not three boxed cards. */
+.bento { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 32px; margin-top: 32px; }
 .cell {
-  border: 1px solid var(--line); border-radius: var(--r-box);
-  background: var(--surface); padding: 28px;
-  display: flex; flex-direction: column; gap: 12px;
+  border-top: 1px solid var(--ink);
+  padding-top: 20px;
+  display: flex; flex-direction: column; gap: 10px;
 }
 .cell h3 { font-size: 18px; font-weight: 600; }
 .cell p { font-size: 14.5px; color: var(--ink-2); }
 .cell .text-link { margin-top: auto; font-size: 14px; }
+.bento + .section-sub { margin-top: 32px; }
 
 /* latest article */
 .latest-card {
@@ -216,10 +212,7 @@ h2 { font-size: clamp(1.7rem, 3vw, 2.3rem); font-weight: 620; letter-spacing: -0
   display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center;
   color: var(--ink-2); font-family: "Geist Mono", monospace; font-size: 12px;
 }
-.latest-meta .tag {
-  border: 1px solid #bfdbfe; border-radius: 99px;
-  background: #eff6ff; color: #1d4ed8; padding: 3px 9px; font-weight: 620;
-}
+.latest-meta .tag { color: var(--accent); font-weight: 600; }
 .latest-card h3 {
   margin-top: 18px; font-size: clamp(1.65rem, 3vw, 2.35rem);
   font-weight: 620; letter-spacing: -.03em; line-height: 1.1;
@@ -230,12 +223,13 @@ h2 { font-size: clamp(1.7rem, 3vw, 2.3rem); font-weight: 620; letter-spacing: -0
   display: flex; align-items: center; min-height: 320px;
   border-left: 1px solid var(--line); background: var(--subtle); padding: 24px;
 }
-.latest-art img { width: 100%; border: 1px solid #dbe5f1; border-radius: 12px; }
+.latest-art img { width: 100%; border: 1px solid var(--line); border-radius: var(--r-ui); }
 
 /* final CTA */
-.cta-block { text-align: center; padding: 80px 0; }
-.cta-block h2 { font-size: clamp(2rem, 4vw, 2.9rem); }
-.cta-block .ctas { display: flex; gap: 12px; justify-content: center; margin-top: 30px; flex-wrap: wrap; }
+.cta-block { padding: 80px 0; }
+.cta-block .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 24px; }
+.cta-block h2 { font-size: clamp(1.7rem, 3vw, 2.3rem); }
+.cta-block .ctas { display: flex; gap: 12px; flex-wrap: wrap; }
 
 body > footer { border-top: 1px solid var(--line); }
 .foot { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 24px; padding-top: 26px; padding-bottom: 26px; font-size: 14px; color: var(--ink-2); }
@@ -245,18 +239,6 @@ body > footer { border-top: 1px solid var(--line); }
 .foot .foot-brand span { display: block; line-height: 20px; }
 .foot .spacer { margin-left: auto; }
 .foot a:hover { color: var(--ink); }
-
-/* ---- motion ---- */
-@media (prefers-reduced-motion: no-preference) {
-  .rise { opacity: 0; transform: translateY(16px); animation: rise .65s cubic-bezier(.16,1,.3,1) forwards; }
-  .d1 { animation-delay: .06s; } .d2 { animation-delay: .14s; }
-  .d3 { animation-delay: .22s; } .d4 { animation-delay: .34s; }
-  @keyframes rise { to { opacity: 1; transform: none; } }
-  .js .reveal { opacity: 0; transform: translateY(18px); transition: opacity .6s cubic-bezier(.16,1,.3,1), transform .6s cubic-bezier(.16,1,.3,1); }
-  .js .reveal.in { opacity: 1; transform: none; }
-  .cell { transition: border-color .2s, transform .2s, opacity .6s cubic-bezier(.16,1,.3,1); }
-  .cell:hover { border-color: var(--ink-3); }
-}
 
 /* ---- mobile ---- */
 @media (max-width: 860px) {
@@ -284,7 +266,6 @@ body > footer { border-top: 1px solid var(--line); }
   .stage-ctas .btn-primary span { display: none; }
   .repo-entry-row { flex-direction: column; }
   .repo-entry { padding: 20px; }
-  .cell { padding: 24px; }
   .nav { gap: 12px; }
   .brand img { height: 28px; max-width: 122px; }
   .nav .docs-link { display: none; }
@@ -319,8 +300,7 @@ body > footer { border-top: 1px solid var(--line); }
     <div class="wrap stage-row">
       <div class="stage-intro">
         <div class="stage-copy">
-          <p class="stage-eyebrow">Get to know the code</p>
-          <h1>Understand unfamiliar code<br><span>with evidence.</span></h1>
+          <h1>Understand unfamiliar code<br>with evidence.</h1>
           <p class="stage-sub">Explore how a repository works, follow its call paths, and inspect the source behind each explanation.</p>
           <div class="stage-ctas">
             <a class="btn btn-primary btn-lg" href="#example-source">Try an example <span aria-hidden="true">→</span></a>
@@ -372,7 +352,7 @@ codenib codegraph init /path/to/your/repo</code></pre>
         <p>Python 3.10+, Git, a clean checkout, and Claude Code or Codex. This shipping CodeGraph path runs locally without a model, API key, or GPU for CodeNib; your agent uses its own model. It is separate from the grep/Jev experiment.</p>
         <p><a class="text-link" href="https://docs.codenib.ai/codegraph/">Setup and language prerequisites</a> · Ask your agent to start with <code>explore_context</code>.</p>
       </div>
-      <figure class="frame rise d2">
+      <figure class="frame">
         <div class="frame-bar"><span>Requests · Claude Code + CodeNib</span><span>15-second replay</span></div>
         <video class="agent-demo" controls muted playsinline preload="none" width="1080" height="608" poster="assets/demos/codegraph-claude.png" aria-label="Recorded CodeGraph setup, Claude Code source lookup and caller-chain trace" aria-describedby="agent-demo-caption">
           <source src="assets/demos/codegraph-claude.webm" type="video/webm">
@@ -386,26 +366,26 @@ codenib codegraph init /path/to/your/repo</code></pre>
 
   <section>
     <div class="wrap">
-      <h2 class="reveal">Evidence you can inspect. Tools you can compare.</h2>
-      <p class="section-sub reveal">Follow source locations, check language coverage, and reproduce the retrieval methods.</p>
+      <h2>Evidence you can inspect. Tools you can compare.</h2>
+      <p class="section-sub">Follow source locations, check language coverage, and reproduce the retrieval methods.</p>
       <div class="bento">
-        <div class="cell reveal">
+        <div class="cell">
           <h3>Follow definitions and calls</h3>
           <p>Bounded context and typed SCIP/LSP graphs help your agent navigate from a question to the source. Compare the fit with grep, Serena, CodeGraph, and DeepWiki.</p>
           <a class="text-link" href="https://docs.codenib.ai/comparison/">Compare repository tools →</a>
         </div>
-        <div class="cell reveal">
+        <div class="cell">
           <h3>Know your language's support</h3>
           <p>14 language entries, 12 with graph backends. See which providers, prerequisites, and capabilities apply to your repository.</p>
           <a class="text-link" href="https://docs.codenib.ai/language_capabilities/">Open the language matrix →</a>
         </div>
-        <div class="cell reveal">
+        <div class="cell">
           <h3>Reproduce the methods</h3>
           <p>Pinned LocAgent, Agentless, CoSIL, OrcaLoca, and RepoNavigator contracts. Dataset and scorer checks make the evaluation boundaries visible.</p>
           <a class="text-link" href="https://docs.codenib.ai/agent_integrations/">Explore agent integrations →</a>
         </div>
       </div>
-      <p class="section-sub reveal">Share a Wiki from your own repository with the existing <a class="text-link" href="https://docs.codenib.ai/github_pages/">GitHub Pages workflow</a>.</p>
+      <p class="section-sub">Share a Wiki from your own repository with the existing <a class="text-link" href="https://docs.codenib.ai/github_pages/">GitHub Pages workflow</a>.</p>
       <p class="evidence">
         <strong>71.4% code-block Recall@5.</strong>
         Model-planned grep → Jev on 100 real issues. +12.8 points over the same grep candidates without reranking.<br>
@@ -416,9 +396,9 @@ codenib codegraph init /path/to/your/repo</code></pre>
 
   <section>
     <div class="wrap">
-      <h2 class="reveal">From the blog</h2>
-      <p class="section-sub reveal">Architecture, benchmark results and deployment guides from the team building CodeNib.</p>
-      <a class="latest-card reveal" href="/blogs/contextbench-500-tasks/" aria-label="Read CodeNib on ContextBench: 77% Line Recall Before Repair">
+      <h2>From the blog</h2>
+      <p class="section-sub">Architecture, benchmark results and deployment guides from the team building CodeNib.</p>
+      <a class="latest-card" href="/blogs/contextbench-500-tasks/" aria-label="Read CodeNib on ContextBench: 77% Line Recall Before Repair">
         <div class="latest-copy">
           <div class="latest-meta">
             <span class="tag">Coding agents</span>
@@ -437,8 +417,8 @@ codenib codegraph init /path/to/your/repo</code></pre>
 
   <div class="cta-block">
     <div class="wrap">
-      <h2 class="reveal">Try it where you write code.</h2>
-      <div class="ctas reveal">
+      <h2>Try it where you write code.</h2>
+      <div class="ctas">
         <a class="btn btn-primary btn-lg" href="#get-started">Use with your agent</a>
         <a class="btn btn-ghost btn-lg" href="https://github.com/sysevol-ai/CodeNib/releases">Latest releases</a>
       </div>
@@ -464,13 +444,6 @@ codenib codegraph init /path/to/your/repo</code></pre>
   </div>
 </footer>
 
-<script>
-  const io = new IntersectionObserver((es) => {
-    for (const e of es) if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); }
-  }, { threshold: 0.15 });
-  document.querySelectorAll(".reveal").forEach((el) => io.observe(el));
-
-</script>
 
 </body>
 </html>

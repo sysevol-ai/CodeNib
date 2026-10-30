@@ -13,12 +13,12 @@ const browser = await chromium.launch();
 const reports = [];
 
 async function revealPage(page) {
-  // Trigger the existing section reveals before taking a full-page image.
+  // Every section is visible at rest; scrolling through only loads lazy media
+  // before the full-page image.
   for (const section of await page.locator("main > section, .cta-block").all()) {
     await section.scrollIntoViewIfNeeded();
   }
   await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
-  await page.locator(".reveal").last().waitFor({ state: "visible" });
   await page.waitForTimeout(700);
 }
 
