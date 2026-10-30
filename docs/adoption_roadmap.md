@@ -248,8 +248,11 @@ unchanged. The current unit tier passes 8,922 cases (24 skips) and MCP 2.3 passe
 432 (seven skips). This is bounded engineering evidence; complete-task,
 independent and external-use gates remain open. Main release verification for
 [#917](https://github.com/sysevol-ai/CodeNib/pull/917) passes all 20 verifier
-jobs, with five tag-only publication skips. Its Full CI is queued behind an
-earlier scheduled run; queued integration/native/consumer work is not acceptance.
+jobs, with five tag-only publication skips. Its
+[Full CI](https://github.com/sysevol-ai/CodeNib/actions/runs/41067183408)
+also passes unit, integration, serial integration, native SCIP and graph-consumer
+jobs; model-dependent slow work is conditionally skipped. The engineering gate
+is closed without establishing whole-task benefit.
 
 The [SDK output-delivery control](experiments/codegraph_sdk_output_delivery.md)
 repairs the isolated runner's MCP spill handoff with exact session/call and
@@ -262,7 +265,25 @@ preserves foreign containers. Copying is not solver read credit. All prior
 model outcomes remain frozen. Current product admission, authenticated native
 subscription/model settings, a separately sealed model cohort and the
 whole-task/independent/external-user gates remain open; this source-checkout
-helper adds no product route or package release.
+helper adds no product route or package release. Merged
+[#918](https://github.com/sysevol-ai/CodeNib/pull/918) passes main unit and
+integration, all twenty release verifier jobs and Docs. Its conditional
+serial/native/consumer skips do not repeat #917's complete chain.
+
+The [independent confirmation admission](experiments/codegraph_confirmation_admission.md)
+fixes Astropy, SymPy and Seaborn from metadata before issue/source/grading
+inspection. All three pinned source fixtures pass single-commit and clean-tree
+checks. Historical model exposure is unknown; prior cohort repositories are
+excluded and no selected failure may trigger replacement. Original grading
+material stays outside model mounts. Native readiness now executes the same
+338 selected tests in each original-production/reference pair: original behavior
+fails and all reference selected outcomes pass, with no collection errors or
+missing selected execution. All six grading containers are absent; the earlier
+controller setup failure is retained. Fifteen task prompts/rubrics, twelve
+product admissions and a full executable/model/resource seal remain open before
+any new inference. Preserve all earlier negative
+outcomes and the unchanged correctness/time/usage gates; no comparative result
+or external enrollment is added.
 Tracking issue: [#874](https://github.com/sysevol-ai/CodeNib/issues/874).
 The detailed contract is [the internal pilot plan](experiments/codegraph_net_benefit.md).
 
