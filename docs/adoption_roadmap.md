@@ -307,9 +307,16 @@ The [exploration entry control](experiments/codegraph_exploration_guidance.md)
 now verifies clearer query-only guidance while preserving all schemas,
 implementation bodies, visibility and preload policy. Both MCP versions pass
 433 cases, and a separate pinned CLI/SDK loopback control delivers the complete
-old/new metadata without a provider/model call. This changes guidance, not the
-completed assessment or its hold decision. Installed-byte admission and useful
-voluntary use remain open before another benefit claim.
+old/new metadata without a provider/model call. A separate
+[installed admission](experiments/codegraph_installed_guidance.md) verifies the
+exact main CI wheel, all 485 Python files and its native extension from outside
+the analyzed checkout, unchanged producer metadata and real stdio delivery of
+a complete verified fixture definition. All four control containers are absent;
+the first missing-parser-cache attempt and two controller API failures are
+retained. Main's full Release matrix passes all twenty verifiers. This changes
+entry acceptance, not the completed assessment or its hold decision. Useful
+voluntary use and the complete-workflow gates remain open before another
+benefit claim; public package 0.2.4 is unchanged.
 
 Tracking issue: [#874](https://github.com/sysevol-ai/CodeNib/issues/874).
 The detailed contract is [the internal pilot plan](experiments/codegraph_net_benefit.md).
