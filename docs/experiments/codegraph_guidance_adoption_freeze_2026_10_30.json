@@ -1,0 +1,51 @@
+{
+  "schema": "codenib.guidance-adoption-freeze.v1",
+  "status": "prospectively sealed; zero model tasks run",
+  "sealed_utc": "2026-10-30T21:44:41.451042+00:00",
+  "binding_sha256": "3d9e3bac6862f20e483f9919adec476ced598e3bb1ee43130af949ed3c677f54",
+  "files_sealed": 7357,
+  "scope": "two internal source-review tasks, one CodeNib condition; not comparative efficacy or independent confirmation",
+  "model_calls_before_seal": 0,
+  "public_files": 33,
+  "private_rubric": {
+    "path": "private-rubric.json",
+    "bytes": 1487,
+    "sha256": "0c2d29b5042ad3c1564f67dc5741b4a02dda232addb02e1a180c7df56f508a24",
+    "location": "outside every model mount and native access scope; source review only after both tasks terminal"
+  },
+  "source_archive": {
+    "sha256": "937771428fd444b5bc619e6dd3fbba0f8c7490be862cd6c8ec580d3a8b4a5625",
+    "bytes": 18575360,
+    "upstream_commit": "5f9573d97f141e1588af30ea95b06ae988f104a1",
+    "selection": [
+      "codenib",
+      "core",
+      "test",
+      "pyproject.toml",
+      "setup.py",
+      "LICENSE"
+    ],
+    "public_source_files": 1143
+  },
+  "full_benefit_gate": "unchanged; no comparative gain/independent confirmation/external enrollment in this probe",
+  "parts": [
+    {
+      "path": "codegraph_guidance_adoption_freeze_2026_10_30.part01.json",
+      "bytes": 493392,
+      "sha256": "479f14f5649e04e2146451deab18ccef21c9e9a64e4d94390d9f014fed3aa0ea",
+      "public_files": 4
+    },
+    {
+      "path": "codegraph_guidance_adoption_freeze_2026_10_30.part02.json",
+      "bytes": 487469,
+      "sha256": "bd008cc72f4a22c6c62b24247c6401b3885af11662b0658ad26b4a7c2b624dd3",
+      "public_files": 15
+    },
+    {
+      "path": "codegraph_guidance_adoption_freeze_2026_10_30.part03.json",
+      "bytes": 173473,
+      "sha256": "a76fc717103558f710b1b2c5a33cda8b6a1b223a797e8f8060360115cf7f3078",
+      "public_files": 14
+    }
+  ]
+}
