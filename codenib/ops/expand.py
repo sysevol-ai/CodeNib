@@ -328,17 +328,64 @@ def _neighbor_direction(direction: str) -> str:
 
 
 def _resolve_seed(graph: CodeGraph, seed: QueriedNode) -> Optional[str]:
-    for value in (seed.node_id, seed.node_name):
+    values = [seed.node_id, seed.node_name]
+    if seed.file and seed.node_name:
+        values.append(f"{seed.file}:{seed.node_name}")
+    for value in values:
         if not value:
             continue
-        canonical, _ = graph.resolve_symbol(value)
+        canonical, candidates = graph.resolve_symbol(value)
         if canonical is not None:
             return canonical
-    if seed.file and seed.node_name:
-        canonical, _ = graph.resolve_symbol(f"{seed.file}:{seed.node_name}")
-        if canonical is not None:
-            return canonical
+        if candidates:
+            canonical = _resolve_seed_from_span(graph, seed, value)
+            if canonical is not None:
+                return canonical
     return None
+
+
+def _resolve_seed_from_span(
+    graph: CodeGraph, seed: QueriedNode, symbol: str
+) -> Optional[str]:
+    """Disambiguate an exact readable alias using its 0-based source span.
+
+    Recovered definitions can share a chunk alias while retaining distinct
+    physical graph identities. Match only an existing alias in the same file;
+    a missing, invalid or non-unique span cannot establish that identity.
+    """
+    start = seed.start_line
+    end = seed.end_line if seed.end_line is not None else start
+    if (
+        not seed.file
+        or any(type(line) is not int or line < 0 for line in (start, end))
+        or end < start
+    ):
+        return None
+    unified_index = getattr(graph, "unified_index", None)
+    lookup = getattr(graph, "get_node_info_by_name", None)
+    if not callable(unified_index) or not callable(lookup):
+        return None
+    alias = symbol.strip().strip("`'\"")
+    index = unified_index()
+    names = index.get(alias) or index.get(f"{alias}()") or ()
+    matched = []
+    for name in dict.fromkeys(names):
+        info = lookup(name) or {}
+        if (
+            info.get("file") != seed.file
+            or not is_symbol_node(info.get("type"))
+            or node_is_reference_only(info)
+        ):
+            continue
+        bounds = (info.get("start_line"), info.get("end_line"))
+        if (
+            any(type(line) is not int or line < 0 for line in bounds)
+            or bounds[1] < bounds[0]
+        ):
+            continue
+        if bounds[0] <= end and bounds[1] >= start:
+            matched.append(name)
+    return matched[0] if len(matched) == 1 else None
 
 
 def _neighbor_to_queried(
