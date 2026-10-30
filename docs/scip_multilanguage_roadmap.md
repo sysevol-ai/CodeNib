@@ -71,6 +71,13 @@ indexed source before serial and C++ decoding. Same-named nested definitions,
 alternative class members and constructor fields retain separate locations;
 cross-scope compiler collisions use positional LSP evidence. Shared lexical
 bindings keep a static target set, and source-only definitions are explicit.
+An LSP target at a later field write can now bind to existing definitions in
+the same physical class, provided its compiler-anchored instance parameter
+has no observed rebinding. Other receivers and unsupported method decorators
+cannot supply this fallback. A full 1,168-document CodeNib control builds and
+returns verified MCP source and relationships; its first graph request still
+takes 247.965 seconds under two CPUs and 4 GiB. This is a correctness repair,
+not a cold-start acceleration or comparative benefit result.
 The [identity decision and execution record](experiments/codegraph_python_identity.md)
 cover the original IPython snapshot, failed pytest admission and captured
 regressions. Both complete saved graphs have serial/native parity and no

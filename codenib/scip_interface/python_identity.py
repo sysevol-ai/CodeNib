@@ -54,6 +54,8 @@ class _Declaration:
     original: str = ""
     symbol: str = ""
     nonlocals: set[str] = field(default_factory=set)
+    receiver: tuple[int, int] | None = None
+    instance_parameter: _Declaration | None = None
 
 
 @dataclass
@@ -63,6 +65,7 @@ class _Source:
     lines: list[str]
     declarations: list[_Declaration] = field(default_factory=list)
     parameter_anchors: dict[tuple[int, int], set[str]] = field(default_factory=dict)
+    rebound_parameters: set[str] = field(default_factory=set)
 
     def column(self, line: int, column: int, encoding: int) -> int:
         """Convert a SCIP column to a UTF-8 byte column without rounding."""
@@ -184,6 +187,17 @@ def _declarations(source: _Source, parser) -> list[_Declaration]:
     tree = parser.parse(content)
     result = []
 
+    def record_rebinding(target):
+        if target is None or target.type in {"attribute", "subscript"}:
+            return
+        if target.type == "identifier":
+            source.rebound_parameters.update(
+                source.parameter_anchors.get(tuple(target.start_point), ())
+            )
+        else:
+            for child in target.named_children:
+                record_rebinding(child)
+
     def visit(node, parent):
         if node.type == "nonlocal_statement" and parent is not None:
             parent.nonlocals.update(
@@ -208,26 +222,39 @@ def _declarations(source: _Source, parser) -> list[_Declaration]:
                 result.append(declaration)
                 parameters = node.child_by_field_name("parameters")
                 if parameters is not None:
-                    for parameter in _parameter_names(parameters):
-                        result.append(
-                            _Declaration(
-                                name=content[
-                                    parameter.start_byte : parameter.end_byte
-                                ].decode("utf-8"),
-                                kind="parameter",
-                                start=tuple(parameter.start_point),
-                                end=tuple(parameter.end_point),
-                                extent=(*parameter.start_point, *parameter.end_point),
-                                parent=declaration,
-                            )
+                    for number, parameter in enumerate(_parameter_names(parameters)):
+                        argument = _Declaration(
+                            name=content[
+                                parameter.start_byte : parameter.end_byte
+                            ].decode("utf-8"),
+                            kind="parameter",
+                            start=tuple(parameter.start_point),
+                            end=tuple(parameter.end_point),
+                            extent=(*parameter.start_point, *parameter.end_point),
+                            parent=declaration,
                         )
+                        result.append(argument)
+                        if (
+                            number == 0
+                            and parent is not None
+                            and parent.kind == "class"
+                            and node.parent.type != "decorated_definition"
+                            and parameter.parent.type
+                            not in {"list_splat_pattern", "dictionary_splat_pattern"}
+                        ):
+                            declaration.instance_parameter = argument
                 parent = declaration
         elif node.type in {"assignment", "augmented_assignment", "named_expression"}:
             target = node.child_by_field_name("left") or node.child_by_field_name(
                 "name"
             )
+            record_rebinding(target)
             kind = "assignment"
+            receiver = None
             if target is not None and target.type == "attribute":
+                obj = target.child_by_field_name("object")
+                if obj is not None and obj.type == "identifier":
+                    receiver = tuple(obj.start_point)
                 target = target.child_by_field_name("attribute")
                 kind = "attribute"
             if target is not None and target.type == "identifier":
@@ -241,8 +268,18 @@ def _declarations(source: _Source, parser) -> list[_Declaration]:
                         end=tuple(target.end_point),
                         extent=(*node.start_point, *node.end_point),
                         parent=parent,
+                        receiver=receiver,
                     )
                 )
+        elif node.type in {"for_statement", "for_in_clause"}:
+            record_rebinding(node.child_by_field_name("left"))
+        elif node.type == "as_pattern":
+            record_rebinding(node.child_by_field_name("alias"))
+        elif node.type == "case_pattern":
+            record_rebinding(node)
+        elif node.type == "delete_statement":
+            for child in node.named_children:
+                record_rebinding(child)
         for child in node.named_children:
             visit(child, parent)
 
@@ -375,6 +412,43 @@ def _parameter_selection_target(source, position, span, family):
         if prefix in {b"*", b"**"}:
             matches.append(declaration)
     return matches[0] if len(matches) == 1 else None
+
+
+def _attribute_assignment_targets(source, position, original, family):
+    """Bind an LSP field-write target to its existing physical class binding.
+
+    Providers may select a later write rather than the constructor's field
+    definition. Require the same compiler field at that exact source anchor,
+    an unmodified instance parameter of an undecorated method, and existing
+    definitions owned by that physical class. A write never becomes a new
+    definition, and repeated declarations of the same field retain their union.
+    """
+
+    writes = [
+        d
+        for d in source.declarations
+        if d.kind == "attribute" and d.start == position and d.original == original
+    ]
+    if len(writes) != 1:
+        return []
+    [write] = writes
+    method = write.parent
+    parameter = method.instance_parameter if method is not None else None
+    if (
+        parameter is None
+        or not parameter.original
+        or parameter.original in source.rebound_parameters
+        or parameter.original not in source.parameter_anchors.get(write.receiver, ())
+    ):
+        return []
+    return [
+        d
+        for _, d in family
+        if d.kind == "assignment"
+        and d.parent is method.parent
+        and d.name == write.name
+        and d.original == original
+    ]
 
 
 def normalize_python_index(
@@ -791,7 +865,16 @@ def normalize_python_index(
                             target = _parameter_assignment_target(
                                 target_source, (line, column), occurrence.symbol, family
                             )
-                        if target is None or target not in [d for _, d in family]:
+                        selected = (
+                            [target]
+                            if target is not None
+                            else _attribute_assignment_targets(
+                                target_source, (line, column), occurrence.symbol, family
+                            )
+                        )
+                        if not selected or any(
+                            d not in [member for _, member in family] for d in selected
+                        ):
                             raise ValueError(
                                 "Python identity target is unresolved at "
                                 f"{target_file}:{line + 1}:{column} "
@@ -799,8 +882,9 @@ def normalize_python_index(
                                 f"({occurrence.symbol!r}; "
                                 f"target={getattr(target, 'original', None)!r})"
                             )
-                        if target not in targets:
-                            targets.append(target)
+                        for target in selected:
+                            if target not in targets:
+                                targets.append(target)
                     if not locations:
                         # The provider cannot always infer a receiver (sympy
                         # reassigns `f` ten times before `f.per`). Keep every

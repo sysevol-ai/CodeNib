@@ -196,6 +196,19 @@ recorded as environment preparation failures. All 396 preceding artifacts,
 34 frozen v2 inputs and 990 development inputs retain their bytes. The earlier
 full serial/native/consumer run closes #901; #902 has no dependency on draft
 #903. Useful voluntary cross-file use and whole-task acceptance remain open.
+
+The [owned-field write control](experiments/codegraph_python_owned_writes_2026_10_30.json)
+repairs a further G1 admission failure: both CodeNib metadata conditions fail
+their first full self-repository graph when LSP selects `RetryOwner.closed`'s
+later assignment. Exact source/compiler receiver evidence now binds that
+write to existing definitions in its physical class, without declaring a new
+field or excluding the failing test file. A complete 1,168-document build
+returns verified MCP source and two bounded relationships, preserving all
+1,757 tracked source files. Its 247.965-second first graph request remains a
+cost, not a speed result. Fifty-three identity cases and 8,904 unit cases
+(24 skips) pass. Both failed admissions remain failed; the next model round
+needs the identical repaired backend in both CodeNib conditions and fresh
+admission/sealing. No inference, package release or benefit claim is added.
 Tracking issue: [#874](https://github.com/sysevol-ai/CodeNib/issues/874).
 The detailed contract is [the internal pilot plan](experiments/codegraph_net_benefit.md).
 

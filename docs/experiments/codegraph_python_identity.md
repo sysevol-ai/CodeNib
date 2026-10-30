@@ -37,6 +37,15 @@ reassignments, explicit `nonlocal` writes and starred parameter selections
 retain the owning physical parameter. Unresolved targets fail the candidate.
 These rules do not perform runtime dispatch or control-flow analysis.
 
+LSP can also select a later instance-field assignment rather than its existing
+constructor definition. Recovery requires the same compiler field at the exact
+write anchor and an unchanged compiler-anchored first parameter of an
+undecorated method in the same physical class. Existing field declarations
+retain their static union; the write does not become a definition. Assignment,
+loop, alias, deletion and match-pattern rebinding cannot prove that receiver.
+Other parameters and decorated methods can still use direct declared targets,
+but cannot supply this field-write fallback.
+
 Both decoders consume the same normalized `index.decoded`. The original
 `index.scip` is retained. Position columns become UTF-8 bytes; the pinned
 Python provider's unspecified legacy columns are UTF-16. Legacy encoded test
@@ -52,6 +61,32 @@ acquired once, only when needed, with bounded queries and cleanup registered
 before startup. Saved source previews and queries do not start it.
 
 ## Validation
+
+The [owned-field execution record](codegraph_python_owned_writes_2026_10_30.json)
+retains the two failed self-repository admissions before inference. A captured
+19-line provider reproduction fails before the fix; source-bound recovery and
+receiver-refusal controls pass afterward. Fifty-three identity tests include
+idempotence and serial/native fixture parity; the full unit tier passes 8,904
+cases with 24 skips. A fresh product graph indexes all 1,168 selected Python
+documents, producing 33,056 nodes and 159,157 edges, while all 1,757 tracked
+source files retain their bytes. Real MCP returns the complete requested
+function and two bounded static relationships with verified source. The first
+graph request takes 247.965 seconds with prepared project/product runtimes,
+two CPUs and 4 GiB, including provider installation; retain that entire cost.
+
+The complete graph's decoder values and edges agree. The native decoder also
+materializes an all-null optional `symbol_kind` column that serial decoding
+omits; the initial strict-key comparison remains recorded separately. This
+does not change either decoder or the persisted schema. The final additional
+receiver guard replays the original raw compiler bytes and reproduces the
+entire successful normalized index byte for byte. Original missing-native-extension and
+standalone resolver-path preparation failures remain retained. No model run,
+publication or task-benefit decision changes. Both metadata conditions must
+use this same backend before a newly admitted and sealed development round.
+Changed-file pinned hooks, strict docs, public-document boundaries and support
+tables pass. A whole-repository hook run reports existing violations in twelve
+unchanged files; its output and base-source hashes remain in the record, and
+formatter changes outside this repair were reverted.
 
 The [execution record](codegraph_python_identity_2026_10_28.json) retains
 successful product controls, failed developer attempts and the implementation

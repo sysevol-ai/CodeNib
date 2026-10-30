@@ -52,6 +52,11 @@ def _captured_fixture(root, name):
         (root / "other.py").write_bytes(other.read_bytes())
     index = Parse((CAPTURES / f"{name}.decoded").read_text(), Index())
     capture = json.loads((CAPTURES / f"{name}.definitions.json").read_text())
+    resolve, queries = _captured_resolver(root, capture)
+    return index, resolve, queries
+
+
+def _captured_resolver(root, capture):
     replies = {tuple(row["request"]): row["response"] for row in capture["queries"]}
     queries = []
 
@@ -66,7 +71,7 @@ def _captured_fixture(root, name):
                     location[field] = (root / relative).as_uri()
         return locations
 
-    return index, resolve, queries
+    return resolve, queries
 
 
 def _fixture(tmp_path):
@@ -472,6 +477,84 @@ def test_constructor_attributes_keep_their_owning_physical_class(tmp_path):
     assert index.SerializeToString() == first
 
 
+def test_lsp_field_write_targets_keep_the_existing_owning_class(tmp_path):
+    index, resolve, _ = _captured_fixture(tmp_path, "attribute_writes")
+    normalize_python_index(index, tmp_path, resolve_definitions=resolve)
+    positions = SCIPOccurrenceIndex.from_decoded_text(
+        MessageToString(index, as_utf8=True)
+    )
+
+    for write, read, declaration in [(5, 8, 3), (15, 18, 13)]:
+        for use, character in [(write, 17), (read, 17)]:
+            definitions = positions.definitions(
+                file_path="nested.py", line=use, character=character
+            )
+            assert {row.start_line for row in definitions} == {declaration}
+        rows = [row for row in index.documents[0].occurrences if row.range[0] == write]
+        assert not any(row.symbol_roles & 1 for row in rows)
+
+
+@pytest.mark.parametrize("case", ["different_receiver", "rebound_receiver"])
+def test_field_write_recovery_refuses_an_unproven_instance_receiver(tmp_path, case):
+    index, resolve, _ = _captured_fixture(tmp_path, "attribute_writes")
+    source = tmp_path / "nested.py"
+    text = source.read_text()
+    if case == "different_receiver":
+        # The exact receiver text must agree with its compiler parameter anchor.
+        text = text.replace("self.closed = True", "them.closed = True", 1)
+    else:
+        text = text.replace("def close(self):", "def close(self): self = object()", 1)
+        [parameter] = [
+            row for row in index.documents[0].occurrences if row.range[:2] == [4, 18]
+        ]
+        occurrence = index.documents[0].occurrences.add()
+        occurrence.symbol = parameter.symbol
+        start = text.splitlines()[4].rindex("self")
+        occurrence.range.extend([4, start, start + 4])
+        occurrence.symbol_roles = 8
+    source.write_text(text)
+    before = index.SerializeToString()
+
+    with pytest.raises(ValueError, match="target is unresolved"):
+        normalize_python_index(index, tmp_path, resolve_definitions=resolve)
+
+    assert index.SerializeToString() == before
+
+
+@pytest.mark.parametrize(
+    "capture",
+    json.loads((CAPTURES / "attribute_write_receivers.fixture").read_text()),
+    ids=lambda row: row["case"],
+)
+def test_captured_field_write_receiver_boundaries(tmp_path, capture):
+    source = tmp_path / "nested.py"
+    source.write_text(capture["source"])
+    index = Parse(capture["decoded"], Index())
+    resolve, _ = _captured_resolver(tmp_path, capture)
+    before = index.SerializeToString()
+
+    if capture["case"] in {
+        "assignment_rebinding",
+        "loop_rebinding",
+        "pattern_rebinding",
+    }:
+        with pytest.raises(ValueError, match="target is unresolved"):
+            normalize_python_index(index, tmp_path, resolve_definitions=resolve)
+        assert index.SerializeToString() == before
+    else:
+        # A direct compiler-declared field target remains valid, including
+        # writes through another argument or a static method's argument.
+        normalize_python_index(index, tmp_path, resolve_definitions=resolve)
+        after = index.SerializeToString()
+        normalize_python_index(
+            index,
+            tmp_path,
+            resolve_definitions=lambda *_: pytest.fail("no further query is needed"),
+        )
+        assert index.SerializeToString() == after
+    assert source.read_text() == capture["source"]
+
+
 def test_standard_library_binding_is_not_reassigned_to_a_project_annotation(tmp_path):
     source = "class A:\n    __qualname__: str\nclass B:\n    __qualname__: str\n"
     (tmp_path / "nested.py").write_text(source)
@@ -684,6 +767,7 @@ def test_expired_recovery_budget_does_not_start_a_provider(tmp_path, monkeypatch
         "varargs",
         "field_redefinitions",
         "attribute_fields",
+        "attribute_writes",
     ],
 )
 def test_native_decoder_preserves_recovered_definitions_and_references(tmp_path, case):

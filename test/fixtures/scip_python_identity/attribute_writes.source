@@ -1,0 +1,19 @@
+def one():
+    class RetryOwner:
+        def __init__(self):
+            self.closed = False
+        def close(self):
+            self.closed = True
+    owner = RetryOwner()
+    owner.close()
+    return owner.closed
+
+def two():
+    class RetryOwner:
+        def __init__(self):
+            self.closed = False
+        def close(self):
+            self.closed = True
+    owner = RetryOwner()
+    owner.close()
+    return owner.closed

@@ -1,0 +1,334 @@
+metadata {
+  tool_info {
+    name: "scip-python"
+    version: "0.6.6"
+  }
+  project_root: "file:///tmp/codenib-python-owned-writes-20261030/repo"
+  text_document_encoding: UTF8
+}
+documents {
+  relative_path: "nested.py"
+  occurrences {
+    range: 0
+    range: 0
+    range: 0
+    symbol: "scip-python python identity-fixture 1 nested/__init__:"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 0
+    range: 4
+    range: 7
+    symbol: "scip-python python identity-fixture 1 nested/one()."
+    symbol_roles: 1
+    enclosing_range: 0
+    enclosing_range: 0
+    enclosing_range: 8
+    enclosing_range: 23
+  }
+  occurrences {
+    range: 1
+    range: 10
+    range: 20
+    symbol: "scip-python python identity-fixture 1 nested/one().RetryOwner#"
+    symbol_roles: 1
+    enclosing_range: 1
+    enclosing_range: 4
+    enclosing_range: 5
+    enclosing_range: 30
+  }
+  occurrences {
+    range: 2
+    range: 12
+    range: 20
+    symbol: "scip-python python identity-fixture 1 nested/one().RetryOwner#__init__()."
+    symbol_roles: 1
+    enclosing_range: 2
+    enclosing_range: 8
+    enclosing_range: 3
+    enclosing_range: 31
+  }
+  occurrences {
+    range: 2
+    range: 21
+    range: 25
+    symbol: "scip-python python identity-fixture 1 nested/one().RetryOwner#__init__().(self)"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 3
+    range: 12
+    range: 16
+    symbol: "scip-python python identity-fixture 1 nested/one().RetryOwner#__init__().(self)"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 3
+    range: 17
+    range: 23
+    symbol: "scip-python python identity-fixture 1 nested/RetryOwner#closed."
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 4
+    range: 12
+    range: 17
+    symbol: "scip-python python identity-fixture 1 nested/one().RetryOwner#close()."
+    symbol_roles: 1
+    enclosing_range: 4
+    enclosing_range: 8
+    enclosing_range: 5
+    enclosing_range: 30
+  }
+  occurrences {
+    range: 4
+    range: 18
+    range: 22
+    symbol: "scip-python python identity-fixture 1 nested/one().RetryOwner#close().(self)"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 5
+    range: 12
+    range: 16
+    symbol: "scip-python python identity-fixture 1 nested/one().RetryOwner#close().(self)"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 5
+    range: 17
+    range: 23
+    symbol: "scip-python python identity-fixture 1 nested/RetryOwner#closed."
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 6
+    range: 4
+    range: 9
+    symbol: "local 0"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 6
+    range: 12
+    range: 22
+    symbol: "scip-python python identity-fixture 1 nested/one().RetryOwner#"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 7
+    range: 4
+    range: 9
+    symbol: "local 0"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 7
+    range: 10
+    range: 15
+    symbol: "scip-python python identity-fixture 1 nested/one().RetryOwner#close()."
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 8
+    range: 11
+    range: 16
+    symbol: "local 0"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 8
+    range: 17
+    range: 23
+    symbol: "scip-python python identity-fixture 1 nested/RetryOwner#closed."
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 10
+    range: 4
+    range: 7
+    symbol: "scip-python python identity-fixture 1 nested/two()."
+    symbol_roles: 1
+    enclosing_range: 10
+    enclosing_range: 0
+    enclosing_range: 18
+    enclosing_range: 23
+  }
+  occurrences {
+    range: 11
+    range: 10
+    range: 20
+    symbol: "scip-python python identity-fixture 1 nested/two().RetryOwner#"
+    symbol_roles: 1
+    enclosing_range: 11
+    enclosing_range: 4
+    enclosing_range: 15
+    enclosing_range: 30
+  }
+  occurrences {
+    range: 12
+    range: 12
+    range: 20
+    symbol: "scip-python python identity-fixture 1 nested/two().RetryOwner#__init__()."
+    symbol_roles: 1
+    enclosing_range: 12
+    enclosing_range: 8
+    enclosing_range: 13
+    enclosing_range: 31
+  }
+  occurrences {
+    range: 12
+    range: 21
+    range: 25
+    symbol: "scip-python python identity-fixture 1 nested/two().RetryOwner#__init__().(self)"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 13
+    range: 12
+    range: 16
+    symbol: "scip-python python identity-fixture 1 nested/two().RetryOwner#__init__().(self)"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 13
+    range: 17
+    range: 23
+    symbol: "scip-python python identity-fixture 1 nested/RetryOwner#closed."
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 14
+    range: 12
+    range: 17
+    symbol: "scip-python python identity-fixture 1 nested/two().RetryOwner#close()."
+    symbol_roles: 1
+    enclosing_range: 14
+    enclosing_range: 8
+    enclosing_range: 15
+    enclosing_range: 30
+  }
+  occurrences {
+    range: 14
+    range: 18
+    range: 22
+    symbol: "scip-python python identity-fixture 1 nested/two().RetryOwner#close().(self)"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 15
+    range: 12
+    range: 16
+    symbol: "scip-python python identity-fixture 1 nested/two().RetryOwner#close().(self)"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 15
+    range: 17
+    range: 23
+    symbol: "scip-python python identity-fixture 1 nested/RetryOwner#closed."
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 16
+    range: 4
+    range: 9
+    symbol: "local 1"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 16
+    range: 12
+    range: 22
+    symbol: "scip-python python identity-fixture 1 nested/two().RetryOwner#"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 17
+    range: 4
+    range: 9
+    symbol: "local 1"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 17
+    range: 10
+    range: 15
+    symbol: "scip-python python identity-fixture 1 nested/two().RetryOwner#close()."
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 18
+    range: 11
+    range: 16
+    symbol: "local 1"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 18
+    range: 17
+    range: 23
+    symbol: "scip-python python identity-fixture 1 nested/RetryOwner#closed."
+    symbol_roles: 8
+  }
+  symbols {
+    symbol: "scip-python python identity-fixture 1 nested/__init__:"
+    documentation: "(module) nested"
+  }
+  symbols {
+    symbol: "scip-python python identity-fixture 1 nested/one()."
+    documentation: "```python\ndef one(): # -> bool:\n```"
+  }
+  symbols {
+    symbol: "scip-python python identity-fixture 1 nested/one().RetryOwner#"
+    documentation: "```python\nclass RetryOwner:\n```"
+  }
+  symbols {
+    symbol: "scip-python python identity-fixture 1 nested/one().RetryOwner#__init__()."
+    documentation: "```python\ndef __init__(\n  self\n) -> None:\n```"
+  }
+  symbols {
+    symbol: "scip-python python identity-fixture 1 nested/one().RetryOwner#__init__().(self)"
+  }
+  symbols {
+    symbol: "scip-python python identity-fixture 1 nested/RetryOwner#closed."
+    documentation: "```python\n(variable) closed: Literal[False]\n```"
+  }
+  symbols {
+    symbol: "scip-python python identity-fixture 1 nested/one().RetryOwner#close()."
+    documentation: "```python\ndef close(\n  self\n): # -> None:\n```"
+  }
+  symbols {
+    symbol: "scip-python python identity-fixture 1 nested/one().RetryOwner#close().(self)"
+  }
+  symbols {
+    symbol: "local 0"
+    documentation: "```python\nnested.RetryOwner\n```"
+  }
+  symbols {
+    symbol: "scip-python python identity-fixture 1 nested/two()."
+    documentation: "```python\ndef two(): # -> bool:\n```"
+  }
+  symbols {
+    symbol: "scip-python python identity-fixture 1 nested/two().RetryOwner#"
+    documentation: "```python\nclass RetryOwner:\n```"
+  }
+  symbols {
+    symbol: "scip-python python identity-fixture 1 nested/two().RetryOwner#__init__()."
+    documentation: "```python\ndef __init__(\n  self\n) -> None:\n```"
+  }
+  symbols {
+    symbol: "scip-python python identity-fixture 1 nested/two().RetryOwner#__init__().(self)"
+  }
+  symbols {
+    symbol: "scip-python python identity-fixture 1 nested/two().RetryOwner#close()."
+    documentation: "```python\ndef close(\n  self\n): # -> None:\n```"
+  }
+  symbols {
+    symbol: "scip-python python identity-fixture 1 nested/two().RetryOwner#close().(self)"
+  }
+  symbols {
+    symbol: "local 1"
+    documentation: "```python\nnested.RetryOwner\n```"
+  }
+}
