@@ -6662,8 +6662,13 @@ a.codepanel-name:hover {
   font-family: var(--font-mono);
   font-size: var(--fs-body);
 }
+/* A map shorter than the image sits in its middle; a taller one starts at the
+   top and is scaled to fit. */
 .share-card-map {
+  display: flex;
   flex: 1;
+  flex-direction: column;
+  justify-content: safe center;
   min-width: 0;
   height: 100%;
   overflow: hidden;
