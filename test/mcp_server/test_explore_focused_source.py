@@ -9,11 +9,135 @@ from pathlib import Path
 import pytest
 
 from codenib.compiler.manifest import RepoManifest
+from codenib.graph.code_graph import CodeGraph
 from codenib.mcp.context import ServerContext
+from codenib.mcp.explore_session import ExploreSessionLedger
 from codenib.mcp.tools.explore import explore_context_impl
 from codenib.mcp.tools.source import read_source_excerpt_impl, read_source_impl
 from codenib.source_fingerprint import capture_repository_source
 from codenib.types import NODE_TYPE_FUNCTION
+
+
+@pytest.mark.parametrize("budget", ["fast", "balanced", "thorough"])
+@pytest.mark.parametrize("request_kind", ["query", "qualified_query", "symbols"])
+def test_requested_short_definition_survives_neighbours_and_projection(
+    tmp_path, monkeypatch, budget, request_kind
+):
+    """The requested function's loop must survive, not just its matching header."""
+    lines = ["# surrounding unrelated implementation " + "x" * 40] * 170
+    body = [
+        "def process_request(values):",
+        '    """Select the values accepted by the request hooks.',
+        *["    Request documentation without the searched identifier."] * 8,
+        '    """',
+        "    selected = []",
+        "    for value in values:",
+        "        if value is not None:",
+        "            selected.append(value)",
+        "    return tuple(selected)",
+    ]
+    start = 31
+    end = start + len(body) - 1
+    lines[start - 1 : end] = body
+    lines[89:91] = ["def neighbour():", "    return 'nearby'"]
+    (tmp_path / "target.py").write_text("\n".join(lines) + "\n")
+    alias = "target.py:Handler.process_request()"
+    target = {
+        "file": "target.py",
+        "node_name": alias,
+        "type": NODE_TYPE_FUNCTION,
+        "start_line": start,
+        "end_line": end,
+    }
+    rows = [
+        target,
+        {
+            "file": "target.py",
+            "node_name": "neighbour",
+            "type": NODE_TYPE_FUNCTION,
+            "start_line": 90,
+            "end_line": 91,
+        },
+    ]
+    for index in range(8):
+        name = f"other{index}.py"
+        (tmp_path / name).write_text("def other():\n    return True\n")
+        rows.append(
+            {
+                "file": name,
+                "node_name": f"other{index}",
+                "type": NODE_TYPE_FUNCTION,
+                "start_line": 1,
+                "end_line": 2,
+            }
+        )
+    binding = capture_repository_source(tmp_path)
+    ctx = ServerContext.load(
+        RepoManifest(
+            repo_path=str(tmp_path),
+            commit="a" * 40,
+            source_fingerprint=binding.fingerprint,
+            file_count=binding.file_count,
+        ),
+        views=[],
+        source_binding=binding,
+    )
+    ctx.bm25 = object()
+    if request_kind == "symbols":
+        graph = CodeGraph(str(tmp_path))
+        graph.add_file_node("target.py")
+        graph.add_symbol_node(
+            alias, start - 1, start - 1, end - 1, symbol_type=NODE_TYPE_FUNCTION
+        )
+        graph.build_range_indexes()
+        ctx.symbol_graph = graph
+    monkeypatch.setattr(
+        "codenib.mcp.tools.explore.search_context_impl",
+        lambda *_args, **_kwargs: {"results": rows},
+    )
+    monkeypatch.setattr(
+        "codenib.mcp.tools.explore.lsp_route_impl",
+        lambda *_args, **_kwargs: [target],
+    )
+    query = {
+        "query": "process_request",
+        "qualified_query": "Handler.process_request",
+        "symbols": "which values are accepted",
+    }[request_kind]
+    try:
+        result = explore_context_impl(
+            ctx,
+            query,
+            symbols=["process_request"] if request_kind == "symbols" else [],
+            budget=budget,
+            include_dependencies=False,
+        )
+        context = result["files"][0]["contexts"][0]
+        assert context["content"].splitlines() == body
+        assert [context["start_line"], context["end_line"]] == [start, end]
+        assert context["content_kind"] == "live_source" and context["verified"]
+        assert not context.get("content_projection", {}).get("truncated", False)
+        # Reuse can only point to the complete body actually delivered above.
+        ledger = ExploreSessionLedger()
+        first = ledger.project(result)
+        second = ledger.project(result)
+        assert first["files"][0]["contexts"][0]["content"].splitlines() == body
+        repeated = second["files"][0]["contexts"][0]
+        if repeated["content_kind"] == "session_pointer":
+            assert repeated["session_dedup"]["source_call"] == 1
+        else:
+            assert repeated["content"].splitlines() == body
+        assert (
+            result["summary"]["returned_content_chars"]
+            <= {
+                "fast": 8000,
+                "balanced": 16000,
+                "thorough": 32000,
+            }[budget]
+        )
+    finally:
+        ctx.bm25 = None
+        ctx.close()
 
 
 @pytest.fixture
@@ -107,6 +231,47 @@ def test_no_query_match_keeps_a_labelled_scope_head(source):
     assert [context["start_line"], context["end_line"]] == [11, 50]
     assert context["source_projection"]["selection"]["strategy"] == "scope_head"
     assert context["source_projection"]["selection"]["matched_query_terms"] == 0
+
+
+def test_requested_point_location_keeps_following_source_context(source):
+    ctx, _, rows = source
+    rows[0]["end_line"] = rows[0]["start_line"]
+    result = explore_context_impl(
+        ctx, query="aggregate", budget="fast", include_dependencies=False
+    )
+    context = result["files"][0]["contexts"][0]
+    assert [context["start_line"], context["end_line"]] == [1, 40]
+    assert "def aggregate(items):\n    # filler" in context["content"]
+
+
+@pytest.mark.parametrize("variant", ["reference_only", "invalid_range", "prefix_query"])
+def test_exact_delivery_does_not_promote_unresolved_or_fuzzy_locations(source, variant):
+    ctx, _, rows = source
+    target = rows[0]
+    target["end_line"] = 30
+    query = "aggregate"
+    if variant == "reference_only":
+        target["has_definition"] = False
+    elif variant == "invalid_range":
+        target["end_line"] = 5
+    else:
+        query = "aggreg"
+    rows.insert(
+        0,
+        {
+            "file": "long.py",
+            "node_name": "ranked_unrelated",
+            "type": NODE_TYPE_FUNCTION,
+            "start_line": 280,
+            "end_line": 300,
+        },
+    )
+    result = explore_context_impl(
+        ctx, query=query, budget="fast", include_dependencies=False
+    )
+    assert (
+        result["files"][0]["contexts"][0]["anchors"][0]["symbol"] == "ranked_unrelated"
+    )
 
 
 def test_long_focus_cannot_claim_a_neighbour_lost_when_the_window_moves(source):

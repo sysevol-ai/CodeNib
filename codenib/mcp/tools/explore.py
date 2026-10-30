@@ -142,6 +142,8 @@ class _Anchor:
     rank: int
     score: float | None = None
     indexed_content: str | None = None
+    has_definition: bool = False
+    requested_definition: bool = False
 
 
 def _positive_line(value: Any) -> int | None:
@@ -188,6 +190,12 @@ def _anchor_from_payload(
         rank=rank,
         score=score,
         indexed_content=(indexed_content if isinstance(indexed_content, str) else None),
+        has_definition=bool(
+            node_has_definition(payload)
+            and start_line is not None
+            and _positive_line(payload.get("end_line")) is not None
+            and payload["end_line"] >= start_line
+        ),
     )
 
 
@@ -220,6 +228,7 @@ def _same_anchor(left: _Anchor, right: _Anchor) -> bool:
 
 
 def _merge_anchor(existing: _Anchor, incoming: _Anchor) -> None:
+    existing.has_definition = existing.has_definition or incoming.has_definition
     for origin in incoming.origins:
         if origin not in existing.origins:
             existing.origins.append(origin)
@@ -305,10 +314,24 @@ def _admit_windows(
 ) -> list[dict[str, Any]]:
     windows: list[dict[str, Any]] = []
     for anchor in anchors:
-        start_line, end_line = _window_for_anchor(
-            anchor,
-            window_lines=window_lines,
-        )
+        if (
+            anchor.requested_definition
+            and anchor.start_line is not None
+            and anchor.end_line is not None
+            and anchor.end_line > anchor.start_line
+        ):
+            # A short requested definition already supplies useful context.
+            # Padding/merging neighbours can make its body lose the character
+            # budget to a query hit in the header or surrounding prose. A
+            # single-line location can be an LSP selection rather than a
+            # complete scope, so it keeps the ordinary contextual window.
+            start_line = anchor.start_line
+            end_line = min(anchor.end_line or start_line, start_line + window_lines - 1)
+        else:
+            start_line, end_line = _window_for_anchor(
+                anchor,
+                window_lines=window_lines,
+            )
         focus_end = (
             anchor.end_line
             if anchor.start_line is not None
@@ -318,6 +341,8 @@ def _admit_windows(
         )
         merged = False
         for window in windows:
+            if anchor.requested_definition or window["requested_definition"]:
+                continue
             # A long anchor selects live source later. Its eventual excerpt
             # can move away from this head, so merging a neighbour now would
             # incorrectly promise that both anchors' text was delivered.
@@ -349,6 +374,7 @@ def _admit_windows(
                 "start_line": start_line,
                 "end_line": end_line,
                 "anchors": [anchor],
+                "requested_definition": anchor.requested_definition,
             }
         )
         if focus_end is not None:
@@ -619,13 +645,29 @@ def explore_context_impl(
             for name in resolve_symbol_candidates(graph, symbol, limit=4):
                 requested_labels.add(name.rstrip("()"))
                 requested_labels.add(str(display_name(graph, name)).rstrip("()"))
-    delivery_anchors = sorted(
-        anchors,
-        key=lambda anchor: not (
+    requested_identifiers = {
+        symbol for symbol in requested_labels if re.fullmatch(_IDENTIFIER, symbol)
+    }
+    if re.fullmatch(_IDENTIFIER, normalized_query):
+        requested_identifiers.add(normalized_query)
+    for anchor in anchors:
+        label = anchor.symbol.removesuffix("()")
+        anchor.requested_definition = bool(
             source_identity["verified"]
-            and "route" in anchor.origins
-            and anchor.symbol.rstrip("()") in requested_labels
-        ),
+            and anchor.has_definition
+            and is_symbol_node(anchor.kind)
+            and anchor.start_line is not None
+            and anchor.end_line is not None
+            and (
+                label in requested_labels
+                or any(
+                    label == name or label.endswith((":" + name, "." + name))
+                    for name in requested_identifiers
+                )
+            )
+        )
+    delivery_anchors = sorted(
+        anchors, key=lambda anchor: not anchor.requested_definition
     )
     windows = _admit_windows(
         delivery_anchors,
