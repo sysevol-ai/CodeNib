@@ -303,6 +303,14 @@ native outcomes execute; the three failures are behavioral, not collection
 errors. CodeNib and Serena remain unused, and the unchanged complete-workload
 rule has no eligible alternative. Hold promotion. All 4,936 inputs and the
 pre-inference protocol remain unchanged; external enrollment stays 0/5.
+The [exploration entry control](experiments/codegraph_exploration_guidance.md)
+now verifies clearer query-only guidance while preserving all schemas,
+implementation bodies, visibility and preload policy. Both MCP versions pass
+433 cases, and a separate pinned CLI/SDK loopback control delivers the complete
+old/new metadata without a provider/model call. This changes guidance, not the
+completed assessment or its hold decision. Installed-byte admission and useful
+voluntary use remain open before another benefit claim.
+
 Tracking issue: [#874](https://github.com/sysevol-ai/CodeNib/issues/874).
 The detailed contract is [the internal pilot plan](experiments/codegraph_net_benefit.md).
 

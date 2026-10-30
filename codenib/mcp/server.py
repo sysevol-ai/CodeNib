@@ -338,14 +338,16 @@ async def _wait_for_abandoned_explore_worker(
 @mcp.tool(
     name="explore_context",
     description=(
-        "Recommended bounded repository exploration. Composes ranked retrieval, "
-        "the selected LSP-shaped route, dependency expansion, and verified source "
-        "windows. Returns the concrete provider plan, source identity, independent "
-        "diagnostics, and per-connection delivery usage. In on-demand graph mode, "
-        "a query without symbols defaults to ranked source retrieval until a "
-        "complete graph is ready. Symbols or include_dependencies=true prepare "
-        "the graph on first use. Set include_dependencies=false to omit dependency "
-        "expansion even with a ready graph. Prebuilt mode keeps dependencies by default."
+        "Find implementation code and source evidence for a repository question. "
+        "Start with query alone; put known symbol names, error text, or file hints "
+        "in the query. Returns bounded source windows with file paths, line ranges, "
+        "verification, and coverage diagnostics. In on-demand graph mode, a cold "
+        "query without symbols starts with source; a complete warm graph is reused. "
+        "For indexed relationships, symbols or include_dependencies=true request "
+        "graph preparation, which can install providers and build an index. Set "
+        "include_dependencies=false to omit expansion. Prebuilt mode includes "
+        "dependencies by default. Indexed references require source inspection "
+        "before describing invocation or a complete runtime path."
     ),
 )
 async def explore_context(

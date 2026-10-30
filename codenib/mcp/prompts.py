@@ -5,30 +5,33 @@
 """MCP prompt resource - guidance for calling agents."""
 
 CODENIB_FULL_INSTRUCTIONS = (
-    "CodeNib provides bounded repository exploration over pre-built indexes. "
-    "Start with explore_context to retrieve, navigate, expand dependencies, "
-    "and inspect verified source in one call. The full surface also exposes "
+    "CodeNib finds repository implementations and source evidence. "
+    "Use explore_context with a question or symbol name in query; include any "
+    "known file hints there. It returns bounded source windows with file and "
+    "line evidence. The full surface also exposes "
     "lower-level search, LSP-shaped navigation, dependency, source, and "
     "manifest tools when one operation must be forced explicitly. Graph "
     "dependencies are indexed static references, including fields, type uses "
     "and function values. They do not prove invocation or complete runtime "
     "coverage; inspect source call sites before describing calls. In on-demand "
-    "graph mode, a cold query without symbols starts with verified source; "
-    "provide symbols or include_dependencies=true to request graph preparation."
+    "graph mode, a cold query without symbols starts with source; symbols or "
+    "include_dependencies=true request provider and graph preparation. A complete "
+    "warm graph is reused; include_dependencies=false omits expansion. Check "
+    "source verification and coverage before relying on a result."
 )
 
 CODENIB_EXPLORE_INSTRUCTIONS = (
-    "CodeNib helps locate implementations, follow cross-file symbol references, "
-    "and assess change impact. For these questions, explore_context combines "
-    "ranked search, indexed relationships, and source excerpts in one call. "
-    "Provide a repository question and optional known symbol names. Native "
-    "file reads and exact text search remain useful for a known file or string. "
-    "Inspect its plan, source identity, diagnostics, and session usage before "
-    "drawing conclusions. Dependency expansion follows indexed static "
-    "references, which may include fields, types and function values. Inspect "
-    "source to establish invocation; external and dynamic calls may be absent. "
-    "In on-demand graph mode, a cold query without symbols starts with verified "
-    "source; provide symbols or include_dependencies=true to prepare the graph."
+    "CodeNib finds implementations, source evidence, and indexed relationships "
+    "for repository questions. Start with explore_context using query alone: "
+    "a question, symbol name, error text, and any file hints belong in query. "
+    "Read the returned source windows and file/line evidence; check verification "
+    "and coverage diagnostics. In on-demand graph mode, a cold query without "
+    "symbols starts with source. For indexed relationships, provide symbols or "
+    "include_dependencies=true; preparation can install providers and build a "
+    "graph. A complete warm graph is reused; include_dependencies=false omits "
+    "expansion. Indexed references include fields, types, and function values. "
+    "Inspect source before claiming invocation or a complete runtime path; "
+    "external and dynamic calls may be absent."
 )
 
 CODENIB_GREP_INSTRUCTIONS = (
@@ -45,16 +48,20 @@ CODENIB_GREP_INSTRUCTIONS = (
 CODENIB_EXPLORE_GUIDE = """\
 # CodeNib Explore Guide
 
-Use `explore_context` for repository questions. It composes ranked retrieval,
-symbol routing, dependency expansion, and bounded source windows in one call.
-Provide a precise `query`; add `symbols` when you already know likely entry
-points. Start with `budget="balanced"`, use `budget="fast"` for orientation,
-or `budget="thorough"` for more returned context. The budget does not request
-graph preparation.
+Find the code behind a repository question with `explore_context`. Start with
+`query` alone: use a question, symbol name, or error text, and include any known
+file hints in that query. The result provides bounded source windows with file
+paths and line ranges to inspect.
+
+Use `budget="balanced"` initially, `budget="fast"` for orientation, or
+`budget="thorough"` for more returned context. The budget controls returned
+context and does not request graph preparation.
 
 In on-demand graph mode, a cold query without symbols returns ranked source
-by default. Provide symbols or `include_dependencies=true` to prepare and use
-the graph. Once a complete graph is ready, ordinary queries reuse it; set
+by default. When you need indexed relationships, provide `symbols` or
+`include_dependencies=true` to prepare and use the graph. That request can
+install providers and build the graph. Once a complete graph is ready,
+ordinary queries reuse it; set
 `include_dependencies=false` to omit dependency expansion explicitly.
 
 Check `plan.route.provider` to see which navigation backend actually ran,
@@ -67,10 +74,10 @@ the response summary reports retained ranges, deduplication, and evictions.
 CODENIB_GUIDE = """\
 # CodeNib Tools Guide
 
-CodeNib serves ranked context and precise navigation over pre-built repository
-indexes. Start with `explore_context`: it composes ranked retrieval, symbol
-routing, dependency expansion, and verified source windows under one bounded
-response. Use the lower-level tools when you need to force one operation.
+CodeNib finds repository implementations and source evidence. Start with an
+`explore_context` query containing your question, known symbol names, or error
+text and any file hints. It returns bounded source windows with file paths and
+line ranges. Use the lower-level tools when you need to force one operation.
 Search responses keep every ranked location but may project large source bodies
 under a shared content budget. A truncated hit includes ``content_projection``
 metadata; use ``read_source`` with its file and 1-based line range to inspect
@@ -80,17 +87,19 @@ finalizing an answer. The displayed commit is not a mutable-HEAD attestation.
 ## When to use each tool
 
 ### explore_context
-Best default for repository exploration. It reports the concrete retrieval and
-route plan, groups bounded source windows by file, and degrades unavailable
-providers through explicit diagnostics. Optional symbol seeds improve route
-and dependency precision; repeated verified ranges may use stable per-session
+Find the code behind a repository question with `query` alone. It reports the
+retrieval and route plan, groups bounded source windows by file, and describes
+unavailable providers in diagnostics. Supply `symbols` when requesting indexed
+locations and relationships for known entry points; repeated verified ranges
+may use stable per-session
 pointers instead of retransmitting identical source. Dependency expansion
 follows indexed static references, including field, type and function-value
 uses. Inspect source call sites to establish invocation; external and dynamic
 calls may be absent.
 
 In on-demand graph mode, a cold query without symbols starts with ranked source.
-Provide symbols or `include_dependencies=true` when graph preparation is needed.
+For indexed relationships, provide symbols or `include_dependencies=true`;
+preparation can install providers and build the graph.
 Once a complete graph is ready, ordinary queries reuse it. The context budget
 controls returned context, not whether graph preparation is requested.
 

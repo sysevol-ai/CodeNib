@@ -181,11 +181,25 @@ with this scope and direction; published 0.2.4 retains the older response shape
 and legacy `callers`/`callees` labels. See [CodeGraph](codegraph.md) for the
 release and source-update boundaries.
 
-`explore_context` accepts a query, optional symbol seeds, a bounded `top_k`, a
-`fast`/`balanced`/`thorough` budget, dependency direction, and test/dependency
-filters. It combines ranked retrieval, the selected LSP route, dependency
-subgraphs, and verified live-source windows. The response identifies the route
-provider and source binding explicitly. Missing or failed retrieval, route,
+Use `explore_context` to find implementation code and source evidence for a
+repository question. Start with `query` alone, including any known symbol names,
+error text, or file hints:
+
+```json
+{"query": "Where is retry backoff implemented?"}
+```
+
+In on-demand graph mode, a cold query without `symbols` starts with source.
+When you need indexed relationships, supply `symbols` or
+`include_dependencies=true`; preparation can install providers and build the
+graph. Ordinary queries reuse a complete warm graph. Set
+`include_dependencies=false` to omit expansion explicitly. Prebuilt mode
+keeps dependencies enabled by default.
+
+Optional controls bound returned context (`top_k` and a
+`fast`/`balanced`/`thorough` budget), select reference direction, or filter test
+files. The response identifies the route provider and source binding.
+Missing or failed retrieval, route,
 dependency, or source providers degrade independently and add bounded
 `diagnostics`; unverified indexed excerpts remain marked `verified: false`
 instead of being presented as checkout source.
