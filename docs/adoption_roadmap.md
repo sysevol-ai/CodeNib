@@ -318,11 +318,18 @@ entry acceptance, not the completed assessment or its hold decision. Useful
 voluntary use and the complete-workflow gates remain open before another
 benefit claim; public package 0.2.4 is unchanged.
 The separate [maintainer adoption probe](experiments/codegraph_guidance_adoption_freeze.md)
-now freezes two read-only source-review tasks and 7,357 inputs before inference.
-Its exact controller passes installed-byte, source-query and deterministic
-cleanup controls. It observes voluntary tool choice with native tools available;
-there is no comparison arm, independent confirmation or external user. No new
-model outcome is recorded in this freeze.
+freezes two read-only source-review tasks and 7,357 inputs before inference.
+Its [completed outcome](experiments/codegraph_guidance_adoption_results.md)
+records one voluntary CodeNib call per task, with exact captured source and
+SDK delivery supporting specific correct claims. Full acceptance is 0/2:
+both answers exceed their fixed word limit, the first omits the static-reference
+boundary and the second overstates the indexed-query guard as applying to all
+tools. The two-client internal diagnostic takes 78.950 seconds and records
+394,316 normalized main/auxiliary tokens and a $0.7113487 SDK estimate, not an
+invoice. All four control/model containers are absent and all 7,357 inputs
+are unchanged. This is bounded use with no comparison arm, causal guidance
+effect, independent success confirmation or external user. Hold promotion;
+test any context-reduction hypothesis separately and preserve all old outcomes.
 
 Tracking issue: [#874](https://github.com/sysevol-ai/CodeNib/issues/874).
 The detailed contract is [the internal pilot plan](experiments/codegraph_net_benefit.md).

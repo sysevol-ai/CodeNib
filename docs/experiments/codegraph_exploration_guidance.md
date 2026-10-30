@@ -48,8 +48,10 @@ seventeen lossless public files and five private SDK-fixture hashes.
 These producer exports establish the selected source runtime. The separate
 [installed admission](codegraph_installed_guidance.md) now verifies the exact
 main CI wheel, all 485 installed Python files, its native extension and real
-stdio delivery of complete source. A prospective real-task adoption probe
-remains required before attributing a use or benefit change.
+stdio delivery of complete source. The separately frozen
+[maintainer probe](codegraph_guidance_adoption_results.md) now observes two
+voluntary supporting calls and zero fully accepted answers. It does not
+establish a causal guidance improvement or comparative workflow benefit.
 
 ## Validation and open gates
 
