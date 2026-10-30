@@ -87,7 +87,7 @@ cost or better answers. This option awaits a package release.
 
 ## Prepare the graph when needed
 
-The current source candidate supports retrieval before graph preparation:
+Source builds support retrieval before graph preparation:
 
 ```bash
 codenib codegraph init . --defer-graph --tool-surface explore
@@ -114,7 +114,7 @@ nonzero until both current indexes and providers are ready. To change the
 managed policy, uninstall the registration and initialize again. Include the
 first graph query and subsequent rebuilds in any workflow comparison: this
 option defers their cost and does not establish a task-efficiency gain. It
-awaits merge and a package release.
+awaits a package release.
 
 ## Select the repository source surface
 
