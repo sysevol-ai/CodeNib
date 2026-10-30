@@ -198,17 +198,37 @@ full serial/native/consumer run closes #901; #902 has no dependency on draft
 #903. Useful voluntary cross-file use and whole-task acceptance remain open.
 
 The [owned-field write control](experiments/codegraph_python_owned_writes_2026_10_30.json)
-repairs a further G1 admission failure: both CodeNib metadata conditions fail
-their first full self-repository graph when LSP selects `RetryOwner.closed`'s
-later assignment. Exact source/compiler receiver evidence now binds that
+is merged in [#915](https://github.com/sysevol-ai/CodeNib/pull/915) as
+`23b31675`, with the reviewed tree unchanged. The recorded candidate/control
+preparations fail their first full self-repository graph when LSP selects
+`RetryOwner.closed`'s later assignment. Exact source/compiler receiver evidence
+now binds that
 write to existing definitions in its physical class, without declaring a new
 field or excluding the failing test file. A complete 1,168-document build
 returns verified MCP source and two bounded relationships, preserving all
 1,757 tracked source files. Its 247.965-second first graph request remains a
 cost, not a speed result. Fifty-three identity cases and 8,904 unit cases
-(24 skips) pass. Both failed admissions remain failed; the next model round
-needs the identical repaired backend in both CodeNib conditions and fresh
-admission/sealing. No inference, package release or benefit claim is added.
+(24 skips) pass. Seventeen executed PR checks pass, with eight verified
+conditional skips and no unresolved review thread. Both failed admissions
+remain failed. No inference, package release or benefit claim is added.
+
+The [task-fit development protocol](experiments/codegraph_task_fit_protocol.md)
+compares the original four product types plus unchanged CodeNib wording on one
+known source-identity repair. A committed candidate changes only exploration
+descriptions/instructions. All five final operator admissions pass with the
+same source/runtime; CodeNib's 485 installed Python files match each selected
+wheel, the backend/native bytes agree, and producer schemas differ only in the
+intended metadata. A controller audit found the earlier intended control
+installed the candidate too; those original failures are not a metadata
+comparison. Final admission uses the corrected selector and byte checks.
+Thirty-nine discovery contracts and 432 MCP 2.3 cases (seven skips) pass.
+The same 26 native cases execute in empty/reference controls (six fail/twenty
+pass versus twenty-six pass). The separate 4,831-input seal completes at
+2026-10-30 11:33:05 UTC before any model call; 23 lossless files in three parts
+retain the protocol and admissions. This exposed self-repository case cannot
+satisfy either independent
+confirmation set or the external-user gate. Retain every first-use/failure
+cost and all earlier negative outcomes.
 Tracking issue: [#874](https://github.com/sysevol-ai/CodeNib/issues/874).
 The detailed contract is [the internal pilot plan](experiments/codegraph_net_benefit.md).
 

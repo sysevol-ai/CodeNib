@@ -170,6 +170,22 @@ main's different runtime repairs, so draft #903 is not a dependency. Actual
 useful voluntary calls remain open; fixing this consumer
 does not establish the 20% gate, either confirmation set or external reuse.
 
+The [task-fit development protocol](codegraph_task_fit_protocol.md) prepares
+one known source-identity repair with five conditions: the four product types
+and an additional unchanged-CodeNib wording control. Only exploration metadata
+differs between the two CodeNib wheels; both use merged #915. All five final
+operator admissions pass with common source/runtime identities and actual
+installed-byte checks. The earlier intended control selected the candidate
+wheel by mistake; its failed preparation remains retained and cannot compare
+metadata. Actual producer instructions/descriptions now differ as intended,
+while tool schemas and handlers remain unchanged. Thirty-nine discovery and
+432 MCP 2.3 cases (seven skips) pass; native empty/reference readiness executes
+all 26 selected cases (six fail/twenty pass versus twenty-six pass). The separate
+4,831-input seal completes at 2026-10-30 11:33:05 UTC before any new model call.
+Preserve prior cohorts, private
+grading separation, every first-use cost and the open five-user gate; this is
+an exposed development diagnostic, not independent confirmation.
+
 ## Product question and decision
 
 Can a developer complete source-grounded coding tasks more effectively with

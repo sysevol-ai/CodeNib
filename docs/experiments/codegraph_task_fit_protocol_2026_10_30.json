@@ -1,0 +1,61 @@
+{
+  "schema": "codenib.task-fit-development-protocol.v1",
+  "status": "frozen_before_first_model_call",
+  "frozen_utc": "2026-10-30T11:33:05.302050+00:00",
+  "source_status": "Known self-repository bug; development diagnostic, not independent confirmation",
+  "execution_binding": {
+    "sha256": "0c1efe12940b3d78bdac347cf5620188ef89704bc5aec91fa85deb108458fffd",
+    "frozen_utc": "2026-10-30T11:33:05.302050+00:00",
+    "files": 4831,
+    "model_calls_at_freeze": 0
+  },
+  "files_frozen": 4831,
+  "conditions": 5,
+  "tasks_per_condition": 3,
+  "native_readiness": {
+    "same_collected_executed_ids": 26,
+    "regressed": "6 failed, 20 passed",
+    "reference": "26 passed",
+    "receipt_sha256": "2bea08f83011a8d8a3853ad6b13596d1f6c3b716831be3de0b4dde8110d47ebf",
+    "private_contents_published": false
+  },
+  "actual_installed_python_modules_per_codenib": 485,
+  "actual_producer_difference_only": [
+    "tool description",
+    "server instructions"
+  ],
+  "common_source_digest": "b5cccd73891b70aa7b7373105cc7a746ecdfd3ee4a5922aba2ef3f89ad4a9afd",
+  "verified_absent_final_admission_containers": 10,
+  "failed_original_preparations": "Both intended CodeNib conditions used the candidate; preserve their failed graph replies and do not compare metadata",
+  "model_calls_at_freeze": 0,
+  "promotional_claim": false,
+  "external_enrollment": 0,
+  "external_target": 5,
+  "archives_count": 23,
+  "parts": [
+    {
+      "path": "codegraph_task_fit_protocol_2026_10_30.part01.json",
+      "sha256": "b239914eba4c000c23c2b791258889ae49e1adfb80dc1f5ea03bf68a2f14cd9c",
+      "bytes": 102607,
+      "archives": 9
+    },
+    {
+      "path": "codegraph_task_fit_protocol_2026_10_30.part02.json",
+      "sha256": "0510164061fec74956e8106a81c7768a63413f43fd988691ac423dbb94a6cbb9",
+      "bytes": 355759,
+      "archives": 1
+    },
+    {
+      "path": "codegraph_task_fit_protocol_2026_10_30.part03.json",
+      "sha256": "67014ccd6c2b8d02d7b1195f2420d2587f3d3e69690f459524e84725879ef335",
+      "bytes": 196809,
+      "archives": 13
+    }
+  ],
+  "packaging": {
+    "unsplit_sha256": "68c178c518c47e511bbc1b136d701b1a8cf614ad9b6106e4123d58652c83d596",
+    "change": "Lossless split after the original 641-KB public record exceeded the 500-KB hook. No model input, timing, task, rubric, admission, binding or seal changes.",
+    "model_calls_during_packaging": 0,
+    "script_sha256": "a1ccba805ee0bc2799cd4ac4c28b6fdbb4c961a8f4c62c34eaf3e75312b839a8"
+  }
+}
