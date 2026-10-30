@@ -1,0 +1,126 @@
+{
+  "schema": "codenib.sdk-output-delivery.v1",
+  "scope": "real pinned SDK/CLI with scripted local HTTP transport; no model inference or solver-read credit",
+  "model_calls": 0,
+  "provider_requests": 0,
+  "final_control": "offline-v4/receipt.json",
+  "control_input_versions": [
+    {
+      "path": "/tmp/codenib-mcp-delivery-20261030/offline-v1/input-binding.json",
+      "sha256": "bbff11aedeea56c5252b93057bfcddc54f6a324569815b00d533df40b3093502",
+      "verified_inputs": 35,
+      "retained_historical_source_aliases": [
+        {
+          "original_path": "/home/zhongming/CodeNib-codegraph-mcp-delivery/scripts/codegraph_pilot_scope.py",
+          "retained_source": "/tmp/codenib-mcp-delivery-20261030/historical-scope-before-deferred.py",
+          "sha256": "b2c5c686390a54dcf2312446e944ccc04fafb6d91c80a42031f366fc02dee79f"
+        },
+        {
+          "original_path": "/home/zhongming/CodeNib-codegraph-mcp-delivery/scripts/codegraph_pilot_mcp_proxy.py",
+          "retained_source": "/tmp/codenib-mcp-delivery-20261030/runtime-v3/scripts/codegraph_pilot_mcp_proxy.py",
+          "sha256": "5fdf2b617fb9045394967af31a8b1885827458df962d9834d60f95ededf7106a"
+        }
+      ]
+    },
+    {
+      "path": "/tmp/codenib-mcp-delivery-20261030/offline-v2/input-binding.json",
+      "sha256": "144af25af7134ad605480334d4ca62374cc0c430e28daac1f9371dbcc717707e",
+      "verified_inputs": 40,
+      "retained_historical_source_aliases": [
+        {
+          "original_path": "/home/zhongming/CodeNib-codegraph-mcp-delivery/scripts/codegraph_pilot_scope.py",
+          "retained_source": "/tmp/codenib-mcp-delivery-20261030/historical-scope-before-deferred.py",
+          "sha256": "b2c5c686390a54dcf2312446e944ccc04fafb6d91c80a42031f366fc02dee79f"
+        },
+        {
+          "original_path": "/home/zhongming/CodeNib-codegraph-mcp-delivery/scripts/codegraph_pilot_mcp_proxy.py",
+          "retained_source": "/tmp/codenib-mcp-delivery-20261030/runtime-v3/scripts/codegraph_pilot_mcp_proxy.py",
+          "sha256": "5fdf2b617fb9045394967af31a8b1885827458df962d9834d60f95ededf7106a"
+        }
+      ]
+    },
+    {
+      "path": "/tmp/codenib-mcp-delivery-20261030/offline-v3/input-binding.json",
+      "sha256": "f2467e3ff2cd358d63c9779c41d9e057f67298b92d88ea17621719c353e122ff",
+      "verified_inputs": 40,
+      "retained_historical_source_aliases": []
+    },
+    {
+      "path": "/tmp/codenib-mcp-delivery-20261030/offline-v4/input-binding.json",
+      "sha256": "a2619456197e7d10b53374a4cb3cb048a5622bf5a5dfcec64cfc348d4ed6ec0e",
+      "verified_inputs": 40,
+      "retained_historical_source_aliases": []
+    }
+  ],
+  "frozen_bindings": [
+    {
+      "path": "/tmp/codenib-codegraph-task-fit-20261030/execution-binding.json",
+      "sha256": "0c1efe12940b3d78bdac347cf5620188ef89704bc5aec91fa85deb108458fffd",
+      "files_verified": 4831
+    },
+    {
+      "path": "/tmp/codenib-matched-pilot-v2-20261028/execution-binding-v2.json",
+      "sha256": "c0a684ea39796d8334109edf674dad71e8311ed8976ca9f121cd669d9f20d40c",
+      "files_verified": 34
+    },
+    {
+      "path": "/tmp/codenib-codegraph-adoption-dev-20261030/execution-binding-dev1.json",
+      "sha256": "49c1c152dc372e75d109f02fa2c7be3373a4eab088e355e9341ed45746a04c3d",
+      "files_verified": 990
+    }
+  ],
+  "older_sealed_inputs_unchanged": 5855,
+  "prior_json_unchanged": 416,
+  "owned_containers_absent": 14,
+  "lossless_published_files": 74,
+  "unique_payloads": 60,
+  "parts": [
+    {
+      "path": "codegraph_sdk_output_delivery_2026_10_30.part01.json",
+      "sha256": "06fc0f74594e359ef2bfc01c2436869b1f450c36ca8a2d77b953e9ef3738d8d5",
+      "bytes": 263734,
+      "files": 46
+    },
+    {
+      "path": "codegraph_sdk_output_delivery_2026_10_30.part02.json",
+      "sha256": "48330aa444668d50f6f33e9554dd703c496b7cc67fb0abdc46fe13a09d159c04",
+      "bytes": 209446,
+      "files": 28
+    }
+  ],
+  "original_archives_retained_locally": [
+    {
+      "path": "offline-v3/baseline/controller-output.tar",
+      "bytes": 725504,
+      "sha256": "0472fbc03e9dea5f2ec4f6448488876f15e8f547b4872ba57b68e5f24f7e2540"
+    },
+    {
+      "path": "offline-v3/candidate/controller-output.tar",
+      "bytes": 755712,
+      "sha256": "cc26cf77b560afde1bb9860f4111236fd9b08c89793bbe00560bf3ed11ceaf8d"
+    },
+    {
+      "path": "offline-v2/baseline/controller-output.tar",
+      "bytes": 878592,
+      "sha256": "12f0215dcf37e66fb8e46ba9651e7fb53c3e5043306b7f2df8a72d9cd2ec72ab"
+    },
+    {
+      "path": "offline-v1/baseline/controller-output.tar",
+      "bytes": 1536,
+      "sha256": "ccd5558a73d03e8158ab7d39c38e63f25c4e101d469fb611c45fe2669dfa7a08"
+    },
+    {
+      "path": "offline-v4/baseline/controller-output.tar",
+      "bytes": 726016,
+      "sha256": "a73113aa10fde160d88905e9ca4a3f52d0eaccac82d41b00e5b0b98ae3a2253d"
+    },
+    {
+      "path": "offline-v4/candidate/controller-output.tar",
+      "bytes": 756224,
+      "sha256": "74773851d71b58b1acc80d60471bdf96534cb48505485e1a3e0b7fcd6a83d5b0"
+    }
+  ],
+  "publication": "Public projections omit unrelated default SDK system/tool specifications and generated session keys. Original complete local archives and all failures remain unchanged and hash-bound. Public task/tool observations are exact.",
+  "wire": "Original MCP request/reply frames remain byte-identical; SDK content-block files are separately authenticated against complete original blocks. Copying is not model-read evidence.",
+  "format": "Reconstruct gzip+base64 or prior identical_to whole-file aliases in archive order; preserve all original paths and hashes."
+}
