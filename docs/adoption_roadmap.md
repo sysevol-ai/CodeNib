@@ -154,8 +154,10 @@ index artifacts, both BM25 and graph replies now contain the complete
 first-use provider installation and graph preparation. These calls are forced
 preflight controls, not voluntary agent use. Local verification passes 8,885
 unit cases (24 skips) and 432 MCP 2.3 checks (seven skips). A separate
-three-task, four-arm development round on the exposed Flask source awaits
-its executable/runtime seal; no model inference has started. Private native
+three-task, four-arm development round on the exposed Flask source has a
+[pre-inference seal](experiments/codegraph_development_protocol_v1_2026_10_30.json)
+binding all 990 executable/runtime/source inputs; model execution and grading
+are still pending. Private native
 readiness collects and executes all six cases, failing the regressed control
 and passing the reference, with grading material outside model inputs.
 The source-delivery fix is locally verified in
