@@ -1,0 +1,522 @@
+[
+  {
+    "case": "other_parameter",
+    "source": "def one():\n    class RetryOwner:\n        def __init__(self):\n            self.closed = False\n        def close(self, other: \"RetryOwner\"):\n            other.closed = True\n    owner = RetryOwner()\n    owner.close()\n    return owner.closed\n\ndef two():\n    class RetryOwner:\n        def __init__(self):\n            self.closed = False\n        def close(self, other: \"RetryOwner\"):\n            other.closed = True\n    owner = RetryOwner()\n    owner.close()\n    return owner.closed\n",
+    "decoded": "metadata {\n  tool_info {\n    name: \"scip-python\"\n    version: \"0.6.6\"\n  }\n  project_root: \"file:///tmp/codenib-python-owned-writes-20261030/guard-captures/other_parameter/repo\"\n  text_document_encoding: UTF8\n}\ndocuments {\n  relative_path: \"nested.py\"\n  occurrences {\n    range: 0\n    range: 0\n    range: 0\n    symbol: \"scip-python python identity-fixture 1 nested/__init__:\"\n    symbol_roles: 1\n  }\n  occurrences {\n    range: 0\n    range: 4\n    range: 7\n    symbol: \"scip-python python identity-fixture 1 nested/one().\"\n    symbol_roles: 1\n    enclosing_range: 0\n    enclosing_range: 0\n    enclosing_range: 8\n    enclosing_range: 23\n  }\n  occurrences {\n    range: 1\n    range: 10\n    range: 20\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#\"\n    symbol_roles: 1\n    enclosing_range: 1\n    enclosing_range: 4\n    enclosing_range: 5\n    enclosing_range: 31\n  }\n  occurrences {\n    range: 2\n    range: 12\n    range: 20\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#__init__().\"\n    symbol_roles: 1\n    enclosing_range: 2\n    enclosing_range: 8\n    enclosing_range: 3\n    enclosing_range: 31\n  }\n  occurrences {\n    range: 2\n    range: 21\n    range: 25\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#__init__().(self)\"\n    symbol_roles: 1\n  }\n  occurrences {\n    range: 3\n    range: 12\n    range: 16\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#__init__().(self)\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 3\n    range: 17\n    range: 23\n    symbol: \"scip-python python identity-fixture 1 nested/RetryOwner#closed.\"\n    symbol_roles: 1\n  }\n  occurrences {\n    range: 4\n    range: 12\n    range: 17\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#close().\"\n    symbol_roles: 1\n    enclosing_range: 4\n    enclosing_range: 8\n    enclosing_range: 5\n    enclosing_range: 31\n  }\n  occurrences {\n    range: 4\n    range: 18\n    range: 22\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#close().(self)\"\n    symbol_roles: 1\n  }\n  occurrences {\n    range: 4\n    range: 24\n    range: 29\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#close().(other)\"\n    symbol_roles: 1\n  }\n  occurrences {\n    range: 4\n    range: 32\n    range: 42\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 5\n    range: 12\n    range: 17\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#close().(other)\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 5\n    range: 18\n    range: 24\n    symbol: \"scip-python python identity-fixture 1 nested/RetryOwner#closed.\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 6\n    range: 4\n    range: 9\n    symbol: \"local 0\"\n    symbol_roles: 1\n  }\n  occurrences {\n    range: 6\n    range: 12\n    range: 22\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 7\n    range: 4\n    range: 9\n    symbol: \"local 0\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 7\n    range: 10\n    range: 15\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#close().\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 8\n    range: 11\n    range: 16\n    symbol: \"local 0\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 8\n    range: 17\n    range: 23\n    symbol: \"scip-python python identity-fixture 1 nested/RetryOwner#closed.\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 10\n    range: 4\n    range: 7\n    symbol: \"scip-python python identity-fixture 1 nested/two().\"\n    symbol_roles: 1\n    enclosing_range: 10\n    enclosing_range: 0\n    enclosing_range: 18\n    enclosing_range: 23\n  }\n  occurrences {\n    range: 11\n    range: 10\n    range: 20\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#\"\n    symbol_roles: 1\n    enclosing_range: 11\n    enclosing_range: 4\n    enclosing_range: 15\n    enclosing_range: 31\n  }\n  occurrences {\n    range: 12\n    range: 12\n    range: 20\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#__init__().\"\n    symbol_roles: 1\n    enclosing_range: 12\n    enclosing_range: 8\n    enclosing_range: 13\n    enclosing_range: 31\n  }\n  occurrences {\n    range: 12\n    range: 21\n    range: 25\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#__init__().(self)\"\n    symbol_roles: 1\n  }\n  occurrences {\n    range: 13\n    range: 12\n    range: 16\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#__init__().(self)\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 13\n    range: 17\n    range: 23\n    symbol: \"scip-python python identity-fixture 1 nested/RetryOwner#closed.\"\n    symbol_roles: 1\n  }\n  occurrences {\n    range: 14\n    range: 12\n    range: 17\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#close().\"\n    symbol_roles: 1\n    enclosing_range: 14\n    enclosing_range: 8\n    enclosing_range: 15\n    enclosing_range: 31\n  }\n  occurrences {\n    range: 14\n    range: 18\n    range: 22\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#close().(self)\"\n    symbol_roles: 1\n  }\n  occurrences {\n    range: 14\n    range: 24\n    range: 29\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#close().(other)\"\n    symbol_roles: 1\n  }\n  occurrences {\n    range: 14\n    range: 32\n    range: 42\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 15\n    range: 12\n    range: 17\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#close().(other)\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 15\n    range: 18\n    range: 24\n    symbol: \"scip-python python identity-fixture 1 nested/RetryOwner#closed.\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 16\n    range: 4\n    range: 9\n    symbol: \"local 1\"\n    symbol_roles: 1\n  }\n  occurrences {\n    range: 16\n    range: 12\n    range: 22\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 17\n    range: 4\n    range: 9\n    symbol: \"local 1\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 17\n    range: 10\n    range: 15\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#close().\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 18\n    range: 11\n    range: 16\n    symbol: \"local 1\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 18\n    range: 17\n    range: 23\n    symbol: \"scip-python python identity-fixture 1 nested/RetryOwner#closed.\"\n    symbol_roles: 8\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/__init__:\"\n    documentation: \"(module) nested\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/one().\"\n    documentation: \"```python\\ndef one(): # -> bool:\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#\"\n    documentation: \"```python\\nclass RetryOwner:\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#__init__().\"\n    documentation: \"```python\\ndef __init__(\\n  self\\n) -> None:\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#__init__().(self)\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/RetryOwner#closed.\"\n    documentation: \"```python\\n(variable) closed: Literal[False]\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#close().\"\n    documentation: \"```python\\ndef close(\\n  self,\\n  other: RetryOwner\\n): # -> None:\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#close().(self)\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#close().(other)\"\n  }\n  symbols {\n    symbol: \"local 0\"\n    documentation: \"```python\\nnested.RetryOwner\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/two().\"\n    documentation: \"```python\\ndef two(): # -> bool:\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#\"\n    documentation: \"```python\\nclass RetryOwner:\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#__init__().\"\n    documentation: \"```python\\ndef __init__(\\n  self\\n) -> None:\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#__init__().(self)\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#close().\"\n    documentation: \"```python\\ndef close(\\n  self,\\n  other: RetryOwner\\n): # -> None:\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#close().(self)\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#close().(other)\"\n  }\n  symbols {\n    symbol: \"local 1\"\n    documentation: \"```python\\nnested.RetryOwner\\n```\"\n  }\n}\n",
+    "provider": {
+      "name": "basedpyright",
+      "version": "1.39.8"
+    },
+    "queries": [
+      {
+        "request": [
+          "nested.py",
+          5,
+          18
+        ],
+        "response": [
+          {
+            "range": {
+              "start": {
+                "line": 3,
+                "character": 17
+              },
+              "end": {
+                "line": 3,
+                "character": 23
+              }
+            },
+            "uri_relative": "nested.py"
+          }
+        ]
+      },
+      {
+        "request": [
+          "nested.py",
+          8,
+          17
+        ],
+        "response": [
+          {
+            "range": {
+              "start": {
+                "line": 3,
+                "character": 17
+              },
+              "end": {
+                "line": 3,
+                "character": 23
+              }
+            },
+            "uri_relative": "nested.py"
+          }
+        ]
+      },
+      {
+        "request": [
+          "nested.py",
+          15,
+          18
+        ],
+        "response": [
+          {
+            "range": {
+              "start": {
+                "line": 13,
+                "character": 17
+              },
+              "end": {
+                "line": 13,
+                "character": 23
+              }
+            },
+            "uri_relative": "nested.py"
+          }
+        ]
+      },
+      {
+        "request": [
+          "nested.py",
+          18,
+          17
+        ],
+        "response": [
+          {
+            "range": {
+              "start": {
+                "line": 13,
+                "character": 17
+              },
+              "end": {
+                "line": 13,
+                "character": 23
+              }
+            },
+            "uri_relative": "nested.py"
+          }
+        ]
+      }
+    ],
+    "outcome": {
+      "status": "passed",
+      "report": {
+        "schema": 1,
+        "source_file_count": 1,
+        "changed_symbol_families": 1,
+        "physical_declarations": 16,
+        "restored_definition_roles": 0,
+        "positional_definition_queries": 4,
+        "unanswered_definition_queries": [],
+        "local_binding_families": 0,
+        "local_binding_semantics": "all_source_declarations_for_compiler_binding",
+        "shared_lexical_binding_families": 0,
+        "utf8_replacement_sources": [],
+        "source_only_definitions": [],
+        "unmapped_attribute_definitions": [],
+        "definition_provider": null,
+        "position_encoding": "UTF8",
+        "source_sha256": {
+          "nested.py": "8c0d93ecb2a3b4721a420c8d8a311f7e779b2f7dd841a0cfbb7c6ad4f0927a0e"
+        }
+      }
+    }
+  },
+  {
+    "case": "staticmethod",
+    "source": "def one():\n    class RetryOwner:\n        def __init__(self):\n            self.closed = False\n        @staticmethod\n        def close(self: \"RetryOwner\"):\n            self.closed = True\n    owner = RetryOwner()\n    owner.close()\n    return owner.closed\n\ndef two():\n    class RetryOwner:\n        def __init__(self):\n            self.closed = False\n        @staticmethod\n        def close(self: \"RetryOwner\"):\n            self.closed = True\n    owner = RetryOwner()\n    owner.close()\n    return owner.closed\n",
+    "decoded": "metadata {\n  tool_info {\n    name: \"scip-python\"\n    version: \"0.6.6\"\n  }\n  project_root: \"file:///tmp/codenib-python-owned-writes-20261030/guard-captures/staticmethod/repo\"\n  text_document_encoding: UTF8\n}\ndocuments {\n  relative_path: \"nested.py\"\n  occurrences {\n    range: 0\n    range: 0\n    range: 0\n    symbol: \"scip-python python identity-fixture 1 nested/__init__:\"\n    symbol_roles: 1\n  }\n  occurrences {\n    range: 0\n    range: 4\n    range: 7\n    symbol: \"scip-python python identity-fixture 1 nested/one().\"\n    symbol_roles: 1\n    enclosing_range: 0\n    enclosing_range: 0\n    enclosing_range: 9\n    enclosing_range: 23\n  }\n  occurrences {\n    range: 1\n    range: 10\n    range: 20\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#\"\n    symbol_roles: 1\n    enclosing_range: 1\n    enclosing_range: 4\n    enclosing_range: 6\n    enclosing_range: 30\n  }\n  occurrences {\n    range: 2\n    range: 12\n    range: 20\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#__init__().\"\n    symbol_roles: 1\n    enclosing_range: 2\n    enclosing_range: 8\n    enclosing_range: 3\n    enclosing_range: 31\n  }\n  occurrences {\n    range: 2\n    range: 21\n    range: 25\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#__init__().(self)\"\n    symbol_roles: 1\n  }\n  occurrences {\n    range: 3\n    range: 12\n    range: 16\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#__init__().(self)\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 3\n    range: 17\n    range: 23\n    symbol: \"scip-python python identity-fixture 1 nested/RetryOwner#closed.\"\n    symbol_roles: 1\n  }\n  occurrences {\n    range: 4\n    range: 9\n    range: 21\n    symbol: \"scip-python python python-stdlib 3.11 builtins/staticmethod#\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 5\n    range: 12\n    range: 17\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#close().\"\n    symbol_roles: 1\n    enclosing_range: 4\n    enclosing_range: 8\n    enclosing_range: 6\n    enclosing_range: 30\n  }\n  occurrences {\n    range: 5\n    range: 18\n    range: 22\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#close().(self)\"\n    symbol_roles: 1\n  }\n  occurrences {\n    range: 5\n    range: 25\n    range: 35\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 6\n    range: 12\n    range: 16\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#close().(self)\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 6\n    range: 17\n    range: 23\n    symbol: \"scip-python python identity-fixture 1 nested/RetryOwner#closed.\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 7\n    range: 4\n    range: 9\n    symbol: \"local 0\"\n    symbol_roles: 1\n  }\n  occurrences {\n    range: 7\n    range: 12\n    range: 22\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 8\n    range: 4\n    range: 9\n    symbol: \"local 0\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 8\n    range: 10\n    range: 15\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#close().\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 9\n    range: 11\n    range: 16\n    symbol: \"local 0\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 9\n    range: 17\n    range: 23\n    symbol: \"scip-python python identity-fixture 1 nested/RetryOwner#closed.\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 11\n    range: 4\n    range: 7\n    symbol: \"scip-python python identity-fixture 1 nested/two().\"\n    symbol_roles: 1\n    enclosing_range: 11\n    enclosing_range: 0\n    enclosing_range: 20\n    enclosing_range: 23\n  }\n  occurrences {\n    range: 12\n    range: 10\n    range: 20\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#\"\n    symbol_roles: 1\n    enclosing_range: 12\n    enclosing_range: 4\n    enclosing_range: 17\n    enclosing_range: 30\n  }\n  occurrences {\n    range: 13\n    range: 12\n    range: 20\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#__init__().\"\n    symbol_roles: 1\n    enclosing_range: 13\n    enclosing_range: 8\n    enclosing_range: 14\n    enclosing_range: 31\n  }\n  occurrences {\n    range: 13\n    range: 21\n    range: 25\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#__init__().(self)\"\n    symbol_roles: 1\n  }\n  occurrences {\n    range: 14\n    range: 12\n    range: 16\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#__init__().(self)\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 14\n    range: 17\n    range: 23\n    symbol: \"scip-python python identity-fixture 1 nested/RetryOwner#closed.\"\n    symbol_roles: 1\n  }\n  occurrences {\n    range: 15\n    range: 9\n    range: 21\n    symbol: \"scip-python python python-stdlib 3.11 builtins/staticmethod#\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 16\n    range: 12\n    range: 17\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#close().\"\n    symbol_roles: 1\n    enclosing_range: 15\n    enclosing_range: 8\n    enclosing_range: 17\n    enclosing_range: 30\n  }\n  occurrences {\n    range: 16\n    range: 18\n    range: 22\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#close().(self)\"\n    symbol_roles: 1\n  }\n  occurrences {\n    range: 16\n    range: 25\n    range: 35\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 17\n    range: 12\n    range: 16\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#close().(self)\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 17\n    range: 17\n    range: 23\n    symbol: \"scip-python python identity-fixture 1 nested/RetryOwner#closed.\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 18\n    range: 4\n    range: 9\n    symbol: \"local 1\"\n    symbol_roles: 1\n  }\n  occurrences {\n    range: 18\n    range: 12\n    range: 22\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 19\n    range: 4\n    range: 9\n    symbol: \"local 1\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 19\n    range: 10\n    range: 15\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#close().\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 20\n    range: 11\n    range: 16\n    symbol: \"local 1\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 20\n    range: 17\n    range: 23\n    symbol: \"scip-python python identity-fixture 1 nested/RetryOwner#closed.\"\n    symbol_roles: 8\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/__init__:\"\n    documentation: \"(module) nested\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/one().\"\n    documentation: \"```python\\ndef one(): # -> bool:\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#\"\n    documentation: \"```python\\nclass RetryOwner:\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#__init__().\"\n    documentation: \"```python\\ndef __init__(\\n  self\\n) -> None:\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#__init__().(self)\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/RetryOwner#closed.\"\n    documentation: \"```python\\n(variable) closed: Literal[False]\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#close().\"\n    documentation: \"```python\\n@staticmethod\\ndef close(\\n  self: RetryOwner\\n): # -> None:\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#close().(self)\"\n  }\n  symbols {\n    symbol: \"local 0\"\n    documentation: \"```python\\nnested.RetryOwner\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/two().\"\n    documentation: \"```python\\ndef two(): # -> bool:\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#\"\n    documentation: \"```python\\nclass RetryOwner:\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#__init__().\"\n    documentation: \"```python\\ndef __init__(\\n  self\\n) -> None:\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#__init__().(self)\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#close().\"\n    documentation: \"```python\\n@staticmethod\\ndef close(\\n  self: RetryOwner\\n): # -> None:\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#close().(self)\"\n  }\n  symbols {\n    symbol: \"local 1\"\n    documentation: \"```python\\nnested.RetryOwner\\n```\"\n  }\n}\nexternal_symbols {\n  symbol: \"scip-python python python-stdlib 3.11 builtins/staticmethod#\"\n  documentation: \"```python\\n(class) staticmethod\\n```\"\n}\n",
+    "provider": {
+      "name": "basedpyright",
+      "version": "1.39.8"
+    },
+    "queries": [
+      {
+        "request": [
+          "nested.py",
+          6,
+          17
+        ],
+        "response": [
+          {
+            "range": {
+              "start": {
+                "line": 3,
+                "character": 17
+              },
+              "end": {
+                "line": 3,
+                "character": 23
+              }
+            },
+            "uri_relative": "nested.py"
+          }
+        ]
+      },
+      {
+        "request": [
+          "nested.py",
+          9,
+          17
+        ],
+        "response": [
+          {
+            "range": {
+              "start": {
+                "line": 3,
+                "character": 17
+              },
+              "end": {
+                "line": 3,
+                "character": 23
+              }
+            },
+            "uri_relative": "nested.py"
+          }
+        ]
+      },
+      {
+        "request": [
+          "nested.py",
+          17,
+          17
+        ],
+        "response": [
+          {
+            "range": {
+              "start": {
+                "line": 14,
+                "character": 17
+              },
+              "end": {
+                "line": 14,
+                "character": 23
+              }
+            },
+            "uri_relative": "nested.py"
+          }
+        ]
+      },
+      {
+        "request": [
+          "nested.py",
+          20,
+          17
+        ],
+        "response": [
+          {
+            "range": {
+              "start": {
+                "line": 14,
+                "character": 17
+              },
+              "end": {
+                "line": 14,
+                "character": 23
+              }
+            },
+            "uri_relative": "nested.py"
+          }
+        ]
+      }
+    ],
+    "outcome": {
+      "status": "passed",
+      "report": {
+        "schema": 1,
+        "source_file_count": 1,
+        "changed_symbol_families": 1,
+        "physical_declarations": 14,
+        "restored_definition_roles": 0,
+        "positional_definition_queries": 4,
+        "unanswered_definition_queries": [],
+        "local_binding_families": 0,
+        "local_binding_semantics": "all_source_declarations_for_compiler_binding",
+        "shared_lexical_binding_families": 0,
+        "utf8_replacement_sources": [],
+        "source_only_definitions": [],
+        "unmapped_attribute_definitions": [],
+        "definition_provider": null,
+        "position_encoding": "UTF8",
+        "source_sha256": {
+          "nested.py": "5ae97ef6ad4261ea47a90bc1e0004b278818e9c3e6d1485487617dfbebbd3e89"
+        }
+      }
+    }
+  },
+  {
+    "case": "assignment_rebinding",
+    "source": "def one():\n    class RetryOwner:\n        def __init__(self):\n            self.closed = False\n        def close(self):\n            self = RetryOwner()\n            self.closed = True\n    owner = RetryOwner()\n    owner.close()\n    return owner.closed\n\ndef two():\n    class RetryOwner:\n        def __init__(self):\n            self.closed = False\n        def close(self):\n            self = RetryOwner()\n            self.closed = True\n    owner = RetryOwner()\n    owner.close()\n    return owner.closed\n",
+    "decoded": "metadata {\n  tool_info {\n    name: \"scip-python\"\n    version: \"0.6.6\"\n  }\n  project_root: \"file:///tmp/codenib-python-owned-writes-20261030/guard-captures/assignment_rebinding/repo\"\n  text_document_encoding: UTF8\n}\ndocuments {\n  relative_path: \"nested.py\"\n  occurrences {\n    range: 0\n    range: 0\n    range: 0\n    symbol: \"scip-python python identity-fixture 1 nested/__init__:\"\n    symbol_roles: 1\n  }\n  occurrences {\n    range: 0\n    range: 4\n    range: 7\n    symbol: \"scip-python python identity-fixture 1 nested/one().\"\n    symbol_roles: 1\n    enclosing_range: 0\n    enclosing_range: 0\n    enclosing_range: 9\n    enclosing_range: 23\n  }\n  occurrences {\n    range: 1\n    range: 10\n    range: 20\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#\"\n    symbol_roles: 1\n    enclosing_range: 1\n    enclosing_range: 4\n    enclosing_range: 6\n    enclosing_range: 30\n  }\n  occurrences {\n    range: 2\n    range: 12\n    range: 20\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#__init__().\"\n    symbol_roles: 1\n    enclosing_range: 2\n    enclosing_range: 8\n    enclosing_range: 3\n    enclosing_range: 31\n  }\n  occurrences {\n    range: 2\n    range: 21\n    range: 25\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#__init__().(self)\"\n    symbol_roles: 1\n  }\n  occurrences {\n    range: 3\n    range: 12\n    range: 16\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#__init__().(self)\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 3\n    range: 17\n    range: 23\n    symbol: \"scip-python python identity-fixture 1 nested/RetryOwner#closed.\"\n    symbol_roles: 1\n  }\n  occurrences {\n    range: 4\n    range: 12\n    range: 17\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#close().\"\n    symbol_roles: 1\n    enclosing_range: 4\n    enclosing_range: 8\n    enclosing_range: 6\n    enclosing_range: 30\n  }\n  occurrences {\n    range: 4\n    range: 18\n    range: 22\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#close().(self)\"\n    symbol_roles: 1\n  }\n  occurrences {\n    range: 5\n    range: 12\n    range: 16\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#close().(self)\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 5\n    range: 19\n    range: 29\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 6\n    range: 12\n    range: 16\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#close().(self)\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 6\n    range: 17\n    range: 23\n    symbol: \"scip-python python identity-fixture 1 nested/RetryOwner#closed.\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 7\n    range: 4\n    range: 9\n    symbol: \"local 0\"\n    symbol_roles: 1\n  }\n  occurrences {\n    range: 7\n    range: 12\n    range: 22\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 8\n    range: 4\n    range: 9\n    symbol: \"local 0\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 8\n    range: 10\n    range: 15\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#close().\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 9\n    range: 11\n    range: 16\n    symbol: \"local 0\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 9\n    range: 17\n    range: 23\n    symbol: \"scip-python python identity-fixture 1 nested/RetryOwner#closed.\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 11\n    range: 4\n    range: 7\n    symbol: \"scip-python python identity-fixture 1 nested/two().\"\n    symbol_roles: 1\n    enclosing_range: 11\n    enclosing_range: 0\n    enclosing_range: 20\n    enclosing_range: 23\n  }\n  occurrences {\n    range: 12\n    range: 10\n    range: 20\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#\"\n    symbol_roles: 1\n    enclosing_range: 12\n    enclosing_range: 4\n    enclosing_range: 17\n    enclosing_range: 30\n  }\n  occurrences {\n    range: 13\n    range: 12\n    range: 20\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#__init__().\"\n    symbol_roles: 1\n    enclosing_range: 13\n    enclosing_range: 8\n    enclosing_range: 14\n    enclosing_range: 31\n  }\n  occurrences {\n    range: 13\n    range: 21\n    range: 25\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#__init__().(self)\"\n    symbol_roles: 1\n  }\n  occurrences {\n    range: 14\n    range: 12\n    range: 16\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#__init__().(self)\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 14\n    range: 17\n    range: 23\n    symbol: \"scip-python python identity-fixture 1 nested/RetryOwner#closed.\"\n    symbol_roles: 1\n  }\n  occurrences {\n    range: 15\n    range: 12\n    range: 17\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#close().\"\n    symbol_roles: 1\n    enclosing_range: 15\n    enclosing_range: 8\n    enclosing_range: 17\n    enclosing_range: 30\n  }\n  occurrences {\n    range: 15\n    range: 18\n    range: 22\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#close().(self)\"\n    symbol_roles: 1\n  }\n  occurrences {\n    range: 16\n    range: 12\n    range: 16\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#close().(self)\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 16\n    range: 19\n    range: 29\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 17\n    range: 12\n    range: 16\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#close().(self)\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 17\n    range: 17\n    range: 23\n    symbol: \"scip-python python identity-fixture 1 nested/RetryOwner#closed.\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 18\n    range: 4\n    range: 9\n    symbol: \"local 1\"\n    symbol_roles: 1\n  }\n  occurrences {\n    range: 18\n    range: 12\n    range: 22\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 19\n    range: 4\n    range: 9\n    symbol: \"local 1\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 19\n    range: 10\n    range: 15\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#close().\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 20\n    range: 11\n    range: 16\n    symbol: \"local 1\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 20\n    range: 17\n    range: 23\n    symbol: \"scip-python python identity-fixture 1 nested/RetryOwner#closed.\"\n    symbol_roles: 8\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/__init__:\"\n    documentation: \"(module) nested\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/one().\"\n    documentation: \"```python\\ndef one(): # -> bool:\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#\"\n    documentation: \"```python\\nclass RetryOwner:\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#__init__().\"\n    documentation: \"```python\\ndef __init__(\\n  self\\n) -> None:\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#__init__().(self)\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/RetryOwner#closed.\"\n    documentation: \"```python\\n(variable) closed: Literal[False]\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#close().\"\n    documentation: \"```python\\ndef close(\\n  self\\n): # -> None:\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#close().(self)\"\n  }\n  symbols {\n    symbol: \"local 0\"\n    documentation: \"```python\\nnested.RetryOwner\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/two().\"\n    documentation: \"```python\\ndef two(): # -> bool:\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#\"\n    documentation: \"```python\\nclass RetryOwner:\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#__init__().\"\n    documentation: \"```python\\ndef __init__(\\n  self\\n) -> None:\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#__init__().(self)\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#close().\"\n    documentation: \"```python\\ndef close(\\n  self\\n): # -> None:\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#close().(self)\"\n  }\n  symbols {\n    symbol: \"local 1\"\n    documentation: \"```python\\nnested.RetryOwner\\n```\"\n  }\n}\n",
+    "provider": {
+      "name": "basedpyright",
+      "version": "1.39.8"
+    },
+    "queries": [
+      {
+        "request": [
+          "nested.py",
+          6,
+          17
+        ],
+        "response": [
+          {
+            "range": {
+              "start": {
+                "line": 3,
+                "character": 17
+              },
+              "end": {
+                "line": 3,
+                "character": 23
+              }
+            },
+            "uri_relative": "nested.py"
+          },
+          {
+            "range": {
+              "start": {
+                "line": 6,
+                "character": 17
+              },
+              "end": {
+                "line": 6,
+                "character": 23
+              }
+            },
+            "uri_relative": "nested.py"
+          }
+        ]
+      }
+    ],
+    "outcome": {
+      "status": "failed",
+      "error": "Python identity target is unresolved at nested.py:7:17 for nested.py:7:17 ('scip-python python identity-fixture 1 nested/RetryOwner#closed.'; target=None)",
+      "index_unchanged": true
+    }
+  },
+  {
+    "case": "loop_rebinding",
+    "source": "def one():\n    class RetryOwner:\n        def __init__(self):\n            self.closed = False\n        def close(self):\n            for self in [RetryOwner()]:\n                pass\n            self.closed = True\n    owner = RetryOwner()\n    owner.close()\n    return owner.closed\n\ndef two():\n    class RetryOwner:\n        def __init__(self):\n            self.closed = False\n        def close(self):\n            for self in [RetryOwner()]:\n                pass\n            self.closed = True\n    owner = RetryOwner()\n    owner.close()\n    return owner.closed\n",
+    "decoded": "metadata {\n  tool_info {\n    name: \"scip-python\"\n    version: \"0.6.6\"\n  }\n  project_root: \"file:///tmp/codenib-python-owned-writes-20261030/guard-captures/loop_rebinding/repo\"\n  text_document_encoding: UTF8\n}\ndocuments {\n  relative_path: \"nested.py\"\n  occurrences {\n    range: 0\n    range: 0\n    range: 0\n    symbol: \"scip-python python identity-fixture 1 nested/__init__:\"\n    symbol_roles: 1\n  }\n  occurrences {\n    range: 0\n    range: 4\n    range: 7\n    symbol: \"scip-python python identity-fixture 1 nested/one().\"\n    symbol_roles: 1\n    enclosing_range: 0\n    enclosing_range: 0\n    enclosing_range: 10\n    enclosing_range: 23\n  }\n  occurrences {\n    range: 1\n    range: 10\n    range: 20\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#\"\n    symbol_roles: 1\n    enclosing_range: 1\n    enclosing_range: 4\n    enclosing_range: 7\n    enclosing_range: 30\n  }\n  occurrences {\n    range: 2\n    range: 12\n    range: 20\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#__init__().\"\n    symbol_roles: 1\n    enclosing_range: 2\n    enclosing_range: 8\n    enclosing_range: 3\n    enclosing_range: 31\n  }\n  occurrences {\n    range: 2\n    range: 21\n    range: 25\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#__init__().(self)\"\n    symbol_roles: 1\n  }\n  occurrences {\n    range: 3\n    range: 12\n    range: 16\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#__init__().(self)\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 3\n    range: 17\n    range: 23\n    symbol: \"scip-python python identity-fixture 1 nested/RetryOwner#closed.\"\n    symbol_roles: 1\n  }\n  occurrences {\n    range: 4\n    range: 12\n    range: 17\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#close().\"\n    symbol_roles: 1\n    enclosing_range: 4\n    enclosing_range: 8\n    enclosing_range: 7\n    enclosing_range: 30\n  }\n  occurrences {\n    range: 4\n    range: 18\n    range: 22\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#close().(self)\"\n    symbol_roles: 1\n  }\n  occurrences {\n    range: 5\n    range: 16\n    range: 20\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#close().(self)\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 5\n    range: 25\n    range: 35\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 7\n    range: 12\n    range: 16\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#close().(self)\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 7\n    range: 17\n    range: 23\n    symbol: \"scip-python python identity-fixture 1 nested/RetryOwner#closed.\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 8\n    range: 4\n    range: 9\n    symbol: \"local 0\"\n    symbol_roles: 1\n  }\n  occurrences {\n    range: 8\n    range: 12\n    range: 22\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 9\n    range: 4\n    range: 9\n    symbol: \"local 0\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 9\n    range: 10\n    range: 15\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#close().\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 10\n    range: 11\n    range: 16\n    symbol: \"local 0\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 10\n    range: 17\n    range: 23\n    symbol: \"scip-python python identity-fixture 1 nested/RetryOwner#closed.\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 12\n    range: 4\n    range: 7\n    symbol: \"scip-python python identity-fixture 1 nested/two().\"\n    symbol_roles: 1\n    enclosing_range: 12\n    enclosing_range: 0\n    enclosing_range: 22\n    enclosing_range: 23\n  }\n  occurrences {\n    range: 13\n    range: 10\n    range: 20\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#\"\n    symbol_roles: 1\n    enclosing_range: 13\n    enclosing_range: 4\n    enclosing_range: 19\n    enclosing_range: 30\n  }\n  occurrences {\n    range: 14\n    range: 12\n    range: 20\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#__init__().\"\n    symbol_roles: 1\n    enclosing_range: 14\n    enclosing_range: 8\n    enclosing_range: 15\n    enclosing_range: 31\n  }\n  occurrences {\n    range: 14\n    range: 21\n    range: 25\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#__init__().(self)\"\n    symbol_roles: 1\n  }\n  occurrences {\n    range: 15\n    range: 12\n    range: 16\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#__init__().(self)\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 15\n    range: 17\n    range: 23\n    symbol: \"scip-python python identity-fixture 1 nested/RetryOwner#closed.\"\n    symbol_roles: 1\n  }\n  occurrences {\n    range: 16\n    range: 12\n    range: 17\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#close().\"\n    symbol_roles: 1\n    enclosing_range: 16\n    enclosing_range: 8\n    enclosing_range: 19\n    enclosing_range: 30\n  }\n  occurrences {\n    range: 16\n    range: 18\n    range: 22\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#close().(self)\"\n    symbol_roles: 1\n  }\n  occurrences {\n    range: 17\n    range: 16\n    range: 20\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#close().(self)\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 17\n    range: 25\n    range: 35\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 19\n    range: 12\n    range: 16\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#close().(self)\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 19\n    range: 17\n    range: 23\n    symbol: \"scip-python python identity-fixture 1 nested/RetryOwner#closed.\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 20\n    range: 4\n    range: 9\n    symbol: \"local 1\"\n    symbol_roles: 1\n  }\n  occurrences {\n    range: 20\n    range: 12\n    range: 22\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 21\n    range: 4\n    range: 9\n    symbol: \"local 1\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 21\n    range: 10\n    range: 15\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#close().\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 22\n    range: 11\n    range: 16\n    symbol: \"local 1\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 22\n    range: 17\n    range: 23\n    symbol: \"scip-python python identity-fixture 1 nested/RetryOwner#closed.\"\n    symbol_roles: 8\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/__init__:\"\n    documentation: \"(module) nested\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/one().\"\n    documentation: \"```python\\ndef one(): # -> bool:\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#\"\n    documentation: \"```python\\nclass RetryOwner:\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#__init__().\"\n    documentation: \"```python\\ndef __init__(\\n  self\\n) -> None:\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#__init__().(self)\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/RetryOwner#closed.\"\n    documentation: \"```python\\n(variable) closed: Literal[False]\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#close().\"\n    documentation: \"```python\\ndef close(\\n  self\\n): # -> None:\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#close().(self)\"\n  }\n  symbols {\n    symbol: \"local 0\"\n    documentation: \"```python\\nnested.RetryOwner\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/two().\"\n    documentation: \"```python\\ndef two(): # -> bool:\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#\"\n    documentation: \"```python\\nclass RetryOwner:\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#__init__().\"\n    documentation: \"```python\\ndef __init__(\\n  self\\n) -> None:\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#__init__().(self)\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#close().\"\n    documentation: \"```python\\ndef close(\\n  self\\n): # -> None:\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#close().(self)\"\n  }\n  symbols {\n    symbol: \"local 1\"\n    documentation: \"```python\\nnested.RetryOwner\\n```\"\n  }\n}\n",
+    "provider": {
+      "name": "basedpyright",
+      "version": "1.39.8"
+    },
+    "queries": [
+      {
+        "request": [
+          "nested.py",
+          7,
+          17
+        ],
+        "response": [
+          {
+            "range": {
+              "start": {
+                "line": 3,
+                "character": 17
+              },
+              "end": {
+                "line": 3,
+                "character": 23
+              }
+            },
+            "uri_relative": "nested.py"
+          },
+          {
+            "range": {
+              "start": {
+                "line": 7,
+                "character": 17
+              },
+              "end": {
+                "line": 7,
+                "character": 23
+              }
+            },
+            "uri_relative": "nested.py"
+          }
+        ]
+      }
+    ],
+    "outcome": {
+      "status": "failed",
+      "error": "Python identity target is unresolved at nested.py:8:17 for nested.py:8:17 ('scip-python python identity-fixture 1 nested/RetryOwner#closed.'; target=None)",
+      "index_unchanged": true
+    }
+  },
+  {
+    "case": "pattern_rebinding",
+    "source": "def one():\n    class RetryOwner:\n        def __init__(self):\n            self.closed = False\n        def close(self):\n            match RetryOwner():\n                case self:\n                    pass\n            self.closed = True\n    owner = RetryOwner()\n    owner.close()\n    return owner.closed\n\ndef two():\n    class RetryOwner:\n        def __init__(self):\n            self.closed = False\n        def close(self):\n            match RetryOwner():\n                case self:\n                    pass\n            self.closed = True\n    owner = RetryOwner()\n    owner.close()\n    return owner.closed\n",
+    "decoded": "metadata {\n  tool_info {\n    name: \"scip-python\"\n    version: \"0.6.6\"\n  }\n  project_root: \"file:///tmp/codenib-python-owned-writes-20261030/pattern-guard/guard-captures/pattern_rebinding/repo\"\n  text_document_encoding: UTF8\n}\ndocuments {\n  relative_path: \"nested.py\"\n  occurrences {\n    range: 0\n    range: 0\n    range: 0\n    symbol: \"scip-python python identity-fixture 1 nested/__init__:\"\n    symbol_roles: 1\n  }\n  occurrences {\n    range: 0\n    range: 4\n    range: 7\n    symbol: \"scip-python python identity-fixture 1 nested/one().\"\n    symbol_roles: 1\n    enclosing_range: 0\n    enclosing_range: 0\n    enclosing_range: 11\n    enclosing_range: 23\n  }\n  occurrences {\n    range: 1\n    range: 10\n    range: 20\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#\"\n    symbol_roles: 1\n    enclosing_range: 1\n    enclosing_range: 4\n    enclosing_range: 8\n    enclosing_range: 30\n  }\n  occurrences {\n    range: 2\n    range: 12\n    range: 20\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#__init__().\"\n    symbol_roles: 1\n    enclosing_range: 2\n    enclosing_range: 8\n    enclosing_range: 3\n    enclosing_range: 31\n  }\n  occurrences {\n    range: 2\n    range: 21\n    range: 25\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#__init__().(self)\"\n    symbol_roles: 1\n  }\n  occurrences {\n    range: 3\n    range: 12\n    range: 16\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#__init__().(self)\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 3\n    range: 17\n    range: 23\n    symbol: \"scip-python python identity-fixture 1 nested/RetryOwner#closed.\"\n    symbol_roles: 1\n  }\n  occurrences {\n    range: 4\n    range: 12\n    range: 17\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#close().\"\n    symbol_roles: 1\n    enclosing_range: 4\n    enclosing_range: 8\n    enclosing_range: 8\n    enclosing_range: 30\n  }\n  occurrences {\n    range: 4\n    range: 18\n    range: 22\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#close().(self)\"\n    symbol_roles: 1\n  }\n  occurrences {\n    range: 5\n    range: 18\n    range: 28\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 6\n    range: 21\n    range: 25\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#close().(self)\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 8\n    range: 12\n    range: 16\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#close().(self)\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 8\n    range: 17\n    range: 23\n    symbol: \"scip-python python identity-fixture 1 nested/RetryOwner#closed.\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 9\n    range: 4\n    range: 9\n    symbol: \"local 0\"\n    symbol_roles: 1\n  }\n  occurrences {\n    range: 9\n    range: 12\n    range: 22\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 10\n    range: 4\n    range: 9\n    symbol: \"local 0\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 10\n    range: 10\n    range: 15\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#close().\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 11\n    range: 11\n    range: 16\n    symbol: \"local 0\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 11\n    range: 17\n    range: 23\n    symbol: \"scip-python python identity-fixture 1 nested/RetryOwner#closed.\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 13\n    range: 4\n    range: 7\n    symbol: \"scip-python python identity-fixture 1 nested/two().\"\n    symbol_roles: 1\n    enclosing_range: 13\n    enclosing_range: 0\n    enclosing_range: 24\n    enclosing_range: 23\n  }\n  occurrences {\n    range: 14\n    range: 10\n    range: 20\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#\"\n    symbol_roles: 1\n    enclosing_range: 14\n    enclosing_range: 4\n    enclosing_range: 21\n    enclosing_range: 30\n  }\n  occurrences {\n    range: 15\n    range: 12\n    range: 20\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#__init__().\"\n    symbol_roles: 1\n    enclosing_range: 15\n    enclosing_range: 8\n    enclosing_range: 16\n    enclosing_range: 31\n  }\n  occurrences {\n    range: 15\n    range: 21\n    range: 25\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#__init__().(self)\"\n    symbol_roles: 1\n  }\n  occurrences {\n    range: 16\n    range: 12\n    range: 16\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#__init__().(self)\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 16\n    range: 17\n    range: 23\n    symbol: \"scip-python python identity-fixture 1 nested/RetryOwner#closed.\"\n    symbol_roles: 1\n  }\n  occurrences {\n    range: 17\n    range: 12\n    range: 17\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#close().\"\n    symbol_roles: 1\n    enclosing_range: 17\n    enclosing_range: 8\n    enclosing_range: 21\n    enclosing_range: 30\n  }\n  occurrences {\n    range: 17\n    range: 18\n    range: 22\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#close().(self)\"\n    symbol_roles: 1\n  }\n  occurrences {\n    range: 18\n    range: 18\n    range: 28\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 19\n    range: 21\n    range: 25\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#close().(self)\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 21\n    range: 12\n    range: 16\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#close().(self)\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 21\n    range: 17\n    range: 23\n    symbol: \"scip-python python identity-fixture 1 nested/RetryOwner#closed.\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 22\n    range: 4\n    range: 9\n    symbol: \"local 1\"\n    symbol_roles: 1\n  }\n  occurrences {\n    range: 22\n    range: 12\n    range: 22\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 23\n    range: 4\n    range: 9\n    symbol: \"local 1\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 23\n    range: 10\n    range: 15\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#close().\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 24\n    range: 11\n    range: 16\n    symbol: \"local 1\"\n    symbol_roles: 8\n  }\n  occurrences {\n    range: 24\n    range: 17\n    range: 23\n    symbol: \"scip-python python identity-fixture 1 nested/RetryOwner#closed.\"\n    symbol_roles: 8\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/__init__:\"\n    documentation: \"(module) nested\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/one().\"\n    documentation: \"```python\\ndef one(): # -> bool:\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#\"\n    documentation: \"```python\\nclass RetryOwner:\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#__init__().\"\n    documentation: \"```python\\ndef __init__(\\n  self\\n) -> None:\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#__init__().(self)\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/RetryOwner#closed.\"\n    documentation: \"```python\\n(variable) closed: Literal[False]\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#close().\"\n    documentation: \"```python\\ndef close(\\n  self\\n): # -> None:\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/one().RetryOwner#close().(self)\"\n  }\n  symbols {\n    symbol: \"local 0\"\n    documentation: \"```python\\nnested.RetryOwner\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/two().\"\n    documentation: \"```python\\ndef two(): # -> bool:\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#\"\n    documentation: \"```python\\nclass RetryOwner:\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#__init__().\"\n    documentation: \"```python\\ndef __init__(\\n  self\\n) -> None:\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#__init__().(self)\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#close().\"\n    documentation: \"```python\\ndef close(\\n  self\\n): # -> None:\\n```\"\n  }\n  symbols {\n    symbol: \"scip-python python identity-fixture 1 nested/two().RetryOwner#close().(self)\"\n  }\n  symbols {\n    symbol: \"local 1\"\n    documentation: \"```python\\nnested.RetryOwner\\n```\"\n  }\n}\n",
+    "provider": {
+      "name": "basedpyright",
+      "version": "1.39.8"
+    },
+    "queries": [
+      {
+        "request": [
+          "nested.py",
+          8,
+          17
+        ],
+        "response": [
+          {
+            "range": {
+              "start": {
+                "line": 3,
+                "character": 17
+              },
+              "end": {
+                "line": 3,
+                "character": 23
+              }
+            },
+            "uri_relative": "nested.py"
+          },
+          {
+            "range": {
+              "start": {
+                "line": 8,
+                "character": 17
+              },
+              "end": {
+                "line": 8,
+                "character": 23
+              }
+            },
+            "uri_relative": "nested.py"
+          }
+        ]
+      },
+      {
+        "request": [
+          "nested.py",
+          11,
+          17
+        ],
+        "response": [
+          {
+            "range": {
+              "start": {
+                "line": 3,
+                "character": 17
+              },
+              "end": {
+                "line": 3,
+                "character": 23
+              }
+            },
+            "uri_relative": "nested.py"
+          },
+          {
+            "range": {
+              "start": {
+                "line": 8,
+                "character": 17
+              },
+              "end": {
+                "line": 8,
+                "character": 23
+              }
+            },
+            "uri_relative": "nested.py"
+          }
+        ]
+      },
+      {
+        "request": [
+          "nested.py",
+          21,
+          17
+        ],
+        "response": [
+          {
+            "range": {
+              "start": {
+                "line": 16,
+                "character": 17
+              },
+              "end": {
+                "line": 16,
+                "character": 23
+              }
+            },
+            "uri_relative": "nested.py"
+          },
+          {
+            "range": {
+              "start": {
+                "line": 21,
+                "character": 17
+              },
+              "end": {
+                "line": 21,
+                "character": 23
+              }
+            },
+            "uri_relative": "nested.py"
+          }
+        ]
+      },
+      {
+        "request": [
+          "nested.py",
+          24,
+          17
+        ],
+        "response": [
+          {
+            "range": {
+              "start": {
+                "line": 16,
+                "character": 17
+              },
+              "end": {
+                "line": 16,
+                "character": 23
+              }
+            },
+            "uri_relative": "nested.py"
+          },
+          {
+            "range": {
+              "start": {
+                "line": 21,
+                "character": 17
+              },
+              "end": {
+                "line": 21,
+                "character": 23
+              }
+            },
+            "uri_relative": "nested.py"
+          }
+        ]
+      }
+    ],
+    "outcome": {
+      "status": "passed",
+      "report": {
+        "schema": 1,
+        "source_file_count": 1,
+        "changed_symbol_families": 1,
+        "physical_declarations": 14,
+        "restored_definition_roles": 0,
+        "positional_definition_queries": 4,
+        "unanswered_definition_queries": [],
+        "local_binding_families": 0,
+        "local_binding_semantics": "all_source_declarations_for_compiler_binding",
+        "shared_lexical_binding_families": 0,
+        "utf8_replacement_sources": [],
+        "source_only_definitions": [],
+        "unmapped_attribute_definitions": [],
+        "definition_provider": null,
+        "position_encoding": "UTF8",
+        "source_sha256": {
+          "nested.py": "75988ab403bc4a898872f2213d9a5732a4f095f41ef0cfe5cda6d1036327b2ab"
+        }
+      }
+    }
+  }
+]

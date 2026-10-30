@@ -32,6 +32,8 @@ fewer queries when source declarations establish a shared lexical binding.
 | `varargs` | LSP selections beginning at `*args` or `**kwargs` must bind to the exact parameter identifier and function. |
 | `field_redefinitions` | Repeated classes retain their own member definitions; classes in different enclosing functions keep their distinct fields. |
 | `attribute_fields` | Instance fields declared inside constructors of same-named nested classes must keep their owning class and source position. |
+| `attribute_writes` | LSP can select a later instance-field write; retain the existing field definition in the same physical class rather than publishing a new definition. |
+| `attribute_write_receivers.fixture` | Captured controls keep direct compiler-declared field targets valid for other/static-method arguments, while refusing write anchors after instance-parameter assignment, loop or match-pattern rebinding. |
 
 The separate `scip_python_nested_collision.fixture` retains the original
 three-definition `run` reproduction, including the second inner definition
