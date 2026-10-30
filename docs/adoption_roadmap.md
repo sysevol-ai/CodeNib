@@ -279,11 +279,22 @@ material stays outside model mounts. Native readiness now executes the same
 338 selected tests in each original-production/reference pair: original behavior
 fails and all reference selected outcomes pass, with no collection errors or
 missing selected execution. All six grading containers are absent; the earlier
-controller setup failure is retained. Fifteen task prompts/rubrics, twelve
-product admissions and a full executable/model/resource seal remain open before
-any new inference. Preserve all earlier negative
-outcomes and the unchanged correctness/time/usage gates; no comparative result
-or external enrollment is added.
+controller setup failure is retained. Drafts of fifteen tasks and the common
+runner exist without a model/runtime/resource seal. Subsequent operator
+controls return the original definitions for Native, Serena and Codegraph on
+all three sources. CodeNib's complete-graph admission succeeds on Astropy and
+Seaborn but fails on SymPy at two CPUs/4 GiB. Keep all failures; no selected
+case is replaced. These results inform the
+[deferred source-first candidate](experiments/codegraph_source_default.md):
+an ordinary cold query returns verified source without preparing a graph;
+explicit graph requests and warm reuse preserve their contracts. The candidate
+passes 8,946 unit and 433 MCP 2.3 cases; installed controls cover all three
+first source queries and Seaborn's same-connection update. This changes work
+performed, not equivalent-graph speed or matched model benefit. This first
+set is development admission and counts as neither independent success
+confirmation. Keep the reserved set unopened and freeze another disjoint set
+before independent execution. Preserve earlier outcomes and the unchanged
+correctness/time/usage gates; external enrollment remains 0/5.
 Tracking issue: [#874](https://github.com/sysevol-ai/CodeNib/issues/874).
 The detailed contract is [the internal pilot plan](experiments/codegraph_net_benefit.md).
 

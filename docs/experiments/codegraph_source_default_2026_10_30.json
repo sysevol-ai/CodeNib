@@ -1,0 +1,822 @@
+{
+  "schema": "codenib.source-default.v1",
+  "scope": "Installed model-free development admission and explicit deferred default behavior change; not whole-task benefit or equivalent-output graph acceleration",
+  "model_calls": 0,
+  "candidate_source_commit": "d20e7550360f7583f71f65808789daffa0197fdd",
+  "parent_source_commit": "30e0c4b4bc795502766a8dc165ec43449c0534b4",
+  "changed_product_files": [
+    "codenib/mcp/server.py",
+    "codenib/mcp/prompts.py"
+  ],
+  "controls": [
+    {
+      "path": "preparation/admission-v1/01-astropy__astropy-13579-codegraph/receipt.json",
+      "status": "error",
+      "workflow": {
+        "workflow_index": 1,
+        "instance_id": "astropy__astropy-13579",
+        "arm": "codegraph",
+        "product": "codegraph"
+      },
+      "calls": [],
+      "controlled_failure_timeout_seconds": null
+    },
+    {
+      "path": "preparation/admission-v1/06-sympy__sympy-21596-codenib/receipt.json",
+      "status": "error",
+      "workflow": {
+        "workflow_index": 6,
+        "instance_id": "sympy__sympy-21596",
+        "arm": "codenib",
+        "product": "codenib"
+      },
+      "calls": [],
+      "controlled_failure_timeout_seconds": null
+    },
+    {
+      "path": "preparation/admission-v1/00-astropy__astropy-13579-native/receipt.json",
+      "status": "prepared_no_inference",
+      "workflow": {
+        "workflow_index": 0,
+        "instance_id": "astropy__astropy-13579",
+        "arm": "native",
+        "product": "native"
+      },
+      "calls": [],
+      "controlled_failure_timeout_seconds": null
+    },
+    {
+      "path": "preparation/admission-v1/09-mwaskom__seaborn-3187-codenib/receipt.json",
+      "status": "prepared_no_inference",
+      "workflow": {
+        "workflow_index": 9,
+        "instance_id": "mwaskom__seaborn-3187",
+        "arm": "codenib",
+        "product": "codenib"
+      },
+      "calls": [],
+      "controlled_failure_timeout_seconds": null
+    },
+    {
+      "path": "preparation/admission-v1/02-astropy__astropy-13579-serena/receipt.json",
+      "status": "error",
+      "workflow": {
+        "workflow_index": 2,
+        "instance_id": "astropy__astropy-13579",
+        "arm": "serena",
+        "product": "serena"
+      },
+      "calls": [],
+      "controlled_failure_timeout_seconds": null
+    },
+    {
+      "path": "preparation/admission-v1/03-astropy__astropy-13579-codenib/receipt.json",
+      "status": "prepared_no_inference",
+      "workflow": {
+        "workflow_index": 3,
+        "instance_id": "astropy__astropy-13579",
+        "arm": "codenib",
+        "product": "codenib"
+      },
+      "calls": [],
+      "controlled_failure_timeout_seconds": null
+    },
+    {
+      "path": "preparation/admission-v2/01-astropy__astropy-13579-codegraph/receipt.json",
+      "status": "error",
+      "workflow": {
+        "workflow_index": 1,
+        "instance_id": "astropy__astropy-13579",
+        "arm": "codegraph",
+        "product": "codegraph"
+      },
+      "calls": [],
+      "controlled_failure_timeout_seconds": null
+    },
+    {
+      "path": "preparation/admission-v2/10-mwaskom__seaborn-3187-native/receipt.json",
+      "status": "prepared_no_inference",
+      "workflow": {
+        "workflow_index": 10,
+        "instance_id": "mwaskom__seaborn-3187",
+        "arm": "native",
+        "product": "native"
+      },
+      "calls": [],
+      "controlled_failure_timeout_seconds": null
+    },
+    {
+      "path": "preparation/admission-v2/00-astropy__astropy-13579-native/receipt.json",
+      "status": "prepared_no_inference",
+      "workflow": {
+        "workflow_index": 0,
+        "instance_id": "astropy__astropy-13579",
+        "arm": "native",
+        "product": "native"
+      },
+      "calls": [],
+      "controlled_failure_timeout_seconds": null
+    },
+    {
+      "path": "preparation/admission-v2/04-sympy__sympy-21596-codegraph/receipt.json",
+      "status": "error",
+      "workflow": {
+        "workflow_index": 4,
+        "instance_id": "sympy__sympy-21596",
+        "arm": "codegraph",
+        "product": "codegraph"
+      },
+      "calls": [],
+      "controlled_failure_timeout_seconds": null
+    },
+    {
+      "path": "preparation/admission-v2/02-astropy__astropy-13579-serena/receipt.json",
+      "status": "prepared_no_inference",
+      "workflow": {
+        "workflow_index": 2,
+        "instance_id": "astropy__astropy-13579",
+        "arm": "serena",
+        "product": "serena"
+      },
+      "calls": [],
+      "controlled_failure_timeout_seconds": null
+    },
+    {
+      "path": "preparation/admission-v2/08-mwaskom__seaborn-3187-serena/receipt.json",
+      "status": "prepared_no_inference",
+      "workflow": {
+        "workflow_index": 8,
+        "instance_id": "mwaskom__seaborn-3187",
+        "arm": "serena",
+        "product": "serena"
+      },
+      "calls": [],
+      "controlled_failure_timeout_seconds": null
+    },
+    {
+      "path": "preparation/admission-v2/11-mwaskom__seaborn-3187-codegraph/receipt.json",
+      "status": "error",
+      "workflow": {
+        "workflow_index": 11,
+        "instance_id": "mwaskom__seaborn-3187",
+        "arm": "codegraph",
+        "product": "codegraph"
+      },
+      "calls": [],
+      "controlled_failure_timeout_seconds": null
+    },
+    {
+      "path": "preparation/admission-v2/05-sympy__sympy-21596-serena/receipt.json",
+      "status": "prepared_no_inference",
+      "workflow": {
+        "workflow_index": 5,
+        "instance_id": "sympy__sympy-21596",
+        "arm": "serena",
+        "product": "serena"
+      },
+      "calls": [],
+      "controlled_failure_timeout_seconds": null
+    },
+    {
+      "path": "preparation/admission-v2/07-sympy__sympy-21596-native/receipt.json",
+      "status": "prepared_no_inference",
+      "workflow": {
+        "workflow_index": 7,
+        "instance_id": "sympy__sympy-21596",
+        "arm": "native",
+        "product": "native"
+      },
+      "calls": [],
+      "controlled_failure_timeout_seconds": null
+    },
+    {
+      "path": "preparation/admission-v3/01-astropy__astropy-13579-codegraph/receipt.json",
+      "status": "prepared_no_inference",
+      "workflow": {
+        "workflow_index": 1,
+        "instance_id": "astropy__astropy-13579",
+        "arm": "codegraph",
+        "product": "codegraph"
+      },
+      "calls": [],
+      "controlled_failure_timeout_seconds": null
+    },
+    {
+      "path": "preparation/admission-v3/04-sympy__sympy-21596-codegraph/receipt.json",
+      "status": "prepared_no_inference",
+      "workflow": {
+        "workflow_index": 4,
+        "instance_id": "sympy__sympy-21596",
+        "arm": "codegraph",
+        "product": "codegraph"
+      },
+      "calls": [],
+      "controlled_failure_timeout_seconds": null
+    },
+    {
+      "path": "preparation/admission-v3/11-mwaskom__seaborn-3187-codegraph/receipt.json",
+      "status": "prepared_no_inference",
+      "workflow": {
+        "workflow_index": 11,
+        "instance_id": "mwaskom__seaborn-3187",
+        "arm": "codegraph",
+        "product": "codegraph"
+      },
+      "calls": [],
+      "controlled_failure_timeout_seconds": null
+    },
+    {
+      "path": "preparation/heap-controls/heap-16384-memory-32/receipt.json",
+      "status": "prepared_no_inference",
+      "workflow": {
+        "workflow_index": 6,
+        "instance_id": "sympy__sympy-21596",
+        "arm": "codenib",
+        "product": "codenib"
+      },
+      "calls": [],
+      "controlled_failure_timeout_seconds": null
+    },
+    {
+      "path": "preparation/heap-controls/heap-2560-memory-4/receipt.json",
+      "status": "error",
+      "workflow": {
+        "workflow_index": 6,
+        "instance_id": "sympy__sympy-21596",
+        "arm": "codenib",
+        "product": "codenib"
+      },
+      "calls": [],
+      "controlled_failure_timeout_seconds": null
+    },
+    {
+      "path": "preparation/live-lsp-controls-v1/sympy__sympy-21596/receipt.json",
+      "status": "component_complete",
+      "workflow": {
+        "workflow_index": 6,
+        "instance_id": "sympy__sympy-21596",
+        "arm": "codenib",
+        "product": "codenib"
+      },
+      "calls": [],
+      "controlled_failure_timeout_seconds": null
+    },
+    {
+      "path": "preparation/live-lsp-controls-v1/astropy__astropy-13579/receipt.json",
+      "status": "component_complete",
+      "workflow": {
+        "workflow_index": 3,
+        "instance_id": "astropy__astropy-13579",
+        "arm": "codenib",
+        "product": "codenib"
+      },
+      "calls": [],
+      "controlled_failure_timeout_seconds": null
+    },
+    {
+      "path": "preparation/live-lsp-controls-v1/mwaskom__seaborn-3187/receipt.json",
+      "status": "component_complete",
+      "workflow": {
+        "workflow_index": 9,
+        "instance_id": "mwaskom__seaborn-3187",
+        "arm": "codenib",
+        "product": "codenib"
+      },
+      "calls": [],
+      "controlled_failure_timeout_seconds": null
+    },
+    {
+      "path": "source-default/candidate-v4/admission-v3/09-mwaskom__seaborn-3187-codenib/receipt.json",
+      "status": "candidate_source_default_passed",
+      "workflow": {
+        "workflow_index": 9,
+        "instance_id": "mwaskom__seaborn-3187",
+        "arm": "codenib",
+        "product": "codenib"
+      },
+      "calls": [
+        {
+          "label": "default",
+          "seconds": 0.16184591501951218,
+          "is_error": false
+        },
+        {
+          "label": "explicit-auto",
+          "seconds": 0.12454050406813622,
+          "is_error": false
+        },
+        {
+          "label": "explicit-graph",
+          "seconds": 33.22104501910508,
+          "is_error": false
+        },
+        {
+          "label": "warm-default",
+          "seconds": 0.19035544618964195,
+          "is_error": false
+        },
+        {
+          "label": "warm-explicit-false",
+          "seconds": 0.18726257979869843,
+          "is_error": false
+        },
+        {
+          "label": "stale-default",
+          "seconds": 0.01061537116765976,
+          "is_error": true
+        },
+        {
+          "label": "updated-default",
+          "seconds": 0.24702506326138973,
+          "is_error": false
+        }
+      ],
+      "controlled_failure_timeout_seconds": null
+    },
+    {
+      "path": "source-default/candidate-v3/admission-v3/09-mwaskom__seaborn-3187-codenib/receipt.json",
+      "status": "failed",
+      "workflow": {
+        "workflow_index": 9,
+        "instance_id": "mwaskom__seaborn-3187",
+        "arm": "codenib",
+        "product": "codenib"
+      },
+      "calls": [
+        {
+          "label": "default",
+          "seconds": 0.1688532568514347,
+          "is_error": false
+        },
+        {
+          "label": "explicit-auto",
+          "seconds": 0.12717335112392902,
+          "is_error": false
+        },
+        {
+          "label": "explicit-graph",
+          "seconds": 34.80214351043105,
+          "is_error": false
+        },
+        {
+          "label": "warm-default",
+          "seconds": 0.19653769955039024,
+          "is_error": false
+        },
+        {
+          "label": "warm-explicit-false",
+          "seconds": 0.19329078309237957,
+          "is_error": false
+        },
+        {
+          "label": "stale-default",
+          "seconds": 0.012496905401349068,
+          "is_error": true
+        },
+        {
+          "label": "updated-default",
+          "seconds": 0.24851722829043865,
+          "is_error": false
+        }
+      ],
+      "controlled_failure_timeout_seconds": null
+    },
+    {
+      "path": "source-default/main/admission-v3/06-sympy__sympy-21596-codenib/receipt.json",
+      "status": "baseline_observed",
+      "workflow": {
+        "workflow_index": 6,
+        "instance_id": "sympy__sympy-21596",
+        "arm": "codenib",
+        "product": "codenib"
+      },
+      "calls": [
+        {
+          "label": "default",
+          "seconds": 309.32090769708157,
+          "is_error": true
+        }
+      ],
+      "controlled_failure_timeout_seconds": null
+    },
+    {
+      "path": "source-default/main/admission-v3/09-mwaskom__seaborn-3187-codenib/receipt.json",
+      "status": "baseline_observed",
+      "workflow": {
+        "workflow_index": 9,
+        "instance_id": "mwaskom__seaborn-3187",
+        "arm": "codenib",
+        "product": "codenib"
+      },
+      "calls": [
+        {
+          "label": "default",
+          "seconds": 34.89440279081464,
+          "is_error": false
+        }
+      ],
+      "controlled_failure_timeout_seconds": null
+    },
+    {
+      "path": "source-default/main/admission-v3/03-astropy__astropy-13579-codenib/receipt.json",
+      "status": "baseline_observed",
+      "workflow": {
+        "workflow_index": 3,
+        "instance_id": "astropy__astropy-13579",
+        "arm": "codenib",
+        "product": "codenib"
+      },
+      "calls": [
+        {
+          "label": "default",
+          "seconds": 128.51296916417778,
+          "is_error": false
+        }
+      ],
+      "controlled_failure_timeout_seconds": null
+    },
+    {
+      "path": "source-default/candidate-v2/admission-v3/06-sympy__sympy-21596-codenib/receipt.json",
+      "status": "failed",
+      "workflow": {
+        "workflow_index": 6,
+        "instance_id": "sympy__sympy-21596",
+        "arm": "codenib",
+        "product": "codenib"
+      },
+      "calls": [
+        {
+          "label": "default",
+          "seconds": 0.7146509345620871,
+          "is_error": false
+        },
+        {
+          "label": "explicit-auto",
+          "seconds": 0.671382611617446,
+          "is_error": false
+        },
+        {
+          "label": "explicit-graph",
+          "seconds": 548.209404995665,
+          "is_error": true
+        }
+      ],
+      "controlled_failure_timeout_seconds": null
+    },
+    {
+      "path": "source-default/candidate-v2/admission-v3/09-mwaskom__seaborn-3187-codenib/receipt.json",
+      "status": "failed",
+      "workflow": {
+        "workflow_index": 9,
+        "instance_id": "mwaskom__seaborn-3187",
+        "arm": "codenib",
+        "product": "codenib"
+      },
+      "calls": [
+        {
+          "label": "default",
+          "seconds": 0.1657739356160164,
+          "is_error": false
+        },
+        {
+          "label": "explicit-auto",
+          "seconds": 0.12643928453326225,
+          "is_error": false
+        },
+        {
+          "label": "explicit-graph",
+          "seconds": 34.509179554879665,
+          "is_error": false
+        }
+      ],
+      "controlled_failure_timeout_seconds": null
+    },
+    {
+      "path": "source-default/candidate-v5/admission-v3/06-sympy__sympy-21596-codenib/receipt.json",
+      "status": "candidate_source_default_passed",
+      "workflow": {
+        "workflow_index": 6,
+        "instance_id": "sympy__sympy-21596",
+        "arm": "codenib",
+        "product": "codenib"
+      },
+      "calls": [
+        {
+          "label": "default",
+          "seconds": 0.7217299919575453,
+          "is_error": false
+        },
+        {
+          "label": "explicit-auto",
+          "seconds": 0.6601879522204399,
+          "is_error": false
+        },
+        {
+          "label": "explicit-graph",
+          "seconds": 20.288750641047955,
+          "is_error": true
+        },
+        {
+          "label": "source-after-graph-failure",
+          "seconds": 1.633002771064639,
+          "is_error": false
+        }
+      ],
+      "controlled_failure_timeout_seconds": 10
+    },
+    {
+      "path": "source-default/candidate/admission-v3/06-sympy__sympy-21596-codenib/receipt.json",
+      "status": "failed",
+      "workflow": {
+        "workflow_index": 6,
+        "instance_id": "sympy__sympy-21596",
+        "arm": "codenib",
+        "product": "codenib"
+      },
+      "calls": [
+        {
+          "label": "default",
+          "seconds": 0.7150454204529524,
+          "is_error": false
+        },
+        {
+          "label": "explicit-auto",
+          "seconds": 0.6436527706682682,
+          "is_error": false
+        },
+        {
+          "label": "explicit-graph",
+          "seconds": 427.037120398134,
+          "is_error": true
+        },
+        {
+          "label": "graph-status",
+          "seconds": 0.091983612626791,
+          "is_error": true
+        }
+      ],
+      "controlled_failure_timeout_seconds": null
+    },
+    {
+      "path": "source-default/candidate/admission-v3/09-mwaskom__seaborn-3187-codenib/receipt.json",
+      "status": "failed",
+      "workflow": {
+        "workflow_index": 9,
+        "instance_id": "mwaskom__seaborn-3187",
+        "arm": "codenib",
+        "product": "codenib"
+      },
+      "calls": [
+        {
+          "label": "default",
+          "seconds": 0.19184047728776932,
+          "is_error": false
+        },
+        {
+          "label": "explicit-auto",
+          "seconds": 0.12404090538620949,
+          "is_error": false
+        },
+        {
+          "label": "explicit-graph",
+          "seconds": 34.88652676157653,
+          "is_error": false
+        },
+        {
+          "label": "graph-status",
+          "seconds": 0.002954738214612007,
+          "is_error": true
+        }
+      ],
+      "controlled_failure_timeout_seconds": null
+    },
+    {
+      "path": "source-default/candidate/admission-v3/03-astropy__astropy-13579-codenib/receipt.json",
+      "status": "candidate_source_default_passed",
+      "workflow": {
+        "workflow_index": 3,
+        "instance_id": "astropy__astropy-13579",
+        "arm": "codenib",
+        "product": "codenib"
+      },
+      "calls": [
+        {
+          "label": "default",
+          "seconds": 0.487127672880888,
+          "is_error": false
+        },
+        {
+          "label": "explicit-auto",
+          "seconds": 0.43178535252809525,
+          "is_error": false
+        }
+      ],
+      "controlled_failure_timeout_seconds": null
+    }
+  ],
+  "lossless_published_files": 949,
+  "unique_payloads": 374,
+  "parts": [
+    {
+      "path": "codegraph_source_default_2026_10_30.part01.json",
+      "bytes": 180484,
+      "sha256": "e0a834add6df696a2704e3165c915ef316514b22655e9b9b0c15dd8c777d3ab9",
+      "files": 34
+    },
+    {
+      "path": "codegraph_source_default_2026_10_30.part02.json",
+      "bytes": 280084,
+      "sha256": "b74492b0a3430e39632b6cbd7f3aff1d3283200ae59c1745bf1ca12d05e04807",
+      "files": 25
+    },
+    {
+      "path": "codegraph_source_default_2026_10_30.part03.json",
+      "bytes": 162594,
+      "sha256": "853271928bf8d699bb9f8c811abba23da4dbe5e21ac3199cd9b4e935d1172ff0",
+      "files": 33
+    },
+    {
+      "path": "codegraph_source_default_2026_10_30.part04.json",
+      "bytes": 248106,
+      "sha256": "c1e581d2866b581c9739f533ec09ff085010bde558be40d66c27ab1b5abf22cb",
+      "files": 41
+    },
+    {
+      "path": "codegraph_source_default_2026_10_30.part05.json",
+      "bytes": 281479,
+      "sha256": "9b9620d2323788f6d1cf1a5f12e30140fb40b4043811377525e40fb0f37fff41",
+      "files": 64
+    },
+    {
+      "path": "codegraph_source_default_2026_10_30.part06.json",
+      "bytes": 278636,
+      "sha256": "eeb9f0895c60c8257dd70a5edf417fa4edc95470b15eade895558d6fdb2dcb59",
+      "files": 110
+    },
+    {
+      "path": "codegraph_source_default_2026_10_30.part07.json",
+      "bytes": 275271,
+      "sha256": "737d91e99a7b067dfe73adc7fd4d3965d44b7894bb7cacb4008f9fc026f14f7f",
+      "files": 42
+    },
+    {
+      "path": "codegraph_source_default_2026_10_30.part08.json",
+      "bytes": 253348,
+      "sha256": "db746a9331f8b15e550c85d7b1f20b1468d28859875b2ad6920b66e6bf253467",
+      "files": 26
+    },
+    {
+      "path": "codegraph_source_default_2026_10_30.part09.json",
+      "bytes": 278460,
+      "sha256": "00c2847f0dba077d1cccf878ac94db68bde491414ea355f542f023b71aec6f60",
+      "files": 29
+    },
+    {
+      "path": "codegraph_source_default_2026_10_30.part10.json",
+      "bytes": 275119,
+      "sha256": "502b94f8d12d44f876593e8eb76adc02dcc48411cdb9fff0cd2f50cef934bffb",
+      "files": 91
+    },
+    {
+      "path": "codegraph_source_default_2026_10_30.part11.json",
+      "bytes": 270400,
+      "sha256": "83966e16f5ac9c794b3bdfccf48ee05ffb26e0c00beb84b440e4515978462188",
+      "files": 75
+    },
+    {
+      "path": "codegraph_source_default_2026_10_30.part12.json",
+      "bytes": 280447,
+      "sha256": "f234bdda44b9c322c41b5ef231f399a84eee52dfae5e9300008406464f53a872",
+      "files": 54
+    },
+    {
+      "path": "codegraph_source_default_2026_10_30.part13.json",
+      "bytes": 273879,
+      "sha256": "6ba67ea159bfa6dcc39f50a01de95e647536ec738bea8785cfbd717c9afffdf4",
+      "files": 44
+    },
+    {
+      "path": "codegraph_source_default_2026_10_30.part14.json",
+      "bytes": 280406,
+      "sha256": "db2e8e022fad5918f46f92cb586cf41cc099eb65ece9171151a82d0f89b1beae",
+      "files": 47
+    },
+    {
+      "path": "codegraph_source_default_2026_10_30.part15.json",
+      "bytes": 277818,
+      "sha256": "1c5b5edbafd3c8fd25f8538b48747c47e06a882874098e4cbdf89b57267b1f27",
+      "files": 71
+    },
+    {
+      "path": "codegraph_source_default_2026_10_30.part16.json",
+      "bytes": 273071,
+      "sha256": "284c6546fd35baf2979c34cfb6bc2c59bc76dee5e42da9affb58bf75899423f6",
+      "files": 60
+    },
+    {
+      "path": "codegraph_source_default_2026_10_30.part17.json",
+      "bytes": 233862,
+      "sha256": "6160fac58f6345d56f2c30d239d603c6bcfd69f167f5533437f2c9f51ce84c35",
+      "files": 74
+    },
+    {
+      "path": "codegraph_source_default_2026_10_30.part18.json",
+      "bytes": 184856,
+      "sha256": "b15444317566ee35a1698b201a8d4755f2f3a8bd2cd71d4dede6376d655ddf14",
+      "files": 29
+    }
+  ],
+  "large_local_artifacts": [
+    {
+      "path": "preparation/admission-v1/06-sympy__sympy-21596-codenib/index-artifacts.tar",
+      "bytes": 26095616,
+      "sha256": "4311f6f5356b63b4286690f9a1b46ecf03db546a99c6a8d8895f61385d759ea0"
+    },
+    {
+      "path": "preparation/admission-v1/09-mwaskom__seaborn-3187-codenib/index-artifacts.tar",
+      "bytes": 40115712,
+      "sha256": "67ea712901ddcb1e5d99f2fc89846954ebf69e4cae2b52202228f9c41adcd2f7"
+    },
+    {
+      "path": "preparation/admission-v1/03-astropy__astropy-13579-codenib/index-artifacts.tar",
+      "bytes": 237091840,
+      "sha256": "8777bbe4bb2a093b9e8258e91f038ec9782f5f38ed4b8eef6a63ee4aa8c3e814"
+    },
+    {
+      "path": "preparation/heap-controls/heap-16384-memory-32/index-artifacts.tar",
+      "bytes": 1282536448,
+      "sha256": "ddae967eaab43b10b06fdcfc5058c3ec9e003e0106b34c0a838882b128b58ab8"
+    },
+    {
+      "path": "preparation/heap-controls/heap-2560-memory-4/index-artifacts.tar",
+      "bytes": 26095616,
+      "sha256": "074956f29412e1ace98c68b4e82567e9f09456a761c27abdbf3f3d92eda31061"
+    },
+    {
+      "path": "source-default/candidate-v4/admission-v3/09-mwaskom__seaborn-3187-codenib/index-artifacts.tar",
+      "bytes": 40116736,
+      "sha256": "3ce331d18fe581c29bf92c9a2b63cf0d8b94d9d02468d05f056f6cf8d1813000"
+    },
+    {
+      "path": "source-default/candidate-v3/admission-v3/09-mwaskom__seaborn-3187-codenib/index-artifacts.tar",
+      "bytes": 40116736,
+      "sha256": "74ba6fde82230eddbe7c943113e7a224a931290f808f7e8ae7cd2c5b62eac956"
+    },
+    {
+      "path": "source-default/main/admission-v3/06-sympy__sympy-21596-codenib/index-artifacts.tar",
+      "bytes": 26095616,
+      "sha256": "c969f8a2410f306a3e15a0b1d4706e9571403e5136e2a415778acc3d331d09de"
+    },
+    {
+      "path": "source-default/main/admission-v3/09-mwaskom__seaborn-3187-codenib/index-artifacts.tar",
+      "bytes": 40115712,
+      "sha256": "551bf46d1803b716693778e672e2e2795f9a703fc4b55c35dc87613e338a8b9b"
+    },
+    {
+      "path": "source-default/main/admission-v3/03-astropy__astropy-13579-codenib/index-artifacts.tar",
+      "bytes": 237091840,
+      "sha256": "d947ce35b5cb6855fcb5a75bf7657b288dd0263762b5847e50cd261bc617c6eb"
+    },
+    {
+      "path": "source-default/candidate-v2/admission-v3/06-sympy__sympy-21596-codenib/index-artifacts.tar",
+      "bytes": 26095616,
+      "sha256": "fe5fcd0f3b130ce9c0b98cd42e5b3b8dfeab052e2cf42bdd0f84ba3dc69eea42"
+    },
+    {
+      "path": "source-default/candidate-v2/admission-v3/09-mwaskom__seaborn-3187-codenib/index-artifacts.tar",
+      "bytes": 40115712,
+      "sha256": "241c1e3fee159b0e642395fee84e52a2d5a92b0d93da6fa3522ef43edb3e6673"
+    },
+    {
+      "path": "source-default/candidate-v5/admission-v3/06-sympy__sympy-21596-codenib/index-artifacts.tar",
+      "bytes": 26095616,
+      "sha256": "eb1b7c2f9bbff3bb3ad9bfb9fbe6c3e2ddf2a7bb9268c21d4cbef644a6c27b4b"
+    },
+    {
+      "path": "source-default/candidate/admission-v3/06-sympy__sympy-21596-codenib/index-artifacts.tar",
+      "bytes": 26095616,
+      "sha256": "f183c9b79cfc3da47b9476f80457ed7df07aef2ef6fe38c148c6ae3d4b3d8af9"
+    },
+    {
+      "path": "source-default/candidate/admission-v3/09-mwaskom__seaborn-3187-codenib/index-artifacts.tar",
+      "bytes": 40115712,
+      "sha256": "d102e4b32481ea9ff0a88b2c06782f6329f3a1879bee4278fb0ee72c7524ab3b"
+    },
+    {
+      "path": "source-default/candidate/admission-v3/03-astropy__astropy-13579-codenib/index-artifacts.tar",
+      "bytes": 8848384,
+      "sha256": "b26831ceaa3d33c97566ed7a4286608904d7342729d7a3b0a48f8695830df2c8"
+    }
+  ],
+  "older_frozen_input_entries": 5855,
+  "older_live_path_entries_unchanged": 5853,
+  "older_retained_original_payloads_verified": 5855,
+  "earlier_json_unchanged": 420,
+  "owned_containers_absent": 65,
+  "diagnostic_overwritten_log_records": 11,
+  "reserved_set_opened": false,
+  "independent_confirmation_successes": 0,
+  "external_enrollment": 0,
+  "status": "Source-first controls and local verification only. First selected set informed implementation and remains development, with all members/failures/native grades retained. No new comparative model inference or public release.",
+  "format": "Reconstruct archives in part order with gzip+base64 or identical_to whole-file aliases; verify each byte count and SHA-256."
+}

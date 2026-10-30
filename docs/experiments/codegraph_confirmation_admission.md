@@ -1,10 +1,12 @@
-# Independent CodeGraph confirmation: membership and admission
+# CodeGraph task membership and development admission
 
 This record fixes three historical repositories before preparing a new
-four-arm comparison. It establishes task membership and source provenance;
-native grading is ready, while the runnable protocol, product admissions and
-model execution are still open.
-No new model call or comparative result is recorded here.
+four-arm comparison. Native grading is ready. Subsequent operator controls
+expose a SymPy full-graph resource failure and inform the
+[source-first candidate](codegraph_source_default.md), so this first set is now
+development admission and cannot count as either independent success
+confirmation. Its membership, original native outcomes and initial evidence
+packet remain unchanged. No new model comparison has run.
 
 The earlier complete cohorts and the permanently stopped task-fit round retain
 their original outcomes. The engineering fixes in
@@ -75,7 +77,12 @@ no model repair, graph advantage or answer-quality result.
 
 Exact original logs and grading receipts remain private and hash-bound by the
 published summary. All six owned grading containers are independently absent.
-The four actual product admissions remain open. Any later collection failure,
+Native, Serena and Codegraph return the selected complete definitions on all
+three sources. CodeNib's full-graph admission succeeds on Astropy and Seaborn
+and fails on SymPy under the fixed two-CPU/4 GiB limit. Initial renderer,
+indentation and controller failures remain retained alongside corrected
+controls. These operator observations establish no voluntary tool use or
+complete workflow advantage. Any later collection failure,
 reference-only dependency or model/native test-patch conflict remains explicit;
 a reference pass alone does not establish readiness.
 
@@ -85,6 +92,10 @@ The plan is five tasks per repository and the same Native, Serena,
 colbymchenry/codegraph and CodeNib conditions: fifteen tasks per arm, twelve
 complete workflows and sixty task attempts. Exact prompts, source criteria,
 task order and update material still require a separate pre-inference seal.
+Draft prompts and a common executable now exist; they are not a sealed model
+round. Because this first set has informed product changes, both independent
+success confirmations remain open. Keep the reserved set unopened and fix a
+further disjoint set prospectively rather than replacing a difficult member.
 Use the existing runner and native grading adapter. The merged source
 CodeNib backend includes #917; the withdrawn exploration-wording candidate
 stays outside product code. Apply #918's authenticated result-file policy to
