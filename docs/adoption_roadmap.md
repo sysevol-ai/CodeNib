@@ -339,8 +339,12 @@ the baseline. Canonical MCP serialization is 5.4% smaller in aggregate, with
 two responses growing. This is an installed two-module overlay control, not
 model-input token savings, answer quality, typed-graph use or complete-workflow
 benefit. Local unit verification passes 8,963 cases; both MCP versions pass
-455 cases with seven skips. Exact candidate-wheel admission and new prospective
-model evidence remain open. All 7,357 old inputs and prior outcomes are unchanged.
+455 cases with seven skips. The exact CI candidate wheel now also passes
+independent installed-byte and six-query stdio admission: all 485 Python files
+match the implementation commit, installed Python/native bytes match the wheel,
+and both owned control/admission containers are absent. New prospective model
+and whole-workflow evidence remain open. All 7,357 old inputs and prior outcomes
+are unchanged.
 
 Tracking issue: [#874](https://github.com/sysevol-ai/CodeNib/issues/874).
 The detailed contract is [the internal pilot plan](experiments/codegraph_net_benefit.md).

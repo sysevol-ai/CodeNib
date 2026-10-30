@@ -1,0 +1,31 @@
+{
+  "schema": "codenib.complete-source-wheel-admission.v1",
+  "scope": "Exact CI candidate wheel, imported outside analyzed checkout; no SDK/model session or workflow result",
+  "artifact": {
+    "source_commit": "84785e6980dd3410a3494b76cf84ad6ae595126e",
+    "ci_run": 41140515536,
+    "artifact_id": 13017913593,
+    "archive_sha256": "138ef804fad3e7d48ddf711f9d77ece71951da094dfbd272b0076230e673355c",
+    "wheel": "codenib-0.2.4-cp310-abi3-manylinux_2_28_aarch64.whl",
+    "wheel_sha256": "1502762396669c53f5cf785389918489114bd6802ab8a40cf6e95c3ff93ea8b8"
+  },
+  "outcome": {
+    "all485_python_files_match_source_commit": true,
+    "all_installed_python_native_bytes_match_wheel": true,
+    "queries_source_caps_metadata_plans_passed": 6,
+    "complete_critical_scopes": 3,
+    "old_inputs_unchanged": 7357,
+    "control_and_admission_containers_absent": 2,
+    "model_calls": 0,
+    "benefit_established": false
+  },
+  "public_files": 16,
+  "parts": [
+    {
+      "path": "codegraph_complete_source_wheel_2026_10_30.part01.json",
+      "bytes": 388360,
+      "sha256": "16f333566c1dd6851c20b29072ba6f47f6bddc8fe5dc6415221d666348f13153",
+      "public_files": 16
+    }
+  ]
+}

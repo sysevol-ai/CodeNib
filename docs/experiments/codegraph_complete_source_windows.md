@@ -36,8 +36,9 @@ container installs the admitted main wheel, builds one BM25 artifact for the
 pinned CodeNib source snapshot, then compares the baseline with an installed
 two-module overlay. Every import is from the installed package outside the
 analyzed checkout. All 485 Python files and the native extension are verified;
-only the two intended module hashes differ. This is an overlay prototype,
-not admission of a separately built candidate wheel.
+only the two intended module hashes differ. This first comparison uses an
+overlay prototype; the separate CI wheel admission below closes the package
+identity gate.
 
 The six development queries include the two exposed maintainer requests from
 [#930](https://github.com/sysevol-ai/CodeNib/pull/930) and four additional
@@ -83,13 +84,24 @@ after checking that its native source and build configuration are unchanged;
 the reproduced failure passes before the complete unit tier is rerun. This
 does not claim a successful local native compilation.
 
-The sole control container is independently absent. All 7,357 prior sealed
-inputs remain unchanged. There is no new SDK/model session, grading revision,
+Both the overlay control and the later wheel-admission container are
+independently absent. All 7,357 prior sealed inputs remain unchanged. There is
+no new SDK/model session, grading revision,
 reserved-task exposure or external-user observation. The old two-task complete
 acceptance remains 0/2.
 
-Admit the exact candidate wheel before any new model test, and freeze new
-tasks, criteria, limits and executable identities before inference. Preserve
+The separate [wheel-admission packet](codegraph_complete_source_wheel_2026_10_30.json)
+retains sixteen lossless records for CI artifact `13017913593` from Release run
+`41140515536`. Its 485 Python files match implementation commit
+`84785e6980dd3410a3494b76cf84ad6ae595126e`; installed imports and every selected
+Python/native hash match the exact wheel from outside the analyzed checkout.
+The six fresh real-stdio queries preserve source fidelity, caps, tools,
+instructions and plans, with the same three named complete scopes. Wheel
+SHA-256 is `1502762396669c53f5cf785389918489114bd6802ab8a40cf6e95c3ff93ea8b8`.
+This verifies package identity and delivery, with no model session.
+
+The current candidate wheel is admitted. Freeze new tasks, criteria, limits
+and executable identities before any new inference. Preserve
 the correctness/20% complete-time/normalized-usage gates, representative
 updates, both independent success confirmations and external consent/seven-day
 reuse at 0/5. No outreach is authorized. Current outcomes and open gates belong
