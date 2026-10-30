@@ -314,15 +314,24 @@ def _admit_windows(
 ) -> list[dict[str, Any]]:
     windows: list[dict[str, Any]] = []
     for anchor in anchors:
-        if (
-            anchor.requested_definition
-            and anchor.start_line is not None
+        preserve_definition = bool(
+            anchor.start_line is not None
             and anchor.end_line is not None
             and anchor.end_line > anchor.start_line
-        ):
-            # A short requested definition already supplies useful context.
+            and (
+                anchor.requested_definition
+                or (
+                    anchor.has_definition
+                    and is_symbol_node(anchor.kind)
+                    and anchor.end_line - anchor.start_line + 1 <= window_lines
+                )
+            )
+        )
+        if preserve_definition:
+            # A short ranked definition already supplies useful context.
             # Padding/merging neighbours can make its body lose the character
-            # budget to a query hit in the header or surrounding prose. A
+            # budget to a query hit in the header or surrounding prose, even
+            # when its name was not supplied as a separate query/seed. A
             # single-line location can be an LSP selection rather than a
             # complete scope, so it keeps the ordinary contextual window.
             start_line = anchor.start_line
@@ -341,7 +350,7 @@ def _admit_windows(
         )
         merged = False
         for window in windows:
-            if anchor.requested_definition or window["requested_definition"]:
+            if preserve_definition or window["preserve_definition"]:
                 continue
             # A long anchor selects live source later. Its eventual excerpt
             # can move away from this head, so merging a neighbour now would
@@ -374,7 +383,7 @@ def _admit_windows(
                 "start_line": start_line,
                 "end_line": end_line,
                 "anchors": [anchor],
-                "requested_definition": anchor.requested_definition,
+                "preserve_definition": preserve_definition,
             }
         )
         if focus_end is not None:
@@ -730,6 +739,7 @@ def explore_context_impl(
         total_chars=profile.total_content_chars,
         min_excerpt_chars=600,
         max_excerpt_chars=4_800,
+        reuse_unused_budget=True,
     )
     grouped_files: dict[str, dict[str, Any]] = {}
     for context in projected_contexts:

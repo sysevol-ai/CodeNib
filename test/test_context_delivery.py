@@ -51,6 +51,59 @@ def test_project_evidence_bounds_single_oversized_hit() -> None:
     assert len(payload["content"]) == 1_000_000
 
 
+def test_optional_budget_reuse_keeps_a_complete_decision_with_short_peers() -> None:
+    body = "\n".join(
+        [
+            "def accept(value):",
+            '    """' + "Documentation. " * 12 + '"""',
+            "    if value is None:",
+            "        return False",
+            "    return bool(value)",
+        ]
+    )
+    payloads = [
+        {"file": "decision.py", "start_line": 10, "end_line": 14, "content": body},
+        {"file": "small.py", "content": "value = 1\n"},
+        {"file": "missing.py", "start_line": 30},
+    ]
+    settings = dict(
+        query="accept", total_chars=350, min_excerpt_chars=40, max_excerpt_chars=320
+    )
+    legacy = project_evidence_payloads(payloads, **settings)
+    result = project_evidence_payloads(payloads, reuse_unused_budget=True, **settings)
+
+    assert legacy[0]["content_projection"]["truncated"]
+    assert result[0]["content"] == body
+    assert "content_projection" not in result[0]
+    assert result[1:] == payloads[1:]
+    assert [(r["file"], r.get("start_line"), r.get("end_line")) for r in result] == [
+        (p["file"], p.get("start_line"), p.get("end_line")) for p in payloads
+    ]
+    assert sum(len(r.get("content", "")) for r in result) <= 350
+    assert payloads[0]["content"] == body
+
+
+def test_optional_budget_reuse_keeps_admission_order_and_hard_limits() -> None:
+    payloads = [
+        {"file": f"{i}.py", "content": "target\n" + "x" * 1000} for i in range(5)
+    ]
+    payloads[0]["content"] = "a = 1\n"
+    results = project_evidence_payloads(
+        payloads,
+        query="target",
+        total_chars=220,
+        min_excerpt_chars=80,
+        max_excerpt_chars=150,
+        reuse_unused_budget=True,
+    )
+
+    assert [r["file"] for r in results] == [p["file"] for p in payloads]
+    assert results[0]["content"] == payloads[0]["content"]
+    assert len(results[1]["content"]) == 150
+    assert all("content" not in r for r in results[2:])
+    assert sum(len(r.get("content", "")) for r in results) <= 220
+
+
 def test_project_evidence_bounds_oversized_unicode_and_metadata() -> None:
     payload = {
         "node_name": "symbol_" + "n" * 1_000_000,

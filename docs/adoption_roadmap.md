@@ -330,6 +330,21 @@ invoice. All four control/model containers are absent and all 7,357 inputs
 are unchanged. This is bounded use with no comparison arm, causal guidance
 effect, independent success confirmation or external user. Hold promotion;
 test any context-reduction hypothesis separately and preserve all old outcomes.
+The [source-window follow-up](experiments/codegraph_complete_source_windows.md)
+now keeps known short definitions together and reuses unused excerpt budget
+within the original caps. Twelve new model-free observations on six developer
+queries preserve source fidelity and unchanged metadata/routing; the three
+named scopes from the two exposed questions become complete, versus none in
+the baseline. Canonical MCP serialization is 5.4% smaller in aggregate, with
+two responses growing. This is an installed two-module overlay control, not
+model-input token savings, answer quality, typed-graph use or complete-workflow
+benefit. Local unit verification passes 8,963 cases; both MCP versions pass
+455 cases with seven skips. The exact CI candidate wheel now also passes
+independent installed-byte and six-query stdio admission: all 485 Python files
+match the implementation commit, installed Python/native bytes match the wheel,
+and both owned control/admission containers are absent. New prospective model
+and whole-workflow evidence remain open. All 7,357 old inputs and prior outcomes
+are unchanged.
 
 Tracking issue: [#874](https://github.com/sysevol-ai/CodeNib/issues/874).
 The detailed contract is [the internal pilot plan](experiments/codegraph_net_benefit.md).

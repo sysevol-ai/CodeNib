@@ -19,16 +19,23 @@ from codenib.types import NODE_TYPE_FUNCTION
 
 
 @pytest.mark.parametrize("budget", ["fast", "balanced", "thorough"])
-@pytest.mark.parametrize("request_kind", ["query", "qualified_query", "symbols"])
+@pytest.mark.parametrize("doc_line_chars", [0, 240])
+@pytest.mark.parametrize(
+    "request_kind", ["query", "qualified_query", "natural_query", "symbols"]
+)
 def test_requested_short_definition_survives_neighbours_and_projection(
-    tmp_path, monkeypatch, budget, request_kind
+    tmp_path, monkeypatch, budget, request_kind, doc_line_chars
 ):
     """The requested function's loop must survive, not just its matching header."""
     lines = ["# surrounding unrelated implementation " + "x" * 40] * 170
     body = [
         "def process_request(values):",
         '    """Select the values accepted by the request hooks.',
-        *["    Request documentation without the searched identifier."] * 8,
+        *[
+            "    Request documentation without the searched identifier."
+            + "x" * doc_line_chars
+        ]
+        * 8,
         '    """',
         "    selected = []",
         "    for value in values:",
@@ -102,6 +109,7 @@ def test_requested_short_definition_survives_neighbours_and_projection(
     query = {
         "query": "process_request",
         "qualified_query": "Handler.process_request",
+        "natural_query": "Where does process_request apply the request hooks?",
         "symbols": "which values are accepted",
     }[request_kind]
     try:
