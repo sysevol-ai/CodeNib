@@ -103,8 +103,15 @@ characters. They accept integer `top_k` values from 1 through 100.
 
 ### `explore_context`
 
-Composes ranked retrieval, the selected LSP route provider, dependency-graph
-expansion, and verified live-source reads into one bounded response.
+Find implementation code and source evidence for a repository question. Start
+with `query` alone, putting known symbol names, error text, or file hints in
+that query. Inspect the returned source windows and file/line evidence.
+
+In on-demand graph mode, an ordinary cold query starts with source. Request
+`symbols` or `include_dependencies=true` when you need indexed relationships;
+this can install providers and build the graph. A complete warm graph is
+reused by ordinary queries. Prebuilt mode keeps dependency expansion enabled
+by default.
 
 - `query` (str): repository question or code query.
 - `symbols` (sequence of str, default empty): optional route and dependency
@@ -114,8 +121,9 @@ expansion, and verified live-source reads into one bounded response.
   `"thorough"`.
 - `direction` (str, default `"both"`): `"impact"`, `"dependencies"`, or
   `"both"`.
-- `include_dependencies` (bool, default `true`): include bounded graph
-  neighborhoods when a symbol graph is available.
+- `include_dependencies` (bool or null, default `null`): use the preparation-mode
+  default described above. `true` requests bounded graph neighborhoods;
+  `false` omits expansion even when a complete graph is ready.
 - `filter_test` (bool, default `false`): exclude test files from retrieval
   branches that support the filter.
 
