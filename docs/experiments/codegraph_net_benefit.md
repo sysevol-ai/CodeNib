@@ -194,7 +194,9 @@ requests retain complete reply/graph/position parity; fixed-input processing
 falls from 92.862 to 51.372 seconds and normalized-cache reprocessing from
 87.087 to 66.027 seconds. Keep compiler variation and the original SDK timeout
 separate. No new model query or task-benefit claim is added; authenticated spill
-delivery and both independent complete-task confirmations remain open.
+delivery is subsequently repaired by #918, while both independent complete-task
+confirmations remain open. Main's #917 full serial/native/consumer chain now
+passes; its earlier queued status no longer leaves an engineering gate open.
 
 The [SDK output-delivery control](codegraph_sdk_output_delivery.md) now binds
 isolated result-file access to the current callback and private original MCP
@@ -204,6 +206,22 @@ It uses no model inference or account credentials and does not alter the
 stopped cohort. Both observed spill timings and reconnecting receipt writers
 are covered. Current product admission, native subscription/model settings and
 a separate pre-inference seal still precede any new model comparison.
+
+The [independent confirmation admission](codegraph_confirmation_admission.md)
+fixes three new-to-program historical repositories by metadata before opening
+issues, source or original grading. Astropy, SymPy and Seaborn source fixtures
+pass exact pinned-source and single-commit checks. Do not replace difficult
+cases; model pretraining exposure remains unknown. Original answers stay in
+private grading, and the reserved second set is unopened. Native readiness
+executes all 338 selected tests in both original-production and reference
+controls without collection errors or missing outcomes; behavior fails where
+the reference passes. All six grading containers are absent, and the earlier
+controller setup failure is retained. Exact fifteen-task prompts/rubrics,
+twelve actual product admissions and a separate executable/model/resource seal
+remain open. No new inference or
+comparative outcome is added. Merged #918 passes main unit/integration, all
+twenty release verifier jobs and Docs; its conditional graph-chain skips are
+distinct from #917's completed full chain.
 
 ## Product question and decision
 
