@@ -151,9 +151,29 @@ def _indexed_tool_call(function: Callable[..., Any], ctx: ServerContext, *args) 
 
     with _context_lock:
         ctx = _refresh_local_context(ctx)
+        if function is explore_context_impl and len(args) > 5 and args[5] is None:
+            # Resolve after refresh under the same lock as preparation. A cold
+            # deferred query uses retrieval; a published complete graph is reused.
+            include_dependencies = (
+                not isinstance(ctx, ServerContext)
+                or not ctx._defer_graph
+                or bool(args[1])
+                or _has_complete_graph(ctx)
+            )
+            args = (*args[:5], include_dependencies, *args[6:])
         ctx = _prepare_graph_for_call(function, ctx, args)
         with ctx.indexed_query():
             return function(ctx, *args)
+
+
+def _has_complete_graph(ctx: ServerContext) -> bool:
+    entry = ctx.manifest.indexes.get("symbol_graph")
+    return (
+        ctx.symbol_graph is not None
+        and entry is not None
+        and entry.config.get("allow_partial_languages") is False
+        and entry.config.get("allow_partial_index") is False
+    )
 
 
 def _prepare_graph_for_call(function, ctx: ServerContext, args) -> ServerContext:
@@ -180,14 +200,7 @@ def _prepare_graph_for_call(function, ctx: ServerContext, args) -> ServerContext
     needs_graph = function in graph_tools or (
         function is explore_context_impl and (bool(args[1]) or args[5])
     )
-    entry = ctx.manifest.indexes.get("symbol_graph")
-    complete = (
-        ctx.symbol_graph is not None
-        and entry is not None
-        and entry.config.get("allow_partial_languages") is False
-        and entry.config.get("allow_partial_index") is False
-    )
-    if not needs_graph or complete:
+    if not needs_graph or _has_complete_graph(ctx):
         return ctx
     from ..codegraph_preparation import prepare_graph
 
@@ -329,8 +342,10 @@ async def _wait_for_abandoned_explore_worker(
         "the selected LSP-shaped route, dependency expansion, and verified source "
         "windows. Returns the concrete provider plan, source identity, independent "
         "diagnostics, and per-connection delivery usage. In on-demand graph mode, "
-        "omit symbols and set include_dependencies=false for retrieval alone; "
-        "symbols or include_dependencies=true prepare the graph on first use."
+        "a query without symbols defaults to ranked source retrieval until a "
+        "complete graph is ready. Symbols or include_dependencies=true prepare "
+        "the graph on first use. Set include_dependencies=false to omit dependency "
+        "expansion even with a ready graph. Prebuilt mode keeps dependencies by default."
     ),
 )
 async def explore_context(
@@ -339,7 +354,7 @@ async def explore_context(
     top_k: _ExploreTopK = 8,
     budget: _ExploreBudget = "balanced",
     direction: _GraphDirection = "both",
-    include_dependencies: bool = True,
+    include_dependencies: bool | None = None,
     filter_test: bool = False,
 ) -> dict[str, Any]:
     """Compose repository context and commit delivery history atomically."""

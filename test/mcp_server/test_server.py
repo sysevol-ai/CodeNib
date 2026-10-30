@@ -212,6 +212,11 @@ def test_explore_tool_schema_is_bounded() -> None:
     assert properties["top_k"]["minimum"] == 1
     assert properties["top_k"]["maximum"] == 20
     assert properties["budget"]["enum"] == ["fast", "balanced", "thorough"]
+    assert properties["include_dependencies"]["default"] is None
+    assert {item["type"] for item in properties["include_dependencies"]["anyOf"]} == {
+        "boolean",
+        "null",
+    }
 
 
 def test_explore_surface_instructions_and_prompt_name_only_visible_tool() -> None:

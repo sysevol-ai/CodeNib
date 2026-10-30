@@ -213,8 +213,11 @@ def test_deferred_graph_builds_once_and_preserves_connection_ledger(
 
     async def session():
         async with server._mcp_lifespan(None) as runtime:
-            first = await server.explore_context("original", include_dependencies=False)
+            first = await server.explore_context("original")
             assert first["summary"]["session_call"] == 1
+            assert first["source"]["verified"]
+            assert first["plan"]["dependencies"]["enabled"] is False
+            assert "def original():" in first["files"][0]["contexts"][0]["content"]
             assert calls == []
             status = await server.get_manifest()
             assert status["runtime"]["graph_preparation"] == {
@@ -227,6 +230,7 @@ def test_deferred_graph_builds_once_and_preserves_connection_ledger(
             )
             assert [r["summary"]["session_call"] for r in responses] == [2, 3]
             assert all(r["source"]["verified"] for r in responses)
+            assert all(r["plan"]["dependencies"]["enabled"] for r in responses)
             assert len(calls) == 1
             assert calls[0] == (
                 repo,
@@ -242,8 +246,26 @@ def test_deferred_graph_builds_once_and_preserves_connection_ledger(
             assert current.explore_runtime is runtime
             assert current.symbol_graph is not None
             assert source_binding.closed
+            warm = await server.explore_context("original")
+            assert warm["plan"]["dependencies"]["enabled"] is True
+            assert warm["summary"]["session_call"] == 4
+            keyword = await server.explore_context(
+                "original", include_dependencies=False
+            )
+            assert keyword["plan"]["dependencies"]["enabled"] is False
+            assert len(calls) == 1
 
     asyncio.run(session())
+
+
+def test_prebuilt_mode_retains_default_dependency_expansion(local_server):
+    _repo, _cache, initial = local_server
+    assert initial._defer_graph is False
+
+    response = asyncio.run(server.explore_context("original"))
+
+    assert response["source"]["verified"]
+    assert response["plan"]["dependencies"]["enabled"] is True
 
 
 def test_deferred_graph_cancellation_keeps_status_responsive_and_retry_serial(
@@ -266,7 +288,9 @@ def test_deferred_graph_cancellation_keeps_status_responsive_and_retry_serial(
 
     async def session():
         async with server._mcp_lifespan(None) as runtime:
-            first = asyncio.create_task(server.explore_context("original"))
+            first = asyncio.create_task(
+                server.explore_context("original", include_dependencies=True)
+            )
             try:
                 assert await asyncio.to_thread(started.wait, 5)
                 status = await asyncio.wait_for(server.get_manifest(), 1)
@@ -274,7 +298,9 @@ def test_deferred_graph_cancellation_keeps_status_responsive_and_retry_serial(
                 first.cancel()
                 with pytest.raises(asyncio.CancelledError):
                     await first
-                retry = asyncio.create_task(server.explore_context("original"))
+                retry = asyncio.create_task(
+                    server.explore_context("original", include_dependencies=True)
+                )
                 await asyncio.sleep(0)
                 assert not retry.done()
             finally:
@@ -309,7 +335,7 @@ def test_deferred_preparation_failure_never_delivers_graph_or_hides_stale_source
 
     async def session():
         with pytest.raises(RuntimeError, match="(preparation failed|source changed)"):
-            await server.explore_context("original")
+            await server.explore_context("original", include_dependencies=True)
         if failure == "provider":
             response = await server.explore_context(
                 "original", include_dependencies=False
