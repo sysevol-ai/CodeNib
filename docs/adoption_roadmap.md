@@ -195,7 +195,7 @@ passes 432 (seven skips). Initial native-extension/header failures remain
 recorded as environment preparation failures. All 396 preceding artifacts,
 34 frozen v2 inputs and 990 development inputs retain their bytes. The earlier
 full serial/native/consumer run closes #901; #902 has no dependency on draft
-#903. Remote acceptance and useful voluntary cross-file use remain open.
+#903. Useful voluntary cross-file use and whole-task acceptance remain open.
 Tracking issue: [#874](https://github.com/sysevol-ai/CodeNib/issues/874).
 The detailed contract is [the internal pilot plan](experiments/codegraph_net_benefit.md).
 

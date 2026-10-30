@@ -166,8 +166,8 @@ native registration prevent cold-install or complete setup claims. No model
 inference ran. Current verification passes 8,893 unit cases (25 skips) and
 432 MCP 2.3 cases (seven skips); initial missing-extension/header failures
 remain retained. The original #901 serial/native/consumer gate is closed by
-main's different runtime repairs, so draft #903 is not a dependency. Remote
-acceptance and actual useful voluntary calls remain open; fixing this consumer
+main's different runtime repairs, so draft #903 is not a dependency. Actual
+useful voluntary calls remain open; fixing this consumer
 does not establish the 20% gate, either confirmation set or external reuse.
 
 ## Product question and decision
