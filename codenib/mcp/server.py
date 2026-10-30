@@ -151,8 +151,75 @@ def _indexed_tool_call(function: Callable[..., Any], ctx: ServerContext, *args) 
 
     with _context_lock:
         ctx = _refresh_local_context(ctx)
+        ctx = _prepare_graph_for_call(function, ctx, args)
         with ctx.indexed_query():
             return function(ctx, *args)
+
+
+def _prepare_graph_for_call(function, ctx: ServerContext, args) -> ServerContext:
+    """Build only for an opted-in graph request, then follow its publication.
+
+    The caller owns ``_context_lock`` across source checking, compilation and
+    authenticated reload. Concurrent requests therefore observe one successful
+    preparation; other processes reuse the compiler cache lock and update
+    checks. Lock order is context, query/source (released), compiler (released),
+    then the normal loader/old-context cleanup. Publication to this connection
+    linearizes at the loader's ``_ctx = new_context``. There is no detached job:
+    a cancelled thread finishes under the existing worker/lock ownership, and
+    exploration's existing barrier prevents a retry racing that worker.
+    """
+    if not isinstance(ctx, ServerContext) or not ctx._defer_graph:
+        return ctx
+    graph_tools = (
+        dependency_subgraph_impl,
+        search_regex_impl,
+        lsp_definition_impl,
+        lsp_references_impl,
+        lsp_route_impl,
+    )
+    needs_graph = function in graph_tools or (
+        function is explore_context_impl and (bool(args[1]) or args[5])
+    )
+    entry = ctx.manifest.indexes.get("symbol_graph")
+    complete = (
+        ctx.symbol_graph is not None
+        and entry is not None
+        and entry.config.get("allow_partial_languages") is False
+        and entry.config.get("allow_partial_index") is False
+    )
+    if not needs_graph or complete:
+        return ctx
+    from ..codegraph_preparation import prepare_graph
+
+    if ctx._local_manifest_path is None or ctx.manifest.source_selection is None:
+        raise IndexedQueryError("On-demand graph preparation requires a local manifest")
+    # Do not turn a query against changed source into an implicit rebuild.
+    with ctx.indexed_query():
+        pass
+    try:
+        prepare_graph(
+            Path(ctx.manifest.repo_path),
+            languages=list(ctx.manifest.languages),
+            source_selection=ctx.manifest.source_selection,
+            expected_source_fingerprint=ctx.manifest.source_fingerprint,
+        )
+        # A restored temporary provider config changes directory metadata.
+        # The preparation guard retains the root and exact source bytes;
+        # reload recaptures them rather than querying the old binding.
+        ctx = _refresh_local_context(ctx)
+        with ctx.indexed_query():
+            pass
+    except Exception as exc:
+        raise IndexedQueryError(
+            "On-demand graph preparation failed. Run `codenib codegraph init` "
+            "and retry; graph results were not delivered.",
+            str(exc),
+        ) from exc
+    if ctx.symbol_graph is None:
+        raise IndexedQueryError(
+            "Prepared graph could not be loaded. Run `codenib codegraph init` and retry."
+        )
+    return ctx
 
 
 def _refresh_local_context(ctx: ServerContext) -> ServerContext:
@@ -261,7 +328,9 @@ async def _wait_for_abandoned_explore_worker(
         "Recommended bounded repository exploration. Composes ranked retrieval, "
         "the selected LSP-shaped route, dependency expansion, and verified source "
         "windows. Returns the concrete provider plan, source identity, independent "
-        "diagnostics, and per-connection delivery usage."
+        "diagnostics, and per-connection delivery usage. In on-demand graph mode, "
+        "omit symbols and set include_dependencies=false for retrieval alone; "
+        "symbols or include_dependencies=true prepare the graph on first use."
     ),
 )
 async def explore_context(
@@ -685,6 +754,10 @@ def _manifest_response_for(ctx: ServerContext) -> dict[str, Any]:
         "loaded_views": sorted(ctx.loaded_views),
         "view_errors": dict(sorted(ctx.errors.items())),
         "tool_surface": mcp.tool_surface,
+        "graph_preparation": {
+            "policy": "on-demand" if ctx._defer_graph else "prebuilt",
+            "loaded": ctx.symbol_graph is not None,
+        },
         "explore_session": explore_session,
         "source_read": {
             "verified": source_verified,
@@ -842,6 +915,7 @@ def _parse_args(
         default=TOOL_SURFACE_FULL,
         help="MCP tool discovery and call surface.",
     )
+    parser.add_argument("--defer-graph", action="store_true")
     parser.add_argument(
         "--retrieval-route",
         choices=("indexed", "grep-jev"),
@@ -877,6 +951,7 @@ def init_server(
     artifact: dict[str, Any] | None = None,
     artifact_binding: ContextArtifactBinding | None = None,
     source_binding: RepositorySourceBinding | None = None,
+    defer_graph: bool = False,
 ) -> None:
     """Initialize the global ServerContext from a manifest file.
 
@@ -888,12 +963,19 @@ def init_server(
         FileNotFoundError: if ``manifest_path`` does not exist.
     """
     with _context_lock:
+        if defer_graph and (
+            isinstance(manifest_path, RepoManifest)
+            or artifact is not None
+            or artifact_binding is not None
+        ):
+            raise ValueError("--defer-graph requires a local manifest file")
         _init_server(
             manifest_path,
             artifact=artifact,
             artifact_binding=artifact_binding,
             source_binding=source_binding,
         )
+        get_context()._defer_graph = defer_graph
 
 
 def _init_server(
@@ -1096,6 +1178,7 @@ def _init_server(
 
         if _ctx is not None:
             if _reload:
+                new_context._defer_graph = _ctx._defer_graph
                 _ctx.close(_preserve_explore_session=True)
                 new_context.explore_runtime = _ctx.explore_runtime
                 new_context._explore_loop = _ctx._explore_loop
@@ -1159,6 +1242,8 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit(1)
 
     try:
+        if args.defer_graph and (args.artifact or args.retrieval_route != "indexed"):
+            raise ValueError("--defer-graph requires a local indexed repository")
         if args.retrieval_route == "grep-jev":
             from ..agent.runtime.grep_jev import GrepJevConfig
 
@@ -1212,7 +1297,9 @@ def main(argv: list[str] | None = None) -> None:
                 raise
             binding.close()
         else:
-            init_server(manifest_path)
+            init_server(
+                manifest_path, **({"defer_graph": True} if args.defer_graph else {})
+            )
         logger.info("Starting MCP server on stdio...")
         mcp.run(transport="stdio")
     except FileNotFoundError as exc:

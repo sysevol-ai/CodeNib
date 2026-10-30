@@ -85,8 +85,21 @@ informs the next specific hypothesis; it does not become an achieved advantage.
 
 Current state: original-cost attribution is complete; the opt-in discovery
 candidate passes local registration/protocol checks. Its preload request is
-verified as a protocol hint, not as actual schema delivery to a model. Deferred startup, voluntary use,
-both independent confirmation sets and external adoption remain open.
+verified as a protocol hint, not as actual schema delivery to a model. The
+[on-demand preparation candidate](codegraph_deferred_preparation_2026_10_30.json)
+builds BM25 during initialization and prepares providers/the graph on the first
+graph query. Four fresh-index Requests controls pass keyword-only retrieval,
+first/repeated graph queries, stale rejection and same-connection updates.
+Provider tools are preinstalled and native registration is substituted. The
+two deferred initializations take 1.36 seconds each; their first graph queries
+take 8.29/8.31 seconds and later graph updates take 8.31/8.25 seconds. Eager
+initialization takes 9.36/9.58 seconds. These are component observations, not
+complete task timings or an advantage claim. All four earlier failed controls,
+including the exact temporary-provider-config source-binding failure, remain
+archived alongside the corrected controls. Full local unit verification passes
+8,885 cases with 25 skips; MCP 2.3 passes 320 related checks. Remote acceptance,
+representative preparation/update coverage, voluntary use, both independent
+confirmation sets and external adoption remain open. The goal is active.
 
 ## Product question and decision
 

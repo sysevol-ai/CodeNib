@@ -119,14 +119,24 @@ confirmation. The [v2 cost attribution](experiments/codegraph_cost_attribution_v
 binds all twelve original receipts: extra setup accounts for 74.2% of the
 observed CodeNib/Serena time gap. Removing that cost alone still does not meet
 the benefit gate. The first opt-in candidate exposes the existing composed
-exploration tool through managed initialization. Deferred startup, actual
-voluntary use and two prospectively frozen confirmation sets remain open;
+exploration tool through managed initialization. Actual voluntary use and
+two prospectively frozen confirmation sets remain open;
 this candidate has no measured task-efficiency advantage. The
 [indexed discovery control](experiments/codegraph_discovery_preload_2026_10_29.json)
 requests upfront loading of the single exploration tool on supporting Claude
 clients, with client override and the full/grep discovery policies retained.
 This verifies producer metadata rather than actual model schema delivery or
-voluntary use. The original paid
+voluntary use. The [on-demand preparation control](experiments/codegraph_deferred_preparation_2026_10_30.json)
+now verifies BM25-first initialization, first-use graph compilation and
+same-connection graph updates on four fresh-index Requests checkouts. Provider
+tools are preinstalled and native registration is substituted. Initialization
+falls to about 1.36 seconds in these two deferred controls, while their first
+graph query costs about 8.3 seconds; graph update costs remain recorded. These
+component observations establish neither whole-task savings nor a benefit over
+Serena. The candidate passes 8,885 local unit cases (25 skips) and 320 related
+MCP 2.3 checks; all earlier failures and both frozen cohorts remain unchanged.
+Remote acceptance, representative preparation/update coverage and actual
+use remain open. The original paid
 API ceiling and separate five-user adoption gate remain in force.
 Tracking issue: [#874](https://github.com/sysevol-ai/CodeNib/issues/874).
 The detailed contract is [the internal pilot plan](experiments/codegraph_net_benefit.md).

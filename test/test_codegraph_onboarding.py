@@ -172,15 +172,20 @@ def test_auto_client_resolution_is_stable_and_requires_a_client() -> None:
 
 
 @pytest.mark.parametrize("tool_surface", ["full", "explore"])
+@pytest.mark.parametrize("defer_graph", [False, True])
 def test_receipt_round_trip_is_private_and_deterministic(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     tool_surface: str,
+    defer_graph: bool,
 ) -> None:
     repo = _repository(tmp_path)
     monkeypatch.setenv("CODENIB_HOME", str(tmp_path / "state"))
     server = make_server_spec(
-        repo, command="/opt/codenib/bin/codenib", tool_surface=tool_surface
+        repo,
+        command="/opt/codenib/bin/codenib",
+        tool_surface=tool_surface,
+        defer_graph=defer_graph,
     )
     receipt = CodeGraphReceipt(repo, server, ()).with_client(
         "codex", state="configured"
@@ -258,6 +263,26 @@ def test_managed_server_rejects_an_unknown_tool_surface(tmp_path: Path) -> None:
         make_server_spec(tmp_path, command="/codenib", tool_surface="unknown")
 
 
+def test_deferred_registration_is_retained_and_cannot_be_silently_replaced(
+    tmp_path, monkeypatch
+):
+    repo = _repository(tmp_path)
+    monkeypatch.setenv("CODENIB_HOME", str(tmp_path / "state"))
+    server = make_server_spec(repo, command="/codenib", defer_graph=True)
+    receipt = CodeGraphReceipt(repo, server, ()).with_client(
+        "codex", state="configured"
+    )
+    write_codegraph_receipt(receipt)
+    for flags in ([], ["--defer-graph"]):
+        args = cli.build_parser().parse_args(["codegraph", "init", str(repo), *flags])
+        assert cli._codegraph_spec_for_args(repo, args) == (server, receipt)
+    args = cli.build_parser().parse_args(
+        ["codegraph", "init", str(repo), "--no-defer-graph"]
+    )
+    with pytest.raises(cli.CLIError, match="--defer-graph differs"):
+        cli._codegraph_spec_for_args(repo, args)
+
+
 class _NativeClientHarness:
     def __init__(self) -> None:
         self.configs: dict[str, MCPServerSpec] = {}
@@ -320,14 +345,19 @@ class _NativeClientHarness:
 
 @pytest.mark.parametrize("client", ["codex", "claude"])
 @pytest.mark.parametrize("tool_surface", ["full", "explore"])
+@pytest.mark.parametrize("defer_graph", [False, True])
 def test_native_client_add_inspect_remove_contract(
     tmp_path: Path,
     client: str,
     tool_surface: str,
+    defer_graph: bool,
 ) -> None:
     repo = _repository(tmp_path, "repo with spaces")
     server = make_server_spec(
-        repo, command="/opt/codenib/bin/codenib", tool_surface=tool_surface
+        repo,
+        command="/opt/codenib/bin/codenib",
+        tool_surface=tool_surface,
+        defer_graph=defer_graph,
     )
     native = _NativeClientHarness()
 
@@ -391,8 +421,9 @@ def test_native_client_inspection_does_not_treat_cli_failure_as_absent(
 
 
 @pytest.mark.parametrize("tool_surface", ["full", "explore"])
+@pytest.mark.parametrize("defer_graph", [False, True])
 def test_server_command_must_report_the_active_codenib_version(
-    tmp_path: Path, tool_surface: str
+    tmp_path: Path, tool_surface: str, defer_graph: bool
 ) -> None:
     from codenib._version import package_version
 
@@ -402,6 +433,7 @@ def test_server_command_must_report_the_active_codenib_version(
         command="/python",
         command_prefix=("-m", "codenib"),
         tool_surface=tool_surface,
+        defer_graph=defer_graph,
     )
     commands: list[tuple[str, ...]] = []
 
@@ -497,11 +529,13 @@ def _ready_plan(repo: Path) -> SimpleNamespace:
 @pytest.mark.parametrize(
     "change", ("clean", "modified", "untracked", "deleted", "renamed")
 )
+@pytest.mark.parametrize("defer_graph", [False, True])
 def test_init_is_idempotent_and_writes_no_repository_files(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     change: str,
+    defer_graph: bool,
 ) -> None:
     import codenib.codegraph_onboarding as onboarding
 
@@ -551,9 +585,14 @@ def test_init_is_idempotent_and_writes_no_repository_files(
 
     monkeypatch.setattr(onboarding, "inspect_client_registration", inspect)
     monkeypatch.setattr(onboarding, "add_client_registration", add)
-    monkeypatch.setattr(
-        cli, "_codegraph_toolchain_plan", lambda *_args: _ready_plan(repo)
-    )
+
+    def plan(*_args):
+        assert (
+            not defer_graph
+        ), "deferred initialization must not prepare graph providers"
+        return _ready_plan(repo)
+
+    monkeypatch.setattr(cli, "_codegraph_toolchain_plan", plan)
     monkeypatch.setattr(cli, "_require_modules", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(cli, "_check_view_dependencies", lambda *_args, **_kwargs: None)
     index_calls: list[dict[str, object]] = []
@@ -565,7 +604,14 @@ def test_init_is_idempotent_and_writes_no_repository_files(
     monkeypatch.setattr(cli, "index_repository", index_repository)
     monkeypatch.setattr(cli, "_print_index_summary", lambda *_args: None)
     args = cli.build_parser().parse_args(
-        ["codegraph", "init", str(repo), "--language", "python"]
+        [
+            "codegraph",
+            "init",
+            str(repo),
+            "--language",
+            "python",
+            *(["--defer-graph"] if defer_graph else []),
+        ]
     )
     initial = sorted(path.relative_to(repo) for path in repo.rglob("*"))
     initial_source = {path.name: path.read_bytes() for path in repo.glob("*.py")}
@@ -588,7 +634,13 @@ def test_init_is_idempotent_and_writes_no_repository_files(
         path.name: path.read_bytes() for path in repo.glob("*.py")
     } == initial_source
     assert cli._codegraph_checkout_snapshot(repo) == initial_status
-    assert "CodeGraph is ready" in capsys.readouterr().out
+    assert all(
+        call["views"] == (("bm25",) if defer_graph else ("bm25", "symbol_graph"))
+        for call in index_calls
+    )
+    assert ("--defer-graph" in receipt.server.args) is defer_graph
+    output = capsys.readouterr().out
+    assert ("retrieval is ready" if defer_graph else "CodeGraph is ready") in output
 
 
 @pytest.mark.parametrize("stage", ("toolchain setup", "indexing", "agent registration"))
@@ -694,6 +746,94 @@ def test_checkout_guard_allows_restored_temporary_provider_config(
         check_checkout("indexing")
 
 
+@pytest.mark.parametrize("mutate_source", [False, True])
+def test_on_demand_preparation_preserves_source_and_mcp_stdio(
+    tmp_path, monkeypatch, mutate_source
+):
+    import sys
+
+    from codenib import codegraph_preparation as preparation
+    from codenib import toolchains
+    from codenib.compiler import index_builders, index_compiler
+    from codenib.repository_source_selection import RepositorySourceSelection
+    from codenib.source_fingerprint import fingerprint_repository
+
+    repo = _repository(tmp_path)
+    _initialize_git_repository(repo)
+    (repo / "excluded").mkdir()
+    dirty = repo / "excluded" / "extra.py"
+    dirty.write_text("value = 1\n")
+    selection = RepositorySourceSelection(("excluded",))
+    fingerprint = fingerprint_repository(repo, selection=selection).value
+    missing = [True]
+    commands, configurations = [], []
+    real_run = subprocess.run
+
+    def run(command, **options):
+        if command[0] == "git":
+            return real_run(command, **options)
+        assert options["stdout"] is sys.stderr
+        assert options["stderr"] is sys.stderr
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 0)
+
+    def install(_requirements, *, root, runner):
+        runner(("provider-installer",), check=False)
+        missing.clear()
+        return [("provider-installer",)], []
+
+    def register(_registry, **config):
+        configurations.append(config)
+
+    def update(_compiler, _repo, **options):
+        assert options["index_types"] == ["symbol_graph"]
+        if mutate_source:
+            dirty.write_text("value = 2\n")
+        return SimpleNamespace(
+            index_is_current=lambda _view: True, source_fingerprint=fingerprint
+        )
+
+    monkeypatch.setattr(preparation, "subprocess", SimpleNamespace(run=run))
+    monkeypatch.setattr(toolchains, "install_requirements", install)
+    monkeypatch.setattr(
+        toolchains,
+        "plan_repository_toolchain",
+        lambda *_a, **_kw: SimpleNamespace(
+            ready=not missing, missing=list(missing), notes=(), root=tmp_path / "tools"
+        ),
+    )
+    monkeypatch.setattr(toolchains, "activate_managed_toolchain", lambda: None)
+    monkeypatch.setattr(index_builders, "register_default_builders", register)
+    monkeypatch.setattr(index_compiler.IndexCompiler, "update_repo", update)
+    if mutate_source:
+        with pytest.raises(
+            preparation.CodeGraphPreparationError, match="indexing changed"
+        ):
+            preparation.prepare_graph(
+                repo,
+                languages=["python"],
+                source_selection=selection,
+                expected_source_fingerprint=fingerprint,
+            )
+    else:
+        preparation.prepare_graph(
+            repo,
+            languages=["python"],
+            source_selection=selection,
+            expected_source_fingerprint=fingerprint,
+        )
+    assert commands == [("provider-installer",)]
+    assert configurations == [
+        {
+            "languages": ["python"],
+            "source_selection": selection,
+            "allow_graph_project_preparation": False,
+            "allow_partial_graph_languages": False,
+            "allow_partial_graph_index": False,
+        }
+    ]
+
+
 def test_checkout_guard_rejects_replacement_with_identical_source(
     tmp_path: Path,
 ) -> None:
@@ -707,6 +847,35 @@ def test_checkout_guard_rejects_replacement_with_identical_source(
         replacement.rename(repo)
         with pytest.raises(cli.CLIError, match="indexing changed the target checkout"):
             check_checkout("indexing")
+
+
+def test_deferred_preparation_rejects_new_source_before_provider_setup(
+    tmp_path, monkeypatch
+):
+    from codenib import codegraph_preparation as preparation
+    from codenib import toolchains
+    from codenib.repository_source_selection import RepositorySourceSelection
+    from codenib.source_fingerprint import fingerprint_repository
+
+    repo = _repository(tmp_path)
+    _initialize_git_repository(repo)
+    selection = RepositorySourceSelection()
+    fingerprint = fingerprint_repository(repo, selection=selection).value
+    (repo / "sample.py").write_text("def sample():\n    return 2\n")
+    monkeypatch.setattr(
+        toolchains,
+        "plan_repository_toolchain",
+        lambda *_a, **_kw: pytest.fail("source changed before provider setup"),
+    )
+    with pytest.raises(
+        preparation.CodeGraphPreparationError, match="Indexed source changed"
+    ):
+        preparation.prepare_graph(
+            repo,
+            languages=["python"],
+            source_selection=selection,
+            expected_source_fingerprint=fingerprint,
+        )
 
 
 def test_checkout_guard_rejects_commit_drift_without_source_changes(

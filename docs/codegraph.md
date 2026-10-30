@@ -81,9 +81,40 @@ settings can override that request; the agent still chooses whether to call
 it. See [Claude Code's tool-discovery controls](https://code.claude.com/docs/en/mcp#mark-a-tool-to-load-upfront-or-stay-deferred).
 New registrations use `full` by
 default. Repeated initialization retains the existing selection. To change
-it, run `codenib codegraph uninstall .` before initializing again. Both modes
-build the same indexes; the smaller tool list does not establish lower task
+it, run `codenib codegraph uninstall .` before initializing again. The tool
+selection does not change which indexes are prepared; the smaller list does not establish lower task
 cost or better answers. This option awaits a package release.
+
+## Prepare the graph when needed
+
+The current source candidate supports retrieval before graph preparation:
+
+```bash
+codenib codegraph init . --defer-graph --tool-surface explore
+```
+
+This builds BM25 and registers the agent connection without preparing language
+providers or building a graph. For ranked source lookup, call `explore_context`
+with `include_dependencies=false` and no `symbols`. Providing symbols or
+requesting dependencies prepares the graph on that first query. On the full
+tool surface, dependency, regex-node and LSP queries also trigger preparation.
+Once prepared, the same connection reuses the graph.
+
+The first graph query may install CodeNib's managed providers and wait for
+indexing. It retains the normal source checks and refuses partial-language
+graphs. Missing project prerequisites remain errors; CodeNib does not install
+repository dependencies. A cancelled request may finish its local compilation;
+its response is discarded and a retry waits for that worker. Ordinary BM25
+retrieval remains available after a provider failure if source is unchanged.
+
+Repeated initialization retains this policy and refreshes BM25 after edits;
+the next graph query pays the graph update cost. Status distinguishes retrieval
+readiness from full graph readiness. Its full-readiness check still exits
+nonzero until both current indexes and providers are ready. To change the
+managed policy, uninstall the registration and initialize again. Include the
+first graph query and subsequent rebuilds in any workflow comparison: this
+option defers their cost and does not establish a task-efficiency gain. It
+awaits merge and a package release.
 
 ## Select the repository source surface
 

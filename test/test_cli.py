@@ -1257,9 +1257,11 @@ def test_mcp_runtime_probe_checks_the_complete_codegraph_runtime(
     assert capsys.readouterr().out == "codenib codegraph mcp runtime ready\n"
 
 
+@pytest.mark.parametrize("defer_graph", [False, True])
 def test_mcp_manifest_forwards_explore_tool_surface(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    defer_graph: bool,
 ) -> None:
     from codenib.mcp import server
 
@@ -1277,6 +1279,7 @@ def test_mcp_manifest_forwards_explore_tool_surface(
             "WARNING",
             "--tool-surface",
             "explore",
+            *(["--defer-graph"] if defer_graph else []),
         ]
     )
 
@@ -1288,6 +1291,7 @@ def test_mcp_manifest_forwards_explore_tool_surface(
             "WARNING",
             "--tool-surface",
             "explore",
+            *(["--defer-graph"] if defer_graph else []),
         ]
     ]
 
