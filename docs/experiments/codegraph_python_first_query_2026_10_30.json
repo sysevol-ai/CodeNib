@@ -1,0 +1,206 @@
+{
+  "schema": "codenib.python-first-query.v1",
+  "status": "model-free engineering control; no comparative task-benefit claim",
+  "model_calls": 0,
+  "performance": {
+    "model_calls": 0,
+    "full_query": {
+      "baseline_seconds": 277.0441698599607,
+      "candidate_seconds": 205.34091541916132,
+      "saved_seconds": 71.70325444079936,
+      "relative_reduction": 0.25881524407116624
+    },
+    "first_use": {
+      "baseline_seconds": 286.42274047620595,
+      "candidate_seconds": 214.79848131164908,
+      "saved_seconds": 71.62425916455686,
+      "relative_reduction": 0.25006484836181125
+    },
+    "warm_query": {
+      "baseline_seconds": 0.8430114518851042,
+      "candidate_seconds": 0.8180485516786575,
+      "saved_seconds": 0.024962900206446648,
+      "relative_reduction": 0.02961157900124101
+    },
+    "sections": {
+      "baseline": {
+        "generate_index": 127.617,
+        "process_index.build_lsp_occurrence_index": 28.976,
+        "process_index.decode": 17.509,
+        "process_index.python_identity": 13.337,
+        "decode_index": 5.75,
+        "process_index.save_graph": 2.611,
+        "process_index.build_range_indexes": 0.117
+      },
+      "candidate": {
+        "generate_index": 97.053,
+        "process_index.decode": 17.598,
+        "process_index.python_identity": 15.281,
+        "decode_index": 5.75,
+        "process_index.read_python_identity_index": 5.697,
+        "process_index.save_graph": 2.634,
+        "process_index.prepare_python_occurrences": 2.49,
+        "process_index.build_range_indexes": 0.119,
+        "process_index.build_lsp_occurrence_index": 0.0
+      }
+    },
+    "compiler_observed_difference_seconds": 30.564000000000007,
+    "limitations": "One ordered fresh pair; baseline overlapped the unit verification on a 20-CPU host, no CPU affinity isolation. The compiler is unchanged; do not attribute its 30.564-second variation or all observed total difference to this patch. Fixed-input consumer controls run after unit verification ends and reverse arm order. Neither is whole-task or independent confirmation evidence.",
+    "consumer": {
+      "model_calls": 0,
+      "status": "passed",
+      "scope": "same verified binary and normalized cache; explicit preinstalled provider, one reverse-order pair; not whole-task evidence",
+      "phases": {
+        "same_binary": {
+          "baseline_seconds": 92.86198071576655,
+          "candidate_seconds": 51.37162699177861,
+          "saved_seconds": 41.49035372398794,
+          "relative_reduction": 0.4467959158762969,
+          "normalized_bytes_equal": true,
+          "query_surface_equal": true,
+          "occurrences": 782272
+        },
+        "normalized_cache": {
+          "baseline_seconds": 87.08672990463674,
+          "candidate_seconds": 66.02677379734814,
+          "saved_seconds": 21.0599561072886,
+          "relative_reduction": 0.24182738438278767,
+          "normalized_bytes_equal": true,
+          "query_surface_equal": true,
+          "occurrences": 782272
+        }
+      }
+    }
+  },
+  "full_parity": {
+    "raw_index_bytes_identical": true,
+    "normalized_index_bytes_identical": true,
+    "ordered_graph_query_surface_identical": true,
+    "all_ordered_vertex_attributes_identical": true,
+    "all_ordered_edges_identical": true,
+    "all_occurrence_payload_values_identical": true,
+    "first_reply_identical": true,
+    "warm_reply_identical": true,
+    "original_source_identical": true
+  },
+  "sealed_inputs_unchanged": 5855,
+  "frozen_bindings": [
+    {
+      "path": "/tmp/codenib-codegraph-task-fit-20261030/execution-binding.json",
+      "sha256": "0c1efe12940b3d78bdac347cf5620188ef89704bc5aec91fa85deb108458fffd",
+      "files_verified": 4831
+    },
+    {
+      "path": "/tmp/codenib-matched-pilot-v2-20261028/execution-binding-v2.json",
+      "sha256": "c0a684ea39796d8334109edf674dad71e8311ed8976ca9f121cd669d9f20d40c",
+      "files_verified": 34
+    },
+    {
+      "path": "/tmp/codenib-codegraph-adoption-dev-20261030/execution-binding-dev1.json",
+      "sha256": "49c1c152dc372e75d109f02fa2c7be3373a4eab088e355e9341ed45746a04c3d",
+      "files_verified": 990
+    }
+  ],
+  "preceding_json_unchanged": 413,
+  "owned_containers_absent": 17,
+  "lossless_files": 89,
+  "unique_payloads": 69,
+  "parts": [
+    {
+      "path": "codegraph_python_first_query_2026_10_30.part01.json",
+      "bytes": 253925,
+      "sha256": "ac67599d11c50b5d046d6600f46902675f92b74a81d47db0427956d35d463ecd",
+      "archives": 30
+    },
+    {
+      "path": "codegraph_python_first_query_2026_10_30.part02.json",
+      "bytes": 289223,
+      "sha256": "bd27f5ac954f13229aff5dd2774a82eb8429e9983a0a2d49591989526cb20a97",
+      "archives": 59
+    }
+  ],
+  "large_artifacts_retained_locally": [
+    {
+      "path": "full-query-v2/baseline/product-state.tar",
+      "bytes": 369556992,
+      "sha256": "7b561b3c956ac390beaf21fb78f00eee9e25096521f38ed7fddd0a3d201d3ef7"
+    },
+    {
+      "path": "full-query-v2/candidate/product-state.tar",
+      "bytes": 345157632,
+      "sha256": "201448ead250968ed5cbf5861cf5c3b253bbd2f77742e9731b14414c5b1033f8"
+    },
+    {
+      "path": "full-query-v2/baseline/parity-inputs/index.scip",
+      "bytes": 69666843,
+      "sha256": "9a1487a8c71808cf277eaf5728933b0d73f0597f514efb57c13e124b5cab50b9"
+    },
+    {
+      "path": "full-query-v2/baseline/parity-inputs/graph.pkl",
+      "bytes": 11252397,
+      "sha256": "809bdfd5eddc948f3c52d382f3a09d063d4b98793ec2f339c08091662538042b"
+    },
+    {
+      "path": "full-query-v2/baseline/parity-inputs/lsp_index.pkl",
+      "bytes": 104730061,
+      "sha256": "868cc3a218b0ed0e2a956cf7e12cadc984d64d3ab2ffee5a94158a82f6802890"
+    },
+    {
+      "path": "full-query-v2/baseline/parity-inputs/index.decoded",
+      "bytes": 157336267,
+      "sha256": "29c30b20d02639bb8931ab027facb8a5a56dbe94e1b9f5b72ce344231d61e47f"
+    },
+    {
+      "path": "full-query-v2/candidate/parity-inputs/index.scip",
+      "bytes": 69666843,
+      "sha256": "9a1487a8c71808cf277eaf5728933b0d73f0597f514efb57c13e124b5cab50b9"
+    },
+    {
+      "path": "full-query-v2/candidate/parity-inputs/graph.pkl",
+      "bytes": 11252397,
+      "sha256": "809bdfd5eddc948f3c52d382f3a09d063d4b98793ec2f339c08091662538042b"
+    },
+    {
+      "path": "full-query-v2/candidate/parity-inputs/lsp_index.pkl",
+      "bytes": 80330353,
+      "sha256": "6c3f8034cf1a4cc84d7da1b5f2809ced31e53725a23ea0773edffe04037ba644"
+    },
+    {
+      "path": "full-query-v2/candidate/parity-inputs/index.decoded",
+      "bytes": 157336267,
+      "sha256": "29c30b20d02639bb8931ab027facb8a5a56dbe94e1b9f5b72ce344231d61e47f"
+    },
+    {
+      "path": "consumer-v1/baseline/work/graph.pkl",
+      "bytes": 11252397,
+      "sha256": "809bdfd5eddc948f3c52d382f3a09d063d4b98793ec2f339c08091662538042b"
+    },
+    {
+      "path": "consumer-v1/baseline/work/lsp_index.pkl",
+      "bytes": 104730061,
+      "sha256": "868cc3a218b0ed0e2a956cf7e12cadc984d64d3ab2ffee5a94158a82f6802890"
+    },
+    {
+      "path": "consumer-v1/baseline/work/index.decoded",
+      "bytes": 157336267,
+      "sha256": "29c30b20d02639bb8931ab027facb8a5a56dbe94e1b9f5b72ce344231d61e47f"
+    },
+    {
+      "path": "consumer-v1/candidate/work/graph.pkl",
+      "bytes": 11252397,
+      "sha256": "809bdfd5eddc948f3c52d382f3a09d063d4b98793ec2f339c08091662538042b"
+    },
+    {
+      "path": "consumer-v1/candidate/work/lsp_index.pkl",
+      "bytes": 80330353,
+      "sha256": "6c3f8034cf1a4cc84d7da1b5f2809ced31e53725a23ea0773edffe04037ba644"
+    },
+    {
+      "path": "consumer-v1/candidate/work/index.decoded",
+      "bytes": 157336267,
+      "sha256": "29c30b20d02639bb8931ab027facb8a5a56dbe94e1b9f5b72ce344231d61e47f"
+    }
+  ],
+  "large_artifact_policy": "Full original tar/index/graph/position files remain local at the recorded paths and SHA256; they are not embedded in the public lossless small-file packet. Original raw inputs are never rewritten.",
+  "archive_format": "Reconstruct gzip+base64 or whole-file identical_to aliases in archive order; verify each original byte count and SHA256. Shared bytes do not merge file identities."
+}

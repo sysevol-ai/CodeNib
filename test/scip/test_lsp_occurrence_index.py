@@ -4,9 +4,14 @@
 
 from __future__ import annotations
 
+import pickle
 from io import BytesIO
 
+import pytest
+from google.protobuf.text_format import MessageToString, Parse
+
 from codenib.scip_interface.lsp_occurrence_index import SCIPOccurrenceIndex
+from codenib.scip_interface.scip_pb2 import Index
 
 _DECODED = r"""
 metadata {
@@ -172,3 +177,48 @@ def test_one_selection_can_resolve_multiple_conditional_definitions():
     assert {row.start_line for row in definitions} == {3, 10}
     assert {row.start_line for row in references} == {3, 4, 10}
     assert len(references) == 3
+
+
+@pytest.mark.parametrize("encoding", [0, 1, 2, 123])
+@pytest.mark.parametrize("filtered", [False, True])
+def test_protobuf_positions_preserve_text_queries_and_serialized_rows(
+    tmp_path, encoding, filtered
+):
+    payload = Parse(_DECODED, Index())
+    payload.metadata.text_document_encoding = encoding
+    for document in payload.documents:
+        # Escaped symbols, paths and enclosing ranges must not change selection.
+        document.relative_path = document.relative_path.replace("pkg", "páck age")
+        for occurrence in document.occurrences:
+            occurrence.enclosing_range.extend([0, 0, 30, 0])
+            if not occurrence.symbol.startswith("local "):
+                occurrence.symbol += '"brace{}\\suffix'
+        document.occurrences.add().range.extend([1, 2, 3])  # Missing symbol.
+        for values in ([1, 2], [-1, 2, 3, 4]):
+            row = document.occurrences.add()
+            row.range.extend(values)
+            row.symbol = "local invalid"
+    path_filter = (lambda path: path.endswith("reader.go")) if filtered else None
+    expected = SCIPOccurrenceIndex.from_decoded_text(
+        MessageToString(payload, as_utf8=True), path_filter=path_filter
+    )
+    actual = SCIPOccurrenceIndex.from_scip_index(payload, path_filter=path_filter)
+
+    assert actual.position_encoding == expected.position_encoding
+    assert actual.occurrences == expected.occurrences
+    for row in expected.occurrences:
+        query = {
+            "file_path": row.file_path,
+            "line": row.start_line,
+            "character": row.start_character,
+        }
+        assert actual.occurrence_at(**query) == expected.occurrence_at(**query)
+        assert actual.definitions(**query) == expected.definitions(**query)
+        assert actual.references(**query) == expected.references(**query)
+    expected.save(tmp_path / "text.pkl")
+    actual.save(tmp_path / "proto.pkl")
+    # Pickle memoization may share equal path/string objects differently;
+    # persisted schema and all values must agree, not their object identities.
+    assert pickle.loads((tmp_path / "text.pkl").read_bytes()) == pickle.loads(
+        (tmp_path / "proto.pkl").read_bytes()
+    )

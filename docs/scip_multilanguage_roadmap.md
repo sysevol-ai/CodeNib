@@ -75,13 +75,22 @@ An LSP target at a later field write can now bind to existing definitions in
 the same physical class, provided its compiler-anchored instance parameter
 has no observed rebinding. Other receivers and unsupported method decorators
 cannot supply this fallback. A full 1,168-document CodeNib control builds and
-returns verified MCP source and relationships; its first graph request still
+returns verified MCP source and relationships; its recorded first graph request
 takes 247.965 seconds under two CPUs and 4 GiB. This is a correctness repair,
 not a cold-start acceleration or comparative benefit result.
 The field-write repair is merged in [#915](https://github.com/sysevol-ai/CodeNib/pull/915)
 as `23b31675`. Its main unit/integration/serial/native/graph-consumer chain and
 all 20 release-verifier jobs pass; the model-dependent slow tier and tag-only
 publication jobs remain separate conditional skips. No backend is promoted.
+The [first-query optimization](experiments/codegraph_python_first_query.md)
+reuses binary structure only when it reproduces the authoritative decoded
+bytes, then builds positions from the same normalized index. Complete graph,
+position and actual MCP reply parity pass on the 1,168-document control.
+First exploration takes 277.044 versus 205.341 seconds, with 30.564 seconds of
+unchanged compiler variation kept explicit. A reverse-order same-binary
+control reduces processing from 92.862 to 51.372 seconds and cached reprocessing
+from 87.087 to 66.027 seconds. Serial/C++ query surfaces and persisted schemas
+remain unchanged; no C++ backend, language or whole-task benefit is promoted.
 The [identity decision and execution record](experiments/codegraph_python_identity.md)
 cover the original IPython snapshot, failed pytest admission and captured
 regressions. Both complete saved graphs have serial/native parity and no

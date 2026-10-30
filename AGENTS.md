@@ -339,6 +339,10 @@ reader. A page is not a record of how the work was done.
   For source-only delivery checks, define accepted capped-response outcomes
   prospectively; do not change an earlier protocol's terminal-status or source
   credit rules after seeing its failures.
+- Prove a separately installed tool's imported modules from outside the
+  analyzed checkout. `python -c` otherwise imports checkout source through its
+  working directory, which does not establish the runtime serving the tool.
+  Check the imported paths and complete selected module hashes before timing.
 
 ## Directory-Specific Rules
 

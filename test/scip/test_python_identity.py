@@ -661,6 +661,146 @@ def test_changed_decoded_input_is_not_overwritten_by_identity_recovery(
     assert indexer.graph_output_receipt is None
 
 
+@pytest.mark.parametrize("raw", ["identical", "different", "malformed", "missing"])
+def test_raw_reuse_is_bound_to_complete_decoded_bytes(tmp_path, monkeypatch, raw):
+    from google.protobuf import text_format
+
+    from codenib.scip_interface.scip_indexer_python import SCIPPythonIndexer
+
+    indexer = SCIPPythonIndexer(tmp_path, output_dir=tmp_path / "index")
+    expected = _fixture(tmp_path)
+    decoded = MessageToString(expected, as_utf8=True).encode("utf-8")
+    candidate = copy.deepcopy(expected)
+    if raw == "different":
+        candidate.documents[0].occurrences[0].symbol = "local wrong-version"
+    if raw != "missing":
+        indexer.index_file.write_bytes(
+            b"not a protobuf" if raw == "malformed" else candidate.SerializeToString()
+        )
+    calls = []
+    parse = text_format.Parse
+
+    def observe_parse(*args, **kwargs):
+        calls.append(True)
+        return parse(*args, **kwargs)
+
+    monkeypatch.setattr(text_format, "Parse", observe_parse)
+
+    actual = indexer._read_identity_index(decoded)
+
+    assert actual == expected
+    assert len(calls) == (0 if raw == "identical" else 1)
+    # A repeated use may not retain the first call's raw version.
+    candidate.documents[0].occurrences[0].symbol = "local another-version"
+    changed = MessageToString(candidate, as_utf8=True).encode("utf-8")
+    assert indexer._read_identity_index(changed) == candidate
+
+
+@pytest.mark.parametrize("replace_during_decode", [False, True])
+def test_prepared_positions_reject_changed_consumer_input_before_save(
+    tmp_path, monkeypatch, replace_during_decode
+):
+    from codenib.scip_interface.scip_indexer_python import SCIPPythonIndexer
+
+    indexer = SCIPPythonIndexer(tmp_path, output_dir=tmp_path / "index")
+    indexer.decoded_file.write_text(MessageToString(_fixture(tmp_path), as_utf8=True))
+    normalize = normalize_python_index
+    monkeypatch.setattr(
+        python_identity,
+        "normalize_python_index",
+        lambda payload, root, **kwargs: normalize(
+            payload, root, resolve_definitions=_resolver(tmp_path, []), **kwargs
+        ),
+    )
+    replacement = 'metadata { project_root: "other-version" }\n'
+    if replace_during_decode:
+        decode = SCIPPythonGraphDecoder.decode
+
+        def change_during_decode(decoder):
+            graph = decode(decoder)
+            indexer.decoded_file.write_text(replacement)
+            return graph
+
+        monkeypatch.setattr(SCIPPythonGraphDecoder, "decode", change_during_decode)
+    else:
+        consume = indexer._process_decoded_index
+
+        def change_before_decode(*args, **kwargs):
+            indexer.decoded_file.write_text(replacement)
+            return consume(*args, **kwargs)
+
+        monkeypatch.setattr(indexer, "_process_decoded_index", change_before_decode)
+
+    # The prepared-input guard is required even without capture_artifact_receipts.
+    assert indexer.process_index(str(tmp_path / "graph.pkl")) is None
+    assert indexer.decoded_file.read_text() == replacement
+    assert not (tmp_path / "graph.pkl").exists()
+    assert not (tmp_path / "lsp_index.pkl").exists()
+    assert indexer.decoded_input_receipt is None
+    assert indexer.graph_output_receipt is None
+
+
+@pytest.mark.parametrize("backend", ["serial", "core"])
+@pytest.mark.parametrize("capture_receipts", [False, True])
+def test_prepared_python_positions_match_persisted_graph_and_cached_recovery(
+    tmp_path, monkeypatch, backend, capture_receipts
+):
+    from codenib.compiler.artifact_fingerprints import regular_file_fingerprint
+    from codenib.scip_interface.query_surface import query_surface_sha256
+    from codenib.scip_interface.scip_indexer_python import SCIPPythonIndexer
+
+    if backend == "core":
+        pytest.importorskip("codenib_core")
+    indexer = SCIPPythonIndexer(
+        tmp_path, output_dir=tmp_path / "index", decoder_backend=backend
+    )
+    index = _fixture(tmp_path)
+    indexer.index_file.write_bytes(index.SerializeToString())
+    assert indexer.decode_index()
+    indexer._capture_artifact_receipts = capture_receipts
+    normalize = normalize_python_index
+    monkeypatch.setattr(
+        python_identity,
+        "normalize_python_index",
+        lambda payload, root, **kwargs: normalize(
+            payload, root, resolve_definitions=_resolver(tmp_path, []), **kwargs
+        ),
+    )
+
+    graph = indexer.process_index(str(indexer.graph_file))
+
+    assert graph is not None
+    expected_graph = SCIPPythonGraphDecoder(
+        str(indexer.decoded_file), project_root=tmp_path
+    ).decode()
+    expected_positions = SCIPOccurrenceIndex.from_decoded_file(indexer.decoded_file)
+    persisted = SCIPOccurrenceIndex.load(indexer.lsp_index_file)
+    assert query_surface_sha256(graph) == query_surface_sha256(expected_graph)
+    assert graph.lsp_occurrence_index.occurrences == expected_positions.occurrences
+    assert persisted.occurrences == expected_positions.occurrences
+    assert persisted.definitions(file_path="nested.py", line=14, character=15) == (
+        expected_positions.definitions(file_path="nested.py", line=14, character=15)
+    )
+    if capture_receipts:
+        assert indexer.decoded_input_receipt == {
+            "path": str(indexer.decoded_file.resolve()),
+            **regular_file_fingerprint(indexer.decoded_file),
+        }
+        assert indexer.graph_output_receipt[
+            "query_surface_sha256"
+        ] == query_surface_sha256(graph)
+    else:
+        assert indexer.decoded_input_receipt is None
+        assert indexer.graph_output_receipt is None
+    decoded_before = indexer.decoded_file.read_bytes()
+    # Normalized cached text differs from raw, and still remains authoritative.
+    cached = indexer.process_index(str(indexer.graph_file))
+    assert cached is not None
+    assert indexer.decoded_file.read_bytes() == decoded_before
+    assert query_surface_sha256(cached) == query_surface_sha256(graph)
+    assert cached.lsp_occurrence_index.occurrences == persisted.occurrences
+
+
 @pytest.mark.parametrize("failure", [RuntimeError, KeyboardInterrupt])
 def test_resolver_startup_failure_or_cancellation_always_shuts_down(
     tmp_path, monkeypatch, failure

@@ -234,6 +234,19 @@ CodeNib's final counters and invoices remain unknown. Hold the wording candidate
 outside product code, repair cold latency and authenticated MCP spill delivery,
 then use a separately frozen future round. Original cohorts, every failure/cost,
 both independent confirmation gates and external enrollment at 0/5 remain open.
+
+The [Python first-query control](experiments/codegraph_python_first_query.md)
+removes repeated text parsing and position scanning while binding both consumers
+to the exact normalized artifact. One fresh-query pair returns identical full
+MCP replies in 277.044 versus 205.341 seconds, including all graph preparation;
+unchanged compiler variation accounts for 30.564 seconds of the observed gap.
+A reverse-order same-binary control after local unit verification ends reduces
+processing from 92.862 to 51.372 seconds and normalized-cache reprocessing from
+87.087 to 66.027 seconds. Both preserve the complete normalized bytes, graph
+query surface and 782,272 positions. All 1,757 tracked source files remain
+unchanged. The current unit tier passes 8,922 cases (24 skips) and MCP 2.3 passes
+432 (seven skips). This is bounded engineering evidence; authenticated SDK
+spill access and complete-task/independent/external-use gates remain open.
 Tracking issue: [#874](https://github.com/sysevol-ai/CodeNib/issues/874).
 The detailed contract is [the internal pilot plan](experiments/codegraph_net_benefit.md).
 

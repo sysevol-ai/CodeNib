@@ -23,6 +23,7 @@ from .scip_filter import definition_path, normalize_scip_path, scip_path_is_allo
 
 if TYPE_CHECKING:
     from ..graph.code_graph import CodeGraph
+    from .lsp_occurrence_index import SCIPOccurrenceIndex
 
 logger = get_logger("scip_indexer_base")
 
@@ -383,6 +384,21 @@ class SCIPIndexerBase(ABC):
         Returns:
             CodeGraph: Processed graph object
         """
+        return self._process_decoded_index(output_file)
+
+    def _process_decoded_index(
+        self,
+        output_file: Optional[str] = None,
+        *,
+        occurrence_index: Optional[SCIPOccurrenceIndex] = None,
+        decoded_fingerprint: Optional[dict[str, object]] = None,
+    ) -> Union[CodeGraph, None]:
+        """Consume one decoded artifact and optional producer-built positions.
+
+        Prepared positions require its exact byte fingerprint. Verify that
+        fingerprint before either consumer and after both, even when the
+        caller does not request receipts. No graph is saved on a mismatch.
+        """
         self.decoded_input_receipt = None
         self.graph_output_receipt = None
         if not self.decoded_file.exists():
@@ -390,11 +406,23 @@ class SCIPIndexerBase(ABC):
             return None
 
         try:
-            if self._capture_artifact_receipts:
+            if (occurrence_index is None) != (decoded_fingerprint is None):
+                raise ValueError("prepared positions require a decoded fingerprint")
+            verify_input = (
+                self._capture_artifact_receipts or decoded_fingerprint is not None
+            )
+            if verify_input:
                 from ..compiler.artifact_fingerprints import regular_file_fingerprint
 
                 decoded_path = self.decoded_file.resolve(strict=True)
                 decoded_before = regular_file_fingerprint(self.decoded_file)
+                if (
+                    decoded_fingerprint is not None
+                    and decoded_before != decoded_fingerprint
+                ):
+                    raise RuntimeError(
+                        "decoded SCIP input differs from prepared positions"
+                    )
             logger.info(
                 f"Starting SCIP index processing (backend={self.decoder_backend})..."
             )
@@ -409,21 +437,23 @@ class SCIPIndexerBase(ABC):
             from .lsp_occurrence_index import SCIPOccurrenceIndex
 
             with self.profiler.section("process_index.build_lsp_occurrence_index"):
-                occurrence_index = SCIPOccurrenceIndex.from_decoded_file(
-                    self.decoded_file,
-                    path_filter=(
-                        self._path_allowed
-                        if self._target_dir or self.exclude_patterns
-                        else None
-                    ),
-                )
+                if occurrence_index is None:
+                    occurrence_index = SCIPOccurrenceIndex.from_decoded_file(
+                        self.decoded_file,
+                        path_filter=(
+                            self._path_allowed
+                            if self._target_dir or self.exclude_patterns
+                            else None
+                        ),
+                    )
             graph.lsp_occurrence_index = occurrence_index
-            if self._capture_artifact_receipts:
+            if verify_input:
                 decoded_after = regular_file_fingerprint(self.decoded_file)
                 if decoded_after != decoded_before:
                     raise RuntimeError(
                         "decoded SCIP input changed while graph consumers read it"
                     )
+            if self._capture_artifact_receipts:
                 self.decoded_input_receipt = {
                     "path": str(decoded_path),
                     **decoded_before,
