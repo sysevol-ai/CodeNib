@@ -209,6 +209,7 @@ def _content_budgets(
     total_chars: int,
     min_excerpt_chars: int,
     max_excerpt_chars: int,
+    content_sizes: Sequence[int] | None = None,
 ) -> list[int]:
     if count <= 0 or total_chars <= 0:
         return []
@@ -220,6 +221,24 @@ def _content_budgets(
     budgets = [per_result] * admitted
     budgets[-1] += total_chars - sum(budgets)
     budgets[-1] = min(budgets[-1], max_excerpt_chars)
+    if content_sizes is not None:
+        # A short excerpt does not need its entire share. Reuse that space
+        # within the already admitted rows, without lowering a long row's
+        # original allowance or increasing the per-excerpt/aggregate caps.
+        limits = [min(size, max_excerpt_chars) for size in content_sizes[:admitted]]
+        budgets = [
+            min(budget, limit) for budget, limit in zip(budgets, limits, strict=True)
+        ]
+        remaining = total_chars - sum(budgets)
+        while remaining:
+            waiting = [i for i, limit in enumerate(limits) if budgets[i] < limit]
+            if not waiting:
+                break
+            share = max(1, remaining // len(waiting))
+            for index in waiting:
+                extra = min(share, limits[index] - budgets[index], remaining)
+                budgets[index] += extra
+                remaining -= extra
     return budgets
 
 
@@ -230,19 +249,22 @@ def project_evidence_payloads(
     total_chars: int = DEFAULT_TOTAL_CONTENT_CHARS,
     min_excerpt_chars: int = DEFAULT_MIN_EXCERPT_CHARS,
     max_excerpt_chars: int = DEFAULT_MAX_EXCERPT_CHARS,
+    reuse_unused_budget: bool = False,
 ) -> list[dict[str, Any]]:
     """Bound aggregate result content while retaining every ranked metadata row."""
 
-    content_count = sum(
-        isinstance(payload.get("content"), str) and bool(payload.get("content"))
+    content_sizes = [
+        len(content)
         for payload in payloads
-    )
+        if isinstance(content := payload.get("content"), str) and content
+    ]
     budgets = iter(
         _content_budgets(
-            content_count,
+            len(content_sizes),
             total_chars=total_chars,
             min_excerpt_chars=min_excerpt_chars,
             max_excerpt_chars=max_excerpt_chars,
+            content_sizes=content_sizes if reuse_unused_budget else None,
         )
     )
     remaining = total_chars

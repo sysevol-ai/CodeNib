@@ -1,0 +1,62 @@
+{
+  "schema": "codenib.complete-source-windows-control.v1",
+  "scope": "two-module installed overlay on an admitted wheel; six model-free source-delivery controls, not an installed candidate wheel, model use, whole-task correctness/time/cost or graph efficacy",
+  "source_product_base": "f60d5d0f272ae4ddb7ff5997b8ebe85f34cde9bc",
+  "target_source_commit": "5f9573d97f141e1588af30ea95b06ae988f104a1",
+  "outcome": {
+    "queries": 6,
+    "calls_per_condition": 6,
+    "model_calls": 0,
+    "source_fidelity_caps_schemas_plans": "passed",
+    "named_critical_scopes_complete": {
+      "baseline": 0,
+      "candidate": 3,
+      "scope": "the three named scopes from the two exposed developer queries; not recall or unseen validation"
+    },
+    "canonical_mcp_result_bytes": {
+      "baseline": 337530,
+      "candidate": 319145,
+      "fraction_reduction": 0.054469232364530606,
+      "queries_that_grow": 2,
+      "scope": "structured plus compatibility-text serialization, not actual SDK model-input token savings"
+    },
+    "unit_passed": 8963,
+    "unit_skipped": 24,
+    "mcp20_passed": 455,
+    "mcp23_passed": 455,
+    "mcp_skipped_each": 7,
+    "baseline_expanded_regressions_failed": 12,
+    "baseline_expanded_regressions_passed": 12,
+    "smallest_updated_surface_passed": 49,
+    "old_inputs_unchanged": 7357,
+    "owned_control_containers_independently_absent": 1
+  },
+  "retained_binary_artifacts": {
+    "baseline_wheel_sha256": "ff834ac8035198cf5d11f28066eb1526194c337ac5230a947b43feb7c885c294",
+    "common_index_sha256": "c4567bff2d890e1f0638041a1ccfd41c7915603122dbaaff4fa7522aa6874b2d",
+    "common_index_archive_bytes": 10716160,
+    "scope": "retained locally; not duplicated in this text packet"
+  },
+  "open_gates": [
+    "exact candidate wheel admission before new model experiment",
+    "new prospectively sealed model/whole-workflow evidence",
+    "correctness parity20% complete-time improvement and<=10% normalized-token regression",
+    "two independent success confirmations",
+    "representative updates and external consent/seven-day reuse0/5; no outreach"
+  ],
+  "public_files": 33,
+  "parts": [
+    {
+      "path": "codegraph_complete_source_windows_2026_10_30.part01.json",
+      "bytes": 371370,
+      "sha256": "2a4b61f9e4a7c7f81ef59fca9d1213dc5d24d9ab329016a787daaf867ed59469",
+      "public_files": 18
+    },
+    {
+      "path": "codegraph_complete_source_windows_2026_10_30.part02.json",
+      "bytes": 202696,
+      "sha256": "bf2e4de13f999ed86a353b02e7b7d0c05ff8402b26cc2cbfeda0ca65e607ae3a",
+      "public_files": 15
+    }
+  ]
+}
