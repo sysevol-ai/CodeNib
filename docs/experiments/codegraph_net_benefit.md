@@ -5,11 +5,16 @@ Status: dirty initialization, stale-query protection, scoped Python identity
 recovery, source-current reloading and cold deferred source-first exploration
 are merged. The latest [source-first development result](codegraph_source_first_results.md)
 completes sixty attempts and all source/native assessment: Native / Serena /
-Codegraph / CodeNib accept 9 / 7 / 8 / 8 tasks out of fifteen. CodeNib remains
-unused, has lower acceptance than the maximum alternative and meets no verified
+Codegraph / CodeNib accept 9 / 7 / 8 / 8 tasks out of fifteen. CodeNib is unused
+in that cohort, has lower acceptance than the maximum alternative and meets no verified
 20% whole-workflow benefit gate. Hold promotion; no complete eligible baseline
 exists. These sources informed implementation and count as neither independent
-success confirmation. Both original [v1](codegraph_matched_assessment_v1.md) and
+success confirmation. A later internal diagnostic records two voluntary
+BM25-only calls but 0/2 accepted answers. The merged source-window repair and
+installed-wheel checks establish source delivery, not task benefit. A
+[new four-arm confirmation](codegraph_payload_confirmation.md) is preparing the
+previously reserved Sphinx/Pylint/scikit-learn set with product/policy fixed
+before opening those issues; no new model task has run. Both original [v1](codegraph_matched_assessment_v1.md) and
 [v2](codegraph_matched_assessment_v2.md) outcomes remain unchanged. Broader
 provider/workflow coverage, useful voluntary use, both success confirmations
 and external recruitment/consent/seven-day reuse remain open at 0/5.
@@ -220,7 +225,8 @@ starting graph/provider preparation. Explicit graph requests still pay their
 full cost and can fail. No complete-task gain is established. The first set
 therefore remains development admission, satisfying neither independent
 success confirmation; retain all selected cases, failures and native outcomes,
-keep the reserved set unopened and freeze another disjoint set prospectively.
+use the reserved set only under the new prospective product/policy foundation
+and keep the further disjoint Matplotlib/Django/xarray set unopened.
 The separately [sealed development protocol](codegraph_source_first_protocol.md)
 fixes fifteen tasks and all runtime/criteria inputs after twelve new operator
 preparations. It retains the complete endpoint, native grading, strict

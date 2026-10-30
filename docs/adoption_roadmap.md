@@ -292,8 +292,11 @@ pass 8,946 unit and 433 MCP 2.3 cases; installed controls cover all three
 first source queries and Seaborn's same-connection update. This changes work
 performed, not equivalent-graph speed or matched model benefit. This first
 set is development admission and counts as neither independent success
-confirmation. Keep the reserved set unopened and freeze another disjoint set
-before independent execution. Main unit/integration, twenty release verifiers
+confirmation. The reserved Sphinx/Pylint/scikit-learn set is now opened only
+after fixing the #931 product/policy foundation for a
+[new prospective confirmation](experiments/codegraph_payload_confirmation.md).
+Matplotlib/Django/xarray remain the further disjoint unopened set.
+Main unit/integration, twenty release verifiers
 and Docs pass; serial/native/consumer/slow skips do not repeat #917's full
 chain. The [source-first development assessment](experiments/codegraph_source_first_results.md)
 now completes all sixty attempts, 48 exact-source judgments and twelve original
@@ -344,7 +347,22 @@ independent installed-byte and six-query stdio admission: all 485 Python files
 match the implementation commit, installed Python/native bytes match the wheel,
 and both owned control/admission containers are absent. New prospective model
 and whole-workflow evidence remain open. All 7,357 old inputs and prior outcomes
-are unchanged.
+are unchanged. Merged #931 now passes main Docs, lightweight installation,
+unit/integration and all twenty release verifiers, with conditional graph-chain
+and tag-only publication skips. The new four-arm preparation fixes fifteen
+tasks and 31 original source anchors before model inference. Pylint and Sphinx
+native controls execute all 18 and 45 selected tests on both original and
+reference source; Sphinx's missing-dependency failures remain retained.
+Scikit-learn's old ARM SciPy dependency now builds with common compiler
+prerequisites, and both controls execute all 86 selected outcomes. All twelve
+fresh final-controller preparations pass after retaining initial preparation
+failures and Python 3.6 compatibility work. Product/source identities match,
+49 current owned containers are absent, and the complete 5,294-input seal is
+fixed before new inference (SHA-256
+`66becb6b784a7560ef7cf0ce2ce980002634939f00aeadd0d38ebd6dc130c68d`).
+Product bytes remain fixed and difficult cases are retained. Execution and
+source/native assessment remain open; no new model outcome or independent
+success confirmation is claimed.
 
 Tracking issue: [#874](https://github.com/sysevol-ai/CodeNib/issues/874).
 The detailed contract is [the internal pilot plan](experiments/codegraph_net_benefit.md).
