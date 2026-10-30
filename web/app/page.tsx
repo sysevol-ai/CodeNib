@@ -305,7 +305,6 @@ export default function Landing({ browse = false }: { browse?: boolean }) {
       <Header />
       {browse ? (
         <section className="browse-intro landing-catalog">
-          <span className="browse-eyebrow">Code, explained</span>
           <h1>Browse Wikis</h1>
           <p>
             Explore how real projects work. Read a featured guide or discover
@@ -320,7 +319,6 @@ export default function Landing({ browse = false }: { browse?: boolean }) {
           <section className="home-hero" aria-label="CodeNib Wiki">
             <div className="home-hero-intro">
               <div>
-                <p className="home-eyebrow">From the big picture to the source</p>
                 <h1>Understand a repo.<br />Follow the code.</h1>
                 <p className="home-sub">
                   Every repository here is mapped from its code index: its parts,
@@ -359,7 +357,6 @@ export default function Landing({ browse = false }: { browse?: boolean }) {
           </section>
           <section className="home-example" aria-label="Try a real example">
             <div className="home-example-intro">
-              <p className="home-eyebrow">From the map to the line</p>
               <h2>Ask one question. Land on the exact lines.</h2>
               <p className="home-sub">
                 Each step is a call the index recorded. Click one to read the source
@@ -372,7 +369,6 @@ export default function Landing({ browse = false }: { browse?: boolean }) {
       ) : (
         <section className={`hero ${!staticRuntime ? "first-visit-hero" : ""}`}>
           <div className="first-visit-intro">
-            <p className="first-visit-eyebrow">From the big picture to the source</p>
             <h1>Understand a repo.<br />Follow the code.</h1>
             <p className="hero-sub">
               Explore how a repository works, see the code behind each explanation,

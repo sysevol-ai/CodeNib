@@ -378,7 +378,7 @@ pre {
   font-family: inherit;
 }
 .search-box input::placeholder {
-  color: var(--text-faint);
+  color: var(--text-muted);
 }
 .search-box input:focus {
   outline: none;
@@ -927,8 +927,7 @@ pre {
 }
 
 .page-loading-state {
-  border-left: 3px solid var(--accent);
-  padding: 10px 14px;
+  padding: 10px 0;
   color: var(--text);
 }
 .page-loading-title {
@@ -1065,15 +1064,14 @@ pre {
 }
 .markdown blockquote {
   margin: 12px 0;
-  padding: 4px 14px;
-  border-left: 3px solid var(--border-2);
+  padding: 4px 16px;
+  border-left: 1px solid var(--border-2);
   color: var(--muted);
 }
 .wiki-story > .markdown:first-child blockquote {
   margin: 20px 0 4px;
   padding: 14px 18px;
   border: 1px solid color-mix(in srgb, var(--accent) 26%, var(--border));
-  border-left: 4px solid var(--accent);
   border-radius: var(--radius-lg);
   background: color-mix(in srgb, var(--accent) 6%, var(--bg-surface));
   color: var(--text-secondary);
@@ -1611,8 +1609,8 @@ pre {
   border-radius: var(--radius-md);
 }
 .askbar-icon {
+  display: inline-flex;
   color: var(--accent);
-  font-size: 14px;
 }
 .askbar-input {
   flex: 1;
@@ -3108,20 +3106,29 @@ pre {
   margin: 2px 0 16px;
   padding: 9px 12px;
   border: 1px solid var(--border);
-  border-left-width: 3px;
+  border-radius: var(--radius-md);
   background: var(--bg-muted);
   color: var(--text-secondary);
   font-size: var(--fs-caption);
 }
-.page-provenance.source-checked {
-  border-left-color: #2f855a;
-}
-.page-provenance.needs-review {
-  border-left-color: #d97706;
-}
 .provenance-state {
   color: var(--text);
   font-weight: var(--fw-strong);
+}
+/* The check result is a status mark beside its own words. */
+.page-provenance.source-checked .provenance-state::before,
+.page-provenance.needs-review .provenance-state::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 8px;
+  border-radius: 50%;
+  vertical-align: 0.1em;
+  background: #188038;
+}
+.page-provenance.needs-review .provenance-state::before {
+  background: #b06000;
 }
 .provenance-detail {
   min-width: 0;
@@ -3642,9 +3649,7 @@ a.evidence-row:hover {
   padding: 18px;
   border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
   border-radius: var(--radius-pill);
-  background:
-    radial-gradient(circle at 12% 0%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 30%),
-    linear-gradient(135deg, var(--bg-surface), var(--bg-muted));
+  background: var(--bg-muted);
   box-shadow: none;
 }
 .wiki-media-lead {
@@ -3789,9 +3794,7 @@ a.evidence-row:hover {
   border-bottom: 1px solid #dadce0;
   padding: 30px;
   color: #1f1f1f;
-  background:
-    radial-gradient(circle at 84% 8%, rgba(11, 87, 208, 0.07), transparent 25%),
-    #f8f9fa;
+  background: #f8f9fa;
 }
 .wiki-system-architecture-head {
   display: flex;
@@ -3799,15 +3802,6 @@ a.evidence-row:hover {
   justify-content: space-between;
   gap: 24px;
   margin-bottom: 24px;
-}
-.wiki-system-architecture-eyebrow {
-  display: block;
-  margin-bottom: 7px;
-  color: #0b57d0;
-  font-size: var(--fs-caption);
-  font-weight: var(--fw-strong);
-  letter-spacing: 0;
-  text-transform: none;
 }
 .wiki-system-architecture-head h3 {
   margin: 0;
@@ -3860,25 +3854,9 @@ a.evidence-row:hover {
   min-width: 0;
   padding: 19px 21px 19px 17px;
   border: 1px solid #dadce0;
-  border-left: 4px solid #0b57d0;
   border-radius: var(--radius-sm);
   background: rgba(255, 255, 255, 0.88);
   box-shadow: none;
-}
-.wiki-system-role.layer-external {
-  border-left-color: #9334e6;
-}
-.wiki-system-role.layer-interface {
-  border-left-color: #0b57d0;
-}
-.wiki-system-role.layer-coordination {
-  border-left-color: #c26715;
-}
-.wiki-system-role.layer-execution {
-  border-left-color: #188038;
-}
-.wiki-system-role.layer-data {
-  border-left-color: #9a5b13;
 }
 .wiki-system-role-index {
   padding-top: 2px;
@@ -3893,8 +3871,7 @@ a.evidence-row:hover {
   min-width: 0;
   gap: 5px;
 }
-.wiki-system-role-layer,
-.wiki-system-support-card > span {
+.wiki-system-role-layer {
   color: #5f6368;
   font-size: var(--fs-caption);
   font-weight: var(--fw-strong);
@@ -4684,12 +4661,6 @@ a.codepanel-name:hover {
   background: var(--bg-subtle);
   border-color: var(--border-strong);
 }
-.hier-box.hier-directory > .hier-box-head {
-  border-left: 3px solid var(--accent-border);
-}
-.hier-box.hier-file > .hier-box-head {
-  border-left: 3px solid var(--border-strong);
-}
 .hier-box-head {
   display: flex;
   align-items: center;
@@ -5080,7 +5051,7 @@ a.codepanel-name:hover {
   border-color: var(--accent-border);
 }
 .cite-group-more {
-  opacity: 0.8;
+  color: var(--text-muted);
 }
 .cite-group[data-single] .cite-src {
   margin: 0;
@@ -5142,7 +5113,7 @@ a.codepanel-name:hover {
   counter-increment: stage;
   position: relative;
   padding: 8px 12px 8px 44px;
-  border-left: 2px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  border-left: 1px solid var(--border-2);
 }
 .wiki-story .markdown ol > li::before {
   content: counter(stage);
@@ -5600,13 +5571,6 @@ a.codepanel-name:hover {
 .wiki-system-architecture-head {
   margin-bottom: 12px;
 }
-.wiki-system-architecture-eyebrow {
-  margin-bottom: 4px;
-  color: var(--accent);
-  font-size: var(--fs-caption);
-  font-weight: var(--fw-strong);
-  letter-spacing: 0;
-}
 .wiki-system-architecture-head h3,
 .wiki-system-role h4,
 .wiki-system-support-card h4,
@@ -5629,12 +5593,24 @@ a.codepanel-name:hover {
   padding-top: 14px;
   border-top: 1px solid var(--border-subtle, var(--border));
 }
-.wiki-system-section-label,
-.wiki-system-role-layer,
-.wiki-system-support-card > span {
+.wiki-system-section-label {
   color: var(--text-muted, var(--muted));
   font-size: var(--fs-caption);
   font-weight: var(--fw-strong);
+  letter-spacing: 0;
+}
+/* The role's layer rides on the heading's line as a plain tag, not as a
+   label stacked above it. */
+.wiki-system-role-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+}
+.wiki-system-role-layer {
+  color: var(--text-muted, var(--muted));
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-regular);
   letter-spacing: 0;
 }
 .wiki-system-role {
@@ -5642,26 +5618,11 @@ a.codepanel-name:hover {
   gap: 10px;
   padding: 12px 12px 12px 14px;
   border: 0;
-  border-left: 2px solid var(--accent);
+  border-left: 1px solid var(--border-strong);
   border-radius: 0;
   background: transparent;
   box-shadow: none;
   transition: opacity 120ms ease, background-color 120ms ease;
-}
-.wiki-system-role.layer-external {
-  border-left-color: var(--purple-border);
-}
-.wiki-system-role.layer-interface {
-  border-left-color: var(--accent);
-}
-.wiki-system-role.layer-coordination {
-  border-left-color: #e37400;
-}
-.wiki-system-role.layer-execution {
-  border-left-color: #188038;
-}
-.wiki-system-role.layer-data {
-  border-left-color: #b06000;
 }
 .wiki-system-role-index {
   display: inline-grid;
@@ -6056,8 +6017,7 @@ a.codepanel-name:hover {
 
 /* Visitor Wikis share the prepared Wiki reading theme. */
 .generate-wiki-page { max-width: 860px; margin: auto; padding: 32px 28px 80px; }
-.generate-wiki-page h1 { margin: 8px 0 12px; font-size: clamp(28px, 4vw, 42px); letter-spacing: -.04em; overflow-wrap: anywhere; }
-.generate-wiki-page .hero-eyebrow { margin-top: 40px; font-size: var(--fs-caption); font-weight: var(--fw-strong); letter-spacing: 0; color: var(--accent); }
+.generate-wiki-page h1 { margin: 40px 0 12px; font-size: clamp(28px, 4vw, 42px); letter-spacing: -.04em; overflow-wrap: anywhere; }
 .generate-lead { color: var(--text-secondary); font-size: var(--fs-lead); }
 .wiki-generation-steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 26px 0; padding: 0; list-style: none; }
 .wiki-generation-steps li { display: flex; gap: 8px; align-items: center; font-size: var(--fs-caption); color: var(--text-secondary); }
@@ -6108,7 +6068,7 @@ a.codepanel-name:hover {
 @media (prefers-reduced-motion: reduce) { .wiki-run-pulse.is-animated i { animation: none; transform: none; opacity: 1; } }
 @media (max-width: 480px) { .wiki-run-activity { padding: 14px; } .wiki-run-timing { grid-template-columns: repeat(2, minmax(0, 1fr)); } .wiki-run-timing > div:last-child { grid-column: 1 / -1; } }
 .wiki-progress.is-paused { border-color: #b45309; }
-.wiki-stopped-message { margin: 16px 0; padding: 16px; border-left: 4px solid #b45309; background: var(--bg-subtle); font-size: var(--fs-small); overflow-wrap: anywhere; }
+.wiki-stopped-message { margin: 16px 0; padding: 16px; border: 1px solid color-mix(in srgb, #b45309 45%, var(--border)); border-radius: var(--radius-md); background: var(--bg-subtle); font-size: var(--fs-small); overflow-wrap: anywhere; }
 .wiki-stopped-message p { margin: 8px 0; line-height: 1.6; }
 .wiki-skipped-files { margin: 16px 0; overflow-wrap: anywhere; }
 .wiki-skipped-files ul { max-height: 240px; overflow-y: auto; padding-left: 20px; }
@@ -6209,10 +6169,9 @@ a.codepanel-name:hover {
 /* A single collection for curated guides and explicitly published visitor Wikis. */
 .browse-entry, .browse-more { display: inline-block; margin-top: 24px; font-size: var(--fs-small); }
 .browse-intro { position: relative; padding-top: 54px; padding-bottom: 32px; }
-.browse-intro h1 { font-size: clamp(30px, 4vw, 44px); letter-spacing: -.04em; margin: 10px 0; }
+.browse-intro h1 { font-size: clamp(30px, 4vw, 44px); letter-spacing: -.04em; margin: 0 0 10px; }
 .browse-intro p { color: var(--text-secondary); max-width: 640px; line-height: 1.7; }
 .browse-intro > .btn-outline { position: absolute; right: var(--wiki-gutter); top: 72px; }
-.browse-eyebrow { font-size: var(--fs-caption); letter-spacing: 0; color: var(--text-muted); font-weight: var(--fw-strong); }
 .browse-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
 .browse-tabs a { padding: 9px 14px; color: var(--text-secondary); border-radius: var(--radius-md); font-size: var(--fs-small); }
 .browse-tabs a[aria-current="page"] { color: var(--accent); background: var(--accent-subtle); font-weight: var(--fw-strong); }
@@ -6271,7 +6230,7 @@ a.codepanel-name:hover {
 .saved-wiki-map-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .saved-wiki-map-heading h2 { margin: 0; font-size: var(--fs-h4); }
 .saved-wiki-codegraph { margin-top: 18px; min-width: 0; }
-.wiki-visual-unavailable { border-left: 3px solid #d89c46; padding: 10px 14px; font-size: var(--fs-caption); }
+.wiki-visual-unavailable { border: 1px dashed var(--border-2); border-radius: var(--radius-md); padding: 10px 14px; font-size: var(--fs-caption); }
 
 /* First visit: the example remains usable while the catalog connects. */
 .landing .hero.first-visit-hero {
@@ -6290,8 +6249,7 @@ a.codepanel-name:hover {
 .first-visit-intro { min-width: 0; grid-area: intro; align-self: start; padding-top: 22px; }
 .first-visit-entry { min-width: 0; grid-area: entry; align-self: end; }
 .landing .first-visit-hero .first-visit-intro p { text-align: left; }
-.landing .first-visit-hero h1 { font-size: clamp(34px, 3.5vw, 50px); line-height: 1.12; letter-spacing: -.04em; margin: 14px 0 20px; }
-.first-visit-eyebrow { color: var(--accent); font-size: var(--fs-caption); font-weight: var(--fw-strong); letter-spacing: 0; }
+.landing .first-visit-hero h1 { font-size: clamp(34px, 3.5vw, 50px); line-height: 1.12; letter-spacing: -.04em; margin: 0 0 20px; }
 .landing .first-visit-hero .hero-sub { max-width: 40ch; font-size: var(--fs-lead); line-height: 1.65; margin: 0; }
 .first-visit-invitation { font-size: var(--fs-caption); color: var(--text-secondary); margin: 20px 0 28px; }
 .first-visit-hero .repository-entry { margin: 0; }
@@ -6346,33 +6304,21 @@ a.codepanel-name:hover {
    use the same column split, so the intro columns and the right-hand
    objects line up down the page. */
 .home-stage {
-  --h-bg: #070b14;
-  --h-text: #e6edf7;
-  --h-soft: #b6c2d4;
-  --h-muted: #8a97ab;
-  --h-line: rgba(148, 163, 184, 0.16);
-  --h-line-strong: rgba(148, 163, 184, 0.32);
-  --h-accent: #60a5fa;
-  --h-trace: #22d3ee;
+  --h-bg: #121315;
+  --h-text: #e8eaed;
+  --h-soft: #bdc1c6;
+  --h-muted: #9aa0a6;
+  --h-line: rgba(232, 234, 237, 0.12);
+  --h-line-strong: rgba(232, 234, 237, 0.26);
+  --h-accent: #8ab4f8;
+  --h-trace: #8ab4f8;
   position: relative;
   display: grid;
   gap: clamp(56px, 7vw, 96px);
   padding: clamp(40px, 5vw, 64px) var(--wiki-gutter) clamp(56px, 6vw, 88px);
   overflow: hidden;
   color: var(--h-text);
-  background:
-    radial-gradient(1100px 520px at 78% -8%, rgba(59, 130, 246, 0.24), transparent 62%),
-    radial-gradient(900px 420px at -6% 64%, rgba(34, 211, 238, 0.1), transparent 60%),
-    var(--h-bg);
-}
-.home-stage::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background-image: radial-gradient(rgba(148, 163, 184, 0.14) 1px, transparent 1px);
-  background-size: 24px 24px;
-  mask-image: linear-gradient(to bottom, #000 0, #000 70%, transparent 100%);
+  background: var(--h-bg);
 }
 .home-hero,
 .home-example {
@@ -6390,16 +6336,8 @@ a.codepanel-name:hover {
   min-width: 0;
   padding-top: 4px;
 }
-.home-eyebrow {
-  margin: 0;
-  color: var(--h-trace);
-  font-size: var(--fs-caption);
-  font-weight: var(--fw-strong);
-  letter-spacing: 0;
-  text-transform: none;
-}
 .home-hero h1 {
-  margin: 18px 0 22px;
+  margin: 0 0 22px;
   color: #fff;
   font-size: clamp(40px, 3.9vw, 64px);
   font-weight: var(--fw-strong);
@@ -6408,7 +6346,7 @@ a.codepanel-name:hover {
   text-wrap: balance;
 }
 .home-example h2 {
-  margin: 16px 0 16px;
+  margin: 0 0 16px;
   color: #fff;
   font-size: clamp(28px, 2.8vw, 40px);
   font-weight: var(--fw-strong);
@@ -6436,12 +6374,19 @@ a.codepanel-name:hover {
   color: var(--h-text);
 }
 .home-entry .repository-entry-row input::placeholder {
-  color: #64748b;
+  color: var(--h-muted);
 }
 .home-entry .repository-entry-row .btn-primary {
-  border-color: #3b82f6;
-  background: #2563eb;
-  color: #fff;
+  border-color: var(--h-accent);
+  background: var(--h-accent);
+  color: #062e6f;
+}
+.home-entry .repository-entry-row .btn-primary:hover {
+  border-color: #aecbfa;
+  background: #aecbfa;
+}
+.home-entry .wiki-repository-rules {
+  color: var(--h-muted);
 }
 .home-entry .repository-entry .small.muted {
   color: var(--h-muted);
@@ -6504,8 +6449,8 @@ a.codepanel-name:hover {
   font-size: var(--fs-micro);
 }
 .home-ready-chip:hover {
-  border-color: rgba(96, 165, 250, 0.6);
-  background: rgba(96, 165, 250, 0.08);
+  border-color: var(--h-line-strong);
+  background: rgba(255, 255, 255, 0.07);
   text-decoration: none;
 }
 .home-ready-chip.is-more {
@@ -6519,13 +6464,17 @@ a.codepanel-name:hover {
 /* The shared example is a shadow-DOM component themed through these
    properties; on the stage it takes the stage's dark palette. */
 .home-example .first-visit-explorer {
-  --bg-surface: rgba(10, 15, 28, 0.9);
+  --bg-surface: #1a1b1e;
   --bg-muted: rgba(255, 255, 255, 0.03);
-  --border-subtle: rgba(148, 163, 184, 0.2);
-  --text-primary: #e6edf7;
-  --text-secondary: #94a3b8;
-  --accent: #60a5fa;
-  --accent-soft: rgba(96, 165, 250, 0.12);
+  --border-subtle: rgba(232, 234, 237, 0.14);
+  --text-primary: #e8eaed;
+  --text-secondary: #9aa0a6;
+  --accent: #8ab4f8;
+  --accent-soft: rgba(138, 180, 248, 0.14);
+  --explore-code-bg: #111214;
+  --explore-code-rule: rgba(232, 234, 237, 0.12);
+  --explore-code-line: rgba(138, 180, 248, 0.16);
+  --explore-code-mark: #8ab4f8;
   grid-area: auto;
   min-height: 0;
 }
@@ -6577,18 +6526,9 @@ a.codepanel-name:hover {
   height: 104px;
   margin: -16px -18px 14px;
   overflow: hidden;
-  border-bottom: 1px solid #1a2436;
+  border-bottom: 1px solid #2a2b2f;
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-  background:
-    radial-gradient(260px 120px at 80% -20%, rgba(59, 130, 246, 0.22), transparent 70%),
-    #070b14;
-}
-.map-thumb::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background-image: radial-gradient(rgba(95, 99, 104, 0.14) 1px, transparent 1px);
-  background-size: 14px 14px;
+  background: #17181b;
 }
 .map-thumb svg {
   position: relative;
@@ -6597,11 +6537,11 @@ a.codepanel-name:hover {
 }
 .map-thumb-line {
   fill: none;
-  stroke: rgba(96, 165, 250, 0.4);
+  stroke: rgba(232, 234, 237, 0.28);
 }
 .map-thumb-flow {
   fill: none;
-  stroke: rgba(191, 219, 254, 0.7);
+  stroke: rgba(211, 227, 253, 0.8);
   stroke-dasharray: 1 8;
   stroke-linecap: round;
   opacity: 0;
@@ -6613,17 +6553,17 @@ a.codepanel-name:hover {
   animation: map-thumb-flow 1.6s linear infinite;
 }
 .map-thumb-dot {
-  fill: #0d1424;
-  stroke: #60a5fa;
+  fill: #17181b;
+  stroke: #8ab4f8;
   stroke-width: 1.2;
 }
 .repo-card:hover .map-thumb-dot {
-  stroke: #22d3ee;
+  stroke: #d3e3fd;
 }
 .map-thumb-loading {
   position: absolute;
   inset: 0;
-  background: linear-gradient(100deg, transparent 30%, rgba(96, 165, 250, 0.1) 50%, transparent 70%);
+  background: linear-gradient(100deg, transparent 30%, rgba(232, 234, 237, 0.06) 50%, transparent 70%);
   background-size: 200% 100%;
   animation: map-thumb-sweep 1.4s ease-in-out infinite;
 }
@@ -6642,7 +6582,7 @@ a.codepanel-name:hover {
 }
 .map-thumb-empty {
   position: relative;
-  color: #5b6679;
+  color: #9aa0a6;
   font-size: var(--fs-micro);
 }
 @media (prefers-reduced-motion: reduce) {
@@ -6680,11 +6620,8 @@ a.codepanel-name:hover {
   box-sizing: border-box;
   padding: 28px;
   overflow: hidden;
-  color: #e6edf7;
-  background:
-    radial-gradient(900px 420px at 85% -10%, rgba(59, 130, 246, 0.26), transparent 62%),
-    radial-gradient(700px 300px at -5% 110%, rgba(34, 211, 238, 0.12), transparent 60%),
-    #070b14;
+  color: #e8eaed;
+  background: #121315;
 }
 .share-card-intro {
   display: flex;
@@ -6715,13 +6652,13 @@ a.codepanel-name:hover {
 }
 .share-card-intro p {
   margin: 0;
-  color: #b6c2d4;
+  color: #bdc1c6;
   font-size: var(--fs-h3);
   line-height: 1.5;
 }
 .share-card-url {
   margin-top: auto;
-  color: #22d3ee;
+  color: #8ab4f8;
   font-family: var(--font-mono);
   font-size: var(--fs-body);
 }
@@ -6746,12 +6683,12 @@ a.codepanel-name:hover {
 }
 .share-card-plain p {
   margin: 0;
-  color: #b6c2d4;
+  color: #bdc1c6;
   font-size: var(--fs-h2);
   line-height: 1.5;
 }
 .share-card-plain code {
-  color: #e6edf7;
+  color: #e8eaed;
   font-family: var(--font-mono);
   font-size: 0.92em;
 }
