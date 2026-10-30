@@ -133,14 +133,33 @@ tools are preinstalled and native registration is substituted. Initialization
 falls to about 1.36 seconds in these two deferred controls, while their first
 graph query costs about 8.3 seconds; graph update costs remain recorded. These
 component observations establish neither whole-task savings nor a benefit over
-Serena. The candidate is rebased onto current `main`, whose subsequent SCIP
-repairs close #901. Its [current-base verification](experiments/codegraph_deferred_current_main_2026_10_30.json)
+Serena. The change is merged in [#908](https://github.com/sysevol-ai/CodeNib/pull/908)
+as `b894d09b`, including subsequent SCIP repairs that close #901.
+Its [current-base verification](experiments/codegraph_deferred_current_main_2026_10_30.json)
 passes both preparation modes on fresh Requests indexes, 8,871 local unit cases
 (25 skips) and 320 related MCP 2.3 checks. All earlier failures and both frozen
 cohorts remain unchanged; the source-seed and historical-runtime draft PRs are
-separate from this candidate.
-Remote acceptance, representative preparation/update coverage and actual
-use remain open. The original paid
+separate from this change. All 21 current-head PR checks pass; eight skips
+are verified workflow conditions. Main's release verifier passes all 20
+executed jobs, including the full installation matrix and Wiki/MCP services;
+its unit and integration jobs also pass. Conditional serial/graph/slow skips
+do not establish full graph-chain acceptance. The public package is unchanged.
+
+The [requested-function delivery control](experiments/codegraph_requested_source_2026_10_30.json)
+reproduces a separate source omission: neighbouring context and final projection
+retain a function header but lose its loop. The local fix gives an exact
+requested definition its own bounded window. On the same nine immutable
+index artifacts, both BM25 and graph replies now contain the complete
+26-line body. All four new operator admissions pass, including actual
+first-use provider installation and graph preparation. These calls are forced
+preflight controls, not voluntary agent use. Local verification passes 8,885
+unit cases (24 skips) and 432 MCP 2.3 checks (seven skips). A separate
+three-task, four-arm development round on the exposed Flask source awaits
+its executable/runtime seal; no model inference has started. Private native
+readiness collects and executes all six cases, failing the regressed control
+and passing the reference, with grading material outside model inputs.
+The source-delivery fix, representative preparation/update coverage, actual
+use and both independent confirmation sets remain open. The original paid
 API ceiling and separate five-user adoption gate remain in force.
 Tracking issue: [#874](https://github.com/sysevol-ai/CodeNib/issues/874).
 The detailed contract is [the internal pilot plan](experiments/codegraph_net_benefit.md).

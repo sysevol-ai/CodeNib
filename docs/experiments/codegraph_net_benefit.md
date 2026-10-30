@@ -96,12 +96,42 @@ take 8.29/8.31 seconds and later graph updates take 8.31/8.25 seconds. Eager
 initialization takes 9.36/9.58 seconds. These are component observations, not
 complete task timings or an advantage claim. All four earlier failed controls,
 including the exact temporary-provider-config source-binding failure, remain
-archived alongside the corrected controls. The candidate is now rebased onto
-current `main`, including its subsequent SCIP runtime and identity repairs.
+archived alongside the corrected controls. The change is merged in
+[#908](https://github.com/sysevol-ai/CodeNib/pull/908) as `b894d09b`, including
+the subsequent SCIP runtime and identity repairs.
 [Current-base verification](codegraph_deferred_current_main_2026_10_30.json)
 passes both preparation modes on fresh Requests indexes, 8,871 unit cases with
 25 skips, and 320 related MCP 2.3 checks. The resolved provider package trees
-are unchanged before and after those controls. Remote acceptance,
+are unchanged before and after those controls. All 21 executed current-head
+PR checks pass, with eight verified conditional skips. Main's release verifier
+passes all 20 executed jobs, including the installation matrix and Wiki/MCP
+services; unit and integration also pass. Conditional serial/graph/slow skips
+do not establish full graph-chain acceptance. No package release is claimed.
+
+The [requested-function source control](codegraph_requested_source_2026_10_30.json)
+finds a distinct product defect before further model inference: a short exact
+definition expands into a neighbouring window, then the final projector
+retains its header/documentation and omits its loop. A later session pointer
+correctly refers only to that truncated delivery. The local fix prioritizes
+exact requested definitions and retains their own bounded range. Point
+locations keep surrounding context; source guards and all delivery caps remain.
+The same nine immutable BM25/graph artifacts and source bytes yield a complete
+26-line function in both modes after the fix, versus a 555-character partial
+delivery before it. The full unit tier passes 8,885 cases (24 skips), the whole
+MCP 2.3 surface passes 432 (seven skips), and all four exact-driver operator
+admissions pass. CodeNib's admission starts without providers and actually
+installs them and builds a fresh graph through MCP. All controller and product
+failures remain retained separately. This proves delivery correctness only;
+it does not explain the earlier reading-count difference or establish fewer
+model turns.
+
+A new four-arm, three-task development round uses the already exposed Flask
+base with a synthetic request-hook regression. Its model-free native readiness
+collects and executes the same six private cases: the regressed control fails
+all six and the reference passes all six. The reference, grader and rubric
+remain outside model access. Exact driver admissions are complete, but the
+separate executable/runtime seal and model execution remain pending. This
+round cannot count as either independent confirmation set. The source fix,
 representative preparation/update coverage, voluntary use, both independent
 confirmation sets and external adoption remain open. The goal is active.
 
