@@ -198,17 +198,42 @@ full serial/native/consumer run closes #901; #902 has no dependency on draft
 #903. Useful voluntary cross-file use and whole-task acceptance remain open.
 
 The [owned-field write control](experiments/codegraph_python_owned_writes_2026_10_30.json)
-repairs a further G1 admission failure: both CodeNib metadata conditions fail
-their first full self-repository graph when LSP selects `RetryOwner.closed`'s
-later assignment. Exact source/compiler receiver evidence now binds that
+is merged in [#915](https://github.com/sysevol-ai/CodeNib/pull/915) as
+`23b31675`, with the reviewed tree unchanged. The recorded candidate/control
+preparations fail their first full self-repository graph when LSP selects
+`RetryOwner.closed`'s later assignment. Exact source/compiler receiver evidence
+now binds that
 write to existing definitions in its physical class, without declaring a new
 field or excluding the failing test file. A complete 1,168-document build
 returns verified MCP source and two bounded relationships, preserving all
 1,757 tracked source files. Its 247.965-second first graph request remains a
 cost, not a speed result. Fifty-three identity cases and 8,904 unit cases
-(24 skips) pass. Both failed admissions remain failed; the next model round
-needs the identical repaired backend in both CodeNib conditions and fresh
-admission/sealing. No inference, package release or benefit claim is added.
+(24 skips) pass. Seventeen executed PR checks pass, with eight verified
+conditional skips and no unresolved review thread. Both failed admissions
+remain failed. Main [release verification](https://github.com/sysevol-ai/CodeNib/actions/runs/41046600526)
+passes all 20 verifier jobs, with five tag-only publication skips. The actual
+[Full CI chain](https://github.com/sysevol-ai/CodeNib/actions/runs/41046600343)
+passes unit, integration, serial integration, native SCIP and graph-consumer
+jobs; model-dependent slow tests are conditionally skipped. That source repair
+adds no inference, package release or benefit claim.
+
+The [task-fit development result](experiments/codegraph_task_fit_result.md)
+stops under its frozen missing-usage rule: Codegraph completes three model
+tasks, but the candidate CodeNib diagnosis reaches 300 seconds without a final
+SDK result. Eleven planned tasks remain unattempted; there is no comparative
+benefit result. All five final admissions and the 4,831-input pre-inference seal
+remain retained, together with the earlier candidate-for-control installation
+mistake. CodeNib voluntarily attempts one MCP call taking 259.874 seconds; its
+82,336-character result spills to a host file that the isolated Bash bridge
+does not mirror. Keep real cold latency separate from that controller defect.
+The full saved payload is not full model-read evidence. Codegraph's captured
+repair passes all 26 original selected tests; its diagnosis has a material SCIP
+identity error and its review exceeds the 650-word limit. Complete-session
+usage is a lower bound of 2,502,526 normalized tokens and $1.9231682 SDK estimates;
+CodeNib's final counters and invoices remain unknown. Hold the wording candidate
+outside product code, repair cold latency and authenticated MCP spill delivery,
+then use a separately frozen future round. Original cohorts, every failure/cost,
+both independent confirmation gates and external enrollment at 0/5 remain open.
 Tracking issue: [#874](https://github.com/sysevol-ai/CodeNib/issues/874).
 The detailed contract is [the internal pilot plan](experiments/codegraph_net_benefit.md).
 

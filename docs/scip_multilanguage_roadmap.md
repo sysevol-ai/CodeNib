@@ -78,6 +78,10 @@ cannot supply this fallback. A full 1,168-document CodeNib control builds and
 returns verified MCP source and relationships; its first graph request still
 takes 247.965 seconds under two CPUs and 4 GiB. This is a correctness repair,
 not a cold-start acceleration or comparative benefit result.
+The field-write repair is merged in [#915](https://github.com/sysevol-ai/CodeNib/pull/915)
+as `23b31675`. Its main unit/integration/serial/native/graph-consumer chain and
+all 20 release-verifier jobs pass; the model-dependent slow tier and tag-only
+publication jobs remain separate conditional skips. No backend is promoted.
 The [identity decision and execution record](experiments/codegraph_python_identity.md)
 cover the original IPython snapshot, failed pytest admission and captured
 regressions. Both complete saved graphs have serial/native parity and no

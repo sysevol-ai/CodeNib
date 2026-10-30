@@ -170,6 +170,24 @@ main's different runtime repairs, so draft #903 is not a dependency. Actual
 useful voluntary calls remain open; fixing this consumer
 does not establish the 20% gate, either confirmation set or external reuse.
 
+The [task-fit development result](codegraph_task_fit_result.md) retains a
+permanently stopped partial round on one known source-identity repair. Five
+final operator admissions pass and 4,831 inputs are sealed before inference;
+both CodeNib wheels use merged #915 and differ only in exploration metadata.
+The earlier control-installation error remains a preparation failure, not a
+wording comparison. Codegraph completes three model tasks; CodeNib attempts
+one exploration call taking 259.874 seconds, then its diagnosis reaches the
+300-second limit without final SDK usage. The frozen rule stops the other
+three conditions, leaving eleven tasks unattempted. Its large MCP result spills
+to an SDK file that the frozen isolated Bash bridge cannot read. Preserve both
+the product cold cost and the controller defect without attributing the entire
+failure to either. Codegraph's captured repair passes all 26 native cases;
+both explanations fail frozen acceptance. No comparative result or wording
+promotion is supported. Keep the candidate outside product code, retain all
+prior trials and unknown usage, and repair first-use/delivery gates before a
+separately sealed future model round. This is exposed development evidence;
+both independent confirmation sets and external 0/5 reuse remain open.
+
 ## Product question and decision
 
 Can a developer complete source-grounded coding tasks more effectively with
