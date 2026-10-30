@@ -121,7 +121,6 @@ export default function HomeMap({ repos }: { repos: RepoInfo[] }) {
         />
       ) : (
         <div className="repo-poster is-hero home-map-placeholder" role="status">
-          <div className="poster-grid-bg" aria-hidden />
           <span>{failed ? "This map could not be loaded. Pick another repository." : "Loading the map…"}</span>
         </div>
       )}

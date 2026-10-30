@@ -39,8 +39,8 @@
   color: var(--h-text);
 }
 .home-map-tab.is-active {
-  border-color: rgba(34, 211, 238, 0.6);
-  background: rgba(34, 211, 238, 0.08);
+  border-color: color-mix(in srgb, var(--h-trace) 60%, transparent);
+  background: color-mix(in srgb, var(--h-trace) 10%, transparent);
   color: #fff;
 }
 .home-map-tab:focus-visible {
