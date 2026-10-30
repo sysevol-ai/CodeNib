@@ -196,6 +196,15 @@ falls from 92.862 to 51.372 seconds and normalized-cache reprocessing from
 separate. No new model query or task-benefit claim is added; authenticated spill
 delivery and both independent complete-task confirmations remain open.
 
+The [SDK output-delivery control](codegraph_sdk_output_delivery.md) now binds
+isolated result-file access to the current callback and private original MCP
+reply. A real CLI/SDK control with local scripted HTTP responses reproduces
+the original missing file and verifies the repaired copy/selected-source path.
+It uses no model inference or account credentials and does not alter the
+stopped cohort. Both observed spill timings and reconnecting receipt writers
+are covered. Current product admission, native subscription/model settings and
+a separate pre-inference seal still precede any new model comparison.
+
 ## Product question and decision
 
 Can a developer complete source-grounded coding tasks more effectively with

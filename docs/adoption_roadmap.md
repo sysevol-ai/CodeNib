@@ -245,8 +245,24 @@ processing from 92.862 to 51.372 seconds and normalized-cache reprocessing from
 87.087 to 66.027 seconds. Both preserve the complete normalized bytes, graph
 query surface and 782,272 positions. All 1,757 tracked source files remain
 unchanged. The current unit tier passes 8,922 cases (24 skips) and MCP 2.3 passes
-432 (seven skips). This is bounded engineering evidence; authenticated SDK
-spill access and complete-task/independent/external-use gates remain open.
+432 (seven skips). This is bounded engineering evidence; complete-task,
+independent and external-use gates remain open. Main release verification for
+[#917](https://github.com/sysevol-ai/CodeNib/pull/917) passes all 20 verifier
+jobs, with five tag-only publication skips. Its Full CI is queued behind an
+earlier scheduled run; queued integration/native/consumer work is not acceptance.
+
+The [SDK output-delivery control](experiments/codegraph_sdk_output_delivery.md)
+repairs the isolated runner's MCP spill handoff with exact session/call and
+private original-wire receipts. The real pinned CLI reproduces the old
+FileNotFoundError and, with the repaired bridge, reads the complete saved file
+and delivers the original text hash plus selected complete source to a local
+HTTP fixture. Both containers have no network and no real model is called.
+Twenty-three focused tests and 8,945 unit cases (24 skips) pass; owner recovery
+preserves foreign containers. Copying is not solver read credit. All prior
+model outcomes remain frozen. Current product admission, authenticated native
+subscription/model settings, a separately sealed model cohort and the
+whole-task/independent/external-user gates remain open; this source-checkout
+helper adds no product route or package release.
 Tracking issue: [#874](https://github.com/sysevol-ai/CodeNib/issues/874).
 The detailed contract is [the internal pilot plan](experiments/codegraph_net_benefit.md).
 
