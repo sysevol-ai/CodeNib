@@ -12,13 +12,25 @@ import re
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, BinaryIO, Callable, Iterable, Mapping, Optional, Sequence
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    BinaryIO,
+    Callable,
+    Iterable,
+    Mapping,
+    Optional,
+    Sequence,
+)
 
 from .scip_indexer_base import extract_scip_blocks, extract_symbol
 
+if TYPE_CHECKING:
+    from .scip_pb2 import Index
+
 LSP_OCCURRENCE_INDEX_SCHEMA_VERSION = 1
 _DEFINITION_ROLE = 1
-_RANGE_RE = re.compile(r"(?<![A-Za-z0-9_])range:\s*(\d+)")
+_RANGE_RE = re.compile(r"(?<![A-Za-z0-9_])range:\s*(-?\d+)")
 _SYMBOL_ROLES_RE = re.compile(r"symbol_roles:\s*(\d+)")
 
 
@@ -130,6 +142,62 @@ class SCIPOccurrenceIndex:
                 occurrence = _parse_occurrence(raw_occurrence, file_path=file_path)
                 if occurrence is not None:
                     occurrences.append(occurrence)
+        return cls(occurrences, position_encoding=position_encoding)
+
+    @classmethod
+    def from_scip_index(
+        cls,
+        index: Index,
+        *,
+        path_filter: Optional[Callable[[str], bool]] = None,
+    ) -> SCIPOccurrenceIndex:
+        """Use the producer's parsed index without rescanning its text encoding.
+
+        Callers that combine this with a graph decoded from a file must bind
+        both consumers to the same serialized index before publication.
+        """
+        from .scip_pb2 import TextEncoding
+
+        try:
+            position_encoding = (
+                TextEncoding.Name(index.metadata.text_document_encoding)
+                if index.metadata.text_document_encoding
+                else "UTF8"
+            )
+        except ValueError:
+            value = index.metadata.text_document_encoding
+            position_encoding = str(value) if value >= 0 else "UTF8"
+        occurrences = []
+        for document in index.documents:
+            file_path = document.relative_path
+            if not file_path or (
+                path_filter is not None and not path_filter(file_path)
+            ):
+                continue
+            normalized_path = _normalize_path(file_path)
+            for row in document.occurrences:
+                values = row.range
+                if (
+                    not row.symbol
+                    or len(values) not in (3, 4)
+                    or any(value < 0 for value in values)
+                ):
+                    continue
+                start_line, start_character = values[:2]
+                end_line, end_character = (
+                    (start_line, values[2]) if len(values) == 3 else values[2:]
+                )
+                occurrences.append(
+                    SCIPOccurrence(
+                        file_path=normalized_path,
+                        start_line=start_line,
+                        start_character=start_character,
+                        end_line=end_line,
+                        end_character=end_character,
+                        symbol=row.symbol,
+                        symbol_roles=row.symbol_roles,
+                    )
+                )
         return cls(occurrences, position_encoding=position_encoding)
 
     @classmethod
@@ -285,6 +353,8 @@ class SCIPOccurrenceIndex:
 
 def _parse_occurrence(text: str, *, file_path: str) -> Optional[SCIPOccurrence]:
     values = [int(value) for value in _RANGE_RE.findall(text)]
+    if any(value < 0 for value in values):
+        return None
     if len(values) == 3:
         start_line, start_character, end_character = values
         end_line = start_line

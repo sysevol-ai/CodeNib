@@ -524,10 +524,10 @@ class SCIPPythonIndexer(SCIPIndexerBase):
         point is the final atomic replace, before the shared consumer seals it.
         """
 
-        from google.protobuf.text_format import MessageToString, Parse
+        from google.protobuf.text_format import MessageToString
 
+        from .lsp_occurrence_index import SCIPOccurrenceIndex
         from .python_identity import normalize_python_index
-        from .scip_pb2 import Index
 
         self.decoded_input_receipt = None
         self.graph_output_receipt = None
@@ -544,7 +544,8 @@ class SCIPPythonIndexer(SCIPIndexerBase):
                 raise RuntimeError(
                     "decoded SCIP input changed before identity recovery"
                 )
-            index = Parse(payload.decode("utf-8"), Index())
+            with self.profiler.section("process_index.read_python_identity_index"):
+                index = self._read_identity_index(payload)
             del payload
             with self.profiler.section("process_index.python_identity"):
                 report = normalize_python_index(
@@ -552,15 +553,30 @@ class SCIPPythonIndexer(SCIPIndexerBase):
                     self.project_root,
                     path_allowed=self._path_allowed,
                 )
+            encoded = MessageToString(index, as_utf8=True).encode("utf-8")
+            normalized_fingerprint = {
+                "size": len(encoded),
+                "sha256": hashlib.sha256(encoded).hexdigest(),
+            }
             with tempfile.NamedTemporaryFile(
-                mode="w",
-                encoding="utf-8",
+                mode="wb",
                 dir=self.decoded_file.parent,
                 prefix=".python-identity-",
                 delete=False,
             ) as handle:
                 temporary = Path(handle.name)
-                handle.write(MessageToString(index, as_utf8=True))
+                handle.write(encoded)
+            del encoded
+            with self.profiler.section("process_index.prepare_python_occurrences"):
+                occurrence_index = SCIPOccurrenceIndex.from_scip_index(
+                    index,
+                    path_filter=(
+                        self._path_allowed
+                        if self._target_dir or self.exclude_patterns
+                        else None
+                    ),
+                )
+            del index
             if regular_file_fingerprint(self.decoded_file) != before:
                 raise RuntimeError(
                     "decoded SCIP input changed during identity recovery"
@@ -582,7 +598,33 @@ class SCIPPythonIndexer(SCIPIndexerBase):
         finally:
             if temporary is not None:
                 temporary.unlink(missing_ok=True)
-        return super().process_index(output_file)
+        return self._process_decoded_index(
+            output_file,
+            occurrence_index=occurrence_index,
+            decoded_fingerprint=normalized_fingerprint,
+        )
+
+    def _read_identity_index(self, decoded: bytes):
+        """Reuse binary structure only when it exactly reproduces the input.
+
+        The optional raw artifact is a candidate, never authority over a
+        cached/edited decoded file. The equality check also covers all metadata
+        and text escaping. Nothing is cached across calls or source versions.
+        """
+        from google.protobuf.message import DecodeError
+        from google.protobuf.text_format import MessageToString, Parse
+
+        from .scip_pb2 import Index
+
+        if self.index_file.is_file() and not self.index_file.is_symlink():
+            try:
+                index = Index.FromString(self.index_file.read_bytes())
+                if MessageToString(index, as_utf8=True).encode("utf-8") == decoded:
+                    return index
+                del index
+            except (OSError, DecodeError, ValueError):
+                logger.debug("Raw SCIP candidate unavailable; parsing decoded input")
+        return Parse(decoded.decode("utf-8"), Index())
 
     def run_pipeline(
         self,

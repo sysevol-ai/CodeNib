@@ -188,6 +188,14 @@ prior trials and unknown usage, and repair first-use/delivery gates before a
 separately sealed future model round. This is exposed development evidence;
 both independent confirmation sets and external 0/5 reuse remain open.
 
+The [first-query control](codegraph_python_first_query.md) now removes repeated
+Python text parsing and position scans with exact artifact binding. Fresh MCP
+requests retain complete reply/graph/position parity; fixed-input processing
+falls from 92.862 to 51.372 seconds and normalized-cache reprocessing from
+87.087 to 66.027 seconds. Keep compiler variation and the original SDK timeout
+separate. No new model query or task-benefit claim is added; authenticated spill
+delivery and both independent complete-task confirmations remain open.
+
 ## Product question and decision
 
 Can a developer complete source-grounded coding tasks more effectively with
