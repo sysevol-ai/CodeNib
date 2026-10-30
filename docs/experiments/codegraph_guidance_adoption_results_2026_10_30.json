@@ -1,0 +1,47 @@
+{
+  "schema": "codenib.guidance-adoption-outcome.v1",
+  "scope": "One internal two-task diagnostic, not a comparative-benefit or independent-confirmation result",
+  "status": "two voluntary supporting calls; zero complete accepted answers; hold promotion",
+  "freeze_binding_sha256": "3d9e3bac6862f20e483f9919adec476ced598e3bb1ee43130af949ed3c677f54",
+  "prior_protocol": "codegraph_guidance_adoption_freeze_2026_10_30.json",
+  "outcome": {
+    "attempted_tasks": 2,
+    "sdk_successful_terminals": 2,
+    "voluntary_calls": 2,
+    "bounded_source_supporting_calls": 2,
+    "accepted_answers": 0,
+    "word_counts": [
+      509,
+      567
+    ],
+    "word_limits_exclusive": [
+      450,
+      550
+    ],
+    "word_limit_failures": 2,
+    "tasks_with_material_errors": 1,
+    "missing_static_reference_boundary": 1,
+    "source_unchanged": true,
+    "files_unchanged": 7357,
+    "external_users": 0,
+    "independent_success_confirmations": 0
+  },
+  "cost_and_time": {
+    "workflow_seconds": 78.95035290904343,
+    "setup_seconds": 3.0174977649003267,
+    "sdk_estimate_usd": 0.7113487,
+    "normalized_main_aux_tokens": 394316,
+    "invoice_cost_usd": null,
+    "http_request_count": null
+  },
+  "interpretation": "Single internal condition and two independent clients, not two users, causal guidance improvement, graph efficacy, comparative time/cost benefit or a whole-task success confirmation. Native tools also used. Entire prior cohort remains unchanged.",
+  "public_files": 29,
+  "parts": [
+    {
+      "path": "codegraph_guidance_adoption_results_2026_10_30.part01.json",
+      "bytes": 380628,
+      "sha256": "ee0d6701fdc30c1bcd45deb0ad631036c652da877f4dd0fb983e582c9eed9eb6",
+      "public_files": 29
+    }
+  ]
+}

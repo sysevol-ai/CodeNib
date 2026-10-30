@@ -65,10 +65,11 @@ main Release matrix executes all twenty verifiers. This does not claim a new
 serial/native/consumer result. The resulting wheel is an internal CI artifact;
 the public package remains 0.2.4.
 
-A separately frozen source-linked maintainer task must still observe useful
-tool choice with native tools available. A call would establish adoption only
-within that probe; it would not meet the unchanged correctness, complete-time
-20% improvement and normalized-usage gates. Representative source updates,
+The separately frozen [maintainer probe](codegraph_guidance_adoption_results.md)
+now observes two voluntary supporting calls with native tools available, but
+neither complete answer passes its fixed criteria. It establishes bounded use
+only, without meeting the unchanged correctness, complete-time 20% improvement
+and normalized-usage gates. Representative source updates,
 both independent success confirmations and external consent/seven-day reuse
 remain open at 0/5. No outreach is authorized. Keep the full objective active
 in [adoption A0](../adoption_roadmap.md) and
