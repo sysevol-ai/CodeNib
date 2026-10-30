@@ -1,0 +1,1293 @@
+{
+  "schema": "codenib.source-first-development-results.v1",
+  "scope": "three paired development repositories; neither independent success confirmation",
+  "decision": "insufficient evidence; hold promotion",
+  "freeze_sha256": "ec9ead964d672de4f6735cfca4b4675d22d9f161d15607e5228ca0318fbe957f",
+  "frozen_inputs_unchanged": 4936,
+  "task_attempts": 60,
+  "SDK_successful_terminals": 60,
+  "source_accepted": 23,
+  "source_rejected": 25,
+  "native_passes": 9,
+  "native_repairs": 12,
+  "native_selected_outcomes_executed": 1352,
+  "eligible_alternatives": [],
+  "source_judgment_correction": "source-review-correction.json; retain initial 25/48 alongside corrected 23/48 and unchanged model/native outcomes",
+  "lossless_public_files": 556,
+  "parts": [
+    {
+      "path": "codegraph_source_first_results_2026_10_30.part01.json",
+      "bytes": 259566,
+      "sha256": "0d0107c3654973b540a167ad759730010db50aa6e28226ff78012d023343c48a",
+      "files": 128
+    },
+    {
+      "path": "codegraph_source_first_results_2026_10_30.part02.json",
+      "bytes": 180476,
+      "sha256": "b4e1a080a6f7174f6ce5fbe39e5f4e543dbcf2aad5fb9647062bff0a1eceaeb7",
+      "files": 13
+    },
+    {
+      "path": "codegraph_source_first_results_2026_10_30.part03.json",
+      "bytes": 166305,
+      "sha256": "fad9a7f6bc296b1dac59e22823a79acab6498399b38112c1afbe8646ccc4bf68",
+      "files": 6
+    },
+    {
+      "path": "codegraph_source_first_results_2026_10_30.part04.json",
+      "bytes": 227096,
+      "sha256": "7b2f57c3ab38ec3bec2b7db7d20e3d4dedbc35532ab79eb2bf9443e222189545",
+      "files": 28
+    },
+    {
+      "path": "codegraph_source_first_results_2026_10_30.part05.json",
+      "bytes": 265986,
+      "sha256": "f9ad327211eee55931b8c9d69b91f52f6701a3ec66687abbbfde6bb6eb425076",
+      "files": 6
+    },
+    {
+      "path": "codegraph_source_first_results_2026_10_30.part06.json",
+      "bytes": 266027,
+      "sha256": "9a2ee17ddc9519476950c2a932b1ce114840fd96e4a4f558b7baf07c007ab8f6",
+      "files": 9
+    },
+    {
+      "path": "codegraph_source_first_results_2026_10_30.part07.json",
+      "bytes": 258132,
+      "sha256": "00454f3cd6563526c85281213d1a4321ec36ec72a543f65cde76c4b8d023e052",
+      "files": 29
+    },
+    {
+      "path": "codegraph_source_first_results_2026_10_30.part08.json",
+      "bytes": 191949,
+      "sha256": "13398a1a6744cbff4f7c96ebfb73a1a417631dba11646b0d66e70306a8f42fce",
+      "files": 29
+    },
+    {
+      "path": "codegraph_source_first_results_2026_10_30.part09.json",
+      "bytes": 200440,
+      "sha256": "dfaa0599c575cce47fd783fabbeebd2e6c2db813dee6e2cbde276d2fa8882861",
+      "files": 7
+    },
+    {
+      "path": "codegraph_source_first_results_2026_10_30.part10.json",
+      "bytes": 173103,
+      "sha256": "d187eeb3aa3a38c072e0544e7160c49fae5c80c1a4a7e0d5bd6bd6606d829916",
+      "files": 15
+    },
+    {
+      "path": "codegraph_source_first_results_2026_10_30.part11.json",
+      "bytes": 248137,
+      "sha256": "74bd2159a54afda5601f6716a7af8baddbbbce5de33e2f5950ca286ff0f6529d",
+      "files": 16
+    },
+    {
+      "path": "codegraph_source_first_results_2026_10_30.part12.json",
+      "bytes": 261297,
+      "sha256": "f3109c5dc7606a0696bd10cbf40a7b004eb0d15a069083dc497213074bf1446e",
+      "files": 6
+    },
+    {
+      "path": "codegraph_source_first_results_2026_10_30.part13.json",
+      "bytes": 252260,
+      "sha256": "4b47355ed2ea8ff69a646b11030e042f234dd1b34da4795a4b9ad3e8a7058e52",
+      "files": 29
+    },
+    {
+      "path": "codegraph_source_first_results_2026_10_30.part14.json",
+      "bytes": 163198,
+      "sha256": "b4c9e387060776ad52167cc06432fa0b4891915d0c9cfece4da9d448ffee2fc6",
+      "files": 7
+    },
+    {
+      "path": "codegraph_source_first_results_2026_10_30.part15.json",
+      "bytes": 237098,
+      "sha256": "adc7ea2f50cf829f257a5939b90fb7e450aa577db883e131bf7e37f599f6e3b1",
+      "files": 29
+    },
+    {
+      "path": "codegraph_source_first_results_2026_10_30.part16.json",
+      "bytes": 196689,
+      "sha256": "bf20b9a8802a8200711e427510620718b258b29b33f7486fee191f841fc6db12",
+      "files": 7
+    },
+    {
+      "path": "codegraph_source_first_results_2026_10_30.part17.json",
+      "bytes": 216214,
+      "sha256": "4a056d238a59b2c1e2a8ff304275fe721fb4192b56bda9767426e3b68858497d",
+      "files": 27
+    },
+    {
+      "path": "codegraph_source_first_results_2026_10_30.part18.json",
+      "bytes": 161128,
+      "sha256": "b3c5cf1b4af6fbba675072e22f51e310ad69faaa4a4e41c1c0ecefc5106acac3",
+      "files": 6
+    },
+    {
+      "path": "codegraph_source_first_results_2026_10_30.part19.json",
+      "bytes": 278150,
+      "sha256": "afe277b52845d8c2c4f814a689db3179cb2958d8ac6b969575344679756e3b32",
+      "files": 28
+    },
+    {
+      "path": "codegraph_source_first_results_2026_10_30.part20.json",
+      "bytes": 225791,
+      "sha256": "f5d26db6cbd892152c04ab795c1b91fdadb1cbb11cf8d1454c460ea43eaf3d7f",
+      "files": 40
+    },
+    {
+      "path": "codegraph_source_first_results_2026_10_30.part21.json",
+      "bytes": 254744,
+      "sha256": "04f30fc7d065efeb45a9848f27a03a4815afcb0c721105730ea546fbd48d73df",
+      "files": 33
+    },
+    {
+      "path": "codegraph_source_first_results_2026_10_30.part22.json",
+      "bytes": 245963,
+      "sha256": "a54b0f57c59a7e9f240a51bb6ff5426a2ce6cd988180979e541cf6239b671a1a",
+      "files": 34
+    },
+    {
+      "path": "codegraph_source_first_results_2026_10_30.part23.json",
+      "bytes": 225800,
+      "sha256": "2618cb4d57337c05b58b6350c7502e7605d7d9e07cc7983f9924a4ccb271fb7d",
+      "files": 14
+    },
+    {
+      "path": "codegraph_source_first_results_2026_10_30.part24.json",
+      "bytes": 205570,
+      "sha256": "cf800dcc4a579fbeb78d47a5e9b512d389e94a1ca16c107ffe2c93e8dea15dc7",
+      "files": 10
+    }
+  ],
+  "private_files_retained_locally": [
+    {
+      "path": "outcome-publication-v1/codegraph_source_first_results_2026_10_30.part12.json",
+      "bytes": 261297,
+      "sha256": "f3109c5dc7606a0696bd10cbf40a7b004eb0d15a069083dc497213074bf1446e",
+      "reason": "Initial uncommitted packet retained before explicit source-judgment correction; original judgments/aggregate are separately public"
+    },
+    {
+      "path": "outcome-publication-v1/codegraph_source_first_results_2026_10_30.part09.json",
+      "bytes": 200440,
+      "sha256": "dfaa0599c575cce47fd783fabbeebd2e6c2db813dee6e2cbde276d2fa8882861",
+      "reason": "Initial uncommitted packet retained before explicit source-judgment correction; original judgments/aggregate are separately public"
+    },
+    {
+      "path": "outcome-publication-v1/codegraph_source_first_results_2026_10_30.part03.json",
+      "bytes": 166305,
+      "sha256": "fad9a7f6bc296b1dac59e22823a79acab6498399b38112c1afbe8646ccc4bf68",
+      "reason": "Initial uncommitted packet retained before explicit source-judgment correction; original judgments/aggregate are separately public"
+    },
+    {
+      "path": "outcome-publication-v1/codegraph_source_first_results_2026_10_30.part23.json",
+      "bytes": 225800,
+      "sha256": "2618cb4d57337c05b58b6350c7502e7605d7d9e07cc7983f9924a4ccb271fb7d",
+      "reason": "Initial uncommitted packet retained before explicit source-judgment correction; original judgments/aggregate are separately public"
+    },
+    {
+      "path": "outcome-publication-v1/codegraph_source_first_results_2026_10_30.part07.json",
+      "bytes": 258132,
+      "sha256": "00454f3cd6563526c85281213d1a4321ec36ec72a543f65cde76c4b8d023e052",
+      "reason": "Initial uncommitted packet retained before explicit source-judgment correction; original judgments/aggregate are separately public"
+    },
+    {
+      "path": "outcome-publication-v1/codegraph_source_first_results_2026_10_30.part01.json",
+      "bytes": 237081,
+      "sha256": "7c3d8356eab6ef24e4b762bfa346ba2d18031753efb8d302fe97c5bb08efe376",
+      "reason": "Initial uncommitted packet retained before explicit source-judgment correction; original judgments/aggregate are separately public"
+    },
+    {
+      "path": "outcome-publication-v1/codegraph_source_first_results_2026_10_30.part20.json",
+      "bytes": 225791,
+      "sha256": "f5d26db6cbd892152c04ab795c1b91fdadb1cbb11cf8d1454c460ea43eaf3d7f",
+      "reason": "Initial uncommitted packet retained before explicit source-judgment correction; original judgments/aggregate are separately public"
+    },
+    {
+      "path": "outcome-publication-v1/codegraph_source_first_assessment_astropy.json",
+      "bytes": 167967,
+      "sha256": "10dd325e2da69e1d1c77a725d1b2579c35d14c7f6e75577f9ddfe929a88adf9a",
+      "reason": "Initial uncommitted packet retained before explicit source-judgment correction; original judgments/aggregate are separately public"
+    },
+    {
+      "path": "outcome-publication-v1/codegraph_source_first_results_2026_10_30.part16.json",
+      "bytes": 196689,
+      "sha256": "bf20b9a8802a8200711e427510620718b258b29b33f7486fee191f841fc6db12",
+      "reason": "Initial uncommitted packet retained before explicit source-judgment correction; original judgments/aggregate are separately public"
+    },
+    {
+      "path": "outcome-publication-v1/codegraph_source_first_results_2026_10_30.part21.json",
+      "bytes": 254744,
+      "sha256": "04f30fc7d065efeb45a9848f27a03a4815afcb0c721105730ea546fbd48d73df",
+      "reason": "Initial uncommitted packet retained before explicit source-judgment correction; original judgments/aggregate are separately public"
+    },
+    {
+      "path": "outcome-publication-v1/codegraph_source_first_results_2026_10_30.part02.json",
+      "bytes": 180476,
+      "sha256": "b4e1a080a6f7174f6ce5fbe39e5f4e543dbcf2aad5fb9647062bff0a1eceaeb7",
+      "reason": "Initial uncommitted packet retained before explicit source-judgment correction; original judgments/aggregate are separately public"
+    },
+    {
+      "path": "outcome-publication-v1/codegraph_source_first_results_2026_10_30.part24.json",
+      "bytes": 174090,
+      "sha256": "98d3661778768e243670f8e28f88a16204130ac7f1c03ef6152ba9a1dba5ba77",
+      "reason": "Initial uncommitted packet retained before explicit source-judgment correction; original judgments/aggregate are separately public"
+    },
+    {
+      "path": "outcome-publication-v1/codegraph_source_first_results_2026_10_30.part11.json",
+      "bytes": 248137,
+      "sha256": "74bd2159a54afda5601f6716a7af8baddbbbce5de33e2f5950ca286ff0f6529d",
+      "reason": "Initial uncommitted packet retained before explicit source-judgment correction; original judgments/aggregate are separately public"
+    },
+    {
+      "path": "outcome-publication-v1/codegraph_source_first_results_2026_10_30.part17.json",
+      "bytes": 216214,
+      "sha256": "4a056d238a59b2c1e2a8ff304275fe721fb4192b56bda9767426e3b68858497d",
+      "reason": "Initial uncommitted packet retained before explicit source-judgment correction; original judgments/aggregate are separately public"
+    },
+    {
+      "path": "outcome-publication-v1/codegraph_source_first_assessment_2026_10_30.json",
+      "bytes": 46191,
+      "sha256": "e9fef46685f2d15a40475e5b454ef704e90f7432539d5e984b83021166f1bfcb",
+      "reason": "Initial uncommitted packet retained before explicit source-judgment correction; original judgments/aggregate are separately public"
+    },
+    {
+      "path": "outcome-publication-v1/codegraph_source_first_results_2026_10_30.part13.json",
+      "bytes": 252260,
+      "sha256": "4b47355ed2ea8ff69a646b11030e042f234dd1b34da4795a4b9ad3e8a7058e52",
+      "reason": "Initial uncommitted packet retained before explicit source-judgment correction; original judgments/aggregate are separately public"
+    },
+    {
+      "path": "outcome-publication-v1/codegraph_source_first_results_2026_10_30.part19.json",
+      "bytes": 278150,
+      "sha256": "afe277b52845d8c2c4f814a689db3179cb2958d8ac6b969575344679756e3b32",
+      "reason": "Initial uncommitted packet retained before explicit source-judgment correction; original judgments/aggregate are separately public"
+    },
+    {
+      "path": "outcome-publication-v1/codegraph_source_first_results_2026_10_30.json",
+      "bytes": 63221,
+      "sha256": "641f071ac5cef5cb701ae7f8fb6179499864bd050227f760a7836f49baf4e15f",
+      "reason": "Initial uncommitted packet retained before explicit source-judgment correction; original judgments/aggregate are separately public"
+    },
+    {
+      "path": "outcome-publication-v1/codegraph_source_first_results_2026_10_30.part06.json",
+      "bytes": 266027,
+      "sha256": "9a2ee17ddc9519476950c2a932b1ce114840fd96e4a4f558b7baf07c007ab8f6",
+      "reason": "Initial uncommitted packet retained before explicit source-judgment correction; original judgments/aggregate are separately public"
+    },
+    {
+      "path": "outcome-publication-v1/codegraph_source_first_results_2026_10_30.part15.json",
+      "bytes": 237098,
+      "sha256": "adc7ea2f50cf829f257a5939b90fb7e450aa577db883e131bf7e37f599f6e3b1",
+      "reason": "Initial uncommitted packet retained before explicit source-judgment correction; original judgments/aggregate are separately public"
+    },
+    {
+      "path": "outcome-publication-v1/codegraph_source_first_results_2026_10_30.part08.json",
+      "bytes": 191949,
+      "sha256": "13398a1a6744cbff4f7c96ebfb73a1a417631dba11646b0d66e70306a8f42fce",
+      "reason": "Initial uncommitted packet retained before explicit source-judgment correction; original judgments/aggregate are separately public"
+    },
+    {
+      "path": "outcome-publication-v1/codegraph_source_first_results_2026_10_30.part04.json",
+      "bytes": 227096,
+      "sha256": "7b2f57c3ab38ec3bec2b7db7d20e3d4dedbc35532ab79eb2bf9443e222189545",
+      "reason": "Initial uncommitted packet retained before explicit source-judgment correction; original judgments/aggregate are separately public"
+    },
+    {
+      "path": "outcome-publication-v1/codegraph_source_first_results.md",
+      "bytes": 9837,
+      "sha256": "5c55cf805f3982fdf9620cdbc586d3daaf911941d30171f4a96e51d66c95cdc0",
+      "reason": "Initial uncommitted packet retained before explicit source-judgment correction; original judgments/aggregate are separately public"
+    },
+    {
+      "path": "outcome-publication-v1/codegraph_source_first_results_2026_10_30.part18.json",
+      "bytes": 161128,
+      "sha256": "b3c5cf1b4af6fbba675072e22f51e310ad69faaa4a4e41c1c0ecefc5106acac3",
+      "reason": "Initial uncommitted packet retained before explicit source-judgment correction; original judgments/aggregate are separately public"
+    },
+    {
+      "path": "outcome-publication-v1/codegraph_source_first_results_2026_10_30.part05.json",
+      "bytes": 265986,
+      "sha256": "f9ad327211eee55931b8c9d69b91f52f6701a3ec66687abbbfde6bb6eb425076",
+      "reason": "Initial uncommitted packet retained before explicit source-judgment correction; original judgments/aggregate are separately public"
+    },
+    {
+      "path": "outcome-publication-v1/codegraph_source_first_results_2026_10_30.part22.json",
+      "bytes": 245963,
+      "sha256": "a54b0f57c59a7e9f240a51bb6ff5426a2ce6cd988180979e541cf6239b671a1a",
+      "reason": "Initial uncommitted packet retained before explicit source-judgment correction; original judgments/aggregate are separately public"
+    },
+    {
+      "path": "outcome-publication-v1/codegraph_source_first_assessment_sympy.json",
+      "bytes": 202120,
+      "sha256": "cb9c92ba5ca2356aee35f1f3164312dd6f8a0d34d07db0069ee0e2bb8d0aa0bc",
+      "reason": "Initial uncommitted packet retained before explicit source-judgment correction; original judgments/aggregate are separately public"
+    },
+    {
+      "path": "outcome-publication-v1/codegraph_source_first_results_2026_10_30.part10.json",
+      "bytes": 173103,
+      "sha256": "d187eeb3aa3a38c072e0544e7160c49fae5c80c1a4a7e0d5bd6bd6606d829916",
+      "reason": "Initial uncommitted packet retained before explicit source-judgment correction; original judgments/aggregate are separately public"
+    },
+    {
+      "path": "outcome-publication-v1/codegraph_source_first_assessment_seaborn.json",
+      "bytes": 218133,
+      "sha256": "71a39b33d9044333afeb38b923e7c157079a4b3a86a45417162d531ff8e2403d",
+      "reason": "Initial uncommitted packet retained before explicit source-judgment correction; original judgments/aggregate are separately public"
+    },
+    {
+      "path": "outcome-publication-v1/codegraph_source_first_results_2026_10_30.part14.json",
+      "bytes": 163198,
+      "sha256": "b4c9e387060776ad52167cc06432fa0b4891915d0c9cfece4da9d448ffee2fc6",
+      "reason": "Initial uncommitted packet retained before explicit source-judgment correction; original judgments/aggregate are separately public"
+    },
+    {
+      "path": "fixtures/metadata-v1/probe-receipt.json",
+      "bytes": 31651,
+      "sha256": "ebede01653645972b0d83cd81df66d62eab1fa4e33b44190580a9a1b51ca7429",
+      "reason": "SDK config/default prompts and fixture request bodies remain private; separate transport control, not trial HTTP capture"
+    },
+    {
+      "path": "fixtures/metadata-v2/codegraph-mcp-protocol.jsonl",
+      "bytes": 1124,
+      "sha256": "28a177795228c8befa09972d414db52bb4e5625597f60e12ca10b97bd7152880",
+      "reason": "SDK config/default prompts and fixture request bodies remain private; separate transport control, not trial HTTP capture"
+    },
+    {
+      "path": "fixtures/metadata-v2/probe-receipt.json",
+      "bytes": 36107,
+      "sha256": "357ec3007093177f3062c08e793174a93e508d381de823043fcb9d55df67ec6e",
+      "reason": "SDK config/default prompts and fixture request bodies remain private; separate transport control, not trial HTTP capture"
+    },
+    {
+      "path": "fixtures/metadata-v3/codegraph-mcp-protocol.jsonl",
+      "bytes": 1124,
+      "sha256": "28a177795228c8befa09972d414db52bb4e5625597f60e12ca10b97bd7152880",
+      "reason": "SDK config/default prompts and fixture request bodies remain private; separate transport control, not trial HTTP capture"
+    },
+    {
+      "path": "fixtures/metadata-v3/probe-receipt.json",
+      "bytes": 36107,
+      "sha256": "37791c1d26b72384f1987da16e17d079850dc411aeae96a3fe030d008293df63",
+      "reason": "SDK config/default prompts and fixture request bodies remain private; separate transport control, not trial HTTP capture"
+    },
+    {
+      "path": "fixtures/metadata-v3/codegraph-cli.log",
+      "bytes": 21310,
+      "sha256": "4b01c03d7d60599239b0c1f4b971dbff8255da2cac419015ed84a9fa0764d7ef",
+      "reason": "SDK config/default prompts and fixture request bodies remain private; separate transport control, not trial HTTP capture"
+    },
+    {
+      "path": "fixtures/metadata-v4/codegraph-mcp-protocol.jsonl",
+      "bytes": 968,
+      "sha256": "dd2e26528d74cb0bbf9ff4d50ffd63d178b795ab12dfa631e5272a2ced1e32c6",
+      "reason": "SDK config/default prompts and fixture request bodies remain private; separate transport control, not trial HTTP capture"
+    },
+    {
+      "path": "fixtures/metadata-v4/codenib-cli.log",
+      "bytes": 20345,
+      "sha256": "cffeaeeec82f63575cefe7625d4536f7f3a2d5818ed1def7c5b01954f7ccd7da",
+      "reason": "SDK config/default prompts and fixture request bodies remain private; separate transport control, not trial HTTP capture"
+    },
+    {
+      "path": "fixtures/metadata-v4/codenib-mcp-protocol.jsonl",
+      "bytes": 968,
+      "sha256": "dd2e26528d74cb0bbf9ff4d50ffd63d178b795ab12dfa631e5272a2ced1e32c6",
+      "reason": "SDK config/default prompts and fixture request bodies remain private; separate transport control, not trial HTTP capture"
+    },
+    {
+      "path": "fixtures/metadata-v4/probe-receipt.json",
+      "bytes": 111436,
+      "sha256": "710d0d67bb0cf3e924990aff2df7fa07a9b018a7eb55701f4c282fd6d77ebb7c",
+      "reason": "SDK config/default prompts and fixture request bodies remain private; separate transport control, not trial HTTP capture"
+    },
+    {
+      "path": "fixtures/metadata-v4/serena-mcp-protocol.jsonl",
+      "bytes": 968,
+      "sha256": "dd2e26528d74cb0bbf9ff4d50ffd63d178b795ab12dfa631e5272a2ced1e32c6",
+      "reason": "SDK config/default prompts and fixture request bodies remain private; separate transport control, not trial HTTP capture"
+    },
+    {
+      "path": "fixtures/metadata-v4/serena-cli.log",
+      "bytes": 20302,
+      "sha256": "64b4b8e4ecfa0dd7d2b19c7a916e42a34b0414801e4ed12ac213877e000a680e",
+      "reason": "SDK config/default prompts and fixture request bodies remain private; separate transport control, not trial HTTP capture"
+    },
+    {
+      "path": "fixtures/metadata-v4/codegraph-cli.log",
+      "bytes": 20538,
+      "sha256": "6fde893d907e0613ad192ddd291c69a7b1e6e1c3fa0054c9248974602b067ef5",
+      "reason": "SDK config/default prompts and fixture request bodies remain private; separate transport control, not trial HTTP capture"
+    },
+    {
+      "path": "native-grading/01-astropy__astropy-13579-codegraph/grade/config.json",
+      "bytes": 2155,
+      "sha256": "9355537cc29fcd5f56bb1f86cb7c8ec29dd39ef8f42459f397a47cd058c40d00",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/01-astropy__astropy-13579-codegraph/grade/eval.sh",
+      "bytes": 2074,
+      "sha256": "08599c941d428f583b0d1d047622fc0770416d35f73c96d9561936106b4f8f1b",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/01-astropy__astropy-13579-codegraph/grade/resolution.json",
+      "bytes": 5365,
+      "sha256": "eb6e28aa7b20408fcee144f45eecc78054b7c6d8902f8cf857754c7c12ec0782",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/01-astropy__astropy-13579-codegraph/grade/stdout/scope.json",
+      "bytes": 200,
+      "sha256": "683965aa807e2883c10f88932ba6458d5adf0605363750cf183744ad59cfb7e3",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/01-astropy__astropy-13579-codegraph/grade/stdout/call-0001/capture.json",
+      "bytes": 330,
+      "sha256": "abc97f246c7c9be21f571360b8fcf516a9d129dc3f98716d535ae7e7f2e8c83b",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/01-astropy__astropy-13579-codegraph/grade/stdout/call-0001/stdout.bin",
+      "bytes": 24666,
+      "sha256": "efa05db94360c4a33f9def02065e498254cd95302bf2d867a4010dfb448d266a",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/01-astropy__astropy-13579-codegraph/grade/stdout/call-0001/stdout.utf8",
+      "bytes": 24666,
+      "sha256": "efa05db94360c4a33f9def02065e498254cd95302bf2d867a4010dfb448d266a",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/01-astropy__astropy-13579-codegraph/grade/logs/codenib-5f525154ff91/source-first-development-codegraph/astropy__astropy-13579/run_instance.log",
+      "bytes": 10462,
+      "sha256": "7af99f1d189d352a9da9129ed12a2ca771806de795b780e9a3012adf250b88ea",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/01-astropy__astropy-13579-codegraph/grade/logs/codenib-5f525154ff91/source-first-development-codegraph/astropy__astropy-13579/test_output.txt",
+      "bytes": 24666,
+      "sha256": "efa05db94360c4a33f9def02065e498254cd95302bf2d867a4010dfb448d266a",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/01-astropy__astropy-13579-codegraph/grade/logs/codenib-5f525154ff91/source-first-development-codegraph/astropy__astropy-13579/report.json",
+      "bytes": 5289,
+      "sha256": "154706edad18eb235df9d1ea127051a32b2fdc3512fd24e5b7dd34e01c66b7a7",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/01-astropy__astropy-13579-codegraph/grade/logs/codenib-5f525154ff91/source-first-development-codegraph/astropy__astropy-13579/eval.sh",
+      "bytes": 2074,
+      "sha256": "08599c941d428f583b0d1d047622fc0770416d35f73c96d9561936106b4f8f1b",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/01-astropy__astropy-13579-codegraph/grade/logs/codenib-5f525154ff91/source-first-development-codegraph/astropy__astropy-13579/patch.diff",
+      "bytes": 2908,
+      "sha256": "bfa7fc9460797665c4f7c68ff9db6e3b41393c919b8e653c0a39de8339ac2885",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/06-sympy__sympy-21596-codenib/grade/config.json",
+      "bytes": 2145,
+      "sha256": "b84d21c55e987d2c6c0ec3aa413e59f323ee41b04bda591b2cbf8e11d97407bf",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/06-sympy__sympy-21596-codenib/grade/eval.sh",
+      "bytes": 2864,
+      "sha256": "9ef79d3c5d2092c5d38b1f23cc57eba08877a965d24cc7204663e84bf1595a72",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/06-sympy__sympy-21596-codenib/grade/resolution.json",
+      "bytes": 2804,
+      "sha256": "9411f884292e7043646c5cb0ba4e5270b44ee2c3ada678657865ca22998de51f",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/06-sympy__sympy-21596-codenib/grade/stdout/scope.json",
+      "bytes": 200,
+      "sha256": "683965aa807e2883c10f88932ba6458d5adf0605363750cf183744ad59cfb7e3",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/06-sympy__sympy-21596-codenib/grade/stdout/call-0001/capture.json",
+      "bytes": 330,
+      "sha256": "c8eb382e0b10226d09b54502aac97db1d945f58dd82e50c2a38c2a0bf05f9f9c",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/06-sympy__sympy-21596-codenib/grade/stdout/call-0001/stdout.bin",
+      "bytes": 21037,
+      "sha256": "04dd111f6ef42047fd49868d59375727f7ef7fea66eb1527838f3a89d966a00e",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/06-sympy__sympy-21596-codenib/grade/stdout/call-0001/stdout.utf8",
+      "bytes": 21037,
+      "sha256": "04dd111f6ef42047fd49868d59375727f7ef7fea66eb1527838f3a89d966a00e",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/06-sympy__sympy-21596-codenib/grade/logs/codenib-1b2e79da005f/source-first-development-codenib/sympy__sympy-21596/run_instance.log",
+      "bytes": 10089,
+      "sha256": "6b869e8c422cad7fc51d34c3d32f87a2933db0d14ac5ade4f695eb9a0c6271a3",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/06-sympy__sympy-21596-codenib/grade/logs/codenib-1b2e79da005f/source-first-development-codenib/sympy__sympy-21596/test_output.txt",
+      "bytes": 21037,
+      "sha256": "04dd111f6ef42047fd49868d59375727f7ef7fea66eb1527838f3a89d966a00e",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/06-sympy__sympy-21596-codenib/grade/logs/codenib-1b2e79da005f/source-first-development-codenib/sympy__sympy-21596/report.json",
+      "bytes": 2787,
+      "sha256": "84d9bba7c287f935d35633075a1db336dd3f998ac0daf746ddd22fe21880a365",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/06-sympy__sympy-21596-codenib/grade/logs/codenib-1b2e79da005f/source-first-development-codenib/sympy__sympy-21596/eval.sh",
+      "bytes": 2864,
+      "sha256": "9ef79d3c5d2092c5d38b1f23cc57eba08877a965d24cc7204663e84bf1595a72",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/06-sympy__sympy-21596-codenib/grade/logs/codenib-1b2e79da005f/source-first-development-codenib/sympy__sympy-21596/patch.diff",
+      "bytes": 4029,
+      "sha256": "151763bc60151fec20d959a08c8fe2614a70e57b4a611a267a6be0dfb2db4093",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/10-mwaskom__seaborn-3187-native/grade/config.json",
+      "bytes": 2150,
+      "sha256": "deaa5432de1f5021b43b6a4acfbc12416c32ccb2f445d2a5e5f4e0f466513edf",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/10-mwaskom__seaborn-3187-native/grade/eval.sh",
+      "bytes": 1935,
+      "sha256": "14bcc83cc1af6a326b5100c16b129e37a5b4bfbeb89bce583e20019f3e8f8a5d",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/10-mwaskom__seaborn-3187-native/grade/resolution.json",
+      "bytes": 22181,
+      "sha256": "5f2f4850647b751eae7014c312e1187dce6e408035f8c82e1ecf8438db8124eb",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/10-mwaskom__seaborn-3187-native/grade/stdout/scope.json",
+      "bytes": 200,
+      "sha256": "683965aa807e2883c10f88932ba6458d5adf0605363750cf183744ad59cfb7e3",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/10-mwaskom__seaborn-3187-native/grade/stdout/call-0001/capture.json",
+      "bytes": 330,
+      "sha256": "663fadc6d1c37d81eda239d84ee69f65428188451c0a5e69b768507f9fc65b43",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/10-mwaskom__seaborn-3187-native/grade/stdout/call-0001/stdout.bin",
+      "bytes": 42367,
+      "sha256": "9394d17405e8c64a75e43df87211b3b5ce80cd3f0702f20332584e36204f26d0",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/10-mwaskom__seaborn-3187-native/grade/stdout/call-0001/stdout.utf8",
+      "bytes": 42367,
+      "sha256": "9394d17405e8c64a75e43df87211b3b5ce80cd3f0702f20332584e36204f26d0",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/10-mwaskom__seaborn-3187-native/grade/logs/codenib-668107d2098e/source-first-development-native/mwaskom__seaborn-3187/run_instance.log",
+      "bytes": 28736,
+      "sha256": "7c7d710a6ea45ebd7890f112c69d6cef6df38c403e6c8558c12c6b2323aa5fbb",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/10-mwaskom__seaborn-3187-native/grade/logs/codenib-668107d2098e/source-first-development-native/mwaskom__seaborn-3187/test_output.txt",
+      "bytes": 42367,
+      "sha256": "9394d17405e8c64a75e43df87211b3b5ce80cd3f0702f20332584e36204f26d0",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/10-mwaskom__seaborn-3187-native/grade/logs/codenib-668107d2098e/source-first-development-native/mwaskom__seaborn-3187/report.json",
+      "bytes": 23780,
+      "sha256": "a2e9ad9e0a40566c96a10b2e303960fc073b05da1dd0a4416ee26aeaf1c2312e",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/10-mwaskom__seaborn-3187-native/grade/logs/codenib-668107d2098e/source-first-development-native/mwaskom__seaborn-3187/eval.sh",
+      "bytes": 1935,
+      "sha256": "14bcc83cc1af6a326b5100c16b129e37a5b4bfbeb89bce583e20019f3e8f8a5d",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/10-mwaskom__seaborn-3187-native/grade/logs/codenib-668107d2098e/source-first-development-native/mwaskom__seaborn-3187/patch.diff",
+      "bytes": 4244,
+      "sha256": "7dcaed85359217eaffaec10b5edeec339f73de6e64ce0e06947fda0a42fe1912",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/00-astropy__astropy-13579-native/grade/config.json",
+      "bytes": 2152,
+      "sha256": "0e11fcd343a18a96f729d0c8252652cea643291f0aee1759e1c3cf66a342af7b",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/00-astropy__astropy-13579-native/grade/eval.sh",
+      "bytes": 2074,
+      "sha256": "08599c941d428f583b0d1d047622fc0770416d35f73c96d9561936106b4f8f1b",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/00-astropy__astropy-13579-native/grade/resolution.json",
+      "bytes": 5365,
+      "sha256": "f561af4a0b31d645f6112ec3863d8ea9e60939aaaef474152bbae49753e49793",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/00-astropy__astropy-13579-native/grade/stdout/scope.json",
+      "bytes": 200,
+      "sha256": "683965aa807e2883c10f88932ba6458d5adf0605363750cf183744ad59cfb7e3",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/00-astropy__astropy-13579-native/grade/stdout/call-0001/capture.json",
+      "bytes": 330,
+      "sha256": "593712b8fc3ab797c2c977d1a67535414ebd513775f2c7ff0048af9d9a54a368",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/00-astropy__astropy-13579-native/grade/stdout/call-0001/stdout.bin",
+      "bytes": 25169,
+      "sha256": "25ec2fe0aa999636cbd3d50ea81c8e4fee881aa218106d69b5e01a55341e3a1b",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/00-astropy__astropy-13579-native/grade/stdout/call-0001/stdout.utf8",
+      "bytes": 25169,
+      "sha256": "25ec2fe0aa999636cbd3d50ea81c8e4fee881aa218106d69b5e01a55341e3a1b",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/00-astropy__astropy-13579-native/grade/logs/codenib-086fa51344c2/source-first-development-native/astropy__astropy-13579/run_instance.log",
+      "bytes": 11051,
+      "sha256": "eeb9ab244872ea8f50de150fdfb4b946a59327a2e948c0b29c5eae7a247a973e",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/00-astropy__astropy-13579-native/grade/logs/codenib-086fa51344c2/source-first-development-native/astropy__astropy-13579/test_output.txt",
+      "bytes": 25169,
+      "sha256": "25ec2fe0aa999636cbd3d50ea81c8e4fee881aa218106d69b5e01a55341e3a1b",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/00-astropy__astropy-13579-native/grade/logs/codenib-086fa51344c2/source-first-development-native/astropy__astropy-13579/report.json",
+      "bytes": 5289,
+      "sha256": "154706edad18eb235df9d1ea127051a32b2fdc3512fd24e5b7dd34e01c66b7a7",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/00-astropy__astropy-13579-native/grade/logs/codenib-086fa51344c2/source-first-development-native/astropy__astropy-13579/eval.sh",
+      "bytes": 2074,
+      "sha256": "08599c941d428f583b0d1d047622fc0770416d35f73c96d9561936106b4f8f1b",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/00-astropy__astropy-13579-native/grade/logs/codenib-086fa51344c2/source-first-development-native/astropy__astropy-13579/patch.diff",
+      "bytes": 3411,
+      "sha256": "24d7a8802b39379a1e2b3881cae70dbfd280f475b834825ca28637d837694c41",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/09-mwaskom__seaborn-3187-codenib/grade/config.json",
+      "bytes": 2151,
+      "sha256": "ec9ce75aae088998da85b6c9b440c992616edc4db126f13ccc4b5253f3a8532d",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/09-mwaskom__seaborn-3187-codenib/grade/eval.sh",
+      "bytes": 1935,
+      "sha256": "14bcc83cc1af6a326b5100c16b129e37a5b4bfbeb89bce583e20019f3e8f8a5d",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/09-mwaskom__seaborn-3187-codenib/grade/resolution.json",
+      "bytes": 22181,
+      "sha256": "3871555121f978c191063e41aa9b943e7a9fe0807cb9cfc166f68262bfb725dd",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/09-mwaskom__seaborn-3187-codenib/grade/stdout/scope.json",
+      "bytes": 200,
+      "sha256": "683965aa807e2883c10f88932ba6458d5adf0605363750cf183744ad59cfb7e3",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/09-mwaskom__seaborn-3187-codenib/grade/stdout/call-0001/capture.json",
+      "bytes": 330,
+      "sha256": "fdb01fa2d31104f3e6bfe968b18c3ba58b21754faa04085a845587dd59a2fcf8",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/09-mwaskom__seaborn-3187-codenib/grade/stdout/call-0001/stdout.bin",
+      "bytes": 42018,
+      "sha256": "5d5bfda602822777333dde47fe6dab6f111654f1f2f9c088060d9adddd413639",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/09-mwaskom__seaborn-3187-codenib/grade/stdout/call-0001/stdout.utf8",
+      "bytes": 42018,
+      "sha256": "5d5bfda602822777333dde47fe6dab6f111654f1f2f9c088060d9adddd413639",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/09-mwaskom__seaborn-3187-codenib/grade/logs/codenib-cb8299a86915/source-first-development-codenib/mwaskom__seaborn-3187/run_instance.log",
+      "bytes": 28064,
+      "sha256": "c3deb2d2713734afa09cce52aee6e55394441211b0c20bc5753615f30e49c042",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/09-mwaskom__seaborn-3187-codenib/grade/logs/codenib-cb8299a86915/source-first-development-codenib/mwaskom__seaborn-3187/test_output.txt",
+      "bytes": 42018,
+      "sha256": "5d5bfda602822777333dde47fe6dab6f111654f1f2f9c088060d9adddd413639",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/09-mwaskom__seaborn-3187-codenib/grade/logs/codenib-cb8299a86915/source-first-development-codenib/mwaskom__seaborn-3187/report.json",
+      "bytes": 23780,
+      "sha256": "a2e9ad9e0a40566c96a10b2e303960fc073b05da1dd0a4416ee26aeaf1c2312e",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/09-mwaskom__seaborn-3187-codenib/grade/logs/codenib-cb8299a86915/source-first-development-codenib/mwaskom__seaborn-3187/eval.sh",
+      "bytes": 1935,
+      "sha256": "14bcc83cc1af6a326b5100c16b129e37a5b4bfbeb89bce583e20019f3e8f8a5d",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/09-mwaskom__seaborn-3187-codenib/grade/logs/codenib-cb8299a86915/source-first-development-codenib/mwaskom__seaborn-3187/patch.diff",
+      "bytes": 3895,
+      "sha256": "224354391bebd1d4bfa76a9c35bd19008100c4ade722adc6007bf0045d9c5992",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/04-sympy__sympy-21596-codegraph/grade/config.json",
+      "bytes": 2147,
+      "sha256": "72b7d8c5228f33aaa8a970f4a5673354521ba5f5c6e4a5defd5a8bd3be9ace90",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/04-sympy__sympy-21596-codegraph/grade/eval.sh",
+      "bytes": 2864,
+      "sha256": "9ef79d3c5d2092c5d38b1f23cc57eba08877a965d24cc7204663e84bf1595a72",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/04-sympy__sympy-21596-codegraph/grade/resolution.json",
+      "bytes": 2802,
+      "sha256": "05e62524af5a3177c2b34af586241a3eccaecc48ece4216e6cb4e142a0385920",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/04-sympy__sympy-21596-codegraph/grade/stdout/scope.json",
+      "bytes": 200,
+      "sha256": "683965aa807e2883c10f88932ba6458d5adf0605363750cf183744ad59cfb7e3",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/04-sympy__sympy-21596-codegraph/grade/stdout/call-0001/capture.json",
+      "bytes": 330,
+      "sha256": "c503e4d2d844f601aa136fa651dfe93c6589f165571932f60f3a1aa69eb2c227",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/04-sympy__sympy-21596-codegraph/grade/stdout/call-0001/stdout.bin",
+      "bytes": 20231,
+      "sha256": "ae9e83cdf29de5c8c5e5283d7f18ce691e7bebbfa61499ac5d39434a42b155d1",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/04-sympy__sympy-21596-codegraph/grade/stdout/call-0001/stdout.utf8",
+      "bytes": 20231,
+      "sha256": "ae9e83cdf29de5c8c5e5283d7f18ce691e7bebbfa61499ac5d39434a42b155d1",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/04-sympy__sympy-21596-codegraph/grade/logs/codenib-ee00a11a4388/source-first-development-codegraph/sympy__sympy-21596/run_instance.log",
+      "bytes": 9431,
+      "sha256": "aa62f48342d5fd23e73b1336f46c3c24633edd56261af2d67d6bcdd453ef74ea",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/04-sympy__sympy-21596-codegraph/grade/logs/codenib-ee00a11a4388/source-first-development-codegraph/sympy__sympy-21596/test_output.txt",
+      "bytes": 20231,
+      "sha256": "ae9e83cdf29de5c8c5e5283d7f18ce691e7bebbfa61499ac5d39434a42b155d1",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/04-sympy__sympy-21596-codegraph/grade/logs/codenib-ee00a11a4388/source-first-development-codegraph/sympy__sympy-21596/report.json",
+      "bytes": 2786,
+      "sha256": "1ccb7023f185f7b1ab26dde80b66f2eca45f3ccd66fd92e4aad866d869c2668f",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/04-sympy__sympy-21596-codegraph/grade/logs/codenib-ee00a11a4388/source-first-development-codegraph/sympy__sympy-21596/eval.sh",
+      "bytes": 2864,
+      "sha256": "9ef79d3c5d2092c5d38b1f23cc57eba08877a965d24cc7204663e84bf1595a72",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/04-sympy__sympy-21596-codegraph/grade/logs/codenib-ee00a11a4388/source-first-development-codegraph/sympy__sympy-21596/patch.diff",
+      "bytes": 3610,
+      "sha256": "a856d8c8d397e7d1422f42ab7078fca5bf8867c0e5df260a15fc8875074be1bc",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/02-astropy__astropy-13579-serena/grade/config.json",
+      "bytes": 2152,
+      "sha256": "96f03a16fe4028820b8c537a39ad0c6e69abad171dc38e12fa9dc4559c20dfec",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/02-astropy__astropy-13579-serena/grade/eval.sh",
+      "bytes": 2074,
+      "sha256": "08599c941d428f583b0d1d047622fc0770416d35f73c96d9561936106b4f8f1b",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/02-astropy__astropy-13579-serena/grade/resolution.json",
+      "bytes": 5365,
+      "sha256": "54994bd74eebe28dded662e5cb0fb7265e9dc6de24d05bebda8bca5919d82fb8",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/02-astropy__astropy-13579-serena/grade/stdout/scope.json",
+      "bytes": 200,
+      "sha256": "683965aa807e2883c10f88932ba6458d5adf0605363750cf183744ad59cfb7e3",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/02-astropy__astropy-13579-serena/grade/stdout/call-0001/capture.json",
+      "bytes": 330,
+      "sha256": "8fbc53e33030547c7601d16d4d3507acea9827fcc7053a740c548a98a626636f",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/02-astropy__astropy-13579-serena/grade/stdout/call-0001/stdout.bin",
+      "bytes": 25703,
+      "sha256": "f02b16e1cfc60ceb13c3cc0a5402aac62ad317a256ad86c37d29b2b93565f99e",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/02-astropy__astropy-13579-serena/grade/stdout/call-0001/stdout.utf8",
+      "bytes": 25703,
+      "sha256": "f02b16e1cfc60ceb13c3cc0a5402aac62ad317a256ad86c37d29b2b93565f99e",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/02-astropy__astropy-13579-serena/grade/logs/codenib-6d99cd3f6827/source-first-development-serena/astropy__astropy-13579/run_instance.log",
+      "bytes": 11481,
+      "sha256": "4817717dc9cf87d3389fa393fa760667840cd56ddc52af24ff25f89251a22249",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/02-astropy__astropy-13579-serena/grade/logs/codenib-6d99cd3f6827/source-first-development-serena/astropy__astropy-13579/test_output.txt",
+      "bytes": 25703,
+      "sha256": "f02b16e1cfc60ceb13c3cc0a5402aac62ad317a256ad86c37d29b2b93565f99e",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/02-astropy__astropy-13579-serena/grade/logs/codenib-6d99cd3f6827/source-first-development-serena/astropy__astropy-13579/report.json",
+      "bytes": 5289,
+      "sha256": "154706edad18eb235df9d1ea127051a32b2fdc3512fd24e5b7dd34e01c66b7a7",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/02-astropy__astropy-13579-serena/grade/logs/codenib-6d99cd3f6827/source-first-development-serena/astropy__astropy-13579/eval.sh",
+      "bytes": 2074,
+      "sha256": "08599c941d428f583b0d1d047622fc0770416d35f73c96d9561936106b4f8f1b",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/02-astropy__astropy-13579-serena/grade/logs/codenib-6d99cd3f6827/source-first-development-serena/astropy__astropy-13579/patch.diff",
+      "bytes": 3945,
+      "sha256": "c36e6bc5dcb8c07430e9a368734b1feb672e96506ba4f8ec2be4b376ee799f97",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/08-mwaskom__seaborn-3187-serena/grade/config.json",
+      "bytes": 2150,
+      "sha256": "92c8ac9ae6410fc174244bf16775ab5d759f5c7e1afa7c6f123c616afae7bd80",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/08-mwaskom__seaborn-3187-serena/grade/eval.sh",
+      "bytes": 1935,
+      "sha256": "14bcc83cc1af6a326b5100c16b129e37a5b4bfbeb89bce583e20019f3e8f8a5d",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/08-mwaskom__seaborn-3187-serena/grade/resolution.json",
+      "bytes": 22181,
+      "sha256": "8d467af53b6970c050120a5e4e9891cf683e59a4d02efa862b83f307f7b6c93b",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/08-mwaskom__seaborn-3187-serena/grade/stdout/scope.json",
+      "bytes": 200,
+      "sha256": "683965aa807e2883c10f88932ba6458d5adf0605363750cf183744ad59cfb7e3",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/08-mwaskom__seaborn-3187-serena/grade/stdout/call-0001/capture.json",
+      "bytes": 330,
+      "sha256": "38cb7feeb6c1726ba8ab30815d838a6b6e9e5aaf327af5faf3c014cc54f7af70",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/08-mwaskom__seaborn-3187-serena/grade/stdout/call-0001/stdout.bin",
+      "bytes": 40931,
+      "sha256": "a37eb4c20e609bc92664c1d33ad410a7d4bb6e750f56db2da6713b16f80af4f9",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/08-mwaskom__seaborn-3187-serena/grade/stdout/call-0001/stdout.utf8",
+      "bytes": 40931,
+      "sha256": "a37eb4c20e609bc92664c1d33ad410a7d4bb6e750f56db2da6713b16f80af4f9",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/08-mwaskom__seaborn-3187-serena/grade/logs/codenib-718586c92015/source-first-development-serena/mwaskom__seaborn-3187/run_instance.log",
+      "bytes": 26482,
+      "sha256": "c7b867d90c8593f004a18ccdd40772831168460838e85bfe707b14dd69d40c68",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/08-mwaskom__seaborn-3187-serena/grade/logs/codenib-718586c92015/source-first-development-serena/mwaskom__seaborn-3187/test_output.txt",
+      "bytes": 40931,
+      "sha256": "a37eb4c20e609bc92664c1d33ad410a7d4bb6e750f56db2da6713b16f80af4f9",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/08-mwaskom__seaborn-3187-serena/grade/logs/codenib-718586c92015/source-first-development-serena/mwaskom__seaborn-3187/report.json",
+      "bytes": 23780,
+      "sha256": "a2e9ad9e0a40566c96a10b2e303960fc073b05da1dd0a4416ee26aeaf1c2312e",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/08-mwaskom__seaborn-3187-serena/grade/logs/codenib-718586c92015/source-first-development-serena/mwaskom__seaborn-3187/eval.sh",
+      "bytes": 1935,
+      "sha256": "14bcc83cc1af6a326b5100c16b129e37a5b4bfbeb89bce583e20019f3e8f8a5d",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/08-mwaskom__seaborn-3187-serena/grade/logs/codenib-718586c92015/source-first-development-serena/mwaskom__seaborn-3187/patch.diff",
+      "bytes": 2847,
+      "sha256": "746be5600d6cf46271f84685f155c393dc1d3cf5253a9f1f227757b1f610f22e",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/11-mwaskom__seaborn-3187-codegraph/grade/config.json",
+      "bytes": 2153,
+      "sha256": "582de881f2c18514ed25d8944b55877a842b8743b655dd58f66fa8fea6eda5fd",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/11-mwaskom__seaborn-3187-codegraph/grade/eval.sh",
+      "bytes": 1935,
+      "sha256": "14bcc83cc1af6a326b5100c16b129e37a5b4bfbeb89bce583e20019f3e8f8a5d",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/11-mwaskom__seaborn-3187-codegraph/grade/resolution.json",
+      "bytes": 22181,
+      "sha256": "d3876c27a7a30f48c71d8c8a8c607712246dbf1e2a37b7d275d3086a557f6d05",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/11-mwaskom__seaborn-3187-codegraph/grade/stdout/scope.json",
+      "bytes": 200,
+      "sha256": "683965aa807e2883c10f88932ba6458d5adf0605363750cf183744ad59cfb7e3",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/11-mwaskom__seaborn-3187-codegraph/grade/stdout/call-0001/capture.json",
+      "bytes": 330,
+      "sha256": "dc720240bdd3d4f9878c5e300f826fbb03c095e7af88722f495955044b96a2db",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/11-mwaskom__seaborn-3187-codegraph/grade/stdout/call-0001/stdout.bin",
+      "bytes": 41674,
+      "sha256": "5d1834683aec6da029a6c3556e8592d204407b84c09bd569dde3eabf022a2619",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/11-mwaskom__seaborn-3187-codegraph/grade/stdout/call-0001/stdout.utf8",
+      "bytes": 41674,
+      "sha256": "5d1834683aec6da029a6c3556e8592d204407b84c09bd569dde3eabf022a2619",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/11-mwaskom__seaborn-3187-codegraph/grade/logs/codenib-7bd49991b983/source-first-development-codegraph/mwaskom__seaborn-3187/run_instance.log",
+      "bytes": 27401,
+      "sha256": "1feea7315018bcccdefd4843ddd015911e7254508c03b47de1833f8bb3263197",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/11-mwaskom__seaborn-3187-codegraph/grade/logs/codenib-7bd49991b983/source-first-development-codegraph/mwaskom__seaborn-3187/test_output.txt",
+      "bytes": 41674,
+      "sha256": "5d1834683aec6da029a6c3556e8592d204407b84c09bd569dde3eabf022a2619",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/11-mwaskom__seaborn-3187-codegraph/grade/logs/codenib-7bd49991b983/source-first-development-codegraph/mwaskom__seaborn-3187/report.json",
+      "bytes": 23780,
+      "sha256": "a2e9ad9e0a40566c96a10b2e303960fc073b05da1dd0a4416ee26aeaf1c2312e",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/11-mwaskom__seaborn-3187-codegraph/grade/logs/codenib-7bd49991b983/source-first-development-codegraph/mwaskom__seaborn-3187/eval.sh",
+      "bytes": 1935,
+      "sha256": "14bcc83cc1af6a326b5100c16b129e37a5b4bfbeb89bce583e20019f3e8f8a5d",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/11-mwaskom__seaborn-3187-codegraph/grade/logs/codenib-7bd49991b983/source-first-development-codegraph/mwaskom__seaborn-3187/patch.diff",
+      "bytes": 3551,
+      "sha256": "ec57d59453b8a3816ff4e2e5bab0e70cc5a8eefc12df4507687374ba13f2901b",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/05-sympy__sympy-21596-serena/grade/config.json",
+      "bytes": 2144,
+      "sha256": "498b9839627579f4e1c346c49a66aad9d33856beb6e02e9fd02534edbe417fc2",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/05-sympy__sympy-21596-serena/grade/eval.sh",
+      "bytes": 2864,
+      "sha256": "9ef79d3c5d2092c5d38b1f23cc57eba08877a965d24cc7204663e84bf1595a72",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/05-sympy__sympy-21596-serena/grade/resolution.json",
+      "bytes": 2804,
+      "sha256": "c889d07226c814339b52e83512cdde2217f5c3180f8e2c787ae1547800a6ff9a",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/05-sympy__sympy-21596-serena/grade/stdout/scope.json",
+      "bytes": 200,
+      "sha256": "683965aa807e2883c10f88932ba6458d5adf0605363750cf183744ad59cfb7e3",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/05-sympy__sympy-21596-serena/grade/stdout/call-0001/capture.json",
+      "bytes": 330,
+      "sha256": "8d840d8ee337214e3636f4f251e06d2ad574107c63e3a91a3bb110f400674963",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/05-sympy__sympy-21596-serena/grade/stdout/call-0001/stdout.bin",
+      "bytes": 21448,
+      "sha256": "853fb23ac9cb820f5a74e6fde734bd1f34e508697833054e80c8205145cb5106",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/05-sympy__sympy-21596-serena/grade/stdout/call-0001/stdout.utf8",
+      "bytes": 21448,
+      "sha256": "853fb23ac9cb820f5a74e6fde734bd1f34e508697833054e80c8205145cb5106",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/05-sympy__sympy-21596-serena/grade/logs/codenib-90054ec22e2e/source-first-development-serena/sympy__sympy-21596/run_instance.log",
+      "bytes": 10966,
+      "sha256": "391d1ae0ca76434f2910b6c79eeebce28e71413a840047ca0480fcdadf18ec6f",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/05-sympy__sympy-21596-serena/grade/logs/codenib-90054ec22e2e/source-first-development-serena/sympy__sympy-21596/test_output.txt",
+      "bytes": 21448,
+      "sha256": "853fb23ac9cb820f5a74e6fde734bd1f34e508697833054e80c8205145cb5106",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/05-sympy__sympy-21596-serena/grade/logs/codenib-90054ec22e2e/source-first-development-serena/sympy__sympy-21596/report.json",
+      "bytes": 2787,
+      "sha256": "84d9bba7c287f935d35633075a1db336dd3f998ac0daf746ddd22fe21880a365",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/05-sympy__sympy-21596-serena/grade/logs/codenib-90054ec22e2e/source-first-development-serena/sympy__sympy-21596/eval.sh",
+      "bytes": 2864,
+      "sha256": "9ef79d3c5d2092c5d38b1f23cc57eba08877a965d24cc7204663e84bf1595a72",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/05-sympy__sympy-21596-serena/grade/logs/codenib-90054ec22e2e/source-first-development-serena/sympy__sympy-21596/patch.diff",
+      "bytes": 4439,
+      "sha256": "61fb07d77680cc16c0b21e663af34bcf1e6c49218c3208955a0448a860d4d89e",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/03-astropy__astropy-13579-codenib/grade/config.json",
+      "bytes": 2153,
+      "sha256": "64f345a78998183de2d398e881da7bc7c63b1f436205d17d089c6c37a3f95eac",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/03-astropy__astropy-13579-codenib/grade/eval.sh",
+      "bytes": 2074,
+      "sha256": "08599c941d428f583b0d1d047622fc0770416d35f73c96d9561936106b4f8f1b",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/03-astropy__astropy-13579-codenib/grade/resolution.json",
+      "bytes": 5365,
+      "sha256": "03e3768aa35720a52a7b68e286e7956860decdda47b31ec477bcc7f28127cca1",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/03-astropy__astropy-13579-codenib/grade/stdout/scope.json",
+      "bytes": 200,
+      "sha256": "683965aa807e2883c10f88932ba6458d5adf0605363750cf183744ad59cfb7e3",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/03-astropy__astropy-13579-codenib/grade/stdout/call-0001/capture.json",
+      "bytes": 330,
+      "sha256": "4365705f21d89b9e96b8f3034ce4cb81d5138009871555ff4f5b0d6a837e05c0",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/03-astropy__astropy-13579-codenib/grade/stdout/call-0001/stdout.bin",
+      "bytes": 25697,
+      "sha256": "f1e37b017ad82081464038cc3745e537cae42432d45ebc09aa5143a734974e87",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/03-astropy__astropy-13579-codenib/grade/stdout/call-0001/stdout.utf8",
+      "bytes": 25697,
+      "sha256": "f1e37b017ad82081464038cc3745e537cae42432d45ebc09aa5143a734974e87",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/03-astropy__astropy-13579-codenib/grade/logs/codenib-30b9b7cf107e/source-first-development-codenib/astropy__astropy-13579/run_instance.log",
+      "bytes": 11719,
+      "sha256": "fe9e556464f3d67fda89bc9eaa765e02f38e9d87c64d7f74f1c5ee772a2810b9",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/03-astropy__astropy-13579-codenib/grade/logs/codenib-30b9b7cf107e/source-first-development-codenib/astropy__astropy-13579/test_output.txt",
+      "bytes": 25697,
+      "sha256": "f1e37b017ad82081464038cc3745e537cae42432d45ebc09aa5143a734974e87",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/03-astropy__astropy-13579-codenib/grade/logs/codenib-30b9b7cf107e/source-first-development-codenib/astropy__astropy-13579/report.json",
+      "bytes": 5289,
+      "sha256": "154706edad18eb235df9d1ea127051a32b2fdc3512fd24e5b7dd34e01c66b7a7",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/03-astropy__astropy-13579-codenib/grade/logs/codenib-30b9b7cf107e/source-first-development-codenib/astropy__astropy-13579/eval.sh",
+      "bytes": 2074,
+      "sha256": "08599c941d428f583b0d1d047622fc0770416d35f73c96d9561936106b4f8f1b",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/03-astropy__astropy-13579-codenib/grade/logs/codenib-30b9b7cf107e/source-first-development-codenib/astropy__astropy-13579/patch.diff",
+      "bytes": 3939,
+      "sha256": "1583659d1ce6d5a9f3602b584c89285739f170e41ad9af722a5d31322317b498",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/07-sympy__sympy-21596-native/grade/config.json",
+      "bytes": 2144,
+      "sha256": "94c77bda13156f309a3005e4dfd58089fabcfa970b44b6c5e710962d503c7528",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/07-sympy__sympy-21596-native/grade/eval.sh",
+      "bytes": 2864,
+      "sha256": "9ef79d3c5d2092c5d38b1f23cc57eba08877a965d24cc7204663e84bf1595a72",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/07-sympy__sympy-21596-native/grade/resolution.json",
+      "bytes": 2804,
+      "sha256": "30ed38eb414e69ad456bb2a9f87340388439c5205466a6dc7f279002d6e8f12b",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/07-sympy__sympy-21596-native/grade/stdout/scope.json",
+      "bytes": 200,
+      "sha256": "683965aa807e2883c10f88932ba6458d5adf0605363750cf183744ad59cfb7e3",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/07-sympy__sympy-21596-native/grade/stdout/call-0001/capture.json",
+      "bytes": 330,
+      "sha256": "915b7eec967f6c4e16fb5021f64753f0eec46b655a37804fa6925e03a674ded4",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/07-sympy__sympy-21596-native/grade/stdout/call-0001/stdout.bin",
+      "bytes": 20217,
+      "sha256": "af06c36cd951eda9bb1c15dd3426f919fcf0c59a8192faf9144e6a1a8ffa509e",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/07-sympy__sympy-21596-native/grade/stdout/call-0001/stdout.utf8",
+      "bytes": 20217,
+      "sha256": "af06c36cd951eda9bb1c15dd3426f919fcf0c59a8192faf9144e6a1a8ffa509e",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/07-sympy__sympy-21596-native/grade/logs/codenib-458fce9cd230/source-first-development-native/sympy__sympy-21596/run_instance.log",
+      "bytes": 8825,
+      "sha256": "2961ccbd10429178955c2b82878eabec60b1c72c4d9858680dd8502692b2f5a6",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/07-sympy__sympy-21596-native/grade/logs/codenib-458fce9cd230/source-first-development-native/sympy__sympy-21596/test_output.txt",
+      "bytes": 20217,
+      "sha256": "af06c36cd951eda9bb1c15dd3426f919fcf0c59a8192faf9144e6a1a8ffa509e",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/07-sympy__sympy-21596-native/grade/logs/codenib-458fce9cd230/source-first-development-native/sympy__sympy-21596/report.json",
+      "bytes": 2787,
+      "sha256": "84d9bba7c287f935d35633075a1db336dd3f998ac0daf746ddd22fe21880a365",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/07-sympy__sympy-21596-native/grade/logs/codenib-458fce9cd230/source-first-development-native/sympy__sympy-21596/eval.sh",
+      "bytes": 2864,
+      "sha256": "9ef79d3c5d2092c5d38b1f23cc57eba08877a965d24cc7204663e84bf1595a72",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    },
+    {
+      "path": "native-grading/07-sympy__sympy-21596-native/grade/logs/codenib-458fce9cd230/source-first-development-native/sympy__sympy-21596/patch.diff",
+      "bytes": 3229,
+      "sha256": "43efeb3fea811b9822a4a0fa5a0bbaa4b111e120d69723a61a877c54e5abc15c",
+      "reason": "Original private native grading material/log; original selected statuses are public in the unchanged receipts"
+    }
+  ],
+  "prior_inputs": "The original protocol packet and prior outcomes remain unchanged. Earlier shared-launcher live-path drift stays disclosed; this packet does not claim all prior live paths match their old seals.",
+  "source_credit": "No ContextBench score, inferred source-read credit or complete trial HTTP request count.",
+  "external_enrollment": 0,
+  "reserved_set_opened": false,
+  "public_package_unchanged": true,
+  "format": "Reconstruct entries in part order, decoding gzip+base64 or earlier whole-file identical_to aliases; verify each length/SHA and part SHA."
+}
