@@ -45,9 +45,11 @@ seventeen lossless public files and five private SDK-fixture hashes.
   request bodies, SDK defaults and CLI diagnostics remain local by hash;
   generated SDK configuration is excluded and untouched.
 
-Producer exports establish the selected source runtime, not a separately
-installed wheel. Installed-byte admission and a prospective real-task adoption
-probe remain required before attributing a use or benefit change.
+These producer exports establish the selected source runtime. The separate
+[installed admission](codegraph_installed_guidance.md) now verifies the exact
+main CI wheel, all 485 installed Python files, its native extension and real
+stdio delivery of complete source. A prospective real-task adoption probe
+remains required before attributing a use or benefit change.
 
 ## Validation and open gates
 
