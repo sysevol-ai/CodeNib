@@ -317,6 +317,12 @@ retained. Main's full Release matrix passes all twenty verifiers. This changes
 entry acceptance, not the completed assessment or its hold decision. Useful
 voluntary use and the complete-workflow gates remain open before another
 benefit claim; public package 0.2.4 is unchanged.
+The separate [maintainer adoption probe](experiments/codegraph_guidance_adoption_freeze.md)
+now freezes two read-only source-review tasks and 7,357 inputs before inference.
+Its exact controller passes installed-byte, source-query and deterministic
+cleanup controls. It observes voluntary tool choice with native tools available;
+there is no comparison arm, independent confirmation or external user. No new
+model outcome is recorded in this freeze.
 
 Tracking issue: [#874](https://github.com/sysevol-ai/CodeNib/issues/874).
 The detailed contract is [the internal pilot plan](experiments/codegraph_net_benefit.md).
