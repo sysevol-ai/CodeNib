@@ -270,7 +270,7 @@ helper adds no product route or package release. Merged
 integration, all twenty release verifier jobs and Docs. Its conditional
 serial/native/consumer skips do not repeat #917's complete chain.
 
-The [independent confirmation admission](experiments/codegraph_confirmation_admission.md)
+The [fixed membership and development admission](experiments/codegraph_confirmation_admission.md)
 fixes Astropy, SymPy and Seaborn from metadata before issue/source/grading
 inspection. All three pinned source fixtures pass single-commit and clean-tree
 checks. Historical model exposure is unknown; prior cohort repositories are
@@ -279,22 +279,28 @@ material stays outside model mounts. Native readiness now executes the same
 338 selected tests in each original-production/reference pair: original behavior
 fails and all reference selected outcomes pass, with no collection errors or
 missing selected execution. All six grading containers are absent; the earlier
-controller setup failure is retained. Drafts of fifteen tasks and the common
-runner exist without a model/runtime/resource seal. Subsequent operator
+controller setup failure is retained. Operator
 controls return the original definitions for Native, Serena and Codegraph on
 all three sources. CodeNib's complete-graph admission succeeds on Astropy and
 Seaborn but fails on SymPy at two CPUs/4 GiB. Keep all failures; no selected
 case is replaced. These results inform the
-[deferred source-first candidate](experiments/codegraph_source_default.md):
+[merged deferred source-first behavior](experiments/codegraph_source_default.md) in
+[#920](https://github.com/sysevol-ai/CodeNib/pull/920):
 an ordinary cold query returns verified source without preparing a graph;
-explicit graph requests and warm reuse preserve their contracts. The candidate
-passes 8,946 unit and 433 MCP 2.3 cases; installed controls cover all three
+explicit graph requests and warm reuse preserve their contracts. Local checks
+pass 8,946 unit and 433 MCP 2.3 cases; installed controls cover all three
 first source queries and Seaborn's same-connection update. This changes work
 performed, not equivalent-graph speed or matched model benefit. This first
 set is development admission and counts as neither independent success
 confirmation. Keep the reserved set unopened and freeze another disjoint set
-before independent execution. Preserve earlier outcomes and the unchanged
-correctness/time/usage gates; external enrollment remains 0/5.
+before independent execution. Main unit/integration, twenty release verifiers
+and Docs pass; serial/native/consumer/slow skips do not repeat #917's full
+chain. The [development protocol](experiments/codegraph_source_first_protocol.md)
+now admits twelve fresh exact-controller preparations and seals 4,936 inputs
+before inference. SDK timeout handling drains a bounded interrupted terminal
+without accepting it as task success or treating incomplete streaming usage
+as zero. Preserve earlier outcomes and the unchanged correctness/time/usage
+gates; external enrollment remains 0/5.
 Tracking issue: [#874](https://github.com/sysevol-ai/CodeNib/issues/874).
 The detailed contract is [the internal pilot plan](experiments/codegraph_net_benefit.md).
 

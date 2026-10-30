@@ -3,7 +3,7 @@
 This record fixes three historical repositories before preparing a new
 four-arm comparison. Native grading is ready. Subsequent operator controls
 expose a SymPy full-graph resource failure and inform the
-[source-first candidate](codegraph_source_default.md), so this first set is now
+[source-first behavior](codegraph_source_default.md), so this first set is now
 development admission and cannot count as either independent success
 confirmation. Its membership, original native outcomes and initial evidence
 packet remain unchanged. No new model comparison has run.
@@ -86,14 +86,14 @@ complete workflow advantage. Any later collection failure,
 reference-only dependency or model/native test-patch conflict remains explicit;
 a reference pass alone does not establish readiness.
 
-## Remaining gates before inference
+## Model round and remaining confirmations
 
 The plan is five tasks per repository and the same Native, Serena,
 colbymchenry/codegraph and CodeNib conditions: fifteen tasks per arm, twelve
-complete workflows and sixty task attempts. Exact prompts, source criteria,
-task order and update material still require a separate pre-inference seal.
-Draft prompts and a common executable now exist; they are not a sealed model
-round. Because this first set has informed product changes, both independent
+complete workflows and sixty task attempts. The separate
+[development protocol](codegraph_source_first_protocol.md) seals exact prompts,
+source criteria, task order, updates and runtime after twelve fresh
+exact-controller preparations. Because this first set has informed product changes, both independent
 success confirmations remain open. Keep the reserved set unopened and fix a
 further disjoint set prospectively rather than replacing a difficult member.
 Use the existing runner and native grading adapter. The merged source
@@ -101,9 +101,9 @@ CodeNib backend includes #917; the withdrawn exploration-wording candidate
 stays outside product code. Apply #918's authenticated result-file policy to
 all optional products while leaving native tools available and calls voluntary.
 
-Before execution, freeze actual installed products/providers, clean per-run
-indexes, main and auxiliary model settings, SDK/CLI bytes, effective native
-subscription authentication, time/usage caps and failure/stop rules. No
+That seal fixes actual installed products/providers, clean per-run indexes,
+main and auxiliary model settings, SDK/CLI bytes, effective native subscription
+authentication, time/usage caps and failure/stop rules before execution. No
 unrecorded API-key fallback is allowed. The authorized paid-API ceiling remains
 $500; prior recorded SDK estimates are a lower bound of $24.3351375 plus
 unknown usage, distinct from invoice charges. This preparation makes no new

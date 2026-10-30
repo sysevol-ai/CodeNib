@@ -1,0 +1,98 @@
+{
+  "schema": "codenib.source-first-development-protocol.v1",
+  "status": "prospectively sealed; no model execution result in this packet",
+  "scope": "development only; neither independent success confirmation",
+  "candidate_merge": "da0f6ec764f53104fd59aa9469df8dfa4765dd84",
+  "freeze": {
+    "schema": "codenib.source-first-development-freeze.v1",
+    "status": "admitted_before_inference",
+    "path": "/tmp/codenib-source-default-development-20261030/execution-binding.json",
+    "sha256": "ec9ead964d672de4f6735cfca4b4675d22d9f161d15607e5228ca0318fbe957f",
+    "files": 4936,
+    "recorded_utc": "2026-10-30T18:32:48.333123+00:00",
+    "model_calls_before_seal": 0
+  },
+  "planned_tasks": 60,
+  "workflows": 12,
+  "source_criteria_anchors": 34,
+  "model_calls_before_seal": 0,
+  "reserved_set_opened": false,
+  "external_enrollment": 0,
+  "lossless_public_files": 316,
+  "parts": [
+    {
+      "path": "codegraph_source_first_protocol_2026_10_30.part01.json",
+      "bytes": 8890,
+      "sha256": "c612d6ac43ac61107986257e35104c0467d547360e3151ab38b2e9bcc40618f9",
+      "files": 4
+    },
+    {
+      "path": "codegraph_source_first_protocol_2026_10_30.part02.json",
+      "bytes": 306842,
+      "sha256": "48b8de8434301568dc5742f3920edfe37a9628beb0d51084494d4df6dfb32052",
+      "files": 1
+    },
+    {
+      "path": "codegraph_source_first_protocol_2026_10_30.part03.json",
+      "bytes": 276204,
+      "sha256": "dfaf9b822d0332555b83747a8bbacc2cb19a74b174fed5d6dd6e2982bf928146",
+      "files": 30
+    },
+    {
+      "path": "codegraph_source_first_protocol_2026_10_30.part04.json",
+      "bytes": 182019,
+      "sha256": "a6ea9c5148d83769647d1eb165ac1765196c11683bc0d6cf0d1ae5ba4343511e",
+      "files": 32
+    },
+    {
+      "path": "codegraph_source_first_protocol_2026_10_30.part05.json",
+      "bytes": 281005,
+      "sha256": "53fc8dc2f4cb256d3174990ba4f0f482d33017f177df4261c72e64489c1eda80",
+      "files": 29
+    },
+    {
+      "path": "codegraph_source_first_protocol_2026_10_30.part06.json",
+      "bytes": 240249,
+      "sha256": "edd9f181870a9b9f3a781636d17cb11003b0de56ce0e2eb49647217d50feec38",
+      "files": 42
+    },
+    {
+      "path": "codegraph_source_first_protocol_2026_10_30.part07.json",
+      "bytes": 272313,
+      "sha256": "06d704803a2a475aeff71534aa91b64cf5dad7e26d4421d930954838f0b52c62",
+      "files": 63
+    },
+    {
+      "path": "codegraph_source_first_protocol_2026_10_30.part08.json",
+      "bytes": 198043,
+      "sha256": "2e8a1da40aa45dc63ef83087d70dd5a9d018f533a4f6a3ced950ccf005aa2e6c",
+      "files": 88
+    },
+    {
+      "path": "codegraph_source_first_protocol_2026_10_30.part09.json",
+      "bytes": 228412,
+      "sha256": "87ac195d4296e2a7b8b12a84b57921debe610fe3f8489307e75d267b0398ff28",
+      "files": 27
+    }
+  ],
+  "large_artifacts_retained_locally": [
+    {
+      "path": "operator-v1/06-sympy__sympy-21596-codenib/index-artifacts.tar",
+      "bytes": 26093568,
+      "sha256": "33051c7303a982d86c2365df5057d555be6519a2910d65f00ff6297656602f13"
+    },
+    {
+      "path": "operator-v1/09-mwaskom__seaborn-3187-codenib/index-artifacts.tar",
+      "bytes": 1147392,
+      "sha256": "2f3732b290e44512be4e349cadd75c908b26d9bde46b9c71fac31c56d5b45882"
+    },
+    {
+      "path": "operator-v1/03-astropy__astropy-13579-codenib/index-artifacts.tar",
+      "bytes": 8848384,
+      "sha256": "acf884aac093b4199f131bf432fcf85c60e6cb1f75aae9d7f86eb6ef68fe334f"
+    }
+  ],
+  "private_records": "Detailed source rubric, original native answers/logs, versioned CLI/wheel and complete vendor HTML are retained locally and hash-bound. No model can read the private rubric, grading, another arm or SDK home. Vendor pages are not redistributed.",
+  "prior_outcomes": "All original model outcomes, missing usage and source judgments remain frozen; stopped task-fit stays closed. #920 source-first change does not establish whole-task benefit.",
+  "format": "Reconstruct archives in part order with gzip+base64 or earlier identical_to whole-file aliases, then verify byte counts and SHA-256."
+}

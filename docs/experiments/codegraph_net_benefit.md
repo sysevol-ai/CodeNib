@@ -207,7 +207,7 @@ stopped cohort. Both observed spill timings and reconnecting receipt writers
 are covered. Current product admission, native subscription/model settings and
 a separate pre-inference seal still precede any new model comparison.
 
-The [independent confirmation admission](codegraph_confirmation_admission.md)
+The [fixed membership and development admission](codegraph_confirmation_admission.md)
 fixes three new-to-program historical repositories by metadata before opening
 issues, source or original grading. Astropy, SymPy and Seaborn source fixtures
 pass exact pinned-source and single-commit checks. Do not replace difficult
@@ -216,19 +216,25 @@ private grading, and the reserved second set is unopened. Native readiness
 executes all 338 selected tests in both original-production and reference
 controls without collection errors or missing outcomes; behavior fails where
 the reference passes. All six grading containers are absent, and the earlier
-controller setup failure is retained. Drafts of fifteen tasks and a common
-four-arm runner now exist, without a model/runtime/resource seal. Native,
-Serena and Codegraph return the requested definitions on all three sources;
+controller setup failure is retained. Native, Serena and Codegraph return the
+requested definitions on all three sources;
 CodeNib's full-graph admission fails on SymPy under two CPUs/4 GiB while its
 Astropy and Seaborn controls pass. These observations informed the
-[deferred source-first candidate](codegraph_source_default.md), whose cold
+[merged deferred source-first behavior](codegraph_source_default.md), whose cold
 default queries return complete verified source on all three sources without
 starting graph/provider preparation. Explicit graph requests still pay their
 full cost and can fail. No complete-task gain is established. The first set
 therefore remains development admission, satisfying neither independent
 success confirmation; retain all selected cases, failures and native outcomes,
 keep the reserved set unopened and freeze another disjoint set prospectively.
-No new inference or comparative outcome is added. Merged #918 passes main unit/integration, all
+The separately [sealed development protocol](codegraph_source_first_protocol.md)
+fixes fifteen tasks and all runtime/criteria inputs after twelve new operator
+preparations. It retains the complete endpoint, native grading, strict
+eligibility and both independent confirmation gates, with bounded SDK
+interrupt/drain handling and an explicit incomplete-usage stop. No comparative
+outcome is added. Merged #920 passes main unit/integration, all twenty release
+verifiers and Docs; its serial/native/consumer/slow skips do not repeat #917's
+executed full chain. Merged #918 passes main unit/integration, all
 twenty release verifier jobs and Docs; its conditional graph-chain skips are
 distinct from #917's completed full chain.
 
