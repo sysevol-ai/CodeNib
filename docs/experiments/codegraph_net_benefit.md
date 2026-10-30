@@ -152,6 +152,24 @@ useful voluntary calls, both confirmation sets and external adoption open.
 Prioritize a source-linked cross-file consumer rather than repeating exposed
 tasks to seek a positive outcome. The goal is active.
 
+The [current source-seed controls](codegraph_source_seed_current_2026_10_30.json)
+revalidate #902 against main after both later source fixes. A real on-demand
+managed initialization preserves canonical BM25 entries when the graph is
+prepared, exposing ambiguous property names at the shared graph-expansion
+consumer. Existing source coordinates now select one indexed definition;
+reference-only, absent, invalid and non-unique evidence stays unresolved.
+A direct search-entry regression fails with the main resolver and passes with
+the fix. The actual MCP control changes three structural replies on unchanged
+HTTPie source and eight immutable index artifacts, retaining the unchanged
+fourth reply and output-cap replacements. Warm providers and substituted
+native registration prevent cold-install or complete setup claims. No model
+inference ran. Current verification passes 8,893 unit cases (25 skips) and
+432 MCP 2.3 cases (seven skips); initial missing-extension/header failures
+remain retained. The original #901 serial/native/consumer gate is closed by
+main's different runtime repairs, so draft #903 is not a dependency. Remote
+acceptance and actual useful voluntary calls remain open; fixing this consumer
+does not establish the 20% gate, either confirmation set or external reuse.
+
 ## Product question and decision
 
 Can a developer complete source-grounded coding tasks more effectively with

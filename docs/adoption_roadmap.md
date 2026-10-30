@@ -138,8 +138,9 @@ as `b894d09b`, including subsequent SCIP repairs that close #901.
 Its [current-base verification](experiments/codegraph_deferred_current_main_2026_10_30.json)
 passes both preparation modes on fresh Requests indexes, 8,871 local unit cases
 (25 skips) and 320 related MCP 2.3 checks. All earlier failures and both frozen
-cohorts remain unchanged; the source-seed and historical-runtime draft PRs are
-separate from this change. All 21 current-head PR checks pass; eight skips
+cohorts remain unchanged. The source-seed fix in
+[#902](https://github.com/sysevol-ai/CodeNib/pull/902) is updated separately;
+historical-runtime draft #903 is not its dependency. All 21 current-head PR checks pass; eight skips
 are verified workflow conditions. Main's release verifier passes all 20
 executed jobs, including the full installation matrix and Wiki/MCP services;
 its unit and integration jobs also pass. Conditional serial/graph/slow skips
@@ -176,6 +177,25 @@ cross-file consumer and useful voluntary calls; do not repeat the exposed tasks
 to seek a positive score. Representative preparation/update coverage, actual
 use and both independent confirmation sets remain open. The original paid
 API ceiling and separate five-user adoption gate remain in force.
+
+The [current source-seed control](experiments/codegraph_source_seed_current_2026_10_30.json)
+connects another real workflow boundary: on-demand initialization correctly
+retains canonical BM25 chunks after graph preparation, but property aliases
+can no longer identify one getter/setter definition by name alone. The #902
+fix uses the existing file and 0-based source span to select one indexed
+definition, refusing missing or ambiguous evidence. A new search-entry
+regression fails with main's resolver and passes with the fix. A fresh HTTPie
+managed-init/MCP control retains all eight property hits, the original BM25
+manifest entry, source bytes and eight index artifacts. Three of four bounded
+structural query replies change; the fourth is unchanged, and two capped
+queries replace other locations rather than increase the output count. These
+observations establish retrieval consistency, not precision or task benefit.
+The current-base unit tier passes 8,893 cases (25 skips) and the MCP 2.3 surface
+passes 432 (seven skips). Initial native-extension/header failures remain
+recorded as environment preparation failures. All 396 preceding artifacts,
+34 frozen v2 inputs and 990 development inputs retain their bytes. The earlier
+full serial/native/consumer run closes #901; #902 has no dependency on draft
+#903. Remote acceptance and useful voluntary cross-file use remain open.
 Tracking issue: [#874](https://github.com/sysevol-ai/CodeNib/issues/874).
 The detailed contract is [the internal pilot plan](experiments/codegraph_net_benefit.md).
 

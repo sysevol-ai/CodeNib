@@ -4,11 +4,14 @@
 
 """Keep source chunk aliases attached to the correct physical definition."""
 
+from types import SimpleNamespace
+
 import pytest
 
 from codenib.code_chunker import CodeChunk
 from codenib.graph.code_graph import CodeGraph
 from codenib.index import BM25CodeIndexer
+from codenib.mcp.tools.search import search_context_impl
 from codenib.ops.expand import (
     ExpandContext,
     expand_graph_neighbors,
@@ -98,6 +101,38 @@ def test_bm25_source_span_selects_the_correct_physical_definition(
         if node.node_name in {"a.py:left()", "a.py:right()"}
     }
     assert callees == {f"a.py:{target}()"}
+
+
+def test_structural_search_expands_both_source_definitions(source_collision):
+    graph, seeds = source_collision
+    index = BM25CodeIndexer(
+        chunks=[
+            CodeChunk(
+                content=seed.content,
+                node_id=seed.node_id,
+                name="item",
+                chunk_type=NODE_TYPE_FUNCTION,
+                file=seed.file,
+                start_line=seed.start_line,
+                end_line=seed.end_line,
+            )
+            for seed in seeds.values()
+        ],
+        max_k=2,
+    )
+    ctx = SimpleNamespace(
+        bm25=index,
+        vector=None,
+        grep_jev=None,
+        symbol_graph=graph,
+        artifact={},
+        manifest=SimpleNamespace(repo_path=None, commit=None, source_fingerprint=None),
+    )
+    result = search_context_impl(ctx, "references of item", top_k=10)
+
+    assert result["plan"]["name"] == "structural_graph"
+    names = {node["node_name"] for node in result["results"]}
+    assert {"a.py:left()", "a.py:right()"} <= names
 
 
 @pytest.mark.parametrize(
