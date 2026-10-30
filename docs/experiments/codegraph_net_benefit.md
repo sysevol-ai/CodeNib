@@ -131,7 +131,8 @@ collects and executes the same six private cases: the regressed control fails
 all six and the reference passes all six. The reference, grader and rubric
 remain outside model access. Exact driver admissions are complete, but the
 separate executable/runtime seal and model execution remain pending. This
-round cannot count as either independent confirmation set. The source fix,
+round cannot count as either independent confirmation set. The source fix in
+[#913](https://github.com/sysevol-ai/CodeNib/pull/913) awaits remote acceptance;
 representative preparation/update coverage, voluntary use, both independent
 confirmation sets and external adoption remain open. The goal is active.
 

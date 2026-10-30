@@ -158,7 +158,9 @@ three-task, four-arm development round on the exposed Flask source awaits
 its executable/runtime seal; no model inference has started. Private native
 readiness collects and executes all six cases, failing the regressed control
 and passing the reference, with grading material outside model inputs.
-The source-delivery fix, representative preparation/update coverage, actual
+The source-delivery fix is locally verified in
+[#913](https://github.com/sysevol-ai/CodeNib/pull/913); remote acceptance,
+representative preparation/update coverage, actual
 use and both independent confirmation sets remain open. The original paid
 API ceiling and separate five-user adoption gate remain in force.
 Tracking issue: [#874](https://github.com/sysevol-ai/CodeNib/issues/874).
