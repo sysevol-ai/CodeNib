@@ -20,7 +20,10 @@ finds no complete eligible alternative under the unchanged material-error rule.
 CodeNib accepts 11/15 tasks versus Native 13/15 and receives no voluntary
 product call. Hold promotion; preserve both cohorts and prioritize actual
 source-linked use before further efficacy experiments. External enrollment
-remains 0/5.
+remains 0/5. The separately sealed single-repository development round is also
+complete: its repairs pass all six private cases, but CodeNib is unused, has
+lower source acceptance and is slower than Native/Codegraph. It supplies no
+independent confirmation or promotion result.
 Established 2026-10-26
 (Pacific); target review 2026-11-09.
 Current outcomes and open gates belong to [adoption A0](../adoption_roadmap.md).
@@ -112,7 +115,7 @@ The [requested-function source control](codegraph_requested_source_2026_10_30.js
 finds a distinct product defect before further model inference: a short exact
 definition expands into a neighbouring window, then the final projector
 retains its header/documentation and omits its loop. A later session pointer
-correctly refers only to that truncated delivery. The local fix prioritizes
+correctly refers only to that truncated delivery. The fix prioritizes
 exact requested definitions and retains their own bounded range. Point
 locations keep surrounding context; source guards and all delivery caps remain.
 The same nine immutable BM25/graph artifacts and source bytes yield a complete
@@ -125,16 +128,29 @@ failures remain retained separately. This proves delivery correctness only;
 it does not explain the earlier reading-count difference or establish fewer
 model turns.
 
-A new four-arm, three-task development round uses the already exposed Flask
-base with a synthetic request-hook regression. Its model-free native readiness
-collects and executes the same six private cases: the regressed control fails
-all six and the reference passes all six. The reference, grader and rubric
-remain outside model access. Exact driver admissions are complete, but the
-separate executable/runtime seal and model execution remain pending. This
-round cannot count as either independent confirmation set. The source fix in
-[#913](https://github.com/sysevol-ai/CodeNib/pull/913) awaits remote acceptance;
-representative preparation/update coverage, voluntary use, both independent
-confirmation sets and external adoption remain open. The goal is active.
+The source fix is merged in
+[#913](https://github.com/sysevol-ai/CodeNib/pull/913) as `9a84ba56`, with all
+20 executed PR checks and main's 20 release-verifier jobs passing. Its tree
+matches the frozen development candidate; no package release is claimed.
+The [four-arm development round](codegraph_development_run_v1.md) on the
+exposed synthetic Flask regression is complete. Its
+[seal](codegraph_development_protocol_v1_2026_10_30.json) binds all 990 inputs
+before inference at 2026-10-30 09:00:56 UTC; private grading material stays
+outside model access. All twelve queries complete; four repairs pass all six
+original private cases, and source review accepts five of eight explanations.
+Accepted tasks are Native 2/3, Serena 3/3, Codegraph 3/3 and CodeNib 1/3.
+Complete times are 88.808 / 152.147 / 79.171 / 108.891 seconds. CodeNib and
+Serena remain unused; Codegraph receives four voluntary calls with visible
+replies. CodeNib is slower than Native/Codegraph and uses more normalized
+tokens. Its lower raw time than Serena cannot establish graph efficacy or
+offset lower source acceptance. Retain all wider-suite failures and exact
+source counterexamples. The round costs $1.8922421 in SDK estimates, with
+invoice charges unknown. All 390 preceding artifacts and 34 v2 inputs remain
+unchanged; the fourteen model/grading/audit containers are absent. This is
+neither independent confirmation set. Keep representative update coverage,
+useful voluntary calls, both confirmation sets and external adoption open.
+Prioritize a source-linked cross-file consumer rather than repeating exposed
+tasks to seek a positive outcome. The goal is active.
 
 ## Product question and decision
 

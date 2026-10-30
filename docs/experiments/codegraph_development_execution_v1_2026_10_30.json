@@ -1,0 +1,1798 @@
+{
+  "schema": "codenib.development-execution.v1",
+  "status": "development diagnostic complete; hold promotion and comparative-benefit claims",
+  "binding_sha256": "49c1c152dc372e75d109f02fa2c7be3373a4eab088e355e9341ed45746a04c3d",
+  "controller": {
+    "started_utc": "2026-10-30T09:01:48.242961+00:00",
+    "binding_sha256": "49c1c152dc372e75d109f02fa2c7be3373a4eab088e355e9341ed45746a04c3d",
+    "status": "model_execution_terminal_pending_native_source_grading",
+    "completed": [
+      {
+        "workflow": {
+          "workflow_index": 0,
+          "instance_id": "flask-hook-order-development",
+          "arm": "codegraph"
+        },
+        "receipt": "/tmp/codenib-codegraph-adoption-dev-20261030/runs/00-flask-hook-order-development-codegraph/receipt.json",
+        "receipt_sha256": "c1d5dd8f8146badd2938dbaf62f81e2b55cd126e3858200a011c61d81d9f5bc0",
+        "process_exit": 0,
+        "status": "model_execution_complete_pending_grading",
+        "sdk_estimate_usd": 0.5084563,
+        "observed_workflow_seconds": 79.17145033925772,
+        "cohort_stop_reason": null
+      },
+      {
+        "workflow": {
+          "workflow_index": 1,
+          "instance_id": "flask-hook-order-development",
+          "arm": "codenib"
+        },
+        "receipt": "/tmp/codenib-codegraph-adoption-dev-20261030/runs/01-flask-hook-order-development-codenib/receipt.json",
+        "receipt_sha256": "96114619fcfda2bab7c0d7ca74725a2034483313b3127dc5747907be9cb782e3",
+        "process_exit": 0,
+        "status": "model_execution_complete_pending_grading",
+        "sdk_estimate_usd": 0.5626021999999999,
+        "observed_workflow_seconds": 108.89147550985217,
+        "cohort_stop_reason": null
+      },
+      {
+        "workflow": {
+          "workflow_index": 2,
+          "instance_id": "flask-hook-order-development",
+          "arm": "serena"
+        },
+        "receipt": "/tmp/codenib-codegraph-adoption-dev-20261030/runs/02-flask-hook-order-development-serena/receipt.json",
+        "receipt_sha256": "23fdb1302c20b997eed927885dd7d65472fb78609441d4145f2eaa5a2627c912",
+        "process_exit": 0,
+        "status": "model_execution_complete_pending_grading",
+        "sdk_estimate_usd": 0.44630879999999995,
+        "observed_workflow_seconds": 152.14696751348674,
+        "cohort_stop_reason": null
+      },
+      {
+        "workflow": {
+          "workflow_index": 3,
+          "instance_id": "flask-hook-order-development",
+          "arm": "native"
+        },
+        "receipt": "/tmp/codenib-codegraph-adoption-dev-20261030/runs/03-flask-hook-order-development-native/receipt.json",
+        "receipt_sha256": "f177ef1ba095891ae2c0ebb4dfa80ca965e5382a4a101e8cc8393730abae411f",
+        "process_exit": 0,
+        "status": "model_execution_complete_pending_grading",
+        "sdk_estimate_usd": 0.37487480000000006,
+        "observed_workflow_seconds": 88.80796892382205,
+        "cohort_stop_reason": null
+      }
+    ],
+    "sdk_estimate_usd": 1.8922420999999998,
+    "stop_reason": null,
+    "finished_utc": "2026-10-30T09:09:08.248782+00:00"
+  },
+  "assessment": {
+    "schema": "codenib.development-assessment.v1",
+    "recorded_utc": "2026-10-30T09:17:17.654045+00:00",
+    "status": "development diagnostic complete; hold promotion and comparative-benefit claims",
+    "reviewer": "one unblinded maintainer-agent source review; no independent external adjudication",
+    "protocol_sha256": "32997febd2238bf9d7461e9a0858585e76ad8847ee4553efd1d9da85695b326d",
+    "rubric_sha256": "16ac73e9fbbf665c05cf4539614a57902a652c77ba074088a9a11af0e7124aab",
+    "model_queries": 12,
+    "sdk_sessions": 8,
+    "repository_units": 1,
+    "scope": "Already exposed Flask source with a synthetic regression, not either independent confirmation set.",
+    "outcomes": [
+      {
+        "arm": "codegraph",
+        "workflow_seconds": 79.17145033925772,
+        "setup_seconds": 6.860655294731259,
+        "task_seconds": 67.60062751919031,
+        "other_session_orchestration_seconds": 4.710167525336146,
+        "normalized_tokens": 220359,
+        "sdk_estimate_usd": 0.5084563,
+        "accepted_tasks": 3,
+        "serious_error_tasks": 0,
+        "tool_attempts": {
+          "mcp__study__codegraph_explore": 4,
+          "Bash": 3,
+          "Read": 1,
+          "Edit": 2
+        },
+        "optional_mcp_attempts": 4,
+        "sdk_visible_optional_results": 4,
+        "product_cli_attempts": 0,
+        "source_inventory": "Six native tools retained; each optional product connected with its advertised entry/entries. SDK inventory is not a full HTTP schema observation.",
+        "tasks": [
+          {
+            "task_id": "hook-order-dev1-diagnose",
+            "kind": "lookup",
+            "answer_sha256": "48e1b6f0c30f26966aca005290f0bd57638b2aba2bb510288257227e3b480988",
+            "source_before": {
+              "path": "/tmp/codenib-codegraph-adoption-dev-20261030/runs/00-flask-hook-order-development-codegraph/lookup-before-source.json",
+              "sha256": "8d53e9b3968eaf54544d93e7d62ac0fb0eb72201dea696c84a283671e7b106c3",
+              "source_digest": "f99391573b2e6d084c018d85a359b58d4a1151e42ddb812292f0ad7fbbd9ce1c",
+              "file_count": 251,
+              "head": "3ea458626d3c17275bd3f41c32eaeb8299edc968"
+            },
+            "source_after": {
+              "path": "/tmp/codenib-codegraph-adoption-dev-20261030/runs/00-flask-hook-order-development-codegraph/lookup-after-source.json",
+              "sha256": "8d53e9b3968eaf54544d93e7d62ac0fb0eb72201dea696c84a283671e7b106c3",
+              "source_digest": "f99391573b2e6d084c018d85a359b58d4a1151e42ddb812292f0ad7fbbd9ce1c",
+              "file_count": 251,
+              "head": "3ea458626d3c17275bd3f41c32eaeb8299edc968"
+            },
+            "whitespace_word_count": 420,
+            "seconds": 18.257622005417943,
+            "accepted": true,
+            "serious_error": false,
+            "criteria": [
+              {
+                "name": "current-loop",
+                "frozen_criterion": "Correctly describe the regressed current callback loop rather than canonical Flask behavior: the global namespace is omitted and the nested blueprint order is reversed.",
+                "passed": true,
+                "rationale": "Correct: before_request iterates raw inner-first request.blueprints, omits None; URL preprocessors retain names."
+              },
+              {
+                "name": "registration",
+                "frozen_criterion": "Trace callback registration and blueprint namespace merging to the application tables with correct source citations.",
+                "passed": true,
+                "rationale": "Scaffold.before_request stores under None; Blueprint.register extends tables under dotted names and recursively prefixes children."
+              },
+              {
+                "name": "order-and-preprocessors",
+                "frozen_criterion": "Explain inner-to-outer request.blueprints versus the intended global/outer-to-inner order and why value preprocessors are unaffected.",
+                "passed": true,
+                "rationale": "Correct app/outer/inner desired order, raw child/parent order, and unaffected URL preprocessors."
+              },
+              {
+                "name": "short-circuit",
+                "frozen_criterion": "Identify the pre-dispatch hook and non-None short circuit without claiming that response finalization or teardown is skipped.",
+                "passed": true,
+                "rationale": "Identifies preprocess_request and first non-None return without saying finalization or teardown is skipped."
+              }
+            ],
+            "source_files": {
+              "src/flask/app.py": "69a5a7bc8f1f63fe154cd422372fa950d39ba34eb2058f2980e103ec949c13a3",
+              "src/flask/blueprints.py": "9d296c3a0dffffbafd59ef15290a6d4c2061a470f3ad2b00709388d35d1dddc0",
+              "src/flask/scaffold.py": "12d4caff83fd4f57d51c2d29ec0a873508ac035f596a100d1729edccd18d04ac",
+              "src/flask/wrappers.py": "7a5ded9f52e049457478d1a060c8ca2024f923ba862606e9221bdc8b89ebc10f",
+              "src/flask/helpers.py": "efa15481302a200fabae2498f5e6ff9ae002906bd0ad9550b91a32269d4a4c1e",
+              "src/flask/ctx.py": "6c611042e176fdc1ea67764d31e31e106f0738b2640e52fcf2ed810710ab45aa"
+            },
+            "verified_source_anchors": [
+              "src/flask/app.py:1969-1994",
+              "src/flask/blueprints.py:297-356",
+              "src/flask/blueprints.py:374-402",
+              "src/flask/scaffold.py:535-555",
+              "src/flask/wrappers.py:76-109",
+              "src/flask/helpers.py:677-684"
+            ]
+          },
+          {
+            "task_id": "hook-order-dev1-repair",
+            "kind": "repair",
+            "answer_sha256": "53a2e27f7bd3b2cf8c50c358c757a568c26461f40e1140f0b705d74fc043a772",
+            "source_before": {
+              "path": "/tmp/codenib-codegraph-adoption-dev-20261030/runs/00-flask-hook-order-development-codegraph/repair-before-source.json",
+              "sha256": "8d53e9b3968eaf54544d93e7d62ac0fb0eb72201dea696c84a283671e7b106c3",
+              "source_digest": "f99391573b2e6d084c018d85a359b58d4a1151e42ddb812292f0ad7fbbd9ce1c",
+              "file_count": 251,
+              "head": "3ea458626d3c17275bd3f41c32eaeb8299edc968"
+            },
+            "source_after": {
+              "path": "/tmp/codenib-codegraph-adoption-dev-20261030/runs/00-flask-hook-order-development-codegraph/repair-after-source.json",
+              "sha256": "cfd18cde388030cadce6cb46823f607d210e492cf9117eb85b23e85e3b68f313",
+              "source_digest": "36b4756780bd05ec0535e997a3a4683e37f3a6515d4c41714de43ef7e9757046",
+              "file_count": 251,
+              "head": "3ea458626d3c17275bd3f41c32eaeb8299edc968"
+            },
+            "whitespace_word_count": 318,
+            "seconds": 27.73257764801383,
+            "accepted": true,
+            "serious_error": false,
+            "criteria": [],
+            "native_outcome": "6/6 passed; no collection or model/native test-path conflict",
+            "submission": {
+              "path": "repair.patch",
+              "sha256": "7c0f380dfa6e4877a43e2deeb9369fd229ab9e945264311a20aa54194181979c",
+              "bytes": 2781,
+              "attribution": "whole workspace diff; includes any separately recorded setup metadata"
+            }
+          },
+          {
+            "task_id": "hook-order-dev1-review",
+            "kind": "review",
+            "answer_sha256": "a5c52900ee10d833e090660d872945838fde5ea6f4aee3248b8cae265ecb59c7",
+            "source_before": {
+              "path": "/tmp/codenib-codegraph-adoption-dev-20261030/runs/00-flask-hook-order-development-codegraph/review-before-source.json",
+              "sha256": "cfd18cde388030cadce6cb46823f607d210e492cf9117eb85b23e85e3b68f313",
+              "source_digest": "36b4756780bd05ec0535e997a3a4683e37f3a6515d4c41714de43ef7e9757046",
+              "file_count": 251,
+              "head": "3ea458626d3c17275bd3f41c32eaeb8299edc968"
+            },
+            "source_after": {
+              "path": "/tmp/codenib-codegraph-adoption-dev-20261030/runs/00-flask-hook-order-development-codegraph/review-after-source.json",
+              "sha256": "cfd18cde388030cadce6cb46823f607d210e492cf9117eb85b23e85e3b68f313",
+              "source_digest": "36b4756780bd05ec0535e997a3a4683e37f3a6515d4c41714de43ef7e9757046",
+              "file_count": 251,
+              "head": "3ea458626d3c17275bd3f41c32eaeb8299edc968"
+            },
+            "whitespace_word_count": 656,
+            "seconds": 21.61042786575854,
+            "accepted": true,
+            "serious_error": false,
+            "criteria": [
+              {
+                "name": "actual-order-and-tests",
+                "frozen_criterion": "Describe the actual callback ordering after the model patch, with correct source citations and relevant tests.",
+                "passed": true,
+                "rationale": "Patched app.py uses names in both loops; source/test citations describe stored registration order."
+              },
+              {
+                "name": "early-response-finalization",
+                "frozen_criterion": "Trace non-None preprocessing results through finalization; the view is skipped while normal response processing remains.",
+                "passed": true,
+                "rationale": "full_dispatch_request skips dispatch_request but calls finalize_request; process_response retains after callbacks and session save."
+              },
+              {
+                "name": "exception-paths",
+                "frozen_criterion": "Distinguish callback exceptions handled by the existing user error-handler path from errors that escape to the WSGI exception path.",
+                "passed": true,
+                "rationale": "Distinguishes handle_user_exception from WSGI handle_exception and conditional propagation."
+              },
+              {
+                "name": "teardown-error-semantics",
+                "frozen_criterion": "Describe request-context pop/teardown with the correct exception semantics and avoid claiming that every teardown always receives the same error.",
+                "passed": true,
+                "rationale": "ctx.pop(error) reaches do_teardown_request; handled versus escaping errors differ, including the explicit should_ignore_error branch."
+              }
+            ],
+            "source_files": {
+              "src/flask/app.py": "d439102c7658f90f896556c557df89501f2c98ad498d6317453f10ef58508710",
+              "src/flask/blueprints.py": "9d296c3a0dffffbafd59ef15290a6d4c2061a470f3ad2b00709388d35d1dddc0",
+              "src/flask/scaffold.py": "12d4caff83fd4f57d51c2d29ec0a873508ac035f596a100d1729edccd18d04ac",
+              "src/flask/wrappers.py": "7a5ded9f52e049457478d1a060c8ca2024f923ba862606e9221bdc8b89ebc10f",
+              "src/flask/helpers.py": "efa15481302a200fabae2498f5e6ff9ae002906bd0ad9550b91a32269d4a4c1e",
+              "src/flask/ctx.py": "6c611042e176fdc1ea67764d31e31e106f0738b2640e52fcf2ed810710ab45aa"
+            },
+            "verified_source_anchors": [
+              "src/flask/app.py:1493-1531",
+              "src/flask/app.py:1331-1414",
+              "src/flask/app.py:1979-2055",
+              "src/flask/app.py:2200-2221",
+              "src/flask/ctx.py:385-415",
+              "tests/test_blueprints.py:836-913"
+            ]
+          }
+        ]
+      },
+      {
+        "arm": "codenib",
+        "workflow_seconds": 108.89147550985217,
+        "setup_seconds": 5.21330401301384,
+        "task_seconds": 97.78675365261734,
+        "other_session_orchestration_seconds": 5.891417844220996,
+        "normalized_tokens": 367985,
+        "sdk_estimate_usd": 0.5626021999999999,
+        "accepted_tasks": 1,
+        "serious_error_tasks": 2,
+        "tool_attempts": {
+          "Bash": 11,
+          "Grep": 3,
+          "Edit": 4,
+          "Read": 6
+        },
+        "optional_mcp_attempts": 0,
+        "sdk_visible_optional_results": 0,
+        "product_cli_attempts": 0,
+        "source_inventory": "Six native tools retained; each optional product connected with its advertised entry/entries. SDK inventory is not a full HTTP schema observation.",
+        "tasks": [
+          {
+            "task_id": "hook-order-dev1-diagnose",
+            "kind": "lookup",
+            "answer_sha256": "651e333d001c5fd445e7d15ee9af3c65efa84775cb28a5ca181b5fafc74ecb70",
+            "source_before": {
+              "path": "/tmp/codenib-codegraph-adoption-dev-20261030/runs/01-flask-hook-order-development-codenib/lookup-before-source.json",
+              "sha256": "8d53e9b3968eaf54544d93e7d62ac0fb0eb72201dea696c84a283671e7b106c3",
+              "source_digest": "f99391573b2e6d084c018d85a359b58d4a1151e42ddb812292f0ad7fbbd9ce1c",
+              "file_count": 251,
+              "head": "3ea458626d3c17275bd3f41c32eaeb8299edc968"
+            },
+            "source_after": {
+              "path": "/tmp/codenib-codegraph-adoption-dev-20261030/runs/01-flask-hook-order-development-codenib/lookup-after-source.json",
+              "sha256": "8d53e9b3968eaf54544d93e7d62ac0fb0eb72201dea696c84a283671e7b106c3",
+              "source_digest": "f99391573b2e6d084c018d85a359b58d4a1151e42ddb812292f0ad7fbbd9ce1c",
+              "file_count": 251,
+              "head": "3ea458626d3c17275bd3f41c32eaeb8299edc968"
+            },
+            "whitespace_word_count": 421,
+            "seconds": 24.47195361368358,
+            "accepted": false,
+            "serious_error": true,
+            "criteria": [
+              {
+                "name": "current-loop",
+                "frozen_criterion": "Correctly describe the regressed current callback loop rather than canonical Flask behavior: the global namespace is omitted and the nested blueprint order is reversed.",
+                "passed": true,
+                "rationale": "Correct: before_request iterates raw inner-first request.blueprints, omits None; URL preprocessors retain names."
+              },
+              {
+                "name": "registration",
+                "frozen_criterion": "Trace callback registration and blueprint namespace merging to the application tables with correct source citations.",
+                "passed": false,
+                "rationale": "The cited API is before_app_request, not app_before_request. The same answer also gives a false template-context sequence and cites the error-handler table as support. These are source contradictions, not the correct central one-line bug diagnosis.",
+                "finding": {
+                  "quote": "`Blueprint.app_before_request` writes directly to the app's `None` key",
+                  "reason": "The cited API is before_app_request, not app_before_request. The same answer also gives a false template-context sequence and cites the error-handler table as support. These are source contradictions, not the correct central one-line bug diagnosis.",
+                  "additional_quote": "Template context processors use (None, *request.blueprints) (src/flask/app.py:1245)",
+                  "counterevidence": [
+                    "src/flask/blueprints.py:545-553 defines before_app_request; app_before_request is absent.",
+                    "src/flask/app.py:1238-1249 is _find_error_handler with (*request.blueprints, None).",
+                    "src/flask/app.py:726-750 applies template processors with None then reversed(request.blueprints)."
+                  ],
+                  "executable": "source-claim-audit: Blueprint attribute check and template app/parent/child observation contradict both statements."
+                }
+              },
+              {
+                "name": "order-and-preprocessors",
+                "frozen_criterion": "Explain inner-to-outer request.blueprints versus the intended global/outer-to-inner order and why value preprocessors are unaffected.",
+                "passed": true,
+                "rationale": "Correct app/outer/inner desired order, raw child/parent order, and unaffected URL preprocessors."
+              },
+              {
+                "name": "short-circuit",
+                "frozen_criterion": "Identify the pre-dispatch hook and non-None short circuit without claiming that response finalization or teardown is skipped.",
+                "passed": true,
+                "rationale": "Identifies preprocess_request and first non-None return without saying finalization or teardown is skipped."
+              }
+            ],
+            "source_files": {
+              "src/flask/app.py": "69a5a7bc8f1f63fe154cd422372fa950d39ba34eb2058f2980e103ec949c13a3",
+              "src/flask/blueprints.py": "9d296c3a0dffffbafd59ef15290a6d4c2061a470f3ad2b00709388d35d1dddc0",
+              "src/flask/scaffold.py": "12d4caff83fd4f57d51c2d29ec0a873508ac035f596a100d1729edccd18d04ac",
+              "src/flask/wrappers.py": "7a5ded9f52e049457478d1a060c8ca2024f923ba862606e9221bdc8b89ebc10f",
+              "src/flask/helpers.py": "efa15481302a200fabae2498f5e6ff9ae002906bd0ad9550b91a32269d4a4c1e",
+              "src/flask/ctx.py": "6c611042e176fdc1ea67764d31e31e106f0738b2640e52fcf2ed810710ab45aa"
+            },
+            "verified_source_anchors": [
+              "src/flask/app.py:1969-1994",
+              "src/flask/blueprints.py:297-356",
+              "src/flask/blueprints.py:374-402",
+              "src/flask/scaffold.py:535-555",
+              "src/flask/wrappers.py:76-109",
+              "src/flask/helpers.py:677-684"
+            ]
+          },
+          {
+            "task_id": "hook-order-dev1-repair",
+            "kind": "repair",
+            "answer_sha256": "f5db6f3ee35d6cccec1d0309d939c647b527566a38b5a74f1513b447cdcbea1a",
+            "source_before": {
+              "path": "/tmp/codenib-codegraph-adoption-dev-20261030/runs/01-flask-hook-order-development-codenib/repair-before-source.json",
+              "sha256": "8d53e9b3968eaf54544d93e7d62ac0fb0eb72201dea696c84a283671e7b106c3",
+              "source_digest": "f99391573b2e6d084c018d85a359b58d4a1151e42ddb812292f0ad7fbbd9ce1c",
+              "file_count": 251,
+              "head": "3ea458626d3c17275bd3f41c32eaeb8299edc968"
+            },
+            "source_after": {
+              "path": "/tmp/codenib-codegraph-adoption-dev-20261030/runs/01-flask-hook-order-development-codenib/repair-after-source.json",
+              "sha256": "fd2fa9795d9d977ad2b0ff61c70212dc90415102990b3a9eaab645084d24bdf0",
+              "source_digest": "9cf06d95c9afa30285eb545ea335dd5855299d6714ebafb6a11d387fe575e763",
+              "file_count": 251,
+              "head": "3ea458626d3c17275bd3f41c32eaeb8299edc968"
+            },
+            "whitespace_word_count": 296,
+            "seconds": 43.758922170847654,
+            "accepted": true,
+            "serious_error": false,
+            "criteria": [],
+            "native_outcome": "6/6 passed; no collection or model/native test-path conflict",
+            "submission": {
+              "path": "repair.patch",
+              "sha256": "71fe176c41acb987cfacc2cdc2131317f471fb9d3c787f4cdb8e52b126164068",
+              "bytes": 2974,
+              "attribution": "whole workspace diff; includes any separately recorded setup metadata"
+            }
+          },
+          {
+            "task_id": "hook-order-dev1-review",
+            "kind": "review",
+            "answer_sha256": "5233308e37da9cadd223f162e0dde65c2438784a287ec8c1f56d016f0ce96fe9",
+            "source_before": {
+              "path": "/tmp/codenib-codegraph-adoption-dev-20261030/runs/01-flask-hook-order-development-codenib/review-before-source.json",
+              "sha256": "fd2fa9795d9d977ad2b0ff61c70212dc90415102990b3a9eaab645084d24bdf0",
+              "source_digest": "9cf06d95c9afa30285eb545ea335dd5855299d6714ebafb6a11d387fe575e763",
+              "file_count": 251,
+              "head": "3ea458626d3c17275bd3f41c32eaeb8299edc968"
+            },
+            "source_after": {
+              "path": "/tmp/codenib-codegraph-adoption-dev-20261030/runs/01-flask-hook-order-development-codenib/review-after-source.json",
+              "sha256": "fd2fa9795d9d977ad2b0ff61c70212dc90415102990b3a9eaab645084d24bdf0",
+              "source_digest": "9cf06d95c9afa30285eb545ea335dd5855299d6714ebafb6a11d387fe575e763",
+              "file_count": 251,
+              "head": "3ea458626d3c17275bd3f41c32eaeb8299edc968"
+            },
+            "whitespace_word_count": 623,
+            "seconds": 29.5558778680861,
+            "accepted": false,
+            "serious_error": true,
+            "criteria": [
+              {
+                "name": "actual-order-and-tests",
+                "frozen_criterion": "Describe the actual callback ordering after the model patch, with correct source citations and relevant tests.",
+                "passed": true,
+                "rationale": "Patched app.py uses names in both loops; source/test citations describe stored registration order."
+              },
+              {
+                "name": "early-response-finalization",
+                "frozen_criterion": "Trace non-None preprocessing results through finalization; the view is skipped while normal response processing remains.",
+                "passed": true,
+                "rationale": "full_dispatch_request skips dispatch_request but calls finalize_request; process_response retains after callbacks and session save."
+              },
+              {
+                "name": "exception-paths",
+                "frozen_criterion": "Distinguish callback exceptions handled by the existing user error-handler path from errors that escape to the WSGI exception path.",
+                "passed": true,
+                "rationale": "Distinguishes handle_user_exception from WSGI handle_exception and conditional propagation."
+              },
+              {
+                "name": "teardown-error-semantics",
+                "frozen_criterion": "Describe request-context pop/teardown with the correct exception semantics and avoid claiming that every teardown always receives the same error.",
+                "passed": false,
+                "rationale": "The answer makes this unconditional and omits the explicit branch that can clear error. The frozen review rubric requires correct exception semantics rather than an always-same teardown error.",
+                "finding": {
+                  "quote": "For an unhandled exception, `error` is set, so teardown callbacks receive it",
+                  "reason": "The answer makes this unconditional and omits the explicit branch that can clear error. The frozen review rubric requires correct exception semantics rather than an always-same teardown error.",
+                  "counterevidence": [
+                    "src/flask/app.py:2218-2221 clears error when should_ignore_error(error) is true before ctx.pop(error).",
+                    "src/flask/ctx.py:395-399 forwards the resulting value to do_teardown_request."
+                  ],
+                  "executable": "source-claim-audit: unhandled ValueError, propagation off, should_ignore_error=True returns 500, runs after_request and passes None to teardown."
+                }
+              }
+            ],
+            "source_files": {
+              "src/flask/app.py": "d439102c7658f90f896556c557df89501f2c98ad498d6317453f10ef58508710",
+              "src/flask/blueprints.py": "9d296c3a0dffffbafd59ef15290a6d4c2061a470f3ad2b00709388d35d1dddc0",
+              "src/flask/scaffold.py": "12d4caff83fd4f57d51c2d29ec0a873508ac035f596a100d1729edccd18d04ac",
+              "src/flask/wrappers.py": "7a5ded9f52e049457478d1a060c8ca2024f923ba862606e9221bdc8b89ebc10f",
+              "src/flask/helpers.py": "efa15481302a200fabae2498f5e6ff9ae002906bd0ad9550b91a32269d4a4c1e",
+              "src/flask/ctx.py": "6c611042e176fdc1ea67764d31e31e106f0738b2640e52fcf2ed810710ab45aa"
+            },
+            "verified_source_anchors": [
+              "src/flask/app.py:1493-1531",
+              "src/flask/app.py:1331-1414",
+              "src/flask/app.py:1979-2055",
+              "src/flask/app.py:2200-2221",
+              "src/flask/ctx.py:385-415",
+              "tests/test_blueprints.py:836-913"
+            ]
+          }
+        ]
+      },
+      {
+        "arm": "serena",
+        "workflow_seconds": 152.14696751348674,
+        "setup_seconds": 3.9731507562100887,
+        "task_seconds": 137.2365552149713,
+        "other_session_orchestration_seconds": 10.93726154230535,
+        "normalized_tokens": 290840,
+        "sdk_estimate_usd": 0.44630879999999995,
+        "accepted_tasks": 3,
+        "serious_error_tasks": 0,
+        "tool_attempts": {
+          "Bash": 14,
+          "Edit": 2,
+          "Read": 2,
+          "Grep": 1
+        },
+        "optional_mcp_attempts": 0,
+        "sdk_visible_optional_results": 0,
+        "product_cli_attempts": 0,
+        "source_inventory": "Six native tools retained; each optional product connected with its advertised entry/entries. SDK inventory is not a full HTTP schema observation.",
+        "tasks": [
+          {
+            "task_id": "hook-order-dev1-diagnose",
+            "kind": "lookup",
+            "answer_sha256": "43bd52d955f276f199447b265ae47baf4052080ea91b6324f9ab07dc204a0a1f",
+            "source_before": {
+              "path": "/tmp/codenib-codegraph-adoption-dev-20261030/runs/02-flask-hook-order-development-serena/lookup-before-source.json",
+              "sha256": "8d53e9b3968eaf54544d93e7d62ac0fb0eb72201dea696c84a283671e7b106c3",
+              "source_digest": "f99391573b2e6d084c018d85a359b58d4a1151e42ddb812292f0ad7fbbd9ce1c",
+              "file_count": 251,
+              "head": "3ea458626d3c17275bd3f41c32eaeb8299edc968"
+            },
+            "source_after": {
+              "path": "/tmp/codenib-codegraph-adoption-dev-20261030/runs/02-flask-hook-order-development-serena/lookup-after-source.json",
+              "sha256": "8d53e9b3968eaf54544d93e7d62ac0fb0eb72201dea696c84a283671e7b106c3",
+              "source_digest": "f99391573b2e6d084c018d85a359b58d4a1151e42ddb812292f0ad7fbbd9ce1c",
+              "file_count": 251,
+              "head": "3ea458626d3c17275bd3f41c32eaeb8299edc968"
+            },
+            "whitespace_word_count": 447,
+            "seconds": 41.42546000704169,
+            "accepted": true,
+            "serious_error": false,
+            "criteria": [
+              {
+                "name": "current-loop",
+                "frozen_criterion": "Correctly describe the regressed current callback loop rather than canonical Flask behavior: the global namespace is omitted and the nested blueprint order is reversed.",
+                "passed": true,
+                "rationale": "Correct: before_request iterates raw inner-first request.blueprints, omits None; URL preprocessors retain names."
+              },
+              {
+                "name": "registration",
+                "frozen_criterion": "Trace callback registration and blueprint namespace merging to the application tables with correct source citations.",
+                "passed": true,
+                "rationale": "Scaffold.before_request stores under None; Blueprint.register extends tables under dotted names and recursively prefixes children."
+              },
+              {
+                "name": "order-and-preprocessors",
+                "frozen_criterion": "Explain inner-to-outer request.blueprints versus the intended global/outer-to-inner order and why value preprocessors are unaffected.",
+                "passed": true,
+                "rationale": "Correct app/outer/inner desired order, raw child/parent order, and unaffected URL preprocessors."
+              },
+              {
+                "name": "short-circuit",
+                "frozen_criterion": "Identify the pre-dispatch hook and non-None short circuit without claiming that response finalization or teardown is skipped.",
+                "passed": true,
+                "rationale": "Identifies preprocess_request and first non-None return without saying finalization or teardown is skipped."
+              }
+            ],
+            "source_files": {
+              "src/flask/app.py": "69a5a7bc8f1f63fe154cd422372fa950d39ba34eb2058f2980e103ec949c13a3",
+              "src/flask/blueprints.py": "9d296c3a0dffffbafd59ef15290a6d4c2061a470f3ad2b00709388d35d1dddc0",
+              "src/flask/scaffold.py": "12d4caff83fd4f57d51c2d29ec0a873508ac035f596a100d1729edccd18d04ac",
+              "src/flask/wrappers.py": "7a5ded9f52e049457478d1a060c8ca2024f923ba862606e9221bdc8b89ebc10f",
+              "src/flask/helpers.py": "efa15481302a200fabae2498f5e6ff9ae002906bd0ad9550b91a32269d4a4c1e",
+              "src/flask/ctx.py": "6c611042e176fdc1ea67764d31e31e106f0738b2640e52fcf2ed810710ab45aa"
+            },
+            "verified_source_anchors": [
+              "src/flask/app.py:1969-1994",
+              "src/flask/blueprints.py:297-356",
+              "src/flask/blueprints.py:374-402",
+              "src/flask/scaffold.py:535-555",
+              "src/flask/wrappers.py:76-109",
+              "src/flask/helpers.py:677-684"
+            ]
+          },
+          {
+            "task_id": "hook-order-dev1-repair",
+            "kind": "repair",
+            "answer_sha256": "d252bd6e4cefeaf2b039c3d64f852e568996cf18107ec015b29a95f4d6f36d4c",
+            "source_before": {
+              "path": "/tmp/codenib-codegraph-adoption-dev-20261030/runs/02-flask-hook-order-development-serena/repair-before-source.json",
+              "sha256": "8d53e9b3968eaf54544d93e7d62ac0fb0eb72201dea696c84a283671e7b106c3",
+              "source_digest": "f99391573b2e6d084c018d85a359b58d4a1151e42ddb812292f0ad7fbbd9ce1c",
+              "file_count": 251,
+              "head": "3ea458626d3c17275bd3f41c32eaeb8299edc968"
+            },
+            "source_after": {
+              "path": "/tmp/codenib-codegraph-adoption-dev-20261030/runs/02-flask-hook-order-development-serena/repair-after-source.json",
+              "sha256": "5e891d3d72626b698d8e1bdabc2f0b4f6eb601f2fd55003ce52d57f8a54bb51c",
+              "source_digest": "c18b59f896fc15ed8453d058c08214a1d8ad5cb1b9bde81527f698be530087b7",
+              "file_count": 251,
+              "head": "3ea458626d3c17275bd3f41c32eaeb8299edc968"
+            },
+            "whitespace_word_count": 302,
+            "seconds": 55.84359151124954,
+            "accepted": true,
+            "serious_error": false,
+            "criteria": [],
+            "native_outcome": "6/6 passed; no collection or model/native test-path conflict",
+            "submission": {
+              "path": "repair.patch",
+              "sha256": "9d3eaa5eccda148fd75ad895edd7a2c4a2bd912c2bb623bd08169c13438ffcb7",
+              "bytes": 2694,
+              "attribution": "whole workspace diff; includes any separately recorded setup metadata"
+            }
+          },
+          {
+            "task_id": "hook-order-dev1-review",
+            "kind": "review",
+            "answer_sha256": "3b71fea5ac3b9c678ee7bc5b5e93bcf22d3d93d7567a477ae42eba0ba133c52e",
+            "source_before": {
+              "path": "/tmp/codenib-codegraph-adoption-dev-20261030/runs/02-flask-hook-order-development-serena/review-before-source.json",
+              "sha256": "5e891d3d72626b698d8e1bdabc2f0b4f6eb601f2fd55003ce52d57f8a54bb51c",
+              "source_digest": "c18b59f896fc15ed8453d058c08214a1d8ad5cb1b9bde81527f698be530087b7",
+              "file_count": 251,
+              "head": "3ea458626d3c17275bd3f41c32eaeb8299edc968"
+            },
+            "source_after": {
+              "path": "/tmp/codenib-codegraph-adoption-dev-20261030/runs/02-flask-hook-order-development-serena/review-after-source.json",
+              "sha256": "5e891d3d72626b698d8e1bdabc2f0b4f6eb601f2fd55003ce52d57f8a54bb51c",
+              "source_digest": "c18b59f896fc15ed8453d058c08214a1d8ad5cb1b9bde81527f698be530087b7",
+              "file_count": 251,
+              "head": "3ea458626d3c17275bd3f41c32eaeb8299edc968"
+            },
+            "whitespace_word_count": 583,
+            "seconds": 39.96750369668007,
+            "accepted": true,
+            "serious_error": false,
+            "criteria": [
+              {
+                "name": "actual-order-and-tests",
+                "frozen_criterion": "Describe the actual callback ordering after the model patch, with correct source citations and relevant tests.",
+                "passed": true,
+                "rationale": "Patched app.py uses names in both loops; source/test citations describe stored registration order."
+              },
+              {
+                "name": "early-response-finalization",
+                "frozen_criterion": "Trace non-None preprocessing results through finalization; the view is skipped while normal response processing remains.",
+                "passed": true,
+                "rationale": "full_dispatch_request skips dispatch_request but calls finalize_request; process_response retains after callbacks and session save."
+              },
+              {
+                "name": "exception-paths",
+                "frozen_criterion": "Distinguish callback exceptions handled by the existing user error-handler path from errors that escape to the WSGI exception path.",
+                "passed": true,
+                "rationale": "Distinguishes handle_user_exception from WSGI handle_exception and conditional propagation."
+              },
+              {
+                "name": "teardown-error-semantics",
+                "frozen_criterion": "Describe request-context pop/teardown with the correct exception semantics and avoid claiming that every teardown always receives the same error.",
+                "passed": true,
+                "rationale": "ctx.pop(error) reaches do_teardown_request; handled versus escaping errors differ, including the explicit should_ignore_error branch."
+              }
+            ],
+            "source_files": {
+              "src/flask/app.py": "d439102c7658f90f896556c557df89501f2c98ad498d6317453f10ef58508710",
+              "src/flask/blueprints.py": "9d296c3a0dffffbafd59ef15290a6d4c2061a470f3ad2b00709388d35d1dddc0",
+              "src/flask/scaffold.py": "12d4caff83fd4f57d51c2d29ec0a873508ac035f596a100d1729edccd18d04ac",
+              "src/flask/wrappers.py": "7a5ded9f52e049457478d1a060c8ca2024f923ba862606e9221bdc8b89ebc10f",
+              "src/flask/helpers.py": "efa15481302a200fabae2498f5e6ff9ae002906bd0ad9550b91a32269d4a4c1e",
+              "src/flask/ctx.py": "6c611042e176fdc1ea67764d31e31e106f0738b2640e52fcf2ed810710ab45aa"
+            },
+            "verified_source_anchors": [
+              "src/flask/app.py:1493-1531",
+              "src/flask/app.py:1331-1414",
+              "src/flask/app.py:1979-2055",
+              "src/flask/app.py:2200-2221",
+              "src/flask/ctx.py:385-415",
+              "tests/test_blueprints.py:836-913"
+            ]
+          }
+        ]
+      },
+      {
+        "arm": "native",
+        "workflow_seconds": 88.80796892382205,
+        "setup_seconds": 0.00029545649886131287,
+        "task_seconds": 86.9282435644418,
+        "other_session_orchestration_seconds": 1.879429902881384,
+        "normalized_tokens": 246098,
+        "sdk_estimate_usd": 0.37487480000000006,
+        "accepted_tasks": 2,
+        "serious_error_tasks": 1,
+        "tool_attempts": {
+          "Bash": 9,
+          "Edit": 2,
+          "Grep": 2,
+          "Read": 5
+        },
+        "optional_mcp_attempts": 0,
+        "sdk_visible_optional_results": 0,
+        "product_cli_attempts": 0,
+        "source_inventory": "Six native tools retained; each optional product connected with its advertised entry/entries. SDK inventory is not a full HTTP schema observation.",
+        "tasks": [
+          {
+            "task_id": "hook-order-dev1-diagnose",
+            "kind": "lookup",
+            "answer_sha256": "1f77f3273badf4bcb37e0a445c4dd9bc34e40a70f02dec3c6acf7cac726284b9",
+            "source_before": {
+              "path": "/tmp/codenib-codegraph-adoption-dev-20261030/runs/03-flask-hook-order-development-native/lookup-before-source.json",
+              "sha256": "8d53e9b3968eaf54544d93e7d62ac0fb0eb72201dea696c84a283671e7b106c3",
+              "source_digest": "f99391573b2e6d084c018d85a359b58d4a1151e42ddb812292f0ad7fbbd9ce1c",
+              "file_count": 251,
+              "head": "3ea458626d3c17275bd3f41c32eaeb8299edc968"
+            },
+            "source_after": {
+              "path": "/tmp/codenib-codegraph-adoption-dev-20261030/runs/03-flask-hook-order-development-native/lookup-after-source.json",
+              "sha256": "8d53e9b3968eaf54544d93e7d62ac0fb0eb72201dea696c84a283671e7b106c3",
+              "source_digest": "f99391573b2e6d084c018d85a359b58d4a1151e42ddb812292f0ad7fbbd9ce1c",
+              "file_count": 251,
+              "head": "3ea458626d3c17275bd3f41c32eaeb8299edc968"
+            },
+            "whitespace_word_count": 437,
+            "seconds": 29.14315671660006,
+            "accepted": true,
+            "serious_error": false,
+            "criteria": [
+              {
+                "name": "current-loop",
+                "frozen_criterion": "Correctly describe the regressed current callback loop rather than canonical Flask behavior: the global namespace is omitted and the nested blueprint order is reversed.",
+                "passed": true,
+                "rationale": "Correct: before_request iterates raw inner-first request.blueprints, omits None; URL preprocessors retain names."
+              },
+              {
+                "name": "registration",
+                "frozen_criterion": "Trace callback registration and blueprint namespace merging to the application tables with correct source citations.",
+                "passed": true,
+                "rationale": "Scaffold.before_request stores under None; Blueprint.register extends tables under dotted names and recursively prefixes children."
+              },
+              {
+                "name": "order-and-preprocessors",
+                "frozen_criterion": "Explain inner-to-outer request.blueprints versus the intended global/outer-to-inner order and why value preprocessors are unaffected.",
+                "passed": true,
+                "rationale": "Correct app/outer/inner desired order, raw child/parent order, and unaffected URL preprocessors."
+              },
+              {
+                "name": "short-circuit",
+                "frozen_criterion": "Identify the pre-dispatch hook and non-None short circuit without claiming that response finalization or teardown is skipped.",
+                "passed": true,
+                "rationale": "Identifies preprocess_request and first non-None return without saying finalization or teardown is skipped."
+              }
+            ],
+            "source_files": {
+              "src/flask/app.py": "69a5a7bc8f1f63fe154cd422372fa950d39ba34eb2058f2980e103ec949c13a3",
+              "src/flask/blueprints.py": "9d296c3a0dffffbafd59ef15290a6d4c2061a470f3ad2b00709388d35d1dddc0",
+              "src/flask/scaffold.py": "12d4caff83fd4f57d51c2d29ec0a873508ac035f596a100d1729edccd18d04ac",
+              "src/flask/wrappers.py": "7a5ded9f52e049457478d1a060c8ca2024f923ba862606e9221bdc8b89ebc10f",
+              "src/flask/helpers.py": "efa15481302a200fabae2498f5e6ff9ae002906bd0ad9550b91a32269d4a4c1e",
+              "src/flask/ctx.py": "6c611042e176fdc1ea67764d31e31e106f0738b2640e52fcf2ed810710ab45aa"
+            },
+            "verified_source_anchors": [
+              "src/flask/app.py:1969-1994",
+              "src/flask/blueprints.py:297-356",
+              "src/flask/blueprints.py:374-402",
+              "src/flask/scaffold.py:535-555",
+              "src/flask/wrappers.py:76-109",
+              "src/flask/helpers.py:677-684"
+            ]
+          },
+          {
+            "task_id": "hook-order-dev1-repair",
+            "kind": "repair",
+            "answer_sha256": "edcebff7489ac618668276350f4feb045179a148b808449f2e2ccf74df3d7a27",
+            "source_before": {
+              "path": "/tmp/codenib-codegraph-adoption-dev-20261030/runs/03-flask-hook-order-development-native/repair-before-source.json",
+              "sha256": "8d53e9b3968eaf54544d93e7d62ac0fb0eb72201dea696c84a283671e7b106c3",
+              "source_digest": "f99391573b2e6d084c018d85a359b58d4a1151e42ddb812292f0ad7fbbd9ce1c",
+              "file_count": 251,
+              "head": "3ea458626d3c17275bd3f41c32eaeb8299edc968"
+            },
+            "source_after": {
+              "path": "/tmp/codenib-codegraph-adoption-dev-20261030/runs/03-flask-hook-order-development-native/repair-after-source.json",
+              "sha256": "a6785141dd433aff0a1d834b2a6a77e42962818fb64d443b2385caa2feb14bb0",
+              "source_digest": "2bb047eab912a6f5a6f1c3d3326b8a9b9959b75f01e50ce3afa34b62f3a73e75",
+              "file_count": 251,
+              "head": "3ea458626d3c17275bd3f41c32eaeb8299edc968"
+            },
+            "whitespace_word_count": 343,
+            "seconds": 33.984541822224855,
+            "accepted": true,
+            "serious_error": false,
+            "criteria": [],
+            "native_outcome": "6/6 passed; no collection or model/native test-path conflict",
+            "submission": {
+              "path": "repair.patch",
+              "sha256": "c1572f0f2c9a62ca9736a51c71c4a7f855efc197d6a1f95664630128bb7ecc3f",
+              "bytes": 2635,
+              "attribution": "whole workspace diff; includes any separately recorded setup metadata"
+            }
+          },
+          {
+            "task_id": "hook-order-dev1-review",
+            "kind": "review",
+            "answer_sha256": "6b825b556d9dd08fb0bc71ac03d09b1169e91f94281bf5ff7cc8bf50d9ebb0ea",
+            "source_before": {
+              "path": "/tmp/codenib-codegraph-adoption-dev-20261030/runs/03-flask-hook-order-development-native/review-before-source.json",
+              "sha256": "a6785141dd433aff0a1d834b2a6a77e42962818fb64d443b2385caa2feb14bb0",
+              "source_digest": "2bb047eab912a6f5a6f1c3d3326b8a9b9959b75f01e50ce3afa34b62f3a73e75",
+              "file_count": 251,
+              "head": "3ea458626d3c17275bd3f41c32eaeb8299edc968"
+            },
+            "source_after": {
+              "path": "/tmp/codenib-codegraph-adoption-dev-20261030/runs/03-flask-hook-order-development-native/review-after-source.json",
+              "sha256": "a6785141dd433aff0a1d834b2a6a77e42962818fb64d443b2385caa2feb14bb0",
+              "source_digest": "2bb047eab912a6f5a6f1c3d3326b8a9b9959b75f01e50ce3afa34b62f3a73e75",
+              "file_count": 251,
+              "head": "3ea458626d3c17275bd3f41c32eaeb8299edc968"
+            },
+            "whitespace_word_count": 533,
+            "seconds": 23.800545025616884,
+            "accepted": false,
+            "serious_error": true,
+            "criteria": [
+              {
+                "name": "actual-order-and-tests",
+                "frozen_criterion": "Describe the actual callback ordering after the model patch, with correct source citations and relevant tests.",
+                "passed": true,
+                "rationale": "Patched app.py uses names in both loops; source/test citations describe stored registration order."
+              },
+              {
+                "name": "early-response-finalization",
+                "frozen_criterion": "Trace non-None preprocessing results through finalization; the view is skipped while normal response processing remains.",
+                "passed": true,
+                "rationale": "full_dispatch_request skips dispatch_request but calls finalize_request; process_response retains after callbacks and session save."
+              },
+              {
+                "name": "exception-paths",
+                "frozen_criterion": "Distinguish callback exceptions handled by the existing user error-handler path from errors that escape to the WSGI exception path.",
+                "passed": false,
+                "rationale": "This omits the explicit PROPAGATE_EXCEPTIONS override; testing/debug are defaults only when that setting is None. The same answer also describes all handler-less callback exceptions as re-raised, without the untrapped HTTPException return path.",
+                "finding": {
+                  "quote": "In testing or debug mode it re-raises",
+                  "reason": "This omits the explicit PROPAGATE_EXCEPTIONS override; testing/debug are defaults only when that setting is None. The same answer also describes all handler-less callback exceptions as re-raised, without the untrapped HTTPException return path.",
+                  "counterevidence": [
+                    "src/flask/app.py:1393-1404 consults testing/debug only if PROPAGATE_EXCEPTIONS is None.",
+                    "src/flask/app.py:1353-1354 forwards untrapped HTTPException; :1291-1294 returns it when no handler exists."
+                  ],
+                  "executable": "source-claim-audit: testing=True plus PROPAGATE_EXCEPTIONS=False produces a finalized 500 without raising; abort(403) without a user handler returns 403 and teardown None."
+                }
+              },
+              {
+                "name": "teardown-error-semantics",
+                "frozen_criterion": "Describe request-context pop/teardown with the correct exception semantics and avoid claiming that every teardown always receives the same error.",
+                "passed": true,
+                "rationale": "ctx.pop(error) reaches do_teardown_request; handled versus escaping errors differ, including the explicit should_ignore_error branch."
+              }
+            ],
+            "source_files": {
+              "src/flask/app.py": "d439102c7658f90f896556c557df89501f2c98ad498d6317453f10ef58508710",
+              "src/flask/blueprints.py": "9d296c3a0dffffbafd59ef15290a6d4c2061a470f3ad2b00709388d35d1dddc0",
+              "src/flask/scaffold.py": "12d4caff83fd4f57d51c2d29ec0a873508ac035f596a100d1729edccd18d04ac",
+              "src/flask/wrappers.py": "7a5ded9f52e049457478d1a060c8ca2024f923ba862606e9221bdc8b89ebc10f",
+              "src/flask/helpers.py": "efa15481302a200fabae2498f5e6ff9ae002906bd0ad9550b91a32269d4a4c1e",
+              "src/flask/ctx.py": "6c611042e176fdc1ea67764d31e31e106f0738b2640e52fcf2ed810710ab45aa"
+            },
+            "verified_source_anchors": [
+              "src/flask/app.py:1493-1531",
+              "src/flask/app.py:1331-1414",
+              "src/flask/app.py:1979-2055",
+              "src/flask/app.py:2200-2221",
+              "src/flask/ctx.py:385-415",
+              "tests/test_blueprints.py:836-913"
+            ]
+          }
+        ]
+      }
+    ],
+    "native_repairs_passed": 4,
+    "native_cases_per_repair": 6,
+    "explanation_acceptance": {
+      "accepted": 5,
+      "total": 8
+    },
+    "criterion_instances": 32,
+    "criterion_passed": 29,
+    "descriptive_codenib_comparisons": {
+      "codegraph": {
+        "time_change_percent": 37.53881613036154,
+        "normalized_usage_change_percent": 66.99340621440469
+      },
+      "serena": {
+        "time_change_percent": -28.430071732977712,
+        "normalized_usage_change_percent": 26.524893412185403
+      },
+      "native": {
+        "time_change_percent": 22.614532039638704,
+        "normalized_usage_change_percent": 49.52783037651667
+      }
+    },
+    "total_normalized_tokens": 1125282,
+    "round_sdk_estimate_usd": 1.8922420999999998,
+    "cumulative_sdk_estimate_usd": 22.4119693,
+    "api_invoice_cost_usd": null,
+    "complete_http_request_count": null,
+    "claims_audit": "Retrospective executable counterexamples corroborate unchanged frozen source criteria; they are not added native grading cases or model inputs.",
+    "wide_test_failures": "The captured model runs retain their three/eight wider-suite failures. A separate canonical-reference full-suite diagnostic has the same eight failing test IDs (466 pass, ten skip); native six-case grades remain separate and unchanged.",
+    "instruction_compliance_notes": "Whitespace word counts show review overlength for Codegraph (656) and CodeNib (623). The frozen source rubric has no numeric word-count grading rule; retain these deviations without inventing a new post-hoc acceptance criterion. Minor line-number drift and broad safe-finalization wording remain interpretation limits, not a new grading protocol.",
+    "decision": [
+      "No demonstrated whole-task advantage: CodeNib is slower than native/Codegraph, has more normalized usage and lower source acceptance.",
+      "CodeNib and Serena receive no voluntary MCP/CLI use; a raw time difference between native-fallback workflows is not backend efficacy.",
+      "All four patches make the same one-line production fix and pass all six hidden native cases, without erasing explanation errors or broader-suite failures.",
+      "The on-demand path avoids unused provider/graph preparation here; requested-body delivery is proven only by operator controls, not called by these model tasks.",
+      "Preserve both earlier cohorts and this complete development round. Do not repeat exposed tasks to seek a positive score.",
+      "Next engineering gate: establish useful voluntary use on a source-linked cross-file task and test concrete task-fit/tool-entry hypotheses before independent confirmation.",
+      "Two independent confirmation sets, representative update coverage and five-user consent/reuse remain open; enrollment 0/5 and no outreach."
+    ]
+  },
+  "file_index": [
+    {
+      "path": "assess-development-v1.py",
+      "bytes": 14715,
+      "sha256": "3061734c78062eab739ed66c39602fb86f52bfc787084a0a8a748f66f36ab43f",
+      "chunks": 1
+    },
+    {
+      "path": "assessment-controller-attempts.json",
+      "bytes": 247,
+      "sha256": "c991b1f850d22b3d99393950264ac142d59ec4ecfd62c2b6f4a2adc6e3454be8",
+      "chunks": 1
+    },
+    {
+      "path": "audit-development-claims-v1.py",
+      "bytes": 6156,
+      "sha256": "98ca51af7932472fdcadebe5b26a7b07316dc1f56d0847551be88a864e10f56d",
+      "chunks": 1
+    },
+    {
+      "path": "check_native_readiness.py",
+      "bytes": 3824,
+      "sha256": "67b4cf0f561c7c7de8017cdae190c93a1300f81334759c475434f9cdab366c58",
+      "chunks": 1
+    },
+    {
+      "path": "development-answers.json",
+      "bytes": 43344,
+      "sha256": "de14920febb77e457b0a8d6c3e34054de102ce65afbe2918e8dbe1dd6e1f2b06",
+      "chunks": 1
+    },
+    {
+      "path": "development-assessment.json",
+      "bytes": 47743,
+      "sha256": "94c48c8f02d1cfb7619af340f3d6a11440db74480223f4020a3e23c6832dc1db",
+      "chunks": 1
+    },
+    {
+      "path": "development-controller-receipt.json",
+      "bytes": 2685,
+      "sha256": "b79e02e62c3f9140be6febb457d0ed2678fb49d2574d493435e7c68f5b676241",
+      "chunks": 1
+    },
+    {
+      "path": "development-model-0-controller.log",
+      "bytes": 565,
+      "sha256": "2cecb784c3191c1aca04dfd1e327feb8bfb56e8e4464d0d7e0e3225ac299c9be",
+      "chunks": 1
+    },
+    {
+      "path": "development-model-1-controller.log",
+      "bytes": 574,
+      "sha256": "9a78b5e68befbe1dd004bfdc802d5d71c02f59f0d874519ae324277957a0ab8d",
+      "chunks": 1
+    },
+    {
+      "path": "development-model-2-controller.log",
+      "bytes": 520,
+      "sha256": "f8036437305a55abda97ee74c96141debcad796f96be9e74ad0288737ea57aae",
+      "chunks": 1
+    },
+    {
+      "path": "development-model-3-controller.log",
+      "bytes": 392,
+      "sha256": "1f7e85249175ea50c40b2596482546e873c26a52a207d9945da1a48a748fbb8e",
+      "chunks": 1
+    },
+    {
+      "path": "development-model-controller.log",
+      "bytes": 403,
+      "sha256": "892a035c47ed55cda8a5b741cb990758a22219f7d99eaa55221e1b8b60611190",
+      "chunks": 1
+    },
+    {
+      "path": "driver-attempts/assessment-markdown-quote-v1.py",
+      "bytes": 14709,
+      "sha256": "ac22824af09a7cefdae3ae13cac63e4511e06891304aa0ab410778e1c023f423",
+      "chunks": 1
+    },
+    {
+      "path": "grade-development-v1.py",
+      "bytes": 7624,
+      "sha256": "5d4425ed674ade6f1dc7da7f5c56a000817af5237c6ef9811f1a4236042c6632",
+      "chunks": 1
+    },
+    {
+      "path": "native-grading/00-codegraph/collection.log",
+      "bytes": 736,
+      "sha256": "e8c1b64327a562fd481d837cb176aa7fab35694c36250bcfa4211eecb35b45bf",
+      "chunks": 1
+    },
+    {
+      "path": "native-grading/00-codegraph/grading.log",
+      "bytes": 1010,
+      "sha256": "133233be9d8fcaa613fe2cc0f575f939cebd979c54603e10b8fd66ba16546dc1",
+      "chunks": 1
+    },
+    {
+      "path": "native-grading/00-codegraph/install.log",
+      "bytes": 1529,
+      "sha256": "c7bb5aec2ae846f4223b226f51e24138ec2cc373fcd6f9164a19adfc8a3bbc04",
+      "chunks": 1
+    },
+    {
+      "path": "native-grading/01-codenib/collection.log",
+      "bytes": 736,
+      "sha256": "815de28b5ad5e10d04cccad8e96a22a4e6b498bfcb87a5fc4886d8c868551f08",
+      "chunks": 1
+    },
+    {
+      "path": "native-grading/01-codenib/grading.log",
+      "bytes": 1010,
+      "sha256": "133233be9d8fcaa613fe2cc0f575f939cebd979c54603e10b8fd66ba16546dc1",
+      "chunks": 1
+    },
+    {
+      "path": "native-grading/01-codenib/install.log",
+      "bytes": 1527,
+      "sha256": "88f948a530c04af9142782c6d230e82937cfda682959ded152a827271025a72c",
+      "chunks": 1
+    },
+    {
+      "path": "native-grading/02-serena/collection.log",
+      "bytes": 736,
+      "sha256": "e8c1b64327a562fd481d837cb176aa7fab35694c36250bcfa4211eecb35b45bf",
+      "chunks": 1
+    },
+    {
+      "path": "native-grading/02-serena/grading.log",
+      "bytes": 1010,
+      "sha256": "133233be9d8fcaa613fe2cc0f575f939cebd979c54603e10b8fd66ba16546dc1",
+      "chunks": 1
+    },
+    {
+      "path": "native-grading/02-serena/install.log",
+      "bytes": 1526,
+      "sha256": "3a07fd82dbbe42f023267322a76b3ec3639427b0cddb6c35398fb077ea6f80a5",
+      "chunks": 1
+    },
+    {
+      "path": "native-grading/03-native/collection.log",
+      "bytes": 736,
+      "sha256": "e8c1b64327a562fd481d837cb176aa7fab35694c36250bcfa4211eecb35b45bf",
+      "chunks": 1
+    },
+    {
+      "path": "native-grading/03-native/grading.log",
+      "bytes": 1010,
+      "sha256": "133233be9d8fcaa613fe2cc0f575f939cebd979c54603e10b8fd66ba16546dc1",
+      "chunks": 1
+    },
+    {
+      "path": "native-grading/03-native/install.log",
+      "bytes": 1526,
+      "sha256": "bb1d2d7cf201ae60ee8b52a0240509d6cdb69e113c631ea83ee77a661143b2a0",
+      "chunks": 1
+    },
+    {
+      "path": "native-grading/receipt.json",
+      "bytes": 15376,
+      "sha256": "3a7c706e874a0f1532ba276807e8ceee214d0f6dfa743107f54ad916b3846342",
+      "chunks": 1
+    },
+    {
+      "path": "native-grading-controller.log",
+      "bytes": 68,
+      "sha256": "659ca8b5351b6af3b5f1e2a80ed7786f158c8d0dd963ef7fb9e7294b0c362f5d",
+      "chunks": 1
+    },
+    {
+      "path": "native-grading-runner-prepared.json",
+      "bytes": 378,
+      "sha256": "c6975a0b91b08dbb63a4b9dfeff6708ab12ecf733071950b8fc0b9dc16c3220e",
+      "chunks": 1
+    },
+    {
+      "path": "native-readiness/receipt.json",
+      "bytes": 5804,
+      "sha256": "f0dd8dca0006202d434cac9e17fc6ebe27454dfab9ee69bace96be1382527e7a",
+      "chunks": 1
+    },
+    {
+      "path": "native-readiness/reference/collection.log",
+      "bytes": 736,
+      "sha256": "e8c1b64327a562fd481d837cb176aa7fab35694c36250bcfa4211eecb35b45bf",
+      "chunks": 1
+    },
+    {
+      "path": "native-readiness/reference/grading.log",
+      "bytes": 98,
+      "sha256": "3ab69c44c0781c70d7a226d92c2a74efdd9fbb158b6a5cd1669d62cace44568c",
+      "chunks": 1
+    },
+    {
+      "path": "native-readiness/reference/install.log",
+      "bytes": 1528,
+      "sha256": "620f9b3a12b0eadcc7e14c18060db31b09f2511671cf7387a389c1de6f8349e0",
+      "chunks": 1
+    },
+    {
+      "path": "native-readiness/regressed/collection.log",
+      "bytes": 736,
+      "sha256": "e8c1b64327a562fd481d837cb176aa7fab35694c36250bcfa4211eecb35b45bf",
+      "chunks": 1
+    },
+    {
+      "path": "native-readiness/regressed/grading.log",
+      "bytes": 3637,
+      "sha256": "2287eec8b47b3d76435797d4134cd2499f088c0b3ec6e40afe9c1a275c0abbc0",
+      "chunks": 1
+    },
+    {
+      "path": "native-readiness/regressed/install.log",
+      "bytes": 1528,
+      "sha256": "87de9a10f9cf19f380bd70e585e03963b26698621fe125fc0f4ed6043cdf0645",
+      "chunks": 1
+    },
+    {
+      "path": "package-development-v1.py",
+      "bytes": 7282,
+      "sha256": "6a2858347c4ca85afd092f3edc6deeaca9af5bbc16e07aa6d6aa00fa992c8cac",
+      "chunks": 1
+    },
+    {
+      "path": "prepare_task.py",
+      "bytes": 2350,
+      "sha256": "e6b3e6e8d2adfc1f4a2f30e2a07f463cc23c91b36634edf3e73f3b8b68e87d3d",
+      "chunks": 1
+    },
+    {
+      "path": "private-grading/reference-app.py",
+      "bytes": 88074,
+      "sha256": "d439102c7658f90f896556c557df89501f2c98ad498d6317453f10ef58508710",
+      "chunks": 1
+    },
+    {
+      "path": "private-grading/rubric-draft.json",
+      "bytes": 2918,
+      "sha256": "16ac73e9fbbf665c05cf4539614a57902a652c77ba074088a9a11af0e7124aab",
+      "chunks": 1
+    },
+    {
+      "path": "private-grading/test_request_hook_contract.py",
+      "bytes": 3392,
+      "sha256": "7b5d335f3ed2e9819e1465f8624b8dd90fc726e1705377cc5250ed6c9665b37e",
+      "chunks": 1
+    },
+    {
+      "path": "runs/00-flask-hook-order-development-codegraph/bundle.log",
+      "bytes": 6,
+      "sha256": "a2d5e268fe70979caccd895156b3d33bd61a3cc7e660ab7a5b07066849b3e248",
+      "chunks": 1
+    },
+    {
+      "path": "runs/00-flask-hook-order-development-codegraph/common-directories.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "runs/00-flask-hook-order-development-codegraph/common-git.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "runs/00-flask-hook-order-development-codegraph/common-project.log",
+      "bytes": 2259,
+      "sha256": "ee2ab84c843eaac99b84b7ec9ca0bacf4c24f53e8541091b1dea007a1b658fc1",
+      "chunks": 1
+    },
+    {
+      "path": "runs/00-flask-hook-order-development-codegraph/common-source.json",
+      "bytes": 37243,
+      "sha256": "8d53e9b3968eaf54544d93e7d62ac0fb0eb72201dea696c84a283671e7b106c3",
+      "chunks": 1
+    },
+    {
+      "path": "runs/00-flask-hook-order-development-codegraph/common-workspace-owner.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "runs/00-flask-hook-order-development-codegraph/hooks.jsonl",
+      "bytes": 222637,
+      "sha256": "158ad460ba37e71939dd01f8b5170fa58639e3627063160a9f523baf4ae53246",
+      "chunks": 1
+    },
+    {
+      "path": "runs/00-flask-hook-order-development-codegraph/initialize-product.log",
+      "bytes": 322,
+      "sha256": "8fde66fbbaae778d43399bdc64710716810122c8c76604d182b4051e56084f51",
+      "chunks": 1
+    },
+    {
+      "path": "runs/00-flask-hook-order-development-codegraph/install-product.log",
+      "bytes": 232,
+      "sha256": "fabb28d6da92ffd83b8b184d0fd0befb3e32dc4ea794f0a12ccc673e2ffe0819",
+      "chunks": 1
+    },
+    {
+      "path": "runs/00-flask-hook-order-development-codegraph/launcher.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "runs/00-flask-hook-order-development-codegraph/lookup-after-source.json",
+      "bytes": 37243,
+      "sha256": "8d53e9b3968eaf54544d93e7d62ac0fb0eb72201dea696c84a283671e7b106c3",
+      "chunks": 1
+    },
+    {
+      "path": "runs/00-flask-hook-order-development-codegraph/lookup-before-source.json",
+      "bytes": 37243,
+      "sha256": "8d53e9b3968eaf54544d93e7d62ac0fb0eb72201dea696c84a283671e7b106c3",
+      "chunks": 1
+    },
+    {
+      "path": "runs/00-flask-hook-order-development-codegraph/lookup-sdk.jsonl",
+      "bytes": 48458,
+      "sha256": "529114a9ae3c5266a409e6a7fa0e2c4654b8e57822ccd4f1c7d76994f26918ef",
+      "chunks": 1
+    },
+    {
+      "path": "runs/00-flask-hook-order-development-codegraph/pre-model-source.json",
+      "bytes": 37243,
+      "sha256": "8d53e9b3968eaf54544d93e7d62ac0fb0eb72201dea696c84a283671e7b106c3",
+      "chunks": 1
+    },
+    {
+      "path": "runs/00-flask-hook-order-development-codegraph/pre-model.patch",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "runs/00-flask-hook-order-development-codegraph/receipt.json",
+      "bytes": 76847,
+      "sha256": "c1d5dd8f8146badd2938dbaf62f81e2b55cd126e3858200a011c61d81d9f5bc0",
+      "chunks": 1
+    },
+    {
+      "path": "runs/00-flask-hook-order-development-codegraph/repair-after-source.json",
+      "bytes": 37243,
+      "sha256": "cfd18cde388030cadce6cb46823f607d210e492cf9117eb85b23e85e3b68f313",
+      "chunks": 1
+    },
+    {
+      "path": "runs/00-flask-hook-order-development-codegraph/repair-before-source.json",
+      "bytes": 37243,
+      "sha256": "8d53e9b3968eaf54544d93e7d62ac0fb0eb72201dea696c84a283671e7b106c3",
+      "chunks": 1
+    },
+    {
+      "path": "runs/00-flask-hook-order-development-codegraph/repair-sdk.jsonl",
+      "bytes": 48106,
+      "sha256": "c929c20725a28849a2576319d5b80fdd2419a55d3f24ce2c3945e291618c6579",
+      "chunks": 1
+    },
+    {
+      "path": "runs/00-flask-hook-order-development-codegraph/repair.patch",
+      "bytes": 2781,
+      "sha256": "7c0f380dfa6e4877a43e2deeb9369fd229ab9e945264311a20aa54194181979c",
+      "chunks": 1
+    },
+    {
+      "path": "runs/00-flask-hook-order-development-codegraph/review-after-source.json",
+      "bytes": 37243,
+      "sha256": "cfd18cde388030cadce6cb46823f607d210e492cf9117eb85b23e85e3b68f313",
+      "chunks": 1
+    },
+    {
+      "path": "runs/00-flask-hook-order-development-codegraph/review-before-source.json",
+      "bytes": 37243,
+      "sha256": "cfd18cde388030cadce6cb46823f607d210e492cf9117eb85b23e85e3b68f313",
+      "chunks": 1
+    },
+    {
+      "path": "runs/00-flask-hook-order-development-codegraph/review-sdk.jsonl",
+      "bytes": 37709,
+      "sha256": "5e803174b08be0627d29759ae1cc48fb83a960d17a4339fbc1ef73e373632ec3",
+      "chunks": 1
+    },
+    {
+      "path": "runs/00-flask-hook-order-development-codegraph/verify-product-identity.log",
+      "bytes": 336197,
+      "sha256": "6f1404d8f95e599b224a95a72b38dfef54a63cbcbba9b0284ca7f9ecfa912341",
+      "chunks": 1
+    },
+    {
+      "path": "runs/00-flask-hook-order-development-codegraph/verify-target-identity.log",
+      "bytes": 1781,
+      "sha256": "2e89290cb04be301e47ec0cc4554d474ce122f8684cffb118dba3fde3c829be0",
+      "chunks": 1
+    },
+    {
+      "path": "runs/01-flask-hook-order-development-codenib/common-directories.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "runs/01-flask-hook-order-development-codenib/common-git.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "runs/01-flask-hook-order-development-codenib/common-project.log",
+      "bytes": 2257,
+      "sha256": "5b4bc683b4a89403bd273ab6671cd9a6702098e449f593d73614703868585b9d",
+      "chunks": 1
+    },
+    {
+      "path": "runs/01-flask-hook-order-development-codenib/common-source.json",
+      "bytes": 37243,
+      "sha256": "8d53e9b3968eaf54544d93e7d62ac0fb0eb72201dea696c84a283671e7b106c3",
+      "chunks": 1
+    },
+    {
+      "path": "runs/01-flask-hook-order-development-codenib/common-workspace-owner.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "runs/01-flask-hook-order-development-codenib/final-graph-status.log",
+      "bytes": 124,
+      "sha256": "add2bb9fc244d506f4ee03da480ec1ca70a4acc9fa87fd9521f1a6bf53227a37",
+      "chunks": 1
+    },
+    {
+      "path": "runs/01-flask-hook-order-development-codenib/hooks.jsonl",
+      "bytes": 360050,
+      "sha256": "1da45fcb3d34b42455c70959b57c9fa0e8affb3507465a456bc1293245988a00",
+      "chunks": 1
+    },
+    {
+      "path": "runs/01-flask-hook-order-development-codenib/initialize-product.log",
+      "bytes": 1457,
+      "sha256": "772aaefa60f5ff93dc5c3b4b6bc600a2555ce1c5cb65700452f879dd50e738c4",
+      "chunks": 1
+    },
+    {
+      "path": "runs/01-flask-hook-order-development-codenib/install-product.log",
+      "bytes": 1526,
+      "sha256": "a5fcf0b5468c4e695e975d1c2377abdb1187a112d4cf893aac9db41fa36525ee",
+      "chunks": 1
+    },
+    {
+      "path": "runs/01-flask-hook-order-development-codenib/launcher.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "runs/01-flask-hook-order-development-codenib/lookup-after-source.json",
+      "bytes": 37243,
+      "sha256": "8d53e9b3968eaf54544d93e7d62ac0fb0eb72201dea696c84a283671e7b106c3",
+      "chunks": 1
+    },
+    {
+      "path": "runs/01-flask-hook-order-development-codenib/lookup-before-source.json",
+      "bytes": 37243,
+      "sha256": "8d53e9b3968eaf54544d93e7d62ac0fb0eb72201dea696c84a283671e7b106c3",
+      "chunks": 1
+    },
+    {
+      "path": "runs/01-flask-hook-order-development-codenib/lookup-sdk.jsonl",
+      "bytes": 29795,
+      "sha256": "6fd4bcc44850acf24d15838625e3a5cc906133a1f78def3545957fad4e497456",
+      "chunks": 1
+    },
+    {
+      "path": "runs/01-flask-hook-order-development-codenib/pre-model-source.json",
+      "bytes": 37243,
+      "sha256": "8d53e9b3968eaf54544d93e7d62ac0fb0eb72201dea696c84a283671e7b106c3",
+      "chunks": 1
+    },
+    {
+      "path": "runs/01-flask-hook-order-development-codenib/pre-model.patch",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "runs/01-flask-hook-order-development-codenib/product-venv.log",
+      "bytes": 138,
+      "sha256": "7e70384cac45258a54a81bd9d47effc9a7bac0432781acf88986c2f78b5b6f23",
+      "chunks": 1
+    },
+    {
+      "path": "runs/01-flask-hook-order-development-codenib/receipt.json",
+      "bytes": 77836,
+      "sha256": "96114619fcfda2bab7c0d7ca74725a2034483313b3127dc5747907be9cb782e3",
+      "chunks": 1
+    },
+    {
+      "path": "runs/01-flask-hook-order-development-codenib/repair-after-source.json",
+      "bytes": 37243,
+      "sha256": "fd2fa9795d9d977ad2b0ff61c70212dc90415102990b3a9eaab645084d24bdf0",
+      "chunks": 1
+    },
+    {
+      "path": "runs/01-flask-hook-order-development-codenib/repair-before-source.json",
+      "bytes": 37243,
+      "sha256": "8d53e9b3968eaf54544d93e7d62ac0fb0eb72201dea696c84a283671e7b106c3",
+      "chunks": 1
+    },
+    {
+      "path": "runs/01-flask-hook-order-development-codenib/repair-sdk.jsonl",
+      "bytes": 65027,
+      "sha256": "502bf5fa0df7f7f7a7c3cdcb93cabd4e0d1503c80891c3de01afbff2f1542b5c",
+      "chunks": 1
+    },
+    {
+      "path": "runs/01-flask-hook-order-development-codenib/repair.patch",
+      "bytes": 2974,
+      "sha256": "71fe176c41acb987cfacc2cdc2131317f471fb9d3c787f4cdb8e52b126164068",
+      "chunks": 1
+    },
+    {
+      "path": "runs/01-flask-hook-order-development-codenib/review-after-source.json",
+      "bytes": 37243,
+      "sha256": "fd2fa9795d9d977ad2b0ff61c70212dc90415102990b3a9eaab645084d24bdf0",
+      "chunks": 1
+    },
+    {
+      "path": "runs/01-flask-hook-order-development-codenib/review-before-source.json",
+      "bytes": 37243,
+      "sha256": "fd2fa9795d9d977ad2b0ff61c70212dc90415102990b3a9eaab645084d24bdf0",
+      "chunks": 1
+    },
+    {
+      "path": "runs/01-flask-hook-order-development-codenib/review-sdk.jsonl",
+      "bytes": 47272,
+      "sha256": "12186ae0f775e2ad94e0bba9464abb3d1623698bdcd7f247385e652b6f21d3d8",
+      "chunks": 1
+    },
+    {
+      "path": "runs/01-flask-hook-order-development-codenib/verify-product-identity.log",
+      "bytes": 1227,
+      "sha256": "f8a1667857a1564c825c09d2dad2586badc68e3ce0736ab7feaebe464a86ee2e",
+      "chunks": 1
+    },
+    {
+      "path": "runs/01-flask-hook-order-development-codenib/verify-target-identity.log",
+      "bytes": 1781,
+      "sha256": "2e89290cb04be301e47ec0cc4554d474ce122f8684cffb118dba3fde3c829be0",
+      "chunks": 1
+    },
+    {
+      "path": "runs/02-flask-hook-order-development-serena/common-directories.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "runs/02-flask-hook-order-development-serena/common-git.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "runs/02-flask-hook-order-development-serena/common-project.log",
+      "bytes": 2256,
+      "sha256": "e1d8bce4f28b54dbb423b6d0ff5b8ba75a37e6e9e08203c149a6b4b25bd3329b",
+      "chunks": 1
+    },
+    {
+      "path": "runs/02-flask-hook-order-development-serena/common-source.json",
+      "bytes": 37243,
+      "sha256": "8d53e9b3968eaf54544d93e7d62ac0fb0eb72201dea696c84a283671e7b106c3",
+      "chunks": 1
+    },
+    {
+      "path": "runs/02-flask-hook-order-development-serena/common-workspace-owner.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "runs/02-flask-hook-order-development-serena/hooks.jsonl",
+      "bytes": 198649,
+      "sha256": "f0adc8a9b300ac6fcf754c53047aa8b1dea8440e42d6992a383e4548c27c8bd5",
+      "chunks": 1
+    },
+    {
+      "path": "runs/02-flask-hook-order-development-serena/initialize-product.log",
+      "bytes": 172,
+      "sha256": "9609c63a536c0e6519b5eda74a03906f63617bd4e7be8df97903370ceeec7917",
+      "chunks": 1
+    },
+    {
+      "path": "runs/02-flask-hook-order-development-serena/install-product.log",
+      "bytes": 2110,
+      "sha256": "8446c000c258c65fcca36219b198bfd8cdc93701f00912f0515bf31a52aa2362",
+      "chunks": 1
+    },
+    {
+      "path": "runs/02-flask-hook-order-development-serena/lookup-after-source.json",
+      "bytes": 37243,
+      "sha256": "8d53e9b3968eaf54544d93e7d62ac0fb0eb72201dea696c84a283671e7b106c3",
+      "chunks": 1
+    },
+    {
+      "path": "runs/02-flask-hook-order-development-serena/lookup-before-source.json",
+      "bytes": 37243,
+      "sha256": "8d53e9b3968eaf54544d93e7d62ac0fb0eb72201dea696c84a283671e7b106c3",
+      "chunks": 1
+    },
+    {
+      "path": "runs/02-flask-hook-order-development-serena/lookup-sdk.jsonl",
+      "bytes": 33911,
+      "sha256": "a1cf828ac50f3d77dba1d56e2417b5efab240ef8556a27b909adb9b8a9f36c29",
+      "chunks": 1
+    },
+    {
+      "path": "runs/02-flask-hook-order-development-serena/pre-model-source.json",
+      "bytes": 37243,
+      "sha256": "8d53e9b3968eaf54544d93e7d62ac0fb0eb72201dea696c84a283671e7b106c3",
+      "chunks": 1
+    },
+    {
+      "path": "runs/02-flask-hook-order-development-serena/pre-model.patch",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "runs/02-flask-hook-order-development-serena/prepare-python-provider.log",
+      "bytes": 323,
+      "sha256": "b9fda57931f4576a8122598add92dff632aaa78273930c93aeaa113adbc64d3f",
+      "chunks": 1
+    },
+    {
+      "path": "runs/02-flask-hook-order-development-serena/receipt.json",
+      "bytes": 75787,
+      "sha256": "23fdb1302c20b997eed927885dd7d65472fb78609441d4145f2eaa5a2627c912",
+      "chunks": 1
+    },
+    {
+      "path": "runs/02-flask-hook-order-development-serena/repair-after-source.json",
+      "bytes": 37243,
+      "sha256": "5e891d3d72626b698d8e1bdabc2f0b4f6eb601f2fd55003ce52d57f8a54bb51c",
+      "chunks": 1
+    },
+    {
+      "path": "runs/02-flask-hook-order-development-serena/repair-before-source.json",
+      "bytes": 37243,
+      "sha256": "8d53e9b3968eaf54544d93e7d62ac0fb0eb72201dea696c84a283671e7b106c3",
+      "chunks": 1
+    },
+    {
+      "path": "runs/02-flask-hook-order-development-serena/repair-sdk.jsonl",
+      "bytes": 44926,
+      "sha256": "3b9bbccd5c2d7ac7b44e10f21d1e8e1c1feb48a9c92019da34d58248caf8fce6",
+      "chunks": 1
+    },
+    {
+      "path": "runs/02-flask-hook-order-development-serena/repair.patch",
+      "bytes": 2694,
+      "sha256": "9d3eaa5eccda148fd75ad895edd7a2c4a2bd912c2bb623bd08169c13438ffcb7",
+      "chunks": 1
+    },
+    {
+      "path": "runs/02-flask-hook-order-development-serena/review-after-source.json",
+      "bytes": 37243,
+      "sha256": "5e891d3d72626b698d8e1bdabc2f0b4f6eb601f2fd55003ce52d57f8a54bb51c",
+      "chunks": 1
+    },
+    {
+      "path": "runs/02-flask-hook-order-development-serena/review-before-source.json",
+      "bytes": 37243,
+      "sha256": "5e891d3d72626b698d8e1bdabc2f0b4f6eb601f2fd55003ce52d57f8a54bb51c",
+      "chunks": 1
+    },
+    {
+      "path": "runs/02-flask-hook-order-development-serena/review-sdk.jsonl",
+      "bytes": 31723,
+      "sha256": "ff275fe14c8f86ce205547f4b1d4d14cd3423822b0262f0034a8ee987eeead85",
+      "chunks": 1
+    },
+    {
+      "path": "runs/02-flask-hook-order-development-serena/verify-product-identity.log",
+      "bytes": 1806,
+      "sha256": "20fbfce4343add74b795d00ebfaf92915b0957f0bd71540efd745524e3ede72f",
+      "chunks": 1
+    },
+    {
+      "path": "runs/02-flask-hook-order-development-serena/verify-target-identity.log",
+      "bytes": 1781,
+      "sha256": "2e89290cb04be301e47ec0cc4554d474ce122f8684cffb118dba3fde3c829be0",
+      "chunks": 1
+    },
+    {
+      "path": "runs/03-flask-hook-order-development-native/common-directories.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "runs/03-flask-hook-order-development-native/common-git.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "runs/03-flask-hook-order-development-native/common-project.log",
+      "bytes": 2256,
+      "sha256": "2ea7d78ba37f14292cc5fa350e0675514fb51d8aff45370eb2a142ccd5a2064f",
+      "chunks": 1
+    },
+    {
+      "path": "runs/03-flask-hook-order-development-native/common-source.json",
+      "bytes": 37243,
+      "sha256": "8d53e9b3968eaf54544d93e7d62ac0fb0eb72201dea696c84a283671e7b106c3",
+      "chunks": 1
+    },
+    {
+      "path": "runs/03-flask-hook-order-development-native/common-workspace-owner.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "runs/03-flask-hook-order-development-native/hooks.jsonl",
+      "bytes": 199467,
+      "sha256": "cac8e5b879f3fe683c834db56d7a6040bd26f22634558303b72442ad3906f8d1",
+      "chunks": 1
+    },
+    {
+      "path": "runs/03-flask-hook-order-development-native/lookup-after-source.json",
+      "bytes": 37243,
+      "sha256": "8d53e9b3968eaf54544d93e7d62ac0fb0eb72201dea696c84a283671e7b106c3",
+      "chunks": 1
+    },
+    {
+      "path": "runs/03-flask-hook-order-development-native/lookup-before-source.json",
+      "bytes": 37243,
+      "sha256": "8d53e9b3968eaf54544d93e7d62ac0fb0eb72201dea696c84a283671e7b106c3",
+      "chunks": 1
+    },
+    {
+      "path": "runs/03-flask-hook-order-development-native/lookup-sdk.jsonl",
+      "bytes": 34624,
+      "sha256": "13f1a1c0179abdf46c9008ca376fd66db2be72f73267d8a5d9aef358c9f01a2e",
+      "chunks": 1
+    },
+    {
+      "path": "runs/03-flask-hook-order-development-native/pre-model-source.json",
+      "bytes": 37243,
+      "sha256": "8d53e9b3968eaf54544d93e7d62ac0fb0eb72201dea696c84a283671e7b106c3",
+      "chunks": 1
+    },
+    {
+      "path": "runs/03-flask-hook-order-development-native/pre-model.patch",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "runs/03-flask-hook-order-development-native/receipt.json",
+      "bytes": 70651,
+      "sha256": "f177ef1ba095891ae2c0ebb4dfa80ca965e5382a4a101e8cc8393730abae411f",
+      "chunks": 1
+    },
+    {
+      "path": "runs/03-flask-hook-order-development-native/repair-after-source.json",
+      "bytes": 37243,
+      "sha256": "a6785141dd433aff0a1d834b2a6a77e42962818fb64d443b2385caa2feb14bb0",
+      "chunks": 1
+    },
+    {
+      "path": "runs/03-flask-hook-order-development-native/repair-before-source.json",
+      "bytes": 37243,
+      "sha256": "8d53e9b3968eaf54544d93e7d62ac0fb0eb72201dea696c84a283671e7b106c3",
+      "chunks": 1
+    },
+    {
+      "path": "runs/03-flask-hook-order-development-native/repair-sdk.jsonl",
+      "bytes": 42360,
+      "sha256": "f26e9bfb769d2f3724369b54517417c290fa3f5e74aa41a156a96732ae0959f2",
+      "chunks": 1
+    },
+    {
+      "path": "runs/03-flask-hook-order-development-native/repair.patch",
+      "bytes": 2635,
+      "sha256": "c1572f0f2c9a62ca9736a51c71c4a7f855efc197d6a1f95664630128bb7ecc3f",
+      "chunks": 1
+    },
+    {
+      "path": "runs/03-flask-hook-order-development-native/review-after-source.json",
+      "bytes": 37243,
+      "sha256": "a6785141dd433aff0a1d834b2a6a77e42962818fb64d443b2385caa2feb14bb0",
+      "chunks": 1
+    },
+    {
+      "path": "runs/03-flask-hook-order-development-native/review-before-source.json",
+      "bytes": 37243,
+      "sha256": "a6785141dd433aff0a1d834b2a6a77e42962818fb64d443b2385caa2feb14bb0",
+      "chunks": 1
+    },
+    {
+      "path": "runs/03-flask-hook-order-development-native/review-sdk.jsonl",
+      "bytes": 30468,
+      "sha256": "53dc5b2ee11df1e9e47d68d809d3d1aa802052401a39f0ee50764ded2068f7f1",
+      "chunks": 1
+    },
+    {
+      "path": "runs/03-flask-hook-order-development-native/verify-target-identity.log",
+      "bytes": 1781,
+      "sha256": "2e89290cb04be301e47ec0cc4554d474ce122f8684cffb118dba3fde3c829be0",
+      "chunks": 1
+    },
+    {
+      "path": "source-claim-audit/codenib-captured-source/claims.log",
+      "bytes": 891,
+      "sha256": "c6166a2f32f9c47ea2c3fede3754c419d7c7543e52a3c4308964453e73cfd786",
+      "chunks": 1
+    },
+    {
+      "path": "source-claim-audit/codenib-captured-source/install.log",
+      "bytes": 1544,
+      "sha256": "89d6c24637daba5796dfb01fd276e54436d4c28879e05e5c6896cccfc9feba66",
+      "chunks": 1
+    },
+    {
+      "path": "source-claim-audit/receipt.json",
+      "bytes": 4503,
+      "sha256": "48a5693e12679182c20ee211015b223af62c66dfcd9a9499dab3013b51e3c0d5",
+      "chunks": 1
+    },
+    {
+      "path": "source-claim-audit/reference-full-suite/install.log",
+      "bytes": 1541,
+      "sha256": "9fa6993a7e9a5aa212d25d8d0f364f062dfe517112dccfaf9127982e7da644f6",
+      "chunks": 1
+    },
+    {
+      "path": "source-claim-audit/reference-full-suite/tests.log",
+      "bytes": 71317,
+      "sha256": "4548a9831e6fb36e02a7f58fea85cc7e629ecb322a804197091464077b89e4b0",
+      "chunks": 1
+    },
+    {
+      "path": "source-claim-audit-controller.log",
+      "bytes": 978,
+      "sha256": "2666b9b2cca09e23bcf401b7c3b6b1cb482fd488e466578881bfb004efe4ea1b",
+      "chunks": 1
+    },
+    {
+      "path": "task-source.json",
+      "bytes": 781,
+      "sha256": "ed1ff940ae6dbaf5dc4d57e511d0bc43b72b2d97fdc5e7cf4271b64ff433c483",
+      "chunks": 1
+    }
+  ],
+  "parts": [
+    {
+      "path": "codegraph_development_execution_v1_2026_10_30_part_01.json",
+      "sha256": "a74c6d1f6e5e34bd9d0f157543e5083eb12e6fae12e7c03a47f2e05edfca45de",
+      "bytes": 376585
+    },
+    {
+      "path": "codegraph_development_execution_v1_2026_10_30_part_02.json",
+      "sha256": "ef14b443a5ffbfb2e01a11b7d0498c6e3eadf96920b66e888bdba1f26159ebdc",
+      "bytes": 385440
+    },
+    {
+      "path": "codegraph_development_execution_v1_2026_10_30_part_03.json",
+      "sha256": "50b0c498043e85119cc710e8ec39016fa6358062ebfa53c2e2cb66d4ebf6de5e",
+      "bytes": 373449
+    },
+    {
+      "path": "codegraph_development_execution_v1_2026_10_30_part_04.json",
+      "sha256": "41faeab05b86cb295bc7324998e53e0696144747c2a11aa1c36ac30a8cd19f45",
+      "bytes": 170131
+    }
+  ],
+  "verification": {
+    "lossless_files": 143,
+    "parts": 4,
+    "all_990_bound_inputs_unchanged": true,
+    "preceding_json_artifacts_unchanged": 390,
+    "frozen_v2_inputs_unchanged": 34,
+    "original_queries_or_native_grades_rerun": false,
+    "main_source_fix": {
+      "pr": 913,
+      "merge_commit": "9a84ba5652d94193087d329e8bc0667c0b240838",
+      "reviewed_and_merged_tree": "97c08d29ee0dd53bf33326ca46dc0c1d75497f77",
+      "pr_checks_passed": 20,
+      "pr_conditional_skips": 8,
+      "main_release_verifier_passed": 20,
+      "main_tag_only_skips": 5,
+      "main_unit_and_integration": "passed; conditional serial/graph/slow skips are not full-chain acceptance"
+    },
+    "container_cleanup": "8 model-workflow + 4 native-grading + 2 retrospective-audit containers absent; operator controls/readiness separately retained"
+  },
+  "limits": [
+    "One exposed repository, three dependent tasks per arm, one unblinded source reviewer.",
+    "Tool initialization inventories and SDK-visible replies do not prove complete HTTP model schemas or HTTP counts.",
+    "SDK dollar amounts are estimates on native Max, not invoices or cash savings.",
+    "Wider model-chosen test failures and the reference diagnostic remain explicit; six-case native grading is unchanged.",
+    "Source judgments retain concrete counterexamples; no ContextBench source-credit score is inferred.",
+    "No whole-task promotion, independent-confirmation result or external adoption. Goal remains active."
+  ]
+}
