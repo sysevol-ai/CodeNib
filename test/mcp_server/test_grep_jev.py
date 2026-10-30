@@ -441,6 +441,7 @@ def test_mcp_refreshes_source_each_call_and_exposes_only_explore(
         async with Client(server.mcp, mode="auto", cache=None) as client:
             tools = await client.list_tools()
             assert [tool.name for tool in tools.tools] == ["explore_context"]
+            assert not (tools.tools[0].meta or {}).get("anthropic/alwaysLoad")
             first = await client.call_tool("explore_context", {"query": "retry"})
             assert not first.is_error
             first_body = json.loads(first.content[0].text)

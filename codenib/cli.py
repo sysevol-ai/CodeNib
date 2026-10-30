@@ -14,7 +14,6 @@ import re
 import shlex
 import shutil
 import stat
-import subprocess
 import sys
 from collections import Counter
 from contextlib import contextmanager
@@ -855,6 +854,8 @@ def _mcp_context_mode(args: argparse.Namespace) -> str:
 
 def _run_mcp(args: argparse.Namespace) -> int:
     mode = _mcp_context_mode(args)
+    if getattr(args, "defer_graph", False) and mode != "manifest":
+        raise CLIError("--defer-graph requires a local indexed repository")
     runtime_probe = mode in {"probe", "grep-probe"}
     if mode == "probe":
         _require_modules(
@@ -928,6 +929,7 @@ def _run_mcp(args: argparse.Namespace) -> int:
                 args.log_level,
                 "--tool-surface",
                 args.tool_surface,
+                *(("--defer-graph",) if getattr(args, "defer_graph", False) else ()),
             ]
         )
     return 0
@@ -2385,6 +2387,20 @@ def _codegraph_spec_for_args(repo_path: Path, args: argparse.Namespace):
     try:
         receipt = load_codegraph_receipt(repo_path)
         explicit = getattr(args, "server_command", None)
+        requested_surface = getattr(args, "tool_surface", None)
+        requested_defer = getattr(args, "defer_graph", None)
+        retained_surface = receipt.server.args[-1] if receipt is not None else "full"
+        retained_defer = receipt is not None and "--defer-graph" in receipt.server.args
+        if receipt is not None and requested_defer not in (None, retained_defer):
+            raise CodeGraphOnboardingError(
+                "--defer-graph differs from the managed MCP registration; run "
+                "`codenib codegraph uninstall` before changing it"
+            )
+        if receipt is not None and requested_surface not in (None, retained_surface):
+            raise CodeGraphOnboardingError(
+                "--tool-surface differs from the managed MCP registration; run "
+                "`codenib codegraph uninstall` before changing it"
+            )
         if receipt is not None and explicit is None:
             return receipt.server, receipt
         command, prefix = resolve_codenib_command(explicit)
@@ -2392,6 +2408,8 @@ def _codegraph_spec_for_args(repo_path: Path, args: argparse.Namespace):
             repo_path,
             command=command,
             command_prefix=prefix,
+            tool_surface=requested_surface or retained_surface,
+            defer_graph=retained_defer if requested_defer is None else requested_defer,
         )
         if receipt is not None and receipt.server != server:
             raise CodeGraphOnboardingError(
@@ -2484,92 +2502,30 @@ def _codegraph_plan_detail(plan) -> str:
 
 
 def _codegraph_checkout_snapshot(repo_path: Path) -> bytes:
-    """Return the exact Git worktree status used by the onboarding transaction."""
+    from .codegraph_preparation import CodeGraphPreparationError, checkout_snapshot
 
-    command = [
-        "git",
-        "-C",
-        str(repo_path),
-        "status",
-        "--porcelain=v1",
-        "-z",
-        "--untracked-files=all",
-        "--ignore-submodules=none",
-    ]
     try:
-        result = subprocess.run(command, check=False, capture_output=True)
-    except OSError as exc:
-        raise CLIError("CodeGraph initialization requires Git on PATH") from exc
-    if result.returncode != 0:
-        detail = result.stderr.decode("utf-8", errors="replace").strip()
-        suffix = f": {detail}" if detail else ""
-        raise CLIError("CodeGraph initialization requires a Git working tree" + suffix)
-    return bytes(result.stdout)
+        return checkout_snapshot(repo_path)
+    except CodeGraphPreparationError as exc:
+        raise CLIError(str(exc)) from exc
 
 
 @contextmanager
 def _codegraph_checkout_guard(repo_path: Path) -> Iterator[Callable[[str], None]]:
-    """Preserve visible source content and Git status across initialization.
-
-    A phase succeeds only if its postcondition matches the captured source
-    and status. Status alone misses another edit to an already dirty path.
-    Reuse a pinned root across fresh captures so a restored temporary provider
-    config is allowed, but replacing the checkout root is not. The default
-    source selection also guards visible custom-excluded source. Source and
-    root descriptors close within this call; no recovery state survives it.
-    """
-
-    from .compiler.checkout_identity import checkout_commit
-    from .paths import repo_index_dir
-    from .source_fingerprint import (
-        capture_repository_source,
-        pin_repository_source_root,
-    )
-
-    def source_fingerprint(authority):
-        with capture_repository_source(
-            repo_path,
-            exclude_roots=(repo_index_dir(repo_path),),
-            expected_root_authority=authority,
-        ) as source:
-            return source.fingerprint
+    from .codegraph_preparation import CodeGraphPreparationError, checkout_guard
 
     try:
-        authority = pin_repository_source_root(repo_path)
-    except (OSError, RuntimeError, ValueError) as exc:
-        raise CLIError(
-            f"CodeGraph cannot inspect the current working tree: {exc}"
-        ) from exc
-    with authority:
-        status = _codegraph_checkout_snapshot(repo_path)
-        commit = checkout_commit(repo_path)
-        try:
-            fingerprint = source_fingerprint(authority)
-        except (OSError, RuntimeError, ValueError) as exc:
-            raise CLIError(
-                f"CodeGraph cannot inspect the current working tree: {exc}"
-            ) from exc
+        with checkout_guard(repo_path) as check_checkout:
 
-        def require_unchanged(stage: str) -> None:
-            message = (
-                f"CodeGraph {stage} changed the target checkout; inspect `git diff` "
-                "and `git status` before retrying"
-            )
-            try:
-                observed_fingerprint = source_fingerprint(authority)
-                observed_status = _codegraph_checkout_snapshot(repo_path)
-                observed_commit = checkout_commit(repo_path)
-            except (OSError, RuntimeError, ValueError) as exc:
-                raise CLIError(message) from exc
-            if (
-                observed_fingerprint != fingerprint
-                or observed_status != status
-                or observed_commit != commit
-            ):
-                raise CLIError(message)
+            def check(stage: str) -> None:
+                try:
+                    check_checkout(stage)
+                except CodeGraphPreparationError as exc:
+                    raise CLIError(str(exc)) from exc
 
-        require_unchanged("source inspection")
-        yield require_unchanged
+            yield check
+    except CodeGraphPreparationError as exc:
+        raise CLIError(str(exc)) from exc
 
 
 def _run_codegraph_init(args: argparse.Namespace) -> int:
@@ -2605,14 +2561,16 @@ def _run_codegraph_init(args: argparse.Namespace) -> int:
         server,
         receipt,
     )
+    defer_graph = "--defer-graph" in server.args
+    views = ("bm25",) if defer_graph else ("bm25", "symbol_graph")
     with _codegraph_checkout_guard(repo_path) as check_checkout:
-        plan = _codegraph_toolchain_plan(repo_path, languages)
+        plan = None if defer_graph else _codegraph_toolchain_plan(repo_path, languages)
 
         if args.dry_run:
             try:
                 commands, manual = install_requirements(
-                    plan.missing,
-                    root=plan.root,
+                    plan.missing if plan is not None else (),
+                    root=plan.root if plan is not None else None,
                     dry_run=True,
                 )
             except RuntimeError as exc:
@@ -2631,12 +2589,14 @@ def _run_codegraph_init(args: argparse.Namespace) -> int:
                 print(f"  prerequisite: {item}")
             project_blockers = [
                 note.removeprefix("MISSING: ")
-                for note in plan.notes
+                for note in (plan.notes if plan is not None else ())
                 if note.startswith("MISSING:")
             ]
             for blocker in project_blockers:
                 print(f"  prerequisite: {blocker}")
-            print("  index: bm25, symbol_graph")
+            print("  index: " + ", ".join(views))
+            if defer_graph:
+                print("  graph: prepare providers and index on the first graph query")
             for client in clients:
                 action = "reuse" if observed[client].matches else "add"
                 print(f"  {client}: {action} {server.name}")
@@ -2658,7 +2618,7 @@ def _run_codegraph_init(args: argparse.Namespace) -> int:
             extra="graph,mcp",
             feature="CodeGraph agent onboarding",
         )
-        if plan.missing:
+        if plan is not None and plan.missing:
             try:
                 commands, manual = install_requirements(plan.missing, root=plan.root)
             except RuntimeError as exc:
@@ -2672,18 +2632,18 @@ def _run_codegraph_init(args: argparse.Namespace) -> int:
                     "CodeGraph needs manual prerequisites: " + "; ".join(manual)
                 )
             plan = _codegraph_toolchain_plan(repo_path, languages)
-        if not plan.ready:
+        if plan is not None and not plan.ready:
             raise CLIError(
                 "CodeGraph toolchain is not ready: " + _codegraph_plan_detail(plan)
             )
         check_checkout("toolchain setup")
 
-        _check_view_dependencies(("bm25", "symbol_graph"))
+        _check_view_dependencies(views)
         try:
             manifest, failed = index_repository(
                 repo_path,
                 languages=languages,
-                views=("bm25", "symbol_graph"),
+                views=views,
                 source_selection=resolved_selection.selection,
                 rebuild=args.rebuild,
                 allow_graph_project_preparation=False,
@@ -2693,7 +2653,7 @@ def _run_codegraph_init(args: argparse.Namespace) -> int:
             check_checkout("indexing")
             raise CLIError(str(exc)) from exc
         check_checkout("indexing")
-        _print_index_summary(manifest, ("bm25", "symbol_graph"))
+        _print_index_summary(manifest, views)
         if failed:
             raise CLIError("CodeGraph indexing failed for: " + ", ".join(failed))
 
@@ -2704,15 +2664,22 @@ def _run_codegraph_init(args: argparse.Namespace) -> int:
             raise _codegraph_error(exc) from exc
         check_checkout("agent registration")
 
-        print("\nCodeGraph is ready for coding agents.")
+        if defer_graph:
+            print("\nCodeGraph retrieval is ready; graph preparation is on demand.")
+        else:
+            print("\nCodeGraph is ready for coding agents.")
         print(f"MCP server: {server.name}")
         print(f"Clients:    {', '.join(clients)}")
+        print(f"Tools:      {server.args[-1]}")
         print("Excluded:   " + _source_selection_display(resolved_selection.selection))
         print(f"Status:     codenib codegraph status {shlex.quote(str(repo_path))}")
-        print(
-            "Try asking your agent to use explore_context before editing and "
-            "dependency_subgraph for impact analysis."
-        )
+        if server.args[-1] == "explore":
+            print("Try asking your agent to use explore_context before editing.")
+        else:
+            print(
+                "Try asking your agent to use explore_context before editing and "
+                "dependency_subgraph for impact analysis."
+            )
         return 0
 
 
@@ -3084,9 +3051,22 @@ def _codegraph_status_report(repo_path: Path) -> dict[str, object]:
         and server_command["ready"]
         and clients_ready
     )
+    retrieval_ready = bool(
+        index.get("bm25")
+        and index.get("source_matches")
+        and index.get("source_selection", {}).get("recorded")
+        and server_command["ready"]
+        and clients_ready
+    )
     return {
         "repository": str(repo_path),
         "ready": ready,
+        "retrieval_ready": retrieval_ready,
+        "graph_preparation": (
+            "on-demand"
+            if receipt is not None and "--defer-graph" in receipt.server.args
+            else "prebuilt"
+        ),
         "index": index,
         "toolchain": toolchain,
         "server_command": server_command,
@@ -3107,6 +3087,12 @@ def _run_codegraph_status(args: argparse.Namespace) -> int:
 
     print(f"CodeGraph:  {'READY' if report['ready'] else 'NOT READY'}")
     print(f"Repository: {report['repository']}")
+    if report.get("graph_preparation") == "on-demand":
+        print(
+            "Retrieval:  "
+            + ("READY" if report["retrieval_ready"] else "NOT READY")
+            + "; graph preparation is on demand"
+        )
     index = report["index"]
     print(
         "Index:      "
@@ -3724,6 +3710,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="MCP tool surface to expose",
     )
     mcp_parser.add_argument(
+        "--defer-graph",
+        action="store_true",
+        help="prepare a local graph on its first graph query",
+    )
+    mcp_parser.add_argument(
         "--runtime-probe",
         action="store_true",
         help=argparse.SUPPRESS,
@@ -3831,6 +3822,22 @@ def build_parser() -> argparse.ArgumentParser:
         "--rebuild",
         action="store_true",
         help="force a clean rebuild of the graph views",
+    )
+    codegraph_init_parser.add_argument(
+        "--tool-surface",
+        choices=("full", "explore"),
+        default=None,
+        help=(
+            "expose all navigation tools or only explore_context; "
+            "new registrations default to full and existing registrations retain "
+            "their selected tools"
+        ),
+    )
+    codegraph_init_parser.add_argument(
+        "--defer-graph",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="build BM25 now; prepare providers and the graph on its first graph query",
     )
     _add_source_selection_arguments(codegraph_init_parser)
     codegraph_init_parser.add_argument(

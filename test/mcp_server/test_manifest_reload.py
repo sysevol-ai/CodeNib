@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -149,6 +150,177 @@ def test_rebuilt_views_restore_queries_in_the_same_connection(local_server, chan
             assert second["summary"]["session_call"] == 2
             assert second["source"]["verified"] is True
         assert server.get_context().explore_runtime is None
+
+    asyncio.run(session())
+
+
+def _publish_test_graph(cache, initial):
+    """Publish a tiny real graph; only the external provider is substituted."""
+    from codenib.graph.code_graph import CodeGraph
+    from codenib.types import NODE_TYPE_FUNCTION
+
+    graph = CodeGraph(project_root=initial.manifest.repo_path)
+    graph.add_file_node("sample.py")
+    graph.add_symbol_node(
+        "sample.py:original()", 0, 0, 1, symbol_type=NODE_TYPE_FUNCTION
+    )
+    view = cache / "symbol_graph"
+    view.mkdir()
+    path = view / "graph.pkl"
+    graph.save_graph(path)
+    manifest = RepoManifest.load(cache / "repo_manifest.json")
+    manifest.indexes["symbol_graph"] = IndexEntry(
+        index_type="symbol_graph",
+        path=str(view),
+        built_at="test-generation",
+        built_at_epoch=2.0,
+        status="fresh",
+        commit=manifest.commit,
+        source_fingerprint=manifest.source_fingerprint,
+        source_selection_digest=manifest.source_selection_digest,
+        config={
+            "allow_partial_languages": False,
+            "allow_partial_index": False,
+            "graph_artifact": {
+                "relative_path": "graph.pkl",
+                "size": path.stat().st_size,
+                "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+            },
+        },
+    )
+    manifest.derive_capabilities()
+    manifest.save(cache / "repo_manifest.json")
+
+
+def test_deferred_graph_builds_once_and_preserves_connection_ledger(
+    local_server, monkeypatch
+):
+    from codenib import codegraph_preparation
+
+    repo, cache, initial = local_server
+    initial._defer_graph = True
+    source_binding = initial._source_binding
+    calls = []
+
+    def prepare(root, **options):
+        calls.append((root, options))
+        temporary_config = root / "pyrightconfig.json"
+        temporary_config.write_text('{"exclude": ["vendor"]}\n')
+        temporary_config.unlink()
+        _publish_test_graph(cache, initial)
+
+    monkeypatch.setattr(codegraph_preparation, "prepare_graph", prepare)
+
+    async def session():
+        async with server._mcp_lifespan(None) as runtime:
+            first = await server.explore_context("original", include_dependencies=False)
+            assert first["summary"]["session_call"] == 1
+            assert calls == []
+            status = await server.get_manifest()
+            assert status["runtime"]["graph_preparation"] == {
+                "policy": "on-demand",
+                "loaded": False,
+            }
+            responses = await asyncio.gather(
+                server.explore_context("original", symbols=["original"]),
+                server.explore_context("original", include_dependencies=True),
+            )
+            assert [r["summary"]["session_call"] for r in responses] == [2, 3]
+            assert all(r["source"]["verified"] for r in responses)
+            assert len(calls) == 1
+            assert calls[0] == (
+                repo,
+                {
+                    "languages": ["python"],
+                    "source_selection": initial.manifest.source_selection,
+                    "expected_source_fingerprint": initial.manifest.source_fingerprint,
+                },
+            )
+            current = server.get_context()
+            assert current is not initial
+            assert current._defer_graph is True
+            assert current.explore_runtime is runtime
+            assert current.symbol_graph is not None
+            assert source_binding.closed
+
+    asyncio.run(session())
+
+
+def test_deferred_graph_cancellation_keeps_status_responsive_and_retry_serial(
+    local_server, monkeypatch
+):
+    from codenib import codegraph_preparation
+
+    _repo, cache, initial = local_server
+    initial._defer_graph = True
+    started, release = Event(), Event()
+    calls = []
+
+    def prepare(*_args, **_options):
+        calls.append(True)
+        started.set()
+        assert release.wait(timeout=10)
+        _publish_test_graph(cache, initial)
+
+    monkeypatch.setattr(codegraph_preparation, "prepare_graph", prepare)
+
+    async def session():
+        async with server._mcp_lifespan(None) as runtime:
+            first = asyncio.create_task(server.explore_context("original"))
+            try:
+                assert await asyncio.to_thread(started.wait, 5)
+                status = await asyncio.wait_for(server.get_manifest(), 1)
+                assert status["runtime"]["graph_preparation"]["loaded"] is False
+                first.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await first
+                retry = asyncio.create_task(server.explore_context("original"))
+                await asyncio.sleep(0)
+                assert not retry.done()
+            finally:
+                release.set()
+            response = await asyncio.wait_for(retry, 5)
+            assert response["summary"]["session_call"] == 1
+            assert len(calls) == 1
+            assert runtime.pending_worker is None
+
+    asyncio.run(session())
+
+
+@pytest.mark.parametrize("failure", ("provider", "source-edit", "already-stale"))
+def test_deferred_preparation_failure_never_delivers_graph_or_hides_stale_source(
+    local_server, monkeypatch, failure
+):
+    from codenib import codegraph_preparation
+
+    repo, _cache, initial = local_server
+    initial._defer_graph = True
+    calls = []
+
+    def prepare(*_args, **_options):
+        calls.append(True)
+        if failure == "provider":
+            raise RuntimeError("provider unavailable")
+        (repo / "sample.py").write_text("def changed():\n    return 2\n")
+
+    monkeypatch.setattr(codegraph_preparation, "prepare_graph", prepare)
+    if failure == "already-stale":
+        (repo / "sample.py").write_text("def changed():\n    return 2\n")
+
+    async def session():
+        with pytest.raises(RuntimeError, match="(preparation failed|source changed)"):
+            await server.explore_context("original")
+        if failure == "provider":
+            response = await server.explore_context(
+                "original", include_dependencies=False
+            )
+            assert response["source"]["verified"]
+            assert response["summary"]["session_call"] == 1
+        else:
+            with pytest.raises(RuntimeError, match="source changed"):
+                await server.search_bm25("original")
+        assert len(calls) == (0 if failure == "already-stale" else 1)
+        assert server.get_context().symbol_graph is None
 
     asyncio.run(session())
 

@@ -33,19 +33,29 @@ class ToolSurfaceMCPServer(MCPServer):
     """MCP server that can hide and reject tools outside an experiment arm."""
 
     def __init__(
-        self, *args: Any, tool_surface: str = TOOL_SURFACE_FULL, **kwargs: Any
+        self,
+        *args: Any,
+        tool_surface: str = TOOL_SURFACE_FULL,
+        preload_explore: bool = False,
+        **kwargs: Any,
     ):
         super().__init__(*args, **kwargs)
         self._tool_surface = normalize_tool_surface(tool_surface)
+        self._preload_explore = preload_explore
 
     @property
     def tool_surface(self) -> str:
         return self._tool_surface
 
-    def set_tool_surface(self, value: str) -> str:
+    @property
+    def preload_explore(self) -> bool:
+        return self._preload_explore
+
+    def set_tool_surface(self, value: str, *, preload_explore: bool = False) -> str:
         """Set the active surface and return its normalized name."""
 
         self._tool_surface = normalize_tool_surface(value)
+        self._preload_explore = preload_explore
         return self._tool_surface
 
     def _tool_is_visible(self, name: str) -> bool:
@@ -53,7 +63,18 @@ class ToolSurfaceMCPServer(MCPServer):
 
     async def list_tools(self):
         tools = await super().list_tools()
-        return [tool for tool in tools if self._tool_is_visible(tool.name)]
+        visible = [tool for tool in tools if self._tool_is_visible(tool.name)]
+        if self._tool_surface == TOOL_SURFACE_EXPLORE and self._preload_explore:
+            # Claude Code may defer schemas behind ToolSearch. Request visibility
+            # for this explicit single-entry mode without changing full mode or
+            # mutating the SDK's retained tool definitions. Client settings win.
+            visible = [
+                tool.model_copy(
+                    update={"meta": {**(tool.meta or {}), "anthropic/alwaysLoad": True}}
+                )
+                for tool in visible
+            ]
+        return visible
 
     async def call_tool(self, name: str, arguments: dict[str, Any], context=None):
         if not self._tool_is_visible(name):

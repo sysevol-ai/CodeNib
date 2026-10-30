@@ -350,6 +350,7 @@ class ServerContext:
         repr=False,
     )
     _local_manifest_path: Path | None = field(default=None, init=False, repr=False)
+    _defer_graph: bool = field(default=False, init=False, repr=False)
 
     def _install_zoekt_snapshot(self, snapshot: ZoektShardSnapshot) -> None:
         """Publish snapshot ownership before a cancellation can escape."""

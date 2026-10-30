@@ -26,6 +26,85 @@ Established 2026-10-26
 Current outcomes and open gates belong to [adoption A0](../adoption_roadmap.md).
 Tracking issue: [#874](https://github.com/sysevol-ai/CodeNib/issues/874).
 
+## Current iteration objective
+
+On 2026-10-29 the maintainer authorized continued product iteration toward a
+repeatable advantage over Serena and the native agent. Keep the original
+cohorts and all negative outcomes frozen. The objective is verified whole-task
+benefit, rather than a positive result on an exposed task or a faster isolated
+graph operation. The external five-user gate remains separate and enrollment
+is still zero; engineering work does not authorize outreach.
+
+The [model-free attribution](codegraph_cost_attribution_v2_2026_10_29.json)
+verifies all twelve captured v2 receipts. Of CodeNib's 99.006-second observed
+gap to Serena, 73.419 seconds (74.2%) is extra setup. CodeNib's setup contains
+58.861 seconds in initialization/indexing/registration and 23.335 seconds in
+language-provider preparation; these command durations are not interchangeable
+with pure compiler time. The task phases add 29.927 seconds while the remaining
+session/orchestration component is 4.340 seconds lower. Neither product is
+called. Tool-schema exposure and task latency causation remain unknown.
+
+Even removing all CodeNib setup, while holding recorded task execution fixed,
+leaves 581.688 seconds versus Serena's 567.999 seconds. This optimistic
+arithmetic scenario is not a new run or score. Startup work alone cannot meet
+the required benefit on this cohort.
+
+Work proceeds through these gates:
+
+1. Attribute original costs before choosing an optimization. Preserve command
+   and source receipts, source-currentness checks, original grades and costs.
+2. Reduce unused startup work. Any deferred index must include its actual
+   first-call and later-update costs in the measured workflow. A missing
+   provider or partial graph must remain explicit.
+3. Test tool discovery and useful query composition. The first candidate wires
+   the existing explore-only tool list into managed agent initialization,
+   preserving the default full list and registration ownership. Its indexed
+   single-entry mode now requests upfront loading through the documented
+   Claude tool metadata, with an explicit client override. The user-funded
+   grep/Jev route keeps its existing discovery policy. Model-free
+   registration/protocol checks establish functionality only. Record optional
+   tool use and reading/model turns before attributing an effect to this mode.
+4. Use exposed sources only for development diagnostics. Freeze independent
+   confirmation task membership, acceptance criteria, tool visibility, exact
+   model/runtime identities, deadlines, costs and the primary endpoint before
+   inference. Keep native tools available, and apply any exposure policy fairly
+   to competitor tools. Do not force product calls or revise grading to obtain
+   a positive result.
+5. Require acceptance at least as good as the strongest eligible alternative,
+   no additional serious error, at least 20% lower complete task wall time and
+   no greater than 10% normalized-model-usage regression. Preserve setup,
+   timeout, failure, update and retry costs. Confirm the advantage on a second
+   independent frozen set before declaring this engineering objective met.
+
+Use the authorized subscription SDK where available. Retain the original $500
+paid-API ceiling, distinguish SDK estimates from invoices and disallow an
+unrecorded API-key fallback. Each model round needs a bounded resource ledger
+and current official provider constraints. Freeze each round before inference; passing unit checks alone does not
+establish efficacy. A failed or inconclusive iteration stays recorded and
+informs the next specific hypothesis; it does not become an achieved advantage.
+
+Current state: original-cost attribution is complete; the opt-in discovery
+candidate passes local registration/protocol checks. Its preload request is
+verified as a protocol hint, not as actual schema delivery to a model. The
+[on-demand preparation candidate](codegraph_deferred_preparation_2026_10_30.json)
+builds BM25 during initialization and prepares providers/the graph on the first
+graph query. Four fresh-index Requests controls pass keyword-only retrieval,
+first/repeated graph queries, stale rejection and same-connection updates.
+Provider tools are preinstalled and native registration is substituted. The
+two deferred initializations take 1.36 seconds each; their first graph queries
+take 8.29/8.31 seconds and later graph updates take 8.31/8.25 seconds. Eager
+initialization takes 9.36/9.58 seconds. These are component observations, not
+complete task timings or an advantage claim. All four earlier failed controls,
+including the exact temporary-provider-config source-binding failure, remain
+archived alongside the corrected controls. The candidate is now rebased onto
+current `main`, including its subsequent SCIP runtime and identity repairs.
+[Current-base verification](codegraph_deferred_current_main_2026_10_30.json)
+passes both preparation modes on fresh Requests indexes, 8,871 unit cases with
+25 skips, and 320 related MCP 2.3 checks. The resolved provider package trees
+are unchanged before and after those controls. Remote acceptance,
+representative preparation/update coverage, voluntary use, both independent
+confirmation sets and external adoption remain open. The goal is active.
+
 ## Product question and decision
 
 Can a developer complete source-grounded coding tasks more effectively with
