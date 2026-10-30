@@ -100,6 +100,18 @@ the existing basedpyright provider. This is unreleased source correctness work
 for [#871](https://github.com/sysevol-ai/CodeNib/issues/871), not a backend,
 acceleration or task-benefit promotion. The A0 objective remains active.
 
+The [deferred source-first controls](experiments/codegraph_source_default.md)
+retain a full-source SymPy failure at two CPUs/4 GiB. A smaller 2,560 MiB V8
+heap also fails; the 32 GiB reference completes a first graph request in
+852.887 seconds with sampled Node RSS peaking at 11,490,196 KiB. Neither
+diagnostic changes product memory defaults, source coverage, decoder parity
+or an acceleration gate. The candidate instead avoids an unrequested graph
+for a cold deferred exploration query, returning verified ranked source with
+dependencies disabled. Explicit graph requests keep their costs and failures;
+ready graphs are reused. Live LSP probes do not establish reference coverage
+and no new provider route, language or C++ backend is promoted. Both
+independent whole-task confirmations remain open.
+
 ## Archived Layered Goal
 
 The completed multi-language SCIP cold-start and acceleration program required:

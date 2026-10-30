@@ -216,10 +216,19 @@ private grading, and the reserved second set is unopened. Native readiness
 executes all 338 selected tests in both original-production and reference
 controls without collection errors or missing outcomes; behavior fails where
 the reference passes. All six grading containers are absent, and the earlier
-controller setup failure is retained. Exact fifteen-task prompts/rubrics,
-twelve actual product admissions and a separate executable/model/resource seal
-remain open. No new inference or
-comparative outcome is added. Merged #918 passes main unit/integration, all
+controller setup failure is retained. Drafts of fifteen tasks and a common
+four-arm runner now exist, without a model/runtime/resource seal. Native,
+Serena and Codegraph return the requested definitions on all three sources;
+CodeNib's full-graph admission fails on SymPy under two CPUs/4 GiB while its
+Astropy and Seaborn controls pass. These observations informed the
+[deferred source-first candidate](codegraph_source_default.md), whose cold
+default queries return complete verified source on all three sources without
+starting graph/provider preparation. Explicit graph requests still pay their
+full cost and can fail. No complete-task gain is established. The first set
+therefore remains development admission, satisfying neither independent
+success confirmation; retain all selected cases, failures and native outcomes,
+keep the reserved set unopened and freeze another disjoint set prospectively.
+No new inference or comparative outcome is added. Merged #918 passes main unit/integration, all
 twenty release verifier jobs and Docs; its conditional graph-chain skips are
 distinct from #917's completed full chain.
 

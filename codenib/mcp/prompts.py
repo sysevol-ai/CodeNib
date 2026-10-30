@@ -12,7 +12,9 @@ CODENIB_FULL_INSTRUCTIONS = (
     "manifest tools when one operation must be forced explicitly. Graph "
     "dependencies are indexed static references, including fields, type uses "
     "and function values. They do not prove invocation or complete runtime "
-    "coverage; inspect source call sites before describing calls."
+    "coverage; inspect source call sites before describing calls. In on-demand "
+    "graph mode, a cold query without symbols starts with verified source; "
+    "provide symbols or include_dependencies=true to request graph preparation."
 )
 
 CODENIB_EXPLORE_INSTRUCTIONS = (
@@ -24,7 +26,9 @@ CODENIB_EXPLORE_INSTRUCTIONS = (
     "Inspect its plan, source identity, diagnostics, and session usage before "
     "drawing conclusions. Dependency expansion follows indexed static "
     "references, which may include fields, types and function values. Inspect "
-    "source to establish invocation; external and dynamic calls may be absent."
+    "source to establish invocation; external and dynamic calls may be absent. "
+    "In on-demand graph mode, a cold query without symbols starts with verified "
+    "source; provide symbols or include_dependencies=true to prepare the graph."
 )
 
 CODENIB_GREP_INSTRUCTIONS = (
@@ -45,7 +49,13 @@ Use `explore_context` for repository questions. It composes ranked retrieval,
 symbol routing, dependency expansion, and bounded source windows in one call.
 Provide a precise `query`; add `symbols` when you already know likely entry
 points. Start with `budget="balanced"`, use `budget="fast"` for orientation,
-or `budget="thorough"` when the first result lacks enough relationships.
+or `budget="thorough"` for more returned context. The budget does not request
+graph preparation.
+
+In on-demand graph mode, a cold query without symbols returns ranked source
+by default. Provide symbols or `include_dependencies=true` to prepare and use
+the graph. Once a complete graph is ready, ordinary queries reuse it; set
+`include_dependencies=false` to omit dependency expansion explicitly.
 
 Check `plan.route.provider` to see which navigation backend actually ran,
 `source.verified` before treating excerpts as live checkout source, and
@@ -78,6 +88,11 @@ pointers instead of retransmitting identical source. Dependency expansion
 follows indexed static references, including field, type and function-value
 uses. Inspect source call sites to establish invocation; external and dynamic
 calls may be absent.
+
+In on-demand graph mode, a cold query without symbols starts with ranked source.
+Provide symbols or `include_dependencies=true` when graph preparation is needed.
+Once a complete graph is ready, ordinary queries reuse it. The context budget
+controls returned context, not whether graph preparation is requested.
 
 ### search_context
 Best lower-level ranked search. It returns the selected route, indexed commit,

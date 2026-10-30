@@ -94,11 +94,19 @@ codenib codegraph init . --defer-graph --tool-surface explore
 ```
 
 This builds BM25 and registers the agent connection without preparing language
-providers or building a graph. For ranked source lookup, call `explore_context`
-with `include_dependencies=false` and no `symbols`. Providing symbols or
-requesting dependencies prepares the graph on that first query. On the full
-tool surface, dependency, regex-node and LSP queries also trigger preparation.
-Once prepared, the same connection reuses the graph.
+providers or building a graph. An `explore_context` query without symbols starts
+with ranked, verified source. It does not build an unused graph when the
+dependency option is omitted.
+
+Provide `symbols` or set `include_dependencies=true` when you need indexed
+relationships; that request prepares the graph. Once a complete graph is ready,
+the same connection includes its dependencies by default. Set
+`include_dependencies=false` to omit dependency expansion even then. The
+response plan reports whether dependencies were enabled. Prebuilt mode keeps
+its existing default dependency expansion.
+
+On the full tool surface, dependency, regex-node and LSP queries also trigger
+preparation.
 
 The first graph query may install CodeNib's managed providers and wait for
 indexing. It retains the normal source checks and refuses partial-language
