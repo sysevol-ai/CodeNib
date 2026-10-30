@@ -2,28 +2,17 @@
 
 Owner: CodeNib product and CodeGraph maintainers.
 Status: dirty initialization, stale-query protection, scoped Python identity
-recovery and source-current same-session reloading are merged. All twelve
-original matched workflows execute and their repairs pass the selected native
-grading. Source review retains four protocol-unassessable observations; the
-frozen outcome is insufficient evidence and promotion is held. Separate
-model-free peer controls now pass the original lookup on all three sources.
-Separate common-runtime controls retain all four arms' actual installation,
-source lookup and source-addition update costs, including Codegraph's pending
-replies and bounded retry. Broader provider coverage, representative workflows
-beyond these controls, automatic rebuilding and external trials remain open.
-The independent corrected v2 cohort has a complete pre-inference
-[protocol and executable/runtime freeze](codegraph_matched_protocol_v2.md).
-Its [execution](codegraph_matched_run_v2.md) completes all sixty tasks and twelve
-native repairs with connected optional products. Its
-[assessment](codegraph_matched_assessment_v2.md) accepts 34/48 explanations and
-finds no complete eligible alternative under the unchanged material-error rule.
-CodeNib accepts 11/15 tasks versus Native 13/15 and receives no voluntary
-product call. Hold promotion; preserve both cohorts and prioritize actual
-source-linked use before further efficacy experiments. External enrollment
-remains 0/5. The separately sealed single-repository development round is also
-complete: its repairs pass all six private cases, but CodeNib is unused, has
-lower source acceptance and is slower than Native/Codegraph. It supplies no
-independent confirmation or promotion result.
+recovery, source-current reloading and cold deferred source-first exploration
+are merged. The latest [source-first development result](codegraph_source_first_results.md)
+completes sixty attempts and all source/native assessment: Native / Serena /
+Codegraph / CodeNib accept 9 / 7 / 8 / 8 tasks out of fifteen. CodeNib remains
+unused, has lower acceptance than the maximum alternative and meets no verified
+20% whole-workflow benefit gate. Hold promotion; no complete eligible baseline
+exists. These sources informed implementation and count as neither independent
+success confirmation. Both original [v1](codegraph_matched_assessment_v1.md) and
+[v2](codegraph_matched_assessment_v2.md) outcomes remain unchanged. Broader
+provider/workflow coverage, useful voluntary use, both success confirmations
+and external recruitment/consent/seven-day reuse remain open at 0/5.
 Established 2026-10-26
 (Pacific); target review 2026-11-09.
 Current outcomes and open gates belong to [adoption A0](../adoption_roadmap.md).
@@ -86,9 +75,14 @@ and current official provider constraints. Freeze each round before inference; p
 establish efficacy. A failed or inconclusive iteration stays recorded and
 informs the next specific hypothesis; it does not become an achieved advantage.
 
-Current state: original-cost attribution is complete; the opt-in discovery
-candidate passes local registration/protocol checks. Its preload request is
-verified as a protocol hint, not as actual schema delivery to a model. The
+Current state: the source-first development assessment is complete and holds
+promotion. A separate network-disabled pinned CLI/SDK control verifies all
+original tool descriptions/schemas in decoded outgoing fixture requests and
+complete CodeNib instructions. It is not historical native HTTP interception
+or evidence that metadata causes tool choice. The next bounded change should
+make the query entry useful and understandable, preserving voluntary calls and
+all original gates. Earlier attribution and isolated component evidence below
+remain scoped to their original controls. The
 [on-demand preparation candidate](codegraph_deferred_preparation_2026_10_30.json)
 builds BM25 during initialization and prepares providers/the graph on the first
 graph query. Four fresh-index Requests controls pass keyword-only retrieval,

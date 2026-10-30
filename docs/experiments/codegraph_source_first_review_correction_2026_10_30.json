@@ -1,0 +1,43 @@
+{
+  "schema": "codenib.source-first-source-review-correction.v1",
+  "recorded_utc": "2026-10-30T20:41:17.732424+00:00",
+  "scope": "Correction of initial local source judgments before committing/publishing the outcome packet; retain both versions. Frozen criteria and all original model/native outcomes remain unchanged.",
+  "initial_source_accepted": 25,
+  "corrected_source_accepted": 23,
+  "changed_tasks": [
+    {
+      "arm": "codegraph",
+      "task_id": "sympy__sympy-21596-lookup",
+      "initial_accepted": true,
+      "corrected_accepted": false
+    },
+    {
+      "arm": "serena",
+      "task_id": "sympy__sympy-21596-lookup",
+      "initial_accepted": true,
+      "corrected_accepted": false
+    }
+  ],
+  "reason": "Exact original SymPy execution gives an ImageSet over EmptySet whose base_pset is EmptySet. Two answers explicitly guarantee a ProductSet instance or one-fold product and are false. The other two quote the constructor expression ProductSet(*self.base_sets), which is accurate even when it canonicalizes; their scores stay unchanged.",
+  "counterexample": "private-grading/sympy-source-counterexample.json",
+  "initial_source_judgments": "private-grading/source-assessment-sympy.v1.json",
+  "initial_aggregate": "assessment.v1.json",
+  "initial_publication_retained": "outcome-publication-v1/manifest.json",
+  "native_grading_changed": false,
+  "model_inputs_or_outputs_changed": false,
+  "criteria_changed": false,
+  "decision_before": "insufficient evidence; hold promotion",
+  "decision_after": "insufficient evidence; hold promotion",
+  "accepted_tasks_before": {
+    "native": 9,
+    "codegraph": 9,
+    "serena": 8,
+    "codenib": 8
+  },
+  "accepted_tasks_after": {
+    "native": 9,
+    "codegraph": 8,
+    "serena": 7,
+    "codenib": 8
+  }
+}

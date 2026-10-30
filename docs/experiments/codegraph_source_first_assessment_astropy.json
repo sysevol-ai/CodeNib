@@ -1,0 +1,1561 @@
+{
+  "schema": "codenib.source-first-source-assessment.v1",
+  "status": "complete",
+  "repository": "astropy__astropy",
+  "instance_id": "astropy__astropy-13579",
+  "recorded_utc": "2026-10-30T20:19:46.385502+00:00",
+  "reviewer": "single unblinded maintainer-agent; no independent adjudication claim",
+  "method": "Apply all frozen mandatory criteria and material final claims; exact original source before repair and each arm captured repaired/helper source afterward. Mechanical limits remain independent. Findings are source assessment, not model-read credit or a change to native grading.",
+  "scope_note": "Single-axis scalar/array shorthand is assessed in its surrounding return-convention explanation. Minor point-reference offsets are recorded where a cited complete function range still supports the fact; neither broadens a failed mandatory criterion. Literal false control flow and inverse-dependency claims remain errors.",
+  "decisions": [
+    {
+      "arm": "native",
+      "task_id": "astropy__astropy-13579-lookup",
+      "kind": "lookup",
+      "final_answer_sha256": "23657434adbd7c531636c27fe059e90a221bc9ca415efdd25ca38a5d01926751",
+      "all_material_claims_checked": true,
+      "source_version_verified": true,
+      "criteria_pass": [
+        true,
+        true,
+        true
+      ],
+      "checked_claims": [
+        "Full pixel loop inserts integer slices, consumes only retained inputs, adds non-None starts, broadcasts and delegates.",
+        "Nested-slice merging, reversed axis order and both named callers match the original source.",
+        "Single-world-axis wording is read as the documented unwrapped return convention, including arrays, rather than a promise of a Python scalar."
+      ],
+      "source_evidence": [
+        {
+          "path": "astropy/wcs/wcsapi/wrappers/sliced_wcs.py",
+          "start_line": 122,
+          "end_line": 150,
+          "source_sha256": "89ed2a3746da4c2c99da0eb15c23e3fd48e87c93ea33d4ab590457a99c6d1a3c",
+          "excerpt": "    def __init__(self, wcs, slices):\n\n        slices = sanitize_slices(slices, wcs.pixel_n_dim)\n\n        if isinstance(wcs, SlicedLowLevelWCS):\n            # Here we combine the current slices with the previous slices\n            # to avoid ending up with many nested WCSes\n            self._wcs = wcs._wcs\n            slices_original = wcs._slices_array.copy()\n            for ipixel in range(wcs.pixel_n_dim):\n                ipixel_orig = wcs._wcs.pixel_n_dim - 1 - wcs._pixel_keep[ipixel]\n                ipixel_new = wcs.pixel_n_dim - 1 - ipixel\n                slices_original[ipixel_orig] = combine_slices(slices_original[ipixel_orig],\n                                                              slices[ipixel_new])\n            self._slices_array = slices_original\n        else:\n            self._wcs = wcs\n            self._slices_array = slices\n\n        self._slices_pixel = self._slices_array[::-1]\n\n        # figure out which pixel dimensions have been kept, then use axis correlation\n        # matrix to figure out which world dims are kept\n        self._pixel_keep = np.nonzero([not isinstance(self._slices_pixel[ip], numbers.Integral)\n                                       for ip in range(self._wcs.pixel_n_dim)])[0]\n\n        # axis_correlation_matrix[world, pixel]\n        self._world_keep = np.nonzero(\n            self._wcs.axis_correlation_matrix[:, self._pixel_keep].any(axis=1))[0]",
+          "excerpt_sha256": "ab01241dfaa50166e7cb88d5983810d1a4e33a833cc2fc4001e9b76ead7174ce",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/wrappers/sliced_wcs.py",
+          "start_line": 156,
+          "end_line": 175,
+          "source_sha256": "89ed2a3746da4c2c99da0eb15c23e3fd48e87c93ea33d4ab590457a99c6d1a3c",
+          "excerpt": "    @lazyproperty\n    def dropped_world_dimensions(self):\n        \"\"\"\n        Information describing the dropped world dimensions.\n        \"\"\"\n        world_coords = self._pixel_to_world_values_all(*[0]*len(self._pixel_keep))\n        dropped_info = defaultdict(list)\n\n        for i in range(self._wcs.world_n_dim):\n\n            if i in self._world_keep:\n                continue\n\n            if \"world_axis_object_classes\" not in dropped_info:\n                dropped_info[\"world_axis_object_classes\"] = dict()\n\n            wao_classes = self._wcs.world_axis_object_classes\n            wao_components = self._wcs.world_axis_object_components\n\n            dropped_info[\"value\"].append(world_coords[i])",
+          "excerpt_sha256": "cf874cf4c2e577a6847a51e65ceebc070e22d12584477e5c9d4ce82d8bbe2e9b",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/wrappers/sliced_wcs.py",
+          "start_line": 212,
+          "end_line": 243,
+          "source_sha256": "89ed2a3746da4c2c99da0eb15c23e3fd48e87c93ea33d4ab590457a99c6d1a3c",
+          "excerpt": "    def _pixel_to_world_values_all(self, *pixel_arrays):\n        pixel_arrays = tuple(map(np.asanyarray, pixel_arrays))\n        pixel_arrays_new = []\n        ipix_curr = -1\n        for ipix in range(self._wcs.pixel_n_dim):\n            if isinstance(self._slices_pixel[ipix], numbers.Integral):\n                pixel_arrays_new.append(self._slices_pixel[ipix])\n            else:\n                ipix_curr += 1\n                if self._slices_pixel[ipix].start is not None:\n                    pixel_arrays_new.append(pixel_arrays[ipix_curr] + self._slices_pixel[ipix].start)\n                else:\n                    pixel_arrays_new.append(pixel_arrays[ipix_curr])\n\n        pixel_arrays_new = np.broadcast_arrays(*pixel_arrays_new)\n        return self._wcs.pixel_to_world_values(*pixel_arrays_new)\n\n    def pixel_to_world_values(self, *pixel_arrays):\n        world_arrays = self._pixel_to_world_values_all(*pixel_arrays)\n\n        # Detect the case of a length 0 array\n        if isinstance(world_arrays, np.ndarray) and not world_arrays.shape:\n            return world_arrays\n\n        if self._wcs.world_n_dim > 1:\n            # Select the dimensions of the original WCS we are keeping.\n            world_arrays = [world_arrays[iw] for iw in self._world_keep]\n            # If there is only one world dimension (after slicing) we shouldn't return a tuple.\n            if self.world_n_dim == 1:\n                world_arrays = world_arrays[0]\n\n        return world_arrays",
+          "excerpt_sha256": "f65665c7e14be9bb223ad6f93c05cb0e0cc4de3b03913fd778439d1483360ec6",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        }
+      ],
+      "findings": [],
+      "notes": [],
+      "material_source_error": false,
+      "serious_error": false,
+      "semantic_source_pass": true,
+      "mechanical_gates": {
+        "terminal_pass": true,
+        "read_only_source_preserved": true,
+        "words": 331,
+        "word_limit": 350,
+        "word_limit_pass": true
+      },
+      "accepted": true
+    },
+    {
+      "arm": "codegraph",
+      "task_id": "astropy__astropy-13579-lookup",
+      "kind": "lookup",
+      "final_answer_sha256": "b61b52ff0cdbfbd794f927294754b0362f677a737cb32673e1df27c18b9eebe4",
+      "all_material_claims_checked": true,
+      "source_version_verified": true,
+      "criteria_pass": [
+        true,
+        true,
+        true
+      ],
+      "checked_claims": [
+        "Full pixel loop inserts integer slices, consumes only retained inputs, adds non-None starts, broadcasts and delegates.",
+        "Nested-slice merging, reversed axis order and both named callers match the original source.",
+        "Single-world-axis wording is read as the documented unwrapped return convention, including arrays, rather than a promise of a Python scalar."
+      ],
+      "source_evidence": [
+        {
+          "path": "astropy/wcs/wcsapi/wrappers/sliced_wcs.py",
+          "start_line": 122,
+          "end_line": 150,
+          "source_sha256": "89ed2a3746da4c2c99da0eb15c23e3fd48e87c93ea33d4ab590457a99c6d1a3c",
+          "excerpt": "    def __init__(self, wcs, slices):\n\n        slices = sanitize_slices(slices, wcs.pixel_n_dim)\n\n        if isinstance(wcs, SlicedLowLevelWCS):\n            # Here we combine the current slices with the previous slices\n            # to avoid ending up with many nested WCSes\n            self._wcs = wcs._wcs\n            slices_original = wcs._slices_array.copy()\n            for ipixel in range(wcs.pixel_n_dim):\n                ipixel_orig = wcs._wcs.pixel_n_dim - 1 - wcs._pixel_keep[ipixel]\n                ipixel_new = wcs.pixel_n_dim - 1 - ipixel\n                slices_original[ipixel_orig] = combine_slices(slices_original[ipixel_orig],\n                                                              slices[ipixel_new])\n            self._slices_array = slices_original\n        else:\n            self._wcs = wcs\n            self._slices_array = slices\n\n        self._slices_pixel = self._slices_array[::-1]\n\n        # figure out which pixel dimensions have been kept, then use axis correlation\n        # matrix to figure out which world dims are kept\n        self._pixel_keep = np.nonzero([not isinstance(self._slices_pixel[ip], numbers.Integral)\n                                       for ip in range(self._wcs.pixel_n_dim)])[0]\n\n        # axis_correlation_matrix[world, pixel]\n        self._world_keep = np.nonzero(\n            self._wcs.axis_correlation_matrix[:, self._pixel_keep].any(axis=1))[0]",
+          "excerpt_sha256": "ab01241dfaa50166e7cb88d5983810d1a4e33a833cc2fc4001e9b76ead7174ce",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/wrappers/sliced_wcs.py",
+          "start_line": 156,
+          "end_line": 175,
+          "source_sha256": "89ed2a3746da4c2c99da0eb15c23e3fd48e87c93ea33d4ab590457a99c6d1a3c",
+          "excerpt": "    @lazyproperty\n    def dropped_world_dimensions(self):\n        \"\"\"\n        Information describing the dropped world dimensions.\n        \"\"\"\n        world_coords = self._pixel_to_world_values_all(*[0]*len(self._pixel_keep))\n        dropped_info = defaultdict(list)\n\n        for i in range(self._wcs.world_n_dim):\n\n            if i in self._world_keep:\n                continue\n\n            if \"world_axis_object_classes\" not in dropped_info:\n                dropped_info[\"world_axis_object_classes\"] = dict()\n\n            wao_classes = self._wcs.world_axis_object_classes\n            wao_components = self._wcs.world_axis_object_components\n\n            dropped_info[\"value\"].append(world_coords[i])",
+          "excerpt_sha256": "cf874cf4c2e577a6847a51e65ceebc070e22d12584477e5c9d4ce82d8bbe2e9b",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/wrappers/sliced_wcs.py",
+          "start_line": 212,
+          "end_line": 243,
+          "source_sha256": "89ed2a3746da4c2c99da0eb15c23e3fd48e87c93ea33d4ab590457a99c6d1a3c",
+          "excerpt": "    def _pixel_to_world_values_all(self, *pixel_arrays):\n        pixel_arrays = tuple(map(np.asanyarray, pixel_arrays))\n        pixel_arrays_new = []\n        ipix_curr = -1\n        for ipix in range(self._wcs.pixel_n_dim):\n            if isinstance(self._slices_pixel[ipix], numbers.Integral):\n                pixel_arrays_new.append(self._slices_pixel[ipix])\n            else:\n                ipix_curr += 1\n                if self._slices_pixel[ipix].start is not None:\n                    pixel_arrays_new.append(pixel_arrays[ipix_curr] + self._slices_pixel[ipix].start)\n                else:\n                    pixel_arrays_new.append(pixel_arrays[ipix_curr])\n\n        pixel_arrays_new = np.broadcast_arrays(*pixel_arrays_new)\n        return self._wcs.pixel_to_world_values(*pixel_arrays_new)\n\n    def pixel_to_world_values(self, *pixel_arrays):\n        world_arrays = self._pixel_to_world_values_all(*pixel_arrays)\n\n        # Detect the case of a length 0 array\n        if isinstance(world_arrays, np.ndarray) and not world_arrays.shape:\n            return world_arrays\n\n        if self._wcs.world_n_dim > 1:\n            # Select the dimensions of the original WCS we are keeping.\n            world_arrays = [world_arrays[iw] for iw in self._world_keep]\n            # If there is only one world dimension (after slicing) we shouldn't return a tuple.\n            if self.world_n_dim == 1:\n                world_arrays = world_arrays[0]\n\n        return world_arrays",
+          "excerpt_sha256": "f65665c7e14be9bb223ad6f93c05cb0e0cc4de3b03913fd778439d1483360ec6",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        }
+      ],
+      "findings": [],
+      "notes": [],
+      "material_source_error": false,
+      "serious_error": false,
+      "semantic_source_pass": true,
+      "mechanical_gates": {
+        "terminal_pass": true,
+        "read_only_source_preserved": true,
+        "words": 328,
+        "word_limit": 350,
+        "word_limit_pass": true
+      },
+      "accepted": true
+    },
+    {
+      "arm": "serena",
+      "task_id": "astropy__astropy-13579-lookup",
+      "kind": "lookup",
+      "final_answer_sha256": "e3f02d01b431b3d9ac5568c2c8df9e398d35d0ee9b1da16fb0ff751161119caf",
+      "all_material_claims_checked": true,
+      "source_version_verified": true,
+      "criteria_pass": [
+        true,
+        true,
+        true
+      ],
+      "checked_claims": [
+        "Full pixel loop inserts integer slices, consumes only retained inputs, adds non-None starts, broadcasts and delegates.",
+        "Nested-slice merging, reversed axis order and both named callers match the original source.",
+        "Single-world-axis wording is read as the documented unwrapped return convention, including arrays, rather than a promise of a Python scalar."
+      ],
+      "source_evidence": [
+        {
+          "path": "astropy/wcs/wcsapi/wrappers/sliced_wcs.py",
+          "start_line": 122,
+          "end_line": 150,
+          "source_sha256": "89ed2a3746da4c2c99da0eb15c23e3fd48e87c93ea33d4ab590457a99c6d1a3c",
+          "excerpt": "    def __init__(self, wcs, slices):\n\n        slices = sanitize_slices(slices, wcs.pixel_n_dim)\n\n        if isinstance(wcs, SlicedLowLevelWCS):\n            # Here we combine the current slices with the previous slices\n            # to avoid ending up with many nested WCSes\n            self._wcs = wcs._wcs\n            slices_original = wcs._slices_array.copy()\n            for ipixel in range(wcs.pixel_n_dim):\n                ipixel_orig = wcs._wcs.pixel_n_dim - 1 - wcs._pixel_keep[ipixel]\n                ipixel_new = wcs.pixel_n_dim - 1 - ipixel\n                slices_original[ipixel_orig] = combine_slices(slices_original[ipixel_orig],\n                                                              slices[ipixel_new])\n            self._slices_array = slices_original\n        else:\n            self._wcs = wcs\n            self._slices_array = slices\n\n        self._slices_pixel = self._slices_array[::-1]\n\n        # figure out which pixel dimensions have been kept, then use axis correlation\n        # matrix to figure out which world dims are kept\n        self._pixel_keep = np.nonzero([not isinstance(self._slices_pixel[ip], numbers.Integral)\n                                       for ip in range(self._wcs.pixel_n_dim)])[0]\n\n        # axis_correlation_matrix[world, pixel]\n        self._world_keep = np.nonzero(\n            self._wcs.axis_correlation_matrix[:, self._pixel_keep].any(axis=1))[0]",
+          "excerpt_sha256": "ab01241dfaa50166e7cb88d5983810d1a4e33a833cc2fc4001e9b76ead7174ce",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/wrappers/sliced_wcs.py",
+          "start_line": 156,
+          "end_line": 175,
+          "source_sha256": "89ed2a3746da4c2c99da0eb15c23e3fd48e87c93ea33d4ab590457a99c6d1a3c",
+          "excerpt": "    @lazyproperty\n    def dropped_world_dimensions(self):\n        \"\"\"\n        Information describing the dropped world dimensions.\n        \"\"\"\n        world_coords = self._pixel_to_world_values_all(*[0]*len(self._pixel_keep))\n        dropped_info = defaultdict(list)\n\n        for i in range(self._wcs.world_n_dim):\n\n            if i in self._world_keep:\n                continue\n\n            if \"world_axis_object_classes\" not in dropped_info:\n                dropped_info[\"world_axis_object_classes\"] = dict()\n\n            wao_classes = self._wcs.world_axis_object_classes\n            wao_components = self._wcs.world_axis_object_components\n\n            dropped_info[\"value\"].append(world_coords[i])",
+          "excerpt_sha256": "cf874cf4c2e577a6847a51e65ceebc070e22d12584477e5c9d4ce82d8bbe2e9b",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/wrappers/sliced_wcs.py",
+          "start_line": 212,
+          "end_line": 243,
+          "source_sha256": "89ed2a3746da4c2c99da0eb15c23e3fd48e87c93ea33d4ab590457a99c6d1a3c",
+          "excerpt": "    def _pixel_to_world_values_all(self, *pixel_arrays):\n        pixel_arrays = tuple(map(np.asanyarray, pixel_arrays))\n        pixel_arrays_new = []\n        ipix_curr = -1\n        for ipix in range(self._wcs.pixel_n_dim):\n            if isinstance(self._slices_pixel[ipix], numbers.Integral):\n                pixel_arrays_new.append(self._slices_pixel[ipix])\n            else:\n                ipix_curr += 1\n                if self._slices_pixel[ipix].start is not None:\n                    pixel_arrays_new.append(pixel_arrays[ipix_curr] + self._slices_pixel[ipix].start)\n                else:\n                    pixel_arrays_new.append(pixel_arrays[ipix_curr])\n\n        pixel_arrays_new = np.broadcast_arrays(*pixel_arrays_new)\n        return self._wcs.pixel_to_world_values(*pixel_arrays_new)\n\n    def pixel_to_world_values(self, *pixel_arrays):\n        world_arrays = self._pixel_to_world_values_all(*pixel_arrays)\n\n        # Detect the case of a length 0 array\n        if isinstance(world_arrays, np.ndarray) and not world_arrays.shape:\n            return world_arrays\n\n        if self._wcs.world_n_dim > 1:\n            # Select the dimensions of the original WCS we are keeping.\n            world_arrays = [world_arrays[iw] for iw in self._world_keep]\n            # If there is only one world dimension (after slicing) we shouldn't return a tuple.\n            if self.world_n_dim == 1:\n                world_arrays = world_arrays[0]\n\n        return world_arrays",
+          "excerpt_sha256": "f65665c7e14be9bb223ad6f93c05cb0e0cc4de3b03913fd778439d1483360ec6",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        }
+      ],
+      "findings": [],
+      "notes": [],
+      "material_source_error": false,
+      "serious_error": false,
+      "semantic_source_pass": true,
+      "mechanical_gates": {
+        "terminal_pass": true,
+        "read_only_source_preserved": true,
+        "words": 311,
+        "word_limit": 350,
+        "word_limit_pass": true
+      },
+      "accepted": true
+    },
+    {
+      "arm": "codenib",
+      "task_id": "astropy__astropy-13579-lookup",
+      "kind": "lookup",
+      "final_answer_sha256": "1816252c5cad93d3f678176d22f6c8f5a11032a590e8ea2dc86dee1afbae9c60",
+      "all_material_claims_checked": true,
+      "source_version_verified": true,
+      "criteria_pass": [
+        true,
+        true,
+        true
+      ],
+      "checked_claims": [
+        "Full pixel loop inserts integer slices, consumes only retained inputs, adds non-None starts, broadcasts and delegates.",
+        "Nested-slice merging, reversed axis order and both named callers match the original source.",
+        "Single-world-axis wording is read as the documented unwrapped return convention, including arrays, rather than a promise of a Python scalar."
+      ],
+      "source_evidence": [
+        {
+          "path": "astropy/wcs/wcsapi/wrappers/sliced_wcs.py",
+          "start_line": 122,
+          "end_line": 150,
+          "source_sha256": "89ed2a3746da4c2c99da0eb15c23e3fd48e87c93ea33d4ab590457a99c6d1a3c",
+          "excerpt": "    def __init__(self, wcs, slices):\n\n        slices = sanitize_slices(slices, wcs.pixel_n_dim)\n\n        if isinstance(wcs, SlicedLowLevelWCS):\n            # Here we combine the current slices with the previous slices\n            # to avoid ending up with many nested WCSes\n            self._wcs = wcs._wcs\n            slices_original = wcs._slices_array.copy()\n            for ipixel in range(wcs.pixel_n_dim):\n                ipixel_orig = wcs._wcs.pixel_n_dim - 1 - wcs._pixel_keep[ipixel]\n                ipixel_new = wcs.pixel_n_dim - 1 - ipixel\n                slices_original[ipixel_orig] = combine_slices(slices_original[ipixel_orig],\n                                                              slices[ipixel_new])\n            self._slices_array = slices_original\n        else:\n            self._wcs = wcs\n            self._slices_array = slices\n\n        self._slices_pixel = self._slices_array[::-1]\n\n        # figure out which pixel dimensions have been kept, then use axis correlation\n        # matrix to figure out which world dims are kept\n        self._pixel_keep = np.nonzero([not isinstance(self._slices_pixel[ip], numbers.Integral)\n                                       for ip in range(self._wcs.pixel_n_dim)])[0]\n\n        # axis_correlation_matrix[world, pixel]\n        self._world_keep = np.nonzero(\n            self._wcs.axis_correlation_matrix[:, self._pixel_keep].any(axis=1))[0]",
+          "excerpt_sha256": "ab01241dfaa50166e7cb88d5983810d1a4e33a833cc2fc4001e9b76ead7174ce",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/wrappers/sliced_wcs.py",
+          "start_line": 156,
+          "end_line": 175,
+          "source_sha256": "89ed2a3746da4c2c99da0eb15c23e3fd48e87c93ea33d4ab590457a99c6d1a3c",
+          "excerpt": "    @lazyproperty\n    def dropped_world_dimensions(self):\n        \"\"\"\n        Information describing the dropped world dimensions.\n        \"\"\"\n        world_coords = self._pixel_to_world_values_all(*[0]*len(self._pixel_keep))\n        dropped_info = defaultdict(list)\n\n        for i in range(self._wcs.world_n_dim):\n\n            if i in self._world_keep:\n                continue\n\n            if \"world_axis_object_classes\" not in dropped_info:\n                dropped_info[\"world_axis_object_classes\"] = dict()\n\n            wao_classes = self._wcs.world_axis_object_classes\n            wao_components = self._wcs.world_axis_object_components\n\n            dropped_info[\"value\"].append(world_coords[i])",
+          "excerpt_sha256": "cf874cf4c2e577a6847a51e65ceebc070e22d12584477e5c9d4ce82d8bbe2e9b",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/wrappers/sliced_wcs.py",
+          "start_line": 212,
+          "end_line": 243,
+          "source_sha256": "89ed2a3746da4c2c99da0eb15c23e3fd48e87c93ea33d4ab590457a99c6d1a3c",
+          "excerpt": "    def _pixel_to_world_values_all(self, *pixel_arrays):\n        pixel_arrays = tuple(map(np.asanyarray, pixel_arrays))\n        pixel_arrays_new = []\n        ipix_curr = -1\n        for ipix in range(self._wcs.pixel_n_dim):\n            if isinstance(self._slices_pixel[ipix], numbers.Integral):\n                pixel_arrays_new.append(self._slices_pixel[ipix])\n            else:\n                ipix_curr += 1\n                if self._slices_pixel[ipix].start is not None:\n                    pixel_arrays_new.append(pixel_arrays[ipix_curr] + self._slices_pixel[ipix].start)\n                else:\n                    pixel_arrays_new.append(pixel_arrays[ipix_curr])\n\n        pixel_arrays_new = np.broadcast_arrays(*pixel_arrays_new)\n        return self._wcs.pixel_to_world_values(*pixel_arrays_new)\n\n    def pixel_to_world_values(self, *pixel_arrays):\n        world_arrays = self._pixel_to_world_values_all(*pixel_arrays)\n\n        # Detect the case of a length 0 array\n        if isinstance(world_arrays, np.ndarray) and not world_arrays.shape:\n            return world_arrays\n\n        if self._wcs.world_n_dim > 1:\n            # Select the dimensions of the original WCS we are keeping.\n            world_arrays = [world_arrays[iw] for iw in self._world_keep]\n            # If there is only one world dimension (after slicing) we shouldn't return a tuple.\n            if self.world_n_dim == 1:\n                world_arrays = world_arrays[0]\n\n        return world_arrays",
+          "excerpt_sha256": "f65665c7e14be9bb223ad6f93c05cb0e0cc4de3b03913fd778439d1483360ec6",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        }
+      ],
+      "findings": [],
+      "notes": [],
+      "material_source_error": false,
+      "serious_error": false,
+      "semantic_source_pass": true,
+      "mechanical_gates": {
+        "terminal_pass": true,
+        "read_only_source_preserved": true,
+        "words": 329,
+        "word_limit": 350,
+        "word_limit_pass": true
+      },
+      "accepted": true
+    },
+    {
+      "arm": "native",
+      "task_id": "astropy__astropy-13579-flow",
+      "kind": "flow",
+      "final_answer_sha256": "fa20a5e906a05a2477cb3bb796fdeaa8480afc5c3b713c4624a09afff886fb73",
+      "all_material_claims_checked": true,
+      "source_version_verified": true,
+      "criteria_pass": [
+        true,
+        true,
+        false,
+        true
+      ],
+      "checked_claims": [
+        "Wrapper ownership, object/component conversion, literal dropped-world 1.0, broadcasts and slice-start corrections are correctly located.",
+        "The final retained-pixel selection is identified, but the additional claimed zero-dimensional early-return path is false."
+      ],
+      "source_evidence": [
+        {
+          "path": "astropy/wcs/wcsapi/high_level_wcs_wrapper.py",
+          "start_line": 8,
+          "end_line": 22,
+          "source_sha256": "913d096cb94a35d01b4c3d16cc730efa579c0d3d1ef7cf24fd6b2c6bd3627749",
+          "excerpt": "class HighLevelWCSWrapper(HighLevelWCSMixin):\n    \"\"\"\n    Wrapper class that can take any :class:`~astropy.wcs.wcsapi.BaseLowLevelWCS`\n    object and expose the high-level WCS API.\n    \"\"\"\n\n    def __init__(self, low_level_wcs):\n        if not isinstance(low_level_wcs, BaseLowLevelWCS):\n            raise TypeError('Input to a HighLevelWCSWrapper must be a low level WCS object')\n\n        self._low_level_wcs = low_level_wcs\n\n    @property\n    def low_level_wcs(self):\n        return self._low_level_wcs",
+          "excerpt_sha256": "79c8024557e6811dd8de823f6b9946a862fce01ec60435d0631c51265e187dce",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/high_level_api.py",
+          "start_line": 139,
+          "end_line": 150,
+          "source_sha256": "ed49b242712792dae1022e300e33f91d24409c7d055c77843bcf42ebe624c5d8",
+          "excerpt": "    # Cache the classes and components since this may be expensive\n    serialized_classes = low_level_wcs.world_axis_object_classes\n    components = low_level_wcs.world_axis_object_components\n\n    # Deserialize world_axis_object_classes using the default order\n    classes = OrderedDict()\n    for key in default_order(components):\n        if low_level_wcs.serialized_classes:\n            classes[key] = deserialize_class(serialized_classes[key],\n                                             construct=False)\n        else:\n            classes[key] = serialized_classes[key]",
+          "excerpt_sha256": "ac0e68e42e60796fdd7027a4a3de1738848b950406bc5a79f39b59895b91dd49",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/high_level_api.py",
+          "start_line": 229,
+          "end_line": 237,
+          "source_sha256": "ed49b242712792dae1022e300e33f91d24409c7d055c77843bcf42ebe624c5d8",
+          "excerpt": "    # We now extract the attributes needed for the world values\n    world = []\n    for key, _, attr in components:\n        if callable(attr):\n            world.append(attr(objects[key]))\n        else:\n            world.append(rec_getattr(objects[key], attr))\n\n    return world",
+          "excerpt_sha256": "52d27c5e7bda34326783e483706df06e678ef03db48cd0c6b11cfbeb74698989",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/high_level_api.py",
+          "start_line": 307,
+          "end_line": 314,
+          "source_sha256": "ed49b242712792dae1022e300e33f91d24409c7d055c77843bcf42ebe624c5d8",
+          "excerpt": "    def world_to_pixel(self, *world_objects):\n\n        world_values = high_level_objects_to_values(*world_objects, low_level_wcs=self.low_level_wcs)\n\n        # Finally we convert to pixel coordinates\n        pixel_values = self.low_level_wcs.world_to_pixel_values(*world_values)\n\n        return pixel_values",
+          "excerpt_sha256": "6fecf520b2aee148ae666de34632b9b3ea49c5c7e1f11f323d901f034477831a",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/wrappers/sliced_wcs.py",
+          "start_line": 245,
+          "end_line": 278,
+          "source_sha256": "89ed2a3746da4c2c99da0eb15c23e3fd48e87c93ea33d4ab590457a99c6d1a3c",
+          "excerpt": "    def world_to_pixel_values(self, *world_arrays):\n        world_arrays = tuple(map(np.asanyarray, world_arrays))\n        world_arrays_new = []\n        iworld_curr = -1\n        for iworld in range(self._wcs.world_n_dim):\n            if iworld in self._world_keep:\n                iworld_curr += 1\n                world_arrays_new.append(world_arrays[iworld_curr])\n            else:\n                world_arrays_new.append(1.)\n\n        world_arrays_new = np.broadcast_arrays(*world_arrays_new)\n        pixel_arrays = list(self._wcs.world_to_pixel_values(*world_arrays_new))\n\n        for ipixel in range(self._wcs.pixel_n_dim):\n            if isinstance(self._slices_pixel[ipixel], slice) and self._slices_pixel[ipixel].start is not None:\n                pixel_arrays[ipixel] -= self._slices_pixel[ipixel].start\n\n        # Detect the case of a length 0 array\n        if isinstance(pixel_arrays, np.ndarray) and not pixel_arrays.shape:\n            return pixel_arrays\n        pixel = tuple(pixel_arrays[ip] for ip in self._pixel_keep)\n        if self.pixel_n_dim == 1 and self._wcs.pixel_n_dim > 1:\n            pixel = pixel[0]\n        return pixel\n\n    @property\n    def world_axis_object_components(self):\n        return [self._wcs.world_axis_object_components[idx] for idx in self._world_keep]\n\n    @property\n    def world_axis_object_classes(self):\n        keys_keep = [item[0] for item in self.world_axis_object_components]\n        return dict([item for item in self._wcs.world_axis_object_classes.items() if item[0] in keys_keep])",
+          "excerpt_sha256": "940d802e11891ddd615af209a43983ca2c04eecde634327f5d773702e19ac671",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/fitswcs.py",
+          "start_line": 325,
+          "end_line": 337,
+          "source_sha256": "c1a891af6c441624e237d08deeb3bdd0d0595fb388c1d83fae3a4d806495fb71",
+          "excerpt": "    def world_to_pixel_values(self, *world_arrays):\n        # avoid circular import\n        from astropy.wcs.wcs import NoConvergence\n        try:\n            pixel = self.all_world2pix(*world_arrays, 0)\n        except NoConvergence as e:\n            warnings.warn(str(e))\n            # use best_solution contained in the exception and format the same\n            # way as all_world2pix does (using _array_converter)\n            pixel = self._array_converter(lambda *args: e.best_solution,\n                                         'input', *world_arrays, 0)\n\n        return pixel[0] if self.pixel_n_dim == 1 else tuple(pixel)",
+          "excerpt_sha256": "368ce5cc2fba53589104bc90d76dcacf815f679216d6914483b7bc0a735f07d7",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        }
+      ],
+      "findings": [
+        {
+          "severity": "serious",
+          "quote": "There is also an early return for a 0-d result",
+          "reason": "The trace presents an unreachable branch as an available return path. pixel_arrays is converted to list before the ndarray test; this branch cannot handle a returned bare array.",
+          "source_evidence": [
+            {
+              "path": "astropy/wcs/wcsapi/wrappers/sliced_wcs.py",
+              "start_line": 245,
+              "end_line": 269,
+              "source_sha256": "89ed2a3746da4c2c99da0eb15c23e3fd48e87c93ea33d4ab590457a99c6d1a3c",
+              "excerpt": "    def world_to_pixel_values(self, *world_arrays):\n        world_arrays = tuple(map(np.asanyarray, world_arrays))\n        world_arrays_new = []\n        iworld_curr = -1\n        for iworld in range(self._wcs.world_n_dim):\n            if iworld in self._world_keep:\n                iworld_curr += 1\n                world_arrays_new.append(world_arrays[iworld_curr])\n            else:\n                world_arrays_new.append(1.)\n\n        world_arrays_new = np.broadcast_arrays(*world_arrays_new)\n        pixel_arrays = list(self._wcs.world_to_pixel_values(*world_arrays_new))\n\n        for ipixel in range(self._wcs.pixel_n_dim):\n            if isinstance(self._slices_pixel[ipixel], slice) and self._slices_pixel[ipixel].start is not None:\n                pixel_arrays[ipixel] -= self._slices_pixel[ipixel].start\n\n        # Detect the case of a length 0 array\n        if isinstance(pixel_arrays, np.ndarray) and not pixel_arrays.shape:\n            return pixel_arrays\n        pixel = tuple(pixel_arrays[ip] for ip in self._pixel_keep)\n        if self.pixel_n_dim == 1 and self._wcs.pixel_n_dim > 1:\n            pixel = pixel[0]\n        return pixel",
+              "excerpt_sha256": "870f129ef49b0182d49ad8e89c3f6bd5be0e076b88a6a57fddfcad261fafa308",
+              "source_version": "original pinned source",
+              "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+            }
+          ]
+        }
+      ],
+      "notes": [
+        "706 words also fail the strictly under-700 gate. Minor isolated point offsets are covered by the cited complete definitions."
+      ],
+      "material_source_error": true,
+      "serious_error": true,
+      "semantic_source_pass": false,
+      "mechanical_gates": {
+        "terminal_pass": true,
+        "read_only_source_preserved": true,
+        "words": 706,
+        "word_limit": 700,
+        "word_limit_pass": false
+      },
+      "accepted": false
+    },
+    {
+      "arm": "codegraph",
+      "task_id": "astropy__astropy-13579-flow",
+      "kind": "flow",
+      "final_answer_sha256": "a42711edef2aadda522ecd320a0ab175b6de2a3da75dc266f1a92f738e5cbda4",
+      "all_material_claims_checked": true,
+      "source_version_verified": true,
+      "criteria_pass": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "checked_claims": [
+        "Correct wrapper/mixin dispatch, filtered component metadata, literal 1.0 reconstruction, full inverse call and retained output selection.",
+        "The prompt supplies the FITS case; static qualifications are retained, with no universal target asserted for arbitrary wrapped implementations."
+      ],
+      "source_evidence": [
+        {
+          "path": "astropy/wcs/wcsapi/high_level_wcs_wrapper.py",
+          "start_line": 8,
+          "end_line": 22,
+          "source_sha256": "913d096cb94a35d01b4c3d16cc730efa579c0d3d1ef7cf24fd6b2c6bd3627749",
+          "excerpt": "class HighLevelWCSWrapper(HighLevelWCSMixin):\n    \"\"\"\n    Wrapper class that can take any :class:`~astropy.wcs.wcsapi.BaseLowLevelWCS`\n    object and expose the high-level WCS API.\n    \"\"\"\n\n    def __init__(self, low_level_wcs):\n        if not isinstance(low_level_wcs, BaseLowLevelWCS):\n            raise TypeError('Input to a HighLevelWCSWrapper must be a low level WCS object')\n\n        self._low_level_wcs = low_level_wcs\n\n    @property\n    def low_level_wcs(self):\n        return self._low_level_wcs",
+          "excerpt_sha256": "79c8024557e6811dd8de823f6b9946a862fce01ec60435d0631c51265e187dce",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/high_level_api.py",
+          "start_line": 139,
+          "end_line": 150,
+          "source_sha256": "ed49b242712792dae1022e300e33f91d24409c7d055c77843bcf42ebe624c5d8",
+          "excerpt": "    # Cache the classes and components since this may be expensive\n    serialized_classes = low_level_wcs.world_axis_object_classes\n    components = low_level_wcs.world_axis_object_components\n\n    # Deserialize world_axis_object_classes using the default order\n    classes = OrderedDict()\n    for key in default_order(components):\n        if low_level_wcs.serialized_classes:\n            classes[key] = deserialize_class(serialized_classes[key],\n                                             construct=False)\n        else:\n            classes[key] = serialized_classes[key]",
+          "excerpt_sha256": "ac0e68e42e60796fdd7027a4a3de1738848b950406bc5a79f39b59895b91dd49",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/high_level_api.py",
+          "start_line": 178,
+          "end_line": 237,
+          "source_sha256": "ed49b242712792dae1022e300e33f91d24409c7d055c77843bcf42ebe624c5d8",
+          "excerpt": "    if unique_match:\n\n        for key, (klass, args, kwargs, *rest) in classes.items():\n\n            if len(rest) == 0:\n                klass_gen = klass\n            elif len(rest) == 1:\n                klass_gen = rest[0]\n            else:\n                raise ValueError(\"Tuples in world_axis_object_classes should have length 3 or 4\")\n\n            # FIXME: For now SkyCoord won't auto-convert upon initialization\n            # https://github.com/astropy/astropy/issues/7689\n            from astropy.coordinates import SkyCoord\n            if isinstance(world_by_key[key], SkyCoord):\n                if 'frame' in kwargs:\n                    objects[key] = world_by_key[key].transform_to(kwargs['frame'])\n                else:\n                    objects[key] = world_by_key[key]\n            else:\n                objects[key] = klass_gen(world_by_key[key], *args, **kwargs)\n\n    else:\n\n        for ikey, key in enumerate(classes):\n\n            klass, args, kwargs, *rest = classes[key]\n\n            if len(rest) == 0:\n                klass_gen = klass\n            elif len(rest) == 1:\n                klass_gen = rest[0]\n            else:\n                raise ValueError(\"Tuples in world_axis_object_classes should have length 3 or 4\")\n\n            w = world_objects[ikey]\n            if not isinstance(w, klass):\n                raise ValueError(\"Expected the following order of world \"\n                                 \"arguments: {}\".format(', '.join([k.__name__ for (k, _, _) in classes.values()])))\n\n            # FIXME: For now SkyCoord won't auto-convert upon initialization\n            # https://github.com/astropy/astropy/issues/7689\n            from astropy.coordinates import SkyCoord\n            if isinstance(w, SkyCoord):\n                if 'frame' in kwargs:\n                    objects[key] = w.transform_to(kwargs['frame'])\n                else:\n                    objects[key] = w\n            else:\n                objects[key] = klass_gen(w, *args, **kwargs)\n\n    # We now extract the attributes needed for the world values\n    world = []\n    for key, _, attr in components:\n        if callable(attr):\n            world.append(attr(objects[key]))\n        else:\n            world.append(rec_getattr(objects[key], attr))\n\n    return world",
+          "excerpt_sha256": "c3a24d5b635e50c41f21898c705729ba18ddbaa6e3b3de2e8bc794fee40420ea",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/high_level_api.py",
+          "start_line": 307,
+          "end_line": 314,
+          "source_sha256": "ed49b242712792dae1022e300e33f91d24409c7d055c77843bcf42ebe624c5d8",
+          "excerpt": "    def world_to_pixel(self, *world_objects):\n\n        world_values = high_level_objects_to_values(*world_objects, low_level_wcs=self.low_level_wcs)\n\n        # Finally we convert to pixel coordinates\n        pixel_values = self.low_level_wcs.world_to_pixel_values(*world_values)\n\n        return pixel_values",
+          "excerpt_sha256": "6fecf520b2aee148ae666de34632b9b3ea49c5c7e1f11f323d901f034477831a",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/wrappers/sliced_wcs.py",
+          "start_line": 245,
+          "end_line": 278,
+          "source_sha256": "89ed2a3746da4c2c99da0eb15c23e3fd48e87c93ea33d4ab590457a99c6d1a3c",
+          "excerpt": "    def world_to_pixel_values(self, *world_arrays):\n        world_arrays = tuple(map(np.asanyarray, world_arrays))\n        world_arrays_new = []\n        iworld_curr = -1\n        for iworld in range(self._wcs.world_n_dim):\n            if iworld in self._world_keep:\n                iworld_curr += 1\n                world_arrays_new.append(world_arrays[iworld_curr])\n            else:\n                world_arrays_new.append(1.)\n\n        world_arrays_new = np.broadcast_arrays(*world_arrays_new)\n        pixel_arrays = list(self._wcs.world_to_pixel_values(*world_arrays_new))\n\n        for ipixel in range(self._wcs.pixel_n_dim):\n            if isinstance(self._slices_pixel[ipixel], slice) and self._slices_pixel[ipixel].start is not None:\n                pixel_arrays[ipixel] -= self._slices_pixel[ipixel].start\n\n        # Detect the case of a length 0 array\n        if isinstance(pixel_arrays, np.ndarray) and not pixel_arrays.shape:\n            return pixel_arrays\n        pixel = tuple(pixel_arrays[ip] for ip in self._pixel_keep)\n        if self.pixel_n_dim == 1 and self._wcs.pixel_n_dim > 1:\n            pixel = pixel[0]\n        return pixel\n\n    @property\n    def world_axis_object_components(self):\n        return [self._wcs.world_axis_object_components[idx] for idx in self._world_keep]\n\n    @property\n    def world_axis_object_classes(self):\n        keys_keep = [item[0] for item in self.world_axis_object_components]\n        return dict([item for item in self._wcs.world_axis_object_classes.items() if item[0] in keys_keep])",
+          "excerpt_sha256": "940d802e11891ddd615af209a43983ca2c04eecde634327f5d773702e19ac671",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/fitswcs.py",
+          "start_line": 325,
+          "end_line": 337,
+          "source_sha256": "c1a891af6c441624e237d08deeb3bdd0d0595fb388c1d83fae3a4d806495fb71",
+          "excerpt": "    def world_to_pixel_values(self, *world_arrays):\n        # avoid circular import\n        from astropy.wcs.wcs import NoConvergence\n        try:\n            pixel = self.all_world2pix(*world_arrays, 0)\n        except NoConvergence as e:\n            warnings.warn(str(e))\n            # use best_solution contained in the exception and format the same\n            # way as all_world2pix does (using _array_converter)\n            pixel = self._array_converter(lambda *args: e.best_solution,\n                                         'input', *world_arrays, 0)\n\n        return pixel[0] if self.pixel_n_dim == 1 else tuple(pixel)",
+          "excerpt_sha256": "368ce5cc2fba53589104bc90d76dcacf815f679216d6914483b7bc0a735f07d7",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        }
+      ],
+      "findings": [],
+      "notes": [
+        "The FITS summary emphasizes a tuple across the full WCS; the actual method also unwraps its one-axis result at line337. This qualification does not change the traced sliced multi-axis call/selection. Its point citation for WCS inheritance names the mixin definition; actual WCS inheritance is in wcs.py:243."
+      ],
+      "material_source_error": false,
+      "serious_error": false,
+      "semantic_source_pass": true,
+      "mechanical_gates": {
+        "terminal_pass": true,
+        "read_only_source_preserved": true,
+        "words": 672,
+        "word_limit": 700,
+        "word_limit_pass": true
+      },
+      "accepted": true
+    },
+    {
+      "arm": "serena",
+      "task_id": "astropy__astropy-13579-flow",
+      "kind": "flow",
+      "final_answer_sha256": "1bf598349c94d2f067561db4d62dc0b920a303ee4504e45a25635c4b26aace17",
+      "all_material_claims_checked": true,
+      "source_version_verified": true,
+      "criteria_pass": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "checked_claims": [
+        "Correct object-to-value conversion, wrapper ownership, kept-axis metadata, literal 1.0 fill and retained output selection.",
+        "Correctly identifies that list conversion makes the ndarray check unreachable. FITS and object-matching branches are explicitly conditional, not an observed runtime trace."
+      ],
+      "source_evidence": [
+        {
+          "path": "astropy/wcs/wcsapi/high_level_wcs_wrapper.py",
+          "start_line": 8,
+          "end_line": 22,
+          "source_sha256": "913d096cb94a35d01b4c3d16cc730efa579c0d3d1ef7cf24fd6b2c6bd3627749",
+          "excerpt": "class HighLevelWCSWrapper(HighLevelWCSMixin):\n    \"\"\"\n    Wrapper class that can take any :class:`~astropy.wcs.wcsapi.BaseLowLevelWCS`\n    object and expose the high-level WCS API.\n    \"\"\"\n\n    def __init__(self, low_level_wcs):\n        if not isinstance(low_level_wcs, BaseLowLevelWCS):\n            raise TypeError('Input to a HighLevelWCSWrapper must be a low level WCS object')\n\n        self._low_level_wcs = low_level_wcs\n\n    @property\n    def low_level_wcs(self):\n        return self._low_level_wcs",
+          "excerpt_sha256": "79c8024557e6811dd8de823f6b9946a862fce01ec60435d0631c51265e187dce",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/high_level_api.py",
+          "start_line": 139,
+          "end_line": 150,
+          "source_sha256": "ed49b242712792dae1022e300e33f91d24409c7d055c77843bcf42ebe624c5d8",
+          "excerpt": "    # Cache the classes and components since this may be expensive\n    serialized_classes = low_level_wcs.world_axis_object_classes\n    components = low_level_wcs.world_axis_object_components\n\n    # Deserialize world_axis_object_classes using the default order\n    classes = OrderedDict()\n    for key in default_order(components):\n        if low_level_wcs.serialized_classes:\n            classes[key] = deserialize_class(serialized_classes[key],\n                                             construct=False)\n        else:\n            classes[key] = serialized_classes[key]",
+          "excerpt_sha256": "ac0e68e42e60796fdd7027a4a3de1738848b950406bc5a79f39b59895b91dd49",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/high_level_api.py",
+          "start_line": 178,
+          "end_line": 237,
+          "source_sha256": "ed49b242712792dae1022e300e33f91d24409c7d055c77843bcf42ebe624c5d8",
+          "excerpt": "    if unique_match:\n\n        for key, (klass, args, kwargs, *rest) in classes.items():\n\n            if len(rest) == 0:\n                klass_gen = klass\n            elif len(rest) == 1:\n                klass_gen = rest[0]\n            else:\n                raise ValueError(\"Tuples in world_axis_object_classes should have length 3 or 4\")\n\n            # FIXME: For now SkyCoord won't auto-convert upon initialization\n            # https://github.com/astropy/astropy/issues/7689\n            from astropy.coordinates import SkyCoord\n            if isinstance(world_by_key[key], SkyCoord):\n                if 'frame' in kwargs:\n                    objects[key] = world_by_key[key].transform_to(kwargs['frame'])\n                else:\n                    objects[key] = world_by_key[key]\n            else:\n                objects[key] = klass_gen(world_by_key[key], *args, **kwargs)\n\n    else:\n\n        for ikey, key in enumerate(classes):\n\n            klass, args, kwargs, *rest = classes[key]\n\n            if len(rest) == 0:\n                klass_gen = klass\n            elif len(rest) == 1:\n                klass_gen = rest[0]\n            else:\n                raise ValueError(\"Tuples in world_axis_object_classes should have length 3 or 4\")\n\n            w = world_objects[ikey]\n            if not isinstance(w, klass):\n                raise ValueError(\"Expected the following order of world \"\n                                 \"arguments: {}\".format(', '.join([k.__name__ for (k, _, _) in classes.values()])))\n\n            # FIXME: For now SkyCoord won't auto-convert upon initialization\n            # https://github.com/astropy/astropy/issues/7689\n            from astropy.coordinates import SkyCoord\n            if isinstance(w, SkyCoord):\n                if 'frame' in kwargs:\n                    objects[key] = w.transform_to(kwargs['frame'])\n                else:\n                    objects[key] = w\n            else:\n                objects[key] = klass_gen(w, *args, **kwargs)\n\n    # We now extract the attributes needed for the world values\n    world = []\n    for key, _, attr in components:\n        if callable(attr):\n            world.append(attr(objects[key]))\n        else:\n            world.append(rec_getattr(objects[key], attr))\n\n    return world",
+          "excerpt_sha256": "c3a24d5b635e50c41f21898c705729ba18ddbaa6e3b3de2e8bc794fee40420ea",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/high_level_api.py",
+          "start_line": 307,
+          "end_line": 314,
+          "source_sha256": "ed49b242712792dae1022e300e33f91d24409c7d055c77843bcf42ebe624c5d8",
+          "excerpt": "    def world_to_pixel(self, *world_objects):\n\n        world_values = high_level_objects_to_values(*world_objects, low_level_wcs=self.low_level_wcs)\n\n        # Finally we convert to pixel coordinates\n        pixel_values = self.low_level_wcs.world_to_pixel_values(*world_values)\n\n        return pixel_values",
+          "excerpt_sha256": "6fecf520b2aee148ae666de34632b9b3ea49c5c7e1f11f323d901f034477831a",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/wrappers/sliced_wcs.py",
+          "start_line": 245,
+          "end_line": 278,
+          "source_sha256": "89ed2a3746da4c2c99da0eb15c23e3fd48e87c93ea33d4ab590457a99c6d1a3c",
+          "excerpt": "    def world_to_pixel_values(self, *world_arrays):\n        world_arrays = tuple(map(np.asanyarray, world_arrays))\n        world_arrays_new = []\n        iworld_curr = -1\n        for iworld in range(self._wcs.world_n_dim):\n            if iworld in self._world_keep:\n                iworld_curr += 1\n                world_arrays_new.append(world_arrays[iworld_curr])\n            else:\n                world_arrays_new.append(1.)\n\n        world_arrays_new = np.broadcast_arrays(*world_arrays_new)\n        pixel_arrays = list(self._wcs.world_to_pixel_values(*world_arrays_new))\n\n        for ipixel in range(self._wcs.pixel_n_dim):\n            if isinstance(self._slices_pixel[ipixel], slice) and self._slices_pixel[ipixel].start is not None:\n                pixel_arrays[ipixel] -= self._slices_pixel[ipixel].start\n\n        # Detect the case of a length 0 array\n        if isinstance(pixel_arrays, np.ndarray) and not pixel_arrays.shape:\n            return pixel_arrays\n        pixel = tuple(pixel_arrays[ip] for ip in self._pixel_keep)\n        if self.pixel_n_dim == 1 and self._wcs.pixel_n_dim > 1:\n            pixel = pixel[0]\n        return pixel\n\n    @property\n    def world_axis_object_components(self):\n        return [self._wcs.world_axis_object_components[idx] for idx in self._world_keep]\n\n    @property\n    def world_axis_object_classes(self):\n        keys_keep = [item[0] for item in self.world_axis_object_components]\n        return dict([item for item in self._wcs.world_axis_object_classes.items() if item[0] in keys_keep])",
+          "excerpt_sha256": "940d802e11891ddd615af209a43983ca2c04eecde634327f5d773702e19ac671",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/fitswcs.py",
+          "start_line": 325,
+          "end_line": 337,
+          "source_sha256": "c1a891af6c441624e237d08deeb3bdd0d0595fb388c1d83fae3a4d806495fb71",
+          "excerpt": "    def world_to_pixel_values(self, *world_arrays):\n        # avoid circular import\n        from astropy.wcs.wcs import NoConvergence\n        try:\n            pixel = self.all_world2pix(*world_arrays, 0)\n        except NoConvergence as e:\n            warnings.warn(str(e))\n            # use best_solution contained in the exception and format the same\n            # way as all_world2pix does (using _array_converter)\n            pixel = self._array_converter(lambda *args: e.best_solution,\n                                         'input', *world_arrays, 0)\n\n        return pixel[0] if self.pixel_n_dim == 1 else tuple(pixel)",
+          "excerpt_sha256": "368ce5cc2fba53589104bc90d76dcacf815f679216d6914483b7bc0a735f07d7",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        }
+      ],
+      "findings": [],
+      "notes": [
+        "714 words fail the strictly under-700 gate. Single-axis scalar wording is assessed as unwrapped numeric output in the surrounding scalar-or-array explanation; no claim that array inputs become Python scalars is made."
+      ],
+      "material_source_error": false,
+      "serious_error": false,
+      "semantic_source_pass": true,
+      "mechanical_gates": {
+        "terminal_pass": true,
+        "read_only_source_preserved": true,
+        "words": 714,
+        "word_limit": 700,
+        "word_limit_pass": false
+      },
+      "accepted": false
+    },
+    {
+      "arm": "codenib",
+      "task_id": "astropy__astropy-13579-flow",
+      "kind": "flow",
+      "final_answer_sha256": "d0d5082316efbd6e9e0aa0f452f3c0c1fb54bfa8896ca078494495949d63ead0",
+      "all_material_claims_checked": true,
+      "source_version_verified": true,
+      "criteria_pass": [
+        true,
+        true,
+        false,
+        true
+      ],
+      "checked_claims": [
+        "Correct wrapper/mixin boundaries, kept-axis metadata, literal 1.0 fill, broadcast, inverse and retained-axis selection.",
+        "The additional asserted zero-dimensional return path is impossible after list conversion."
+      ],
+      "source_evidence": [
+        {
+          "path": "astropy/wcs/wcsapi/high_level_wcs_wrapper.py",
+          "start_line": 8,
+          "end_line": 22,
+          "source_sha256": "913d096cb94a35d01b4c3d16cc730efa579c0d3d1ef7cf24fd6b2c6bd3627749",
+          "excerpt": "class HighLevelWCSWrapper(HighLevelWCSMixin):\n    \"\"\"\n    Wrapper class that can take any :class:`~astropy.wcs.wcsapi.BaseLowLevelWCS`\n    object and expose the high-level WCS API.\n    \"\"\"\n\n    def __init__(self, low_level_wcs):\n        if not isinstance(low_level_wcs, BaseLowLevelWCS):\n            raise TypeError('Input to a HighLevelWCSWrapper must be a low level WCS object')\n\n        self._low_level_wcs = low_level_wcs\n\n    @property\n    def low_level_wcs(self):\n        return self._low_level_wcs",
+          "excerpt_sha256": "79c8024557e6811dd8de823f6b9946a862fce01ec60435d0631c51265e187dce",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/high_level_api.py",
+          "start_line": 139,
+          "end_line": 150,
+          "source_sha256": "ed49b242712792dae1022e300e33f91d24409c7d055c77843bcf42ebe624c5d8",
+          "excerpt": "    # Cache the classes and components since this may be expensive\n    serialized_classes = low_level_wcs.world_axis_object_classes\n    components = low_level_wcs.world_axis_object_components\n\n    # Deserialize world_axis_object_classes using the default order\n    classes = OrderedDict()\n    for key in default_order(components):\n        if low_level_wcs.serialized_classes:\n            classes[key] = deserialize_class(serialized_classes[key],\n                                             construct=False)\n        else:\n            classes[key] = serialized_classes[key]",
+          "excerpt_sha256": "ac0e68e42e60796fdd7027a4a3de1738848b950406bc5a79f39b59895b91dd49",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/high_level_api.py",
+          "start_line": 229,
+          "end_line": 237,
+          "source_sha256": "ed49b242712792dae1022e300e33f91d24409c7d055c77843bcf42ebe624c5d8",
+          "excerpt": "    # We now extract the attributes needed for the world values\n    world = []\n    for key, _, attr in components:\n        if callable(attr):\n            world.append(attr(objects[key]))\n        else:\n            world.append(rec_getattr(objects[key], attr))\n\n    return world",
+          "excerpt_sha256": "52d27c5e7bda34326783e483706df06e678ef03db48cd0c6b11cfbeb74698989",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/high_level_api.py",
+          "start_line": 307,
+          "end_line": 314,
+          "source_sha256": "ed49b242712792dae1022e300e33f91d24409c7d055c77843bcf42ebe624c5d8",
+          "excerpt": "    def world_to_pixel(self, *world_objects):\n\n        world_values = high_level_objects_to_values(*world_objects, low_level_wcs=self.low_level_wcs)\n\n        # Finally we convert to pixel coordinates\n        pixel_values = self.low_level_wcs.world_to_pixel_values(*world_values)\n\n        return pixel_values",
+          "excerpt_sha256": "6fecf520b2aee148ae666de34632b9b3ea49c5c7e1f11f323d901f034477831a",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/wrappers/sliced_wcs.py",
+          "start_line": 245,
+          "end_line": 278,
+          "source_sha256": "89ed2a3746da4c2c99da0eb15c23e3fd48e87c93ea33d4ab590457a99c6d1a3c",
+          "excerpt": "    def world_to_pixel_values(self, *world_arrays):\n        world_arrays = tuple(map(np.asanyarray, world_arrays))\n        world_arrays_new = []\n        iworld_curr = -1\n        for iworld in range(self._wcs.world_n_dim):\n            if iworld in self._world_keep:\n                iworld_curr += 1\n                world_arrays_new.append(world_arrays[iworld_curr])\n            else:\n                world_arrays_new.append(1.)\n\n        world_arrays_new = np.broadcast_arrays(*world_arrays_new)\n        pixel_arrays = list(self._wcs.world_to_pixel_values(*world_arrays_new))\n\n        for ipixel in range(self._wcs.pixel_n_dim):\n            if isinstance(self._slices_pixel[ipixel], slice) and self._slices_pixel[ipixel].start is not None:\n                pixel_arrays[ipixel] -= self._slices_pixel[ipixel].start\n\n        # Detect the case of a length 0 array\n        if isinstance(pixel_arrays, np.ndarray) and not pixel_arrays.shape:\n            return pixel_arrays\n        pixel = tuple(pixel_arrays[ip] for ip in self._pixel_keep)\n        if self.pixel_n_dim == 1 and self._wcs.pixel_n_dim > 1:\n            pixel = pixel[0]\n        return pixel\n\n    @property\n    def world_axis_object_components(self):\n        return [self._wcs.world_axis_object_components[idx] for idx in self._world_keep]\n\n    @property\n    def world_axis_object_classes(self):\n        keys_keep = [item[0] for item in self.world_axis_object_components]\n        return dict([item for item in self._wcs.world_axis_object_classes.items() if item[0] in keys_keep])",
+          "excerpt_sha256": "940d802e11891ddd615af209a43983ca2c04eecde634327f5d773702e19ac671",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/fitswcs.py",
+          "start_line": 325,
+          "end_line": 337,
+          "source_sha256": "c1a891af6c441624e237d08deeb3bdd0d0595fb388c1d83fae3a4d806495fb71",
+          "excerpt": "    def world_to_pixel_values(self, *world_arrays):\n        # avoid circular import\n        from astropy.wcs.wcs import NoConvergence\n        try:\n            pixel = self.all_world2pix(*world_arrays, 0)\n        except NoConvergence as e:\n            warnings.warn(str(e))\n            # use best_solution contained in the exception and format the same\n            # way as all_world2pix does (using _array_converter)\n            pixel = self._array_converter(lambda *args: e.best_solution,\n                                         'input', *world_arrays, 0)\n\n        return pixel[0] if self.pixel_n_dim == 1 else tuple(pixel)",
+          "excerpt_sha256": "368ce5cc2fba53589104bc90d76dcacf815f679216d6914483b7bc0a735f07d7",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        }
+      ],
+      "findings": [
+        {
+          "severity": "serious",
+          "quote": "Lines 263-265 return early for a 0-d ndarray.",
+          "reason": "pixel_arrays is a list at line257, so the described branch cannot run. It is a material false return-path claim.",
+          "source_evidence": [
+            {
+              "path": "astropy/wcs/wcsapi/wrappers/sliced_wcs.py",
+              "start_line": 245,
+              "end_line": 269,
+              "source_sha256": "89ed2a3746da4c2c99da0eb15c23e3fd48e87c93ea33d4ab590457a99c6d1a3c",
+              "excerpt": "    def world_to_pixel_values(self, *world_arrays):\n        world_arrays = tuple(map(np.asanyarray, world_arrays))\n        world_arrays_new = []\n        iworld_curr = -1\n        for iworld in range(self._wcs.world_n_dim):\n            if iworld in self._world_keep:\n                iworld_curr += 1\n                world_arrays_new.append(world_arrays[iworld_curr])\n            else:\n                world_arrays_new.append(1.)\n\n        world_arrays_new = np.broadcast_arrays(*world_arrays_new)\n        pixel_arrays = list(self._wcs.world_to_pixel_values(*world_arrays_new))\n\n        for ipixel in range(self._wcs.pixel_n_dim):\n            if isinstance(self._slices_pixel[ipixel], slice) and self._slices_pixel[ipixel].start is not None:\n                pixel_arrays[ipixel] -= self._slices_pixel[ipixel].start\n\n        # Detect the case of a length 0 array\n        if isinstance(pixel_arrays, np.ndarray) and not pixel_arrays.shape:\n            return pixel_arrays\n        pixel = tuple(pixel_arrays[ip] for ip in self._pixel_keep)\n        if self.pixel_n_dim == 1 and self._wcs.pixel_n_dim > 1:\n            pixel = pixel[0]\n        return pixel",
+              "excerpt_sha256": "870f129ef49b0182d49ad8e89c3f6bd5be0e076b88a6a57fddfcad261fafa308",
+              "source_version": "original pinned source",
+              "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+            }
+          ]
+        }
+      ],
+      "notes": [],
+      "material_source_error": true,
+      "serious_error": true,
+      "semantic_source_pass": false,
+      "mechanical_gates": {
+        "terminal_pass": true,
+        "read_only_source_preserved": true,
+        "words": 681,
+        "word_limit": 700,
+        "word_limit_pass": true
+      },
+      "accepted": false
+    },
+    {
+      "arm": "native",
+      "task_id": "astropy__astropy-13579-impact",
+      "kind": "impact",
+      "final_answer_sha256": "1ed19801dfef9cd4b589e5babc0091a9b34283c1a2b2613a190a01d679d8c577",
+      "all_material_claims_checked": true,
+      "source_version_verified": true,
+      "criteria_pass": [
+        true,
+        false,
+        true
+      ],
+      "checked_claims": [
+        "Forward reconstruction, high-level metadata boundary and the two selected existing test assertions are supported.",
+        "The compatibility discussion incorrectly treats the dead ndarray check as a working path."
+      ],
+      "source_evidence": [
+        {
+          "path": "astropy/wcs/wcsapi/wrappers/sliced_wcs.py",
+          "start_line": 212,
+          "end_line": 278,
+          "source_sha256": "89ed2a3746da4c2c99da0eb15c23e3fd48e87c93ea33d4ab590457a99c6d1a3c",
+          "excerpt": "    def _pixel_to_world_values_all(self, *pixel_arrays):\n        pixel_arrays = tuple(map(np.asanyarray, pixel_arrays))\n        pixel_arrays_new = []\n        ipix_curr = -1\n        for ipix in range(self._wcs.pixel_n_dim):\n            if isinstance(self._slices_pixel[ipix], numbers.Integral):\n                pixel_arrays_new.append(self._slices_pixel[ipix])\n            else:\n                ipix_curr += 1\n                if self._slices_pixel[ipix].start is not None:\n                    pixel_arrays_new.append(pixel_arrays[ipix_curr] + self._slices_pixel[ipix].start)\n                else:\n                    pixel_arrays_new.append(pixel_arrays[ipix_curr])\n\n        pixel_arrays_new = np.broadcast_arrays(*pixel_arrays_new)\n        return self._wcs.pixel_to_world_values(*pixel_arrays_new)\n\n    def pixel_to_world_values(self, *pixel_arrays):\n        world_arrays = self._pixel_to_world_values_all(*pixel_arrays)\n\n        # Detect the case of a length 0 array\n        if isinstance(world_arrays, np.ndarray) and not world_arrays.shape:\n            return world_arrays\n\n        if self._wcs.world_n_dim > 1:\n            # Select the dimensions of the original WCS we are keeping.\n            world_arrays = [world_arrays[iw] for iw in self._world_keep]\n            # If there is only one world dimension (after slicing) we shouldn't return a tuple.\n            if self.world_n_dim == 1:\n                world_arrays = world_arrays[0]\n\n        return world_arrays\n\n    def world_to_pixel_values(self, *world_arrays):\n        world_arrays = tuple(map(np.asanyarray, world_arrays))\n        world_arrays_new = []\n        iworld_curr = -1\n        for iworld in range(self._wcs.world_n_dim):\n            if iworld in self._world_keep:\n                iworld_curr += 1\n                world_arrays_new.append(world_arrays[iworld_curr])\n            else:\n                world_arrays_new.append(1.)\n\n        world_arrays_new = np.broadcast_arrays(*world_arrays_new)\n        pixel_arrays = list(self._wcs.world_to_pixel_values(*world_arrays_new))\n\n        for ipixel in range(self._wcs.pixel_n_dim):\n            if isinstance(self._slices_pixel[ipixel], slice) and self._slices_pixel[ipixel].start is not None:\n                pixel_arrays[ipixel] -= self._slices_pixel[ipixel].start\n\n        # Detect the case of a length 0 array\n        if isinstance(pixel_arrays, np.ndarray) and not pixel_arrays.shape:\n            return pixel_arrays\n        pixel = tuple(pixel_arrays[ip] for ip in self._pixel_keep)\n        if self.pixel_n_dim == 1 and self._wcs.pixel_n_dim > 1:\n            pixel = pixel[0]\n        return pixel\n\n    @property\n    def world_axis_object_components(self):\n        return [self._wcs.world_axis_object_components[idx] for idx in self._world_keep]\n\n    @property\n    def world_axis_object_classes(self):\n        keys_keep = [item[0] for item in self.world_axis_object_components]\n        return dict([item for item in self._wcs.world_axis_object_classes.items() if item[0] in keys_keep])",
+          "excerpt_sha256": "56a13ea77633552044bc691824795050d83f01c64dcdc1ac6a7fc43235001185",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/high_level_api.py",
+          "start_line": 307,
+          "end_line": 329,
+          "source_sha256": "ed49b242712792dae1022e300e33f91d24409c7d055c77843bcf42ebe624c5d8",
+          "excerpt": "    def world_to_pixel(self, *world_objects):\n\n        world_values = high_level_objects_to_values(*world_objects, low_level_wcs=self.low_level_wcs)\n\n        # Finally we convert to pixel coordinates\n        pixel_values = self.low_level_wcs.world_to_pixel_values(*world_values)\n\n        return pixel_values\n\n    def pixel_to_world(self, *pixel_arrays):\n\n        # Compute the world coordinate values\n        world_values = self.low_level_wcs.pixel_to_world_values(*pixel_arrays)\n\n        if self.world_n_dim == 1:\n            world_values = (world_values,)\n\n        pixel_values = values_to_high_level_objects(*world_values, low_level_wcs=self.low_level_wcs)\n\n        if len(pixel_values) == 1:\n            return pixel_values[0]\n        else:\n            return pixel_values",
+          "excerpt_sha256": "7b236cd50cd28b900ddfee2e1cc3d68984db9feaacbe9668544801746875189f",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/fitswcs.py",
+          "start_line": 325,
+          "end_line": 337,
+          "source_sha256": "c1a891af6c441624e237d08deeb3bdd0d0595fb388c1d83fae3a4d806495fb71",
+          "excerpt": "    def world_to_pixel_values(self, *world_arrays):\n        # avoid circular import\n        from astropy.wcs.wcs import NoConvergence\n        try:\n            pixel = self.all_world2pix(*world_arrays, 0)\n        except NoConvergence as e:\n            warnings.warn(str(e))\n            # use best_solution contained in the exception and format the same\n            # way as all_world2pix does (using _array_converter)\n            pixel = self._array_converter(lambda *args: e.best_solution,\n                                         'input', *world_arrays, 0)\n\n        return pixel[0] if self.pixel_n_dim == 1 else tuple(pixel)",
+          "excerpt_sha256": "368ce5cc2fba53589104bc90d76dcacf815f679216d6914483b7bc0a735f07d7",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/wrappers/tests/test_sliced_wcs.py",
+          "start_line": 186,
+          "end_line": 218,
+          "source_sha256": "a870efcfdea7fe14e61c2affac5219388d1383ca9ba5cb3914e87f6024c26802",
+          "excerpt": "def test_spectral_slice():\n\n    wcs = SlicedLowLevelWCS(WCS_SPECTRAL_CUBE, [slice(None), 10])\n\n    assert wcs.pixel_n_dim == 2\n    assert wcs.world_n_dim == 2\n    assert wcs.array_shape == (30, 10)\n    assert wcs.pixel_shape == (10, 30)\n    assert wcs.world_axis_physical_types == ['pos.galactic.lat', 'pos.galactic.lon']\n    assert wcs.world_axis_units == ['deg', 'deg']\n    assert wcs.pixel_axis_names == ['', '']\n    assert wcs.world_axis_names == ['Latitude', 'Longitude']\n\n    assert_equal(wcs.axis_correlation_matrix, [[True, True], [True, True]])\n\n    assert wcs.world_axis_object_components == [('celestial', 1, 'spherical.lat.degree'),\n                                                ('celestial', 0, 'spherical.lon.degree')]\n\n    assert wcs.world_axis_object_classes['celestial'][0] is SkyCoord\n    assert wcs.world_axis_object_classes['celestial'][1] == ()\n    assert isinstance(wcs.world_axis_object_classes['celestial'][2]['frame'], Galactic)\n    assert wcs.world_axis_object_classes['celestial'][2]['unit'] is u.deg\n\n    assert_allclose(wcs.pixel_to_world_values(29, 44), (10, 25))\n    assert_allclose(wcs.array_index_to_world_values(44, 29), (10, 25))\n\n    assert_allclose(wcs.world_to_pixel_values(10, 25), (29., 44.))\n    assert_equal(wcs.world_to_array_index_values(10, 25), (44, 29))\n\n    assert_equal(wcs.pixel_bounds, [(-1, 11), (5, 15)])\n\n    assert str(wcs) == EXPECTED_SPECTRAL_SLICE_REPR.strip()\n    assert EXPECTED_SPECTRAL_SLICE_REPR.strip() in repr(wcs)",
+          "excerpt_sha256": "23e09681721410a8988970bfae8c2db745101d832b95f941ba41da6e5764689f",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/wrappers/tests/test_sliced_wcs.py",
+          "start_line": 315,
+          "end_line": 350,
+          "source_sha256": "a870efcfdea7fe14e61c2affac5219388d1383ca9ba5cb3914e87f6024c26802",
+          "excerpt": "def test_celestial_slice():\n\n    wcs = SlicedLowLevelWCS(WCS_SPECTRAL_CUBE, [Ellipsis, 5])\n\n    assert wcs.pixel_n_dim == 2\n    assert wcs.world_n_dim == 3\n    assert wcs.array_shape == (30, 20)\n    assert wcs.pixel_shape == (20, 30)\n    assert wcs.world_axis_physical_types == ['pos.galactic.lat', 'em.freq', 'pos.galactic.lon']\n    assert wcs.world_axis_units == ['deg', 'Hz', 'deg']\n    assert wcs.pixel_axis_names == ['', '']\n    assert wcs.world_axis_names == ['Latitude', 'Frequency', 'Longitude']\n\n    assert_equal(wcs.axis_correlation_matrix, [[False, True], [True, False], [False, True]])\n\n    assert len(wcs.world_axis_object_components) == 3\n    assert wcs.world_axis_object_components[0] == ('celestial', 1, 'spherical.lat.degree')\n    assert wcs.world_axis_object_components[1][:2] == ('spectral', 0)\n    assert wcs.world_axis_object_components[2] == ('celestial', 0, 'spherical.lon.degree')\n\n    assert wcs.world_axis_object_classes['celestial'][0] is SkyCoord\n    assert wcs.world_axis_object_classes['celestial'][1] == ()\n    assert isinstance(wcs.world_axis_object_classes['celestial'][2]['frame'], Galactic)\n    assert wcs.world_axis_object_classes['celestial'][2]['unit'] is u.deg\n\n    assert wcs.world_axis_object_classes['spectral'][0] is Quantity\n    assert wcs.world_axis_object_classes['spectral'][1] == ()\n    assert wcs.world_axis_object_classes['spectral'][2] == {}\n\n    assert_allclose(wcs.pixel_to_world_values(39, 44), (12.4, 20, 25))\n    assert_allclose(wcs.array_index_to_world_values(44, 39), (12.4, 20, 25))\n\n    assert_allclose(wcs.world_to_pixel_values(12.4, 20, 25), (39., 44.))\n    assert_equal(wcs.world_to_array_index_values(12.4, 20, 25), (44, 39))\n\n    assert_equal(wcs.pixel_bounds, [(-2, 18), (5, 15)])",
+          "excerpt_sha256": "98bff25ee064a59c9661b90da5addc37e7e2885e23743ac2e47d11303d3fb977",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/wrappers/tests/test_sliced_wcs.py",
+          "start_line": 758,
+          "end_line": 762,
+          "source_sha256": "a870efcfdea7fe14e61c2affac5219388d1383ca9ba5cb3914e87f6024c26802",
+          "excerpt": "def test_1d_sliced_low_level(time_1d_wcs):\n    sll = SlicedLowLevelWCS(time_1d_wcs, np.s_[10:20])\n    world = sll.pixel_to_world_values([1, 2])\n    assert isinstance(world, np.ndarray)\n    assert np.allclose(world, [27, 29])",
+          "excerpt_sha256": "45aed606e5d87db92f3f5bd5c6f1a09c074a6c126d0cc17b205f7f484599ca2c",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/visualization/wcsaxes/tests/test_misc.py",
+          "start_line": 525,
+          "end_line": 532,
+          "source_sha256": "7ba5c68c2796901587d84802294b95cf022533bf9876fe6e02d4e9970e22a072",
+          "excerpt": "def test_wcs_type_transform_regression():\n    wcs = WCS(TARGET_HEADER)\n    sliced_wcs = SlicedLowLevelWCS(wcs, np.s_[1:-1, 1:-1])\n    ax = plt.subplot(1, 1, 1, projection=wcs)\n    ax.get_transform(sliced_wcs)\n\n    high_wcs = HighLevelWCSWrapper(sliced_wcs)\n    ax.get_transform(sliced_wcs)",
+          "excerpt_sha256": "b5b5bc71952ec42dd28f57302cfafaccff397932935f3b82961b604b24b338a4",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        }
+      ],
+      "findings": [
+        {
+          "severity": "serious",
+          "quote": "The 0-d early return (`:264-265`) handles the case where the parent itself already returns a bare array.",
+          "reason": "The parent result has already been converted to list; this guard cannot handle that case. Advice to preserve both operational return paths misstates the original control flow.",
+          "source_evidence": [
+            {
+              "path": "astropy/wcs/wcsapi/wrappers/sliced_wcs.py",
+              "start_line": 245,
+              "end_line": 269,
+              "source_sha256": "89ed2a3746da4c2c99da0eb15c23e3fd48e87c93ea33d4ab590457a99c6d1a3c",
+              "excerpt": "    def world_to_pixel_values(self, *world_arrays):\n        world_arrays = tuple(map(np.asanyarray, world_arrays))\n        world_arrays_new = []\n        iworld_curr = -1\n        for iworld in range(self._wcs.world_n_dim):\n            if iworld in self._world_keep:\n                iworld_curr += 1\n                world_arrays_new.append(world_arrays[iworld_curr])\n            else:\n                world_arrays_new.append(1.)\n\n        world_arrays_new = np.broadcast_arrays(*world_arrays_new)\n        pixel_arrays = list(self._wcs.world_to_pixel_values(*world_arrays_new))\n\n        for ipixel in range(self._wcs.pixel_n_dim):\n            if isinstance(self._slices_pixel[ipixel], slice) and self._slices_pixel[ipixel].start is not None:\n                pixel_arrays[ipixel] -= self._slices_pixel[ipixel].start\n\n        # Detect the case of a length 0 array\n        if isinstance(pixel_arrays, np.ndarray) and not pixel_arrays.shape:\n            return pixel_arrays\n        pixel = tuple(pixel_arrays[ip] for ip in self._pixel_keep)\n        if self.pixel_n_dim == 1 and self._wcs.pixel_n_dim > 1:\n            pixel = pixel[0]\n        return pixel",
+              "excerpt_sha256": "870f129ef49b0182d49ad8e89c3f6bd5be0e076b88a6a57fddfcad261fafa308",
+              "source_version": "original pinned source",
+              "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+            }
+          ]
+        }
+      ],
+      "notes": [
+        "755 words fail the strictly under-700 gate. The broad coupling hypothesis is not accepted as a proved numerical result. The existing visualization test is correctly limited to construction/get_transform, not numeric wrapper assertions."
+      ],
+      "material_source_error": true,
+      "serious_error": true,
+      "semantic_source_pass": false,
+      "mechanical_gates": {
+        "terminal_pass": true,
+        "read_only_source_preserved": true,
+        "words": 755,
+        "word_limit": 700,
+        "word_limit_pass": false
+      },
+      "accepted": false
+    },
+    {
+      "arm": "codegraph",
+      "task_id": "astropy__astropy-13579-impact",
+      "kind": "impact",
+      "final_answer_sha256": "cdb7ef0a4ce4441c4096532b2d9658cd4820887939bd6fe0f38409cc24ed536e",
+      "all_material_claims_checked": true,
+      "source_version_verified": true,
+      "criteria_pass": [
+        true,
+        true,
+        true
+      ],
+      "checked_claims": [
+        "Forward and high-level boundaries, exact conditional unwrapping and broadcasting match source.",
+        "Distinguishes forward correlation from the inverse coupling that can change kept pixels; the retrospective triangular witness confirms why forward independence is insufficient.",
+        "test_spectral_slice and test_world_to_pixel_broadcasting are existing tests with the stated numerical assertions."
+      ],
+      "source_evidence": [
+        {
+          "path": "astropy/wcs/wcsapi/wrappers/sliced_wcs.py",
+          "start_line": 122,
+          "end_line": 150,
+          "source_sha256": "89ed2a3746da4c2c99da0eb15c23e3fd48e87c93ea33d4ab590457a99c6d1a3c",
+          "excerpt": "    def __init__(self, wcs, slices):\n\n        slices = sanitize_slices(slices, wcs.pixel_n_dim)\n\n        if isinstance(wcs, SlicedLowLevelWCS):\n            # Here we combine the current slices with the previous slices\n            # to avoid ending up with many nested WCSes\n            self._wcs = wcs._wcs\n            slices_original = wcs._slices_array.copy()\n            for ipixel in range(wcs.pixel_n_dim):\n                ipixel_orig = wcs._wcs.pixel_n_dim - 1 - wcs._pixel_keep[ipixel]\n                ipixel_new = wcs.pixel_n_dim - 1 - ipixel\n                slices_original[ipixel_orig] = combine_slices(slices_original[ipixel_orig],\n                                                              slices[ipixel_new])\n            self._slices_array = slices_original\n        else:\n            self._wcs = wcs\n            self._slices_array = slices\n\n        self._slices_pixel = self._slices_array[::-1]\n\n        # figure out which pixel dimensions have been kept, then use axis correlation\n        # matrix to figure out which world dims are kept\n        self._pixel_keep = np.nonzero([not isinstance(self._slices_pixel[ip], numbers.Integral)\n                                       for ip in range(self._wcs.pixel_n_dim)])[0]\n\n        # axis_correlation_matrix[world, pixel]\n        self._world_keep = np.nonzero(\n            self._wcs.axis_correlation_matrix[:, self._pixel_keep].any(axis=1))[0]",
+          "excerpt_sha256": "ab01241dfaa50166e7cb88d5983810d1a4e33a833cc2fc4001e9b76ead7174ce",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/wrappers/sliced_wcs.py",
+          "start_line": 212,
+          "end_line": 278,
+          "source_sha256": "89ed2a3746da4c2c99da0eb15c23e3fd48e87c93ea33d4ab590457a99c6d1a3c",
+          "excerpt": "    def _pixel_to_world_values_all(self, *pixel_arrays):\n        pixel_arrays = tuple(map(np.asanyarray, pixel_arrays))\n        pixel_arrays_new = []\n        ipix_curr = -1\n        for ipix in range(self._wcs.pixel_n_dim):\n            if isinstance(self._slices_pixel[ipix], numbers.Integral):\n                pixel_arrays_new.append(self._slices_pixel[ipix])\n            else:\n                ipix_curr += 1\n                if self._slices_pixel[ipix].start is not None:\n                    pixel_arrays_new.append(pixel_arrays[ipix_curr] + self._slices_pixel[ipix].start)\n                else:\n                    pixel_arrays_new.append(pixel_arrays[ipix_curr])\n\n        pixel_arrays_new = np.broadcast_arrays(*pixel_arrays_new)\n        return self._wcs.pixel_to_world_values(*pixel_arrays_new)\n\n    def pixel_to_world_values(self, *pixel_arrays):\n        world_arrays = self._pixel_to_world_values_all(*pixel_arrays)\n\n        # Detect the case of a length 0 array\n        if isinstance(world_arrays, np.ndarray) and not world_arrays.shape:\n            return world_arrays\n\n        if self._wcs.world_n_dim > 1:\n            # Select the dimensions of the original WCS we are keeping.\n            world_arrays = [world_arrays[iw] for iw in self._world_keep]\n            # If there is only one world dimension (after slicing) we shouldn't return a tuple.\n            if self.world_n_dim == 1:\n                world_arrays = world_arrays[0]\n\n        return world_arrays\n\n    def world_to_pixel_values(self, *world_arrays):\n        world_arrays = tuple(map(np.asanyarray, world_arrays))\n        world_arrays_new = []\n        iworld_curr = -1\n        for iworld in range(self._wcs.world_n_dim):\n            if iworld in self._world_keep:\n                iworld_curr += 1\n                world_arrays_new.append(world_arrays[iworld_curr])\n            else:\n                world_arrays_new.append(1.)\n\n        world_arrays_new = np.broadcast_arrays(*world_arrays_new)\n        pixel_arrays = list(self._wcs.world_to_pixel_values(*world_arrays_new))\n\n        for ipixel in range(self._wcs.pixel_n_dim):\n            if isinstance(self._slices_pixel[ipixel], slice) and self._slices_pixel[ipixel].start is not None:\n                pixel_arrays[ipixel] -= self._slices_pixel[ipixel].start\n\n        # Detect the case of a length 0 array\n        if isinstance(pixel_arrays, np.ndarray) and not pixel_arrays.shape:\n            return pixel_arrays\n        pixel = tuple(pixel_arrays[ip] for ip in self._pixel_keep)\n        if self.pixel_n_dim == 1 and self._wcs.pixel_n_dim > 1:\n            pixel = pixel[0]\n        return pixel\n\n    @property\n    def world_axis_object_components(self):\n        return [self._wcs.world_axis_object_components[idx] for idx in self._world_keep]\n\n    @property\n    def world_axis_object_classes(self):\n        keys_keep = [item[0] for item in self.world_axis_object_components]\n        return dict([item for item in self._wcs.world_axis_object_classes.items() if item[0] in keys_keep])",
+          "excerpt_sha256": "56a13ea77633552044bc691824795050d83f01c64dcdc1ac6a7fc43235001185",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/high_level_api.py",
+          "start_line": 307,
+          "end_line": 329,
+          "source_sha256": "ed49b242712792dae1022e300e33f91d24409c7d055c77843bcf42ebe624c5d8",
+          "excerpt": "    def world_to_pixel(self, *world_objects):\n\n        world_values = high_level_objects_to_values(*world_objects, low_level_wcs=self.low_level_wcs)\n\n        # Finally we convert to pixel coordinates\n        pixel_values = self.low_level_wcs.world_to_pixel_values(*world_values)\n\n        return pixel_values\n\n    def pixel_to_world(self, *pixel_arrays):\n\n        # Compute the world coordinate values\n        world_values = self.low_level_wcs.pixel_to_world_values(*pixel_arrays)\n\n        if self.world_n_dim == 1:\n            world_values = (world_values,)\n\n        pixel_values = values_to_high_level_objects(*world_values, low_level_wcs=self.low_level_wcs)\n\n        if len(pixel_values) == 1:\n            return pixel_values[0]\n        else:\n            return pixel_values",
+          "excerpt_sha256": "7b236cd50cd28b900ddfee2e1cc3d68984db9feaacbe9668544801746875189f",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/wrappers/tests/test_sliced_wcs.py",
+          "start_line": 150,
+          "end_line": 159,
+          "source_sha256": "a870efcfdea7fe14e61c2affac5219388d1383ca9ba5cb3914e87f6024c26802",
+          "excerpt": "def test_pixel_to_world_broadcasting():\n    wcs = SlicedLowLevelWCS(WCS_SPECTRAL_CUBE, Ellipsis)\n\n    assert_allclose(wcs.pixel_to_world_values((29, 29), 39, 44), ((10, 10), (20, 20), (25, 25)))\n\n\ndef test_world_to_pixel_broadcasting():\n    wcs = SlicedLowLevelWCS(WCS_SPECTRAL_CUBE, Ellipsis)\n\n    assert_allclose(wcs.world_to_pixel_values((10, 10), 20, 25), ((29., 29.), (39., 39.), (44., 44.)))",
+          "excerpt_sha256": "1afeb033b6b818672037c33777dc6ccfd7cef5100079b985bd8944c737014fdf",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/wrappers/tests/test_sliced_wcs.py",
+          "start_line": 186,
+          "end_line": 218,
+          "source_sha256": "a870efcfdea7fe14e61c2affac5219388d1383ca9ba5cb3914e87f6024c26802",
+          "excerpt": "def test_spectral_slice():\n\n    wcs = SlicedLowLevelWCS(WCS_SPECTRAL_CUBE, [slice(None), 10])\n\n    assert wcs.pixel_n_dim == 2\n    assert wcs.world_n_dim == 2\n    assert wcs.array_shape == (30, 10)\n    assert wcs.pixel_shape == (10, 30)\n    assert wcs.world_axis_physical_types == ['pos.galactic.lat', 'pos.galactic.lon']\n    assert wcs.world_axis_units == ['deg', 'deg']\n    assert wcs.pixel_axis_names == ['', '']\n    assert wcs.world_axis_names == ['Latitude', 'Longitude']\n\n    assert_equal(wcs.axis_correlation_matrix, [[True, True], [True, True]])\n\n    assert wcs.world_axis_object_components == [('celestial', 1, 'spherical.lat.degree'),\n                                                ('celestial', 0, 'spherical.lon.degree')]\n\n    assert wcs.world_axis_object_classes['celestial'][0] is SkyCoord\n    assert wcs.world_axis_object_classes['celestial'][1] == ()\n    assert isinstance(wcs.world_axis_object_classes['celestial'][2]['frame'], Galactic)\n    assert wcs.world_axis_object_classes['celestial'][2]['unit'] is u.deg\n\n    assert_allclose(wcs.pixel_to_world_values(29, 44), (10, 25))\n    assert_allclose(wcs.array_index_to_world_values(44, 29), (10, 25))\n\n    assert_allclose(wcs.world_to_pixel_values(10, 25), (29., 44.))\n    assert_equal(wcs.world_to_array_index_values(10, 25), (44, 29))\n\n    assert_equal(wcs.pixel_bounds, [(-1, 11), (5, 15)])\n\n    assert str(wcs) == EXPECTED_SPECTRAL_SLICE_REPR.strip()\n    assert EXPECTED_SPECTRAL_SLICE_REPR.strip() in repr(wcs)",
+          "excerpt_sha256": "23e09681721410a8988970bfae8c2db745101d832b95f941ba41da6e5764689f",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/wrappers/tests/test_sliced_wcs.py",
+          "start_line": 248,
+          "end_line": 286,
+          "source_sha256": "a870efcfdea7fe14e61c2affac5219388d1383ca9ba5cb3914e87f6024c26802",
+          "excerpt": "def test_spectral_range():\n\n    wcs = SlicedLowLevelWCS(WCS_SPECTRAL_CUBE, [slice(None), slice(4, 10)])\n\n    assert wcs.pixel_n_dim == 3\n    assert wcs.world_n_dim == 3\n    assert wcs.array_shape == (30, 6, 10)\n    assert wcs.pixel_shape == (10, 6, 30)\n    assert wcs.world_axis_physical_types == ['pos.galactic.lat', 'em.freq', 'pos.galactic.lon']\n    assert wcs.world_axis_units == ['deg', 'Hz', 'deg']\n    assert wcs.pixel_axis_names == ['', '', '']\n    assert wcs.world_axis_names == ['Latitude', 'Frequency', 'Longitude']\n\n    assert_equal(wcs.axis_correlation_matrix, [[True, False, True], [False, True, False], [True, False, True]])\n\n    assert len(wcs.world_axis_object_components) == 3\n    assert wcs.world_axis_object_components[0] == ('celestial', 1, 'spherical.lat.degree')\n    assert wcs.world_axis_object_components[1][:2] == ('spectral', 0)\n    assert wcs.world_axis_object_components[2] == ('celestial', 0, 'spherical.lon.degree')\n\n    assert wcs.world_axis_object_classes['celestial'][0] is SkyCoord\n    assert wcs.world_axis_object_classes['celestial'][1] == ()\n    assert isinstance(wcs.world_axis_object_classes['celestial'][2]['frame'], Galactic)\n    assert wcs.world_axis_object_classes['celestial'][2]['unit'] is u.deg\n\n    assert wcs.world_axis_object_classes['spectral'][0] is Quantity\n    assert wcs.world_axis_object_classes['spectral'][1] == ()\n    assert wcs.world_axis_object_classes['spectral'][2] == {}\n\n    assert_allclose(wcs.pixel_to_world_values(29, 35, 44), (10, 20, 25))\n    assert_allclose(wcs.array_index_to_world_values(44, 35, 29), (10, 20, 25))\n\n    assert_allclose(wcs.world_to_pixel_values(10, 20, 25), (29., 35., 44.))\n    assert_equal(wcs.world_to_array_index_values(10, 20, 25), (44, 35, 29))\n\n    assert_equal(wcs.pixel_bounds, [(-1, 11), (-6, 14), (5, 15)])\n\n    assert str(wcs) == EXPECTED_SPECTRAL_RANGE_REPR.strip()\n    assert EXPECTED_SPECTRAL_RANGE_REPR.strip() in repr(wcs)",
+          "excerpt_sha256": "a3b98b00312f669be8c39c3a8d2f7c435ac53b83991ce268a1e80cd0200d5b73",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/wrappers/tests/test_sliced_wcs.py",
+          "start_line": 461,
+          "end_line": 499,
+          "source_sha256": "a870efcfdea7fe14e61c2affac5219388d1383ca9ba5cb3914e87f6024c26802",
+          "excerpt": "def test_celestial_range_rot():\n\n    wcs = SlicedLowLevelWCS(WCS_SPECTRAL_CUBE_ROT, [Ellipsis, slice(5, 10)])\n\n    assert wcs.pixel_n_dim == 3\n    assert wcs.world_n_dim == 3\n    assert wcs.array_shape == (30, 20, 5)\n    assert wcs.pixel_shape == (5, 20, 30)\n    assert wcs.world_axis_physical_types == ['pos.galactic.lat', 'em.freq', 'pos.galactic.lon']\n    assert wcs.world_axis_units == ['deg', 'Hz', 'deg']\n    assert wcs.pixel_axis_names == ['', '', '']\n    assert wcs.world_axis_names == ['Latitude', 'Frequency', 'Longitude']\n\n    assert_equal(wcs.axis_correlation_matrix, [[True, False, True], [False, True, False], [True, False, True]])\n\n    assert len(wcs.world_axis_object_components) == 3\n    assert wcs.world_axis_object_components[0] == ('celestial', 1, 'spherical.lat.degree')\n    assert wcs.world_axis_object_components[1][:2] == ('spectral', 0)\n    assert wcs.world_axis_object_components[2] == ('celestial', 0, 'spherical.lon.degree')\n\n    assert wcs.world_axis_object_classes['celestial'][0] is SkyCoord\n    assert wcs.world_axis_object_classes['celestial'][1] == ()\n    assert isinstance(wcs.world_axis_object_classes['celestial'][2]['frame'], Galactic)\n    assert wcs.world_axis_object_classes['celestial'][2]['unit'] is u.deg\n\n    assert wcs.world_axis_object_classes['spectral'][0] is Quantity\n    assert wcs.world_axis_object_classes['spectral'][1] == ()\n    assert wcs.world_axis_object_classes['spectral'][2] == {}\n\n    assert_allclose(wcs.pixel_to_world_values(14, 29, 34), (1, 15, 24))\n    assert_allclose(wcs.array_index_to_world_values(34, 29, 14), (1, 15, 24))\n\n    assert_allclose(wcs.world_to_pixel_values(1, 15, 24), (14., 29., 34.))\n    assert_equal(wcs.world_to_array_index_values(1, 15, 24), (34, 29, 14))\n\n    assert_equal(wcs.pixel_bounds, [(-6, 6), (-2, 18), (5, 15)])\n\n    assert str(wcs) == EXPECTED_CELESTIAL_RANGE_ROT_REPR.strip()\n    assert EXPECTED_CELESTIAL_RANGE_ROT_REPR.strip() in repr(wcs)",
+          "excerpt_sha256": "a7fdd5c1f90b37099b78ce71b0c091257fea6158ff8d6ee0aca89b12bb536c63",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        }
+      ],
+      "findings": [],
+      "notes": [
+        "716 words fail the strictly under-700 gate."
+      ],
+      "material_source_error": false,
+      "serious_error": false,
+      "semantic_source_pass": true,
+      "mechanical_gates": {
+        "terminal_pass": true,
+        "read_only_source_preserved": true,
+        "words": 716,
+        "word_limit": 700,
+        "word_limit_pass": false
+      },
+      "accepted": false
+    },
+    {
+      "arm": "serena",
+      "task_id": "astropy__astropy-13579-impact",
+      "kind": "impact",
+      "final_answer_sha256": "c0b06f65388031ee009be3b6383e041fb764791921b18465fe110a8de93502d1",
+      "all_material_claims_checked": true,
+      "source_version_verified": true,
+      "criteria_pass": [
+        true,
+        true,
+        true
+      ],
+      "checked_claims": [
+        "Correct fixed-axis/start/broadcast bookkeeping and single-result contract.",
+        "Explicitly recognizes the dead ndarray check. Numeric/world-object boundary and inverse/forward relationships are supported.",
+        "test_celestial_range and test_celestial_slice assert the quoted offsets, dimensions and numerical inverses; separately named broadcast and 1D tests are accurately scoped."
+      ],
+      "source_evidence": [
+        {
+          "path": "astropy/wcs/wcsapi/wrappers/sliced_wcs.py",
+          "start_line": 122,
+          "end_line": 150,
+          "source_sha256": "89ed2a3746da4c2c99da0eb15c23e3fd48e87c93ea33d4ab590457a99c6d1a3c",
+          "excerpt": "    def __init__(self, wcs, slices):\n\n        slices = sanitize_slices(slices, wcs.pixel_n_dim)\n\n        if isinstance(wcs, SlicedLowLevelWCS):\n            # Here we combine the current slices with the previous slices\n            # to avoid ending up with many nested WCSes\n            self._wcs = wcs._wcs\n            slices_original = wcs._slices_array.copy()\n            for ipixel in range(wcs.pixel_n_dim):\n                ipixel_orig = wcs._wcs.pixel_n_dim - 1 - wcs._pixel_keep[ipixel]\n                ipixel_new = wcs.pixel_n_dim - 1 - ipixel\n                slices_original[ipixel_orig] = combine_slices(slices_original[ipixel_orig],\n                                                              slices[ipixel_new])\n            self._slices_array = slices_original\n        else:\n            self._wcs = wcs\n            self._slices_array = slices\n\n        self._slices_pixel = self._slices_array[::-1]\n\n        # figure out which pixel dimensions have been kept, then use axis correlation\n        # matrix to figure out which world dims are kept\n        self._pixel_keep = np.nonzero([not isinstance(self._slices_pixel[ip], numbers.Integral)\n                                       for ip in range(self._wcs.pixel_n_dim)])[0]\n\n        # axis_correlation_matrix[world, pixel]\n        self._world_keep = np.nonzero(\n            self._wcs.axis_correlation_matrix[:, self._pixel_keep].any(axis=1))[0]",
+          "excerpt_sha256": "ab01241dfaa50166e7cb88d5983810d1a4e33a833cc2fc4001e9b76ead7174ce",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/wrappers/sliced_wcs.py",
+          "start_line": 212,
+          "end_line": 278,
+          "source_sha256": "89ed2a3746da4c2c99da0eb15c23e3fd48e87c93ea33d4ab590457a99c6d1a3c",
+          "excerpt": "    def _pixel_to_world_values_all(self, *pixel_arrays):\n        pixel_arrays = tuple(map(np.asanyarray, pixel_arrays))\n        pixel_arrays_new = []\n        ipix_curr = -1\n        for ipix in range(self._wcs.pixel_n_dim):\n            if isinstance(self._slices_pixel[ipix], numbers.Integral):\n                pixel_arrays_new.append(self._slices_pixel[ipix])\n            else:\n                ipix_curr += 1\n                if self._slices_pixel[ipix].start is not None:\n                    pixel_arrays_new.append(pixel_arrays[ipix_curr] + self._slices_pixel[ipix].start)\n                else:\n                    pixel_arrays_new.append(pixel_arrays[ipix_curr])\n\n        pixel_arrays_new = np.broadcast_arrays(*pixel_arrays_new)\n        return self._wcs.pixel_to_world_values(*pixel_arrays_new)\n\n    def pixel_to_world_values(self, *pixel_arrays):\n        world_arrays = self._pixel_to_world_values_all(*pixel_arrays)\n\n        # Detect the case of a length 0 array\n        if isinstance(world_arrays, np.ndarray) and not world_arrays.shape:\n            return world_arrays\n\n        if self._wcs.world_n_dim > 1:\n            # Select the dimensions of the original WCS we are keeping.\n            world_arrays = [world_arrays[iw] for iw in self._world_keep]\n            # If there is only one world dimension (after slicing) we shouldn't return a tuple.\n            if self.world_n_dim == 1:\n                world_arrays = world_arrays[0]\n\n        return world_arrays\n\n    def world_to_pixel_values(self, *world_arrays):\n        world_arrays = tuple(map(np.asanyarray, world_arrays))\n        world_arrays_new = []\n        iworld_curr = -1\n        for iworld in range(self._wcs.world_n_dim):\n            if iworld in self._world_keep:\n                iworld_curr += 1\n                world_arrays_new.append(world_arrays[iworld_curr])\n            else:\n                world_arrays_new.append(1.)\n\n        world_arrays_new = np.broadcast_arrays(*world_arrays_new)\n        pixel_arrays = list(self._wcs.world_to_pixel_values(*world_arrays_new))\n\n        for ipixel in range(self._wcs.pixel_n_dim):\n            if isinstance(self._slices_pixel[ipixel], slice) and self._slices_pixel[ipixel].start is not None:\n                pixel_arrays[ipixel] -= self._slices_pixel[ipixel].start\n\n        # Detect the case of a length 0 array\n        if isinstance(pixel_arrays, np.ndarray) and not pixel_arrays.shape:\n            return pixel_arrays\n        pixel = tuple(pixel_arrays[ip] for ip in self._pixel_keep)\n        if self.pixel_n_dim == 1 and self._wcs.pixel_n_dim > 1:\n            pixel = pixel[0]\n        return pixel\n\n    @property\n    def world_axis_object_components(self):\n        return [self._wcs.world_axis_object_components[idx] for idx in self._world_keep]\n\n    @property\n    def world_axis_object_classes(self):\n        keys_keep = [item[0] for item in self.world_axis_object_components]\n        return dict([item for item in self._wcs.world_axis_object_classes.items() if item[0] in keys_keep])",
+          "excerpt_sha256": "56a13ea77633552044bc691824795050d83f01c64dcdc1ac6a7fc43235001185",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/high_level_api.py",
+          "start_line": 307,
+          "end_line": 329,
+          "source_sha256": "ed49b242712792dae1022e300e33f91d24409c7d055c77843bcf42ebe624c5d8",
+          "excerpt": "    def world_to_pixel(self, *world_objects):\n\n        world_values = high_level_objects_to_values(*world_objects, low_level_wcs=self.low_level_wcs)\n\n        # Finally we convert to pixel coordinates\n        pixel_values = self.low_level_wcs.world_to_pixel_values(*world_values)\n\n        return pixel_values\n\n    def pixel_to_world(self, *pixel_arrays):\n\n        # Compute the world coordinate values\n        world_values = self.low_level_wcs.pixel_to_world_values(*pixel_arrays)\n\n        if self.world_n_dim == 1:\n            world_values = (world_values,)\n\n        pixel_values = values_to_high_level_objects(*world_values, low_level_wcs=self.low_level_wcs)\n\n        if len(pixel_values) == 1:\n            return pixel_values[0]\n        else:\n            return pixel_values",
+          "excerpt_sha256": "7b236cd50cd28b900ddfee2e1cc3d68984db9feaacbe9668544801746875189f",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/wrappers/tests/test_sliced_wcs.py",
+          "start_line": 156,
+          "end_line": 159,
+          "source_sha256": "a870efcfdea7fe14e61c2affac5219388d1383ca9ba5cb3914e87f6024c26802",
+          "excerpt": "def test_world_to_pixel_broadcasting():\n    wcs = SlicedLowLevelWCS(WCS_SPECTRAL_CUBE, Ellipsis)\n\n    assert_allclose(wcs.world_to_pixel_values((10, 10), 20, 25), ((29., 29.), (39., 39.), (44., 44.)))",
+          "excerpt_sha256": "67e85ecd4271db4f6cb4492ba741a71ffcd171363117e81af98c18131b7ed790",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/wrappers/tests/test_sliced_wcs.py",
+          "start_line": 315,
+          "end_line": 350,
+          "source_sha256": "a870efcfdea7fe14e61c2affac5219388d1383ca9ba5cb3914e87f6024c26802",
+          "excerpt": "def test_celestial_slice():\n\n    wcs = SlicedLowLevelWCS(WCS_SPECTRAL_CUBE, [Ellipsis, 5])\n\n    assert wcs.pixel_n_dim == 2\n    assert wcs.world_n_dim == 3\n    assert wcs.array_shape == (30, 20)\n    assert wcs.pixel_shape == (20, 30)\n    assert wcs.world_axis_physical_types == ['pos.galactic.lat', 'em.freq', 'pos.galactic.lon']\n    assert wcs.world_axis_units == ['deg', 'Hz', 'deg']\n    assert wcs.pixel_axis_names == ['', '']\n    assert wcs.world_axis_names == ['Latitude', 'Frequency', 'Longitude']\n\n    assert_equal(wcs.axis_correlation_matrix, [[False, True], [True, False], [False, True]])\n\n    assert len(wcs.world_axis_object_components) == 3\n    assert wcs.world_axis_object_components[0] == ('celestial', 1, 'spherical.lat.degree')\n    assert wcs.world_axis_object_components[1][:2] == ('spectral', 0)\n    assert wcs.world_axis_object_components[2] == ('celestial', 0, 'spherical.lon.degree')\n\n    assert wcs.world_axis_object_classes['celestial'][0] is SkyCoord\n    assert wcs.world_axis_object_classes['celestial'][1] == ()\n    assert isinstance(wcs.world_axis_object_classes['celestial'][2]['frame'], Galactic)\n    assert wcs.world_axis_object_classes['celestial'][2]['unit'] is u.deg\n\n    assert wcs.world_axis_object_classes['spectral'][0] is Quantity\n    assert wcs.world_axis_object_classes['spectral'][1] == ()\n    assert wcs.world_axis_object_classes['spectral'][2] == {}\n\n    assert_allclose(wcs.pixel_to_world_values(39, 44), (12.4, 20, 25))\n    assert_allclose(wcs.array_index_to_world_values(44, 39), (12.4, 20, 25))\n\n    assert_allclose(wcs.world_to_pixel_values(12.4, 20, 25), (39., 44.))\n    assert_equal(wcs.world_to_array_index_values(12.4, 20, 25), (44, 39))\n\n    assert_equal(wcs.pixel_bounds, [(-2, 18), (5, 15)])",
+          "excerpt_sha256": "98bff25ee064a59c9661b90da5addc37e7e2885e23743ac2e47d11303d3fb977",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/wrappers/tests/test_sliced_wcs.py",
+          "start_line": 383,
+          "end_line": 418,
+          "source_sha256": "a870efcfdea7fe14e61c2affac5219388d1383ca9ba5cb3914e87f6024c26802",
+          "excerpt": "def test_celestial_range():\n\n    wcs = SlicedLowLevelWCS(WCS_SPECTRAL_CUBE, [Ellipsis, slice(5, 10)])\n\n    assert wcs.pixel_n_dim == 3\n    assert wcs.world_n_dim == 3\n    assert wcs.array_shape == (30, 20, 5)\n    assert wcs.pixel_shape == (5, 20, 30)\n    assert wcs.world_axis_physical_types == ['pos.galactic.lat', 'em.freq', 'pos.galactic.lon']\n    assert wcs.world_axis_units == ['deg', 'Hz', 'deg']\n    assert wcs.pixel_axis_names == ['', '', '']\n    assert wcs.world_axis_names == ['Latitude', 'Frequency', 'Longitude']\n\n    assert_equal(wcs.axis_correlation_matrix, [[True, False, True], [False, True, False], [True, False, True]])\n\n    assert len(wcs.world_axis_object_components) == 3\n    assert wcs.world_axis_object_components[0] == ('celestial', 1, 'spherical.lat.degree')\n    assert wcs.world_axis_object_components[1][:2] == ('spectral', 0)\n    assert wcs.world_axis_object_components[2] == ('celestial', 0, 'spherical.lon.degree')\n\n    assert wcs.world_axis_object_classes['celestial'][0] is SkyCoord\n    assert wcs.world_axis_object_classes['celestial'][1] == ()\n    assert isinstance(wcs.world_axis_object_classes['celestial'][2]['frame'], Galactic)\n    assert wcs.world_axis_object_classes['celestial'][2]['unit'] is u.deg\n\n    assert wcs.world_axis_object_classes['spectral'][0] is Quantity\n    assert wcs.world_axis_object_classes['spectral'][1] == ()\n    assert wcs.world_axis_object_classes['spectral'][2] == {}\n\n    assert_allclose(wcs.pixel_to_world_values(24, 39, 44), (10, 20, 25))\n    assert_allclose(wcs.array_index_to_world_values(44, 39, 24), (10, 20, 25))\n\n    assert_allclose(wcs.world_to_pixel_values(10, 20, 25), (24., 39., 44.))\n    assert_equal(wcs.world_to_array_index_values(10, 20, 25), (44, 39, 24))\n\n    assert_equal(wcs.pixel_bounds, [(-6, 6), (-2, 18), (5, 15)])",
+          "excerpt_sha256": "f03bc508be61d2bed25c2ce569d4dd5080cda15bdfcf36d5aa744c95ea255356",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/wrappers/tests/test_sliced_wcs.py",
+          "start_line": 758,
+          "end_line": 762,
+          "source_sha256": "a870efcfdea7fe14e61c2affac5219388d1383ca9ba5cb3914e87f6024c26802",
+          "excerpt": "def test_1d_sliced_low_level(time_1d_wcs):\n    sll = SlicedLowLevelWCS(time_1d_wcs, np.s_[10:20])\n    world = sll.pixel_to_world_values([1, 2])\n    assert isinstance(world, np.ndarray)\n    assert np.allclose(world, [27, 29])",
+          "excerpt_sha256": "45aed606e5d87db92f3f5bd5c6f1a09c074a6c126d0cc17b205f7f484599ca2c",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        }
+      ],
+      "findings": [],
+      "notes": [
+        "752 words fail the strictly under-700 gate. The stated wrapper-test gap is read in its explicitly named high_level_wcs_wrapper.py file; the visualization construction test is not a numerical round-trip test."
+      ],
+      "material_source_error": false,
+      "serious_error": false,
+      "semantic_source_pass": true,
+      "mechanical_gates": {
+        "terminal_pass": true,
+        "read_only_source_preserved": true,
+        "words": 752,
+        "word_limit": 700,
+        "word_limit_pass": false
+      },
+      "accepted": false
+    },
+    {
+      "arm": "codenib",
+      "task_id": "astropy__astropy-13579-impact",
+      "kind": "impact",
+      "final_answer_sha256": "f024fe0659bf02abb42cb2e6635d242b70b81ad327e880a66d7baaafc35e8f34",
+      "all_material_claims_checked": true,
+      "source_version_verified": true,
+      "criteria_pass": [
+        true,
+        false,
+        true
+      ],
+      "checked_claims": [
+        "Correct forward/high-level boundaries and the selected existing test assertions.",
+        "The inverse-placeholder explanation asserts that forward independence makes the result correct; the exact original inverse counterexample returns9 instead of5 while the dropped world axis is forward-independent of the kept pixel.",
+        "Also incorrectly treats the dead ndarray check as an active return path and overlooks an existing wrapper construction test."
+      ],
+      "source_evidence": [
+        {
+          "path": "astropy/wcs/wcsapi/wrappers/sliced_wcs.py",
+          "start_line": 122,
+          "end_line": 150,
+          "source_sha256": "89ed2a3746da4c2c99da0eb15c23e3fd48e87c93ea33d4ab590457a99c6d1a3c",
+          "excerpt": "    def __init__(self, wcs, slices):\n\n        slices = sanitize_slices(slices, wcs.pixel_n_dim)\n\n        if isinstance(wcs, SlicedLowLevelWCS):\n            # Here we combine the current slices with the previous slices\n            # to avoid ending up with many nested WCSes\n            self._wcs = wcs._wcs\n            slices_original = wcs._slices_array.copy()\n            for ipixel in range(wcs.pixel_n_dim):\n                ipixel_orig = wcs._wcs.pixel_n_dim - 1 - wcs._pixel_keep[ipixel]\n                ipixel_new = wcs.pixel_n_dim - 1 - ipixel\n                slices_original[ipixel_orig] = combine_slices(slices_original[ipixel_orig],\n                                                              slices[ipixel_new])\n            self._slices_array = slices_original\n        else:\n            self._wcs = wcs\n            self._slices_array = slices\n\n        self._slices_pixel = self._slices_array[::-1]\n\n        # figure out which pixel dimensions have been kept, then use axis correlation\n        # matrix to figure out which world dims are kept\n        self._pixel_keep = np.nonzero([not isinstance(self._slices_pixel[ip], numbers.Integral)\n                                       for ip in range(self._wcs.pixel_n_dim)])[0]\n\n        # axis_correlation_matrix[world, pixel]\n        self._world_keep = np.nonzero(\n            self._wcs.axis_correlation_matrix[:, self._pixel_keep].any(axis=1))[0]",
+          "excerpt_sha256": "ab01241dfaa50166e7cb88d5983810d1a4e33a833cc2fc4001e9b76ead7174ce",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/wrappers/sliced_wcs.py",
+          "start_line": 212,
+          "end_line": 278,
+          "source_sha256": "89ed2a3746da4c2c99da0eb15c23e3fd48e87c93ea33d4ab590457a99c6d1a3c",
+          "excerpt": "    def _pixel_to_world_values_all(self, *pixel_arrays):\n        pixel_arrays = tuple(map(np.asanyarray, pixel_arrays))\n        pixel_arrays_new = []\n        ipix_curr = -1\n        for ipix in range(self._wcs.pixel_n_dim):\n            if isinstance(self._slices_pixel[ipix], numbers.Integral):\n                pixel_arrays_new.append(self._slices_pixel[ipix])\n            else:\n                ipix_curr += 1\n                if self._slices_pixel[ipix].start is not None:\n                    pixel_arrays_new.append(pixel_arrays[ipix_curr] + self._slices_pixel[ipix].start)\n                else:\n                    pixel_arrays_new.append(pixel_arrays[ipix_curr])\n\n        pixel_arrays_new = np.broadcast_arrays(*pixel_arrays_new)\n        return self._wcs.pixel_to_world_values(*pixel_arrays_new)\n\n    def pixel_to_world_values(self, *pixel_arrays):\n        world_arrays = self._pixel_to_world_values_all(*pixel_arrays)\n\n        # Detect the case of a length 0 array\n        if isinstance(world_arrays, np.ndarray) and not world_arrays.shape:\n            return world_arrays\n\n        if self._wcs.world_n_dim > 1:\n            # Select the dimensions of the original WCS we are keeping.\n            world_arrays = [world_arrays[iw] for iw in self._world_keep]\n            # If there is only one world dimension (after slicing) we shouldn't return a tuple.\n            if self.world_n_dim == 1:\n                world_arrays = world_arrays[0]\n\n        return world_arrays\n\n    def world_to_pixel_values(self, *world_arrays):\n        world_arrays = tuple(map(np.asanyarray, world_arrays))\n        world_arrays_new = []\n        iworld_curr = -1\n        for iworld in range(self._wcs.world_n_dim):\n            if iworld in self._world_keep:\n                iworld_curr += 1\n                world_arrays_new.append(world_arrays[iworld_curr])\n            else:\n                world_arrays_new.append(1.)\n\n        world_arrays_new = np.broadcast_arrays(*world_arrays_new)\n        pixel_arrays = list(self._wcs.world_to_pixel_values(*world_arrays_new))\n\n        for ipixel in range(self._wcs.pixel_n_dim):\n            if isinstance(self._slices_pixel[ipixel], slice) and self._slices_pixel[ipixel].start is not None:\n                pixel_arrays[ipixel] -= self._slices_pixel[ipixel].start\n\n        # Detect the case of a length 0 array\n        if isinstance(pixel_arrays, np.ndarray) and not pixel_arrays.shape:\n            return pixel_arrays\n        pixel = tuple(pixel_arrays[ip] for ip in self._pixel_keep)\n        if self.pixel_n_dim == 1 and self._wcs.pixel_n_dim > 1:\n            pixel = pixel[0]\n        return pixel\n\n    @property\n    def world_axis_object_components(self):\n        return [self._wcs.world_axis_object_components[idx] for idx in self._world_keep]\n\n    @property\n    def world_axis_object_classes(self):\n        keys_keep = [item[0] for item in self.world_axis_object_components]\n        return dict([item for item in self._wcs.world_axis_object_classes.items() if item[0] in keys_keep])",
+          "excerpt_sha256": "56a13ea77633552044bc691824795050d83f01c64dcdc1ac6a7fc43235001185",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/high_level_api.py",
+          "start_line": 307,
+          "end_line": 329,
+          "source_sha256": "ed49b242712792dae1022e300e33f91d24409c7d055c77843bcf42ebe624c5d8",
+          "excerpt": "    def world_to_pixel(self, *world_objects):\n\n        world_values = high_level_objects_to_values(*world_objects, low_level_wcs=self.low_level_wcs)\n\n        # Finally we convert to pixel coordinates\n        pixel_values = self.low_level_wcs.world_to_pixel_values(*world_values)\n\n        return pixel_values\n\n    def pixel_to_world(self, *pixel_arrays):\n\n        # Compute the world coordinate values\n        world_values = self.low_level_wcs.pixel_to_world_values(*pixel_arrays)\n\n        if self.world_n_dim == 1:\n            world_values = (world_values,)\n\n        pixel_values = values_to_high_level_objects(*world_values, low_level_wcs=self.low_level_wcs)\n\n        if len(pixel_values) == 1:\n            return pixel_values[0]\n        else:\n            return pixel_values",
+          "excerpt_sha256": "7b236cd50cd28b900ddfee2e1cc3d68984db9feaacbe9668544801746875189f",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/fitswcs.py",
+          "start_line": 321,
+          "end_line": 337,
+          "source_sha256": "c1a891af6c441624e237d08deeb3bdd0d0595fb388c1d83fae3a4d806495fb71",
+          "excerpt": "    def pixel_to_world_values(self, *pixel_arrays):\n        world = self.all_pix2world(*pixel_arrays, 0)\n        return world[0] if self.world_n_dim == 1 else tuple(world)\n\n    def world_to_pixel_values(self, *world_arrays):\n        # avoid circular import\n        from astropy.wcs.wcs import NoConvergence\n        try:\n            pixel = self.all_world2pix(*world_arrays, 0)\n        except NoConvergence as e:\n            warnings.warn(str(e))\n            # use best_solution contained in the exception and format the same\n            # way as all_world2pix does (using _array_converter)\n            pixel = self._array_converter(lambda *args: e.best_solution,\n                                         'input', *world_arrays, 0)\n\n        return pixel[0] if self.pixel_n_dim == 1 else tuple(pixel)",
+          "excerpt_sha256": "c2f19975caae41e83fb2053875ba6ee43afc772ea00ccd0c341595c7ead995d5",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/wrappers/tests/test_sliced_wcs.py",
+          "start_line": 150,
+          "end_line": 159,
+          "source_sha256": "a870efcfdea7fe14e61c2affac5219388d1383ca9ba5cb3914e87f6024c26802",
+          "excerpt": "def test_pixel_to_world_broadcasting():\n    wcs = SlicedLowLevelWCS(WCS_SPECTRAL_CUBE, Ellipsis)\n\n    assert_allclose(wcs.pixel_to_world_values((29, 29), 39, 44), ((10, 10), (20, 20), (25, 25)))\n\n\ndef test_world_to_pixel_broadcasting():\n    wcs = SlicedLowLevelWCS(WCS_SPECTRAL_CUBE, Ellipsis)\n\n    assert_allclose(wcs.world_to_pixel_values((10, 10), 20, 25), ((29., 29.), (39., 39.), (44., 44.)))",
+          "excerpt_sha256": "1afeb033b6b818672037c33777dc6ccfd7cef5100079b985bd8944c737014fdf",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/wrappers/tests/test_sliced_wcs.py",
+          "start_line": 315,
+          "end_line": 350,
+          "source_sha256": "a870efcfdea7fe14e61c2affac5219388d1383ca9ba5cb3914e87f6024c26802",
+          "excerpt": "def test_celestial_slice():\n\n    wcs = SlicedLowLevelWCS(WCS_SPECTRAL_CUBE, [Ellipsis, 5])\n\n    assert wcs.pixel_n_dim == 2\n    assert wcs.world_n_dim == 3\n    assert wcs.array_shape == (30, 20)\n    assert wcs.pixel_shape == (20, 30)\n    assert wcs.world_axis_physical_types == ['pos.galactic.lat', 'em.freq', 'pos.galactic.lon']\n    assert wcs.world_axis_units == ['deg', 'Hz', 'deg']\n    assert wcs.pixel_axis_names == ['', '']\n    assert wcs.world_axis_names == ['Latitude', 'Frequency', 'Longitude']\n\n    assert_equal(wcs.axis_correlation_matrix, [[False, True], [True, False], [False, True]])\n\n    assert len(wcs.world_axis_object_components) == 3\n    assert wcs.world_axis_object_components[0] == ('celestial', 1, 'spherical.lat.degree')\n    assert wcs.world_axis_object_components[1][:2] == ('spectral', 0)\n    assert wcs.world_axis_object_components[2] == ('celestial', 0, 'spherical.lon.degree')\n\n    assert wcs.world_axis_object_classes['celestial'][0] is SkyCoord\n    assert wcs.world_axis_object_classes['celestial'][1] == ()\n    assert isinstance(wcs.world_axis_object_classes['celestial'][2]['frame'], Galactic)\n    assert wcs.world_axis_object_classes['celestial'][2]['unit'] is u.deg\n\n    assert wcs.world_axis_object_classes['spectral'][0] is Quantity\n    assert wcs.world_axis_object_classes['spectral'][1] == ()\n    assert wcs.world_axis_object_classes['spectral'][2] == {}\n\n    assert_allclose(wcs.pixel_to_world_values(39, 44), (12.4, 20, 25))\n    assert_allclose(wcs.array_index_to_world_values(44, 39), (12.4, 20, 25))\n\n    assert_allclose(wcs.world_to_pixel_values(12.4, 20, 25), (39., 44.))\n    assert_equal(wcs.world_to_array_index_values(12.4, 20, 25), (44, 39))\n\n    assert_equal(wcs.pixel_bounds, [(-2, 18), (5, 15)])",
+          "excerpt_sha256": "98bff25ee064a59c9661b90da5addc37e7e2885e23743ac2e47d11303d3fb977",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/wrappers/tests/test_sliced_wcs.py",
+          "start_line": 758,
+          "end_line": 762,
+          "source_sha256": "a870efcfdea7fe14e61c2affac5219388d1383ca9ba5cb3914e87f6024c26802",
+          "excerpt": "def test_1d_sliced_low_level(time_1d_wcs):\n    sll = SlicedLowLevelWCS(time_1d_wcs, np.s_[10:20])\n    world = sll.pixel_to_world_values([1, 2])\n    assert isinstance(world, np.ndarray)\n    assert np.allclose(world, [27, 29])",
+          "excerpt_sha256": "45aed606e5d87db92f3f5bd5c6f1a09c074a6c126d0cc17b205f7f484599ca2c",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        },
+        {
+          "path": "astropy/visualization/wcsaxes/tests/test_misc.py",
+          "start_line": 525,
+          "end_line": 532,
+          "source_sha256": "7ba5c68c2796901587d84802294b95cf022533bf9876fe6e02d4e9970e22a072",
+          "excerpt": "def test_wcs_type_transform_regression():\n    wcs = WCS(TARGET_HEADER)\n    sliced_wcs = SlicedLowLevelWCS(wcs, np.s_[1:-1, 1:-1])\n    ax = plt.subplot(1, 1, 1, projection=wcs)\n    ax.get_transform(sliced_wcs)\n\n    high_wcs = HighLevelWCSWrapper(sliced_wcs)\n    ax.get_transform(sliced_wcs)",
+          "excerpt_sha256": "b5b5bc71952ec42dd28f57302cfafaccff397932935f3b82961b604b24b338a4",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+        }
+      ],
+      "findings": [
+        {
+          "severity": "serious",
+          "quote": "That only gives the right answer when the dropped world axis is independent of the kept pixel axes.",
+          "reason": "The original selection already makes every dropped world axis independent of kept pixels in the forward matrix. This does not make the inverse harmless: the exact-source triangular witness has world_keep[0], fixed pixel_y5, world_x10, output9 instead of5.",
+          "source_evidence": [
+            {
+              "path": "astropy/wcs/wcsapi/wrappers/sliced_wcs.py",
+              "start_line": 145,
+              "end_line": 150,
+              "source_sha256": "89ed2a3746da4c2c99da0eb15c23e3fd48e87c93ea33d4ab590457a99c6d1a3c",
+              "excerpt": "        self._pixel_keep = np.nonzero([not isinstance(self._slices_pixel[ip], numbers.Integral)\n                                       for ip in range(self._wcs.pixel_n_dim)])[0]\n\n        # axis_correlation_matrix[world, pixel]\n        self._world_keep = np.nonzero(\n            self._wcs.axis_correlation_matrix[:, self._pixel_keep].any(axis=1))[0]",
+              "excerpt_sha256": "ebee852f988c24b0bf4ea1158859ea28d2cb1f8c465f5a720d921dfab36f1c7f",
+              "source_version": "original pinned source",
+              "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+            },
+            {
+              "path": "astropy/wcs/wcsapi/wrappers/sliced_wcs.py",
+              "start_line": 245,
+              "end_line": 269,
+              "source_sha256": "89ed2a3746da4c2c99da0eb15c23e3fd48e87c93ea33d4ab590457a99c6d1a3c",
+              "excerpt": "    def world_to_pixel_values(self, *world_arrays):\n        world_arrays = tuple(map(np.asanyarray, world_arrays))\n        world_arrays_new = []\n        iworld_curr = -1\n        for iworld in range(self._wcs.world_n_dim):\n            if iworld in self._world_keep:\n                iworld_curr += 1\n                world_arrays_new.append(world_arrays[iworld_curr])\n            else:\n                world_arrays_new.append(1.)\n\n        world_arrays_new = np.broadcast_arrays(*world_arrays_new)\n        pixel_arrays = list(self._wcs.world_to_pixel_values(*world_arrays_new))\n\n        for ipixel in range(self._wcs.pixel_n_dim):\n            if isinstance(self._slices_pixel[ipixel], slice) and self._slices_pixel[ipixel].start is not None:\n                pixel_arrays[ipixel] -= self._slices_pixel[ipixel].start\n\n        # Detect the case of a length 0 array\n        if isinstance(pixel_arrays, np.ndarray) and not pixel_arrays.shape:\n            return pixel_arrays\n        pixel = tuple(pixel_arrays[ip] for ip in self._pixel_keep)\n        if self.pixel_n_dim == 1 and self._wcs.pixel_n_dim > 1:\n            pixel = pixel[0]\n        return pixel",
+              "excerpt_sha256": "870f129ef49b0182d49ad8e89c3f6bd5be0e076b88a6a57fddfcad261fafa308",
+              "source_version": "original pinned source",
+              "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+            }
+          ]
+        },
+        {
+          "severity": "serious",
+          "quote": "Lines 232-233 and 263-265 return early for 0-d ndarrays.",
+          "reason": "The forward guard can run; the inverse guard cannot after its explicit list conversion. The explanation conflates the two paths.",
+          "source_evidence": [
+            {
+              "path": "astropy/wcs/wcsapi/wrappers/sliced_wcs.py",
+              "start_line": 229,
+              "end_line": 269,
+              "source_sha256": "89ed2a3746da4c2c99da0eb15c23e3fd48e87c93ea33d4ab590457a99c6d1a3c",
+              "excerpt": "    def pixel_to_world_values(self, *pixel_arrays):\n        world_arrays = self._pixel_to_world_values_all(*pixel_arrays)\n\n        # Detect the case of a length 0 array\n        if isinstance(world_arrays, np.ndarray) and not world_arrays.shape:\n            return world_arrays\n\n        if self._wcs.world_n_dim > 1:\n            # Select the dimensions of the original WCS we are keeping.\n            world_arrays = [world_arrays[iw] for iw in self._world_keep]\n            # If there is only one world dimension (after slicing) we shouldn't return a tuple.\n            if self.world_n_dim == 1:\n                world_arrays = world_arrays[0]\n\n        return world_arrays\n\n    def world_to_pixel_values(self, *world_arrays):\n        world_arrays = tuple(map(np.asanyarray, world_arrays))\n        world_arrays_new = []\n        iworld_curr = -1\n        for iworld in range(self._wcs.world_n_dim):\n            if iworld in self._world_keep:\n                iworld_curr += 1\n                world_arrays_new.append(world_arrays[iworld_curr])\n            else:\n                world_arrays_new.append(1.)\n\n        world_arrays_new = np.broadcast_arrays(*world_arrays_new)\n        pixel_arrays = list(self._wcs.world_to_pixel_values(*world_arrays_new))\n\n        for ipixel in range(self._wcs.pixel_n_dim):\n            if isinstance(self._slices_pixel[ipixel], slice) and self._slices_pixel[ipixel].start is not None:\n                pixel_arrays[ipixel] -= self._slices_pixel[ipixel].start\n\n        # Detect the case of a length 0 array\n        if isinstance(pixel_arrays, np.ndarray) and not pixel_arrays.shape:\n            return pixel_arrays\n        pixel = tuple(pixel_arrays[ip] for ip in self._pixel_keep)\n        if self.pixel_n_dim == 1 and self._wcs.pixel_n_dim > 1:\n            pixel = pixel[0]\n        return pixel",
+              "excerpt_sha256": "ceca30ef91b306a479deec2d09c9c636d6f9d2e29d13214fd7276cc65faf619d",
+              "source_version": "original pinned source",
+              "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+            }
+          ]
+        },
+        {
+          "severity": "material",
+          "quote": "None wraps a `SlicedLowLevelWCS` in `HighLevelWCSWrapper`.",
+          "reason": "The checkout already has test_wcs_type_transform_regression constructing HighLevelWCSWrapper(sliced_wcs). Its assertion scope is construction/get_transform, not a numerical inverse, but the blanket absence claim is false.",
+          "source_evidence": [
+            {
+              "path": "astropy/visualization/wcsaxes/tests/test_misc.py",
+              "start_line": 525,
+              "end_line": 532,
+              "source_sha256": "7ba5c68c2796901587d84802294b95cf022533bf9876fe6e02d4e9970e22a072",
+              "excerpt": "def test_wcs_type_transform_regression():\n    wcs = WCS(TARGET_HEADER)\n    sliced_wcs = SlicedLowLevelWCS(wcs, np.s_[1:-1, 1:-1])\n    ax = plt.subplot(1, 1, 1, projection=wcs)\n    ax.get_transform(sliced_wcs)\n\n    high_wcs = HighLevelWCSWrapper(sliced_wcs)\n    ax.get_transform(sliced_wcs)",
+              "excerpt_sha256": "b5b5bc71952ec42dd28f57302cfafaccff397932935f3b82961b604b24b338a4",
+              "source_version": "original pinned source",
+              "captured_before_snapshot_sha256": "ebbc4dfd3030e11ad305c603a3e9d73de8a3ea235707ea1960795e6448657626"
+            }
+          ]
+        }
+      ],
+      "notes": [
+        "773 words fail the strictly under-700 gate. The counterexample is retrospective explanation evidence, not a replacement native grade."
+      ],
+      "material_source_error": true,
+      "serious_error": true,
+      "semantic_source_pass": false,
+      "mechanical_gates": {
+        "terminal_pass": true,
+        "read_only_source_preserved": true,
+        "words": 773,
+        "word_limit": 700,
+        "word_limit_pass": false
+      },
+      "accepted": false
+    },
+    {
+      "arm": "native",
+      "task_id": "astropy__astropy-13579-post_edit",
+      "kind": "post_edit",
+      "final_answer_sha256": "bba4c43e61fd488aa84b467c88384088690bc7521023121caf91df926e92cf1f",
+      "all_material_claims_checked": true,
+      "source_version_verified": true,
+      "criteria_pass": [
+        true,
+        true,
+        true
+      ],
+      "checked_claims": [
+        "The exact controlled helper constructs SlicedLowLevelWCS, wraps it and delegates world_to_pixel with no image resampling or FITS write.",
+        "Current arm-specific repaired lines compute dropped world coordinates via the forward method; object-to-values, inverse, offset and kept-pixel boundaries match the captured current source.",
+        "Known FITS behavior is explicitly conditional on the runtime wrapped object. Source/Git state comments describe staging, without claiming new commits."
+      ],
+      "source_evidence": [
+        {
+          "path": "pilot_validation_probe.py",
+          "start_line": 1,
+          "end_line": 7,
+          "source_sha256": "8bb13392885e8b58042d39dcfb17ff359c4652a7312e4f0cc206ba11786b8948",
+          "excerpt": "from astropy.wcs.wcsapi import HighLevelWCSWrapper, SlicedLowLevelWCS\n\n\ndef sliced_world_probe(low_level_wcs, selection, *world_objects):\n    sliced = SlicedLowLevelWCS(low_level_wcs, selection)\n    wrapped = HighLevelWCSWrapper(sliced)\n    return wrapped.world_to_pixel(*world_objects)",
+          "excerpt_sha256": "601cba48ef20fa4fb04c10c246b799e0926f90f78e3de83324dfe03a96758800",
+          "source_version": "arm repaired source and controlled addition",
+          "captured_before_snapshot_sha256": "900e8494210e58c52dd1a2f85e0c026c51db64ce85753c777a75126a774d4694"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/high_level_wcs_wrapper.py",
+          "start_line": 8,
+          "end_line": 22,
+          "source_sha256": "913d096cb94a35d01b4c3d16cc730efa579c0d3d1ef7cf24fd6b2c6bd3627749",
+          "excerpt": "class HighLevelWCSWrapper(HighLevelWCSMixin):\n    \"\"\"\n    Wrapper class that can take any :class:`~astropy.wcs.wcsapi.BaseLowLevelWCS`\n    object and expose the high-level WCS API.\n    \"\"\"\n\n    def __init__(self, low_level_wcs):\n        if not isinstance(low_level_wcs, BaseLowLevelWCS):\n            raise TypeError('Input to a HighLevelWCSWrapper must be a low level WCS object')\n\n        self._low_level_wcs = low_level_wcs\n\n    @property\n    def low_level_wcs(self):\n        return self._low_level_wcs",
+          "excerpt_sha256": "79c8024557e6811dd8de823f6b9946a862fce01ec60435d0631c51265e187dce",
+          "source_version": "arm repaired source and controlled addition",
+          "captured_before_snapshot_sha256": "900e8494210e58c52dd1a2f85e0c026c51db64ce85753c777a75126a774d4694"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/high_level_api.py",
+          "start_line": 307,
+          "end_line": 314,
+          "source_sha256": "ed49b242712792dae1022e300e33f91d24409c7d055c77843bcf42ebe624c5d8",
+          "excerpt": "    def world_to_pixel(self, *world_objects):\n\n        world_values = high_level_objects_to_values(*world_objects, low_level_wcs=self.low_level_wcs)\n\n        # Finally we convert to pixel coordinates\n        pixel_values = self.low_level_wcs.world_to_pixel_values(*world_values)\n\n        return pixel_values",
+          "excerpt_sha256": "6fecf520b2aee148ae666de34632b9b3ea49c5c7e1f11f323d901f034477831a",
+          "source_version": "arm repaired source and controlled addition",
+          "captured_before_snapshot_sha256": "900e8494210e58c52dd1a2f85e0c026c51db64ce85753c777a75126a774d4694"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/wrappers/sliced_wcs.py",
+          "start_line": 245,
+          "end_line": 272,
+          "source_sha256": "be91a0054357b7a5ddd0f8d1b8eafb903bb9cc3e3029bff7b3be1aad2d9e9294",
+          "excerpt": "    def world_to_pixel_values(self, *world_arrays):\n        world_arrays = tuple(map(np.asanyarray, world_arrays))\n        world_arrays_new = []\n        iworld_curr = -1\n        # The world coordinates of dropped dimensions are fixed by the sliced\n        # pixel positions, so evaluate them at any kept pixel position.\n        sliced_out_world_coords = self._pixel_to_world_values_all(*[0]*len(self._pixel_keep))\n        for iworld in range(self._wcs.world_n_dim):\n            if iworld in self._world_keep:\n                iworld_curr += 1\n                world_arrays_new.append(world_arrays[iworld_curr])\n            else:\n                world_arrays_new.append(sliced_out_world_coords[iworld])\n\n        world_arrays_new = np.broadcast_arrays(*world_arrays_new)\n        pixel_arrays = list(self._wcs.world_to_pixel_values(*world_arrays_new))\n\n        for ipixel in range(self._wcs.pixel_n_dim):\n            if isinstance(self._slices_pixel[ipixel], slice) and self._slices_pixel[ipixel].start is not None:\n                pixel_arrays[ipixel] -= self._slices_pixel[ipixel].start\n\n        # Detect the case of a length 0 array\n        if isinstance(pixel_arrays, np.ndarray) and not pixel_arrays.shape:\n            return pixel_arrays\n        pixel = tuple(pixel_arrays[ip] for ip in self._pixel_keep)\n        if self.pixel_n_dim == 1 and self._wcs.pixel_n_dim > 1:\n            pixel = pixel[0]\n        return pixel",
+          "excerpt_sha256": "5b2375c4e0bc7334da12bf78524f0d8a4268897493ed759321f0e89cffe4a829",
+          "source_version": "arm repaired source and controlled addition",
+          "captured_before_snapshot_sha256": "900e8494210e58c52dd1a2f85e0c026c51db64ce85753c777a75126a774d4694"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/wrappers/sliced_wcs.py",
+          "start_line": 275,
+          "end_line": 281,
+          "source_sha256": "be91a0054357b7a5ddd0f8d1b8eafb903bb9cc3e3029bff7b3be1aad2d9e9294",
+          "excerpt": "    def world_axis_object_components(self):\n        return [self._wcs.world_axis_object_components[idx] for idx in self._world_keep]\n\n    @property\n    def world_axis_object_classes(self):\n        keys_keep = [item[0] for item in self.world_axis_object_components]\n        return dict([item for item in self._wcs.world_axis_object_classes.items() if item[0] in keys_keep])",
+          "excerpt_sha256": "1668045fd558dc20a53f513ac3073d4537a7112059cb3160948bdae7d08e3dd2",
+          "source_version": "arm repaired source and controlled addition",
+          "captured_before_snapshot_sha256": "900e8494210e58c52dd1a2f85e0c026c51db64ce85753c777a75126a774d4694"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/fitswcs.py",
+          "start_line": 325,
+          "end_line": 337,
+          "source_sha256": "c1a891af6c441624e237d08deeb3bdd0d0595fb388c1d83fae3a4d806495fb71",
+          "excerpt": "    def world_to_pixel_values(self, *world_arrays):\n        # avoid circular import\n        from astropy.wcs.wcs import NoConvergence\n        try:\n            pixel = self.all_world2pix(*world_arrays, 0)\n        except NoConvergence as e:\n            warnings.warn(str(e))\n            # use best_solution contained in the exception and format the same\n            # way as all_world2pix does (using _array_converter)\n            pixel = self._array_converter(lambda *args: e.best_solution,\n                                         'input', *world_arrays, 0)\n\n        return pixel[0] if self.pixel_n_dim == 1 else tuple(pixel)",
+          "excerpt_sha256": "368ce5cc2fba53589104bc90d76dcacf815f679216d6914483b7bc0a735f07d7",
+          "source_version": "arm repaired source and controlled addition",
+          "captured_before_snapshot_sha256": "900e8494210e58c52dd1a2f85e0c026c51db64ce85753c777a75126a774d4694"
+        }
+      ],
+      "findings": [],
+      "notes": [],
+      "material_source_error": false,
+      "serious_error": false,
+      "semantic_source_pass": true,
+      "mechanical_gates": {
+        "terminal_pass": true,
+        "read_only_source_preserved": true,
+        "words": 319,
+        "word_limit": 400,
+        "word_limit_pass": true
+      },
+      "accepted": true
+    },
+    {
+      "arm": "codegraph",
+      "task_id": "astropy__astropy-13579-post_edit",
+      "kind": "post_edit",
+      "final_answer_sha256": "94c20bba6b430e01aec59c1480058cc4ec57d8aa371bffcb03dc8d5d9f3c670b",
+      "all_material_claims_checked": true,
+      "source_version_verified": true,
+      "criteria_pass": [
+        true,
+        true,
+        true
+      ],
+      "checked_claims": [
+        "The exact controlled helper constructs SlicedLowLevelWCS, wraps it and delegates world_to_pixel with no image resampling or FITS write.",
+        "Current arm-specific repaired lines compute dropped world coordinates via the forward method; object-to-values, inverse, offset and kept-pixel boundaries match the captured current source.",
+        "Known FITS behavior is explicitly conditional on the runtime wrapped object. Source/Git state comments describe staging, without claiming new commits."
+      ],
+      "source_evidence": [
+        {
+          "path": "pilot_validation_probe.py",
+          "start_line": 1,
+          "end_line": 7,
+          "source_sha256": "8bb13392885e8b58042d39dcfb17ff359c4652a7312e4f0cc206ba11786b8948",
+          "excerpt": "from astropy.wcs.wcsapi import HighLevelWCSWrapper, SlicedLowLevelWCS\n\n\ndef sliced_world_probe(low_level_wcs, selection, *world_objects):\n    sliced = SlicedLowLevelWCS(low_level_wcs, selection)\n    wrapped = HighLevelWCSWrapper(sliced)\n    return wrapped.world_to_pixel(*world_objects)",
+          "excerpt_sha256": "601cba48ef20fa4fb04c10c246b799e0926f90f78e3de83324dfe03a96758800",
+          "source_version": "arm repaired source and controlled addition",
+          "captured_before_snapshot_sha256": "ac14740a2b2f8b4e3fb2e08849b6f04111555b37d4a893ce597d44d54192d34a"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/high_level_wcs_wrapper.py",
+          "start_line": 8,
+          "end_line": 22,
+          "source_sha256": "913d096cb94a35d01b4c3d16cc730efa579c0d3d1ef7cf24fd6b2c6bd3627749",
+          "excerpt": "class HighLevelWCSWrapper(HighLevelWCSMixin):\n    \"\"\"\n    Wrapper class that can take any :class:`~astropy.wcs.wcsapi.BaseLowLevelWCS`\n    object and expose the high-level WCS API.\n    \"\"\"\n\n    def __init__(self, low_level_wcs):\n        if not isinstance(low_level_wcs, BaseLowLevelWCS):\n            raise TypeError('Input to a HighLevelWCSWrapper must be a low level WCS object')\n\n        self._low_level_wcs = low_level_wcs\n\n    @property\n    def low_level_wcs(self):\n        return self._low_level_wcs",
+          "excerpt_sha256": "79c8024557e6811dd8de823f6b9946a862fce01ec60435d0631c51265e187dce",
+          "source_version": "arm repaired source and controlled addition",
+          "captured_before_snapshot_sha256": "ac14740a2b2f8b4e3fb2e08849b6f04111555b37d4a893ce597d44d54192d34a"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/high_level_api.py",
+          "start_line": 307,
+          "end_line": 314,
+          "source_sha256": "ed49b242712792dae1022e300e33f91d24409c7d055c77843bcf42ebe624c5d8",
+          "excerpt": "    def world_to_pixel(self, *world_objects):\n\n        world_values = high_level_objects_to_values(*world_objects, low_level_wcs=self.low_level_wcs)\n\n        # Finally we convert to pixel coordinates\n        pixel_values = self.low_level_wcs.world_to_pixel_values(*world_values)\n\n        return pixel_values",
+          "excerpt_sha256": "6fecf520b2aee148ae666de34632b9b3ea49c5c7e1f11f323d901f034477831a",
+          "source_version": "arm repaired source and controlled addition",
+          "captured_before_snapshot_sha256": "ac14740a2b2f8b4e3fb2e08849b6f04111555b37d4a893ce597d44d54192d34a"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/wrappers/sliced_wcs.py",
+          "start_line": 245,
+          "end_line": 271,
+          "source_sha256": "cd9f9b346202435a1a659cea5c98cdcb9578a39de08215f0b114177540275e60",
+          "excerpt": "    def world_to_pixel_values(self, *world_arrays):\n        sliced_out_world_coords = self._pixel_to_world_values_all(*[0]*len(self._pixel_keep))\n\n        world_arrays = tuple(map(np.asanyarray, world_arrays))\n        world_arrays_new = []\n        iworld_curr = -1\n        for iworld in range(self._wcs.world_n_dim):\n            if iworld in self._world_keep:\n                iworld_curr += 1\n                world_arrays_new.append(world_arrays[iworld_curr])\n            else:\n                world_arrays_new.append(sliced_out_world_coords[iworld])\n\n        world_arrays_new = np.broadcast_arrays(*world_arrays_new)\n        pixel_arrays = list(self._wcs.world_to_pixel_values(*world_arrays_new))\n\n        for ipixel in range(self._wcs.pixel_n_dim):\n            if isinstance(self._slices_pixel[ipixel], slice) and self._slices_pixel[ipixel].start is not None:\n                pixel_arrays[ipixel] -= self._slices_pixel[ipixel].start\n\n        # Detect the case of a length 0 array\n        if isinstance(pixel_arrays, np.ndarray) and not pixel_arrays.shape:\n            return pixel_arrays\n        pixel = tuple(pixel_arrays[ip] for ip in self._pixel_keep)\n        if self.pixel_n_dim == 1 and self._wcs.pixel_n_dim > 1:\n            pixel = pixel[0]\n        return pixel",
+          "excerpt_sha256": "1ee22acf71609bd5a9ff1e494238f905cf8f199e93082962af203aeacf0d17ff",
+          "source_version": "arm repaired source and controlled addition",
+          "captured_before_snapshot_sha256": "ac14740a2b2f8b4e3fb2e08849b6f04111555b37d4a893ce597d44d54192d34a"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/wrappers/sliced_wcs.py",
+          "start_line": 274,
+          "end_line": 280,
+          "source_sha256": "cd9f9b346202435a1a659cea5c98cdcb9578a39de08215f0b114177540275e60",
+          "excerpt": "    def world_axis_object_components(self):\n        return [self._wcs.world_axis_object_components[idx] for idx in self._world_keep]\n\n    @property\n    def world_axis_object_classes(self):\n        keys_keep = [item[0] for item in self.world_axis_object_components]\n        return dict([item for item in self._wcs.world_axis_object_classes.items() if item[0] in keys_keep])",
+          "excerpt_sha256": "1668045fd558dc20a53f513ac3073d4537a7112059cb3160948bdae7d08e3dd2",
+          "source_version": "arm repaired source and controlled addition",
+          "captured_before_snapshot_sha256": "ac14740a2b2f8b4e3fb2e08849b6f04111555b37d4a893ce597d44d54192d34a"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/fitswcs.py",
+          "start_line": 325,
+          "end_line": 337,
+          "source_sha256": "c1a891af6c441624e237d08deeb3bdd0d0595fb388c1d83fae3a4d806495fb71",
+          "excerpt": "    def world_to_pixel_values(self, *world_arrays):\n        # avoid circular import\n        from astropy.wcs.wcs import NoConvergence\n        try:\n            pixel = self.all_world2pix(*world_arrays, 0)\n        except NoConvergence as e:\n            warnings.warn(str(e))\n            # use best_solution contained in the exception and format the same\n            # way as all_world2pix does (using _array_converter)\n            pixel = self._array_converter(lambda *args: e.best_solution,\n                                         'input', *world_arrays, 0)\n\n        return pixel[0] if self.pixel_n_dim == 1 else tuple(pixel)",
+          "excerpt_sha256": "368ce5cc2fba53589104bc90d76dcacf815f679216d6914483b7bc0a735f07d7",
+          "source_version": "arm repaired source and controlled addition",
+          "captured_before_snapshot_sha256": "ac14740a2b2f8b4e3fb2e08849b6f04111555b37d4a893ce597d44d54192d34a"
+        }
+      ],
+      "findings": [],
+      "notes": [
+        "Codegraph has412 words and fails the strictly under-400 gate."
+      ],
+      "material_source_error": false,
+      "serious_error": false,
+      "semantic_source_pass": true,
+      "mechanical_gates": {
+        "terminal_pass": true,
+        "read_only_source_preserved": true,
+        "words": 412,
+        "word_limit": 400,
+        "word_limit_pass": false
+      },
+      "accepted": false
+    },
+    {
+      "arm": "serena",
+      "task_id": "astropy__astropy-13579-post_edit",
+      "kind": "post_edit",
+      "final_answer_sha256": "3a2e8db8fdc8ecb4adcd3aec5470b88cbe7d00c1f876e86e4f5b8a9f0ac33ee2",
+      "all_material_claims_checked": true,
+      "source_version_verified": true,
+      "criteria_pass": [
+        true,
+        true,
+        true
+      ],
+      "checked_claims": [
+        "The exact controlled helper constructs SlicedLowLevelWCS, wraps it and delegates world_to_pixel with no image resampling or FITS write.",
+        "Current arm-specific repaired lines compute dropped world coordinates via the forward method; object-to-values, inverse, offset and kept-pixel boundaries match the captured current source.",
+        "Known FITS behavior is explicitly conditional on the runtime wrapped object. Source/Git state comments describe staging, without claiming new commits."
+      ],
+      "source_evidence": [
+        {
+          "path": "pilot_validation_probe.py",
+          "start_line": 1,
+          "end_line": 7,
+          "source_sha256": "8bb13392885e8b58042d39dcfb17ff359c4652a7312e4f0cc206ba11786b8948",
+          "excerpt": "from astropy.wcs.wcsapi import HighLevelWCSWrapper, SlicedLowLevelWCS\n\n\ndef sliced_world_probe(low_level_wcs, selection, *world_objects):\n    sliced = SlicedLowLevelWCS(low_level_wcs, selection)\n    wrapped = HighLevelWCSWrapper(sliced)\n    return wrapped.world_to_pixel(*world_objects)",
+          "excerpt_sha256": "601cba48ef20fa4fb04c10c246b799e0926f90f78e3de83324dfe03a96758800",
+          "source_version": "arm repaired source and controlled addition",
+          "captured_before_snapshot_sha256": "7643d4fa5cd72a0d8ac02eb1d0cd85113030744fee00828eefc762aacb681017"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/high_level_wcs_wrapper.py",
+          "start_line": 8,
+          "end_line": 22,
+          "source_sha256": "913d096cb94a35d01b4c3d16cc730efa579c0d3d1ef7cf24fd6b2c6bd3627749",
+          "excerpt": "class HighLevelWCSWrapper(HighLevelWCSMixin):\n    \"\"\"\n    Wrapper class that can take any :class:`~astropy.wcs.wcsapi.BaseLowLevelWCS`\n    object and expose the high-level WCS API.\n    \"\"\"\n\n    def __init__(self, low_level_wcs):\n        if not isinstance(low_level_wcs, BaseLowLevelWCS):\n            raise TypeError('Input to a HighLevelWCSWrapper must be a low level WCS object')\n\n        self._low_level_wcs = low_level_wcs\n\n    @property\n    def low_level_wcs(self):\n        return self._low_level_wcs",
+          "excerpt_sha256": "79c8024557e6811dd8de823f6b9946a862fce01ec60435d0631c51265e187dce",
+          "source_version": "arm repaired source and controlled addition",
+          "captured_before_snapshot_sha256": "7643d4fa5cd72a0d8ac02eb1d0cd85113030744fee00828eefc762aacb681017"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/high_level_api.py",
+          "start_line": 307,
+          "end_line": 314,
+          "source_sha256": "ed49b242712792dae1022e300e33f91d24409c7d055c77843bcf42ebe624c5d8",
+          "excerpt": "    def world_to_pixel(self, *world_objects):\n\n        world_values = high_level_objects_to_values(*world_objects, low_level_wcs=self.low_level_wcs)\n\n        # Finally we convert to pixel coordinates\n        pixel_values = self.low_level_wcs.world_to_pixel_values(*world_values)\n\n        return pixel_values",
+          "excerpt_sha256": "6fecf520b2aee148ae666de34632b9b3ea49c5c7e1f11f323d901f034477831a",
+          "source_version": "arm repaired source and controlled addition",
+          "captured_before_snapshot_sha256": "7643d4fa5cd72a0d8ac02eb1d0cd85113030744fee00828eefc762aacb681017"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/wrappers/sliced_wcs.py",
+          "start_line": 245,
+          "end_line": 271,
+          "source_sha256": "cd9f9b346202435a1a659cea5c98cdcb9578a39de08215f0b114177540275e60",
+          "excerpt": "    def world_to_pixel_values(self, *world_arrays):\n        sliced_out_world_coords = self._pixel_to_world_values_all(*[0]*len(self._pixel_keep))\n\n        world_arrays = tuple(map(np.asanyarray, world_arrays))\n        world_arrays_new = []\n        iworld_curr = -1\n        for iworld in range(self._wcs.world_n_dim):\n            if iworld in self._world_keep:\n                iworld_curr += 1\n                world_arrays_new.append(world_arrays[iworld_curr])\n            else:\n                world_arrays_new.append(sliced_out_world_coords[iworld])\n\n        world_arrays_new = np.broadcast_arrays(*world_arrays_new)\n        pixel_arrays = list(self._wcs.world_to_pixel_values(*world_arrays_new))\n\n        for ipixel in range(self._wcs.pixel_n_dim):\n            if isinstance(self._slices_pixel[ipixel], slice) and self._slices_pixel[ipixel].start is not None:\n                pixel_arrays[ipixel] -= self._slices_pixel[ipixel].start\n\n        # Detect the case of a length 0 array\n        if isinstance(pixel_arrays, np.ndarray) and not pixel_arrays.shape:\n            return pixel_arrays\n        pixel = tuple(pixel_arrays[ip] for ip in self._pixel_keep)\n        if self.pixel_n_dim == 1 and self._wcs.pixel_n_dim > 1:\n            pixel = pixel[0]\n        return pixel",
+          "excerpt_sha256": "1ee22acf71609bd5a9ff1e494238f905cf8f199e93082962af203aeacf0d17ff",
+          "source_version": "arm repaired source and controlled addition",
+          "captured_before_snapshot_sha256": "7643d4fa5cd72a0d8ac02eb1d0cd85113030744fee00828eefc762aacb681017"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/wrappers/sliced_wcs.py",
+          "start_line": 274,
+          "end_line": 280,
+          "source_sha256": "cd9f9b346202435a1a659cea5c98cdcb9578a39de08215f0b114177540275e60",
+          "excerpt": "    def world_axis_object_components(self):\n        return [self._wcs.world_axis_object_components[idx] for idx in self._world_keep]\n\n    @property\n    def world_axis_object_classes(self):\n        keys_keep = [item[0] for item in self.world_axis_object_components]\n        return dict([item for item in self._wcs.world_axis_object_classes.items() if item[0] in keys_keep])",
+          "excerpt_sha256": "1668045fd558dc20a53f513ac3073d4537a7112059cb3160948bdae7d08e3dd2",
+          "source_version": "arm repaired source and controlled addition",
+          "captured_before_snapshot_sha256": "7643d4fa5cd72a0d8ac02eb1d0cd85113030744fee00828eefc762aacb681017"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/fitswcs.py",
+          "start_line": 325,
+          "end_line": 337,
+          "source_sha256": "c1a891af6c441624e237d08deeb3bdd0d0595fb388c1d83fae3a4d806495fb71",
+          "excerpt": "    def world_to_pixel_values(self, *world_arrays):\n        # avoid circular import\n        from astropy.wcs.wcs import NoConvergence\n        try:\n            pixel = self.all_world2pix(*world_arrays, 0)\n        except NoConvergence as e:\n            warnings.warn(str(e))\n            # use best_solution contained in the exception and format the same\n            # way as all_world2pix does (using _array_converter)\n            pixel = self._array_converter(lambda *args: e.best_solution,\n                                         'input', *world_arrays, 0)\n\n        return pixel[0] if self.pixel_n_dim == 1 else tuple(pixel)",
+          "excerpt_sha256": "368ce5cc2fba53589104bc90d76dcacf815f679216d6914483b7bc0a735f07d7",
+          "source_version": "arm repaired source and controlled addition",
+          "captured_before_snapshot_sha256": "7643d4fa5cd72a0d8ac02eb1d0cd85113030744fee00828eefc762aacb681017"
+        }
+      ],
+      "findings": [],
+      "notes": [],
+      "material_source_error": false,
+      "serious_error": false,
+      "semantic_source_pass": true,
+      "mechanical_gates": {
+        "terminal_pass": true,
+        "read_only_source_preserved": true,
+        "words": 351,
+        "word_limit": 400,
+        "word_limit_pass": true
+      },
+      "accepted": true
+    },
+    {
+      "arm": "codenib",
+      "task_id": "astropy__astropy-13579-post_edit",
+      "kind": "post_edit",
+      "final_answer_sha256": "a5a90de873590889344c586f9bebe3ea027adbc5fce1b9f33c6b526e6623793b",
+      "all_material_claims_checked": true,
+      "source_version_verified": true,
+      "criteria_pass": [
+        true,
+        true,
+        true
+      ],
+      "checked_claims": [
+        "The exact controlled helper constructs SlicedLowLevelWCS, wraps it and delegates world_to_pixel with no image resampling or FITS write.",
+        "Current arm-specific repaired lines compute dropped world coordinates via the forward method; object-to-values, inverse, offset and kept-pixel boundaries match the captured current source.",
+        "Known FITS behavior is explicitly conditional on the runtime wrapped object. Source/Git state comments describe staging, without claiming new commits."
+      ],
+      "source_evidence": [
+        {
+          "path": "pilot_validation_probe.py",
+          "start_line": 1,
+          "end_line": 7,
+          "source_sha256": "8bb13392885e8b58042d39dcfb17ff359c4652a7312e4f0cc206ba11786b8948",
+          "excerpt": "from astropy.wcs.wcsapi import HighLevelWCSWrapper, SlicedLowLevelWCS\n\n\ndef sliced_world_probe(low_level_wcs, selection, *world_objects):\n    sliced = SlicedLowLevelWCS(low_level_wcs, selection)\n    wrapped = HighLevelWCSWrapper(sliced)\n    return wrapped.world_to_pixel(*world_objects)",
+          "excerpt_sha256": "601cba48ef20fa4fb04c10c246b799e0926f90f78e3de83324dfe03a96758800",
+          "source_version": "arm repaired source and controlled addition",
+          "captured_before_snapshot_sha256": "531378356e43a38ae1111c826029407db4814fa1551f665a146dd53dd94afa39"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/high_level_wcs_wrapper.py",
+          "start_line": 8,
+          "end_line": 22,
+          "source_sha256": "913d096cb94a35d01b4c3d16cc730efa579c0d3d1ef7cf24fd6b2c6bd3627749",
+          "excerpt": "class HighLevelWCSWrapper(HighLevelWCSMixin):\n    \"\"\"\n    Wrapper class that can take any :class:`~astropy.wcs.wcsapi.BaseLowLevelWCS`\n    object and expose the high-level WCS API.\n    \"\"\"\n\n    def __init__(self, low_level_wcs):\n        if not isinstance(low_level_wcs, BaseLowLevelWCS):\n            raise TypeError('Input to a HighLevelWCSWrapper must be a low level WCS object')\n\n        self._low_level_wcs = low_level_wcs\n\n    @property\n    def low_level_wcs(self):\n        return self._low_level_wcs",
+          "excerpt_sha256": "79c8024557e6811dd8de823f6b9946a862fce01ec60435d0631c51265e187dce",
+          "source_version": "arm repaired source and controlled addition",
+          "captured_before_snapshot_sha256": "531378356e43a38ae1111c826029407db4814fa1551f665a146dd53dd94afa39"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/high_level_api.py",
+          "start_line": 307,
+          "end_line": 314,
+          "source_sha256": "ed49b242712792dae1022e300e33f91d24409c7d055c77843bcf42ebe624c5d8",
+          "excerpt": "    def world_to_pixel(self, *world_objects):\n\n        world_values = high_level_objects_to_values(*world_objects, low_level_wcs=self.low_level_wcs)\n\n        # Finally we convert to pixel coordinates\n        pixel_values = self.low_level_wcs.world_to_pixel_values(*world_values)\n\n        return pixel_values",
+          "excerpt_sha256": "6fecf520b2aee148ae666de34632b9b3ea49c5c7e1f11f323d901f034477831a",
+          "source_version": "arm repaired source and controlled addition",
+          "captured_before_snapshot_sha256": "531378356e43a38ae1111c826029407db4814fa1551f665a146dd53dd94afa39"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/wrappers/sliced_wcs.py",
+          "start_line": 245,
+          "end_line": 274,
+          "source_sha256": "c99fddfc16a98ac89d58b6cbb6657f5790f7f27830b1e8c390fc14a154dc5173",
+          "excerpt": "    def world_to_pixel_values(self, *world_arrays):\n        # The dropped world dimensions are not correlated with any kept pixel\n        # dimension, so their values at the fixed (sliced) pixel positions can\n        # be computed using an arbitrary position along the kept pixel axes.\n        sliced_out_world_coords = self._pixel_to_world_values_all(*[0]*len(self._pixel_keep))\n\n        world_arrays = tuple(map(np.asanyarray, world_arrays))\n        world_arrays_new = []\n        iworld_curr = -1\n        for iworld in range(self._wcs.world_n_dim):\n            if iworld in self._world_keep:\n                iworld_curr += 1\n                world_arrays_new.append(world_arrays[iworld_curr])\n            else:\n                world_arrays_new.append(sliced_out_world_coords[iworld])\n\n        world_arrays_new = np.broadcast_arrays(*world_arrays_new)\n        pixel_arrays = list(self._wcs.world_to_pixel_values(*world_arrays_new))\n\n        for ipixel in range(self._wcs.pixel_n_dim):\n            if isinstance(self._slices_pixel[ipixel], slice) and self._slices_pixel[ipixel].start is not None:\n                pixel_arrays[ipixel] -= self._slices_pixel[ipixel].start\n\n        # Detect the case of a length 0 array\n        if isinstance(pixel_arrays, np.ndarray) and not pixel_arrays.shape:\n            return pixel_arrays\n        pixel = tuple(pixel_arrays[ip] for ip in self._pixel_keep)\n        if self.pixel_n_dim == 1 and self._wcs.pixel_n_dim > 1:\n            pixel = pixel[0]\n        return pixel",
+          "excerpt_sha256": "5fd30d11c7248390057a5a49c06e05f86a6d7445b0365d6252cb3c4f436bfc52",
+          "source_version": "arm repaired source and controlled addition",
+          "captured_before_snapshot_sha256": "531378356e43a38ae1111c826029407db4814fa1551f665a146dd53dd94afa39"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/wrappers/sliced_wcs.py",
+          "start_line": 277,
+          "end_line": 283,
+          "source_sha256": "c99fddfc16a98ac89d58b6cbb6657f5790f7f27830b1e8c390fc14a154dc5173",
+          "excerpt": "    def world_axis_object_components(self):\n        return [self._wcs.world_axis_object_components[idx] for idx in self._world_keep]\n\n    @property\n    def world_axis_object_classes(self):\n        keys_keep = [item[0] for item in self.world_axis_object_components]\n        return dict([item for item in self._wcs.world_axis_object_classes.items() if item[0] in keys_keep])",
+          "excerpt_sha256": "1668045fd558dc20a53f513ac3073d4537a7112059cb3160948bdae7d08e3dd2",
+          "source_version": "arm repaired source and controlled addition",
+          "captured_before_snapshot_sha256": "531378356e43a38ae1111c826029407db4814fa1551f665a146dd53dd94afa39"
+        },
+        {
+          "path": "astropy/wcs/wcsapi/fitswcs.py",
+          "start_line": 325,
+          "end_line": 337,
+          "source_sha256": "c1a891af6c441624e237d08deeb3bdd0d0595fb388c1d83fae3a4d806495fb71",
+          "excerpt": "    def world_to_pixel_values(self, *world_arrays):\n        # avoid circular import\n        from astropy.wcs.wcs import NoConvergence\n        try:\n            pixel = self.all_world2pix(*world_arrays, 0)\n        except NoConvergence as e:\n            warnings.warn(str(e))\n            # use best_solution contained in the exception and format the same\n            # way as all_world2pix does (using _array_converter)\n            pixel = self._array_converter(lambda *args: e.best_solution,\n                                         'input', *world_arrays, 0)\n\n        return pixel[0] if self.pixel_n_dim == 1 else tuple(pixel)",
+          "excerpt_sha256": "368ce5cc2fba53589104bc90d76dcacf815f679216d6914483b7bc0a735f07d7",
+          "source_version": "arm repaired source and controlled addition",
+          "captured_before_snapshot_sha256": "531378356e43a38ae1111c826029407db4814fa1551f665a146dd53dd94afa39"
+        }
+      ],
+      "findings": [],
+      "notes": [],
+      "material_source_error": false,
+      "serious_error": false,
+      "semantic_source_pass": true,
+      "mechanical_gates": {
+        "terminal_pass": true,
+        "read_only_source_preserved": true,
+        "words": 386,
+        "word_limit": 400,
+        "word_limit_pass": true
+      },
+      "accepted": true
+    }
+  ]
+}
