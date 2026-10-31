@@ -73,15 +73,16 @@ publication. No final source/VFS check is invented after forced death.
 The developer wheel is based on the unmodified #945 CI wheel, replaces every
 Python file with this independent checkout, and removes #945-only Python/CJS
 assets. Native bytes are identical to the admitted base. This establishes
-installed functional behavior, without a new source-built CI-wheel or public
-release claim. The implementation has no source dependency on draft #945.
+the initial installed functional control; the separate CI-wheel admission
+below preserves that packet. The implementation has no source dependency on
+draft #945.
 
 ## Remaining gates
 
 Hold comparative-efficiency promotion. A standard static reference set can
 include a call after reassignment; the original physical-call oracle still
-fails. Broader wildcard/configuration and update coverage, final-head
-checks and the fix's own source-built CI wheel remain open. Existing baseline
+fails. Broader wildcard/configuration and update coverage, final-head and
+merge reconciliation remain open. Existing baseline
 all-files formatting/lint failures are outside this change and remain explicit.
 
 The separate definition component in draft #945 now has actual CI-wheel
@@ -94,7 +95,17 @@ new model spend is added; A0 and issue #874 stay active.
 
 The implementation is in draft
 [#946](https://github.com/sysevol-ai/CodeNib/pull/946), independently based on
-merged #944. Keep it unmerged until its own exact-head CI and source-built
-wheel gates, baseline all-files failures and shared-roadmap reconciliation
-are resolved. Its first packet is immutable; later admission belongs in a
-separate supplement.
+merged #944. The [CI supplement](codegraph_python_wildcard_ci_2026_10_31.json)
+reconstructs 47 records in two parts. The unmodified source-built aarch64 wheel
+from source head `807ddfbd` has SHA-256
+`d805f0a0af19bfa80a92c2482b6df4b649bb09cebba05c12cc241bd6230fdc43`.
+All 485 Python files, native bytes and every other product file are byte
+identical to the developer wheel. A fresh installed compiler/MCP control
+passes initial and declared post-edit rebuilding, finding all eleven positive
+lines with the original negative; both LSP owners exit. Its 17 executed checks
+pass, with nine skips explicit, including a separate initial draft unit skip;
+the labeled unit job executes and passes. No public release is made.
+
+Keep the draft unmerged until baseline all-files failures, final-head checks
+and shared-roadmap/base reconciliation are resolved. Both packets stay
+immutable and all whole-task/use gates remain open.
