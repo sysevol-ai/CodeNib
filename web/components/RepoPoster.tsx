@@ -20,6 +20,7 @@ import {
   layoutPoster,
   posterMode,
   tracedHops,
+  TAG_W,
   type PosterEdge,
 } from "@/lib/posterLayout";
 import { AppLink } from "@/lib/router";
@@ -241,6 +242,11 @@ export default function RepoPoster({
   const stages = journey?.stages ?? [];
   const stageAreas = useMemo(() => journeyAreas(stages, pages), [stages, pages]);
   const { hops } = useMemo(() => tracedHops(stageAreas), [stageAreas]);
+  const stopTags = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const area of stageAreas) if (area) counts.set(area, (counts.get(area) ?? 0) + 1);
+    return counts;
+  }, [stageAreas]);
   // Lay out at the canvas's real width so text is drawn at its CSS size
   // instead of being scaled with the drawing.
   const canvasRef = useRef<HTMLDivElement | null>(null);
@@ -272,14 +278,14 @@ export default function RepoPoster({
         ? layoutPoster(
             map.areas.filter((area) => linked.has(area.id)),
             map.links,
-            { traced: hops, width: canvasWidth },
+            { traced: hops, width: canvasWidth, tags: stopTags },
           )
         : null,
-    [map, mode, linked, hops, canvasWidth],
+    [map, mode, linked, hops, canvasWidth, stopTags],
   );
   const atlas = useMemo(
-    () => (mode === "atlas" ? layoutAtlas(map.areas, canvasWidth) : null),
-    [map, mode, canvasWidth],
+    () => (mode === "atlas" ? layoutAtlas(map.areas, canvasWidth, stopTags) : null),
+    [map, mode, canvasWidth, stopTags],
   );
   const edges = layout?.edges ?? [];
   // In the atlas the recorded links are listed, not drawn; they still open
@@ -436,15 +442,17 @@ export default function RepoPoster({
     stages
       .map((stage, index) => ({ stage, index }))
       .filter(({ index }) => stageAreas[index] === areaId);
+  // The traced path's stop numbers, as small tags inside the box's top-right
+  // corner rather than badges hanging off it.
   const pins = (areaId: string, right: number) => {
     const staged = stagedIn(areaId);
     if (staged.length === 0) return null;
     return (
       <g className="poster-node-stages">
         {staged.map(({ index }, i) => (
-          <g key={index} transform={`translate(${right - 16 - (staged.length - 1 - i) * 22} 0)`}>
-            <circle r="9" className={stageNow === index ? "is-now" : ""} />
-            <text textAnchor="middle" dy="3.5">{index + 1}</text>
+          <g key={index} transform={`translate(${right - 8 - (staged.length - i) * TAG_W} 7)`}>
+            <rect width="14" height="14" rx="2" className={stageNow === index ? "is-now" : ""} />
+            <text x="7" y="10.4" textAnchor="middle">{index + 1}</text>
           </g>
         ))}
       </g>
@@ -508,7 +516,7 @@ export default function RepoPoster({
                     className="poster-node-box"
                     width={cell.w}
                     height={cell.h}
-                    rx="10"
+                    rx="4"
                     style={{ fillOpacity: 0.55 + Math.min(0.45, cell.share * 2.2) }}
                   />
                   {cell.lines.map((line, index) => (
@@ -516,17 +524,17 @@ export default function RepoPoster({
                       key={index}
                       className="poster-node-title"
                       x="12"
-                      y={10 + cell.fontSize + index * lineHeight}
+                      y={10 + cell.titleOffset + cell.fontSize + index * lineHeight}
                       style={{ fontSize: cell.fontSize }}
                     >
                       {line}
                     </text>
                   ))}
-                  {cell.lines.length > 0 && cell.w >= 150 && cell.h >= cell.lines.length * lineHeight + 44 && (
+                  {cell.lines.length > 0 && cell.w >= 150 && cell.h >= cell.titleOffset + cell.lines.length * lineHeight + 44 && (
                     <text
                       className="poster-node-meta"
                       x="12"
-                      y={10 + cell.fontSize + (cell.lines.length - 1) * lineHeight + 22}
+                      y={10 + cell.titleOffset + cell.fontSize + (cell.lines.length - 1) * lineHeight + 22}
                     >
                       {number.format(cell.symbols)} symbols · {cell.files} file{cell.files === 1 ? "" : "s"}
                     </text>
@@ -550,8 +558,35 @@ export default function RepoPoster({
             setHoverEdge(null);
           }}
         >
+          <defs>
+            <marker
+              id="poster-arrow"
+              viewBox="0 0 8 8"
+              refX="7.5"
+              refY="4"
+              markerWidth="7"
+              markerHeight="7"
+              markerUnits="userSpaceOnUse"
+              orient="auto"
+            >
+              <path className="poster-arrow" d="M0 0.6 L8 4 L0 7.4 z" />
+            </marker>
+            <marker
+              id="poster-arrow-traced"
+              viewBox="0 0 8 8"
+              refX="7.5"
+              refY="4"
+              markerWidth="8"
+              markerHeight="8"
+              markerUnits="userSpaceOnUse"
+              orient="auto"
+            >
+              <path className="poster-arrow is-traced" d="M0 0.6 L8 4 L0 7.4 z" />
+            </marker>
+          </defs>
           <g className="poster-edges">
-            {layout.edges.map((edge) => {
+            {/* Traced links last, so the path is never under another line. */}
+            {[...layout.edges].sort((a, b) => Number(a.traced) - Number(b.traced)).map((edge) => {
               const key = edgeKey(edge);
               const dim =
                 (litNode != null && !touches(edge, litNode)) ||
@@ -567,13 +602,13 @@ export default function RepoPoster({
                   <path
                     className="poster-edge-line"
                     d={edge.d}
-                    strokeWidth={edge.width}
+                    strokeWidth={edge.traced ? Math.max(2, edge.width) : edge.width}
+                    markerEnd={`url(#poster-arrow${edge.traced ? "-traced" : ""})`}
                     ref={(node) => {
                       if (node) pathRefs.current.set(key, node);
                       else pathRefs.current.delete(key);
                     }}
                   />
-                  <path className="poster-edge-flow" d={edge.d} strokeWidth={Math.max(1.4, edge.width * 0.8)} />
                   <path
                     className="poster-edge-hit"
                     d={edge.d}
@@ -616,7 +651,7 @@ export default function RepoPoster({
                   }}
                 >
                   <title>{`${node.title}: open this part of the wiki`}</title>
-                  <rect className="poster-node-box" width={node.w} height={node.h} rx="12" />
+                  <rect className="poster-node-box" width={node.w} height={node.h} rx="4" />
                   {node.lines.map((line, index) => (
                     <text key={index} className="poster-node-title" x="14" y={30 + index * 18}>
                       {line}
@@ -637,7 +672,7 @@ export default function RepoPoster({
             const label = `${number.format(edge.weight)} refs`;
             return (
               <g className="poster-edge-label" transform={`translate(${edge.mid.x} ${edge.mid.y})`}>
-                <rect x={-(label.length * 3.6 + 10)} y="-11" width={label.length * 7.2 + 20} height="22" rx="11" />
+                <rect x={-(label.length * 3.6 + 10)} y="-11" width={label.length * 7.2 + 20} height="22" rx="3" />
                 <text textAnchor="middle" dy="4">{label}</text>
               </g>
             );
@@ -726,6 +761,7 @@ export default function RepoPoster({
               )}
             </button>
           </div>
+          {/* One line of numbered stops, the same numbers the map shows. */}
           <ol className="poster-steps">
             {stages.map((stage, index) => (
               <li key={stage.index}>
@@ -737,9 +773,8 @@ export default function RepoPoster({
                   onClick={() => stage.page && onPick?.(stage.page.id)}
                   title={stage.page ? `Open ${stage.page.title}` : undefined}
                 >
-                  <span className="poster-step-no">{String(index + 1).padStart(2, "0")}</span>
+                  <span className="poster-step-no">{index + 1}</span>
                   <code>{breakableCode(stage.symbol)}</code>
-                  {stage.page && <span className="poster-step-area">{stage.page.title}</span>}
                 </button>
               </li>
             ))}

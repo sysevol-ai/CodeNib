@@ -552,6 +552,16 @@ The question-first marketing iteration is merged in
 to `codenib.ai` with the matching Wiki frontend on 2026-10-12 UTC. Live
 desktop/mobile acceptance passes; hosted measurement remains opt-in and off.
 
+The merged presentation refresh in [#921](https://github.com/sysevol-ai/CodeNib/pull/921)
+and [#922](https://github.com/sysevol-ai/CodeNib/pull/922) gives the demo, homepage
+and blog neutral surfaces with a single blue accent. The schematic system map
+in [#923](https://github.com/sysevol-ai/CodeNib/pull/923) retains indexed links,
+directional arrowheads and explicit selected-path labels. Exhausted route lanes
+remain outside intermediate boxes; sparse atlas titles reserve space below
+journey tags. Local geometry and loading/refresh checks cover these boundaries.
+Deployment and regenerated hero/share-card assets remain separate open gates;
+the recording and existing static images retain their previous artwork.
+
 The marketing homepage now starts with a complete code-understanding task:
 **question → explanation → indexed calls → source**. The Requests
 redirect/authentication example sits beside concrete value copy and one
