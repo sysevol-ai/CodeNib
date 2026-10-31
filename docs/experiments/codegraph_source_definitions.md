@@ -124,10 +124,10 @@ establish voluntary use. Independent successes remain 0/2; consenting external
 users and seven-day reuse remain 0/5. No model inference, account fallback or
 new spend is added. A0 and issue #874 remain active.
 
-Implementation is in draft [#945](https://github.com/sysevol-ai/CodeNib/pull/945),
-stacked on [#946](https://github.com/sysevol-ai/CodeNib/pull/946), which
-incorporates merged #947. This orders shared-document integration; the
-source-definition implementation is unchanged. The original separate
+Implementation is in [#945](https://github.com/sysevol-ai/CodeNib/pull/945),
+rebased onto merged [#946](https://github.com/sysevol-ai/CodeNib/pull/946)
+at `ad87b872`, which incorporates #947. The source-definition implementation
+and worker are unchanged, and the restacked tree equals the admitted stack. The original separate
 [CI-wheel supplement](codegraph_source_definitions_ci_2026_10_31.json)
 reconstructs 95 records in two parts without replacing the original packet.
 The unmodified aarch64 wheel from source head `721adc08` has SHA-256
@@ -139,6 +139,22 @@ stopped-worker cleanup. All 21 executed source-head checks pass; nine skips,
 including the initial draft unit job, stay explicit. The separate labeled unit
 job executes and passes. No public release is made.
 
-Keep the draft unmerged until #946 is merged, this branch is restacked and
-current combined installed-package/final-head checks pass. Comparative benefit, reference
-call identity and repeat-use gates remain open.
+The [combined admission](codegraph_source_definitions_reconciled_2026_10_31.json)
+retains 105 exact records in seven bounded parts. Its unmodified CI wheel from
+source head `564420c3` has SHA-256
+`7170894edc255e9d9dc36f9eddc16248c7184ccbc49142e5dfc9f25db3ddc61f`.
+All 486 Python files match the restacked checkout. Four style modules and two
+independently admitted #946 modules are the only product differences from the
+older definition candidate; native, worker and all other product bytes agree.
+Actual installed MCP/fallback, source-update/lifecycle and complete-source
+controls pass. All five source workers and the fallback's ordinary language
+server exit. The stopped lifecycle worker needs bounded kill; its missing
+final VFS check stays explicit. The full-source worker exits normally with
+all selected bytes verified. The new graph control finds 11/11 positive call
+lines and retains the original raw-compiler alias-binding negative; older
+10/11 records remain unchanged.
+
+The admitted source head passes 21 executed checks with eight explicit skips.
+All-files hooks and 296 relevant local unit cases pass on the combined base.
+Keep this change unmerged until the final documentation head's checks pass.
+Comparative benefit, reference call identity and repeat-use gates remain open.
