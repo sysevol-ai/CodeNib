@@ -139,6 +139,19 @@ or external-use evidence. Stop repeating paid exact-name probes; establish a
 real workflow/discovery need before another efficacy cohort. The reserved set
 stays unopened.
 
+The [SDK loading audit](experiments/codegraph_sdk_context_audit.md) completes
+two metadata-only sessions without submitting a model question. In the fresh
+CodeNib connection, the client reports `explore_context` loaded and accounts
+for server instructions; its offline estimates add 1,042 context tokens.
+All 54 observed proxy CONNECT attempts to Anthropic are denied, so these are
+not API-measured counts or savings. Both owned containers are absent, the copied
+source is unchanged and all 24,225 sealed inputs reverify. Historical HTTP
+schema exposure and model-choice causation remain unknown. This connection
+does not support a missing/deferred-tool diagnosis. Prioritize a real
+source-linked cross-file maintenance task with a verifiable edit/test outcome
+over further discovery rewrites or paid exact-name probes. Internal use does
+not satisfy the external-user gate.
+
 The latest four-arm round records 8,821,055 normalized final main/auxiliary tokens
 and $9.311356 in SDK estimates, not invoices. The separate diagnostic adds
 78,348 tokens and $0.1850155 in SDK estimates within its $1 guard. The recorded

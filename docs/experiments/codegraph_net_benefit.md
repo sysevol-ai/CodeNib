@@ -94,6 +94,20 @@ optional setup explains only 24.148 seconds of the 179.861-second observed gap
 to Native. Further startup removal alone cannot meet the target in an
 arithmetic scenario; metadata/model-latency causation remains unknown.
 
+The [model-free SDK loading audit](codegraph_sdk_context_audit.md) now verifies
+one fresh product connection and one native-only connection. The client reports
+the CodeNib tool loaded and server instructions accounted for, with 1,042
+additional context tokens in its offline estimates. All 54 observed proxy
+CONNECT attempts to Anthropic are denied; these are not measured savings or
+an efficacy comparison.
+There are no user submissions or model questions. Both owned containers are
+absent, copied source is unchanged and the prior 24,225-file seal reverifies.
+The audit does not establish historical HTTP exposure or why an agent chose
+native tools. Require an actual source-linked maintenance task and useful
+voluntary use before further efficacy inference; do not keep changing
+discovery metadata without a reproduced loading defect. Internal maintenance
+use stays distinct from external consent and repeat use.
+
 The [merged Python identity repair](codegraph_python_walrus.md) now admits the
 complete selected Pylint graph and exact source delivery through its actual CI
 wheel. The [prospective source-contract diagnostic](codegraph_reference_adoption_freeze_2026_10_30.json)
