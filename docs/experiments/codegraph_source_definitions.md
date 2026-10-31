@@ -156,5 +156,11 @@ lines and retains the original raw-compiler alias-binding negative; older
 
 The admitted source head passes 21 executed checks with eight explicit skips.
 All-files hooks and 296 relevant local unit cases pass on the combined base.
-Keep this change unmerged until the final documentation head's checks pass.
-Comparative benefit, reference call identity and repeat-use gates remain open.
+Merged [#945](https://github.com/sysevol-ai/CodeNib/pull/945) as `90d4a8ed` has
+the same tree as reviewed head `dd246e7d`; all 21 final executed checks pass
+with eight explicit skips. The squash message uses real newlines. Main Docs,
+lightweight install, no-model smoke and all twenty executed release verifiers
+pass; the full trusted chain is still tracked separately. The subsequent
+[alias-binding diagnostic](codegraph_python_rebinding.md) preserves the older
+observations and adds no product route. Comparative benefit, reference call
+identity and repeat-use gates remain open.

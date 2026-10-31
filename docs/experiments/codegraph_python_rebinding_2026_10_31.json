@@ -1,0 +1,1328 @@
+{
+  "schema": "codenib.python-rebinding.terminal.v1",
+  "goal": "active",
+  "records": 170,
+  "record_manifest": [
+    {
+      "path": "fixture-metadata.json",
+      "bytes": 5074,
+      "sha256": "9efe9ed5d71fe05c9ca21ae27964e455f08401309176484769450fba54dd28b5"
+    },
+    {
+      "path": "fixture-payload.json",
+      "bytes": 4837,
+      "sha256": "104a3656c423bc8ce2e8332a07cdd2f9352136fbe64402f4449561737e0afa96"
+    },
+    {
+      "path": "freeze_diagnostic.py",
+      "bytes": 10784,
+      "sha256": "929104af00d0646148b01e3ea60f81a91854782d3530ff4c4d9a5cddf3822bb1"
+    },
+    {
+      "path": "protocol.json",
+      "bytes": 4457,
+      "sha256": "909241fe7d7a1894e8ed1947e1a4f1edacdef5dde4b2602739075b711510652d"
+    },
+    {
+      "path": "public-references-1/fixture-metadata.json",
+      "bytes": 5074,
+      "sha256": "9efe9ed5d71fe05c9ca21ae27964e455f08401309176484769450fba54dd28b5"
+    },
+    {
+      "path": "public-references-1/fixture-payload.json",
+      "bytes": 4837,
+      "sha256": "104a3656c423bc8ce2e8332a07cdd2f9352136fbe64402f4449561737e0afa96"
+    },
+    {
+      "path": "public-references-1/protocol.json",
+      "bytes": 3484,
+      "sha256": "f6031e57e0968ecbe493af788b256b04b7fd3df82fb195be9b0f7d4ba321d448"
+    },
+    {
+      "path": "public-references-1/query.stdout",
+      "bytes": 531,
+      "sha256": "fc0301799a38bfa110658931411568e0d88ddf82ba9c9302cdacd57613ddd875"
+    },
+    {
+      "path": "public-references-1/query_public_references.py",
+      "bytes": 7196,
+      "sha256": "d4d6cfebc8b441f93b5d932d1f452d47b4310aa530b7a6bcc1781d1872f4c698"
+    },
+    {
+      "path": "public-references-1/raw-index.scip",
+      "bytes": 16700,
+      "sha256": "f2f2a5d53c020dd56ba36eb779eab8dc48419168908322580f67be6317f5a641"
+    },
+    {
+      "path": "public-references-1/raw-rebound-occurrences.json",
+      "bytes": 2018,
+      "sha256": "57dac95aa7cee604aec5b5fe30ee8eda1208134fb04b29f43ee6932751d1850f"
+    },
+    {
+      "path": "public-references-1/run-state.json",
+      "bytes": 17854,
+      "sha256": "4428bf5ca7ef42ff38ac95bab548640c2b5e5ffe42bca84421269e01a64839fa"
+    },
+    {
+      "path": "public-references-1/source/asset.bin",
+      "bytes": 5,
+      "sha256": "15eb60527ec991296a84c414b57cc5b19c6e66579a01486c8f4057f495d0b08e"
+    },
+    {
+      "path": "public-references-1/source/extra_consumer.py",
+      "bytes": 65,
+      "sha256": "2de7c0efa840a30d93f126d8e6026bc37d897265ddaaf4699c136feca310f84c"
+    },
+    {
+      "path": "public-references-1/source/local.py",
+      "bytes": 77,
+      "sha256": "54015f1a55e32d4acccb0b697cf64e219319378b085c27000b2a1990c67db15c"
+    },
+    {
+      "path": "public-references-1/source/localdeps/libdefs.py",
+      "bytes": 40,
+      "sha256": "25360649551526fab085e09c301fd2e868f730d62e0aeaf4df3840ab009ab53e"
+    },
+    {
+      "path": "public-references-1/source/missing_consumer.py",
+      "bytes": 76,
+      "sha256": "94843ef0a53bf424c9c988c87566b9ab5972be039f66d9dbe89b57b6909800c0"
+    },
+    {
+      "path": "public-references-1/source/multiline.py",
+      "bytes": 73,
+      "sha256": "567c46c4239b160d0c037583e2722fcfde887a81c796a01d1694cc46835d1890"
+    },
+    {
+      "path": "public-references-1/source/negative.py",
+      "bytes": 61,
+      "sha256": "66e7d14c4d0f0043a247c8780daeac4d1e87a28e2a5bde91c2b16f2ac859b0a4"
+    },
+    {
+      "path": "public-references-1/source/note.txt",
+      "bytes": 8,
+      "sha256": "da68f54607d5f5644954096ce1597c006c5bb9f2497e07441bf064b81003ef8a"
+    },
+    {
+      "path": "public-references-1/source/other.py",
+      "bytes": 40,
+      "sha256": "59a762ea21440f692a403c96223a32c9e95d7801cc924e536eada75dbb1fc560"
+    },
+    {
+      "path": "public-references-1/source/pkg/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "public-references-1/source/pkg/bridge.py",
+      "bytes": 62,
+      "sha256": "221fbda81a5904fd8b67ab9b3c96697f382e772d456a18c0d60012bd0dd5fb08"
+    },
+    {
+      "path": "public-references-1/source/pkg/cycle_a.py",
+      "bytes": 106,
+      "sha256": "062386d1d94dca5a6ea8ec3fcb38c004766fdbc4ea43f2029194c0f20b36bfb2"
+    },
+    {
+      "path": "public-references-1/source/pkg/cycle_b.py",
+      "bytes": 61,
+      "sha256": "584e6430184baac0947f07c7f0472326b2908f167bf3cc10644743a58318052c"
+    },
+    {
+      "path": "public-references-1/source/pkg/origin.py",
+      "bytes": 40,
+      "sha256": "29b58585cf8e396a119bb7aa8042d6c9dd0d67c8df09a05f6f6fef041c56585e"
+    },
+    {
+      "path": "public-references-1/source/pkg/tail.py",
+      "bytes": 58,
+      "sha256": "9ad8bd4db8ef2f20fce7e717949bbe9ca6886917d1947f34fdc85680b136b90f"
+    },
+    {
+      "path": "public-references-1/source/pyrightconfig.json",
+      "bytes": 127,
+      "sha256": "01557ce3b97cfc7ee61dd00fd2fb7d2d1b5a776f16ec515c28abaca4958c5dd5"
+    },
+    {
+      "path": "public-references-1/source/rebound.py",
+      "bytes": 142,
+      "sha256": "244d105637630a167940b1624f856f44c39e045d34d69fea55e110811cb672f3"
+    },
+    {
+      "path": "public-references-1/source/shadow.py",
+      "bytes": 103,
+      "sha256": "14d614b10be0235317b15df0f952ede8d019d06074c4a7910b82fa86731a38e6"
+    },
+    {
+      "path": "public-references-1/source/single.py",
+      "bytes": 64,
+      "sha256": "2abd149c1336851061234c8926a13bd6740851262780936ad796375b59939cee"
+    },
+    {
+      "path": "public-references-1/source/stub_consumer.py",
+      "bytes": 67,
+      "sha256": "3e8d3f013858597fba0d9243f240e59b17fd5756c8143bf43326d4afba79eaee"
+    },
+    {
+      "path": "public-references-1/source/unicode.py",
+      "bytes": 75,
+      "sha256": "b8cd3c33cf6e6c4d98aa4c11e1bd4a4dca702cbe694c8fd8a701296e4f98dc2a"
+    },
+    {
+      "path": "public-references-1/source/unrelated.py",
+      "bytes": 42,
+      "sha256": "49b7fb935b7a5e308a0e35030e8b77e2344ceef8dae4c745692e094e589c8b3a"
+    },
+    {
+      "path": "public-references-1/source/vendor_stubs/vendorpkg/__init__.pyi",
+      "bytes": 37,
+      "sha256": "a196736aa2642f325455d76c06ebffb5f70713be9506d9cc0059137aca01df8a"
+    },
+    {
+      "path": "public-references-1/source/wildcard.py",
+      "bytes": 46,
+      "sha256": "7d6d4ad3301b2d9f4f91017947e1a9f0fbf4085b65b919b67d98c7e9fe5e9021"
+    },
+    {
+      "path": "public-references-2/failure-audit.json",
+      "bytes": 386,
+      "sha256": "4dd510245793ff89f5b54a7fb9439afc7cf094b870193935a34ffc2a30da998d"
+    },
+    {
+      "path": "public-references-2/fixture-metadata.json",
+      "bytes": 5074,
+      "sha256": "9efe9ed5d71fe05c9ca21ae27964e455f08401309176484769450fba54dd28b5"
+    },
+    {
+      "path": "public-references-2/fixture-payload.json",
+      "bytes": 4837,
+      "sha256": "104a3656c423bc8ce2e8332a07cdd2f9352136fbe64402f4449561737e0afa96"
+    },
+    {
+      "path": "public-references-2/protocol.json",
+      "bytes": 3663,
+      "sha256": "a58d677b053f45991dc85dec6336d9153e7858909f45d1ca2b214a51587e648a"
+    },
+    {
+      "path": "public-references-2/query.stdout",
+      "bytes": 875,
+      "sha256": "b6eb10d900cf7440fd453dbe2ea123dc683b9f9a0e59f9340973abf1134117bf"
+    },
+    {
+      "path": "public-references-2/query_public_references.py",
+      "bytes": 8073,
+      "sha256": "788de5f594a1df6d2fcb33981b2fb45aed1a50324d8bb450a743c843e0fb1b08"
+    },
+    {
+      "path": "public-references-2/raw-index.scip",
+      "bytes": 16700,
+      "sha256": "f2f2a5d53c020dd56ba36eb779eab8dc48419168908322580f67be6317f5a641"
+    },
+    {
+      "path": "public-references-2/raw-rebound-occurrences.json",
+      "bytes": 2018,
+      "sha256": "57dac95aa7cee604aec5b5fe30ee8eda1208134fb04b29f43ee6932751d1850f"
+    },
+    {
+      "path": "public-references-2/run-state.json",
+      "bytes": 12462,
+      "sha256": "314e47244efc5704a43f8bfe8abe77e87e1537fcbd591b2581fccdfcea11312a"
+    },
+    {
+      "path": "public-references-2/source/asset.bin",
+      "bytes": 5,
+      "sha256": "15eb60527ec991296a84c414b57cc5b19c6e66579a01486c8f4057f495d0b08e"
+    },
+    {
+      "path": "public-references-2/source/extra_consumer.py",
+      "bytes": 65,
+      "sha256": "2de7c0efa840a30d93f126d8e6026bc37d897265ddaaf4699c136feca310f84c"
+    },
+    {
+      "path": "public-references-2/source/local.py",
+      "bytes": 77,
+      "sha256": "54015f1a55e32d4acccb0b697cf64e219319378b085c27000b2a1990c67db15c"
+    },
+    {
+      "path": "public-references-2/source/localdeps/libdefs.py",
+      "bytes": 40,
+      "sha256": "25360649551526fab085e09c301fd2e868f730d62e0aeaf4df3840ab009ab53e"
+    },
+    {
+      "path": "public-references-2/source/missing_consumer.py",
+      "bytes": 76,
+      "sha256": "94843ef0a53bf424c9c988c87566b9ab5972be039f66d9dbe89b57b6909800c0"
+    },
+    {
+      "path": "public-references-2/source/multiline.py",
+      "bytes": 73,
+      "sha256": "567c46c4239b160d0c037583e2722fcfde887a81c796a01d1694cc46835d1890"
+    },
+    {
+      "path": "public-references-2/source/negative.py",
+      "bytes": 61,
+      "sha256": "66e7d14c4d0f0043a247c8780daeac4d1e87a28e2a5bde91c2b16f2ac859b0a4"
+    },
+    {
+      "path": "public-references-2/source/note.txt",
+      "bytes": 8,
+      "sha256": "da68f54607d5f5644954096ce1597c006c5bb9f2497e07441bf064b81003ef8a"
+    },
+    {
+      "path": "public-references-2/source/other.py",
+      "bytes": 40,
+      "sha256": "59a762ea21440f692a403c96223a32c9e95d7801cc924e536eada75dbb1fc560"
+    },
+    {
+      "path": "public-references-2/source/pkg/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "public-references-2/source/pkg/bridge.py",
+      "bytes": 62,
+      "sha256": "221fbda81a5904fd8b67ab9b3c96697f382e772d456a18c0d60012bd0dd5fb08"
+    },
+    {
+      "path": "public-references-2/source/pkg/cycle_a.py",
+      "bytes": 106,
+      "sha256": "062386d1d94dca5a6ea8ec3fcb38c004766fdbc4ea43f2029194c0f20b36bfb2"
+    },
+    {
+      "path": "public-references-2/source/pkg/cycle_b.py",
+      "bytes": 61,
+      "sha256": "584e6430184baac0947f07c7f0472326b2908f167bf3cc10644743a58318052c"
+    },
+    {
+      "path": "public-references-2/source/pkg/origin.py",
+      "bytes": 40,
+      "sha256": "29b58585cf8e396a119bb7aa8042d6c9dd0d67c8df09a05f6f6fef041c56585e"
+    },
+    {
+      "path": "public-references-2/source/pkg/tail.py",
+      "bytes": 58,
+      "sha256": "9ad8bd4db8ef2f20fce7e717949bbe9ca6886917d1947f34fdc85680b136b90f"
+    },
+    {
+      "path": "public-references-2/source/pyrightconfig.json",
+      "bytes": 127,
+      "sha256": "01557ce3b97cfc7ee61dd00fd2fb7d2d1b5a776f16ec515c28abaca4958c5dd5"
+    },
+    {
+      "path": "public-references-2/source/rebound.py",
+      "bytes": 142,
+      "sha256": "244d105637630a167940b1624f856f44c39e045d34d69fea55e110811cb672f3"
+    },
+    {
+      "path": "public-references-2/source/shadow.py",
+      "bytes": 103,
+      "sha256": "14d614b10be0235317b15df0f952ede8d019d06074c4a7910b82fa86731a38e6"
+    },
+    {
+      "path": "public-references-2/source/single.py",
+      "bytes": 64,
+      "sha256": "2abd149c1336851061234c8926a13bd6740851262780936ad796375b59939cee"
+    },
+    {
+      "path": "public-references-2/source/stub_consumer.py",
+      "bytes": 67,
+      "sha256": "3e8d3f013858597fba0d9243f240e59b17fd5756c8143bf43326d4afba79eaee"
+    },
+    {
+      "path": "public-references-2/source/unicode.py",
+      "bytes": 75,
+      "sha256": "b8cd3c33cf6e6c4d98aa4c11e1bd4a4dca702cbe694c8fd8a701296e4f98dc2a"
+    },
+    {
+      "path": "public-references-2/source/unrelated.py",
+      "bytes": 42,
+      "sha256": "49b7fb935b7a5e308a0e35030e8b77e2344ceef8dae4c745692e094e589c8b3a"
+    },
+    {
+      "path": "public-references-2/source/vendor_stubs/vendorpkg/__init__.pyi",
+      "bytes": 37,
+      "sha256": "a196736aa2642f325455d76c06ebffb5f70713be9506d9cc0059137aca01df8a"
+    },
+    {
+      "path": "public-references-2/source/wildcard.py",
+      "bytes": 46,
+      "sha256": "7d6d4ad3301b2d9f4f91017947e1a9f0fbf4085b65b919b67d98c7e9fe5e9021"
+    },
+    {
+      "path": "public-references-3/fixture-metadata.json",
+      "bytes": 5074,
+      "sha256": "9efe9ed5d71fe05c9ca21ae27964e455f08401309176484769450fba54dd28b5"
+    },
+    {
+      "path": "public-references-3/fixture-payload.json",
+      "bytes": 4837,
+      "sha256": "104a3656c423bc8ce2e8332a07cdd2f9352136fbe64402f4449561737e0afa96"
+    },
+    {
+      "path": "public-references-3/protocol.json",
+      "bytes": 3795,
+      "sha256": "c66356ff9b21d549a059fd1c909e7d575888412dc9d8cdeccb7f001507de87fd"
+    },
+    {
+      "path": "public-references-3/query.stdout",
+      "bytes": 531,
+      "sha256": "5eef018e8ba4c1032aa12266a171650ef3134f42d6592fdcef1774765df5aad1"
+    },
+    {
+      "path": "public-references-3/query_public_references.py",
+      "bytes": 8799,
+      "sha256": "0ab74868b5e792528ee9741f9494710c1ae9d0b52fe1e9a95786ca6a3b768a5b"
+    },
+    {
+      "path": "public-references-3/raw-index.scip",
+      "bytes": 16700,
+      "sha256": "f2f2a5d53c020dd56ba36eb779eab8dc48419168908322580f67be6317f5a641"
+    },
+    {
+      "path": "public-references-3/raw-rebound-occurrences.json",
+      "bytes": 2018,
+      "sha256": "57dac95aa7cee604aec5b5fe30ee8eda1208134fb04b29f43ee6932751d1850f"
+    },
+    {
+      "path": "public-references-3/run-state.json",
+      "bytes": 62360,
+      "sha256": "583a867d00462da699b373d4e7f0514ee5372b14b333ce424c896c1785ea39c3"
+    },
+    {
+      "path": "public-references-3/source/asset.bin",
+      "bytes": 5,
+      "sha256": "15eb60527ec991296a84c414b57cc5b19c6e66579a01486c8f4057f495d0b08e"
+    },
+    {
+      "path": "public-references-3/source/extra_consumer.py",
+      "bytes": 65,
+      "sha256": "2de7c0efa840a30d93f126d8e6026bc37d897265ddaaf4699c136feca310f84c"
+    },
+    {
+      "path": "public-references-3/source/local.py",
+      "bytes": 77,
+      "sha256": "54015f1a55e32d4acccb0b697cf64e219319378b085c27000b2a1990c67db15c"
+    },
+    {
+      "path": "public-references-3/source/localdeps/libdefs.py",
+      "bytes": 40,
+      "sha256": "25360649551526fab085e09c301fd2e868f730d62e0aeaf4df3840ab009ab53e"
+    },
+    {
+      "path": "public-references-3/source/missing_consumer.py",
+      "bytes": 76,
+      "sha256": "94843ef0a53bf424c9c988c87566b9ab5972be039f66d9dbe89b57b6909800c0"
+    },
+    {
+      "path": "public-references-3/source/multiline.py",
+      "bytes": 73,
+      "sha256": "567c46c4239b160d0c037583e2722fcfde887a81c796a01d1694cc46835d1890"
+    },
+    {
+      "path": "public-references-3/source/negative.py",
+      "bytes": 61,
+      "sha256": "66e7d14c4d0f0043a247c8780daeac4d1e87a28e2a5bde91c2b16f2ac859b0a4"
+    },
+    {
+      "path": "public-references-3/source/note.txt",
+      "bytes": 8,
+      "sha256": "da68f54607d5f5644954096ce1597c006c5bb9f2497e07441bf064b81003ef8a"
+    },
+    {
+      "path": "public-references-3/source/other.py",
+      "bytes": 40,
+      "sha256": "59a762ea21440f692a403c96223a32c9e95d7801cc924e536eada75dbb1fc560"
+    },
+    {
+      "path": "public-references-3/source/pkg/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "public-references-3/source/pkg/bridge.py",
+      "bytes": 62,
+      "sha256": "221fbda81a5904fd8b67ab9b3c96697f382e772d456a18c0d60012bd0dd5fb08"
+    },
+    {
+      "path": "public-references-3/source/pkg/cycle_a.py",
+      "bytes": 106,
+      "sha256": "062386d1d94dca5a6ea8ec3fcb38c004766fdbc4ea43f2029194c0f20b36bfb2"
+    },
+    {
+      "path": "public-references-3/source/pkg/cycle_b.py",
+      "bytes": 61,
+      "sha256": "584e6430184baac0947f07c7f0472326b2908f167bf3cc10644743a58318052c"
+    },
+    {
+      "path": "public-references-3/source/pkg/origin.py",
+      "bytes": 40,
+      "sha256": "29b58585cf8e396a119bb7aa8042d6c9dd0d67c8df09a05f6f6fef041c56585e"
+    },
+    {
+      "path": "public-references-3/source/pkg/tail.py",
+      "bytes": 58,
+      "sha256": "9ad8bd4db8ef2f20fce7e717949bbe9ca6886917d1947f34fdc85680b136b90f"
+    },
+    {
+      "path": "public-references-3/source/pyrightconfig.json",
+      "bytes": 127,
+      "sha256": "01557ce3b97cfc7ee61dd00fd2fb7d2d1b5a776f16ec515c28abaca4958c5dd5"
+    },
+    {
+      "path": "public-references-3/source/rebound.py",
+      "bytes": 142,
+      "sha256": "244d105637630a167940b1624f856f44c39e045d34d69fea55e110811cb672f3"
+    },
+    {
+      "path": "public-references-3/source/shadow.py",
+      "bytes": 103,
+      "sha256": "14d614b10be0235317b15df0f952ede8d019d06074c4a7910b82fa86731a38e6"
+    },
+    {
+      "path": "public-references-3/source/single.py",
+      "bytes": 64,
+      "sha256": "2abd149c1336851061234c8926a13bd6740851262780936ad796375b59939cee"
+    },
+    {
+      "path": "public-references-3/source/stub_consumer.py",
+      "bytes": 67,
+      "sha256": "3e8d3f013858597fba0d9243f240e59b17fd5756c8143bf43326d4afba79eaee"
+    },
+    {
+      "path": "public-references-3/source/unicode.py",
+      "bytes": 75,
+      "sha256": "b8cd3c33cf6e6c4d98aa4c11e1bd4a4dca702cbe694c8fd8a701296e4f98dc2a"
+    },
+    {
+      "path": "public-references-3/source/unrelated.py",
+      "bytes": 42,
+      "sha256": "49b7fb935b7a5e308a0e35030e8b77e2344ceef8dae4c745692e094e589c8b3a"
+    },
+    {
+      "path": "public-references-3/source/vendor_stubs/vendorpkg/__init__.pyi",
+      "bytes": 37,
+      "sha256": "a196736aa2642f325455d76c06ebffb5f70713be9506d9cc0059137aca01df8a"
+    },
+    {
+      "path": "public-references-3/source/wildcard.py",
+      "bytes": 46,
+      "sha256": "7d6d4ad3301b2d9f4f91017947e1a9f0fbf4085b65b919b67d98c7e9fe5e9021"
+    },
+    {
+      "path": "query.stdout",
+      "bytes": 531,
+      "sha256": "bb94e3a3264f27383dab5593351831b4f058911edce32587c22de698e8f3a3d1"
+    },
+    {
+      "path": "query_alias.py",
+      "bytes": 7360,
+      "sha256": "1116ab85078fe107b0fe58307c0a9e83594b99fc10bfa343f920d762634b58b8"
+    },
+    {
+      "path": "raw-index.scip",
+      "bytes": 16700,
+      "sha256": "f2f2a5d53c020dd56ba36eb779eab8dc48419168908322580f67be6317f5a641"
+    },
+    {
+      "path": "raw-rebound-occurrences.json",
+      "bytes": 2018,
+      "sha256": "57dac95aa7cee604aec5b5fe30ee8eda1208134fb04b29f43ee6932751d1850f"
+    },
+    {
+      "path": "run-state.json",
+      "bytes": 24827,
+      "sha256": "774d573ffc8186c87bf7e4ef85c5dc8fd09a4540dce898b225534f93d51aecb7"
+    },
+    {
+      "path": "runtime-2/fixture-metadata.json",
+      "bytes": 5074,
+      "sha256": "9efe9ed5d71fe05c9ca21ae27964e455f08401309176484769450fba54dd28b5"
+    },
+    {
+      "path": "runtime-2/fixture-payload.json",
+      "bytes": 4837,
+      "sha256": "104a3656c423bc8ce2e8332a07cdd2f9352136fbe64402f4449561737e0afa96"
+    },
+    {
+      "path": "runtime-2/runtime-protocol.json",
+      "bytes": 3174,
+      "sha256": "f0fadf693673c0cbefa1adad9aeb598f65d7cc4afa93199908e475c2888e7913"
+    },
+    {
+      "path": "runtime-2/runtime-state.json",
+      "bytes": 1844,
+      "sha256": "ff6ba35fe462dcbde007423ea5d717d8cc218973f20fde80cea4059eaf92809f"
+    },
+    {
+      "path": "runtime-2/runtime.stdout",
+      "bytes": 1602,
+      "sha256": "bc7465f18f5c82239b88ca9f1e2f113ff512faa1aab6c8015baa6c8b98c4b16f"
+    },
+    {
+      "path": "runtime-2/runtime_witness.py",
+      "bytes": 4525,
+      "sha256": "0d4f975ee79d432f92c8985dbc63dc0d9eb8bd577504d023c9de3e626f083c90"
+    },
+    {
+      "path": "runtime-2/source/asset.bin",
+      "bytes": 5,
+      "sha256": "15eb60527ec991296a84c414b57cc5b19c6e66579a01486c8f4057f495d0b08e"
+    },
+    {
+      "path": "runtime-2/source/extra_consumer.py",
+      "bytes": 65,
+      "sha256": "2de7c0efa840a30d93f126d8e6026bc37d897265ddaaf4699c136feca310f84c"
+    },
+    {
+      "path": "runtime-2/source/local.py",
+      "bytes": 77,
+      "sha256": "54015f1a55e32d4acccb0b697cf64e219319378b085c27000b2a1990c67db15c"
+    },
+    {
+      "path": "runtime-2/source/localdeps/libdefs.py",
+      "bytes": 40,
+      "sha256": "25360649551526fab085e09c301fd2e868f730d62e0aeaf4df3840ab009ab53e"
+    },
+    {
+      "path": "runtime-2/source/missing_consumer.py",
+      "bytes": 76,
+      "sha256": "94843ef0a53bf424c9c988c87566b9ab5972be039f66d9dbe89b57b6909800c0"
+    },
+    {
+      "path": "runtime-2/source/multiline.py",
+      "bytes": 73,
+      "sha256": "567c46c4239b160d0c037583e2722fcfde887a81c796a01d1694cc46835d1890"
+    },
+    {
+      "path": "runtime-2/source/negative.py",
+      "bytes": 61,
+      "sha256": "66e7d14c4d0f0043a247c8780daeac4d1e87a28e2a5bde91c2b16f2ac859b0a4"
+    },
+    {
+      "path": "runtime-2/source/note.txt",
+      "bytes": 8,
+      "sha256": "da68f54607d5f5644954096ce1597c006c5bb9f2497e07441bf064b81003ef8a"
+    },
+    {
+      "path": "runtime-2/source/other.py",
+      "bytes": 40,
+      "sha256": "59a762ea21440f692a403c96223a32c9e95d7801cc924e536eada75dbb1fc560"
+    },
+    {
+      "path": "runtime-2/source/pkg/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runtime-2/source/pkg/bridge.py",
+      "bytes": 62,
+      "sha256": "221fbda81a5904fd8b67ab9b3c96697f382e772d456a18c0d60012bd0dd5fb08"
+    },
+    {
+      "path": "runtime-2/source/pkg/cycle_a.py",
+      "bytes": 106,
+      "sha256": "062386d1d94dca5a6ea8ec3fcb38c004766fdbc4ea43f2029194c0f20b36bfb2"
+    },
+    {
+      "path": "runtime-2/source/pkg/cycle_b.py",
+      "bytes": 61,
+      "sha256": "584e6430184baac0947f07c7f0472326b2908f167bf3cc10644743a58318052c"
+    },
+    {
+      "path": "runtime-2/source/pkg/origin.py",
+      "bytes": 40,
+      "sha256": "29b58585cf8e396a119bb7aa8042d6c9dd0d67c8df09a05f6f6fef041c56585e"
+    },
+    {
+      "path": "runtime-2/source/pkg/tail.py",
+      "bytes": 58,
+      "sha256": "9ad8bd4db8ef2f20fce7e717949bbe9ca6886917d1947f34fdc85680b136b90f"
+    },
+    {
+      "path": "runtime-2/source/pyrightconfig.json",
+      "bytes": 127,
+      "sha256": "01557ce3b97cfc7ee61dd00fd2fb7d2d1b5a776f16ec515c28abaca4958c5dd5"
+    },
+    {
+      "path": "runtime-2/source/rebound.py",
+      "bytes": 142,
+      "sha256": "244d105637630a167940b1624f856f44c39e045d34d69fea55e110811cb672f3"
+    },
+    {
+      "path": "runtime-2/source/shadow.py",
+      "bytes": 103,
+      "sha256": "14d614b10be0235317b15df0f952ede8d019d06074c4a7910b82fa86731a38e6"
+    },
+    {
+      "path": "runtime-2/source/single.py",
+      "bytes": 64,
+      "sha256": "2abd149c1336851061234c8926a13bd6740851262780936ad796375b59939cee"
+    },
+    {
+      "path": "runtime-2/source/stub_consumer.py",
+      "bytes": 67,
+      "sha256": "3e8d3f013858597fba0d9243f240e59b17fd5756c8143bf43326d4afba79eaee"
+    },
+    {
+      "path": "runtime-2/source/unicode.py",
+      "bytes": 75,
+      "sha256": "b8cd3c33cf6e6c4d98aa4c11e1bd4a4dca702cbe694c8fd8a701296e4f98dc2a"
+    },
+    {
+      "path": "runtime-2/source/unrelated.py",
+      "bytes": 42,
+      "sha256": "49b7fb935b7a5e308a0e35030e8b77e2344ceef8dae4c745692e094e589c8b3a"
+    },
+    {
+      "path": "runtime-2/source/vendor_stubs/vendorpkg/__init__.pyi",
+      "bytes": 37,
+      "sha256": "a196736aa2642f325455d76c06ebffb5f70713be9506d9cc0059137aca01df8a"
+    },
+    {
+      "path": "runtime-2/source/wildcard.py",
+      "bytes": 46,
+      "sha256": "7d6d4ad3301b2d9f4f91017947e1a9f0fbf4085b65b919b67d98c7e9fe5e9021"
+    },
+    {
+      "path": "runtime-failure-audit.json",
+      "bytes": 715,
+      "sha256": "3d5b95db20f408e6c2f9070eae35aa3d5095ff9af227eddd6f76efba8e76983d"
+    },
+    {
+      "path": "runtime-protocol.json",
+      "bytes": 2859,
+      "sha256": "5dca92042dd037e025a8d198e0cbecf145a6198756ac45c2d306d08e734df74d"
+    },
+    {
+      "path": "runtime-state.json",
+      "bytes": 1690,
+      "sha256": "785669c6fa291c3243bb9118e51f568e3d8e3d21867ca5727a7bbc36bb352f15"
+    },
+    {
+      "path": "runtime.stdout",
+      "bytes": 2234,
+      "sha256": "52d5ce79188ddfab2383085e01c516c87f0c49fd1b392740460deb1398c2767c"
+    },
+    {
+      "path": "runtime_witness.py",
+      "bytes": 3239,
+      "sha256": "7b8123080983be6f8d4e1d61c985d62d079e4ab7b055d01596c3a8030ea5b6b2"
+    },
+    {
+      "path": "software-binding.json",
+      "bytes": 127657,
+      "sha256": "1614b3cb1e874ad0916224c6fae9bb821dc29ab732a8d77b09c232f99ede25aa"
+    },
+    {
+      "path": "source/__pycache__/other.cpython-312.pyc",
+      "bytes": 274,
+      "sha256": "876dc82b74b9efa289e11ac75204a81c44b77f5436b7b003651fe3e05bd52f0e"
+    },
+    {
+      "path": "source/asset.bin",
+      "bytes": 5,
+      "sha256": "15eb60527ec991296a84c414b57cc5b19c6e66579a01486c8f4057f495d0b08e"
+    },
+    {
+      "path": "source/extra_consumer.py",
+      "bytes": 65,
+      "sha256": "2de7c0efa840a30d93f126d8e6026bc37d897265ddaaf4699c136feca310f84c"
+    },
+    {
+      "path": "source/local.py",
+      "bytes": 77,
+      "sha256": "54015f1a55e32d4acccb0b697cf64e219319378b085c27000b2a1990c67db15c"
+    },
+    {
+      "path": "source/localdeps/libdefs.py",
+      "bytes": 40,
+      "sha256": "25360649551526fab085e09c301fd2e868f730d62e0aeaf4df3840ab009ab53e"
+    },
+    {
+      "path": "source/missing_consumer.py",
+      "bytes": 76,
+      "sha256": "94843ef0a53bf424c9c988c87566b9ab5972be039f66d9dbe89b57b6909800c0"
+    },
+    {
+      "path": "source/multiline.py",
+      "bytes": 73,
+      "sha256": "567c46c4239b160d0c037583e2722fcfde887a81c796a01d1694cc46835d1890"
+    },
+    {
+      "path": "source/negative.py",
+      "bytes": 61,
+      "sha256": "66e7d14c4d0f0043a247c8780daeac4d1e87a28e2a5bde91c2b16f2ac859b0a4"
+    },
+    {
+      "path": "source/note.txt",
+      "bytes": 8,
+      "sha256": "da68f54607d5f5644954096ce1597c006c5bb9f2497e07441bf064b81003ef8a"
+    },
+    {
+      "path": "source/other.py",
+      "bytes": 40,
+      "sha256": "59a762ea21440f692a403c96223a32c9e95d7801cc924e536eada75dbb1fc560"
+    },
+    {
+      "path": "source/pkg/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "source/pkg/__pycache__/__init__.cpython-312.pyc",
+      "bytes": 158,
+      "sha256": "ed41cdc4ee4b198ee02754f2075c5dd5cd3f3cdd98258f1b29d35af7c3ab6188"
+    },
+    {
+      "path": "source/pkg/__pycache__/origin.cpython-312.pyc",
+      "bytes": 279,
+      "sha256": "a71bd507f30d73e62da31e6670158e68a754336495a77189c207fbcfdb061ca3"
+    },
+    {
+      "path": "source/pkg/bridge.py",
+      "bytes": 62,
+      "sha256": "221fbda81a5904fd8b67ab9b3c96697f382e772d456a18c0d60012bd0dd5fb08"
+    },
+    {
+      "path": "source/pkg/cycle_a.py",
+      "bytes": 106,
+      "sha256": "062386d1d94dca5a6ea8ec3fcb38c004766fdbc4ea43f2029194c0f20b36bfb2"
+    },
+    {
+      "path": "source/pkg/cycle_b.py",
+      "bytes": 61,
+      "sha256": "584e6430184baac0947f07c7f0472326b2908f167bf3cc10644743a58318052c"
+    },
+    {
+      "path": "source/pkg/origin.py",
+      "bytes": 40,
+      "sha256": "29b58585cf8e396a119bb7aa8042d6c9dd0d67c8df09a05f6f6fef041c56585e"
+    },
+    {
+      "path": "source/pkg/tail.py",
+      "bytes": 58,
+      "sha256": "9ad8bd4db8ef2f20fce7e717949bbe9ca6886917d1947f34fdc85680b136b90f"
+    },
+    {
+      "path": "source/pyrightconfig.json",
+      "bytes": 127,
+      "sha256": "01557ce3b97cfc7ee61dd00fd2fb7d2d1b5a776f16ec515c28abaca4958c5dd5"
+    },
+    {
+      "path": "source/rebound.py",
+      "bytes": 142,
+      "sha256": "244d105637630a167940b1624f856f44c39e045d34d69fea55e110811cb672f3"
+    },
+    {
+      "path": "source/shadow.py",
+      "bytes": 103,
+      "sha256": "14d614b10be0235317b15df0f952ede8d019d06074c4a7910b82fa86731a38e6"
+    },
+    {
+      "path": "source/single.py",
+      "bytes": 64,
+      "sha256": "2abd149c1336851061234c8926a13bd6740851262780936ad796375b59939cee"
+    },
+    {
+      "path": "source/stub_consumer.py",
+      "bytes": 67,
+      "sha256": "3e8d3f013858597fba0d9243f240e59b17fd5756c8143bf43326d4afba79eaee"
+    },
+    {
+      "path": "source/unicode.py",
+      "bytes": 75,
+      "sha256": "b8cd3c33cf6e6c4d98aa4c11e1bd4a4dca702cbe694c8fd8a701296e4f98dc2a"
+    },
+    {
+      "path": "source/unrelated.py",
+      "bytes": 42,
+      "sha256": "49b7fb935b7a5e308a0e35030e8b77e2344ceef8dae4c745692e094e589c8b3a"
+    },
+    {
+      "path": "source/vendor_stubs/vendorpkg/__init__.pyi",
+      "bytes": 37,
+      "sha256": "a196736aa2642f325455d76c06ebffb5f70713be9506d9cc0059137aca01df8a"
+    },
+    {
+      "path": "source/wildcard.py",
+      "bytes": 46,
+      "sha256": "7d6d4ad3301b2d9f4f91017947e1a9f0fbf4085b65b919b67d98c7e9fe5e9021"
+    },
+    {
+      "path": "verification.json",
+      "bytes": 12511,
+      "sha256": "84059a9854ad9e93394a989d3255f770ce13033d0bd02aaa117d1c105d6dc8d3"
+    }
+  ],
+  "local_only_manifest": [],
+  "bundle": {
+    "encoding": "concatenated-base64-gzip-json",
+    "decoded_bytes": 655095,
+    "decoded_sha256": "53a949ee429ef983854bc606a2ba72f979db22e5271c8b2739e48f5128bfefd9",
+    "parts": [
+      {
+        "path": "codegraph_python_rebinding_2026_10_31.part01.json",
+        "bytes": 100030,
+        "sha256": "9f39897ebe18100aa731e1579bc1f7c02850ef5360264b71cf5077f60e763e6b"
+      },
+      {
+        "path": "codegraph_python_rebinding_2026_10_31.part02.json",
+        "bytes": 100030,
+        "sha256": "9fba063f81e5b6d2d163de4fa21f25826b5ddaae97e5b00a7515f58a3fff7d9d"
+      },
+      {
+        "path": "codegraph_python_rebinding_2026_10_31.part03.json",
+        "bytes": 38138,
+        "sha256": "8dd982e5f69634829ebc109f3d345c5777d3fe329763b7d794690d9062087de6"
+      }
+    ]
+  },
+  "verification": {
+    "status": "verified",
+    "goal": "active",
+    "software_wheel_sha256": "7170894edc255e9d9dc36f9eddc16248c7184ccbc49142e5dfc9f25db3ddc61f",
+    "provider": {
+      "name": "basedpyright",
+      "version": "1.39.8"
+    },
+    "source_files": 24,
+    "selected_python_stub_documents": 21,
+    "standard_definition_replies": 8,
+    "standard_reference_replies": 6,
+    "ambiguous_definition_queries": [
+      {
+        "request": {
+          "file": "rebound.py",
+          "line": 0,
+          "character_utf16": 33,
+          "token": "rebound",
+          "source_line": "from pkg.origin import target as rebound"
+        },
+        "locations": [
+          {
+            "file": "pkg/origin.py",
+            "span_utf8_0based": [
+              0,
+              4,
+              0,
+              10
+            ],
+            "source_sha256": "29b58585cf8e396a119bb7aa8042d6c9dd0d67c8df09a05f6f6fef041c56585e",
+            "token": "target",
+            "source_line": "def target(value):"
+          },
+          {
+            "file": "rebound.py",
+            "span_utf8_0based": [
+              3,
+              0,
+              3,
+              7
+            ],
+            "source_sha256": "244d105637630a167940b1624f856f44c39e045d34d69fea55e110811cb672f3",
+            "token": "rebound",
+            "source_line": "rebound = replacement"
+          }
+        ]
+      },
+      {
+        "request": {
+          "file": "rebound.py",
+          "line": 2,
+          "character_utf16": 8,
+          "token": "rebound",
+          "source_line": "first = rebound(6)"
+        },
+        "locations": [
+          {
+            "file": "pkg/origin.py",
+            "span_utf8_0based": [
+              0,
+              4,
+              0,
+              10
+            ],
+            "source_sha256": "29b58585cf8e396a119bb7aa8042d6c9dd0d67c8df09a05f6f6fef041c56585e",
+            "token": "target",
+            "source_line": "def target(value):"
+          },
+          {
+            "file": "rebound.py",
+            "span_utf8_0based": [
+              3,
+              0,
+              3,
+              7
+            ],
+            "source_sha256": "244d105637630a167940b1624f856f44c39e045d34d69fea55e110811cb672f3",
+            "token": "rebound",
+            "source_line": "rebound = replacement"
+          }
+        ]
+      },
+      {
+        "request": {
+          "file": "rebound.py",
+          "line": 3,
+          "character_utf16": 0,
+          "token": "rebound",
+          "source_line": "rebound = replacement"
+        },
+        "locations": [
+          {
+            "file": "pkg/origin.py",
+            "span_utf8_0based": [
+              0,
+              4,
+              0,
+              10
+            ],
+            "source_sha256": "29b58585cf8e396a119bb7aa8042d6c9dd0d67c8df09a05f6f6fef041c56585e",
+            "token": "target",
+            "source_line": "def target(value):"
+          },
+          {
+            "file": "rebound.py",
+            "span_utf8_0based": [
+              3,
+              0,
+              3,
+              7
+            ],
+            "source_sha256": "244d105637630a167940b1624f856f44c39e045d34d69fea55e110811cb672f3",
+            "token": "rebound",
+            "source_line": "rebound = replacement"
+          }
+        ]
+      },
+      {
+        "request": {
+          "file": "rebound.py",
+          "line": 4,
+          "character_utf16": 9,
+          "token": "rebound",
+          "source_line": "second = rebound(7)"
+        },
+        "locations": [
+          {
+            "file": "pkg/origin.py",
+            "span_utf8_0based": [
+              0,
+              4,
+              0,
+              10
+            ],
+            "source_sha256": "29b58585cf8e396a119bb7aa8042d6c9dd0d67c8df09a05f6f6fef041c56585e",
+            "token": "target",
+            "source_line": "def target(value):"
+          },
+          {
+            "file": "rebound.py",
+            "span_utf8_0based": [
+              3,
+              0,
+              3,
+              7
+            ],
+            "source_sha256": "244d105637630a167940b1624f856f44c39e045d34d69fea55e110811cb672f3",
+            "token": "rebound",
+            "source_line": "rebound = replacement"
+          }
+        ]
+      }
+    ],
+    "prepared_references": [
+      {
+        "request": {
+          "file": "pkg/origin.py",
+          "line": 0,
+          "character_utf16": 4,
+          "symbol": "origin target"
+        },
+        "locations": [
+          {
+            "file": "local.py",
+            "span_utf8_0based": [
+              1,
+              27,
+              1,
+              33
+            ],
+            "source_sha256": "54015f1a55e32d4acccb0b697cf64e219319378b085c27000b2a1990c67db15c",
+            "token": "target",
+            "source_line": "    from pkg.origin import target as local"
+          },
+          {
+            "file": "multiline.py",
+            "span_utf8_0based": [
+              1,
+              4,
+              1,
+              10
+            ],
+            "source_sha256": "567c46c4239b160d0c037583e2722fcfde887a81c796a01d1694cc46835d1890",
+            "token": "target",
+            "source_line": "    target as multiline,"
+          },
+          {
+            "file": "pkg/bridge.py",
+            "span_utf8_0based": [
+              0,
+              23,
+              0,
+              29
+            ],
+            "source_sha256": "221fbda81a5904fd8b67ab9b3c96697f382e772d456a18c0d60012bd0dd5fb08",
+            "token": "target",
+            "source_line": "from pkg.origin import target as exported"
+          },
+          {
+            "file": "pkg/cycle_a.py",
+            "span_utf8_0based": [
+              0,
+              23,
+              0,
+              29
+            ],
+            "source_sha256": "062386d1d94dca5a6ea8ec3fcb38c004766fdbc4ea43f2029194c0f20b36bfb2",
+            "token": "target",
+            "source_line": "from pkg.origin import target as cycle_entry"
+          },
+          {
+            "file": "rebound.py",
+            "span_utf8_0based": [
+              0,
+              23,
+              0,
+              29
+            ],
+            "source_sha256": "244d105637630a167940b1624f856f44c39e045d34d69fea55e110811cb672f3",
+            "token": "target",
+            "source_line": "from pkg.origin import target as rebound"
+          },
+          {
+            "file": "shadow.py",
+            "span_utf8_0based": [
+              0,
+              23,
+              0,
+              29
+            ],
+            "source_sha256": "14d614b10be0235317b15df0f952ede8d019d06074c4a7910b82fa86731a38e6",
+            "token": "target",
+            "source_line": "from pkg.origin import target as renamed"
+          },
+          {
+            "file": "single.py",
+            "span_utf8_0based": [
+              0,
+              23,
+              0,
+              29
+            ],
+            "source_sha256": "2abd149c1336851061234c8926a13bd6740851262780936ad796375b59939cee",
+            "token": "target",
+            "source_line": "from pkg.origin import target as alternate"
+          },
+          {
+            "file": "unicode.py",
+            "span_utf8_0based": [
+              0,
+              39,
+              0,
+              45
+            ],
+            "source_sha256": "b8cd3c33cf6e6c4d98aa4c11e1bd4a4dca702cbe694c8fd8a701296e4f98dc2a",
+            "token": "target",
+            "source_line": "emoji = \"\ud83d\ude00\"; from pkg.origin import target as \u5225\u540d"
+          }
+        ],
+        "positive_call_token_overlap": [],
+        "negative_call_token_overlap": [],
+        "positive_call_line_overlap": 0,
+        "negative_call_line_overlap": []
+      },
+      {
+        "request": {
+          "file": "other.py",
+          "line": 0,
+          "character_utf16": 4,
+          "symbol": "replacement target"
+        },
+        "locations": [
+          {
+            "file": "negative.py",
+            "span_utf8_0based": [
+              0,
+              18,
+              0,
+              24
+            ],
+            "source_sha256": "66e7d14c4d0f0043a247c8780daeac4d1e87a28e2a5bde91c2b16f2ac859b0a4",
+            "token": "target",
+            "source_line": "from other import target as alternate"
+          },
+          {
+            "file": "rebound.py",
+            "span_utf8_0based": [
+              1,
+              18,
+              1,
+              24
+            ],
+            "source_sha256": "244d105637630a167940b1624f856f44c39e045d34d69fea55e110811cb672f3",
+            "token": "target",
+            "source_line": "from other import target as replacement"
+          }
+        ],
+        "positive_call_token_overlap": [],
+        "negative_call_token_overlap": [],
+        "positive_call_line_overlap": 0,
+        "negative_call_line_overlap": []
+      },
+      {
+        "request": {
+          "file": "rebound.py",
+          "line": 3,
+          "character_utf16": 0,
+          "symbol": "alias assignment"
+        },
+        "locations": [
+          {
+            "file": "rebound.py",
+            "span_utf8_0based": [
+              0,
+              33,
+              0,
+              40
+            ],
+            "source_sha256": "244d105637630a167940b1624f856f44c39e045d34d69fea55e110811cb672f3",
+            "token": "rebound",
+            "source_line": "from pkg.origin import target as rebound"
+          },
+          {
+            "file": "rebound.py",
+            "span_utf8_0based": [
+              2,
+              8,
+              2,
+              15
+            ],
+            "source_sha256": "244d105637630a167940b1624f856f44c39e045d34d69fea55e110811cb672f3",
+            "token": "rebound",
+            "source_line": "first = rebound(6)"
+          },
+          {
+            "file": "rebound.py",
+            "span_utf8_0based": [
+              4,
+              9,
+              4,
+              16
+            ],
+            "source_sha256": "244d105637630a167940b1624f856f44c39e045d34d69fea55e110811cb672f3",
+            "token": "rebound",
+            "source_line": "second = rebound(7)"
+          }
+        ],
+        "positive_call_token_overlap": [
+          [
+            "rebound.py",
+            2,
+            8,
+            2,
+            15
+          ]
+        ],
+        "negative_call_token_overlap": [
+          [
+            "rebound.py",
+            4,
+            9,
+            4,
+            16
+          ]
+        ],
+        "positive_call_line_overlap": 1,
+        "negative_call_line_overlap": [
+          [
+            "rebound.py",
+            4,
+            4
+          ]
+        ]
+      }
+    ],
+    "owners": [
+      {
+        "control": "definitions",
+        "pid": 1180746,
+        "returncode": 0,
+        "independently_absent": true,
+        "all_pipes_closed": true,
+        "reaped_while_source_authority_held": true
+      },
+      {
+        "control": "public-references-1",
+        "pid": 1181192,
+        "returncode": 0,
+        "independently_absent": true,
+        "all_pipes_closed": true,
+        "reaped_while_source_authority_held": true
+      },
+      {
+        "control": "public-references-2",
+        "pid": 1181393,
+        "independently_absent": true,
+        "returncode": null,
+        "scope": "Failed controller; return code was not recorded."
+      },
+      {
+        "control": "public-references-3",
+        "pid": 1181473,
+        "returncode": 0,
+        "independently_absent": true,
+        "all_pipes_closed": true,
+        "reaped_while_source_authority_held": true
+      }
+    ],
+    "controller_failures_retained": [
+      "public-references-2: document_symbol API argument, no reference query executed",
+      "runtime1: source inventory changed through three bytecode files; unadmitted runtime result"
+    ],
+    "runtime_witness": {
+      "calls": [
+        {
+          "callee_file": "pkg/origin.py",
+          "callee_name": "target",
+          "declaration_line_0based": 0,
+          "callee_source_sha256": "29b58585cf8e396a119bb7aa8042d6c9dd0d67c8df09a05f6f6fef041c56585e",
+          "code_sha256": "a81345c3590473568aa7853ba3d26746866374226e8d2e3160acbf1bc782b77b",
+          "caller_file": "rebound.py",
+          "caller_line_0based": 2
+        },
+        {
+          "callee_file": "other.py",
+          "callee_name": "target",
+          "declaration_line_0based": 0,
+          "callee_source_sha256": "59a762ea21440f692a403c96223a32c9e95d7801cc924e536eada75dbb1fc560",
+          "code_sha256": "7291b770cb62ef2478bbd3cc10e7d1a8a5637640b61bb36bb06922e8f3d95a57",
+          "caller_file": "rebound.py",
+          "caller_line_0based": 4
+        }
+      ],
+      "values": {
+        "first": 7,
+        "second": 6
+      },
+      "original_source_preserved": true,
+      "source_exit_verified": true
+    },
+    "prior_graph_observation": "Separate admitted CodeNib compiler/MCP control retains11/11 positive call lines plus the same1/5 alias-binding negative. No new graph score is computed here.",
+    "decision": "Standard definition navigation cannot disambiguate before/after alias assignment. Public reference candidates describe import/lexical bindings and need composition before a call-site claim. Verify actual pinned Serena REPL behavior and a real maintenance need before implementing a new route or efficacy cohort. Keep all original call/workflow criteria.",
+    "model_questions": 0,
+    "independent_successes": 0,
+    "external_users": 0
+  },
+  "decision": "Standard definition navigation cannot disambiguate before/after alias assignment. Public reference candidates describe import/lexical bindings and need composition before a call-site claim. Verify actual pinned Serena REPL behavior and a real maintenance need before implementing a new route or efficacy cohort. Keep all original call/workflow criteria."
+}
