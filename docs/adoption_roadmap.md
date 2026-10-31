@@ -105,8 +105,9 @@ resource failures and update costs. BM25/native fallback is not typed-graph use.
 The three latest confirmation sources are now exposed and stay frozen; fixed
 Matplotlib/Django/xarray issue, source and grading material remain unopened.
 
-The current [Python identity candidate](experiments/codegraph_python_walrus.md)
-in [#933](https://github.com/sysevol-ai/CodeNib/pull/933) repairs both reproduced
+The [Python identity repair](experiments/codegraph_python_walrus.md)
+is merged in [#933](https://github.com/sysevol-ai/CodeNib/pull/933) as `d32b073c`.
+It repairs both reproduced
 Pylint construction blockers: an unqualified module variable and a decorated
 field write corroborated by an independently declared field in the same LSP
 response. An installed two-module control admits all 878 selected documents,
@@ -120,10 +121,29 @@ repeats the full admission with all 485 packaged Python files and its native
 extension verified, without source overlays. Actual model use, workflow
 quality/time, independent confirmation and external reuse remain open.
 No completed cohort, test selection or score changes.
+Main's unit, integration, serial integration, SCIP/core and graph-consumer
+checks pass, along with all twenty executed release verifiers. Slow and
+publication-only skips remain explicit; no public package is republished.
 
-The latest round records 8,821,055 normalized final main/auxiliary tokens and
-$9.311356 in SDK estimates, not invoices. The recorded estimate lower bound
-across rounds is $44.4223508 plus earlier unknown usage. Keep the authorized
+The [source-contract adoption diagnostic](experiments/codegraph_reference_adoption_freeze_2026_10_30.json)
+binds 24,225 inputs before one exposed Pylint question. Its
+[completed assessment](experiments/codegraph_reference_adoption_results_2026_10_30.json)
+records four native Grep and four Read calls, zero CodeNib calls and no typed
+graph preparation. The core contract/callers are correct, but the full answer
+fails the unchanged <450-word gate at 463 words and recommends a test order
+that clears its appended inputs. SDK connection and tool inventory are verified;
+actual HTTP tool visibility and choice causation remain unknown. All four owned
+containers are independently absent and every frozen input is unchanged. This
+single product condition supplies no comparative efficiency, independent success
+or external-use evidence. Stop repeating paid exact-name probes; establish a
+real workflow/discovery need before another efficacy cohort. The reserved set
+stays unopened.
+
+The latest four-arm round records 8,821,055 normalized final main/auxiliary tokens
+and $9.311356 in SDK estimates, not invoices. The separate diagnostic adds
+78,348 tokens and $0.1850155 in SDK estimates within its $1 guard. The recorded
+estimate lower bound across rounds is $44.6073663 plus earlier unknown usage.
+Keep the authorized
 $500 API ceiling and existing native subscription route; no API-key/account
 fallback or complete HTTP-count claim. External enrollment, consent and
 seven-day repeat use remain 0/5, and no outreach is authorized.

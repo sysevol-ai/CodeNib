@@ -119,6 +119,11 @@ repeats complete construction and source delivery with all 486 installed
 Python/native files verified and no source overlay; its complete graph query
 surface matches the prototype. Model/task benefit remains open.
 No backend or C++ acceleration gate is promoted.
+After merge as `d32b073c`, main passes unit, integration, serial integration,
+SCIP/core and graph-consumer checks, with all twenty executed release verifiers
+passing. Slow and publication-only skips remain separate. The subsequent
+single-source adoption diagnostic makes no graph call and does not promote a
+backend or establish coding benefit.
 
 The [deferred source-first controls](experiments/codegraph_source_default.md)
 retain a full-source SymPy failure at two CPUs/4 GiB. A smaller 2,560 MiB V8

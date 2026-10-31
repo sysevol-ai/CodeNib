@@ -1,0 +1,234 @@
+{
+  "schema": "codenib.reference-adoption-results.v1",
+  "scope": "One exposed-source development task, one product condition, one unblinded maintainer. No comparator, native repair score, independent adjudication or external participant.",
+  "prospective_commit": "465410d8c49709c9e90853cb2d99b1fa00c3c819",
+  "binding_sha256": "a3be7db75f5101f97af6e7d5c92598a6a3347feebb5a5a366c08a42a0b1516c9",
+  "frozen_inputs_reverified": 24225,
+  "sdk_queries": 1,
+  "sdk_turns": 9,
+  "complete_http_request_count": null,
+  "accepted_tasks": 0,
+  "attempted_tasks": 1,
+  "source_semantic_pass": false,
+  "core_contract_and_callers_correct": true,
+  "rejections": [
+    "463 final str.split words versus unchanged strict <450 limit",
+    "Recommended append_stream -> open -> close order discards appended inputs; exact original open method demonstrates the error."
+  ],
+  "native_tools": {
+    "Grep": 4,
+    "Read": 4
+  },
+  "native_original_results_validated": 8,
+  "source_unchanged": true,
+  "codegraph_calls": 0,
+  "typed_graph_calls": 0,
+  "final_prepared_views": [
+    "bm25"
+  ],
+  "sdk_inventory_contains_explore_context": true,
+  "mcp_connection": "connected",
+  "actual_http_tool_schema_visibility": "unknown",
+  "model_source_coverage_score": null,
+  "model_usage": {
+    "claude-haiku-5-5": {
+      "inputTokens": 1334,
+      "outputTokens": 21,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.0001439,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 0,
+      "canonicalModel": "claude-haiku-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-opus-5-5": {
+      "inputTokens": 12,
+      "outputTokens": 2391,
+      "cacheReadInputTokens": 58938,
+      "cacheCreationInputTokens": 15652,
+      "webSearchRequests": 0,
+      "costUSD": 0.1848716,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 101,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "normalized_tokens": 78348,
+  "sdk_estimate_usd": 0.18501549999999997,
+  "invoice_charges": null,
+  "known_recorded_sdk_estimate_lower_bound_usd": 44.6073663,
+  "earlier_unknown_usage_remains_unknown": true,
+  "word_limit_and_grading_unchanged": true,
+  "owned_containers_independently_absent": [
+    "94277359cbb9356e908c16704aebc269283914ac401d740174ed09c305709dcc",
+    "646545b84ea9b9d3981d92cfe015d7014ff44de7c3f62624986e843c81978a34",
+    "9a438c61f49bb9ccfe408346bd32c35bb7566078f228ab640b60863f74e0f410",
+    "88e823b4c8f52177dcf229b99d4d319ceacb8a633fb4130828110a8a6f1503de"
+  ],
+  "external_users": 0,
+  "independent_successes": 0,
+  "reserved_confirmation_opened": false,
+  "decision": "Hold promotion. Stop repeating paid exact-name lookup probes; establish an actual workflow/discovery need before another efficacy cohort. The reserved confirmation set remains unopened.",
+  "instruction_file_audit": "The examined earlier Pylint workspace has no CLAUDE.md. Settings-source suppression is not established as the cause of no calls.",
+  "lossless_public_files": 23,
+  "files": [
+    {
+      "path": "assess_result.py",
+      "bytes": 9536,
+      "sha256": "f4ce028ac607a11c6e597ff57849641ebe9d520dff0ebab49fc7eeade70380b9",
+      "fragments": 1
+    },
+    {
+      "path": "assessment.json",
+      "bytes": 78890,
+      "sha256": "d97e91ba25a88c346e1148fb9a911a1fb0317eec3cf201411f91660b859dfee8",
+      "fragments": 1
+    },
+    {
+      "path": "integration-file-audit.json",
+      "bytes": 1143,
+      "sha256": "281c7f73b3449b89774bf6ad439b7a6007838125c382944fad7b238bd3d0143b",
+      "fragments": 1
+    },
+    {
+      "path": "model-run.log",
+      "bytes": 429,
+      "sha256": "eb2720679b607f6e45586c286124f3bbb216220f093f92938466984d45e55e1b",
+      "fragments": 1
+    },
+    {
+      "path": "package_results.py",
+      "bytes": 5459,
+      "sha256": "2963fda5fb2f511faff86434a07ab5f2de842824fb5a98507289394a68aa551f",
+      "fragments": 1
+    },
+    {
+      "path": "private-rubric.json",
+      "bytes": 1204,
+      "sha256": "d1868cf4db498ed4dee181e1f8299d39633cf036193ca861284701032d02b7ad",
+      "fragments": 1
+    },
+    {
+      "path": "prospective-commit.json",
+      "bytes": 279,
+      "sha256": "0687c9f6bb6cd6ce8fb17d8a5057ca6c4c01c306f40ce78df0e1b15cf0ef43d4",
+      "fragments": 1
+    },
+    {
+      "path": "run-state.json",
+      "bytes": 996,
+      "sha256": "75043afff66940c1c87f3c50714756c21930bb123cb28561ceb5ec866579473a",
+      "fragments": 1
+    },
+    {
+      "path": "runs/00-pylint-result-contract-development-codenib/common-source.json",
+      "bytes": 258392,
+      "sha256": "a085cb4b5a380d357458191ebbdfb83344b7f9841ab266c054e3289ad59b949c",
+      "fragments": 2
+    },
+    {
+      "path": "runs/00-pylint-result-contract-development-codenib/final-graph-status.log",
+      "bytes": 1207,
+      "sha256": "ebfeadd02340419acd03cc4c6e17fba4cb96c16963a7d9eda26bba7b68fab652",
+      "fragments": 1
+    },
+    {
+      "path": "runs/00-pylint-result-contract-development-codenib/final-source.json",
+      "bytes": 258392,
+      "sha256": "a085cb4b5a380d357458191ebbdfb83344b7f9841ab266c054e3289ad59b949c"
+    },
+    {
+      "path": "runs/00-pylint-result-contract-development-codenib/hooks.jsonl",
+      "bytes": 24642,
+      "sha256": "e3e4502ddd6163060dc683d07eb67732819ae40b9e293ce573902a7572a39c09",
+      "fragments": 1
+    },
+    {
+      "path": "runs/00-pylint-result-contract-development-codenib/index-source.log",
+      "bytes": 1099,
+      "sha256": "53aa78ad12c0cc8ad0a3d52f01e6dbd51295c5317fb4ac410c93af52a0173630",
+      "fragments": 1
+    },
+    {
+      "path": "runs/00-pylint-result-contract-development-codenib/install-candidate.log",
+      "bytes": 275,
+      "sha256": "186866ef7dd5d4ecd66994c2510c6d5f5fc95a39f01ba90b974dd00e8c18be6e",
+      "fragments": 1
+    },
+    {
+      "path": "runs/00-pylint-result-contract-development-codenib/lookup-after-source.json",
+      "bytes": 258392,
+      "sha256": "a085cb4b5a380d357458191ebbdfb83344b7f9841ab266c054e3289ad59b949c"
+    },
+    {
+      "path": "runs/00-pylint-result-contract-development-codenib/lookup-before-source.json",
+      "bytes": 258392,
+      "sha256": "a085cb4b5a380d357458191ebbdfb83344b7f9841ab266c054e3289ad59b949c"
+    },
+    {
+      "path": "runs/00-pylint-result-contract-development-codenib/lookup-sdk.jsonl",
+      "bytes": 40079,
+      "sha256": "00f4b0e4e4f7ccd763d81ffa42ff55682071547be7e1f71c5091d7d48851215a",
+      "fragments": 1
+    },
+    {
+      "path": "runs/00-pylint-result-contract-development-codenib/manifest-path.log",
+      "bytes": 89,
+      "sha256": "7dfeb90c622a250c09f62c1a71c8e197d68182486a82e4aa48e879a5e297f8ee",
+      "fragments": 1
+    },
+    {
+      "path": "runs/00-pylint-result-contract-development-codenib/pre-model-source.json",
+      "bytes": 258392,
+      "sha256": "a085cb4b5a380d357458191ebbdfb83344b7f9841ab266c054e3289ad59b949c"
+    },
+    {
+      "path": "runs/00-pylint-result-contract-development-codenib/prepare-directories.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "fragments": 1
+    },
+    {
+      "path": "runs/00-pylint-result-contract-development-codenib/receipt.json",
+      "bytes": 90350,
+      "sha256": "bd11600ccfa0ca59305a016577b0ecc5bb932766f0f16ad8346d681b7408914b",
+      "fragments": 1
+    },
+    {
+      "path": "runs/00-pylint-result-contract-development-codenib/verify-installed-bytes.log",
+      "bytes": 52969,
+      "sha256": "21cd812a0a12e710add3d3964d7a142f187ad6743950f6149bee90e01c38d282",
+      "fragments": 1
+    },
+    {
+      "path": "test-order-counterexample.json",
+      "bytes": 971,
+      "sha256": "03e4748b55a75bb8fb40700a96194399e6029cd9381c96631a73f2cbbf5e63cf",
+      "fragments": 1
+    }
+  ],
+  "parts": [
+    {
+      "path": "codegraph_reference_adoption_results_2026_10_30.part01.json",
+      "bytes": 222229,
+      "sha256": "9c79f429d5f8070ba66c425a2c0ed68155dd57e3e547f1b90bffaa48f192a1a5",
+      "fragments": 24
+    }
+  ],
+  "private_raw_artifacts": {
+    "model-index-artifacts.tar": {
+      "path": "/tmp/codenib-reference-adoption-20261030/runs/00-pylint-result-contract-development-codenib/index-artifacts.tar",
+      "bytes": 1761792,
+      "sha256": "9de647e15a040d79e0cecca4e2953041a1c8f798abe4eefb922c4a0854db208b",
+      "scope": "Actual final BM25-only state, not a prepared typed graph."
+    }
+  },
+  "format": "Verify part hashes, decode/verify numbered gzip+base64 fragments or earlier whole-file aliases, concatenate fragments by path, then verify original files against this index."
+}
