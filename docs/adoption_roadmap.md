@@ -162,9 +162,19 @@ rebuild; first and post-edit graph requests take 210.506s and 219.915s, versus
 0.614s on a prepared graph. Two operator argument errors remain recorded.
 Providers/dependencies are warm and no model task runs, so these component
 observations establish neither comparative benefit nor voluntary adoption.
-Target first-relationship and post-edit preparation costs without bypassing
-source-policy guards. The full matched coding, confirmation and external-use
-gates remain open.
+The [source-selection gate optimization](experiments/codegraph_preparation_policy.md)
+addresses a measured preparation cost without bypassing source-policy guards.
+On one fixed full artifact, three fresh-object repeats per implementation
+reduce median validation time from 27.925s to 2.084s (92.54%), preserving the
+query surface, all 786,078 ordered occurrences and the complete quality report.
+The targeted suite passes 518 cases and the full local unit tier passes 8,989;
+an independently installed local wheel verifies all 485 Python files/native
+bytes and serves a source-verified graph query. The packet retains setup
+failures, twelve exact source windows and all four owned containers' absence.
+This is gate-only source-checkout timing; the installed admission reuses the
+captured index. Complete first/post-edit preparation savings remain unmeasured,
+and no model question runs. The full matched coding, confirmation and
+external-use gates remain open.
 
 The latest four-arm round records 8,821,055 normalized final main/auxiliary tokens
 and $9.311356 in SDK estimates, not invoices. The separate diagnostic adds

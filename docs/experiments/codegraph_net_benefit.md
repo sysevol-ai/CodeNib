@@ -121,6 +121,20 @@ cost targets, not a matched benefit or independent success. Keep the unchanged
 coding-quality/time/usage and external-repeat-use gates; do not bypass source
 selection or promote an evaluation-only provider to reduce those components.
 
+The [source-selection optimization](codegraph_preparation_policy.md) now
+removes repeated path-policy work within one publication call. Three
+fresh-object repeats per implementation on the complete captured CodeNib
+artifact reduce median gate time from 27.925s to 2.084s (92.54%), with identical
+query-surface, all 786,078 ordered occurrence and full report outputs. The
+targeted suite passes 518 cases and the full local unit tier passes 8,989;
+the actual locally built wheel passes complete-artifact parity and a
+source-verified MCP graph query. The 130-record packet preserves setup failures
+and exact cleanup/source checks. These are gate-only source-checkout timings;
+installed admission reuses the existing complete index. No complete
+preparation or coding-task improvement, independent success or external
+participant is added. Measure full first/post-edit preparation next, before
+claiming a broader gain or spending another model round.
+
 The [merged Python identity repair](codegraph_python_walrus.md) now admits the
 complete selected Pylint graph and exact source delivery through its actual CI
 wheel. The [prospective source-contract diagnostic](codegraph_reference_adoption_freeze_2026_10_30.json)

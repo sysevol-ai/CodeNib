@@ -318,6 +318,25 @@ def constrain_graph_to_source_selection(
         raise TypeError("source_selection must be a RepositorySourceSelection")
     selection = RepositorySourceSelection(source_selection.exclude_subtrees)
 
+    # Eligibility depends only on a path string and this immutable selection.
+    # Keep every record/owner check, but do not repeat normalization and policy
+    # matching for every occurrence of the same file. No verdict survives this
+    # call, and non-plain strings retain the original validation behavior.
+    path_states: dict[str, tuple[str | None, str]] = {}
+
+    def path_state(value: object) -> tuple[str | None, str]:
+        if type(value) is not str:
+            return _selection_path_state(value, selection)
+        if value not in path_states:
+            path_states[value] = _selection_path_state(value, selection)
+        return path_states[value]
+
+    def selected_path(value: object) -> str | None:
+        if type(value) is not str:
+            return _canonical_selected_path(value, selection)
+        path, state = path_state(value)
+        return path if state == "selected" else None
+
     before_nodes = graph.graph.vcount()
     before_edges = graph.graph.ecount()
     excluded_before: set[str] = set()
@@ -325,7 +344,7 @@ def constrain_graph_to_source_selection(
     selected_paths: set[str] = set()
 
     def observe(value: object, owner: str, *, required: bool = False) -> None:
-        path, state = _selection_path_state(value, selection)
+        path, state = path_state(value)
         if state == "selected" and path is not None:
             selected_paths.add(path)
         elif state == "excluded" and path is not None:
@@ -363,18 +382,18 @@ def constrain_graph_to_source_selection(
         if node_type == "root" or name == ROOT_NODE:
             return True
         if node_type == NODE_TYPE_DIRECTORY:
-            directory = _canonical_selected_path(name, selection)
+            directory = selected_path(name)
             return bool(
                 directory
                 and any(path.startswith(f"{directory}/") for path in selected_paths)
             )
         if node_type == NODE_TYPE_FILE:
-            return _canonical_selected_path(name, selection) is not None
+            return selected_path(name) is not None
 
         raw_path = attrs.get("file")
         if raw_path is None or raw_path == "":
             return not (is_symbol_node(node_type) and node_has_definition(attrs))
-        return _canonical_selected_path(raw_path, selection) is not None
+        return selected_path(raw_path) is not None
 
     keep_vertices = [
         vertex.index for vertex in graph.graph.vs if keep_vertex(vertex.attributes())
@@ -388,7 +407,7 @@ def constrain_graph_to_source_selection(
         if (
             raw_anchor is not None
             and raw_anchor != ""
-            and (_canonical_selected_path(raw_anchor, selection) is None)
+            and (selected_path(raw_anchor) is None)
         ):
             remove_edges.append(edge.index)
     if remove_edges:
@@ -401,7 +420,7 @@ def constrain_graph_to_source_selection(
             (
                 occurrence
                 for occurrence in occurrence_index.occurrences
-                if _canonical_selected_path(occurrence.file_path, selection) is not None
+                if selected_path(occurrence.file_path) is not None
             ),
             position_encoding=occurrence_index.position_encoding,
         )
@@ -415,34 +434,24 @@ def constrain_graph_to_source_selection(
             value = attrs.get("file")
         else:
             value = None
-        if (path := _canonical_selected_path(value, selection)) is not None:
+        if (path := selected_path(value)) is not None:
             surviving_paths.add(path)
     for edge in graph.graph.es:
-        if (
-            path := _canonical_selected_path(
-                edge.attributes().get("anchor_file"), selection
-            )
-        ) is not None:
+        if (path := selected_path(edge.attributes().get("anchor_file"))) is not None:
             surviving_paths.add(path)
     final_occurrence_index = getattr(graph, "lsp_occurrence_index", None)
     if final_occurrence_index is not None:
         surviving_paths.update(
             path
             for occurrence in final_occurrence_index.occurrences
-            if (path := _canonical_selected_path(occurrence.file_path, selection))
-            is not None
+            if (path := selected_path(occurrence.file_path)) is not None
         )
     keep_after_pruning = [
         vertex.index
         for vertex in graph.graph.vs
         if vertex.attributes().get("type") != NODE_TYPE_DIRECTORY
         or (
-            (
-                directory := _canonical_selected_path(
-                    vertex.attributes().get("name"), selection
-                )
-            )
-            is not None
+            (directory := selected_path(vertex.attributes().get("name"))) is not None
             and any(path.startswith(f"{directory}/") for path in surviving_paths)
         )
     ]
@@ -466,7 +475,7 @@ def constrain_graph_to_source_selection(
     invalid_after: set[str] = set()
 
     def verify(value: object, owner: str, *, required: bool = False) -> None:
-        path, state = _selection_path_state(value, selection)
+        path, state = path_state(value)
         if state == "excluded" and path is not None:
             excluded_after.add(path)
         elif state == "invalid" or (required and state == "absent"):
@@ -481,7 +490,7 @@ def constrain_graph_to_source_selection(
         elif node_type == NODE_TYPE_FILE:
             value = attrs.get("name")
             verify(value, f"vertex[{vertex.index}].name", required=True)
-            if (path := _canonical_selected_path(value, selection)) is not None:
+            if (path := selected_path(value)) is not None:
                 represented_after.add(path)
         elif node_type != "root" and attrs.get("name") != ROOT_NODE:
             value = attrs.get("file")
@@ -490,19 +499,19 @@ def constrain_graph_to_source_selection(
                 f"vertex[{vertex.index}].file",
                 required=is_symbol_node(node_type) and node_has_definition(attrs),
             )
-            if (path := _canonical_selected_path(value, selection)) is not None:
+            if (path := selected_path(value)) is not None:
                 represented_after.add(path)
     for edge in graph.graph.es:
         value = edge.attributes().get("anchor_file")
         verify(value, f"edge[{edge.index}].anchor_file")
-        if (path := _canonical_selected_path(value, selection)) is not None:
+        if (path := selected_path(value)) is not None:
             represented_after.add(path)
     final_occurrence_index = getattr(graph, "lsp_occurrence_index", None)
     if final_occurrence_index is not None:
         for index, occurrence in enumerate(final_occurrence_index.occurrences):
             value = occurrence.file_path
             verify(value, f"occurrence[{index}].file_path", required=True)
-            if (path := _canonical_selected_path(value, selection)) is not None:
+            if (path := selected_path(value)) is not None:
                 represented_after.add(path)
 
     dangling_directories = sorted(

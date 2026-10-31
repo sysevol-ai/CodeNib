@@ -14,6 +14,7 @@ import numpy as np
 import pytest
 
 from codenib import compat_pickle
+from codenib.compiler import artifact_quality
 from codenib.compiler.artifact_quality import (
     assess_vector_artifact,
     constrain_and_assess_graph_artifact,
@@ -280,18 +281,21 @@ def test_graph_source_selection_enforces_default_ignored_paths_when_empty():
     assert "src/main.py" in graph.name_to_vertex
 
 
-def test_graph_source_selection_removes_defined_symbol_without_source_path():
+@pytest.mark.parametrize("missing_path", [None, ""])
+def test_graph_source_selection_removes_defined_symbol_without_source_path(
+    missing_path,
+):
     graph = CodeGraph("/repo")
     graph.add_root_node(".")
     graph.add_directory_node("src")
     graph.add_file_node("src/main.py")
     graph.add_symbol_node("local", 1, 1, 3, "function")
     local = graph.graph.vs.find(name="local")
-    local["file"] = None
+    local["file"] = missing_path
     local["has_definition"] = True
     graph.add_symbol_node("external", 1, 1, 3, "function")
     external = graph.graph.vs.find(name="external")
-    external["file"] = None
+    external["file"] = missing_path
     external["has_definition"] = False
     graph.build_range_indexes()
 
@@ -303,9 +307,76 @@ def test_graph_source_selection_removes_defined_symbol_without_source_path():
     assert "local" not in graph.name_to_vertex
     assert "external" in graph.name_to_vertex
     assert any(
-        "local" not in item and ".file=None" in item
+        "local" not in item and f".file={missing_path!r}" in item
         for item in report["invalid_paths_before"]
     )
+    assert report["invalid_paths_after"] == []
+
+
+def test_graph_selection_policy_work_depends_on_paths_not_occurrence_count(monkeypatch):
+    graph = CodeGraph("/repo")
+    graph.add_root_node(".")
+    graph.add_directory_node("src")
+    graph.add_file_node("src/main.py")
+    graph.add_symbol_node("kept", 1, 1, 3, NODE_TYPE_FUNCTION)
+    kept = SCIPOccurrence("src/main.py", 1, 0, 1, 4, "kept")
+    excluded = SCIPOccurrence("build/private.py", 1, 0, 1, 4, "excluded")
+    graph.lsp_occurrence_index = SCIPOccurrenceIndex([kept, excluded] * 1000)
+    original = artifact_quality.repository_path_is_visible
+    calls = {}
+
+    def observe_policy(path, *, selection):
+        calls[path] = calls.get(path, 0) + 1
+        return original(path, selection=selection)
+
+    monkeypatch.setattr(artifact_quality, "repository_path_is_visible", observe_policy)
+    report = constrain_graph_to_source_selection(graph, RepositorySourceSelection())
+
+    assert graph.lsp_occurrence_index.occurrences == (kept,) * 1000
+    assert "kept" in graph.name_to_vertex
+    assert report["removed_excluded_paths"] == ["build/private.py"]
+    assert report["excluded_paths_after"] == report["invalid_paths_after"] == []
+    assert calls["src/main.py"] == calls["build/private.py"] == 1
+
+
+def test_graph_selection_path_decisions_do_not_survive_a_selection_change():
+    def prepared_graph():
+        graph = CodeGraph("/repo")
+        graph.add_root_node(".")
+        graph.add_directory_node("src")
+        graph.add_file_node("src/main.py")
+        graph.add_symbol_node("kept", 1, 1, 3, NODE_TYPE_FUNCTION)
+        graph.lsp_occurrence_index = SCIPOccurrenceIndex(
+            [SCIPOccurrence("src/main.py", 1, 0, 1, 4, "kept")]
+        )
+        return graph
+
+    visible, excluded = prepared_graph(), prepared_graph()
+    constrain_graph_to_source_selection(visible, RepositorySourceSelection())
+    report = constrain_graph_to_source_selection(
+        excluded, RepositorySourceSelection(["src"])
+    )
+
+    assert "kept" in visible.name_to_vertex
+    assert "kept" not in excluded.name_to_vertex
+    assert excluded.lsp_occurrence_index.occurrences == ()
+    assert report["removed_excluded_paths"] == ["src", "src/main.py"]
+
+
+@pytest.mark.parametrize("invalid_path", [["src/main.py"], {"file": "src/main.py"}])
+def test_graph_selection_still_rejects_unhashable_path_values(invalid_path):
+    graph = CodeGraph("/repo")
+    graph.add_root_node(".")
+    graph.add_file_node("src/main.py")
+    graph.add_symbol_node("invalid", 1, 1, 3, NODE_TYPE_FUNCTION)
+    vertex = graph.graph.vs.find(name="invalid")
+    vertex["file"] = invalid_path
+    vertex["has_definition"] = True
+
+    report = constrain_graph_to_source_selection(graph, RepositorySourceSelection())
+
+    assert "invalid" not in graph.name_to_vertex
+    assert report["invalid_paths_before"]
     assert report["invalid_paths_after"] == []
 
 
