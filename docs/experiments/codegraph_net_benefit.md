@@ -170,19 +170,22 @@ rename/line-shift/Unicode evidence. Merged
 all twenty executed release verifiers, with five publication-only skips.
 
 The [shared LSP transport repair](codegraph_lsp_stdio.md) retains unread frames,
-partial messages and late replies dropped by the existing client. Seven
-real-pipe regressions fail on unchanged base and pass after the repair; all
-9,016 local unit cases pass. Original server bytes show that first cold replies
+partial messages and late replies dropped by the existing client. Seven initial
+real-pipe failures reproduce on unchanged base; the final eight cases also
+verify error clearing when late definition/reference replies succeed. All
+9,017 local unit cases pass. Original server bytes show that first cold replies
 still contain only 1/3 references, distinguishing enumeration readiness from
 client delivery. A separately frozen condition prepares every selected Python
 file before any positional query: the fixture returns all three references,
 and all six compiler location sets agree for three fixed symbols on CodeNib's
-complete selected 2,390-file source. Its single observed first guarded result
-takes 7.142s including capture, offline installed setup and all 1,172 Python
-files' preparation. A separate installed post-SCIP replay preserves exact
+complete selected 2,390-file source. First guarded results take 7.142s and 7.702s
+in the two candidate-version observations, both retained, including capture,
+offline installed setup and all 1,172 Python files' preparation. A separate
+installed post-SCIP replay preserves exact
 normalized text, all 786,078 ordered occurrences, query surface, quality and
 receipts. All eleven original replies, source copies and five exact owners'
-cleanup verify. No prior failure or outcome is replaced. Portable
+cleanup per version verify. The initial packet and final-version supplement
+remain separate; no prior failure or outcome is replaced. Portable
 source/configuration closure and representative cold completeness remain open;
 the experiment changes no product live provider, MCP default or multi-hop
 contract and supplies no comparative coding result. Whole-task quality/time,

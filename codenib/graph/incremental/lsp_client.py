@@ -588,6 +588,7 @@ class LSPClient:
                     message = self._response_buffer.pop(pid)
                     if "error" not in message and message.get("result") is not None:
                         logger.debug(f"references: using buffered response id={pid}")
+                        self._last_error = None
                         return message["result"]
 
             result = self._request("textDocument/references", params, timeout=timeout)
@@ -673,6 +674,7 @@ class LSPClient:
                     message = self._response_buffer.pop(pid)
                     if "error" not in message and message.get("result") is not None:
                         logger.debug(f"definition: using buffered response id={pid}")
+                        self._last_error = None
                         result = message["result"]
                         if isinstance(result, dict):
                             return [result]

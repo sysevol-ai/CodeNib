@@ -212,17 +212,20 @@ Its original cold omission and every earlier outcome stay retained.
 
 The [shared LSP transport repair](experiments/codegraph_lsp_stdio.md) preserves
 coalesced/partial messages and late replies that the existing client dropped.
-Seven real-pipe regressions reproduce on base and pass after the repair;
-the full local unit tier passes 9,016. The raw server replies confirm a separate
+Seven initial real-pipe failures reproduce on base; the final eight cases also
+verify successful late definition/reference replies clear stale errors. The
+full local unit tier passes 9,017. The raw server replies confirm a separate
 cold omission (1/3 references before file enumeration) in both client versions.
 Explicit preparation of every selected Python file yields 3/3 in the fixture
 and six matching compiler location sets for three fixed symbols on all 2,390
 CodeNib source files. The first guarded position result, including capture,
 offline installed setup and all 1,172 Python files' preparation, takes 7.142s
-in one observation. The installed post-SCIP replay preserves exact normalized
+and 7.702s in the two candidate-version observations, both retained. The installed
+post-SCIP replay preserves exact normalized
 text, all 786,078 ordered occurrences, query surface, quality and receipts.
 All eleven original positional deliveries, source copies, provider inputs and
-five owners' cleanup verify. This is still an offline
+five owners' cleanup per version verify. The initial packet and final-version
+supplement remain separate. This is still an offline
 Docker feasibility result, without product live routing, multi-hop graph parity
 or a coding comparator. Portable source/configuration closure and representative
 cold completeness remain open before routing promotion. No model query,

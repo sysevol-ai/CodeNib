@@ -9,6 +9,9 @@ The [terminal packet](codegraph_lsp_stdio_2026_10_31.json) retains 165 exact
 text files in seven bounded parts. Large original full-source wire output and
 the interrupted test-tier logs remain local with their byte lengths and
 SHA-256 identities; no query is replayed to replace an original observation.
+The [final-version supplement](codegraph_lsp_late_reply_2026_10_31.json)
+binds the successful-late-reply error-state repair and its fresh verification;
+the initial packet remains unchanged.
 
 ## Product repair and verification
 
@@ -16,16 +19,20 @@ SHA-256 identities; no query is replayed to replace an original observation.
 already buffered messages before waiting on the pipe, and retains replies
 encountered during notification or pending-request drains. The existing
 100-response limit remains. A new server clears the preceding transport state.
+Consuming a successful late definition/reference reply also clears the previous
+request error, so callers do not receive a valid result marked as a timeout.
 This shared client already serves Python compiler-identity normalization,
 incremental graph patching and LSP indexing; no new provider or product route
 is added. Source guards, graph/builder versions and storage boundaries remain.
 
 Real POSIX-pipe regressions cover coalesced replies, split headers and Unicode
 bodies across a timeout, buffered progress, late reference replies, pending
-drains and a fresh server. All seven fail against the unchanged base and pass
-after the repair. The related unit tier passes 213 cases; the full local unit
-tier passes 9,016, with 24 skips, 221 heavier cases deselected and the same 46
-existing warnings. Pinned format/lint hooks pass.
+drains and a fresh server. The seven initial cases fail against the unchanged
+base. Follow-up checks expose two stale-error cases in the first repair;
+the final eight parameterized cases pass after error clearing. The final full
+local unit tier passes 9,017, with 24 skips, 221 heavier cases deselected and
+the same 46 existing warnings. The initial related-tier 213 passes and full-tier
+9,016 passes remain in the original packet. Pinned format/lint hooks pass.
 
 Retain the setup outcomes. The first regression fixture omitted `PIPE` from
 its fake subprocess module; after fixing only that fixture, all seven product
@@ -84,10 +91,12 @@ missing, extra or invalid location. This checks three fixed symbols, not the
 complete graph, multi-hop reference semantics or arbitrary-repository coverage.
 
 From just before source capture to the first guarded full-source reference
-result takes **7.142s** in one observation. The interval includes source copy,
+result takes **7.142s** on the initial repair and **7.702s** on the final version.
+Both individual observations remain; neither is a statistical comparison.
+The interval includes source copy,
 container creation/start, offline wheel reinstall, installed import/identity
 checks, LSP initialize, all selected symbol operations and the guarded query.
-The selected-file preparation itself takes 4.086s. The existing checkout and
+The initial selected-file preparation itself takes 4.086s. The existing checkout and
 prepared image/software predate that interval. This is not a timing comparator
 with full SCIP preparation, Serena or a complete coding task.
 
@@ -108,7 +117,11 @@ captured original server results; all four exact owned containers are
 independently absent. All 10,282 provider-manifest entries reverify. These are
 source-only observations, not model-input source credit.
 The separate installed-replay container is also independently absent, for five
-owned containers across this iteration.
+owned containers per candidate version and ten across both. Final-version
+verification rechecks all 485 installed Python files/native bytes, the same
+selected source file map, all eleven fresh original replies, provider inputs
+and exact installed post-SCIP outputs. Its exact position-response body bytes
+are retained in the supplement; the other original records stay local/hash-bound.
 
 Ship the verified shared-client repair after review. Keep live positioned-query
 routing experimental until portable source isolation and representative

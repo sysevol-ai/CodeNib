@@ -81,8 +81,9 @@ def test_idle_drain_handles_progress_after_an_already_returned_reply(transport):
     assert "index" in client._active_progress
 
 
-def test_reference_retry_reuses_a_late_reply_received_during_idle_drain(
-    transport, monkeypatch, tmp_path
+@pytest.mark.parametrize("method", ["references", "definition"])
+def test_position_retry_reuses_a_late_reply_received_during_idle_drain(
+    transport, monkeypatch, tmp_path, method
 ):
     client, write = transport
     (tmp_path / "app.py").write_text("def target(): pass\n")
@@ -106,9 +107,12 @@ def test_reference_retry_reuses_a_late_reply_received_during_idle_drain(
         SimpleNamespace(monotonic=time.monotonic, sleep=deliver_late_reply),
     )
 
-    assert client.references("app.py", 0, 4, timeout=0.005, retries=1) == locations
+    assert (
+        getattr(client, method)("app.py", 0, 4, timeout=0.005, retries=1) == locations
+    )
+    assert client._last_error is None
     sent = client.process.stdin.getvalue()
-    assert sent.count(b'"method": "textDocument/references"') == 1
+    assert sent.count(f'"method": "textDocument/{method}"'.encode()) == 1
 
 
 def test_pending_drain_preserves_late_reply_and_following_response(
