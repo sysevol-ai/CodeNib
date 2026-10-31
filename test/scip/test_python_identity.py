@@ -109,6 +109,114 @@ def _outside_family(root):
     return resolve
 
 
+def _walrus_index(root, files=("left.py",)):
+    """Extend the captured document to check per-file identity and metadata."""
+    source = (CAPTURES / "module_walrus.source").read_text()
+    captured = Parse((CAPTURES / "module_walrus.decoded").read_text(), Index())
+    index = Index()
+    for relative in files:
+        (root / relative).write_text(source)
+        document = index.documents.add()
+        document.CopyFrom(captured.documents[0])
+        document.relative_path = relative
+        for occurrence in document.occurrences:
+            occurrence.symbol = occurrence.symbol.replace(
+                " nested/", f" {Path(relative).stem}/"
+            )
+        for information in document.symbols:
+            information.symbol = information.symbol.replace(
+                " nested/", f" {Path(relative).stem}/"
+            )
+        document.symbols.add(
+            symbol="text.", documentation=["Original variable metadata"]
+        )
+    return index
+
+
+def test_module_comprehension_walrus_qualifies_each_document_binding(tmp_path):
+    index = _walrus_index(tmp_path, ("left.py", "right.py"))
+
+    report = normalize_python_index(index, tmp_path)
+
+    targets = []
+    for document in index.documents:
+        occurrences = [o for o in document.occurrences if o.symbol.endswith("/text.")]
+        assert len(occurrences) == 3
+        assert len({o.symbol for o in occurrences}) == 1
+        assert [tuple(o.range) for o in occurrences] == [
+            (1, 10, 1, 14),
+            (1, 37, 1, 41),
+            (2, 8, 2, 12),
+        ]
+        assert [o.symbol_roles for o in occurrences] == [8, 1, 8]
+        targets.append(occurrences[0].symbol)
+        information = next(s for s in document.symbols if s.symbol == targets[-1])
+        assert information.documentation == ["Original variable metadata"]
+    assert targets[0] != targets[1]
+    assert len(report["qualified_module_assignment_symbols"]) == 2
+    assert set(report["source_sha256"]) == {"left.py", "right.py"}
+    assert report["positional_definition_queries"] == 0
+    frozen = index.SerializeToString()
+    assert (
+        normalize_python_index(index, tmp_path)["qualified_module_assignment_symbols"]
+        == []
+    )
+    assert index.SerializeToString() == frozen
+
+
+def test_walrus_qualification_rejects_mismatched_reference_atomically(tmp_path):
+    index = _walrus_index(tmp_path)
+    index.documents[0].occurrences[-1].range[:] = [2, 0, 5]
+    before = index.SerializeToString()
+
+    with pytest.raises(ValueError, match="assignment symbol.*source"):
+        normalize_python_index(index, tmp_path)
+
+    assert index.SerializeToString() == before
+
+
+@pytest.mark.parametrize(
+    "source,definition",
+    [
+        ("text = 1\n", [0, 0, 4]),
+        ("def run():\n    return (text := 1)\n", [1, 12, 16]),
+        ("run = lambda: (text := 1)\n", [0, 15, 19]),
+    ],
+)
+def test_nonmodule_walrus_or_ordinary_assignment_keeps_strict_global_parser(
+    tmp_path, source, definition
+):
+    (tmp_path / "nested.py").write_text(source)
+    index = Index()
+    document = index.documents.add(relative_path="nested.py", position_encoding=1)
+    module = document.occurrences.add(
+        symbol="scip-python python fixture 0.0.0 nested/__init__:", symbol_roles=1
+    )
+    module.range.extend([0, 0, 0])
+    occurrence = document.occurrences.add(symbol="text.", symbol_roles=1)
+    occurrence.range.extend(definition)
+    before = index.SerializeToString()
+
+    with pytest.raises(ValueError, match="invalid global Python SCIP symbol"):
+        normalize_python_index(index, tmp_path)
+
+    assert index.SerializeToString() == before
+
+
+def test_module_walrus_rejects_another_binding_using_the_same_bare_id(tmp_path):
+    index = _walrus_index(tmp_path)
+    path = tmp_path / "left.py"
+    path.write_text(path.read_text() + "def run():\n    text = 1\n")
+    occurrence = index.documents[0].occurrences.add(symbol="text.", symbol_roles=1)
+    occurrence.range.extend([4, 4, 8])
+    before = index.SerializeToString()
+
+    with pytest.raises(ValueError, match="assignment symbol.*source"):
+        normalize_python_index(index, tmp_path)
+
+    assert index.SerializeToString() == before
+
+
 def test_captured_definitions_and_branch_targets_are_recovered(tmp_path):
     index = _fixture(tmp_path)
     observed = []
@@ -492,6 +600,157 @@ def test_lsp_field_write_targets_keep_the_existing_owning_class(tmp_path):
             assert {row.start_line for row in definitions} == {declaration}
         rows = [row for row in index.documents[0].occurrences if row.range[0] == write]
         assert not any(row.symbol_roles & 1 for row in rows)
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_decorated_field_writes_require_corroborating_physical_definitions(
+    tmp_path, reverse
+):
+    index, captured, _ = _captured_fixture(tmp_path, "decorated_field_writes")
+
+    def resolve(*request):
+        locations = captured(*request)
+        return list(reversed(locations)) if reverse else locations
+
+    normalize_python_index(index, tmp_path, resolve_definitions=resolve)
+    positions = SCIPOccurrenceIndex.from_decoded_text(
+        MessageToString(index, as_utf8=True)
+    )
+
+    for use, character in [(18, 21), (22, 23)]:
+        definitions = positions.definitions(
+            file_path="nested.py", line=use, character=character
+        )
+        assert {row.start_line for row in definitions} == {14}
+    writes = [o for o in index.documents[0].occurrences if o.range[0] == 18]
+    assert not any(o.symbol_roles & 1 for o in writes)
+    after = index.SerializeToString()
+    normalize_python_index(
+        index,
+        tmp_path,
+        resolve_definitions=lambda *_: pytest.fail("no further query is needed"),
+    )
+    assert index.SerializeToString() == after
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "write_only",
+        "other_class",
+        "unrelated_target",
+        "different_receiver",
+        "rebound_receiver",
+        "unanchored_receiver",
+        "variadic_receiver",
+    ],
+)
+def test_decorated_field_corroboration_keeps_source_and_target_guards(tmp_path, case):
+    index, captured, _ = _captured_fixture(tmp_path, "decorated_field_writes")
+    source = tmp_path / "nested.py"
+    text = source.read_text()
+    if case == "different_receiver":
+        text = text.replace("self.called = True", "node.called = True")
+    elif case == "rebound_receiver":
+        prefix = "self = object(); "
+        text = text.replace("self.called = True", prefix + "self.called = True")
+        [parameter] = [
+            o for o in index.documents[0].occurrences if o.range[:2] == [17, 22]
+        ]
+        for occurrence in list(index.documents[0].occurrences):
+            if occurrence.range[0] == 18:
+                occurrence.range[1] += len(prefix)
+                occurrence.range[-1] += len(prefix)
+        assignment = index.documents[0].occurrences.add()
+        assignment.symbol = parameter.symbol
+        assignment.range.extend([18, 16, 20])
+        assignment.symbol_roles = 8
+    elif case == "unanchored_receiver":
+        retained = [
+            o for o in index.documents[0].occurrences if o.range[:2] != [18, 16]
+        ]
+        del index.documents[0].occurrences[:]
+        index.documents[0].occurrences.extend(retained)
+    elif case == "variadic_receiver":
+        text = text.replace("def visit(self, node):", "def visit(*self, node):")
+        for occurrence in list(index.documents[0].occurrences):
+            if occurrence.range[0] == 17 and occurrence.range[1] >= 22:
+                occurrence.range[1] += 1
+                occurrence.range[-1] += 1
+    compile(text, str(source), "exec")
+    source.write_text(text)
+    before = index.SerializeToString()
+
+    def resolve(file, line, character):
+        if case == "rebound_receiver" and line == 18:
+            character -= len(prefix)
+        locations = captured(file, line, character)
+        if (line, character) not in {(18, 21), (22, 23)}:
+            return locations
+        if case == "write_only":
+            return [p for p in locations if p["range"]["start"]["line"] == 18]
+        if case == "other_class":
+            for location in locations:
+                if location["range"]["start"]["line"] == 14:
+                    location["range"] = {
+                        "start": {"line": 9, "character": 17},
+                        "end": {"line": 9, "character": 23},
+                    }
+        elif case == "unrelated_target":
+            locations.append(
+                {
+                    "uri": source.as_uri(),
+                    "range": {"start": {"line": 0, "character": 4}},
+                }
+            )
+        elif case == "rebound_receiver":
+            for location in locations:
+                for bound in location["range"].values():
+                    if bound["line"] == 18:
+                        bound["character"] += len(prefix)
+        return locations
+
+    with pytest.raises(ValueError, match="target is unresolved"):
+        normalize_python_index(index, tmp_path, resolve_definitions=resolve)
+
+    assert index.SerializeToString() == before
+    assert source.read_text() == text
+
+
+@pytest.mark.parametrize("case", ["other_parameter", "staticmethod"])
+def test_other_and_static_parameter_writes_still_require_direct_definitions(
+    tmp_path, case
+):
+    [capture] = [
+        row
+        for row in json.loads(
+            (CAPTURES / "attribute_write_receivers.fixture").read_text()
+        )
+        if row["case"] == case
+    ]
+    (tmp_path / "nested.py").write_text(capture["source"])
+    index = Parse(capture["decoded"], Index())
+    captured, _ = _captured_resolver(tmp_path, capture)
+    before = index.SerializeToString()
+
+    def resolve(file, line, character):
+        locations = captured(file, line, character)
+        if (line, character) in {(5, 18), (6, 17)}:
+            return [
+                {
+                    "uri": (tmp_path / file).as_uri(),
+                    "range": {
+                        "start": {"line": line, "character": character},
+                        "end": {"line": line, "character": character + 6},
+                    },
+                }
+            ]
+        return locations
+
+    with pytest.raises(ValueError, match="target is unresolved"):
+        normalize_python_index(index, tmp_path, resolve_definitions=resolve)
+
+    assert index.SerializeToString() == before
 
 
 @pytest.mark.parametrize("case", ["different_receiver", "rebound_receiver"])
@@ -908,6 +1167,8 @@ def test_expired_recovery_budget_does_not_start_a_provider(tmp_path, monkeypatch
         "field_redefinitions",
         "attribute_fields",
         "attribute_writes",
+        "decorated_field_writes",
+        "module_walrus",
     ],
 )
 def test_native_decoder_preserves_recovered_definitions_and_references(tmp_path, case):

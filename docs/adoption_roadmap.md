@@ -105,6 +105,22 @@ resource failures and update costs. BM25/native fallback is not typed-graph use.
 The three latest confirmation sources are now exposed and stay frozen; fixed
 Matplotlib/Django/xarray issue, source and grading material remain unopened.
 
+The current [Python identity candidate](experiments/codegraph_python_walrus.md)
+in [#933](https://github.com/sysevol-ai/CodeNib/pull/933) repairs both reproduced
+Pylint construction blockers: an unqualified module variable and a decorated
+field write corroborated by an independently declared field in the same LSP
+response. An installed two-module control admits all 878 selected documents,
+with partial indexing disabled, and returns four graph-backed source replies.
+All 28 windows match original source bytes; the two `_compute_sims` probes and
+one `_check_astroid_module` probe include all five returned caller locations.
+The original ambiguous `add_message` reference reply remains recorded; exact
+names resolve it, with one result capped at 40. Full construction and these
+selected source checks pass. The [exact CI wheel](experiments/codegraph_python_identity_wheel_2026_10_30.json)
+repeats the full admission with all 485 packaged Python files and its native
+extension verified, without source overlays. Actual model use, workflow
+quality/time, independent confirmation and external reuse remain open.
+No completed cohort, test selection or score changes.
+
 The latest round records 8,821,055 normalized final main/auxiliary tokens and
 $9.311356 in SDK estimates, not invoices. The recorded estimate lower bound
 across rounds is $44.4223508 plus earlier unknown usage. Keep the authorized

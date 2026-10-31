@@ -1,0 +1,93 @@
+{
+  "schema": "codenib.python-identity-wheel-admission.v1",
+  "scope": "Actual CI wheel in a prepared network-disabled runtime; no source overlay, inference, task score or efficiency comparison.",
+  "workflow_head": "fa740af226f35cdf4bbd5486a59699ed25e9d06b",
+  "artifact": {
+    "artifact_id": 13026596332,
+    "workflow_run": 41159228531,
+    "workflow_head_sha": "fa740af226f35cdf4bbd5486a59699ed25e9d06b",
+    "artifact_zip_sha256": "5f7b793cd18ca7334358fd6bbe99a3e8704da688abd0343a6954d36fcd2b06bc",
+    "artifact_zip_bytes": 3763799,
+    "wheel": "codenib-0.2.4-cp310-abi3-manylinux_2_28_aarch64.whl",
+    "wheel_sha256": "4413d8f141a438b19899a35070d036c68f1bb24166fae452c91acf7f1eadccc4",
+    "model_calls": 0
+  },
+  "selected_python_files": 485,
+  "selected_native_files": 1,
+  "all_installed_selected_files_match_wheel": true,
+  "all_packaged_python_files_match_candidate_source": true,
+  "complete_selected_documents": 878,
+  "partial_index": false,
+  "node_count": 10180,
+  "edge_count": 23148,
+  "byte_exact_windows": 28,
+  "complete_returned_route_dependency_definitions": 11,
+  "core_reference_observations": 5,
+  "core_reference_observations_covered": 5,
+  "same_complete_graph_query_surface_as_prototype": true,
+  "ambiguous_original_reference_reply_retained": true,
+  "exact_reference_followups": [
+    40,
+    26,
+    0
+  ],
+  "reference_output_cap": 40,
+  "model_calls": 0,
+  "external_users": 0,
+  "model_source_read_credit": null,
+  "workflow_benefit": null,
+  "old_frozen_inputs_verified": 5294,
+  "old_binding_sha256": "66becb6b784a7560ef7cf0ce2ce980002634939f00aeadd0d38ebd6dc130c68d",
+  "owned_container_independently_absent": "268bfdf3739cf5df86bc1e89904645c3b7020402e18bc47353447ecf2214fa1f",
+  "source_unchanged": true,
+  "earlier_packets_unchanged": true,
+  "lossless_public_files": 31,
+  "parts": [
+    {
+      "path": "codegraph_python_identity_wheel_2026_10_30.part01.json",
+      "bytes": 276454,
+      "sha256": "4f06288bfff8ce93f3a2eaefe0fe201644efd104446b4e09a75d1833891cf44c",
+      "files": 31
+    }
+  ],
+  "private_raw_artifacts": {
+    "index.scip": {
+      "path": "/tmp/codenib-933-wheel-admission-20261030/state/repositories/pylint-8bed861c1a21/indexes/symbol_graph/index.scip",
+      "bytes": 11541877,
+      "sha256": "24a184ccb03155792227df08fb1048fa7188965f826085b427d9cada7d0c83c6",
+      "retention": "Original artifact retained locally."
+    },
+    "graph.pkl": {
+      "path": "/tmp/codenib-933-wheel-admission-20261030/state/repositories/pylint-8bed861c1a21/indexes/symbol_graph/graph.pkl",
+      "bytes": 2365397,
+      "sha256": "088e19407e96e28bedcba78b06fd07403ef340377876271e2c05785cb2ed4929",
+      "retention": "Original artifact retained locally."
+    },
+    "lsp_index.pkl": {
+      "path": "/tmp/codenib-933-wheel-admission-20261030/state/repositories/pylint-8bed861c1a21/indexes/symbol_graph/lsp_index.pkl",
+      "bytes": 10546993,
+      "sha256": "844421bdeb1d2ea703bd2f0624295b0b358c88f76e7af2d970369c38c06ff93a",
+      "retention": "Original artifact retained locally."
+    },
+    "index.decoded": {
+      "path": "/tmp/codenib-933-wheel-admission-20261030/state/repositories/pylint-8bed861c1a21/indexes/symbol_graph/index.decoded",
+      "bytes": 21575146,
+      "sha256": "f5975564d5705cb529c7ae86385f8083af2769331ae07ee1f51b3f45b990842f",
+      "retention": "Original artifact retained locally."
+    },
+    "codenib-0.2.4-cp310-abi3-manylinux_2_28_aarch64.whl": {
+      "path": "/tmp/codenib-933-wheel-admission-20261030/codenib-0.2.4-cp310-abi3-manylinux_2_28_aarch64.whl",
+      "bytes": 3823801,
+      "sha256": "4413d8f141a438b19899a35070d036c68f1bb24166fae452c91acf7f1eadccc4",
+      "retention": "Exact CI wheel retained locally; public PyPI distribution unchanged."
+    }
+  },
+  "remaining_gates": [
+    "Merge after actual required checks and review",
+    "Useful voluntary model calls",
+    "Workflow quality/time and normalized usage",
+    "Two successful independent confirmations",
+    "External consenting repeat use"
+  ],
+  "format": "Verify part lengths and SHA-256, reconstruct gzip+base64 or earlier whole-file identical_to aliases, then verify original byte lengths and hashes."
+}

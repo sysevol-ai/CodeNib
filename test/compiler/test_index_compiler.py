@@ -2015,7 +2015,7 @@ class TestSymbolGraphBuilder:
         assert status.metadata["edge_count"] == 0
         assert status.metadata["language"] == "python"
         assert status.metadata["languages"] == ["python"]
-        assert status.metadata["builder_schema"] == 8
+        assert status.metadata["builder_schema"] == 9
         assert status.metadata["allow_project_preparation"] is True
         assert status.metadata["target_dir"] is None
         assert status.metadata["update_mode"] == "full_rebuild"
@@ -2046,7 +2046,7 @@ class TestSymbolGraphBuilder:
         enabled = SymbolGraphBuilder(allow_project_preparation=True)
         disabled = SymbolGraphBuilder(allow_project_preparation=False)
 
-        assert enabled.artifact_identity()["builder_schema"] == 8
+        assert enabled.artifact_identity()["builder_schema"] == 9
         assert enabled.artifact_identity()["allow_project_preparation"] is True
         assert disabled.artifact_identity()["allow_project_preparation"] is False
         assert enabled.artifact_identity() != disabled.artifact_identity()

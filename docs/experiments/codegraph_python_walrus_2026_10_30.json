@@ -1,0 +1,84 @@
+{
+  "schema": "codenib.python-walrus-development.v1",
+  "scope": "Source construction repair, no model inference or benefit comparison. Actual Pylint sources are already exposed development; confirmation B stays unopened.",
+  "source_commit": "40cc2ffd7887959157aaf469e09585ec2be7f528",
+  "baseline_product_merge": "98346c022386e48d658d47600df538e1059cc584",
+  "baseline_graph_requests_failed": 4,
+  "baseline_error": "invalid global Python SCIP symbol: 'text.'",
+  "candidate_graph_requests_failed": 1,
+  "candidate_error": "Python identity target is unresolved at tests/utils/unittest_ast_walker.py:58:21; decorated class field write. Strict guard retained; complete Pylint graph NOT admitted.",
+  "prototype_inputs": "Both originally installed module byte hashes reconstructed and verified exactly; later final source adds an early no-op path and pinned formatting, not a replacement observation.",
+  "focused_identity_compiler_tests": {
+    "passed": 261,
+    "skipped": 0
+  },
+  "full_unit": {
+    "passed": 8971,
+    "skipped": 24,
+    "deselected_heavier": 221,
+    "seconds": 137.84,
+    "initial_environment_failures_retained": true
+  },
+  "model_calls": 0,
+  "external_users": 0,
+  "source_read_credit": null,
+  "old_model_results_unchanged": true,
+  "old_frozen_inputs_verified": 5294,
+  "old_binding_sha256": "66becb6b784a7560ef7cf0ce2ce980002634939f00aeadd0d38ebd6dc130c68d",
+  "original_source_bytes_and_status_unchanged": true,
+  "owned_containers_independently_absent": [
+    "03b5538f7359987a2303a6677873b98fb9a69fb559d54b3502222d4fa21f6df5",
+    "21330d3ebf5e3e2f1a1737f5a4b568caf201258c47921ca4d2cbee8418977727",
+    "423abc9b45a2b6a0bfd23427b2c6c1a5eef3580d2b886c83b97d77696a5c87bf",
+    "4e254f1e40ecfc661bb3c4689d1bfb7c281adf52be46758410bee9fefbc56dc9",
+    "56c934cc453e7bd012469f4d0c9aa7b37893f4da239f319f400d64291b52e675",
+    "953acef04f0ad3a0b53f22c0e7fa29b69b7cdd74ed1a07091f6d77208fdbdcd3",
+    "a7aef85b83ea7e0e2041f69eaf87555a30f59a738b7cb61f01119a0fe5177f35",
+    "d09720624e89e98ff7e12fd295cb6831c55f9ffc73f2d403451ae261a3d30c04"
+  ],
+  "private_raw_artifacts": {
+    "baseline-v1/raw/index.scip": {
+      "bytes": 11541876,
+      "sha256": "a6875bef624de6fadf87edd17367bf2843cd0750ffe827a5a60aed5ac983557d",
+      "retention": "Original raw compiler artifact retained locally; not modified into a successful observation."
+    },
+    "baseline-v1/raw/python_environment.json": {
+      "bytes": 3,
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "retention": "Original raw compiler artifact retained locally; not modified into a successful observation."
+    },
+    "baseline-v1/raw/index.decoded": {
+      "bytes": 20335449,
+      "sha256": "4d595fd18a326e4ac154cf914780123c8dc34da734c757e15e96c645640b3935",
+      "retention": "Original raw compiler artifact retained locally; not modified into a successful observation."
+    }
+  },
+  "lossless_public_files": 58,
+  "parts": [
+    {
+      "path": "codegraph_python_walrus_2026_10_30.part01.json",
+      "bytes": 195387,
+      "sha256": "322655603dad53509149b9387d42ed043708e7beb5c36935101a5284b444e160",
+      "files": 6
+    },
+    {
+      "path": "codegraph_python_walrus_2026_10_30.part02.json",
+      "bytes": 200449,
+      "sha256": "a8bf11603f752ea9cd0ed00ab914446e1fb5a19b67965ad76003711d8914dea3",
+      "files": 10
+    },
+    {
+      "path": "codegraph_python_walrus_2026_10_30.part03.json",
+      "bytes": 280035,
+      "sha256": "a60a96babfd79c222c4878b7bc62962b34c79247163188025d63faeaf30eeb30",
+      "files": 36
+    },
+    {
+      "path": "codegraph_python_walrus_2026_10_30.part04.json",
+      "bytes": 6546,
+      "sha256": "664c7570f961a91ca74a926850045734d7b309fc8a7624088e6224a80fb76de8",
+      "files": 6
+    }
+  ],
+  "format": "Verify part lengths and SHA-256; reconstruct gzip+base64 or earlier whole-file identical_to aliases, then verify every original length and SHA."
+}

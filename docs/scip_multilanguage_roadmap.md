@@ -100,6 +100,26 @@ the existing basedpyright provider. This is unreleased source correctness work
 for [#871](https://github.com/sysevol-ai/CodeNib/issues/871), not a backend,
 acceleration or task-benefit promotion. The A0 objective remains active.
 
+The [Python identity repair](experiments/codegraph_python_walrus.md)
+in [#933](https://github.com/sysevol-ai/CodeNib/pull/933) recovers scip-python
+0.6.6's unqualified variable ID only from exact source
+definitions, occurrence spelling and the compiler-owned module namespace.
+It also requires a direct existing field definition in the same LSP response
+before corroborating a decorated method's write. The receiver must remain an
+unrebound, compiler-anchored regular first parameter; every returned target
+still validates. Captured serial/native parity and strict rejection boundaries
+pass; builder identity 9 rebuilds old views while persisted schema 5 is unchanged.
+The installed pinned Pylint control now admits all 878 selected documents,
+10,180 nodes and 23,148 edges without partial indexing or new exclusions.
+Four source replies and their selected caller excerpts validate against original
+bytes; the retained `add_message` ambiguity resolves with exact names, including
+one capped reference result. Local focused checks pass 532 tests and the unit
+tier passes 8,984 with 24 skips. The [actual CI wheel](experiments/codegraph_python_identity_wheel_2026_10_30.json)
+repeats complete construction and source delivery with all 486 installed
+Python/native files verified and no source overlay; its complete graph query
+surface matches the prototype. Model/task benefit remains open.
+No backend or C++ acceleration gate is promoted.
+
 The [deferred source-first controls](experiments/codegraph_source_default.md)
 retain a full-source SymPy failure at two CPUs/4 GiB. A smaller 2,560 MiB V8
 heap also fails; the 32 GiB reference completes a first graph request in

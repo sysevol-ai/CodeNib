@@ -55,7 +55,9 @@ class _Declaration:
     symbol: str = ""
     nonlocals: set[str] = field(default_factory=set)
     receiver: tuple[int, int] | None = None
+    first_parameter: _Declaration | None = None
     instance_parameter: _Declaration | None = None
+    module_assignment_expression: bool = False
 
 
 @dataclass
@@ -198,7 +200,7 @@ def _declarations(source: _Source, parser) -> list[_Declaration]:
             for child in target.named_children:
                 record_rebinding(child)
 
-    def visit(node, parent):
+    def visit(node, parent, inside_lambda=False):
         if node.type == "nonlocal_statement" and parent is not None:
             parent.nonlocals.update(
                 content[child.start_byte : child.end_byte].decode("utf-8")
@@ -238,11 +240,12 @@ def _declarations(source: _Source, parser) -> list[_Declaration]:
                             number == 0
                             and parent is not None
                             and parent.kind == "class"
-                            and node.parent.type != "decorated_definition"
                             and parameter.parent.type
                             not in {"list_splat_pattern", "dictionary_splat_pattern"}
                         ):
-                            declaration.instance_parameter = argument
+                            declaration.first_parameter = argument
+                            if node.parent.type != "decorated_definition":
+                                declaration.instance_parameter = argument
                 parent = declaration
         elif node.type in {"assignment", "augmented_assignment", "named_expression"}:
             target = node.child_by_field_name("left") or node.child_by_field_name(
@@ -269,6 +272,12 @@ def _declarations(source: _Source, parser) -> list[_Declaration]:
                         extent=(*node.start_point, *node.end_point),
                         parent=parent,
                         receiver=receiver,
+                        module_assignment_expression=(
+                            node.type == "named_expression"
+                            and not node.has_error
+                            and parent is None
+                            and not inside_lambda
+                        ),
                     )
                 )
         elif node.type in {"for_statement", "for_in_clause"}:
@@ -281,10 +290,81 @@ def _declarations(source: _Source, parser) -> list[_Declaration]:
             for child in node.named_children:
                 record_rebinding(child)
         for child in node.named_children:
-            visit(child, parent)
+            visit(child, parent, inside_lambda or node.type == "lambda")
 
     visit(tree.root_node, None)
     return result
+
+
+def _qualify_module_assignment_symbols(document, source, module_namespace):
+    """Recover a captured scip-python bare term from its compiler module owner.
+
+    A walrus in a module comprehension binds in the containing module, not the
+    comprehension. scip-python 0.6.6 can emit just ``text.`` at its definition
+    and reads. Require the exact source declaration, every definition anchor,
+    and every occurrence's spelling before qualifying that document's ID. Other
+    malformed globals keep the strict parser; no occurrence or test is dropped.
+    """
+    declarations = {
+        declaration.start: declaration
+        for declaration in source.declarations
+        if declaration.module_assignment_expression
+    }
+    if not declarations:
+        return []
+    names = {}
+    for occurrence in document.occurrences:
+        declaration = declarations.get(tuple(occurrence.range[:2]))
+        if (
+            declaration is not None
+            and occurrence.symbol_roles & _DEFINITION
+            and tuple(occurrence.range[2:]) == declaration.end
+            and occurrence.symbol == _escape(declaration.name) + "."
+        ):
+            names[occurrence.symbol] = declaration.name
+    if not names:
+        return []
+    if not module_namespace:
+        raise ValueError("Python module assignment symbol has no compiler namespace")
+    replacements = {symbol: module_namespace + symbol for symbol in names}
+    counts = Counter()
+    for occurrence in document.occurrences:
+        name = names.get(occurrence.symbol)
+        if name is None:
+            continue
+        line, start, end_line, end = occurrence.range
+        declaration = declarations.get((line, start))
+        if (
+            line != end_line
+            or source.lines[line].encode("utf-8")[start:end].decode("utf-8") != name
+            or (
+                occurrence.symbol_roles & _DEFINITION
+                and (
+                    declaration is None
+                    or declaration.name != name
+                    or declaration.end != (end_line, end)
+                )
+            )
+        ):
+            raise ValueError("Python module assignment symbol disagrees with source")
+        counts[occurrence.symbol] += 1
+    for occurrence in document.occurrences:
+        occurrence.symbol = replacements.get(occurrence.symbol, occurrence.symbol)
+    for information in document.symbols:
+        information.symbol = replacements.get(information.symbol, information.symbol)
+        for relationship in information.relationships:
+            relationship.symbol = replacements.get(
+                relationship.symbol, relationship.symbol
+            )
+    return [
+        {
+            "file": document.relative_path,
+            "original": symbol,
+            "qualified": replacement,
+            "occurrences": counts[symbol],
+        }
+        for symbol, replacement in replacements.items()
+    ]
 
 
 def _binding_key(relative, symbol):
@@ -414,14 +494,19 @@ def _parameter_selection_target(source, position, span, family):
     return matches[0] if len(matches) == 1 else None
 
 
-def _attribute_assignment_targets(source, position, original, family):
+def _attribute_assignment_targets(
+    source, position, original, family, *, definition_targets=()
+):
     """Bind an LSP field-write target to its existing physical class binding.
 
     Providers may select a later write rather than the constructor's field
     definition. Require the same compiler field at that exact source anchor,
-    an unmodified instance parameter of an undecorated method, and existing
-    definitions owned by that physical class. A write never becomes a new
-    definition, and repeated declarations of the same field retain their union.
+    an unmodified compiler-anchored receiver parameter, and existing definitions
+    owned by that physical class. For a decorated method, require an independent
+    direct field definition in the same LSP response. This corroborates only
+    those selected fields; it does not infer what the decorator returns. A write
+    never becomes a definition. Without that corroboration, only an undecorated
+    instance method can recover the class's static field-definition union.
     """
 
     writes = [
@@ -433,7 +518,27 @@ def _attribute_assignment_targets(source, position, original, family):
         return []
     [write] = writes
     method = write.parent
-    parameter = method.instance_parameter if method is not None else None
+    if (
+        method is None
+        or method.kind != "function"
+        or method.parent is None
+        or method.parent.kind != "class"
+    ):
+        return []
+    parameter = method.instance_parameter
+    corroborated = []
+    if parameter is None:
+        corroborated = [
+            d
+            for d in definition_targets
+            if d.kind == "assignment"
+            and d.parent is method.parent
+            and d.name == write.name
+            and d.original == original
+        ]
+        if not corroborated:
+            return []
+        parameter = method.first_parameter
     if (
         parameter is None
         or not parameter.original
@@ -441,7 +546,7 @@ def _attribute_assignment_targets(source, position, original, family):
         or parameter.original not in source.parameter_anchors.get(write.receiver, ())
     ):
         return []
-    return [
+    return corroborated or [
         d
         for _, d in family
         if d.kind == "assignment"
@@ -482,6 +587,7 @@ def normalize_python_index(
     replacement_sources = []
     source_only = []
     unmapped_attributes = []
+    qualified_assignments = []
     for document in candidate.documents:
         relative = document.relative_path
         if path_allowed is not None and not path_allowed(relative):
@@ -535,6 +641,9 @@ def normalize_python_index(
             _symbol_parts(module_namespace)[0] if module_namespace else None
         )
         source.declarations = _declarations(source, parser)
+        qualified_assignments.extend(
+            _qualify_module_assignment_symbols(document, source, module_namespace)
+        )
         observed = []
         assignments = []
         for declaration in source.declarations:
@@ -706,6 +815,7 @@ def normalize_python_index(
         if len(rows) > 1 or any(d.symbol != original[1] for _, d in rows)
     }
     changed_files = {relative for rows in changed.values() for relative, _ in rows}
+    changed_files.update(row["file"] for row in qualified_assignments)
     # Several physical declarations can intentionally define one lexical
     # binding (branches, reassignments, or property accessors). Keep their
     # static union. LSP is needed when a provider ID spans different bindings,
@@ -821,6 +931,7 @@ def normalize_python_index(
                 else:
                     targets = []
                     locations = resolve(relative, *position)
+                    selections = []
                     for location in locations or ():
                         uri = location.get("targetUri") or location.get("uri")
                         parsed = urlparse(str(uri or ""))
@@ -865,16 +976,29 @@ def normalize_python_index(
                             target = _parameter_assignment_target(
                                 target_source, (line, column), occurrence.symbol, family
                             )
+                        selections.append(
+                            (target_source, target_file, line, column, target)
+                        )
+                    # Collect independently declared fields before resolving
+                    # any write anchors, so a provider's reply order cannot
+                    # affect whether its corroborating evidence is available.
+                    members = [member for _, member in family]
+                    definition_targets = [
+                        target for *_, target in selections if target in members
+                    ]
+                    for target_source, target_file, line, column, target in selections:
                         selected = (
                             [target]
                             if target is not None
                             else _attribute_assignment_targets(
-                                target_source, (line, column), occurrence.symbol, family
+                                target_source,
+                                (line, column),
+                                occurrence.symbol,
+                                family,
+                                definition_targets=definition_targets,
                             )
                         )
-                        if not selected or any(
-                            d not in [member for _, member in family] for d in selected
-                        ):
+                        if not selected or any(d not in members for d in selected):
                             raise ValueError(
                                 "Python identity target is unresolved at "
                                 f"{target_file}:{line + 1}:{column} "
@@ -935,6 +1059,7 @@ def normalize_python_index(
         "utf8_replacement_sources": replacement_sources,
         "source_only_definitions": source_only,
         "unmapped_attribute_definitions": unmapped_attributes,
+        "qualified_module_assignment_symbols": qualified_assignments,
         "definition_provider": provider,
         "position_encoding": "UTF8",
         "source_sha256": {
