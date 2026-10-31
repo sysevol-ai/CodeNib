@@ -183,6 +183,87 @@ the export does not infer an authenticated GitHub origin from local Git config.
 The regular `codenib export /path/to/repository` route still builds deterministic
 index-derived pages. It does not export generated story prose automatically.
 
+### Export an OKF Bundle
+
+The next release adds [Open Knowledge Format v0.2](https://github.com/GoogleCloudPlatform/open-knowledge-format/blob/ad30107c31c06aec8a7d5636e0d1058118604e6f/SPEC.md)
+as an export format. Until that release, run the command from a source checkout
+containing the OKF exporter (`python -m pip install -e .`). Use an existing,
+complete cached Wiki and the same quiescent-database requirements above:
+
+```bash
+codenib export --format okf --wiki-config /path/to/qa_config.yaml \
+  --wiki-repo psf__requests --output /path/to/requests-wiki
+```
+
+This exports recorded chapter prose without a frontend build or a model call.
+Missing pages, failed page checks, unavailable citations and mismatched source
+snapshots stop the export. The current indexed checkout must still match the
+cached Wiki. Choose an output directory outside the source checkout and index
+root; the exporter preserves the same source-validation and atomic-publication
+boundary as static hosting. An existing nonempty directory is replaced only if
+it is already a CodeNib OKF export. You can copy the completed bundle into a
+documentation repository or commit it after export.
+
+The bundle contains:
+
+- Chapter Markdown with `type`, `title`, `description` and `sources` metadata.
+  Wiki navigation becomes relative Markdown links. Evidence markers become
+  footnotes keyed to `sources[].id`; code examples retain their original text.
+- `references/` documents with source excerpts reread from the captured
+  checkout, source hashes and repository-relative, 1-based inclusive locations.
+  Publication-policy omissions are explicit and retain their source identity.
+- `evidence/` JSON with recorded symbol identifiers, static relations and their
+  anchors, generation provenance, and existing grounding/quality verdicts.
+  These records do not assert complete architecture or runtime coverage.
+- Progressive-disclosure `index.md` files, a root `okf_version: "0.2"`, and a
+  `log.md` describing this snapshot using its index date. Re-exporting the same
+  inputs preserves document bytes; the log is not a cumulative update history.
+- `codenib-okf.json`, recording the source commit/fingerprint, builder versions
+  and the byte length and SHA-256 of every published payload file.
+
+The `repo://` source URI names a path in the recorded repository; use the
+adjacent commit and fingerprint to identify its version. The exporter does not
+infer a GitHub origin or manufacture a permalink. Excerpts and evidence are
+self-contained: reading them needs no CodeNib backend or provider request.
+Existing citation checks are preserved as their actual verdicts, not promoted
+to OKF `verified` events. Where known, `generated.by` identifies the original
+model; the exporter does not invent a generation timestamp.
+
+To let a coding agent discover this bundle, explicitly select its instruction
+directory:
+
+```bash
+codenib export --format okf --wiki-config /path/to/qa_config.yaml \
+  --wiki-repo psf__requests --output /path/to/requests-wiki \
+  --agent-dir /path/to/consumer-checkout
+```
+
+This creates `AGENTS.md` if needed and updates `CLAUDE.md` only when it already
+exists. It changes only the `BEGIN CODENIB WIKI` / `END CODENIB WIKI` block,
+preserves other instructions and does not configure MCP. Repeating the same
+pointer update leaves the files untouched. The directory must be outside the
+bundle, so instruction edits cannot invalidate its file inventory. If the
+consumer is also the indexed checkout, editing its instruction files may change
+the selected source fingerprint; refresh that index and Wiki before a later
+export. A pointer failure reports that the bundle was saved and can be retried.
+
+The standard Markdown bundle can be consumed directly or opened with Google's
+[reference viewer](https://github.com/GoogleCloudPlatform/open-knowledge-format/tree/ad30107c31c06aec8a7d5636e0d1058118604e6f):
+
+```bash
+python -m reference_agent visualize --bundle /path/to/requests-wiki \
+  --out /path/to/requests-viz.html
+```
+
+Run the viewer from its own installed environment. Its graph represents
+document cross-links, not compiler-indexed code relationships. The pinned viewer
+loads rendering libraries from a CDN; opening the generated HTML needs those
+libraries available. It also displays the reserved `log.md` as an extra untyped
+node. Its graph parser recognizes relative document links, but its page-click
+handler only rewrites root-relative links; use graph nodes to navigate this
+bundle in that viewer. The exported relative links work in ordinary Markdown
+readers. These viewer behaviors do not change the bundle's OKF format.
+
 An explicit option can add a
 [browser OpenRouter trial](guides/browser-trial.md) for that published public
 repository. It requires a separate bounded CPU source service; the user's

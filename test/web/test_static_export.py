@@ -1805,8 +1805,9 @@ def test_cached_export_keeps_section_diagnostics_private_without_relaxing_scan(
     "fault",
     ["outline", "missing", "degraded", "quality", "grounding", "range", "identity"],
 )
+@pytest.mark.parametrize("export_format", ["static", "okf"])
 def test_cached_export_refuses_incomplete_or_mismatched_pages(
-    cached_export_setup, fault
+    cached_export_setup, fault, export_format
 ):
     setup = cached_export_setup
     wiki = setup.wiki
@@ -1836,10 +1837,190 @@ def test_cached_export_refuses_incomplete_or_mismatched_pages(
     before = _tree_bytes(setup.data)
     with pytest.raises(ValueError, match="outline|not ready|citation"):
         export_cached_wiki(
-            setup.config_path, "demo", setup.output, frontend_dir=setup.frontend
+            setup.config_path,
+            "demo",
+            setup.output,
+            **({"frontend_dir": setup.frontend} if export_format == "static" else {}),
+            export_format=export_format,
         )
     assert not setup.output.exists()
     assert _tree_bytes(setup.data) == before
+
+
+def test_okf_cached_export_is_source_checked_offline_and_repeatable(
+    cached_export_setup, monkeypatch
+):
+    import yaml
+
+    setup = cached_export_setup
+    before = _tree_bytes(setup.data)
+
+    def forbidden(*_args, **_kwargs):
+        pytest.fail("OKF publication must not build a frontend or a graph")
+
+    monkeypatch.setattr(static_module, "_prebuilt_frontend", forbidden)
+    monkeypatch.setattr(static_module, "_page_graph", forbidden)
+    result = export_cached_wiki(
+        setup.config_path, "demo", setup.output, export_format="okf"
+    )
+    first = _tree_bytes(setup.output)
+    repeated = export_cached_wiki(
+        setup.config_path, "demo", setup.output, export_format="okf"
+    )
+    assert first == _tree_bytes(setup.output)
+    assert result == repeated
+    assert result.page_count == 2
+    assert result.manifest_path.name == "codenib-okf.json"
+    manifest = json.loads(result.manifest_path.read_bytes())
+    assert manifest["format"] == "okf" and manifest["okf_version"] == "0.2"
+    assert manifest["builder"]["wiki_source"] == "cached"
+    assert manifest["generation"]["models"] == ["fixture-model"]
+    for entry in manifest["files"]:
+        payload = (setup.output / entry["path"]).read_bytes()
+        assert entry["sha256"] == hashlib.sha256(payload).hexdigest()
+        assert entry["bytes"] == len(payload)
+    chapter = (setup.output / "page-overview.md").read_text()
+    metadata = yaml.safe_load(chapter.split("---", 2)[1])
+    assert metadata["generated"] == {"by": "codenib/fixture-model"}
+    assert "verified" not in metadata
+    reference = setup.output / metadata["sources"][0]["resource"]
+    assert "trusted-source" in reference.read_text()
+    assert "stale unverified" not in reference.read_text()
+    assert _tree_bytes(setup.data) == before
+    assert not (setup.output / "index.html").exists()
+
+
+def test_okf_export_preserves_previous_bundle_when_source_changes(cached_export_setup):
+    setup = cached_export_setup
+    export_cached_wiki(setup.config_path, "demo", setup.output, export_format="okf")
+    before = _tree_bytes(setup.output)
+    source = setup.repo / "src/runtime.py"
+    source.write_text(source.read_text() + "# changed\n")
+    with pytest.raises((ValueError, RuntimeError), match="source|manifest"):
+        export_cached_wiki(setup.config_path, "demo", setup.output, export_format="okf")
+    assert _tree_bytes(setup.output) == before
+
+
+def test_okf_export_refuses_unowned_directory(cached_export_setup):
+    setup = cached_export_setup
+    setup.output.mkdir()
+    (setup.output / "user.md").write_text("keep\n")
+    with pytest.raises(ValueError, match="refusing to replace"):
+        export_cached_wiki(setup.config_path, "demo", setup.output, export_format="okf")
+    assert (setup.output / "user.md").read_text() == "keep\n"
+
+
+def _real_cached_wiki(root):
+    """One product vertical with persisted BM25, manifest, registry and SQLite."""
+    repo, artifact = root / "source", root / "index"
+    runtime = repo / "src/runtime.py"
+    runtime.parent.mkdir(parents=True)
+    runtime.write_text("def run():\n    return 'ready'\n")
+    manifest, manifest_path = _manifest(repo, artifact, commit="a" * 40)
+    bm25 = artifact / "bm25"
+    bm25.mkdir()
+    (bm25 / "documents.json").write_text(
+        json.dumps(
+            [
+                {
+                    "page_content": runtime.read_text(),
+                    "metadata": {
+                        "file": str(runtime),
+                        "name": "run",
+                        "chunk_type": "function",
+                        "start_line": 0,
+                        "end_line": 1,
+                    },
+                }
+            ]
+        )
+    )
+    (bm25 / "bm25_metadata.json").write_text(
+        json.dumps({"max_k": 10, "project_root": str(repo)})
+    )
+    manifest.indexes["bm25"].config["artifact_file_fingerprints"] = (
+        bm25_artifact_file_fingerprints(bm25)
+    )
+    manifest.save(manifest_path)
+    entry = RepoEntry(
+        instance_id="demo",
+        repo="owner/demo",
+        base_commit=manifest.commit,
+        language="python",
+        repo_dir=str(repo),
+        manifest_path=str(manifest_path),
+    )
+    data = root / "data"
+    data.mkdir()
+    config = root / "wiki.yaml"
+    config.write_text(json.dumps({"data_dir": str(data)}))
+    (data / REGISTRY_FILENAME).write_text(json.dumps([asdict(entry)]))
+    database = data / "wiki_cache/wiki.sqlite3"
+    with static_module.capture_repository_source(repo, manifest=manifest) as binding:
+        wiki = AgentWiki(
+            RepoBundle(
+                entry=entry, manifest=manifest, source_reader=binding.borrow_reader()
+            ),
+            "fixture-model",
+            store=SQLiteWikiStore(database),
+        )
+        outline = _Builder(None).page_tree()
+        wiki._write_cache("outline", {"pages": outline})
+        for page_id, page in _Builder(None).pages.items():
+            meta = wiki._find(page_id, outline)
+            if page_id == "overview":
+                meta = wiki._overview_page_meta(meta, outline[1:])
+                page["markdown"] += "\n\n[Architecture](?p=architecture)\n"
+            else:
+                page["markdown"] += "\n\n[Overview](?p=overview)\n"
+            page["generation"] = {"mode": "fixture", "model": "fixture-model"}
+            wiki._write_cache(wiki._page_cache_suffix(meta), page)
+    return SimpleNamespace(
+        repo=repo,
+        manifest_path=manifest_path,
+        data=data,
+        database=database,
+        config_path=config,
+        output=root / "bundle",
+    )
+
+
+def test_okf_cli_exports_real_persisted_cache_and_agent_pointer(tmp_path, monkeypatch):
+    from codenib import cli
+
+    setup = _real_cached_wiki(tmp_path)
+    consumer = tmp_path / "consumer"
+    consumer.mkdir()
+
+    def forbidden(*_a, **_k):
+        pytest.fail("cached OKF export must remain offline")
+
+    monkeypatch.setattr(static_module, "_prebuilt_frontend", forbidden)
+    monkeypatch.setattr(AgentWiki, "_client", forbidden)
+    monkeypatch.setattr(AgentWiki, "page", forbidden)
+    before = _tree_bytes(setup.data)
+    args = cli.build_parser().parse_args(
+        [
+            "export",
+            "--format",
+            "okf",
+            "--wiki-config",
+            str(setup.config_path),
+            "--wiki-repo",
+            "demo",
+            "--output",
+            str(setup.output),
+            "--agent-dir",
+            str(consumer),
+        ]
+    )
+    assert cli._run_export(args) == 0
+    assert (setup.output / "page-overview.md").is_file()
+    assert "CodeNib Wiki" in (consumer / "AGENTS.md").read_text()
+    assert _tree_bytes(setup.data) == before
+    assert (
+        "ready" in next((setup.output / "references").glob("source-*.md")).read_text()
+    )
 
 
 def test_cached_export_rejects_active_database_without_touching_inputs(

@@ -1072,6 +1072,25 @@ def _add_grep_jev_arguments(parser: argparse.ArgumentParser) -> None:
 def _run_export(args: argparse.Namespace) -> int:
     from .web.static_export import export_cached_wiki, export_static_wiki
 
+    if args.format == "okf":
+        if not args.wiki_config or not args.wiki_repo or not args.output:
+            raise CLIError(
+                "OKF export requires --wiki-config, --wiki-repo and --output"
+            )
+        if args.frontend_dir or args.base_path != "/" or args.trial_api_base:
+            raise CLIError(
+                "OKF export does not accept frontend, base-path or browser-trial options"
+            )
+    elif args.agent_dir:
+        raise CLIError("--agent-dir requires --format okf")
+    if args.agent_dir:
+        agent_dir, output = (
+            Path(args.agent_dir).expanduser().resolve(),
+            Path(args.output).expanduser().resolve(),
+        )
+        if not agent_dir.is_dir() or agent_dir == output or output in agent_dir.parents:
+            raise CLIError("agent directory must exist outside the OKF bundle")
+
     trial_options = (
         {"trial_api_base": args.trial_api_base} if args.trial_api_base else {}
     )
@@ -1089,6 +1108,7 @@ def _run_export(args: argparse.Namespace) -> int:
                 Path(args.output),
                 frontend_dir=args.frontend_dir,
                 base_path=args.base_path,
+                export_format=args.format,
                 **trial_options,
             )
         else:
@@ -1115,10 +1135,20 @@ def _run_export(args: argparse.Namespace) -> int:
     except (OSError, RuntimeError, ValueError) as exc:
         raise CLIError(str(exc)) from exc
 
-    print(f"Static Wiki: {result.output_dir}")
+    print(f"{'OKF' if args.format == 'okf' else 'Static'} Wiki: {result.output_dir}")
     print(f"Repository:  {result.repo_id}")
     print(f"Pages:       {result.page_count}")
     print(f"Manifest:    {result.manifest_path}")
+    if args.agent_dir:
+        from .wiki.agent_pointer import write_agent_pointers
+
+        try:
+            changed = write_agent_pointers(result.output_dir, Path(args.agent_dir))
+        except (OSError, ValueError) as exc:
+            raise CLIError(
+                f"OKF bundle saved; agent pointer update failed: {exc}"
+            ) from exc
+        print(f"Agent pointers: {len(changed)} file(s) updated")
     return 0
 
 
@@ -3460,10 +3490,23 @@ def build_parser() -> argparse.ArgumentParser:
 
     export_parser = subparsers.add_parser(
         "export",
-        help="export an indexed repository Wiki for static hosting",
+        help="export a repository Wiki for static hosting or as OKF Markdown",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     export_parser.add_argument("repo", nargs="?", help="repository path; defaults to .")
+    export_parser.add_argument(
+        "--format",
+        choices=("static", "okf"),
+        default="static",
+        help="output format; okf requires precomputed cached Wiki pages",
+    )
+    export_parser.add_argument(
+        "--agent-dir",
+        help=(
+            "with --format okf, write a managed AGENTS.md pointer and update "
+            "an existing CLAUDE.md in this directory"
+        ),
+    )
     export_parser.add_argument(
         "--wiki-config",
         help="export precomputed story pages from this Wiki config without model calls",

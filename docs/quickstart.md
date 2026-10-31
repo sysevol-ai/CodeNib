@@ -162,6 +162,10 @@ codenib index /path/to/repository
 codenib export /path/to/repository --output /tmp/repository-wiki
 ```
 
+For agent-readable Markdown from an existing generated Wiki, see
+[OKF bundle export](github_pages.md#export-an-okf-bundle). This export format is
+currently available from a source checkout ahead of the next release.
+
 The export records the repository commit, source fingerprint, view
 capabilities, source-location convention, generation mode, and content hashes
 in `codenib-static.json`. It also embeds source slices used by page citations,
