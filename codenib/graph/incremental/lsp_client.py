@@ -30,6 +30,10 @@ from ...toolchains import activate_managed_toolchain, resolve_command
 
 logger = get_logger(__name__)
 
+_SHUTDOWN_GRACE_SECONDS = 10.0
+_SHUTDOWN_EXIT_SECONDS = 5.0
+_SHUTDOWN_KILL_SECONDS = 5.0
+
 
 # ---------------------------------------------------------------------------
 # Per-call profiling (env-controlled, zero overhead when off)
@@ -264,6 +268,8 @@ class LSPClient:
         # to retry (transient errors like -32801) or not (permanent errors).
         self._last_error: Optional[dict] = None
         self._typescript_navtree_supported = False
+        self._shutdown_deadline: Optional[float] = None
+        self._initialize_result_received = False
 
     # ── Lifecycle ─────────────────────────────────────────────
 
@@ -279,6 +285,8 @@ class LSPClient:
             initialize_timeout: Maximum wait for the initialize reply. A caller
                 with its own overall deadline can pass its remaining budget.
         """
+        if self.process is not None:
+            raise RuntimeError("Call shutdown() before starting another LSP server")
         logger.info(f"Starting LSP server: {' '.join(self.command)}")
         env = _lsp_process_env(self.language, self.project_root)
         if self.path_prefix:
@@ -293,12 +301,35 @@ class LSPClient:
             cwd=str(self.project_root),
             env=env,
         )
+        self._initialize_result_received = False
         self._read_buffer = b""
         self._response_buffer.clear()
         self._pending_ids.clear()
         self._active_progress.clear()
         self._last_error = None
 
+        try:
+            return self._initialize(skip_probe, initialize_timeout)
+        except BaseException as primary:
+            try:
+                self.shutdown()
+            except BaseException as cleanup:
+                # Preserve the initiating failure, except that a new interrupt
+                # retains priority. The exception/traceback keeps the only
+                # process owner reachable for an explicit cleanup retry.
+                actual = (
+                    cleanup
+                    if isinstance(primary, Exception)
+                    and not isinstance(cleanup, Exception)
+                    else primary
+                )
+                actual.lsp_cleanup_owner = self
+                if actual is cleanup:
+                    raise cleanup from primary
+                raise primary from cleanup
+            raise
+
+    def _initialize(self, skip_probe: bool, initialize_timeout: float) -> dict:
         # Build capabilities we request
         capabilities = {
             "textDocument": {
@@ -340,6 +371,9 @@ class LSPClient:
             params["initializationOptions"] = init_opts
 
         result = self._request("initialize", params, timeout=initialize_timeout)
+        if result is None:
+            raise RuntimeError("LSP initialize did not return a result")
+        self._initialize_result_received = True
         self._notify("initialized", {})
 
         commands = (
@@ -371,20 +405,50 @@ class LSPClient:
         return result or {}
 
     def shutdown(self):
-        """Gracefully shut down the LSP server."""
+        """Bound teardown while retaining ownership until exit and pipe closure.
+
+        Lifecycle calls are single-caller operations, like the transport.
+        Clearing ``self.process`` linearizes release: first observe exit with
+        bounded waits, then close its pipes. A failed cleanup retains this
+        owner and transport state for an explicit retry; start cannot replace
+        it. Teardown skips ordinary request backpressure and bounds writes as
+        well as reads, so a stopped server cannot strand the closing caller.
+        """
         if self.process is None:
             return
+        process = self.process
+        self._shutdown_deadline = time.monotonic() + _SHUTDOWN_GRACE_SECONDS
         try:
-            self._request("shutdown", None, timeout=10)
-            self._notify("exit", None)
-            self.process.wait(timeout=5)
-        except Exception:
-            if self.process:
-                self.process.kill()
-                self.process.wait()
-        finally:
+            if process.poll() is None:
+                try:
+                    # Before InitializeResult, only exit is permitted. A failed
+                    # initialize must not issue another request to that server.
+                    if self._initialize_result_received:
+                        self._request("shutdown", None, timeout=_SHUTDOWN_GRACE_SECONDS)
+                    self._notify("exit", None)
+                    process.wait(timeout=_SHUTDOWN_EXIT_SECONDS)
+                except Exception:
+                    process.kill()
+                    process.wait(timeout=_SHUTDOWN_KILL_SECONDS)
+            for name in ("stdin", "stdout", "stderr"):
+                stream = getattr(process, name, None)
+                if name == "stdin" and getattr(stream, "raw", None) is not None:
+                    # Discard any buffered write from an earlier broken pipe.
+                    # Closing a BufferedWriter first would flush it, possibly
+                    # blocking on a reader inherited by another process.
+                    stream.raw.close()
+                close = getattr(stream, "close", None)
+                if close is not None:
+                    close()
             self.process = None
+            self._initialize_result_received = False
             self._opened_files.clear()
+            self._pending_ids.clear()
+            self._response_buffer.clear()
+            self._read_buffer = b""
+            self._active_progress.clear()
+        finally:
+            self._shutdown_deadline = None
 
     def __enter__(self):
         self.start()
@@ -966,12 +1030,38 @@ class LSPClient:
         """Send a JSON-RPC message to the server."""
         content = json.dumps(message).encode("utf-8")
         header = f"Content-Length: {len(content)}\r\n\r\n".encode("utf-8")
+        if self._shutdown_deadline is not None:
+            self._send_shutdown_bytes(header + content)
+            return
         try:
             self.process.stdin.write(header + content)
             self.process.stdin.flush()
         except OSError as e:
             logger.error(f"LSP server pipe broken: {e}")
             raise
+
+    def _send_shutdown_bytes(self, data: bytes) -> None:
+        """Best-effort handshake without a blocking buffered write/flush."""
+        fd = self.process.stdin.fileno()
+        blocking = os.get_blocking(fd)
+        os.set_blocking(fd, False)
+        try:
+            remaining_data = memoryview(data)
+            while remaining_data:
+                remaining = self._shutdown_deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError("LSP shutdown write deadline exceeded")
+                if not select.select([], [fd], [], remaining)[1]:
+                    raise TimeoutError("LSP shutdown write deadline exceeded")
+                try:
+                    written = os.write(fd, remaining_data)
+                except BlockingIOError:
+                    continue
+                if written == 0:
+                    raise BrokenPipeError("LSP shutdown pipe closed")
+                remaining_data = remaining_data[written:]
+        finally:
+            os.set_blocking(fd, blocking)
 
     def _read_message(self, timeout: float = 30) -> Optional[dict]:
         """Read one JSON-RPC message from the server's stdout."""
@@ -1158,8 +1248,10 @@ class LSPClient:
         Out-of-order responses are buffered (not discarded) so that
         concurrent request patterns do not lose data.
         """
-        # Drain pending responses if we're at the limit
-        self._drain_pending()
+        # Teardown must not wait through ordinary request backpressure.
+        shutdown_deadline = self._shutdown_deadline
+        if shutdown_deadline is None:
+            self._drain_pending()
 
         msg_id = self._next_id
         self._next_id += 1
@@ -1173,7 +1265,11 @@ class LSPClient:
             }
         )
 
-        deadline = time.monotonic() + timeout
+        deadline = (
+            shutdown_deadline
+            if shutdown_deadline is not None
+            else time.monotonic() + timeout
+        )
         while time.monotonic() < deadline:
             # Check buffer first — another _request may have read our response
             if msg_id in self._response_buffer:

@@ -214,6 +214,24 @@ comparison, model question, successful confirmation or participant is added.
 Source-generation lifecycle, representative dependency/configuration closure,
 reference semantics and all complete-workflow/use gates remain open.
 
+The [shared-client generation-owner repair](codegraph_lsp_generation_owner.md)
+keeps a process reachable until bounded exit/pipe cleanup finishes and rejects
+overlapping start or readiness after a missing initialize result. All eight
+new lifecycle regressions reproduce on unchanged source; 16 related cases and
+the serial tier passes 9,025 and the corrected parallel/timeout tier 9,024,
+with both outcomes and the initial remote fixture failure retained separately.
+Both version-bound installed replays preserve
+the entire previous post-SCIP admission, including all 786,078 ordered
+occurrences, quality and receipt objects, while recording actual provider exit
+and pipe closure. The separate virtual-source alias/lifecycle controls recover
+the exposed complete-source call and verify source-generation rejection and
+cleanup. Their generated fixture remains 10/11 positives and 0/5 negatives
+included, with unresolved rebinding; its failed gate is not relaxed. No product
+live route, timing comparator, model question, successful confirmation or
+external participant is added. Merged #942 now passes main Docs and all twenty
+executed release verifiers, with five tag-only skips. Complete-workflow benefit
+and real use remain open.
+
 The [merged Python identity repair](codegraph_python_walrus.md) now admits the
 complete selected Pylint graph and exact source delivery through its actual CI
 wheel. The [prospective source-contract diagnostic](codegraph_reference_adoption_freeze_2026_10_30.json)

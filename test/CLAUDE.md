@@ -45,6 +45,12 @@ executables and SCIP/Fact/clangd Python gates through `make core-test`) — see
 
 ## Gotchas
 
+- Module-local `subprocess` test doubles must preserve the constants and
+  exceptions the exercised path reads, including `PIPE` and `TimeoutExpired`.
+  Reproduce against unchanged code before counting fixture failures as product
+  regressions.
+- Keep regression watchdogs independent of runner timeouts. Unit CI uses
+  `pytest-timeout`, so its `SIGALRM` may already be armed.
 - For a module-local no-I/O check, replace that module's `os` binding with a
   guarded proxy. Do not replace process-wide `os.open`, `os.read`, or
   `os.stat`: pytest-xdist control threads and reporting still need them, and
