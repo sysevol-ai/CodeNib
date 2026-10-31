@@ -1,0 +1,1887 @@
+{
+  "schema": "codenib.serena-alias-repl.terminal.v1",
+  "goal": "active",
+  "records": 51,
+  "record_manifest": [
+    {
+      "path": "capture_project_state.py",
+      "bytes": 3688,
+      "sha256": "581fceab25a9bed041468dc278206f849ba494dd90e60e6ee707575f4ad7bc7b"
+    },
+    {
+      "path": "freeze-controller-failure-2.json",
+      "bytes": 549,
+      "sha256": "05a7d58bb6b76ed6cc6b9ab5471b5246fbb9a3878e85fd63fc88539717819c68"
+    },
+    {
+      "path": "freeze-controller-failure.json",
+      "bytes": 651,
+      "sha256": "6ef8d16b8e1c83d9ff0d58d4ea2e35941df3e5c31d190489329131a81f934729"
+    },
+    {
+      "path": "freeze_repl_evidence.before-metadata-capture.py",
+      "bytes": 10286,
+      "sha256": "6c82743affffd0a887afd3c5f803b74450fd9d6e84791f928fbf327f29b824ac"
+    },
+    {
+      "path": "freeze_repl_evidence.initial.py",
+      "bytes": 10139,
+      "sha256": "8cac27bbf4243b69f142ee66a8b8f1e6e1da4bf01cf136952f41c51b69abdc87"
+    },
+    {
+      "path": "freeze_repl_evidence.py",
+      "bytes": 11437,
+      "sha256": "3e5e4b5abb94f1ea03d4e6590d66d1d11550516f4382193b53c86c289c3d9d0f"
+    },
+    {
+      "path": "inspect_installed.py",
+      "bytes": 3155,
+      "sha256": "49c785705be05b8215c4f29777a578f2f8f52292914f172f27683e27e2ae6ec9"
+    },
+    {
+      "path": "inspection-failure-audit.json",
+      "bytes": 28442,
+      "sha256": "63cbbf95957ef9848e78857a3b430fd704ba4080f9c8dac0df4298a244a32b2e"
+    },
+    {
+      "path": "inspection-state.json",
+      "bytes": 363,
+      "sha256": "ea87d10ea2b549efa7fbc0f9d52aade3c65fc0d1c057d389f42456e271024a4b"
+    },
+    {
+      "path": "inspection.stdout",
+      "bytes": 267,
+      "sha256": "236d7d43097135e02c5d262366c5cea1084830d46ee0a552ec421601452cc35a"
+    },
+    {
+      "path": "installed-record-audit.json",
+      "bytes": 30788,
+      "sha256": "c7e71669f3aaf0c2a8c768eac6e6f56128cc378dd248f99a72859ec52ae8e387"
+    },
+    {
+      "path": "project-state-capture/.gitignore",
+      "bytes": 26,
+      "sha256": "21d5dcb497df8b257d94919bdadcfe75b75d085d0f7b77ac2d8a813a9ca6e758"
+    },
+    {
+      "path": "project-state-capture/cache/python/document_symbols.pkl",
+      "bytes": 10725,
+      "sha256": "d0409c2bdea0e5710d22fe0a18d9c73b21fd63581622e5bdc474e68307e5ab39"
+    },
+    {
+      "path": "project-state-capture/cache/python/raw_document_symbols.pkl",
+      "bytes": 5353,
+      "sha256": "6c668d7447d0635d3e1bbb90e2fee713a368da77c6c2efd720b781509b467f5f"
+    },
+    {
+      "path": "project-state-capture/project.local.yml",
+      "bytes": 402,
+      "sha256": "7b5753e9fcf8348db026f8d23ff601b1cf90d9543532fe979f31650e27b15d2b"
+    },
+    {
+      "path": "project-state-capture/project.yml",
+      "bytes": 11020,
+      "sha256": "eb0f264a45200f47b71bd2813872665c3339b083d51bfcde64ea9da806fb0c13"
+    },
+    {
+      "path": "project-state-capture-receipt.json",
+      "bytes": 1716,
+      "sha256": "6d1043723660501263265fb875dea2fc850160b791c530b5059716c38ec35e14"
+    },
+    {
+      "path": "project-state-capture.stdout",
+      "bytes": 156,
+      "sha256": "e8d2009e8423a0d45fa869823086a533e2e3e9600f6bb25a68c42f9dc0fd7d3f"
+    },
+    {
+      "path": "project-state.tar",
+      "bytes": 40960,
+      "sha256": "299ef1c38cdd30d2021df49c457bb461d0592453ce82249c061725c7fdefd7f8"
+    },
+    {
+      "path": "repl-1/mcp.stderr",
+      "bytes": 53994,
+      "sha256": "84b7bdbbee0c0219af815d590742195765881d24f4fbb272738972b69a708e2f"
+    },
+    {
+      "path": "repl-1/project-create.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "repl-1/project-create.stdout",
+      "bytes": 84,
+      "sha256": "263dd1774b09e614cc8f6827cf65b662f7d2a2f87b24c14cb41b170822972266"
+    },
+    {
+      "path": "repl-1/protocol.json",
+      "bytes": 7368,
+      "sha256": "7ed1227a5dd6f4eb93f338446f032dfc1fd6a4f324cfc03b52dc24280118ffb4"
+    },
+    {
+      "path": "repl-1/run-state.json",
+      "bytes": 40818,
+      "sha256": "32656260b81141313f6ff380b07f37242dc7e5d31b8401061adb513a2142e8dc"
+    },
+    {
+      "path": "repl-1/source/asset.bin",
+      "bytes": 5,
+      "sha256": "15eb60527ec991296a84c414b57cc5b19c6e66579a01486c8f4057f495d0b08e"
+    },
+    {
+      "path": "repl-1/source/extra_consumer.py",
+      "bytes": 65,
+      "sha256": "2de7c0efa840a30d93f126d8e6026bc37d897265ddaaf4699c136feca310f84c"
+    },
+    {
+      "path": "repl-1/source/local.py",
+      "bytes": 77,
+      "sha256": "54015f1a55e32d4acccb0b697cf64e219319378b085c27000b2a1990c67db15c"
+    },
+    {
+      "path": "repl-1/source/localdeps/libdefs.py",
+      "bytes": 40,
+      "sha256": "25360649551526fab085e09c301fd2e868f730d62e0aeaf4df3840ab009ab53e"
+    },
+    {
+      "path": "repl-1/source/missing_consumer.py",
+      "bytes": 76,
+      "sha256": "94843ef0a53bf424c9c988c87566b9ab5972be039f66d9dbe89b57b6909800c0"
+    },
+    {
+      "path": "repl-1/source/multiline.py",
+      "bytes": 73,
+      "sha256": "567c46c4239b160d0c037583e2722fcfde887a81c796a01d1694cc46835d1890"
+    },
+    {
+      "path": "repl-1/source/negative.py",
+      "bytes": 61,
+      "sha256": "66e7d14c4d0f0043a247c8780daeac4d1e87a28e2a5bde91c2b16f2ac859b0a4"
+    },
+    {
+      "path": "repl-1/source/note.txt",
+      "bytes": 8,
+      "sha256": "da68f54607d5f5644954096ce1597c006c5bb9f2497e07441bf064b81003ef8a"
+    },
+    {
+      "path": "repl-1/source/other.py",
+      "bytes": 40,
+      "sha256": "59a762ea21440f692a403c96223a32c9e95d7801cc924e536eada75dbb1fc560"
+    },
+    {
+      "path": "repl-1/source/pkg/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "repl-1/source/pkg/bridge.py",
+      "bytes": 62,
+      "sha256": "221fbda81a5904fd8b67ab9b3c96697f382e772d456a18c0d60012bd0dd5fb08"
+    },
+    {
+      "path": "repl-1/source/pkg/cycle_a.py",
+      "bytes": 106,
+      "sha256": "062386d1d94dca5a6ea8ec3fcb38c004766fdbc4ea43f2029194c0f20b36bfb2"
+    },
+    {
+      "path": "repl-1/source/pkg/cycle_b.py",
+      "bytes": 61,
+      "sha256": "584e6430184baac0947f07c7f0472326b2908f167bf3cc10644743a58318052c"
+    },
+    {
+      "path": "repl-1/source/pkg/origin.py",
+      "bytes": 40,
+      "sha256": "29b58585cf8e396a119bb7aa8042d6c9dd0d67c8df09a05f6f6fef041c56585e"
+    },
+    {
+      "path": "repl-1/source/pkg/tail.py",
+      "bytes": 58,
+      "sha256": "9ad8bd4db8ef2f20fce7e717949bbe9ca6886917d1947f34fdc85680b136b90f"
+    },
+    {
+      "path": "repl-1/source/pyrightconfig.json",
+      "bytes": 127,
+      "sha256": "01557ce3b97cfc7ee61dd00fd2fb7d2d1b5a776f16ec515c28abaca4958c5dd5"
+    },
+    {
+      "path": "repl-1/source/rebound.py",
+      "bytes": 142,
+      "sha256": "244d105637630a167940b1624f856f44c39e045d34d69fea55e110811cb672f3"
+    },
+    {
+      "path": "repl-1/source/shadow.py",
+      "bytes": 103,
+      "sha256": "14d614b10be0235317b15df0f952ede8d019d06074c4a7910b82fa86731a38e6"
+    },
+    {
+      "path": "repl-1/source/single.py",
+      "bytes": 64,
+      "sha256": "2abd149c1336851061234c8926a13bd6740851262780936ad796375b59939cee"
+    },
+    {
+      "path": "repl-1/source/stub_consumer.py",
+      "bytes": 67,
+      "sha256": "3e8d3f013858597fba0d9243f240e59b17fd5756c8143bf43326d4afba79eaee"
+    },
+    {
+      "path": "repl-1/source/unicode.py",
+      "bytes": 75,
+      "sha256": "b8cd3c33cf6e6c4d98aa4c11e1bd4a4dca702cbe694c8fd8a701296e4f98dc2a"
+    },
+    {
+      "path": "repl-1/source/unrelated.py",
+      "bytes": 42,
+      "sha256": "49b7fb935b7a5e308a0e35030e8b77e2344ceef8dae4c745692e094e589c8b3a"
+    },
+    {
+      "path": "repl-1/source/vendor_stubs/vendorpkg/__init__.pyi",
+      "bytes": 37,
+      "sha256": "a196736aa2642f325455d76c06ebffb5f70713be9506d9cc0059137aca01df8a"
+    },
+    {
+      "path": "repl-1/source/wildcard.py",
+      "bytes": 46,
+      "sha256": "7d6d4ad3301b2d9f4f91017947e1a9f0fbf4085b65b919b67d98c7e9fe5e9021"
+    },
+    {
+      "path": "repl-1.stdout",
+      "bytes": 259,
+      "sha256": "5fe044dd938bfe253dcc1f142634ff4d50291514c2931513e2622054e6647814"
+    },
+    {
+      "path": "run_repl.py",
+      "bytes": 11365,
+      "sha256": "8b6647eecfd4196d8f44ed8c2cd2e1995441eabd2cff58b7490826207cfa7d99"
+    },
+    {
+      "path": "verification.json",
+      "bytes": 13918,
+      "sha256": "83e28c3cf7628368b09b290171fe34769f42f31d5fa3399f915165fd69374bda"
+    }
+  ],
+  "local_only_manifest": [
+    {
+      "path": "serena/__init__.py",
+      "bytes": 811,
+      "sha256": "3764b499f1a3eb44d203d99804ae4ff03dfbfa5597be86ffbcd273977cd138da"
+    },
+    {
+      "path": "serena/agent.py",
+      "bytes": 83129,
+      "sha256": "4da952ba24a1ef240b20ae6af196467943dcc1ed9aab1979e2eccde64678f8a7"
+    },
+    {
+      "path": "serena/agno.py",
+      "bytes": 5976,
+      "sha256": "79202b241a0774aa1b66373080a02bfbd1c81fc49bd5713b76d8c0f65a1e8435"
+    },
+    {
+      "path": "serena/analytics.py",
+      "bytes": 6516,
+      "sha256": "542d05e0fb5855a65f5acf0ddfb43529eada5bd4732059b7be5ec1673c05c05e"
+    },
+    {
+      "path": "serena/cli.py",
+      "bytes": 75428,
+      "sha256": "fef91a35fdc62395d2f1b0c80ccb7f8e7b8ab1d7778a00c459b09e22e2c4db1e"
+    },
+    {
+      "path": "serena/code_editor.py",
+      "bytes": 25674,
+      "sha256": "234e6d8e578dc068c11f6ee890d018e9f962b695f2bbf38dc5c540c44c17281c"
+    },
+    {
+      "path": "serena/config/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "serena/config/client_setup.py",
+      "bytes": 5282,
+      "sha256": "55098f819f805633ca6f554dd8c5f927274fb479be45786b7479c226088925d5"
+    },
+    {
+      "path": "serena/config/context_mode.py",
+      "bytes": 11418,
+      "sha256": "a71dc70248997e8c5eb8a732b35135405f3b410a9c5199e85f83cb0304a61047"
+    },
+    {
+      "path": "serena/config/serena_config.py",
+      "bytes": 74953,
+      "sha256": "d861c6c735576ad7dc9bf94152df9656a25d417ef99487976c937a670b0b9096"
+    },
+    {
+      "path": "serena/constants.py",
+      "bytes": 1975,
+      "sha256": "7703157347acbff5df0f7f3b9227748b5e1e8bd493c3c2ffc2c513b25410c27f"
+    },
+    {
+      "path": "serena/dashboard.py",
+      "bytes": 57772,
+      "sha256": "b2948befc9e0a4ee581a4a6bada435fc3212364cd9a4ba1322953bf28db84ffb"
+    },
+    {
+      "path": "serena/generated/generated_prompt_factory.py",
+      "bytes": 1954,
+      "sha256": "7c35d7e9faa796248c92aa669988dd42b3c5f95e23f13d5b04083b42bc6c286b"
+    },
+    {
+      "path": "serena/generated/tool_capabilities.py",
+      "bytes": 740,
+      "sha256": "e24f3b65bb825df595708915800c2fff7f675d6ef05e7defd40ee445268d51c4"
+    },
+    {
+      "path": "serena/gui_log_viewer.py",
+      "bytes": 15723,
+      "sha256": "859ceb0ed49af42977da2437e7db0f25d97745dbbe53ef98bef69c38c0930a8d"
+    },
+    {
+      "path": "serena/hooks.py",
+      "bytes": 39130,
+      "sha256": "5c3c19e075a5d26a98a03998474de25837a30274f0112b6a939c033583b0e88c"
+    },
+    {
+      "path": "serena/jetbrains/jetbrains_backend.py",
+      "bytes": 4398,
+      "sha256": "1c12dc9a045419cb7ed0c393b1c0a42b7ce268da5b9b133fec93b4575c141238"
+    },
+    {
+      "path": "serena/jetbrains/jetbrains_plugin_client.py",
+      "bytes": 32075,
+      "sha256": "1447ebf6805507cde826659368455dc771f11085f6473cf9f7cafdd8062ccbcf"
+    },
+    {
+      "path": "serena/jetbrains/jetbrains_types.py",
+      "bytes": 2794,
+      "sha256": "c05e4359b9160612d2b6c0750fd62fdeb4049fb3d59f03582995a4b53a62c4eb"
+    },
+    {
+      "path": "serena/jetbrains/launch_coordinator.py",
+      "bytes": 5752,
+      "sha256": "fd582ba8a2e2fef39b9a4accd3b7a35578b105724b90d663b64c773071f34546"
+    },
+    {
+      "path": "serena/language_backend.py",
+      "bytes": 9936,
+      "sha256": "04ffa6ad53a2c091453fc1b28561b78eaf43168fb655220c1ca36c7fbb9dfadd"
+    },
+    {
+      "path": "serena/ls_manager.py",
+      "bytes": 18184,
+      "sha256": "9162567a4a30ad23990d1951340472727bb455a36b0332f81e70003dbf1e7b7e"
+    },
+    {
+      "path": "serena/lsp/lsp_backend.py",
+      "bytes": 3053,
+      "sha256": "c0b2658228c98a4778f0efd1ce9712cca46edb705dc81736f223b24077908e86"
+    },
+    {
+      "path": "serena/lsp/lsp_diagnostics.py",
+      "bytes": 10415,
+      "sha256": "e543c8763a4a356294ceb550852ba51341e1403f002e6e44b13044cf76a6151a"
+    },
+    {
+      "path": "serena/mcp.py",
+      "bytes": 20731,
+      "sha256": "e320ae4f98e580bf3de841418874b834f09c24f205d7e3ff6e82cb996d762e8d"
+    },
+    {
+      "path": "serena/memories/memory_manager.py",
+      "bytes": 21434,
+      "sha256": "3e15e5c4b87ff23ddb4388b6d919fb46313cf0c94a740d57f25c3fccbe53ce1c"
+    },
+    {
+      "path": "serena/memories/memory_reference_analysis.py",
+      "bytes": 38862,
+      "sha256": "629331e39f72ebfdc53d7ea3e3d3272285d11b2402f68bba9baef55431324d46"
+    },
+    {
+      "path": "serena/olb/olb_jvm_backend.py",
+      "bytes": 2963,
+      "sha256": "31811c2df584ed540942a82778b2e10ba9a5e692df0b13bd7209bd43edff012e"
+    },
+    {
+      "path": "serena/project.py",
+      "bytes": 38767,
+      "sha256": "f2c32af78d84e4e092ca5e865a54601800726616abe9c13928def0c4012b3633"
+    },
+    {
+      "path": "serena/project_server.py",
+      "bytes": 12365,
+      "sha256": "a304ad3f87ee43f51a867da991dfbc5fb7c40f50218f9ae4ac80cbcd2417e632"
+    },
+    {
+      "path": "serena/prompt_factory.py",
+      "bytes": 618,
+      "sha256": "39d13a3625bc1fca0ad49bdf7d16b62e764fb1adf266ec5b2c154ca7024db66c"
+    },
+    {
+      "path": "serena/repl/api/cfg_api.py",
+      "bytes": 1581,
+      "sha256": "40ba70a3c9c792fedc5737765a32ba579bfcb2c0a069f16e233abb6b1cb28a0a"
+    },
+    {
+      "path": "serena/repl/api/edit_api.py",
+      "bytes": 15595,
+      "sha256": "1765f334725dc6e13d5c902d7c2bb3deadb275f422766954a47a3e2432d5b8ba"
+    },
+    {
+      "path": "serena/repl/api/ext_api.py",
+      "bytes": 5474,
+      "sha256": "412fd82467f85282efe4de3301ad221c828f927715e2f5f5a92beb2358d54180"
+    },
+    {
+      "path": "serena/repl/api/fs_api.py",
+      "bytes": 13689,
+      "sha256": "ee5c96397b692400a167a087bca5ef13515b23bafe903004654aedc495f69008"
+    },
+    {
+      "path": "serena/repl/api/jb_api.py",
+      "bytes": 32862,
+      "sha256": "05900b4ad47ec5a2836b410055d8af41f425f3f3ac69d76811042080b90e0198"
+    },
+    {
+      "path": "serena/repl/api/lsp_api.py",
+      "bytes": 38601,
+      "sha256": "c95adadaf1e55a5b310a2fb43330143d53da9c62cef704ce5b342d126ee14cef"
+    },
+    {
+      "path": "serena/repl/api/mem_api.py",
+      "bytes": 7654,
+      "sha256": "a17cd830fd4f594922d78a7669efa9b3140e85186547d5a2607535d503a72f93"
+    },
+    {
+      "path": "serena/repl/api/shell_api.py",
+      "bytes": 3267,
+      "sha256": "af5f970ff48fa8394342df4db99cb7109d49837fbc14f3485291dfd114ce14f5"
+    },
+    {
+      "path": "serena/repl/external_project.py",
+      "bytes": 3133,
+      "sha256": "77124dab317d05d60434ee525ddec35baae3adcbaac784cc9152b26fd5e68901"
+    },
+    {
+      "path": "serena/repl/facade.py",
+      "bytes": 33592,
+      "sha256": "67a2ca8c98af4ada2a6d36159fe9ee24e6ebd38bc3e56803b4e2e04cde3402e9"
+    },
+    {
+      "path": "serena/repl/repl.py",
+      "bytes": 17265,
+      "sha256": "5fa7ca5c2efd80026589ccbc651eea0f9da91c35283716f7d4c7948acb5d2ab3"
+    },
+    {
+      "path": "serena/repl/representable.py",
+      "bytes": 3581,
+      "sha256": "07c02b7468744afcc32ff22ac8d1eace79d24d90eb994dfabbb8a025a061983f"
+    },
+    {
+      "path": "serena/resources/config/contexts/agent.yml",
+      "bytes": 219,
+      "sha256": "b3cec20f21ef0bd14121260d8d87e0af56ffc9ff76607cca7cec569efd331d1b"
+    },
+    {
+      "path": "serena/resources/config/contexts/antigravity.yml",
+      "bytes": 1453,
+      "sha256": "e7909900b8c229cdb8647e25b109d437957adae26331cf4bfe2011b284d2dbb8"
+    },
+    {
+      "path": "serena/resources/config/contexts/chatgpt.yml",
+      "bytes": 2068,
+      "sha256": "e2f74828240da78679d3d09efe6b939fae37270677d2172429e06257df72f401"
+    },
+    {
+      "path": "serena/resources/config/contexts/claude-code.yml",
+      "bytes": 3498,
+      "sha256": "78403573e7c71fe70b82253cb12a19b99b5c48f9702ea671f64257ad0e59c492"
+    },
+    {
+      "path": "serena/resources/config/contexts/codebuddy.yml",
+      "bytes": 3301,
+      "sha256": "fac12723348ce7514015a45450154a7f96ec37327a453452574cdfc0d72e084e"
+    },
+    {
+      "path": "serena/resources/config/contexts/codex.yml",
+      "bytes": 988,
+      "sha256": "cfe3c9221915f0c2a874404b866211402110c216bcea534a29ff73d008afc03e"
+    },
+    {
+      "path": "serena/resources/config/contexts/context.template.yml",
+      "bytes": 2522,
+      "sha256": "93be54d72ae91034d3a6cc265ae4a74ce696a1f9fb5bd1c8287cf44ba935fd91"
+    },
+    {
+      "path": "serena/resources/config/contexts/copilot-cli.yml",
+      "bytes": 1439,
+      "sha256": "3e70f06c0edc075b9c251e9656141e28f8a0fac47d84d5ef388983c0de930d6b"
+    },
+    {
+      "path": "serena/resources/config/contexts/desktop-app.yml",
+      "bytes": 982,
+      "sha256": "3ddd8d538e690559dff55c958b7608cdf042682eb927ebcac147da899054a58c"
+    },
+    {
+      "path": "serena/resources/config/contexts/grok.yml",
+      "bytes": 3303,
+      "sha256": "bc3bc89c479633ba3d5ca3024f55f7df9b8296eb203f5bde18b639f329621e66"
+    },
+    {
+      "path": "serena/resources/config/contexts/ide.yml",
+      "bytes": 1453,
+      "sha256": "e7909900b8c229cdb8647e25b109d437957adae26331cf4bfe2011b284d2dbb8"
+    },
+    {
+      "path": "serena/resources/config/contexts/jb-ai-assistant.yml",
+      "bytes": 1453,
+      "sha256": "e7909900b8c229cdb8647e25b109d437957adae26331cf4bfe2011b284d2dbb8"
+    },
+    {
+      "path": "serena/resources/config/contexts/jb-copilot-plugin.yml",
+      "bytes": 1595,
+      "sha256": "82ecad7bca3bacd8a45d3a4e64e241f942940ec1637ec3c51888c95525a04011"
+    },
+    {
+      "path": "serena/resources/config/contexts/junie.yml",
+      "bytes": 1496,
+      "sha256": "48f7e88b3059df513419a8142f73fdbd012ad6cf90e104c5fbcb8aa414605640"
+    },
+    {
+      "path": "serena/resources/config/contexts/oaicompat-agent.yml",
+      "bytes": 365,
+      "sha256": "9b09d9148249ec973d9129a1aee9c576b99d24d3dfbf1bfd8d3d2828899d072d"
+    },
+    {
+      "path": "serena/resources/config/contexts/vscode.yml",
+      "bytes": 1622,
+      "sha256": "6246d5af4e4250fd9a755c57a2f049dc8b3b7f555e52ba6a2a6eae6cb40c41c0"
+    },
+    {
+      "path": "serena/resources/config/contexts/zcode.yml",
+      "bytes": 3314,
+      "sha256": "ec7eebdb6e5145ff14ba89ab8a2c9538aeb25baeb32509ee261c34f84f90f0a8"
+    },
+    {
+      "path": "serena/resources/config/internal_modes/jetbrains.yml",
+      "bytes": 758,
+      "sha256": "0af8fba4e7176eb0d2e99a5f3a083757f5e22c98a4d7fa922423be51634a154f"
+    },
+    {
+      "path": "serena/resources/config/modes/benchmark.yml",
+      "bytes": 978,
+      "sha256": "7071eaf3e703713faca3e6193e67c672d9dcf5e3666b9473330bf0602ae51302"
+    },
+    {
+      "path": "serena/resources/config/modes/editing.yml",
+      "bytes": 3699,
+      "sha256": "5e9cb2b1ec6dd02ad58f647f12c023828b5312bfd334db13c893f048e5504d37"
+    },
+    {
+      "path": "serena/resources/config/modes/interactive.yml",
+      "bytes": 656,
+      "sha256": "556346c2d3718d54de8e0eda5a9d230d46308eaecf247b085f97a62fd4c222bc"
+    },
+    {
+      "path": "serena/resources/config/modes/mode.template.yml",
+      "bytes": 1671,
+      "sha256": "7ae05c7ec650a1ed03a195774fbe70478e050e8e489a46c58f5cab906b2d8919"
+    },
+    {
+      "path": "serena/resources/config/modes/no-memories.yml",
+      "bytes": 348,
+      "sha256": "86c398f98ce6c794621d3b556cf7b75b90eabda2e470ae30491e16f7fca6e926"
+    },
+    {
+      "path": "serena/resources/config/modes/no-onboarding.yml",
+      "bytes": 208,
+      "sha256": "5f02397f21071db679d68f5014c295b6a6750485913683126180a528deed441f"
+    },
+    {
+      "path": "serena/resources/config/modes/onboarding.yml",
+      "bytes": 714,
+      "sha256": "3ed47df92f47692a44db8c8fda1ec0eb00fcd23ca476183a131b937ed0e61834"
+    },
+    {
+      "path": "serena/resources/config/modes/one-shot.yml",
+      "bytes": 907,
+      "sha256": "88bed4fe08c73fe8908268667dac1ac0e55fafad3f0184d3219a43ee927f4b98"
+    },
+    {
+      "path": "serena/resources/config/modes/planning.yml",
+      "bytes": 488,
+      "sha256": "cd775c131bf63f42baa656615c6dbb5785d01198d5c4efc3e0cdb300d1208e77"
+    },
+    {
+      "path": "serena/resources/config/modes/query-projects.yml",
+      "bytes": 383,
+      "sha256": "e17e9f3fd2a65ba3cc9ba0e3ae3f4938b41400523891df79f7e202178a284caa"
+    },
+    {
+      "path": "serena/resources/config/prompt_templates/info_prompts.yml",
+      "bytes": 2851,
+      "sha256": "6d8ae2a0f68778748a8e81d4788dc7f5b3a447778ad0ba1b0e8cb5c70cfdae23"
+    },
+    {
+      "path": "serena/resources/config/prompt_templates/simple_tool_outputs.yml",
+      "bytes": 2470,
+      "sha256": "1198711f2c4d5ea0777e13be671528bec5b02f282c60ef1f51d7750e16f559e1"
+    },
+    {
+      "path": "serena/resources/config/prompt_templates/system_prompt.yml",
+      "bytes": 12388,
+      "sha256": "3c14199e3e2bda83ba067f9f72e823be0aa629da9ca52f32804cf5c44becf28a"
+    },
+    {
+      "path": "serena/resources/dashboard/dashboard.css",
+      "bytes": 36173,
+      "sha256": "8603bcbf791d2136c5e31293d12fab6b34fca7e815ca285563fc342347bee769"
+    },
+    {
+      "path": "serena/resources/dashboard/dashboard.js",
+      "bytes": 103332,
+      "sha256": "9c2714849b2c2291bee82297743395ab2af5b1935334c246c9f8355a9f8b2e27"
+    },
+    {
+      "path": "serena/resources/dashboard/index.html",
+      "bytes": 19585,
+      "sha256": "f64ec06a83043b4052d75b7638ffaf52f4ddd752d4e93224d2304b272fc73d4b"
+    },
+    {
+      "path": "serena/resources/dashboard/jquery.min.js",
+      "bytes": 87533,
+      "sha256": "fc9a93dd241f6b045cbff0481cf4e1901becd0e12fb45166a8f17f95823f0b1a"
+    },
+    {
+      "path": "serena/resources/dashboard/serena-icon-1024-mac.png",
+      "bytes": 38227,
+      "sha256": "ee62e92debbc29575c90361e118db2c1355e81257d5a0c41fea0996adfcb6289"
+    },
+    {
+      "path": "serena/resources/dashboard/serena-icon-16.png",
+      "bytes": 3208,
+      "sha256": "c8ec0f4ec64a18bbf8377d6c1182455484bb6cc5468cf781799a64942e68262c"
+    },
+    {
+      "path": "serena/resources/dashboard/serena-icon-32.png",
+      "bytes": 3788,
+      "sha256": "59b39f9f93449ede5e3ec36a7f8153b955e5a794e3aae670dc850b169a0c47cb"
+    },
+    {
+      "path": "serena/resources/dashboard/serena-icon-48.png",
+      "bytes": 5203,
+      "sha256": "f88791ad047f0f3a79a0f1a2b6c255426a3682f3f06e7f84e8199662cb4873f3"
+    },
+    {
+      "path": "serena/resources/dashboard/serena-icon-64.png",
+      "bytes": 5286,
+      "sha256": "5cb731eedf8e69a0d799f487a94df8da5fdaaa8596801b1154fcd22ae6fbd9b3"
+    },
+    {
+      "path": "serena/resources/dashboard/serena-icon-tray-mac.png",
+      "bytes": 2429,
+      "sha256": "72f28e75e9cf3f944967c1f5c358b0c50555a08bb9c3a44836799d10ae2cac31"
+    },
+    {
+      "path": "serena/resources/dashboard/serena-logo-dark-mode.svg",
+      "bytes": 217940,
+      "sha256": "47845f69886ae07ee74b9ab534a2b8a9149ac152a9fa67322d05a7883c946ad0"
+    },
+    {
+      "path": "serena/resources/dashboard/serena-logo.svg",
+      "bytes": 217846,
+      "sha256": "140e60def79d34d00f36dcc0abe42a250e8c37ef260ce2dc49420d4021823790"
+    },
+    {
+      "path": "serena/resources/dashboard/serena-logs-dark-mode.png",
+      "bytes": 12994,
+      "sha256": "46f65eae5eb25272142d960fb551b2f239a9a9376d791a9f79720fc248e7742b"
+    },
+    {
+      "path": "serena/resources/dashboard/serena-logs.png",
+      "bytes": 13719,
+      "sha256": "ce8494aa83c6272749f2a03f0d593e9a0e6ad3d9cb5a9f7a4ae237de49badb6a"
+    },
+    {
+      "path": "serena/resources/dashboard/serena.ico",
+      "bytes": 6102,
+      "sha256": "da49903125ab3b6801293cbea293ad75accf34e646aa679ce2106175f6f22327"
+    },
+    {
+      "path": "serena/resources/memory_maintenance.md",
+      "bytes": 2043,
+      "sha256": "09d514088a02af6dd4487f6538011e398601f5397a8e68b901c0d7cf29a30177"
+    },
+    {
+      "path": "serena/resources/project.local.template.yml",
+      "bytes": 402,
+      "sha256": "7b5753e9fcf8348db026f8d23ff601b1cf90d9543532fe979f31650e27b15d2b"
+    },
+    {
+      "path": "serena/resources/project.template.yml",
+      "bytes": 11021,
+      "sha256": "1220d99a772a6d906260e1da46b7ceb7e0760694f1c30129f326cabcd9bd7096"
+    },
+    {
+      "path": "serena/resources/serena_config.template.yml",
+      "bytes": 15018,
+      "sha256": "2776ba66cba6b6a58fd5bd25462d83282febdbdfe4d00d902da656122101f183"
+    },
+    {
+      "path": "serena/session.py",
+      "bytes": 3581,
+      "sha256": "ebe9b8d42107f8cbe6d4ce50e6b6fdb61f284f115491bb21a872a47910c77a42"
+    },
+    {
+      "path": "serena/symbol.py",
+      "bytes": 60584,
+      "sha256": "f4c62fe03bf3778a7200cc72938c410c08d2736d25789a279f49c660b30792ca"
+    },
+    {
+      "path": "serena/task_executor.py",
+      "bytes": 11080,
+      "sha256": "6348556f57220ad16dd23ecf8dee658df187a664bdc8481ef2c6e0769b0825d8"
+    },
+    {
+      "path": "serena/tools/__init__.py",
+      "bytes": 341,
+      "sha256": "aa0d0120a8c3950dd98cd5c6b2ca09c13b0f66bd0ed8bbb019d613b929709a4d"
+    },
+    {
+      "path": "serena/tools/cmd_tools.py",
+      "bytes": 2004,
+      "sha256": "f8990291159460741b9806e9ca3d3cba641907014ae56dd378a873d446d061e9"
+    },
+    {
+      "path": "serena/tools/config_tools.py",
+      "bytes": 2861,
+      "sha256": "06ad1cf762652b885baa94dad231ddd03644015e93085b31f2157d682b1cb065"
+    },
+    {
+      "path": "serena/tools/file_tools.py",
+      "bytes": 16984,
+      "sha256": "abb253388cf430749dc23bb116a25e31c56681f39c3985a07d869bb8cfbb4903"
+    },
+    {
+      "path": "serena/tools/jetbrains_tools.py",
+      "bytes": 23055,
+      "sha256": "3779b794dfe868011399df787d1e7d75fdf03af72b265eb979f1ad53e1c3fec2"
+    },
+    {
+      "path": "serena/tools/memory_tools.py",
+      "bytes": 4460,
+      "sha256": "6b8b4fd5ac66e66ff89f17b238857c201527e6dd6f1ee0c8a0e89cd820d8869b"
+    },
+    {
+      "path": "serena/tools/query_project_tools.py",
+      "bytes": 4045,
+      "sha256": "6588904a2224947c5d3cbc4458beefa78e3563093f9936b7d3d415debf0ee437"
+    },
+    {
+      "path": "serena/tools/repl_tools.py",
+      "bytes": 3823,
+      "sha256": "5042b1a0a85255c335c66d7185c32aceaf292f3c1650648a297aebf950a61534"
+    },
+    {
+      "path": "serena/tools/symbol_tools.py",
+      "bytes": 20096,
+      "sha256": "7aeb397ee5107a71944e29c39b8f04d586b82a8d84640d260f75817273ae0e0e"
+    },
+    {
+      "path": "serena/tools/tools_base.py",
+      "bytes": 24183,
+      "sha256": "0511bc4043e48d6b295b35cd113721721a1126a0ada5fd2b82c0b6455bd2dada"
+    },
+    {
+      "path": "serena/tools/workflow_tools.py",
+      "bytes": 2118,
+      "sha256": "12d319b5aa8ce46f72001437a7aca765ed12e1b3c12c57a877157f6da4314ee0"
+    },
+    {
+      "path": "serena/util/class_decorators.py",
+      "bytes": 479,
+      "sha256": "7eb75e8aa1de3f09c4fa4dfbb677c78950c55e3da17f36835326d49abcfc68b7"
+    },
+    {
+      "path": "serena/util/cli_util.py",
+      "bytes": 1368,
+      "sha256": "6d633f06eeb0b50e70cd0ef6b106e773edaa0ec6aba1efcacf3c05991f07c0a0"
+    },
+    {
+      "path": "serena/util/dataclass.py",
+      "bytes": 746,
+      "sha256": "b50fc299c9f32497171e6c5e5a07b028fb60a270e734ff23c4d018ac8154e2f6"
+    },
+    {
+      "path": "serena/util/dotnet.py",
+      "bytes": 7210,
+      "sha256": "a336f406bbe1a51e62992e6fc6cb3c7aea7baab9cc8ee89e2e59ec66de060043"
+    },
+    {
+      "path": "serena/util/exception.py",
+      "bytes": 2268,
+      "sha256": "815f7a7ec2582b4515473756d7e5b06d2f9e70d430ab1d99ae38a01f37c83ddf"
+    },
+    {
+      "path": "serena/util/file_proxy.py",
+      "bytes": 3826,
+      "sha256": "4d0c44ebeed59b854ec491820b5fc529019ddbc0f31c7a96b719adba4411b657"
+    },
+    {
+      "path": "serena/util/file_system.py",
+      "bytes": 25449,
+      "sha256": "ee98596b58394147069f05ca2bf364f711b2d9ae1b60be69d988d685a04ba7d3"
+    },
+    {
+      "path": "serena/util/git.py",
+      "bytes": 878,
+      "sha256": "954709876ed3909a51d26871d4cd8e31e5c27baeec541a94e61d76e9e0d7c4f8"
+    },
+    {
+      "path": "serena/util/gui.py",
+      "bytes": 771,
+      "sha256": "a5712eb7321d4f07eb063111fdf0d629d40708c04c7b6d1b2885d6610c707e5f"
+    },
+    {
+      "path": "serena/util/inspection.py",
+      "bytes": 3692,
+      "sha256": "d6bf24cb28300cda54558326fdccc56555a64396e56dd4c0d64c1369bf7beabc"
+    },
+    {
+      "path": "serena/util/logging.py",
+      "bytes": 5988,
+      "sha256": "49f5e5073c8b07de322c75d7a94fa9e273a8e81660fc1c653264da5ce73820c2"
+    },
+    {
+      "path": "serena/util/pypi.py",
+      "bytes": 1224,
+      "sha256": "31d19fdf0adb7d7efb8592bac3f500adf6af7165c208e6c921ca449a9c5ef7a2"
+    },
+    {
+      "path": "serena/util/pywebview.py",
+      "bytes": 8046,
+      "sha256": "81ea8821f4eb12b1be04d99dc4bfdafd05fcd44d332ea59b36b15e33f16ac74b"
+    },
+    {
+      "path": "serena/util/shell.py",
+      "bytes": 1671,
+      "sha256": "2969f68c486b39120b34ff136af4bcde8bfbedc792e2e5dd0925f97f4eb31ef8"
+    },
+    {
+      "path": "serena/util/text_utils.py",
+      "bytes": 47650,
+      "sha256": "70ed197d35a41598e5dc70fabe8b0d1f6a04383e998a3b33c7fc5e9445058641"
+    },
+    {
+      "path": "serena/util/thread.py",
+      "bytes": 2142,
+      "sha256": "a0b3b09884b908c98cb5acac92e9b1536e825376e849e3ad0d2ed87e696b1437"
+    },
+    {
+      "path": "serena/util/version.py",
+      "bytes": 3704,
+      "sha256": "716a330a94eff7bd0991db6c774f95749b9112d99d1ce925a7508c960df1f7bf"
+    },
+    {
+      "path": "serena/util/yaml.py",
+      "bytes": 15616,
+      "sha256": "50a6edcc563639f0de7d331d315e104d5a8b7a9aff5c57db0e9d54f5321d5816"
+    },
+    {
+      "path": "solidlsp/.gitignore",
+      "bytes": 23,
+      "sha256": "789575924f30ec87667264fce422f2f23d2dabaa91b4efa1e0e80a500506894b"
+    },
+    {
+      "path": "solidlsp/__init__.py",
+      "bytes": 85,
+      "sha256": "bdefe74568b1e8566c89db3eef7e3610547c9b12d3716fad2089e2f7768e7867"
+    },
+    {
+      "path": "solidlsp/dependency_provider.py",
+      "bytes": 18708,
+      "sha256": "2f1c685c692b3125aac82fa972419b797b9ddc315704d24d70baf2d5f35ba9fc"
+    },
+    {
+      "path": "solidlsp/initialize_params.py",
+      "bytes": 4265,
+      "sha256": "50a7638cde5afb7d53263325b63385489dea06f2951893d170bc1255c2cbcacc"
+    },
+    {
+      "path": "solidlsp/language_servers/ada_language_server.py",
+      "bytes": 9666,
+      "sha256": "f6ff521d1ddfb50409b4914e5222d24af4dd0c316e6c944f531619ff16107c04"
+    },
+    {
+      "path": "solidlsp/language_servers/al_language_server.py",
+      "bytes": 48391,
+      "sha256": "98cb23f28057cddd99ed7734b8964646c668d3e0ad74d5f0c1c9085c3a9518b1"
+    },
+    {
+      "path": "solidlsp/language_servers/angular_language_server.py",
+      "bytes": 48351,
+      "sha256": "423c756c29dd4011134c6b64eba694fc60ea44e6b3c948eb523e261fc94639fd"
+    },
+    {
+      "path": "solidlsp/language_servers/ansible_language_server.py",
+      "bytes": 14900,
+      "sha256": "babec0024875304012f0ebbdd91023ab9a3ab1eb88a29c833803f7279b358f7f"
+    },
+    {
+      "path": "solidlsp/language_servers/astro_language_server.py",
+      "bytes": 29651,
+      "sha256": "53ee6aa3b793102dc4aac87904f62cadb67cd0c18c1a1a60dba2d225c423dc47"
+    },
+    {
+      "path": "solidlsp/language_servers/basedpyright_server.py",
+      "bytes": 8571,
+      "sha256": "e4e11ed62da7a96e10eb203f6882cefa4ff10f493764c4a2129ef2a4dffbea64"
+    },
+    {
+      "path": "solidlsp/language_servers/bash_language_server.py",
+      "bytes": 14226,
+      "sha256": "5c713c9ffc721c12da08098133d03d04e1ff4bdb2e665dea611014c49d482c39"
+    },
+    {
+      "path": "solidlsp/language_servers/bsl_language_server.py",
+      "bytes": 8811,
+      "sha256": "4fde5ef90c0ecd812745a4fb7234104b0342bbc4d3c88732126f4891157224c9"
+    },
+    {
+      "path": "solidlsp/language_servers/ccls_language_server.py",
+      "bytes": 5835,
+      "sha256": "c2af24257eee40682c1bb28fdf3cbe22d6421b6d4c5641a9f95906fb4b0bc969"
+    },
+    {
+      "path": "solidlsp/language_servers/clangd_language_server.py",
+      "bytes": 20363,
+      "sha256": "057f8e589f74632b073f35900b6e7617e8d5547bee7e9a9bb8e9944d3a294308"
+    },
+    {
+      "path": "solidlsp/language_servers/clojure_lsp.py",
+      "bytes": 20580,
+      "sha256": "0b46e6fad7498f8e626ae9e6d27dba452500f45e951e443122f9fefe90f08582"
+    },
+    {
+      "path": "solidlsp/language_servers/common.py",
+      "bytes": 8118,
+      "sha256": "24aeb4cf4a9b5b33ce10db7202b60e650f9f809ee7c27ca49bbe2c6697748b74"
+    },
+    {
+      "path": "solidlsp/language_servers/crystal_language_server.py",
+      "bytes": 6090,
+      "sha256": "81ed2cb1a45735c7add07a296df51cff9874cd159e314f92c256f6c8e7522fb3"
+    },
+    {
+      "path": "solidlsp/language_servers/csharp_language_server.py",
+      "bytes": 37127,
+      "sha256": "9246a6d9e33dc9d80d3f7c68c85d44ea977100fcca7b71c96e89b58f3cf03034"
+    },
+    {
+      "path": "solidlsp/language_servers/cue_language_server.py",
+      "bytes": 11937,
+      "sha256": "fa514304cfdb4ffb9314acdd6089561a64df0ed008dfe023d54c2a524b016457"
+    },
+    {
+      "path": "solidlsp/language_servers/dart_language_server.py",
+      "bytes": 11924,
+      "sha256": "92a7cfcdd2e59504a4144bad75ed338b8a8a2e9cec9a1a1d4d012c09b4488d39"
+    },
+    {
+      "path": "solidlsp/language_servers/deno_language_server.py",
+      "bytes": 6923,
+      "sha256": "cbdc75e95a3ff9479007e90c6a2e4fddd855e0fb9fcc1a4270738cf40cfc99a9"
+    },
+    {
+      "path": "solidlsp/language_servers/devsense_php_language_server.py",
+      "bytes": 9849,
+      "sha256": "8236b7db0a81f556b4a5899c49c95f0579c37f2a330cd8bec3d4a4e434211d85"
+    },
+    {
+      "path": "solidlsp/language_servers/eclipse_jdtls.py",
+      "bytes": 81748,
+      "sha256": "cf4b06cdfa80918991873cefc3c0dd395a558d53bd03430093298cd53f1076c2"
+    },
+    {
+      "path": "solidlsp/language_servers/elixir_tools/README.md",
+      "bytes": 3236,
+      "sha256": "cb3121fab777249a38c8c055d59ba4fe5fdfe3cfba851f3d5a0f869fd323a439"
+    },
+    {
+      "path": "solidlsp/language_servers/elixir_tools/__init__.py",
+      "bytes": 1,
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+    },
+    {
+      "path": "solidlsp/language_servers/elixir_tools/elixir_tools.py",
+      "bytes": 21006,
+      "sha256": "64a2a7db46bf7a53c1ebf547279d38e29aa121d410bbf7d763418d29504c1ca6"
+    },
+    {
+      "path": "solidlsp/language_servers/elm_language_server.py",
+      "bytes": 10972,
+      "sha256": "8e71684bf4eb536bba22614cfeb9d5c26032c5adc50aaa50546ff7ca3c501588"
+    },
+    {
+      "path": "solidlsp/language_servers/emmylua_ls.py",
+      "bytes": 10611,
+      "sha256": "4171c6a0f1cfc0fa64ef5743bd11d7eb74dc6f4127b3074e49b84f4d6f33aed6"
+    },
+    {
+      "path": "solidlsp/language_servers/erlang_language_server.py",
+      "bytes": 12728,
+      "sha256": "afb83dea222e445c8a3df33bfe0463ec16f320115669d91021d92604bc2af642"
+    },
+    {
+      "path": "solidlsp/language_servers/fatou_language_server.py",
+      "bytes": 5123,
+      "sha256": "22338d4bf2bd4777800fcb480c2dfb9a2d70a5ef4507bc56f32b6ba25a819da2"
+    },
+    {
+      "path": "solidlsp/language_servers/fortran_language_server.py",
+      "bytes": 13013,
+      "sha256": "941193b30fadc81c52ae4e4e47a427fad809fa50535495daee716afee98cb11c"
+    },
+    {
+      "path": "solidlsp/language_servers/fsharp_language_server.py",
+      "bytes": 20433,
+      "sha256": "b6d4b50feec7297fcfe7001c762aa27fb8ad523893da7cc024fa99e80af4eda1"
+    },
+    {
+      "path": "solidlsp/language_servers/gleam_language_server.py",
+      "bytes": 10451,
+      "sha256": "511792ff9b18168ba2b8c44cae4ce0b56b855da237d05508a3af6458221683ea"
+    },
+    {
+      "path": "solidlsp/language_servers/godot_language_server.py",
+      "bytes": 10237,
+      "sha256": "fcf5ebdf2bb6a1da457e126dc97582d884bae344218a8505172a228217cee72a"
+    },
+    {
+      "path": "solidlsp/language_servers/gopls.py",
+      "bytes": 15514,
+      "sha256": "f3e80052d084be8beead725d12b4b9a461f6d9bd608aa9851d8769c5b511eaae"
+    },
+    {
+      "path": "solidlsp/language_servers/groovy_language_server.py",
+      "bytes": 15808,
+      "sha256": "70cc46f589711d7f67d38e698b61db4865da8d65c1ee18a7d11afc05483bf4e9"
+    },
+    {
+      "path": "solidlsp/language_servers/haskell_language_server.py",
+      "bytes": 17158,
+      "sha256": "48e9fdae6bcc287111fb0f7e63cbab9c6a562d663d2cb7146ce92363bf8315c8"
+    },
+    {
+      "path": "solidlsp/language_servers/haxe_language_server.py",
+      "bytes": 18654,
+      "sha256": "d6a1148d3c7ca1a656752ebe49124799792fa71f56dfcc75a59edc5c29637aaf"
+    },
+    {
+      "path": "solidlsp/language_servers/hlsl_language_server.py",
+      "bytes": 12173,
+      "sha256": "3ec35360a427907e7dfc690a9d5ace39d066a0c1cc0a55d677845838a76d8c33"
+    },
+    {
+      "path": "solidlsp/language_servers/intelephense.py",
+      "bytes": 11654,
+      "sha256": "be5fe54fc6393aab869e8938ead2f097a4165a5f9663cb33ba69cd4b148584bb"
+    },
+    {
+      "path": "solidlsp/language_servers/jedi_server.py",
+      "bytes": 8562,
+      "sha256": "f6976c5e45c1a77528972a557776d1ddd730959ef5f2df58c9f27e1c1d2ff5c8"
+    },
+    {
+      "path": "solidlsp/language_servers/json_language_server.py",
+      "bytes": 7354,
+      "sha256": "97f1f7cd1daf8a413fe5a8557a7f48db4b4b350f9c7495ecdaf90274c8a86ef1"
+    },
+    {
+      "path": "solidlsp/language_servers/julia_server.py",
+      "bytes": 9432,
+      "sha256": "1917d5299a84ec9989078c9e8168aaec8e17146c2afa98c36f1ddf261306a913"
+    },
+    {
+      "path": "solidlsp/language_servers/kotlin_language_server.py",
+      "bytes": 34933,
+      "sha256": "f39008174fe2c6c58fb79530ad68a813c7265fdc13b36c3c90e04983535e259e"
+    },
+    {
+      "path": "solidlsp/language_servers/lean4_language_server.py",
+      "bytes": 6904,
+      "sha256": "4427fe35daad53b61040d41ea71287abbc0e4360be7b4a0181325c81c24abfd3"
+    },
+    {
+      "path": "solidlsp/language_servers/lua_ls.py",
+      "bytes": 14401,
+      "sha256": "91aae5eba9a7109ec3e360002765deabb6c85ca444784f31d8faee3a6b2cfb8b"
+    },
+    {
+      "path": "solidlsp/language_servers/luau_lsp.py",
+      "bytes": 16395,
+      "sha256": "8a9e6631cf43294e550fdebec70c129bd8d807d114dc3660cc08c96b59e6a89f"
+    },
+    {
+      "path": "solidlsp/language_servers/marksman.py",
+      "bytes": 11905,
+      "sha256": "c5a3647b92082c2a9628aff903338a8a1bac0a8f04e59d6a89e34fcfb3e6298b"
+    },
+    {
+      "path": "solidlsp/language_servers/matlab_language_server.py",
+      "bytes": 24625,
+      "sha256": "4d727ac8d2ad8d2eebd8ff4327355fe4522f1c855c52d36e410fa2804ccaff4f"
+    },
+    {
+      "path": "solidlsp/language_servers/msl_language_server.py",
+      "bytes": 3834,
+      "sha256": "ac1b8fa020ea1a0b346db6bb3cd242054b5280edcd0786f82a1f6570c21b7f00"
+    },
+    {
+      "path": "solidlsp/language_servers/msl_lsp_server.py",
+      "bytes": 15665,
+      "sha256": "b2f102e2bbdf88a8b8fdc457d3db25b048fb71a8f796d6c017ac112a5a964cad"
+    },
+    {
+      "path": "solidlsp/language_servers/nextflow_language_server.py",
+      "bytes": 18384,
+      "sha256": "528cf6f936ebe8f4d6b8e685d399c8f06d3e8884d24b5be1fd9c262c70c20c79"
+    },
+    {
+      "path": "solidlsp/language_servers/nixd_ls.py",
+      "bytes": 19291,
+      "sha256": "04b22213f8b4d175659ac3f591cc8449ef185ecc072578eea215bc1b0d922dfe"
+    },
+    {
+      "path": "solidlsp/language_servers/ocaml_lsp_server.py",
+      "bytes": 18526,
+      "sha256": "ff795e76a4c0a4df0026897f1d57a66bbf60caf577faee6875ac564271ba4e5b"
+    },
+    {
+      "path": "solidlsp/language_servers/omnisharp/initialize_params.json",
+      "bytes": 20780,
+      "sha256": "c48e7d557f3fd2fd06f74e98f97231324cb994ae0db370df1ffa0b9916715fbd"
+    },
+    {
+      "path": "solidlsp/language_servers/omnisharp/runtime_dependencies.json",
+      "bytes": 18838,
+      "sha256": "640e567b520c488453c5bfbb17eaee742e87b75c78d7d8afc4a64bc2e41b272b"
+    },
+    {
+      "path": "solidlsp/language_servers/omnisharp/workspace_did_change_configuration.json",
+      "bytes": 4115,
+      "sha256": "f50976a5d19cd6444723f45eb27954e248fd11cb4d73b056e870cb4b9d57870d"
+    },
+    {
+      "path": "solidlsp/language_servers/omnisharp.py",
+      "bytes": 20688,
+      "sha256": "eed80289cf14d176e5c09f6980ca2fb504b8a848262a032f68b63c5bbee97854"
+    },
+    {
+      "path": "solidlsp/language_servers/pascal_server.py",
+      "bytes": 40665,
+      "sha256": "1163055a3a194f4eb3db7ce0111255e57d23718b31038b90043d0aab366294d1"
+    },
+    {
+      "path": "solidlsp/language_servers/perl_language_server.py",
+      "bytes": 10798,
+      "sha256": "22a65766b19d02a793ca9d36ea039a2fe511a32bcfab8744b1a66d2cac403f44"
+    },
+    {
+      "path": "solidlsp/language_servers/phpactor.py",
+      "bytes": 8171,
+      "sha256": "561fc7fdfb7f69e0df900acb35ebdbb05cccbc2e748afd0032a0f58660c46897"
+    },
+    {
+      "path": "solidlsp/language_servers/phpantom.py",
+      "bytes": 13085,
+      "sha256": "c92299d25d6ffe301c301505fe8f5c082be5dd10917d7e55e251c2f8d3951102"
+    },
+    {
+      "path": "solidlsp/language_servers/powershell_language_server.py",
+      "bytes": 17714,
+      "sha256": "953bdf5751a52f4a1a6f1103d41cf75234660ddb2e85c4e2dc378dfa32197af5"
+    },
+    {
+      "path": "solidlsp/language_servers/pyrefly_server.py",
+      "bytes": 13457,
+      "sha256": "aceea8eb3427696f6cbb9a923ca873e8bf2a9846821f70d27d9ccd351fdd8761"
+    },
+    {
+      "path": "solidlsp/language_servers/pyright_server.py",
+      "bytes": 10783,
+      "sha256": "eca908ddcefe78cddde5446f7cde51ea36fb40b3e50711a0d64d58e0508543ff"
+    },
+    {
+      "path": "solidlsp/language_servers/qml_language_server.py",
+      "bytes": 5332,
+      "sha256": "8b99a96640a6ce8d923a97829682cb2b104efbd0efd05dc1a6f64d072c82d80f"
+    },
+    {
+      "path": "solidlsp/language_servers/r_language_server.py",
+      "bytes": 6142,
+      "sha256": "9c4d40ca5e26fbe70249b41373b81878ec3a405538943ddcae0fb5612ec80ec1"
+    },
+    {
+      "path": "solidlsp/language_servers/regal_server.py",
+      "bytes": 4634,
+      "sha256": "4c1640677820a37a3321a2cd69dae8dbff5b216bf01f88d7cc889b3265b28e75"
+    },
+    {
+      "path": "solidlsp/language_servers/ruby_lsp.py",
+      "bytes": 23633,
+      "sha256": "922beb2ececf6b2e75839148aafd1fc289b7017bdcdb70ab44b96616146cd7cf"
+    },
+    {
+      "path": "solidlsp/language_servers/rust_analyzer.py",
+      "bytes": 38246,
+      "sha256": "2db9a826673746e4fd88f46f988a12099ac70837d732bd5d0ad43ad8bc37234a"
+    },
+    {
+      "path": "solidlsp/language_servers/scala_language_server.py",
+      "bytes": 40218,
+      "sha256": "cbfed736ce8ee97ef3b66cde86f6b8b4b71e88476dd10bfaed3879c7fe97ca6c"
+    },
+    {
+      "path": "solidlsp/language_servers/solargraph.py",
+      "bytes": 15509,
+      "sha256": "0a4fa2e83c6c9ce8819c0fd4e2abeb12b32c1ec6a67e640f779aee26048eb323"
+    },
+    {
+      "path": "solidlsp/language_servers/solidity_homedir_preload.cjs",
+      "bytes": 372,
+      "sha256": "bf292133945873ae2003c2e8d54961fb87dcc2ede5a35ce826fac16b36acacee"
+    },
+    {
+      "path": "solidlsp/language_servers/solidity_language_server.py",
+      "bytes": 22614,
+      "sha256": "437cf0ec643c158797c78b1325edd281b1103cf504af57b184c4bb8b6dc44207"
+    },
+    {
+      "path": "solidlsp/language_servers/some_sass_language_server.py",
+      "bytes": 10531,
+      "sha256": "2a1710c50ca619f641d6125102c29a4577a444056ad4f9d0389ae1fc3643d1f8"
+    },
+    {
+      "path": "solidlsp/language_servers/sourcekit_lsp.py",
+      "bytes": 18130,
+      "sha256": "4e8e0052c0e6d444de6ab11882a73f2f5846aa9a4eff5f2d19222d89a7a80d62"
+    },
+    {
+      "path": "solidlsp/language_servers/svelte_language_server.py",
+      "bytes": 35399,
+      "sha256": "d5623d730fa4ee7807310c05e6662ae1b712da9e0fcc182da9d77ce17036ba66"
+    },
+    {
+      "path": "solidlsp/language_servers/systemverilog_server.py",
+      "bytes": 10374,
+      "sha256": "3a93c164a06cab137b24be5156cd9a14f490ba60556ec8e93b111e6091b383ba"
+    },
+    {
+      "path": "solidlsp/language_servers/taplo_server.py",
+      "bytes": 12454,
+      "sha256": "24778be18ba2d8103c73b682d1cd555692c8dfff390a8b4d32e43fc720c6cbf7"
+    },
+    {
+      "path": "solidlsp/language_servers/terraform_ls.py",
+      "bytes": 12660,
+      "sha256": "32f7122c1942e65274eabcf70947e9f508061f2cdb40d49aa4338d6591184f29"
+    },
+    {
+      "path": "solidlsp/language_servers/texlab_language_server.py",
+      "bytes": 8117,
+      "sha256": "0de4251e7c97e0d189bf97c72d45e0c9592997284bd4298592f65a1019eb78df"
+    },
+    {
+      "path": "solidlsp/language_servers/tsgo_language_server.py",
+      "bytes": 4175,
+      "sha256": "dbd9a6e1cde0cc6502baf39136340c808826bcbb19775fab6f41b4ae2d8aa74e"
+    },
+    {
+      "path": "solidlsp/language_servers/ty_server.py",
+      "bytes": 5332,
+      "sha256": "0f25ff94f7ac56e5b79ab7d2032db1134173fc1133f6286024e46fd6b54a1b26"
+    },
+    {
+      "path": "solidlsp/language_servers/typescript_language_server.py",
+      "bytes": 32985,
+      "sha256": "fa8cff870d5d3ff79f09bc0f79649d9b10bc5c9c832ce3ec9d5170edabfc794b"
+    },
+    {
+      "path": "solidlsp/language_servers/vbnet_language_server.py",
+      "bytes": 24170,
+      "sha256": "5d7a9045ccd126a355c21d139cec2edf0efec832384c745ec5c616961e9c85be"
+    },
+    {
+      "path": "solidlsp/language_servers/vscode_html_language_server.py",
+      "bytes": 7816,
+      "sha256": "f7a6fe56b802d0877bbeb818c12dc8fd8f6e9f589b2c6fbd799c7ad8fe501a64"
+    },
+    {
+      "path": "solidlsp/language_servers/vts_language_server.py",
+      "bytes": 11660,
+      "sha256": "997e796a4f13992baabbf6b7495d66e9a317140d9e4c19d44e7af3e376e8fb38"
+    },
+    {
+      "path": "solidlsp/language_servers/vue_language_server.py",
+      "bytes": 42677,
+      "sha256": "14aecba54264ed90a7c2cc2054860b11932e37f0c037a272c3e2249fb117f7ad"
+    },
+    {
+      "path": "solidlsp/language_servers/wolfram_language_server.py",
+      "bytes": 7551,
+      "sha256": "768bf5d10109a103bdd59fb6ee262a970ecdb02ca9f9191aff36a18b5a7286ce"
+    },
+    {
+      "path": "solidlsp/language_servers/yaml_language_server.py",
+      "bytes": 8445,
+      "sha256": "33b2073449b06ffd8af98ff715b49dfa89c176fd858f97d1b366c63071ffbc4d"
+    },
+    {
+      "path": "solidlsp/language_servers/zls.py",
+      "bytes": 9690,
+      "sha256": "5006ee3fd5eac601f02451fa9fb44fba567f67bc1cc1b6d1536ff9a161f7cfd3"
+    },
+    {
+      "path": "solidlsp/ls.py",
+      "bytes": 160663,
+      "sha256": "9123a1c60ac9ac8bf392752e40a808f9c990f33a5c6b1f39f35d4e17eb4cda8b"
+    },
+    {
+      "path": "solidlsp/ls_config.py",
+      "bytes": 53741,
+      "sha256": "4f4ff4ee646d950789cf2afc146729830c9794897b16e76cc66e30471d6f0aa3"
+    },
+    {
+      "path": "solidlsp/ls_exceptions.py",
+      "bytes": 3153,
+      "sha256": "1d2a8a983baa300ae75dbe6fce3ff1a68eb1a74077a746445c11681a023f1535"
+    },
+    {
+      "path": "solidlsp/ls_process.py",
+      "bytes": 35833,
+      "sha256": "2424ee2853cd6ed13059b955c87495777703eaa0c4e802717cdb414022b7c6a7"
+    },
+    {
+      "path": "solidlsp/ls_request.py",
+      "bytes": 20359,
+      "sha256": "9307704e671f4712153cdbd300af5f4a09c972ca049323b5ac7599aebfe9a578"
+    },
+    {
+      "path": "solidlsp/ls_types.py",
+      "bytes": 15082,
+      "sha256": "846b7b7680aef11593ce69fbe2e7d0ad15fd461d851d0ffc8e04935c9d42fded"
+    },
+    {
+      "path": "solidlsp/ls_utils.py",
+      "bytes": 37425,
+      "sha256": "766fe22e99dfd0555099178fe79dace166dc6648c2c2d1c3d520683a49c65f97"
+    },
+    {
+      "path": "solidlsp/lsp_protocol_handler/lsp_constants.py",
+      "bytes": 2079,
+      "sha256": "ef620fc0e8f6a7d38a1979d00ade411ad603b6d9d0a2d213f80f9dbb63a9aff2"
+    },
+    {
+      "path": "solidlsp/lsp_protocol_handler/lsp_requests.py",
+      "bytes": 29398,
+      "sha256": "98993757162238f57414cb8e86658af713dfd6a8d691bbf1a4a035dcb1efda3c"
+    },
+    {
+      "path": "solidlsp/lsp_protocol_handler/lsp_types.py",
+      "bytes": 217487,
+      "sha256": "f7b0c8f857efa7d93e02d71fce4d0786699e2ddbe00bbd3b3115a2513f7e8551"
+    },
+    {
+      "path": "solidlsp/lsp_protocol_handler/server.py",
+      "bytes": 5724,
+      "sha256": "1239d0367a864bc7289fb063639bfac3840b0bcce92255206356e31096dc9f5f"
+    },
+    {
+      "path": "solidlsp/resources/downloaded_dependency_hashes.json",
+      "bytes": 8288,
+      "sha256": "527865a04528d26bfb42bf49e857c91cb3a42c5d65595052a758ede991e56438"
+    },
+    {
+      "path": "solidlsp/settings.py",
+      "bytes": 3842,
+      "sha256": "e171c21154797925cf47e53e3462c4e57e4c4220765c0a3dc6dc9ea534dccaab"
+    },
+    {
+      "path": "solidlsp/util/cache.py",
+      "bytes": 993,
+      "sha256": "bc8694feeab69d7521604b1f73e2e639f3ae0902b666db8667b33adaa4378074"
+    },
+    {
+      "path": "solidlsp/util/metals_db_utils.py",
+      "bytes": 8921,
+      "sha256": "4a677fc2590804c271df84183d4ff07f5419f727a06cd1cdbf99c81ad3adf033"
+    },
+    {
+      "path": "solidlsp/util/pickle_util.py",
+      "bytes": 1369,
+      "sha256": "b05e25d1f16b486428e5003ae7caa394b86e19a4da0bebbb7a0b89139bc370ef"
+    },
+    {
+      "path": "solidlsp/util/subprocess_util.py",
+      "bytes": 18529,
+      "sha256": "7a3899d442ea754dc312ea45909edfad7956487a374ec0cbf23bd7dbacceb00a"
+    },
+    {
+      "path": "solidlsp/util/zip.py",
+      "bytes": 4669,
+      "sha256": "744f752889281c2c1a8f1b01a38416d9ebf27e94fe53b7a198f845da969bcd63"
+    },
+    {
+      "path": "serena_agent-2.1.0.dist-info/INSTALLER",
+      "bytes": 2,
+      "sha256": "e6184ce10e266134fdcfa401e8f1a95005bcd4f18d16b62b757323e2833fe9a9"
+    },
+    {
+      "path": "serena_agent-2.1.0.dist-info/METADATA",
+      "bytes": 18361,
+      "sha256": "5757215de80a85563fee5bd15af0851ad1ef10948d535878fc9aa3bc46ceb36e"
+    },
+    {
+      "path": "serena_agent-2.1.0.dist-info/RECORD",
+      "bytes": 24085,
+      "sha256": "d2935216cc3b834f9e288b1cd34a2e29d60004f23f27611d619484b809b195b2"
+    },
+    {
+      "path": "serena_agent-2.1.0.dist-info/REQUESTED",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "serena_agent-2.1.0.dist-info/WHEEL",
+      "bytes": 87,
+      "sha256": "5b77e4a649bbfb07fdbc123967eeecd1e5a478cfaca6eefc23c35e6fdf037848"
+    },
+    {
+      "path": "serena_agent-2.1.0.dist-info/entry_points.txt",
+      "bytes": 126,
+      "sha256": "5eddaf063a08b768ade87af4c0cc25af2f5a9f325bb8295526229b62c8678bfc"
+    },
+    {
+      "path": "serena_agent-2.1.0.dist-info/licenses/LICENSE",
+      "bytes": 3470,
+      "sha256": "6239f4be78ccff409aedfbce88ac89b26f488f76aac7ab199fb6876dc7fdeb4c"
+    },
+    {
+      "path": "serena_agent-2.1.0.dist-info/licenses/LICENSES/GPL-3.0-or-later.txt",
+      "bytes": 35149,
+      "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
+    },
+    {
+      "path": "serena_agent-2.1.0.dist-info/licenses/LICENSES/MIT.txt",
+      "bytes": 1066,
+      "sha256": "16017e50562bb112006f6f32d17ca989e0e573b011bd6790b642018b1c195b0c"
+    }
+  ],
+  "bundle": {
+    "encoding": "concatenated-base64-gzip-json",
+    "decoded_bytes": 406476,
+    "decoded_sha256": "51bb15541f229dd72cbb63820456280f3ea56c1175c1a400fcde6bdc6304c250",
+    "parts": [
+      {
+        "path": "codegraph_serena_alias_repl_2026_10_31.part01.json",
+        "bytes": 100030,
+        "sha256": "3f811ab7a4f881e2e19c70bc0eef491082baacd4ea84da1c685f45b99dfde71b"
+      },
+      {
+        "path": "codegraph_serena_alias_repl_2026_10_31.part02.json",
+        "bytes": 47350,
+        "sha256": "b5fd4cce7fb291ff2360da94cc7165c5c62451294a30f618010b2b992107c813"
+      }
+    ]
+  },
+  "verification": {
+    "goal": "active",
+    "software": {
+      "image": "sha256:1e05f088cb2c8431d94fd90f6f5f661ed7bef4a739e0b352c1a4c1cb977ab183",
+      "versions": {
+        "python": "3.13.18 (main, Oct 26 2026, 14:07:20) [Clang 23.1.3 ]",
+        "serena": "2.1.0",
+        "pyright": "1.1.403"
+      },
+      "installed_RECORD_verified_files": 242,
+      "installed_RECORD_mismatches": 0,
+      "scope": "Pinned completed-cohort image and copied installed package RECORD; not a newly downloaded archive or latest-version comparison."
+    },
+    "source": {
+      "files": 24,
+      "python_stub_documents": 21,
+      "fingerprint": "sha256-v2:69f557edb25703d88aff1e86e12af34f8cb1b119e9c44a305024d8e6b5875759",
+      "original_bytes_unchanged": true,
+      "source_mounted_readonly": true,
+      "project_state_separate": true,
+      "capture_exit_verified": true
+    },
+    "actual_repl_requests": 11,
+    "ordinary_return_phases": 9,
+    "rendered_execution_errors": [
+      {
+        "phase": "rebound",
+        "mcp_is_error": false,
+        "rendered_error": "ValueError: No symbol matching 'rebound' found\n  line 1: rebound=s.lsp.find_referencing_symbols(name_path=\"rebound\", relative_path=\"rebound.py\", max_answer_chars=30000)"
+      },
+      {
+        "phase": "rebound_points",
+        "mcp_is_error": false,
+        "rendered_error": "NameError: name 'rebound' is not defined\n  line 1: [{\"file\":r.get_relative_path(),\"line\":r.line,\"character\":r.character} for r in rebound.references]"
+      }
+    ],
+    "native_point_encoding": "UTF16, source-verified: Unicode import target is native column37, codepoint36, UTF8byte39. Explicit normalization applies only to this diagnostic; no prior score changes.",
+    "point_observations": [
+      {
+        "phase": "origin_fresh_points",
+        "references": [
+          {
+            "native_utf16_point": {
+              "file": "local.py",
+              "line": 1,
+              "character": 27
+            },
+            "normalized_utf8_point": [
+              "local.py",
+              1,
+              27
+            ],
+            "token": "target",
+            "source_line": "    from pkg.origin import target as local",
+            "source_sha256": "54015f1a55e32d4acccb0b697cf64e219319378b085c27000b2a1990c67db15c"
+          },
+          {
+            "native_utf16_point": {
+              "file": "multiline.py",
+              "line": 1,
+              "character": 4
+            },
+            "normalized_utf8_point": [
+              "multiline.py",
+              1,
+              4
+            ],
+            "token": "target",
+            "source_line": "    target as multiline,",
+            "source_sha256": "567c46c4239b160d0c037583e2722fcfde887a81c796a01d1694cc46835d1890"
+          },
+          {
+            "native_utf16_point": {
+              "file": "rebound.py",
+              "line": 0,
+              "character": 23
+            },
+            "normalized_utf8_point": [
+              "rebound.py",
+              0,
+              23
+            ],
+            "token": "target",
+            "source_line": "from pkg.origin import target as rebound",
+            "source_sha256": "244d105637630a167940b1624f856f44c39e045d34d69fea55e110811cb672f3"
+          },
+          {
+            "native_utf16_point": {
+              "file": "shadow.py",
+              "line": 0,
+              "character": 23
+            },
+            "normalized_utf8_point": [
+              "shadow.py",
+              0,
+              23
+            ],
+            "token": "target",
+            "source_line": "from pkg.origin import target as renamed",
+            "source_sha256": "14d614b10be0235317b15df0f952ede8d019d06074c4a7910b82fa86731a38e6"
+          },
+          {
+            "native_utf16_point": {
+              "file": "single.py",
+              "line": 0,
+              "character": 23
+            },
+            "normalized_utf8_point": [
+              "single.py",
+              0,
+              23
+            ],
+            "token": "target",
+            "source_line": "from pkg.origin import target as alternate",
+            "source_sha256": "2abd149c1336851061234c8926a13bd6740851262780936ad796375b59939cee"
+          },
+          {
+            "native_utf16_point": {
+              "file": "unicode.py",
+              "line": 0,
+              "character": 37
+            },
+            "normalized_utf8_point": [
+              "unicode.py",
+              0,
+              39
+            ],
+            "token": "target",
+            "source_line": "emoji = \"\ud83d\ude00\"; from pkg.origin import target as \u5225\u540d",
+            "source_sha256": "b8cd3c33cf6e6c4d98aa4c11e1bd4a4dca702cbe694c8fd8a701296e4f98dc2a"
+          },
+          {
+            "native_utf16_point": {
+              "file": "pkg/bridge.py",
+              "line": 0,
+              "character": 23
+            },
+            "normalized_utf8_point": [
+              "pkg/bridge.py",
+              0,
+              23
+            ],
+            "token": "target",
+            "source_line": "from pkg.origin import target as exported",
+            "source_sha256": "221fbda81a5904fd8b67ab9b3c96697f382e772d456a18c0d60012bd0dd5fb08"
+          },
+          {
+            "native_utf16_point": {
+              "file": "pkg/cycle_a.py",
+              "line": 0,
+              "character": 23
+            },
+            "normalized_utf8_point": [
+              "pkg/cycle_a.py",
+              0,
+              23
+            ],
+            "token": "target",
+            "source_line": "from pkg.origin import target as cycle_entry",
+            "source_sha256": "062386d1d94dca5a6ea8ec3fcb38c004766fdbc4ea43f2029194c0f20b36bfb2"
+          }
+        ],
+        "required_call_point_overlap": [],
+        "negative_call_point_overlap": [],
+        "scope": "Source-bound point overlap, not a caller benchmark or whole-task score. Snippet-adjacent calls receive no reference credit."
+      },
+      {
+        "phase": "origin_prepared_points",
+        "references": [
+          {
+            "native_utf16_point": {
+              "file": "local.py",
+              "line": 1,
+              "character": 27
+            },
+            "normalized_utf8_point": [
+              "local.py",
+              1,
+              27
+            ],
+            "token": "target",
+            "source_line": "    from pkg.origin import target as local",
+            "source_sha256": "54015f1a55e32d4acccb0b697cf64e219319378b085c27000b2a1990c67db15c"
+          },
+          {
+            "native_utf16_point": {
+              "file": "multiline.py",
+              "line": 1,
+              "character": 4
+            },
+            "normalized_utf8_point": [
+              "multiline.py",
+              1,
+              4
+            ],
+            "token": "target",
+            "source_line": "    target as multiline,",
+            "source_sha256": "567c46c4239b160d0c037583e2722fcfde887a81c796a01d1694cc46835d1890"
+          },
+          {
+            "native_utf16_point": {
+              "file": "rebound.py",
+              "line": 0,
+              "character": 23
+            },
+            "normalized_utf8_point": [
+              "rebound.py",
+              0,
+              23
+            ],
+            "token": "target",
+            "source_line": "from pkg.origin import target as rebound",
+            "source_sha256": "244d105637630a167940b1624f856f44c39e045d34d69fea55e110811cb672f3"
+          },
+          {
+            "native_utf16_point": {
+              "file": "shadow.py",
+              "line": 0,
+              "character": 23
+            },
+            "normalized_utf8_point": [
+              "shadow.py",
+              0,
+              23
+            ],
+            "token": "target",
+            "source_line": "from pkg.origin import target as renamed",
+            "source_sha256": "14d614b10be0235317b15df0f952ede8d019d06074c4a7910b82fa86731a38e6"
+          },
+          {
+            "native_utf16_point": {
+              "file": "single.py",
+              "line": 0,
+              "character": 23
+            },
+            "normalized_utf8_point": [
+              "single.py",
+              0,
+              23
+            ],
+            "token": "target",
+            "source_line": "from pkg.origin import target as alternate",
+            "source_sha256": "2abd149c1336851061234c8926a13bd6740851262780936ad796375b59939cee"
+          },
+          {
+            "native_utf16_point": {
+              "file": "unicode.py",
+              "line": 0,
+              "character": 37
+            },
+            "normalized_utf8_point": [
+              "unicode.py",
+              0,
+              39
+            ],
+            "token": "target",
+            "source_line": "emoji = \"\ud83d\ude00\"; from pkg.origin import target as \u5225\u540d",
+            "source_sha256": "b8cd3c33cf6e6c4d98aa4c11e1bd4a4dca702cbe694c8fd8a701296e4f98dc2a"
+          },
+          {
+            "native_utf16_point": {
+              "file": "pkg/bridge.py",
+              "line": 0,
+              "character": 23
+            },
+            "normalized_utf8_point": [
+              "pkg/bridge.py",
+              0,
+              23
+            ],
+            "token": "target",
+            "source_line": "from pkg.origin import target as exported",
+            "source_sha256": "221fbda81a5904fd8b67ab9b3c96697f382e772d456a18c0d60012bd0dd5fb08"
+          },
+          {
+            "native_utf16_point": {
+              "file": "pkg/cycle_a.py",
+              "line": 0,
+              "character": 23
+            },
+            "normalized_utf8_point": [
+              "pkg/cycle_a.py",
+              0,
+              23
+            ],
+            "token": "target",
+            "source_line": "from pkg.origin import target as cycle_entry",
+            "source_sha256": "062386d1d94dca5a6ea8ec3fcb38c004766fdbc4ea43f2029194c0f20b36bfb2"
+          }
+        ],
+        "required_call_point_overlap": [],
+        "negative_call_point_overlap": [],
+        "scope": "Source-bound point overlap, not a caller benchmark or whole-task score. Snippet-adjacent calls receive no reference credit."
+      },
+      {
+        "phase": "replacement_points",
+        "references": [
+          {
+            "native_utf16_point": {
+              "file": "negative.py",
+              "line": 0,
+              "character": 18
+            },
+            "normalized_utf8_point": [
+              "negative.py",
+              0,
+              18
+            ],
+            "token": "target",
+            "source_line": "from other import target as alternate",
+            "source_sha256": "66e7d14c4d0f0043a247c8780daeac4d1e87a28e2a5bde91c2b16f2ac859b0a4"
+          },
+          {
+            "native_utf16_point": {
+              "file": "rebound.py",
+              "line": 1,
+              "character": 18
+            },
+            "normalized_utf8_point": [
+              "rebound.py",
+              1,
+              18
+            ],
+            "token": "target",
+            "source_line": "from other import target as replacement",
+            "source_sha256": "244d105637630a167940b1624f856f44c39e045d34d69fea55e110811cb672f3"
+          }
+        ],
+        "required_call_point_overlap": [],
+        "negative_call_point_overlap": [],
+        "scope": "Source-bound point overlap, not a caller benchmark or whole-task score. Snippet-adjacent calls receive no reference credit."
+      }
+    ],
+    "actors": [
+      {
+        "host_pid": 1210733,
+        "command": "/bin/sleep 7200",
+        "independently_absent": true,
+        "present_before_forced_container_removal": true,
+        "exit_code": null
+      },
+      {
+        "host_pid": 1210825,
+        "command": "/opt/pilot-tools/uv/serena-agent/bin/python /opt/pilot-tools/bin/serena start-mcp-server --project /workspace --context claude-code --agent-interface REPL --enable-web-dashboard False --enable-gui-log-window False --open-web-dashboard False",
+        "independently_absent": true,
+        "present_before_forced_container_removal": true,
+        "exit_code": null
+      },
+      {
+        "host_pid": 1210842,
+        "command": "/usr/local/bin/uv tool run -p 3.13 --from pyright==1.1.403 pyright-langserver --stdio",
+        "independently_absent": true,
+        "present_before_forced_container_removal": false,
+        "exit_code": null
+      },
+      {
+        "host_pid": 1210856,
+        "command": "/opt/pilot-state/uv-cache/archive-v0/JAP2saJJR0htcaIv/bin/python /opt/pilot-state/uv-cache/archive-v0/JAP2saJJR0htcaIv/bin/pyright-langserver --stdio",
+        "independently_absent": true,
+        "present_before_forced_container_removal": false,
+        "exit_code": null
+      },
+      {
+        "host_pid": 1210859,
+        "command": "/opt/pilot-runtimes/node/bin/node /opt/pilot-state/uv-cache/archive-v0/JAP2saJJR0htcaIv/lib/python3.13/site-packages/pyright/dist/langserver.index.js -- --stdio",
+        "independently_absent": true,
+        "present_before_forced_container_removal": false,
+        "exit_code": null
+      }
+    ],
+    "cleanup": {
+      "owned_query_container_removed_and_absent": true,
+      "source_held_through_removal": true,
+      "inspection_attempt_retained": "Case-sensitive missing-container assertion failed after stopped inspection removal; separate exact-type audit proves absence. No query executed in that container.",
+      "query_shutdown": "Pyright children absent before removal; sleep and Serena MCP still present. Exact labelled container then forcibly removed. Individual exit codes were not recorded; no graceful-exit claim."
+    },
+    "decision": "Direct public Serena function references on this exposed fixture return import-name bindings, unchanged by opening all documents. This is not transitive alias traversal or a caller-quality comparison. Preserve the CodeNib graph counterexample and all original gates. Establish a real cross-file maintenance need before new provider/flow analysis or paid efficacy rounds; no new unique product benefit is proved.",
+    "model_questions": 0,
+    "independent_successes": 0,
+    "external_users": 0,
+    "generated_project_metadata": {
+      "files": 5,
+      "archive_sha256": "299ef1c38cdd30d2021df49c457bb461d0592453ce82249c061725c7fdefd7f8",
+      "read_only_helper_container_absent": true,
+      "original_modes_and_owners_retained": true
+    },
+    "packaging_failures_retained": [
+      "Initial freezer assumed the audit container field was an ID; actual inspect response binds the original ID in stderr.",
+      "Next freezer could not read root-owned generated project.yml; separate read-only archive capture retains original settings and permissions. No query rerun."
+    ]
+  }
+}
