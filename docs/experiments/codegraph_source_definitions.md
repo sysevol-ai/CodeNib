@@ -119,3 +119,8 @@ workflow avoid graph preparation, prove a 20% complete-task improvement or
 establish voluntary use. Independent successes remain 0/2; consenting external
 users and seven-day reuse remain 0/5. No model inference, account fallback or
 new spend is added. A0 and issue #874 remain active.
+
+Implementation is in draft [#945](https://github.com/sysevol-ai/CodeNib/pull/945),
+based directly on merged #944. Source-built CI-wheel admission and exact-head
+remote checks remain pending; keep the draft unmerged while those gates and
+the unrelated baseline all-files lint failures are reconciled.

@@ -296,8 +296,9 @@ main CI jobs remain verified. The private function-flow route remains
 unpromoted.
 
 The [source-bound definition candidate](experiments/codegraph_source_definitions.md)
-now has a local implementation at the actual deferred, full-surface MCP
-boundary. Separate installed-wheel controls return exact function declarations
+is implemented in draft [#945](https://github.com/sysevol-ai/CodeNib/pull/945)
+at the actual deferred, full-surface MCP boundary. Separate installed-wheel
+controls return exact function declarations
 without a graph on the generated fixture and all 2,390 CodeNib source files;
 ambiguous definitions close the worker before normal complete-graph fallback.
 Post-response edits reject publication, stale queries make no worker request,
@@ -314,7 +315,9 @@ prior version returns identical reference node fields from the same artifact;
 this diagnoses existing coverage and static-binding semantics, without changing
 the failed physical-call gate. Default exploration, representative dependency
 coverage, complete-task benefit, voluntary use and all independent/external
-gates remain open. No model question or participant is added.
+gates remain open. Source-built CI-wheel admission and exact-head remote
+checks remain pending; the draft is unmerged. All-files hooks retain existing
+failures outside the feature. No model question or participant is added.
 
 The latest four-arm round records 8,821,055 normalized final main/auxiliary tokens
 and $9.311356 in SDK estimates, not invoices. The separate diagnostic adds
