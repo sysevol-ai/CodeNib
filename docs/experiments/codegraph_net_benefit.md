@@ -1,22 +1,27 @@
 # CodeGraph real-workflow net-benefit pilot
 
 Owner: CodeNib product and CodeGraph maintainers.
-Status: dirty initialization, stale-query protection, scoped Python identity
-recovery, source-current reloading and cold deferred source-first exploration
-are merged. The latest [source-first development result](codegraph_source_first_results.md)
-completes sixty attempts and all source/native assessment: Native / Serena /
-Codegraph / CodeNib accept 9 / 7 / 8 / 8 tasks out of fifteen. CodeNib remains
-unused, has lower acceptance than the maximum alternative and meets no verified
-20% whole-workflow benefit gate. Hold promotion; no complete eligible baseline
-exists. These sources informed implementation and count as neither independent
-success confirmation. Both original [v1](codegraph_matched_assessment_v1.md) and
-[v2](codegraph_matched_assessment_v2.md) outcomes remain unchanged. Broader
-provider/workflow coverage, useful voluntary use, both success confirmations
-and external recruitment/consent/seven-day reuse remain open at 0/5.
-Established 2026-10-26
-(Pacific); target review 2026-11-09.
-Current outcomes and open gates belong to [adoption A0](../adoption_roadmap.md).
-Tracking issue: [#874](https://github.com/sysevol-ai/CodeNib/issues/874).
+Status: hold promotion; the broad objective remains active. The completed
+[source-payload confirmation](codegraph_payload_results.md) covers twelve
+workflows, sixty tasks, 48 source judgments and 596 original selected native
+outcomes. Native / Serena / Codegraph / CodeNib accept 11 / 10 / 8 / 10 tasks out
+of fifteen, with 2/3 native repairs each. No complete eligible alternative
+exists. CodeNib takes 738.588 seconds versus Native 558.727 and Serena 666.964,
+and receives zero recorded product calls. No 20% whole-workflow benefit or
+independent success confirmation is established.
+
+Product correctness repairs, deferred source-first exploration, complete source
+windows and installed-wheel admission are verified within their documented
+scope. All original [v1](codegraph_matched_assessment_v1.md),
+[v2](codegraph_matched_assessment_v2.md),
+[source-first development](codegraph_source_first_results.md) and stopped-cohort
+outcomes remain unchanged. The fixed further confirmation set is unopened.
+Useful voluntary graph use, two independent successes and five-user external
+consent/seven-day reuse remain open, with enrollment 0/5 and no outreach
+authorized. Established 2026-10-26 (Pacific); target review 2026-11-09.
+[Adoption A0](../adoption_roadmap.md) and
+[#874](https://github.com/sysevol-ai/CodeNib/issues/874) hold current outcomes
+and open gates.
 
 ## Current iteration objective
 
@@ -75,14 +80,21 @@ and current official provider constraints. Freeze each round before inference; p
 establish efficacy. A failed or inconclusive iteration stays recorded and
 informs the next specific hypothesis; it does not become an achieved advantage.
 
-Current state: the source-first development assessment is complete and holds
-promotion. A separate network-disabled pinned CLI/SDK control verifies all
-original tool descriptions/schemas in decoded outgoing fixture requests and
-complete CodeNib instructions. It is not historical native HTTP interception
-or evidence that metadata causes tool choice. The next bounded change should
-make the query entry useful and understandable, preserving voluntary calls and
-all original gates. Earlier attribution and isolated component evidence below
-remain scoped to their original controls. The
+Current state: the prospective source-payload assessment is complete and holds
+promotion. All 5,294 execution inputs remain unchanged; all sixty SDK tasks,
+48 source judgments and twelve native grades are retained. Source windows do
+not establish model savings when CodeNib is never called. Its 24.168-second
+optional setup explains only 24.148 seconds of the 179.861-second observed gap
+to Native. Further startup removal alone cannot meet the target in an
+arithmetic scenario; metadata/model-latency causation remains unknown. The next
+candidate must answer an actual source-linked cross-file decision with useful
+voluntary calls before another efficacy claim. Keep the reserved second set
+unopened until a new candidate and complete protocol are prospectively fixed.
+
+The separate network-disabled pinned CLI/SDK control retains all original
+metadata/schema delivery observations; it is not historical native HTTP
+interception or evidence of tool-choice causation. Earlier attribution and
+isolated component evidence below remain scoped to their original controls. The
 [on-demand preparation candidate](codegraph_deferred_preparation_2026_10_30.json)
 builds BM25 during initialization and prepares providers/the graph on the first
 graph query. Four fresh-index Requests controls pass keyword-only retrieval,
@@ -220,7 +232,8 @@ starting graph/provider preparation. Explicit graph requests still pay their
 full cost and can fail. No complete-task gain is established. The first set
 therefore remains development admission, satisfying neither independent
 success confirmation; retain all selected cases, failures and native outcomes,
-keep the reserved set unopened and freeze another disjoint set prospectively.
+use the reserved set only under the new prospective product/policy foundation
+and keep the further disjoint Matplotlib/Django/xarray set unopened.
 The separately [sealed development protocol](codegraph_source_first_protocol.md)
 fixes fifteen tasks and all runtime/criteria inputs after twelve new operator
 preparations. It retains the complete endpoint, native grading, strict

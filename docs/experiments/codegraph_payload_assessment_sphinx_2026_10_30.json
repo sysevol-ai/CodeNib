@@ -1,0 +1,1566 @@
+{
+  "schema": "codenib.source-payload-confirmation-source-assessment.v1",
+  "status": "complete",
+  "repository": "sphinx-doc__sphinx",
+  "instance_id": "sphinx-doc__sphinx-8120",
+  "recorded_utc": "2026-10-31T00:42:05.113790+00:00",
+  "reviewer": "single unblinded maintainer-agent; no independent adjudication claim",
+  "method": "Apply all frozen mandatory criteria and material final claims; exact original source before repair and each arm captured repaired/helper source afterward. Mechanical limits remain independent. Findings are source assessment, not model-read credit or a change to native grading.",
+  "scope_note": "Apply all mandatory criteria and material final source claims. Check citations explicitly against captured current versions; a wider range can support a claim only when its lines actually contain the evidence. No source-read credit, frozen criterion change or retrospective word-limit waiver.",
+  "decisions": [
+    {
+      "arm": "native",
+      "task_id": "sphinx-doc__sphinx-8120-lookup",
+      "kind": "lookup",
+      "final_answer_sha256": "fb181b304e6038ff87d1f93975e2e72e6292740b7edc125f7a2fb7f1f7925912",
+      "all_material_claims_checked": true,
+      "source_version_verified": true,
+      "criteria_pass": [
+        true,
+        true,
+        true
+      ],
+      "checked_claims": [
+        "Correct loader and (namespace,catalog) cache key; .get does not invoke the defaultdict factory.",
+        "Exact NullTranslations class is discarded; a cached real translator is retained.",
+        "Regional/base language list, directory-order first catalog plus chained fallback, ignored translation lookup exceptions, no-catalog flag and cache/tuple return are correct.",
+        "No execution/complete-runtime-path claim; original code and cited locations checked.",
+        "Related get_translator and registration readers agree with original code; regional gettext statement is identified as standard-library behavior."
+      ],
+      "source_evidence": [
+        {
+          "path": "sphinx/locale/__init__.py",
+          "start_line": 106,
+          "end_line": 146,
+          "source_sha256": "56e5749e0520cbcfa2bcae50192e5565bb6674fcd05e2c1fe1310e617a128487",
+          "excerpt": "translators = defaultdict(NullTranslations)  # type: Dict[Tuple[str, str], NullTranslations]\n\n\ndef init(locale_dirs: List[str], language: str,\n         catalog: str = 'sphinx', namespace: str = 'general') -> Tuple[NullTranslations, bool]:\n    \"\"\"Look for message catalogs in `locale_dirs` and *ensure* that there is at\n    least a NullTranslations catalog set in `translators`. If called multiple\n    times or if several ``.mo`` files are found, their contents are merged\n    together (thus making ``init`` reentrant).\n    \"\"\"\n    global translators\n    translator = translators.get((namespace, catalog))\n    # ignore previously failed attempts to find message catalogs\n    if translator.__class__ is NullTranslations:\n        translator = None\n    # the None entry is the system's default locale path\n    has_translation = True\n\n    if language and '_' in language:\n        # for language having country code (like \"de_AT\")\n        languages = [language, language.split('_')[0]]\n    else:\n        languages = [language]\n\n    # loading\n    for dir_ in locale_dirs:\n        try:\n            trans = gettext.translation(catalog, localedir=dir_, languages=languages)\n            if translator is None:\n                translator = trans\n            else:\n                translator.add_fallback(trans)\n        except Exception:\n            # Language couldn't be found in the specified path\n            pass\n    # guarantee translators[(namespace, catalog)] exists\n    if translator is None:\n        translator = NullTranslations()\n        has_translation = False\n    translators[(namespace, catalog)] = translator\n    return translator, has_translation",
+          "excerpt_sha256": "5249b3617fb20f96677e8eda313bc0262f19f6d17f64ab66fa9c3c89e2146ddf",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        },
+        {
+          "path": "sphinx/locale/__init__.py",
+          "start_line": 169,
+          "end_line": 189,
+          "source_sha256": "56e5749e0520cbcfa2bcae50192e5565bb6674fcd05e2c1fe1310e617a128487",
+          "excerpt": "def init_console(locale_dir: str, catalog: str) -> Tuple[NullTranslations, bool]:\n    \"\"\"Initialize locale for console.\n\n    .. versionadded:: 1.8\n    \"\"\"\n    try:\n        # encoding is ignored\n        language, _ = locale.getlocale(locale.LC_MESSAGES)  # type: Tuple[Optional[str], Any]\n    except AttributeError:\n        # LC_MESSAGES is not always defined. Fallback to the default language\n        # in case it is not.\n        language = None\n    return init([locale_dir], language, catalog, 'console')\n\n\ndef get_translator(catalog: str = 'sphinx', namespace: str = 'general') -> NullTranslations:\n    return translators[(namespace, catalog)]\n\n\ndef is_translator_registered(catalog: str = 'sphinx', namespace: str = 'general') -> bool:\n    return (namespace, catalog) in translators",
+          "excerpt_sha256": "456c0a52cc15eb8af6476d92e9320d9a37d97f699d08eb2e45674c040eccc02f",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        },
+        {
+          "path": "sphinx/locale/__init__.py",
+          "start_line": 200,
+          "end_line": 236,
+          "source_sha256": "56e5749e0520cbcfa2bcae50192e5565bb6674fcd05e2c1fe1310e617a128487",
+          "excerpt": "def get_translation(catalog: str, namespace: str = 'general') -> Callable:\n    \"\"\"Get a translation function based on the *catalog* and *namespace*.\n\n    The extension can use this API to translate the messages on the\n    extension::\n\n        import os\n        from sphinx.locale import get_translation\n\n        MESSAGE_CATALOG_NAME = 'myextension'  # name of *.pot, *.po and *.mo files\n        _ = get_translation(MESSAGE_CATALOG_NAME)\n        text = _('Hello Sphinx!')\n\n\n        def setup(app):\n            package_dir = path.abspath(path.dirname(__file__))\n            locale_dir = os.path.join(package_dir, 'locales')\n            app.add_message_catalog(MESSAGE_CATALOG_NAME, locale_dir)\n\n    With this code, sphinx searches a message catalog from\n    ``${package_dir}/locales/${language}/LC_MESSAGES/myextension.mo``.\n    The :confval:`language` is used for the searching.\n\n    .. versionadded:: 1.8\n    \"\"\"\n    def gettext(message: str, *args: Any) -> str:\n        if not is_translator_registered(catalog, namespace):\n            # not initialized yet\n            return _TranslationProxy(_lazy_translate, catalog, namespace, message)  # type: ignore  # NOQA\n        else:\n            translator = get_translator(catalog, namespace)\n            if len(args) <= 1:\n                return translator.gettext(message)\n            else:  # support pluralization\n                return translator.ngettext(message, args[0], args[1])\n\n    return gettext",
+          "excerpt_sha256": "c74d9bd08e806158649ea0bed7801356123b6f887fb78501b69b182873a6efac",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        }
+      ],
+      "findings": [],
+      "notes": [
+        "Final356 words exceed the exclusive350-word limit; preserve that failure independently of source semantics."
+      ],
+      "material_source_error": false,
+      "serious_error": false,
+      "citations_pass": true,
+      "semantic_source_pass": true,
+      "mechanical_gates": {
+        "terminal_pass": true,
+        "read_only_source_preserved": true,
+        "words": 356,
+        "word_limit": 350,
+        "word_limit_pass": false
+      },
+      "accepted": false
+    },
+    {
+      "arm": "codegraph",
+      "task_id": "sphinx-doc__sphinx-8120-lookup",
+      "kind": "lookup",
+      "final_answer_sha256": "48cb5925c645c191b99ec7c0b521d1ef72889124ce7027b6c0fe01147426b4d2",
+      "all_material_claims_checked": true,
+      "source_version_verified": true,
+      "criteria_pass": [
+        true,
+        true,
+        true
+      ],
+      "checked_claims": [
+        "Correct loader and (namespace,catalog) cache key; .get does not invoke the defaultdict factory.",
+        "Exact NullTranslations class is discarded; a cached real translator is retained.",
+        "Regional/base language list, directory-order first catalog plus chained fallback, ignored translation lookup exceptions, no-catalog flag and cache/tuple return are correct.",
+        "No execution/complete-runtime-path claim; original code and cited locations checked."
+      ],
+      "source_evidence": [
+        {
+          "path": "sphinx/locale/__init__.py",
+          "start_line": 106,
+          "end_line": 146,
+          "source_sha256": "56e5749e0520cbcfa2bcae50192e5565bb6674fcd05e2c1fe1310e617a128487",
+          "excerpt": "translators = defaultdict(NullTranslations)  # type: Dict[Tuple[str, str], NullTranslations]\n\n\ndef init(locale_dirs: List[str], language: str,\n         catalog: str = 'sphinx', namespace: str = 'general') -> Tuple[NullTranslations, bool]:\n    \"\"\"Look for message catalogs in `locale_dirs` and *ensure* that there is at\n    least a NullTranslations catalog set in `translators`. If called multiple\n    times or if several ``.mo`` files are found, their contents are merged\n    together (thus making ``init`` reentrant).\n    \"\"\"\n    global translators\n    translator = translators.get((namespace, catalog))\n    # ignore previously failed attempts to find message catalogs\n    if translator.__class__ is NullTranslations:\n        translator = None\n    # the None entry is the system's default locale path\n    has_translation = True\n\n    if language and '_' in language:\n        # for language having country code (like \"de_AT\")\n        languages = [language, language.split('_')[0]]\n    else:\n        languages = [language]\n\n    # loading\n    for dir_ in locale_dirs:\n        try:\n            trans = gettext.translation(catalog, localedir=dir_, languages=languages)\n            if translator is None:\n                translator = trans\n            else:\n                translator.add_fallback(trans)\n        except Exception:\n            # Language couldn't be found in the specified path\n            pass\n    # guarantee translators[(namespace, catalog)] exists\n    if translator is None:\n        translator = NullTranslations()\n        has_translation = False\n    translators[(namespace, catalog)] = translator\n    return translator, has_translation",
+          "excerpt_sha256": "5249b3617fb20f96677e8eda313bc0262f19f6d17f64ab66fa9c3c89e2146ddf",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        },
+        {
+          "path": "sphinx/locale/__init__.py",
+          "start_line": 169,
+          "end_line": 189,
+          "source_sha256": "56e5749e0520cbcfa2bcae50192e5565bb6674fcd05e2c1fe1310e617a128487",
+          "excerpt": "def init_console(locale_dir: str, catalog: str) -> Tuple[NullTranslations, bool]:\n    \"\"\"Initialize locale for console.\n\n    .. versionadded:: 1.8\n    \"\"\"\n    try:\n        # encoding is ignored\n        language, _ = locale.getlocale(locale.LC_MESSAGES)  # type: Tuple[Optional[str], Any]\n    except AttributeError:\n        # LC_MESSAGES is not always defined. Fallback to the default language\n        # in case it is not.\n        language = None\n    return init([locale_dir], language, catalog, 'console')\n\n\ndef get_translator(catalog: str = 'sphinx', namespace: str = 'general') -> NullTranslations:\n    return translators[(namespace, catalog)]\n\n\ndef is_translator_registered(catalog: str = 'sphinx', namespace: str = 'general') -> bool:\n    return (namespace, catalog) in translators",
+          "excerpt_sha256": "456c0a52cc15eb8af6476d92e9320d9a37d97f699d08eb2e45674c040eccc02f",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        },
+        {
+          "path": "sphinx/locale/__init__.py",
+          "start_line": 200,
+          "end_line": 236,
+          "source_sha256": "56e5749e0520cbcfa2bcae50192e5565bb6674fcd05e2c1fe1310e617a128487",
+          "excerpt": "def get_translation(catalog: str, namespace: str = 'general') -> Callable:\n    \"\"\"Get a translation function based on the *catalog* and *namespace*.\n\n    The extension can use this API to translate the messages on the\n    extension::\n\n        import os\n        from sphinx.locale import get_translation\n\n        MESSAGE_CATALOG_NAME = 'myextension'  # name of *.pot, *.po and *.mo files\n        _ = get_translation(MESSAGE_CATALOG_NAME)\n        text = _('Hello Sphinx!')\n\n\n        def setup(app):\n            package_dir = path.abspath(path.dirname(__file__))\n            locale_dir = os.path.join(package_dir, 'locales')\n            app.add_message_catalog(MESSAGE_CATALOG_NAME, locale_dir)\n\n    With this code, sphinx searches a message catalog from\n    ``${package_dir}/locales/${language}/LC_MESSAGES/myextension.mo``.\n    The :confval:`language` is used for the searching.\n\n    .. versionadded:: 1.8\n    \"\"\"\n    def gettext(message: str, *args: Any) -> str:\n        if not is_translator_registered(catalog, namespace):\n            # not initialized yet\n            return _TranslationProxy(_lazy_translate, catalog, namespace, message)  # type: ignore  # NOQA\n        else:\n            translator = get_translator(catalog, namespace)\n            if len(args) <= 1:\n                return translator.gettext(message)\n            else:  # support pluralization\n                return translator.ngettext(message, args[0], args[1])\n\n    return gettext",
+          "excerpt_sha256": "c74d9bd08e806158649ea0bed7801356123b6f887fb78501b69b182873a6efac",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        }
+      ],
+      "findings": [
+        {
+          "quote": "`get_translation` checks `is_translator_registered` and returns a lazy `_TranslationProxy` until the key exists",
+          "severity": "serious",
+          "explanation": "get_translation returns the nested gettext function at236. The registration check and proxy return occur only when that function is called. The original runtime returns type function, then _TranslationProxy after invocation; the public API return layer is misstated.",
+          "counterexample": "private-grading/sphinx-source-counterexample.json",
+          "source_evidence": [
+            {
+              "path": "sphinx/locale/__init__.py",
+              "start_line": 200,
+              "end_line": 236,
+              "source_sha256": "56e5749e0520cbcfa2bcae50192e5565bb6674fcd05e2c1fe1310e617a128487",
+              "excerpt": "def get_translation(catalog: str, namespace: str = 'general') -> Callable:\n    \"\"\"Get a translation function based on the *catalog* and *namespace*.\n\n    The extension can use this API to translate the messages on the\n    extension::\n\n        import os\n        from sphinx.locale import get_translation\n\n        MESSAGE_CATALOG_NAME = 'myextension'  # name of *.pot, *.po and *.mo files\n        _ = get_translation(MESSAGE_CATALOG_NAME)\n        text = _('Hello Sphinx!')\n\n\n        def setup(app):\n            package_dir = path.abspath(path.dirname(__file__))\n            locale_dir = os.path.join(package_dir, 'locales')\n            app.add_message_catalog(MESSAGE_CATALOG_NAME, locale_dir)\n\n    With this code, sphinx searches a message catalog from\n    ``${package_dir}/locales/${language}/LC_MESSAGES/myextension.mo``.\n    The :confval:`language` is used for the searching.\n\n    .. versionadded:: 1.8\n    \"\"\"\n    def gettext(message: str, *args: Any) -> str:\n        if not is_translator_registered(catalog, namespace):\n            # not initialized yet\n            return _TranslationProxy(_lazy_translate, catalog, namespace, message)  # type: ignore  # NOQA\n        else:\n            translator = get_translator(catalog, namespace)\n            if len(args) <= 1:\n                return translator.gettext(message)\n            else:  # support pluralization\n                return translator.ngettext(message, args[0], args[1])\n\n    return gettext",
+              "excerpt_sha256": "c74d9bd08e806158649ea0bed7801356123b6f887fb78501b69b182873a6efac",
+              "source_version": "original pinned source",
+              "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+            }
+          ]
+        }
+      ],
+      "notes": [],
+      "material_source_error": true,
+      "serious_error": true,
+      "citations_pass": true,
+      "semantic_source_pass": false,
+      "mechanical_gates": {
+        "terminal_pass": true,
+        "read_only_source_preserved": true,
+        "words": 333,
+        "word_limit": 350,
+        "word_limit_pass": true
+      },
+      "accepted": false
+    },
+    {
+      "arm": "serena",
+      "task_id": "sphinx-doc__sphinx-8120-lookup",
+      "kind": "lookup",
+      "final_answer_sha256": "1f72a5ba874c28dc33121961e55c5bf1319947674cc7f2372dfb8c1943d067d6",
+      "all_material_claims_checked": true,
+      "source_version_verified": true,
+      "criteria_pass": [
+        true,
+        true,
+        true
+      ],
+      "checked_claims": [
+        "Correct loader and (namespace,catalog) cache key; .get does not invoke the defaultdict factory.",
+        "Exact NullTranslations class is discarded; a cached real translator is retained.",
+        "Regional/base language list, directory-order first catalog plus chained fallback, ignored translation lookup exceptions, no-catalog flag and cache/tuple return are correct.",
+        "No execution/complete-runtime-path claim; original code and cited locations checked."
+      ],
+      "source_evidence": [
+        {
+          "path": "sphinx/locale/__init__.py",
+          "start_line": 106,
+          "end_line": 146,
+          "source_sha256": "56e5749e0520cbcfa2bcae50192e5565bb6674fcd05e2c1fe1310e617a128487",
+          "excerpt": "translators = defaultdict(NullTranslations)  # type: Dict[Tuple[str, str], NullTranslations]\n\n\ndef init(locale_dirs: List[str], language: str,\n         catalog: str = 'sphinx', namespace: str = 'general') -> Tuple[NullTranslations, bool]:\n    \"\"\"Look for message catalogs in `locale_dirs` and *ensure* that there is at\n    least a NullTranslations catalog set in `translators`. If called multiple\n    times or if several ``.mo`` files are found, their contents are merged\n    together (thus making ``init`` reentrant).\n    \"\"\"\n    global translators\n    translator = translators.get((namespace, catalog))\n    # ignore previously failed attempts to find message catalogs\n    if translator.__class__ is NullTranslations:\n        translator = None\n    # the None entry is the system's default locale path\n    has_translation = True\n\n    if language and '_' in language:\n        # for language having country code (like \"de_AT\")\n        languages = [language, language.split('_')[0]]\n    else:\n        languages = [language]\n\n    # loading\n    for dir_ in locale_dirs:\n        try:\n            trans = gettext.translation(catalog, localedir=dir_, languages=languages)\n            if translator is None:\n                translator = trans\n            else:\n                translator.add_fallback(trans)\n        except Exception:\n            # Language couldn't be found in the specified path\n            pass\n    # guarantee translators[(namespace, catalog)] exists\n    if translator is None:\n        translator = NullTranslations()\n        has_translation = False\n    translators[(namespace, catalog)] = translator\n    return translator, has_translation",
+          "excerpt_sha256": "5249b3617fb20f96677e8eda313bc0262f19f6d17f64ab66fa9c3c89e2146ddf",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        },
+        {
+          "path": "sphinx/locale/__init__.py",
+          "start_line": 169,
+          "end_line": 189,
+          "source_sha256": "56e5749e0520cbcfa2bcae50192e5565bb6674fcd05e2c1fe1310e617a128487",
+          "excerpt": "def init_console(locale_dir: str, catalog: str) -> Tuple[NullTranslations, bool]:\n    \"\"\"Initialize locale for console.\n\n    .. versionadded:: 1.8\n    \"\"\"\n    try:\n        # encoding is ignored\n        language, _ = locale.getlocale(locale.LC_MESSAGES)  # type: Tuple[Optional[str], Any]\n    except AttributeError:\n        # LC_MESSAGES is not always defined. Fallback to the default language\n        # in case it is not.\n        language = None\n    return init([locale_dir], language, catalog, 'console')\n\n\ndef get_translator(catalog: str = 'sphinx', namespace: str = 'general') -> NullTranslations:\n    return translators[(namespace, catalog)]\n\n\ndef is_translator_registered(catalog: str = 'sphinx', namespace: str = 'general') -> bool:\n    return (namespace, catalog) in translators",
+          "excerpt_sha256": "456c0a52cc15eb8af6476d92e9320d9a37d97f699d08eb2e45674c040eccc02f",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        },
+        {
+          "path": "sphinx/locale/__init__.py",
+          "start_line": 200,
+          "end_line": 236,
+          "source_sha256": "56e5749e0520cbcfa2bcae50192e5565bb6674fcd05e2c1fe1310e617a128487",
+          "excerpt": "def get_translation(catalog: str, namespace: str = 'general') -> Callable:\n    \"\"\"Get a translation function based on the *catalog* and *namespace*.\n\n    The extension can use this API to translate the messages on the\n    extension::\n\n        import os\n        from sphinx.locale import get_translation\n\n        MESSAGE_CATALOG_NAME = 'myextension'  # name of *.pot, *.po and *.mo files\n        _ = get_translation(MESSAGE_CATALOG_NAME)\n        text = _('Hello Sphinx!')\n\n\n        def setup(app):\n            package_dir = path.abspath(path.dirname(__file__))\n            locale_dir = os.path.join(package_dir, 'locales')\n            app.add_message_catalog(MESSAGE_CATALOG_NAME, locale_dir)\n\n    With this code, sphinx searches a message catalog from\n    ``${package_dir}/locales/${language}/LC_MESSAGES/myextension.mo``.\n    The :confval:`language` is used for the searching.\n\n    .. versionadded:: 1.8\n    \"\"\"\n    def gettext(message: str, *args: Any) -> str:\n        if not is_translator_registered(catalog, namespace):\n            # not initialized yet\n            return _TranslationProxy(_lazy_translate, catalog, namespace, message)  # type: ignore  # NOQA\n        else:\n            translator = get_translator(catalog, namespace)\n            if len(args) <= 1:\n                return translator.gettext(message)\n            else:  # support pluralization\n                return translator.ngettext(message, args[0], args[1])\n\n    return gettext",
+          "excerpt_sha256": "c74d9bd08e806158649ea0bed7801356123b6f887fb78501b69b182873a6efac",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        }
+      ],
+      "findings": [],
+      "notes": [],
+      "material_source_error": false,
+      "serious_error": false,
+      "citations_pass": true,
+      "semantic_source_pass": true,
+      "mechanical_gates": {
+        "terminal_pass": true,
+        "read_only_source_preserved": true,
+        "words": 345,
+        "word_limit": 350,
+        "word_limit_pass": true
+      },
+      "accepted": true
+    },
+    {
+      "arm": "codenib",
+      "task_id": "sphinx-doc__sphinx-8120-lookup",
+      "kind": "lookup",
+      "final_answer_sha256": "7f5d75bfc6fbe480f4863590137e26aa696436be5dff2b59cff402c502e28a06",
+      "all_material_claims_checked": true,
+      "source_version_verified": true,
+      "criteria_pass": [
+        true,
+        true,
+        true
+      ],
+      "checked_claims": [
+        "Correct loader and (namespace,catalog) cache key; .get does not invoke the defaultdict factory.",
+        "Exact NullTranslations class is discarded; a cached real translator is retained.",
+        "Regional/base language list, directory-order first catalog plus chained fallback, ignored translation lookup exceptions, no-catalog flag and cache/tuple return are correct.",
+        "No execution/complete-runtime-path claim; original code and cited locations checked."
+      ],
+      "source_evidence": [
+        {
+          "path": "sphinx/locale/__init__.py",
+          "start_line": 106,
+          "end_line": 146,
+          "source_sha256": "56e5749e0520cbcfa2bcae50192e5565bb6674fcd05e2c1fe1310e617a128487",
+          "excerpt": "translators = defaultdict(NullTranslations)  # type: Dict[Tuple[str, str], NullTranslations]\n\n\ndef init(locale_dirs: List[str], language: str,\n         catalog: str = 'sphinx', namespace: str = 'general') -> Tuple[NullTranslations, bool]:\n    \"\"\"Look for message catalogs in `locale_dirs` and *ensure* that there is at\n    least a NullTranslations catalog set in `translators`. If called multiple\n    times or if several ``.mo`` files are found, their contents are merged\n    together (thus making ``init`` reentrant).\n    \"\"\"\n    global translators\n    translator = translators.get((namespace, catalog))\n    # ignore previously failed attempts to find message catalogs\n    if translator.__class__ is NullTranslations:\n        translator = None\n    # the None entry is the system's default locale path\n    has_translation = True\n\n    if language and '_' in language:\n        # for language having country code (like \"de_AT\")\n        languages = [language, language.split('_')[0]]\n    else:\n        languages = [language]\n\n    # loading\n    for dir_ in locale_dirs:\n        try:\n            trans = gettext.translation(catalog, localedir=dir_, languages=languages)\n            if translator is None:\n                translator = trans\n            else:\n                translator.add_fallback(trans)\n        except Exception:\n            # Language couldn't be found in the specified path\n            pass\n    # guarantee translators[(namespace, catalog)] exists\n    if translator is None:\n        translator = NullTranslations()\n        has_translation = False\n    translators[(namespace, catalog)] = translator\n    return translator, has_translation",
+          "excerpt_sha256": "5249b3617fb20f96677e8eda313bc0262f19f6d17f64ab66fa9c3c89e2146ddf",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        },
+        {
+          "path": "sphinx/locale/__init__.py",
+          "start_line": 169,
+          "end_line": 189,
+          "source_sha256": "56e5749e0520cbcfa2bcae50192e5565bb6674fcd05e2c1fe1310e617a128487",
+          "excerpt": "def init_console(locale_dir: str, catalog: str) -> Tuple[NullTranslations, bool]:\n    \"\"\"Initialize locale for console.\n\n    .. versionadded:: 1.8\n    \"\"\"\n    try:\n        # encoding is ignored\n        language, _ = locale.getlocale(locale.LC_MESSAGES)  # type: Tuple[Optional[str], Any]\n    except AttributeError:\n        # LC_MESSAGES is not always defined. Fallback to the default language\n        # in case it is not.\n        language = None\n    return init([locale_dir], language, catalog, 'console')\n\n\ndef get_translator(catalog: str = 'sphinx', namespace: str = 'general') -> NullTranslations:\n    return translators[(namespace, catalog)]\n\n\ndef is_translator_registered(catalog: str = 'sphinx', namespace: str = 'general') -> bool:\n    return (namespace, catalog) in translators",
+          "excerpt_sha256": "456c0a52cc15eb8af6476d92e9320d9a37d97f699d08eb2e45674c040eccc02f",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        },
+        {
+          "path": "sphinx/locale/__init__.py",
+          "start_line": 200,
+          "end_line": 236,
+          "source_sha256": "56e5749e0520cbcfa2bcae50192e5565bb6674fcd05e2c1fe1310e617a128487",
+          "excerpt": "def get_translation(catalog: str, namespace: str = 'general') -> Callable:\n    \"\"\"Get a translation function based on the *catalog* and *namespace*.\n\n    The extension can use this API to translate the messages on the\n    extension::\n\n        import os\n        from sphinx.locale import get_translation\n\n        MESSAGE_CATALOG_NAME = 'myextension'  # name of *.pot, *.po and *.mo files\n        _ = get_translation(MESSAGE_CATALOG_NAME)\n        text = _('Hello Sphinx!')\n\n\n        def setup(app):\n            package_dir = path.abspath(path.dirname(__file__))\n            locale_dir = os.path.join(package_dir, 'locales')\n            app.add_message_catalog(MESSAGE_CATALOG_NAME, locale_dir)\n\n    With this code, sphinx searches a message catalog from\n    ``${package_dir}/locales/${language}/LC_MESSAGES/myextension.mo``.\n    The :confval:`language` is used for the searching.\n\n    .. versionadded:: 1.8\n    \"\"\"\n    def gettext(message: str, *args: Any) -> str:\n        if not is_translator_registered(catalog, namespace):\n            # not initialized yet\n            return _TranslationProxy(_lazy_translate, catalog, namespace, message)  # type: ignore  # NOQA\n        else:\n            translator = get_translator(catalog, namespace)\n            if len(args) <= 1:\n                return translator.gettext(message)\n            else:  # support pluralization\n                return translator.ngettext(message, args[0], args[1])\n\n    return gettext",
+          "excerpt_sha256": "c74d9bd08e806158649ea0bed7801356123b6f887fb78501b69b182873a6efac",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        }
+      ],
+      "findings": [],
+      "notes": [
+        "Final352 words exceed the exclusive350-word limit; no retrospective waiver."
+      ],
+      "material_source_error": false,
+      "serious_error": false,
+      "citations_pass": true,
+      "semantic_source_pass": true,
+      "mechanical_gates": {
+        "terminal_pass": true,
+        "read_only_source_preserved": true,
+        "words": 352,
+        "word_limit": 350,
+        "word_limit_pass": false
+      },
+      "accepted": false
+    },
+    {
+      "arm": "native",
+      "task_id": "sphinx-doc__sphinx-8120-flow",
+      "kind": "flow",
+      "final_answer_sha256": "6930b46d8696627f268bd2ef4c7ab459f16e835d45a2c74e7b29c79fad8aad03",
+      "all_material_claims_checked": true,
+      "source_version_verified": true,
+      "criteria_pass": [
+        true,
+        true,
+        true
+      ],
+      "checked_claims": [
+        "Configuration pre-init and Sphinx constructor ordering, selected _init_i18n branch and three source boundaries checked.",
+        "Relative/absolute directory joining, LC_MESSAGES existence filter, configured order, PO walk/domain discovery and outdated predicate checked.",
+        "Only outdated sphinx domain compiled here; original system/package/user list and cached-translator precedence checked.",
+        "Default namespace/catalog, regional language list, no-catalog/logging branches and static-trace limits checked."
+      ],
+      "source_evidence": [
+        {
+          "path": "sphinx/application.py",
+          "start_line": 213,
+          "end_line": 245,
+          "source_sha256": "08294a663ae7d6da773e6d7f6912990c440804e84056c011b41672e26d5e0843",
+          "excerpt": "        # read config\n        self.tags = Tags(tags)\n        if self.confdir is None:\n            self.config = Config({}, confoverrides or {})\n        else:\n            self.config = Config.read(self.confdir, confoverrides or {}, self.tags)\n\n        # initialize some limited config variables before initialize i18n and loading\n        # extensions\n        self.config.pre_init_values()\n\n        # set up translation infrastructure\n        self._init_i18n()\n\n        # check the Sphinx version if requested\n        if self.config.needs_sphinx and self.config.needs_sphinx > sphinx.__display_version__:\n            raise VersionRequirementError(\n                __('This project needs at least Sphinx v%s and therefore cannot '\n                   'be built with this version.') % self.config.needs_sphinx)\n\n        # set confdir to srcdir if -C given (!= no confdir); a few pieces\n        # of code expect a confdir to be set\n        if self.confdir is None:\n            self.confdir = self.srcdir\n\n        # load all built-in extension modules\n        for extension in builtin_extensions:\n            self.setup_extension(extension)\n\n        # load all user-given extension modules\n        for extension in self.config.extensions:\n            self.setup_extension(extension)\n",
+          "excerpt_sha256": "cf831a2f867507d40851259d76bb3ab2c7336a3eae79c84fbf9790481eaff98d",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        },
+        {
+          "path": "sphinx/application.py",
+          "start_line": 279,
+          "end_line": 302,
+          "source_sha256": "08294a663ae7d6da773e6d7f6912990c440804e84056c011b41672e26d5e0843",
+          "excerpt": "    def _init_i18n(self) -> None:\n        \"\"\"Load translated strings from the configured localedirs if enabled in\n        the configuration.\n        \"\"\"\n        if self.config.language is None:\n            self.translator, has_translation = locale.init([], None)\n        else:\n            logger.info(bold(__('loading translations [%s]... ') % self.config.language),\n                        nonl=True)\n\n            # compile mo files if sphinx.po file in user locale directories are updated\n            repo = CatalogRepository(self.srcdir, self.config.locale_dirs,\n                                     self.config.language, self.config.source_encoding)\n            for catalog in repo.catalogs:\n                if catalog.domain == 'sphinx' and catalog.is_outdated():\n                    catalog.write_mo(self.config.language)\n\n            locale_dirs = [None, path.join(package_dir, 'locale')] + list(repo.locale_dirs)\n            self.translator, has_translation = locale.init(locale_dirs, self.config.language)\n            if has_translation or self.config.language == 'en':\n                # \"en\" never needs to be translated\n                logger.info(__('done'))\n            else:\n                logger.info(__('not available for built-in messages'))",
+          "excerpt_sha256": "5a2d49d59193f326bb83fd755bb5693b3addbaa8010330f7a68d2945927c3773",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        },
+        {
+          "path": "sphinx/util/i18n.py",
+          "start_line": 58,
+          "end_line": 117,
+          "source_sha256": "77dad93a8457a6e9fcbf7958e2e9448dda8bb41d7343a197423c90552f45f529",
+          "excerpt": "    def is_outdated(self) -> bool:\n        return (\n            not path.exists(self.mo_path) or\n            path.getmtime(self.mo_path) < path.getmtime(self.po_path))\n\n    def write_mo(self, locale: str) -> None:\n        with open(self.po_path, encoding=self.charset) as file_po:\n            try:\n                po = read_po(file_po, locale)\n            except Exception as exc:\n                logger.warning(__('reading error: %s, %s'), self.po_path, exc)\n                return\n\n        with open(self.mo_path, 'wb') as file_mo:\n            try:\n                write_mo(file_mo, po)\n            except Exception as exc:\n                logger.warning(__('writing error: %s, %s'), self.mo_path, exc)\n\n\nclass CatalogRepository:\n    \"\"\"A repository for message catalogs.\"\"\"\n\n    def __init__(self, basedir: str, locale_dirs: List[str],\n                 language: str, encoding: str) -> None:\n        self.basedir = basedir\n        self._locale_dirs = locale_dirs\n        self.language = language\n        self.encoding = encoding\n\n    @property\n    def locale_dirs(self) -> Generator[str, None, None]:\n        if not self.language:\n            return\n\n        for locale_dir in self._locale_dirs:\n            locale_dir = path.join(self.basedir, locale_dir)\n            if path.exists(path.join(locale_dir, self.language, 'LC_MESSAGES')):\n                yield locale_dir\n\n    @property\n    def pofiles(self) -> Generator[Tuple[str, str], None, None]:\n        for locale_dir in self.locale_dirs:\n            basedir = path.join(locale_dir, self.language, 'LC_MESSAGES')\n            for root, dirnames, filenames in os.walk(basedir):\n                # skip dot-directories\n                for dirname in dirnames:\n                    if dirname.startswith('.'):\n                        dirnames.remove(dirname)\n\n                for filename in filenames:\n                    if filename.endswith('.po'):\n                        fullpath = path.join(root, filename)\n                        yield basedir, relpath(fullpath, basedir)\n\n    @property\n    def catalogs(self) -> Generator[CatalogInfo, None, None]:\n        for basedir, filename in self.pofiles:\n            domain = canon_path(path.splitext(filename)[0])\n            yield CatalogInfo(basedir, domain, self.encoding)",
+          "excerpt_sha256": "b4cc226715f066ed60598d7e7512ce3611bd3a3ff1634b7163291b0be6af86da",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        },
+        {
+          "path": "sphinx/locale/__init__.py",
+          "start_line": 106,
+          "end_line": 146,
+          "source_sha256": "56e5749e0520cbcfa2bcae50192e5565bb6674fcd05e2c1fe1310e617a128487",
+          "excerpt": "translators = defaultdict(NullTranslations)  # type: Dict[Tuple[str, str], NullTranslations]\n\n\ndef init(locale_dirs: List[str], language: str,\n         catalog: str = 'sphinx', namespace: str = 'general') -> Tuple[NullTranslations, bool]:\n    \"\"\"Look for message catalogs in `locale_dirs` and *ensure* that there is at\n    least a NullTranslations catalog set in `translators`. If called multiple\n    times or if several ``.mo`` files are found, their contents are merged\n    together (thus making ``init`` reentrant).\n    \"\"\"\n    global translators\n    translator = translators.get((namespace, catalog))\n    # ignore previously failed attempts to find message catalogs\n    if translator.__class__ is NullTranslations:\n        translator = None\n    # the None entry is the system's default locale path\n    has_translation = True\n\n    if language and '_' in language:\n        # for language having country code (like \"de_AT\")\n        languages = [language, language.split('_')[0]]\n    else:\n        languages = [language]\n\n    # loading\n    for dir_ in locale_dirs:\n        try:\n            trans = gettext.translation(catalog, localedir=dir_, languages=languages)\n            if translator is None:\n                translator = trans\n            else:\n                translator.add_fallback(trans)\n        except Exception:\n            # Language couldn't be found in the specified path\n            pass\n    # guarantee translators[(namespace, catalog)] exists\n    if translator is None:\n        translator = NullTranslations()\n        has_translation = False\n    translators[(namespace, catalog)] = translator\n    return translator, has_translation",
+          "excerpt_sha256": "5249b3617fb20f96677e8eda313bc0262f19f6d17f64ab66fa9c3c89e2146ddf",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        },
+        {
+          "path": "sphinx/config.py",
+          "start_line": 109,
+          "end_line": 110,
+          "source_sha256": "1081779b168120b607bd2229fddff6e68399aacb6e18393eaa9fd24c05169338",
+          "excerpt": "        'language': (None, 'env', [str]),\n        'locale_dirs': (['locales'], 'env', []),",
+          "excerpt_sha256": "17e27483dd8b61b1e2f8e97c986d91065d6e5b3f3e5d0c3acfdedc4ab28c1e24",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        },
+        {
+          "path": "sphinx/config.py",
+          "start_line": 210,
+          "end_line": 222,
+          "source_sha256": "1081779b168120b607bd2229fddff6e68399aacb6e18393eaa9fd24c05169338",
+          "excerpt": "    def pre_init_values(self) -> None:\n        \"\"\"\n        Initialize some limited config variables before initialize i18n and loading extensions\n        \"\"\"\n        variables = ['needs_sphinx', 'suppress_warnings', 'language', 'locale_dirs']\n        for name in variables:\n            try:\n                if name in self.overrides:\n                    self.__dict__[name] = self.convert_overrides(name, self.overrides[name])\n                elif name in self._raw_config:\n                    self.__dict__[name] = self._raw_config[name]\n            except ValueError as exc:\n                logger.warning(\"%s\", exc)",
+          "excerpt_sha256": "ac5ebb5894ee8060ffba4724cf135a533b9ebb4e1490b592043a4637aa0d2685",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        }
+      ],
+      "findings": [
+        {
+          "severity": "serious",
+          "explanation": "The file opens at lines64 and71 are outside the try blocks around read_po/write_mo. FileNotFoundError and read-only-filesystem OSError propagate. The pinned-runtime counterexample reproduces both; only parser/serializer exceptions in the protected blocks are warned.",
+          "counterexample": "private-grading/sphinx-source-counterexample.json",
+          "quote": "Read or write errors are logged as warnings, not raised",
+          "source_evidence": [
+            {
+              "path": "sphinx/util/i18n.py",
+              "start_line": 63,
+              "end_line": 75,
+              "source_sha256": "77dad93a8457a6e9fcbf7958e2e9448dda8bb41d7343a197423c90552f45f529",
+              "excerpt": "    def write_mo(self, locale: str) -> None:\n        with open(self.po_path, encoding=self.charset) as file_po:\n            try:\n                po = read_po(file_po, locale)\n            except Exception as exc:\n                logger.warning(__('reading error: %s, %s'), self.po_path, exc)\n                return\n\n        with open(self.mo_path, 'wb') as file_mo:\n            try:\n                write_mo(file_mo, po)\n            except Exception as exc:\n                logger.warning(__('writing error: %s, %s'), self.mo_path, exc)",
+              "excerpt_sha256": "1b39af758e9a369b3a3ffaea6738ea9c19902939accaa8a4181a1b76baada682",
+              "source_version": "original pinned source",
+              "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+            }
+          ]
+        }
+      ],
+      "notes": [
+        "Normal cold directory priority is assessed with the answer's explicit cached-translator caveat; no invented guarantee about arbitrary pre-existing translators."
+      ],
+      "material_source_error": true,
+      "serious_error": true,
+      "citations_pass": true,
+      "semantic_source_pass": false,
+      "mechanical_gates": {
+        "terminal_pass": true,
+        "read_only_source_preserved": true,
+        "words": 562,
+        "word_limit": 700,
+        "word_limit_pass": true
+      },
+      "accepted": false
+    },
+    {
+      "arm": "codegraph",
+      "task_id": "sphinx-doc__sphinx-8120-flow",
+      "kind": "flow",
+      "final_answer_sha256": "338d73b9c94c12312ff37cf01896eb8cbc8512e4ef20ef2e2f4648df16983f59",
+      "all_material_claims_checked": true,
+      "source_version_verified": true,
+      "criteria_pass": [
+        true,
+        true,
+        true
+      ],
+      "checked_claims": [
+        "Configuration pre-init and Sphinx constructor ordering, selected _init_i18n branch and three source boundaries checked.",
+        "Relative/absolute directory joining, LC_MESSAGES existence filter, configured order, PO walk/domain discovery and outdated predicate checked.",
+        "Only outdated sphinx domain compiled here; original system/package/user list and cached-translator precedence checked.",
+        "Default namespace/catalog, regional language list, no-catalog/logging branches and static-trace limits checked."
+      ],
+      "source_evidence": [
+        {
+          "path": "sphinx/application.py",
+          "start_line": 213,
+          "end_line": 245,
+          "source_sha256": "08294a663ae7d6da773e6d7f6912990c440804e84056c011b41672e26d5e0843",
+          "excerpt": "        # read config\n        self.tags = Tags(tags)\n        if self.confdir is None:\n            self.config = Config({}, confoverrides or {})\n        else:\n            self.config = Config.read(self.confdir, confoverrides or {}, self.tags)\n\n        # initialize some limited config variables before initialize i18n and loading\n        # extensions\n        self.config.pre_init_values()\n\n        # set up translation infrastructure\n        self._init_i18n()\n\n        # check the Sphinx version if requested\n        if self.config.needs_sphinx and self.config.needs_sphinx > sphinx.__display_version__:\n            raise VersionRequirementError(\n                __('This project needs at least Sphinx v%s and therefore cannot '\n                   'be built with this version.') % self.config.needs_sphinx)\n\n        # set confdir to srcdir if -C given (!= no confdir); a few pieces\n        # of code expect a confdir to be set\n        if self.confdir is None:\n            self.confdir = self.srcdir\n\n        # load all built-in extension modules\n        for extension in builtin_extensions:\n            self.setup_extension(extension)\n\n        # load all user-given extension modules\n        for extension in self.config.extensions:\n            self.setup_extension(extension)\n",
+          "excerpt_sha256": "cf831a2f867507d40851259d76bb3ab2c7336a3eae79c84fbf9790481eaff98d",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        },
+        {
+          "path": "sphinx/application.py",
+          "start_line": 279,
+          "end_line": 302,
+          "source_sha256": "08294a663ae7d6da773e6d7f6912990c440804e84056c011b41672e26d5e0843",
+          "excerpt": "    def _init_i18n(self) -> None:\n        \"\"\"Load translated strings from the configured localedirs if enabled in\n        the configuration.\n        \"\"\"\n        if self.config.language is None:\n            self.translator, has_translation = locale.init([], None)\n        else:\n            logger.info(bold(__('loading translations [%s]... ') % self.config.language),\n                        nonl=True)\n\n            # compile mo files if sphinx.po file in user locale directories are updated\n            repo = CatalogRepository(self.srcdir, self.config.locale_dirs,\n                                     self.config.language, self.config.source_encoding)\n            for catalog in repo.catalogs:\n                if catalog.domain == 'sphinx' and catalog.is_outdated():\n                    catalog.write_mo(self.config.language)\n\n            locale_dirs = [None, path.join(package_dir, 'locale')] + list(repo.locale_dirs)\n            self.translator, has_translation = locale.init(locale_dirs, self.config.language)\n            if has_translation or self.config.language == 'en':\n                # \"en\" never needs to be translated\n                logger.info(__('done'))\n            else:\n                logger.info(__('not available for built-in messages'))",
+          "excerpt_sha256": "5a2d49d59193f326bb83fd755bb5693b3addbaa8010330f7a68d2945927c3773",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        },
+        {
+          "path": "sphinx/util/i18n.py",
+          "start_line": 58,
+          "end_line": 117,
+          "source_sha256": "77dad93a8457a6e9fcbf7958e2e9448dda8bb41d7343a197423c90552f45f529",
+          "excerpt": "    def is_outdated(self) -> bool:\n        return (\n            not path.exists(self.mo_path) or\n            path.getmtime(self.mo_path) < path.getmtime(self.po_path))\n\n    def write_mo(self, locale: str) -> None:\n        with open(self.po_path, encoding=self.charset) as file_po:\n            try:\n                po = read_po(file_po, locale)\n            except Exception as exc:\n                logger.warning(__('reading error: %s, %s'), self.po_path, exc)\n                return\n\n        with open(self.mo_path, 'wb') as file_mo:\n            try:\n                write_mo(file_mo, po)\n            except Exception as exc:\n                logger.warning(__('writing error: %s, %s'), self.mo_path, exc)\n\n\nclass CatalogRepository:\n    \"\"\"A repository for message catalogs.\"\"\"\n\n    def __init__(self, basedir: str, locale_dirs: List[str],\n                 language: str, encoding: str) -> None:\n        self.basedir = basedir\n        self._locale_dirs = locale_dirs\n        self.language = language\n        self.encoding = encoding\n\n    @property\n    def locale_dirs(self) -> Generator[str, None, None]:\n        if not self.language:\n            return\n\n        for locale_dir in self._locale_dirs:\n            locale_dir = path.join(self.basedir, locale_dir)\n            if path.exists(path.join(locale_dir, self.language, 'LC_MESSAGES')):\n                yield locale_dir\n\n    @property\n    def pofiles(self) -> Generator[Tuple[str, str], None, None]:\n        for locale_dir in self.locale_dirs:\n            basedir = path.join(locale_dir, self.language, 'LC_MESSAGES')\n            for root, dirnames, filenames in os.walk(basedir):\n                # skip dot-directories\n                for dirname in dirnames:\n                    if dirname.startswith('.'):\n                        dirnames.remove(dirname)\n\n                for filename in filenames:\n                    if filename.endswith('.po'):\n                        fullpath = path.join(root, filename)\n                        yield basedir, relpath(fullpath, basedir)\n\n    @property\n    def catalogs(self) -> Generator[CatalogInfo, None, None]:\n        for basedir, filename in self.pofiles:\n            domain = canon_path(path.splitext(filename)[0])\n            yield CatalogInfo(basedir, domain, self.encoding)",
+          "excerpt_sha256": "b4cc226715f066ed60598d7e7512ce3611bd3a3ff1634b7163291b0be6af86da",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        },
+        {
+          "path": "sphinx/locale/__init__.py",
+          "start_line": 106,
+          "end_line": 146,
+          "source_sha256": "56e5749e0520cbcfa2bcae50192e5565bb6674fcd05e2c1fe1310e617a128487",
+          "excerpt": "translators = defaultdict(NullTranslations)  # type: Dict[Tuple[str, str], NullTranslations]\n\n\ndef init(locale_dirs: List[str], language: str,\n         catalog: str = 'sphinx', namespace: str = 'general') -> Tuple[NullTranslations, bool]:\n    \"\"\"Look for message catalogs in `locale_dirs` and *ensure* that there is at\n    least a NullTranslations catalog set in `translators`. If called multiple\n    times or if several ``.mo`` files are found, their contents are merged\n    together (thus making ``init`` reentrant).\n    \"\"\"\n    global translators\n    translator = translators.get((namespace, catalog))\n    # ignore previously failed attempts to find message catalogs\n    if translator.__class__ is NullTranslations:\n        translator = None\n    # the None entry is the system's default locale path\n    has_translation = True\n\n    if language and '_' in language:\n        # for language having country code (like \"de_AT\")\n        languages = [language, language.split('_')[0]]\n    else:\n        languages = [language]\n\n    # loading\n    for dir_ in locale_dirs:\n        try:\n            trans = gettext.translation(catalog, localedir=dir_, languages=languages)\n            if translator is None:\n                translator = trans\n            else:\n                translator.add_fallback(trans)\n        except Exception:\n            # Language couldn't be found in the specified path\n            pass\n    # guarantee translators[(namespace, catalog)] exists\n    if translator is None:\n        translator = NullTranslations()\n        has_translation = False\n    translators[(namespace, catalog)] = translator\n    return translator, has_translation",
+          "excerpt_sha256": "5249b3617fb20f96677e8eda313bc0262f19f6d17f64ab66fa9c3c89e2146ddf",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        },
+        {
+          "path": "sphinx/config.py",
+          "start_line": 109,
+          "end_line": 110,
+          "source_sha256": "1081779b168120b607bd2229fddff6e68399aacb6e18393eaa9fd24c05169338",
+          "excerpt": "        'language': (None, 'env', [str]),\n        'locale_dirs': (['locales'], 'env', []),",
+          "excerpt_sha256": "17e27483dd8b61b1e2f8e97c986d91065d6e5b3f3e5d0c3acfdedc4ab28c1e24",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        },
+        {
+          "path": "sphinx/config.py",
+          "start_line": 210,
+          "end_line": 222,
+          "source_sha256": "1081779b168120b607bd2229fddff6e68399aacb6e18393eaa9fd24c05169338",
+          "excerpt": "    def pre_init_values(self) -> None:\n        \"\"\"\n        Initialize some limited config variables before initialize i18n and loading extensions\n        \"\"\"\n        variables = ['needs_sphinx', 'suppress_warnings', 'language', 'locale_dirs']\n        for name in variables:\n            try:\n                if name in self.overrides:\n                    self.__dict__[name] = self.convert_overrides(name, self.overrides[name])\n                elif name in self._raw_config:\n                    self.__dict__[name] = self._raw_config[name]\n            except ValueError as exc:\n                logger.warning(\"%s\", exc)",
+          "excerpt_sha256": "ac5ebb5894ee8060ffba4724cf135a533b9ebb4e1490b592043a4637aa0d2685",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        }
+      ],
+      "findings": [
+        {
+          "severity": "serious",
+          "explanation": "The file opens at lines64 and71 are outside the try blocks around read_po/write_mo. FileNotFoundError and read-only-filesystem OSError propagate. The pinned-runtime counterexample reproduces both; only parser/serializer exceptions in the protected blocks are warned.",
+          "counterexample": "private-grading/sphinx-source-counterexample.json",
+          "quote": "If reading or writing fails it logs a warning instead of raising",
+          "source_evidence": [
+            {
+              "path": "sphinx/util/i18n.py",
+              "start_line": 63,
+              "end_line": 75,
+              "source_sha256": "77dad93a8457a6e9fcbf7958e2e9448dda8bb41d7343a197423c90552f45f529",
+              "excerpt": "    def write_mo(self, locale: str) -> None:\n        with open(self.po_path, encoding=self.charset) as file_po:\n            try:\n                po = read_po(file_po, locale)\n            except Exception as exc:\n                logger.warning(__('reading error: %s, %s'), self.po_path, exc)\n                return\n\n        with open(self.mo_path, 'wb') as file_mo:\n            try:\n                write_mo(file_mo, po)\n            except Exception as exc:\n                logger.warning(__('writing error: %s, %s'), self.mo_path, exc)",
+              "excerpt_sha256": "1b39af758e9a369b3a3ffaea6738ea9c19902939accaa8a4181a1b76baada682",
+              "source_version": "original pinned source",
+              "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+            }
+          ]
+        }
+      ],
+      "notes": [
+        "Normal cold directory priority is assessed with the answer's explicit cached-translator caveat; no invented guarantee about arbitrary pre-existing translators."
+      ],
+      "material_source_error": true,
+      "serious_error": true,
+      "citations_pass": true,
+      "semantic_source_pass": false,
+      "mechanical_gates": {
+        "terminal_pass": true,
+        "read_only_source_preserved": true,
+        "words": 577,
+        "word_limit": 700,
+        "word_limit_pass": true
+      },
+      "accepted": false
+    },
+    {
+      "arm": "serena",
+      "task_id": "sphinx-doc__sphinx-8120-flow",
+      "kind": "flow",
+      "final_answer_sha256": "4dc4d89e075fb2b2aca1d9f15392fb0daade0c4cd0fba5eaa1e72544d7b1c36d",
+      "all_material_claims_checked": true,
+      "source_version_verified": true,
+      "criteria_pass": [
+        true,
+        true,
+        true
+      ],
+      "checked_claims": [
+        "Configuration pre-init and Sphinx constructor ordering, selected _init_i18n branch and three source boundaries checked.",
+        "Relative/absolute directory joining, LC_MESSAGES existence filter, configured order, PO walk/domain discovery and outdated predicate checked.",
+        "Only outdated sphinx domain compiled here; original system/package/user list and cached-translator precedence checked.",
+        "Default namespace/catalog, regional language list, no-catalog/logging branches and static-trace limits checked."
+      ],
+      "source_evidence": [
+        {
+          "path": "sphinx/application.py",
+          "start_line": 213,
+          "end_line": 245,
+          "source_sha256": "08294a663ae7d6da773e6d7f6912990c440804e84056c011b41672e26d5e0843",
+          "excerpt": "        # read config\n        self.tags = Tags(tags)\n        if self.confdir is None:\n            self.config = Config({}, confoverrides or {})\n        else:\n            self.config = Config.read(self.confdir, confoverrides or {}, self.tags)\n\n        # initialize some limited config variables before initialize i18n and loading\n        # extensions\n        self.config.pre_init_values()\n\n        # set up translation infrastructure\n        self._init_i18n()\n\n        # check the Sphinx version if requested\n        if self.config.needs_sphinx and self.config.needs_sphinx > sphinx.__display_version__:\n            raise VersionRequirementError(\n                __('This project needs at least Sphinx v%s and therefore cannot '\n                   'be built with this version.') % self.config.needs_sphinx)\n\n        # set confdir to srcdir if -C given (!= no confdir); a few pieces\n        # of code expect a confdir to be set\n        if self.confdir is None:\n            self.confdir = self.srcdir\n\n        # load all built-in extension modules\n        for extension in builtin_extensions:\n            self.setup_extension(extension)\n\n        # load all user-given extension modules\n        for extension in self.config.extensions:\n            self.setup_extension(extension)\n",
+          "excerpt_sha256": "cf831a2f867507d40851259d76bb3ab2c7336a3eae79c84fbf9790481eaff98d",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        },
+        {
+          "path": "sphinx/application.py",
+          "start_line": 279,
+          "end_line": 302,
+          "source_sha256": "08294a663ae7d6da773e6d7f6912990c440804e84056c011b41672e26d5e0843",
+          "excerpt": "    def _init_i18n(self) -> None:\n        \"\"\"Load translated strings from the configured localedirs if enabled in\n        the configuration.\n        \"\"\"\n        if self.config.language is None:\n            self.translator, has_translation = locale.init([], None)\n        else:\n            logger.info(bold(__('loading translations [%s]... ') % self.config.language),\n                        nonl=True)\n\n            # compile mo files if sphinx.po file in user locale directories are updated\n            repo = CatalogRepository(self.srcdir, self.config.locale_dirs,\n                                     self.config.language, self.config.source_encoding)\n            for catalog in repo.catalogs:\n                if catalog.domain == 'sphinx' and catalog.is_outdated():\n                    catalog.write_mo(self.config.language)\n\n            locale_dirs = [None, path.join(package_dir, 'locale')] + list(repo.locale_dirs)\n            self.translator, has_translation = locale.init(locale_dirs, self.config.language)\n            if has_translation or self.config.language == 'en':\n                # \"en\" never needs to be translated\n                logger.info(__('done'))\n            else:\n                logger.info(__('not available for built-in messages'))",
+          "excerpt_sha256": "5a2d49d59193f326bb83fd755bb5693b3addbaa8010330f7a68d2945927c3773",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        },
+        {
+          "path": "sphinx/util/i18n.py",
+          "start_line": 58,
+          "end_line": 117,
+          "source_sha256": "77dad93a8457a6e9fcbf7958e2e9448dda8bb41d7343a197423c90552f45f529",
+          "excerpt": "    def is_outdated(self) -> bool:\n        return (\n            not path.exists(self.mo_path) or\n            path.getmtime(self.mo_path) < path.getmtime(self.po_path))\n\n    def write_mo(self, locale: str) -> None:\n        with open(self.po_path, encoding=self.charset) as file_po:\n            try:\n                po = read_po(file_po, locale)\n            except Exception as exc:\n                logger.warning(__('reading error: %s, %s'), self.po_path, exc)\n                return\n\n        with open(self.mo_path, 'wb') as file_mo:\n            try:\n                write_mo(file_mo, po)\n            except Exception as exc:\n                logger.warning(__('writing error: %s, %s'), self.mo_path, exc)\n\n\nclass CatalogRepository:\n    \"\"\"A repository for message catalogs.\"\"\"\n\n    def __init__(self, basedir: str, locale_dirs: List[str],\n                 language: str, encoding: str) -> None:\n        self.basedir = basedir\n        self._locale_dirs = locale_dirs\n        self.language = language\n        self.encoding = encoding\n\n    @property\n    def locale_dirs(self) -> Generator[str, None, None]:\n        if not self.language:\n            return\n\n        for locale_dir in self._locale_dirs:\n            locale_dir = path.join(self.basedir, locale_dir)\n            if path.exists(path.join(locale_dir, self.language, 'LC_MESSAGES')):\n                yield locale_dir\n\n    @property\n    def pofiles(self) -> Generator[Tuple[str, str], None, None]:\n        for locale_dir in self.locale_dirs:\n            basedir = path.join(locale_dir, self.language, 'LC_MESSAGES')\n            for root, dirnames, filenames in os.walk(basedir):\n                # skip dot-directories\n                for dirname in dirnames:\n                    if dirname.startswith('.'):\n                        dirnames.remove(dirname)\n\n                for filename in filenames:\n                    if filename.endswith('.po'):\n                        fullpath = path.join(root, filename)\n                        yield basedir, relpath(fullpath, basedir)\n\n    @property\n    def catalogs(self) -> Generator[CatalogInfo, None, None]:\n        for basedir, filename in self.pofiles:\n            domain = canon_path(path.splitext(filename)[0])\n            yield CatalogInfo(basedir, domain, self.encoding)",
+          "excerpt_sha256": "b4cc226715f066ed60598d7e7512ce3611bd3a3ff1634b7163291b0be6af86da",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        },
+        {
+          "path": "sphinx/locale/__init__.py",
+          "start_line": 106,
+          "end_line": 146,
+          "source_sha256": "56e5749e0520cbcfa2bcae50192e5565bb6674fcd05e2c1fe1310e617a128487",
+          "excerpt": "translators = defaultdict(NullTranslations)  # type: Dict[Tuple[str, str], NullTranslations]\n\n\ndef init(locale_dirs: List[str], language: str,\n         catalog: str = 'sphinx', namespace: str = 'general') -> Tuple[NullTranslations, bool]:\n    \"\"\"Look for message catalogs in `locale_dirs` and *ensure* that there is at\n    least a NullTranslations catalog set in `translators`. If called multiple\n    times or if several ``.mo`` files are found, their contents are merged\n    together (thus making ``init`` reentrant).\n    \"\"\"\n    global translators\n    translator = translators.get((namespace, catalog))\n    # ignore previously failed attempts to find message catalogs\n    if translator.__class__ is NullTranslations:\n        translator = None\n    # the None entry is the system's default locale path\n    has_translation = True\n\n    if language and '_' in language:\n        # for language having country code (like \"de_AT\")\n        languages = [language, language.split('_')[0]]\n    else:\n        languages = [language]\n\n    # loading\n    for dir_ in locale_dirs:\n        try:\n            trans = gettext.translation(catalog, localedir=dir_, languages=languages)\n            if translator is None:\n                translator = trans\n            else:\n                translator.add_fallback(trans)\n        except Exception:\n            # Language couldn't be found in the specified path\n            pass\n    # guarantee translators[(namespace, catalog)] exists\n    if translator is None:\n        translator = NullTranslations()\n        has_translation = False\n    translators[(namespace, catalog)] = translator\n    return translator, has_translation",
+          "excerpt_sha256": "5249b3617fb20f96677e8eda313bc0262f19f6d17f64ab66fa9c3c89e2146ddf",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        },
+        {
+          "path": "sphinx/config.py",
+          "start_line": 109,
+          "end_line": 110,
+          "source_sha256": "1081779b168120b607bd2229fddff6e68399aacb6e18393eaa9fd24c05169338",
+          "excerpt": "        'language': (None, 'env', [str]),\n        'locale_dirs': (['locales'], 'env', []),",
+          "excerpt_sha256": "17e27483dd8b61b1e2f8e97c986d91065d6e5b3f3e5d0c3acfdedc4ab28c1e24",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        },
+        {
+          "path": "sphinx/config.py",
+          "start_line": 210,
+          "end_line": 222,
+          "source_sha256": "1081779b168120b607bd2229fddff6e68399aacb6e18393eaa9fd24c05169338",
+          "excerpt": "    def pre_init_values(self) -> None:\n        \"\"\"\n        Initialize some limited config variables before initialize i18n and loading extensions\n        \"\"\"\n        variables = ['needs_sphinx', 'suppress_warnings', 'language', 'locale_dirs']\n        for name in variables:\n            try:\n                if name in self.overrides:\n                    self.__dict__[name] = self.convert_overrides(name, self.overrides[name])\n                elif name in self._raw_config:\n                    self.__dict__[name] = self._raw_config[name]\n            except ValueError as exc:\n                logger.warning(\"%s\", exc)",
+          "excerpt_sha256": "ac5ebb5894ee8060ffba4724cf135a533b9ebb4e1490b592043a4637aa0d2685",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        }
+      ],
+      "findings": [
+        {
+          "severity": "serious",
+          "explanation": "The file opens at lines64 and71 are outside the try blocks around read_po/write_mo. FileNotFoundError and read-only-filesystem OSError propagate. The pinned-runtime counterexample reproduces both; only parser/serializer exceptions in the protected blocks are warned.",
+          "counterexample": "private-grading/sphinx-source-counterexample.json",
+          "quote": "A read or write error logs a warning instead of raising",
+          "source_evidence": [
+            {
+              "path": "sphinx/util/i18n.py",
+              "start_line": 63,
+              "end_line": 75,
+              "source_sha256": "77dad93a8457a6e9fcbf7958e2e9448dda8bb41d7343a197423c90552f45f529",
+              "excerpt": "    def write_mo(self, locale: str) -> None:\n        with open(self.po_path, encoding=self.charset) as file_po:\n            try:\n                po = read_po(file_po, locale)\n            except Exception as exc:\n                logger.warning(__('reading error: %s, %s'), self.po_path, exc)\n                return\n\n        with open(self.mo_path, 'wb') as file_mo:\n            try:\n                write_mo(file_mo, po)\n            except Exception as exc:\n                logger.warning(__('writing error: %s, %s'), self.mo_path, exc)",
+              "excerpt_sha256": "1b39af758e9a369b3a3ffaea6738ea9c19902939accaa8a4181a1b76baada682",
+              "source_version": "original pinned source",
+              "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+            }
+          ]
+        }
+      ],
+      "notes": [
+        "Normal cold directory priority is assessed with the answer's explicit cached-translator caveat; no invented guarantee about arbitrary pre-existing translators."
+      ],
+      "material_source_error": true,
+      "serious_error": true,
+      "citations_pass": true,
+      "semantic_source_pass": false,
+      "mechanical_gates": {
+        "terminal_pass": true,
+        "read_only_source_preserved": true,
+        "words": 585,
+        "word_limit": 700,
+        "word_limit_pass": true
+      },
+      "accepted": false
+    },
+    {
+      "arm": "codenib",
+      "task_id": "sphinx-doc__sphinx-8120-flow",
+      "kind": "flow",
+      "final_answer_sha256": "fe0a4605f160c2b3e7fcb84a22f84d6bb40f475ec7d3f9f216bd3d39033a8834",
+      "all_material_claims_checked": true,
+      "source_version_verified": true,
+      "criteria_pass": [
+        true,
+        true,
+        true
+      ],
+      "checked_claims": [
+        "Configuration pre-init and Sphinx constructor ordering, selected _init_i18n branch and three source boundaries checked.",
+        "Relative/absolute directory joining, LC_MESSAGES existence filter, configured order, PO walk/domain discovery and outdated predicate checked.",
+        "Only outdated sphinx domain compiled here; original system/package/user list and cached-translator precedence checked.",
+        "Default namespace/catalog, regional language list, no-catalog/logging branches and static-trace limits checked.",
+        "This answer describes read_po/write_mo calls without the false guarantee that file-open errors cannot propagate.",
+        "Package/config defaults and scope outside extension registration are accurate."
+      ],
+      "source_evidence": [
+        {
+          "path": "sphinx/application.py",
+          "start_line": 213,
+          "end_line": 245,
+          "source_sha256": "08294a663ae7d6da773e6d7f6912990c440804e84056c011b41672e26d5e0843",
+          "excerpt": "        # read config\n        self.tags = Tags(tags)\n        if self.confdir is None:\n            self.config = Config({}, confoverrides or {})\n        else:\n            self.config = Config.read(self.confdir, confoverrides or {}, self.tags)\n\n        # initialize some limited config variables before initialize i18n and loading\n        # extensions\n        self.config.pre_init_values()\n\n        # set up translation infrastructure\n        self._init_i18n()\n\n        # check the Sphinx version if requested\n        if self.config.needs_sphinx and self.config.needs_sphinx > sphinx.__display_version__:\n            raise VersionRequirementError(\n                __('This project needs at least Sphinx v%s and therefore cannot '\n                   'be built with this version.') % self.config.needs_sphinx)\n\n        # set confdir to srcdir if -C given (!= no confdir); a few pieces\n        # of code expect a confdir to be set\n        if self.confdir is None:\n            self.confdir = self.srcdir\n\n        # load all built-in extension modules\n        for extension in builtin_extensions:\n            self.setup_extension(extension)\n\n        # load all user-given extension modules\n        for extension in self.config.extensions:\n            self.setup_extension(extension)\n",
+          "excerpt_sha256": "cf831a2f867507d40851259d76bb3ab2c7336a3eae79c84fbf9790481eaff98d",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        },
+        {
+          "path": "sphinx/application.py",
+          "start_line": 279,
+          "end_line": 302,
+          "source_sha256": "08294a663ae7d6da773e6d7f6912990c440804e84056c011b41672e26d5e0843",
+          "excerpt": "    def _init_i18n(self) -> None:\n        \"\"\"Load translated strings from the configured localedirs if enabled in\n        the configuration.\n        \"\"\"\n        if self.config.language is None:\n            self.translator, has_translation = locale.init([], None)\n        else:\n            logger.info(bold(__('loading translations [%s]... ') % self.config.language),\n                        nonl=True)\n\n            # compile mo files if sphinx.po file in user locale directories are updated\n            repo = CatalogRepository(self.srcdir, self.config.locale_dirs,\n                                     self.config.language, self.config.source_encoding)\n            for catalog in repo.catalogs:\n                if catalog.domain == 'sphinx' and catalog.is_outdated():\n                    catalog.write_mo(self.config.language)\n\n            locale_dirs = [None, path.join(package_dir, 'locale')] + list(repo.locale_dirs)\n            self.translator, has_translation = locale.init(locale_dirs, self.config.language)\n            if has_translation or self.config.language == 'en':\n                # \"en\" never needs to be translated\n                logger.info(__('done'))\n            else:\n                logger.info(__('not available for built-in messages'))",
+          "excerpt_sha256": "5a2d49d59193f326bb83fd755bb5693b3addbaa8010330f7a68d2945927c3773",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        },
+        {
+          "path": "sphinx/util/i18n.py",
+          "start_line": 58,
+          "end_line": 117,
+          "source_sha256": "77dad93a8457a6e9fcbf7958e2e9448dda8bb41d7343a197423c90552f45f529",
+          "excerpt": "    def is_outdated(self) -> bool:\n        return (\n            not path.exists(self.mo_path) or\n            path.getmtime(self.mo_path) < path.getmtime(self.po_path))\n\n    def write_mo(self, locale: str) -> None:\n        with open(self.po_path, encoding=self.charset) as file_po:\n            try:\n                po = read_po(file_po, locale)\n            except Exception as exc:\n                logger.warning(__('reading error: %s, %s'), self.po_path, exc)\n                return\n\n        with open(self.mo_path, 'wb') as file_mo:\n            try:\n                write_mo(file_mo, po)\n            except Exception as exc:\n                logger.warning(__('writing error: %s, %s'), self.mo_path, exc)\n\n\nclass CatalogRepository:\n    \"\"\"A repository for message catalogs.\"\"\"\n\n    def __init__(self, basedir: str, locale_dirs: List[str],\n                 language: str, encoding: str) -> None:\n        self.basedir = basedir\n        self._locale_dirs = locale_dirs\n        self.language = language\n        self.encoding = encoding\n\n    @property\n    def locale_dirs(self) -> Generator[str, None, None]:\n        if not self.language:\n            return\n\n        for locale_dir in self._locale_dirs:\n            locale_dir = path.join(self.basedir, locale_dir)\n            if path.exists(path.join(locale_dir, self.language, 'LC_MESSAGES')):\n                yield locale_dir\n\n    @property\n    def pofiles(self) -> Generator[Tuple[str, str], None, None]:\n        for locale_dir in self.locale_dirs:\n            basedir = path.join(locale_dir, self.language, 'LC_MESSAGES')\n            for root, dirnames, filenames in os.walk(basedir):\n                # skip dot-directories\n                for dirname in dirnames:\n                    if dirname.startswith('.'):\n                        dirnames.remove(dirname)\n\n                for filename in filenames:\n                    if filename.endswith('.po'):\n                        fullpath = path.join(root, filename)\n                        yield basedir, relpath(fullpath, basedir)\n\n    @property\n    def catalogs(self) -> Generator[CatalogInfo, None, None]:\n        for basedir, filename in self.pofiles:\n            domain = canon_path(path.splitext(filename)[0])\n            yield CatalogInfo(basedir, domain, self.encoding)",
+          "excerpt_sha256": "b4cc226715f066ed60598d7e7512ce3611bd3a3ff1634b7163291b0be6af86da",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        },
+        {
+          "path": "sphinx/locale/__init__.py",
+          "start_line": 106,
+          "end_line": 146,
+          "source_sha256": "56e5749e0520cbcfa2bcae50192e5565bb6674fcd05e2c1fe1310e617a128487",
+          "excerpt": "translators = defaultdict(NullTranslations)  # type: Dict[Tuple[str, str], NullTranslations]\n\n\ndef init(locale_dirs: List[str], language: str,\n         catalog: str = 'sphinx', namespace: str = 'general') -> Tuple[NullTranslations, bool]:\n    \"\"\"Look for message catalogs in `locale_dirs` and *ensure* that there is at\n    least a NullTranslations catalog set in `translators`. If called multiple\n    times or if several ``.mo`` files are found, their contents are merged\n    together (thus making ``init`` reentrant).\n    \"\"\"\n    global translators\n    translator = translators.get((namespace, catalog))\n    # ignore previously failed attempts to find message catalogs\n    if translator.__class__ is NullTranslations:\n        translator = None\n    # the None entry is the system's default locale path\n    has_translation = True\n\n    if language and '_' in language:\n        # for language having country code (like \"de_AT\")\n        languages = [language, language.split('_')[0]]\n    else:\n        languages = [language]\n\n    # loading\n    for dir_ in locale_dirs:\n        try:\n            trans = gettext.translation(catalog, localedir=dir_, languages=languages)\n            if translator is None:\n                translator = trans\n            else:\n                translator.add_fallback(trans)\n        except Exception:\n            # Language couldn't be found in the specified path\n            pass\n    # guarantee translators[(namespace, catalog)] exists\n    if translator is None:\n        translator = NullTranslations()\n        has_translation = False\n    translators[(namespace, catalog)] = translator\n    return translator, has_translation",
+          "excerpt_sha256": "5249b3617fb20f96677e8eda313bc0262f19f6d17f64ab66fa9c3c89e2146ddf",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        },
+        {
+          "path": "sphinx/config.py",
+          "start_line": 109,
+          "end_line": 110,
+          "source_sha256": "1081779b168120b607bd2229fddff6e68399aacb6e18393eaa9fd24c05169338",
+          "excerpt": "        'language': (None, 'env', [str]),\n        'locale_dirs': (['locales'], 'env', []),",
+          "excerpt_sha256": "17e27483dd8b61b1e2f8e97c986d91065d6e5b3f3e5d0c3acfdedc4ab28c1e24",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        },
+        {
+          "path": "sphinx/config.py",
+          "start_line": 210,
+          "end_line": 222,
+          "source_sha256": "1081779b168120b607bd2229fddff6e68399aacb6e18393eaa9fd24c05169338",
+          "excerpt": "    def pre_init_values(self) -> None:\n        \"\"\"\n        Initialize some limited config variables before initialize i18n and loading extensions\n        \"\"\"\n        variables = ['needs_sphinx', 'suppress_warnings', 'language', 'locale_dirs']\n        for name in variables:\n            try:\n                if name in self.overrides:\n                    self.__dict__[name] = self.convert_overrides(name, self.overrides[name])\n                elif name in self._raw_config:\n                    self.__dict__[name] = self._raw_config[name]\n            except ValueError as exc:\n                logger.warning(\"%s\", exc)",
+          "excerpt_sha256": "ac5ebb5894ee8060ffba4724cf135a533b9ebb4e1490b592043a4637aa0d2685",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        },
+        {
+          "path": "sphinx/__init__.py",
+          "start_line": 45,
+          "end_line": 49,
+          "source_sha256": "6c0caa690f2af0ab6abd391240905b934cd3d4ceaae8d2debe5fdab417f338c6",
+          "excerpt": "#:    Before version 1.2, check the string ``sphinx.__version__``.\nversion_info = (3, 3, 0, 'beta', 0)\n\npackage_dir = path.abspath(path.dirname(__file__))\n",
+          "excerpt_sha256": "051e468f8cddeb6f17085564a6e4c93afbb97ab7d1a21e4444f2b8f4f245bfb8",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        }
+      ],
+      "findings": [],
+      "notes": [],
+      "material_source_error": false,
+      "serious_error": false,
+      "citations_pass": true,
+      "semantic_source_pass": true,
+      "mechanical_gates": {
+        "terminal_pass": true,
+        "read_only_source_preserved": true,
+        "words": 602,
+        "word_limit": 700,
+        "word_limit_pass": true
+      },
+      "accepted": true
+    },
+    {
+      "arm": "native",
+      "task_id": "sphinx-doc__sphinx-8120-impact",
+      "kind": "impact",
+      "final_answer_sha256": "2939508f6c7b4a0c531e78c42f99e3eb47c3dd45579875a173ad1b5557426509",
+      "all_material_claims_checked": true,
+      "source_version_verified": true,
+      "criteria_pass": [
+        true,
+        true,
+        true
+      ],
+      "checked_claims": [
+        "Correct application ordering boundary and proposed user-first list, retained built-in fallback, unchanged compile/filter mechanisms and shared loader effect.",
+        "Existing tests are real; fallback/custom namespace, directory discovery and intl template relevance checked against original tests.",
+        "Missing conflict-with-bundled-key plus missing-user-key fallback regression is proposed rather than claimed implemented.",
+        "Global translator reuse caveat is accurate; original PO fixtures/test roots and absence of a bundled xx directory checked."
+      ],
+      "source_evidence": [
+        {
+          "path": "sphinx/application.py",
+          "start_line": 279,
+          "end_line": 302,
+          "source_sha256": "08294a663ae7d6da773e6d7f6912990c440804e84056c011b41672e26d5e0843",
+          "excerpt": "    def _init_i18n(self) -> None:\n        \"\"\"Load translated strings from the configured localedirs if enabled in\n        the configuration.\n        \"\"\"\n        if self.config.language is None:\n            self.translator, has_translation = locale.init([], None)\n        else:\n            logger.info(bold(__('loading translations [%s]... ') % self.config.language),\n                        nonl=True)\n\n            # compile mo files if sphinx.po file in user locale directories are updated\n            repo = CatalogRepository(self.srcdir, self.config.locale_dirs,\n                                     self.config.language, self.config.source_encoding)\n            for catalog in repo.catalogs:\n                if catalog.domain == 'sphinx' and catalog.is_outdated():\n                    catalog.write_mo(self.config.language)\n\n            locale_dirs = [None, path.join(package_dir, 'locale')] + list(repo.locale_dirs)\n            self.translator, has_translation = locale.init(locale_dirs, self.config.language)\n            if has_translation or self.config.language == 'en':\n                # \"en\" never needs to be translated\n                logger.info(__('done'))\n            else:\n                logger.info(__('not available for built-in messages'))",
+          "excerpt_sha256": "5a2d49d59193f326bb83fd755bb5693b3addbaa8010330f7a68d2945927c3773",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        },
+        {
+          "path": "sphinx/locale/__init__.py",
+          "start_line": 106,
+          "end_line": 146,
+          "source_sha256": "56e5749e0520cbcfa2bcae50192e5565bb6674fcd05e2c1fe1310e617a128487",
+          "excerpt": "translators = defaultdict(NullTranslations)  # type: Dict[Tuple[str, str], NullTranslations]\n\n\ndef init(locale_dirs: List[str], language: str,\n         catalog: str = 'sphinx', namespace: str = 'general') -> Tuple[NullTranslations, bool]:\n    \"\"\"Look for message catalogs in `locale_dirs` and *ensure* that there is at\n    least a NullTranslations catalog set in `translators`. If called multiple\n    times or if several ``.mo`` files are found, their contents are merged\n    together (thus making ``init`` reentrant).\n    \"\"\"\n    global translators\n    translator = translators.get((namespace, catalog))\n    # ignore previously failed attempts to find message catalogs\n    if translator.__class__ is NullTranslations:\n        translator = None\n    # the None entry is the system's default locale path\n    has_translation = True\n\n    if language and '_' in language:\n        # for language having country code (like \"de_AT\")\n        languages = [language, language.split('_')[0]]\n    else:\n        languages = [language]\n\n    # loading\n    for dir_ in locale_dirs:\n        try:\n            trans = gettext.translation(catalog, localedir=dir_, languages=languages)\n            if translator is None:\n                translator = trans\n            else:\n                translator.add_fallback(trans)\n        except Exception:\n            # Language couldn't be found in the specified path\n            pass\n    # guarantee translators[(namespace, catalog)] exists\n    if translator is None:\n        translator = NullTranslations()\n        has_translation = False\n    translators[(namespace, catalog)] = translator\n    return translator, has_translation",
+          "excerpt_sha256": "5249b3617fb20f96677e8eda313bc0262f19f6d17f64ab66fa9c3c89e2146ddf",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        },
+        {
+          "path": "tests/test_locale.py",
+          "start_line": 16,
+          "end_line": 65,
+          "source_sha256": "27cf6c4dcc595c4db37da29d909a2adcf68b0a244b819b199ac6daf21a162559",
+          "excerpt": "@pytest.fixture(autouse=True)\ndef cleanup_translations():\n    yield\n    locale.translators.clear()\n\n\ndef test_init(rootdir):\n    # not initialized yet\n    _ = locale.get_translation('myext')\n    assert _('Hello world') == 'Hello world'\n    assert _('Hello sphinx') == 'Hello sphinx'\n    assert _('Hello reST') == 'Hello reST'\n\n    # load locale1\n    locale.init([rootdir / 'test-locale' / 'locale1'], 'en', 'myext')\n    _ = locale.get_translation('myext')\n    assert _('Hello world') == 'HELLO WORLD'\n    assert _('Hello sphinx') == 'Hello sphinx'\n    assert _('Hello reST') == 'Hello reST'\n\n    # load a catalog to unrelated namespace\n    locale.init([rootdir / 'test-locale' / 'locale2'], 'en', 'myext', 'mynamespace')\n    _ = locale.get_translation('myext')\n    assert _('Hello world') == 'HELLO WORLD'\n    assert _('Hello sphinx') == 'Hello sphinx'  # nothing changed here\n    assert _('Hello reST') == 'Hello reST'\n\n    # load locale2 in addition\n    locale.init([rootdir / 'test-locale' / 'locale2'], 'en', 'myext')\n    _ = locale.get_translation('myext')\n    assert _('Hello world') == 'HELLO WORLD'\n    assert _('Hello sphinx') == 'HELLO SPHINX'\n    assert _('Hello reST') == 'Hello reST'\n\n\ndef test_init_with_unknown_language(rootdir):\n    locale.init([rootdir / 'test-locale' / 'locale1'], 'unknown', 'myext')\n    _ = locale.get_translation('myext')\n    assert _('Hello world') == 'Hello world'\n    assert _('Hello sphinx') == 'Hello sphinx'\n    assert _('Hello reST') == 'Hello reST'\n\n\ndef test_add_message_catalog(app, rootdir):\n    app.config.language = 'en'\n    app.add_message_catalog('myext', rootdir / 'test-locale' / 'locale1')\n    _ = locale.get_translation('myext')\n    assert _('Hello world') == 'HELLO WORLD'\n    assert _('Hello sphinx') == 'Hello sphinx'\n    assert _('Hello reST') == 'Hello reST'",
+          "excerpt_sha256": "11e1434d3ce5aaf5805d777cc2a93cf94f6f1f94e28f7bde11404bd6c11fc2a8",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        },
+        {
+          "path": "tests/test_intl.py",
+          "start_line": 756,
+          "end_line": 764,
+          "source_sha256": "ba4dfaab20b58d4ba17fc08e7ca63040ae979d7e9b30145425c5364d5b25f7b6",
+          "excerpt": "@sphinx_intl\n@pytest.mark.sphinx('html')\n@pytest.mark.test_params(shared_result='test_intl_basic')\ndef test_html_template(app):\n    app.build()\n    # --- gettext template\n    result = (app.outdir / 'contents.html').read_text()\n    assert \"WELCOME\" in result\n    assert \"SPHINX 2013.120\" in result",
+          "excerpt_sha256": "0db5ca8c2f9f3e9bc19f990b266520d695894e9d533d472f58a7e6619f2992fe",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        },
+        {
+          "path": "tests/test_util_i18n.py",
+          "start_line": 162,
+          "end_line": 203,
+          "source_sha256": "739d3373b3b2f86ca89ea85aea2500766ea01be9b8bd07e647d96da13244066a",
+          "excerpt": "def test_CatalogRepository(tempdir):\n    (tempdir / 'loc1' / 'xx' / 'LC_MESSAGES').makedirs()\n    (tempdir / 'loc1' / 'xx' / 'LC_MESSAGES' / 'test1.po').write_text('#')\n    (tempdir / 'loc1' / 'xx' / 'LC_MESSAGES' / 'test2.po').write_text('#')\n    (tempdir / 'loc1' / 'xx' / 'LC_MESSAGES' / 'sub').makedirs()\n    (tempdir / 'loc1' / 'xx' / 'LC_MESSAGES' / 'sub' / 'test3.po').write_text('#')\n    (tempdir / 'loc1' / 'xx' / 'LC_MESSAGES' / 'sub' / 'test4.po').write_text('#')\n    (tempdir / 'loc1' / 'xx' / 'LC_MESSAGES' / '.dotdir').makedirs()\n    (tempdir / 'loc1' / 'xx' / 'LC_MESSAGES' / '.dotdir' / 'test5.po').write_text('#')\n    (tempdir / 'loc1' / 'yy' / 'LC_MESSAGES').makedirs()\n    (tempdir / 'loc1' / 'yy' / 'LC_MESSAGES' / 'test6.po').write_text('#')\n    (tempdir / 'loc2' / 'xx' / 'LC_MESSAGES').makedirs()\n    (tempdir / 'loc2' / 'xx' / 'LC_MESSAGES' / 'test1.po').write_text('#')\n    (tempdir / 'loc2' / 'xx' / 'LC_MESSAGES' / 'test7.po').write_text('#')\n\n    # for language xx\n    repo = i18n.CatalogRepository(tempdir, ['loc1', 'loc2'], 'xx', 'utf-8')\n    assert list(repo.locale_dirs) == [str(tempdir / 'loc1'),\n                                      str(tempdir / 'loc2')]\n    assert all(isinstance(c, i18n.CatalogInfo) for c in repo.catalogs)\n    assert sorted(c.domain for c in repo.catalogs) == ['sub/test3', 'sub/test4',\n                                                       'test1', 'test1', 'test2', 'test7']\n\n    # for language yy\n    repo = i18n.CatalogRepository(tempdir, ['loc1', 'loc2'], 'yy', 'utf-8')\n    assert sorted(c.domain for c in repo.catalogs) == ['test6']\n\n    # unknown languages\n    repo = i18n.CatalogRepository(tempdir, ['loc1', 'loc2'], 'zz', 'utf-8')\n    assert sorted(c.domain for c in repo.catalogs) == []\n\n    # no languages\n    repo = i18n.CatalogRepository(tempdir, ['loc1', 'loc2'], None, 'utf-8')\n    assert sorted(c.domain for c in repo.catalogs) == []\n\n    # unknown locale_dirs\n    repo = i18n.CatalogRepository(tempdir, ['loc3'], None, 'utf-8')\n    assert sorted(c.domain for c in repo.catalogs) == []\n\n    # no locale_dirs\n    repo = i18n.CatalogRepository(tempdir, [], None, 'utf-8')\n    assert sorted(c.domain for c in repo.catalogs) == []",
+          "excerpt_sha256": "8ca71e543d8de7177e57648e7e53789882882fb606c72a3965f501ad33ef2569",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        }
+      ],
+      "findings": [],
+      "notes": [
+        "Captured impact SDK reply to toolu_01WEL8mcHqCFHGtJuXQxPz5X reports4 passed for test_locale.py plus test_CatalogRepository; no rerun used as observation oracle.",
+        "The cited test range20-46 identifies test_init but its final assertions continue through48; exact complete test is retained as evidence. The answer explicitly recognizes disjoint fixtures and missing conflict coverage.",
+        "The suggestion to leave shared merge semantics alone is assessed as a change-risk recommendation, not evidence that every possible loader change necessarily fails existing tests."
+      ],
+      "material_source_error": false,
+      "serious_error": false,
+      "citations_pass": true,
+      "semantic_source_pass": true,
+      "mechanical_gates": {
+        "terminal_pass": true,
+        "read_only_source_preserved": true,
+        "words": 594,
+        "word_limit": 700,
+        "word_limit_pass": true
+      },
+      "accepted": true
+    },
+    {
+      "arm": "codegraph",
+      "task_id": "sphinx-doc__sphinx-8120-impact",
+      "kind": "impact",
+      "final_answer_sha256": "4d5fe2ae8dd9ada2a77256de554796ed255580323ba86f9b846032e5466d8931",
+      "all_material_claims_checked": true,
+      "source_version_verified": true,
+      "criteria_pass": [
+        true,
+        false,
+        true
+      ],
+      "checked_claims": [
+        "Correct application ordering boundary and proposed user-first list, retained built-in fallback, unchanged compile/filter mechanisms and shared loader effect.",
+        "Existing tests are real; fallback/custom namespace, directory discovery and intl template relevance checked against original tests.",
+        "Missing conflict-with-bundled-key plus missing-user-key fallback regression is proposed rather than claimed implemented.",
+        "Global translator reuse caveat is accurate; original PO fixtures/test roots and absence of a bundled xx directory checked."
+      ],
+      "source_evidence": [
+        {
+          "path": "sphinx/application.py",
+          "start_line": 279,
+          "end_line": 302,
+          "source_sha256": "08294a663ae7d6da773e6d7f6912990c440804e84056c011b41672e26d5e0843",
+          "excerpt": "    def _init_i18n(self) -> None:\n        \"\"\"Load translated strings from the configured localedirs if enabled in\n        the configuration.\n        \"\"\"\n        if self.config.language is None:\n            self.translator, has_translation = locale.init([], None)\n        else:\n            logger.info(bold(__('loading translations [%s]... ') % self.config.language),\n                        nonl=True)\n\n            # compile mo files if sphinx.po file in user locale directories are updated\n            repo = CatalogRepository(self.srcdir, self.config.locale_dirs,\n                                     self.config.language, self.config.source_encoding)\n            for catalog in repo.catalogs:\n                if catalog.domain == 'sphinx' and catalog.is_outdated():\n                    catalog.write_mo(self.config.language)\n\n            locale_dirs = [None, path.join(package_dir, 'locale')] + list(repo.locale_dirs)\n            self.translator, has_translation = locale.init(locale_dirs, self.config.language)\n            if has_translation or self.config.language == 'en':\n                # \"en\" never needs to be translated\n                logger.info(__('done'))\n            else:\n                logger.info(__('not available for built-in messages'))",
+          "excerpt_sha256": "5a2d49d59193f326bb83fd755bb5693b3addbaa8010330f7a68d2945927c3773",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        },
+        {
+          "path": "sphinx/locale/__init__.py",
+          "start_line": 106,
+          "end_line": 146,
+          "source_sha256": "56e5749e0520cbcfa2bcae50192e5565bb6674fcd05e2c1fe1310e617a128487",
+          "excerpt": "translators = defaultdict(NullTranslations)  # type: Dict[Tuple[str, str], NullTranslations]\n\n\ndef init(locale_dirs: List[str], language: str,\n         catalog: str = 'sphinx', namespace: str = 'general') -> Tuple[NullTranslations, bool]:\n    \"\"\"Look for message catalogs in `locale_dirs` and *ensure* that there is at\n    least a NullTranslations catalog set in `translators`. If called multiple\n    times or if several ``.mo`` files are found, their contents are merged\n    together (thus making ``init`` reentrant).\n    \"\"\"\n    global translators\n    translator = translators.get((namespace, catalog))\n    # ignore previously failed attempts to find message catalogs\n    if translator.__class__ is NullTranslations:\n        translator = None\n    # the None entry is the system's default locale path\n    has_translation = True\n\n    if language and '_' in language:\n        # for language having country code (like \"de_AT\")\n        languages = [language, language.split('_')[0]]\n    else:\n        languages = [language]\n\n    # loading\n    for dir_ in locale_dirs:\n        try:\n            trans = gettext.translation(catalog, localedir=dir_, languages=languages)\n            if translator is None:\n                translator = trans\n            else:\n                translator.add_fallback(trans)\n        except Exception:\n            # Language couldn't be found in the specified path\n            pass\n    # guarantee translators[(namespace, catalog)] exists\n    if translator is None:\n        translator = NullTranslations()\n        has_translation = False\n    translators[(namespace, catalog)] = translator\n    return translator, has_translation",
+          "excerpt_sha256": "5249b3617fb20f96677e8eda313bc0262f19f6d17f64ab66fa9c3c89e2146ddf",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        },
+        {
+          "path": "tests/test_locale.py",
+          "start_line": 16,
+          "end_line": 65,
+          "source_sha256": "27cf6c4dcc595c4db37da29d909a2adcf68b0a244b819b199ac6daf21a162559",
+          "excerpt": "@pytest.fixture(autouse=True)\ndef cleanup_translations():\n    yield\n    locale.translators.clear()\n\n\ndef test_init(rootdir):\n    # not initialized yet\n    _ = locale.get_translation('myext')\n    assert _('Hello world') == 'Hello world'\n    assert _('Hello sphinx') == 'Hello sphinx'\n    assert _('Hello reST') == 'Hello reST'\n\n    # load locale1\n    locale.init([rootdir / 'test-locale' / 'locale1'], 'en', 'myext')\n    _ = locale.get_translation('myext')\n    assert _('Hello world') == 'HELLO WORLD'\n    assert _('Hello sphinx') == 'Hello sphinx'\n    assert _('Hello reST') == 'Hello reST'\n\n    # load a catalog to unrelated namespace\n    locale.init([rootdir / 'test-locale' / 'locale2'], 'en', 'myext', 'mynamespace')\n    _ = locale.get_translation('myext')\n    assert _('Hello world') == 'HELLO WORLD'\n    assert _('Hello sphinx') == 'Hello sphinx'  # nothing changed here\n    assert _('Hello reST') == 'Hello reST'\n\n    # load locale2 in addition\n    locale.init([rootdir / 'test-locale' / 'locale2'], 'en', 'myext')\n    _ = locale.get_translation('myext')\n    assert _('Hello world') == 'HELLO WORLD'\n    assert _('Hello sphinx') == 'HELLO SPHINX'\n    assert _('Hello reST') == 'Hello reST'\n\n\ndef test_init_with_unknown_language(rootdir):\n    locale.init([rootdir / 'test-locale' / 'locale1'], 'unknown', 'myext')\n    _ = locale.get_translation('myext')\n    assert _('Hello world') == 'Hello world'\n    assert _('Hello sphinx') == 'Hello sphinx'\n    assert _('Hello reST') == 'Hello reST'\n\n\ndef test_add_message_catalog(app, rootdir):\n    app.config.language = 'en'\n    app.add_message_catalog('myext', rootdir / 'test-locale' / 'locale1')\n    _ = locale.get_translation('myext')\n    assert _('Hello world') == 'HELLO WORLD'\n    assert _('Hello sphinx') == 'Hello sphinx'\n    assert _('Hello reST') == 'Hello reST'",
+          "excerpt_sha256": "11e1434d3ce5aaf5805d777cc2a93cf94f6f1f94e28f7bde11404bd6c11fc2a8",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        },
+        {
+          "path": "tests/test_intl.py",
+          "start_line": 756,
+          "end_line": 764,
+          "source_sha256": "ba4dfaab20b58d4ba17fc08e7ca63040ae979d7e9b30145425c5364d5b25f7b6",
+          "excerpt": "@sphinx_intl\n@pytest.mark.sphinx('html')\n@pytest.mark.test_params(shared_result='test_intl_basic')\ndef test_html_template(app):\n    app.build()\n    # --- gettext template\n    result = (app.outdir / 'contents.html').read_text()\n    assert \"WELCOME\" in result\n    assert \"SPHINX 2013.120\" in result",
+          "excerpt_sha256": "0db5ca8c2f9f3e9bc19f990b266520d695894e9d533d472f58a7e6619f2992fe",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        },
+        {
+          "path": "tests/test_util_i18n.py",
+          "start_line": 162,
+          "end_line": 203,
+          "source_sha256": "739d3373b3b2f86ca89ea85aea2500766ea01be9b8bd07e647d96da13244066a",
+          "excerpt": "def test_CatalogRepository(tempdir):\n    (tempdir / 'loc1' / 'xx' / 'LC_MESSAGES').makedirs()\n    (tempdir / 'loc1' / 'xx' / 'LC_MESSAGES' / 'test1.po').write_text('#')\n    (tempdir / 'loc1' / 'xx' / 'LC_MESSAGES' / 'test2.po').write_text('#')\n    (tempdir / 'loc1' / 'xx' / 'LC_MESSAGES' / 'sub').makedirs()\n    (tempdir / 'loc1' / 'xx' / 'LC_MESSAGES' / 'sub' / 'test3.po').write_text('#')\n    (tempdir / 'loc1' / 'xx' / 'LC_MESSAGES' / 'sub' / 'test4.po').write_text('#')\n    (tempdir / 'loc1' / 'xx' / 'LC_MESSAGES' / '.dotdir').makedirs()\n    (tempdir / 'loc1' / 'xx' / 'LC_MESSAGES' / '.dotdir' / 'test5.po').write_text('#')\n    (tempdir / 'loc1' / 'yy' / 'LC_MESSAGES').makedirs()\n    (tempdir / 'loc1' / 'yy' / 'LC_MESSAGES' / 'test6.po').write_text('#')\n    (tempdir / 'loc2' / 'xx' / 'LC_MESSAGES').makedirs()\n    (tempdir / 'loc2' / 'xx' / 'LC_MESSAGES' / 'test1.po').write_text('#')\n    (tempdir / 'loc2' / 'xx' / 'LC_MESSAGES' / 'test7.po').write_text('#')\n\n    # for language xx\n    repo = i18n.CatalogRepository(tempdir, ['loc1', 'loc2'], 'xx', 'utf-8')\n    assert list(repo.locale_dirs) == [str(tempdir / 'loc1'),\n                                      str(tempdir / 'loc2')]\n    assert all(isinstance(c, i18n.CatalogInfo) for c in repo.catalogs)\n    assert sorted(c.domain for c in repo.catalogs) == ['sub/test3', 'sub/test4',\n                                                       'test1', 'test1', 'test2', 'test7']\n\n    # for language yy\n    repo = i18n.CatalogRepository(tempdir, ['loc1', 'loc2'], 'yy', 'utf-8')\n    assert sorted(c.domain for c in repo.catalogs) == ['test6']\n\n    # unknown languages\n    repo = i18n.CatalogRepository(tempdir, ['loc1', 'loc2'], 'zz', 'utf-8')\n    assert sorted(c.domain for c in repo.catalogs) == []\n\n    # no languages\n    repo = i18n.CatalogRepository(tempdir, ['loc1', 'loc2'], None, 'utf-8')\n    assert sorted(c.domain for c in repo.catalogs) == []\n\n    # unknown locale_dirs\n    repo = i18n.CatalogRepository(tempdir, ['loc3'], None, 'utf-8')\n    assert sorted(c.domain for c in repo.catalogs) == []\n\n    # no locale_dirs\n    repo = i18n.CatalogRepository(tempdir, [], None, 'utf-8')\n    assert sorted(c.domain for c in repo.catalogs) == []",
+          "excerpt_sha256": "8ca71e543d8de7177e57648e7e53789882882fb606c72a3965f501ad33ef2569",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        }
+      ],
+      "findings": [
+        {
+          "quote": "This pins down the \"first wins, later fills gaps\" fallback rule that the reorder relies on.",
+          "severity": "minor",
+          "explanation": "The described test_init catalogs have disjoint translated message keys. The assertions verify filling missing messages, not which conflicting entry wins. Claiming that this test pins first-wins overstates its coverage, so the mandatory accurate-test-relevance criterion fails. The proposed application-level conflict regression is otherwise appropriate.",
+          "source_evidence": [
+            {
+              "path": "tests/test_locale.py",
+              "start_line": 22,
+              "end_line": 48,
+              "source_sha256": "27cf6c4dcc595c4db37da29d909a2adcf68b0a244b819b199ac6daf21a162559",
+              "excerpt": "def test_init(rootdir):\n    # not initialized yet\n    _ = locale.get_translation('myext')\n    assert _('Hello world') == 'Hello world'\n    assert _('Hello sphinx') == 'Hello sphinx'\n    assert _('Hello reST') == 'Hello reST'\n\n    # load locale1\n    locale.init([rootdir / 'test-locale' / 'locale1'], 'en', 'myext')\n    _ = locale.get_translation('myext')\n    assert _('Hello world') == 'HELLO WORLD'\n    assert _('Hello sphinx') == 'Hello sphinx'\n    assert _('Hello reST') == 'Hello reST'\n\n    # load a catalog to unrelated namespace\n    locale.init([rootdir / 'test-locale' / 'locale2'], 'en', 'myext', 'mynamespace')\n    _ = locale.get_translation('myext')\n    assert _('Hello world') == 'HELLO WORLD'\n    assert _('Hello sphinx') == 'Hello sphinx'  # nothing changed here\n    assert _('Hello reST') == 'Hello reST'\n\n    # load locale2 in addition\n    locale.init([rootdir / 'test-locale' / 'locale2'], 'en', 'myext')\n    _ = locale.get_translation('myext')\n    assert _('Hello world') == 'HELLO WORLD'\n    assert _('Hello sphinx') == 'HELLO SPHINX'\n    assert _('Hello reST') == 'Hello reST'",
+              "excerpt_sha256": "6fe2cdcff105f79a9691c0cab05a78903c059779c929f7b871bc26a6f6095c89",
+              "source_version": "original pinned source",
+              "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+            },
+            {
+              "path": "tests/roots/test-locale/locale1/en/LC_MESSAGES/myext.po",
+              "start_line": 1,
+              "end_line": 2,
+              "source_sha256": "23633aca911a524428fea6b057abd5dd88650a3b41ff8a708a68a6ba8034048f",
+              "excerpt": "msgid \"Hello world\"\nmsgstr \"HELLO WORLD\"",
+              "excerpt_sha256": "adf26cfb706a6fb723d6d75c02ab32551aede40086d6012cfbd93aabb5af7630",
+              "source_version": "original pinned source",
+              "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+            },
+            {
+              "path": "tests/roots/test-locale/locale2/en/LC_MESSAGES/myext.po",
+              "start_line": 1,
+              "end_line": 2,
+              "source_sha256": "a9f28503dd8159f729a6ed2087c3883410a633a49c5d31719b3d4727cf50c9cd",
+              "excerpt": "msgid \"Hello sphinx\"\nmsgstr \"HELLO SPHINX\"",
+              "excerpt_sha256": "36facdb32df8acba7b7b1990349cb75861ab9b6636dad7352aba2c339c9dc1e6",
+              "source_version": "original pinned source",
+              "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+            }
+          ]
+        }
+      ],
+      "notes": [
+        "Captured impact traces show6 passed in the locale/catalog module command and1 passed in the html_template command. All actually named test examples were exercised; the answer's wording about four named tests is not used as an exact complete execution denominator."
+      ],
+      "material_source_error": false,
+      "serious_error": false,
+      "citations_pass": true,
+      "semantic_source_pass": false,
+      "mechanical_gates": {
+        "terminal_pass": true,
+        "read_only_source_preserved": true,
+        "words": 641,
+        "word_limit": 700,
+        "word_limit_pass": true
+      },
+      "accepted": false
+    },
+    {
+      "arm": "serena",
+      "task_id": "sphinx-doc__sphinx-8120-impact",
+      "kind": "impact",
+      "final_answer_sha256": "d4c00065903973303fafc022feff21e697e6aafb63a7d8d84a7de4118b9d66f0",
+      "all_material_claims_checked": true,
+      "source_version_verified": true,
+      "criteria_pass": [
+        true,
+        true,
+        true
+      ],
+      "checked_claims": [
+        "Correct application ordering boundary and proposed user-first list, retained built-in fallback, unchanged compile/filter mechanisms and shared loader effect.",
+        "Existing tests are real; fallback/custom namespace, directory discovery and intl template relevance checked against original tests.",
+        "Missing conflict-with-bundled-key plus missing-user-key fallback regression is proposed rather than claimed implemented.",
+        "Global translator reuse caveat is accurate; original PO fixtures/test roots and absence of a bundled xx directory checked.",
+        "German Fig./Listing message examples and proposed translator cleanup checked; separate HTML JavaScript path exists."
+      ],
+      "source_evidence": [
+        {
+          "path": "sphinx/application.py",
+          "start_line": 279,
+          "end_line": 302,
+          "source_sha256": "08294a663ae7d6da773e6d7f6912990c440804e84056c011b41672e26d5e0843",
+          "excerpt": "    def _init_i18n(self) -> None:\n        \"\"\"Load translated strings from the configured localedirs if enabled in\n        the configuration.\n        \"\"\"\n        if self.config.language is None:\n            self.translator, has_translation = locale.init([], None)\n        else:\n            logger.info(bold(__('loading translations [%s]... ') % self.config.language),\n                        nonl=True)\n\n            # compile mo files if sphinx.po file in user locale directories are updated\n            repo = CatalogRepository(self.srcdir, self.config.locale_dirs,\n                                     self.config.language, self.config.source_encoding)\n            for catalog in repo.catalogs:\n                if catalog.domain == 'sphinx' and catalog.is_outdated():\n                    catalog.write_mo(self.config.language)\n\n            locale_dirs = [None, path.join(package_dir, 'locale')] + list(repo.locale_dirs)\n            self.translator, has_translation = locale.init(locale_dirs, self.config.language)\n            if has_translation or self.config.language == 'en':\n                # \"en\" never needs to be translated\n                logger.info(__('done'))\n            else:\n                logger.info(__('not available for built-in messages'))",
+          "excerpt_sha256": "5a2d49d59193f326bb83fd755bb5693b3addbaa8010330f7a68d2945927c3773",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        },
+        {
+          "path": "sphinx/locale/__init__.py",
+          "start_line": 106,
+          "end_line": 146,
+          "source_sha256": "56e5749e0520cbcfa2bcae50192e5565bb6674fcd05e2c1fe1310e617a128487",
+          "excerpt": "translators = defaultdict(NullTranslations)  # type: Dict[Tuple[str, str], NullTranslations]\n\n\ndef init(locale_dirs: List[str], language: str,\n         catalog: str = 'sphinx', namespace: str = 'general') -> Tuple[NullTranslations, bool]:\n    \"\"\"Look for message catalogs in `locale_dirs` and *ensure* that there is at\n    least a NullTranslations catalog set in `translators`. If called multiple\n    times or if several ``.mo`` files are found, their contents are merged\n    together (thus making ``init`` reentrant).\n    \"\"\"\n    global translators\n    translator = translators.get((namespace, catalog))\n    # ignore previously failed attempts to find message catalogs\n    if translator.__class__ is NullTranslations:\n        translator = None\n    # the None entry is the system's default locale path\n    has_translation = True\n\n    if language and '_' in language:\n        # for language having country code (like \"de_AT\")\n        languages = [language, language.split('_')[0]]\n    else:\n        languages = [language]\n\n    # loading\n    for dir_ in locale_dirs:\n        try:\n            trans = gettext.translation(catalog, localedir=dir_, languages=languages)\n            if translator is None:\n                translator = trans\n            else:\n                translator.add_fallback(trans)\n        except Exception:\n            # Language couldn't be found in the specified path\n            pass\n    # guarantee translators[(namespace, catalog)] exists\n    if translator is None:\n        translator = NullTranslations()\n        has_translation = False\n    translators[(namespace, catalog)] = translator\n    return translator, has_translation",
+          "excerpt_sha256": "5249b3617fb20f96677e8eda313bc0262f19f6d17f64ab66fa9c3c89e2146ddf",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        },
+        {
+          "path": "tests/test_locale.py",
+          "start_line": 16,
+          "end_line": 65,
+          "source_sha256": "27cf6c4dcc595c4db37da29d909a2adcf68b0a244b819b199ac6daf21a162559",
+          "excerpt": "@pytest.fixture(autouse=True)\ndef cleanup_translations():\n    yield\n    locale.translators.clear()\n\n\ndef test_init(rootdir):\n    # not initialized yet\n    _ = locale.get_translation('myext')\n    assert _('Hello world') == 'Hello world'\n    assert _('Hello sphinx') == 'Hello sphinx'\n    assert _('Hello reST') == 'Hello reST'\n\n    # load locale1\n    locale.init([rootdir / 'test-locale' / 'locale1'], 'en', 'myext')\n    _ = locale.get_translation('myext')\n    assert _('Hello world') == 'HELLO WORLD'\n    assert _('Hello sphinx') == 'Hello sphinx'\n    assert _('Hello reST') == 'Hello reST'\n\n    # load a catalog to unrelated namespace\n    locale.init([rootdir / 'test-locale' / 'locale2'], 'en', 'myext', 'mynamespace')\n    _ = locale.get_translation('myext')\n    assert _('Hello world') == 'HELLO WORLD'\n    assert _('Hello sphinx') == 'Hello sphinx'  # nothing changed here\n    assert _('Hello reST') == 'Hello reST'\n\n    # load locale2 in addition\n    locale.init([rootdir / 'test-locale' / 'locale2'], 'en', 'myext')\n    _ = locale.get_translation('myext')\n    assert _('Hello world') == 'HELLO WORLD'\n    assert _('Hello sphinx') == 'HELLO SPHINX'\n    assert _('Hello reST') == 'Hello reST'\n\n\ndef test_init_with_unknown_language(rootdir):\n    locale.init([rootdir / 'test-locale' / 'locale1'], 'unknown', 'myext')\n    _ = locale.get_translation('myext')\n    assert _('Hello world') == 'Hello world'\n    assert _('Hello sphinx') == 'Hello sphinx'\n    assert _('Hello reST') == 'Hello reST'\n\n\ndef test_add_message_catalog(app, rootdir):\n    app.config.language = 'en'\n    app.add_message_catalog('myext', rootdir / 'test-locale' / 'locale1')\n    _ = locale.get_translation('myext')\n    assert _('Hello world') == 'HELLO WORLD'\n    assert _('Hello sphinx') == 'Hello sphinx'\n    assert _('Hello reST') == 'Hello reST'",
+          "excerpt_sha256": "11e1434d3ce5aaf5805d777cc2a93cf94f6f1f94e28f7bde11404bd6c11fc2a8",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        },
+        {
+          "path": "tests/test_intl.py",
+          "start_line": 756,
+          "end_line": 764,
+          "source_sha256": "ba4dfaab20b58d4ba17fc08e7ca63040ae979d7e9b30145425c5364d5b25f7b6",
+          "excerpt": "@sphinx_intl\n@pytest.mark.sphinx('html')\n@pytest.mark.test_params(shared_result='test_intl_basic')\ndef test_html_template(app):\n    app.build()\n    # --- gettext template\n    result = (app.outdir / 'contents.html').read_text()\n    assert \"WELCOME\" in result\n    assert \"SPHINX 2013.120\" in result",
+          "excerpt_sha256": "0db5ca8c2f9f3e9bc19f990b266520d695894e9d533d472f58a7e6619f2992fe",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        },
+        {
+          "path": "tests/test_util_i18n.py",
+          "start_line": 162,
+          "end_line": 203,
+          "source_sha256": "739d3373b3b2f86ca89ea85aea2500766ea01be9b8bd07e647d96da13244066a",
+          "excerpt": "def test_CatalogRepository(tempdir):\n    (tempdir / 'loc1' / 'xx' / 'LC_MESSAGES').makedirs()\n    (tempdir / 'loc1' / 'xx' / 'LC_MESSAGES' / 'test1.po').write_text('#')\n    (tempdir / 'loc1' / 'xx' / 'LC_MESSAGES' / 'test2.po').write_text('#')\n    (tempdir / 'loc1' / 'xx' / 'LC_MESSAGES' / 'sub').makedirs()\n    (tempdir / 'loc1' / 'xx' / 'LC_MESSAGES' / 'sub' / 'test3.po').write_text('#')\n    (tempdir / 'loc1' / 'xx' / 'LC_MESSAGES' / 'sub' / 'test4.po').write_text('#')\n    (tempdir / 'loc1' / 'xx' / 'LC_MESSAGES' / '.dotdir').makedirs()\n    (tempdir / 'loc1' / 'xx' / 'LC_MESSAGES' / '.dotdir' / 'test5.po').write_text('#')\n    (tempdir / 'loc1' / 'yy' / 'LC_MESSAGES').makedirs()\n    (tempdir / 'loc1' / 'yy' / 'LC_MESSAGES' / 'test6.po').write_text('#')\n    (tempdir / 'loc2' / 'xx' / 'LC_MESSAGES').makedirs()\n    (tempdir / 'loc2' / 'xx' / 'LC_MESSAGES' / 'test1.po').write_text('#')\n    (tempdir / 'loc2' / 'xx' / 'LC_MESSAGES' / 'test7.po').write_text('#')\n\n    # for language xx\n    repo = i18n.CatalogRepository(tempdir, ['loc1', 'loc2'], 'xx', 'utf-8')\n    assert list(repo.locale_dirs) == [str(tempdir / 'loc1'),\n                                      str(tempdir / 'loc2')]\n    assert all(isinstance(c, i18n.CatalogInfo) for c in repo.catalogs)\n    assert sorted(c.domain for c in repo.catalogs) == ['sub/test3', 'sub/test4',\n                                                       'test1', 'test1', 'test2', 'test7']\n\n    # for language yy\n    repo = i18n.CatalogRepository(tempdir, ['loc1', 'loc2'], 'yy', 'utf-8')\n    assert sorted(c.domain for c in repo.catalogs) == ['test6']\n\n    # unknown languages\n    repo = i18n.CatalogRepository(tempdir, ['loc1', 'loc2'], 'zz', 'utf-8')\n    assert sorted(c.domain for c in repo.catalogs) == []\n\n    # no languages\n    repo = i18n.CatalogRepository(tempdir, ['loc1', 'loc2'], None, 'utf-8')\n    assert sorted(c.domain for c in repo.catalogs) == []\n\n    # unknown locale_dirs\n    repo = i18n.CatalogRepository(tempdir, ['loc3'], None, 'utf-8')\n    assert sorted(c.domain for c in repo.catalogs) == []\n\n    # no locale_dirs\n    repo = i18n.CatalogRepository(tempdir, [], None, 'utf-8')\n    assert sorted(c.domain for c in repo.catalogs) == []",
+          "excerpt_sha256": "8ca71e543d8de7177e57648e7e53789882882fb606c72a3965f501ad33ef2569",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        },
+        {
+          "path": "sphinx/locale/de/LC_MESSAGES/sphinx.po",
+          "start_line": 241,
+          "end_line": 254,
+          "source_sha256": "fe094c0068d7635f5db00454bf35f3222527dac09b7920152995880b20c675b1",
+          "excerpt": "#: sphinx/config.py:365\n#, python-format\nmsgid \"Fig. %s\"\nmsgstr \"Abb. %s\"\n\n#: sphinx/config.py:366\n#, python-format\nmsgid \"Table %s\"\nmsgstr \"Tab. %s\"\n\n#: sphinx/config.py:367\n#, python-format\nmsgid \"Listing %s\"\nmsgstr \"Quellcode %s\"",
+          "excerpt_sha256": "996c52be991b309b84d09b84bd3736e336eec90110fa4a05d3a63c483540f628",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        },
+        {
+          "path": "sphinx/builders/html/__init__.py",
+          "start_line": 239,
+          "end_line": 246,
+          "source_sha256": "b2f6f9e65067480e5ccd5c3954cb48bf1f874d646546ee707493e3eefcae1370",
+          "excerpt": "    def _get_translations_js(self) -> str:\n        candidates = [path.join(dir, self.config.language,\n                                'LC_MESSAGES', 'sphinx.js')\n                      for dir in self.config.locale_dirs] + \\\n                     [path.join(package_dir, 'locale', self.config.language,\n                                'LC_MESSAGES', 'sphinx.js'),\n                      path.join(sys.prefix, 'share/sphinx/locale',\n                                self.config.language, 'sphinx.js')]",
+          "excerpt_sha256": "2702b7621e82286b7a4e0523d605438daec768119e90902f005cd246adc31b6b",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        }
+      ],
+      "findings": [],
+      "notes": [
+        "The answer explicitly says no tests were run. Its pre-change pass discussion is coverage reasoning, not credited as an observed self-execution result.",
+        "The fixture reference15-18 identifies cleanup_translations, whose clear is at19; the exact16-19 function is retained. This is a nearby source-anchor offset, not a different cleanup mechanism."
+      ],
+      "material_source_error": false,
+      "serious_error": false,
+      "citations_pass": true,
+      "semantic_source_pass": true,
+      "mechanical_gates": {
+        "terminal_pass": true,
+        "read_only_source_preserved": true,
+        "words": 619,
+        "word_limit": 700,
+        "word_limit_pass": true
+      },
+      "accepted": true
+    },
+    {
+      "arm": "codenib",
+      "task_id": "sphinx-doc__sphinx-8120-impact",
+      "kind": "impact",
+      "final_answer_sha256": "b486890f702b01e7b5bcd1cd0472827b08bbfccc072be99df1d28e7903de99d4",
+      "all_material_claims_checked": true,
+      "source_version_verified": true,
+      "criteria_pass": [
+        true,
+        true,
+        true
+      ],
+      "checked_claims": [
+        "Correct application ordering boundary and proposed user-first list, retained built-in fallback, unchanged compile/filter mechanisms and shared loader effect.",
+        "Existing tests are real; fallback/custom namespace, directory discovery and intl template relevance checked against original tests.",
+        "Missing conflict-with-bundled-key plus missing-user-key fallback regression is proposed rather than claimed implemented.",
+        "Global translator reuse caveat is accurate; original PO fixtures/test roots and absence of a bundled xx directory checked."
+      ],
+      "source_evidence": [
+        {
+          "path": "sphinx/application.py",
+          "start_line": 279,
+          "end_line": 302,
+          "source_sha256": "08294a663ae7d6da773e6d7f6912990c440804e84056c011b41672e26d5e0843",
+          "excerpt": "    def _init_i18n(self) -> None:\n        \"\"\"Load translated strings from the configured localedirs if enabled in\n        the configuration.\n        \"\"\"\n        if self.config.language is None:\n            self.translator, has_translation = locale.init([], None)\n        else:\n            logger.info(bold(__('loading translations [%s]... ') % self.config.language),\n                        nonl=True)\n\n            # compile mo files if sphinx.po file in user locale directories are updated\n            repo = CatalogRepository(self.srcdir, self.config.locale_dirs,\n                                     self.config.language, self.config.source_encoding)\n            for catalog in repo.catalogs:\n                if catalog.domain == 'sphinx' and catalog.is_outdated():\n                    catalog.write_mo(self.config.language)\n\n            locale_dirs = [None, path.join(package_dir, 'locale')] + list(repo.locale_dirs)\n            self.translator, has_translation = locale.init(locale_dirs, self.config.language)\n            if has_translation or self.config.language == 'en':\n                # \"en\" never needs to be translated\n                logger.info(__('done'))\n            else:\n                logger.info(__('not available for built-in messages'))",
+          "excerpt_sha256": "5a2d49d59193f326bb83fd755bb5693b3addbaa8010330f7a68d2945927c3773",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        },
+        {
+          "path": "sphinx/locale/__init__.py",
+          "start_line": 106,
+          "end_line": 146,
+          "source_sha256": "56e5749e0520cbcfa2bcae50192e5565bb6674fcd05e2c1fe1310e617a128487",
+          "excerpt": "translators = defaultdict(NullTranslations)  # type: Dict[Tuple[str, str], NullTranslations]\n\n\ndef init(locale_dirs: List[str], language: str,\n         catalog: str = 'sphinx', namespace: str = 'general') -> Tuple[NullTranslations, bool]:\n    \"\"\"Look for message catalogs in `locale_dirs` and *ensure* that there is at\n    least a NullTranslations catalog set in `translators`. If called multiple\n    times or if several ``.mo`` files are found, their contents are merged\n    together (thus making ``init`` reentrant).\n    \"\"\"\n    global translators\n    translator = translators.get((namespace, catalog))\n    # ignore previously failed attempts to find message catalogs\n    if translator.__class__ is NullTranslations:\n        translator = None\n    # the None entry is the system's default locale path\n    has_translation = True\n\n    if language and '_' in language:\n        # for language having country code (like \"de_AT\")\n        languages = [language, language.split('_')[0]]\n    else:\n        languages = [language]\n\n    # loading\n    for dir_ in locale_dirs:\n        try:\n            trans = gettext.translation(catalog, localedir=dir_, languages=languages)\n            if translator is None:\n                translator = trans\n            else:\n                translator.add_fallback(trans)\n        except Exception:\n            # Language couldn't be found in the specified path\n            pass\n    # guarantee translators[(namespace, catalog)] exists\n    if translator is None:\n        translator = NullTranslations()\n        has_translation = False\n    translators[(namespace, catalog)] = translator\n    return translator, has_translation",
+          "excerpt_sha256": "5249b3617fb20f96677e8eda313bc0262f19f6d17f64ab66fa9c3c89e2146ddf",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        },
+        {
+          "path": "tests/test_locale.py",
+          "start_line": 16,
+          "end_line": 65,
+          "source_sha256": "27cf6c4dcc595c4db37da29d909a2adcf68b0a244b819b199ac6daf21a162559",
+          "excerpt": "@pytest.fixture(autouse=True)\ndef cleanup_translations():\n    yield\n    locale.translators.clear()\n\n\ndef test_init(rootdir):\n    # not initialized yet\n    _ = locale.get_translation('myext')\n    assert _('Hello world') == 'Hello world'\n    assert _('Hello sphinx') == 'Hello sphinx'\n    assert _('Hello reST') == 'Hello reST'\n\n    # load locale1\n    locale.init([rootdir / 'test-locale' / 'locale1'], 'en', 'myext')\n    _ = locale.get_translation('myext')\n    assert _('Hello world') == 'HELLO WORLD'\n    assert _('Hello sphinx') == 'Hello sphinx'\n    assert _('Hello reST') == 'Hello reST'\n\n    # load a catalog to unrelated namespace\n    locale.init([rootdir / 'test-locale' / 'locale2'], 'en', 'myext', 'mynamespace')\n    _ = locale.get_translation('myext')\n    assert _('Hello world') == 'HELLO WORLD'\n    assert _('Hello sphinx') == 'Hello sphinx'  # nothing changed here\n    assert _('Hello reST') == 'Hello reST'\n\n    # load locale2 in addition\n    locale.init([rootdir / 'test-locale' / 'locale2'], 'en', 'myext')\n    _ = locale.get_translation('myext')\n    assert _('Hello world') == 'HELLO WORLD'\n    assert _('Hello sphinx') == 'HELLO SPHINX'\n    assert _('Hello reST') == 'Hello reST'\n\n\ndef test_init_with_unknown_language(rootdir):\n    locale.init([rootdir / 'test-locale' / 'locale1'], 'unknown', 'myext')\n    _ = locale.get_translation('myext')\n    assert _('Hello world') == 'Hello world'\n    assert _('Hello sphinx') == 'Hello sphinx'\n    assert _('Hello reST') == 'Hello reST'\n\n\ndef test_add_message_catalog(app, rootdir):\n    app.config.language = 'en'\n    app.add_message_catalog('myext', rootdir / 'test-locale' / 'locale1')\n    _ = locale.get_translation('myext')\n    assert _('Hello world') == 'HELLO WORLD'\n    assert _('Hello sphinx') == 'Hello sphinx'\n    assert _('Hello reST') == 'Hello reST'",
+          "excerpt_sha256": "11e1434d3ce5aaf5805d777cc2a93cf94f6f1f94e28f7bde11404bd6c11fc2a8",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        },
+        {
+          "path": "tests/test_intl.py",
+          "start_line": 756,
+          "end_line": 764,
+          "source_sha256": "ba4dfaab20b58d4ba17fc08e7ca63040ae979d7e9b30145425c5364d5b25f7b6",
+          "excerpt": "@sphinx_intl\n@pytest.mark.sphinx('html')\n@pytest.mark.test_params(shared_result='test_intl_basic')\ndef test_html_template(app):\n    app.build()\n    # --- gettext template\n    result = (app.outdir / 'contents.html').read_text()\n    assert \"WELCOME\" in result\n    assert \"SPHINX 2013.120\" in result",
+          "excerpt_sha256": "0db5ca8c2f9f3e9bc19f990b266520d695894e9d533d472f58a7e6619f2992fe",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        },
+        {
+          "path": "tests/test_util_i18n.py",
+          "start_line": 162,
+          "end_line": 203,
+          "source_sha256": "739d3373b3b2f86ca89ea85aea2500766ea01be9b8bd07e647d96da13244066a",
+          "excerpt": "def test_CatalogRepository(tempdir):\n    (tempdir / 'loc1' / 'xx' / 'LC_MESSAGES').makedirs()\n    (tempdir / 'loc1' / 'xx' / 'LC_MESSAGES' / 'test1.po').write_text('#')\n    (tempdir / 'loc1' / 'xx' / 'LC_MESSAGES' / 'test2.po').write_text('#')\n    (tempdir / 'loc1' / 'xx' / 'LC_MESSAGES' / 'sub').makedirs()\n    (tempdir / 'loc1' / 'xx' / 'LC_MESSAGES' / 'sub' / 'test3.po').write_text('#')\n    (tempdir / 'loc1' / 'xx' / 'LC_MESSAGES' / 'sub' / 'test4.po').write_text('#')\n    (tempdir / 'loc1' / 'xx' / 'LC_MESSAGES' / '.dotdir').makedirs()\n    (tempdir / 'loc1' / 'xx' / 'LC_MESSAGES' / '.dotdir' / 'test5.po').write_text('#')\n    (tempdir / 'loc1' / 'yy' / 'LC_MESSAGES').makedirs()\n    (tempdir / 'loc1' / 'yy' / 'LC_MESSAGES' / 'test6.po').write_text('#')\n    (tempdir / 'loc2' / 'xx' / 'LC_MESSAGES').makedirs()\n    (tempdir / 'loc2' / 'xx' / 'LC_MESSAGES' / 'test1.po').write_text('#')\n    (tempdir / 'loc2' / 'xx' / 'LC_MESSAGES' / 'test7.po').write_text('#')\n\n    # for language xx\n    repo = i18n.CatalogRepository(tempdir, ['loc1', 'loc2'], 'xx', 'utf-8')\n    assert list(repo.locale_dirs) == [str(tempdir / 'loc1'),\n                                      str(tempdir / 'loc2')]\n    assert all(isinstance(c, i18n.CatalogInfo) for c in repo.catalogs)\n    assert sorted(c.domain for c in repo.catalogs) == ['sub/test3', 'sub/test4',\n                                                       'test1', 'test1', 'test2', 'test7']\n\n    # for language yy\n    repo = i18n.CatalogRepository(tempdir, ['loc1', 'loc2'], 'yy', 'utf-8')\n    assert sorted(c.domain for c in repo.catalogs) == ['test6']\n\n    # unknown languages\n    repo = i18n.CatalogRepository(tempdir, ['loc1', 'loc2'], 'zz', 'utf-8')\n    assert sorted(c.domain for c in repo.catalogs) == []\n\n    # no languages\n    repo = i18n.CatalogRepository(tempdir, ['loc1', 'loc2'], None, 'utf-8')\n    assert sorted(c.domain for c in repo.catalogs) == []\n\n    # unknown locale_dirs\n    repo = i18n.CatalogRepository(tempdir, ['loc3'], None, 'utf-8')\n    assert sorted(c.domain for c in repo.catalogs) == []\n\n    # no locale_dirs\n    repo = i18n.CatalogRepository(tempdir, [], None, 'utf-8')\n    assert sorted(c.domain for c in repo.catalogs) == []",
+          "excerpt_sha256": "8ca71e543d8de7177e57648e7e53789882882fb606c72a3965f501ad33ef2569",
+          "source_version": "original pinned source",
+          "captured_before_snapshot_sha256": "fc90b90f315dd6be0e8857e200a05479815afb9b3eeec397a083460f4a36885b"
+        }
+      ],
+      "findings": [],
+      "notes": [
+        "Captured original impact replies show4 passed for locale/util and1 passed for html_template; no unexecuted proposed reorder is claimed tested.",
+        "Although it first uses first-found shorthand, it explicitly states the two catalogs have no overlapping message and do not establish conflicting-key priority. That qualification is retained."
+      ],
+      "material_source_error": false,
+      "serious_error": false,
+      "citations_pass": true,
+      "semantic_source_pass": true,
+      "mechanical_gates": {
+        "terminal_pass": true,
+        "read_only_source_preserved": true,
+        "words": 586,
+        "word_limit": 700,
+        "word_limit_pass": true
+      },
+      "accepted": true
+    },
+    {
+      "arm": "native",
+      "task_id": "sphinx-doc__sphinx-8120-post_edit",
+      "kind": "post_edit",
+      "final_answer_sha256": "cdbe93e021e16d53985fbb836ce53c3d3f72235dda6e73b8ec7700dae3882d9b",
+      "all_material_claims_checked": true,
+      "source_version_verified": true,
+      "criteria_pass": [
+        true,
+        true,
+        true
+      ],
+      "checked_claims": [
+        "Exact arm-specific repaired/helper file hashes match captured post_edit-before source snapshots.",
+        "Alias import/direct call, caller-supplied directory/language, fixed sphinx catalog/pilot-validation namespace and unchanged tuple return checked.",
+        "Distinct cache key, existing-translator reuse, caller-dependent list ordering and omission of application compilation/order construction checked.",
+        "No import/call site elsewhere in captured source, separate console/extension/autosummary/JavaScript mechanisms and lack of complete runtime evidence checked where claimed."
+      ],
+      "source_evidence": [
+        {
+          "path": "pilot_validation_probe.py",
+          "start_line": 1,
+          "end_line": 7,
+          "source_sha256": "45d5afc675371a41105584127ce2b064f22ba5a8bf495e32d77fe2d10b21587c",
+          "excerpt": "from sphinx.locale import init as load_catalog\n\n\ndef local_catalog_probe(locale_dirs, language):\n    return load_catalog(\n        locale_dirs, language, catalog=\"sphinx\", namespace=\"pilot-validation\"\n    )",
+          "excerpt_sha256": "504ecd5e9497fbe101332ca9e2d92ad011e6907d31003073f269aafeb079dc86",
+          "source_version": "arm repaired source and controlled addition",
+          "captured_before_snapshot_sha256": "b4cb7604ac25430db95aa488be31ad445478ff322d5eef0a91ee08630f87ec5e"
+        },
+        {
+          "path": "sphinx/locale/__init__.py",
+          "start_line": 106,
+          "end_line": 146,
+          "source_sha256": "56e5749e0520cbcfa2bcae50192e5565bb6674fcd05e2c1fe1310e617a128487",
+          "excerpt": "translators = defaultdict(NullTranslations)  # type: Dict[Tuple[str, str], NullTranslations]\n\n\ndef init(locale_dirs: List[str], language: str,\n         catalog: str = 'sphinx', namespace: str = 'general') -> Tuple[NullTranslations, bool]:\n    \"\"\"Look for message catalogs in `locale_dirs` and *ensure* that there is at\n    least a NullTranslations catalog set in `translators`. If called multiple\n    times or if several ``.mo`` files are found, their contents are merged\n    together (thus making ``init`` reentrant).\n    \"\"\"\n    global translators\n    translator = translators.get((namespace, catalog))\n    # ignore previously failed attempts to find message catalogs\n    if translator.__class__ is NullTranslations:\n        translator = None\n    # the None entry is the system's default locale path\n    has_translation = True\n\n    if language and '_' in language:\n        # for language having country code (like \"de_AT\")\n        languages = [language, language.split('_')[0]]\n    else:\n        languages = [language]\n\n    # loading\n    for dir_ in locale_dirs:\n        try:\n            trans = gettext.translation(catalog, localedir=dir_, languages=languages)\n            if translator is None:\n                translator = trans\n            else:\n                translator.add_fallback(trans)\n        except Exception:\n            # Language couldn't be found in the specified path\n            pass\n    # guarantee translators[(namespace, catalog)] exists\n    if translator is None:\n        translator = NullTranslations()\n        has_translation = False\n    translators[(namespace, catalog)] = translator\n    return translator, has_translation",
+          "excerpt_sha256": "5249b3617fb20f96677e8eda313bc0262f19f6d17f64ab66fa9c3c89e2146ddf",
+          "source_version": "arm repaired source and controlled addition",
+          "captured_before_snapshot_sha256": "b4cb7604ac25430db95aa488be31ad445478ff322d5eef0a91ee08630f87ec5e"
+        },
+        {
+          "path": "sphinx/locale/__init__.py",
+          "start_line": 169,
+          "end_line": 189,
+          "source_sha256": "56e5749e0520cbcfa2bcae50192e5565bb6674fcd05e2c1fe1310e617a128487",
+          "excerpt": "def init_console(locale_dir: str, catalog: str) -> Tuple[NullTranslations, bool]:\n    \"\"\"Initialize locale for console.\n\n    .. versionadded:: 1.8\n    \"\"\"\n    try:\n        # encoding is ignored\n        language, _ = locale.getlocale(locale.LC_MESSAGES)  # type: Tuple[Optional[str], Any]\n    except AttributeError:\n        # LC_MESSAGES is not always defined. Fallback to the default language\n        # in case it is not.\n        language = None\n    return init([locale_dir], language, catalog, 'console')\n\n\ndef get_translator(catalog: str = 'sphinx', namespace: str = 'general') -> NullTranslations:\n    return translators[(namespace, catalog)]\n\n\ndef is_translator_registered(catalog: str = 'sphinx', namespace: str = 'general') -> bool:\n    return (namespace, catalog) in translators",
+          "excerpt_sha256": "456c0a52cc15eb8af6476d92e9320d9a37d97f699d08eb2e45674c040eccc02f",
+          "source_version": "arm repaired source and controlled addition",
+          "captured_before_snapshot_sha256": "b4cb7604ac25430db95aa488be31ad445478ff322d5eef0a91ee08630f87ec5e"
+        },
+        {
+          "path": "sphinx/locale/__init__.py",
+          "start_line": 200,
+          "end_line": 245,
+          "source_sha256": "56e5749e0520cbcfa2bcae50192e5565bb6674fcd05e2c1fe1310e617a128487",
+          "excerpt": "def get_translation(catalog: str, namespace: str = 'general') -> Callable:\n    \"\"\"Get a translation function based on the *catalog* and *namespace*.\n\n    The extension can use this API to translate the messages on the\n    extension::\n\n        import os\n        from sphinx.locale import get_translation\n\n        MESSAGE_CATALOG_NAME = 'myextension'  # name of *.pot, *.po and *.mo files\n        _ = get_translation(MESSAGE_CATALOG_NAME)\n        text = _('Hello Sphinx!')\n\n\n        def setup(app):\n            package_dir = path.abspath(path.dirname(__file__))\n            locale_dir = os.path.join(package_dir, 'locales')\n            app.add_message_catalog(MESSAGE_CATALOG_NAME, locale_dir)\n\n    With this code, sphinx searches a message catalog from\n    ``${package_dir}/locales/${language}/LC_MESSAGES/myextension.mo``.\n    The :confval:`language` is used for the searching.\n\n    .. versionadded:: 1.8\n    \"\"\"\n    def gettext(message: str, *args: Any) -> str:\n        if not is_translator_registered(catalog, namespace):\n            # not initialized yet\n            return _TranslationProxy(_lazy_translate, catalog, namespace, message)  # type: ignore  # NOQA\n        else:\n            translator = get_translator(catalog, namespace)\n            if len(args) <= 1:\n                return translator.gettext(message)\n            else:  # support pluralization\n                return translator.ngettext(message, args[0], args[1])\n\n    return gettext\n\n\n# A shortcut for sphinx-core\n#: Translation function for messages on documentation (menu, labels, themes and so on).\n#: This function follows :confval:`language` setting.\n_ = get_translation('sphinx')\n#: Translation function for console messages\n#: This function follows locale setting (`LC_ALL`, `LC_MESSAGES` and so on).\n__ = get_translation('sphinx', 'console')",
+          "excerpt_sha256": "a3123547440c91abac01f22fb55e868ba6e83a4299d4a0b45e18f53e01d37ffb",
+          "source_version": "arm repaired source and controlled addition",
+          "captured_before_snapshot_sha256": "b4cb7604ac25430db95aa488be31ad445478ff322d5eef0a91ee08630f87ec5e"
+        },
+        {
+          "path": "sphinx/application.py",
+          "start_line": 279,
+          "end_line": 302,
+          "source_sha256": "61874f759ca0c54e508b2a13964aa77dc05e24ce709c1ae4105da07614411531",
+          "excerpt": "    def _init_i18n(self) -> None:\n        \"\"\"Load translated strings from the configured localedirs if enabled in\n        the configuration.\n        \"\"\"\n        if self.config.language is None:\n            self.translator, has_translation = locale.init([], None)\n        else:\n            logger.info(bold(__('loading translations [%s]... ') % self.config.language),\n                        nonl=True)\n\n            # compile mo files if sphinx.po file in user locale directories are updated\n            repo = CatalogRepository(self.srcdir, self.config.locale_dirs,\n                                     self.config.language, self.config.source_encoding)\n            for catalog in repo.catalogs:\n                if catalog.domain == 'sphinx' and catalog.is_outdated():\n                    catalog.write_mo(self.config.language)\n\n            locale_dirs = list(repo.locale_dirs) + [None, path.join(package_dir, 'locale')]\n            self.translator, has_translation = locale.init(locale_dirs, self.config.language)\n            if has_translation or self.config.language == 'en':\n                # \"en\" never needs to be translated\n                logger.info(__('done'))\n            else:\n                logger.info(__('not available for built-in messages'))",
+          "excerpt_sha256": "6f7c739829259cf3415ffb243068d83cb6c269094383fecaf59cbcc62f492252",
+          "source_version": "arm repaired source and controlled addition",
+          "captured_before_snapshot_sha256": "b4cb7604ac25430db95aa488be31ad445478ff322d5eef0a91ee08630f87ec5e"
+        },
+        {
+          "path": "sphinx/ext/autosummary/generate.py",
+          "start_line": 633,
+          "end_line": 638,
+          "source_sha256": "95ae0ad413f63b950867748d847a4aa10b73fef98e85606d42f171e740e44a21",
+          "excerpt": "def main(argv: List[str] = sys.argv[1:]) -> None:\n    sphinx.locale.setlocale(locale.LC_ALL, '')\n    sphinx.locale.init_console(os.path.join(package_dir, 'locale'), 'sphinx')\n    translator, _ = sphinx.locale.init([], None)\n\n    app = DummyApplication(translator)",
+          "excerpt_sha256": "3be58a37603dc5ea95a4d8a4dc69fd9971e20a8375fa293cb67794d83d21e1d9",
+          "source_version": "arm repaired source and controlled addition",
+          "captured_before_snapshot_sha256": "b4cb7604ac25430db95aa488be31ad445478ff322d5eef0a91ee08630f87ec5e"
+        }
+      ],
+      "findings": [],
+      "notes": [
+        "Sphinx application source staging is controller patch capture; the final filesystem/index report agrees with retained workflow metadata."
+      ],
+      "material_source_error": false,
+      "serious_error": false,
+      "citations_pass": true,
+      "semantic_source_pass": true,
+      "mechanical_gates": {
+        "terminal_pass": true,
+        "read_only_source_preserved": true,
+        "words": 364,
+        "word_limit": 400,
+        "word_limit_pass": true
+      },
+      "accepted": true
+    },
+    {
+      "arm": "codegraph",
+      "task_id": "sphinx-doc__sphinx-8120-post_edit",
+      "kind": "post_edit",
+      "final_answer_sha256": "58bea3b0db58ada0b8d40582c014af37dd6ccd8efa98669b65a5739650050a62",
+      "all_material_claims_checked": true,
+      "source_version_verified": true,
+      "criteria_pass": [
+        true,
+        true,
+        true
+      ],
+      "checked_claims": [
+        "Exact arm-specific repaired/helper file hashes match captured post_edit-before source snapshots.",
+        "Alias import/direct call, caller-supplied directory/language, fixed sphinx catalog/pilot-validation namespace and unchanged tuple return checked.",
+        "Distinct cache key, existing-translator reuse, caller-dependent list ordering and omission of application compilation/order construction checked.",
+        "No import/call site elsewhere in captured source, separate console/extension/autosummary/JavaScript mechanisms and lack of complete runtime evidence checked where claimed."
+      ],
+      "source_evidence": [
+        {
+          "path": "pilot_validation_probe.py",
+          "start_line": 1,
+          "end_line": 7,
+          "source_sha256": "45d5afc675371a41105584127ce2b064f22ba5a8bf495e32d77fe2d10b21587c",
+          "excerpt": "from sphinx.locale import init as load_catalog\n\n\ndef local_catalog_probe(locale_dirs, language):\n    return load_catalog(\n        locale_dirs, language, catalog=\"sphinx\", namespace=\"pilot-validation\"\n    )",
+          "excerpt_sha256": "504ecd5e9497fbe101332ca9e2d92ad011e6907d31003073f269aafeb079dc86",
+          "source_version": "arm repaired source and controlled addition",
+          "captured_before_snapshot_sha256": "fa7458b5b5df3de31e4a3fa90f11ecb86e20d239429560f6b6f646672ca619af"
+        },
+        {
+          "path": "sphinx/locale/__init__.py",
+          "start_line": 106,
+          "end_line": 146,
+          "source_sha256": "56e5749e0520cbcfa2bcae50192e5565bb6674fcd05e2c1fe1310e617a128487",
+          "excerpt": "translators = defaultdict(NullTranslations)  # type: Dict[Tuple[str, str], NullTranslations]\n\n\ndef init(locale_dirs: List[str], language: str,\n         catalog: str = 'sphinx', namespace: str = 'general') -> Tuple[NullTranslations, bool]:\n    \"\"\"Look for message catalogs in `locale_dirs` and *ensure* that there is at\n    least a NullTranslations catalog set in `translators`. If called multiple\n    times or if several ``.mo`` files are found, their contents are merged\n    together (thus making ``init`` reentrant).\n    \"\"\"\n    global translators\n    translator = translators.get((namespace, catalog))\n    # ignore previously failed attempts to find message catalogs\n    if translator.__class__ is NullTranslations:\n        translator = None\n    # the None entry is the system's default locale path\n    has_translation = True\n\n    if language and '_' in language:\n        # for language having country code (like \"de_AT\")\n        languages = [language, language.split('_')[0]]\n    else:\n        languages = [language]\n\n    # loading\n    for dir_ in locale_dirs:\n        try:\n            trans = gettext.translation(catalog, localedir=dir_, languages=languages)\n            if translator is None:\n                translator = trans\n            else:\n                translator.add_fallback(trans)\n        except Exception:\n            # Language couldn't be found in the specified path\n            pass\n    # guarantee translators[(namespace, catalog)] exists\n    if translator is None:\n        translator = NullTranslations()\n        has_translation = False\n    translators[(namespace, catalog)] = translator\n    return translator, has_translation",
+          "excerpt_sha256": "5249b3617fb20f96677e8eda313bc0262f19f6d17f64ab66fa9c3c89e2146ddf",
+          "source_version": "arm repaired source and controlled addition",
+          "captured_before_snapshot_sha256": "fa7458b5b5df3de31e4a3fa90f11ecb86e20d239429560f6b6f646672ca619af"
+        },
+        {
+          "path": "sphinx/locale/__init__.py",
+          "start_line": 169,
+          "end_line": 189,
+          "source_sha256": "56e5749e0520cbcfa2bcae50192e5565bb6674fcd05e2c1fe1310e617a128487",
+          "excerpt": "def init_console(locale_dir: str, catalog: str) -> Tuple[NullTranslations, bool]:\n    \"\"\"Initialize locale for console.\n\n    .. versionadded:: 1.8\n    \"\"\"\n    try:\n        # encoding is ignored\n        language, _ = locale.getlocale(locale.LC_MESSAGES)  # type: Tuple[Optional[str], Any]\n    except AttributeError:\n        # LC_MESSAGES is not always defined. Fallback to the default language\n        # in case it is not.\n        language = None\n    return init([locale_dir], language, catalog, 'console')\n\n\ndef get_translator(catalog: str = 'sphinx', namespace: str = 'general') -> NullTranslations:\n    return translators[(namespace, catalog)]\n\n\ndef is_translator_registered(catalog: str = 'sphinx', namespace: str = 'general') -> bool:\n    return (namespace, catalog) in translators",
+          "excerpt_sha256": "456c0a52cc15eb8af6476d92e9320d9a37d97f699d08eb2e45674c040eccc02f",
+          "source_version": "arm repaired source and controlled addition",
+          "captured_before_snapshot_sha256": "fa7458b5b5df3de31e4a3fa90f11ecb86e20d239429560f6b6f646672ca619af"
+        },
+        {
+          "path": "sphinx/locale/__init__.py",
+          "start_line": 200,
+          "end_line": 245,
+          "source_sha256": "56e5749e0520cbcfa2bcae50192e5565bb6674fcd05e2c1fe1310e617a128487",
+          "excerpt": "def get_translation(catalog: str, namespace: str = 'general') -> Callable:\n    \"\"\"Get a translation function based on the *catalog* and *namespace*.\n\n    The extension can use this API to translate the messages on the\n    extension::\n\n        import os\n        from sphinx.locale import get_translation\n\n        MESSAGE_CATALOG_NAME = 'myextension'  # name of *.pot, *.po and *.mo files\n        _ = get_translation(MESSAGE_CATALOG_NAME)\n        text = _('Hello Sphinx!')\n\n\n        def setup(app):\n            package_dir = path.abspath(path.dirname(__file__))\n            locale_dir = os.path.join(package_dir, 'locales')\n            app.add_message_catalog(MESSAGE_CATALOG_NAME, locale_dir)\n\n    With this code, sphinx searches a message catalog from\n    ``${package_dir}/locales/${language}/LC_MESSAGES/myextension.mo``.\n    The :confval:`language` is used for the searching.\n\n    .. versionadded:: 1.8\n    \"\"\"\n    def gettext(message: str, *args: Any) -> str:\n        if not is_translator_registered(catalog, namespace):\n            # not initialized yet\n            return _TranslationProxy(_lazy_translate, catalog, namespace, message)  # type: ignore  # NOQA\n        else:\n            translator = get_translator(catalog, namespace)\n            if len(args) <= 1:\n                return translator.gettext(message)\n            else:  # support pluralization\n                return translator.ngettext(message, args[0], args[1])\n\n    return gettext\n\n\n# A shortcut for sphinx-core\n#: Translation function for messages on documentation (menu, labels, themes and so on).\n#: This function follows :confval:`language` setting.\n_ = get_translation('sphinx')\n#: Translation function for console messages\n#: This function follows locale setting (`LC_ALL`, `LC_MESSAGES` and so on).\n__ = get_translation('sphinx', 'console')",
+          "excerpt_sha256": "a3123547440c91abac01f22fb55e868ba6e83a4299d4a0b45e18f53e01d37ffb",
+          "source_version": "arm repaired source and controlled addition",
+          "captured_before_snapshot_sha256": "fa7458b5b5df3de31e4a3fa90f11ecb86e20d239429560f6b6f646672ca619af"
+        },
+        {
+          "path": "sphinx/application.py",
+          "start_line": 279,
+          "end_line": 302,
+          "source_sha256": "733ca1a8b6223f060b57260b05b2de0ae2c0a92231afa2a22c65e3a0080ffd30",
+          "excerpt": "    def _init_i18n(self) -> None:\n        \"\"\"Load translated strings from the configured localedirs if enabled in\n        the configuration.\n        \"\"\"\n        if self.config.language is None:\n            self.translator, has_translation = locale.init([], None)\n        else:\n            logger.info(bold(__('loading translations [%s]... ') % self.config.language),\n                        nonl=True)\n\n            # compile mo files if sphinx.po file in user locale directories are updated\n            repo = CatalogRepository(self.srcdir, self.config.locale_dirs,\n                                     self.config.language, self.config.source_encoding)\n            for catalog in repo.catalogs:\n                if catalog.domain == 'sphinx' and catalog.is_outdated():\n                    catalog.write_mo(self.config.language)\n\n            # user locale dirs come first so they can override the built-in messages\n            locale_dirs = list(repo.locale_dirs) + [None, path.join(package_dir, 'locale')]\n            self.translator, has_translation = locale.init(locale_dirs, self.config.language)\n            if has_translation or self.config.language == 'en':\n                # \"en\" never needs to be translated\n                logger.info(__('done'))\n            else:",
+          "excerpt_sha256": "1b14d7b59cbc23dce338877eb04b41ca80fea58b0598b224af0591540c4b4030",
+          "source_version": "arm repaired source and controlled addition",
+          "captured_before_snapshot_sha256": "fa7458b5b5df3de31e4a3fa90f11ecb86e20d239429560f6b6f646672ca619af"
+        },
+        {
+          "path": "sphinx/ext/autosummary/generate.py",
+          "start_line": 633,
+          "end_line": 638,
+          "source_sha256": "95ae0ad413f63b950867748d847a4aa10b73fef98e85606d42f171e740e44a21",
+          "excerpt": "def main(argv: List[str] = sys.argv[1:]) -> None:\n    sphinx.locale.setlocale(locale.LC_ALL, '')\n    sphinx.locale.init_console(os.path.join(package_dir, 'locale'), 'sphinx')\n    translator, _ = sphinx.locale.init([], None)\n\n    app = DummyApplication(translator)",
+          "excerpt_sha256": "3be58a37603dc5ea95a4d8a4dc69fd9971e20a8375fa293cb67794d83d21e1d9",
+          "source_version": "arm repaired source and controlled addition",
+          "captured_before_snapshot_sha256": "fa7458b5b5df3de31e4a3fa90f11ecb86e20d239429560f6b6f646672ca619af"
+        }
+      ],
+      "findings": [],
+      "notes": [
+        "Its additional comment shifts the reordered list/call to297/298; the current citations match that arm's repaired file."
+      ],
+      "material_source_error": false,
+      "serious_error": false,
+      "citations_pass": true,
+      "semantic_source_pass": true,
+      "mechanical_gates": {
+        "terminal_pass": true,
+        "read_only_source_preserved": true,
+        "words": 371,
+        "word_limit": 400,
+        "word_limit_pass": true
+      },
+      "accepted": true
+    },
+    {
+      "arm": "serena",
+      "task_id": "sphinx-doc__sphinx-8120-post_edit",
+      "kind": "post_edit",
+      "final_answer_sha256": "6be191ad90aa6bb1aa295ce87fbe5c88e6fbd5a1c360f7dd040283ab75a2174e",
+      "all_material_claims_checked": true,
+      "source_version_verified": true,
+      "criteria_pass": [
+        true,
+        true,
+        true
+      ],
+      "checked_claims": [
+        "Exact arm-specific repaired/helper file hashes match captured post_edit-before source snapshots.",
+        "Alias import/direct call, caller-supplied directory/language, fixed sphinx catalog/pilot-validation namespace and unchanged tuple return checked.",
+        "Distinct cache key, existing-translator reuse, caller-dependent list ordering and omission of application compilation/order construction checked.",
+        "No import/call site elsewhere in captured source, separate console/extension/autosummary/JavaScript mechanisms and lack of complete runtime evidence checked where claimed."
+      ],
+      "source_evidence": [
+        {
+          "path": "pilot_validation_probe.py",
+          "start_line": 1,
+          "end_line": 7,
+          "source_sha256": "45d5afc675371a41105584127ce2b064f22ba5a8bf495e32d77fe2d10b21587c",
+          "excerpt": "from sphinx.locale import init as load_catalog\n\n\ndef local_catalog_probe(locale_dirs, language):\n    return load_catalog(\n        locale_dirs, language, catalog=\"sphinx\", namespace=\"pilot-validation\"\n    )",
+          "excerpt_sha256": "504ecd5e9497fbe101332ca9e2d92ad011e6907d31003073f269aafeb079dc86",
+          "source_version": "arm repaired source and controlled addition",
+          "captured_before_snapshot_sha256": "b4cb7604ac25430db95aa488be31ad445478ff322d5eef0a91ee08630f87ec5e"
+        },
+        {
+          "path": "sphinx/locale/__init__.py",
+          "start_line": 106,
+          "end_line": 146,
+          "source_sha256": "56e5749e0520cbcfa2bcae50192e5565bb6674fcd05e2c1fe1310e617a128487",
+          "excerpt": "translators = defaultdict(NullTranslations)  # type: Dict[Tuple[str, str], NullTranslations]\n\n\ndef init(locale_dirs: List[str], language: str,\n         catalog: str = 'sphinx', namespace: str = 'general') -> Tuple[NullTranslations, bool]:\n    \"\"\"Look for message catalogs in `locale_dirs` and *ensure* that there is at\n    least a NullTranslations catalog set in `translators`. If called multiple\n    times or if several ``.mo`` files are found, their contents are merged\n    together (thus making ``init`` reentrant).\n    \"\"\"\n    global translators\n    translator = translators.get((namespace, catalog))\n    # ignore previously failed attempts to find message catalogs\n    if translator.__class__ is NullTranslations:\n        translator = None\n    # the None entry is the system's default locale path\n    has_translation = True\n\n    if language and '_' in language:\n        # for language having country code (like \"de_AT\")\n        languages = [language, language.split('_')[0]]\n    else:\n        languages = [language]\n\n    # loading\n    for dir_ in locale_dirs:\n        try:\n            trans = gettext.translation(catalog, localedir=dir_, languages=languages)\n            if translator is None:\n                translator = trans\n            else:\n                translator.add_fallback(trans)\n        except Exception:\n            # Language couldn't be found in the specified path\n            pass\n    # guarantee translators[(namespace, catalog)] exists\n    if translator is None:\n        translator = NullTranslations()\n        has_translation = False\n    translators[(namespace, catalog)] = translator\n    return translator, has_translation",
+          "excerpt_sha256": "5249b3617fb20f96677e8eda313bc0262f19f6d17f64ab66fa9c3c89e2146ddf",
+          "source_version": "arm repaired source and controlled addition",
+          "captured_before_snapshot_sha256": "b4cb7604ac25430db95aa488be31ad445478ff322d5eef0a91ee08630f87ec5e"
+        },
+        {
+          "path": "sphinx/locale/__init__.py",
+          "start_line": 169,
+          "end_line": 189,
+          "source_sha256": "56e5749e0520cbcfa2bcae50192e5565bb6674fcd05e2c1fe1310e617a128487",
+          "excerpt": "def init_console(locale_dir: str, catalog: str) -> Tuple[NullTranslations, bool]:\n    \"\"\"Initialize locale for console.\n\n    .. versionadded:: 1.8\n    \"\"\"\n    try:\n        # encoding is ignored\n        language, _ = locale.getlocale(locale.LC_MESSAGES)  # type: Tuple[Optional[str], Any]\n    except AttributeError:\n        # LC_MESSAGES is not always defined. Fallback to the default language\n        # in case it is not.\n        language = None\n    return init([locale_dir], language, catalog, 'console')\n\n\ndef get_translator(catalog: str = 'sphinx', namespace: str = 'general') -> NullTranslations:\n    return translators[(namespace, catalog)]\n\n\ndef is_translator_registered(catalog: str = 'sphinx', namespace: str = 'general') -> bool:\n    return (namespace, catalog) in translators",
+          "excerpt_sha256": "456c0a52cc15eb8af6476d92e9320d9a37d97f699d08eb2e45674c040eccc02f",
+          "source_version": "arm repaired source and controlled addition",
+          "captured_before_snapshot_sha256": "b4cb7604ac25430db95aa488be31ad445478ff322d5eef0a91ee08630f87ec5e"
+        },
+        {
+          "path": "sphinx/locale/__init__.py",
+          "start_line": 200,
+          "end_line": 245,
+          "source_sha256": "56e5749e0520cbcfa2bcae50192e5565bb6674fcd05e2c1fe1310e617a128487",
+          "excerpt": "def get_translation(catalog: str, namespace: str = 'general') -> Callable:\n    \"\"\"Get a translation function based on the *catalog* and *namespace*.\n\n    The extension can use this API to translate the messages on the\n    extension::\n\n        import os\n        from sphinx.locale import get_translation\n\n        MESSAGE_CATALOG_NAME = 'myextension'  # name of *.pot, *.po and *.mo files\n        _ = get_translation(MESSAGE_CATALOG_NAME)\n        text = _('Hello Sphinx!')\n\n\n        def setup(app):\n            package_dir = path.abspath(path.dirname(__file__))\n            locale_dir = os.path.join(package_dir, 'locales')\n            app.add_message_catalog(MESSAGE_CATALOG_NAME, locale_dir)\n\n    With this code, sphinx searches a message catalog from\n    ``${package_dir}/locales/${language}/LC_MESSAGES/myextension.mo``.\n    The :confval:`language` is used for the searching.\n\n    .. versionadded:: 1.8\n    \"\"\"\n    def gettext(message: str, *args: Any) -> str:\n        if not is_translator_registered(catalog, namespace):\n            # not initialized yet\n            return _TranslationProxy(_lazy_translate, catalog, namespace, message)  # type: ignore  # NOQA\n        else:\n            translator = get_translator(catalog, namespace)\n            if len(args) <= 1:\n                return translator.gettext(message)\n            else:  # support pluralization\n                return translator.ngettext(message, args[0], args[1])\n\n    return gettext\n\n\n# A shortcut for sphinx-core\n#: Translation function for messages on documentation (menu, labels, themes and so on).\n#: This function follows :confval:`language` setting.\n_ = get_translation('sphinx')\n#: Translation function for console messages\n#: This function follows locale setting (`LC_ALL`, `LC_MESSAGES` and so on).\n__ = get_translation('sphinx', 'console')",
+          "excerpt_sha256": "a3123547440c91abac01f22fb55e868ba6e83a4299d4a0b45e18f53e01d37ffb",
+          "source_version": "arm repaired source and controlled addition",
+          "captured_before_snapshot_sha256": "b4cb7604ac25430db95aa488be31ad445478ff322d5eef0a91ee08630f87ec5e"
+        },
+        {
+          "path": "sphinx/application.py",
+          "start_line": 279,
+          "end_line": 302,
+          "source_sha256": "61874f759ca0c54e508b2a13964aa77dc05e24ce709c1ae4105da07614411531",
+          "excerpt": "    def _init_i18n(self) -> None:\n        \"\"\"Load translated strings from the configured localedirs if enabled in\n        the configuration.\n        \"\"\"\n        if self.config.language is None:\n            self.translator, has_translation = locale.init([], None)\n        else:\n            logger.info(bold(__('loading translations [%s]... ') % self.config.language),\n                        nonl=True)\n\n            # compile mo files if sphinx.po file in user locale directories are updated\n            repo = CatalogRepository(self.srcdir, self.config.locale_dirs,\n                                     self.config.language, self.config.source_encoding)\n            for catalog in repo.catalogs:\n                if catalog.domain == 'sphinx' and catalog.is_outdated():\n                    catalog.write_mo(self.config.language)\n\n            locale_dirs = list(repo.locale_dirs) + [None, path.join(package_dir, 'locale')]\n            self.translator, has_translation = locale.init(locale_dirs, self.config.language)\n            if has_translation or self.config.language == 'en':\n                # \"en\" never needs to be translated\n                logger.info(__('done'))\n            else:\n                logger.info(__('not available for built-in messages'))",
+          "excerpt_sha256": "6f7c739829259cf3415ffb243068d83cb6c269094383fecaf59cbcc62f492252",
+          "source_version": "arm repaired source and controlled addition",
+          "captured_before_snapshot_sha256": "b4cb7604ac25430db95aa488be31ad445478ff322d5eef0a91ee08630f87ec5e"
+        },
+        {
+          "path": "sphinx/ext/autosummary/generate.py",
+          "start_line": 633,
+          "end_line": 638,
+          "source_sha256": "95ae0ad413f63b950867748d847a4aa10b73fef98e85606d42f171e740e44a21",
+          "excerpt": "def main(argv: List[str] = sys.argv[1:]) -> None:\n    sphinx.locale.setlocale(locale.LC_ALL, '')\n    sphinx.locale.init_console(os.path.join(package_dir, 'locale'), 'sphinx')\n    translator, _ = sphinx.locale.init([], None)\n\n    app = DummyApplication(translator)",
+          "excerpt_sha256": "3be58a37603dc5ea95a4d8a4dc69fd9971e20a8375fa293cb67794d83d21e1d9",
+          "source_version": "arm repaired source and controlled addition",
+          "captured_before_snapshot_sha256": "b4cb7604ac25430db95aa488be31ad445478ff322d5eef0a91ee08630f87ec5e"
+        }
+      ],
+      "findings": [
+        {
+          "quote": "`_()` and `__()` look up the `general` namespace through `get_translation`",
+          "severity": "serious",
+          "explanation": "The source binds _ to general but __ to console at245. The helper is isolated from both, but the stated namespace of the console lookup is materially wrong. Closure inspection in the original runtime confirms general/console separately.",
+          "counterexample": "private-grading/sphinx-source-counterexample.json",
+          "source_evidence": [
+            {
+              "path": "sphinx/locale/__init__.py",
+              "start_line": 239,
+              "end_line": 245,
+              "source_sha256": "56e5749e0520cbcfa2bcae50192e5565bb6674fcd05e2c1fe1310e617a128487",
+              "excerpt": "# A shortcut for sphinx-core\n#: Translation function for messages on documentation (menu, labels, themes and so on).\n#: This function follows :confval:`language` setting.\n_ = get_translation('sphinx')\n#: Translation function for console messages\n#: This function follows locale setting (`LC_ALL`, `LC_MESSAGES` and so on).\n__ = get_translation('sphinx', 'console')",
+              "excerpt_sha256": "fdacfb165cfabe2bf245c61cf7c195cea963e567a3bcd2ac021a51ffca1bde7f",
+              "source_version": "arm repaired source and controlled addition",
+              "captured_before_snapshot_sha256": "b4cb7604ac25430db95aa488be31ad445478ff322d5eef0a91ee08630f87ec5e"
+            }
+          ]
+        }
+      ],
+      "notes": [],
+      "material_source_error": true,
+      "serious_error": true,
+      "citations_pass": true,
+      "semantic_source_pass": false,
+      "mechanical_gates": {
+        "terminal_pass": true,
+        "read_only_source_preserved": true,
+        "words": 368,
+        "word_limit": 400,
+        "word_limit_pass": true
+      },
+      "accepted": false
+    },
+    {
+      "arm": "codenib",
+      "task_id": "sphinx-doc__sphinx-8120-post_edit",
+      "kind": "post_edit",
+      "final_answer_sha256": "226e6c785eed5c51c280d3e291b20448527110d29b6ddb4c13f615feefda7e15",
+      "all_material_claims_checked": true,
+      "source_version_verified": true,
+      "criteria_pass": [
+        true,
+        true,
+        true
+      ],
+      "checked_claims": [
+        "Exact arm-specific repaired/helper file hashes match captured post_edit-before source snapshots.",
+        "Alias import/direct call, caller-supplied directory/language, fixed sphinx catalog/pilot-validation namespace and unchanged tuple return checked.",
+        "Distinct cache key, existing-translator reuse, caller-dependent list ordering and omission of application compilation/order construction checked.",
+        "No import/call site elsewhere in captured source, separate console/extension/autosummary/JavaScript mechanisms and lack of complete runtime evidence checked where claimed."
+      ],
+      "source_evidence": [
+        {
+          "path": "pilot_validation_probe.py",
+          "start_line": 1,
+          "end_line": 7,
+          "source_sha256": "45d5afc675371a41105584127ce2b064f22ba5a8bf495e32d77fe2d10b21587c",
+          "excerpt": "from sphinx.locale import init as load_catalog\n\n\ndef local_catalog_probe(locale_dirs, language):\n    return load_catalog(\n        locale_dirs, language, catalog=\"sphinx\", namespace=\"pilot-validation\"\n    )",
+          "excerpt_sha256": "504ecd5e9497fbe101332ca9e2d92ad011e6907d31003073f269aafeb079dc86",
+          "source_version": "arm repaired source and controlled addition",
+          "captured_before_snapshot_sha256": "67b8b00ec5202a7ee57b7fecd6a887f0e0291e214ff18567d7f9f3fa61c3b8d8"
+        },
+        {
+          "path": "sphinx/locale/__init__.py",
+          "start_line": 106,
+          "end_line": 146,
+          "source_sha256": "56e5749e0520cbcfa2bcae50192e5565bb6674fcd05e2c1fe1310e617a128487",
+          "excerpt": "translators = defaultdict(NullTranslations)  # type: Dict[Tuple[str, str], NullTranslations]\n\n\ndef init(locale_dirs: List[str], language: str,\n         catalog: str = 'sphinx', namespace: str = 'general') -> Tuple[NullTranslations, bool]:\n    \"\"\"Look for message catalogs in `locale_dirs` and *ensure* that there is at\n    least a NullTranslations catalog set in `translators`. If called multiple\n    times or if several ``.mo`` files are found, their contents are merged\n    together (thus making ``init`` reentrant).\n    \"\"\"\n    global translators\n    translator = translators.get((namespace, catalog))\n    # ignore previously failed attempts to find message catalogs\n    if translator.__class__ is NullTranslations:\n        translator = None\n    # the None entry is the system's default locale path\n    has_translation = True\n\n    if language and '_' in language:\n        # for language having country code (like \"de_AT\")\n        languages = [language, language.split('_')[0]]\n    else:\n        languages = [language]\n\n    # loading\n    for dir_ in locale_dirs:\n        try:\n            trans = gettext.translation(catalog, localedir=dir_, languages=languages)\n            if translator is None:\n                translator = trans\n            else:\n                translator.add_fallback(trans)\n        except Exception:\n            # Language couldn't be found in the specified path\n            pass\n    # guarantee translators[(namespace, catalog)] exists\n    if translator is None:\n        translator = NullTranslations()\n        has_translation = False\n    translators[(namespace, catalog)] = translator\n    return translator, has_translation",
+          "excerpt_sha256": "5249b3617fb20f96677e8eda313bc0262f19f6d17f64ab66fa9c3c89e2146ddf",
+          "source_version": "arm repaired source and controlled addition",
+          "captured_before_snapshot_sha256": "67b8b00ec5202a7ee57b7fecd6a887f0e0291e214ff18567d7f9f3fa61c3b8d8"
+        },
+        {
+          "path": "sphinx/locale/__init__.py",
+          "start_line": 169,
+          "end_line": 189,
+          "source_sha256": "56e5749e0520cbcfa2bcae50192e5565bb6674fcd05e2c1fe1310e617a128487",
+          "excerpt": "def init_console(locale_dir: str, catalog: str) -> Tuple[NullTranslations, bool]:\n    \"\"\"Initialize locale for console.\n\n    .. versionadded:: 1.8\n    \"\"\"\n    try:\n        # encoding is ignored\n        language, _ = locale.getlocale(locale.LC_MESSAGES)  # type: Tuple[Optional[str], Any]\n    except AttributeError:\n        # LC_MESSAGES is not always defined. Fallback to the default language\n        # in case it is not.\n        language = None\n    return init([locale_dir], language, catalog, 'console')\n\n\ndef get_translator(catalog: str = 'sphinx', namespace: str = 'general') -> NullTranslations:\n    return translators[(namespace, catalog)]\n\n\ndef is_translator_registered(catalog: str = 'sphinx', namespace: str = 'general') -> bool:\n    return (namespace, catalog) in translators",
+          "excerpt_sha256": "456c0a52cc15eb8af6476d92e9320d9a37d97f699d08eb2e45674c040eccc02f",
+          "source_version": "arm repaired source and controlled addition",
+          "captured_before_snapshot_sha256": "67b8b00ec5202a7ee57b7fecd6a887f0e0291e214ff18567d7f9f3fa61c3b8d8"
+        },
+        {
+          "path": "sphinx/locale/__init__.py",
+          "start_line": 200,
+          "end_line": 245,
+          "source_sha256": "56e5749e0520cbcfa2bcae50192e5565bb6674fcd05e2c1fe1310e617a128487",
+          "excerpt": "def get_translation(catalog: str, namespace: str = 'general') -> Callable:\n    \"\"\"Get a translation function based on the *catalog* and *namespace*.\n\n    The extension can use this API to translate the messages on the\n    extension::\n\n        import os\n        from sphinx.locale import get_translation\n\n        MESSAGE_CATALOG_NAME = 'myextension'  # name of *.pot, *.po and *.mo files\n        _ = get_translation(MESSAGE_CATALOG_NAME)\n        text = _('Hello Sphinx!')\n\n\n        def setup(app):\n            package_dir = path.abspath(path.dirname(__file__))\n            locale_dir = os.path.join(package_dir, 'locales')\n            app.add_message_catalog(MESSAGE_CATALOG_NAME, locale_dir)\n\n    With this code, sphinx searches a message catalog from\n    ``${package_dir}/locales/${language}/LC_MESSAGES/myextension.mo``.\n    The :confval:`language` is used for the searching.\n\n    .. versionadded:: 1.8\n    \"\"\"\n    def gettext(message: str, *args: Any) -> str:\n        if not is_translator_registered(catalog, namespace):\n            # not initialized yet\n            return _TranslationProxy(_lazy_translate, catalog, namespace, message)  # type: ignore  # NOQA\n        else:\n            translator = get_translator(catalog, namespace)\n            if len(args) <= 1:\n                return translator.gettext(message)\n            else:  # support pluralization\n                return translator.ngettext(message, args[0], args[1])\n\n    return gettext\n\n\n# A shortcut for sphinx-core\n#: Translation function for messages on documentation (menu, labels, themes and so on).\n#: This function follows :confval:`language` setting.\n_ = get_translation('sphinx')\n#: Translation function for console messages\n#: This function follows locale setting (`LC_ALL`, `LC_MESSAGES` and so on).\n__ = get_translation('sphinx', 'console')",
+          "excerpt_sha256": "a3123547440c91abac01f22fb55e868ba6e83a4299d4a0b45e18f53e01d37ffb",
+          "source_version": "arm repaired source and controlled addition",
+          "captured_before_snapshot_sha256": "67b8b00ec5202a7ee57b7fecd6a887f0e0291e214ff18567d7f9f3fa61c3b8d8"
+        },
+        {
+          "path": "sphinx/application.py",
+          "start_line": 279,
+          "end_line": 302,
+          "source_sha256": "61874f759ca0c54e508b2a13964aa77dc05e24ce709c1ae4105da07614411531",
+          "excerpt": "    def _init_i18n(self) -> None:\n        \"\"\"Load translated strings from the configured localedirs if enabled in\n        the configuration.\n        \"\"\"\n        if self.config.language is None:\n            self.translator, has_translation = locale.init([], None)\n        else:\n            logger.info(bold(__('loading translations [%s]... ') % self.config.language),\n                        nonl=True)\n\n            # compile mo files if sphinx.po file in user locale directories are updated\n            repo = CatalogRepository(self.srcdir, self.config.locale_dirs,\n                                     self.config.language, self.config.source_encoding)\n            for catalog in repo.catalogs:\n                if catalog.domain == 'sphinx' and catalog.is_outdated():\n                    catalog.write_mo(self.config.language)\n\n            locale_dirs = list(repo.locale_dirs) + [None, path.join(package_dir, 'locale')]\n            self.translator, has_translation = locale.init(locale_dirs, self.config.language)\n            if has_translation or self.config.language == 'en':\n                # \"en\" never needs to be translated\n                logger.info(__('done'))\n            else:\n                logger.info(__('not available for built-in messages'))",
+          "excerpt_sha256": "6f7c739829259cf3415ffb243068d83cb6c269094383fecaf59cbcc62f492252",
+          "source_version": "arm repaired source and controlled addition",
+          "captured_before_snapshot_sha256": "67b8b00ec5202a7ee57b7fecd6a887f0e0291e214ff18567d7f9f3fa61c3b8d8"
+        },
+        {
+          "path": "sphinx/ext/autosummary/generate.py",
+          "start_line": 633,
+          "end_line": 638,
+          "source_sha256": "95ae0ad413f63b950867748d847a4aa10b73fef98e85606d42f171e740e44a21",
+          "excerpt": "def main(argv: List[str] = sys.argv[1:]) -> None:\n    sphinx.locale.setlocale(locale.LC_ALL, '')\n    sphinx.locale.init_console(os.path.join(package_dir, 'locale'), 'sphinx')\n    translator, _ = sphinx.locale.init([], None)\n\n    app = DummyApplication(translator)",
+          "excerpt_sha256": "3be58a37603dc5ea95a4d8a4dc69fd9971e20a8375fa293cb67794d83d21e1d9",
+          "source_version": "arm repaired source and controlled addition",
+          "captured_before_snapshot_sha256": "67b8b00ec5202a7ee57b7fecd6a887f0e0291e214ff18567d7f9f3fa61c3b8d8"
+        }
+      ],
+      "findings": [],
+      "notes": [],
+      "material_source_error": false,
+      "serious_error": false,
+      "citations_pass": true,
+      "semantic_source_pass": true,
+      "mechanical_gates": {
+        "terminal_pass": true,
+        "read_only_source_preserved": true,
+        "words": 349,
+        "word_limit": 400,
+        "word_limit_pass": true
+      },
+      "accepted": true
+    }
+  ],
+  "source_judgment_corrections": []
+}

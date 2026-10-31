@@ -1,0 +1,93 @@
+{
+  "schema": "codenib.source-payload-confirmation-protocol.v1",
+  "status": "prospectively sealed; no model outcome in this packet",
+  "candidate_merge": "98346c022386e48d658d47600df538e1059cc584",
+  "freeze": {
+    "schema": "codenib.source-payload-confirmation-freeze.v1",
+    "status": "admitted_before_inference",
+    "recorded_utc": "2026-10-30T23:44:19.702682+00:00",
+    "path": "/tmp/codenib-source-payload-confirmation-20261030/execution-binding.json",
+    "sha256": "66becb6b784a7560ef7cf0ce2ce980002634939f00aeadd0d38ebd6dc130c68d",
+    "files": 5294,
+    "model_calls_before_seal": 0
+  },
+  "scope": "Prospective confirmation A; neither a positive result nor confirmation B assumed",
+  "planned_tasks": 60,
+  "workflows": 12,
+  "source_criteria_anchors": 31,
+  "model_calls_before_seal": 0,
+  "confirmation_b_unopened": true,
+  "external_enrollment": 0,
+  "lossless_public_files": 536,
+  "parts": [
+    {
+      "path": "codegraph_payload_confirmation_2026_10_30.part01.json",
+      "bytes": 22588,
+      "sha256": "bd8985afa2905ac4dc38bccf3cb4dfb4d75df9d38eb057974a74764734cfb46b",
+      "files": 12
+    },
+    {
+      "path": "codegraph_payload_confirmation_2026_10_30.part02.json",
+      "bytes": 326971,
+      "sha256": "e21eb6c4de1b0dff1ec2d401df5e69f8b502ecca83a2f7b697ed4ad65f9aa56c",
+      "files": 1
+    },
+    {
+      "path": "codegraph_payload_confirmation_2026_10_30.part03.json",
+      "bytes": 274707,
+      "sha256": "f2bfa8edcafd5398453c65fab410f8a97fa88bc66761752bf5d1d3e0316e9c08",
+      "files": 52
+    },
+    {
+      "path": "codegraph_payload_confirmation_2026_10_30.part04.json",
+      "bytes": 249964,
+      "sha256": "7858b9833b1065bbf397a0f5ef95ae1e3c85471ff86dc79ebbe2d21f6badce10",
+      "files": 27
+    },
+    {
+      "path": "codegraph_payload_confirmation_2026_10_30.part05.json",
+      "bytes": 269309,
+      "sha256": "a80277a6b2c22b14d659d62735a084f6bc4a3679a4bbaa8c7d342e4725121128",
+      "files": 60
+    },
+    {
+      "path": "codegraph_payload_confirmation_2026_10_30.part06.json",
+      "bytes": 275840,
+      "sha256": "23b71b49edcbd11bac9e30f6ad6c8bcb958c39b365fd80630494da2f69aa4da5",
+      "files": 34
+    },
+    {
+      "path": "codegraph_payload_confirmation_2026_10_30.part07.json",
+      "bytes": 283437,
+      "sha256": "76728950d3d7703b658bd119280160aaa52f78b258eb35c639946fc9f7d04856",
+      "files": 98
+    },
+    {
+      "path": "codegraph_payload_confirmation_2026_10_30.part08.json",
+      "bytes": 267475,
+      "sha256": "b6301a53551d62e37b725d1c4f9b4ec3793a4d2fe8bcc0f6630de5b7428536db",
+      "files": 98
+    },
+    {
+      "path": "codegraph_payload_confirmation_2026_10_30.part09.json",
+      "bytes": 232249,
+      "sha256": "2fe0b7f17be3f142b0c836ecb5e4b9823f560977395f4a86adc3888a932794e8",
+      "files": 65
+    },
+    {
+      "path": "codegraph_payload_confirmation_2026_10_30.part10.json",
+      "bytes": 278226,
+      "sha256": "ae75d0ebbc23164d34b0dde380cb2ad1298b54ce325ffa7e5e3003869bb41a3b",
+      "files": 50
+    },
+    {
+      "path": "codegraph_payload_confirmation_2026_10_30.part11.json",
+      "bytes": 109907,
+      "sha256": "ac5526d8bcfce16ca0800ebb96f58f7ce311be53ed91a15b5e343fddeaa59c76",
+      "files": 39
+    }
+  ],
+  "private_records": "Original reference/test patches, native logs/control receipts and source rubric stay private and hash-bound. Versioned binary/wheel, common dependency/source archives and vendor web capture remain local. Never expose grading, another arm or SDK home to agents.",
+  "retention": "All earlier model outcomes, source judgments, usage unknowns, stopped task-fit and new preparation failures remain retained. No task/source/native grading substitution or product change after task opening.",
+  "format": "Reconstruct part entries using gzip+base64 or earlier whole-file identical_to aliases; verify original byte lengths and SHA-256."
+}
