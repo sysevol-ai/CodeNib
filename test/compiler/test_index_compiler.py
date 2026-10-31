@@ -206,7 +206,8 @@ class TestBM25IndexBuilder:
         assert status.metadata["file_count"] == 3
         assert status.metadata["chunk_count"] == 3
         assert status.metadata["source_file_count"] == 2
-        assert status.metadata["builder_schema"] == 9
+        assert status.metadata["builder_schema"] == 10
+        assert status.metadata["filter_tests"] is False
         assert status.metadata["chunking_failure_policy"] == "fail"
         assert status.metadata["include_header_epilogue"] is True
         assert status.metadata["max_k"] == 64
@@ -240,7 +241,7 @@ class TestBM25IndexBuilder:
             assert result == "result"
 
     def test_artifact_identity_tracks_source_body_indexing(self):
-        assert BM25IndexBuilder().artifact_identity()["builder_schema"] == 9
+        assert BM25IndexBuilder().artifact_identity()["builder_schema"] == 10
 
     @patch("codenib.index.sparse_idx.bm25_index.BM25CodeIndexer")
     @patch("codenib.code_chunker.CodeChunker")
@@ -370,6 +371,74 @@ class TestBM25IndexBuilder:
         results = index.search("safe_local", top_k=1)
         assert results
         assert results[0].file == "settings.py"
+
+    @pytest.mark.parametrize("retained", [False, True])
+    @pytest.mark.parametrize(
+        "test_file", ["tests/test_roles.py", "nested/snapshot_test.py"]
+    )
+    def test_build_keeps_selected_test_sources(self, tmp_path, retained, test_file):
+        from codenib.index.sparse_idx.bm25_index import BM25CodeIndexer
+
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / "roles.py").write_text("def create_snapshot():\n    return True\n")
+        test_path = repo / test_file
+        test_path.parent.mkdir(parents=True, exist_ok=True)
+        test_path.write_text(
+            "def test_snapshot_role_prevents_nested_publish():\n" "    assert True\n"
+        )
+        output = tmp_path / "index"
+        builder = BM25IndexBuilder(languages=["python"])
+        if retained:
+            with capture_repository_source(repo) as source:
+                status = builder.build_from_repository_source(
+                    "current_repo", repository_source=source, output_dir=str(output)
+                )
+        else:
+            status = builder.build(
+                "current_repo", repo_path=str(repo), output_dir=str(output)
+            )
+
+        index = BM25CodeIndexer()
+        index.load_index(str(output))
+        matches = index.search("test_snapshot_role_prevents_nested_publish", top_k=3)
+        assert any(hit.file == test_file for hit in matches)
+        filtered = index.search(
+            "test_snapshot_role_prevents_nested_publish", top_k=3, filter_test=True
+        )
+        assert all(hit.file != test_file for hit in filtered)
+        assert status.metadata["source_file_count"] == 2
+
+    @pytest.mark.parametrize("retained", [False, True])
+    def test_build_respects_explicit_test_subtree_exclusion(self, tmp_path, retained):
+        from codenib.index.sparse_idx.bm25_index import BM25CodeIndexer
+
+        repo = tmp_path / "repo"
+        tests = repo / "tests"
+        tests.mkdir(parents=True)
+        (repo / "roles.py").write_text("def create_snapshot():\n    return True\n")
+        (tests / "test_roles.py").write_text(
+            "def test_snapshot_role_prevents_nested_publish():\n" "    assert True\n"
+        )
+        selection = RepositorySourceSelection(["tests"])
+        output = tmp_path / "index"
+        builder = BM25IndexBuilder(languages=["python"], source_selection=selection)
+        if retained:
+            with capture_repository_source(repo, selection=selection) as source:
+                status = builder.build_from_repository_source(
+                    "current_repo", repository_source=source, output_dir=str(output)
+                )
+        else:
+            status = builder.build(
+                "current_repo", repo_path=str(repo), output_dir=str(output)
+            )
+
+        index = BM25CodeIndexer()
+        index.load_index(str(output))
+        matches = index.search("create_snapshot", top_k=3)
+        assert matches and all(hit.file == "roles.py" for hit in matches)
+        assert status.metadata["source_file_count"] == 1
+        assert status.metadata["source_selection_digest"] == selection.digest
 
     def test_build_from_repository_source_uses_retained_bytes(
         self,

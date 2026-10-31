@@ -291,7 +291,9 @@ def create_executor(
                     top_k=candidate_limit,
                     return_code_content=True,
                     wrap_with_ln=True,
-                    filter_test=False,
+                    # Keep tests from exhausting the bounded candidate pool
+                    # when this query asks for implementation evidence only.
+                    filter_test=not include_supporting,
                 )
             )
             branches.append(sparse)
@@ -338,7 +340,7 @@ def create_executor(
                         context_query=normalized_query,
                         top_k=candidate_limit,
                         wrap_with_ln=True,
-                        filter_test=False,
+                        filter_test=not include_supporting,
                     )
                 )
                 if occurrences:

@@ -75,7 +75,7 @@ def test_fuses_sparse_and_dense_rankings_by_reciprocal_rank():
         top_k=20,
         return_code_content=True,
         wrap_with_ln=True,
-        filter_test=False,
+        filter_test=True,
     )
     vector.search_with_content.assert_called_once_with(
         query="stale semantic index checks",
@@ -152,6 +152,54 @@ def test_can_include_supporting_evidence_explicitly():
     assert [node.node_id for node in results] == ["test", "runtime"]
 
 
+@pytest.mark.parametrize("branch", ["sparse", "occurrences"])
+@pytest.mark.parametrize("include_supporting", [False, True])
+def test_implementation_candidates_survive_test_saturated_rankings(
+    branch, include_supporting
+):
+    from codenib.agent.skills.repository_search.executor import create_executor
+    from codenib.utils import is_test_file
+
+    tests = [
+        _node(f"test-{index}", f"tests/test_runtime_{index}.py") for index in range(30)
+    ]
+    implementation = _node("runtime", "src/runtime.py")
+    definition = _node("definition", "src/manifest.py", name="index_is_current")
+    bm25 = MagicMock()
+
+    def bounded_results(nodes, *, top_k, filter_test, **_kwargs):
+        eligible = [
+            node for node in nodes if not filter_test or not is_test_file(node.file)
+        ]
+        return eligible[:top_k]
+
+    def search(*, query, **kwargs):
+        if branch == "occurrences":
+            return [definition]
+        return bounded_results([*tests, implementation], **kwargs)
+
+    bm25.search.side_effect = search
+    bm25.search_identifier_occurrences.side_effect = (
+        lambda _identifier, **kwargs: bounded_results(
+            [*tests, implementation], **kwargs
+        )
+    )
+    execute = create_executor(ComposerContexts(retrieve=RetrieveContext(bm25=bm25)))
+    query = (
+        "Where is index_is_current used?"
+        if branch == "occurrences"
+        else "snapshot roots"
+    )
+
+    results = execute(query, top_k=2, include_supporting=include_supporting)
+
+    if include_supporting:
+        assert any(is_test_file(node.file) for node in results)
+    else:
+        assert any(node.node_id == "runtime" for node in results)
+        assert all(not is_test_file(node.file) for node in results)
+
+
 def test_exact_symbol_query_adds_call_site_retrieval():
     definition = _node(
         "definition",
@@ -188,7 +236,7 @@ def test_exact_symbol_query_adds_call_site_retrieval():
         context_query="Where is RepoManifest.index_is_current() used?",
         top_k=20,
         wrap_with_ln=True,
-        filter_test=False,
+        filter_test=True,
     )
 
 
@@ -271,14 +319,14 @@ def test_persistence_query_expands_to_save_definition_and_call_site():
         top_k=20,
         return_code_content=True,
         wrap_with_ln=True,
-        filter_test=False,
+        filter_test=True,
     )
     bm25.search_identifier_occurrences.assert_called_once_with(
         "save",
         context_query="How is the repository manifest persisted?",
         top_k=20,
         wrap_with_ln=True,
-        filter_test=False,
+        filter_test=True,
     )
 
 
@@ -325,7 +373,7 @@ def test_mechanism_query_expands_a_returned_predicate_to_call_sites():
         context_query="How does runtime prevent serving a stale semantic index?",
         top_k=20,
         wrap_with_ln=True,
-        filter_test=False,
+        filter_test=True,
     )
 
 

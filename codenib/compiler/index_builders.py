@@ -313,16 +313,15 @@ class BM25IndexBuilder:
         source_selection: RepositorySourceSelection,
     ) -> Dict[str, Any]:
         identity = {
-            # v8 refuses skipped files and retains non-symbol source context.
-            # v9 adds camelCase parts to tokens (BM25 tokenizer code-v2), so
-            # schema-8 views rebuild on the next update instead of keeping
-            # the old tokenization.
-            "builder_schema": 9,
+            # v10 indexes selected test files too, so old test-filtered views
+            # rebuild even when the source bytes have not changed.
+            "builder_schema": 10,
             "languages": list(self.languages),
             "max_k": self.max_k,
             "max_lines_per_chunk": self.max_lines_per_chunk,
             "chunking_failure_policy": "fail",
             "include_header_epilogue": True,
+            "filter_tests": False,
             "repository_filter_policy": REPOSITORY_FILTER_POLICY_VERSION,
             "source_selection_digest": source_selection.digest,
         }
@@ -347,6 +346,7 @@ class BM25IndexBuilder:
         repo_config = RepoChunkingConfig(
             languages=self.languages,
             source_selection=source_selection,
+            filter_tests=False,
         )
         repo_config.ignore_dirs.update(self.additional_ignore_dirs)
         chunker = CodeChunker(
@@ -503,6 +503,7 @@ class BM25IndexBuilder:
         repo_config = RepoChunkingConfig(
             languages=self.languages,
             source_selection=source_selection,
+            filter_tests=False,
         )
         repo_config.ignore_dirs.update(self.additional_ignore_dirs)
         chunker = CodeChunker(

@@ -1,0 +1,243 @@
+{
+  "schema": "codenib.bm25-test-ci.terminal.v1",
+  "records": 32,
+  "record_manifest": [
+    {
+      "path": "admit-ci-wheel.stdout",
+      "bytes": 304,
+      "sha256": "54c8bf3fc5ed7223844d9bf0d6d4d23a2f203bbb709a38745e8af0f6112768fa"
+    },
+    {
+      "path": "admit_ci_wheel.py",
+      "bytes": 3636,
+      "sha256": "22967250c49be0a0ff90edd37f4ccc9cc166ee0800d420c5b842e1121ebe8d15"
+    },
+    {
+      "path": "artifact-provenance.json",
+      "bytes": 447,
+      "sha256": "82446a72de5fa7e240900815eceb1105d27485e0dbc1ac0831d64433f4e20b77"
+    },
+    {
+      "path": "ask-quality-after.stdout",
+      "bytes": 1719,
+      "sha256": "1b684c7a4a90b7851cf93a7a78afd0a3ef5c3c29f659718bff0c8d302dc4daeb"
+    },
+    {
+      "path": "ask-quality-before.stdout",
+      "bytes": 1719,
+      "sha256": "71568fe160b2d90dc5f7648671590e7c6b1326cf94ff87746b981c2ce142a2f3"
+    },
+    {
+      "path": "ci-wheel-binding.json",
+      "bytes": 125785,
+      "sha256": "aa699bab1390f7f8be806be86b41531104415847892b9f6555b1053b49cedd70"
+    },
+    {
+      "path": "freeze_evidence.py",
+      "bytes": 8282,
+      "sha256": "84c5d7fb1bac1e603b2897581c9d3150b1c96f1dd9756aae686be9791796e174"
+    },
+    {
+      "path": "install-ci.stdout",
+      "bytes": 175,
+      "sha256": "e420083fc51f12ce3702d3bb8234baecf83be44a768c64469997bfadc8a8ad9e"
+    },
+    {
+      "path": "installed-after-1/indexed-paths.json",
+      "bytes": 46976,
+      "sha256": "fb584dc8a33bf9039da9ec55b54b0273bf25768a1d55b9e4ca0a463b2767917e"
+    },
+    {
+      "path": "installed-after-1/manifest.pre-update.json",
+      "bytes": 3373,
+      "sha256": "cfd9cb7996bcc01b0b1d3e9b07e573ee2b14c61e5b7971c28521335ebf880800"
+    },
+    {
+      "path": "installed-after-1/manifest.result.json",
+      "bytes": 3443,
+      "sha256": "53beef9c69a0243375a353f8ad639031402dc326ffedb5afd64194128dd32608"
+    },
+    {
+      "path": "installed-after-1/protocol.json",
+      "bytes": 1777,
+      "sha256": "08acbd149ad70f86e176c780f6ac4612a14531da209234bdfde5b62beef7f485"
+    },
+    {
+      "path": "installed-after-1/run-state.json",
+      "bytes": 72157,
+      "sha256": "51cd3c818ae752aea339319ffca3e9ecfd86586d7df583f3e1b67379ef2e2238"
+    },
+    {
+      "path": "installed-after-1.stdout",
+      "bytes": 1163,
+      "sha256": "c4e2bdadcaff49c8f37a33f3012b4b0244ae6e8ea495ceb6ee8e8bb146d975a2"
+    },
+    {
+      "path": "installed-before-1/indexed-paths.json",
+      "bytes": 26105,
+      "sha256": "c21f83f80f34899e27c7281b20466d881a03cdde60860d12c8d92507375247a5"
+    },
+    {
+      "path": "installed-before-1/manifest.result.json",
+      "bytes": 3373,
+      "sha256": "cfd9cb7996bcc01b0b1d3e9b07e573ee2b14c61e5b7971c28521335ebf880800"
+    },
+    {
+      "path": "installed-before-1/protocol.json",
+      "bytes": 1778,
+      "sha256": "7fb943b7bb6c1cffb1e484b6b2be2d00c99e7dc5879bef195cb07eaa69a251d8"
+    },
+    {
+      "path": "installed-before-1/run-state.json",
+      "bytes": 73426,
+      "sha256": "22f41db60685dfa975b0b824d50fffb2ce8751381f9a19204bc64e77fcfaec03"
+    },
+    {
+      "path": "installed-before-1.stdout",
+      "bytes": 1162,
+      "sha256": "dc010880e919f1d2a836f09a03aef35afbc534ef03a07eb3167d2037cb5e18a3"
+    },
+    {
+      "path": "installed_migration.py",
+      "bytes": 8032,
+      "sha256": "1427988a7eb5acc4118c06c603ab46a8ab270d78ce490eb691f0e9a1af9d7a4c"
+    },
+    {
+      "path": "review-counterexample/installed_cap_control.py",
+      "bytes": 3495,
+      "sha256": "5782530ff690e8b7338c66850d7b177722a5ce7eccefc821c66b4ab02c06d340"
+    },
+    {
+      "path": "review-counterexample/protocol.json",
+      "bytes": 411,
+      "sha256": "7fba9b94c7b314f41f6432851f110bf31a65ae32a79b7f1c03cbeb5fe88cd0b3"
+    },
+    {
+      "path": "review-counterexample/run-state.json",
+      "bytes": 10983,
+      "sha256": "03799dff1a244f214deb333b8e13076cf9fe21c6e746821130def344546b92b9"
+    },
+    {
+      "path": "review-counterexample/stdout",
+      "bytes": 1756,
+      "sha256": "91c516ab6e291d6694533cc9766705c5385033cb4280a9b37531cf346dafea37"
+    },
+    {
+      "path": "review-counterexample/test_bm25_test_filter.py",
+      "bytes": 2943,
+      "sha256": "61f8fdbfa7290b6f78753b434ed1676c1d946617ee0e3d3b8fe792c5ecd750ad"
+    },
+    {
+      "path": "source-head-checks.json",
+      "bytes": 7996,
+      "sha256": "50da3d40002d08f283b0abd0ff29ec8a4ddbad2155b283cc385d49e5670c6f4c"
+    },
+    {
+      "path": "source-head-pr.json",
+      "bytes": 4921,
+      "sha256": "6a3f6b4289d19f6daa9c7851da54dbcb05e49b5a00509df7cc3c4bd3e94bd8f9"
+    },
+    {
+      "path": "source-head-release.json",
+      "bytes": 17921,
+      "sha256": "a1fde06c2b12888eb28e18f33f9369f8855897dba0c40874a75dd6e97a0331c1"
+    },
+    {
+      "path": "source-head-reviews.json",
+      "bytes": 1263,
+      "sha256": "c5a2174d917228a00da11d1850129609a38ca5e3d432d73af45bfe68728959f2"
+    },
+    {
+      "path": "source-head-threads.json",
+      "bytes": 2119,
+      "sha256": "48fba09e7deb040d17b76e2f9f2828e391685ba211e2defe6ad5c1dbbffd4c29"
+    },
+    {
+      "path": "source-manifest.json",
+      "bytes": 1330,
+      "sha256": "3129f06e20f498ba41461afb333209f659e94968ff23d146e666e7edd1c03388"
+    },
+    {
+      "path": "verification.json",
+      "bytes": 1183,
+      "sha256": "5617b9f676999ffdb69196163f2a3b84568b63b51393250e4c42b4279d35090d"
+    }
+  ],
+  "local_only_manifest": [
+    {
+      "path": "artifact.zip",
+      "bytes": 3779351,
+      "sha256": "2bca84b61e5c92d72906797f8508a455da1e114e96dc80c15151947628b6b457"
+    },
+    {
+      "path": "codenib-0.2.4-cp310-abi3-manylinux_2_28_aarch64.whl",
+      "bytes": 3839514,
+      "sha256": "737d768c46117726553c3853eb936e04d6ba2e822095319686b723558a7c957d"
+    },
+    {
+      "path": "installed-before-1/original-index.tar.gz",
+      "bytes": 2051996,
+      "sha256": "66fec544f4b2674d9d97d3152d9f81f1ab5f8fc24c2093926232eea0788cbd17"
+    }
+  ],
+  "bundle": {
+    "encoding": "concatenated-base64-gzip-json",
+    "decoded_bytes": 592838,
+    "decoded_sha256": "bdfea6cc7b3d1308a6ba880d9a91ff803fc0b144743644ec266b5ad5ea8d0613",
+    "parts": [
+      {
+        "path": "codegraph_bm25_test_coverage_ci_2026_10_31.part01.json",
+        "bytes": 100030,
+        "sha256": "d630dde8d32ebd420156753aefdb054242ea0d87fea2ac0292cb802188b89e01"
+      },
+      {
+        "path": "codegraph_bm25_test_coverage_ci_2026_10_31.part02.json",
+        "bytes": 100030,
+        "sha256": "3d0a35ca9fa1626bc21b471e4ac18931b7dd19a8330418b3c8ddaa33e031efb4"
+      },
+      {
+        "path": "codegraph_bm25_test_coverage_ci_2026_10_31.part03.json",
+        "bytes": 17758,
+        "sha256": "aef836f672a7d129a6e037e035b7bfe18aed5945175d574e6a4111a842e0f545"
+      }
+    ]
+  },
+  "verification": {
+    "scope": "Actual CI build of the first PR head, discovery controls pass but valid inner-cap review remains unresolved. This is not the final fix admission or permission to merge.",
+    "wheel_sha256": "737d768c46117726553c3853eb936e04d6ba2e822095319686b723558a7c957d",
+    "source_head": "b24fff6e292a0d53cbcef332ea786a07f9413e84",
+    "all_486_python_native_worker_bytes_bound": true,
+    "same_installed_driver": true,
+    "coverage_before": {
+      "indexed_source_files": 655,
+      "indexed_test_files": 0,
+      "target_test_present": false,
+      "builder_schema": 9
+    },
+    "coverage_after": {
+      "indexed_source_files": 1161,
+      "indexed_test_files": 506,
+      "target_test_present": true,
+      "builder_schema": 10
+    },
+    "source_windows": 14,
+    "session_pointers_without_new_credit": 4,
+    "ask_passes_before_after": [
+      2,
+      2
+    ],
+    "ask_total": 3,
+    "overall_ask_green": false,
+    "source_head_checks": {
+      "SUCCESS": 17,
+      "SKIPPED": 8
+    },
+    "valid_unresolved_review": "PRRT_kwDOOFilqs6yUrGw",
+    "real_ranker_regressions_reproduced": 6,
+    "preservation_controls_passed": 3,
+    "model_sdk_questions": 0,
+    "independent_successes": 0,
+    "external_users": 0,
+    "goal": "active"
+  }
+}
