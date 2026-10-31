@@ -39,7 +39,7 @@ Using the caller's agent to plan grep is a separate, unevaluated variant.
 | Static distribution | Static export and reusable Pages workflow exist; #784 verifies cached stories, citations, page maps and CodeNib backlinks without a backend. A 15-page public repository is locally curated. | The no-embedding workflow default is released in 0.2.4; the maintainer will deploy the static roots on DGX Spark later. |
 | MCP protocol | [#780](https://github.com/sysevol-ai/CodeNib/pull/780) merged as `bcd2c730` after all executed CI passed; its squash message was verified. [#779](https://github.com/sysevol-ai/CodeNib/issues/779) is closed. | Released in 0.2.4; the public PyPI wheel passes installed modern and legacy MCP identity checks. |
 | GitHub discovery | `mcp`, `mcp-server`, `claude-code`, and `codex` are set, with the six existing topics retained. The About description now names source context, call navigation, Claude Code, Codex and MCP. | Description, topics and unchanged homepage verified through GitHub metadata on 2026-09-26. |
-| Releases | Verified production remains [v0.2.4](https://github.com/sysevol-ai/CodeNib/releases/tag/v0.2.4), on PyPI, MCP Registry and GitHub at `3f3bc2cf44ba83d1d86e9e5eb74f8da0f8bc63ac`. The [0.2.5 candidate in #954](https://github.com/sysevol-ai/CodeNib/pull/954) updates package/Registry metadata and curated notes, including merged OKF work in [#953](https://github.com/sysevol-ai/CodeNib/pull/953). Public install pins stay on 0.2.4. | The combined candidate passes 9,010 unit and 200 frontend cases, strict docs/public-boundary/lock checks, all-file hooks, local sdist/ABI3 inspection and installed CLI, Wiki, modern/legacy MCP and portable-artifact services in a clean core+mcp environment. Final main package gates, TestPyPI download/hash/install acceptance and a fresh Docs deployment remain; production tag, protected approval and registry publication are separate open gates. Public docs/logo/Wiki images and the MCP DNS proof are anonymously reachable. |
+| Releases | Verified production remains [v0.2.4](https://github.com/sysevol-ai/CodeNib/releases/tag/v0.2.4). The 0.2.5 candidate from merged [#953](https://github.com/sysevol-ai/CodeNib/pull/953)/[#954](https://github.com/sysevol-ai/CodeNib/pull/954) is frozen at `2ca154013c5e1aa32bb348697f81d7c50cf0efda`. [TestPyPI 41253743350](https://github.com/sysevol-ai/CodeNib/actions/runs/41253743350) and the exact-commit full main package run pass; both public wheels and the sdist match their verified build hashes. Public install pins stay on 0.2.4. | Candidate preparation, full installed-package acceptance and the fresh anonymous Docs/assets gate are complete. Production authorization, an annotated `v0.2.5` tag at the accepted SHA, protected ownership preflight and PyPI/MCP/GitHub verification remain open. Later roadmap commits must not move the tag target. |
 | Related work | #777/#778 improve the Jev blog evidence; #773 changes blog layout. | Preserve their ownership; do not duplicate their chart or hardware corrections. Merged #770/#752 supply optional Wiki image generation and contextual repository diagrams; they are independent of the visitor/adoption acceptance gates. |
 
 ## Delivery order and acceptance gates
@@ -1267,8 +1267,9 @@ all three generated concepts without verification events. The prior
 reference-viewer acceptance remains a separate retained receipt; its
 relative-link click limitation is documented beside the consumer command.
 [#953](https://github.com/sysevol-ai/CodeNib/pull/953) is merged as `ed38e905`
-after its final executed CI checks pass. Public package acceptance is tracked
-by [#954](https://github.com/sysevol-ai/CodeNib/pull/954). No OpenWiki backend
+after its final executed CI checks pass. TestPyPI package acceptance passes
+at the frozen candidate in [#954](https://github.com/sysevol-ai/CodeNib/pull/954);
+production publication remains open. No OpenWiki backend
 integration or dependency-driven Wiki update engine is included in this gate.
 
 Related-work boundary: OpenWiki already provides Wiki MCP retrieval, versioned
@@ -1315,53 +1316,60 @@ or unbounded inference is required to finish A1–A5.
 
 ## Measurement and rollout
 
-[CodeNib 0.2.4](https://github.com/sysevol-ai/CodeNib/releases/tag/v0.2.4)
-is published on PyPI, the official MCP Registry and GitHub, with the stable
-GitHub Release marked latest. Its annotated tag resolves to
-`3f3bc2cf44ba83d1d86e9e5eb74f8da0f8bc63ac`, the exact commit accepted by
-[TestPyPI run 36252579501](https://github.com/sysevol-ai/CodeNib/actions/runs/36252579501).
-[Production run 36252998442](https://github.com/sysevol-ai/CodeNib/actions/runs/36252998442)
-passed all artifact, installed-service, protected ownership, public PyPI and
-Registry discovery gates. Both manylinux wheels and the sdist have matching
-SHA-256 values in PyPI metadata, GitHub assets and the release checksums.
-The #779/#780 MCP version correction is now available in the public package.
+Verified production remains
+[CodeNib 0.2.4](https://github.com/sysevol-ai/CodeNib/releases/tag/v0.2.4),
+published on PyPI, the official MCP Registry and GitHub at
+`3f3bc2cf44ba83d1d86e9e5eb74f8da0f8bc63ac`. Its assets match the recorded
+checksums and the stable release remains latest. Public installation pins and
+their contract check continue to select 0.2.4.
 
-Post-publication [#798](https://github.com/sysevol-ai/CodeNib/pull/798) switches
-installation pins and their contract check to verified 0.2.4, removes the
-candidate navigation label and uses the packaged frontend in preview guides.
-All Pages examples pin the full accepted release SHA with the version comment.
-The clarified CodeGraph comparison names `colbymchenry/codegraph` and uses its
-pinned source and documented capabilities. OAuth onboarding and the browser
-trial remain opt-in while real provider consent and interactive unlock are
-unverified. The maintainer chose desktop CLI login acceptance first and will
-has deployed the live Wiki on their separate DGX Spark. The URL-entry frontend still requires its own deployment acceptance.
+The 0.2.5 candidate is merged through
+[#953](https://github.com/sysevol-ai/CodeNib/pull/953) and
+[#954](https://github.com/sysevol-ai/CodeNib/pull/954). Its release surface is
+frozen at `2ca154013c5e1aa32bb348697f81d7c50cf0efda`, whose tree equals the
+reviewed release head. The exact-commit
+[TestPyPI rehearsal 41253743350](https://github.com/sysevol-ai/CodeNib/actions/runs/41253743350)
+passes its full matrix, public upload, download/hash comparison and installed
+CLI/BM25 smoke. The independent full
+[main package run 41253731903](https://github.com/sysevol-ai/CodeNib/actions/runs/41253731903)
+also passes. Any production `v0.2.5` tag must resolve to this accepted
+candidate; later documentation reconciliation is not permission to tag a
+newer `main` commit.
 
-The release used the existing protected environments after explicit maintainer
-approval. TestPyPI admits `main` and production admits `v*` tags; those rules
-remain intact. Manually dispatched
-[Docs run 36252581263](https://github.com/sysevol-ai/CodeNib/actions/runs/36252581263)
-passed, with verified anonymous docs and README image access before the tag.
+Local acceptance passes 9,010 unit cases, 200 frontend tests, 43
+release/Registry contracts, strict MkDocs, the public-doc boundary, lockfile
+validation and pinned all-file hooks. Installed CLI/BM25, Wiki, modern and
+legacy MCP, portable artifacts and OKF export pass in isolated environments.
+The official final-head PR build supplies both native manylinux wheels and
+the source-only sdist. The downloaded x86-64 wheel reproduces the persisted
+OKF export and pointer update, and all nine payload hashes match. These are
+release-admission checks, not CodeGraph workflow-benefit evidence. The public
+TestPyPI wheel also repeats OKF export successfully; an unchanged second
+agent-pointer update writes no files.
 
-Native ARM verification in [#799](https://github.com/sysevol-ai/CodeNib/pull/799)
-keeps the complete pinned cibuildwheel step, ownership/protocol smoke and every
-other job unchanged. All executed checks passed before merge. The native ARM
-job took 2m35s; the preceding accepted QEMU job took 29m34s. This is an observed
-pair of CI runs, not a controlled hardware or product benchmark. The accepted
-main and TestPyPI runs both use that workflow and pass the complete x86-64 and
-AArch64 manylinux verification plus Python 3.10–3.14 installed ABI3 checks.
+TestPyPI artifact SHA-256 values, independently downloaded and matched to
+the accepted workflow build (production rebuilds are verified separately):
 
-Local candidate validation passes 7,318 unit tests, 62 release/Registry/CI
-contracts, strict public docs and the release all-files pre-commit check.
-The local x86-64 ABI3 wheel and sdist pass build and metadata checks; they are
-not the production pair of manylinux wheels. Python 3.12 with MCP SDK 2.2.0
-reports 0.2.4 in modern and legacy handshakes. Real installed Wiki, checkout MCP
-and portable-artifact MCP smokes pass, with a permanent installed-version guard
-in the release harness. Fixture-backed source-only MCP and the public source
-API pass without embedding/model/graph SDKs or billed calls. Baseline formatter
-failures are corrected in a separate commit with unchanged production
-non-import ASTs and 85 focused tests. Public TestPyPI and production publication
-are complete. Real consent remains open; the next URL-entry deployment acceptance belongs
-to the maintainer’s DGX Spark rollout.
+| Artifact | SHA-256 |
+| --- | --- |
+| `codenib-0.2.5-cp310-abi3-manylinux_2_28_aarch64.whl` | `88ed6beee697187e229323f4ae196f047a30749907b270466149efd206e88900` |
+| `codenib-0.2.5-cp310-abi3-manylinux_2_28_x86_64.whl` | `7e3a5e8973de300dc3db62eb4ef662b95e9195ae8472c0eeeddc0461858d3237` |
+| `codenib-0.2.5.tar.gz` | `9e7a669e451944ffd28c1a4d6080648fdae096a0273b20e4b9b7bda9f8f17877` |
+
+The manually dispatched
+[Docs run 41253745073](https://github.com/sysevol-ai/CodeNib/actions/runs/41253745073)
+passes at the candidate commit. Anonymous requests retrieve the candidate
+notes, the 0.2.4-pinned quickstart and both README images. The MCP DNS proof and
+protected environment secret metadata are present. Environment policies are
+unchanged: TestPyPI admits `main`, production admits `v*` tags, and MCP
+publication requires maintainer review.
+
+Open release gates are explicit production authorization, the annotated tag
+at the accepted SHA, protected ownership preflight and production PyPI/MCP/GitHub
+verification. Update public install pins, their contract and candidate labels
+only after that production verification. Real OAuth consent, interactive
+vault unlock, hosted browser acceptance and the maintainer-owned website
+rollout remain separate adoption gates.
 
 Record baseline and subsequent counts for documentation-to-install clicks,
 successful local setup, first source-linked query, repeat use, Pages backlink
@@ -1370,9 +1378,9 @@ aggregate web events; do not collect code, prompts or credentials. Establish
 baseline measurements before assigning numerical conversion targets.
 
 Release in focused PRs: evidence/onboarding, production retrieval,
-authorization, demo mode/export, and distribution. Keep native onboarding
-stacked on #783; reconcile the Wiki producer fixes before #784. Each milestone lists current
-outcomes, remaining gates and PRs rather than an implementation diary.
+authorization, demo mode/export, and distribution. Reconcile dependency PRs before
+their dependents. Each milestone lists current outcomes, remaining gates and
+PRs rather than an implementation diary.
 
 The broad goal stays active until the requested core surface is implemented,
 locally verified, documented, and reconciled with relevant PRs/issues. A draft
