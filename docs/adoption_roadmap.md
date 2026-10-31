@@ -559,6 +559,9 @@ in [#923](https://github.com/sysevol-ai/CodeNib/pull/923) retains indexed links,
 directional arrowheads and explicit selected-path labels. Exhausted route lanes
 remain outside intermediate boxes; sparse atlas titles reserve space below
 journey tags. Local geometry and loading/refresh checks cover these boundaries.
+The homepage navigation exposes the Demo in
+[#925](https://github.com/sysevol-ai/CodeNib/pull/925), including phone widths;
+the hero retains its own example action when the header action is hidden.
 Deployment and regenerated hero/share-card assets remain separate open gates;
 the recording and existing static images retain their previous artwork.
 
