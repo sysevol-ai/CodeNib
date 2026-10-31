@@ -79,11 +79,13 @@ draft #945.
 
 ## Remaining gates
 
-Hold comparative-efficiency promotion. A standard static reference set can
-include a call after reassignment; the original physical-call oracle still
-fails. Broader wildcard/configuration and update coverage, final-head and
-merge reconciliation remain open. Existing baseline
-all-files formatting/lint failures are outside this change and remain explicit.
+Hold comparative-efficiency promotion. Captured raw SCIP already labels both
+the renamed-alias assignment and its later call as reads of the original
+function. Normalization retains those IDs; the module-only wildcard repair
+does not cause this alias-binding error. The original physical-call oracle
+still fails. Intentional unions of declarations sharing one lexical binding
+are a separate supported behavior. Broader wildcard/configuration and update
+coverage, current installed admission and merge reconciliation remain open.
 
 The separate definition component in draft #945 now has actual CI-wheel
 admission and 21 passing executed source-head checks, with nine skips explicit.
@@ -93,9 +95,10 @@ voluntary use. Independent successes remain 0/2 and consenting external users
 and seven-day reuse remain 0/5. No model question, account fallback, outreach or
 new model spend is added; A0 and issue #874 stay active.
 
-The implementation is in draft
+The implementation is in
 [#946](https://github.com/sysevol-ai/CodeNib/pull/946), independently based on
-merged #944. The [CI supplement](codegraph_python_wildcard_ci_2026_10_31.json)
+merged [#947](https://github.com/sysevol-ai/CodeNib/pull/947). The original
+[CI supplement](codegraph_python_wildcard_ci_2026_10_31.json)
 reconstructs 47 records in two parts. The unmodified source-built aarch64 wheel
 from source head `807ddfbd` has SHA-256
 `d805f0a0af19bfa80a92c2482b6df4b649bb09cebba05c12cc241bd6230fdc43`.
@@ -106,6 +109,10 @@ lines with the original negative; both LSP owners exit. Its 17 executed checks
 pass, with nine skips explicit, including a separate initial draft unit skip;
 the labeled unit job executes and passes. No public release is made.
 
-Keep the draft unmerged until baseline all-files failures, final-head checks
-and shared-roadmap/base reconciliation are resolved. Both packets stay
-immutable and all whole-task/use gates remain open.
+The baseline style blocker is repaired in #947, with 17 executed PR checks
+passing and eight conditional/publication skips explicit. This branch now
+incorporates that base and its roadmap updates. The product repair is
+unchanged; the four formatted package modules invalidate the old all-package
+byte-equality claim for this new tree. Require a fresh unmodified CI-wheel
+compiler/MCP and complete-source admission before merging. Both earlier
+packets stay immutable and all whole-task/use gates remain open.
