@@ -191,6 +191,28 @@ the experiment changes no product live provider, MCP default or multi-hop
 contract and supplies no comparative coding result. Whole-task quality/time,
 normalized-token, voluntary-use, independent-success and external-use gates
 remain open, with no new model question or participant.
+Merged [#941](https://github.com/sysevol-ai/CodeNib/pull/941) now passes all seven
+executed main CI jobs, all twenty executed release verifiers and Docs
+build/deploy. Slow and five tag-only publication skips remain explicit; public
+0.2.4 is unchanged.
+
+The [complete-source virtual-filesystem diagnostic](codegraph_python_vfs.md)
+retains all 2,390 files and their exact bytes in both browser-provider workers.
+Its frozen 200-position/400-query sample initially agrees with compiler sets
+346/400. A separate ordinary-server diagnostic agrees 354/400; all 200
+definitions agree between provider forms, with nine reference differences.
+A separately frozen upstream software-path repair, with the engine and project
+bytes unchanged, eliminates those nine differences: 400/400 browser/ordinary
+sets agree. The remaining 46 shared compiler differences include an omitted
+import-alias call, so ordinary equivalence does not authorize graph-query
+replacement. Preserve the failed first ordinary batch's 96 staged, unadmitted
+replies and 304 unexecuted positions; the compressed-wire control changes its
+capture boundary prospectively and does not replace that failure. Offline
+reconstruction verifies all 400 ordinary deliveries against original wire
+replies and every selected did-open text. No product implementation, timing
+comparison, model question, successful confirmation or participant is added.
+Source-generation lifecycle, representative dependency/configuration closure,
+reference semantics and all complete-workflow/use gates remain open.
 
 The [merged Python identity repair](codegraph_python_walrus.md) now admits the
 complete selected Pylint graph and exact source delivery through its actual CI
