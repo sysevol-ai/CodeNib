@@ -1,6 +1,7 @@
 # Python module assignment-expression identities
 
-This draft repairs a source-authenticated Python indexing failure: scip-python
+This [draft #933](https://github.com/sysevol-ai/CodeNib/pull/933) repairs a
+source-authenticated Python indexing failure: scip-python
 0.6.6 can omit the module owner from a variable assigned with `:=` inside a
 module comprehension. The complete Pylint graph remains unadmitted because a
 later decorated instance-field write fails the existing ownership guard. No

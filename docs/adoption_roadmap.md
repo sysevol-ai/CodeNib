@@ -106,7 +106,8 @@ The three latest confirmation sources are now exposed and stay frozen; fixed
 Matplotlib/Django/xarray issue, source and grading material remain unopened.
 
 The current [module assignment-expression candidate](experiments/codegraph_python_walrus.md)
-addresses a real Pylint construction blocker found before reference-source
+([draft #933](https://github.com/sysevol-ai/CodeNib/pull/933)) addresses a real
+Pylint construction blocker found before reference-source
 delivery can be evaluated. Source-authenticated qualification repairs a bare
 compiler variable ID, with captured-fixture serial/native parity. The complete
 Pylint graph still fails at a later decorated field-write ownership check;

@@ -101,7 +101,8 @@ for [#871](https://github.com/sysevol-ai/CodeNib/issues/871), not a backend,
 acceleration or task-benefit promotion. The A0 objective remains active.
 
 The draft [module assignment-expression repair](experiments/codegraph_python_walrus.md)
-recovers scip-python 0.6.6's unqualified variable ID only from exact source
+in [#933](https://github.com/sysevol-ai/CodeNib/pull/933) recovers scip-python
+0.6.6's unqualified variable ID only from exact source
 definitions, occurrence spelling and the compiler-owned module namespace.
 Captured serial/native parity and strict rejection boundaries pass; builder
 identity 9 rebuilds old graph views while persisted schema 5 is unchanged.
