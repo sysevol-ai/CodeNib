@@ -1,0 +1,210 @@
+{
+  "schema": "codenib.bm25-serial-contract.terminal.v1",
+  "records": 28,
+  "record_manifest": [
+    {
+      "path": "after-module.stdout",
+      "bytes": 98,
+      "sha256": "e0813bf9920927a143504c0c18a2f58a1a52c359c7ffc0354d55c20a967bb25a"
+    },
+    {
+      "path": "before-2.stdout",
+      "bytes": 7582,
+      "sha256": "b773d805ae9929385f324230d6f657876e79b9fd46ab423d2a335fbdfb7f0478"
+    },
+    {
+      "path": "before.stdout",
+      "bytes": 3090,
+      "sha256": "cfb418954492874ca15f5aaafd14863d2c71d25d829104359c749ce21741cfb8"
+    },
+    {
+      "path": "corrected-environment.json",
+      "bytes": 298,
+      "sha256": "f76c2687360b24985f50826d4bc75f9e46f8e4f29c7538a0d9411c8de8b8209b"
+    },
+    {
+      "path": "final-source/test/CLAUDE.md",
+      "bytes": 4638,
+      "sha256": "e4e366b7b824c7ab3884f728f53c552cedc6d93bdf2649b9f65737f94cac5f0d"
+    },
+    {
+      "path": "final-source/test/index/sparse_idx/test_bm25_index.py",
+      "bytes": 9041,
+      "sha256": "0b601f9a821dce995dae298693af5d974f99a2173d23c60c28ccf9caaf09e29c"
+    },
+    {
+      "path": "fixture-source.json",
+      "bytes": 1728,
+      "sha256": "e7c6e3a300cc3933e7c3c1873e14946d69dc2c6f70749775fedb4de7922d5276"
+    },
+    {
+      "path": "focused-final.stdout",
+      "bytes": 99,
+      "sha256": "51b2930bf95a6b90b1c1ff8cb20057a327346f933287cab2c019b4bd61952e92"
+    },
+    {
+      "path": "freeze_evidence.py",
+      "bytes": 6895,
+      "sha256": "4b70a0cfc66234b24107cdbf3275917d3d0075b5ac77934fe8d0ea3ab89e6563"
+    },
+    {
+      "path": "hooks-1.stdout",
+      "bytes": 1431,
+      "sha256": "c14410b1854474269dbbf02d2163b1552a3352dca0baf69721bcd24538cbc573"
+    },
+    {
+      "path": "hooks-2.stdout",
+      "bytes": 1280,
+      "sha256": "a1ac7736a8cbf4a4a3f0cc7a3d253a7f9982963b3b665627a40bfd597271da55"
+    },
+    {
+      "path": "hooks-3.stdout",
+      "bytes": 1280,
+      "sha256": "a1ac7736a8cbf4a4a3f0cc7a3d253a7f9982963b3b665627a40bfd597271da55"
+    },
+    {
+      "path": "installed-control-descriptor-note.json",
+      "bytes": 477,
+      "sha256": "79822c24f36d620430bb954fbc14c36ab36db7c6552f2ff68ff6fbd2007bf4b8"
+    },
+    {
+      "path": "installed-current/protocol.json",
+      "bytes": 554,
+      "sha256": "163a4199dff3a7d5d0c61ba47352c45eb5a6684c51f79c22ebdeb8d4a863fb8b"
+    },
+    {
+      "path": "installed-current/run-state.json",
+      "bytes": 5851,
+      "sha256": "12ef9e6fa26f0b77b917d8a10fcf5408672dee68e8fe7b23b8e7b7bfdcea5ae6"
+    },
+    {
+      "path": "installed-current.stdout",
+      "bytes": 206,
+      "sha256": "e4b4700a58be03838929c030236e1225cb6bbcd84bd0a2f6af825af4d03d15ac"
+    },
+    {
+      "path": "installed-old/protocol.json",
+      "bytes": 550,
+      "sha256": "2457d3778a24528a9ff4a1613100929debcc01cde17264221105a2a564a2d642"
+    },
+    {
+      "path": "installed-old/run-state.json",
+      "bytes": 5947,
+      "sha256": "4d45ad672753ad5dbc40bd996d133058053b3bb971fa7fab77951f1b1000eae0"
+    },
+    {
+      "path": "installed-old.stdout",
+      "bytes": 7284,
+      "sha256": "29f37f2738f66073799bf1c85d85424931f56dfa115149a61a395d178356f02c"
+    },
+    {
+      "path": "main-ci-failure.json",
+      "bytes": 6978,
+      "sha256": "635a024fd81e1396cbfabbbd98b98bd386fc06e75921eeae12b7b3f51965f5a3"
+    },
+    {
+      "path": "main-serial-failure-excerpt.log",
+      "bytes": 14122,
+      "sha256": "641b9f7ee9375d46a643ae66e7be23dbf2b66f3cc9848ec8f97dd38146b44d01"
+    },
+    {
+      "path": "run_installed_control.py",
+      "bytes": 2328,
+      "sha256": "237e3389349656176379a11a17241e3776055c0b91099853d152664f0d10630c"
+    },
+    {
+      "path": "serial-full-2.stdout",
+      "bytes": 7979,
+      "sha256": "55c671f08afea3e2a8594d4e6d32cfd334a0d9b5ad25410621b52aedfada9824"
+    },
+    {
+      "path": "serial-full.stdout",
+      "bytes": 15816,
+      "sha256": "4d145d78cbd14e78c12349b8ce612c6b45a616ff9367116bf45aab4cd0b5657d"
+    },
+    {
+      "path": "test_bm25_index.before.py",
+      "bytes": 8770,
+      "sha256": "cd1c58e667eb1f6c3a17fc7e27ca4d595f5ca6f2ce85bf05f6897e9d402a7940"
+    },
+    {
+      "path": "toolchain-dry-run.stdout",
+      "bytes": 157,
+      "sha256": "1724eed229acd397fde6ccf1a1cda6ddb5a0470444170f575a97b690a2c117d6"
+    },
+    {
+      "path": "toolchain-install.stdout",
+      "bytes": 461,
+      "sha256": "ff68cdb86df938358b32fd944cc58f5806e3a7c1adb8541e72dcef86429879df"
+    },
+    {
+      "path": "verification.json",
+      "bytes": 1788,
+      "sha256": "1490e3e5133f7613bc135cd83c3938aca9af81c46add495eed88593a0fd648d1"
+    }
+  ],
+  "local_only_manifest": [
+    {
+      "path": "main-serial-original.log",
+      "bytes": 196578,
+      "sha256": "ab3bf3fc0fe930fd363ca9e6dce9113fa091e3984bc7be34362bb7160ad6a49f"
+    }
+  ],
+  "bundle": {
+    "encoding": "concatenated-base64-gzip-json",
+    "decoded_bytes": 159552,
+    "decoded_sha256": "4d66bfba6fe75f6fa317fe857da3488ba86ffb85a58140cc79398a8bbf976ebd",
+    "parts": [
+      {
+        "path": "codegraph_bm25_serial_contract_2026_10_31.part01.json",
+        "bytes": 55726,
+        "sha256": "d08c1e8837e5a9461474cb17209ce1668fda939d04b7c3b54a2c2cbf5a6180e0"
+      }
+    ]
+  },
+  "verification": {
+    "goal": "active",
+    "base_main": "c25f191ccee9067939303be85c9c9d74ee4d0134",
+    "failed_main_run": 41244942108,
+    "failed_job": 124667934973,
+    "original_ci_outcomes": {
+      "failed": 1,
+      "passed": 27,
+      "skipped": 11
+    },
+    "original_contract_failure_reproduced": true,
+    "test_contract": "Exercise test hits; exclude them; retain actual sample implementation; fill the eligible capacity and preserve the original implementation prefix. Count need not shrink.",
+    "focused_passed": 13,
+    "full_local_serial": {
+      "passed": 26,
+      "skipped": 23,
+      "deselected": 9190,
+      "warnings": 5
+    },
+    "same_stronger_test_actual_CI_products": {
+      "prior": "fails implementation-presence assertion",
+      "repaired": "passes"
+    },
+    "product_build_dependencies_unchanged": true,
+    "retained_environment_failures": [
+      "First local baseline omitted node from PATH; corrected invocation reproduces the actual legacy assertion.",
+      "First full local serial tier stops at missing basedpyright-langserver. Install the declared Python LSP pins with the repository CLI; retain original 1-fail/14-pass/18-skip outcome."
+    ],
+    "pinned_toolchain": {
+      "node": "v22.23.1",
+      "packages": {
+        "basedpyright": "1.39.8",
+        "browser-basedpyright": "1.39.8",
+        "@sourcegraph/scip-python": "0.6.6"
+      },
+      "missing_basedpyright_before_toolchain_install": true,
+      "native_sha256": "8b9edc00ff456cddac683e4093ad12588c6fed1f9104a973961d753b9708adca"
+    },
+    "benchmark_scores_and_protocols_unchanged": true,
+    "overall_ask_gate": "same existing 2/3; not relabelled green",
+    "new_model_sdk_questions": 0,
+    "independent_successes": 0,
+    "external_users": 0,
+    "remaining": "Exact final PR checks/reviews and corrected trusted-main serial/native/consumer chain remain required."
+  }
+}

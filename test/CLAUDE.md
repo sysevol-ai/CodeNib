@@ -52,6 +52,12 @@ executables and SCIP/Fact/clangd Python gates through `make core-test`) — see
 
 ## Gotchas
 
+- BM25 eligibility or candidate-limit changes must also run
+  `pytest test/index/sparse_idx/test_bm25_index.py`; this real SCIP-backed
+  graph test is serial and excluded from the unit tier. Filtering before a
+  candidate limit may refill the result set. Check test-file exclusion,
+  eligible result capacity and preserved implementation order instead of
+  assuming that filtering must reduce the number of returned results.
 - Module-local `subprocess` test doubles must preserve the constants and
   exceptions the exercised path reads, including `PIPE` and `TimeoutExpired`.
   Reproduce against unchanged code before counting fixture failures as product

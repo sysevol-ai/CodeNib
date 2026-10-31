@@ -11,6 +11,7 @@ import pytest
 from codenib.code_chunker import CodeChunker
 from codenib.index import BM25CodeIndexer
 from codenib.ls_router import LSIndexer
+from codenib.utils import is_test_file
 
 pytestmark = pytest.mark.integration_serial
 
@@ -211,14 +212,15 @@ def test_search_with_code_content(code_graph, samplemod_repo):
 def test_search_with_filter_test(code_graph):
     """Test searching with test file filtering."""
     # Create indexer from graph
-    indexer = BM25CodeIndexer(code_graph=code_graph, max_k=20, language="english")
+    limit = 20
+    indexer = BM25CodeIndexer(code_graph=code_graph, max_k=limit, language="english")
 
     # Search without filter
     query = "test"
-    results_unfiltered = indexer.search(query, top_k=20, filter_test=False)
+    results_unfiltered = indexer.search(query, top_k=limit, filter_test=False)
 
     # Search with filter_test=True
-    results_filtered = indexer.search(query, top_k=20, filter_test=True)
+    results_filtered = indexer.search(query, top_k=limit, filter_test=True)
 
     print(f"\nUnfiltered results for {query!r}: {len(results_unfiltered)}")
     for result in results_unfiltered:
@@ -230,26 +232,27 @@ def test_search_with_filter_test(code_graph):
     for result in results_filtered:
         print(f"  {result.node_name}")
 
-    # Verify that filtered results don't contain test files
-    import re
+    assert any(
+        is_test_file(result.node_id) for result in results_unfiltered
+    ), "The fixture must exercise test-file exclusion"
+    assert all(not is_test_file(result.node_id) for result in results_filtered)
+    assert any(result.node_id.startswith("sample/") for result in results_filtered)
 
-    for result in results_filtered:
-        node_words = re.split(r" |_|\/", result.node_name.lower())
-        assert not any(
-            word.startswith("test") for word in node_words
-        ), f"Test file found in filtered results: {result.node_name}"
-
-    # Verify that filtering actually removed some results if test files exist
-    has_test_files = any(
-        any(
-            word.startswith("test") for word in re.split(r" |_|\/", r.node_name.lower())
-        )
-        for r in results_unfiltered
+    # Filtering before the retriever's cap can replace removed test hits with
+    # later implementation hits, so a full result set need not become shorter.
+    eligible_count = sum(
+        not is_test_file(document.metadata["node_id"]) for document in indexer.documents
     )
-    if has_test_files:
-        assert len(results_filtered) < len(
-            results_unfiltered
-        ), "filter_test should have removed some results"
+    assert len(results_filtered) == min(limit, eligible_count)
+    original_implementation_prefix = [
+        result.node_id
+        for result in results_unfiltered
+        if not is_test_file(result.node_id)
+    ]
+    assert [
+        result.node_id
+        for result in results_filtered[: len(original_implementation_prefix)]
+    ] == original_implementation_prefix
 
 
 # For backward compatibility with direct script execution
