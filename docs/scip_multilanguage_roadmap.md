@@ -144,6 +144,17 @@ development comparison retains the original graph resource failures and
 charges any actual graph preparation or update. Its source-first operator
 admission is not a new compiler or acceleration gate.
 
+The scikit-learn [cold-start gate #901](https://github.com/sysevol-ai/CodeNib/issues/901)
+is closed by merged #905–#907 and #911, using the supported stdlib-only analysis
+runtime and idempotent identity recovery. [#903](https://github.com/sysevol-ai/CodeNib/pull/903)
+now retains only the independent fixture fixes: one cache-aware pipeline attempt
+and pytest-owned LSP cleanup on startup or indexing failure. Its original
+[2026-10-28 readiness receipt](experiments/codegraph_python_cold_start_2026_10_28.json)
+is preserved byte for byte as historical evidence, including every failure and
+the superseded historical-environment/provider candidate. That candidate is not
+the accepted implementation or a remaining provider dependency. The original
+source, assertions and timeout limits remain unchanged; no backend is promoted.
+
 ## Archived Layered Goal
 
 The completed multi-language SCIP cold-start and acceleration program required:
