@@ -198,6 +198,24 @@ artifact receipts from fixed raw compiler output. All 126 records, three
 harness failures and exact owner cleanup remain. This additional component
 is not measured in the complete preparation pair or the frozen coding cohort;
 no broader benefit, independent success or external user is added.
+Merged [#939](https://github.com/sysevol-ai/CodeNib/pull/939) passes all seven
+executed main CI jobs, all twenty executed release verifiers and Docs
+build/deploy. Slow and five tag-only publication skips remain explicit;
+public package 0.2.4 is unchanged.
+
+The [source-isolated live Python query experiment](experiments/codegraph_native_source_queries.md)
+retains CodeNib's complete selected 2,390-file source and compares three fixed
+symbols against saved same-source compiler positions. All six definition and
+reference location sets agree (reference counts 2/26/29). Source changes reject
+old observations before dispatch/publication; explicit recapture and a separate
+rename/line-shift/Unicode fixture pass. The first cold cross-file fixture still
+returns only one of three references, and idle is not a completeness proof.
+All 208 text records, both full source snapshots and six owners' cleanup are
+verified. This is an offline Docker feasibility experiment with prepared
+software, not product MCP routing, a complete first-query timing or multi-hop
+graph parity. Establish cold completeness and portable source/configuration
+isolation before a product routing decision. No new model query, independent
+success or external user is added; the matched whole-task gates stay open.
 
 The latest four-arm round records 8,821,055 normalized final main/auxiliary tokens
 and $9.311356 in SDK estimates, not invoices. The separate diagnostic adds

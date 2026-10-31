@@ -158,6 +158,26 @@ remain. These source-checkout component timings and installed functional replay
 do not replace the earlier complete preparation observations or establish a
 whole coding-task advantage. SCIP generation, source-update cost, useful
 voluntary use, independent successes and external enrollment stay open.
+Merged [#939](https://github.com/sysevol-ai/CodeNib/pull/939) now passes all seven
+executed main CI jobs, twenty executed release verifiers and Docs build/deploy;
+slow and five tag-only publication skips remain explicit. Public 0.2.4 is
+unchanged.
+
+The [source-isolated live Python position experiment](codegraph_native_source_queries.md)
+uses the installed production LSP client on a verified copy of every selected
+CodeNib source file (2,390 files, including 1,172 Python files). All six
+definition/reference sets for three fixed symbols match saved same-source
+compiler positions, with reference counts 2/26/29 and no missing/extra result.
+Stale queries and post-response changes are rejected; explicit recapture and a
+separate rename/line-shift/Unicode fixture pass. Retain the first cold fixture's
+1/3 references, all 208 original text files and the separate readiness diagnosis;
+idle does not prove completeness. Six exact owned containers are absent and
+both full snapshots reverify. This Docker/regular-file feasibility control
+changes no product provider, default or MCP route. Its separate component
+observations do not measure complete first-query or coding-task performance.
+Cold completeness, portable source/configuration isolation and multi-hop graph
+semantics remain product gates before any routing promotion. No model round,
+comparative benefit, independent success or external enrollment is added.
 
 The [merged Python identity repair](codegraph_python_walrus.md) now admits the
 complete selected Pylint graph and exact source delivery through its actual CI
