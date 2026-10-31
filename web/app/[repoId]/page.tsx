@@ -9,6 +9,7 @@ import {
   useState,
   type MouseEvent,
 } from "react";
+import AskIcon from "@/components/AskIcon";
 import Header from "@/components/Header";
 import Markdown from "@/components/Markdown";
 import SystemArchitecture, { type ArchitectureJourney } from "@/components/SystemArchitecture";
@@ -921,7 +922,7 @@ export default function WikiPageView({
                 ? "Find code with your OpenRouter account"
                 : "Ask this repository"}
             >
-              <span aria-hidden>✦</span>
+              <AskIcon />
             </AppLink>
           ) : null
         }

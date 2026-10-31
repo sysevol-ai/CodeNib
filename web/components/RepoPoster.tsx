@@ -461,17 +461,7 @@ export default function RepoPoster({
       ref={rootRef}
       aria-label={`System map of ${repo?.repo || repoId}`}
     >
-      <div className="poster-grid-bg" aria-hidden />
       <header className="poster-head">
-        <div className="poster-eyebrow">
-          <span className="poster-live" aria-hidden />
-          System map
-          {repo?.commit_short && (
-            <>
-              <span className="poster-sep">·</span>indexed at <span className="mono">{repo.commit_short}</span>
-            </>
-          )}
-        </div>
         <h2 className="poster-title">
           <span className="poster-owner">{owner}</span>
           <wbr />
@@ -494,11 +484,6 @@ export default function RepoPoster({
             aria-label="Areas of the repository, sized by the symbols the index assigns them"
             onMouseLeave={() => setHoverNode(null)}
           >
-            <defs>
-              <pattern id="poster-dots" width="9" height="9" patternUnits="userSpaceOnUse">
-                <circle cx="1.5" cy="1.5" r="0.9" fill="rgba(148, 163, 184, 0.2)" />
-              </pattern>
-            </defs>
             {atlas.cells.map((cell) => {
               const lineHeight = Math.round(cell.fontSize * 1.25);
               const lit = hoverNode === cell.id || focusArea === cell.id;
@@ -526,7 +511,6 @@ export default function RepoPoster({
                     rx="10"
                     style={{ fillOpacity: 0.55 + Math.min(0.45, cell.share * 2.2) }}
                   />
-                  <rect className="poster-cell-dots" width={cell.w} height={cell.h} rx="10" fill="url(#poster-dots)" />
                   {cell.lines.map((line, index) => (
                     <text
                       key={index}
@@ -566,20 +550,6 @@ export default function RepoPoster({
             setHoverEdge(null);
           }}
         >
-          <defs>
-            <filter id="poster-glow" x="-50%" y="-50%" width="200%" height="200%">
-              <feGaussianBlur stdDeviation="4" result="blur" />
-              <feMerge>
-                <feMergeNode in="blur" />
-                <feMergeNode in="SourceGraphic" />
-              </feMerge>
-            </filter>
-            <linearGradient id="poster-meter" x1="0" x2="1">
-              <stop offset="0" stopColor="#3b82f6" />
-              <stop offset="1" stopColor="#22d3ee" />
-            </linearGradient>
-          </defs>
-
           <g className="poster-edges">
             {layout.edges.map((edge) => {
               const key = edgeKey(edge);
@@ -620,7 +590,7 @@ export default function RepoPoster({
             })}
           </g>
 
-          <circle ref={pulseRef} className="poster-pulse" r="6" opacity="0" filter="url(#poster-glow)" />
+          <circle ref={pulseRef} className="poster-pulse" r="5" opacity="0" />
 
           <g className="poster-nodes">
             {layout.nodes.map((node) => {
@@ -655,15 +625,6 @@ export default function RepoPoster({
                   <text className="poster-node-meta" x="14" y={30 + node.lines.length * 18 + 6}>
                     {number.format(node.symbols)} symbols · {node.files} file{node.files === 1 ? "" : "s"}
                   </text>
-                  <rect className="poster-node-track" x="14" y={node.h - 15} width={node.w - 28} height="3" rx="1.5" />
-                  <rect
-                    className="poster-node-meter"
-                    x="14"
-                    y={node.h - 15}
-                    width={Math.max(6, (node.w - 28) * Math.min(1, node.share * 2))}
-                    height="3"
-                    rx="1.5"
-                  />
                   {pins(node.id, node.w)}
                 </g>
               );
@@ -742,7 +703,7 @@ export default function RepoPoster({
       {hasTrace && (
         <div className="poster-trace">
           <div className="poster-trace-head">
-            <span className="poster-trace-kicker">Traced call path</span>
+            <span className="poster-trace-label">Traced call path</span>
             <span className="poster-trace-title">{leadNodes(journey!.title)}</span>
             <button
               type="button"
@@ -753,7 +714,16 @@ export default function RepoPoster({
                 window.requestAnimationFrame(() => setPlaying(true));
               }}
             >
-              {playing ? "Playing…" : "▶ Play"}
+              {playing ? (
+                "Playing…"
+              ) : (
+                <>
+                  <svg viewBox="0 0 10 10" aria-hidden>
+                    <path d="M2 1.2v7.6L8.6 5z" />
+                  </svg>
+                  Play
+                </>
+              )}
             </button>
           </div>
           <ol className="poster-steps">

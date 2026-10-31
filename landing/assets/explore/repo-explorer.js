@@ -56,9 +56,8 @@ class RepoExplorer extends HTMLElement {
       <style>${styles}</style>
       <article aria-label="Explore a real Requests code path">
         <header>
-          <div class="eyebrow"><span class="status-dot"></span> TRY A REAL EXAMPLE <span class="repo">psf/requests</span></div>
           <h2 class="example-question"></h2>
-          <p>Click a step or arrow to inspect the source behind this explanation.</p>
+          <p><span class="repo">psf/requests</span> · Click a step or arrow to inspect the source behind this explanation.</p>
         </header>
         <div class="answer" aria-live="polite">
           <span class="answer-marker" aria-hidden="true">↳</span>

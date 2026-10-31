@@ -127,12 +127,7 @@ export default function SystemArchitecture({
       onMouseLeave={() => setActiveRole(null)}
     >
       <header className="wiki-system-architecture-head">
-        <div>
-          <span className="wiki-system-architecture-eyebrow">
-            System architecture
-          </span>
-          <h3>{slot.title}</h3>
-        </div>
+        <h3>{slot.title}</h3>
       </header>
       <div className="wiki-system-architecture-body">
         <div className="wiki-system-primary">
@@ -152,10 +147,12 @@ export default function SystemArchitecture({
                       {index + 1}
                     </span>
                     <div className="wiki-system-role-copy">
-                      <span className="wiki-system-role-layer">
-                        {architectureLayerLabel(node.layer)}
-                      </span>
-                      <h4>{node.label}</h4>
+                      <div className="wiki-system-role-title">
+                        <h4>{node.label}</h4>
+                        <span className="wiki-system-role-layer">
+                          {architectureLayerLabel(node.layer)}
+                        </span>
+                      </div>
                       <p>{inlineCode(node.detail)}</p>
                       {roleStages(node.id)}
                       {onEvidence && (
@@ -205,8 +202,12 @@ export default function SystemArchitecture({
                   key={node.id}
                   onMouseEnter={() => setActiveRole(node.id)}
                 >
-                  <span>{architectureLayerLabel(node.layer)}</span>
-                  <h4>{node.label}</h4>
+                  <div className="wiki-system-role-title">
+                    <h4>{node.label}</h4>
+                    <span className="wiki-system-role-layer">
+                      {architectureLayerLabel(node.layer)}
+                    </span>
+                  </div>
                   <p>{inlineCode(node.detail)}</p>
                   {roleStages(node.id)}
                   {onEvidence && (

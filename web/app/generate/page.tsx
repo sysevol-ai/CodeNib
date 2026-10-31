@@ -73,7 +73,6 @@ export default function GenerateWikiPage({
       <Header />
       <main className="generate-wiki-page">
         <AppLink href="/browse">← Browse Wikis</AppLink>
-        <p className="hero-eyebrow">Your repository, your Wiki</p>
         <h1>{repo?.slug || "Invalid repository URL"}</h1>
         <p className="generate-lead">
           A source-linked guide to the architecture and ideas behind this repository.

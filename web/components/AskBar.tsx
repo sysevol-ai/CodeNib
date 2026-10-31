@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { navigate } from "@/lib/router";
+import AskIcon from "@/components/AskIcon";
 
 /**
  * DeepWiki-style ask bar pinned to the bottom of the page. By default,
@@ -81,7 +82,7 @@ export default function AskBar({
           }
         >
           <span className="askbar-icon" aria-hidden>
-            ✦
+            <AskIcon />
           </span>
           <span className="askbar-label">
             {browserTrial ? "Find code with OpenRouter" : "Ask this repository"}
@@ -101,7 +102,7 @@ export default function AskBar({
     >
       <div className="askbar-inner">
         <span className="askbar-icon" aria-hidden>
-          ✦
+          <AskIcon />
         </span>
         <input
           ref={inputRef}
