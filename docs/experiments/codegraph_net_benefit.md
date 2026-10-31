@@ -145,6 +145,20 @@ gate partly unobserved. Preserve this gap and both original outcomes. Prioritize
 SCIP generation and source-update costs with authenticated source proof before
 claiming broader gains or spending another model round.
 
+The [shared text-scanner optimization](codegraph_scip_text_scan.md) preserves
+the existing decoder contract and cuts one additional measured cost. On one
+complete saved CodeNib artifact, three fresh decoders per implementation reduce
+median decode time from 13.316s to 6.409s (51.87%), with identical complete
+ordered graph attributes/endpoints. All 35,000 deterministic differential
+inputs agree; 368 SCIP unit cases, five existing synthetic C++ parity cases
+and 9,009 full local unit cases pass. The installed developer wheel reproduces
+the exact normalized text, full graph/occurrence/report outputs and receipts
+from fixed raw compiler output; all 126 records and three harness failures
+remain. These source-checkout component timings and installed functional replay
+do not replace the earlier complete preparation observations or establish a
+whole coding-task advantage. SCIP generation, source-update cost, useful
+voluntary use, independent successes and external enrollment stay open.
+
 The [merged Python identity repair](codegraph_python_walrus.md) now admits the
 complete selected Pylint graph and exact source delivery through its actual CI
 wheel. The [prospective source-contract diagnostic](codegraph_reference_adoption_freeze_2026_10_30.json)
