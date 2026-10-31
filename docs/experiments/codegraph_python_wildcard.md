@@ -91,3 +91,10 @@ component proves the 20% complete-workflow gate, correctness/token parity or
 voluntary use. Independent successes remain 0/2 and consenting external users
 and seven-day reuse remain 0/5. No model question, account fallback, outreach or
 new model spend is added; A0 and issue #874 stay active.
+
+The implementation is in draft
+[#946](https://github.com/sysevol-ai/CodeNib/pull/946), independently based on
+merged #944. Keep it unmerged until its own exact-head CI and source-built
+wheel gates, baseline all-files failures and shared-roadmap reconciliation
+are resolved. Its first packet is immutable; later admission belongs in a
+separate supplement.
