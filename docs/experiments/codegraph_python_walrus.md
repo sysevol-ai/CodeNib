@@ -124,10 +124,25 @@ The [new admission packet](codegraph_python_identity_source_2026_10_30.json)
 retains both installed module snapshots, original replies including the
 ambiguity, exact-name followups, source audits, captures and test logs.
 Full raw compiler/graph artifacts stay local with byte lengths and hashes.
-The earlier failed packet is immutable and remains linked above. Complete
-construction and these selected source checks now pass; exact release-artifact
-admission, voluntary model use, workflow quality/time, two successful
-independent confirmations and external reuse remain open.
+The earlier failed packet is immutable and remains linked above.
+
+The [release-artifact admission](codegraph_python_identity_wheel_2026_10_30.json)
+uses the actual ARM wheel built for `fa740af226f35cdf4bbd5486a59699ed25e9d06b`
+by GitHub run 41159228531, with wheel SHA-256
+`4413d8f141a438b19899a35070d036c68f1bb24166fae452c91acf7f1eadccc4`.
+All 485 packaged Python files match the candidate source. A network-disabled
+prepared container installs the wheel with no dependencies or source overlays,
+then verifies all 486 Python/native files from outside the analyzed checkout.
+Complete Pylint construction, the four source queries, byte-exact window audit
+and exact-name followups pass again. The complete graph query surface and
+source selection match the prototype. Original raw wheel/graph artifacts stay
+local with lengths and hashes; public 0.2.4 remains unchanged. Remote unit and
+Docs checks pass; all 14 executed release verifiers pass, with seven separately
+recorded conditional skips. Skips do not establish the unexecuted tiers.
+
+Complete construction, selected source checks and this exact release artifact
+now pass. Merge checks/review, voluntary model use, workflow quality/time, two
+successful independent confirmations and external reuse remain separate gates.
 
 All preparation/controller failures and original replies remain retained. The
 completed source-payload cohort and hold decision are unchanged; the further

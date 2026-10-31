@@ -115,9 +115,11 @@ All 28 windows match original source bytes; the two `_compute_sims` probes and
 one `_check_astroid_module` probe include all five returned caller locations.
 The original ambiguous `add_message` reference reply remains recorded; exact
 names resolve it, with one result capped at 40. Full construction and these
-selected source checks pass. Exact release-artifact admission, actual model
-use, workflow quality/time, independent confirmation and external reuse remain
-open. No completed cohort, test selection or score changes.
+selected source checks pass. The [exact CI wheel](experiments/codegraph_python_identity_wheel_2026_10_30.json)
+repeats the full admission with all 485 packaged Python files and its native
+extension verified, without source overlays. Actual model use, workflow
+quality/time, independent confirmation and external reuse remain open.
+No completed cohort, test selection or score changes.
 
 The latest round records 8,821,055 normalized final main/auxiliary tokens and
 $9.311356 in SDK estimates, not invoices. The recorded estimate lower bound

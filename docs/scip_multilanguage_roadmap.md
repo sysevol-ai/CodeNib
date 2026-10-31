@@ -114,8 +114,11 @@ The installed pinned Pylint control now admits all 878 selected documents,
 Four source replies and their selected caller excerpts validate against original
 bytes; the retained `add_message` ambiguity resolves with exact names, including
 one capped reference result. Local focused checks pass 532 tests and the unit
-tier passes 8,984 with 24 skips. Exact release-artifact admission and model/task
-benefit remain open. No backend or C++ acceleration gate is promoted.
+tier passes 8,984 with 24 skips. The [actual CI wheel](experiments/codegraph_python_identity_wheel_2026_10_30.json)
+repeats complete construction and source delivery with all 486 installed
+Python/native files verified and no source overlay; its complete graph query
+surface matches the prototype. Model/task benefit remains open.
+No backend or C++ acceleration gate is promoted.
 
 The [deferred source-first controls](experiments/codegraph_source_default.md)
 retain a full-source SymPy failure at two CPUs/4 GiB. A smaller 2,560 MiB V8
