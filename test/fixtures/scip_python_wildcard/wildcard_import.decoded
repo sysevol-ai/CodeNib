@@ -1,0 +1,135 @@
+metadata {
+  tool_info {
+    name: "scip-python"
+    version: "0.6.6"
+  }
+  project_root: "file:///tmp/codenib-mcp-definition-20261031/installed-mcp-4/source"
+  text_document_encoding: UTF8
+}
+documents {
+  relative_path: "wildcard.py"
+  occurrences {
+    range: 0
+    range: 0
+    range: 0
+    symbol: "scip-python python source ef75fe37ec624acc8ffb73d07c639aaba47f5aeb wildcard/__init__:"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 0
+    range: 5
+    range: 15
+    symbol: "scip-python python source ef75fe37ec624acc8ffb73d07c639aaba47f5aeb `pkg.bridge`/__init__:"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 1
+    range: 0
+    range: 5
+    symbol: "scip-python python source ef75fe37ec624acc8ffb73d07c639aaba47f5aeb `pkg.bridge`/__init__:"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 1
+    range: 8
+    range: 16
+    symbol: "scip-python python source ef75fe37ec624acc8ffb73d07c639aaba47f5aeb `pkg.bridge`/__init__:"
+    symbol_roles: 8
+  }
+  symbols {
+    symbol: "scip-python python source ef75fe37ec624acc8ffb73d07c639aaba47f5aeb wildcard/__init__:"
+    documentation: "(module) wildcard"
+  }
+}
+documents {
+  relative_path: "pkg/bridge.py"
+  occurrences {
+    range: 0
+    range: 0
+    range: 0
+    symbol: "scip-python python source ef75fe37ec624acc8ffb73d07c639aaba47f5aeb `pkg.bridge`/__init__:"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 0
+    range: 5
+    range: 15
+    symbol: "scip-python python source ef75fe37ec624acc8ffb73d07c639aaba47f5aeb `pkg.origin`/__init__:"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 0
+    range: 23
+    range: 41
+    symbol: "scip-python python source ef75fe37ec624acc8ffb73d07c639aaba47f5aeb `pkg.origin`/target()."
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 1
+    range: 0
+    range: 5
+    symbol: "scip-python python source ef75fe37ec624acc8ffb73d07c639aaba47f5aeb `pkg.bridge`/value."
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 1
+    range: 8
+    range: 16
+    symbol: "scip-python python source ef75fe37ec624acc8ffb73d07c639aaba47f5aeb `pkg.origin`/target()."
+    symbol_roles: 8
+  }
+  symbols {
+    symbol: "scip-python python source ef75fe37ec624acc8ffb73d07c639aaba47f5aeb `pkg.bridge`/__init__:"
+    documentation: "(module) pkg.bridge"
+  }
+  symbols {
+    symbol: "scip-python python source ef75fe37ec624acc8ffb73d07c639aaba47f5aeb `pkg.bridge`/value."
+    documentation: "```python\nbuiltins.int\n```"
+  }
+}
+documents {
+  relative_path: "pkg/origin.py"
+  occurrences {
+    range: 0
+    range: 0
+    range: 0
+    symbol: "scip-python python source ef75fe37ec624acc8ffb73d07c639aaba47f5aeb `pkg.origin`/__init__:"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 0
+    range: 4
+    range: 10
+    symbol: "scip-python python source ef75fe37ec624acc8ffb73d07c639aaba47f5aeb `pkg.origin`/target()."
+    symbol_roles: 1
+    enclosing_range: 0
+    enclosing_range: 0
+    enclosing_range: 1
+    enclosing_range: 20
+  }
+  occurrences {
+    range: 0
+    range: 11
+    range: 16
+    symbol: "scip-python python source ef75fe37ec624acc8ffb73d07c639aaba47f5aeb `pkg.origin`/target().(value)"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 1
+    range: 11
+    range: 16
+    symbol: "scip-python python source ef75fe37ec624acc8ffb73d07c639aaba47f5aeb `pkg.origin`/target().(value)"
+    symbol_roles: 8
+  }
+  symbols {
+    symbol: "scip-python python source ef75fe37ec624acc8ffb73d07c639aaba47f5aeb `pkg.origin`/__init__:"
+    documentation: "(module) pkg.origin"
+  }
+  symbols {
+    symbol: "scip-python python source ef75fe37ec624acc8ffb73d07c639aaba47f5aeb `pkg.origin`/target()."
+    documentation: "```python\ndef target(\n  value\n):\n```"
+  }
+  symbols {
+    symbol: "scip-python python source ef75fe37ec624acc8ffb73d07c639aaba47f5aeb `pkg.origin`/target().(value)"
+  }
+}

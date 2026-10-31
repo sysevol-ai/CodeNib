@@ -206,6 +206,15 @@ External and dynamic calls may be missing; an empty neighborhood does not prove
 there are no callers. Use the returned paths and lines with `read_source` to
 check actual invocations and behavior.
 
+Unreleased source builds also recover some Python references after
+`from module import *` when the compiler incorrectly points a name at the
+whole module. Recovery requires a position-based definition reply matching an
+exact declaration in indexed source. Unsupported targets remain reported in
+the build diagnostics. Rebuild an existing Python graph once to pick up this
+repair with `codenib codegraph init . --rebuild`. A name that is reassigned can
+still reference several static candidates; inspect the source before deciding
+which implementation runs. Published 0.2.4 does not include this repair.
+
 Useful full-surface tools include:
 
 | Tool | Product use |

@@ -255,6 +255,8 @@ installed provider, frozen score, whole-task comparison, independent success
 or external-use evidence changes. Complete-workflow benefit and real use
 remain open.
 
+The [wildcard-reference repair](codegraph_python_wildcard.md) separately preserves the original strict call oracle while improving its positive recall: actual compiler/MCP calls find all 11 positive lines with the same one of five negatives. Source-backed standard definition replies authorize only existing compiler module reads; coincident targets and lexical-binding unions remain intact. The final unit tier passes 9,038 with 24 skips, and the offline installed complete-source replay preserves all 786,078 original occurrences and the exact normalized text. Builder identity advances to 10, while graph layout stays 5. This independent source fix still needs its own CI-wheel/final-head and representative wildcard/update admission. It changes no frozen cohort, independent success, external-use count or whole-task decision.
+
 The [merged Python identity repair](codegraph_python_walrus.md) now admits the
 complete selected Pylint graph and exact source delivery through its actual CI
 wheel. The [prospective source-contract diagnostic](codegraph_reference_adoption_freeze_2026_10_30.json)

@@ -1,0 +1,2 @@
+from pkg.bridge import *
+value = exported(13)
