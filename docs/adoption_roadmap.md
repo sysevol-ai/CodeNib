@@ -552,7 +552,7 @@ The question-first marketing iteration is merged in
 to `codenib.ai` with the matching Wiki frontend on 2026-10-12 UTC. Live
 desktop/mobile acceptance passes; hosted measurement remains opt-in and off.
 
-The presentation refresh in [#921](https://github.com/sysevol-ai/CodeNib/pull/921)
+The merged presentation refresh in [#921](https://github.com/sysevol-ai/CodeNib/pull/921)
 and [#922](https://github.com/sysevol-ai/CodeNib/pull/922) gives the demo, homepage
 and blog neutral surfaces with a single blue accent. The schematic system map
 in [#923](https://github.com/sysevol-ai/CodeNib/pull/923) retains indexed links,
