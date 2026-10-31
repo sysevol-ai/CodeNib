@@ -10,7 +10,7 @@
  * Columns come from `layoutAreas`, so an area sits left of the areas it
  * mostly references. Unlike the compact area map, the poster also draws the
  * weaker direction of a mutual pair and edges that run backwards; every drawn
- * route is one recorded link, in its own lane so that neither hides the other.
+ * route is one recorded link, with separate lanes wherever space permits.
  */
 
 import { layoutAreas, type AreaLink } from "./areaLayout";
