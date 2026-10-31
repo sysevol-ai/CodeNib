@@ -467,11 +467,20 @@ as `run(String)` are ignored when matching names. The graph is built as for
 full-source runs. Hits are limited to released files.
 
 Graphs are cached per snapshot under `cache/graphs`, apart from the checkouts
-under `workspace`; `workspace` must be neither `cache` nor `cache/graphs`. A
-checkout never replaces a directory it did not publish, such as a graph or
-another Git checkout, nor a graph a checkout, so roots that overlap across
-providers fail instead of deleting each other's data, and neither root may lie
-inside a published graph or checkout. A later run reuses a build, and reports
+under `workspace`; `workspace` must be neither `cache` nor `cache/graphs`.
+Give each concurrent provider a separate parent directory containing its
+workspace and cache, and keep that parent outside every other provider's
+managed checkout and graph. For example, use `run-a/checkouts` and `run-a/cache`
+for one provider, and `run-b/checkouts` and `run-b/cache` for another.
+
+Checks reject roots inside an already published checkout or graph, but do not
+reserve empty paths against another provider's later publication. Concurrent
+nested or swapped roots remain [unsupported](https://github.com/sysevol-ai/CodeNib/issues/867):
+normal cleanup of an owned checkout can remove another provider's untracked
+workspace if it was created inside that checkout. Choose separate areas before
+starting either provider, including when no checkout exists yet.
+
+A later run reuses a build, and reports
 its original build and checkout-fetch times with `cached: true`, only when the
 build matches: the CodeNib sources, Python and package versions, each graph
 backend's command and executable, and the graph settings. A backend that its
