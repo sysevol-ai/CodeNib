@@ -1,0 +1,3108 @@
+{
+  "schema": "codenib.lsp-successful-late-reply-final.v1",
+  "status": "terminal_verified_final_candidate",
+  "base_commit": "2453c12e44fb062b3ca27ed00e5535d91fcffd05",
+  "initial_packet": {
+    "path": "docs/experiments/codegraph_lsp_stdio_2026_10_31.json",
+    "sha256": "eb6e2d0a79b39e11a2ed36bd29b0b644499425b4fd92117c7a2018caad26a7e3",
+    "unchanged": true
+  },
+  "product_diff_from_initial_repair": "diff --git a/codenib/graph/incremental/lsp_client.py b/codenib/graph/incremental/lsp_client.py\nindex bfe64acb..65cd2f04 100644\n--- a/codenib/graph/incremental/lsp_client.py\n+++ b/codenib/graph/incremental/lsp_client.py\n@@ -588,6 +588,7 @@ class LSPClient:\n                     message = self._response_buffer.pop(pid)\n                     if \"error\" not in message and message.get(\"result\") is not None:\n                         logger.debug(f\"references: using buffered response id={pid}\")\n+                        self._last_error = None\n                         return message[\"result\"]\n \n             result = self._request(\"textDocument/references\", params, timeout=timeout)\n@@ -673,6 +674,7 @@ class LSPClient:\n                     message = self._response_buffer.pop(pid)\n                     if \"error\" not in message and message.get(\"result\") is not None:\n                         logger.debug(f\"definition: using buffered response id={pid}\")\n+                        self._last_error = None\n                         result = message[\"result\"]\n                         if isinstance(result, dict):\n                             return [result]\n",
+  "candidate_module_sha256": "40d24ba3d784bdc9fd28fee01998149b4b84b20aeb8213030b9efff9a39bcfae",
+  "candidate_wheel": {
+    "scope": "Developer assembly changes one current Python file and regenerates RECORD. All485 packaged Python files match the candidate checkout; native/assets retain admitted base bytes. Not a source-built, CI-produced or published wheel.",
+    "path": "/tmp/codenib-lsp-late-reply-20261031/developer-wheel/codenib-0.2.4-cp310-abi3-manylinux_2_28_aarch64.whl",
+    "sha256": "9b713770845877af104af0c06df78d87afc8806c13cf17ef481e75d72c58d08c",
+    "base_ci_wheel_sha256": "4413d8f141a438b19899a35070d036c68f1bb24166fae452c91acf7f1eadccc4",
+    "changed_python_from_ci": [
+      "codenib/compiler/artifact_quality.py",
+      "codenib/mcp/server.py",
+      "codenib/scip_interface/scip_indexer_base.py"
+    ],
+    "python": {
+      "codenib/__init__.py": "ed14b61d1e1703a455decedc2225e9b47264529d7a66c84ba341d8e12fba47c4",
+      "codenib/__main__.py": "9195b6d9a6c4ef528e59c4a985a7d416cf30330dc6082351e911afe606981b62",
+      "codenib/_atomic_directory.py": "01f592c8149c0fc96aa4bfdb5a794a372c45868b8e7563ce28f4637802024354",
+      "codenib/_bounded_json.py": "8a6c5622ae16c8b09b8f73cbc8267a754f10237e1cf8651f76753f29842d6f97",
+      "codenib/_captured_directory.py": "688bdf34a4d5927f733c6277ac468b7a088cf6107697f5f411a246716f242f59",
+      "codenib/_contained_source.py": "bcd2c43b829cf02461d54f39f13e734d1cfb68df2b5d45817779d3df477de823",
+      "codenib/_lazy.py": "60a1982ff87408cf18953b2d80528650dfafefdaef27e537d87c80ad9232b9d2",
+      "codenib/_local_workspace_provider.py": "65d48e8adb1ce0227b3ab9eb552ff9377f1c604886b712f86858a6228873b717",
+      "codenib/_optional_entrypoints.py": "7c44786cd7107d7fee3932f857ddaa384703bf7409f8a71723e6944fd1723c2e",
+      "codenib/_owned_file_publication.py": "d1e5e087603c2afc3df785233bdef98b60c339e094b590e7e7672f76acb1fc01",
+      "codenib/_secret_fields.py": "6e36a35569cf9aa2b0fa808342121cadca363ec787d13d79e2998cd56565bda5",
+      "codenib/_version.py": "7173e734d041378e6756005e8ccbaf179c74714566f0f0e4a52351cdb9fee699",
+      "codenib/_windows_fs_authority.py": "38bbb5ab06305117d7283e315db7152ca99f93159aca09d85deb08b810026523",
+      "codenib/_workspace_owner.py": "5444aeb1405bbb67c072de9bf9ee2105ee576af297b88a88d49cb9d92491b22c",
+      "codenib/_workspace_provider.py": "3a99afba016722142cda0ccc044bc48dfe4e93211596771ebc24569aa7814596",
+      "codenib/agent/__init__.py": "c3c0e7e25f9abd39b7285b1e1a324bf24076ac6d07c7c9a04aa0726a0ecb331c",
+      "codenib/agent/agent_types.py": "abf5997210ddbb4893ccba2625343058fe8da3cc781afe135337924379821869",
+      "codenib/agent/boundary.py": "5a2abe8543dcc4b63a2277e1a490eb41796b57b5af6a3f27d74738a212c70ba4",
+      "codenib/agent/compile.py": "bb03aa95c519bbe460b894f6e8eb687e4d9d57680d62d70f6ca31244efdb8bd3",
+      "codenib/agent/decision_rerank.py": "fbfb3d30a0d9b2da364d5c46d52e8dba642204f0a93698f30ce84052a6d9edc8",
+      "codenib/agent/extract_agent.py": "53b738793546e0146b47f7c11d4408f5f2422bce23f918eb49e9a076305d7873",
+      "codenib/agent/harness.py": "dabb2166f2233b6be5c79cf67fc02aff0dc33d3e432f1030808a478a4b7dfd7d",
+      "codenib/agent/history.py": "a5029f6750085be346de9f4401ba514eae34360e0cbe1d3638d05c6e9b7c7487",
+      "codenib/agent/lsp_graph.py": "e073242e554c5c252258d3186f69216c21d9c9c222cfcdc6984356508546a90d",
+      "codenib/agent/lsp_provider.py": "bbd89ad984ec4bac288344d15bae9276e02a7756a9e21e8c25680612cd26f7c6",
+      "codenib/agent/rerank_agent.py": "d72b3799d9ff0a4326a1ed78969862966a8724d6e98c8a4111635d3316bea465",
+      "codenib/agent/resource_guard.py": "38cf3e5c1334754dfa21a84c69eb20c24d079b9c4b5b6bfda574e92610702810",
+      "codenib/agent/route_context.py": "ad7ee5106b352f9a9e7589588a96c082fbc683c384dab5d66f7b86700d63340a",
+      "codenib/agent/runner.py": "4036c53f8df96b41090b3592f15fe4bad737cef29409552fffb8afff0def9479",
+      "codenib/agent/runtime/__init__.py": "335c818f4410443a2db390214c44ed43e6725fdab67ecff95034d9e567cbfa1a",
+      "codenib/agent/runtime/context.py": "e1ebd22eddf2bf406b181af99c7333062bf5fed48d8685c4443195e3d63e4ca5",
+      "codenib/agent/runtime/explorer.py": "12461e1d1daf406f21dad9ee26627e401db1ea93228fd92aa8b2ed595e7b33d1",
+      "codenib/agent/runtime/grep_jev.py": "46ab8ee71c4600ab135db96615c4e261de8c4da59d1c6f7f784b4344c6c31d61",
+      "codenib/agent/runtime/trace.py": "8b0a3fb8c1a003e77d52498b3e0a7f313902c84882ecec72bae209dd3f47e391",
+      "codenib/agent/skills/__init__.py": "95977eb1e61ef936b8badc72dfdcd567e19983d1e453056afd85ff1af976c48f",
+      "codenib/agent/skills/_graphnav.py": "f82574c0f4d231eb49efd09894df7c32f11fe8bedec66d6e20ccc0ecfea3fa69",
+      "codenib/agent/skills/bm25_search/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "codenib/agent/skills/bm25_search/executor.py": "5a833583a4a2a272633f349bf76c38c85f0d934d1cec8cf9ad5338c251fb2833",
+      "codenib/agent/skills/code_to_query/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "codenib/agent/skills/code_to_query/executor.py": "2677e113a278f9512b0a8eb3d288ff0c1c0101a4089d873ad95516fd05dc8d83",
+      "codenib/agent/skills/codenib_context/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "codenib/agent/skills/codenib_context/executor.py": "5d117acdbf92643125cad4b21ade5786fce2c374a89ba6f3fa8cf5e6a5896e5f",
+      "codenib/agent/skills/context.py": "3407b96411f47cec962ee0f69d12c16465e9020249a37a2076da66406937c703",
+      "codenib/agent/skills/core.py": "00e8ac6785c6b6cb5e8c97e1e42bcee6bd255e1bedb61976a441828e63231c60",
+      "codenib/agent/skills/crossencoder_rerank/__init__.py": "d6fe2562db913ef12660766189b1b2f226142389fc79a09740c57655a07cd9fd",
+      "codenib/agent/skills/crossencoder_rerank/executor.py": "f68bc3441361c9d5d2e0f9f835125bcdc7903ef5c78971d42a769d83586af682",
+      "codenib/agent/skills/embedding_search/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "codenib/agent/skills/embedding_search/executor.py": "3b96b641509f594042ef74fd44f65e9a050c914ec7ac6fe6572ad98ad78df4c1",
+      "codenib/agent/skills/find_callees/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "codenib/agent/skills/find_callees/executor.py": "ef7ffaa2a39ede06db6bf8bf4f4d3513806458ffecf8e81f6a608aed211c2c78",
+      "codenib/agent/skills/find_callers/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "codenib/agent/skills/find_callers/executor.py": "1f5412a85d2abe79a64a9c2dd63528d69113892d5fabe816e75c6072612517c0",
+      "codenib/agent/skills/hybrid_search/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "codenib/agent/skills/hybrid_search/executor.py": "0db4a25500177145c6b2e501744c68024e93ffa566b6566fedc9a52d7e9d29d3",
+      "codenib/agent/skills/llm_rerank/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "codenib/agent/skills/llm_rerank/executor.py": "b4fdd47c36901830804c04c6801858aad5a42f0ea948e3a87f20583801ac14e4",
+      "codenib/agent/skills/loader.py": "a1d84168a1ed9eafc4aff43dc7d1f543e04c394ba274c3914d7383468f27c4f9",
+      "codenib/agent/skills/lsp_definition/executor.py": "41d85e82d3b38b2919254f99ee3098716c24bc87ab7e05c09b3b5a1b132cd072",
+      "codenib/agent/skills/lsp_references/executor.py": "bab0832ca880af31b2b427d8eb839c52101433db6002da6b4a5f971c851ca410",
+      "codenib/agent/skills/lsp_route/executor.py": "ad49c5112c5163d9b7fbb08b7fc6deb20d8b5ccddad35e5fb9fe4536e44e630a",
+      "codenib/agent/skills/registry.py": "326127ea90bb3895cea7443b27b5da9aa930da3f6255bffb9bd99bab7b144893",
+      "codenib/agent/skills/repository_search/executor.py": "16e5a84197f71647888f18850d255fd07beb26a08b078786bd93932374c5b32e",
+      "codenib/agent/skills/trace/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "codenib/agent/skills/trace/executor.py": "4675124555d6c3f46923fdc79ccc51fac15f909d1cf1dc081c5f32b8b716b1de",
+      "codenib/agent/skills/typecheck.py": "37b0568152d383ae8b614faa281bad06ed73b3b7c623c94f493022f1c3e92e12",
+      "codenib/agent/tool_schema.py": "537b63bf07d7d1e1d304499a5f949e6b94eafb9da29a757445feeb89fb453302",
+      "codenib/agent/tools/__init__.py": "92a3a261f32f0f7082a6ec14007ef122482af958e974931148354066bfb4f8e4",
+      "codenib/agent/tools/defaults.py": "c438932f9b32b041d889294ef9e6eddf2a98292841128ecb4156d00f90970f25",
+      "codenib/agent/tools/grep_worker.py": "7127d2edb609d14d2d4362ec0fbb4aeb8c84ab93910b1c5a080e527c445785b0",
+      "codenib/agent/tools/sandbox.py": "ef2f220f4c54f7d5c5878ef60c8a08cac2d74debd3f2b8b4894cb4f4952e105c",
+      "codenib/agent/tools/spec.py": "b9ce4dce5aea79e4d595f0ada2a32db314493854053db425f0b2953c0d8390af",
+      "codenib/artifacts/__init__.py": "09f65173df452f67bfc393da6c9c58dac9de596b6265af28e1de0cc7726c0165",
+      "codenib/artifacts/archive.py": "421f6625ce17202db11795e6dc44939c7990764771810c737a3a4931b610a568",
+      "codenib/artifacts/context.py": "9dd09195eec2328313e7498e0a81644917a4b0f108b7669a4401ae514bfe0709",
+      "codenib/artifacts/github.py": "dda44665b95de6941e59ce9dd65d1b3e948d8e8e85da35e59393a1c8182da1ab",
+      "codenib/artifacts/mcp_config.py": "0a6574409a1364943bf482c7ee6a1638d07119f0806c1b58c99cd5753c6001ce",
+      "codenib/artifacts/portable_views.py": "e3e6abceaf12f9f3c4d70077fdc2d7852e66c4789559fbb96d35804ce2f9b853",
+      "codenib/artifacts/runtime.py": "9be3f50c48b32f10977f4b7f36c51423b0300f0b20ff19e945fb329f0ccd9054",
+      "codenib/artifacts/security.py": "273d4ca679dd09fa66eaf021a6d6a7bb88ab120c9121dad2195143ebbb79e9a0",
+      "codenib/artifacts/strict_bm25.py": "4cab7f33032a440a8b5bc96178ffd89cba1bd59ba24bd30c7970364beae0be5f",
+      "codenib/artifacts/strict_context.py": "8c2dd50fdf4d74674fb134ca70fa8330b354ce1543dfc5999b9412516f981d4d",
+      "codenib/artifacts/strict_vector.py": "651f53037871c5f88feda2355b9c574a6954efa9bc04ef001e29e8e52521f59c",
+      "codenib/cli.py": "25094e3191dc965efca915849d250e717a8bd969ebfadea42cb0408fc5e7c844",
+      "codenib/clients/__init__.py": "cb2c6eb1e61d1c3644d41d7b099288f2eba2b639fd9896af43b4d4967a4c04c9",
+      "codenib/clients/_manifest.py": "2fec1a0aa1afdf36d83ffd3667076a4e4fdbf817ee4642457a35c0dd6d96c28e",
+      "codenib/clients/agentless_agent.py": "637b22f86e923a7c2fcf93555292a250d81824f343e4d510e28cd3c69d4ff45e",
+      "codenib/clients/agentless_protocol.py": "21e17865df4b9f194a9c133df8a4288148333393b8d4d8fc1daebdfd71fa76cf",
+      "codenib/clients/claude_agent.py": "9bc76353ec02269422a33c8e06395d29e99107d40b033b6c924a10a9a1fc4725",
+      "codenib/clients/codex_agent.py": "ffe6f568ad5795544c3b55b33d3cd3b4b81d5b24f272168e0f12b1821530e6f2",
+      "codenib/clients/cosil_agent.py": "c6ceaea9d36002ab0d396766f940474ece9715d100dda4c18efdd01587a8ce7b",
+      "codenib/clients/cosil_protocol.py": "d8192e5f6f65122855a92b3fac4a8af3961e851c6cb0f6dee0ac7b48fbcd6bf2",
+      "codenib/clients/execution/__init__.py": "f1437b95543188828a016e2fe16f993ccdb61cdbdbe58ad57f7cbd9fc2162f6b",
+      "codenib/clients/execution/codex.py": "0cf50b8bd6e1d5036378b9f4f8f87768253975845be348a0745fed01fdd6fced",
+      "codenib/clients/execution/process.py": "10174d3bf34f6ea65860337fe8290a6bb198a8daeab2efd90c73bdbf8bef21bc",
+      "codenib/clients/execution/protocol.py": "36d03ebabcef9270816e6f84edbcfba3d85c0602077cf5ee019e4146975820c1",
+      "codenib/clients/execution/sandbox.py": "8eee6b4391807b09219155d5c949d01befe7874dead4469f938c49b465988873",
+      "codenib/clients/execution/types.py": "ed70130825b2a19434f0ef1c880c8747e597614d5590f325464cdd81e658ffe0",
+      "codenib/clients/guardian/__init__.py": "db9a85136e143fa7a72891dc89bef34e74b94fc853ca27502cecb97416089520",
+      "codenib/clients/guardian/agent.py": "2e192dfaa12068fc0f79f3b8904b81fac99f45c09d152cff8c293edf05dd193a",
+      "codenib/clients/guardian/aggregation.py": "998cdff757f8083fd0fdebd0d517ec2a7d09bd1fa1b6e52a83dcff0846fbb703",
+      "codenib/clients/guardian/artifacts.py": "4a85ef4b33f82866f74c723145ab764b074aa5cabc95ad100c7ed55a34a04e61",
+      "codenib/clients/guardian/contribution.py": "cc0553196e639ca0e9d1cbf5174ab70a36d475c9f915dbe9449c78df862bd389",
+      "codenib/clients/guardian/discovery.py": "c419b81797da43c6955f6e2dbcb891c96fbc7545ea8e8250966cba5c8b647446",
+      "codenib/clients/guardian/distillation.py": "aabe7ce4cef3970f58a0a07defedc04bf0b01aaa1fce62f87f4f8e5547665806",
+      "codenib/clients/guardian/evidence.py": "ecafb4c6913ea9c759b94c88fe5e65e212469d600139debb39e884833f3aed5d",
+      "codenib/clients/guardian/exchange.py": "6f3a77343c3b3c19df5b35d27fd344963a49183b14ea0acd68bf5e3938cd4ccf",
+      "codenib/clients/guardian/frontier.py": "cc817f295d1829e78458ad599eb1f4709b07628a5b5f047d0ed8c12f1b1814a2",
+      "codenib/clients/guardian/interaction.py": "f11f3490823fb78436f86d299a7a70c13c91822fae85f570ec629a8bb9ab5da6",
+      "codenib/clients/guardian/memory.py": "dac898f9485d65aae4d986534f1007bbe214803bd06e56e7097e258952db66cf",
+      "codenib/clients/guardian/normalization.py": "ba1ae3df09110bd1c0610c5010504e9e402b8f338dc799eabbd0a4af9a45c428",
+      "codenib/clients/guardian/patch_check.py": "b4fc120733eaed1aaf236be579cfd9d6e0c8751b09677366ffc56f8ddbc3567a",
+      "codenib/clients/guardian/planning.py": "483ab15d5294f0a82461b229f70d02aeef108e0e928aeed707716737d07de51c",
+      "codenib/clients/guardian/prompts.py": "51d929c0644a6ddc404231ae244ecf2bed475b293bba627579d859613ee3a791",
+      "codenib/clients/guardian/provenance.py": "47bb46baca4f7ea94100704b4003f91ea0a4c8d84bed04dce1a8071cf231ae71",
+      "codenib/clients/guardian/types.py": "b67e7d43e838baf5d7b9fed09132820663191612824a4fce53cb282ee601b17f",
+      "codenib/clients/locagent_agent.py": "30ce4d08d1e510d3eb0daa2c711b8f5838797892bf64dce2ad3a1b8d6032471d",
+      "codenib/clients/locagent_protocol.py": "190dc235b4d7d8f33240746459b1c6c4e483cc49383aab3fb886bba70e279e22",
+      "codenib/clients/orcaloca_agent.py": "7a696ac04bfe0618add522321d834f2bb8ff5f24aa88de581a90d29546b8776c",
+      "codenib/code_chunker.py": "ee9aaca74d5e6a6b82916acdd64518ddd295777b87ffbe1ef1bfd5d6ea0ff215",
+      "codenib/code_chunking/__init__.py": "e49eb5d1ff9d2328dd1a9bb4191457594557bde46d7e5d4143380202b615ac68",
+      "codenib/code_chunking/base.py": "32e8637d8f3888bfa15ce33892faca4d0ca4da32be1806b0d8288dc86fe92b6e",
+      "codenib/code_chunking/cpp_chunker.py": "5a29bc267bc4d8946d7983590e87f14b838bb2f34ccba41927d4cc3302f1f9ef",
+      "codenib/code_chunking/csharp_chunker.py": "82990bce7e260c434d50d6be16e786991f9c314cf058287f791ab6e4f92f6f54",
+      "codenib/code_chunking/go_chunker.py": "c9948c5209ee68c6fdd1609e8cb2485ed424ddfbf9248f87c4593fb14fb970a6",
+      "codenib/code_chunking/java_chunker.py": "7d53f12d8e99b91d0a23bae30b85cdb780ad67cc30c82d2c6d17eae046940852",
+      "codenib/code_chunking/js_chunker.py": "b4436ae1df3902e47b0a97b84f0275fb760ca902c7e09c32791dba76a1de8989",
+      "codenib/code_chunking/kotlin_chunker.py": "a1d9456e99953d589ca8d3a053d1d2b7afb987ebbd6706cbbcfc3ccd6dbeea6d",
+      "codenib/code_chunking/lua_chunker.py": "58cd2ea7fed1997d3d1834405ca91d47c138e836d821ac7df5dbc3a511f67333",
+      "codenib/code_chunking/php_chunker.py": "5a0b7990ce5c0b0e941d2953e1aeac31197835c8ffb61a34213b8413555b153b",
+      "codenib/code_chunking/python_chunker.py": "cffd6a7d80dec2842012e664dca26dedc0d84093d4239ec064f4111328bea81a",
+      "codenib/code_chunking/ruby_chunker.py": "fc9b9dbe4dd59d8be98980801bd545efcf31fc9756d97b8b1d42522d11038761",
+      "codenib/code_chunking/rust_chunker.py": "a828e28038a59aba026be4cd15ce4f468786486213130f18fc9a61d8dc8f5e1a",
+      "codenib/code_chunking/scala_chunker.py": "ac778f886df536f3b3f9e0220c582cfb4145c9fe72d642a323ebe11c48d46d06",
+      "codenib/code_chunking/swift_chunker.py": "b81496687cc3faff865005f02fc77d7ad691d945602f0ae318e665b7b34db135",
+      "codenib/codegraph_onboarding.py": "d7fbef7d518494f2b1b04e2e846c969c20f2722102a8063521480c809ddbc612",
+      "codenib/codegraph_preparation.py": "3b627df7d36f02659cf64d9ce0c7bbfc7977260f241061319131226d54bdcb5e",
+      "codenib/compat_pickle.py": "1dab760d868860ddc717e66cd2ea474684a5e352aebb8606a2d680625b282806",
+      "codenib/compiler/__init__.py": "bd03f6a3c112e663f67f0c5d5c9b90549a6ea21a7b400b60a734ef75fbce1923",
+      "codenib/compiler/artifact_fingerprints.py": "9edbe85d40d2492ded7eb269d8e5e787c948281bdf2c854089bab80694049dd6",
+      "codenib/compiler/artifact_quality.py": "01ba9155d72af196fa72d38c9bd67315aea2d4d67a148cccdd07d897e6cd198d",
+      "codenib/compiler/cache_lock.py": "e630b126a82fe5b7526ef9b9cc5b6467f98f2c13286e2eb6ada5db6369c0d062",
+      "codenib/compiler/checkout_identity.py": "8e645a21c00a45c123297a80ea23341c4b5427af9aec59947346c3f4e3756498",
+      "codenib/compiler/graph_artifact.py": "bcb0a40d669f63f3085b69333a9240413133ffdc1b69f9d6a229c91036d5a627",
+      "codenib/compiler/index_builders.py": "aece84ad1ab003b581e06d7bca33b97f70a59a98fb3d7f7adff3cb987a663727",
+      "codenib/compiler/index_compiler.py": "9d84e68ce586a08ad82a519f68b85751bea4eab8c2ebec3acc543b11b25d6d11",
+      "codenib/compiler/manifest.py": "ee71d11ee1b761eef5d02102d032eb856b49965d40f18dc2b536251306544243",
+      "codenib/compiler/manifest_source.py": "5fbff7690fff1add2baa28de35637ad9c61e9481b2d8ba236b8eca9abdde710a",
+      "codenib/compiler/params.py": "09f56557ca387b72270e338352e73004f31e36d9525359be316e4527da6b9aca",
+      "codenib/compiler/resources.py": "69e8e4508c80731fae10addbe5b6cf4eec7be500ff314a528e89581eb3b726a2",
+      "codenib/compiler/skill_context.py": "f7315a253d08d556a4c7a0ed41a2eef12a3877d69540f58bade136d83ee2d713",
+      "codenib/compiler/snapshot_store.py": "3f21711317c4557c9a33739a6ec17ee00fd630b90d2f50c2432211d7e0f8cbce",
+      "codenib/compiler/verification.py": "8fcea26789415b2a052efb0009f4ece430900dda36e344e399cbce5e2999d53f",
+      "codenib/compiler/zoekt_artifact.py": "64d2ad6cf62d501085518d2ea8d0d1130daab2c9873ac60e157b2e2be43eb573",
+      "codenib/context_delivery.py": "5dcc84a856ce0ffb13471444c8408df1440db59abbeceb75dd297891da944f47",
+      "codenib/dataset/__init__.py": "e1ad9747dbceef43a4aeb14667f557127aba1dfe7db4adfaa77cda1cda89ae10",
+      "codenib/dataset/agent_retrieval_bench.py": "7f15334eb8e6e634208569639713944b1ca2e32f6dfd264302f7f6148dc6b76d",
+      "codenib/dataset/base.py": "b9f852debf9414913eb4d9e44685c9e7699ce07f1aac4dcb9f85714a5f84bf1e",
+      "codenib/dataset/codenib_base.py": "906829e44fb0c596b2c59ba14c5fc51a0d5c4b3e4e64ca8c73759162730b0670",
+      "codenib/dataset/codenib_synthesis.py": "f1df093bca2a699efb92c8662f9cc52223a82d821e90e3a090ab244e477098e1",
+      "codenib/dataset/collect/difficulty_classifier.py": "d805be6c93e57c8338bc4d1145a5cf1efff0b26c9455082313e85aa907f3adbb",
+      "codenib/dataset/collect/swebench_sample.py": "325b4b9ffc5d18b2f385a8edbe42aa66d8ee87403066956315a87e390b59c8ab",
+      "codenib/dataset/contextbench.py": "ec9227c134e223f8df06a6297ba4765afc38957f0b8ce058bd51db60797866b1",
+      "codenib/dataset/gt_locate.py": "2ce468a7dee0f82b0e757a2c9f07e81182d796c293def446942e27490e557fac",
+      "codenib/dataset/local_json.py": "866f7a401f78b8617b615f05d6d59d4f80b24e433dd1f7c2c5a66920eb0c92d1",
+      "codenib/dataset/locbench.py": "41d97e493e79c7e66a47b98a0f0dc456d7c831d391cf8e11ed28ed429bc03fad",
+      "codenib/dataset/swebench.py": "78cf84583a28bf064b57663a9afc5ec7d2a8b246e23c5e35d40862147b2d84c5",
+      "codenib/dataset/swebench_multilingual.py": "1b46263215c970e808fd44651b87698ff01227639fd2adc6f02e0406492ddd15",
+      "codenib/dataset/synthesize/__init__.py": "9bd55a02153990372ec96ec866964c7c20e997523d2c5099cf9fd95baa471a80",
+      "codenib/dataset/synthesize/_agent.py": "f6ac9eb04eb4dc3b639b33c4b9d067c2542186c547047bf488a7fe1d1d7a84c5",
+      "codenib/dataset/synthesize/_types.py": "aa6118af0cd78f66b5118272f0201ad53f65cb41e0a678b2a801d206aeea20b8",
+      "codenib/dataset/synthesize/context_loader.py": "a80737f7473b86ae242acd24b9af71df45ea72e22b5ae3c2e5edbf1bac9dc4bc",
+      "codenib/dataset/synthesize/query_curator.py": "a487cc45264d324fc478a68fbd41d7f2cb12393315b3b22b35a2019e1b2426ff",
+      "codenib/dataset/synthesize/query_synthesizer.py": "94cffbb4c2126de00ee96b8e6f6819312b44863f27bd9963d97c32620aa46aa7",
+      "codenib/dataset/synthesize/verifier.py": "5523baa1ac1dee61b935cb5ce3afc479297d93d7108e1212b5a390f85aee296c",
+      "codenib/dataset/synthesize/vocab_guard.py": "0f99754b358466888549bf9d0741d445e6f4f75e24720b8e968b8fde116a6028",
+      "codenib/dataset/utils.py": "55e41dd5cbb055d92a97c06fba1c45d5659b0470da43b5d96858113caff8e7d4",
+      "codenib/dataset_ids.py": "4a1d47fbfb3038bd1f8c82f29a56682364ed500cf832d951687a55128bac8afd",
+      "codenib/eval/__init__.py": "14e39be04fc618bb2de8e6d03ef6c5689cdd85cd5d536f807e12de00cd9fdeec",
+      "codenib/eval/agent_runner/__init__.py": "54f9df59ee21dc827f6dca9e28ed3a55cc235985e469f0003cdb00c9919032b6",
+      "codenib/eval/agent_runner/baseline.py": "26962c29889daf741b6ce9be45480b7fb7fb302c4361fdb3a99e01ea31e0ffbe",
+      "codenib/eval/agent_runner/batch.py": "e115aa66c720fe51b2521615b6e6b54dfde3f02636442fed69859da08c889b09",
+      "codenib/eval/agent_runner/contexts.py": "5d82a1b1908ca48cec10f057b2f16bd60a0715312b7871acf6044c2910ba633a",
+      "codenib/eval/agent_runner/feedback.py": "d537bfdfeaea2484c256db7096190614800ce9228d12ff190e205922b424d889",
+      "codenib/eval/agent_runner/feedback_summary.py": "92ecd632b1ea355dba199011960ed4c6eaba0231cd355cafd059c7f09c1569d7",
+      "codenib/eval/agent_runner/format_diagnostics.py": "bd6e7587dcc8d019b1388469830e9562ba6dcfcfdc9acd8d3bbd8d8f72249635",
+      "codenib/eval/agent_runner/live_lsp_provider.py": "22eaa64d121963b111518e846e834d320efdf8289d84724ee00a671282800445",
+      "codenib/eval/agent_runner/loc_baseline.py": "70d93b3e93c08318d64049b04c4342b972f606cb4a9cd4838a7fd3c0a4e1e4d0",
+      "codenib/eval/agent_runner/lsp_agent_ab.py": "46b8826ec419c8432328e19113c624a67a5ecc8ac7f03273063ba28bbb5fb0a7",
+      "codenib/eval/agent_runner/lsp_agent_study.py": "dac176382607be2301cbbd1b560f32d9803690cc131bca857ef28a5004a38a55",
+      "codenib/eval/agent_runner/lsp_agent_study_analysis.py": "d8dbda1c84ed5054d9b2f5ad9fcba49530346d462b003438eccd4ff0c9fa76a2",
+      "codenib/eval/agent_runner/lsp_agent_study_artifacts.py": "1b789089144b07d1d2475c13644a04539f1d040546adfbc243196645963502d2",
+      "codenib/eval/agent_runner/lsp_agent_study_manifest.py": "8fe242e78dc4de6a092502d90afbbf8b3d705e3d33715eb0a16f822c3c575354",
+      "codenib/eval/agent_runner/lsp_agent_study_runner.py": "57ccb6f16dd3933652f7dc3add23bdce7272c0640277ad64c0482f03493e274c",
+      "codenib/eval/agent_runner/lsp_baseline.py": "de401a7c8ada81cefe8837665f5c220eaae548d3c5d16b10791a1fffd455d9cd",
+      "codenib/eval/agent_runner/lsp_latency.py": "a82ad0eda9642d298a55716d81c560382d1125b0ec34bcf6d3325be05864f0f6",
+      "codenib/eval/agent_runner/lsp_provider_cli.py": "46dc8906b333e7583988d3a5f06d6becdaa4c1fe113beb04fdefe941db618964",
+      "codenib/eval/agent_runner/lsp_provider_validation.py": "1e787c692f60635f501c019d5a06edb555fabbdae7fb9ae6cf49b57b5a376980",
+      "codenib/eval/agent_runner/lsp_readiness.py": "5b6567a09fba90ab459bd52263834cfbb45931ac1271ca6b1453d3e1bd9e50fa",
+      "codenib/eval/agent_runner/lsp_replay_benchmark.py": "08f30beebac53eae7d23863189414ec66a81238c8b65979a6355d3f03b0dbbeb",
+      "codenib/eval/agent_runner/metrics.py": "dc9cffd270ca84e93b2f086f7fda9c8077d05bdb7f44a0d195ce145bd2045dfb",
+      "codenib/eval/agent_runner/orchestrator.py": "2e256b53f5f2ba5a940d3c14337d76a9911d66526d23145c0c901a30e275d466",
+      "codenib/eval/agent_runner/pareto.py": "57365dffa5739f717dd75ec8c1b9e70ffd94908192a2c34d31dfc9ebe870dfcd",
+      "codenib/eval/agent_runner/prebuilt.py": "12235a5393862ae93ee0c9243ad08b6b295fc85e116465cc3caeee5fc8553e15",
+      "codenib/eval/agent_runner/preload.py": "c687ada7bf6fe29dc6bffde9d6c487f74003ab5094f4245ab924bd40c8e2e3fe",
+      "codenib/eval/agent_runner/promotion.py": "a681af33d8952c381e222b69b8d541d9b200065da78c0346d06fa0bb43d1170e",
+      "codenib/eval/agent_runner/query_sweep.py": "ef5b98c5d9510099d31d19c386b806fc222b7eeb1b7e6e8533d9d70c4eb8f6dc",
+      "codenib/eval/agent_runner/results.py": "cd726622f5d5449837e2ef66efabb6a37078af84f255f361733942a0b594acfe",
+      "codenib/eval/agent_runner/scoring.py": "2b508f7a8636f629235703ecc0503878981aad064012213c26019c0056b9b849",
+      "codenib/eval/agent_runner/sweep.py": "f9783e5559650e8ebd62925cf3f6c41e51e3ca0ce7d7cd7008626758b741ce2e",
+      "codenib/eval/agent_runner/sweep_config.py": "139826f2204e829ad481e6ba34104c6601b271cf55b0c90f629671c841ef2881",
+      "codenib/eval/agent_runner/symbols.py": "cd115245e1288dbdfe910e247a1cf619cb470ce6e454c1fc07007d554b2e1010",
+      "codenib/eval/agent_runner/trace_summary.py": "65878c791561dd7b2894be0126013c0bbfad7b395fa3ce28dac807c4525bf0e0",
+      "codenib/eval/agent_runner/verify_expand.py": "191c9accdb75c7ce17b35528a3eb069911378a393c1d88d2df9d058eff72e63f",
+      "codenib/eval/artifact_bundle.py": "912b23a678880ecbdf24472a37189b405757b01313611361407918ce3085b283",
+      "codenib/eval/artifact_integrity.py": "c6cd7f2af23d4ddf186a9cc4b617a716a7ea5374a44c7ad836c1c4b176b6de8b",
+      "codenib/eval/artifact_manifest.py": "b96e572dd3972d03541e5520f3613a03ac6ab693db7a017408abea9252b98cb1",
+      "codenib/eval/baseline.py": "aa36e06304cdb1c73936686fa345dcc7dcdd7d7ae10a46119584dafca89f1ebe",
+      "codenib/eval/benchmarks/__init__.py": "1ea24ae6e31ad873265e6bd2e268fe7f3812ef9bfcaab6d957ddd39206186fff",
+      "codenib/eval/benchmarks/_arb_evaluate.py": "bf19cf03635b9285e63017822a3a1e59e2da4e7c3915bb2fdcbe55b50afcfa65",
+      "codenib/eval/benchmarks/_arb_methods.py": "d118994ecc4dde74743890e09867bb0a1ef7bfd0e3b30f9c1ec5dd7ce5431ec1",
+      "codenib/eval/benchmarks/_contextbench_evaluate.py": "26b82cc9e800759469c52d972ac2f4b5cfda69f052601841f026f05e28cf222c",
+      "codenib/eval/benchmarks/agent_retrieval_bench.py": "10c557f9b0af26e0f046664d7b31b8f539c3d8a2e6580111713d1f2488618a9c",
+      "codenib/eval/benchmarks/agent_retrieval_bench_runner.py": "35439e0c65b61ad83219a9e91dbac52f40748e43861ddb629de3894a6202f571",
+      "codenib/eval/benchmarks/agent_retrieval_bench_tools.py": "e134363309232da8ca3cf7595bb8536ca14372d4942da0206d19738d2e2793f1",
+      "codenib/eval/benchmarks/agentless.py": "ef8948e9857f9726d86eb3d8fa1c8d3711bc43412b083da0beeca797f90cb519",
+      "codenib/eval/benchmarks/contextbench.py": "1d6d1718d24abaccb46e4f6743ac8033e145628fbc55ceec85d07c0390b39609",
+      "codenib/eval/benchmarks/contextbench_runner.py": "edd2af348c6b3b3aba9382c4d1976cd821692d56f7da202e1f8f2d1ce3765f9b",
+      "codenib/eval/benchmarks/cosil.py": "6fc41b7ca627688b13c4ab2c4fa6ea3e9a4e0b11a673cb20f5e57c71d41400d4",
+      "codenib/eval/benchmarks/deepswe/__init__.py": "186d5e8c38b40882983428563d19f5ea010ed922e3e9561b610eaa2eb765e0cc",
+      "codenib/eval/benchmarks/deepswe/metrics.py": "682517776780e241c0fd387a9d2d134efb4213daffb6cb203440061e20256517",
+      "codenib/eval/benchmarks/deepswe/reports.py": "16c29edb00e849497c6ada0a8a958dda0f18b8332b9fe6316250b2686289f781",
+      "codenib/eval/benchmarks/deepswe/results.py": "7bd0d0d60e0d60a17b6d83c58600151ca53a1fb3be2bf52fd20d38bc29a001fe",
+      "codenib/eval/benchmarks/locagent.py": "f45db4823189ef15f7cce8d2d01acc2bb4da7740e6161de89086938dd3262432",
+      "codenib/eval/benchmarks/orcaloca.py": "cef0729c2fdf6d0d0467a287374291f86fcf34796e50fb636224ded30103fb41",
+      "codenib/eval/benchmarks/policy_benchmark.py": "04606df9e71fb97532666cffea9c6eb1391e874a8a1887e8ddfabdbd1d169a93",
+      "codenib/eval/benchmarks/policy_compat.py": "29f310e2ada265965617bc325c763f71a7539dbcd94cc394c62225bc494eb8d4",
+      "codenib/eval/benchmarks/swe_explore.py": "ecba5983651ebe99002b4041711e9c48a444f0a20f8731087c3c385e8cd8df91",
+      "codenib/eval/benchmarks/swe_explore_runner.py": "2c5fe132a39bee46357ea480fdf0ba6dc6c7367c67442db47079507626005945",
+      "codenib/eval/benchmarks/swebench_policy_cases.py": "fb9d391ab8e2f4dc165432310521127b8a5f337db1b65432cae806fcd64b9372",
+      "codenib/eval/experiments/__init__.py": "2206fcd7e06d669a21d8429ac86de36298b6f461c6c9cb59b3b2a847cb41eb7e",
+      "codenib/eval/experiments/lsp_agent_study_policy.py": "47d921958eee2f760ebc1dc626d57c8b79d345ff9933909bf3c0028443eeb656",
+      "codenib/eval/loc_agent_runner.py": "ba31a01e60f3e5cd5428000997436a50b8cca148c78136a014bb17059a878961",
+      "codenib/eval/reports/__init__.py": "e047855274bb89f12c909634426dba8c4892bee83e45e6830a6798826f3dfdf0",
+      "codenib/eval/reports/cost_arm_report.py": "660b4c6929344556b970d74843c72257761c0636012636b40c4a00bdb6d4c7ea",
+      "codenib/eval/reports/pricing.py": "76f97104cf95f0f896bd667fa1e98409491779ee5570e80fa3b968b3e4b7ade4",
+      "codenib/eval/reports/quality_cost.py": "e6eeff43410253ed99512c0666fc2771ee44efe8f8b26afba10273cc84280f03",
+      "codenib/eval/retrieval_eval.py": "01ecb8b266d9080b0a17f3af392bb4ec5e9a366e2f2f3734838f05c35ed39ea3",
+      "codenib/facts/__init__.py": "56aee5853f3e71b6dd6b4fbcd56c49a7d5c6e8d9ead77fcf63908ffa37590e41",
+      "codenib/facts/adapters.py": "fc75a7425d5ea9f66c61d0d9661eae8c1fb4f319ae24194b988b921cf5236b63",
+      "codenib/facts/convergence.py": "9e176a86b1f0c7af46d1abe61fc4134b8226bb2cc4645783d3216dc5afda102f",
+      "codenib/facts/model.py": "f6539cd46b12f71373679527b6f98fba867c5cc77cfc46059a87fc99f140f288",
+      "codenib/facts/resolver.py": "71b03dc6e83d3dba6654206c7b574c42e7bc520f24c179ba7d2b09cb4b7c78db",
+      "codenib/git_snapshot.py": "3cc392b1daae3651e5c4f7b81e9d8deaefee915bc1f6a991f2b0978d7d526482",
+      "codenib/graph/__init__.py": "a29a26473fd4fdc97eee68448b656319d65ebbb2f17c6efecf992939b3fbfa2c",
+      "codenib/graph/backend_alignment.py": "8052d5237e594b8f44964b8e7892846612c005486716bcaf70025eaeac8210aa",
+      "codenib/graph/code_graph.py": "b475f4674fba0a8228d1eec6fd1ed3abcc6e5bb1642c7d057e45c810742f563b",
+      "codenib/graph/dependency.py": "a89ccdf3846c75b27e254b947bfe4b4bd11968278ef76f5da1dfaa85ae8b66cd",
+      "codenib/graph/hierarchy.py": "00c7b863b1d7899de02c1efdb7f649cd164845d868676a39405a6c4853e6f57d",
+      "codenib/graph/incremental/__init__.py": "c93ca3f7624614621a67870c96f463f5bf0e777b5ff74a8b5226f4656cb3fc39",
+      "codenib/graph/incremental/change_mgr.py": "a09c8d7c640a3cc981393e8dba5713aba8ed2cbf45c8adfaa5924a42ffc41b59",
+      "codenib/graph/incremental/graph_patcher.py": "68d15b3ef5c5785ad75ea7dd5603ac4f551f16211ab2465d2270627191b61e86",
+      "codenib/graph/incremental/lsp_client.py": "40d24ba3d784bdc9fd28fee01998149b4b84b20aeb8213030b9efff9a39bcfae",
+      "codenib/graph/incremental/patcher_base.py": "bf6299e54658504204debdc3da8b5c5e2d3569fc064259f891369797f89078ea",
+      "codenib/graph/incremental/patcher_cpp.py": "c2c2172f0ce1ee924eaab24a5bb285d0258573001caee55c7d3d8f1152272d6e",
+      "codenib/graph/incremental/patcher_go.py": "6782e6ec24b257f12e003aa4d08ad56c93ecb5f2c9d40e7bdb98c278a5484d16",
+      "codenib/graph/incremental/patcher_python.py": "b125b6be047a88a2c88e65e65a76786f620d266d8adfac55d10da0bcf013f89d",
+      "codenib/graph/incremental/patcher_rust.py": "09b1ba027e458fb024777f36455c8572e497cbe911d79d79e614419e73a03daa",
+      "codenib/graph/incremental/patcher_ts.py": "d5e250f1d709eeb86795a1793336d1c11cb70c8d2306576c933244a24247dcfb",
+      "codenib/graph/incremental/subgraph_mgr.py": "a2ddac7441f15858c39b993ddf21b699d571663ac63346bc7b49a314f48c5deb",
+      "codenib/graph/incremental/typescript_symbols.py": "d8efd6b307bad11960ca461f907267b6add2c2be4578e45979c80036da9a596b",
+      "codenib/graph/layers.py": "6f242de7b969a575c7d9917d0e9ffd20f6da083516ae52f8adb1b76711ec43d3",
+      "codenib/graph/roi_subgraph.py": "3123f9682958cb31d84dd3399ba240c5ab8934ba2e82bd391fcc3f5af4720ecb",
+      "codenib/graph/setup.py": "2e0c4bd371be1e7777fdaf7885f217494fc44e15cc1a296e2871982b5c152510",
+      "codenib/graph/source_coverage.py": "c03fb8706dccf8991606feab408c71dafccd060101a2f21101e00dbc116a73d9",
+      "codenib/graph/traverse_graph.py": "4da1112c051a76276e1e5414c07fe8cae0acc94aadce86b9fd5c50c24f797854",
+      "codenib/index/__init__.py": "43fc8c42be8c085037dde34cee9dd0fe7e757fc6edb798d35c6eefd3b944c51d",
+      "codenib/index/embedding/__init__.py": "f15f319ecccd596f776b6ac3e6c1dc9d2d5914c3aa65c14996daf4a25fcb34ce",
+      "codenib/index/embedding/_lifecycle.py": "d32a7db6302335131dad302274b496e53932d31c87ff9272eae8c53701ed15cf",
+      "codenib/index/embedding/artifact_integrity.py": "9b05839a994aef885849f90878eb514edc7debad39b56032dcdb23a3db87d261",
+      "codenib/index/embedding/builders.py": "fc8f13b287cc25b137b85512b31cf584fd2a7b1e15594fa0a9b65894d22c6014",
+      "codenib/index/embedding/model_policy.py": "d96a594e9993a77643144ceff73c871df7e1faba3f5137a6a0df8af7c7b5b7fa",
+      "codenib/index/embedding/prompt_registry.py": "fdee1e2a216e811b1cacb4beb788d00aacc9a1af7b496ab21c87b62ad9d681c1",
+      "codenib/index/embedding/text_policy.py": "c14a2c503ac9f74f4e003747b04d30591632c2fd6a9423c6e61a2bdff22ea94e",
+      "codenib/index/embedding/vector_store.py": "b4bf17e198f6db5131f1a1de99aa718888540372c8e8b2a1ffbdface65554e95",
+      "codenib/index/incremental/__init__.py": "33295609175090c60cab8fd52d6cf7baf54da85e23574a807546adb729139b48",
+      "codenib/index/incremental/chunk_store.py": "c87e58c694c571ca8e185fe686af70bbc229ec71d921c148fbc7d1cb35fa9e0f",
+      "codenib/index/incremental/embeddings_cache.py": "ee51b8d70ce1021e7de48ba6c0af53df330d79023ffe4dbe4003aac706357433",
+      "codenib/index/incremental/git_diff.py": "3e8b58e07e21e74d2ecf7918005db6a8304b085a92aa2e73bcad1124736c22cf",
+      "codenib/index/incremental/index_updater.py": "e760a4b58482c9dd1c411c4a89ea5375aab2a13f0d7422662c40c2e9e7272a38",
+      "codenib/index/incremental/state.py": "2e27ada51642643ef9772dbeb4aa6784809eb98283833a565036a62dbeeec6bb",
+      "codenib/index/regex_idx/__init__.py": "eead2ec1e250f09d8073275bca59e405d8be680e30e48f828680a37f6bb8b618",
+      "codenib/index/regex_idx/regex_idx.py": "99fa916667a8a46f89b05e9f86c87f6bc7f941d24e6d53d3a31cfcdf2502e2d2",
+      "codenib/index/rerank/__init__.py": "08427bc2ef280081fc4bee31adb3b95028a13b3b069917847886d2d023ec13d0",
+      "codenib/index/rerank/cross_encoder.py": "c551189c445a981a52f241c644f814fb6ca72cece92c95897afba87c14bb0a88",
+      "codenib/index/sparse_idx/__init__.py": "c01090708266674276886c7129fc482dd76f1811c37cb00a02ab5ecb589496e7",
+      "codenib/index/sparse_idx/bm25_index.py": "c5bccbeaaf29fb27c506c5fb74d532e316bf2dd181ce745c0784dc2371c0e2a4",
+      "codenib/index/trigram/__init__.py": "c42324c31ba6a3c0c651a70221726d514083175caab78dd11976c21aee21eb66",
+      "codenib/index/trigram/zoekt_searcher.py": "deb64802c25e6d5615d4ebb95cd1ed8d9bb8b9c4beed62bbabc28765b82fd0c4",
+      "codenib/integrations/__init__.py": "be8546fe901ef1eb1cc9bfe5b38dda4fa1dcc57859cb9b72a60479ebc0c02251",
+      "codenib/integrations/_orcaloca_python.py": "1e50f080033ee5bbcfdb698a4e2a99363128f844216386de3d1755c7b89e4551",
+      "codenib/integrations/_repository.py": "64667cc4c9a53e4286427d057c51b1404046025a42e6d42ad0bd79c7d67dcf30",
+      "codenib/integrations/agentless.py": "1dcbc57b35e79d70ee2df436d61aa4f01047a869ed631f357b3bf08d46169ec1",
+      "codenib/integrations/cosil.py": "8a4f56d2d91528821de811458b48112d95ed484a74d613abbfd3106d1c3e7cac",
+      "codenib/integrations/locagent.py": "081da13e4b7d45a75088a837dfaaaff6756e83c88e5e650cc71eb2ed5158ea4a",
+      "codenib/integrations/orcaloca.py": "2fa45d12a9af1ffbd3b3d12e850fda0b4f2d31b61883441e95363df4e063f3f2",
+      "codenib/integrations/reponavigator.py": "770b96fb0117fbe73cfdbbb55c949ec2fb0df317b5e751bed119ff1d12824f65",
+      "codenib/integrations/swe_explore.py": "ecb12bad7e6ede690ad50be4a3ad817ae21792096eb2b72c2f92ed3cf85989aa",
+      "codenib/languages.py": "ff2986d883523071ec3473a7ebde07c663a3b8fd4b971ba780af7882a5776d99",
+      "codenib/llm/__init__.py": "2d589affa3ac10e08415962077bd6c8b3651b573bc64936c8c4979b75d86e781",
+      "codenib/llm/decisions.py": "89d5c79ee8005d503cf7f0fbb152d4f9d2ece60dd1ca0cdac16b7de36cca7ed2",
+      "codenib/llm/diagnostics.py": "08ab7ef5058bbc257b047fad9d52777f6fdf0da3166ad7c36ec8f7ee664569fb",
+      "codenib/llm/litellm_chat.py": "d5ef8cf3aa9984a636165a911811bbdf0ded75c5846967eb83e1b9965585115a",
+      "codenib/llm/options.py": "dc82ccecf5724a76bbcaa8d0c238cd1aa7dc342bc8c7216129d40b37dc539343",
+      "codenib/llm/usage.py": "006ddc269a25c973b37886216a0bd9562c6aafc871e8bbbc164a081fc4b2357d",
+      "codenib/log_utils.py": "37a6ab0a664d78993314146e52e3cb70b3f957f694d3c1f17d8fa9c3039b72e6",
+      "codenib/ls_index/__init__.py": "6ae96565ffab03550a512c1c441eda2b670838bfd0bab1e6babb55daa5afe5fe",
+      "codenib/ls_index/clangd_contract.py": "c57375d5550a193197bee6736b397e6d842971480d86863d4e8f5a784e988b1d",
+      "codenib/ls_index/clangd_decode.py": "f23fa1f5b3797a358d9bd9b1e910cdadbcde9647e76f6dc186d9e92ca687ac0d",
+      "codenib/ls_index/clangd_indexer.py": "0919d9738b1b98f8a7ac52b16c1a6c77078f00fd6d6834be014c9b139e29b0e3",
+      "codenib/ls_index/index_quality.py": "92114c25290c7fdb578c031f6564a2b500935550be3e54ea2c31bc0f871bd109",
+      "codenib/ls_index/lsp_graph_decode.py": "24bf6da5ad8f0b62344b1933413fe7eac95da3aa69b1c33b5e20137643067202",
+      "codenib/ls_index/lsp_indexer.py": "454400e1cabbe3ee1ba2edc42bfc445b1cfbc549648822283a2503835f707b80",
+      "codenib/ls_router.py": "06001e11b0e3c6de518451b3aa0deba9d5a9cbf6afc9eada4272820be63d0c4c",
+      "codenib/mcp/__init__.py": "ab6be1e7e3dfeedf06997075c7d54a7e664d62d2987e3ec9a7b6a02e27a3a2a0",
+      "codenib/mcp/__main__.py": "f4e25c2789e85ba3cb7e0604dc8a690c2f4e4e934365532398f9d9d32f315b46",
+      "codenib/mcp/context.py": "b321fe4196f89fd3c508239ab5855ace7b65a2ff79508da31b783c88f73cdcd1",
+      "codenib/mcp/explore_bounds.py": "1a1a0c303c9a7dabafa675c84f71adfc04334fe26e87618b33eddf9dd1572898",
+      "codenib/mcp/explore_session.py": "63749d8a052c2bc4b3b39742a246f29cc1e85fde1bc4941df4fd95025b4342fd",
+      "codenib/mcp/grep_jev.py": "3b62eee3539e1b1bcb26a3808d1d0d16aaf9bed0c48dc012963a21d6c5050075",
+      "codenib/mcp/prompts.py": "680250af85ad1560abcba1ff8314c1279c3747efc77d4d90d42e94b65c1a8cfa",
+      "codenib/mcp/server.py": "0c35d02c38a862e51ca123311382e6f5c8ccfe4f6451bffbd2b53bdf0c2c3c44",
+      "codenib/mcp/tool_surface.py": "410bc0ebb1b5cc6307e42f16170b711291d03f214475ed0522c85e6e2eb112f6",
+      "codenib/mcp/tools/__init__.py": "db459f4e47054576364fe2116f0cc5e36e905620c2ed76f3b07af45176b13437",
+      "codenib/mcp/tools/_validation.py": "83a8fa793f9938d2be1e2fdfe33872dae519d3c26e76a935d89ece9cddd49aed",
+      "codenib/mcp/tools/dependency.py": "a001a55f9578f11b04f1f2fefd6aac4384b72463346aa7fb9d44706ffc5206de",
+      "codenib/mcp/tools/explore.py": "625caf961fc5bc3c2b135661ab874774c082cfd473bd137786da09dc0339804e",
+      "codenib/mcp/tools/lsp.py": "3a8c5bccaddc24fb0eba4c4cbc7094b163ae258f3bbe8cd88ba914d579c2605c",
+      "codenib/mcp/tools/search.py": "84002d05fc00fc42481e5f588bb763d255482af30270e47350e2b2f41061e484",
+      "codenib/mcp/tools/source.py": "335e0e4bff8a925515732c227ee73dbce36474d7e6a2c1576b84f196dcb2638e",
+      "codenib/model/__init__.py": "54e2649850b02d53c96e9c75dac1b4e39a72ad35ad5e9f0b5a4691bda63c297c",
+      "codenib/model/agentless_pipeline.py": "f4a740c8c06eac90b07684017582d2cfc2675663982ba5563f543c6e67ccda1f",
+      "codenib/model/bm25_retrieve_pipeline.py": "ffb7548fe912c3f09b0dcbeb39fd3c5ead01d362edce5ad6972a68844f97ee56",
+      "codenib/model/dense_graph_expand_rerank_pipeline.py": "744c2cd66d6e1a0e1bb8a4d9c6393f9ef08eaeda5fde255e3817e3fe542eab36",
+      "codenib/model/embedding_retrieve_pipeline.py": "2d5a6de43d42bf78e73c076ed58138fc95c8cad1e2aae15f64ae20b0758c64a7",
+      "codenib/model/graph_augmented_rerank_pipeline.py": "d845ed2ead6757bffb5c191b0a87515cc635e9e728e95e6a667620378cccd5c8",
+      "codenib/model/graph_retrieve_pipeline.py": "c94c1dc51419ca3a3f9fd067fc7b6ea6ed5b764e4b9743aec0f147b87252ca10",
+      "codenib/model/hybrid_retrieve_pipeline.py": "9bb8bbcb58c79dadd41c2a63dcb00d1098dbf87601acde11885127623223fedd",
+      "codenib/model/retrieval_planner.py": "06c457c0bcaae343019320d893500aefa3b00fbe12b281a2342c998e21885f24",
+      "codenib/model/retrieve_rerank_pipeline.py": "e23c3f7949f8334f7ba629c14657538a7011463cbd085c4a60b1e02d35d94561",
+      "codenib/native_index_authorization.py": "998abc0e04a31e6aab059eddb4a53a74c542864d6b72574af18af325c318a454",
+      "codenib/openrouter_auth.py": "e5006ab291cce570b6ecac1fbfe7489259c5d52ecf71af3c9eefa828fb1321a5",
+      "codenib/ops/__init__.py": "0be0c7c5005fed01e94b977c2445b5094420d13c1ab8d612689d6706ec74ad09",
+      "codenib/ops/expand.py": "4784621cb880ac93cdf34f072171665373b882256f5ae8d3cfcb3dc0949daaef",
+      "codenib/ops/filter.py": "70e8315be299d378260efd3b78810aec7a23a3b017ec58a93d1e789adcda63fd",
+      "codenib/ops/rerank.py": "ac437cecc2c3d3e7319e88221e0e47b5f1290e3bd28a59be09733c0108b8f7d8",
+      "codenib/ops/retrieve.py": "2c5780f6d64a5fec9d0b20a908db29ad0200a906d67452910f20ac39048d75b6",
+      "codenib/ops/transform.py": "9b8a20e732a4240ff4955886050babdbac1ad4279b47b1af6025fe0895b771f5",
+      "codenib/paths.py": "3cb5c1bc6c5fccf410d82a6544a78d2c41addb528d5c191313d2566cdca0643e",
+      "codenib/profiler.py": "ad8409598b0240e71fec4e87f201dcb791a250e364661e2aea585d24367b324c",
+      "codenib/provider_routes.py": "7220180235e8ddee8ecd2b59b51210f8534c2cf282452bf1918a45df12ffe8ae",
+      "codenib/repository_filters.py": "7d46d547aae9e52ed3e35a9792360fb0af4b965c0f4fa30cd6554d2e603cfde7",
+      "codenib/repository_source_selection.py": "36d20aea354c4d9d6a2b7745691ccb158a46658a6576f2dedb975a33f5a6e0f2",
+      "codenib/repository_summary.py": "55db33fa4b26e064f4084645a1358c94d9340b49a053a7023dd8389a9a8889df",
+      "codenib/sandbox/__init__.py": "9028443aadb97be45fa66f654c0e7c67af2c4f750c705f063003b3e3f176fdd7",
+      "codenib/sandbox/docker.py": "35bd8a5d01696900daff5be0d38652a9724e5399cf519f3656f5e35febef21b0",
+      "codenib/sandbox/protocol.py": "61c69834a96d026a07ba002a7744af73ae5ff7d30bed6fe19e62305fa2091180",
+      "codenib/sandbox/types.py": "7b2938dc65c86419c39e8d1c2482ce479751e3beb93214240e31b47d7355703a",
+      "codenib/scip_interface/__init__.py": "3790b65d2c7f13d55211c2b0c0433bd2dfebd82423757a53dc0fcb59abef4908",
+      "codenib/scip_interface/fact_batch_buffer.py": "651626252571f5913dd6596752b4e42790b56358f878864a404ab1b3097a3577",
+      "codenib/scip_interface/go_modules.py": "2ea8a25622cfb7a2555433bbc520f4d55eb7d808520b0ee9a5fcea7dbd574290",
+      "codenib/scip_interface/lsp_occurrence_index.py": "d825245b95413baabd07cbcf706a14caaea1cf99e57791ce9223a9d8777c0d53",
+      "codenib/scip_interface/python_identity.py": "dae02206135906723c6dae24c1f2e87239e4ec0385ccd1c9c9d98c37f9f2b80a",
+      "codenib/scip_interface/query_surface.py": "4458e209af098a751d54413909b260fa77906cd1c1c5559fadfb8a8dc4187b6a",
+      "codenib/scip_interface/rust_analyzer.py": "7d9dd2928d43be94494442e37549a536aed259b3e087660ca861a4fc0547f87a",
+      "codenib/scip_interface/scip_decode_core.py": "4c9615fa0193309e7be83cef8e7529d01894884f3426da20d069715b51f7f4c4",
+      "codenib/scip_interface/scip_decode_csharp.py": "b7b94f5db57d7188eb55dec82ff7c1c141ae6ddb47c4e054594bcff8c65afd43",
+      "codenib/scip_interface/scip_decode_go.py": "747b9cf07287bbd9f7d8b428f070008581604b0fccb259278174d3ded393c230",
+      "codenib/scip_interface/scip_decode_java.py": "829e1a8e6fdbe710d9be30e3fb07455db60d37d4dcabbf7a77b185f68f1c1166",
+      "codenib/scip_interface/scip_decode_php.py": "807b2bf16542516884799afd228fad028253fd1f9805096c1589970839c02ca0",
+      "codenib/scip_interface/scip_decode_python.py": "e4379c4fe27b4c4614d2aeffb604a59187a77e65927f9c7fc38564da53a1d020",
+      "codenib/scip_interface/scip_decode_ruby.py": "b8eaf2d2f459a18b716aed3fa6052b4511f5c22105845bf47b52cd65cb32d9cb",
+      "codenib/scip_interface/scip_decode_rust.py": "6e518e3f3b8ede3a6510d698b746d1e03745d5b9cc0dd816826285a7497601e6",
+      "codenib/scip_interface/scip_decode_ts.py": "dd5849f778e3aa2f532451d0e3df17651eb5a99639433ad36ad34f6499bb1dad",
+      "codenib/scip_interface/scip_decode_utils.py": "439b685f51a39f7f99cb231451867251ed0624ccca5fc899a6f1127c63b124ff",
+      "codenib/scip_interface/scip_filter.py": "83c680fe1ec5bc389cb1e5af6a95d0a98a3f09e2809be8f24def7a01edf87582",
+      "codenib/scip_interface/scip_indexer_base.py": "5c7014fcf6716abde80d55171da5a23437c8cf8424e4ab2ed7bfe65d22729384",
+      "codenib/scip_interface/scip_indexer_csharp.py": "3cd75bb268118630c4f64f3500f793ee11f4fa977485d1caf103aa9b580bbe0e",
+      "codenib/scip_interface/scip_indexer_go.py": "187f45e83f9f9c46b597cbe0b9daf97210fb6fde977b45845a18960091039dd6",
+      "codenib/scip_interface/scip_indexer_java.py": "a3d165dc39b0b13d0830d2e78947f9e9a5ab054ce44c8b30ed639268ec41091f",
+      "codenib/scip_interface/scip_indexer_php.py": "22dd782a61a6b57b9911616a62239a7425c77c3120cb115dd8b8f3bc95390e67",
+      "codenib/scip_interface/scip_indexer_python.py": "e4282b5ee870e4cf0829c274fad0dfe2632011b3f8e8314cf57d86751bb1ffe2",
+      "codenib/scip_interface/scip_indexer_ruby.py": "7781676d171931e9630c0d220f2f45565ee177a012db2fd51e8ab377dc6d64de",
+      "codenib/scip_interface/scip_indexer_rust.py": "70f8d5d72dbd34fa6f2b46d0c6083e3fba3380a64e4b53079e7fddd2d91761fe",
+      "codenib/scip_interface/scip_indexer_ts.py": "629b788b5d715273441006f5add0a938ad4f5b4097e88e67c3677225b21fa08c",
+      "codenib/scip_interface/scip_pb2.py": "94beed600c16a9375d48e5e9e1a728a5c712d1886d1c41c29ed32313d408f66f",
+      "codenib/scip_interface/scip_query.py": "6623f8199f99ca372d3b53a18f2fa6e4294acfd3aa5e3d4624359a2f9662fc94",
+      "codenib/scip_interface/scip_query_provider.py": "fc7e162d216c8ee18f3337dda26314eda388c0ebd000eb3908690137ff1f1c33",
+      "codenib/scip_interface/typescript_semantics.py": "65eff3fc72d57e6d3f2dc0473b8caab240057710e1eaaebf33f4219a08bd9d83",
+      "codenib/search.py": "810083b2a1c3e40ea954f6e0b379abf30bb155d8119ba86b4433e988cca8a493",
+      "codenib/serving/__init__.py": "25e6f467fff472148f7c59fc5f26174aa1b759f82017be829d3979ca59bae14f",
+      "codenib/serving/drafter/__init__.py": "f505040f9e989bacd671e088b755c2d562abcf8ab858459ef8fbd56de2b439d2",
+      "codenib/serving/drafter/base.py": "880175aa16a21a2e3ea55657fbeaeab8ed2724db3f6c5e95e745efa3092a8095",
+      "codenib/serving/drafter/copy.py": "1ad96339b37b339955d4666cb140ff9345eabf80db5cb229cfcf1cc84b62fb41",
+      "codenib/serving/drafter/fusion.py": "8cb7fa41af10cb6b49b8a9660e097aeca864d70cba63a72f4412350f3a7f5dbd",
+      "codenib/serving/drafter/retrieval.py": "92515c17c93bf8e7228bf369a6ccd3679fa734cda4558134f52f1c0a62bc15a1",
+      "codenib/serving/drafter/suffix_automaton.py": "65480ddd5afb55392ec0a4ac72c2ba4c0fd23255770a77a0ea1b54e7c812a2ae",
+      "codenib/serving/server/__init__.py": "9123d92208e4e1ff0e69652597ddd48af057ab0ec562f769ae81dc392ce9856c",
+      "codenib/serving/server/api.py": "aece4ed782627df666d6cd4b806c4604889c819f5d819592141a888d660c632b",
+      "codenib/serving/server/hf_engine.py": "04865b2008867ad928282d61078ab74616a53d45862a170520e7aaa38c17ab74",
+      "codenib/serving/server/real_model.py": "1c447df1c6ec5438c1369024abda15a0506a35c2b1971fe6275fb149c2fd6187",
+      "codenib/serving/server/schemas.py": "6eb072597ab60782c7a99d2a555e144363d9efd7d14a9a04b2d71705145cd555",
+      "codenib/serving/server/sglang.py": "bf0f468d52377bf9e83e39c9b3871da5e64a5226259704bd77931fc4f994f16e",
+      "codenib/serving/server/tokenization.py": "c9d9fbd06db88e4a9b8e38d966bb8e99b4910075b352888261ca9ecd9e16206a",
+      "codenib/serving/server/worker.py": "f3a8cbf1b870edee559e0f609ece07dbbb41dfcd2fe28dd05abc0fd3127c87b8",
+      "codenib/serving/types.py": "f7a12451c62c75dc6aea3bafe5217aa9345eaf2cac0cfc464faf3e0426428e59",
+      "codenib/source_fingerprint.py": "5d29c0a3813cd09109d31315c0903791e3d4f640d2d377424e3d2e419ac87e98",
+      "codenib/storage.py": "16aaa1854ed1294d6e91e68f26a8d45c381e46a7852667ae2e849c85d694e6b0",
+      "codenib/toolchains.py": "bcf8360d852f8a5686e85cfedd3264ccf6e3771e7bb91506b49bf72bc79da57d",
+      "codenib/types.py": "8addb60456bf079e09e27160667800b909ed340962eca6fda953118cccba7129",
+      "codenib/utils.py": "d0359d38814044ab8ef45cf38d8f45f911401a1ffa20243378e3c52c01751c10",
+      "codenib/web/__init__.py": "4168971489afd5f3e37113fcd353bc7589f3b1b3d74ac704d20ef00d6458ab4e",
+      "codenib/web/app.py": "94c55788931c525dab06d8187efd59f56fb7fcde8ed46f27245a921d55f3bbd3",
+      "codenib/web/card_summary.py": "0630a0f3c58d1f2736fe9d9efbf430724924f79a202f089dda10768fde253248",
+      "codenib/web/codemap.py": "5580dc3ad65306635ccf809577dc2715b6c20d0307fb8c849452cb1a51f66216",
+      "codenib/web/commit_window.py": "65110afd52e193ed04ef140efc41ae2e39bfd3343fad73867d1630fb845fde0d",
+      "codenib/web/config.py": "322a6a28195348c1ed48e50844991fd1ca06b069005864feef84876854c3e6b7",
+      "codenib/web/edge_label.py": "2ba8cb0423d53d48dce5675379c6abe8e7126d267909a09e06ede09f072a9f25",
+      "codenib/web/entrypoints.py": "914e710e6492f6cf49f918b5f9314254e03b304fe12c020cd03e7dfa5c7f68a0",
+      "codenib/web/experience.py": "186e593bb1c745195babfc3917205500f00df46bc956f4ac8f9bad90ddc54746",
+      "codenib/web/index_status.py": "a4f10c4e3929938bd0771c62401f5999fdd5b1ae6864b36d6d5a612649a72987",
+      "codenib/web/launcher.py": "88ceea2ac83907ce17dc1d6dd105004a9eb5e25cc8871a1548fa9018504aa6bf",
+      "codenib/web/limits.py": "0075ffa00590739576fc69d726399048ca6cf00977a5aab5c57da8c4ce143518",
+      "codenib/web/local.py": "b6e49eddacde700e82072f61d4f93e7b7b602fe2d24d85fc260de0d486fbff19",
+      "codenib/web/modulemap.py": "d7145966e298f162effdd986c25d36e46eecf44198307d52d62c0db5943eab89",
+      "codenib/web/native_authority.py": "2db55a31a665dfd098c3c34d6a2416cb9c0ea31e6e0ce4730efce4a15b520629",
+      "codenib/web/ports.py": "d81381c4f2fdca5b408000da4ecc2270d500a512876c9e69477a56f8801c8dbc",
+      "codenib/web/public_trial.py": "16ed61049d2aa5af4e2dbcc1527d99775042d37538c2ac5afc1a1ce36599778b",
+      "codenib/web/repo_registry.py": "64c51b2d16b9a2cf5abb100feea07fbf23d4cc81ea0bf137b16ee8cd7d95f542",
+      "codenib/web/repository_files.py": "a02bed193b499dc62b8e74a167c70921a09a8b4f59c7c26b57f96d2afe7754f4",
+      "codenib/web/request_limits.py": "1cbbb966b31a229b67a670e25f797543eab0ba34332b66706b3474ebf46c6ebe",
+      "codenib/web/schemas.py": "3162ba48fb832101ce6c8953ca012c1e1e44ad0d0ce6671c66c5525936668c85",
+      "codenib/web/share.py": "f317ec7ecff7a6e7812d876556f6c37b0e7fa2d5601aca69bc40c426b7aa680b",
+      "codenib/web/source_definition.py": "c909d2f70dd6a7ee81f5f1aa302cade6caa888ec2456a77bf3eb1ab7a7933d07",
+      "codenib/web/static_export.py": "be3a8b5d8a70b9e4c33ed7d74b2333eb8191b02838a5f8072ea757f57116454f",
+      "codenib/web/static_server.py": "62b83c7263330b5104a84459448102f0bb38d71dcca9d1f9a637b102c8e7e92d",
+      "codenib/web/visitor_wikis.py": "e0c2314527416a3f44bc7b3a6d1134020366b7a6c7fdf869027d1db853d6826b",
+      "codenib/wiki/__init__.py": "45fddbcd6981ebc99a190cad10b476d98c5952a88a3a60656696de77ee54b54f",
+      "codenib/wiki/_safe_file_reads.py": "8e820a73e84a10be35ea22d3214d203ea4570b8b00d76ddb29602446e323b163",
+      "codenib/wiki/agent_wiki.py": "5608178bb2cc69936c1471be83ab61ffa7600cd9fe367b2dd8277bf9dc3fd4de",
+      "codenib/wiki/builder.py": "1d5524b24942786b331a448fd3ea233217043f5f23f4012702936563cfa885a9",
+      "codenib/wiki/cache_audit.py": "5168a5b94e85416df6a86a6c01d97b3d08decc705f4d8d4e471402724282919c",
+      "codenib/wiki/context_evidence.py": "5ac4736c6586bc329aa78f9a1b85fe4bad78de2e84d0f355d5df6a6822e9949e",
+      "codenib/wiki/evidence.py": "892b1ba74102e85befb8a4d10665dd88161139bfa94d771ae2c2d7adda56ea15",
+      "codenib/wiki/fences.py": "9527e692bd90e00081c897ca3e1b5b3fc83b4896ae07a2534d739ff36db6ebf6",
+      "codenib/wiki/flowchart.py": "8b3796ff6463eabf159c733a03a51bfd92b85c81d97388f7082634cef0ea4c2e",
+      "codenib/wiki/lead.py": "d4a9d8d22c48a8d756ec4c702ae8a34edec0ade76fd981b455e224f9795e9d36",
+      "codenib/wiki/media_artifacts.py": "4fb32f2ec5b84356a90061332a448ff513adf543afb6b0d1103f8cc3a4eb442f",
+      "codenib/wiki/media_context.py": "5549f27a8b6eb8692165f8e3c44ce0366f91c00a004150958dcf6fc695e096eb",
+      "codenib/wiki/media_eval.py": "88dcc23e4bdabe9be6396258e13b0bd8692386b44c97cd467448f41b66949180",
+      "codenib/wiki/media_evidence.py": "679b14c127c0f592799e595e8ba2aade0fce06a48fb46df0266a089dd5d5b275",
+      "codenib/wiki/media_facts.py": "fc72c365625c9359b2ea564bb705d6e35e52c72890c12520c6be5f05acaf401a",
+      "codenib/wiki/media_generation.py": "1362fd57b97834bbcdc19693dc1144c7f0da59633c6e598817d6cc4ac9fa3db6",
+      "codenib/wiki/media_grounding.py": "16e0286e552670290c29e2b1743ec858aa230b6cff96bd5296750ecd308a77a2",
+      "codenib/wiki/media_incremental.py": "fc94a6ab0a76dfeefd4cf2d450c56127d371f670eb3d1679931409387154d118",
+      "codenib/wiki/media_knowledge.py": "665339515662f209fd1011039b4b646125bb5189bcf44555935cb1b5d46869fc",
+      "codenib/wiki/media_pipeline.py": "05b4758e39128928b0bc30bc190687546ba152bffeafb60e1c8df3a119178ab4",
+      "codenib/wiki/media_storage.py": "88823580fddaa46e8aef3c492a3f128eb56bf18c6ae8fe61748c0178905445f1",
+      "codenib/wiki/media_tools.py": "b6389478b2ec75c01813e9ed1eb3c91e9de200951e2f91dcff2a4a22c94a7670",
+      "codenib/wiki/media_vlm.py": "52a3c2223258225caa6184d266ec98be6cec8cbc698412a27afe79eee1cae5d0",
+      "codenib/wiki/multimodal.py": "a5d8e55fcaa1016901b95167afae357f04b4b9c449c06acb91bfc4db44f98615",
+      "codenib/wiki/narrator.py": "06a91508f36cf5d09e60e8cc165c1437c8a7d16efc484f8767b5a1bfaf531e1f",
+      "codenib/wiki/outline.py": "611fee455a7440b158827227d1b2251fb7c4fc16c1277997c82159d6175ffca5",
+      "codenib/wiki/prewarm.py": "dfa2f8e1f560d442758e7cc8c7246b67f932071238e9f770a4353d52e62090ac",
+      "codenib/wiki/quality.py": "5b9222f67ddb1d04332bdb17801304506509e7d082765e19ff8dff6b947e1c0c",
+      "codenib/wiki/repository_visuals.py": "0471689ef16617d54c9406a02661347e0e8406882fd35cd58284babe068ca241",
+      "codenib/wiki/source_excerpt.py": "973e94e24c237bddf6434ec43bc1aa028b77321521e0b46226f3b21b49c055d1",
+      "codenib/wiki/sqlite_store.py": "a415f016df731b9ce142fa66f486200b5a5f409941c9917db9083cd0baac1347",
+      "codenib/wiki/store.py": "a87cd08e2ab10af3cd608b675138048ea180435b5364d425b0187f3562d2e050",
+      "codenib/wiki/story.py": "5259d7b1266840d454aa9aae2b43a34b1e0cfdcb0fd965b7e1eff6a07df81f5a",
+      "codenib/wiki/visitor_graph.py": "2293066b4a8ec66e3e3bede52e317fca3404c44bcfbc4e890ab2d068a7ddb5d4",
+      "codenib/wiki/visitor_models.py": "ec993d1f620411558c76d244e7518b6f78778eb6444b3db0f2f9af501e2ffd2a",
+      "codenib/wiki/visitor_provider.py": "8ad2b02e30fe36c700fe9923c516a40d70f45d89dd3c7a85180599ea94eaf7fe",
+      "codenib/wiki/visitor_source.py": "ff7add2c93ef6a45a4f93e0c876506df749f77605a719fcdccab98ca660441cb",
+      "codenib/wiki/visitor_wiki.py": "8dad27c42a52ea453166bc1aae671a95b833bec98756af59035faeddaea810f5",
+      "codenib/wiki/visual_ir.py": "3ce73c3de35552fcf576b7e98c80158d9579b21fad4455575a5a78b7f96f6da8"
+    },
+    "native": {
+      "codenib/_workspace_owner_impl.abi3.so": "8b9edc00ff456cddac683e4093ad12588c6fed1f9104a973961d753b9708adca"
+    },
+    "changed_python": [
+      "codenib/graph/incremental/lsp_client.py"
+    ],
+    "source_baseline_wheel_sha256": "395a7d8060f6b36882baa731f5df9a6b91dda647d9d3fc7bb0ca15f5ac6e69c4"
+  },
+  "regression_before_stdout": "....FF..                                                                 [100%]\n=================================== FAILURES ===================================\n_ test_position_retry_reuses_a_late_reply_received_during_idle_drain[references] _\ntest/graph/incremental/test_lsp_client_transport.py:111: in test_position_retry_reuses_a_late_reply_received_during_idle_drain\n    assert client._last_error is None\nE   AssertionError: assert {'code': -1, 'message': 'timeout'} is None\nE    +  where {'code': -1, 'message': 'timeout'} = <codenib.graph.incremental.lsp_client.LSPClient object at 0xf937aaaf90a0>._last_error\n----------------------------- Captured stderr call -----------------------------\nWARNING  LSP request textDocument/references timed out (id=1)                   \n------------------------------ Captured log call -------------------------------\nWARNING  codenib.graph.incremental.lsp_client:lsp_client.py:1195 LSP request textDocument/references timed out (id=1)\nDEBUG    codenib.graph.incremental.lsp_client:lsp_client.py:611 references failed for app.py:0 (timeout), retrying (1/1)\nDEBUG    codenib.graph.incremental.lsp_client:lsp_client.py:590 references: using buffered response id=1\n_ test_position_retry_reuses_a_late_reply_received_during_idle_drain[definition] _\ntest/graph/incremental/test_lsp_client_transport.py:111: in test_position_retry_reuses_a_late_reply_received_during_idle_drain\n    assert client._last_error is None\nE   AssertionError: assert {'code': -1, 'message': 'timeout'} is None\nE    +  where {'code': -1, 'message': 'timeout'} = <codenib.graph.incremental.lsp_client.LSPClient object at 0xf937aab13290>._last_error\n----------------------------- Captured stderr call -----------------------------\nWARNING  LSP request textDocument/definition timed out (id=1)                   \n------------------------------ Captured log call -------------------------------\nWARNING  codenib.graph.incremental.lsp_client:lsp_client.py:1195 LSP request textDocument/definition timed out (id=1)\nDEBUG    codenib.graph.incremental.lsp_client:lsp_client.py:701 definition failed for app.py:0:4 (timeout), retrying (1/1)\nDEBUG    codenib.graph.incremental.lsp_client:lsp_client.py:675 definition: using buffered response id=1\n=========================== short test summary info ============================\nFAILED test/graph/incremental/test_lsp_client_transport.py::test_position_retry_reuses_a_late_reply_received_during_idle_drain[references]\nFAILED test/graph/incremental/test_lsp_client_transport.py::test_position_retry_reuses_a_late_reply_received_during_idle_drain[definition]\n2 failed, 6 passed in 0.33s\n",
+  "regression_after_stdout": "........                                                                 [100%]\n8 passed in 1.19s\n",
+  "full_unit": {
+    "passed": 9017,
+    "skipped": 24,
+    "deselected": 221,
+    "warnings": 46,
+    "seconds": 141.07,
+    "umask": "022"
+  },
+  "wire_protocol": {
+    "schema": "codenib.lsp-stdio-source-diagnostic.v1",
+    "created_epoch": 1793437086.402682,
+    "phases": [
+      {
+        "name": "fixture-base-cold",
+        "binding": "/tmp/codenib-scip-text-scan-20261030/developer-wheel-binding.json",
+        "prime_every_selected_python": false,
+        "full_source": false
+      },
+      {
+        "name": "fixture-candidate-cold",
+        "binding": "/tmp/codenib-lsp-late-reply-20261031/candidate-wheel-binding.json",
+        "prime_every_selected_python": false,
+        "full_source": false
+      },
+      {
+        "name": "fixture-candidate-prepared",
+        "binding": "/tmp/codenib-lsp-late-reply-20261031/candidate-wheel-binding.json",
+        "prime_every_selected_python": true,
+        "full_source": false
+      },
+      {
+        "name": "full-candidate-prepared",
+        "binding": "/tmp/codenib-lsp-late-reply-20261031/candidate-wheel-binding.json",
+        "prime_every_selected_python": true,
+        "full_source": true
+      }
+    ],
+    "source_commit": "8639802df6a6d3ba6f118c7a1a1aba535404bab4",
+    "full_source_files": 2390,
+    "full_python_files": 1172,
+    "fixture_source": {
+      "app.py": "def target():\n    return 1\n",
+      "consumer.py": "from app import target\n\nvalue = target()\n",
+      "pyrightconfig.json": "{\"exclude\": []}\n"
+    },
+    "fixture_expected_references_utf8": [
+      [
+        "app.py",
+        0,
+        4,
+        0,
+        10
+      ],
+      [
+        "consumer.py",
+        0,
+        16,
+        0,
+        22
+      ],
+      [
+        "consumer.py",
+        2,
+        8,
+        2,
+        14
+      ]
+    ],
+    "full_targets": [
+      [
+        "codenib/mcp/server.py",
+        "_prepare_graph_for_call"
+      ],
+      [
+        "codenib/scip_interface/scip_indexer_base.py",
+        "extract_symbol"
+      ],
+      [
+        "codenib/scip_interface/scip_indexer_base.py",
+        "extract_scip_blocks"
+      ]
+    ],
+    "policy": "Cold phases retain their first request, one bounded idle and a second request as separate observations, never replacing the first. Prepared phases first request document symbols for EVERY selected Python file, then issue the first positioned reference query without idle/retries. Full phase queries definitions and references for all3 fixed targets; compare complete location sets with same-source saved SCIP only after all phases finish.",
+    "source_contract": "Full retained original and copied-source authorities; original-then-snapshot read sessions encompass query and normalization; only verified snapshot project-mounted RO, original root absent. No target-only source exclusions or selected links. Per-response2MiB/whole original stdout128MiB; prime90s plus one max10s RPC; helper exchange120s. No restart/resume.",
+    "timing_scope": "Separate descriptive one-run observations; before-capture through first guarded positional result includes source copy, Docker/create/install/import/init and all selected symbols, with software/image preinstalled. No compiler or complete coding comparator, causal speedup or host-load isolation.",
+    "wire_observation": "Pass through exact server pipe chunks with timestamps and base64, plus actual sent JSON and original helper results; independent offline framing verifies first server reply vs delivered locations. Observation logging may affect scheduling. No model source-read credit.",
+    "scripts": {
+      "run_probe.py": "d08363397d86b6d5a70acab6edc2181a051386f46e3b0d34d60eaafcf867ba9f",
+      "source_snapshot.py": "384adfeb5f8f03c6f242a0f8bc2eb54868bfc0052807d48131f567375a5ffed7",
+      "locations.py": "0897fa74505b3a505ba580c819aac17490f028ffb39d7897bd5bcc0256316d55",
+      "live_bridge_v2.py": "77c67641efb9df745e2f89b7d71876760990e5266f09433b65b56306c86217fa",
+      "live_entry_v2.py": "497e70ac39be079e40a316b58731de15f97c4a1a28b0b101af7539f8a1f75cbb"
+    },
+    "bindings": {
+      "/tmp/codenib-scip-text-scan-20261030/developer-wheel-binding.json": "7065167534490a577b831110a8663ab5661a6fc68de119d9432e20bcd4d4e242",
+      "/tmp/codenib-lsp-late-reply-20261031/candidate-wheel-binding.json": "e4d9c677012103d8e3144f4df0449fe95da1dfec38ea3ea4aaf5eec10750a3c8"
+    },
+    "manifest_sha256": "954fc848cc4a23f9bc9b4405ee1fa6ba5094e2cfcc6f83e6e171be26b427c156",
+    "occurrence_sha256": "bcbc1638e403acc79e2dd43b9457c882689e32d7b8512051fd0d20f08617b795",
+    "unopened_material": "Matplotlib/Django/xarray issue, source and grading stay unopened; all earlier cohorts and failures remain frozen.",
+    "model_queries": 0
+  },
+  "wire_audit": {
+    "schema": "codenib.lsp-stdio-wire-audit.v1",
+    "status": "original_wire_and_source_verified",
+    "phases": [
+      {
+        "phase": "fixture-base-cold",
+        "container": "2bacd767992b4b8d885ccf8e8f6c2a8b1a9a69f27174b479839121f3eb0d0d40",
+        "owned_container_independently_absent": true,
+        "installed_python": 485,
+        "installed_native": 1,
+        "original_stdout_bytes": 66475,
+        "original_stdout_sha256": "139ee7854e96e042b31fb0022beb45417b8fc34b644894ca65d289581ac78e2d",
+        "wire_chunks": 14,
+        "complete_captured_server_frames": 21,
+        "chunks_with_multiple_complete_frames": 5,
+        "trailing_captured_bytes": 0,
+        "position_deliveries": [
+          {
+            "lsp_request_id": 2,
+            "action": "references",
+            "target": "target",
+            "source_fingerprint": "sha256-v2:ccbb2ed0612dee0b4ea0f972db76164bf22a716b907f1a22904df06456996a22",
+            "server_body_sha256": "0e558c7c25f822c743fe346ab407a89c2c8d10e1851cd9e148ea79f3d83a7862",
+            "exact_original_reply_equals_delivered_locations": true,
+            "locations": 1,
+            "observed_completion_time": 9198360.883806206
+          },
+          {
+            "lsp_request_id": 3,
+            "action": "references",
+            "target": "target",
+            "source_fingerprint": "sha256-v2:ccbb2ed0612dee0b4ea0f972db76164bf22a716b907f1a22904df06456996a22",
+            "server_body_sha256": "6ccbda1fd02f77d8f6a321e3732a803dc2b4d1f59aef7da753e4e13e51a88898",
+            "exact_original_reply_equals_delivered_locations": true,
+            "locations": 3,
+            "observed_completion_time": 9198361.70136208
+          }
+        ],
+        "enumeration_log_observations": [
+          {
+            "time": 9198360.887113413,
+            "method": "window/logMessage",
+            "message": "Found 2 source files"
+          }
+        ],
+        "did_open_count": 1,
+        "all_selected_python_opened_before_first_query": null,
+        "both_original_and_snapshot_reverified": true
+      },
+      {
+        "phase": "fixture-candidate-cold",
+        "container": "516d7568551659028e5c347e398610ed694c4174610eeafe006844420a902c81",
+        "owned_container_independently_absent": true,
+        "installed_python": 485,
+        "installed_native": 1,
+        "original_stdout_bytes": 66667,
+        "original_stdout_sha256": "53057851107287895586f2258ee6f50443084ebb56d01b6b2a9c4a09cb1e9cc1",
+        "wire_chunks": 15,
+        "complete_captured_server_frames": 21,
+        "chunks_with_multiple_complete_frames": 5,
+        "trailing_captured_bytes": 0,
+        "position_deliveries": [
+          {
+            "lsp_request_id": 2,
+            "action": "references",
+            "target": "target",
+            "source_fingerprint": "sha256-v2:ccbb2ed0612dee0b4ea0f972db76164bf22a716b907f1a22904df06456996a22",
+            "server_body_sha256": "7f953799fbd96529627a7eaaca74ef4a308931bac36ed93975b9a782b6eaf1ea",
+            "exact_original_reply_equals_delivered_locations": true,
+            "locations": 1,
+            "observed_completion_time": 9198363.136581251
+          },
+          {
+            "lsp_request_id": 3,
+            "action": "references",
+            "target": "target",
+            "source_fingerprint": "sha256-v2:ccbb2ed0612dee0b4ea0f972db76164bf22a716b907f1a22904df06456996a22",
+            "server_body_sha256": "30a58f39bd96611cfc955950d4e50b7036dcd9ed3c056c070676cc33c6106a84",
+            "exact_original_reply_equals_delivered_locations": true,
+            "locations": 3,
+            "observed_completion_time": 9198363.952369653
+          }
+        ],
+        "enumeration_log_observations": [
+          {
+            "time": 9198363.140459595,
+            "method": "window/logMessage",
+            "message": "Found 2 source files"
+          }
+        ],
+        "did_open_count": 1,
+        "all_selected_python_opened_before_first_query": null,
+        "both_original_and_snapshot_reverified": true
+      },
+      {
+        "phase": "fixture-candidate-prepared",
+        "container": "c12f5e77cb3e7374fd8dc0d95739c94b4638ed3c714ab6becb47fc59b167a7f2",
+        "owned_container_independently_absent": true,
+        "installed_python": 485,
+        "installed_native": 1,
+        "original_stdout_bytes": 66607,
+        "original_stdout_sha256": "edbff56ad1edbcd2545f08f5125bef1a2b7a0c38f57cd9b63944a40074d459c1",
+        "wire_chunks": 14,
+        "complete_captured_server_frames": 17,
+        "chunks_with_multiple_complete_frames": 3,
+        "trailing_captured_bytes": 0,
+        "position_deliveries": [
+          {
+            "lsp_request_id": 4,
+            "action": "references",
+            "target": "target",
+            "source_fingerprint": "sha256-v2:ccbb2ed0612dee0b4ea0f972db76164bf22a716b907f1a22904df06456996a22",
+            "server_body_sha256": "a3b1ae7d339c83142954192e1f30f3f8133a9820f6b73effd17d93fb2dec9084",
+            "exact_original_reply_equals_delivered_locations": true,
+            "locations": 3,
+            "observed_completion_time": 9198365.285156235
+          }
+        ],
+        "enumeration_log_observations": [],
+        "did_open_count": 2,
+        "all_selected_python_opened_before_first_query": true,
+        "both_original_and_snapshot_reverified": true
+      },
+      {
+        "phase": "full-candidate-prepared",
+        "container": "254f0e592969632e11b8037f76064836cfb41e13e1a037421ee1e0ac7437a362",
+        "owned_container_independently_absent": true,
+        "installed_python": 485,
+        "installed_native": 1,
+        "original_stdout_bytes": 59966120,
+        "original_stdout_sha256": "4c8ae05302623edc7d6653f25721bb22bfe32e7bc208904796225526e83df28a",
+        "wire_chunks": 1368,
+        "complete_captured_server_frames": 2390,
+        "chunks_with_multiple_complete_frames": 18,
+        "trailing_captured_bytes": 0,
+        "position_deliveries": [
+          {
+            "lsp_request_id": 1174,
+            "action": "references",
+            "target": "_prepare_graph_for_call",
+            "source_fingerprint": "sha256-v2:866a487140fa1ecc31d7158c13d3f8112717bff21d697ae847cb0c6afee6f2e2",
+            "server_body_sha256": "f65ea154fcda47977fa8bda528ad4ec7333ddf4bf51a6ff1228779726b4a8c08",
+            "exact_original_reply_equals_delivered_locations": true,
+            "locations": 2,
+            "observed_completion_time": 9198375.412297308
+          },
+          {
+            "lsp_request_id": 1175,
+            "action": "definition",
+            "target": "_prepare_graph_for_call",
+            "source_fingerprint": "sha256-v2:866a487140fa1ecc31d7158c13d3f8112717bff21d697ae847cb0c6afee6f2e2",
+            "server_body_sha256": "5407667f03c95613f21e0e9c86cd61b4fbe1dec4929bf69b3076211b7f417eca",
+            "exact_original_reply_equals_delivered_locations": true,
+            "locations": 1,
+            "observed_completion_time": 9198376.839189703
+          },
+          {
+            "lsp_request_id": 1176,
+            "action": "definition",
+            "target": "extract_symbol",
+            "source_fingerprint": "sha256-v2:866a487140fa1ecc31d7158c13d3f8112717bff21d697ae847cb0c6afee6f2e2",
+            "server_body_sha256": "ca6be6c03f62f5e020bc50699b18abb40d0a6d74f2f13758b27b709ca593df17",
+            "exact_original_reply_equals_delivered_locations": true,
+            "locations": 1,
+            "observed_completion_time": 9198377.040382843
+          },
+          {
+            "lsp_request_id": 1177,
+            "action": "references",
+            "target": "extract_symbol",
+            "source_fingerprint": "sha256-v2:866a487140fa1ecc31d7158c13d3f8112717bff21d697ae847cb0c6afee6f2e2",
+            "server_body_sha256": "982d798988fbb95b972240813d4686caaa9f6fd8ed16e93010a4418e439e7a6b",
+            "exact_original_reply_equals_delivered_locations": true,
+            "locations": 26,
+            "observed_completion_time": 9198377.224235676
+          },
+          {
+            "lsp_request_id": 1178,
+            "action": "definition",
+            "target": "extract_scip_blocks",
+            "source_fingerprint": "sha256-v2:866a487140fa1ecc31d7158c13d3f8112717bff21d697ae847cb0c6afee6f2e2",
+            "server_body_sha256": "b0eb68fee0b03ea6b8b017205cab90d10b0e38c48a8b59476040c602732323f6",
+            "exact_original_reply_equals_delivered_locations": true,
+            "locations": 1,
+            "observed_completion_time": 9198377.515265277
+          },
+          {
+            "lsp_request_id": 1179,
+            "action": "references",
+            "target": "extract_scip_blocks",
+            "source_fingerprint": "sha256-v2:866a487140fa1ecc31d7158c13d3f8112717bff21d697ae847cb0c6afee6f2e2",
+            "server_body_sha256": "6c52613e647b76c12846d448f3f777530825c1c8e719ea3b4ed45930d7937738",
+            "exact_original_reply_equals_delivered_locations": true,
+            "locations": 29,
+            "observed_completion_time": 9198377.696673112
+          }
+        ],
+        "enumeration_log_observations": [
+          {
+            "time": 9198370.518936502,
+            "method": "window/logMessage",
+            "message": "Found 1172 source files"
+          }
+        ],
+        "did_open_count": 1172,
+        "all_selected_python_opened_before_first_query": true,
+        "both_original_and_snapshot_reverified": true
+      }
+    ],
+    "all_prepared_location_sets_match": true,
+    "scope": "Original captured provider replies equal delivered locations; separate cold outcomes stay unchanged. Source-only position observations are not model-input credit or whole-task efficiency. No RPC or provider is replayed.",
+    "model_queries": 0
+  },
+  "location_comparisons": [
+    {
+      "phase": "fixture-base-cold",
+      "observation": 0,
+      "action": "references",
+      "target": {
+        "file": "app.py",
+        "name": "target",
+        "line": 0,
+        "character": 4,
+        "utf8_character": 4,
+        "source_file_sha256": "e90074bde6f68906b18cd2dd68cec01eb01d6b35cfa5264896405a14cf650435"
+      },
+      "expected": [
+        [
+          "app.py",
+          0,
+          4,
+          0,
+          10
+        ],
+        [
+          "consumer.py",
+          0,
+          16,
+          0,
+          22
+        ],
+        [
+          "consumer.py",
+          2,
+          8,
+          2,
+          14
+        ]
+      ],
+      "observed": [
+        [
+          "app.py",
+          0,
+          4,
+          0,
+          10
+        ]
+      ],
+      "missing": [
+        [
+          "consumer.py",
+          0,
+          16,
+          0,
+          22
+        ],
+        [
+          "consumer.py",
+          2,
+          8,
+          2,
+          14
+        ]
+      ],
+      "extra": [],
+      "outside_or_invalid": [],
+      "last_error": null,
+      "matches": false
+    },
+    {
+      "phase": "fixture-base-cold",
+      "observation": 1,
+      "action": "references",
+      "target": {
+        "file": "app.py",
+        "name": "target",
+        "line": 0,
+        "character": 4,
+        "utf8_character": 4,
+        "source_file_sha256": "e90074bde6f68906b18cd2dd68cec01eb01d6b35cfa5264896405a14cf650435"
+      },
+      "expected": [
+        [
+          "app.py",
+          0,
+          4,
+          0,
+          10
+        ],
+        [
+          "consumer.py",
+          0,
+          16,
+          0,
+          22
+        ],
+        [
+          "consumer.py",
+          2,
+          8,
+          2,
+          14
+        ]
+      ],
+      "observed": [
+        [
+          "app.py",
+          0,
+          4,
+          0,
+          10
+        ],
+        [
+          "consumer.py",
+          0,
+          16,
+          0,
+          22
+        ],
+        [
+          "consumer.py",
+          2,
+          8,
+          2,
+          14
+        ]
+      ],
+      "missing": [],
+      "extra": [],
+      "outside_or_invalid": [],
+      "last_error": null,
+      "matches": true
+    },
+    {
+      "phase": "fixture-candidate-cold",
+      "observation": 0,
+      "action": "references",
+      "target": {
+        "file": "app.py",
+        "name": "target",
+        "line": 0,
+        "character": 4,
+        "utf8_character": 4,
+        "source_file_sha256": "e90074bde6f68906b18cd2dd68cec01eb01d6b35cfa5264896405a14cf650435"
+      },
+      "expected": [
+        [
+          "app.py",
+          0,
+          4,
+          0,
+          10
+        ],
+        [
+          "consumer.py",
+          0,
+          16,
+          0,
+          22
+        ],
+        [
+          "consumer.py",
+          2,
+          8,
+          2,
+          14
+        ]
+      ],
+      "observed": [
+        [
+          "app.py",
+          0,
+          4,
+          0,
+          10
+        ]
+      ],
+      "missing": [
+        [
+          "consumer.py",
+          0,
+          16,
+          0,
+          22
+        ],
+        [
+          "consumer.py",
+          2,
+          8,
+          2,
+          14
+        ]
+      ],
+      "extra": [],
+      "outside_or_invalid": [],
+      "last_error": null,
+      "matches": false
+    },
+    {
+      "phase": "fixture-candidate-cold",
+      "observation": 1,
+      "action": "references",
+      "target": {
+        "file": "app.py",
+        "name": "target",
+        "line": 0,
+        "character": 4,
+        "utf8_character": 4,
+        "source_file_sha256": "e90074bde6f68906b18cd2dd68cec01eb01d6b35cfa5264896405a14cf650435"
+      },
+      "expected": [
+        [
+          "app.py",
+          0,
+          4,
+          0,
+          10
+        ],
+        [
+          "consumer.py",
+          0,
+          16,
+          0,
+          22
+        ],
+        [
+          "consumer.py",
+          2,
+          8,
+          2,
+          14
+        ]
+      ],
+      "observed": [
+        [
+          "app.py",
+          0,
+          4,
+          0,
+          10
+        ],
+        [
+          "consumer.py",
+          0,
+          16,
+          0,
+          22
+        ],
+        [
+          "consumer.py",
+          2,
+          8,
+          2,
+          14
+        ]
+      ],
+      "missing": [],
+      "extra": [],
+      "outside_or_invalid": [],
+      "last_error": null,
+      "matches": true
+    },
+    {
+      "phase": "fixture-candidate-prepared",
+      "observation": 0,
+      "action": "references",
+      "target": {
+        "file": "app.py",
+        "name": "target",
+        "line": 0,
+        "character": 4,
+        "utf8_character": 4,
+        "source_file_sha256": "e90074bde6f68906b18cd2dd68cec01eb01d6b35cfa5264896405a14cf650435"
+      },
+      "expected": [
+        [
+          "app.py",
+          0,
+          4,
+          0,
+          10
+        ],
+        [
+          "consumer.py",
+          0,
+          16,
+          0,
+          22
+        ],
+        [
+          "consumer.py",
+          2,
+          8,
+          2,
+          14
+        ]
+      ],
+      "observed": [
+        [
+          "app.py",
+          0,
+          4,
+          0,
+          10
+        ],
+        [
+          "consumer.py",
+          0,
+          16,
+          0,
+          22
+        ],
+        [
+          "consumer.py",
+          2,
+          8,
+          2,
+          14
+        ]
+      ],
+      "missing": [],
+      "extra": [],
+      "outside_or_invalid": [],
+      "last_error": null,
+      "matches": true
+    },
+    {
+      "phase": "full-candidate-prepared",
+      "observation": 0,
+      "action": "references",
+      "target": {
+        "file": "codenib/mcp/server.py",
+        "name": "_prepare_graph_for_call",
+        "line": 178,
+        "character": 4,
+        "utf8_character": 4,
+        "source_file_sha256": "0c35d02c38a862e51ca123311382e6f5c8ccfe4f6451bffbd2b53bdf0c2c3c44"
+      },
+      "expected": [
+        [
+          "codenib/mcp/server.py",
+          163,
+          14,
+          163,
+          37
+        ],
+        [
+          "codenib/mcp/server.py",
+          178,
+          4,
+          178,
+          27
+        ]
+      ],
+      "observed": [
+        [
+          "codenib/mcp/server.py",
+          163,
+          14,
+          163,
+          37
+        ],
+        [
+          "codenib/mcp/server.py",
+          178,
+          4,
+          178,
+          27
+        ]
+      ],
+      "missing": [],
+      "extra": [],
+      "outside_or_invalid": [],
+      "last_error": null,
+      "matches": true
+    },
+    {
+      "phase": "full-candidate-prepared",
+      "observation": 1,
+      "action": "definition",
+      "target": {
+        "file": "codenib/mcp/server.py",
+        "name": "_prepare_graph_for_call",
+        "line": 178,
+        "character": 4,
+        "utf8_character": 4,
+        "source_file_sha256": "0c35d02c38a862e51ca123311382e6f5c8ccfe4f6451bffbd2b53bdf0c2c3c44"
+      },
+      "expected": [
+        [
+          "codenib/mcp/server.py",
+          178,
+          4,
+          178,
+          27
+        ]
+      ],
+      "observed": [
+        [
+          "codenib/mcp/server.py",
+          178,
+          4,
+          178,
+          27
+        ]
+      ],
+      "missing": [],
+      "extra": [],
+      "outside_or_invalid": [],
+      "last_error": null,
+      "matches": true
+    },
+    {
+      "phase": "full-candidate-prepared",
+      "observation": 2,
+      "action": "definition",
+      "target": {
+        "file": "codenib/scip_interface/scip_indexer_base.py",
+        "name": "extract_symbol",
+        "line": 30,
+        "character": 4,
+        "utf8_character": 4,
+        "source_file_sha256": "181feb4e902f513a951e97455a80d397b6a2e9b99f7b293d2f93ac60664e6caa"
+      },
+      "expected": [
+        [
+          "codenib/scip_interface/scip_indexer_base.py",
+          30,
+          4,
+          30,
+          18
+        ]
+      ],
+      "observed": [
+        [
+          "codenib/scip_interface/scip_indexer_base.py",
+          30,
+          4,
+          30,
+          18
+        ]
+      ],
+      "missing": [],
+      "extra": [],
+      "outside_or_invalid": [],
+      "last_error": null,
+      "matches": true
+    },
+    {
+      "phase": "full-candidate-prepared",
+      "observation": 3,
+      "action": "references",
+      "target": {
+        "file": "codenib/scip_interface/scip_indexer_base.py",
+        "name": "extract_symbol",
+        "line": 30,
+        "character": 4,
+        "utf8_character": 4,
+        "source_file_sha256": "181feb4e902f513a951e97455a80d397b6a2e9b99f7b293d2f93ac60664e6caa"
+      },
+      "expected": [
+        [
+          "codenib/scip_interface/lsp_occurrence_index.py",
+          25,
+          52,
+          25,
+          66
+        ],
+        [
+          "codenib/scip_interface/lsp_occurrence_index.py",
+          364,
+          13,
+          364,
+          27
+        ],
+        [
+          "codenib/scip_interface/scip_decode_csharp.py",
+          20,
+          31,
+          20,
+          45
+        ],
+        [
+          "codenib/scip_interface/scip_decode_csharp.py",
+          38,
+          17,
+          38,
+          31
+        ],
+        [
+          "codenib/scip_interface/scip_decode_go.py",
+          33,
+          52,
+          33,
+          66
+        ],
+        [
+          "codenib/scip_interface/scip_decode_go.py",
+          161,
+          17,
+          161,
+          31
+        ],
+        [
+          "codenib/scip_interface/scip_decode_java.py",
+          34,
+          52,
+          34,
+          66
+        ],
+        [
+          "codenib/scip_interface/scip_decode_java.py",
+          103,
+          25,
+          103,
+          39
+        ],
+        [
+          "codenib/scip_interface/scip_decode_java.py",
+          143,
+          17,
+          143,
+          31
+        ],
+        [
+          "codenib/scip_interface/scip_decode_java.py",
+          227,
+          21,
+          227,
+          35
+        ],
+        [
+          "codenib/scip_interface/scip_decode_java.py",
+          630,
+          25,
+          630,
+          39
+        ],
+        [
+          "codenib/scip_interface/scip_decode_java.py",
+          657,
+          25,
+          657,
+          39
+        ],
+        [
+          "codenib/scip_interface/scip_decode_python.py",
+          29,
+          52,
+          29,
+          66
+        ],
+        [
+          "codenib/scip_interface/scip_decode_python.py",
+          171,
+          17,
+          171,
+          31
+        ],
+        [
+          "codenib/scip_interface/scip_decode_ruby.py",
+          25,
+          31,
+          25,
+          45
+        ],
+        [
+          "codenib/scip_interface/scip_decode_ruby.py",
+          55,
+          17,
+          55,
+          31
+        ],
+        [
+          "codenib/scip_interface/scip_decode_rust.py",
+          33,
+          52,
+          33,
+          66
+        ],
+        [
+          "codenib/scip_interface/scip_decode_rust.py",
+          235,
+          17,
+          235,
+          31
+        ],
+        [
+          "codenib/scip_interface/scip_decode_ts.py",
+          18,
+          52,
+          18,
+          66
+        ],
+        [
+          "codenib/scip_interface/scip_decode_ts.py",
+          95,
+          25,
+          95,
+          39
+        ],
+        [
+          "codenib/scip_interface/scip_decode_ts.py",
+          157,
+          17,
+          157,
+          31
+        ],
+        [
+          "codenib/scip_interface/scip_indexer_base.py",
+          30,
+          4,
+          30,
+          18
+        ],
+        [
+          "codenib/scip_interface/typescript_semantics.py",
+          14,
+          52,
+          14,
+          66
+        ],
+        [
+          "codenib/scip_interface/typescript_semantics.py",
+          74,
+          17,
+          74,
+          31
+        ],
+        [
+          "codenib/scip_interface/typescript_semantics.py",
+          115,
+          47,
+          115,
+          61
+        ],
+        [
+          "codenib/scip_interface/typescript_semantics.py",
+          285,
+          25,
+          285,
+          39
+        ]
+      ],
+      "observed": [
+        [
+          "codenib/scip_interface/lsp_occurrence_index.py",
+          25,
+          52,
+          25,
+          66
+        ],
+        [
+          "codenib/scip_interface/lsp_occurrence_index.py",
+          364,
+          13,
+          364,
+          27
+        ],
+        [
+          "codenib/scip_interface/scip_decode_csharp.py",
+          20,
+          31,
+          20,
+          45
+        ],
+        [
+          "codenib/scip_interface/scip_decode_csharp.py",
+          38,
+          17,
+          38,
+          31
+        ],
+        [
+          "codenib/scip_interface/scip_decode_go.py",
+          33,
+          52,
+          33,
+          66
+        ],
+        [
+          "codenib/scip_interface/scip_decode_go.py",
+          161,
+          17,
+          161,
+          31
+        ],
+        [
+          "codenib/scip_interface/scip_decode_java.py",
+          34,
+          52,
+          34,
+          66
+        ],
+        [
+          "codenib/scip_interface/scip_decode_java.py",
+          103,
+          25,
+          103,
+          39
+        ],
+        [
+          "codenib/scip_interface/scip_decode_java.py",
+          143,
+          17,
+          143,
+          31
+        ],
+        [
+          "codenib/scip_interface/scip_decode_java.py",
+          227,
+          21,
+          227,
+          35
+        ],
+        [
+          "codenib/scip_interface/scip_decode_java.py",
+          630,
+          25,
+          630,
+          39
+        ],
+        [
+          "codenib/scip_interface/scip_decode_java.py",
+          657,
+          25,
+          657,
+          39
+        ],
+        [
+          "codenib/scip_interface/scip_decode_python.py",
+          29,
+          52,
+          29,
+          66
+        ],
+        [
+          "codenib/scip_interface/scip_decode_python.py",
+          171,
+          17,
+          171,
+          31
+        ],
+        [
+          "codenib/scip_interface/scip_decode_ruby.py",
+          25,
+          31,
+          25,
+          45
+        ],
+        [
+          "codenib/scip_interface/scip_decode_ruby.py",
+          55,
+          17,
+          55,
+          31
+        ],
+        [
+          "codenib/scip_interface/scip_decode_rust.py",
+          33,
+          52,
+          33,
+          66
+        ],
+        [
+          "codenib/scip_interface/scip_decode_rust.py",
+          235,
+          17,
+          235,
+          31
+        ],
+        [
+          "codenib/scip_interface/scip_decode_ts.py",
+          18,
+          52,
+          18,
+          66
+        ],
+        [
+          "codenib/scip_interface/scip_decode_ts.py",
+          95,
+          25,
+          95,
+          39
+        ],
+        [
+          "codenib/scip_interface/scip_decode_ts.py",
+          157,
+          17,
+          157,
+          31
+        ],
+        [
+          "codenib/scip_interface/scip_indexer_base.py",
+          30,
+          4,
+          30,
+          18
+        ],
+        [
+          "codenib/scip_interface/typescript_semantics.py",
+          14,
+          52,
+          14,
+          66
+        ],
+        [
+          "codenib/scip_interface/typescript_semantics.py",
+          74,
+          17,
+          74,
+          31
+        ],
+        [
+          "codenib/scip_interface/typescript_semantics.py",
+          115,
+          47,
+          115,
+          61
+        ],
+        [
+          "codenib/scip_interface/typescript_semantics.py",
+          285,
+          25,
+          285,
+          39
+        ]
+      ],
+      "missing": [],
+      "extra": [],
+      "outside_or_invalid": [],
+      "last_error": null,
+      "matches": true
+    },
+    {
+      "phase": "full-candidate-prepared",
+      "observation": 4,
+      "action": "definition",
+      "target": {
+        "file": "codenib/scip_interface/scip_indexer_base.py",
+        "name": "extract_scip_blocks",
+        "line": 93,
+        "character": 4,
+        "utf8_character": 4,
+        "source_file_sha256": "181feb4e902f513a951e97455a80d397b6a2e9b99f7b293d2f93ac60664e6caa"
+      },
+      "expected": [
+        [
+          "codenib/scip_interface/scip_indexer_base.py",
+          93,
+          4,
+          93,
+          23
+        ]
+      ],
+      "observed": [
+        [
+          "codenib/scip_interface/scip_indexer_base.py",
+          93,
+          4,
+          93,
+          23
+        ]
+      ],
+      "missing": [],
+      "extra": [],
+      "outside_or_invalid": [],
+      "last_error": null,
+      "matches": true
+    },
+    {
+      "phase": "full-candidate-prepared",
+      "observation": 5,
+      "action": "references",
+      "target": {
+        "file": "codenib/scip_interface/scip_indexer_base.py",
+        "name": "extract_scip_blocks",
+        "line": 93,
+        "character": 4,
+        "utf8_character": 4,
+        "source_file_sha256": "181feb4e902f513a951e97455a80d397b6a2e9b99f7b293d2f93ac60664e6caa"
+      },
+      "expected": [
+        [
+          "codenib/scip_interface/lsp_occurrence_index.py",
+          25,
+          31,
+          25,
+          50
+        ],
+        [
+          "codenib/scip_interface/lsp_occurrence_index.py",
+          134,
+          24,
+          134,
+          43
+        ],
+        [
+          "codenib/scip_interface/lsp_occurrence_index.py",
+          140,
+          34,
+          140,
+          53
+        ],
+        [
+          "codenib/scip_interface/scip_decode_go.py",
+          33,
+          31,
+          33,
+          50
+        ],
+        [
+          "codenib/scip_interface/scip_decode_go.py",
+          125,
+          22,
+          125,
+          41
+        ],
+        [
+          "codenib/scip_interface/scip_decode_java.py",
+          34,
+          31,
+          34,
+          50
+        ],
+        [
+          "codenib/scip_interface/scip_decode_java.py",
+          88,
+          26,
+          88,
+          45
+        ],
+        [
+          "codenib/scip_interface/scip_decode_java.py",
+          102,
+          25,
+          102,
+          44
+        ],
+        [
+          "codenib/scip_interface/scip_decode_java.py",
+          134,
+          15,
+          134,
+          34
+        ],
+        [
+          "codenib/scip_interface/scip_decode_java.py",
+          221,
+          26,
+          221,
+          45
+        ],
+        [
+          "codenib/scip_interface/scip_decode_java.py",
+          629,
+          25,
+          629,
+          44
+        ],
+        [
+          "codenib/scip_interface/scip_decode_java.py",
+          656,
+          25,
+          656,
+          44
+        ],
+        [
+          "codenib/scip_interface/scip_decode_php.py",
+          19,
+          31,
+          19,
+          50
+        ],
+        [
+          "codenib/scip_interface/scip_decode_php.py",
+          32,
+          12,
+          32,
+          31
+        ],
+        [
+          "codenib/scip_interface/scip_decode_python.py",
+          29,
+          31,
+          29,
+          50
+        ],
+        [
+          "codenib/scip_interface/scip_decode_python.py",
+          148,
+          22,
+          148,
+          41
+        ],
+        [
+          "codenib/scip_interface/scip_decode_rust.py",
+          33,
+          31,
+          33,
+          50
+        ],
+        [
+          "codenib/scip_interface/scip_decode_rust.py",
+          144,
+          22,
+          144,
+          41
+        ],
+        [
+          "codenib/scip_interface/scip_decode_ts.py",
+          18,
+          31,
+          18,
+          50
+        ],
+        [
+          "codenib/scip_interface/scip_decode_ts.py",
+          53,
+          26,
+          53,
+          45
+        ],
+        [
+          "codenib/scip_interface/scip_decode_ts.py",
+          94,
+          30,
+          94,
+          49
+        ],
+        [
+          "codenib/scip_interface/scip_decode_ts.py",
+          144,
+          22,
+          144,
+          41
+        ],
+        [
+          "codenib/scip_interface/scip_indexer_base.py",
+          93,
+          4,
+          93,
+          23
+        ],
+        [
+          "codenib/scip_interface/typescript_semantics.py",
+          14,
+          31,
+          14,
+          50
+        ],
+        [
+          "codenib/scip_interface/typescript_semantics.py",
+          73,
+          17,
+          73,
+          36
+        ],
+        [
+          "codenib/scip_interface/typescript_semantics.py",
+          110,
+          20,
+          110,
+          39
+        ],
+        [
+          "codenib/scip_interface/typescript_semantics.py",
+          111,
+          26,
+          111,
+          45
+        ],
+        [
+          "codenib/scip_interface/typescript_semantics.py",
+          248,
+          24,
+          248,
+          43
+        ],
+        [
+          "codenib/scip_interface/typescript_semantics.py",
+          266,
+          30,
+          266,
+          49
+        ]
+      ],
+      "observed": [
+        [
+          "codenib/scip_interface/lsp_occurrence_index.py",
+          25,
+          31,
+          25,
+          50
+        ],
+        [
+          "codenib/scip_interface/lsp_occurrence_index.py",
+          134,
+          24,
+          134,
+          43
+        ],
+        [
+          "codenib/scip_interface/lsp_occurrence_index.py",
+          140,
+          34,
+          140,
+          53
+        ],
+        [
+          "codenib/scip_interface/scip_decode_go.py",
+          33,
+          31,
+          33,
+          50
+        ],
+        [
+          "codenib/scip_interface/scip_decode_go.py",
+          125,
+          22,
+          125,
+          41
+        ],
+        [
+          "codenib/scip_interface/scip_decode_java.py",
+          34,
+          31,
+          34,
+          50
+        ],
+        [
+          "codenib/scip_interface/scip_decode_java.py",
+          88,
+          26,
+          88,
+          45
+        ],
+        [
+          "codenib/scip_interface/scip_decode_java.py",
+          102,
+          25,
+          102,
+          44
+        ],
+        [
+          "codenib/scip_interface/scip_decode_java.py",
+          134,
+          15,
+          134,
+          34
+        ],
+        [
+          "codenib/scip_interface/scip_decode_java.py",
+          221,
+          26,
+          221,
+          45
+        ],
+        [
+          "codenib/scip_interface/scip_decode_java.py",
+          629,
+          25,
+          629,
+          44
+        ],
+        [
+          "codenib/scip_interface/scip_decode_java.py",
+          656,
+          25,
+          656,
+          44
+        ],
+        [
+          "codenib/scip_interface/scip_decode_php.py",
+          19,
+          31,
+          19,
+          50
+        ],
+        [
+          "codenib/scip_interface/scip_decode_php.py",
+          32,
+          12,
+          32,
+          31
+        ],
+        [
+          "codenib/scip_interface/scip_decode_python.py",
+          29,
+          31,
+          29,
+          50
+        ],
+        [
+          "codenib/scip_interface/scip_decode_python.py",
+          148,
+          22,
+          148,
+          41
+        ],
+        [
+          "codenib/scip_interface/scip_decode_rust.py",
+          33,
+          31,
+          33,
+          50
+        ],
+        [
+          "codenib/scip_interface/scip_decode_rust.py",
+          144,
+          22,
+          144,
+          41
+        ],
+        [
+          "codenib/scip_interface/scip_decode_ts.py",
+          18,
+          31,
+          18,
+          50
+        ],
+        [
+          "codenib/scip_interface/scip_decode_ts.py",
+          53,
+          26,
+          53,
+          45
+        ],
+        [
+          "codenib/scip_interface/scip_decode_ts.py",
+          94,
+          30,
+          94,
+          49
+        ],
+        [
+          "codenib/scip_interface/scip_decode_ts.py",
+          144,
+          22,
+          144,
+          41
+        ],
+        [
+          "codenib/scip_interface/scip_indexer_base.py",
+          93,
+          4,
+          93,
+          23
+        ],
+        [
+          "codenib/scip_interface/typescript_semantics.py",
+          14,
+          31,
+          14,
+          50
+        ],
+        [
+          "codenib/scip_interface/typescript_semantics.py",
+          73,
+          17,
+          73,
+          36
+        ],
+        [
+          "codenib/scip_interface/typescript_semantics.py",
+          110,
+          20,
+          110,
+          39
+        ],
+        [
+          "codenib/scip_interface/typescript_semantics.py",
+          111,
+          26,
+          111,
+          45
+        ],
+        [
+          "codenib/scip_interface/typescript_semantics.py",
+          248,
+          24,
+          248,
+          43
+        ],
+        [
+          "codenib/scip_interface/typescript_semantics.py",
+          266,
+          30,
+          266,
+          49
+        ]
+      ],
+      "missing": [],
+      "extra": [],
+      "outside_or_invalid": [],
+      "last_error": null,
+      "matches": true
+    }
+  ],
+  "exact_original_position_replies": [
+    {
+      "phase": "fixture-base-cold",
+      "lsp_request_id": 2,
+      "action": "references",
+      "target": "target",
+      "source_fingerprint": "sha256-v2:ccbb2ed0612dee0b4ea0f972db76164bf22a716b907f1a22904df06456996a22",
+      "server_body_sha256": "0e558c7c25f822c743fe346ab407a89c2c8d10e1851cd9e148ea79f3d83a7862",
+      "exact_original_reply_equals_delivered_locations": true,
+      "locations": 1,
+      "observed_completion_time": 9198360.883806206,
+      "exact_server_body_base64": "eyJqc29ucnBjIjoiMi4wIiwiaWQiOjIsInJlc3VsdCI6W3sidXJpIjoiZmlsZTovLy90bXAvY29kZW5pYi1sc3AtbGF0ZS1yZXBseS0yMDI2MTAzMS93aXJlLXNvdXJjZS0xL2ZpeHR1cmUtYmFzZS1jb2xkL3NuYXBzaG90L2FwcC5weSIsInJhbmdlIjp7InN0YXJ0Ijp7ImxpbmUiOjAsImNoYXJhY3RlciI6NH0sImVuZCI6eyJsaW5lIjowLCJjaGFyYWN0ZXIiOjEwfX19XX0="
+    },
+    {
+      "phase": "fixture-base-cold",
+      "lsp_request_id": 3,
+      "action": "references",
+      "target": "target",
+      "source_fingerprint": "sha256-v2:ccbb2ed0612dee0b4ea0f972db76164bf22a716b907f1a22904df06456996a22",
+      "server_body_sha256": "6ccbda1fd02f77d8f6a321e3732a803dc2b4d1f59aef7da753e4e13e51a88898",
+      "exact_original_reply_equals_delivered_locations": true,
+      "locations": 3,
+      "observed_completion_time": 9198361.70136208,
+      "exact_server_body_base64": "eyJqc29ucnBjIjoiMi4wIiwiaWQiOjMsInJlc3VsdCI6W3sidXJpIjoiZmlsZTovLy90bXAvY29kZW5pYi1sc3AtbGF0ZS1yZXBseS0yMDI2MTAzMS93aXJlLXNvdXJjZS0xL2ZpeHR1cmUtYmFzZS1jb2xkL3NuYXBzaG90L2FwcC5weSIsInJhbmdlIjp7InN0YXJ0Ijp7ImxpbmUiOjAsImNoYXJhY3RlciI6NH0sImVuZCI6eyJsaW5lIjowLCJjaGFyYWN0ZXIiOjEwfX19LHsidXJpIjoiZmlsZTovLy90bXAvY29kZW5pYi1sc3AtbGF0ZS1yZXBseS0yMDI2MTAzMS93aXJlLXNvdXJjZS0xL2ZpeHR1cmUtYmFzZS1jb2xkL3NuYXBzaG90L2NvbnN1bWVyLnB5IiwicmFuZ2UiOnsic3RhcnQiOnsibGluZSI6MCwiY2hhcmFjdGVyIjoxNn0sImVuZCI6eyJsaW5lIjowLCJjaGFyYWN0ZXIiOjIyfX19LHsidXJpIjoiZmlsZTovLy90bXAvY29kZW5pYi1sc3AtbGF0ZS1yZXBseS0yMDI2MTAzMS93aXJlLXNvdXJjZS0xL2ZpeHR1cmUtYmFzZS1jb2xkL3NuYXBzaG90L2NvbnN1bWVyLnB5IiwicmFuZ2UiOnsic3RhcnQiOnsibGluZSI6MiwiY2hhcmFjdGVyIjo4fSwiZW5kIjp7ImxpbmUiOjIsImNoYXJhY3RlciI6MTR9fX1dfQ=="
+    },
+    {
+      "phase": "fixture-candidate-cold",
+      "lsp_request_id": 2,
+      "action": "references",
+      "target": "target",
+      "source_fingerprint": "sha256-v2:ccbb2ed0612dee0b4ea0f972db76164bf22a716b907f1a22904df06456996a22",
+      "server_body_sha256": "7f953799fbd96529627a7eaaca74ef4a308931bac36ed93975b9a782b6eaf1ea",
+      "exact_original_reply_equals_delivered_locations": true,
+      "locations": 1,
+      "observed_completion_time": 9198363.136581251,
+      "exact_server_body_base64": "eyJqc29ucnBjIjoiMi4wIiwiaWQiOjIsInJlc3VsdCI6W3sidXJpIjoiZmlsZTovLy90bXAvY29kZW5pYi1sc3AtbGF0ZS1yZXBseS0yMDI2MTAzMS93aXJlLXNvdXJjZS0xL2ZpeHR1cmUtY2FuZGlkYXRlLWNvbGQvc25hcHNob3QvYXBwLnB5IiwicmFuZ2UiOnsic3RhcnQiOnsibGluZSI6MCwiY2hhcmFjdGVyIjo0fSwiZW5kIjp7ImxpbmUiOjAsImNoYXJhY3RlciI6MTB9fX1dfQ=="
+    },
+    {
+      "phase": "fixture-candidate-cold",
+      "lsp_request_id": 3,
+      "action": "references",
+      "target": "target",
+      "source_fingerprint": "sha256-v2:ccbb2ed0612dee0b4ea0f972db76164bf22a716b907f1a22904df06456996a22",
+      "server_body_sha256": "30a58f39bd96611cfc955950d4e50b7036dcd9ed3c056c070676cc33c6106a84",
+      "exact_original_reply_equals_delivered_locations": true,
+      "locations": 3,
+      "observed_completion_time": 9198363.952369653,
+      "exact_server_body_base64": "eyJqc29ucnBjIjoiMi4wIiwiaWQiOjMsInJlc3VsdCI6W3sidXJpIjoiZmlsZTovLy90bXAvY29kZW5pYi1sc3AtbGF0ZS1yZXBseS0yMDI2MTAzMS93aXJlLXNvdXJjZS0xL2ZpeHR1cmUtY2FuZGlkYXRlLWNvbGQvc25hcHNob3QvYXBwLnB5IiwicmFuZ2UiOnsic3RhcnQiOnsibGluZSI6MCwiY2hhcmFjdGVyIjo0fSwiZW5kIjp7ImxpbmUiOjAsImNoYXJhY3RlciI6MTB9fX0seyJ1cmkiOiJmaWxlOi8vL3RtcC9jb2RlbmliLWxzcC1sYXRlLXJlcGx5LTIwMjYxMDMxL3dpcmUtc291cmNlLTEvZml4dHVyZS1jYW5kaWRhdGUtY29sZC9zbmFwc2hvdC9jb25zdW1lci5weSIsInJhbmdlIjp7InN0YXJ0Ijp7ImxpbmUiOjAsImNoYXJhY3RlciI6MTZ9LCJlbmQiOnsibGluZSI6MCwiY2hhcmFjdGVyIjoyMn19fSx7InVyaSI6ImZpbGU6Ly8vdG1wL2NvZGVuaWItbHNwLWxhdGUtcmVwbHktMjAyNjEwMzEvd2lyZS1zb3VyY2UtMS9maXh0dXJlLWNhbmRpZGF0ZS1jb2xkL3NuYXBzaG90L2NvbnN1bWVyLnB5IiwicmFuZ2UiOnsic3RhcnQiOnsibGluZSI6MiwiY2hhcmFjdGVyIjo4fSwiZW5kIjp7ImxpbmUiOjIsImNoYXJhY3RlciI6MTR9fX1dfQ=="
+    },
+    {
+      "phase": "fixture-candidate-prepared",
+      "lsp_request_id": 4,
+      "action": "references",
+      "target": "target",
+      "source_fingerprint": "sha256-v2:ccbb2ed0612dee0b4ea0f972db76164bf22a716b907f1a22904df06456996a22",
+      "server_body_sha256": "a3b1ae7d339c83142954192e1f30f3f8133a9820f6b73effd17d93fb2dec9084",
+      "exact_original_reply_equals_delivered_locations": true,
+      "locations": 3,
+      "observed_completion_time": 9198365.285156235,
+      "exact_server_body_base64": "eyJqc29ucnBjIjoiMi4wIiwiaWQiOjQsInJlc3VsdCI6W3sidXJpIjoiZmlsZTovLy90bXAvY29kZW5pYi1sc3AtbGF0ZS1yZXBseS0yMDI2MTAzMS93aXJlLXNvdXJjZS0xL2ZpeHR1cmUtY2FuZGlkYXRlLXByZXBhcmVkL3NuYXBzaG90L2FwcC5weSIsInJhbmdlIjp7InN0YXJ0Ijp7ImxpbmUiOjAsImNoYXJhY3RlciI6NH0sImVuZCI6eyJsaW5lIjowLCJjaGFyYWN0ZXIiOjEwfX19LHsidXJpIjoiZmlsZTovLy90bXAvY29kZW5pYi1sc3AtbGF0ZS1yZXBseS0yMDI2MTAzMS93aXJlLXNvdXJjZS0xL2ZpeHR1cmUtY2FuZGlkYXRlLXByZXBhcmVkL3NuYXBzaG90L2NvbnN1bWVyLnB5IiwicmFuZ2UiOnsic3RhcnQiOnsibGluZSI6MCwiY2hhcmFjdGVyIjoxNn0sImVuZCI6eyJsaW5lIjowLCJjaGFyYWN0ZXIiOjIyfX19LHsidXJpIjoiZmlsZTovLy90bXAvY29kZW5pYi1sc3AtbGF0ZS1yZXBseS0yMDI2MTAzMS93aXJlLXNvdXJjZS0xL2ZpeHR1cmUtY2FuZGlkYXRlLXByZXBhcmVkL3NuYXBzaG90L2NvbnN1bWVyLnB5IiwicmFuZ2UiOnsic3RhcnQiOnsibGluZSI6MiwiY2hhcmFjdGVyIjo4fSwiZW5kIjp7ImxpbmUiOjIsImNoYXJhY3RlciI6MTR9fX1dfQ=="
+    },
+    {
+      "phase": "full-candidate-prepared",
+      "lsp_request_id": 1174,
+      "action": "references",
+      "target": "_prepare_graph_for_call",
+      "source_fingerprint": "sha256-v2:866a487140fa1ecc31d7158c13d3f8112717bff21d697ae847cb0c6afee6f2e2",
+      "server_body_sha256": "f65ea154fcda47977fa8bda528ad4ec7333ddf4bf51a6ff1228779726b4a8c08",
+      "exact_original_reply_equals_delivered_locations": true,
+      "locations": 2,
+      "observed_completion_time": 9198375.412297308,
+      "exact_server_body_base64": "eyJqc29ucnBjIjoiMi4wIiwiaWQiOjExNzQsInJlc3VsdCI6W3sidXJpIjoiZmlsZTovLy90bXAvY29kZW5pYi1sc3AtbGF0ZS1yZXBseS0yMDI2MTAzMS93aXJlLXNvdXJjZS0xL2Z1bGwtY2FuZGlkYXRlLXByZXBhcmVkL3NuYXBzaG90L2NvZGVuaWIvbWNwL3NlcnZlci5weSIsInJhbmdlIjp7InN0YXJ0Ijp7ImxpbmUiOjE2MywiY2hhcmFjdGVyIjoxNH0sImVuZCI6eyJsaW5lIjoxNjMsImNoYXJhY3RlciI6Mzd9fX0seyJ1cmkiOiJmaWxlOi8vL3RtcC9jb2RlbmliLWxzcC1sYXRlLXJlcGx5LTIwMjYxMDMxL3dpcmUtc291cmNlLTEvZnVsbC1jYW5kaWRhdGUtcHJlcGFyZWQvc25hcHNob3QvY29kZW5pYi9tY3Avc2VydmVyLnB5IiwicmFuZ2UiOnsic3RhcnQiOnsibGluZSI6MTc4LCJjaGFyYWN0ZXIiOjR9LCJlbmQiOnsibGluZSI6MTc4LCJjaGFyYWN0ZXIiOjI3fX19XX0="
+    },
+    {
+      "phase": "full-candidate-prepared",
+      "lsp_request_id": 1175,
+      "action": "definition",
+      "target": "_prepare_graph_for_call",
+      "source_fingerprint": "sha256-v2:866a487140fa1ecc31d7158c13d3f8112717bff21d697ae847cb0c6afee6f2e2",
+      "server_body_sha256": "5407667f03c95613f21e0e9c86cd61b4fbe1dec4929bf69b3076211b7f417eca",
+      "exact_original_reply_equals_delivered_locations": true,
+      "locations": 1,
+      "observed_completion_time": 9198376.839189703,
+      "exact_server_body_base64": "eyJqc29ucnBjIjoiMi4wIiwiaWQiOjExNzUsInJlc3VsdCI6W3sidXJpIjoiZmlsZTovLy90bXAvY29kZW5pYi1sc3AtbGF0ZS1yZXBseS0yMDI2MTAzMS93aXJlLXNvdXJjZS0xL2Z1bGwtY2FuZGlkYXRlLXByZXBhcmVkL3NuYXBzaG90L2NvZGVuaWIvbWNwL3NlcnZlci5weSIsInJhbmdlIjp7InN0YXJ0Ijp7ImxpbmUiOjE3OCwiY2hhcmFjdGVyIjo0fSwiZW5kIjp7ImxpbmUiOjE3OCwiY2hhcmFjdGVyIjoyN319fV19"
+    },
+    {
+      "phase": "full-candidate-prepared",
+      "lsp_request_id": 1176,
+      "action": "definition",
+      "target": "extract_symbol",
+      "source_fingerprint": "sha256-v2:866a487140fa1ecc31d7158c13d3f8112717bff21d697ae847cb0c6afee6f2e2",
+      "server_body_sha256": "ca6be6c03f62f5e020bc50699b18abb40d0a6d74f2f13758b27b709ca593df17",
+      "exact_original_reply_equals_delivered_locations": true,
+      "locations": 1,
+      "observed_completion_time": 9198377.040382843,
+      "exact_server_body_base64": "eyJqc29ucnBjIjoiMi4wIiwiaWQiOjExNzYsInJlc3VsdCI6W3sidXJpIjoiZmlsZTovLy90bXAvY29kZW5pYi1sc3AtbGF0ZS1yZXBseS0yMDI2MTAzMS93aXJlLXNvdXJjZS0xL2Z1bGwtY2FuZGlkYXRlLXByZXBhcmVkL3NuYXBzaG90L2NvZGVuaWIvc2NpcF9pbnRlcmZhY2Uvc2NpcF9pbmRleGVyX2Jhc2UucHkiLCJyYW5nZSI6eyJzdGFydCI6eyJsaW5lIjozMCwiY2hhcmFjdGVyIjo0fSwiZW5kIjp7ImxpbmUiOjMwLCJjaGFyYWN0ZXIiOjE4fX19XX0="
+    },
+    {
+      "phase": "full-candidate-prepared",
+      "lsp_request_id": 1177,
+      "action": "references",
+      "target": "extract_symbol",
+      "source_fingerprint": "sha256-v2:866a487140fa1ecc31d7158c13d3f8112717bff21d697ae847cb0c6afee6f2e2",
+      "server_body_sha256": "982d798988fbb95b972240813d4686caaa9f6fd8ed16e93010a4418e439e7a6b",
+      "exact_original_reply_equals_delivered_locations": true,
+      "locations": 26,
+      "observed_completion_time": 9198377.224235676,
+      "exact_server_body_base64": "eyJqc29ucnBjIjoiMi4wIiwiaWQiOjExNzcsInJlc3VsdCI6W3sidXJpIjoiZmlsZTovLy90bXAvY29kZW5pYi1sc3AtbGF0ZS1yZXBseS0yMDI2MTAzMS93aXJlLXNvdXJjZS0xL2Z1bGwtY2FuZGlkYXRlLXByZXBhcmVkL3NuYXBzaG90L2NvZGVuaWIvc2NpcF9pbnRlcmZhY2UvbHNwX29jY3VycmVuY2VfaW5kZXgucHkiLCJyYW5nZSI6eyJzdGFydCI6eyJsaW5lIjoyNSwiY2hhcmFjdGVyIjo1Mn0sImVuZCI6eyJsaW5lIjoyNSwiY2hhcmFjdGVyIjo2Nn19fSx7InVyaSI6ImZpbGU6Ly8vdG1wL2NvZGVuaWItbHNwLWxhdGUtcmVwbHktMjAyNjEwMzEvd2lyZS1zb3VyY2UtMS9mdWxsLWNhbmRpZGF0ZS1wcmVwYXJlZC9zbmFwc2hvdC9jb2RlbmliL3NjaXBfaW50ZXJmYWNlL2xzcF9vY2N1cnJlbmNlX2luZGV4LnB5IiwicmFuZ2UiOnsic3RhcnQiOnsibGluZSI6MzY0LCJjaGFyYWN0ZXIiOjEzfSwiZW5kIjp7ImxpbmUiOjM2NCwiY2hhcmFjdGVyIjoyN319fSx7InVyaSI6ImZpbGU6Ly8vdG1wL2NvZGVuaWItbHNwLWxhdGUtcmVwbHktMjAyNjEwMzEvd2lyZS1zb3VyY2UtMS9mdWxsLWNhbmRpZGF0ZS1wcmVwYXJlZC9zbmFwc2hvdC9jb2RlbmliL3NjaXBfaW50ZXJmYWNlL3NjaXBfZGVjb2RlX2NzaGFycC5weSIsInJhbmdlIjp7InN0YXJ0Ijp7ImxpbmUiOjIwLCJjaGFyYWN0ZXIiOjMxfSwiZW5kIjp7ImxpbmUiOjIwLCJjaGFyYWN0ZXIiOjQ1fX19LHsidXJpIjoiZmlsZTovLy90bXAvY29kZW5pYi1sc3AtbGF0ZS1yZXBseS0yMDI2MTAzMS93aXJlLXNvdXJjZS0xL2Z1bGwtY2FuZGlkYXRlLXByZXBhcmVkL3NuYXBzaG90L2NvZGVuaWIvc2NpcF9pbnRlcmZhY2Uvc2NpcF9kZWNvZGVfY3NoYXJwLnB5IiwicmFuZ2UiOnsic3RhcnQiOnsibGluZSI6MzgsImNoYXJhY3RlciI6MTd9LCJlbmQiOnsibGluZSI6MzgsImNoYXJhY3RlciI6MzF9fX0seyJ1cmkiOiJmaWxlOi8vL3RtcC9jb2RlbmliLWxzcC1sYXRlLXJlcGx5LTIwMjYxMDMxL3dpcmUtc291cmNlLTEvZnVsbC1jYW5kaWRhdGUtcHJlcGFyZWQvc25hcHNob3QvY29kZW5pYi9zY2lwX2ludGVyZmFjZS9zY2lwX2RlY29kZV9nby5weSIsInJhbmdlIjp7InN0YXJ0Ijp7ImxpbmUiOjMzLCJjaGFyYWN0ZXIiOjUyfSwiZW5kIjp7ImxpbmUiOjMzLCJjaGFyYWN0ZXIiOjY2fX19LHsidXJpIjoiZmlsZTovLy90bXAvY29kZW5pYi1sc3AtbGF0ZS1yZXBseS0yMDI2MTAzMS93aXJlLXNvdXJjZS0xL2Z1bGwtY2FuZGlkYXRlLXByZXBhcmVkL3NuYXBzaG90L2NvZGVuaWIvc2NpcF9pbnRlcmZhY2Uvc2NpcF9kZWNvZGVfZ28ucHkiLCJyYW5nZSI6eyJzdGFydCI6eyJsaW5lIjoxNjEsImNoYXJhY3RlciI6MTd9LCJlbmQiOnsibGluZSI6MTYxLCJjaGFyYWN0ZXIiOjMxfX19LHsidXJpIjoiZmlsZTovLy90bXAvY29kZW5pYi1sc3AtbGF0ZS1yZXBseS0yMDI2MTAzMS93aXJlLXNvdXJjZS0xL2Z1bGwtY2FuZGlkYXRlLXByZXBhcmVkL3NuYXBzaG90L2NvZGVuaWIvc2NpcF9pbnRlcmZhY2Uvc2NpcF9kZWNvZGVfamF2YS5weSIsInJhbmdlIjp7InN0YXJ0Ijp7ImxpbmUiOjM0LCJjaGFyYWN0ZXIiOjUyfSwiZW5kIjp7ImxpbmUiOjM0LCJjaGFyYWN0ZXIiOjY2fX19LHsidXJpIjoiZmlsZTovLy90bXAvY29kZW5pYi1sc3AtbGF0ZS1yZXBseS0yMDI2MTAzMS93aXJlLXNvdXJjZS0xL2Z1bGwtY2FuZGlkYXRlLXByZXBhcmVkL3NuYXBzaG90L2NvZGVuaWIvc2NpcF9pbnRlcmZhY2Uvc2NpcF9kZWNvZGVfamF2YS5weSIsInJhbmdlIjp7InN0YXJ0Ijp7ImxpbmUiOjEwMywiY2hhcmFjdGVyIjoyNX0sImVuZCI6eyJsaW5lIjoxMDMsImNoYXJhY3RlciI6Mzl9fX0seyJ1cmkiOiJmaWxlOi8vL3RtcC9jb2RlbmliLWxzcC1sYXRlLXJlcGx5LTIwMjYxMDMxL3dpcmUtc291cmNlLTEvZnVsbC1jYW5kaWRhdGUtcHJlcGFyZWQvc25hcHNob3QvY29kZW5pYi9zY2lwX2ludGVyZmFjZS9zY2lwX2RlY29kZV9qYXZhLnB5IiwicmFuZ2UiOnsic3RhcnQiOnsibGluZSI6MTQzLCJjaGFyYWN0ZXIiOjE3fSwiZW5kIjp7ImxpbmUiOjE0MywiY2hhcmFjdGVyIjozMX19fSx7InVyaSI6ImZpbGU6Ly8vdG1wL2NvZGVuaWItbHNwLWxhdGUtcmVwbHktMjAyNjEwMzEvd2lyZS1zb3VyY2UtMS9mdWxsLWNhbmRpZGF0ZS1wcmVwYXJlZC9zbmFwc2hvdC9jb2RlbmliL3NjaXBfaW50ZXJmYWNlL3NjaXBfZGVjb2RlX2phdmEucHkiLCJyYW5nZSI6eyJzdGFydCI6eyJsaW5lIjoyMjcsImNoYXJhY3RlciI6MjF9LCJlbmQiOnsibGluZSI6MjI3LCJjaGFyYWN0ZXIiOjM1fX19LHsidXJpIjoiZmlsZTovLy90bXAvY29kZW5pYi1sc3AtbGF0ZS1yZXBseS0yMDI2MTAzMS93aXJlLXNvdXJjZS0xL2Z1bGwtY2FuZGlkYXRlLXByZXBhcmVkL3NuYXBzaG90L2NvZGVuaWIvc2NpcF9pbnRlcmZhY2Uvc2NpcF9kZWNvZGVfamF2YS5weSIsInJhbmdlIjp7InN0YXJ0Ijp7ImxpbmUiOjYzMCwiY2hhcmFjdGVyIjoyNX0sImVuZCI6eyJsaW5lIjo2MzAsImNoYXJhY3RlciI6Mzl9fX0seyJ1cmkiOiJmaWxlOi8vL3RtcC9jb2RlbmliLWxzcC1sYXRlLXJlcGx5LTIwMjYxMDMxL3dpcmUtc291cmNlLTEvZnVsbC1jYW5kaWRhdGUtcHJlcGFyZWQvc25hcHNob3QvY29kZW5pYi9zY2lwX2ludGVyZmFjZS9zY2lwX2RlY29kZV9qYXZhLnB5IiwicmFuZ2UiOnsic3RhcnQiOnsibGluZSI6NjU3LCJjaGFyYWN0ZXIiOjI1fSwiZW5kIjp7ImxpbmUiOjY1NywiY2hhcmFjdGVyIjozOX19fSx7InVyaSI6ImZpbGU6Ly8vdG1wL2NvZGVuaWItbHNwLWxhdGUtcmVwbHktMjAyNjEwMzEvd2lyZS1zb3VyY2UtMS9mdWxsLWNhbmRpZGF0ZS1wcmVwYXJlZC9zbmFwc2hvdC9jb2RlbmliL3NjaXBfaW50ZXJmYWNlL3NjaXBfZGVjb2RlX3B5dGhvbi5weSIsInJhbmdlIjp7InN0YXJ0Ijp7ImxpbmUiOjI5LCJjaGFyYWN0ZXIiOjUyfSwiZW5kIjp7ImxpbmUiOjI5LCJjaGFyYWN0ZXIiOjY2fX19LHsidXJpIjoiZmlsZTovLy90bXAvY29kZW5pYi1sc3AtbGF0ZS1yZXBseS0yMDI2MTAzMS93aXJlLXNvdXJjZS0xL2Z1bGwtY2FuZGlkYXRlLXByZXBhcmVkL3NuYXBzaG90L2NvZGVuaWIvc2NpcF9pbnRlcmZhY2Uvc2NpcF9kZWNvZGVfcHl0aG9uLnB5IiwicmFuZ2UiOnsic3RhcnQiOnsibGluZSI6MTcxLCJjaGFyYWN0ZXIiOjE3fSwiZW5kIjp7ImxpbmUiOjE3MSwiY2hhcmFjdGVyIjozMX19fSx7InVyaSI6ImZpbGU6Ly8vdG1wL2NvZGVuaWItbHNwLWxhdGUtcmVwbHktMjAyNjEwMzEvd2lyZS1zb3VyY2UtMS9mdWxsLWNhbmRpZGF0ZS1wcmVwYXJlZC9zbmFwc2hvdC9jb2RlbmliL3NjaXBfaW50ZXJmYWNlL3NjaXBfZGVjb2RlX3J1YnkucHkiLCJyYW5nZSI6eyJzdGFydCI6eyJsaW5lIjoyNSwiY2hhcmFjdGVyIjozMX0sImVuZCI6eyJsaW5lIjoyNSwiY2hhcmFjdGVyIjo0NX19fSx7InVyaSI6ImZpbGU6Ly8vdG1wL2NvZGVuaWItbHNwLWxhdGUtcmVwbHktMjAyNjEwMzEvd2lyZS1zb3VyY2UtMS9mdWxsLWNhbmRpZGF0ZS1wcmVwYXJlZC9zbmFwc2hvdC9jb2RlbmliL3NjaXBfaW50ZXJmYWNlL3NjaXBfZGVjb2RlX3J1YnkucHkiLCJyYW5nZSI6eyJzdGFydCI6eyJsaW5lIjo1NSwiY2hhcmFjdGVyIjoxN30sImVuZCI6eyJsaW5lIjo1NSwiY2hhcmFjdGVyIjozMX19fSx7InVyaSI6ImZpbGU6Ly8vdG1wL2NvZGVuaWItbHNwLWxhdGUtcmVwbHktMjAyNjEwMzEvd2lyZS1zb3VyY2UtMS9mdWxsLWNhbmRpZGF0ZS1wcmVwYXJlZC9zbmFwc2hvdC9jb2RlbmliL3NjaXBfaW50ZXJmYWNlL3NjaXBfZGVjb2RlX3J1c3QucHkiLCJyYW5nZSI6eyJzdGFydCI6eyJsaW5lIjozMywiY2hhcmFjdGVyIjo1Mn0sImVuZCI6eyJsaW5lIjozMywiY2hhcmFjdGVyIjo2Nn19fSx7InVyaSI6ImZpbGU6Ly8vdG1wL2NvZGVuaWItbHNwLWxhdGUtcmVwbHktMjAyNjEwMzEvd2lyZS1zb3VyY2UtMS9mdWxsLWNhbmRpZGF0ZS1wcmVwYXJlZC9zbmFwc2hvdC9jb2RlbmliL3NjaXBfaW50ZXJmYWNlL3NjaXBfZGVjb2RlX3J1c3QucHkiLCJyYW5nZSI6eyJzdGFydCI6eyJsaW5lIjoyMzUsImNoYXJhY3RlciI6MTd9LCJlbmQiOnsibGluZSI6MjM1LCJjaGFyYWN0ZXIiOjMxfX19LHsidXJpIjoiZmlsZTovLy90bXAvY29kZW5pYi1sc3AtbGF0ZS1yZXBseS0yMDI2MTAzMS93aXJlLXNvdXJjZS0xL2Z1bGwtY2FuZGlkYXRlLXByZXBhcmVkL3NuYXBzaG90L2NvZGVuaWIvc2NpcF9pbnRlcmZhY2Uvc2NpcF9kZWNvZGVfdHMucHkiLCJyYW5nZSI6eyJzdGFydCI6eyJsaW5lIjoxOCwiY2hhcmFjdGVyIjo1Mn0sImVuZCI6eyJsaW5lIjoxOCwiY2hhcmFjdGVyIjo2Nn19fSx7InVyaSI6ImZpbGU6Ly8vdG1wL2NvZGVuaWItbHNwLWxhdGUtcmVwbHktMjAyNjEwMzEvd2lyZS1zb3VyY2UtMS9mdWxsLWNhbmRpZGF0ZS1wcmVwYXJlZC9zbmFwc2hvdC9jb2RlbmliL3NjaXBfaW50ZXJmYWNlL3NjaXBfZGVjb2RlX3RzLnB5IiwicmFuZ2UiOnsic3RhcnQiOnsibGluZSI6OTUsImNoYXJhY3RlciI6MjV9LCJlbmQiOnsibGluZSI6OTUsImNoYXJhY3RlciI6Mzl9fX0seyJ1cmkiOiJmaWxlOi8vL3RtcC9jb2RlbmliLWxzcC1sYXRlLXJlcGx5LTIwMjYxMDMxL3dpcmUtc291cmNlLTEvZnVsbC1jYW5kaWRhdGUtcHJlcGFyZWQvc25hcHNob3QvY29kZW5pYi9zY2lwX2ludGVyZmFjZS9zY2lwX2RlY29kZV90cy5weSIsInJhbmdlIjp7InN0YXJ0Ijp7ImxpbmUiOjE1NywiY2hhcmFjdGVyIjoxN30sImVuZCI6eyJsaW5lIjoxNTcsImNoYXJhY3RlciI6MzF9fX0seyJ1cmkiOiJmaWxlOi8vL3RtcC9jb2RlbmliLWxzcC1sYXRlLXJlcGx5LTIwMjYxMDMxL3dpcmUtc291cmNlLTEvZnVsbC1jYW5kaWRhdGUtcHJlcGFyZWQvc25hcHNob3QvY29kZW5pYi9zY2lwX2ludGVyZmFjZS9zY2lwX2luZGV4ZXJfYmFzZS5weSIsInJhbmdlIjp7InN0YXJ0Ijp7ImxpbmUiOjMwLCJjaGFyYWN0ZXIiOjR9LCJlbmQiOnsibGluZSI6MzAsImNoYXJhY3RlciI6MTh9fX0seyJ1cmkiOiJmaWxlOi8vL3RtcC9jb2RlbmliLWxzcC1sYXRlLXJlcGx5LTIwMjYxMDMxL3dpcmUtc291cmNlLTEvZnVsbC1jYW5kaWRhdGUtcHJlcGFyZWQvc25hcHNob3QvY29kZW5pYi9zY2lwX2ludGVyZmFjZS90eXBlc2NyaXB0X3NlbWFudGljcy5weSIsInJhbmdlIjp7InN0YXJ0Ijp7ImxpbmUiOjE0LCJjaGFyYWN0ZXIiOjUyfSwiZW5kIjp7ImxpbmUiOjE0LCJjaGFyYWN0ZXIiOjY2fX19LHsidXJpIjoiZmlsZTovLy90bXAvY29kZW5pYi1sc3AtbGF0ZS1yZXBseS0yMDI2MTAzMS93aXJlLXNvdXJjZS0xL2Z1bGwtY2FuZGlkYXRlLXByZXBhcmVkL3NuYXBzaG90L2NvZGVuaWIvc2NpcF9pbnRlcmZhY2UvdHlwZXNjcmlwdF9zZW1hbnRpY3MucHkiLCJyYW5nZSI6eyJzdGFydCI6eyJsaW5lIjo3NCwiY2hhcmFjdGVyIjoxN30sImVuZCI6eyJsaW5lIjo3NCwiY2hhcmFjdGVyIjozMX19fSx7InVyaSI6ImZpbGU6Ly8vdG1wL2NvZGVuaWItbHNwLWxhdGUtcmVwbHktMjAyNjEwMzEvd2lyZS1zb3VyY2UtMS9mdWxsLWNhbmRpZGF0ZS1wcmVwYXJlZC9zbmFwc2hvdC9jb2RlbmliL3NjaXBfaW50ZXJmYWNlL3R5cGVzY3JpcHRfc2VtYW50aWNzLnB5IiwicmFuZ2UiOnsic3RhcnQiOnsibGluZSI6MTE1LCJjaGFyYWN0ZXIiOjQ3fSwiZW5kIjp7ImxpbmUiOjExNSwiY2hhcmFjdGVyIjo2MX19fSx7InVyaSI6ImZpbGU6Ly8vdG1wL2NvZGVuaWItbHNwLWxhdGUtcmVwbHktMjAyNjEwMzEvd2lyZS1zb3VyY2UtMS9mdWxsLWNhbmRpZGF0ZS1wcmVwYXJlZC9zbmFwc2hvdC9jb2RlbmliL3NjaXBfaW50ZXJmYWNlL3R5cGVzY3JpcHRfc2VtYW50aWNzLnB5IiwicmFuZ2UiOnsic3RhcnQiOnsibGluZSI6Mjg1LCJjaGFyYWN0ZXIiOjI1fSwiZW5kIjp7ImxpbmUiOjI4NSwiY2hhcmFjdGVyIjozOX19fV19"
+    },
+    {
+      "phase": "full-candidate-prepared",
+      "lsp_request_id": 1178,
+      "action": "definition",
+      "target": "extract_scip_blocks",
+      "source_fingerprint": "sha256-v2:866a487140fa1ecc31d7158c13d3f8112717bff21d697ae847cb0c6afee6f2e2",
+      "server_body_sha256": "b0eb68fee0b03ea6b8b017205cab90d10b0e38c48a8b59476040c602732323f6",
+      "exact_original_reply_equals_delivered_locations": true,
+      "locations": 1,
+      "observed_completion_time": 9198377.515265277,
+      "exact_server_body_base64": "eyJqc29ucnBjIjoiMi4wIiwiaWQiOjExNzgsInJlc3VsdCI6W3sidXJpIjoiZmlsZTovLy90bXAvY29kZW5pYi1sc3AtbGF0ZS1yZXBseS0yMDI2MTAzMS93aXJlLXNvdXJjZS0xL2Z1bGwtY2FuZGlkYXRlLXByZXBhcmVkL3NuYXBzaG90L2NvZGVuaWIvc2NpcF9pbnRlcmZhY2Uvc2NpcF9pbmRleGVyX2Jhc2UucHkiLCJyYW5nZSI6eyJzdGFydCI6eyJsaW5lIjo5MywiY2hhcmFjdGVyIjo0fSwiZW5kIjp7ImxpbmUiOjkzLCJjaGFyYWN0ZXIiOjIzfX19XX0="
+    },
+    {
+      "phase": "full-candidate-prepared",
+      "lsp_request_id": 1179,
+      "action": "references",
+      "target": "extract_scip_blocks",
+      "source_fingerprint": "sha256-v2:866a487140fa1ecc31d7158c13d3f8112717bff21d697ae847cb0c6afee6f2e2",
+      "server_body_sha256": "6c52613e647b76c12846d448f3f777530825c1c8e719ea3b4ed45930d7937738",
+      "exact_original_reply_equals_delivered_locations": true,
+      "locations": 29,
+      "observed_completion_time": 9198377.696673112,
+      "exact_server_body_base64": "eyJqc29ucnBjIjoiMi4wIiwiaWQiOjExNzksInJlc3VsdCI6W3sidXJpIjoiZmlsZTovLy90bXAvY29kZW5pYi1sc3AtbGF0ZS1yZXBseS0yMDI2MTAzMS93aXJlLXNvdXJjZS0xL2Z1bGwtY2FuZGlkYXRlLXByZXBhcmVkL3NuYXBzaG90L2NvZGVuaWIvc2NpcF9pbnRlcmZhY2UvbHNwX29jY3VycmVuY2VfaW5kZXgucHkiLCJyYW5nZSI6eyJzdGFydCI6eyJsaW5lIjoyNSwiY2hhcmFjdGVyIjozMX0sImVuZCI6eyJsaW5lIjoyNSwiY2hhcmFjdGVyIjo1MH19fSx7InVyaSI6ImZpbGU6Ly8vdG1wL2NvZGVuaWItbHNwLWxhdGUtcmVwbHktMjAyNjEwMzEvd2lyZS1zb3VyY2UtMS9mdWxsLWNhbmRpZGF0ZS1wcmVwYXJlZC9zbmFwc2hvdC9jb2RlbmliL3NjaXBfaW50ZXJmYWNlL2xzcF9vY2N1cnJlbmNlX2luZGV4LnB5IiwicmFuZ2UiOnsic3RhcnQiOnsibGluZSI6MTM0LCJjaGFyYWN0ZXIiOjI0fSwiZW5kIjp7ImxpbmUiOjEzNCwiY2hhcmFjdGVyIjo0M319fSx7InVyaSI6ImZpbGU6Ly8vdG1wL2NvZGVuaWItbHNwLWxhdGUtcmVwbHktMjAyNjEwMzEvd2lyZS1zb3VyY2UtMS9mdWxsLWNhbmRpZGF0ZS1wcmVwYXJlZC9zbmFwc2hvdC9jb2RlbmliL3NjaXBfaW50ZXJmYWNlL2xzcF9vY2N1cnJlbmNlX2luZGV4LnB5IiwicmFuZ2UiOnsic3RhcnQiOnsibGluZSI6MTQwLCJjaGFyYWN0ZXIiOjM0fSwiZW5kIjp7ImxpbmUiOjE0MCwiY2hhcmFjdGVyIjo1M319fSx7InVyaSI6ImZpbGU6Ly8vdG1wL2NvZGVuaWItbHNwLWxhdGUtcmVwbHktMjAyNjEwMzEvd2lyZS1zb3VyY2UtMS9mdWxsLWNhbmRpZGF0ZS1wcmVwYXJlZC9zbmFwc2hvdC9jb2RlbmliL3NjaXBfaW50ZXJmYWNlL3NjaXBfZGVjb2RlX2dvLnB5IiwicmFuZ2UiOnsic3RhcnQiOnsibGluZSI6MzMsImNoYXJhY3RlciI6MzF9LCJlbmQiOnsibGluZSI6MzMsImNoYXJhY3RlciI6NTB9fX0seyJ1cmkiOiJmaWxlOi8vL3RtcC9jb2RlbmliLWxzcC1sYXRlLXJlcGx5LTIwMjYxMDMxL3dpcmUtc291cmNlLTEvZnVsbC1jYW5kaWRhdGUtcHJlcGFyZWQvc25hcHNob3QvY29kZW5pYi9zY2lwX2ludGVyZmFjZS9zY2lwX2RlY29kZV9nby5weSIsInJhbmdlIjp7InN0YXJ0Ijp7ImxpbmUiOjEyNSwiY2hhcmFjdGVyIjoyMn0sImVuZCI6eyJsaW5lIjoxMjUsImNoYXJhY3RlciI6NDF9fX0seyJ1cmkiOiJmaWxlOi8vL3RtcC9jb2RlbmliLWxzcC1sYXRlLXJlcGx5LTIwMjYxMDMxL3dpcmUtc291cmNlLTEvZnVsbC1jYW5kaWRhdGUtcHJlcGFyZWQvc25hcHNob3QvY29kZW5pYi9zY2lwX2ludGVyZmFjZS9zY2lwX2RlY29kZV9qYXZhLnB5IiwicmFuZ2UiOnsic3RhcnQiOnsibGluZSI6MzQsImNoYXJhY3RlciI6MzF9LCJlbmQiOnsibGluZSI6MzQsImNoYXJhY3RlciI6NTB9fX0seyJ1cmkiOiJmaWxlOi8vL3RtcC9jb2RlbmliLWxzcC1sYXRlLXJlcGx5LTIwMjYxMDMxL3dpcmUtc291cmNlLTEvZnVsbC1jYW5kaWRhdGUtcHJlcGFyZWQvc25hcHNob3QvY29kZW5pYi9zY2lwX2ludGVyZmFjZS9zY2lwX2RlY29kZV9qYXZhLnB5IiwicmFuZ2UiOnsic3RhcnQiOnsibGluZSI6ODgsImNoYXJhY3RlciI6MjZ9LCJlbmQiOnsibGluZSI6ODgsImNoYXJhY3RlciI6NDV9fX0seyJ1cmkiOiJmaWxlOi8vL3RtcC9jb2RlbmliLWxzcC1sYXRlLXJlcGx5LTIwMjYxMDMxL3dpcmUtc291cmNlLTEvZnVsbC1jYW5kaWRhdGUtcHJlcGFyZWQvc25hcHNob3QvY29kZW5pYi9zY2lwX2ludGVyZmFjZS9zY2lwX2RlY29kZV9qYXZhLnB5IiwicmFuZ2UiOnsic3RhcnQiOnsibGluZSI6MTAyLCJjaGFyYWN0ZXIiOjI1fSwiZW5kIjp7ImxpbmUiOjEwMiwiY2hhcmFjdGVyIjo0NH19fSx7InVyaSI6ImZpbGU6Ly8vdG1wL2NvZGVuaWItbHNwLWxhdGUtcmVwbHktMjAyNjEwMzEvd2lyZS1zb3VyY2UtMS9mdWxsLWNhbmRpZGF0ZS1wcmVwYXJlZC9zbmFwc2hvdC9jb2RlbmliL3NjaXBfaW50ZXJmYWNlL3NjaXBfZGVjb2RlX2phdmEucHkiLCJyYW5nZSI6eyJzdGFydCI6eyJsaW5lIjoxMzQsImNoYXJhY3RlciI6MTV9LCJlbmQiOnsibGluZSI6MTM0LCJjaGFyYWN0ZXIiOjM0fX19LHsidXJpIjoiZmlsZTovLy90bXAvY29kZW5pYi1sc3AtbGF0ZS1yZXBseS0yMDI2MTAzMS93aXJlLXNvdXJjZS0xL2Z1bGwtY2FuZGlkYXRlLXByZXBhcmVkL3NuYXBzaG90L2NvZGVuaWIvc2NpcF9pbnRlcmZhY2Uvc2NpcF9kZWNvZGVfamF2YS5weSIsInJhbmdlIjp7InN0YXJ0Ijp7ImxpbmUiOjIyMSwiY2hhcmFjdGVyIjoyNn0sImVuZCI6eyJsaW5lIjoyMjEsImNoYXJhY3RlciI6NDV9fX0seyJ1cmkiOiJmaWxlOi8vL3RtcC9jb2RlbmliLWxzcC1sYXRlLXJlcGx5LTIwMjYxMDMxL3dpcmUtc291cmNlLTEvZnVsbC1jYW5kaWRhdGUtcHJlcGFyZWQvc25hcHNob3QvY29kZW5pYi9zY2lwX2ludGVyZmFjZS9zY2lwX2RlY29kZV9qYXZhLnB5IiwicmFuZ2UiOnsic3RhcnQiOnsibGluZSI6NjI5LCJjaGFyYWN0ZXIiOjI1fSwiZW5kIjp7ImxpbmUiOjYyOSwiY2hhcmFjdGVyIjo0NH19fSx7InVyaSI6ImZpbGU6Ly8vdG1wL2NvZGVuaWItbHNwLWxhdGUtcmVwbHktMjAyNjEwMzEvd2lyZS1zb3VyY2UtMS9mdWxsLWNhbmRpZGF0ZS1wcmVwYXJlZC9zbmFwc2hvdC9jb2RlbmliL3NjaXBfaW50ZXJmYWNlL3NjaXBfZGVjb2RlX2phdmEucHkiLCJyYW5nZSI6eyJzdGFydCI6eyJsaW5lIjo2NTYsImNoYXJhY3RlciI6MjV9LCJlbmQiOnsibGluZSI6NjU2LCJjaGFyYWN0ZXIiOjQ0fX19LHsidXJpIjoiZmlsZTovLy90bXAvY29kZW5pYi1sc3AtbGF0ZS1yZXBseS0yMDI2MTAzMS93aXJlLXNvdXJjZS0xL2Z1bGwtY2FuZGlkYXRlLXByZXBhcmVkL3NuYXBzaG90L2NvZGVuaWIvc2NpcF9pbnRlcmZhY2Uvc2NpcF9kZWNvZGVfcGhwLnB5IiwicmFuZ2UiOnsic3RhcnQiOnsibGluZSI6MTksImNoYXJhY3RlciI6MzF9LCJlbmQiOnsibGluZSI6MTksImNoYXJhY3RlciI6NTB9fX0seyJ1cmkiOiJmaWxlOi8vL3RtcC9jb2RlbmliLWxzcC1sYXRlLXJlcGx5LTIwMjYxMDMxL3dpcmUtc291cmNlLTEvZnVsbC1jYW5kaWRhdGUtcHJlcGFyZWQvc25hcHNob3QvY29kZW5pYi9zY2lwX2ludGVyZmFjZS9zY2lwX2RlY29kZV9waHAucHkiLCJyYW5nZSI6eyJzdGFydCI6eyJsaW5lIjozMiwiY2hhcmFjdGVyIjoxMn0sImVuZCI6eyJsaW5lIjozMiwiY2hhcmFjdGVyIjozMX19fSx7InVyaSI6ImZpbGU6Ly8vdG1wL2NvZGVuaWItbHNwLWxhdGUtcmVwbHktMjAyNjEwMzEvd2lyZS1zb3VyY2UtMS9mdWxsLWNhbmRpZGF0ZS1wcmVwYXJlZC9zbmFwc2hvdC9jb2RlbmliL3NjaXBfaW50ZXJmYWNlL3NjaXBfZGVjb2RlX3B5dGhvbi5weSIsInJhbmdlIjp7InN0YXJ0Ijp7ImxpbmUiOjI5LCJjaGFyYWN0ZXIiOjMxfSwiZW5kIjp7ImxpbmUiOjI5LCJjaGFyYWN0ZXIiOjUwfX19LHsidXJpIjoiZmlsZTovLy90bXAvY29kZW5pYi1sc3AtbGF0ZS1yZXBseS0yMDI2MTAzMS93aXJlLXNvdXJjZS0xL2Z1bGwtY2FuZGlkYXRlLXByZXBhcmVkL3NuYXBzaG90L2NvZGVuaWIvc2NpcF9pbnRlcmZhY2Uvc2NpcF9kZWNvZGVfcHl0aG9uLnB5IiwicmFuZ2UiOnsic3RhcnQiOnsibGluZSI6MTQ4LCJjaGFyYWN0ZXIiOjIyfSwiZW5kIjp7ImxpbmUiOjE0OCwiY2hhcmFjdGVyIjo0MX19fSx7InVyaSI6ImZpbGU6Ly8vdG1wL2NvZGVuaWItbHNwLWxhdGUtcmVwbHktMjAyNjEwMzEvd2lyZS1zb3VyY2UtMS9mdWxsLWNhbmRpZGF0ZS1wcmVwYXJlZC9zbmFwc2hvdC9jb2RlbmliL3NjaXBfaW50ZXJmYWNlL3NjaXBfZGVjb2RlX3J1c3QucHkiLCJyYW5nZSI6eyJzdGFydCI6eyJsaW5lIjozMywiY2hhcmFjdGVyIjozMX0sImVuZCI6eyJsaW5lIjozMywiY2hhcmFjdGVyIjo1MH19fSx7InVyaSI6ImZpbGU6Ly8vdG1wL2NvZGVuaWItbHNwLWxhdGUtcmVwbHktMjAyNjEwMzEvd2lyZS1zb3VyY2UtMS9mdWxsLWNhbmRpZGF0ZS1wcmVwYXJlZC9zbmFwc2hvdC9jb2RlbmliL3NjaXBfaW50ZXJmYWNlL3NjaXBfZGVjb2RlX3J1c3QucHkiLCJyYW5nZSI6eyJzdGFydCI6eyJsaW5lIjoxNDQsImNoYXJhY3RlciI6MjJ9LCJlbmQiOnsibGluZSI6MTQ0LCJjaGFyYWN0ZXIiOjQxfX19LHsidXJpIjoiZmlsZTovLy90bXAvY29kZW5pYi1sc3AtbGF0ZS1yZXBseS0yMDI2MTAzMS93aXJlLXNvdXJjZS0xL2Z1bGwtY2FuZGlkYXRlLXByZXBhcmVkL3NuYXBzaG90L2NvZGVuaWIvc2NpcF9pbnRlcmZhY2Uvc2NpcF9kZWNvZGVfdHMucHkiLCJyYW5nZSI6eyJzdGFydCI6eyJsaW5lIjoxOCwiY2hhcmFjdGVyIjozMX0sImVuZCI6eyJsaW5lIjoxOCwiY2hhcmFjdGVyIjo1MH19fSx7InVyaSI6ImZpbGU6Ly8vdG1wL2NvZGVuaWItbHNwLWxhdGUtcmVwbHktMjAyNjEwMzEvd2lyZS1zb3VyY2UtMS9mdWxsLWNhbmRpZGF0ZS1wcmVwYXJlZC9zbmFwc2hvdC9jb2RlbmliL3NjaXBfaW50ZXJmYWNlL3NjaXBfZGVjb2RlX3RzLnB5IiwicmFuZ2UiOnsic3RhcnQiOnsibGluZSI6NTMsImNoYXJhY3RlciI6MjZ9LCJlbmQiOnsibGluZSI6NTMsImNoYXJhY3RlciI6NDV9fX0seyJ1cmkiOiJmaWxlOi8vL3RtcC9jb2RlbmliLWxzcC1sYXRlLXJlcGx5LTIwMjYxMDMxL3dpcmUtc291cmNlLTEvZnVsbC1jYW5kaWRhdGUtcHJlcGFyZWQvc25hcHNob3QvY29kZW5pYi9zY2lwX2ludGVyZmFjZS9zY2lwX2RlY29kZV90cy5weSIsInJhbmdlIjp7InN0YXJ0Ijp7ImxpbmUiOjk0LCJjaGFyYWN0ZXIiOjMwfSwiZW5kIjp7ImxpbmUiOjk0LCJjaGFyYWN0ZXIiOjQ5fX19LHsidXJpIjoiZmlsZTovLy90bXAvY29kZW5pYi1sc3AtbGF0ZS1yZXBseS0yMDI2MTAzMS93aXJlLXNvdXJjZS0xL2Z1bGwtY2FuZGlkYXRlLXByZXBhcmVkL3NuYXBzaG90L2NvZGVuaWIvc2NpcF9pbnRlcmZhY2Uvc2NpcF9kZWNvZGVfdHMucHkiLCJyYW5nZSI6eyJzdGFydCI6eyJsaW5lIjoxNDQsImNoYXJhY3RlciI6MjJ9LCJlbmQiOnsibGluZSI6MTQ0LCJjaGFyYWN0ZXIiOjQxfX19LHsidXJpIjoiZmlsZTovLy90bXAvY29kZW5pYi1sc3AtbGF0ZS1yZXBseS0yMDI2MTAzMS93aXJlLXNvdXJjZS0xL2Z1bGwtY2FuZGlkYXRlLXByZXBhcmVkL3NuYXBzaG90L2NvZGVuaWIvc2NpcF9pbnRlcmZhY2Uvc2NpcF9pbmRleGVyX2Jhc2UucHkiLCJyYW5nZSI6eyJzdGFydCI6eyJsaW5lIjo5MywiY2hhcmFjdGVyIjo0fSwiZW5kIjp7ImxpbmUiOjkzLCJjaGFyYWN0ZXIiOjIzfX19LHsidXJpIjoiZmlsZTovLy90bXAvY29kZW5pYi1sc3AtbGF0ZS1yZXBseS0yMDI2MTAzMS93aXJlLXNvdXJjZS0xL2Z1bGwtY2FuZGlkYXRlLXByZXBhcmVkL3NuYXBzaG90L2NvZGVuaWIvc2NpcF9pbnRlcmZhY2UvdHlwZXNjcmlwdF9zZW1hbnRpY3MucHkiLCJyYW5nZSI6eyJzdGFydCI6eyJsaW5lIjoxNCwiY2hhcmFjdGVyIjozMX0sImVuZCI6eyJsaW5lIjoxNCwiY2hhcmFjdGVyIjo1MH19fSx7InVyaSI6ImZpbGU6Ly8vdG1wL2NvZGVuaWItbHNwLWxhdGUtcmVwbHktMjAyNjEwMzEvd2lyZS1zb3VyY2UtMS9mdWxsLWNhbmRpZGF0ZS1wcmVwYXJlZC9zbmFwc2hvdC9jb2RlbmliL3NjaXBfaW50ZXJmYWNlL3R5cGVzY3JpcHRfc2VtYW50aWNzLnB5IiwicmFuZ2UiOnsic3RhcnQiOnsibGluZSI6NzMsImNoYXJhY3RlciI6MTd9LCJlbmQiOnsibGluZSI6NzMsImNoYXJhY3RlciI6MzZ9fX0seyJ1cmkiOiJmaWxlOi8vL3RtcC9jb2RlbmliLWxzcC1sYXRlLXJlcGx5LTIwMjYxMDMxL3dpcmUtc291cmNlLTEvZnVsbC1jYW5kaWRhdGUtcHJlcGFyZWQvc25hcHNob3QvY29kZW5pYi9zY2lwX2ludGVyZmFjZS90eXBlc2NyaXB0X3NlbWFudGljcy5weSIsInJhbmdlIjp7InN0YXJ0Ijp7ImxpbmUiOjExMCwiY2hhcmFjdGVyIjoyMH0sImVuZCI6eyJsaW5lIjoxMTAsImNoYXJhY3RlciI6Mzl9fX0seyJ1cmkiOiJmaWxlOi8vL3RtcC9jb2RlbmliLWxzcC1sYXRlLXJlcGx5LTIwMjYxMDMxL3dpcmUtc291cmNlLTEvZnVsbC1jYW5kaWRhdGUtcHJlcGFyZWQvc25hcHNob3QvY29kZW5pYi9zY2lwX2ludGVyZmFjZS90eXBlc2NyaXB0X3NlbWFudGljcy5weSIsInJhbmdlIjp7InN0YXJ0Ijp7ImxpbmUiOjExMSwiY2hhcmFjdGVyIjoyNn0sImVuZCI6eyJsaW5lIjoxMTEsImNoYXJhY3RlciI6NDV9fX0seyJ1cmkiOiJmaWxlOi8vL3RtcC9jb2RlbmliLWxzcC1sYXRlLXJlcGx5LTIwMjYxMDMxL3dpcmUtc291cmNlLTEvZnVsbC1jYW5kaWRhdGUtcHJlcGFyZWQvc25hcHNob3QvY29kZW5pYi9zY2lwX2ludGVyZmFjZS90eXBlc2NyaXB0X3NlbWFudGljcy5weSIsInJhbmdlIjp7InN0YXJ0Ijp7ImxpbmUiOjI0OCwiY2hhcmFjdGVyIjoyNH0sImVuZCI6eyJsaW5lIjoyNDgsImNoYXJhY3RlciI6NDN9fX0seyJ1cmkiOiJmaWxlOi8vL3RtcC9jb2RlbmliLWxzcC1sYXRlLXJlcGx5LTIwMjYxMDMxL3dpcmUtc291cmNlLTEvZnVsbC1jYW5kaWRhdGUtcHJlcGFyZWQvc25hcHNob3QvY29kZW5pYi9zY2lwX2ludGVyZmFjZS90eXBlc2NyaXB0X3NlbWFudGljcy5weSIsInJhbmdlIjp7InN0YXJ0Ijp7ImxpbmUiOjI2NiwiY2hhcmFjdGVyIjozMH0sImVuZCI6eyJsaW5lIjoyNjYsImNoYXJhY3RlciI6NDl9fX1dfQ=="
+    }
+  ],
+  "preparation_observations": [
+    {
+      "phase": "fixture-base-cold",
+      "source_files": 3,
+      "python_files": 2,
+      "first_guarded_position_seconds": 1.1755983382463455,
+      "all_selected_preparation_complete": null,
+      "primed_files": 0
+    },
+    {
+      "phase": "fixture-candidate-cold",
+      "source_files": 3,
+      "python_files": 2,
+      "first_guarded_position_seconds": 1.2350015360862017,
+      "all_selected_preparation_complete": null,
+      "primed_files": 0
+    },
+    {
+      "phase": "fixture-candidate-prepared",
+      "source_files": 3,
+      "python_files": 2,
+      "first_guarded_position_seconds": 1.1529647521674633,
+      "all_selected_preparation_complete": true,
+      "primed_files": 2
+    },
+    {
+      "phase": "full-candidate-prepared",
+      "source_files": 2390,
+      "python_files": 1172,
+      "first_guarded_position_seconds": 7.702498419210315,
+      "all_selected_preparation_complete": true,
+      "primed_files": 1172
+    }
+  ],
+  "full_source_file_map_matches_initial_control": true,
+  "original_profile_source_unchanged": true,
+  "installed_post_scip": {
+    "scope": "Actual installed normal post-SCIP pipeline replays one fixed full raw artifact, including decoding, identity normalization, serial graph construction, source selection and persistence. No compiler generation, full MCP query or task timing endpoint.",
+    "imported_root": "/opt/pilot-tools/codenib/lib/python3.13/site-packages/codenib",
+    "raw_scip_sha256": "8a98314cfd590c9a51c293db79b6d21b9389d86077312e3e3f22cfa54d070a78",
+    "normalized_decoded_sha256": "e695ff7e425b64259008ab7cdcdcfa1b2adef2e617ad6dd5f300ebe03b361fa2",
+    "nodes": 33178,
+    "edges": 159676,
+    "occurrences": 786078,
+    "query_surface_sha256": "87d34e4b7429203e6dca5c360d1e610b05a8e1328a795598c850ca053066b1cc",
+    "ordered_occurrences_sha256": "ac86a851756664eedf8721d5ccab5a314a8c415ca172a835919483e960565300",
+    "source_selection_report": {
+      "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+      "nodes_before": 33178,
+      "nodes_after": 33178,
+      "edges_before": 159676,
+      "edges_after": 159676,
+      "removed_excluded_paths": [],
+      "excluded_paths_after": [],
+      "invalid_paths_before": [],
+      "invalid_paths_after": []
+    },
+    "source_selection_manifest_report": {
+      "source_selection_digest": "sha256:07c59753592300431d832dc74a52d78857e4724b353bef6f1af14f501465edb4",
+      "nodes_before": 33178,
+      "nodes_after": 33178,
+      "edges_before": 159676,
+      "edges_after": 159676,
+      "removed_excluded_path_count": 0,
+      "excluded_path_count_after": 0,
+      "invalid_path_count_before": 0,
+      "invalid_path_count_after": 0
+    },
+    "decoded_input_receipt": {
+      "path": "/opt/scan-output/index.decoded",
+      "size": 156941727,
+      "sha256": "e695ff7e425b64259008ab7cdcdcfa1b2adef2e617ad6dd5f300ebe03b361fa2"
+    },
+    "graph_output_receipt": {
+      "path": "/opt/scan-output/graph.pkl",
+      "size": 11292621,
+      "sha256": "ecdabffe4e435dbd5a99682d4e95cde85f325bf61926597a7338551cbce8bf22",
+      "query_surface_sha256": "87d34e4b7429203e6dca5c360d1e610b05a8e1328a795598c850ca053066b1cc"
+    },
+    "model_queries": 0
+  },
+  "owned_containers_independently_absent": [
+    "2bacd767992b4b8d885ccf8e8f6c2a8b1a9a69f27174b479839121f3eb0d0d40",
+    "516d7568551659028e5c347e398610ed694c4174610eeafe006844420a902c81",
+    "c12f5e77cb3e7374fd8dc0d95739c94b4638ed3c714ab6becb47fc59b167a7f2",
+    "254f0e592969632e11b8037f76064836cfb41e13e1a037421ee1e0ac7437a362",
+    "fe03b9c4c8dddc7a04ccc0b87937d26cf6c1c35eb02e452cd5ce86fec38b2399"
+  ],
+  "provider_pin": {
+    "root": "/tmp/codenib-reference-evidence-20261030/toolchains/node-tools",
+    "records": 10282,
+    "manifest_sha256": "1fad0b6bade89772e4c90a5511102525e7cfb43771466a8b670b55e96a3255a4",
+    "basedpyright_version": "1.39.8",
+    "scope": "Hash-bound software input, not selected repository source. Node runtime and Python stdlib are pinned by the prepared image.",
+    "records_reverified": 10282
+  },
+  "local_original_records": [
+    {
+      "path": "installed-replay.stdout",
+      "bytes": 93,
+      "sha256": "00388c16ed56955258d64c6766c6ac646f086e77c3d31314a585276825b212e9"
+    },
+    {
+      "path": "installed-replay-protocol.json",
+      "bytes": 2283,
+      "sha256": "e12216df9d7426873efb790b82be7f321bddf314beccfb72e08b87e4c6fee1a6"
+    },
+    {
+      "path": "locations.py",
+      "bytes": 2111,
+      "sha256": "0897fa74505b3a505ba580c819aac17490f028ffb39d7897bd5bcc0256316d55"
+    },
+    {
+      "path": "run_probe.py",
+      "bytes": 10905,
+      "sha256": "d08363397d86b6d5a70acab6edc2181a051386f46e3b0d34d60eaafcf867ba9f"
+    },
+    {
+      "path": "prepare_probe.py",
+      "bytes": 5826,
+      "sha256": "440e28228cd8c1037e52dd35e657425774a133f469e4d355fba6a60fdab3b8d5"
+    },
+    {
+      "path": "live_bridge_v2.py",
+      "bytes": 8512,
+      "sha256": "77c67641efb9df745e2f89b7d71876760990e5266f09433b65b56306c86217fa"
+    },
+    {
+      "path": "before.stdout",
+      "bytes": 2634,
+      "sha256": "07093122d7f40fdc69cbc7d663c3781562611c868a84c7ea521e1f70275a0eb6"
+    },
+    {
+      "path": "candidate-wheel-binding.json",
+      "bytes": 54138,
+      "sha256": "e4d9c677012103d8e3144f4df0449fe95da1dfec38ea3ea4aaf5eec10750a3c8"
+    },
+    {
+      "path": "installed_pipeline.py",
+      "bytes": 3577,
+      "sha256": "49365dc069048fa4e30e7ba1f3c3b299eefd8d4cab06050384cdaa62a3171e32"
+    },
+    {
+      "path": "freeze_final.py",
+      "bytes": 8956,
+      "sha256": "49ebdaf1aebcdb0b9ea37830662051b51d51a7b803b493878f6c33c545d67d25"
+    },
+    {
+      "path": "source_snapshot.py",
+      "bytes": 4073,
+      "sha256": "384adfeb5f8f03c6f242a0f8bc2eb54868bfc0052807d48131f567375a5ffed7"
+    },
+    {
+      "path": "after.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "admit_installed_replay.py",
+      "bytes": 5605,
+      "sha256": "9828dcdbb1a8e70af972ece0569b8302efbe202615e55c31420f4ef6970ee7cd"
+    },
+    {
+      "path": "live_entry_v2.py",
+      "bytes": 5505,
+      "sha256": "497e70ac39be079e40a316b58731de15f97c4a1a28b0b101af7539f8a1f75cbb"
+    },
+    {
+      "path": "after.stdout",
+      "bytes": 98,
+      "sha256": "69175938ec95054a5988c7146e3aa5965d163ad9acef5185363648eb4544461e"
+    },
+    {
+      "path": "unit.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "audit_probe.py",
+      "bytes": 6967,
+      "sha256": "409adb2e79bd54df3d8b6e60886732f81d0ddf16d58cb2aeed6d494eb13987db"
+    },
+    {
+      "path": "before.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "unit.stdout",
+      "bytes": 54816,
+      "sha256": "e41cbe98dd6204ab850ebdbd54fbe3edc9f6c2382911fb77f0c2a5cf29d517d5"
+    },
+    {
+      "path": "probe.stdout",
+      "bytes": 135,
+      "sha256": "56db1cfb2d6d7620613c585e8acde96ae97d519197d647857d84e96ed833f823"
+    },
+    {
+      "path": "probe.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "installed-replay.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "installed-replay-1/index-export.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "installed-replay-1/container-remove.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "installed-replay-1/installed-identity.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "installed-replay-1/container-inspect.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "installed-replay-1/container-inspect.stdout",
+      "bytes": 14772,
+      "sha256": "cc9f4e0434f6aa32827c5cca1a519411cfdf08ae52c5b1893be5c5d157499e6c"
+    },
+    {
+      "path": "installed-replay-1/container-start.stdout",
+      "bytes": 65,
+      "sha256": "e214cb63f52f13bf37e743eefdd8766b75c0926671a52f3f02b15607bbe82ba0"
+    },
+    {
+      "path": "installed-replay-1/container-start.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "installed-replay-1/image-volumes.stdout",
+      "bytes": 107,
+      "sha256": "72ab97972d35c07d09deaf211702e3b80c46ccd6b5f5bbbc8b6e85ea3a535972"
+    },
+    {
+      "path": "installed-replay-1/container-remove.stdout",
+      "bytes": 65,
+      "sha256": "e214cb63f52f13bf37e743eefdd8766b75c0926671a52f3f02b15607bbe82ba0"
+    },
+    {
+      "path": "installed-replay-1/cleanup-owner.stdout",
+      "bytes": 32,
+      "sha256": "3d14ea461f581d0bd2720f04b63b1ff20ffbc8996d7f73c7452c0409c95b7025"
+    },
+    {
+      "path": "installed-replay-1/install-wheel.stderr",
+      "bytes": 359,
+      "sha256": "7febc667212204d4db71f8ef2aa6b0ab1e68e36935a7d160f380136f50cc4431"
+    },
+    {
+      "path": "installed-replay-1/install-wheel.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "installed-replay-1/image-volumes.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "installed-replay-1/cleanup-owner.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "installed-replay-1/run-state.json",
+      "bytes": 6222,
+      "sha256": "74137a6f46bee0f3cc9e6255995fbc441b8266b0131aae92d0b22535ee05f5c0"
+    },
+    {
+      "path": "installed-replay-1/installed-identity.stdout",
+      "bytes": 51423,
+      "sha256": "95071062d602deb93b80bfa9f3bdc969287983f7d69f4fe600235f199d2cbb59"
+    },
+    {
+      "path": "installed-replay-1/run-pipeline.stdout",
+      "bytes": 111,
+      "sha256": "5689c69686b244b0f6e57d69375105818bbb68e882c9bd8908b55b4b048ac9e3"
+    },
+    {
+      "path": "installed-replay-1/container-create.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "installed-replay-1/container-create.stdout",
+      "bytes": 65,
+      "sha256": "e214cb63f52f13bf37e743eefdd8766b75c0926671a52f3f02b15607bbe82ba0"
+    },
+    {
+      "path": "installed-replay-1/run-pipeline.stderr",
+      "bytes": 2768,
+      "sha256": "8553ff085a1edeb2c26111699d5dd455d31bdd7154e943e5b90ca989d78a179a"
+    },
+    {
+      "path": "installed-replay-1/artifacts/admission.json",
+      "bytes": 2055,
+      "sha256": "158ae61ac00b0439dff4bbe0ed2f2d329155f1d3a19387a26a1ed0d8509258e5"
+    },
+    {
+      "path": "wire-source-1/location-comparison.json",
+      "bytes": 22369,
+      "sha256": "278f3c3c240d0e414b5edca4be8ca170198f8728dc4a255f3039b2dbe032391a"
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared-checkout.stderr",
+      "bytes": 85,
+      "sha256": "83146b5837cdc4d80125ad043a168aa05912ec62e80c447c13ad2b96419e0e7e"
+    },
+    {
+      "path": "wire-source-1/wire-audit.json",
+      "bytes": 9266,
+      "sha256": "738909c100742051b37d6198609e7fec636b9b3a082b30ec8929f1a3eb8a1736"
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared-checkout.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared-gc.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "wire-source-1/run-state.json",
+      "bytes": 231820,
+      "sha256": "a8f291fc4145cf64ce1792d558dbaf21c690e21dab1a7e24d66c59da22b47c38"
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared-maintenance.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared-fetch.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "wire-source-1/protocol.json",
+      "bytes": 4359,
+      "sha256": "7b942b2eb953a8e0c33b2dd578e287efb206ae123fca9cb5b43d5528711ac720"
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared-maintenance.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared-gc.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared-init.stderr",
+      "bytes": 485,
+      "sha256": "7cc74f74cc8a8f9938bd00571e2c171ce3c59d048f2242a836ccca722182d430"
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared-fetch.stderr",
+      "bytes": 105,
+      "sha256": "613f47d9cd099c04600a62782493209f7a178a6eaccfcd46ece5bcc72ad8f60f"
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared-init.stdout",
+      "bytes": 124,
+      "sha256": "56d80c45cd080854cc5bb05e23106f249de81053635f668242a39365bbe1de9b"
+    },
+    {
+      "path": "wire-source-1/fixture-base-cold/source-receipt.json",
+      "bytes": 901,
+      "sha256": "4db4e8d8ed20d54099e5091681bfc74113f225e157a88f4326bd7e09d779b041"
+    },
+    {
+      "path": "wire-source-1/fixture-base-cold/session/reply-004.json",
+      "bytes": 3254,
+      "sha256": "1c77b46b6d24176094b0f6734b770e2cd641ab93a30b7dc0b73ecb78aa5fafde"
+    },
+    {
+      "path": "wire-source-1/fixture-base-cold/session/reply-002.json",
+      "bytes": 259,
+      "sha256": "20743866ae6453479a1b4a28f8b9004ad2190cb51074adc07881985286a5969c"
+    },
+    {
+      "path": "wire-source-1/fixture-base-cold/session/container-remove.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "wire-source-1/fixture-base-cold/session/container-inspect.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "wire-source-1/fixture-base-cold/session/client.stdout",
+      "bytes": 66475,
+      "sha256": "139ee7854e96e042b31fb0022beb45417b8fc34b644894ca65d289581ac78e2d"
+    },
+    {
+      "path": "wire-source-1/fixture-base-cold/session/container-inspect.stdout",
+      "bytes": 13387,
+      "sha256": "6296019044566743d5d34e870f372af8981895bc33c56a793eb6a1fd27df5085"
+    },
+    {
+      "path": "wire-source-1/fixture-base-cold/session/container-start.stdout",
+      "bytes": 65,
+      "sha256": "c2c30f40599af3318bae51983fe35db47a05ef5404f9c9fdd4f1b8f8a261f009"
+    },
+    {
+      "path": "wire-source-1/fixture-base-cold/session/container-start.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "wire-source-1/fixture-base-cold/session/image-volumes.stdout",
+      "bytes": 107,
+      "sha256": "72ab97972d35c07d09deaf211702e3b80c46ccd6b5f5bbbc8b6e85ea3a535972"
+    },
+    {
+      "path": "wire-source-1/fixture-base-cold/session/reply-001.json",
+      "bytes": 677,
+      "sha256": "bcce3adc086d01b3479386e540999a197ce2960d7188740635ed937b071331c1"
+    },
+    {
+      "path": "wire-source-1/fixture-base-cold/session/container-remove.stdout",
+      "bytes": 65,
+      "sha256": "c2c30f40599af3318bae51983fe35db47a05ef5404f9c9fdd4f1b8f8a261f009"
+    },
+    {
+      "path": "wire-source-1/fixture-base-cold/session/cleanup-owner.stdout",
+      "bytes": 38,
+      "sha256": "24eda76867e444fad9d84f92c07f32de6c91b43521a8daa63de935316b6f833a"
+    },
+    {
+      "path": "wire-source-1/fixture-base-cold/session/install-wheel.stderr",
+      "bytes": 360,
+      "sha256": "5e9962c0c210c241d942c8e6b3ad15989c3f4f22b15f05c6fb0408c930766f56"
+    },
+    {
+      "path": "wire-source-1/fixture-base-cold/session/install-wheel.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "wire-source-1/fixture-base-cold/session/image-volumes.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "wire-source-1/fixture-base-cold/session/client.stderr",
+      "bytes": 324,
+      "sha256": "75d18f585263bed0dcec48caae042697c0128f9352751f404e0488ddfb3d339f"
+    },
+    {
+      "path": "wire-source-1/fixture-base-cold/session/cleanup-owner.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "wire-source-1/fixture-base-cold/session/run-state.json",
+      "bytes": 66371,
+      "sha256": "dbce44865ea21a64e1113954521b7837006caa300c03cca6e4f212a687c1ff3b"
+    },
+    {
+      "path": "wire-source-1/fixture-base-cold/session/reply-003.json",
+      "bytes": 1334,
+      "sha256": "9bbe18f753cfff5cafdf51b1508d47aeb242ba64ebbd44d47d4b8199d3ff9678"
+    },
+    {
+      "path": "wire-source-1/fixture-base-cold/session/container-create.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "wire-source-1/fixture-base-cold/session/container-create.stdout",
+      "bytes": 65,
+      "sha256": "c2c30f40599af3318bae51983fe35db47a05ef5404f9c9fdd4f1b8f8a261f009"
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/source-receipt.json",
+      "bytes": 424439,
+      "sha256": "8140f782d0c04acdef617527b7c41e1e58f62ccc0c84762b06b7c3cec699afbd"
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/session/reply-004.json",
+      "bytes": 841,
+      "sha256": "d00138a2b30584d0c77facf3e1456e7d063291313ed4845c980176bc55af5cb2"
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/session/reply-002.json",
+      "bytes": 1111,
+      "sha256": "c56debdaca31d85239181414e48cf222772a9e01184d9f7f0c1f57b430fec5e1"
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/session/container-remove.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/session/container-inspect.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/session/client.stdout",
+      "bytes": 59966120,
+      "sha256": "4c8ae05302623edc7d6653f25721bb22bfe32e7bc208904796225526e83df28a"
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/session/container-inspect.stdout",
+      "bytes": 13414,
+      "sha256": "130c552565f41fb6f7d18a18a23aa7bd8e99debe80f403a382f0e74a6b243008"
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/session/container-start.stdout",
+      "bytes": 65,
+      "sha256": "1ad82ff2008fe1b82e265a4c751eb3a31d673dc085dd7b144df1528a655a73b7"
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/session/container-start.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/session/image-volumes.stdout",
+      "bytes": 107,
+      "sha256": "72ab97972d35c07d09deaf211702e3b80c46ccd6b5f5bbbc8b6e85ea3a535972"
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/session/reply-001.json",
+      "bytes": 141998,
+      "sha256": "99605c98d92bdf3bb854cb7e4de4ebc583c5987a98094996f351aff90d118d5e"
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/session/container-remove.stdout",
+      "bytes": 65,
+      "sha256": "1ad82ff2008fe1b82e265a4c751eb3a31d673dc085dd7b144df1528a655a73b7"
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/session/reply-006.json",
+      "bytes": 839,
+      "sha256": "4007b800cd82c5c3d1f387e7d07d2c57636a7bbb99e65626911f955df829fa39"
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/session/cleanup-owner.stdout",
+      "bytes": 44,
+      "sha256": "4883087ad50f4d61ca8577f079b820ca4264a0f52ed05df7ec89dc723728e843"
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/session/install-wheel.stderr",
+      "bytes": 359,
+      "sha256": "f9386951f921e92710776ad458bbf940f14bd37ba02b3c84a42c8e315e787385"
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/session/install-wheel.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/session/reply-008.json",
+      "bytes": 928430,
+      "sha256": "b028fda37647622c9b47f4f15d37c04b489657772e9817571e440267e70c4b37"
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/session/image-volumes.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/session/client.stderr",
+      "bytes": 324,
+      "sha256": "75d18f585263bed0dcec48caae042697c0128f9352751f404e0488ddfb3d339f"
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/session/cleanup-owner.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/session/run-state.json",
+      "bytes": 1116244,
+      "sha256": "d0353bc95638d9554d4cf0f9f123541d66a4ef9a22ab797924978513a4152e27"
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/session/reply-003.json",
+      "bytes": 797,
+      "sha256": "be98ac8ec4bd21decbe00cb7368cd2a0b08457dd21270bd1c2c0bb2d6f4c25a2"
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/session/container-create.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/session/container-create.stdout",
+      "bytes": 65,
+      "sha256": "1ad82ff2008fe1b82e265a4c751eb3a31d673dc085dd7b144df1528a655a73b7"
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/session/reply-005.json",
+      "bytes": 10061,
+      "sha256": "81e8d085f35aedf84fe77c46e2708fa6e7a8af3321a7269a7263423c186a5f0b"
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/session/reply-007.json",
+      "bytes": 11171,
+      "sha256": "685a1791d17984291a8ee22399a9ab064bebfb455c739aad13fed97280426606"
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-cold/source-receipt.json",
+      "bytes": 911,
+      "sha256": "97f5bc4a5814f85922614c7ab1101c28c6ea7be21919011f9b0ec959f3528523"
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-cold/session/reply-004.json",
+      "bytes": 3284,
+      "sha256": "3813868d6951152071aa6f201dc44a5940d8314fa8d28a220090e47b262c031a"
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-cold/session/reply-002.json",
+      "bytes": 259,
+      "sha256": "af1fa19c5a7b73d3f198846fee65f550ba4471c1b7423738c23ca1d4862f13c9"
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-cold/session/container-remove.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-cold/session/container-inspect.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-cold/session/client.stdout",
+      "bytes": 66667,
+      "sha256": "53057851107287895586f2258ee6f50443084ebb56d01b6b2a9c4a09cb1e9cc1"
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-cold/session/container-inspect.stdout",
+      "bytes": 13408,
+      "sha256": "80c5f0603b42d1f1015fec8ab169c71d5f463886b338ea23e0bd16881700e398"
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-cold/session/container-start.stdout",
+      "bytes": 65,
+      "sha256": "76579a60cae1e4a9b837ac2e64388a8579bc655d3a321cbabfd7c788d94aeba0"
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-cold/session/container-start.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-cold/session/image-volumes.stdout",
+      "bytes": 107,
+      "sha256": "72ab97972d35c07d09deaf211702e3b80c46ccd6b5f5bbbc8b6e85ea3a535972"
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-cold/session/reply-001.json",
+      "bytes": 682,
+      "sha256": "749072c335d6d48a47b9a3392185318c0f872c0d6993ce5a13856e1ba994bd5a"
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-cold/session/container-remove.stdout",
+      "bytes": 65,
+      "sha256": "76579a60cae1e4a9b837ac2e64388a8579bc655d3a321cbabfd7c788d94aeba0"
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-cold/session/cleanup-owner.stdout",
+      "bytes": 43,
+      "sha256": "84812339abaa60fb09e72e5d57fb3b9bbf6d60566d00c34189108ec7580809ac"
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-cold/session/install-wheel.stderr",
+      "bytes": 359,
+      "sha256": "c8713cdc936a7c3f566e02b87a83e70775bd9ddf271bafcbecb6bf40c58f4073"
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-cold/session/install-wheel.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-cold/session/image-volumes.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-cold/session/client.stderr",
+      "bytes": 324,
+      "sha256": "75d18f585263bed0dcec48caae042697c0128f9352751f404e0488ddfb3d339f"
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-cold/session/cleanup-owner.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-cold/session/run-state.json",
+      "bytes": 66421,
+      "sha256": "10e5c2cb95a1a9e01156f36dbefade0299173f540f6257ffaf1e02f92603a39d"
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-cold/session/reply-003.json",
+      "bytes": 1349,
+      "sha256": "bf08ac40c9082c8b05caafa9092034751c21bf3f28876e4b25ab87e9d4491c36"
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-cold/session/container-create.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-cold/session/container-create.stdout",
+      "bytes": 65,
+      "sha256": "76579a60cae1e4a9b837ac2e64388a8579bc655d3a321cbabfd7c788d94aeba0"
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-prepared/source-receipt.json",
+      "bytes": 919,
+      "sha256": "36507490a5dd278d582dbf3a5e5506293501d42225d6be5dc329e80f5494a8dc"
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-prepared/session/reply-002.json",
+      "bytes": 1400,
+      "sha256": "92a991c8ff5d00f6e04ca82667cbbd9a3f72e0d6fa7c8ad953d1ff8307e8e10a"
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-prepared/session/container-remove.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-prepared/session/container-inspect.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-prepared/session/client.stdout",
+      "bytes": 66607,
+      "sha256": "edbff56ad1edbcd2545f08f5125bef1a2b7a0c38f57cd9b63944a40074d459c1"
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-prepared/session/container-inspect.stdout",
+      "bytes": 13430,
+      "sha256": "61c984f588840df3a457bc855cb03f4518fe97dd635910ccd31111ca99c2899b"
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-prepared/session/container-start.stdout",
+      "bytes": 65,
+      "sha256": "4031a946b09f8efbec96ae6ddcda1d7e79271db4b5f80c69790103e02264dd5f"
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-prepared/session/container-start.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-prepared/session/image-volumes.stdout",
+      "bytes": 107,
+      "sha256": "72ab97972d35c07d09deaf211702e3b80c46ccd6b5f5bbbc8b6e85ea3a535972"
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-prepared/session/reply-001.json",
+      "bytes": 481,
+      "sha256": "738ef306ebd2461ce24faa0988f4786a2ddb8b1f6df66064d43fd209b0f5647a"
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-prepared/session/container-remove.stdout",
+      "bytes": 65,
+      "sha256": "4031a946b09f8efbec96ae6ddcda1d7e79271db4b5f80c69790103e02264dd5f"
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-prepared/session/cleanup-owner.stdout",
+      "bytes": 47,
+      "sha256": "912226d447c085bbaf9674480d68a65e240327910ee7d44e50ad59daacf6e9f7"
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-prepared/session/install-wheel.stderr",
+      "bytes": 359,
+      "sha256": "1fe7f668f3fb4efa10ac23fd560036bd0083874d82ca28a5880514154023bbe7"
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-prepared/session/install-wheel.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-prepared/session/image-volumes.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-prepared/session/client.stderr",
+      "bytes": 324,
+      "sha256": "75d18f585263bed0dcec48caae042697c0128f9352751f404e0488ddfb3d339f"
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-prepared/session/cleanup-owner.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-prepared/session/run-state.json",
+      "bytes": 66895,
+      "sha256": "3bcfe640ff9a9c2cddc37c862afbffafc7eb7dd9ae98e93df04faeab695beeea"
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-prepared/session/reply-003.json",
+      "bytes": 3852,
+      "sha256": "2ce96993f99c61d0396e065c3248f29ca2ee2872787076cb4da4a6e894bcdad9"
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-prepared/session/container-create.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-prepared/session/container-create.stdout",
+      "bytes": 65,
+      "sha256": "4031a946b09f8efbec96ae6ddcda1d7e79271db4b5f80c69790103e02264dd5f"
+    }
+  ],
+  "format": "Exact original position-response body bytes are base64 encoded with SHA256; remaining complete original logs, snapshots, wheel and binary outputs stay local/hash-bound. No RPC replay, old record replacement or model-input source credit.",
+  "scope": "Final code version adds successful-late-reply error clearing for both references and definitions. All earlier controls and timing stay frozen. Fresh four-condition source-only validation and installed post-SCIP replay do not measure a coding comparator or establish arbitrary project/configuration, platform or multi-hop coverage.",
+  "model_queries": 0,
+  "independent_successes": 0,
+  "external_users": 0,
+  "decision": "Ship reviewed transport/error-state repair; keep live routing and whole-task quality/time/token/use, independent-success and external-repeat-use gates open."
+}

@@ -1,0 +1,2659 @@
+{
+  "schema": "codenib.lsp-stdio-packet.v1",
+  "assessment": {
+    "schema": "codenib.lsp-stdio-assessment.v1",
+    "status": "terminal_assessed",
+    "previous_goal_turn": {
+      "classification": "progress",
+      "evidence": "#940 merged the complete-source feasibility record and retained its cold failure; the new turn investigates that open gate."
+    },
+    "product_base": "aabdfff030473a5e3832522f03086269dc6c55c0",
+    "change": "Preserve unread stdio frames/partial bytes across returns and observation timeouts; retain late replies encountered by idle/backpressure drains, using the existing100-entry bound; reset transport state for a new server. Routing, schemas, source guards and storage boundaries unchanged.",
+    "production_consumers": [
+      "codenib.scip_interface.python_identity",
+      "codenib.graph.incremental.patcher_base",
+      "codenib.ls_index.lsp_indexer"
+    ],
+    "regressions": {
+      "baseline_valid_failed": 7,
+      "candidate_passed": 7,
+      "targeted_unit_passed": 213,
+      "targeted_unit_skipped": 15,
+      "targeted_unit_deselected": 10,
+      "full_unit_passed": 9016,
+      "full_unit_skipped": 24,
+      "full_unit_deselected": 221,
+      "full_unit_warnings": 46,
+      "full_unit_seconds": 139.57,
+      "full_unit_process_umask": "022"
+    },
+    "retained_setup_outcomes": [
+      "First transport fixture omitted subprocess.PIPE in its module-local fake; six actual transport failures and one fixture error remain in baseline-transport.stdout. Corrected fixture on unchanged product code reproduces all7 failures in baseline-transport-2.stdout before the code change.",
+      "One targeted command omitted marker exclusions and entered the serial integration tier. Its exact owned pytest process was interrupted after4 passes/6 skips; no process retaining the unique task namespace remained. The corrected unit-only command passes213, skips15 and deselects10. Original interrupted logs stay local/hash-bound.",
+      "First full unit run under host umask002 stops on an unrelated pre-existing0644 file-mode assertion:6223 pass,19 skip,221 deselected,1 failure. The same isolated test fails on unchanged base; process-local umask022 restores the existing expected setup and all9016 pass without test/product weakening.",
+      "An attempted local native-owner copy rejects a hash differing from the admitted CI bytes before writing. Checkout verification then uses the exact admitted ABI3 native bytes; no native source change or source-built claim."
+    ],
+    "wire_control": {
+      "phases": [
+        {
+          "phase": "fixture-base-cold",
+          "container": "ae82b99f61f15a92b2777c9145d8ec70ccdfd15fc880574b07b1d8177f8e691e",
+          "owned_container_independently_absent": true,
+          "installed_python": 485,
+          "installed_native": 1,
+          "original_stdout_bytes": 66704,
+          "original_stdout_sha256": "f54e569c04b01054211512faae943bdd2159ebcb61599257558d4a7a6463ff09",
+          "wire_chunks": 16,
+          "complete_captured_server_frames": 21,
+          "chunks_with_multiple_complete_frames": 3,
+          "trailing_captured_bytes": 0,
+          "position_deliveries": [
+            {
+              "lsp_request_id": 2,
+              "action": "references",
+              "target": "target",
+              "source_fingerprint": "sha256-v2:ccbb2ed0612dee0b4ea0f972db76164bf22a716b907f1a22904df06456996a22",
+              "server_body_sha256": "7afbd71fe87f282fe51c4bfd92512c414ed8b527201d325592c324399baaa230",
+              "exact_original_reply_equals_delivered_locations": true,
+              "locations": 1,
+              "observed_completion_time": 9196386.321592849
+            },
+            {
+              "lsp_request_id": 3,
+              "action": "references",
+              "target": "target",
+              "source_fingerprint": "sha256-v2:ccbb2ed0612dee0b4ea0f972db76164bf22a716b907f1a22904df06456996a22",
+              "server_body_sha256": "e3ed4bbe0a96a35a3cf2073ceeb7dc2fccf3f73d9088786a373ee1237b2d008b",
+              "exact_original_reply_equals_delivered_locations": true,
+              "locations": 3,
+              "observed_completion_time": 9196387.13323775
+            }
+          ],
+          "enumeration_log_observations": [
+            {
+              "time": 9196386.323997188,
+              "method": "window/logMessage",
+              "message": "Found 2 source files"
+            }
+          ],
+          "did_open_count": 1,
+          "all_selected_python_opened_before_first_query": null,
+          "both_original_and_snapshot_reverified": true
+        },
+        {
+          "phase": "fixture-candidate-cold",
+          "container": "84d33b21043ff5056de6ed8c7f7740bf885d3e258d31c5b7e39f39af91b478d0",
+          "owned_container_independently_absent": true,
+          "installed_python": 485,
+          "installed_native": 1,
+          "original_stdout_bytes": 67244,
+          "original_stdout_sha256": "47e6434843e5a0dce4d10fb7af9f70fdc4d0e6c0cc7a61d3f456df2bae6db276",
+          "wire_chunks": 22,
+          "complete_captured_server_frames": 21,
+          "chunks_with_multiple_complete_frames": 4,
+          "trailing_captured_bytes": 0,
+          "position_deliveries": [
+            {
+              "lsp_request_id": 2,
+              "action": "references",
+              "target": "target",
+              "source_fingerprint": "sha256-v2:ccbb2ed0612dee0b4ea0f972db76164bf22a716b907f1a22904df06456996a22",
+              "server_body_sha256": "58eb78ed7fe395d3a73bd987cd32859d10eac8c3e4b51e97ccbda6a98194bc9b",
+              "exact_original_reply_equals_delivered_locations": true,
+              "locations": 1,
+              "observed_completion_time": 9196388.473424608
+            },
+            {
+              "lsp_request_id": 3,
+              "action": "references",
+              "target": "target",
+              "source_fingerprint": "sha256-v2:ccbb2ed0612dee0b4ea0f972db76164bf22a716b907f1a22904df06456996a22",
+              "server_body_sha256": "8fb04e7370a84958c38713421381d680244b0ec3b81c29012c7c9becc5822630",
+              "exact_original_reply_equals_delivered_locations": true,
+              "locations": 3,
+              "observed_completion_time": 9196389.288284363
+            }
+          ],
+          "enumeration_log_observations": [
+            {
+              "time": 9196388.476555046,
+              "method": "window/logMessage",
+              "message": "Found 2 source files"
+            }
+          ],
+          "did_open_count": 1,
+          "all_selected_python_opened_before_first_query": null,
+          "both_original_and_snapshot_reverified": true
+        },
+        {
+          "phase": "fixture-candidate-prepared",
+          "container": "620c95ac5f7911a2a36b2b4a6fea17e2e3ecb611acc8a2f4d32102407fdc0b75",
+          "owned_container_independently_absent": true,
+          "installed_python": 485,
+          "installed_native": 1,
+          "original_stdout_bytes": 66900,
+          "original_stdout_sha256": "1ee1a2bde71cbc24539d0189caa870d346d09142e919b8a9d3ddde49747b04a9",
+          "wire_chunks": 17,
+          "complete_captured_server_frames": 17,
+          "chunks_with_multiple_complete_frames": 3,
+          "trailing_captured_bytes": 0,
+          "position_deliveries": [
+            {
+              "lsp_request_id": 4,
+              "action": "references",
+              "target": "target",
+              "source_fingerprint": "sha256-v2:ccbb2ed0612dee0b4ea0f972db76164bf22a716b907f1a22904df06456996a22",
+              "server_body_sha256": "63cdedea12a253eb903ae92ba362412242b8ede8463042fd4366bc193075b20e",
+              "exact_original_reply_equals_delivered_locations": true,
+              "locations": 3,
+              "observed_completion_time": 9196390.680470098
+            }
+          ],
+          "enumeration_log_observations": [],
+          "did_open_count": 2,
+          "all_selected_python_opened_before_first_query": true,
+          "both_original_and_snapshot_reverified": true
+        },
+        {
+          "phase": "full-candidate-prepared",
+          "container": "649edc168a8526081ddab24950839cb11ab2654b00c79e3d86b8d3e970ca3a4e",
+          "owned_container_independently_absent": true,
+          "installed_python": 485,
+          "installed_native": 1,
+          "original_stdout_bytes": 59728882,
+          "original_stdout_sha256": "0a3b1a3618cc8a120b2be3f0ed51360700eb48a12a150f236122c6a9c3808469",
+          "wire_chunks": 1439,
+          "complete_captured_server_frames": 2388,
+          "chunks_with_multiple_complete_frames": 17,
+          "trailing_captured_bytes": 0,
+          "position_deliveries": [
+            {
+              "lsp_request_id": 1174,
+              "action": "references",
+              "target": "_prepare_graph_for_call",
+              "source_fingerprint": "sha256-v2:866a487140fa1ecc31d7158c13d3f8112717bff21d697ae847cb0c6afee6f2e2",
+              "server_body_sha256": "429db9105552a1f83c4d2804586b7cefb1db20eef24d591be1b9f6ab8db5d90c",
+              "exact_original_reply_equals_delivered_locations": true,
+              "locations": 2,
+              "observed_completion_time": 9196400.317948308
+            },
+            {
+              "lsp_request_id": 1175,
+              "action": "definition",
+              "target": "_prepare_graph_for_call",
+              "source_fingerprint": "sha256-v2:866a487140fa1ecc31d7158c13d3f8112717bff21d697ae847cb0c6afee6f2e2",
+              "server_body_sha256": "f8dc0d9a1da274589b6477d9ca724a3121a77a526be66fa2582685378ae08a25",
+              "exact_original_reply_equals_delivered_locations": true,
+              "locations": 1,
+              "observed_completion_time": 9196400.507643132
+            },
+            {
+              "lsp_request_id": 1176,
+              "action": "definition",
+              "target": "extract_symbol",
+              "source_fingerprint": "sha256-v2:866a487140fa1ecc31d7158c13d3f8112717bff21d697ae847cb0c6afee6f2e2",
+              "server_body_sha256": "9557295a304765eb828d4acb7b739952e03a3404366bf4b5099e44d314036d80",
+              "exact_original_reply_equals_delivered_locations": true,
+              "locations": 1,
+              "observed_completion_time": 9196400.674654402
+            },
+            {
+              "lsp_request_id": 1177,
+              "action": "references",
+              "target": "extract_symbol",
+              "source_fingerprint": "sha256-v2:866a487140fa1ecc31d7158c13d3f8112717bff21d697ae847cb0c6afee6f2e2",
+              "server_body_sha256": "aebd1eed63517b00733bc9e792841de169ea37d560440e358c56dff3338c7a3c",
+              "exact_original_reply_equals_delivered_locations": true,
+              "locations": 26,
+              "observed_completion_time": 9196400.856229592
+            },
+            {
+              "lsp_request_id": 1178,
+              "action": "definition",
+              "target": "extract_scip_blocks",
+              "source_fingerprint": "sha256-v2:866a487140fa1ecc31d7158c13d3f8112717bff21d697ae847cb0c6afee6f2e2",
+              "server_body_sha256": "6249e465fd62448d672df3cbc3b789c979be9d72f877caf29e943c4839b6025b",
+              "exact_original_reply_equals_delivered_locations": true,
+              "locations": 1,
+              "observed_completion_time": 9196402.184926102
+            },
+            {
+              "lsp_request_id": 1179,
+              "action": "references",
+              "target": "extract_scip_blocks",
+              "source_fingerprint": "sha256-v2:866a487140fa1ecc31d7158c13d3f8112717bff21d697ae847cb0c6afee6f2e2",
+              "server_body_sha256": "a4e7f9825085f7195f7f65a2ec6dcaa80e3360b602fe394043032762a82e69d6",
+              "exact_original_reply_equals_delivered_locations": true,
+              "locations": 29,
+              "observed_completion_time": 9196402.367361324
+            }
+          ],
+          "enumeration_log_observations": [
+            {
+              "time": 9196396.028814657,
+              "method": "window/logMessage",
+              "message": "Found 1172 source files"
+            }
+          ],
+          "did_open_count": 1172,
+          "all_selected_python_opened_before_first_query": true,
+          "both_original_and_snapshot_reverified": true
+        }
+      ],
+      "comparisons": [
+        {
+          "phase": "fixture-base-cold",
+          "observation": 0,
+          "action": "references",
+          "target": {
+            "file": "app.py",
+            "name": "target",
+            "line": 0,
+            "character": 4,
+            "utf8_character": 4,
+            "source_file_sha256": "e90074bde6f68906b18cd2dd68cec01eb01d6b35cfa5264896405a14cf650435"
+          },
+          "expected": [
+            [
+              "app.py",
+              0,
+              4,
+              0,
+              10
+            ],
+            [
+              "consumer.py",
+              0,
+              16,
+              0,
+              22
+            ],
+            [
+              "consumer.py",
+              2,
+              8,
+              2,
+              14
+            ]
+          ],
+          "observed": [
+            [
+              "app.py",
+              0,
+              4,
+              0,
+              10
+            ]
+          ],
+          "missing": [
+            [
+              "consumer.py",
+              0,
+              16,
+              0,
+              22
+            ],
+            [
+              "consumer.py",
+              2,
+              8,
+              2,
+              14
+            ]
+          ],
+          "extra": [],
+          "outside_or_invalid": [],
+          "last_error": null,
+          "matches": false
+        },
+        {
+          "phase": "fixture-base-cold",
+          "observation": 1,
+          "action": "references",
+          "target": {
+            "file": "app.py",
+            "name": "target",
+            "line": 0,
+            "character": 4,
+            "utf8_character": 4,
+            "source_file_sha256": "e90074bde6f68906b18cd2dd68cec01eb01d6b35cfa5264896405a14cf650435"
+          },
+          "expected": [
+            [
+              "app.py",
+              0,
+              4,
+              0,
+              10
+            ],
+            [
+              "consumer.py",
+              0,
+              16,
+              0,
+              22
+            ],
+            [
+              "consumer.py",
+              2,
+              8,
+              2,
+              14
+            ]
+          ],
+          "observed": [
+            [
+              "app.py",
+              0,
+              4,
+              0,
+              10
+            ],
+            [
+              "consumer.py",
+              0,
+              16,
+              0,
+              22
+            ],
+            [
+              "consumer.py",
+              2,
+              8,
+              2,
+              14
+            ]
+          ],
+          "missing": [],
+          "extra": [],
+          "outside_or_invalid": [],
+          "last_error": null,
+          "matches": true
+        },
+        {
+          "phase": "fixture-candidate-cold",
+          "observation": 0,
+          "action": "references",
+          "target": {
+            "file": "app.py",
+            "name": "target",
+            "line": 0,
+            "character": 4,
+            "utf8_character": 4,
+            "source_file_sha256": "e90074bde6f68906b18cd2dd68cec01eb01d6b35cfa5264896405a14cf650435"
+          },
+          "expected": [
+            [
+              "app.py",
+              0,
+              4,
+              0,
+              10
+            ],
+            [
+              "consumer.py",
+              0,
+              16,
+              0,
+              22
+            ],
+            [
+              "consumer.py",
+              2,
+              8,
+              2,
+              14
+            ]
+          ],
+          "observed": [
+            [
+              "app.py",
+              0,
+              4,
+              0,
+              10
+            ]
+          ],
+          "missing": [
+            [
+              "consumer.py",
+              0,
+              16,
+              0,
+              22
+            ],
+            [
+              "consumer.py",
+              2,
+              8,
+              2,
+              14
+            ]
+          ],
+          "extra": [],
+          "outside_or_invalid": [],
+          "last_error": null,
+          "matches": false
+        },
+        {
+          "phase": "fixture-candidate-cold",
+          "observation": 1,
+          "action": "references",
+          "target": {
+            "file": "app.py",
+            "name": "target",
+            "line": 0,
+            "character": 4,
+            "utf8_character": 4,
+            "source_file_sha256": "e90074bde6f68906b18cd2dd68cec01eb01d6b35cfa5264896405a14cf650435"
+          },
+          "expected": [
+            [
+              "app.py",
+              0,
+              4,
+              0,
+              10
+            ],
+            [
+              "consumer.py",
+              0,
+              16,
+              0,
+              22
+            ],
+            [
+              "consumer.py",
+              2,
+              8,
+              2,
+              14
+            ]
+          ],
+          "observed": [
+            [
+              "app.py",
+              0,
+              4,
+              0,
+              10
+            ],
+            [
+              "consumer.py",
+              0,
+              16,
+              0,
+              22
+            ],
+            [
+              "consumer.py",
+              2,
+              8,
+              2,
+              14
+            ]
+          ],
+          "missing": [],
+          "extra": [],
+          "outside_or_invalid": [],
+          "last_error": null,
+          "matches": true
+        },
+        {
+          "phase": "fixture-candidate-prepared",
+          "observation": 0,
+          "action": "references",
+          "target": {
+            "file": "app.py",
+            "name": "target",
+            "line": 0,
+            "character": 4,
+            "utf8_character": 4,
+            "source_file_sha256": "e90074bde6f68906b18cd2dd68cec01eb01d6b35cfa5264896405a14cf650435"
+          },
+          "expected": [
+            [
+              "app.py",
+              0,
+              4,
+              0,
+              10
+            ],
+            [
+              "consumer.py",
+              0,
+              16,
+              0,
+              22
+            ],
+            [
+              "consumer.py",
+              2,
+              8,
+              2,
+              14
+            ]
+          ],
+          "observed": [
+            [
+              "app.py",
+              0,
+              4,
+              0,
+              10
+            ],
+            [
+              "consumer.py",
+              0,
+              16,
+              0,
+              22
+            ],
+            [
+              "consumer.py",
+              2,
+              8,
+              2,
+              14
+            ]
+          ],
+          "missing": [],
+          "extra": [],
+          "outside_or_invalid": [],
+          "last_error": null,
+          "matches": true
+        },
+        {
+          "phase": "full-candidate-prepared",
+          "observation": 0,
+          "action": "references",
+          "target": {
+            "file": "codenib/mcp/server.py",
+            "name": "_prepare_graph_for_call",
+            "line": 178,
+            "character": 4,
+            "utf8_character": 4,
+            "source_file_sha256": "0c35d02c38a862e51ca123311382e6f5c8ccfe4f6451bffbd2b53bdf0c2c3c44"
+          },
+          "expected": [
+            [
+              "codenib/mcp/server.py",
+              163,
+              14,
+              163,
+              37
+            ],
+            [
+              "codenib/mcp/server.py",
+              178,
+              4,
+              178,
+              27
+            ]
+          ],
+          "observed": [
+            [
+              "codenib/mcp/server.py",
+              163,
+              14,
+              163,
+              37
+            ],
+            [
+              "codenib/mcp/server.py",
+              178,
+              4,
+              178,
+              27
+            ]
+          ],
+          "missing": [],
+          "extra": [],
+          "outside_or_invalid": [],
+          "last_error": null,
+          "matches": true
+        },
+        {
+          "phase": "full-candidate-prepared",
+          "observation": 1,
+          "action": "definition",
+          "target": {
+            "file": "codenib/mcp/server.py",
+            "name": "_prepare_graph_for_call",
+            "line": 178,
+            "character": 4,
+            "utf8_character": 4,
+            "source_file_sha256": "0c35d02c38a862e51ca123311382e6f5c8ccfe4f6451bffbd2b53bdf0c2c3c44"
+          },
+          "expected": [
+            [
+              "codenib/mcp/server.py",
+              178,
+              4,
+              178,
+              27
+            ]
+          ],
+          "observed": [
+            [
+              "codenib/mcp/server.py",
+              178,
+              4,
+              178,
+              27
+            ]
+          ],
+          "missing": [],
+          "extra": [],
+          "outside_or_invalid": [],
+          "last_error": null,
+          "matches": true
+        },
+        {
+          "phase": "full-candidate-prepared",
+          "observation": 2,
+          "action": "definition",
+          "target": {
+            "file": "codenib/scip_interface/scip_indexer_base.py",
+            "name": "extract_symbol",
+            "line": 30,
+            "character": 4,
+            "utf8_character": 4,
+            "source_file_sha256": "181feb4e902f513a951e97455a80d397b6a2e9b99f7b293d2f93ac60664e6caa"
+          },
+          "expected": [
+            [
+              "codenib/scip_interface/scip_indexer_base.py",
+              30,
+              4,
+              30,
+              18
+            ]
+          ],
+          "observed": [
+            [
+              "codenib/scip_interface/scip_indexer_base.py",
+              30,
+              4,
+              30,
+              18
+            ]
+          ],
+          "missing": [],
+          "extra": [],
+          "outside_or_invalid": [],
+          "last_error": null,
+          "matches": true
+        },
+        {
+          "phase": "full-candidate-prepared",
+          "observation": 3,
+          "action": "references",
+          "target": {
+            "file": "codenib/scip_interface/scip_indexer_base.py",
+            "name": "extract_symbol",
+            "line": 30,
+            "character": 4,
+            "utf8_character": 4,
+            "source_file_sha256": "181feb4e902f513a951e97455a80d397b6a2e9b99f7b293d2f93ac60664e6caa"
+          },
+          "expected": [
+            [
+              "codenib/scip_interface/lsp_occurrence_index.py",
+              25,
+              52,
+              25,
+              66
+            ],
+            [
+              "codenib/scip_interface/lsp_occurrence_index.py",
+              364,
+              13,
+              364,
+              27
+            ],
+            [
+              "codenib/scip_interface/scip_decode_csharp.py",
+              20,
+              31,
+              20,
+              45
+            ],
+            [
+              "codenib/scip_interface/scip_decode_csharp.py",
+              38,
+              17,
+              38,
+              31
+            ],
+            [
+              "codenib/scip_interface/scip_decode_go.py",
+              33,
+              52,
+              33,
+              66
+            ],
+            [
+              "codenib/scip_interface/scip_decode_go.py",
+              161,
+              17,
+              161,
+              31
+            ],
+            [
+              "codenib/scip_interface/scip_decode_java.py",
+              34,
+              52,
+              34,
+              66
+            ],
+            [
+              "codenib/scip_interface/scip_decode_java.py",
+              103,
+              25,
+              103,
+              39
+            ],
+            [
+              "codenib/scip_interface/scip_decode_java.py",
+              143,
+              17,
+              143,
+              31
+            ],
+            [
+              "codenib/scip_interface/scip_decode_java.py",
+              227,
+              21,
+              227,
+              35
+            ],
+            [
+              "codenib/scip_interface/scip_decode_java.py",
+              630,
+              25,
+              630,
+              39
+            ],
+            [
+              "codenib/scip_interface/scip_decode_java.py",
+              657,
+              25,
+              657,
+              39
+            ],
+            [
+              "codenib/scip_interface/scip_decode_python.py",
+              29,
+              52,
+              29,
+              66
+            ],
+            [
+              "codenib/scip_interface/scip_decode_python.py",
+              171,
+              17,
+              171,
+              31
+            ],
+            [
+              "codenib/scip_interface/scip_decode_ruby.py",
+              25,
+              31,
+              25,
+              45
+            ],
+            [
+              "codenib/scip_interface/scip_decode_ruby.py",
+              55,
+              17,
+              55,
+              31
+            ],
+            [
+              "codenib/scip_interface/scip_decode_rust.py",
+              33,
+              52,
+              33,
+              66
+            ],
+            [
+              "codenib/scip_interface/scip_decode_rust.py",
+              235,
+              17,
+              235,
+              31
+            ],
+            [
+              "codenib/scip_interface/scip_decode_ts.py",
+              18,
+              52,
+              18,
+              66
+            ],
+            [
+              "codenib/scip_interface/scip_decode_ts.py",
+              95,
+              25,
+              95,
+              39
+            ],
+            [
+              "codenib/scip_interface/scip_decode_ts.py",
+              157,
+              17,
+              157,
+              31
+            ],
+            [
+              "codenib/scip_interface/scip_indexer_base.py",
+              30,
+              4,
+              30,
+              18
+            ],
+            [
+              "codenib/scip_interface/typescript_semantics.py",
+              14,
+              52,
+              14,
+              66
+            ],
+            [
+              "codenib/scip_interface/typescript_semantics.py",
+              74,
+              17,
+              74,
+              31
+            ],
+            [
+              "codenib/scip_interface/typescript_semantics.py",
+              115,
+              47,
+              115,
+              61
+            ],
+            [
+              "codenib/scip_interface/typescript_semantics.py",
+              285,
+              25,
+              285,
+              39
+            ]
+          ],
+          "observed": [
+            [
+              "codenib/scip_interface/lsp_occurrence_index.py",
+              25,
+              52,
+              25,
+              66
+            ],
+            [
+              "codenib/scip_interface/lsp_occurrence_index.py",
+              364,
+              13,
+              364,
+              27
+            ],
+            [
+              "codenib/scip_interface/scip_decode_csharp.py",
+              20,
+              31,
+              20,
+              45
+            ],
+            [
+              "codenib/scip_interface/scip_decode_csharp.py",
+              38,
+              17,
+              38,
+              31
+            ],
+            [
+              "codenib/scip_interface/scip_decode_go.py",
+              33,
+              52,
+              33,
+              66
+            ],
+            [
+              "codenib/scip_interface/scip_decode_go.py",
+              161,
+              17,
+              161,
+              31
+            ],
+            [
+              "codenib/scip_interface/scip_decode_java.py",
+              34,
+              52,
+              34,
+              66
+            ],
+            [
+              "codenib/scip_interface/scip_decode_java.py",
+              103,
+              25,
+              103,
+              39
+            ],
+            [
+              "codenib/scip_interface/scip_decode_java.py",
+              143,
+              17,
+              143,
+              31
+            ],
+            [
+              "codenib/scip_interface/scip_decode_java.py",
+              227,
+              21,
+              227,
+              35
+            ],
+            [
+              "codenib/scip_interface/scip_decode_java.py",
+              630,
+              25,
+              630,
+              39
+            ],
+            [
+              "codenib/scip_interface/scip_decode_java.py",
+              657,
+              25,
+              657,
+              39
+            ],
+            [
+              "codenib/scip_interface/scip_decode_python.py",
+              29,
+              52,
+              29,
+              66
+            ],
+            [
+              "codenib/scip_interface/scip_decode_python.py",
+              171,
+              17,
+              171,
+              31
+            ],
+            [
+              "codenib/scip_interface/scip_decode_ruby.py",
+              25,
+              31,
+              25,
+              45
+            ],
+            [
+              "codenib/scip_interface/scip_decode_ruby.py",
+              55,
+              17,
+              55,
+              31
+            ],
+            [
+              "codenib/scip_interface/scip_decode_rust.py",
+              33,
+              52,
+              33,
+              66
+            ],
+            [
+              "codenib/scip_interface/scip_decode_rust.py",
+              235,
+              17,
+              235,
+              31
+            ],
+            [
+              "codenib/scip_interface/scip_decode_ts.py",
+              18,
+              52,
+              18,
+              66
+            ],
+            [
+              "codenib/scip_interface/scip_decode_ts.py",
+              95,
+              25,
+              95,
+              39
+            ],
+            [
+              "codenib/scip_interface/scip_decode_ts.py",
+              157,
+              17,
+              157,
+              31
+            ],
+            [
+              "codenib/scip_interface/scip_indexer_base.py",
+              30,
+              4,
+              30,
+              18
+            ],
+            [
+              "codenib/scip_interface/typescript_semantics.py",
+              14,
+              52,
+              14,
+              66
+            ],
+            [
+              "codenib/scip_interface/typescript_semantics.py",
+              74,
+              17,
+              74,
+              31
+            ],
+            [
+              "codenib/scip_interface/typescript_semantics.py",
+              115,
+              47,
+              115,
+              61
+            ],
+            [
+              "codenib/scip_interface/typescript_semantics.py",
+              285,
+              25,
+              285,
+              39
+            ]
+          ],
+          "missing": [],
+          "extra": [],
+          "outside_or_invalid": [],
+          "last_error": null,
+          "matches": true
+        },
+        {
+          "phase": "full-candidate-prepared",
+          "observation": 4,
+          "action": "definition",
+          "target": {
+            "file": "codenib/scip_interface/scip_indexer_base.py",
+            "name": "extract_scip_blocks",
+            "line": 93,
+            "character": 4,
+            "utf8_character": 4,
+            "source_file_sha256": "181feb4e902f513a951e97455a80d397b6a2e9b99f7b293d2f93ac60664e6caa"
+          },
+          "expected": [
+            [
+              "codenib/scip_interface/scip_indexer_base.py",
+              93,
+              4,
+              93,
+              23
+            ]
+          ],
+          "observed": [
+            [
+              "codenib/scip_interface/scip_indexer_base.py",
+              93,
+              4,
+              93,
+              23
+            ]
+          ],
+          "missing": [],
+          "extra": [],
+          "outside_or_invalid": [],
+          "last_error": null,
+          "matches": true
+        },
+        {
+          "phase": "full-candidate-prepared",
+          "observation": 5,
+          "action": "references",
+          "target": {
+            "file": "codenib/scip_interface/scip_indexer_base.py",
+            "name": "extract_scip_blocks",
+            "line": 93,
+            "character": 4,
+            "utf8_character": 4,
+            "source_file_sha256": "181feb4e902f513a951e97455a80d397b6a2e9b99f7b293d2f93ac60664e6caa"
+          },
+          "expected": [
+            [
+              "codenib/scip_interface/lsp_occurrence_index.py",
+              25,
+              31,
+              25,
+              50
+            ],
+            [
+              "codenib/scip_interface/lsp_occurrence_index.py",
+              134,
+              24,
+              134,
+              43
+            ],
+            [
+              "codenib/scip_interface/lsp_occurrence_index.py",
+              140,
+              34,
+              140,
+              53
+            ],
+            [
+              "codenib/scip_interface/scip_decode_go.py",
+              33,
+              31,
+              33,
+              50
+            ],
+            [
+              "codenib/scip_interface/scip_decode_go.py",
+              125,
+              22,
+              125,
+              41
+            ],
+            [
+              "codenib/scip_interface/scip_decode_java.py",
+              34,
+              31,
+              34,
+              50
+            ],
+            [
+              "codenib/scip_interface/scip_decode_java.py",
+              88,
+              26,
+              88,
+              45
+            ],
+            [
+              "codenib/scip_interface/scip_decode_java.py",
+              102,
+              25,
+              102,
+              44
+            ],
+            [
+              "codenib/scip_interface/scip_decode_java.py",
+              134,
+              15,
+              134,
+              34
+            ],
+            [
+              "codenib/scip_interface/scip_decode_java.py",
+              221,
+              26,
+              221,
+              45
+            ],
+            [
+              "codenib/scip_interface/scip_decode_java.py",
+              629,
+              25,
+              629,
+              44
+            ],
+            [
+              "codenib/scip_interface/scip_decode_java.py",
+              656,
+              25,
+              656,
+              44
+            ],
+            [
+              "codenib/scip_interface/scip_decode_php.py",
+              19,
+              31,
+              19,
+              50
+            ],
+            [
+              "codenib/scip_interface/scip_decode_php.py",
+              32,
+              12,
+              32,
+              31
+            ],
+            [
+              "codenib/scip_interface/scip_decode_python.py",
+              29,
+              31,
+              29,
+              50
+            ],
+            [
+              "codenib/scip_interface/scip_decode_python.py",
+              148,
+              22,
+              148,
+              41
+            ],
+            [
+              "codenib/scip_interface/scip_decode_rust.py",
+              33,
+              31,
+              33,
+              50
+            ],
+            [
+              "codenib/scip_interface/scip_decode_rust.py",
+              144,
+              22,
+              144,
+              41
+            ],
+            [
+              "codenib/scip_interface/scip_decode_ts.py",
+              18,
+              31,
+              18,
+              50
+            ],
+            [
+              "codenib/scip_interface/scip_decode_ts.py",
+              53,
+              26,
+              53,
+              45
+            ],
+            [
+              "codenib/scip_interface/scip_decode_ts.py",
+              94,
+              30,
+              94,
+              49
+            ],
+            [
+              "codenib/scip_interface/scip_decode_ts.py",
+              144,
+              22,
+              144,
+              41
+            ],
+            [
+              "codenib/scip_interface/scip_indexer_base.py",
+              93,
+              4,
+              93,
+              23
+            ],
+            [
+              "codenib/scip_interface/typescript_semantics.py",
+              14,
+              31,
+              14,
+              50
+            ],
+            [
+              "codenib/scip_interface/typescript_semantics.py",
+              73,
+              17,
+              73,
+              36
+            ],
+            [
+              "codenib/scip_interface/typescript_semantics.py",
+              110,
+              20,
+              110,
+              39
+            ],
+            [
+              "codenib/scip_interface/typescript_semantics.py",
+              111,
+              26,
+              111,
+              45
+            ],
+            [
+              "codenib/scip_interface/typescript_semantics.py",
+              248,
+              24,
+              248,
+              43
+            ],
+            [
+              "codenib/scip_interface/typescript_semantics.py",
+              266,
+              30,
+              266,
+              49
+            ]
+          ],
+          "observed": [
+            [
+              "codenib/scip_interface/lsp_occurrence_index.py",
+              25,
+              31,
+              25,
+              50
+            ],
+            [
+              "codenib/scip_interface/lsp_occurrence_index.py",
+              134,
+              24,
+              134,
+              43
+            ],
+            [
+              "codenib/scip_interface/lsp_occurrence_index.py",
+              140,
+              34,
+              140,
+              53
+            ],
+            [
+              "codenib/scip_interface/scip_decode_go.py",
+              33,
+              31,
+              33,
+              50
+            ],
+            [
+              "codenib/scip_interface/scip_decode_go.py",
+              125,
+              22,
+              125,
+              41
+            ],
+            [
+              "codenib/scip_interface/scip_decode_java.py",
+              34,
+              31,
+              34,
+              50
+            ],
+            [
+              "codenib/scip_interface/scip_decode_java.py",
+              88,
+              26,
+              88,
+              45
+            ],
+            [
+              "codenib/scip_interface/scip_decode_java.py",
+              102,
+              25,
+              102,
+              44
+            ],
+            [
+              "codenib/scip_interface/scip_decode_java.py",
+              134,
+              15,
+              134,
+              34
+            ],
+            [
+              "codenib/scip_interface/scip_decode_java.py",
+              221,
+              26,
+              221,
+              45
+            ],
+            [
+              "codenib/scip_interface/scip_decode_java.py",
+              629,
+              25,
+              629,
+              44
+            ],
+            [
+              "codenib/scip_interface/scip_decode_java.py",
+              656,
+              25,
+              656,
+              44
+            ],
+            [
+              "codenib/scip_interface/scip_decode_php.py",
+              19,
+              31,
+              19,
+              50
+            ],
+            [
+              "codenib/scip_interface/scip_decode_php.py",
+              32,
+              12,
+              32,
+              31
+            ],
+            [
+              "codenib/scip_interface/scip_decode_python.py",
+              29,
+              31,
+              29,
+              50
+            ],
+            [
+              "codenib/scip_interface/scip_decode_python.py",
+              148,
+              22,
+              148,
+              41
+            ],
+            [
+              "codenib/scip_interface/scip_decode_rust.py",
+              33,
+              31,
+              33,
+              50
+            ],
+            [
+              "codenib/scip_interface/scip_decode_rust.py",
+              144,
+              22,
+              144,
+              41
+            ],
+            [
+              "codenib/scip_interface/scip_decode_ts.py",
+              18,
+              31,
+              18,
+              50
+            ],
+            [
+              "codenib/scip_interface/scip_decode_ts.py",
+              53,
+              26,
+              53,
+              45
+            ],
+            [
+              "codenib/scip_interface/scip_decode_ts.py",
+              94,
+              30,
+              94,
+              49
+            ],
+            [
+              "codenib/scip_interface/scip_decode_ts.py",
+              144,
+              22,
+              144,
+              41
+            ],
+            [
+              "codenib/scip_interface/scip_indexer_base.py",
+              93,
+              4,
+              93,
+              23
+            ],
+            [
+              "codenib/scip_interface/typescript_semantics.py",
+              14,
+              31,
+              14,
+              50
+            ],
+            [
+              "codenib/scip_interface/typescript_semantics.py",
+              73,
+              17,
+              73,
+              36
+            ],
+            [
+              "codenib/scip_interface/typescript_semantics.py",
+              110,
+              20,
+              110,
+              39
+            ],
+            [
+              "codenib/scip_interface/typescript_semantics.py",
+              111,
+              26,
+              111,
+              45
+            ],
+            [
+              "codenib/scip_interface/typescript_semantics.py",
+              248,
+              24,
+              248,
+              43
+            ],
+            [
+              "codenib/scip_interface/typescript_semantics.py",
+              266,
+              30,
+              266,
+              49
+            ]
+          ],
+          "missing": [],
+          "extra": [],
+          "outside_or_invalid": [],
+          "last_error": null,
+          "matches": true
+        }
+      ],
+      "full_selected_source_files": 2390,
+      "full_selected_python_files": 1172,
+      "full_first_guarded_position_seconds_from_before_capture": 7.141622774302959,
+      "full_all_selected_preparation_seconds": 4.086126944050193,
+      "cold_first_results": [
+        {
+          "phase": "fixture-base-cold",
+          "locations": 1,
+          "expected": 3,
+          "matches": false
+        },
+        {
+          "phase": "fixture-candidate-cold",
+          "locations": 1,
+          "expected": 3,
+          "matches": false
+        }
+      ],
+      "all_prepared_location_sets_match": true
+    },
+    "provider_pin": {
+      "root": "/tmp/codenib-reference-evidence-20261030/toolchains/node-tools",
+      "records": 10282,
+      "manifest_sha256": "1fad0b6bade89772e4c90a5511102525e7cfb43771466a8b670b55e96a3255a4",
+      "basedpyright_version": "1.39.8",
+      "scope": "Hash-bound software input, not selected repository source. Node runtime and Python stdlib are pinned by the prepared image.",
+      "all_records_reverified": true
+    },
+    "candidate_wheel": {
+      "sha256": "41674cf540f2fef82fb29e36115ea56e7acaf5a6c38824db9deea680a2cbfd8c",
+      "python_files": 485,
+      "native_files": 1,
+      "scope": "Developer assembly changes one current Python file and regenerates RECORD. All485 packaged Python files match the candidate checkout; native/assets retain admitted base bytes. Not a source-built, CI-produced or published wheel."
+    },
+    "installed_post_scip_replay": {
+      "status": "terminal_admitted",
+      "container": "f61874f842782f07935281f4adde7d3bdee4f50427e108379425d234a4d20227",
+      "independently_absent": true,
+      "python_files": 485,
+      "native_files": 1,
+      "candidate_wheel_sha256": "41674cf540f2fef82fb29e36115ea56e7acaf5a6c38824db9deea680a2cbfd8c",
+      "nodes": 33178,
+      "edges": 159676,
+      "occurrences": 786078,
+      "normalized_decoded_sha256": "e695ff7e425b64259008ab7cdcdcfa1b2adef2e617ad6dd5f300ebe03b361fa2",
+      "query_surface_sha256": "87d34e4b7429203e6dca5c360d1e610b05a8e1328a795598c850ca053066b1cc",
+      "ordered_occurrences_sha256": "ac86a851756664eedf8721d5ccab5a314a8c415ca172a835919483e960565300",
+      "all_expected_pipeline_outputs_match": true,
+      "scope": "Installed normal post-SCIP replay with unchanged fixed raw compiler output; no compiler generation, MCP/task endpoint or timing comparison.",
+      "model_queries": 0
+    },
+    "limits": [
+      "The raw original cold server replies themselves contain only1/3 references before the observed source-enumeration log. This is not repaired by the transport change; server source inspection and message ordering support an enumeration-readiness explanation, without proving all server internals.",
+      "Prepared experiment opens every selected Python file and awaits every document-symbol reply before the first positioned query, without idle or retries. It keeps all selected files/tests; no selected-caller injection or positive-case replacement.",
+      "One generated three-file fixture per condition and one own complete-source snapshot/three fixed symbols. No arbitrary project/configuration closure, link/platform coverage, full graph or multi-hop parity, model-input source credit or independent success.",
+      "7.142s includes capture/copy, Docker/create/start, offline wheel reinstall, installed import/identity checks, initialize,1172 symbol operations and first guarded reference query. The existing source checkout and prepared software/image predate the interval. Single descriptive observation with wire-logging overhead, no timing comparator, isolated host-load guarantee or coding speedup.",
+      "The live source-isolated path remains experimental Docker-only. Product MCP/default/provider selection remains unchanged. The prior cold failure, old macro timings and all frozen/model cohorts remain intact; this diagnostic does not open reserved issue/grading material."
+    ],
+    "model_queries": 0,
+    "independent_successes": 0,
+    "external_users": 0,
+    "decision": "Ship the verified shared-client transport repair after review. Hold live positioned-query routing and comparative promotion. Portable source/configuration/dependency closure, representative workflow quality/time/token and actual voluntary use remain open, as do0/2 independent successes and0/5 external enrollment/reuse."
+  },
+  "format": "Verify part bytes/SHA256; decode gzip_base64 and verify compressed SHA256; decompress chunks and verify each length/SHA256; concatenate by file/offset and verify full-file length/SHA256. Large original wire output and interrupted-tier logs stay local/hash-bound. Nothing is replayed or rescored.",
+  "files": [
+    {
+      "path": "admit_installed_replay.py",
+      "bytes": 5601,
+      "sha256": "1a8072c6a0a4c6e2dc2807000f52d3ab91e2d50e0817587dd89269e8d0a71730",
+      "chunks": 1
+    },
+    {
+      "path": "assessment.json",
+      "bytes": 43515,
+      "sha256": "9f3d491cbb7cb5d99f8ea235238c2431ff17362fb7c4793a88c39fd32f0f7289",
+      "chunks": 1
+    },
+    {
+      "path": "audit_probe.py",
+      "bytes": 6967,
+      "sha256": "409adb2e79bd54df3d8b6e60886732f81d0ddf16d58cb2aeed6d494eb13987db",
+      "chunks": 1
+    },
+    {
+      "path": "baseline-file-mode.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "baseline-file-mode.stdout",
+      "bytes": 1031,
+      "sha256": "cb9ab33871cc2d493bb765e5e0c0ca67b9ebedfb9aad32f26ebbdf734dc4bf0b",
+      "chunks": 1
+    },
+    {
+      "path": "baseline-transport-2.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "baseline-transport-2.stdout",
+      "bytes": 5774,
+      "sha256": "81fb15ed0d5233d7580c2483a0d7c48ce74888ddaaffb336da9566d9d7af3655",
+      "chunks": 1
+    },
+    {
+      "path": "baseline-transport.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "baseline-transport.stdout",
+      "bytes": 6204,
+      "sha256": "9feb31e6c5aebb52e72f13a7fa789d202183ef4990b60cf886503bde75615c11",
+      "chunks": 1
+    },
+    {
+      "path": "candidate-file-mode-022.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "candidate-file-mode-022.stdout",
+      "bytes": 98,
+      "sha256": "3605abb09038ce24e90d81df8f7c0d87bb6f647a5e016bf461d8a8fcb408f6e9",
+      "chunks": 1
+    },
+    {
+      "path": "candidate-transport-posix.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "candidate-transport-posix.stdout",
+      "bytes": 98,
+      "sha256": "22dda2ca00ae6324a6f97b96c400ce0c3cb8bf22b31857fc022eeba879e7e569",
+      "chunks": 1
+    },
+    {
+      "path": "candidate-transport.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "candidate-transport.stdout",
+      "bytes": 98,
+      "sha256": "2bf99a97318a517fe73161eabe823a69d20f93d7e369efb6905f0c1d58c9334a",
+      "chunks": 1
+    },
+    {
+      "path": "candidate-wheel-binding.json",
+      "bytes": 54142,
+      "sha256": "568c7f3ea6fd0bdef113c00a78a4554ea45cc96907c9b8df311ec055d6ca67fd",
+      "chunks": 1
+    },
+    {
+      "path": "docs-strict.stderr",
+      "bytes": 43426,
+      "sha256": "3a950f3cce2d122bc7a215a2946450458f6f82a3abfa63d14ae28aa358962eea",
+      "chunks": 1
+    },
+    {
+      "path": "docs-strict.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "installed-replay-1/artifacts/admission.json",
+      "bytes": 2055,
+      "sha256": "158ae61ac00b0439dff4bbe0ed2f2d329155f1d3a19387a26a1ed0d8509258e5",
+      "chunks": 1
+    },
+    {
+      "path": "installed-replay-1/cleanup-owner.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "installed-replay-1/cleanup-owner.stdout",
+      "bytes": 28,
+      "sha256": "772c351b3c5e9750769e40194a221def8186221416079467dd1afd3b2ad20816",
+      "chunks": 1
+    },
+    {
+      "path": "installed-replay-1/container-create.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "installed-replay-1/container-create.stdout",
+      "bytes": 65,
+      "sha256": "1ec4033560ac3bb1337384f228d6b561de825672cdfac2aafc0d39701afa3bbd",
+      "chunks": 1
+    },
+    {
+      "path": "installed-replay-1/container-inspect.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "installed-replay-1/container-inspect.stdout",
+      "bytes": 14776,
+      "sha256": "09f0ffb7558def89c68fa3922f84f35679bc647fdbfd29e7f15159dc5008948a",
+      "chunks": 1
+    },
+    {
+      "path": "installed-replay-1/container-remove.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "installed-replay-1/container-remove.stdout",
+      "bytes": 65,
+      "sha256": "1ec4033560ac3bb1337384f228d6b561de825672cdfac2aafc0d39701afa3bbd",
+      "chunks": 1
+    },
+    {
+      "path": "installed-replay-1/container-start.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "installed-replay-1/container-start.stdout",
+      "bytes": 65,
+      "sha256": "1ec4033560ac3bb1337384f228d6b561de825672cdfac2aafc0d39701afa3bbd",
+      "chunks": 1
+    },
+    {
+      "path": "installed-replay-1/image-volumes.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "installed-replay-1/image-volumes.stdout",
+      "bytes": 107,
+      "sha256": "72ab97972d35c07d09deaf211702e3b80c46ccd6b5f5bbbc8b6e85ea3a535972",
+      "chunks": 1
+    },
+    {
+      "path": "installed-replay-1/index-export.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "installed-replay-1/install-wheel.stderr",
+      "bytes": 359,
+      "sha256": "cf9b25874f952f617cbc7c42761d703256cec5d810924a9cfde3ae29cb6bdaa0",
+      "chunks": 1
+    },
+    {
+      "path": "installed-replay-1/install-wheel.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "installed-replay-1/installed-identity.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "installed-replay-1/installed-identity.stdout",
+      "bytes": 51423,
+      "sha256": "e8c0ef49722118abcc1218a3efbaaca1bd7934060f56db21a4c3b1f5ce85cb1d",
+      "chunks": 1
+    },
+    {
+      "path": "installed-replay-1/run-pipeline.stderr",
+      "bytes": 2768,
+      "sha256": "dc462060e9c077fdd59aed6db2998aefe309f7de67a5544e4fbf6a480c01ff04",
+      "chunks": 1
+    },
+    {
+      "path": "installed-replay-1/run-pipeline.stdout",
+      "bytes": 111,
+      "sha256": "5689c69686b244b0f6e57d69375105818bbb68e882c9bd8908b55b4b048ac9e3",
+      "chunks": 1
+    },
+    {
+      "path": "installed-replay-1/run-state.json",
+      "bytes": 6229,
+      "sha256": "7732ef4a8967cd95389040a7ee3fdd068c470a685d809e91edb05ce0d9926232",
+      "chunks": 1
+    },
+    {
+      "path": "installed-replay-protocol.json",
+      "bytes": 2383,
+      "sha256": "ebec6a34a57e1dbfc1ad26c7cc6a6caed289942684a2acf9e86373c32942a81f",
+      "chunks": 1
+    },
+    {
+      "path": "installed-replay-verification.json",
+      "bytes": 869,
+      "sha256": "6c034fd3a2c3c4000287b171f278e933c2ffb9e49d64ec649bc4102d78e125c4",
+      "chunks": 1
+    },
+    {
+      "path": "installed-replay.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "installed-replay.stdout",
+      "bytes": 93,
+      "sha256": "00388c16ed56955258d64c6766c6ac646f086e77c3d31314a585276825b212e9",
+      "chunks": 1
+    },
+    {
+      "path": "installed_pipeline.py",
+      "bytes": 3577,
+      "sha256": "49365dc069048fa4e30e7ba1f3c3b299eefd8d4cab06050384cdaa62a3171e32",
+      "chunks": 1
+    },
+    {
+      "path": "live_bridge_v2.py",
+      "bytes": 8512,
+      "sha256": "77c67641efb9df745e2f89b7d71876760990e5266f09433b65b56306c86217fa",
+      "chunks": 1
+    },
+    {
+      "path": "live_entry_v2.py",
+      "bytes": 5505,
+      "sha256": "497e70ac39be079e40a316b58731de15f97c4a1a28b0b101af7539f8a1f75cbb",
+      "chunks": 1
+    },
+    {
+      "path": "locations.py",
+      "bytes": 2111,
+      "sha256": "0897fa74505b3a505ba580c819aac17490f028ffb39d7897bd5bcc0256316d55",
+      "chunks": 1
+    },
+    {
+      "path": "package_results.py",
+      "bytes": 10714,
+      "sha256": "fbe3b3c47a8e4d62eed71e1ab35aa661f074c12b021f04b4f4e86bface7bf486",
+      "chunks": 1
+    },
+    {
+      "path": "prepare_probe.py",
+      "bytes": 5826,
+      "sha256": "440e28228cd8c1037e52dd35e657425774a133f469e4d355fba6a60fdab3b8d5",
+      "chunks": 1
+    },
+    {
+      "path": "primary-source-metadata.json",
+      "bytes": 2332,
+      "sha256": "e7bcec8bfd81e808afdffb4461d9ca18936f13a073d1eeb53a8a4165036df7f0",
+      "chunks": 1
+    },
+    {
+      "path": "probe.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "probe.stdout",
+      "bytes": 135,
+      "sha256": "56db1cfb2d6d7620613c585e8acde96ae97d519197d647857d84e96ed833f823",
+      "chunks": 1
+    },
+    {
+      "path": "run_probe.py",
+      "bytes": 10900,
+      "sha256": "221ce97d5e1baeb85c7aebfdc7cb67df03699ff49cd4b6431745d09e08fd7d52",
+      "chunks": 1
+    },
+    {
+      "path": "source_snapshot.py",
+      "bytes": 4073,
+      "sha256": "384adfeb5f8f03c6f242a0f8bc2eb54868bfc0052807d48131f567375a5ffed7",
+      "chunks": 1
+    },
+    {
+      "path": "targeted-unit.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "targeted-unit.stdout",
+      "bytes": 367,
+      "sha256": "482500a1f218c97cd5e937d429dcf237676c6da387a41f7d82c010aad9278cae",
+      "chunks": 1
+    },
+    {
+      "path": "transport-tests.py",
+      "bytes": 5035,
+      "sha256": "dfdaac5a1624f4805d39dac1bf75f29824a3071e3d66ddd8888c761f98045972",
+      "chunks": 1
+    },
+    {
+      "path": "unit-022.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "unit-022.stdout",
+      "bytes": 54816,
+      "sha256": "4c7c337b8ec95b9d604d7a4852dafabf5cbbfbd9d3f6f4227c04df277d67238f",
+      "chunks": 1
+    },
+    {
+      "path": "unit.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "unit.stdout",
+      "bytes": 36297,
+      "sha256": "9812b4f80ca768dca5e876a1cd6ed08dde2992d3376254e8b20beeaa123b6720",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-base-cold/session/cleanup-owner.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-base-cold/session/cleanup-owner.stdout",
+      "bytes": 33,
+      "sha256": "2ab8038b931194f33c05c655602994a054e7a0f165b133af44e119b9f2d49b81",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-base-cold/session/client.stderr",
+      "bytes": 324,
+      "sha256": "75d18f585263bed0dcec48caae042697c0128f9352751f404e0488ddfb3d339f",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-base-cold/session/client.stdout",
+      "bytes": 66704,
+      "sha256": "f54e569c04b01054211512faae943bdd2159ebcb61599257558d4a7a6463ff09",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-base-cold/session/container-create.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-base-cold/session/container-create.stdout",
+      "bytes": 65,
+      "sha256": "dfbf0305508897b5cb2b353f7aa5125d551b8b08b6a8a79d5aa2837aa4af8760",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-base-cold/session/container-inspect.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-base-cold/session/container-inspect.stdout",
+      "bytes": 13404,
+      "sha256": "f4b91141c39556e969dbd5206c67a33c2219b37ab37da47420d9863a98f7cc8a",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-base-cold/session/container-remove.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-base-cold/session/container-remove.stdout",
+      "bytes": 65,
+      "sha256": "dfbf0305508897b5cb2b353f7aa5125d551b8b08b6a8a79d5aa2837aa4af8760",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-base-cold/session/container-start.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-base-cold/session/container-start.stdout",
+      "bytes": 65,
+      "sha256": "dfbf0305508897b5cb2b353f7aa5125d551b8b08b6a8a79d5aa2837aa4af8760",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-base-cold/session/image-volumes.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-base-cold/session/image-volumes.stdout",
+      "bytes": 107,
+      "sha256": "72ab97972d35c07d09deaf211702e3b80c46ccd6b5f5bbbc8b6e85ea3a535972",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-base-cold/session/install-wheel.stderr",
+      "bytes": 360,
+      "sha256": "84f77d9c3e8385929f5b1417f9da8c1da19fd5c79b5ee9f38bdd57362a5a7322",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-base-cold/session/install-wheel.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-base-cold/session/reply-001.json",
+      "bytes": 680,
+      "sha256": "879763f8d5c958210a6935a80d9d60283f2945d16bcfda735c3457a6b95786d6",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-base-cold/session/reply-002.json",
+      "bytes": 258,
+      "sha256": "863fa3e65444837d7fd3900cd5f947597dd79cd70b5e80f9890a2f7e6cbfa4b6",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-base-cold/session/reply-003.json",
+      "bytes": 1344,
+      "sha256": "5dcb19e081ae5436a1b7911a86b762c0c225bba3a75ff4bbe8ff5d3e3a8a77d1",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-base-cold/session/reply-004.json",
+      "bytes": 3278,
+      "sha256": "47fc27db65c340b6e2f1130d936970d6a7f4c3920be3327fe4c5c1e798cb9cbb",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-base-cold/session/run-state.json",
+      "bytes": 66399,
+      "sha256": "4c0025939e4ad3f7ff028f7f903d6f0a869d192fc814002e9e8a552afddd4a2b",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-base-cold/source-receipt.json",
+      "bytes": 909,
+      "sha256": "86fa5883cec45f9568212b7317276de1d9afc0e91d0fc8d59ff4640fc142a3bf",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-cold/session/cleanup-owner.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-cold/session/cleanup-owner.stdout",
+      "bytes": 38,
+      "sha256": "ce0abd074690ba38f8c460ddf31e51723df25530d607e3d82ac9a19cf7e62072",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-cold/session/client.stderr",
+      "bytes": 324,
+      "sha256": "75d18f585263bed0dcec48caae042697c0128f9352751f404e0488ddfb3d339f",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-cold/session/client.stdout",
+      "bytes": 67244,
+      "sha256": "47e6434843e5a0dce4d10fb7af9f70fdc4d0e6c0cc7a61d3f456df2bae6db276",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-cold/session/container-create.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-cold/session/container-create.stdout",
+      "bytes": 65,
+      "sha256": "390f1ef3a289706d9ca74d45418873e7b08005ff4003a365add1c6074716297f",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-cold/session/container-inspect.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-cold/session/container-inspect.stdout",
+      "bytes": 13436,
+      "sha256": "b52e262210e500d27b947102336cc06952b08fec1da302b836aa3780dd4dd692",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-cold/session/container-remove.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-cold/session/container-remove.stdout",
+      "bytes": 65,
+      "sha256": "390f1ef3a289706d9ca74d45418873e7b08005ff4003a365add1c6074716297f",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-cold/session/container-start.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-cold/session/container-start.stdout",
+      "bytes": 65,
+      "sha256": "390f1ef3a289706d9ca74d45418873e7b08005ff4003a365add1c6074716297f",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-cold/session/image-volumes.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-cold/session/image-volumes.stdout",
+      "bytes": 107,
+      "sha256": "72ab97972d35c07d09deaf211702e3b80c46ccd6b5f5bbbc8b6e85ea3a535972",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-cold/session/install-wheel.stderr",
+      "bytes": 360,
+      "sha256": "218261a66809d85efcc375dbcae44bc106f78b848f34f3741c494cca89c53c64",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-cold/session/install-wheel.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-cold/session/reply-001.json",
+      "bytes": 686,
+      "sha256": "72b679d50110b547954940b4e65d9a76994e4d77b04e481a5b215bc166caf544",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-cold/session/reply-002.json",
+      "bytes": 259,
+      "sha256": "e066edef3639a45e948a5f5f708c489161234fbd168b31e955d82affb321b815",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-cold/session/reply-003.json",
+      "bytes": 1361,
+      "sha256": "f5cdb1cff43e4e28e3c78188cf7885b0cd1f997a57089b8b42c58ee8ffa751f5",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-cold/session/reply-004.json",
+      "bytes": 3308,
+      "sha256": "efd3e4aaf04eab71f322e7b179091868ec00836ec79ee90780d6c76e3b8ec75d",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-cold/session/run-state.json",
+      "bytes": 66452,
+      "sha256": "23a8c5d82b4d7155d825a021a8d5d527de889cefcf182456a7bf47faa66fce86",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-cold/source-receipt.json",
+      "bytes": 919,
+      "sha256": "8d09895b61b6293460b0b6fcf14aa7e8f21362cd757c9a3360efdc6f6e68cba9",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-prepared/session/cleanup-owner.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-prepared/session/cleanup-owner.stdout",
+      "bytes": 42,
+      "sha256": "955c32301624951cc98e3a1b69284d6e5486c01ad8fef854488048563ec87bfd",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-prepared/session/client.stderr",
+      "bytes": 324,
+      "sha256": "75d18f585263bed0dcec48caae042697c0128f9352751f404e0488ddfb3d339f",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-prepared/session/client.stdout",
+      "bytes": 66900,
+      "sha256": "1ee1a2bde71cbc24539d0189caa870d346d09142e919b8a9d3ddde49747b04a9",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-prepared/session/container-create.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-prepared/session/container-create.stdout",
+      "bytes": 65,
+      "sha256": "9b572198824c4e9212818b484a444957a63570a97b8993cbc2e8f0559eb70ed7",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-prepared/session/container-inspect.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-prepared/session/container-inspect.stdout",
+      "bytes": 13458,
+      "sha256": "d334cf0a04ae75136cb827c7ff76cc52fe23e354f896929b021531dd2ccf38f1",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-prepared/session/container-remove.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-prepared/session/container-remove.stdout",
+      "bytes": 65,
+      "sha256": "9b572198824c4e9212818b484a444957a63570a97b8993cbc2e8f0559eb70ed7",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-prepared/session/container-start.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-prepared/session/container-start.stdout",
+      "bytes": 65,
+      "sha256": "9b572198824c4e9212818b484a444957a63570a97b8993cbc2e8f0559eb70ed7",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-prepared/session/image-volumes.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-prepared/session/image-volumes.stdout",
+      "bytes": 107,
+      "sha256": "72ab97972d35c07d09deaf211702e3b80c46ccd6b5f5bbbc8b6e85ea3a535972",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-prepared/session/install-wheel.stderr",
+      "bytes": 359,
+      "sha256": "dc0056c3fc9b110325e491e96f6996ed826a354a98874200cabc6ece07b2d5d1",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-prepared/session/install-wheel.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-prepared/session/reply-001.json",
+      "bytes": 481,
+      "sha256": "ed17befef3af57e32d028d62fb86a0fa6baff87a5a67e5f24b66c8aae5d24efd",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-prepared/session/reply-002.json",
+      "bytes": 1412,
+      "sha256": "6aa3ad84bcb58597eaea582cf9cfae1434b5036fa08608d4243a5ef93c119732",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-prepared/session/reply-003.json",
+      "bytes": 3884,
+      "sha256": "5e3445bb4a054d39efe3aafe1ee21d57b2b1b8e4b3aac415e00d399710b7d8c3",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-prepared/session/run-state.json",
+      "bytes": 66933,
+      "sha256": "5a3261768f559645692bf561d512e60fe4ecfb88e2688acafbac6d2fc53ae8e8",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/fixture-candidate-prepared/source-receipt.json",
+      "bytes": 927,
+      "sha256": "8d5dc731850a20d15f6934d3d482f026d1ced7257c5f04609d653e45a79ed959",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/session/cleanup-owner.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/session/cleanup-owner.stdout",
+      "bytes": 39,
+      "sha256": "d0a50e98eb8db3703672897fe18be12fcc6dfe2067e8bd38d98861d766c1d854",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/session/client.stderr",
+      "bytes": 324,
+      "sha256": "75d18f585263bed0dcec48caae042697c0128f9352751f404e0488ddfb3d339f",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/session/container-create.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/session/container-create.stdout",
+      "bytes": 65,
+      "sha256": "3caa1b7855258bf710312d4894f6a6a73e97246f1f4bd303c05aafd0fe307d03",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/session/container-inspect.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/session/container-inspect.stdout",
+      "bytes": 13443,
+      "sha256": "5409cea48f03fb8eb136b9fa575ebe1d7bd9e918293e824964b776859ddadaa3",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/session/container-remove.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/session/container-remove.stdout",
+      "bytes": 65,
+      "sha256": "3caa1b7855258bf710312d4894f6a6a73e97246f1f4bd303c05aafd0fe307d03",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/session/container-start.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/session/container-start.stdout",
+      "bytes": 65,
+      "sha256": "3caa1b7855258bf710312d4894f6a6a73e97246f1f4bd303c05aafd0fe307d03",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/session/image-volumes.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/session/image-volumes.stdout",
+      "bytes": 107,
+      "sha256": "72ab97972d35c07d09deaf211702e3b80c46ccd6b5f5bbbc8b6e85ea3a535972",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/session/install-wheel.stderr",
+      "bytes": 360,
+      "sha256": "bd4b3616043e562e0264b1d202e5b9489f11af0889c5dd0d3d723f5ee8b000ca",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/session/install-wheel.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/session/reply-001.json",
+      "bytes": 141998,
+      "sha256": "e208a981ca239dddb0274943600f9b4fe6c6108505e4404b4264813aa72c60c5",
+      "chunks": 2
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/session/reply-002.json",
+      "bytes": 1119,
+      "sha256": "17860827bf494e7d714eb05e50db3960e2abc9f17c49172fa48377e4031eb55f",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/session/reply-003.json",
+      "bytes": 803,
+      "sha256": "fdf0153f06c60685cae80b4862794ba4b4377224eb2034d589f8666c49c5ebec",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/session/reply-004.json",
+      "bytes": 845,
+      "sha256": "ab83f413e11e76fec873fffe8991b1b41fcb21fa7f110e8c8bd5ab3518cb9572",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/session/reply-005.json",
+      "bytes": 10165,
+      "sha256": "9958b98ee66cfe3108dc372d94e25edb17fed0ea004536b87ff8a6d85d9acb7d",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/session/reply-006.json",
+      "bytes": 842,
+      "sha256": "f7dd95b8cf07a3cabf2aad79defd114f3522c269a9580899239c89d4727761ba",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/session/reply-007.json",
+      "bytes": 11288,
+      "sha256": "b5df41d06bc6ad30616dd505e3f5f23d5c2d4906175d9fa233cdfd3686aaaa68",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/session/reply-008.json",
+      "bytes": 937842,
+      "sha256": "b1166723fbf1a80b01ed68ae2a15df9aae64f62fd9a38dc1efb94ced79a83fcb",
+      "chunks": 10
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/session/run-state.json",
+      "bytes": 1125659,
+      "sha256": "e07655e21c07e8681a7467477fb88a7fc042f3445edbed45e6fa859800edde5f",
+      "chunks": 12
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/source-receipt.json",
+      "bytes": 424447,
+      "sha256": "6373306a8afcc7d25ed1e3dd1308e850701a786bd38ed829dcad1bb5b34b0dc2",
+      "chunks": 5
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared-checkout.stderr",
+      "bytes": 85,
+      "sha256": "83146b5837cdc4d80125ad043a168aa05912ec62e80c447c13ad2b96419e0e7e",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared-checkout.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared-fetch.stderr",
+      "bytes": 105,
+      "sha256": "613f47d9cd099c04600a62782493209f7a178a6eaccfcd46ece5bcc72ad8f60f",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared-fetch.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared-gc.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared-gc.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared-init.stderr",
+      "bytes": 485,
+      "sha256": "7cc74f74cc8a8f9938bd00571e2c171ce3c59d048f2242a836ccca722182d430",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared-init.stdout",
+      "bytes": 128,
+      "sha256": "a6cdff508ebf178d3ba5ba728478170ce081a585bb79dd65a6f279717f573474",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared-maintenance.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared-maintenance.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/location-comparison.json",
+      "bytes": 22369,
+      "sha256": "278f3c3c240d0e414b5edca4be8ca170198f8728dc4a255f3039b2dbe032391a",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/protocol.json",
+      "bytes": 4376,
+      "sha256": "dfa62c027f6ef0ef422d5469e3570bff781f873cdf68a323a77d793a4637f1ad",
+      "chunks": 1
+    },
+    {
+      "path": "wire-source-1/run-state.json",
+      "bytes": 232118,
+      "sha256": "68919bf09d4a0b0bfe14c62820b523c9f3068ffd435e16164d4245a72c1f46b1",
+      "chunks": 3
+    },
+    {
+      "path": "wire-source-1/wire-audit.json",
+      "bytes": 9266,
+      "sha256": "a874c2ef01f68f24b1c0a73cdee3b071537579068f9aca616604f589f7e21be4",
+      "chunks": 1
+    }
+  ],
+  "parts": [
+    {
+      "path": "codegraph_lsp_stdio_2026_10_31.part001.json",
+      "bytes": 143790,
+      "sha256": "35f34df5d5e107e4656ffa5e22f0dc8c8c909fbaf9011358525a3e88e5611d87",
+      "chunks": 56
+    },
+    {
+      "path": "codegraph_lsp_stdio_2026_10_31.part002.json",
+      "bytes": 111069,
+      "sha256": "9f8af89f4782167c65cb95c754df02a1a45142c206efc4b5956b98f164b451e6",
+      "chunks": 30
+    },
+    {
+      "path": "codegraph_lsp_stdio_2026_10_31.part003.json",
+      "bytes": 140849,
+      "sha256": "c3c9a091d28cbbbc9095ec1429f0e73928848d5bca3a642d2e03998761f7b38f",
+      "chunks": 38
+    },
+    {
+      "path": "codegraph_lsp_stdio_2026_10_31.part004.json",
+      "bytes": 144952,
+      "sha256": "d5e92e4efef78984e6564611661c9ccb66cdb296480f5ac55f5aa404a520be2d",
+      "chunks": 32
+    },
+    {
+      "path": "codegraph_lsp_stdio_2026_10_31.part005.json",
+      "bytes": 138598,
+      "sha256": "3d150c38c784c1b679a340d932b5e564a3253a3392e8e7e2fd1781df1431f8ad",
+      "chunks": 10
+    },
+    {
+      "path": "codegraph_lsp_stdio_2026_10_31.part006.json",
+      "bytes": 125305,
+      "sha256": "d97c32ffa913379ea76eef510e43368aeb47ea2e31edc861ec7c77042b62eabb",
+      "chunks": 7
+    },
+    {
+      "path": "codegraph_lsp_stdio_2026_10_31.part007.json",
+      "bytes": 126586,
+      "sha256": "c8efaa30dca261cadb20af70295b23d8ad18dddafc54fc2dc9a7ffd8223e2f0d",
+      "chunks": 19
+    }
+  ],
+  "retained_local_text": [
+    {
+      "path": "targeted.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "scope": "Exact original retained locally; no replacement or query replay."
+    },
+    {
+      "path": "targeted.stdout",
+      "bytes": 1258,
+      "sha256": "14c8e09ac30fa74a793c459a2f4d3d5332f70aba199677c482e7b87272d76c63",
+      "scope": "Exact original retained locally; no replacement or query replay."
+    },
+    {
+      "path": "wire-source-1/full-candidate-prepared/session/client.stdout",
+      "bytes": 59728882,
+      "sha256": "0a3b1a3618cc8a120b2be3f0ed51360700eb48a12a150f236122c6a9c3808469",
+      "scope": "Exact original retained locally; no replacement or query replay."
+    }
+  ]
+}

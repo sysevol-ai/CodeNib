@@ -163,21 +163,34 @@ executed main CI jobs, twenty executed release verifiers and Docs build/deploy;
 slow and five tag-only publication skips remain explicit. Public 0.2.4 is
 unchanged.
 
-The [source-isolated live Python position experiment](codegraph_native_source_queries.md)
-uses the installed production LSP client on a verified copy of every selected
-CodeNib source file (2,390 files, including 1,172 Python files). All six
-definition/reference sets for three fixed symbols match saved same-source
-compiler positions, with reference counts 2/26/29 and no missing/extra result.
-Stale queries and post-response changes are rejected; explicit recapture and a
-separate rename/line-shift/Unicode fixture pass. Retain the first cold fixture's
-1/3 references, all 208 original text files and the separate readiness diagnosis;
-idle does not prove completeness. Six exact owned containers are absent and
-both full snapshots reverify. This Docker/regular-file feasibility control
-changes no product provider, default or MCP route. Its separate component
-observations do not measure complete first-query or coding-task performance.
-Cold completeness, portable source/configuration isolation and multi-hop graph
-semantics remain product gates before any routing promotion. No model round,
-comparative benefit, independent success or external enrollment is added.
+The [source-isolated live Python controls](codegraph_native_source_queries.md)
+retain the first cold omission, source-current recapture and separate
+rename/line-shift/Unicode evidence. Merged
+[#940](https://github.com/sysevol-ai/CodeNib/pull/940) now passes main Docs and
+all twenty executed release verifiers, with five publication-only skips.
+
+The [shared LSP transport repair](codegraph_lsp_stdio.md) retains unread frames,
+partial messages and late replies dropped by the existing client. Seven initial
+real-pipe failures reproduce on unchanged base; the final eight cases also
+verify error clearing when late definition/reference replies succeed. All
+9,017 local unit cases pass. Original server bytes show that first cold replies
+still contain only 1/3 references, distinguishing enumeration readiness from
+client delivery. A separately frozen condition prepares every selected Python
+file before any positional query: the fixture returns all three references,
+and all six compiler location sets agree for three fixed symbols on CodeNib's
+complete selected 2,390-file source. First guarded results take 7.142s and 7.702s
+in the two candidate-version observations, both retained, including capture,
+offline installed setup and all 1,172 Python files' preparation. A separate
+installed post-SCIP replay preserves exact
+normalized text, all 786,078 ordered occurrences, query surface, quality and
+receipts. All eleven original replies, source copies and five exact owners'
+cleanup per version verify. The initial packet and final-version supplement
+remain separate; no prior failure or outcome is replaced. Portable
+source/configuration closure and representative cold completeness remain open;
+the experiment changes no product live provider, MCP default or multi-hop
+contract and supplies no comparative coding result. Whole-task quality/time,
+normalized-token, voluntary-use, independent-success and external-use gates
+remain open, with no new model question or participant.
 
 The [merged Python identity repair](codegraph_python_walrus.md) now admits the
 complete selected Pylint graph and exact source delivery through its actual CI
