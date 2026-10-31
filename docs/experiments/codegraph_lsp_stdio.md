@@ -123,7 +123,10 @@ selected source file map, all eleven fresh original replies, provider inputs
 and exact installed post-SCIP outputs. Its exact position-response body bytes
 are retained in the supplement; the other original records stay local/hash-bound.
 
-Ship the verified shared-client repair after review. Keep live positioned-query
+Merged [#941](https://github.com/sysevol-ai/CodeNib/pull/941) passes all seven
+executed main CI jobs, all twenty executed release verifiers and Docs
+build/deploy. Slow and five tag-only publication skips remain explicit;
+public package 0.2.4 is unchanged. Keep live positioned-query
 routing experimental until portable source isolation and representative
 project/configuration/dependency closure are established. Selected links and
 arbitrary repository/language/platform coverage remain unsupported by this

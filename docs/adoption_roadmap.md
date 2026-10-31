@@ -1,7 +1,7 @@
 # Adoption and distribution roadmap
 
 Owner: CodeNib product, retrieval, and documentation maintainers.
-Reviewed: 2026-10-30 (Pacific). Status: active.
+Reviewed: 2026-10-31 (Pacific). Status: active.
 
 ## Outcome and product decision
 
@@ -230,6 +230,23 @@ Docker feasibility result, without product live routing, multi-hop graph parity
 or a coding comparator. Portable source/configuration closure and representative
 cold completeness remain open before routing promotion. No model query,
 independent success or external user is added; whole-task gates remain open.
+Merged [#941](https://github.com/sysevol-ai/CodeNib/pull/941) passes all seven
+executed main CI jobs, all twenty executed release verifiers and Docs
+build/deploy, with slow and five tag-only publication skips explicit.
+
+The [complete-source Python virtual-filesystem diagnostic](experiments/codegraph_python_vfs.md)
+retains every byte of all 2,390 files in both provider workers. A prospectively
+fixed 200-position sample completes 400 queries: the original browser provider
+agrees with compiler sets 346/400, and a separate ordinary-server diagnostic
+354/400. A separately frozen software-path repair, without upgrading the engine
+or changing project bytes, removes all nine browser/ordinary reference
+differences: 400/400 sets agree between those two forms. This is exposed-source
+attribution, not accuracy or an independent success. The 46 shared compiler
+differences include an omitted alias call; reference semantics and product
+source-generation lifecycle remain open before live MCP routing. Preserve the
+failed 128 MiB capture control's 96 unadmitted staged replies and 304 unexecuted
+positions, plus all setup/verification failures. No timing comparator, product
+change, model inference, external enrollment or promotion is added.
 
 The latest four-arm round records 8,821,055 normalized final main/auxiliary tokens
 and $9.311356 in SDK estimates, not invoices. The separate diagnostic adds
