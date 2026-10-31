@@ -1,0 +1,354 @@
+metadata {
+  tool_info {
+    name: "scip-python"
+    version: "0.6.6"
+  }
+  project_root: "file:///tmp/codenib-decorated-field-20261030/fixture"
+  text_document_encoding: UTF8
+}
+documents {
+  relative_path: "nested.py"
+  occurrences {
+    range: 0
+    range: 0
+    range: 0
+    symbol: "scip-python python codenib-decorated-field-fixture 0.0.0 nested/__init__:"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 0
+    range: 4
+    range: 10
+    symbol: "scip-python python codenib-decorated-field-fixture 0.0.0 nested/marked()."
+    symbol_roles: 1
+    enclosing_range: 0
+    enclosing_range: 0
+    enclosing_range: 4
+    enclosing_range: 16
+  }
+  occurrences {
+    range: 0
+    range: 11
+    range: 16
+    symbol: "scip-python python codenib-decorated-field-fixture 0.0.0 nested/marked().(label)"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 1
+    range: 8
+    range: 13
+    symbol: "scip-python python codenib-decorated-field-fixture 0.0.0 nested/marked().store()."
+    symbol_roles: 1
+    enclosing_range: 1
+    enclosing_range: 4
+    enclosing_range: 3
+    enclosing_range: 23
+  }
+  occurrences {
+    range: 1
+    range: 14
+    range: 22
+    symbol: "scip-python python codenib-decorated-field-fixture 0.0.0 nested/marked().store().(function)"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 2
+    range: 8
+    range: 16
+    symbol: "scip-python python codenib-decorated-field-fixture 0.0.0 nested/marked().store().(function)"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 2
+    range: 26
+    range: 31
+    symbol: "scip-python python codenib-decorated-field-fixture 0.0.0 nested/marked().(label)"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 3
+    range: 15
+    range: 23
+    symbol: "scip-python python codenib-decorated-field-fixture 0.0.0 nested/marked().store().(function)"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 4
+    range: 11
+    range: 16
+    symbol: "scip-python python codenib-decorated-field-fixture 0.0.0 nested/marked().store()."
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 6
+    range: 6
+    range: 13
+    symbol: "scip-python python codenib-decorated-field-fixture 0.0.0 nested/Example#"
+    symbol_roles: 1
+    enclosing_range: 6
+    enclosing_range: 0
+    enclosing_range: 22
+    enclosing_range: 29
+  }
+  occurrences {
+    range: 7
+    range: 10
+    range: 17
+    symbol: "scip-python python codenib-decorated-field-fixture 0.0.0 nested/Example#Checker#"
+    symbol_roles: 1
+    enclosing_range: 7
+    enclosing_range: 4
+    enclosing_range: 9
+    enclosing_range: 31
+  }
+  occurrences {
+    range: 8
+    range: 12
+    range: 20
+    symbol: "scip-python python codenib-decorated-field-fixture 0.0.0 nested/Example#Checker#__init__()."
+    symbol_roles: 1
+    enclosing_range: 8
+    enclosing_range: 8
+    enclosing_range: 9
+    enclosing_range: 31
+  }
+  occurrences {
+    range: 8
+    range: 21
+    range: 25
+    symbol: "scip-python python codenib-decorated-field-fixture 0.0.0 nested/Example#Checker#__init__().(self)"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 9
+    range: 12
+    range: 16
+    symbol: "scip-python python codenib-decorated-field-fixture 0.0.0 nested/Example#Checker#__init__().(self)"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 9
+    range: 17
+    range: 23
+    symbol: "scip-python python codenib-decorated-field-fixture 0.0.0 nested/Checker#called."
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 11
+    range: 8
+    range: 11
+    symbol: "scip-python python codenib-decorated-field-fixture 0.0.0 nested/Example#run()."
+    symbol_roles: 1
+    enclosing_range: 11
+    enclosing_range: 4
+    enclosing_range: 22
+    enclosing_range: 29
+  }
+  occurrences {
+    range: 11
+    range: 12
+    range: 16
+    symbol: "scip-python python codenib-decorated-field-fixture 0.0.0 nested/Example#run().(self)"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 12
+    range: 14
+    range: 21
+    symbol: "scip-python python codenib-decorated-field-fixture 0.0.0 nested/Example#run().Checker#"
+    symbol_roles: 1
+    enclosing_range: 12
+    enclosing_range: 8
+    enclosing_range: 18
+    enclosing_range: 34
+  }
+  occurrences {
+    range: 13
+    range: 16
+    range: 24
+    symbol: "scip-python python codenib-decorated-field-fixture 0.0.0 nested/Example#run().Checker#__init__()."
+    symbol_roles: 1
+    enclosing_range: 13
+    enclosing_range: 12
+    enclosing_range: 14
+    enclosing_range: 35
+  }
+  occurrences {
+    range: 13
+    range: 25
+    range: 29
+    symbol: "scip-python python codenib-decorated-field-fixture 0.0.0 nested/Example#run().Checker#__init__().(self)"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 14
+    range: 16
+    range: 20
+    symbol: "scip-python python codenib-decorated-field-fixture 0.0.0 nested/Example#run().Checker#__init__().(self)"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 14
+    range: 21
+    range: 27
+    symbol: "scip-python python codenib-decorated-field-fixture 0.0.0 nested/Checker#called."
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 16
+    range: 13
+    range: 19
+    symbol: "scip-python python codenib-decorated-field-fixture 0.0.0 nested/marked()."
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 17
+    range: 16
+    range: 21
+    symbol: "scip-python python codenib-decorated-field-fixture 0.0.0 nested/Example#run().Checker#visit()."
+    symbol_roles: 1
+    enclosing_range: 16
+    enclosing_range: 12
+    enclosing_range: 18
+    enclosing_range: 34
+  }
+  occurrences {
+    range: 17
+    range: 22
+    range: 26
+    symbol: "scip-python python codenib-decorated-field-fixture 0.0.0 nested/Example#run().Checker#visit().(self)"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 17
+    range: 28
+    range: 32
+    symbol: "scip-python python codenib-decorated-field-fixture 0.0.0 nested/Example#run().Checker#visit().(node)"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 18
+    range: 16
+    range: 20
+    symbol: "scip-python python codenib-decorated-field-fixture 0.0.0 nested/Example#run().Checker#visit().(self)"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 18
+    range: 21
+    range: 27
+    symbol: "scip-python python codenib-decorated-field-fixture 0.0.0 nested/Checker#called."
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 20
+    range: 8
+    range: 15
+    symbol: "local 0"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 20
+    range: 18
+    range: 25
+    symbol: "scip-python python codenib-decorated-field-fixture 0.0.0 nested/Example#run().Checker#"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 21
+    range: 8
+    range: 15
+    symbol: "local 0"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 21
+    range: 16
+    range: 21
+    symbol: "scip-python python codenib-decorated-field-fixture 0.0.0 nested/Example#run().Checker#visit()."
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 22
+    range: 15
+    range: 22
+    symbol: "local 0"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 22
+    range: 23
+    range: 29
+    symbol: "scip-python python codenib-decorated-field-fixture 0.0.0 nested/Checker#called."
+    symbol_roles: 8
+  }
+  symbols {
+    symbol: "scip-python python codenib-decorated-field-fixture 0.0.0 nested/__init__:"
+    documentation: "(module) nested"
+  }
+  symbols {
+    symbol: "scip-python python codenib-decorated-field-fixture 0.0.0 nested/marked()."
+    documentation: "```python\ndef marked(\n  label\n): # -> (function: Unknown) -> Unknown:\n```"
+  }
+  symbols {
+    symbol: "scip-python python codenib-decorated-field-fixture 0.0.0 nested/marked().(label)"
+  }
+  symbols {
+    symbol: "scip-python python codenib-decorated-field-fixture 0.0.0 nested/marked().store()."
+    documentation: "```python\ndef store(\n  function\n):\n```"
+  }
+  symbols {
+    symbol: "scip-python python codenib-decorated-field-fixture 0.0.0 nested/marked().store().(function)"
+  }
+  symbols {
+    symbol: "scip-python python codenib-decorated-field-fixture 0.0.0 nested/Example#"
+    documentation: "```python\nclass Example:\n```"
+  }
+  symbols {
+    symbol: "scip-python python codenib-decorated-field-fixture 0.0.0 nested/Example#Checker#"
+    documentation: "```python\nclass Checker:\n```"
+  }
+  symbols {
+    symbol: "scip-python python codenib-decorated-field-fixture 0.0.0 nested/Example#Checker#__init__()."
+    documentation: "```python\ndef __init__(\n  self\n) -> None:\n```"
+  }
+  symbols {
+    symbol: "scip-python python codenib-decorated-field-fixture 0.0.0 nested/Example#Checker#__init__().(self)"
+  }
+  symbols {
+    symbol: "scip-python python codenib-decorated-field-fixture 0.0.0 nested/Checker#called."
+    documentation: "```python\n(variable) called: Literal[False]\n```"
+  }
+  symbols {
+    symbol: "scip-python python codenib-decorated-field-fixture 0.0.0 nested/Example#run()."
+    documentation: "```python\ndef run(\n  self\n): # -> bool:\n```"
+  }
+  symbols {
+    symbol: "scip-python python codenib-decorated-field-fixture 0.0.0 nested/Example#run().(self)"
+  }
+  symbols {
+    symbol: "scip-python python codenib-decorated-field-fixture 0.0.0 nested/Example#run().Checker#"
+    documentation: "```python\nclass Checker:\n```"
+  }
+  symbols {
+    symbol: "scip-python python codenib-decorated-field-fixture 0.0.0 nested/Example#run().Checker#__init__()."
+    documentation: "```python\ndef __init__(\n  self\n) -> None:\n```"
+  }
+  symbols {
+    symbol: "scip-python python codenib-decorated-field-fixture 0.0.0 nested/Example#run().Checker#__init__().(self)"
+  }
+  symbols {
+    symbol: "scip-python python codenib-decorated-field-fixture 0.0.0 nested/Example#run().Checker#visit()."
+    documentation: "```python\n@marked(\"call\")\ndef visit(\n  self,\n  node\n): # -> None:\n```"
+  }
+  symbols {
+    symbol: "scip-python python codenib-decorated-field-fixture 0.0.0 nested/Example#run().Checker#visit().(self)"
+  }
+  symbols {
+    symbol: "scip-python python codenib-decorated-field-fixture 0.0.0 nested/Example#run().Checker#visit().(node)"
+  }
+  symbols {
+    symbol: "local 0"
+    documentation: "```python\nnested.Example.Checker\n```"
+  }
+}

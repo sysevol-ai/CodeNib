@@ -1,0 +1,149 @@
+{
+  "schema": "codenib.python-identity-source-admission.v1",
+  "scope": "Two model-free installed development source controls, not a workflow comparison. Pylint is already exposed development; the further fixed confirmation cohort remains unopened.",
+  "pr": 933,
+  "source_commit": "40cc2ffd7887959157aaf469e09585ec2be7f528",
+  "baseline_product_merge": "98346c022386e48d658d47600df538e1059cc584",
+  "earlier_failure_packet": "codegraph_python_walrus_2026_10_30.json",
+  "prototype_variants": "Both exact installed module snapshots are retained. Final first-parameter/variadic safeguards and formatting are separately admitted, not substituted into the first observation.",
+  "selected_installed_files": 486,
+  "selected_documents": 878,
+  "partial_index": false,
+  "node_count": 10180,
+  "edge_count": 23148,
+  "positional_identity_queries": 59,
+  "unanswered_identity_queries": 0,
+  "context_queries_per_control": 4,
+  "byte_exact_source_windows_per_control": 28,
+  "complete_returned_route_dependency_definitions_per_control": 11,
+  "core_reference_coverage_per_control": {
+    "observations": 5,
+    "covered": 5,
+    "distinct_caller_locations": 3,
+    "scope": "Two _compute_sims probes plus one _check_astroid_module probe; not exhaustive repository coverage."
+  },
+  "ambiguous_reference_reply_retained": true,
+  "final_exact_name_reference_followups": [
+    {
+      "owner": "BaseChecker",
+      "returned": 40,
+      "requested_top_k": 40,
+      "at_output_cap": true
+    },
+    {
+      "owner": "MessagesHandlerMixIn",
+      "returned": 26,
+      "requested_top_k": 40
+    },
+    {
+      "owner": "UnittestLinter",
+      "returned": 0,
+      "requested_top_k": 40
+    }
+  ],
+  "focused_tests": {
+    "passed": 532,
+    "skipped": 0
+  },
+  "full_unit": {
+    "passed": 8984,
+    "skipped": 24,
+    "deselected": 221,
+    "warnings": 46,
+    "seconds": 140.96
+  },
+  "model_calls": 0,
+  "external_users": 0,
+  "source_read_credit": null,
+  "workflow_benefit": null,
+  "independent_successes": 0,
+  "old_model_results_unchanged": true,
+  "old_frozen_inputs_verified": 5294,
+  "old_binding_sha256": "66becb6b784a7560ef7cf0ce2ce980002634939f00aeadd0d38ebd6dc130c68d",
+  "original_source_bytes_unchanged": true,
+  "owned_containers_independently_absent": [
+    "381b05d96b3388c728a7fbe229394b5d9179fbafa17881b521160e4e83530559",
+    "5adefa0fd72c065b070e69569b258aa893b5b54d884f68700f5647a0aba529b4",
+    "e059680c040df12dbd9b63207350e82e35c15b47becaf42d13692d4a38063a1a",
+    "ff74db88e54dc1c257ed2454688acf04bc981319d30ba0d77e67c50f8e63d002"
+  ],
+  "private_raw_artifacts": {
+    "installed-v1/index.scip": {
+      "path": "/tmp/codenib-decorated-field-pylint-20261030/state/repositories/pylint-2a7ef1ef2be6/indexes/symbol_graph/index.scip",
+      "bytes": 11541880,
+      "sha256": "39aecddeb019c8e8858d75fefc8e6a9366b87d612de6f537b0558424c0cef6e8",
+      "retention": "Original complete compiler/graph artifact retained locally; no model observation or task score."
+    },
+    "installed-v1/graph.pkl": {
+      "path": "/tmp/codenib-decorated-field-pylint-20261030/state/repositories/pylint-2a7ef1ef2be6/indexes/symbol_graph/graph.pkl",
+      "bytes": 2365400,
+      "sha256": "c2f5562700f1ea1f2e398656bd9dbc1225ab7706fded1654709114516ea2c020",
+      "retention": "Original complete compiler/graph artifact retained locally; no model observation or task score."
+    },
+    "installed-v1/lsp_index.pkl": {
+      "path": "/tmp/codenib-decorated-field-pylint-20261030/state/repositories/pylint-2a7ef1ef2be6/indexes/symbol_graph/lsp_index.pkl",
+      "bytes": 10546993,
+      "sha256": "844421bdeb1d2ea703bd2f0624295b0b358c88f76e7af2d970369c38c06ff93a",
+      "retention": "Original complete compiler/graph artifact retained locally; no model observation or task score."
+    },
+    "installed-v1/index.decoded": {
+      "path": "/tmp/codenib-decorated-field-pylint-20261030/state/repositories/pylint-2a7ef1ef2be6/indexes/symbol_graph/index.decoded",
+      "bytes": 21575149,
+      "sha256": "346c851634670d8e4ce0cd9fb272789f3898a68b35676238552f8d206fb73809",
+      "retention": "Original complete compiler/graph artifact retained locally; no model observation or task score."
+    },
+    "installed-final/index.scip": {
+      "path": "/tmp/codenib-decorated-field-pylint-final-20261030/state/repositories/pylint-901979d49b71/indexes/symbol_graph/index.scip",
+      "bytes": 11541886,
+      "sha256": "f13e78feff233f9a10c37478c98b4f2b8a548f47e2545dec1c04aaaa10cda5a8",
+      "retention": "Original complete compiler/graph artifact retained locally; no model observation or task score."
+    },
+    "installed-final/graph.pkl": {
+      "path": "/tmp/codenib-decorated-field-pylint-final-20261030/state/repositories/pylint-901979d49b71/indexes/symbol_graph/graph.pkl",
+      "bytes": 2365406,
+      "sha256": "a7aae52c9fa244a9b5a2c541fbca979db578fd423afa7da6b6f3ec40b09b008c",
+      "retention": "Original complete compiler/graph artifact retained locally; no model observation or task score."
+    },
+    "installed-final/lsp_index.pkl": {
+      "path": "/tmp/codenib-decorated-field-pylint-final-20261030/state/repositories/pylint-901979d49b71/indexes/symbol_graph/lsp_index.pkl",
+      "bytes": 10546993,
+      "sha256": "844421bdeb1d2ea703bd2f0624295b0b358c88f76e7af2d970369c38c06ff93a",
+      "retention": "Original complete compiler/graph artifact retained locally; no model observation or task score."
+    },
+    "installed-final/index.decoded": {
+      "path": "/tmp/codenib-decorated-field-pylint-final-20261030/state/repositories/pylint-901979d49b71/indexes/symbol_graph/index.decoded",
+      "bytes": 21575155,
+      "sha256": "3e32adb2eca47f6f8fd7fa76b3ef3da43c9f92348e823f7b6f20e91188ecb06d",
+      "retention": "Original complete compiler/graph artifact retained locally; no model observation or task score."
+    }
+  },
+  "lossless_public_files": 81,
+  "parts": [
+    {
+      "path": "codegraph_python_identity_source_2026_10_30.part01.json",
+      "bytes": 281515,
+      "sha256": "f35eae338fbea9b2000da31ac03067b007deca2968949df5227540eca40719c5",
+      "files": 45
+    },
+    {
+      "path": "codegraph_python_identity_source_2026_10_30.part02.json",
+      "bytes": 281045,
+      "sha256": "d45202d48351919928a613a57a7255981fa59f3591787e91f3c8937bd7f3ce9e",
+      "files": 33
+    },
+    {
+      "path": "codegraph_python_identity_source_2026_10_30.part03.json",
+      "bytes": 5748,
+      "sha256": "171c967b8c12e3fdca45c5808a6bc5d58eb7b7fdacf9f58219135490cc2e3253",
+      "files": 3
+    }
+  ],
+  "remaining_gates": [
+    "Exact release-artifact admission",
+    "Voluntary model use",
+    "Workflow quality/time and token gates",
+    "Two successful independent confirmations",
+    "Consenting external reuse"
+  ],
+  "format": "Verify part lengths and SHA-256; reconstruct gzip+base64 or earlier whole-file identical_to aliases, then verify every original length and SHA."
+}

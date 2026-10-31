@@ -1,0 +1,23 @@
+def marked(label):
+    def store(function):
+        function.marker = label
+        return function
+    return store
+
+class Example:
+    class Checker:
+        def __init__(self):
+            self.called = False
+
+    def run(self):
+        class Checker:
+            def __init__(self):
+                self.called = False
+
+            @marked("call")
+            def visit(self, node):
+                self.called = True
+
+        checker = Checker()
+        checker.visit(None)
+        return checker.called

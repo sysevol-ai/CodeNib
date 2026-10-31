@@ -105,14 +105,19 @@ resource failures and update costs. BM25/native fallback is not typed-graph use.
 The three latest confirmation sources are now exposed and stay frozen; fixed
 Matplotlib/Django/xarray issue, source and grading material remain unopened.
 
-The current [module assignment-expression candidate](experiments/codegraph_python_walrus.md)
-([draft #933](https://github.com/sysevol-ai/CodeNib/pull/933)) addresses a real
-Pylint construction blocker found before reference-source
-delivery can be evaluated. Source-authenticated qualification repairs a bare
-compiler variable ID, with captured-fixture serial/native parity. The complete
-Pylint graph still fails at a later decorated field-write ownership check;
-keep the candidate draft and that gate open. No test exclusion, partial graph,
-new model result or change to the completed cohort is accepted.
+The current [Python identity candidate](experiments/codegraph_python_walrus.md)
+in [#933](https://github.com/sysevol-ai/CodeNib/pull/933) repairs both reproduced
+Pylint construction blockers: an unqualified module variable and a decorated
+field write corroborated by an independently declared field in the same LSP
+response. An installed two-module control admits all 878 selected documents,
+with partial indexing disabled, and returns four graph-backed source replies.
+All 28 windows match original source bytes; the two `_compute_sims` probes and
+one `_check_astroid_module` probe include all five returned caller locations.
+The original ambiguous `add_message` reference reply remains recorded; exact
+names resolve it, with one result capped at 40. Full construction and these
+selected source checks pass. Exact release-artifact admission, actual model
+use, workflow quality/time, independent confirmation and external reuse remain
+open. No completed cohort, test selection or score changes.
 
 The latest round records 8,821,055 normalized final main/auxiliary tokens and
 $9.311356 in SDK estimates, not invoices. The recorded estimate lower bound

@@ -55,6 +55,7 @@ class _Declaration:
     symbol: str = ""
     nonlocals: set[str] = field(default_factory=set)
     receiver: tuple[int, int] | None = None
+    first_parameter: _Declaration | None = None
     instance_parameter: _Declaration | None = None
     module_assignment_expression: bool = False
 
@@ -239,11 +240,12 @@ def _declarations(source: _Source, parser) -> list[_Declaration]:
                             number == 0
                             and parent is not None
                             and parent.kind == "class"
-                            and node.parent.type != "decorated_definition"
                             and parameter.parent.type
                             not in {"list_splat_pattern", "dictionary_splat_pattern"}
                         ):
-                            declaration.instance_parameter = argument
+                            declaration.first_parameter = argument
+                            if node.parent.type != "decorated_definition":
+                                declaration.instance_parameter = argument
                 parent = declaration
         elif node.type in {"assignment", "augmented_assignment", "named_expression"}:
             target = node.child_by_field_name("left") or node.child_by_field_name(
@@ -492,14 +494,19 @@ def _parameter_selection_target(source, position, span, family):
     return matches[0] if len(matches) == 1 else None
 
 
-def _attribute_assignment_targets(source, position, original, family):
+def _attribute_assignment_targets(
+    source, position, original, family, *, definition_targets=()
+):
     """Bind an LSP field-write target to its existing physical class binding.
 
     Providers may select a later write rather than the constructor's field
     definition. Require the same compiler field at that exact source anchor,
-    an unmodified instance parameter of an undecorated method, and existing
-    definitions owned by that physical class. A write never becomes a new
-    definition, and repeated declarations of the same field retain their union.
+    an unmodified compiler-anchored receiver parameter, and existing definitions
+    owned by that physical class. For a decorated method, require an independent
+    direct field definition in the same LSP response. This corroborates only
+    those selected fields; it does not infer what the decorator returns. A write
+    never becomes a definition. Without that corroboration, only an undecorated
+    instance method can recover the class's static field-definition union.
     """
 
     writes = [
@@ -511,7 +518,27 @@ def _attribute_assignment_targets(source, position, original, family):
         return []
     [write] = writes
     method = write.parent
-    parameter = method.instance_parameter if method is not None else None
+    if (
+        method is None
+        or method.kind != "function"
+        or method.parent is None
+        or method.parent.kind != "class"
+    ):
+        return []
+    parameter = method.instance_parameter
+    corroborated = []
+    if parameter is None:
+        corroborated = [
+            d
+            for d in definition_targets
+            if d.kind == "assignment"
+            and d.parent is method.parent
+            and d.name == write.name
+            and d.original == original
+        ]
+        if not corroborated:
+            return []
+        parameter = method.first_parameter
     if (
         parameter is None
         or not parameter.original
@@ -519,7 +546,7 @@ def _attribute_assignment_targets(source, position, original, family):
         or parameter.original not in source.parameter_anchors.get(write.receiver, ())
     ):
         return []
-    return [
+    return corroborated or [
         d
         for _, d in family
         if d.kind == "assignment"
@@ -904,6 +931,7 @@ def normalize_python_index(
                 else:
                     targets = []
                     locations = resolve(relative, *position)
+                    selections = []
                     for location in locations or ():
                         uri = location.get("targetUri") or location.get("uri")
                         parsed = urlparse(str(uri or ""))
@@ -948,16 +976,29 @@ def normalize_python_index(
                             target = _parameter_assignment_target(
                                 target_source, (line, column), occurrence.symbol, family
                             )
+                        selections.append(
+                            (target_source, target_file, line, column, target)
+                        )
+                    # Collect independently declared fields before resolving
+                    # any write anchors, so a provider's reply order cannot
+                    # affect whether its corroborating evidence is available.
+                    members = [member for _, member in family]
+                    definition_targets = [
+                        target for *_, target in selections if target in members
+                    ]
+                    for target_source, target_file, line, column, target in selections:
                         selected = (
                             [target]
                             if target is not None
                             else _attribute_assignment_targets(
-                                target_source, (line, column), occurrence.symbol, family
+                                target_source,
+                                (line, column),
+                                occurrence.symbol,
+                                family,
+                                definition_targets=definition_targets,
                             )
                         )
-                        if not selected or any(
-                            d not in [member for _, member in family] for d in selected
-                        ):
+                        if not selected or any(d not in members for d in selected):
                             raise ValueError(
                                 "Python identity target is unresolved at "
                                 f"{target_file}:{line + 1}:{column} "
