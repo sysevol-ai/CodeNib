@@ -256,6 +256,9 @@ class LSPClient:
         # Buffer for out-of-order responses: when _request reads a response
         # for a different request ID, it stores it here instead of discarding.
         self._response_buffer: dict[int, dict] = {}
+        # A pipe read can contain multiple messages or only part of one.
+        # Keep unread bytes across message returns and observation timeouts.
+        self._read_buffer = b""
 
         # Track the last error from _request so callers can decide whether
         # to retry (transient errors like -32801) or not (permanent errors).
@@ -290,6 +293,11 @@ class LSPClient:
             cwd=str(self.project_root),
             env=env,
         )
+        self._read_buffer = b""
+        self._response_buffer.clear()
+        self._pending_ids.clear()
+        self._active_progress.clear()
+        self._last_error = None
 
         # Build capabilities we request
         capabilities = {
@@ -966,32 +974,19 @@ class LSPClient:
     def _read_message(self, timeout: float = 30) -> Optional[dict]:
         """Read one JSON-RPC message from the server's stdout."""
         deadline = time.monotonic() + timeout
-        buf = b""
 
-        while time.monotonic() < deadline:
-            remaining = max(0.1, deadline - time.monotonic())
-            ready, _, _ = select.select([self.process.stdout], [], [], remaining)
-            if not ready:
-                continue
-
-            chunk = (
-                self.process.stdout.read1(65536)
-                if hasattr(self.process.stdout, "read1")
-                else self.process.stdout.read(1)
-            )
-            if not chunk:
-                return None
-            buf += chunk
-
-            # Try to parse a complete message from buffer
+        while True:
+            # Consume buffered frames before waiting for more pipe readiness.
             while True:
                 # Find header/body boundary
-                header_end = buf.find(b"\r\n\r\n")
+                header_end = self._read_buffer.find(b"\r\n\r\n")
                 if header_end == -1:
                     break
 
                 # Parse Content-Length
-                header_text = buf[:header_end].decode("utf-8", errors="replace")
+                header_text = self._read_buffer[:header_end].decode(
+                    "utf-8", errors="replace"
+                )
                 content_length = None
                 for line in header_text.split("\r\n"):
                     if line.lower().startswith("content-length:"):
@@ -1000,17 +995,17 @@ class LSPClient:
 
                 if content_length is None:
                     # Malformed header, skip
-                    buf = buf[header_end + 4 :]
+                    self._read_buffer = self._read_buffer[header_end + 4 :]
                     continue
 
                 body_start = header_end + 4
                 body_end = body_start + content_length
-                if len(buf) < body_end:
+                if len(self._read_buffer) < body_end:
                     # Need more data
                     break
 
-                body = buf[body_start:body_end]
-                buf = buf[body_end:]
+                body = self._read_buffer[body_start:body_end]
+                self._read_buffer = self._read_buffer[body_end:]
 
                 try:
                     message = json.loads(body.decode("utf-8"))
@@ -1060,7 +1055,20 @@ class LSPClient:
 
                 return message
 
-        return None
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return None
+            ready, _, _ = select.select([self.process.stdout], [], [], remaining)
+            if not ready:
+                continue
+            chunk = (
+                self.process.stdout.read1(65536)
+                if hasattr(self.process.stdout, "read1")
+                else self.process.stdout.read(1)
+            )
+            if not chunk:
+                return None
+            self._read_buffer += chunk
 
     # ── progress / idleness tracking ─────────────────────────────────
     # Servers signal background work via ``$/progress`` notifications:
@@ -1078,6 +1086,17 @@ class LSPClient:
             self._active_progress.pop(token, None)
         # report: keep the token active
 
+    def _remember_response(self, message: dict) -> None:
+        """Keep replies encountered while draining or awaiting another ID."""
+        response_id = message.get("id")
+        if response_id is None or "method" in message:
+            return
+        self._pending_ids.discard(response_id)
+        self._response_buffer[response_id] = message
+        if len(self._response_buffer) > 100:
+            oldest = min(self._response_buffer)
+            del self._response_buffer[oldest]
+
     def drain_notifications(self, timeout_s: float = 0.5) -> int:
         """Drain any pending notifications without waiting for a response.
 
@@ -1090,17 +1109,17 @@ class LSPClient:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 break
-            ready, _, _ = select.select(
-                [self.process.stdout], [], [], min(remaining, 0.05)
-            )
-            if not ready:
-                break
+            if not self._read_buffer:
+                ready, _, _ = select.select(
+                    [self.process.stdout], [], [], min(remaining, 0.05)
+                )
+                if not ready:
+                    break
             msg = self._read_message(timeout=remaining)
             if msg is None:
                 break
             n += 1
-            # We don't dispatch unmatched responses here; just count and
-            # let _handle_progress (called inside _read_message) update state.
+            self._remember_response(msg)
         return n
 
     def wait_until_idle(
@@ -1191,13 +1210,7 @@ class LSPClient:
                     self._last_error = None
                 return result
             # Not our response — buffer it for later retrieval
-            if resp_id is not None:
-                self._response_buffer[resp_id] = message
-                # Evict oldest entries if buffer grows too large
-                _MAX_RESPONSE_BUFFER = 100
-                if len(self._response_buffer) > _MAX_RESPONSE_BUFFER:
-                    oldest = min(self._response_buffer.keys())
-                    del self._response_buffer[oldest]
+            self._remember_response(message)
 
         self._last_error = {"code": -1, "message": "timeout"}
         logger.warning(f"LSP request {method} timed out after {timeout}s")
@@ -1255,9 +1268,7 @@ class LSPClient:
                 # Do NOT discard pending IDs or send new requests.
                 # Just keep waiting.
                 continue
-            resp_id = message.get("id")
-            if resp_id is not None:
-                self._pending_ids.discard(resp_id)
+            self._remember_response(message)
 
     def _notify(self, method: str, params: Any):
         """Send a notification (no response expected)."""
