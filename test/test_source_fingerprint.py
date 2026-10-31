@@ -1516,6 +1516,82 @@ def test_posix_root_cleanup_rejects_same_inode_new_ofd_after_close(
     real_close(replacement)
 
 
+@pytest.mark.parametrize(
+    "ignored_directory", ["__pycache__", ".pytest_cache", "generated"]
+)
+def test_repository_source_binding_ignores_excluded_directory_churn(
+    tmp_path: Path, ignored_directory: str
+) -> None:
+    repo = tmp_path / "repo"
+    package = repo / "pkg"
+    package.mkdir(parents=True)
+    source = package / "value.py"
+    source.write_bytes(b"VALUE = 1\n")
+    selection = RepositorySourceSelection(
+        ["pkg/generated"] if ignored_directory == "generated" else ()
+    )
+    with capture_repository_source(repo, selection=selection) as binding:
+        original = binding.authenticated_identity_snapshot()
+        cache = package / ignored_directory
+        cache.mkdir()
+        output = cache / "generated.bin"
+        output.write_bytes(b"ignored output")
+        assert fingerprint_repository(repo, selection=selection).value == (
+            original.fingerprint
+        )
+        assert binding.authenticated_identity_snapshot() == original
+        assert binding.read_bytes("pkg/value.py", max_bytes=1024) == b"VALUE = 1\n"
+        output.unlink()
+        cache.rmdir()
+        assert binding.authenticated_identity_snapshot() == original
+        source.write_bytes(b"VALUE = 2\n")
+        with pytest.raises(RepositoryChangedError):
+            binding.verify_snapshot()
+        assert not binding.usable
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX descriptor enumeration")
+def test_ignored_directory_change_during_scan_still_poisoned(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "repo"
+    package = repo / "pkg"
+    package.mkdir(parents=True)
+    (package / "value.py").write_bytes(b"VALUE = 1\n")
+    package_identity = package.stat()
+    changed = False
+
+    class ScanningOS:
+        def __getattr__(self, name):
+            return getattr(os, name)
+
+        @contextmanager
+        def scandir(self, descriptor):
+            nonlocal changed
+            metadata = os.fstat(descriptor)
+            inside_package = (metadata.st_dev, metadata.st_ino) == (
+                package_identity.st_dev,
+                package_identity.st_ino,
+            )
+            with os.scandir(descriptor) as entries:
+
+                def observed():
+                    nonlocal changed
+                    for entry in entries:
+                        if inside_package and not changed:
+                            (package / "__pycache__").mkdir()
+                            changed = True
+                        yield entry
+
+                yield observed()
+
+    with capture_repository_source(repo) as binding:
+        monkeypatch.setattr(source_fingerprint_module, "os", ScanningOS())
+        with pytest.raises(RepositoryChangedError):
+            binding.verify_snapshot()
+        assert changed and not binding.usable
+
+
 def test_repository_source_binding_poisoned_by_touched_or_unrelated_change(
     tmp_path: Path,
 ) -> None:
@@ -2477,6 +2553,80 @@ def test_windows_final_file_change_precedes_eof_armed_stop() -> None:
         )
 
     assert caught.value is not stop
+    assert api.handles == {}
+
+
+@pytest.mark.parametrize(
+    "ignored_directory", ["__pycache__", ".pytest_cache", "generated"]
+)
+def test_windows_source_binding_ignores_excluded_directory_churn(
+    ignored_directory: str,
+) -> None:
+    api = _FakeWindowsSourceApi()
+    package = api.add_directory(api.root_id, "pkg")
+    api.add_file(package, "value.py", b"VALUE = 1\n")
+    selection = RepositorySourceSelection(
+        ["pkg/generated"] if ignored_directory == "generated" else ()
+    )
+    binding = source_fingerprint_module._fingerprint_windows_repository(
+        r"C:\repo",
+        exclude_roots=(),
+        selection=selection,
+        version=SOURCE_FINGERPRINT_VERSION,
+        api=api,
+        retain_binding=True,
+    )
+    assert isinstance(binding, RepositorySourceBinding)
+    try:
+        original = binding.authenticated_identity_snapshot()
+        cache = api.add_directory(package, ignored_directory)
+        api.add_file(cache, "generated.bin", b"ignored output")
+        api.nodes[package]["version"] = 2
+        assert binding.authenticated_identity_snapshot() == original
+        api._children(package).pop(ignored_directory)
+        api.nodes[package]["version"] = 3
+        assert binding.authenticated_identity_snapshot() == original
+        api.add_file(package, "included.py", b"NEW = 1\n")
+        api.nodes[package]["version"] = 4
+        with pytest.raises(RepositoryChangedError):
+            binding.verify_snapshot()
+        assert not binding.usable
+    finally:
+        binding.close()
+    assert api.handles == {}
+
+
+def test_windows_ignored_directory_change_during_scan_still_poisoned() -> None:
+    api = _FakeWindowsSourceApi()
+    package = api.add_directory(api.root_id, "pkg")
+    api.add_file(package, "value.py", b"VALUE = 1\n")
+    binding = source_fingerprint_module._fingerprint_windows_repository(
+        r"C:\repo",
+        exclude_roots=(),
+        version=SOURCE_FINGERPRINT_VERSION,
+        api=api,
+        retain_binding=True,
+    )
+    assert isinstance(binding, RepositorySourceBinding)
+    original_iter = api.iter_directory
+    changed = False
+
+    def mutate_ignored_entry(handle: int):
+        nonlocal changed
+        for entry in original_iter(handle):
+            if api.handles[handle] == package and not changed:
+                api.add_directory(package, "__pycache__")
+                api.nodes[package]["version"] = 2
+                changed = True
+            yield entry
+
+    api.iter_directory = mutate_ignored_entry  # type: ignore[method-assign]
+    try:
+        with pytest.raises(RepositoryChangedError):
+            binding.verify_snapshot()
+        assert changed and not binding.usable
+    finally:
+        binding.close()
     assert api.handles == {}
 
 
