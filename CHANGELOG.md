@@ -11,6 +11,51 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-10-31
+
+### Added
+
+- Public-repository visitor Wikis with linked chapters, persistent generation
+  progress, resumable saved results, model selection, share cards and explicit
+  owner publication to Browse. Saved results begin unlisted.
+- Source-bound architecture diagrams, saved code maps, a seekable system-map
+  film and a self-contained first-visit repository example.
+- OKF v0.2 export of complete cached Wikis, with source excerpts, evidence
+  sidecars, version identities and a hashed file inventory. Explicit
+  `--agent-dir` maintains Wiki discovery pointers in agent instruction files.
+- Optional BM25-first CodeGraph initialization with `--defer-graph`, a composed
+  exploration tool surface and on-demand graph preparation. Deferred Python
+  full-tool sessions can return bounded source definition candidates.
+- ContextBench and Agent Retrieval Bench adapters with reproducible inputs,
+  source-delivery receipts and benchmark-native scoring. Their reported results
+  remain separate from CodeGraph workflow-benefit claims.
+
+### Changed
+
+- Accept dirty checkouts during CodeGraph setup, reject stale indexed queries
+  after edits and reload explicitly rebuilt indexes in the same MCP session.
+- Share the architecture reader between prepared and visitor Wikis, show
+  unavailable visual coverage and preserve source-pane layout during navigation.
+- Add camelCase parts to BM25 tokens and retain validation-test candidates
+  without crowding out implementation matches.
+
+### Fixed
+
+- Recover Python module, field and wildcard-reference identities; bind retrieval
+  seeds to indexed spans and retain complete requested definitions within source
+  delivery limits.
+- Cover Go test files and nested modules, preserve LSP replies across reads and
+  idle drains, and bound language-server teardown.
+- Preserve source authority across ignored cache churn and publish scip-python
+  indexes only after the indexer finishes, without analyzing caller site-packages.
+- Bound SCIP test-fixture retries and failure cleanup; repair schematic map
+  routing and title/tag overlap.
+
+### Removed
+
+- Retired the source-only H1 hybrid-index experiment. Product storage remains
+  Wiki-only; manifest-bound indexes and portable artifacts remain file-based.
+
 ## [0.2.4] - 2026-09-26
 
 ### Added
@@ -313,7 +358,8 @@ All notable user-facing changes are recorded here. CodeNib follows
 - Prepared secretless PyPI publishing through a dedicated GitHub Actions OIDC
   workflow.
 
-[Unreleased]: https://github.com/sysevol-ai/CodeNib/compare/v0.2.4...HEAD
+[Unreleased]: https://github.com/sysevol-ai/CodeNib/compare/v0.2.5...HEAD
+[0.2.5]: https://github.com/sysevol-ai/CodeNib/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/sysevol-ai/CodeNib/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/sysevol-ai/CodeNib/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/sysevol-ai/CodeNib/compare/v0.2.1...v0.2.2

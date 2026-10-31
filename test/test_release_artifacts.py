@@ -192,8 +192,8 @@ def test_project_identity_and_tag_match_release_metadata() -> None:
     name, version = project_identity(root / "pyproject.toml")
 
     assert name == "codenib"
-    assert expected_tag(version) == "v0.2.4"
-    validate_tag("v0.2.4", version)
+    assert expected_tag(version) == "v0.2.5"
+    validate_tag("v0.2.5", version)
 
 
 def test_release_tag_must_match_project_version() -> None:
