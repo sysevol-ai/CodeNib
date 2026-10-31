@@ -218,7 +218,9 @@ The [shared-client generation-owner repair](codegraph_lsp_generation_owner.md)
 keeps a process reachable until bounded exit/pipe cleanup finishes and rejects
 overlapping start or readiness after a missing initialize result. All eight
 new lifecycle regressions reproduce on unchanged source; 16 related cases and
-9,025 final local unit tests pass. Both version-bound installed replays preserve
+the serial tier passes 9,025 and the corrected parallel/timeout tier 9,024,
+with both outcomes and the initial remote fixture failure retained separately.
+Both version-bound installed replays preserve
 the entire previous post-SCIP admission, including all 786,078 ordered
 occurrences, quality and receipt objects, while recording actual provider exit
 and pipe closure. The separate virtual-source alias/lifecycle controls recover

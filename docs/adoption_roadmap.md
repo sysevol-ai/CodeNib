@@ -251,8 +251,10 @@ change, model inference, external enrollment or promotion is added.
 The [shared-client generation-owner repair](experiments/codegraph_lsp_generation_owner.md)
 bounds shutdown writes/waits, retains an unreaped owner for retry and rejects
 replacement or false readiness after a missing initialize result. Eight final
-regressions reproduce on unchanged source; 16 related cases and 9,025 final
-local unit tests pass. A separately installed replay preserves the entire prior
+regressions reproduce on unchanged source; 16 related cases, the 9,025-pass
+serial tier and the 9,024-pass parallel/timeout tier are retained. The initial
+remote timeout-fixture failure and its correction remain separate. A separately
+installed replay preserves the entire prior
 graph/occurrence/quality/receipt admission and observes the real provider exit
 with pipes closed. Source-only alias controls recover the exposed call and
 verify post-response/stale rejection, explicit recapture and bounded cleanup,

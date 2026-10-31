@@ -45,7 +45,7 @@ unchanged-code reproduction cannot hang the suite. Existing transport tests
 still verify frames and late replies; their fresh-server fixture explicitly
 releases its old owner before starting the replacement.
 
-All **16** related cases and the final full local unit tier pass: **9,025
+All **16** related cases and the original serial unit tier pass: **9,025
 passed, 24 skipped, 221 heavier cases deselected and 46 existing warnings**,
 with process-local umask `022`. The first lifecycle fixture omits `PIPE` from
 its module-local subprocess double; retain that setup failure. After correcting
@@ -53,6 +53,18 @@ the fixture, all seven initial cases fail against base, and all eight final
 cases independently fail against the exact unchanged module. A later check
 also reproduces false readiness on the first repair before its correction.
 The nearest test rules now require constants/exceptions in such doubles.
+
+The first remote unit job fails because the pipe fixture assumes `SIGALRM`
+is unused, while CI's `pytest-timeout` already owns it. Preserve that outcome
+in the separate [timeout-fixture supplement](codegraph_lsp_owner_timeout_2026_10_31.json).
+The corrected fixture uses a cancellable/joined watchdog over its exact child,
+without touching the runner's signal handler or timer. All sixteen cases pass
+with the real 180-second signal timeout active, with read-only observations
+confirming its handler and timer survive each test. All eight corrected cases
+still fail against unchanged product source. The matching four-worker local
+tier passes **9,024, with 25 skips and 46 existing warnings**; retain those
+outcomes separately from the original serial tier. Product bytes remain
+identical to the installed final wheel, so its admission is not replaced.
 
 ## Installed existing consumer
 

@@ -10,9 +10,9 @@ import io
 import json
 import os
 import select
-import signal
 import subprocess
 import sys
+import threading
 from types import SimpleNamespace
 
 import pytest
@@ -252,7 +252,6 @@ def _short_shutdown(monkeypatch):
 
 
 def test_unread_full_stdin_pipe_cannot_block_shutdown(tmp_path, monkeypatch):
-    assert signal.getitimer(signal.ITIMER_REAL) == (0.0, 0.0)
     process = subprocess.Popen(
         [
             sys.executable,
@@ -268,11 +267,16 @@ def test_unread_full_stdin_pipe_cannot_block_shutdown(tmp_path, monkeypatch):
     client.process = process
     client._initialize_result_received = True
     watchdog = []
-    previous = signal.getsignal(signal.SIGALRM)
+    cancelled = threading.Event()
 
-    def interrupt_blocked_write(*_args):
-        watchdog.append(True)
-        raise TimeoutError("test watchdog interrupted a blocking shutdown write")
+    def rescue_blocked_write():
+        # Own only this exact child, and always cancel/join before leaving.
+        # A runner-owned SIGALRM (pytest-timeout) must remain untouched.
+        if not cancelled.wait(2):
+            watchdog.append(True)
+            process.kill()
+
+    rescuer = threading.Thread(target=rescue_blocked_write)
 
     try:
         assert select.select([process.stdout], [], [], 2)[0]
@@ -287,8 +291,7 @@ def test_unread_full_stdin_pipe_cannot_block_shutdown(tmp_path, monkeypatch):
         finally:
             os.set_blocking(fd, True)
         _short_shutdown(monkeypatch)
-        signal.signal(signal.SIGALRM, interrupt_blocked_write)
-        signal.setitimer(signal.ITIMER_REAL, 2)
+        rescuer.start()
         client.shutdown()
         assert not watchdog, "the shutdown deadline did not bound its pipe write"
         assert process.poll() is not None
@@ -297,11 +300,20 @@ def test_unread_full_stdin_pipe_cannot_block_shutdown(tmp_path, monkeypatch):
             stream.closed for stream in (process.stdin, process.stdout, process.stderr)
         )
     finally:
-        signal.setitimer(signal.ITIMER_REAL, 0)
-        signal.signal(signal.SIGALRM, previous)
-        if process.poll() is None:
-            process.kill()
-            process.wait(timeout=2)
+        cancelled.set()
+        try:
+            if process.poll() is None:
+                process.kill()
+                process.wait(timeout=2)
+        finally:
+            if rescuer.ident is not None:
+                rescuer.join(timeout=3)
+                assert not rescuer.is_alive()
+            for stream in (process.stdin, process.stdout, process.stderr):
+                try:
+                    stream.close()
+                except OSError:
+                    pass  # Broken-pipe cleanup must not replace the assertion.
 
 
 def test_real_server_receives_shutdown_then_exit_and_releases_pipes(
