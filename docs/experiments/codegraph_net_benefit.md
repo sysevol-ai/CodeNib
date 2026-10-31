@@ -228,9 +228,23 @@ the exposed complete-source call and verify source-generation rejection and
 cleanup. Their generated fixture remains 10/11 positives and 0/5 negatives
 included, with unresolved rebinding; its failed gate is not relaxed. No product
 live route, timing comparator, model question, successful confirmation or
-external participant is added. Merged #942 now passes main Docs and all twenty
-executed release verifiers, with five tag-only skips. Complete-workflow benefit
-and real use remain open.
+external participant is added. Merged #943 passes main Docs and all twenty
+executed release verifiers and all seven executed main CI jobs, including
+serial integration, SCIP/core and graph consumer. Slow and five tag-only skips
+remain explicit; public 0.2.4 is unchanged.
+
+The separate [function-flow diagnostic](codegraph_python_function_flow.md)
+recovers 11/11 fixture calls with 0/5 negatives included using a private
+analyzer type query. A conditional reassignment exposes an incorrect complete
+exclusion, so that local success does not admit a product route. A conservative
+analyzer-flow guard marks the conditional result partial but rejects the
+required complete-source origin. Preserve both controls, the original fixture's
+unresolved recapture import and the copied exception-class harness failure;
+separate corrections do not replace them. All 267 original responses match
+the recorded delivery and all twelve actors are absent. No model question,
+installed provider, frozen score, whole-task comparison, independent success
+or external-use evidence changes. Complete-workflow benefit and real use
+remain open.
 
 The [merged Python identity repair](codegraph_python_walrus.md) now admits the
 complete selected Pylint graph and exact source delivery through its actual CI

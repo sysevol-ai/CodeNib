@@ -259,10 +259,24 @@ graph/occurrence/quality/receipt admission and observes the real provider exit
 with pipes closed. Source-only alias controls recover the exposed call and
 verify post-response/stale rejection, explicit recapture and bounded cleanup,
 but still cover only 10/11 required fixture calls with 0/5 negative calls
-included. Rebinding remains partial; there is no live MCP route promotion or
-complete-task comparison. Merged [#942](https://github.com/sysevol-ai/CodeNib/pull/942)
-passes main Docs and all twenty executed release verifiers, with five tag-only
-skips. The full objective and all workflow/use gates remain active.
+included. Those failed controls remain unchanged. Merged
+[#943](https://github.com/sysevol-ai/CodeNib/pull/943) passes main Docs and all
+twenty executed release verifiers and all seven executed main CI jobs,
+including serial integration, SCIP/core and graph consumer. Slow and five
+tag-only publication skips remain explicit. Public 0.2.4 is unchanged.
+
+The separate [function-flow diagnostic](experiments/codegraph_python_function_flow.md)
+finds all eleven required fixture calls and excludes all five negatives, but
+does not establish a complete reference route. A conditional reassignment
+collapses distinct functions to one callable type and is wrongly excluded by
+the first wrapper. A conservative analyzer-flow guard marks that call partial,
+but also rejects the required origin on complete source. Both failed controls,
+an unresolved import in the original recapture fixture, and a controller
+exception-class mismatch remain retained; separate corrections do not replace
+them. All 267 captured replies/deliveries and twelve owners' cleanup verify.
+There is no product live route, complete-task comparator, model question,
+independent success or participant. Actual MCP integration, representative
+coverage and all workflow/use gates remain active.
 
 The latest four-arm round records 8,821,055 normalized final main/auxiliary tokens
 and $9.311356 in SDK estimates, not invoices. The separate diagnostic adds
