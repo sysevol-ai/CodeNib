@@ -379,6 +379,24 @@ post-rebinding negative and every completed cohort unchanged. A real
 cross-file maintenance consumer remains the next gate before more provider
 work or paid efficacy rounds.
 
+An internal maintenance audit of open #867 found a concrete discovery gap:
+the default BM25 view indexed 655 CodeNib files and zero tests. An exact safety
+test query returned unrelated implementation files, although direct reading
+worked. The [test-coverage repair](experiments/codegraph_bm25_test_coverage.md)
+keeps selected tests in both BM25 build paths and versions the recipe so an
+old view rebuilds on unchanged source. An installed developer migration retains
+all 2,549 selected files/fingerprint while adding 506 test files to the index;
+the requested test's complete function is then delivered, and query-time test
+exclusion still works. Six builder controls and four candidate-pool controls
+retain their original before/after outcomes. Implementation-only retrieval now
+excludes test hits before its bounded candidate limit. The original 2/3 Ask
+pass set is restored after the first candidate's Wiki regression; the remaining
+pre-existing miss stays explicit. Current CI-wheel admission and final remote
+checks remain open. This is exposed internal source retrieval, with no typed
+graph preparation, model SDK question, new cohort, independent success or
+external user. #867's unsupported concurrent-root ownership problem remains
+open and is not represented as fixed by this discovery change.
+
 The latest four-arm round records 8,821,055 normalized final main/auxiliary tokens
 and $9.311356 in SDK estimates, not invoices. The separate diagnostic adds
 78,348 tokens and $0.1850155 in SDK estimates within its $1 guard. The recorded

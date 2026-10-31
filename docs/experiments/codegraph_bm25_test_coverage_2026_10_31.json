@@ -1,0 +1,812 @@
+{
+  "schema": "codenib.bm25-test-coverage.terminal.v1",
+  "goal": "active",
+  "records": 91,
+  "record_manifest": [
+    {
+      "path": "after-builder.stdout",
+      "bytes": 115,
+      "sha256": "682025c7c383471dc6a69be9534d76c62a9eca1e70ec67ed50f65a9ee6aaed27"
+    },
+    {
+      "path": "after-supporting-2.stdout",
+      "bytes": 115,
+      "sha256": "52866ca17885cc298b12e927b49f0d80c75feb683d6ba263fcdbaa17493b320e"
+    },
+    {
+      "path": "after-supporting.stdout",
+      "bytes": 2366,
+      "sha256": "ee7831fd0687e2348be34c12f3ffdd148ad27bf61f7387837a991fe1da738859"
+    },
+    {
+      "path": "ask-quality-after-2.stdout",
+      "bytes": 1671,
+      "sha256": "83e2b992a35901d935ac514ce0f60249b1d3b7c79b0cb779d23abfafa1dda333"
+    },
+    {
+      "path": "ask-quality-after.stdout",
+      "bytes": 1137,
+      "sha256": "99f040c0282842ed2ac4eed3574ded1b51a0d93d32dca4e8e15b964f108081e8"
+    },
+    {
+      "path": "ask-quality-before-2.stdout",
+      "bytes": 1719,
+      "sha256": "71568fe160b2d90dc5f7648671590e7c6b1326cf94ff87746b981c2ce142a2f3"
+    },
+    {
+      "path": "ask-quality-before.stdout",
+      "bytes": 1123,
+      "sha256": "9113bf41f3005bd6cfa96448ad85b19289ddcf95df0dc3604c9aec798ee1b7cf"
+    },
+    {
+      "path": "ask-quality-candidate2-fresh.stdout",
+      "bytes": 1719,
+      "sha256": "1b684c7a4a90b7851cf93a7a78afd0a3ef5c3c29f659718bff0c8d302dc4daeb"
+    },
+    {
+      "path": "ask-quality-candidate2.stdout",
+      "bytes": 1719,
+      "sha256": "1b684c7a4a90b7851cf93a7a78afd0a3ef5c3c29f659718bff0c8d302dc4daeb"
+    },
+    {
+      "path": "ask-quality-source-2.stdout",
+      "bytes": 1719,
+      "sha256": "1b684c7a4a90b7851cf93a7a78afd0a3ef5c3c29f659718bff0c8d302dc4daeb"
+    },
+    {
+      "path": "baseline-wheel-binding.json",
+      "bytes": 125599,
+      "sha256": "f5c295e3ff119c6eb144341e18d0146215d8d12f237e16fb1558de74f5dc45c0"
+    },
+    {
+      "path": "baseline.json",
+      "bytes": 758,
+      "sha256": "8c89a4d4bd4203fc0636ba3c25b01bed8816bf399a34be467e4aef6c66dd64a0"
+    },
+    {
+      "path": "before-supporting.stdout",
+      "bytes": 1367,
+      "sha256": "caf484baca1dcf7276f9794cde6b20771bc5273b2dd59bbbaec65d6c0da13800"
+    },
+    {
+      "path": "before.stdout",
+      "bytes": 8715,
+      "sha256": "ac3c6ce9285586e8c83952212fdcf0fdab6a64c9c025540fe6c3b09c2c499dae"
+    },
+    {
+      "path": "build-candidate.stdout",
+      "bytes": 171,
+      "sha256": "3f8d0eeda0b00360d112a03692257e61dd1dbef9fe9251009cf36f2c08890f60"
+    },
+    {
+      "path": "build-candidate2.stdout",
+      "bytes": 171,
+      "sha256": "d6b91fd306b8d6cb2a80e5768eebbfc1b37a7619ec1383aba63aec3590bd7dc2"
+    },
+    {
+      "path": "build_developer_wheel.py",
+      "bytes": 2548,
+      "sha256": "9b2820c578fb8641b9ec06a5acd27e2a2d8eed83888f5517b3fdb51145eb0bda"
+    },
+    {
+      "path": "build_developer_wheel2.py",
+      "bytes": 2742,
+      "sha256": "f7a6d81b431e80a002280f37812075690b543a9a6bb29f8f4dde100b90bee2fd"
+    },
+    {
+      "path": "candidate-source/codenib/agent/skills/repository_search/executor.py",
+      "bytes": 15014,
+      "sha256": "99b4c94f1797bf6fd6e9be1148f3db036d75624e094b344fcb98f24199fbd46f"
+    },
+    {
+      "path": "candidate-source/codenib/compiler/index_builders.py",
+      "bytes": 103819,
+      "sha256": "ff3d4c3c5c415d6fdb6051ed64eaeeb55832f82b25a286e501fd23afc1be8e50"
+    },
+    {
+      "path": "candidate-source/scripts/check_ask_retrieval.py",
+      "bytes": 6421,
+      "sha256": "211576dc0bf92e7534c838ee3f4ac2ead81cded7a314dc2111a472fde417f61b"
+    },
+    {
+      "path": "candidate-source/test/agent/test_repository_search.py",
+      "bytes": 13010,
+      "sha256": "5ce321f822d584743d6c25181ab5e918b3a06110eecc380643d29f32a354c9a1"
+    },
+    {
+      "path": "candidate-source/test/compiler/test_index_compiler.py",
+      "bytes": 193540,
+      "sha256": "a0cd173c514b042937d1c42d562876f8553150bb835cb68c412fef9e4ec7b3da"
+    },
+    {
+      "path": "candidate-wheel-binding.json",
+      "bytes": 125232,
+      "sha256": "15ae904235da6601ca9673d28a61784800cf4049b0598e3382a573a8dbbe79c7"
+    },
+    {
+      "path": "candidate2-control/installed-after-1/indexed-paths.json",
+      "bytes": 46976,
+      "sha256": "fb584dc8a33bf9039da9ec55b54b0273bf25768a1d55b9e4ca0a463b2767917e"
+    },
+    {
+      "path": "candidate2-control/installed-after-1/manifest.pre-update.json",
+      "bytes": 3389,
+      "sha256": "e1cbbba9fc283122d716f35495227acf8dedd30705e9010a0880b01587ed3609"
+    },
+    {
+      "path": "candidate2-control/installed-after-1/manifest.result.json",
+      "bytes": 3459,
+      "sha256": "2abd96d626adf414aaa702c20ccf780e613e766e0d7bd455d73a327c9cee3ef6"
+    },
+    {
+      "path": "candidate2-control/installed-after-1/protocol.json",
+      "bytes": 1777,
+      "sha256": "e1d0fcbffe11a781bef5097115ce15f08e2e3bbd1313ae080647fc5a9fbcb3fa"
+    },
+    {
+      "path": "candidate2-control/installed-after-1/run-state.json",
+      "bytes": 72652,
+      "sha256": "838ef4ef8a18e7f14d2fd756284adc236fb8b1d82666741277e84915ce10acdf"
+    },
+    {
+      "path": "candidate2-control/installed-after-1.stdout",
+      "bytes": 1163,
+      "sha256": "c4e2bdadcaff49c8f37a33f3012b4b0244ae6e8ea495ceb6ee8e8bb146d975a2"
+    },
+    {
+      "path": "candidate2-control/installed-before-1/indexed-paths.json",
+      "bytes": 26105,
+      "sha256": "c21f83f80f34899e27c7281b20466d881a03cdde60860d12c8d92507375247a5"
+    },
+    {
+      "path": "candidate2-control/installed-before-1/manifest.result.json",
+      "bytes": 3389,
+      "sha256": "e1cbbba9fc283122d716f35495227acf8dedd30705e9010a0880b01587ed3609"
+    },
+    {
+      "path": "candidate2-control/installed-before-1/protocol.json",
+      "bytes": 1778,
+      "sha256": "7fb943b7bb6c1cffb1e484b6b2be2d00c99e7dc5879bef195cb07eaa69a251d8"
+    },
+    {
+      "path": "candidate2-control/installed-before-1/run-state.json",
+      "bytes": 73443,
+      "sha256": "2cbd4543406ede04fd1a56ce287b844169d4bfa439c5e0f5b4e0ea3ea1a4e497"
+    },
+    {
+      "path": "candidate2-control/installed-before-1.stdout",
+      "bytes": 1162,
+      "sha256": "dc010880e919f1d2a836f09a03aef35afbc534ef03a07eb3167d2037cb5e18a3"
+    },
+    {
+      "path": "candidate2-control/installed_migration.py",
+      "bytes": 8032,
+      "sha256": "1427988a7eb5acc4118c06c603ab46a8ab270d78ce490eb691f0e9a1af9d7a4c"
+    },
+    {
+      "path": "candidate2-wheel-binding.json",
+      "bytes": 125567,
+      "sha256": "c7d8356948f0d3d1d774096a99f2601af608638b1628018650bedac596c31f95"
+    },
+    {
+      "path": "captured-target-source/codenib/eval/benchmarks/_arb_evaluate.py",
+      "bytes": 4601,
+      "sha256": "bf19cf03635b9285e63017822a3a1e59e2da4e7c3915bb2fdcbe55b50afcfa65"
+    },
+    {
+      "path": "captured-target-source/codenib/eval/benchmarks/_arb_methods.py",
+      "bytes": 30185,
+      "sha256": "d118994ecc4dde74743890e09867bb0a1ef7bfd0e3b30f9c1ec5dd7ce5431ec1"
+    },
+    {
+      "path": "captured-target-source/codenib/eval/benchmarks/agent_retrieval_bench_tools.py",
+      "bytes": 28710,
+      "sha256": "e134363309232da8ca3cf7595bb8536ca14372d4942da0206d19738d2e2793f1"
+    },
+    {
+      "path": "captured-target-source/codenib/mcp/tools/search.py",
+      "bytes": 15341,
+      "sha256": "84002d05fc00fc42481e5f588bb763d255482af30270e47350e2b2f41061e484"
+    },
+    {
+      "path": "captured-target-source/codenib/utils.py",
+      "bytes": 9681,
+      "sha256": "d0359d38814044ab8ef45cf38d8f45f911401a1ffa20243378e3c52c01751c10"
+    },
+    {
+      "path": "captured-target-source/scripts/profiling/profile_incremental_graph.py",
+      "bytes": 43558,
+      "sha256": "708d2baee9cf11860c21cbfdfad96331f374c54e6342b1b9ffb70e6136d898e2"
+    },
+    {
+      "path": "captured-target-source/scripts/scaffold_language.py",
+      "bytes": 32072,
+      "sha256": "016b04d2ace4946d0fbca6b3565d04d89cc186c808db690a50ce7371128f8df8"
+    },
+    {
+      "path": "captured-target-source/test/eval/test_arb_tools.py",
+      "bytes": 23771,
+      "sha256": "3e1405cbd17cf3c4c382aec7e2cc793a64efce65eefdcb70d0d4832558e47d93"
+    },
+    {
+      "path": "captured-target-source/test/web/test_modulemap.py",
+      "bytes": 12000,
+      "sha256": "db9b7cf5f7409255583377b3730d28a0215f1e17d0968a05192c9926583c3d9f"
+    },
+    {
+      "path": "freeze_evidence.py",
+      "bytes": 12065,
+      "sha256": "f9438cef841572f62828336ae0e2f2107da7738f5b282702792c0b13b11a24b4"
+    },
+    {
+      "path": "hooks-1.stdout",
+      "bytes": 1450,
+      "sha256": "22580198e024c62a12ee684c414411596636b69e1c26f1df08ec2bf535623621"
+    },
+    {
+      "path": "hooks-2.stdout",
+      "bytes": 1280,
+      "sha256": "a1ac7736a8cbf4a4a3f0cc7a3d253a7f9982963b3b665627a40bfd597271da55"
+    },
+    {
+      "path": "hooks-3.stdout",
+      "bytes": 1451,
+      "sha256": "e526755dc811bbaf2e86dff548f515d6d155bf9eb3b33d392ccf2b1f6b158df6"
+    },
+    {
+      "path": "hooks-4.stdout",
+      "bytes": 1280,
+      "sha256": "a1ac7736a8cbf4a4a3f0cc7a3d253a7f9982963b3b665627a40bfd597271da55"
+    },
+    {
+      "path": "index_builders.before.py",
+      "bytes": 103840,
+      "sha256": "1a09a3f2e33879213bc24c61e32d53429fd6770fd9d47ecf2a0f512e9d71e8fc"
+    },
+    {
+      "path": "install-candidate.stdout",
+      "bytes": 182,
+      "sha256": "9d1034835f77ea4337c347c6414b61f6ac98425dc88d280e4e7a39a5acd17ae9"
+    },
+    {
+      "path": "install-candidate2.stdout",
+      "bytes": 183,
+      "sha256": "880f55d87798afc9bf92f9c2aa63247fc40359187a19bb231763328b753f54b1"
+    },
+    {
+      "path": "installed-after-1/indexed-paths.json",
+      "bytes": 46976,
+      "sha256": "fb584dc8a33bf9039da9ec55b54b0273bf25768a1d55b9e4ca0a463b2767917e"
+    },
+    {
+      "path": "installed-after-1/manifest.pre-update.json",
+      "bytes": 3379,
+      "sha256": "1b5f5eff32db3545acf20774837b94c1daccbfc2c307bb421e9ed70a6f49ef29"
+    },
+    {
+      "path": "installed-after-1/manifest.result.json",
+      "bytes": 3450,
+      "sha256": "6c73816e61937b44576015be161b19c6c3efa78537a1b4966272bb4e5c1e4d38"
+    },
+    {
+      "path": "installed-after-1/protocol.json",
+      "bytes": 1777,
+      "sha256": "77cd464d0e5378d796fa895390fafdd377019669067544f763f871a0bffbb220"
+    },
+    {
+      "path": "installed-after-1/run-state.json",
+      "bytes": 72551,
+      "sha256": "5577f8174dec8190a83aa8f553406ba40ed82d14b7a3a4d67a7e766072bc7aee"
+    },
+    {
+      "path": "installed-after-1.stdout",
+      "bytes": 1163,
+      "sha256": "c4e2bdadcaff49c8f37a33f3012b4b0244ae6e8ea495ceb6ee8e8bb146d975a2"
+    },
+    {
+      "path": "installed-before-1/indexed-paths.json",
+      "bytes": 26105,
+      "sha256": "c21f83f80f34899e27c7281b20466d881a03cdde60860d12c8d92507375247a5"
+    },
+    {
+      "path": "installed-before-1/manifest.result.json",
+      "bytes": 3379,
+      "sha256": "1b5f5eff32db3545acf20774837b94c1daccbfc2c307bb421e9ed70a6f49ef29"
+    },
+    {
+      "path": "installed-before-1/protocol.json",
+      "bytes": 1778,
+      "sha256": "7fb943b7bb6c1cffb1e484b6b2be2d00c99e7dc5879bef195cb07eaa69a251d8"
+    },
+    {
+      "path": "installed-before-1/run-state.json",
+      "bytes": 73423,
+      "sha256": "0cf6a9f46fbe572be14d721074e0e5b96c852fec1451778bf37f1057f5775538"
+    },
+    {
+      "path": "installed-before-1.stdout",
+      "bytes": 1162,
+      "sha256": "dc010880e919f1d2a836f09a03aef35afbc534ef03a07eb3167d2037cb5e18a3"
+    },
+    {
+      "path": "installed_migration.py",
+      "bytes": 8032,
+      "sha256": "1427988a7eb5acc4118c06c603ab46a8ab270d78ce490eb691f0e9a1af9d7a4c"
+    },
+    {
+      "path": "issue867.json",
+      "bytes": 2704,
+      "sha256": "3719151e7fc0ce3b0ddad6be849ba07826b78d5e4fdc71f4fc52d455eeb04da6"
+    },
+    {
+      "path": "maintenance-observation/arb-tools-tests.stdout",
+      "bytes": 99,
+      "sha256": "ea197ed1324cf21bfe7a094130d19af7a9e5a83321e27d3d606b4455b6850b38"
+    },
+    {
+      "path": "maintenance-observation/completion-1/protocol.json",
+      "bytes": 1311,
+      "sha256": "d303629c69b40f62b0ac4a304b0ccf0964e083eaa8bad91ef41b9fa22ab8ce4a"
+    },
+    {
+      "path": "maintenance-observation/completion-1/run-state.json",
+      "bytes": 66658,
+      "sha256": "8051748bba57afb5ff659aa3b240aabf687eb23d0ced9ff2dd7903a32dddbac1"
+    },
+    {
+      "path": "maintenance-observation/completion-1.stdout",
+      "bytes": 280,
+      "sha256": "c340a99360c028a70cc28774249fba7e9ab9cb2a94c31d3e7dfe5bbf3f6ce27a"
+    },
+    {
+      "path": "maintenance-observation/delivered-payload.json",
+      "bytes": 12875,
+      "sha256": "f2c7040b1e68321ffcf291cd984c0d2f46720f4749047b06d52ab8e3f52632ea"
+    },
+    {
+      "path": "maintenance-observation/followup-1/protocol.json",
+      "bytes": 1241,
+      "sha256": "5d102dc8bf91c8c8347b1feafe334f653412f0a53fdab3046725ff726367d6b6"
+    },
+    {
+      "path": "maintenance-observation/followup-1/run-state.json",
+      "bytes": 79029,
+      "sha256": "1eef7fbf47c6b701060dfe2b0c52085c3c70796bd8e16d5d6bab6f37152e02bc"
+    },
+    {
+      "path": "maintenance-observation/followup-1.stdout",
+      "bytes": 350,
+      "sha256": "9447012d445f64e4f16bbfd959fa256cf149e1e67b7ffb05b560388ea5504ef6"
+    },
+    {
+      "path": "maintenance-observation/manifest.initial.json",
+      "bytes": 3375,
+      "sha256": "83597b4dcc30daa0e16d1ec7b794ce76c414ce12f8f7bce31ba9779d5fffb3e3"
+    },
+    {
+      "path": "maintenance-observation/model-delivery.followup.json",
+      "bytes": 28024,
+      "sha256": "766f33d1f4bcfc398a101f383ae4eb4f5acb7f1ef05fdcf54430198a91313b6e"
+    },
+    {
+      "path": "maintenance-observation/protocol.json",
+      "bytes": 1375,
+      "sha256": "39eb0bba7323dcbb308ca873b4d998b0076285f0e8055b78e265b8ac468fd261"
+    },
+    {
+      "path": "maintenance-observation/query.stdout",
+      "bytes": 888,
+      "sha256": "e3bca457e9e4cdb69592c5451b6e7e343a452de8cc749e8cb77125a985bf0501"
+    },
+    {
+      "path": "maintenance-observation/query_completion.py",
+      "bytes": 3500,
+      "sha256": "7dbeb9003a4103492499dd867376478389fd6aa568e2d90710cbf9e5f5f75be7"
+    },
+    {
+      "path": "maintenance-observation/query_current_source.py",
+      "bytes": 4473,
+      "sha256": "80fa0267390adcea9539f36d5e8818b7f17c4f8afd7c28b9657282a9bd63c2d9"
+    },
+    {
+      "path": "maintenance-observation/query_followup.py",
+      "bytes": 3481,
+      "sha256": "d0ba771d3cd598a55f21bf8ab173c9997751f81abc823155430c3a07af235fea"
+    },
+    {
+      "path": "maintenance-observation/run-state.json",
+      "bytes": 28428,
+      "sha256": "9f2686841e47f11a2420e43f00009fc74306bdfd6df5e0ddc10e5ae0ce1e9026"
+    },
+    {
+      "path": "maintenance-origin-receipts.json",
+      "bytes": 4085,
+      "sha256": "d6555074e9a7be8ef9bb354357d913f2370ebceabd6a01deb97373db5fc18d36"
+    },
+    {
+      "path": "model-delivery.after-target.json",
+      "bytes": 5872,
+      "sha256": "d7dae66496ce00db2ed698f32d249a06cdf24fc1998a77bf7ced2319554a154a"
+    },
+    {
+      "path": "quality-regression.json",
+      "bytes": 794,
+      "sha256": "14d156671f559ae1599fdb68ef204c082bb0f5b11813426fb693cdfb9d1ec68a"
+    },
+    {
+      "path": "repository_search.executor.before.py",
+      "bytes": 14827,
+      "sha256": "16e5a84197f71647888f18850d255fd07beb26a08b078786bd93932374c5b32e"
+    },
+    {
+      "path": "unit-full-2.stdout",
+      "bytes": 54482,
+      "sha256": "8268fc99d5e6cc5093f11b302aabbf65922000042fef53950b3b051523d6844b"
+    },
+    {
+      "path": "unit-full.stdout",
+      "bytes": 54482,
+      "sha256": "c6c05b9557b2038d34a84403bdc6321b3ef202089e9299b408dbdd7f98fd508d"
+    },
+    {
+      "path": "unit-targeted-1.stdout",
+      "bytes": 340,
+      "sha256": "da9eb119e7937448a1eb9a026654c2968c37d581b6c67a22e598d55100f745e2"
+    },
+    {
+      "path": "verification.json",
+      "bytes": 8836,
+      "sha256": "69b9dda3f06620affab3053111c9da44596674af4a0a149c023e3a44cb42d0d5"
+    }
+  ],
+  "local_only_manifest": [
+    {
+      "path": "baseline-ci-wheel",
+      "bytes": 3839504,
+      "sha256": "53b58f6ba693903da5dc01731d59b7b7b2a8f8021d8433a3397c1817e834dc49"
+    },
+    {
+      "path": "candidate/codenib-0.2.4-cp310-abi3-manylinux_2_28_aarch64.whl",
+      "bytes": 3839899,
+      "sha256": "c17d324f2604f6200a92252a768586c31521e70211b3c66f202e656371d4393e"
+    },
+    {
+      "path": "candidate2/codenib-0.2.4-cp310-abi3-manylinux_2_28_aarch64.whl",
+      "bytes": 3839946,
+      "sha256": "a1a1c9db47a98fb44dd4896d0ec7cfe6f53237f5bcfa6ee221e3d55eef7c5b50"
+    },
+    {
+      "path": "candidate2-control/installed-before-1/original-index.tar.gz",
+      "bytes": 2052000,
+      "sha256": "24842c7fb3f9a840fc199a1fe43ce264e0cbf87f6d03cdb73dd6ebd4ddd9e0cd"
+    },
+    {
+      "path": "installed-before-1/original-index.tar.gz",
+      "bytes": 2051990,
+      "sha256": "39cc1f706dedc79d842c03029700b0cd6329abdbd4641c7538ba7aee3f7fd8d8"
+    }
+  ],
+  "bundle": {
+    "encoding": "concatenated-base64-gzip-json",
+    "decoded_bytes": 2584568,
+    "decoded_sha256": "056cd953974355f7e9b996ddb94f5047f6053fc15136ce71e8857f08cbc9e3a4",
+    "parts": [
+      {
+        "path": "codegraph_bm25_test_coverage_2026_10_31.part01.json",
+        "bytes": 100030,
+        "sha256": "c4e323e9efc0d571871b6257d9f0883b5e2c6e0b44ebc8d99b2462430a578835"
+      },
+      {
+        "path": "codegraph_bm25_test_coverage_2026_10_31.part02.json",
+        "bytes": 100030,
+        "sha256": "75227fced6d9b092d4a3f9eba19b812c847c81e03b2506e7fcdc421d8479776f"
+      },
+      {
+        "path": "codegraph_bm25_test_coverage_2026_10_31.part03.json",
+        "bytes": 100030,
+        "sha256": "596a52a1ab79f3fa0e1c224c47953632bbc69ef3d4cd97f54541cde1a3f0eeb4"
+      },
+      {
+        "path": "codegraph_bm25_test_coverage_2026_10_31.part04.json",
+        "bytes": 100030,
+        "sha256": "53bd6a50d9c7bd2aafbc89d6e79517ac302feb5e98c01e68c0bc7ca77e9a86b3"
+      },
+      {
+        "path": "codegraph_bm25_test_coverage_2026_10_31.part05.json",
+        "bytes": 100030,
+        "sha256": "046ca7bae179fb3499a06933def9ead647280601f0395c9a48816961bbe86011"
+      },
+      {
+        "path": "codegraph_bm25_test_coverage_2026_10_31.part06.json",
+        "bytes": 100030,
+        "sha256": "b4562fac99c0476b8d22d9cc366487f81b83e37a5d79e89e099134b8639aeb9c"
+      },
+      {
+        "path": "codegraph_bm25_test_coverage_2026_10_31.part07.json",
+        "bytes": 100030,
+        "sha256": "f98a0d33a9090b3949ba72ed08b8e1f58197899ced3b8d954bee94d470aeeab0"
+      },
+      {
+        "path": "codegraph_bm25_test_coverage_2026_10_31.part08.json",
+        "bytes": 100030,
+        "sha256": "9bdca686cf5338bf6ee225a68828be990b45c780dc63c5da28ad1212be318fc0"
+      },
+      {
+        "path": "codegraph_bm25_test_coverage_2026_10_31.part09.json",
+        "bytes": 100030,
+        "sha256": "fb6c3c34febb808f7424c799ab7dbce9437ddead7aedfab58e79d3dd40e6dac2"
+      },
+      {
+        "path": "codegraph_bm25_test_coverage_2026_10_31.part10.json",
+        "bytes": 12607,
+        "sha256": "69b0074a9aa3ca903584d7aaef77ce49f476c01006185b244244d40b949e5617"
+      }
+    ]
+  },
+  "verification": {
+    "goal": "active",
+    "software": {
+      "baseline_ci_wheel": "53b58f6ba693903da5dc01731d59b7b7b2a8f8021d8433a3397c1817e834dc49",
+      "candidate1_developer_wheel": "c17d324f2604f6200a92252a768586c31521e70211b3c66f202e656371d4393e",
+      "candidate2_developer_wheel": "a1a1c9db47a98fb44dd4896d0ec7cfe6f53237f5bcfa6ee221e3d55eef7c5b50",
+      "candidate2_product_changes": [
+        {
+          "path": "codenib/compiler/index_builders.py",
+          "before_sha256": "1a09a3f2e33879213bc24c61e32d53429fd6770fd9d47ecf2a0f512e9d71e8fc",
+          "after_sha256": "ff3d4c3c5c415d6fdb6051ed64eaeeb55832f82b25a286e501fd23afc1be8e50"
+        },
+        {
+          "path": "codenib/agent/skills/repository_search/executor.py",
+          "before_sha256": "16e5a84197f71647888f18850d255fd07beb26a08b078786bd93932374c5b32e",
+          "after_sha256": "99b4c94f1797bf6fd6e9be1148f3db036d75624e094b344fcb98f24199fbd46f"
+        }
+      ],
+      "all_486_python_and_native_worker_bytes_bound": true,
+      "actual_candidate2_CI_admission": "open"
+    },
+    "scope": "One exposed internal CodeNib maintenance discovery; 8 maintainer MCP calls plus 12 explicit migration control calls, no model SDK turn, competitor timing comparison, typed-graph preparation, independent success or external user. #867 concurrent ownership remains open.",
+    "migrations": [
+      {
+        "control": ".",
+        "before": {
+          "indexed_source_files": 655,
+          "indexed_test_files": 0,
+          "target_test_present": false,
+          "builder_schema": 9
+        },
+        "after": {
+          "indexed_source_files": 1161,
+          "indexed_test_files": 506,
+          "target_test_present": true,
+          "builder_schema": 10
+        },
+        "unchanged_source": true,
+        "update_without_forced_rebuild": true,
+        "mcp_discovery_gate": "miss -> complete requested test function",
+        "test_filter_and_direct_read": "pass",
+        "contexts_closed": true
+      },
+      {
+        "control": "candidate2-control",
+        "before": {
+          "indexed_source_files": 655,
+          "indexed_test_files": 0,
+          "target_test_present": false,
+          "builder_schema": 9
+        },
+        "after": {
+          "indexed_source_files": 1161,
+          "indexed_test_files": 506,
+          "target_test_present": true,
+          "builder_schema": 10
+        },
+        "unchanged_source": true,
+        "update_without_forced_rebuild": true,
+        "mcp_discovery_gate": "miss -> complete requested test function",
+        "test_filter_and_direct_read": "pass",
+        "contexts_closed": true
+      }
+    ],
+    "candidate_indexes_byte_identical": true,
+    "source_checks": {
+      "byte_exact_live_windows": 48,
+      "retained_session_pointers_not_credited_as_new_source": 8
+    },
+    "tests": {
+      "source_regressions_before_failed": 4,
+      "candidate_pool_regressions_before_failed": 2,
+      "preservation_controls": 4,
+      "focused_passed": 41,
+      "full_unit_passed": 8967,
+      "full_unit_skipped": 51,
+      "tier_deselected": 212,
+      "warnings": 46
+    },
+    "ask_quality": {
+      "cases_unchanged": 3,
+      "top_k_unchanged": 10,
+      "baseline": [
+        {
+          "name": "stale semantic view lifecycle",
+          "passed": false,
+          "paths": [
+            "codenib/serving/server/api.py",
+            "codenib/compiler/resources.py",
+            "codenib/web/share.py",
+            "codenib/compiler/manifest.py",
+            "codenib/serving/drafter/retrieval.py",
+            "codenib/agent/skills/repository_search/executor.py",
+            "codenib/web/index_status.py",
+            "codenib/ls_index/clangd_decode.py",
+            "codenib/index/embedding/__init__.py",
+            "codenib/agent/lsp_provider.py"
+          ],
+          "missing_path_groups": [
+            [
+              "codenib/compiler/index_compiler.py"
+            ],
+            [
+              "codenib/web/repo_registry.py",
+              "codenib/mcp/context.py"
+            ]
+          ],
+          "forbidden_hits": []
+        },
+        {
+          "name": "LiteLLM backend configuration",
+          "passed": true,
+          "paths": [
+            "codenib/wiki/narrator.py",
+            "codenib/llm/diagnostics.py",
+            "codenib/llm/litellm_chat.py",
+            "codenib/llm/options.py",
+            "codenib/web/repo_registry.py",
+            "codenib/web/config.py"
+          ],
+          "missing_path_groups": [],
+          "forbidden_hits": []
+        },
+        {
+          "name": "Wiki grounding",
+          "passed": true,
+          "paths": [
+            "codenib/web/static_export.py",
+            "codenib/wiki/quality.py",
+            "codenib/wiki/narrator.py",
+            "codenib/wiki/media_generation.py",
+            "codenib/wiki/agent_wiki.py",
+            "codenib/wiki/evidence.py",
+            "codenib/wiki/cache_audit.py"
+          ],
+          "missing_path_groups": [],
+          "forbidden_hits": []
+        }
+      ],
+      "candidate1_failed": [
+        {
+          "name": "stale semantic view lifecycle",
+          "passed": false,
+          "paths": [
+            "codenib/compiler/resources.py",
+            "codenib/web/share.py",
+            "codenib/compiler/manifest.py",
+            "codenib/serving/drafter/retrieval.py",
+            "codenib/agent/skills/repository_search/executor.py",
+            "codenib/index/embedding/__init__.py",
+            "codenib/serving/server/api.py",
+            "codenib/web/index_status.py",
+            "codenib/agent/lsp_provider.py",
+            "codenib/ls_index/clangd_decode.py"
+          ],
+          "missing_path_groups": [
+            [
+              "codenib/compiler/index_compiler.py"
+            ],
+            [
+              "codenib/web/repo_registry.py",
+              "codenib/mcp/context.py"
+            ]
+          ],
+          "forbidden_hits": []
+        },
+        {
+          "name": "LiteLLM backend configuration",
+          "passed": true,
+          "paths": [
+            "codenib/wiki/narrator.py",
+            "codenib/llm/diagnostics.py",
+            "codenib/web/repo_registry.py",
+            "codenib/llm/options.py",
+            "codenib/llm/litellm_chat.py",
+            "codenib/web/config.py"
+          ],
+          "missing_path_groups": [],
+          "forbidden_hits": []
+        },
+        {
+          "name": "Wiki grounding",
+          "passed": false,
+          "paths": [
+            "codenib/web/static_export.py",
+            "codenib/wiki/narrator.py",
+            "codenib/wiki/quality.py",
+            "codenib/wiki/media_generation.py"
+          ],
+          "missing_path_groups": [
+            [
+              "codenib/wiki/agent_wiki.py"
+            ]
+          ],
+          "forbidden_hits": []
+        }
+      ],
+      "candidate2": [
+        {
+          "name": "stale semantic view lifecycle",
+          "passed": false,
+          "paths": [
+            "codenib/compiler/resources.py",
+            "codenib/web/share.py",
+            "codenib/compiler/manifest.py",
+            "codenib/serving/drafter/retrieval.py",
+            "codenib/agent/skills/repository_search/executor.py",
+            "codenib/index/embedding/__init__.py",
+            "codenib/serving/server/api.py",
+            "codenib/web/index_status.py",
+            "codenib/agent/lsp_provider.py",
+            "codenib/ls_index/clangd_decode.py"
+          ],
+          "missing_path_groups": [
+            [
+              "codenib/compiler/index_compiler.py"
+            ],
+            [
+              "codenib/web/repo_registry.py",
+              "codenib/mcp/context.py"
+            ]
+          ],
+          "forbidden_hits": []
+        },
+        {
+          "name": "LiteLLM backend configuration",
+          "passed": true,
+          "paths": [
+            "codenib/wiki/narrator.py",
+            "codenib/llm/diagnostics.py",
+            "codenib/web/repo_registry.py",
+            "codenib/llm/options.py",
+            "codenib/llm/litellm_chat.py",
+            "codenib/web/config.py"
+          ],
+          "missing_path_groups": [],
+          "forbidden_hits": []
+        },
+        {
+          "name": "Wiki grounding",
+          "passed": true,
+          "paths": [
+            "codenib/web/static_export.py",
+            "codenib/wiki/narrator.py",
+            "codenib/wiki/quality.py",
+            "codenib/wiki/media_generation.py",
+            "codenib/wiki/evidence.py",
+            "codenib/wiki/agent_wiki.py",
+            "codenib/wiki/cache_audit.py"
+          ],
+          "missing_path_groups": [],
+          "forbidden_hits": []
+        }
+      ],
+      "overall_gate_green": false,
+      "preexisting_failure": "stale semantic view lifecycle, same missing required groups; not hidden or relabelled as a pass"
+    },
+    "retained_controller_failures": [
+      "Two initial Ask invocations used a manifest path without indexes/; no cases ran. Corrected separate invocations retain every result.",
+      "Intermediate stale mock assertions retained after the intended filter argument change; corrected contracts and final full tier pass.",
+      "Formatting revisions and provisional targeted run retained separately; final full tier runs after stable pinned formatting."
+    ],
+    "model_sdk_questions": 0,
+    "independent_successes": 0,
+    "external_users": 0
+  }
+}

@@ -278,6 +278,9 @@ before a result is returned.
 `filter_test`. Its response separates the selected `plan`, indexed `source`
 (repository, commit, and source fingerprint), and ranked `results`. It never
 silently labels a sparse fallback as hybrid or graph-expanded execution.
+BM25 views built from the current source checkout include selected test files.
+Set `filter_test=true` to omit their matches. After upgrading, rerun initialization
+to rebuild older test-filtered views; this change awaits a package release.
 Across all search tools, ranked metadata is retained while source bodies share
 a 10,000-character response budget. Projected hits report original and returned
 character counts under `content_projection`. Path and symbol fields have
