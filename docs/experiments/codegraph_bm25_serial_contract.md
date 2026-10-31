@@ -41,8 +41,18 @@ runner's native/consumer coverage.
 
 The [exact packet](codegraph_bm25_serial_contract_2026_10_31.json) retains 28
 public records and the hash-bound complete original CI log. Product code,
-build inputs and dependencies are unchanged. Exact final-head checks/reviews
-and the corrected trusted-main serial/native/consumer chain remain required.
-The existing Ask check remains 2/3, original benchmark results remain frozen,
-and no new model SDK question or external user is recorded. The broad benefit
-objective stays active.
+build inputs and dependencies are unchanged. [#952](https://github.com/sysevol-ai/CodeNib/pull/952)
+is merged as `abeab984` after three executed final-head checks pass with one
+explicit Docs deploy skip, no unresolved review thread, an identical reviewed
+tree and an inspected real-newline squash message.
+
+The corrected [trusted run](https://github.com/sysevol-ai/CodeNib/actions/runs/41250167117)
+passes preflight, vendored core build, unit, integration, serial integration
+(38 passed, 11 skipped, 9,190 deselected, five warnings) and SCIP/core.
+Graph-consumer verification remains queued; the complete chain is not yet
+terminal. All twenty executed Release verifiers and Docs pass. The original
+failed run remains a failure. The existing Ask check remains 2/3 and no model
+SDK question is part of this test correction. The separate
+[root-maintenance diagnostic](codegraph_root_maintenance.md) retains its own
+four new questions and failed acceptance. The broad benefit objective stays
+active.

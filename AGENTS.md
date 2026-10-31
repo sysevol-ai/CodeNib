@@ -190,6 +190,10 @@ Black or isort can produce changes that fail the release all-files check.
 - PR bodies must follow `.github/PULL_REQUEST_TEMPLATE.md` with the existing
   headings in order: `Summary`, `Changes`, `Type of Change`, `Testing`,
   `Checklist`.
+- When an issue must remain open, state that directly without placing GitHub
+  closing keywords next to its reference, even in a negated sentence. Verify
+  the related issue state after merging; a source-discovery repair must not
+  close a separate ownership problem.
 - This repository allows squash and rebase merges, not merge commits. For
   stacked PRs, do not blindly squash each PR into `main`; first confirm the
   dependency chain and restack dependents so their diffs stay clean.
