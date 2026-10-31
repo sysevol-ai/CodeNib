@@ -246,13 +246,26 @@ remain compatible. Published 0.2.4 retains the older response shape; see the
 
 ### `lsp_definition` / `lsp_references` / `lsp_route`
 Static LSP-shaped navigation through the server's selected runtime provider.
-A source-verified local C/C++-only checkout can reuse an existing project-local
-clangd index for symbol definition and reference queries without generating a
-new index. Position and route calls lazily load the compatible complete graph
-once. Portable artifacts expose only their supported portable views and never
-attach a project-local native provider. Mixed-language repositories, unverified
-checkouts, and disabled or unavailable native support use the persisted
-`symbol_graph` when that view is eligible and loaded.
+Manifest-bound C/C++ queries use the authenticated persisted graph; they do not
+reuse an unauthenticated project-local clangd index. Portable artifacts expose
+only their supported portable views and never attach a native provider.
+
+In unreleased source builds, a verified local Python-only manifest with
+`--defer-graph --tool-surface full` can serve an exact positional definition
+through locally installed `browser-basedpyright` 1.39.8 software. Prepare it
+with `codenib toolchain install /path/to/repository --scope lsp`. The provider
+captures every selected file and prepares every selected Python file. Only one
+location matching an exact captured function/class declaration is admitted.
+It returns a definition candidate, without proving a unique runtime call
+target. Python positions use zero-based UTF-8 byte columns; output lines remain
+1-based. Published 0.2.4 does not contain this path.
+
+Ambiguous or unsupported definitions, symbol lookups, references and routes
+retain the complete-graph route. Missing pinned software or an explicit
+`CODENIB_PYTHON_LSP_CMD` selection also retains the existing route. The source
+worker closes before graph preparation or source release, and changed source
+requires an explicit rebuild. This shortcut is unavailable on Windows,
+mixed-language repositories, portable artifacts and the `explore` surface.
 Result rows expose provider backend, fallback, capability, and snapshot metadata
 when available; `get_manifest.runtime.lsp_provider` exposes the selection before
 the first result. These tools return compact locations only; clients should read

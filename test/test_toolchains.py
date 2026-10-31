@@ -103,11 +103,18 @@ def test_repository_plan_uses_language_registry_for_graph_and_lsp(
         "scip-python": "/managed/scip-python",
         "basedpyright-langserver": "/managed/basedpyright-langserver",
     }
+    package = tmp_path / "tools/node-tools/node_modules/browser-basedpyright"
+    (package / "dist").mkdir(parents=True)
+    (package / "package.json").write_text(
+        '{"version": "' + toolchains.BASEDPYRIGHT_VERSION + '"}'
+    )
+    (package / "dist/pyright.worker.js").write_text("unit installation marker")
 
     plan = toolchains.plan_repository_toolchain(
         tmp_path,
         ["python"],
         scopes=("graph", "lsp"),
+        root=tmp_path / "tools",
         command_resolver=available.get,
         module_checker=lambda _name: True,
     )
@@ -136,6 +143,67 @@ def test_repository_plan_forwards_read_only_project_policy(tmp_path: Path) -> No
 
     assert plan.ready is False
     assert any("existing usable compile_commands.json" in note for note in plan.notes)
+
+
+def test_lsp_plan_repairs_an_old_python_install_without_the_source_worker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "tools"
+    plan = toolchains.plan_repository_toolchain(
+        tmp_path,
+        ["python"],
+        scopes=("lsp",),
+        root=root,
+        command_resolver=lambda command: "/tools/" + command,
+    )
+    assert len(plan.missing) == 1
+    assert "browser-basedpyright" in plan.missing[0].detail
+    monkeypatch.setattr(
+        toolchains, "resolve_command", lambda *_a, **_kw: "/usr/bin/npm"
+    )
+    commands, manual = toolchains.install_requirements(
+        plan.missing, root=root, dry_run=True
+    )
+    assert not manual
+    assert len(commands) == 1
+    assert "basedpyright@" + toolchains.BASEDPYRIGHT_VERSION in commands[0]
+    assert "browser-basedpyright@" + toolchains.BASEDPYRIGHT_VERSION in commands[0]
+
+
+@pytest.mark.parametrize("include_lsp", (False, True))
+def test_python_source_assets_do_not_tax_graph_only_installs_or_duplicate_all(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, include_lsp: bool
+) -> None:
+    requirements = [
+        toolchains.ToolRequirement(
+            language="python",
+            display_name="Python",
+            scope="graph",
+            executable="basedpyright-langserver",
+            ready=False,
+        )
+    ]
+    if include_lsp:
+        requirements.append(
+            toolchains.ToolRequirement(
+                language="python",
+                display_name="Python",
+                scope="lsp",
+                executable="basedpyright-langserver",
+                ready=False,
+            )
+        )
+    monkeypatch.setattr(
+        toolchains, "resolve_command", lambda *_a, **_kw: "/usr/bin/npm"
+    )
+    commands, manual = toolchains.install_requirements(
+        requirements, root=tmp_path / "tools", dry_run=True
+    )
+    assert not manual and len(commands) == 1
+    assert (
+        "browser-basedpyright@" + toolchains.BASEDPYRIGHT_VERSION in commands[0]
+    ) == include_lsp
 
 
 def test_dry_run_renders_pinned_npm_install_without_writing(

@@ -351,6 +351,7 @@ class ServerContext:
     )
     _local_manifest_path: Path | None = field(default=None, init=False, repr=False)
     _defer_graph: bool = field(default=False, init=False, repr=False)
+    _source_definition_provider: Any = field(default=None, init=False, repr=False)
 
     def _install_zoekt_snapshot(self, snapshot: ZoektShardSnapshot) -> None:
         """Publish snapshot ownership before a cancellation can escape."""
@@ -472,9 +473,19 @@ class ServerContext:
                     source.verify_snapshot()
                 except (OSError, RuntimeError, ValueError) as exc:
                     self.source_error = source.failure_reason or str(exc)
-                    raise IndexedQueryError(
+                    failure = IndexedQueryError(
                         "Indexed source changed. " + recovery, self.source_error
-                    ) from exc
+                    )
+                    # Authentication revokes source authority immediately. The
+                    # worker owns only an immutable copy; reap it before this
+                    # failed query returns, rather than retaining its analysis
+                    # memory until a later rebuild or transport disconnect.
+                    try:
+                        self.close_source_definition_provider()
+                    except Exception as cleanup:
+                        failure.source_definition_cleanup_error = cleanup
+                        _attach_context_cleanup_owner(failure, self)
+                    raise failure from exc
 
             require_current_source()
             try:
@@ -771,6 +782,12 @@ class ServerContext:
                     self.end_explore_session()
                 except BaseException as exc:  # noqa: B036 - visit every runtime owner
                     deferred = exc
+            try:
+                self.close_source_definition_provider()
+            except BaseException as exc:  # noqa: B036 - retain source and child
+                deferred = _retain_context_cleanup_failure(
+                    deferred, "source definition cleanup also failed", exc
+                )
             self.lsp_provider = None
             if self.zoekt is not None:
                 try:
@@ -805,7 +822,10 @@ class ServerContext:
                     )
                 else:
                     self.vector = None
-            if self._source_binding is not None:
+            if (
+                self._source_binding is not None
+                and self._source_definition_provider is None
+            ):
                 try:
                     self._source_binding.close()
                 except BaseException as exc:  # noqa: B036 - preserve retry owner
@@ -820,6 +840,90 @@ class ServerContext:
             if deferred is not None:
                 _attach_context_cleanup_owner(deferred, self)
                 raise deferred
+
+    def enable_source_definition_provider(self) -> bool:
+        """Select a lazy candidate worker only for a verified local Python source.
+
+        The serialized MCP preparer calls this before a positional definition.
+        Missing software simply keeps the existing complete-graph route; no
+        install or provider network request occurs inside a source lease.
+        """
+        from ..agent.source_definitions import (
+            SourceDefinitionProvider,
+            managed_definition_runtime,
+        )
+        from ..languages import normalize_graph_language
+
+        with self._query_lock:
+            if (
+                not self._defer_graph
+                or not self._lsp_allow_native
+                or not self.source_verified
+                or self._local_manifest_path is None
+                or self.symbol_graph is not None
+                or self.artifact is not None
+                or self._artifact_binding is not None
+                or self.grep_jev is not None
+                or not self.manifest.languages
+                or any(
+                    normalize_graph_language(language) != "python"
+                    for language in self.manifest.languages
+                )
+            ):
+                return False
+            if self._source_definition_provider is None:
+                runtime = managed_definition_runtime()
+                if runtime is None:
+                    return False
+                self._source_definition_provider = SourceDefinitionProvider(
+                    self._source_binding, self.manifest.source_fingerprint, runtime
+                )
+            if self._source_definition_provider.status not in ("available", "ok"):
+                return False
+            self.lsp_provider = self._source_definition_provider
+            self.lsp_provider_selection = self.lsp_provider.selection()
+            return True
+
+    def close_source_definition_provider(self) -> None:
+        """Reap the owned worker before graph compilation or source release.
+
+        Lock order is the caller's MCP context lock, then this query lock,
+        then bounded worker I/O. No source lease is held during shutdown.
+        A failed close keeps this field and the source binding for retry.
+        """
+        with self._query_lock:
+            provider = self._source_definition_provider
+            if provider is None:
+                return
+            try:
+                provider.close()
+            except BaseException as exc:  # noqa: B036 - retain cleanup owner
+                provider.status = "cleanup_pending"
+                self.lsp_provider_selection = provider.selection()
+                _attach_context_cleanup_owner(exc, self)
+                if isinstance(exc, Exception):
+                    failure = IndexedQueryError(
+                        "Source definition cleanup did not finish. Retry this query; "
+                        "its worker and source remain owned and graph results "
+                        "were not delivered.",
+                        str(exc),
+                    )
+                    _attach_context_cleanup_owner(failure, self)
+                    raise failure from exc
+                raise
+            self._source_definition_provider = None
+            if self.lsp_provider is provider:
+                self.lsp_provider = None
+                self.lsp_provider_selection = {
+                    "status": "unavailable",
+                    "backend": "unavailable",
+                    "fallback_reason": "source_definition_worker_closed",
+                    "capabilities": {
+                        "definition": False,
+                        "references": False,
+                        "route": False,
+                    },
+                }
 
     def begin_explore_session(self) -> ExploreSessionRuntime:
         """Create fresh state for one stdio connection.

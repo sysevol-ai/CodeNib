@@ -28,11 +28,13 @@ repository-wide pinned style checks; 160 targeted unit cases pass locally.
 AST comparison retains all prompt text and Python behavior apart from removing
 an exception alternative already covered by `ValueError`; generated homepage
 assets are unchanged. All 17 executed PR checks pass with eight explicit skips.
-[#946](https://github.com/sysevol-ai/CodeNib/pull/946) incorporates this base;
+[#946](https://github.com/sysevol-ai/CodeNib/pull/946) is merged as `ad87b872`;
 its [fresh installed-wheel admission](codegraph_python_wildcard_reconciled_2026_10_31.json)
 passes actual compiler/MCP, declared post-edit rebuilding and all four retained
 complete-source artifact hashes. [#945](https://github.com/sysevol-ai/CodeNib/pull/945)
-still needs base/shared-document reconciliation and current package checks.
+is rebased onto that main; its [combined installed admission](codegraph_source_definitions_reconciled_2026_10_31.json)
+passes MCP/fallback, lifecycle and complete-source controls, with final-head
+checks and merge reconciliation still required.
 No new model question, workflow comparator, success confirmation or participant
 is added.
 
@@ -256,10 +258,46 @@ unresolved recapture import and the copied exception-class harness failure;
 separate corrections do not replace them. All 267 original responses match
 the recorded delivery and all twelve actors are absent. No model question,
 installed provider, frozen score, whole-task comparison, independent success
-or external-use evidence changes. Complete-workflow benefit and real use
-remain open.
+or external-use evidence changes. Merged
+[#944](https://github.com/sysevol-ai/CodeNib/pull/944) passes main Docs and all
+twenty executed release verifiers, with five tag-only skips explicit. Its
+documentation-only merge does not rerun full CI; #943's seven executed main CI
+jobs remain verified. Complete-workflow benefit and real use remain open.
 
-The [wildcard-reference repair](codegraph_python_wildcard.md) in draft [#946](https://github.com/sysevol-ai/CodeNib/pull/946) separately preserves the original strict call oracle while improving its positive recall: actual compiler/MCP calls find all 11 positive lines with the same one of five negatives. Source-backed standard definition replies authorize only existing compiler module reads; coincident targets and lexical-binding unions remain intact. The final unit tier passes 9,038 with 24 skips, and the offline installed complete-source replay preserves all 786,078 original occurrences and the exact normalized text. Builder identity advances to 10, while graph layout stays 5. The separate [CI supplement](codegraph_python_wildcard_ci_2026_10_31.json) admits the unmodified wheel from source head `807ddfbd`: all 485 Python files, native bytes and other product files equal the developer candidate, and fresh compiler/MCP/post-edit controls pass. All 17 executed source-head checks pass, with nine skips explicit. Final-head/base reconciliation, baseline all-files failures and representative wildcard/update coverage remain open. It changes no frozen cohort, independent success, external-use count or whole-task decision.
+The [source-bound definition candidate](codegraph_source_definitions.md) adds
+a narrower product implementation in
+[#945](https://github.com/sysevol-ai/CodeNib/pull/945): actual full-surface, deferred MCP
+calls admit only a single exact captured function/class declaration. A separate
+installed developer wheel returns two definitions without a graph on all
+2,390 CodeNib files; fixture calls verify source delivery and one real graph
+fallback. Final source-change/rebuild/stopped-worker controls pass. A separate
+audit exposes delayed cleanup after mandatory source revocation; the final
+candidate reaps that worker before delivering the failed query. Usable source
+is intentionally released only after worker exit. Two regressions fail before
+the repair and pass after it; the final unit tier passes 9,052 with 24 skips.
+Full-source worker RSS is about 1.54 GiB in one observation; no
+comparative time or memory outcome is claimed. Graph references still find
+10/11 required fixture call lines and include one post-rebinding negative.
+A separately installed prior version returns identical reference node fields
+from that exact artifact, so the physical-call gate remains open rather than
+being regraded. The implementation does not promote the private type/flow
+prototype, alter default exploration, replace graph references or change public
+0.2.4. Prepared tools, developer wheels and functional controls do not satisfy
+the complete-workflow 20% gate. Model questions remain unchanged, independent
+successes remain 0/2 and external enrollment/reuse remains 0/5. The separate
+[CI-wheel supplement](codegraph_source_definitions_ci_2026_10_31.json) verifies
+the unmodified wheel from source head `721adc08`: all 486 Python files, native
+bytes and worker asset match, and actual MCP/fallback/lifecycle/complete-source
+controls pass with five workers reaped. Its 21 executed checks pass with nine
+explicit skips. The draft now incorporates merged #947/#946 and is rebased onto main. Its
+source-definition implementation is unchanged. The separate 105-record
+[combined admission](codegraph_source_definitions_reconciled_2026_10_31.json)
+passes actual MCP/fallback/lifecycle/complete-source controls, including 11/11
+positive call lines and the original raw alias-binding negative. All five
+source workers and the fallback language server exit. Its admitted source head
+passes 21 executed checks with eight skips. Final-head checks remain. Earlier packets and whole-task gates stay unchanged.
+
+The [wildcard-reference repair](codegraph_python_wildcard.md) in [#946](https://github.com/sysevol-ai/CodeNib/pull/946) separately preserves the original strict call oracle while improving its positive recall: actual compiler/MCP calls find all 11 positive lines with the same one of five negatives. Source-backed standard definition replies authorize only existing compiler module reads; coincident targets and lexical-binding unions remain intact. The final unit tier passes 9,038 with 24 skips, and the offline installed complete-source replay preserves all 786,078 original occurrences and the exact normalized text. Builder identity advances to 10, while graph layout stays 5. The separate [CI supplement](codegraph_python_wildcard_ci_2026_10_31.json) admits the unmodified wheel from source head `807ddfbd`: all 485 Python files, native bytes and other product files equal the developer candidate, and fresh compiler/MCP/post-edit controls pass. All 17 executed source-head checks pass, with nine skips explicit. The separate [current-base supplement](codegraph_python_wildcard_reconciled_2026_10_31.json) retains 87 records: fresh installed compiler/MCP, declared-edit rebuilding and complete-source replay pass on #947, with all four artifact hashes preserved. #946 is merged with all 18 final executed checks passing; representative wildcard/update coverage remains open; the raw-compiler alias-binding negative stays separate from intentional static unions. It changes no frozen cohort, independent success, external-use count or whole-task decision.
 
 The [merged Python identity repair](codegraph_python_walrus.md) now admits the
 complete selected Pylint graph and exact source delivery through its actual CI

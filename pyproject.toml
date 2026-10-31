@@ -206,6 +206,7 @@ include = ["codenib*"]  # package names should match these glob patterns (["*"] 
 exclude = ["eval*"]  # exclude packages matching these glob patterns
 
 [tool.setuptools.package-data]
+"codenib.agent" = ["*.cjs"]
 "codenib.agent.skills" = ["*/config.yaml", "*/skill.md"]
 "codenib.eval" = ["pricing/*.json"]
 "codenib.scip_interface" = ["*.proto", "*.yml", "*.sh", "README.md"]

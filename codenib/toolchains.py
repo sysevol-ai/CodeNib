@@ -59,6 +59,15 @@ class ToolRequirement:
 
     @property
     def recipe(self) -> ToolRecipe | None:
+        if self.executable == "basedpyright-langserver" and self.scope == "lsp":
+            return ToolRecipe(
+                manager="npm",
+                packages=(
+                    PackagePin("basedpyright", BASEDPYRIGHT_VERSION),
+                    PackagePin("browser-basedpyright", BASEDPYRIGHT_VERSION),
+                ),
+                prerequisite="npm",
+            )
         return TOOL_RECIPES.get(self.executable)
 
 
@@ -349,15 +358,22 @@ def plan_repository_toolchain(
                 continue
             executable = _canonical_lsp_executable(spec.key, command)
             resolved = resolver(executable)
+            source_worker_ready = True
+            if executable == "basedpyright-langserver":
+                source_worker_ready = python_source_worker_installed(root)
             requirements.append(
                 ToolRequirement(
                     language=spec.key,
                     display_name=spec.display_name,
                     scope="lsp",
                     executable=executable,
-                    ready=resolved is not None,
+                    ready=resolved is not None and source_worker_ready,
                     resolved=resolved,
-                    detail=" ".join(command),
+                    detail=(
+                        " ".join(command)
+                        if source_worker_ready
+                        else "missing pinned browser-basedpyright source worker"
+                    ),
                 )
             )
 
@@ -373,6 +389,27 @@ def plan_repository_toolchain(
         requirements=tuple(unique.values()),
         notes=tuple(dict.fromkeys(notes)),
     )
+
+
+def python_source_worker_installed(root: Path) -> bool:
+    """Check optional Python source-worker installation without loading it.
+
+    Runtime admission separately authenticates the pinned bundle's full hash.
+    The LSP install plan repairs old managed installs that have only the
+    ordinary server; graph-only prerequisites keep their existing behavior.
+    """
+    import json
+
+    package = root / "node-tools/node_modules/browser-basedpyright"
+    try:
+        metadata = (package / "package.json").read_bytes()
+        return (
+            len(metadata) <= 64 * 1024
+            and json.loads(metadata).get("version") == BASEDPYRIGHT_VERSION
+            and (package / "dist/pyright.worker.js").is_file()
+        )
+    except (OSError, ValueError, AttributeError):
+        return False
 
 
 def _package_coordinate(package: PackagePin) -> str:
@@ -465,9 +502,22 @@ def install_requirements(
     manual: list[str] = []
     seen_recipes: set[ToolRecipe] = set()
     installs_rust_analyzer = False
+    python_source_requested = any(
+        item.executable == "basedpyright-langserver"
+        and item.scope == "lsp"
+        and not item.ready
+        for item in requirements
+    )
 
     for requirement in requirements:
         if requirement.ready:
+            continue
+        if (
+            python_source_requested
+            and requirement.executable == "basedpyright-langserver"
+            and requirement.scope == "graph"
+        ):
+            # The requested LSP recipe includes the same ordinary server.
             continue
         recipe = requirement.recipe
         if recipe is None:
