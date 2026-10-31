@@ -11,6 +11,14 @@ the complete version history, see
 [GitHub Releases](https://github.com/sysevol-ai/CodeNib/releases) and the
 [changelog](https://github.com/sysevol-ai/CodeNib/blob/main/CHANGELOG.md).
 
+## Upcoming — repository Wikis and source-first agent setup
+
+The 0.2.5 candidate adds saved visitor Wikis, source-checked OKF export and
+optional BM25-first CodeGraph initialization. Production publication is pending;
+installation guides continue to select the verified 0.2.4 package.
+
+[Read the 0.2.5 candidate notes](releases/0.2.5.md)
+
 ## 2026-09-26 — grep → Jev and static Wiki stories
 
 CodeNib 0.2.4 adds an optional source-only route: a model plans ripgrep

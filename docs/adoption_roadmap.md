@@ -39,7 +39,7 @@ Using the caller's agent to plan grep is a separate, unevaluated variant.
 | Static distribution | Static export and reusable Pages workflow exist; #784 verifies cached stories, citations, page maps and CodeNib backlinks without a backend. A 15-page public repository is locally curated. | The no-embedding workflow default is released in 0.2.4; the maintainer will deploy the static roots on DGX Spark later. |
 | MCP protocol | [#780](https://github.com/sysevol-ai/CodeNib/pull/780) merged as `bcd2c730` after all executed CI passed; its squash message was verified. [#779](https://github.com/sysevol-ai/CodeNib/issues/779) is closed. | Released in 0.2.4; the public PyPI wheel passes installed modern and legacy MCP identity checks. |
 | GitHub discovery | `mcp`, `mcp-server`, `claude-code`, and `codex` are set, with the six existing topics retained. The About description now names source context, call navigation, Claude Code, Codex and MCP. | Description, topics and unchanged homepage verified through GitHub metadata on 2026-09-26. |
-| Releases | [v0.2.4](https://github.com/sysevol-ai/CodeNib/releases/tag/v0.2.4) is published on PyPI, the official MCP Registry and GitHub, marked latest. Tag and accepted TestPyPI commit are `3f3bc2cf44ba83d1d86e9e5eb74f8da0f8bc63ac`. Both wheels and the sdist match across PyPI, GitHub and SHA256SUMS. | Protected production run [36252998442](https://github.com/sysevol-ai/CodeNib/actions/runs/36252998442) passed. Post-publication docs #798 update installation pins and navigation. Current-source agent presets select LiteLLM's coupled MCP transport dependencies, and installed Ask runs on release PRs as well as full main builds; this does not republish 0.2.4. Real consent and maintainer-owned website deployment remain separate gates. |
+| Releases | Verified production remains [v0.2.4](https://github.com/sysevol-ai/CodeNib/releases/tag/v0.2.4), on PyPI, MCP Registry and GitHub at `3f3bc2cf44ba83d1d86e9e5eb74f8da0f8bc63ac`. The [0.2.5 candidate in #954](https://github.com/sysevol-ai/CodeNib/pull/954) updates package/Registry metadata and curated notes, including merged OKF work in [#953](https://github.com/sysevol-ai/CodeNib/pull/953). Public install pins stay on 0.2.4. | The combined candidate passes 9,010 unit and 200 frontend cases, strict docs/public-boundary/lock checks, all-file hooks, local sdist/ABI3 inspection and installed CLI, Wiki, modern/legacy MCP and portable-artifact services in a clean core+mcp environment. Final main package gates, TestPyPI download/hash/install acceptance and a fresh Docs deployment remain; production tag, protected approval and registry publication are separate open gates. Public docs/logo/Wiki images and the MCP DNS proof are anonymously reachable. |
 | Related work | #777/#778 improve the Jev blog evidence; #773 changes blog layout. | Preserve their ownership; do not duplicate their chart or hardware corrections. Merged #770/#752 supply optional Wiki image generation and contextual repository diagrams; they are independent of the visitor/adoption acceptance gates. |
 
 ## Delivery order and acceptance gates
@@ -1257,19 +1257,19 @@ chapters, source-reference concepts, exact excerpts, evidence sidecars, indexes,
 a snapshot log and a hashed file inventory. Explicit `--agent-dir` maintains
 CodeNib's own AGENTS.md/CLAUDE.md pointer block. It requires no frontend build
 or model calls and does not mint claim-verification events. Local acceptance
-on 2026-10-31 passes 200 final changed-surface cases, the 9,009-case unit tier
-before the marker repair, strict MkDocs, the public-doc audit and all-file
-pinned hooks. Review repaired linked `[E1](#evidence-E1)` ledger markers that
-otherwise became broken Markdown anchors; the final regression covers both
-source and relation links. A built, installed wheel exports the real persisted
-two-chapter BM25/manifest/SQLite fixture, writes its agent pointer and validates
-all nine payload hashes outside the source checkout. The pinned Google parser
-accepts all three generated concepts without verification events. The prior
+on 2026-10-31 passes 200 changed-surface cases and 9,010 combined-candidate unit
+cases, strict MkDocs, the public-doc audit and all-file pinned hooks. Saved
+ledger markers become source-keyed footnotes for both source and relation
+links. An installed wheel exports the real persisted two-chapter
+BM25/manifest/SQLite fixture, writes its agent pointer and validates all nine
+payload hashes outside the source checkout. The pinned Google parser accepts
+all three generated concepts without verification events. The prior
 reference-viewer acceptance remains a separate retained receipt; its
 relative-link click limitation is documented beside the consumer command.
-[#953](https://github.com/sysevol-ai/CodeNib/pull/953) carries this gate; PR
-checks and public release remain open. No OpenWiki backend integration or
-dependency-driven Wiki update engine is included in this gate.
+[#953](https://github.com/sysevol-ai/CodeNib/pull/953) is merged as `ed38e905`
+after its final executed CI checks pass. Public package acceptance is tracked
+by [#954](https://github.com/sysevol-ai/CodeNib/pull/954). No OpenWiki backend
+integration or dependency-driven Wiki update engine is included in this gate.
 
 Related-work boundary: OpenWiki already provides Wiki MCP retrieval, versioned
 file/line-range Claims with relocation, and the public LEDGER history-replay
