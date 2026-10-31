@@ -405,9 +405,9 @@ async def run_benchmark(
     with open(output_file, "w") as f:
         json.dump(final_output, f, indent=2)
 
-    print(f"\n\n{'='*60}")
+    print(f"\n\n{'=' * 60}")
     print("MCP Benchmark Complete")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     print(f"Dataset: {DATASET_NAME} ({DATASET_SPLIT})")
     print(f"Total instances: {total}")
     print(f"Success: {success_count}")
@@ -415,22 +415,22 @@ async def run_benchmark(
     print(f"Errors: {error_count}")
     print(f"\nResults saved to: {output_file}")
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("Aggregate Metrics (File-level)")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     for k in k_values:
         print(f"Top-{k}: {aggregate['files'][k]['accuracy']:.1%}")
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("Aggregate Metrics (Symbol-level)")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     for k in k_values:
         print(f"Top-{k}: {aggregate['symbols'][k]['accuracy']:.1%}")
 
     if by_language:
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print("By language_group (file-level top-1 / symbol-level top-1, n)")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
         for lang, agg in sorted(by_language.items()):
             print(
                 f"  {lang}: {agg['files']['1']:.1%} / "

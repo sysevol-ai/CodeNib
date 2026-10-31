@@ -160,8 +160,8 @@ def _paired_delta(cells_a, cells_b, key_fn, scope, k):
 
 def _arm_row(cells, label):
     return (
-        f"| {label} | {len(cells)} | {_mean([_recall(c,'files',5) for c in cells]):.3f} "
-        f"| {_mean([_recall(c,'answer_blocks',5) for c in cells]):.3f} "
+        f"| {label} | {len(cells)} | {_mean([_recall(c, 'files', 5) for c in cells]):.3f} "
+        f"| {_mean([_recall(c, 'answer_blocks', 5) for c in cells]):.3f} "
         f"| {_mean([c.get('total_tokens') for c in cells]):.0f} "
         f"| {_mean([c.get('total_turns') for c in cells]):.1f} |"
     )
@@ -200,12 +200,12 @@ def table1_base():
                 lo, hi = _ci(diff)
                 print(
                     f"\n  Δ{l} (compact−grep, n={n}): {st.fmean(diff):+.3f} "
-                    f"[{lo:+.3f},{hi:+.3f}]{_sig(lo,hi)}"
+                    f"[{lo:+.3f},{hi:+.3f}]{_sig(lo, hi)}"
                 )
             lo, hi = _ci(tok)
             m = st.fmean(tok)
             print(
-                f"  Δtoken (compact−grep): {m:+.0f} [{lo:+.0f},{hi:+.0f}]{_sig(lo,hi)}"
+                f"  Δtoken (compact−grep): {m:+.0f} [{lo:+.0f},{hi:+.0f}]{_sig(lo, hi)}"
             )
 
 
@@ -230,8 +230,8 @@ def table2_embedding():
         cp = [c for c in _cells(d) if c.get("subset_id") == "preinj_eager_compact"]
         print(
             f"| {name} | {_pct(rec)} "
-            f"| {_mean([_recall(c,'files',5) for c in cp]):.3f} "
-            f"| {_mean([_recall(c,'answer_blocks',5) for c in cp]):.3f} "
+            f"| {_mean([_recall(c, 'files', 5) for c in cp]):.3f} "
+            f"| {_mean([_recall(c, 'answer_blocks', 5) for c in cp]):.3f} "
             f"| {_mean([c.get('total_tokens') for c in cp]):.0f} |"
         )
     print(
@@ -285,8 +285,8 @@ def table4_synth():
     for lab, m in [("grep", mg), ("eager", me), ("compact", mc)]:
         cs = [m[k] for k in common]
         print(
-            f"| {lab} | {_mean([_recall(c,'files',5) for c in cs]):.3f} "
-            f"| {_mean([_recall(c,'answer_blocks',5) for c in cs]):.3f} "
+            f"| {lab} | {_mean([_recall(c, 'files', 5) for c in cs]):.3f} "
+            f"| {_mean([_recall(c, 'answer_blocks', 5) for c in cs]):.3f} "
             f"| {_mean([c.get('total_tokens') for c in cs]):.0f} |"
         )
     for bn, mb in [("grep", mg), ("eager", me)]:
@@ -298,7 +298,7 @@ def table4_synth():
             lo, hi = _ci(diff)
             m = st.fmean(diff)
             print(
-                f"\n  Δ{l} (compact−{bn}): {m:+.3f} [{lo:+.3f},{hi:+.3f}]{_sig(lo,hi)}"
+                f"\n  Δ{l} (compact−{bn}): {m:+.3f} [{lo:+.3f},{hi:+.3f}]{_sig(lo, hi)}"
             )
         tok = [
             (mc[k].get("total_tokens") or 0) - (mb[k].get("total_tokens") or 0)
@@ -306,7 +306,7 @@ def table4_synth():
         ]
         lo, hi = _ci(tok)
         print(
-            f"  Δtoken (compact−{bn}): {st.fmean(tok):+.0f} [{lo:+.0f},{hi:+.0f}]{_sig(lo,hi)}"
+            f"  Δtoken (compact−{bn}): {st.fmean(tok):+.0f} [{lo:+.0f},{hi:+.0f}]{_sig(lo, hi)}"
         )
 
 
@@ -368,7 +368,8 @@ def table6_graph_value():
         gg = sum(1 for i in common if _rget(g[i], k))
         d = 100 * (gg - ng) / len(common)
         print(
-            f"| {k} | {100*ng/len(common):.0f}% | {100*gg/len(common):.0f}% | {d:+.0f}% |"
+            f"| {k} | {100 * ng / len(common):.0f}% "
+            f"| {100 * gg / len(common):.0f}% | {d:+.0f}% |"
         )
     miss = [i for i in common if not _rget(n[i], 10)]
     rec = [i for i in miss if _rget(g[i], 10)]
@@ -376,7 +377,7 @@ def table6_graph_value():
     pct = 100 * len(rec) / max(len(miss), 1)
     print(
         f"\nsearch-only misses@10: {len(miss)}; graph recovers {len(rec)} "
-        f"({pct:.0f}% of misses), loses {len(lost)}; net +{len(rec)-len(lost)}."
+        f"({pct:.0f}% of misses), loses {len(lost)}; net +{len(rec) - len(lost)}."
     )
     print(
         "\n\u2192 graph adds marginal, strictly-positive complementary recall "

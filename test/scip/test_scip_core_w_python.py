@@ -602,9 +602,9 @@ def process_single_instance(
     Returns:
         Tuple of (success, stats_dict)
     """
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print(f"Processing instance: {instance_id}")
-    print(f"{'='*80}")
+    print(f"{'=' * 80}")
 
     try:
         # Load the dataset and filter by instance ID
@@ -684,9 +684,9 @@ def process_local_project(
     Returns:
         bool: True if test passed, False otherwise
     """
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print(f"Processing local project: {project_root.name}")
-    print(f"{'='*80}")
+    print(f"{'=' * 80}")
 
     try:
         # Get or generate SCIP file
@@ -829,9 +829,9 @@ def main():
 
     # Handle batch testing
     if len(instance_ids) > 1:
-        print(f"\n{'='*80}")
+        print(f"\n{'=' * 80}")
         print(f"BATCH MODE: Testing {len(instance_ids)} instances")
-        print(f"{'='*80}")
+        print(f"{'=' * 80}")
 
         all_stats = []
         for i, instance_id in enumerate(instance_ids, 1):
@@ -843,9 +843,9 @@ def main():
             all_stats.append(stats)
 
         # Generate summary report
-        print(f"\n{'='*80}")
+        print(f"\n{'=' * 80}")
         print(f"BATCH TEST SUMMARY")
-        print(f"{'='*80}")
+        print(f"{'=' * 80}")
 
         passed_count = sum(1 for s in all_stats if s.get("perfect_match", False))
         failed_count = len(all_stats) - passed_count
@@ -870,7 +870,7 @@ def main():
         else:
             print("✅ All instances passed!")
 
-        print(f"{'='*80}\n")
+        print(f"{'=' * 80}\n")
 
         # Return success if all passed
         all_success = passed_count == len(all_stats)

@@ -69,9 +69,7 @@ from .quality import duplicate_prose_blocks as _duplicate_prose_blocks
 from .quality import leading_code_subject as _leading_code_subject
 from .quality import narrative_density_report as _narrative_density_report
 from .quality import page_quality_report as _page_quality_report
-from .quality import (
-    parse_story_review,
-)
+from .quality import parse_story_review
 from .quality import prose_terms as _prose_terms
 from .quality import redundancy_terms as _redundancy_terms
 from .quality import (

@@ -155,15 +155,18 @@ def explorer_prompt(
     return f"""You are {explorer}, an isolated Guardian explorer in round {round_number}.
 
 Investigation brief:
-{json.dumps({
-    'id': brief.brief_id,
-    'focus_question': brief.focus_question,
-    'target_surface': list(brief.target_surface),
-    'evidence_to_seek': list(brief.evidence_to_seek),
-    'avoid_duplicating': list(brief.avoid_duplicating),
-    'linked_specifications': list(brief.linked_specifications),
-    'open_ended': brief.open_ended,
-}, indent=2)}
+{json.dumps(
+        {
+            'id': brief.brief_id,
+            'focus_question': brief.focus_question,
+            'target_surface': list(brief.target_surface),
+            'evidence_to_seek': list(brief.evidence_to_seek),
+            'avoid_duplicating': list(brief.avoid_duplicating),
+            'linked_specifications': list(brief.linked_specifications),
+            'open_ended': brief.open_ended,
+        },
+        indent=2,
+    )}
 
 Task context with provenance:
 {_task_context(request)}
@@ -498,17 +501,21 @@ Controller-ranked runtime-probe frontier, highest priority first:
 {json.dumps([asdict_for_prompt(item) for item in probe_specifications], indent=2)}
 
 Supporting evidence:
-{json.dumps([evidence_for_prompt(item) for item in evidence] + [
-    {
-        "id": item["evidence_id"],
-        "source_type": "task",
-        "authority": "normative",
-        "locator": {"path": item["id"], "line_start": 1, "line_end": 1},
-        "observation": "Verbatim requirement supplied to the coding system.",
-        "quote": item["content"],
-    }
-    for item in direct_task_context
-], indent=2)}
+{json.dumps(
+        [evidence_for_prompt(item) for item in evidence]
+        + [
+            {
+                "id": item["evidence_id"],
+                "source_type": "task",
+                "authority": "normative",
+                "locator": {"path": item["id"], "line_start": 1, "line_end": 1},
+                "observation": "Verbatim requirement supplied to the coding system.",
+                "quote": item["content"],
+            }
+            for item in direct_task_context
+        ],
+        indent=2,
+    )}
 
 Candidate patch:
 {_patch(request)}
