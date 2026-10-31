@@ -289,9 +289,32 @@ but also rejects the required origin on complete source. Both failed controls,
 an unresolved import in the original recapture fixture, and a controller
 exception-class mismatch remain retained; separate corrections do not replace
 them. All 267 captured replies/deliveries and twelve owners' cleanup verify.
-There is no product live route, complete-task comparator, model question,
-independent success or participant. Actual MCP integration, representative
-coverage and all workflow/use gates remain active.
+Merged [#944](https://github.com/sysevol-ai/CodeNib/pull/944) passes main Docs
+and all twenty executed release verifiers, with five tag-only skips explicit.
+Its documentation-only merge does not rerun full CI; #943's seven executed
+main CI jobs remain verified. The private function-flow route remains
+unpromoted.
+
+The [source-bound definition candidate](experiments/codegraph_source_definitions.md)
+now has a local implementation at the actual deferred, full-surface MCP
+boundary. Separate installed-wheel controls return exact function declarations
+without a graph on the generated fixture and all 2,390 CodeNib source files;
+ambiguous definitions close the worker before normal complete-graph fallback.
+Post-response edits reject publication, stale queries make no worker request,
+explicit rebuilding reloads in the same connection, and stopped-worker cleanup
+passes. A separate ownership audit exposes delayed cleanup after immediate
+source revocation; the final candidate reaps that worker before returning the
+stale-source error, with two before/after regressions retained. The final unit
+tier passes 9,052 with 24 skips. These are functional
+controls with prepared tools and developer-assembled wheels, not a timing
+comparison or public release. Full-source worker RSS is about 1.54 GiB in one
+observation. References remain graph-backed: the fixture finds 10/11 required
+call lines and includes one post-rebinding negative. A separately installed
+prior version returns identical reference node fields from the same artifact;
+this diagnoses existing coverage and static-binding semantics, without changing
+the failed physical-call gate. Default exploration, representative dependency
+coverage, complete-task benefit, voluntary use and all independent/external
+gates remain open. No model question or participant is added.
 
 The latest four-arm round records 8,821,055 normalized final main/auxiliary tokens
 and $9.311356 in SDK estimates, not invoices. The separate diagnostic adds

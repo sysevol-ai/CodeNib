@@ -388,7 +388,8 @@ python-lsp-tool:
 	$(call require-command,npm)
 	mkdir -p "$(CODENIB_SCIP_TOOLS_DIR)/node-tools"
 	npm install --prefix "$(CODENIB_SCIP_TOOLS_DIR)/node-tools" \
-		"basedpyright@$(BASEDPYRIGHT_VERSION)"
+		"basedpyright@$(BASEDPYRIGHT_VERSION)" \
+		"browser-basedpyright@$(BASEDPYRIGHT_VERSION)"
 	ln -sf "$(CODENIB_SCIP_TOOLS_DIR)/node-tools/node_modules/.bin/basedpyright-langserver" \
 		"$(CODENIB_SCIP_TOOLS_DIR)/basedpyright-langserver"
 

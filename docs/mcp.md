@@ -196,6 +196,32 @@ graph. Ordinary queries reuse a complete warm graph. Set
 `include_dependencies=false` to omit expansion explicitly. Prebuilt mode
 keeps dependencies enabled by default.
 
+An unreleased source build can answer an exact Python `lsp_definition` request
+before building the graph. Use a verified local Python-only repository, the
+full tool surface, and locally prepared LSP tools:
+
+```bash
+codenib index /path/to/repository --preset fast
+codenib toolchain install /path/to/repository --scope lsp
+codenib mcp /path/to/repository --defer-graph --tool-surface full
+```
+
+Supply `file_path`, a 1-based `line`, and a zero-based UTF-8 byte `character`.
+For example, `{"file_path":"app.py","line":12,"character":8}` locates the
+token at that position. The source provider returns a candidate only when one
+LSP location matches an exact function or class declaration in captured source.
+Read its body with `read_source` before drawing conclusions. A declaration
+candidate does not establish a unique runtime call target.
+
+This path captures all selected files and prepares all selected Python files;
+startup still has a preparation cost. Ambiguous or unsupported positions,
+missing software, symbol lookups, references and routes use the existing
+complete-graph preparation. An explicitly configured `CODENIB_PYTHON_LSP_CMD`
+keeps its existing provider route. Portable artifacts and the `explore` tool
+surface do not expose this shortcut. Published 0.2.4 does not include it.
+After a source edit, rebuild explicitly; the same MCP connection then reloads
+the new source generation. Changed source is never silently rebuilt by a query.
+
 Optional controls bound returned context (`top_k` and a
 `fast`/`balanced`/`thorough` budget), select reference direction, or filter test
 files. The response identifies the route provider and source binding.

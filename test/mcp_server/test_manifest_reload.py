@@ -268,6 +268,367 @@ def test_prebuilt_mode_retains_default_dependency_expansion(local_server):
     assert response["plan"]["dependencies"]["enabled"] is True
 
 
+@pytest.fixture
+def source_definition_server(local_server, monkeypatch):
+    """Use real source/context guards and controlled worker replies."""
+    from types import SimpleNamespace
+
+    from codenib.agent import source_definitions
+
+    repo, cache, initial = local_server
+    initial._defer_graph = True
+    providers = []
+    control = {"after_reply": None, "ambiguous": False, "close_failure": False}
+
+    class Provider(source_definitions.SourceDefinitionProvider):
+        def __init__(self, *args):
+            super().__init__(*args)
+            self.starts = 0
+            self.requests = []
+            self.closes = 0
+            providers.append(self)
+
+        def _start(self):
+            self.starts += 1
+            with self.source.read_session():
+                identity = self.source.authenticated_identity_snapshot()
+                self._sources = {
+                    record.path: self.source.read_bytes(
+                        record.path, max_bytes=max(1, record.size)
+                    ).decode()
+                    for record in identity.file_records
+                }
+            self.ready = {"controlled_unit_worker": True}
+            self.status = "ok"
+
+        def _exchange(self, action, **params):
+            self.requests.append((action, params))
+            locations = [
+                {
+                    "uri": "file:///workspace/sample.py",
+                    "range": {
+                        "start": {"line": 0, "character": 4},
+                        "end": {"line": 0, "character": 12},
+                    },
+                }
+            ]
+            if control["ambiguous"]:
+                locations.append(locations[0])
+            if control["after_reply"] is not None:
+                control["after_reply"]()
+            return {
+                "source_fingerprint": self.fingerprint,
+                "response": {"jsonrpc": "2.0", "id": 1, "result": locations},
+            }
+
+        def close(self):
+            self.closes += 1
+            if control["close_failure"]:
+                raise RuntimeError("worker still needs cleanup")
+            super().close()
+
+    monkeypatch.setattr(source_definitions, "SourceDefinitionProvider", Provider)
+    monkeypatch.setattr(
+        source_definitions,
+        "managed_definition_runtime",
+        lambda: ("unused-node", repo / "unused.js"),
+    )
+    return SimpleNamespace(
+        repo=repo, cache=cache, ctx=initial, providers=providers, control=control
+    )
+
+
+def test_deferred_source_definition_reuses_worker_without_graph(
+    source_definition_server, monkeypatch
+):
+    from codenib import codegraph_preparation
+
+    fixture = source_definition_server
+
+    def unexpected_graph(*_args, **_options):
+        pytest.fail("an admitted source definition must not prepare a graph")
+
+    monkeypatch.setattr(codegraph_preparation, "prepare_graph", unexpected_graph)
+
+    async def session():
+        async with server._mcp_lifespan(None):
+            for _ in range(2):
+                rows = await server.lsp_definition(
+                    file_path="sample.py", line=1, character=4
+                )
+                assert rows[0]["file"] == "sample.py"
+                assert rows[0]["start_line"] == 1
+                assert rows[0]["lsp_provider"]["behavior_contract"] == (
+                    "captured_python_definition_candidate_v1"
+                )
+                assert rows[0]["lsp_provider"]["index_snapshot"] == (
+                    fixture.ctx.manifest.source_fingerprint
+                )
+            status = await server.get_manifest()
+            assert status["runtime"]["graph_preparation"]["loaded"] is False
+            assert status["runtime"]["lsp_provider"]["capabilities"] == {
+                "definition": True,
+                "references": False,
+                "route": False,
+            }
+            source = await server.read_source("sample.py", 1, 2)
+            assert "def original():" in source["content"]
+            assert len(fixture.providers) == 1
+            assert fixture.providers[0].starts == 1
+            assert len(fixture.providers[0].requests) == 2
+        assert fixture.providers[0].status == "closed"
+        assert fixture.ctx._source_binding.usable
+
+    asyncio.run(session())
+
+
+@pytest.mark.parametrize("next_tool", ("references", "ambiguous-definition"))
+def test_source_worker_closes_before_graph_fallback_and_source_release(
+    source_definition_server, monkeypatch, next_tool
+):
+    from codenib import codegraph_preparation
+
+    fixture = source_definition_server
+    binding = fixture.ctx._source_binding
+    preparations = []
+
+    def prepare(root, **options):
+        assert fixture.providers[0].status == "closed"
+        assert binding.usable
+        preparations.append((root, options))
+        _publish_test_graph(fixture.cache, fixture.ctx)
+
+    monkeypatch.setattr(codegraph_preparation, "prepare_graph", prepare)
+
+    async def session():
+        async with server._mcp_lifespan(None) as runtime:
+            await server.lsp_definition(file_path="sample.py", line=1, character=4)
+            if next_tool == "references":
+                rows = await server.lsp_references(
+                    file_path="sample.py", line=1, character=4
+                )
+            else:
+                fixture.control["ambiguous"] = True
+                rows = await server.lsp_definition(
+                    file_path="sample.py", line=1, character=4
+                )
+                assert rows[0]["lsp_provider"]["fallback_reason"] == (
+                    "source_definition:definition_not_one_candidate"
+                )
+            assert rows and rows[0]["file"] == "sample.py"
+            assert rows[0]["lsp_provider"]["backend"] == "persisted-symbol-graph-v1"
+            current = server.get_context()
+            assert current is not fixture.ctx and current.symbol_graph is not None
+            assert current.explore_runtime is runtime
+            assert current._source_definition_provider is None
+            assert binding.closed
+            assert len(preparations) == 1
+
+    asyncio.run(session())
+
+
+def test_source_reply_change_never_dispatches_graph_or_another_source_query(
+    source_definition_server, monkeypatch
+):
+    from codenib import codegraph_preparation
+
+    fixture = source_definition_server
+    fixture.control["after_reply"] = lambda: (fixture.repo / "sample.py").write_text(
+        "def changed():\n    return 2\n"
+    )
+    preparations = []
+    monkeypatch.setattr(
+        codegraph_preparation,
+        "prepare_graph",
+        lambda *_a, **_kw: preparations.append(True),
+    )
+
+    async def session():
+        async with server._mcp_lifespan(None):
+            for _ in range(2):
+                with pytest.raises(RuntimeError, match="Indexed source changed"):
+                    await server.lsp_definition(
+                        file_path="sample.py", line=1, character=4
+                    )
+                assert fixture.ctx._source_definition_provider is None
+                assert fixture.providers[0].status == "closed"
+            assert len(fixture.providers[0].requests) == 1
+            assert preparations == []
+            assert server.get_context().symbol_graph is None
+
+    asyncio.run(session())
+
+
+def test_stale_source_cleanup_failure_retains_worker_without_another_query(
+    source_definition_server,
+):
+    fixture = source_definition_server
+    fixture.control["close_failure"] = True
+    fixture.control["after_reply"] = lambda: (fixture.repo / "sample.py").write_text(
+        "def changed():\n    return 2\n"
+    )
+
+    async def session():
+        async with server._mcp_lifespan(None):
+            try:
+                with pytest.raises(RuntimeError, match="Indexed source changed") as got:
+                    await server.lsp_definition(
+                        file_path="sample.py", line=1, character=4
+                    )
+                provider = fixture.providers[0]
+                assert fixture.ctx._source_binding.closed
+                assert fixture.ctx._source_definition_provider is provider
+                assert provider.status == "cleanup_pending"
+                assert got.value.source_definition_cleanup_error
+                assert fixture.ctx.symbol_graph is None
+            finally:
+                fixture.control["close_failure"] = False
+            with pytest.raises(RuntimeError, match="Indexed source changed"):
+                await server.lsp_definition(file_path="sample.py", line=1, character=4)
+            assert len(provider.requests) == 1
+            assert fixture.ctx._source_definition_provider is None
+            assert provider.status == "closed"
+
+    asyncio.run(session())
+
+
+def test_source_cleanup_failure_keeps_authority_until_explicit_query_retry(
+    source_definition_server, monkeypatch
+):
+    from codenib import codegraph_preparation
+
+    fixture = source_definition_server
+    binding = fixture.ctx._source_binding
+    preparations = []
+
+    def prepare(*_args, **_options):
+        preparations.append(True)
+        assert fixture.providers[0].status == "closed"
+        _publish_test_graph(fixture.cache, fixture.ctx)
+
+    monkeypatch.setattr(codegraph_preparation, "prepare_graph", prepare)
+
+    async def session():
+        async with server._mcp_lifespan(None):
+            await server.lsp_definition(file_path="sample.py", line=1, character=4)
+            fixture.control["close_failure"] = True
+            with pytest.raises(RuntimeError, match="worker still needs cleanup"):
+                await server.lsp_references(symbol="original")
+            assert binding.usable
+            assert fixture.ctx._source_definition_provider is fixture.providers[0]
+            assert fixture.ctx.lsp_provider_selection["status"] == "cleanup_pending"
+            assert preparations == []
+            fixture.control["close_failure"] = False
+            rows = await server.lsp_references(symbol="original")
+            assert rows and len(preparations) == 1
+            assert binding.closed
+
+    asyncio.run(session())
+
+
+def test_source_definition_cancellation_keeps_status_responsive_and_one_owner(
+    source_definition_server, monkeypatch
+):
+    fixture = source_definition_server
+    started, release = Event(), Event()
+
+    def pause_reply():
+        started.set()
+        assert release.wait(timeout=10)
+
+    fixture.control["after_reply"] = pause_reply
+
+    async def session():
+        async with server._mcp_lifespan(None):
+            first = asyncio.create_task(
+                server.lsp_definition(file_path="sample.py", line=1, character=4)
+            )
+            try:
+                assert await asyncio.to_thread(started.wait, 5)
+                status = await asyncio.wait_for(server.get_manifest(), 1)
+                assert status["runtime"]["graph_preparation"]["loaded"] is False
+                first.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await first
+                retry = asyncio.create_task(
+                    server.lsp_definition(file_path="sample.py", line=1, character=4)
+                )
+                await asyncio.sleep(0)
+                assert not retry.done()
+            finally:
+                release.set()
+            rows = await asyncio.wait_for(retry, 5)
+            assert rows[0]["file"] == "sample.py"
+            assert len(fixture.providers) == 1 and fixture.providers[0].starts == 1
+            assert len(fixture.providers[0].requests) == 2
+
+    asyncio.run(session())
+
+
+def test_older_transport_cannot_close_a_newer_sessions_source_worker(
+    source_definition_server,
+):
+    fixture = source_definition_server
+
+    async def session():
+        older = server._mcp_lifespan(None)
+        newer = server._mcp_lifespan(None)
+        await older.__aenter__()
+        await server.lsp_definition(file_path="sample.py", line=1, character=4)
+        current_runtime = await newer.__aenter__()
+        try:
+            await older.__aexit__(None, None, None)
+            assert fixture.ctx.explore_runtime is current_runtime
+            assert fixture.providers[0].status == "ok"
+            await server.lsp_definition(file_path="sample.py", line=1, character=4)
+            assert len(fixture.providers) == 1 and fixture.providers[0].starts == 1
+        finally:
+            await newer.__aexit__(None, None, None)
+        assert fixture.providers[0].status == "closed"
+
+    asyncio.run(session())
+
+
+@pytest.mark.parametrize("mode", ("auto", "legacy"))
+def test_source_cleanup_recovery_reaches_actual_mcp_client(
+    source_definition_server, monkeypatch, mode
+):
+    from codenib import codegraph_preparation
+
+    fixture = source_definition_server
+    preparations = []
+
+    def prepare(*_args, **_options):
+        preparations.append(True)
+        _publish_test_graph(fixture.cache, fixture.ctx)
+
+    monkeypatch.setattr(codegraph_preparation, "prepare_graph", prepare)
+
+    async def session():
+        async with Client(server.mcp, mode=mode, cache=None) as client:
+            await client.call_tool(
+                "lsp_definition", {"file_path": "sample.py", "line": 1, "character": 4}
+            )
+            fixture.control["close_failure"] = True
+            try:
+                rejected = await client.call_tool(
+                    "lsp_references", {"symbol": "original"}
+                )
+                assert rejected.is_error
+                text = "\n".join(item.text for item in rejected.content)
+                assert "Source definition cleanup did not finish" in text
+                assert "Retry this query" in text
+                assert str(fixture.repo) not in text
+                assert not preparations
+                assert fixture.ctx._source_binding.usable
+            finally:
+                fixture.control["close_failure"] = False
+            retried = await client.call_tool("lsp_references", {"symbol": "original"})
+            assert not retried.is_error and len(preparations) == 1
+
+    asyncio.run(session())
+
+
 def test_deferred_graph_cancellation_keeps_status_responsive_and_retry_serial(
     local_server, monkeypatch
 ):

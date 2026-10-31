@@ -124,10 +124,31 @@ async def _mcp_lifespan(
     try:
         yield runtime
     finally:
+        primary = sys.exc_info()[1]
         if ctx is not None and runtime is not None:
             ctx.end_explore_session(runtime)
             if _ctx is not None and _ctx is not ctx:
                 _ctx.end_explore_session(runtime)
+        try:
+            await asyncio.to_thread(_close_source_definition_sessions, ctx, runtime)
+        except Exception as cleanup:
+            if primary is None:
+                raise
+            primary.source_definition_cleanup_error = cleanup
+
+
+def _close_source_definition_sessions(
+    original: ServerContext | None, runtime: ExploreSessionRuntime | None
+) -> None:
+    """Wait for in-flight calls before closing either connection generation."""
+    if runtime is None:
+        return
+    with _context_lock:
+        for ctx in (original, _ctx if _ctx is not original else None):
+            if isinstance(ctx, ServerContext) and (
+                ctx.explore_runtime is None or ctx.explore_runtime is runtime
+            ):
+                ctx.close_source_definition_provider()
 
 
 def get_context() -> ServerContext:
@@ -162,8 +183,32 @@ def _indexed_tool_call(function: Callable[..., Any], ctx: ServerContext, *args) 
             )
             args = (*args[:5], include_dependencies, *args[6:])
         ctx = _prepare_graph_for_call(function, ctx, args)
-        with ctx.indexed_query():
-            return function(ctx, *args)
+        from ..agent.source_definitions import SourceDefinitionUnavailable
+
+        try:
+            with ctx.indexed_query():
+                result = function(ctx, *args)
+            if getattr(ctx, "_source_definition_provider", None) is not None:
+                ctx.lsp_provider_selection = ctx._source_definition_provider.selection()
+            return result
+        except SourceDefinitionUnavailable as exc:
+            # Only the admitted source worker may request this one graph retry.
+            # Final original-source verification above runs before this catch;
+            # stale source therefore cannot trigger an implicit rebuild.
+            if function is not lsp_definition_impl or not ctx._defer_graph:
+                raise
+            reason = str(exc)
+            ctx.close_source_definition_provider()
+            ctx = _prepare_graph_for_call(function, ctx, args, force_graph=True)
+            from ..agent.lsp_provider import StaticLSPProvider
+
+            if isinstance(ctx.lsp_provider, StaticLSPProvider):
+                ctx.lsp_provider.fallback_reason = "source_definition:" + reason
+                ctx.lsp_provider_selection["fallback_reason"] = (
+                    ctx.lsp_provider.fallback_reason
+                )
+            with ctx.indexed_query():
+                return function(ctx, *args)
 
 
 def _has_complete_graph(ctx: ServerContext) -> bool:
@@ -176,7 +221,9 @@ def _has_complete_graph(ctx: ServerContext) -> bool:
     )
 
 
-def _prepare_graph_for_call(function, ctx: ServerContext, args) -> ServerContext:
+def _prepare_graph_for_call(
+    function, ctx: ServerContext, args, *, force_graph: bool = False
+) -> ServerContext:
     """Build only for an opted-in graph request, then follow its publication.
 
     The caller owns ``_context_lock`` across source checking, compilation and
@@ -202,6 +249,17 @@ def _prepare_graph_for_call(function, ctx: ServerContext, args) -> ServerContext
     )
     if not needs_graph or _has_complete_graph(ctx):
         return ctx
+    if (
+        not force_graph
+        and function is lsp_definition_impl
+        and len(args) == 5
+        and bool(args[0])
+        and args[1] is not None
+        and args[2] is not None
+        and not args[3]
+        and ctx.enable_source_definition_provider()
+    ):
+        return ctx
     from ..codegraph_preparation import prepare_graph
 
     if ctx._local_manifest_path is None or ctx.manifest.source_selection is None:
@@ -209,6 +267,9 @@ def _prepare_graph_for_call(function, ctx: ServerContext, args) -> ServerContext
     # Do not turn a query against changed source into an implicit rebuild.
     with ctx.indexed_query():
         pass
+    # An actor cannot outlive its source generation or race a compiler that
+    # temporarily installs provider configuration. Cleanup failure stops here.
+    ctx.close_source_definition_provider()
     try:
         prepare_graph(
             Path(ctx.manifest.repo_path),
@@ -614,8 +675,9 @@ async def dependency_subgraph(
     name="lsp_definition",
     description=(
         "Return compact definition locations from CodeNib's runtime LSP "
-        "provider or persisted symbol graph fallback. Provide either symbol "
-        "or file_path + 1-based line. Results are locations only; call "
+        "provider or persisted symbol graph fallback. Give file_path, "
+        "1-based line and zero-based character for an exact position, "
+        "or symbol for a static lookup. Results are locations only; call "
         "read_source before finalizing."
     ),
 )
@@ -645,8 +707,9 @@ async def lsp_definition(
     name="lsp_references",
     description=(
         "Return compact definition/reference locations from CodeNib's runtime "
-        "LSP provider or persisted symbol graph fallback. Provide either "
-        "symbol or file_path + 1-based line. Results are locations only; call "
+        "LSP provider or persisted symbol graph fallback. Give file_path, "
+        "1-based line and zero-based character for an exact position, "
+        "or symbol for a static lookup. Results are locations only; call "
         "read_source before finalizing."
     ),
 )

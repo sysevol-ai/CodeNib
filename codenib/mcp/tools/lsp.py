@@ -125,6 +125,7 @@ def lsp_definition_impl(
         return {"error": "symbol_graph index not available"}
 
     from ...agent.boundary import from_agent_repr
+    from ...agent.source_definitions import SourceDefinitionUnavailable
 
     graph_line = from_agent_repr(line)
     try:
@@ -135,6 +136,10 @@ def lsp_definition_impl(
             symbol=symbol or None,
             top_k=top_k,
         )
+    except SourceDefinitionUnavailable:
+        # The serialized server boundary owns preparation and authenticated
+        # reload. It must see this signal after the final source check.
+        raise
     except (RuntimeError, ValueError) as exc:
         return {"error": str(exc)}
     return _serialize_results(results)
