@@ -119,8 +119,9 @@ by default.
 - `top_k` (int, default 8): maximum admitted source windows.
 - `budget` (str, default `"balanced"`): `"fast"`, `"balanced"`, or
   `"thorough"`.
-- `direction` (str, default `"both"`): `"impact"`, `"dependencies"`, or
-  `"both"`.
+- `direction` (str, default `"both"`): `"impact"` follows incoming static
+  references, `"dependencies"` follows outgoing references, and `"both"`
+  follows both.
 - `include_dependencies` (bool or null, default `null`): use the preparation-mode
   default described above. `true` requests bounded graph neighborhoods;
   `false` omits expansion even when a complete graph is ready.
@@ -294,7 +295,10 @@ For a local manifest server, rebuild with `codenib codegraph init` and retry in
 the same connection: the next indexed query or idle manifest-status request
 loads the published generation after authenticating current source. A busy
 compiler returns a retry message. Connection delivery history and its worker
-barrier survive a successful reload. Query calls do not build indexes.
+barrier survive a successful reload. Reloading does not compile an index. In
+`--defer-graph` mode, an explicitly requested graph operation can prepare a
+complete graph for unchanged indexed source. Source changes still require
+explicit rebuilding before the query can proceed.
 Portable artifacts retain their selected snapshot and require explicit
 rebinding to change it.
 

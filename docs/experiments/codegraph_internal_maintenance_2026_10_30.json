@@ -1,0 +1,319 @@
+{
+  "schema": "codenib.internal-maintenance-packet.v1",
+  "assessment": {
+    "schema": "codenib.internal-maintenance-assessment.v1",
+    "scope": "Full CodeNib Python selection using existing default exclusions; internal source/navigation documentation maintenance. No model task, comparator, external user or independent confirmation.",
+    "status": "terminal_assessed",
+    "base_commit": "943c02c1b5e8e3e9369bdf7712e6d21115ede6c6",
+    "installed_wheel_sha256": "4413d8f141a438b19899a35070d036c68f1bb24166fae452c91acf7f1eadccc4",
+    "installed_python_files": 485,
+    "installed_native_files": 1,
+    "generations": {
+      "before": {
+        "selected_documents": 1172,
+        "nodes": 33178,
+        "edges": 159676,
+        "complete": true,
+        "partial": false,
+        "builder_schema": 9,
+        "manifest_sha256": "3579072e78deac5cfcb9bb9ea602e5edc0a8fdd3c8d2c536b5bd1b6c8ddbe262"
+      },
+      "after": {
+        "selected_documents": 1172,
+        "nodes": 33178,
+        "edges": 159676,
+        "complete": true,
+        "partial": false,
+        "builder_schema": 9,
+        "manifest_sha256": "364ef8339bb1f400b3ed11423a18540d0703bfaf916167fc36f3e9addddaee36"
+      }
+    },
+    "mcp_connections": 1,
+    "observed_same_mcp_pid": 913170,
+    "attempts": 8,
+    "successful_replies": 5,
+    "operator_validation_errors_retained": [
+      3,
+      4
+    ],
+    "expected_stale_rejection_retained": 6,
+    "successful_session_to_controller_call": {
+      "1": 1,
+      "2": 2,
+      "3": 5,
+      "4": 7,
+      "5": 8
+    },
+    "source_contexts_checked": 26,
+    "live_source_contexts_checked": 15,
+    "session_pointers_checked": 11,
+    "seconds": {
+      "setup_including_source_copy": 6.632129387930036,
+      "initial_bm25_command": 3.4425112325698137,
+      "source_query": 0.7872366327792406,
+      "first_graph_request": 210.50630755349994,
+      "warm_graph_request": 0.6135466694831848,
+      "explicit_bm25_rebuild": 3.360067965462804,
+      "source_query_after_rebuild": 1.4908102117478848,
+      "graph_request_after_edit": 219.91486622579396,
+      "whole_controller_including_operator_wait_and_export": 839.9787392988801
+    },
+    "source_patch_preserved": {
+      "initial_short_patch_equality": false,
+      "cause": "Git abbreviates diff object IDs differently in the full review repository and the shallow analysis repository.",
+      "full_index_patches_identical": true,
+      "changed_file_bytes_identical": {
+        "codenib/mcp/README.md": "61edd45f23b1d93d98a4b715eac8d7c231686407710ba3495db4cac46ca42dd2",
+        "codenib/mcp/server.py": "0c35d02c38a862e51ca123311382e6f5c8ccfe4f6451bffbd2b53bdf0c2c3c44"
+      },
+      "other_worktree_changes": false
+    },
+    "whole_source_preservation": {
+      "scope": "Whole disposable checkout against original Git blob identities, including ignored paths; only the two reviewed source/doc files differ.",
+      "tracked_entries": 2388,
+      "regular_or_symlink_files": 2387,
+      "changed_files": [
+        "codenib/mcp/README.md",
+        "codenib/mcp/server.py"
+      ],
+      "extra_files": [],
+      "submodule_entries": [
+        "third_party/scip-python"
+      ]
+    },
+    "model_queries": 0,
+    "independent_successes": 0,
+    "external_users": 0,
+    "comparative_benefit": "not measured",
+    "decision": "Hold promotion. This internal functional control establishes full selected self-repository construction, bounded graph/source delivery, source-change rejection and same-connection recovery. It is not a matched coding task, model adoption, independent success or external use. First-relationship and changed-source graph preparation are concrete cost targets; do not attribute earlier no-tool cohort latency to these observations.",
+    "limits": [
+      "Dependencies and both providers are preinstalled; setup is not a fresh-install comparison.",
+      "SCIP emits a Python 3.13 unsupported-version warning, then completes all 1,172 selected documents; retain that warning and do not claim complete semantic/reference accuracy from construction.",
+      "The controller forwards MCP stderr to its terminal rather than archiving a complete byte stream. Exact parsed original MCP replies, manifests, raw SCIP/graph artifacts and local hashes remain retained.",
+      "Graph and source queries differ; their times are descriptive observations, not a controlled method comparison. Compiler profiler sections overlap and must not be summed.",
+      "Two operator enum errors are retained. A separate patch-equality diagnostic failed only because full and shallow Git repositories abbreviated object IDs differently; full-index patches and exact changed bytes agree.",
+      "Python product navigation is currently graph-backed; the selector's existing native path is clangd-only and lacks an authenticated selected-file proof. Do not bypass that guard or promote an evaluation-only live Python provider as a performance fix."
+    ]
+  },
+  "format": "Verify each part's byte count and sha256. Each UTF-8 record stores gzip_base64: decode, verify gzip_sha256, decompress, then verify original bytes/sha256. Binary SCIP/index artifacts are retained locally and identified by hashes, not embedded.",
+  "files": [
+    {
+      "path": "controller.py",
+      "bytes": 10048,
+      "sha256": "d28f9b315de48a8b7deb5a22501db079cdfdec8bc2a3709ec7866ec3838b90cd",
+      "gzip_sha256": "8b72215b0d934b5a076bf52867edefcbaf937b75787ebfee57b19632c77e651d"
+    },
+    {
+      "path": "task.json",
+      "bytes": 1962,
+      "sha256": "eeadd98a7dabdca6ae66b77f5719d29dced98b198f6e7af0583d7bd08c2a7a65",
+      "gzip_sha256": "e8084f18f2216739198fb4f1193f43fd00d51606c89adc4b665ea5cf1151a5e9"
+    },
+    {
+      "path": "run-state.json",
+      "bytes": 13381,
+      "sha256": "eca76b4d7dd9507628bfa1394cef732017d3dbb4c7177889b413a0c194705802",
+      "gzip_sha256": "4d9312b80747484ed9d52186d732177b4d414ce20ce3caf6dd867c00a3f1ea54"
+    },
+    {
+      "path": "mcp-tools.json",
+      "bytes": 3724,
+      "sha256": "f5940f2e7ff8ce89405f31ddf9acdc846c6bb2b98628ab2a67d4956ae3c50766",
+      "gzip_sha256": "d6b78f53eee227d0a3bfe85d6e764519737246cecbd5806b4878f7410c036fdb"
+    },
+    {
+      "path": "assessment.json",
+      "bytes": 4689,
+      "sha256": "078fcd82ef9846756f2f4b672ff5e15550980ff48bb8eccc880f8e40621d5314",
+      "gzip_sha256": "19924314e468d08723cf4455b2bbcab8d8fd29d168a1602dacd3d6b684a2806c"
+    },
+    {
+      "path": "package_results.py",
+      "bytes": 12902,
+      "sha256": "0054fde4555c599b0684dace69022a81f37fd8a69b7b435b9638f4162ca8f522",
+      "gzip_sha256": "c97e8933c004a87ae2b69b4d254ee81c2e23bbbfb54f9e2a4e9802dab80c3235"
+    },
+    {
+      "path": "installed-identity.stdout",
+      "bytes": 51388,
+      "sha256": "d9e680723afe77373055a9cdc7beaf0ee3ba38c89f983bb1e9570d434b52ddfc",
+      "gzip_sha256": "b79a7715498da7dca8a1c725931ed69b346e4c479070abdfa1d4017e53b33b9c"
+    },
+    {
+      "path": "index-bm25.stdout",
+      "bytes": 246,
+      "sha256": "1f311847a5911e702deb88117596f1e504c45402e9c3d92e8e2cd2e59a9a9022",
+      "gzip_sha256": "217b73a90a82670f2068b6fac39eb89d0f6d78cd883cd9f39c2e6cb470945479"
+    },
+    {
+      "path": "index-bm25.stderr",
+      "bytes": 648,
+      "sha256": "b06bca179cafd106d33138146d62d3b571000e15cccdf3dab5287123e7c9782c",
+      "gzip_sha256": "b4d9ade5e6d1e0e842bd90af7e05bcff9fae700b3f6d6ff398c29650d0c804ac"
+    },
+    {
+      "path": "rebuild-1.stdout",
+      "bytes": 246,
+      "sha256": "a3a5dda3ae8c194f92f5698d51f7f8469eb30da14cfd9809bf6f9ce20e0a7ec9",
+      "gzip_sha256": "82b50a7b3fbba32a7458b31925fd6e40b50771912ebb5c5865af3680dd7258d5"
+    },
+    {
+      "path": "rebuild-1.stderr",
+      "bytes": 729,
+      "sha256": "bf53468d7643024d59ceefa4e96143dd3282c4d57c2a800b1f381001d85385f9",
+      "gzip_sha256": "e9e87dca03ad843f59e189d86a10b53ffdb130b271a5660b25725da980a83b52"
+    },
+    {
+      "path": "before-edit.manifest.json",
+      "bytes": 44855,
+      "sha256": "3579072e78deac5cfcb9bb9ea602e5edc0a8fdd3c8d2c536b5bd1b6c8ddbe262",
+      "gzip_sha256": "30926a94fb49fc3745b5668281837962f63df6d70c15e5000a8e5a84e461ebe8"
+    },
+    {
+      "path": "after-edit.manifest.json",
+      "bytes": 44855,
+      "sha256": "364ef8339bb1f400b3ed11423a18540d0703bfaf916167fc36f3e9addddaee36",
+      "gzip_sha256": "3bbba6e8de15e0bf882ff51dd553f4273ef422ad885f066d6ffa123575ddd122"
+    },
+    {
+      "path": "edit-receipt.json",
+      "bytes": 688,
+      "sha256": "065b41484420012700b7b93e61bf9fbcc3b0b4cbba148dde76b92442c99712c3",
+      "gzip_sha256": "236e8eae1adf36417c0798e5a999684ee5b1674e15b4858c74e59c4c6c7acbf3"
+    },
+    {
+      "path": "documentation-boundary.patch",
+      "bytes": 2348,
+      "sha256": "77941c3c6dafcca4a2ff2c26afeafbf6e0f695dcfb903579cf73b95ac2eebaa6",
+      "gzip_sha256": "fffb4e35b5eebdb8edb5e61b435616c5a1b1857529902606bcc743f41ee5070d"
+    },
+    {
+      "path": "documentation-boundary-full-index.patch",
+      "bytes": 2476,
+      "sha256": "8d71b0f417e0171677755afd2d55389c70274ae6252668e280700a151b26efdc",
+      "gzip_sha256": "7dbf29e8477efaeb1f0413f47dcaa86cf91563a40bbec0c6fa3466860a3d8a60"
+    },
+    {
+      "path": "observed-shallow.patch",
+      "bytes": 2344,
+      "sha256": "86c26550778df371386ff4f2b8c2a6fd915744309c0e1d191217099343007bbf",
+      "gzip_sha256": "9fa205d9da20ae9a794c6928f7483ffce68ab7774afaf5b7bb556138916486e6"
+    },
+    {
+      "path": "patch-check.json",
+      "bytes": 478,
+      "sha256": "992ef0394722a5e4bd23ebb27656fcffa162244828b3cb2a99f40eae51cebcec",
+      "gzip_sha256": "40483051b9dbbcfda4bdec378bbcd1f23d3644ddfe5ac4ba31ddc437a781b294"
+    },
+    {
+      "path": "whole-source-preservation.json",
+      "bytes": 380,
+      "sha256": "55da459482595086504df8dccafe86d01169b5c9ee06d1570a298f2f52d7823d",
+      "gzip_sha256": "27b69370145e49e24e5ceca085dd5ae880437489614561d6a0d37daa7b0af9aa"
+    },
+    {
+      "path": "final-source-status.stdout",
+      "bytes": 50,
+      "sha256": "e299b2a8eec89fa4ffe96bdfd3df3be5ff61d7ded91f929869f7318af3d1bd6e",
+      "gzip_sha256": "e864b473d3dceb2e8431bae8f88cb87a27719c6588ef82729e9c295d90d08f59"
+    },
+    {
+      "path": "source-observation-checks.json",
+      "bytes": 15280,
+      "sha256": "f4039d6c6bb9df1be40bb1e87164deaa07151d4107901604548acac8325ce634",
+      "gzip_sha256": "6d8cccd9d1e880f4b70d06958c65bdb9c79ef70989c9f930db25bd2bfcc005b0"
+    },
+    {
+      "path": "local-artifact-identities.json",
+      "bytes": 2002,
+      "sha256": "19224e2cb876081d57ab0a06fa08c19517c8ad0202d6635306d9e8afd97127ed",
+      "gzip_sha256": "8630ddc570e5b9f9fac5a3b6bb72cabeb037cdcff1366c1b0efa564d8c37acce"
+    },
+    {
+      "path": "observed-container.json",
+      "bytes": 997,
+      "sha256": "2e8a1fa222c10552a7315b22376408341cfadd18247a5ae896a9eff92d519265",
+      "gzip_sha256": "a08a1157d3b584e9816b8af51c4f387c5d541c53c29d359946c71826eef63144"
+    },
+    {
+      "path": "mcp-process-after.stdout",
+      "bytes": 327,
+      "sha256": "43a9d95c54f66970e1cc912741b366a01003275a0510ef01c65d6a324f404c1e",
+      "gzip_sha256": "0960a9819a3253ac309e6568ad96ee0228c14a534f522f49ab46f6a83baf7a89"
+    },
+    {
+      "path": "cleanup-owner.stdout",
+      "bytes": 12,
+      "sha256": "a4a48c79b767b6ba6e46bb850fb1d9ac80cb4c7866172a37fb3e952aa03dc31d",
+      "gzip_sha256": "67eb9d7ef44f6a0e2b4e5c9c6f31aebbd9ce7a4e839c966490fce45c22f56937"
+    },
+    {
+      "path": "container-remove.stdout",
+      "bytes": 65,
+      "sha256": "ea61f4f433e8de99b811150bec94d2da39863bf082748c1ea12b89a7bd7a26d4",
+      "gzip_sha256": "9e1cf7e1826214b6d0c92220895c0679d60b94d825b315cbf7a0787517aa2afc"
+    },
+    {
+      "path": "index-export.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "gzip_sha256": "f61f27bd17de546264aa58f40f3aafaac7021e0ef69c17f6b1b4cd7664a037ec"
+    },
+    {
+      "path": "call-001.json",
+      "bytes": 50485,
+      "sha256": "bb7238d244823521f57d42c88a7285a408e0fa20d7ae53d0541fd125496f7f48",
+      "gzip_sha256": "9557b7aad924edc935c12b8a23962fcda00d08d73edd63a9c6fab085061701d6"
+    },
+    {
+      "path": "call-002.json",
+      "bytes": 92047,
+      "sha256": "74679e5a4149806daedb70895f16929cfb9f52a8cb5132fb0d74afcfd8042841",
+      "gzip_sha256": "e35dffd5d32e65864a57dcaae96c886c137a0ef65b9231069f9acd484675dda4"
+    },
+    {
+      "path": "call-003.json",
+      "bytes": 1104,
+      "sha256": "f6c258459aad382fcc227220bed65c576182288918a9cc342df95dafde9f4477",
+      "gzip_sha256": "b263d131fec2a1993062034e2f4ad84db567dcbc3b0a2802939b8fcd7ee968b5"
+    },
+    {
+      "path": "call-004.json",
+      "bytes": 1094,
+      "sha256": "2dfd83cd3b98d60d70338bd1b73011d4d52b3160ce345a54f5310732be7fe03e",
+      "gzip_sha256": "5b7607fa065992de52cc4b074b91fbce7760462ad99c9989fa57f52a902e0c19"
+    },
+    {
+      "path": "call-005.json",
+      "bytes": 54688,
+      "sha256": "2d770b623f8782bd110e822803d9deea67efdc972f7a46563f5d33c7ad6ff33b",
+      "gzip_sha256": "2f85e4e14f44c1c0ba9f1aeaa30176c45deddd44fb24b30ed5058ae705664817"
+    },
+    {
+      "path": "call-006.json",
+      "bytes": 768,
+      "sha256": "a86e145d7772b2d9cd69e6dddaebcb19bd6d50e857481f909f2dede24a9e7d0e",
+      "gzip_sha256": "b3be3078a46c8e80462f74cd8ea81ec52f4089d89542211ab4b6d720a2bfaaca"
+    },
+    {
+      "path": "call-007.json",
+      "bytes": 24024,
+      "sha256": "dd4490a056ea2dd63e640aedf49753925e42b780e7a98fc01a8dddee0ffbb064",
+      "gzip_sha256": "a2d0a75e496e0306daae3c683a86ed2a3d2c0eb77deb98d6e1d04df9022df006"
+    },
+    {
+      "path": "call-008.json",
+      "bytes": 58929,
+      "sha256": "6106f24ab0ffdfac662a4b015e194772f56ff34b50e34d8fc25fc2211ed18a8f",
+      "gzip_sha256": "08d8c8aad3343d36a103b00b998a5af6877235bdc73103563d6a9a861e3ec04e"
+    }
+  ],
+  "parts": [
+    {
+      "path": "codegraph_internal_maintenance_2026_10_30.part001.json",
+      "bytes": 150241,
+      "sha256": "c65d2e373e385b7fb1b009acf1eb66137219cf8925cacf4e285438ef3be719d3",
+      "records": 35
+    }
+  ]
+}

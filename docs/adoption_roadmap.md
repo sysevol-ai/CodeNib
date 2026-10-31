@@ -152,6 +152,20 @@ source-linked cross-file maintenance task with a verifiable edit/test outcome
 over further discovery rewrites or paid exact-name probes. Internal use does
 not satisfy the external-user gate.
 
+The [internal source-update maintenance control](experiments/codegraph_internal_maintenance.md)
+uses the installed wheel on CodeNib's complete selected 1,172-document Python
+surface. Both full graph builds pass with 33,178 nodes and 159,676 edges;
+26 returned source contexts/pointers match their captured versions. The
+README/docstring correction preserves changed-source rejection and same-session
+recovery. Source queries take 0.787s initially and 1.491s after a 3.360s BM25
+rebuild; first and post-edit graph requests take 210.506s and 219.915s, versus
+0.614s on a prepared graph. Two operator argument errors remain recorded.
+Providers/dependencies are warm and no model task runs, so these component
+observations establish neither comparative benefit nor voluntary adoption.
+Target first-relationship and post-edit preparation costs without bypassing
+source-policy guards. The full matched coding, confirmation and external-use
+gates remain open.
+
 The latest four-arm round records 8,821,055 normalized final main/auxiliary tokens
 and $9.311356 in SDK estimates, not invoices. The separate diagnostic adds
 78,348 tokens and $0.1850155 in SDK estimates within its $1 guard. The recorded

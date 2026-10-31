@@ -239,7 +239,9 @@ def _refresh_local_context(ctx: ServerContext) -> ServerContext:
     """Follow a published local rebuild without altering snapshot contexts.
 
     The caller owns ``_context_lock``. Reuse the startup loader and its exact
-    source/artifact checks; no indexing or model request is started here.
+    source/artifact checks; this loader starts no indexing or model request.
+    The surrounding indexed-tool call may prepare a graph on demand after
+    verifying that the indexed source is still current.
     """
 
     if not isinstance(ctx, ServerContext) or ctx._local_manifest_path is None:

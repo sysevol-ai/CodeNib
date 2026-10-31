@@ -108,6 +108,19 @@ voluntary use before further efficacy inference; do not keep changing
 discovery metadata without a reproduced loading defect. Internal maintenance
 use stays distinct from external consent and repeat use.
 
+The [internal maintenance control](codegraph_internal_maintenance.md) extends
+functional coverage to CodeNib's complete selected Python source and an actual
+README/docstring correction. Both 1,172-document graph builds pass, source
+changes reject old results and explicit rebuilding recovers in the same MCP
+connection. All 26 returned contexts/pointers match their captured versions.
+First and post-edit relationship requests take 210.506s and 219.915s; a prepared
+graph request takes 0.614s. Source-only recovery after a 3.360s BM25 rebuild
+takes 1.491s. These operator-selected component observations include two
+argument failures and no model coding task. They define preparation/update
+cost targets, not a matched benefit or independent success. Keep the unchanged
+coding-quality/time/usage and external-repeat-use gates; do not bypass source
+selection or promote an evaluation-only provider to reduce those components.
+
 The [merged Python identity repair](codegraph_python_walrus.md) now admits the
 complete selected Pylint graph and exact source delivery through its actual CI
 wheel. The [prospective source-contract diagnostic](codegraph_reference_adoption_freeze_2026_10_30.json)
