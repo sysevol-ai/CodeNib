@@ -37,6 +37,10 @@ executables and SCIP/Fact/clangd Python gates through `make core-test`) — see
 - HuggingFace dataset cache lives at `~/.codenib/`.
 - Git fixtures that copy or swap `.git` must disable automatic maintenance
   before committing, so transient maintenance files cannot race the snapshot.
+- When executing captured Python source with `-I`, also pass `-B` and verify
+  `sys.flags.dont_write_bytecode`. Isolated mode ignores `PYTHON*` environment
+  settings; an environment-only bytecode setting can add files and invalidate
+  the source receipt. Retain failed source-preservation attempts separately.
 - SCIP identity captures use filename-driven parametrization with a fixed
   single-file shape. Put independently shaped multi-file captures in their own
   fixture directory so existing globs do not collect them as compatible cases.

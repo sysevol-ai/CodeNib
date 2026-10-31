@@ -32,9 +32,11 @@ assets are unchanged. All 17 executed PR checks pass with eight explicit skips.
 its [fresh installed-wheel admission](codegraph_python_wildcard_reconciled_2026_10_31.json)
 passes actual compiler/MCP, declared post-edit rebuilding and all four retained
 complete-source artifact hashes. [#945](https://github.com/sysevol-ai/CodeNib/pull/945)
-is rebased onto that main; its [combined installed admission](codegraph_source_definitions_reconciled_2026_10_31.json)
-passes MCP/fallback, lifecycle and complete-source controls, with final-head
-checks and merge reconciliation still required.
+is merged as `90d4a8ed`; its [combined installed admission](codegraph_source_definitions_reconciled_2026_10_31.json)
+passes MCP/fallback, lifecycle and complete-source controls. All 21 executed
+final-head checks pass with eight explicit skips, and the merge preserves the
+reviewed tree and real-newline message. Main release verifiers pass; the full
+trusted chain is tracked separately.
 No new model question, workflow comparator, success confirmation or participant
 is added.
 
@@ -289,13 +291,25 @@ successes remain 0/2 and external enrollment/reuse remains 0/5. The separate
 the unmodified wheel from source head `721adc08`: all 486 Python files, native
 bytes and worker asset match, and actual MCP/fallback/lifecycle/complete-source
 controls pass with five workers reaped. Its 21 executed checks pass with nine
-explicit skips. The draft now incorporates merged #947/#946 and is rebased onto main. Its
+explicit skips. The implementation is merged in #945 as `90d4a8ed` on top of
+#947/#946. Its
 source-definition implementation is unchanged. The separate 105-record
 [combined admission](codegraph_source_definitions_reconciled_2026_10_31.json)
 passes actual MCP/fallback/lifecycle/complete-source controls, including 11/11
 positive call lines and the original raw alias-binding negative. All five
 source workers and the fallback language server exit. Its admitted source head
-passes 21 executed checks with eight skips. Final-head checks remain. Earlier packets and whole-task gates stay unchanged.
+passes 21 executed checks with eight skips. The final head also passes all 21
+executed checks with eight skips and its merged tree is verified. Earlier
+packets and whole-task gates stay unchanged.
+
+The separate [alias-binding diagnostic](codegraph_python_rebinding.md)
+retains 170 records and both failed controllers. Standard definitions preserve
+the same function/assignment candidates before and after rebinding; prepared
+standard references return import names and require alias composition. A
+source-preserving runtime witness confirms the original post-rebinding
+negative. This is not a Serena result or a new workflow score. Verify its
+actual pinned REPL behavior and a real maintenance need before another route
+or efficacy cohort.
 
 The [wildcard-reference repair](codegraph_python_wildcard.md) in [#946](https://github.com/sysevol-ai/CodeNib/pull/946) separately preserves the original strict call oracle while improving its positive recall: actual compiler/MCP calls find all 11 positive lines with the same one of five negatives. Source-backed standard definition replies authorize only existing compiler module reads; coincident targets and lexical-binding unions remain intact. The final unit tier passes 9,038 with 24 skips, and the offline installed complete-source replay preserves all 786,078 original occurrences and the exact normalized text. Builder identity advances to 10, while graph layout stays 5. The separate [CI supplement](codegraph_python_wildcard_ci_2026_10_31.json) admits the unmodified wheel from source head `807ddfbd`: all 485 Python files, native bytes and other product files equal the developer candidate, and fresh compiler/MCP/post-edit controls pass. All 17 executed source-head checks pass, with nine skips explicit. The separate [current-base supplement](codegraph_python_wildcard_reconciled_2026_10_31.json) retains 87 records: fresh installed compiler/MCP, declared-edit rebuilding and complete-source replay pass on #947, with all four artifact hashes preserved. #946 is merged with all 18 final executed checks passing; representative wildcard/update coverage remains open; the raw-compiler alias-binding negative stays separate from intentional static unions. It changes no frozen cohort, independent success, external-use count or whole-task decision.
 

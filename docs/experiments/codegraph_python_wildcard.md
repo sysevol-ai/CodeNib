@@ -123,7 +123,12 @@ retains all four artifact hashes and every original occurrence; it exercises
 zero new wildcard recoveries and reaps its LSP before container removal and
 final source verification. This remains preservation evidence.
 
-The current source head passes 17 executed PR checks with eight explicit skips.
+The admitted source head passes 17 executed PR checks with eight explicit skips.
 All-files pinned hooks and 287 relevant local unit cases pass on the new base.
-Final documentation-head checks and merge reconciliation remain required.
+Merged [#946](https://github.com/sysevol-ai/CodeNib/pull/946) as `ad87b872`
+preserves reviewed head `66d2ff27` and passes all 18 final executed checks with
+eight explicit skips. The duplicate unit cancellation is retained separately;
+its replacement executes and passes. The subsequent
+[alias-binding diagnostic](codegraph_python_rebinding.md) confirms the exposed
+reassignment counterexample without changing the original scores or criteria.
 The earlier packets stay immutable and all whole-task/use gates remain open.
