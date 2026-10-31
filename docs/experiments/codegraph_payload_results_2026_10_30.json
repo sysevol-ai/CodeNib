@@ -1,0 +1,1022 @@
+{
+  "schema": "codenib.source-payload-confirmation-results.v1",
+  "scope": "Three paired repositories; within-workflow tasks correlated. No population non-inferiority claim.",
+  "decision": "insufficient evidence; hold promotion",
+  "freeze_sha256": "66becb6b784a7560ef7cf0ce2ce980002634939f00aeadd0d38ebd6dc130c68d",
+  "frozen_inputs_unchanged": 5294,
+  "task_attempts": 60,
+  "SDK_successful_terminals": 60,
+  "source_accepted": 31,
+  "native_passes": 8,
+  "native_repairs": 12,
+  "native_selected_outcomes_expected": 596,
+  "eligible_alternatives": [],
+  "comparison": null,
+  "lossless_public_files": 535,
+  "parts": [
+    {
+      "path": "codegraph_payload_results_2026_10_30.part01.json",
+      "bytes": 278834,
+      "sha256": "0986133ee59d70a165b17bfa9e09b149ea681f757c4dfb774db463a896af95b9",
+      "files": 119
+    },
+    {
+      "path": "codegraph_payload_results_2026_10_30.part02.json",
+      "bytes": 270629,
+      "sha256": "e07d13bee3bdbba6baec4c8ac39cbf959ae95fcae40e927c9107a114b7c25b89",
+      "files": 15
+    },
+    {
+      "path": "codegraph_payload_results_2026_10_30.part03.json",
+      "bytes": 214354,
+      "sha256": "d35a56d323ffce224ef745caf393bbdb6cc50ae9a5286f428dc9dcbe47c9fd5c",
+      "files": 31
+    },
+    {
+      "path": "codegraph_payload_results_2026_10_30.part04.json",
+      "bytes": 236243,
+      "sha256": "90f941a83844f41e910e19e9404190dbc5b257d3f1767da353fdc5aa2546610e",
+      "files": 5
+    },
+    {
+      "path": "codegraph_payload_results_2026_10_30.part05.json",
+      "bytes": 258158,
+      "sha256": "6cb75127f98de3bb51951c9ae74914d7eac453739e84a0daa657dac93a03984b",
+      "files": 51
+    },
+    {
+      "path": "codegraph_payload_results_2026_10_30.part06.json",
+      "bytes": 232585,
+      "sha256": "17a49382dc3401519a80d08f3b2c2235fd57d999102749291fb554a7cc5d63e7",
+      "files": 17
+    },
+    {
+      "path": "codegraph_payload_results_2026_10_30.part07.json",
+      "bytes": 271581,
+      "sha256": "cf180f6a36f973671884ea1735002bfe0f0b34e96bebe03865cd34a68b93f7cc",
+      "files": 21
+    },
+    {
+      "path": "codegraph_payload_results_2026_10_30.part08.json",
+      "bytes": 202077,
+      "sha256": "880f4da1ecdd65d902e6d3f5875f500ab2718a932e36c2235b5b18a03b9dda65",
+      "files": 15
+    },
+    {
+      "path": "codegraph_payload_results_2026_10_30.part09.json",
+      "bytes": 263814,
+      "sha256": "59a074b541eba33273510369ef62f7ef1688f9041f07b7b5ed44001c32824c38",
+      "files": 9
+    },
+    {
+      "path": "codegraph_payload_results_2026_10_30.part10.json",
+      "bytes": 275722,
+      "sha256": "22c5fb375b91d4c8ddcf2d1af4650804481560c83befbde1d4a32a0bda496247",
+      "files": 21
+    },
+    {
+      "path": "codegraph_payload_results_2026_10_30.part11.json",
+      "bytes": 265177,
+      "sha256": "1e5b8bec1fb4a612c1d3d60bb1841455d346b1cdf0a9b6e63be5c2fa595855dd",
+      "files": 25
+    },
+    {
+      "path": "codegraph_payload_results_2026_10_30.part12.json",
+      "bytes": 257372,
+      "sha256": "dfca06b560ae84982ec30cc844e7f39180709de6aca214705afa7418781c8dda",
+      "files": 18
+    },
+    {
+      "path": "codegraph_payload_results_2026_10_30.part13.json",
+      "bytes": 187886,
+      "sha256": "e1aa80b984f7251334703a7ceedebf3ada5d3fda81af4be54ca60f4961c901d4",
+      "files": 27
+    },
+    {
+      "path": "codegraph_payload_results_2026_10_30.part14.json",
+      "bytes": 258866,
+      "sha256": "55611152f786739e14522163637a9d7887e901e36d0c593c6ae10f679ba8633c",
+      "files": 17
+    },
+    {
+      "path": "codegraph_payload_results_2026_10_30.part15.json",
+      "bytes": 249719,
+      "sha256": "2fa1055e0c04ab6270dea2c16bb70f9cd97fc119a548c46a70aabe20ef6f8c85",
+      "files": 21
+    },
+    {
+      "path": "codegraph_payload_results_2026_10_30.part16.json",
+      "bytes": 199532,
+      "sha256": "2bf4396f7a8fe7f37fbf3fceafdf3855199bc6d3ef5b1da29388dff009147427",
+      "files": 30
+    },
+    {
+      "path": "codegraph_payload_results_2026_10_30.part17.json",
+      "bytes": 271384,
+      "sha256": "f3b04fc9b3a288dc00f7d8302003884a0e0317ee94774fd786cc3f1192cd153e",
+      "files": 26
+    },
+    {
+      "path": "codegraph_payload_results_2026_10_30.part18.json",
+      "bytes": 190906,
+      "sha256": "84b71c9f64552622bcafcf0164f5bfda976bd6a86cbfc15f927d5ebd05580219",
+      "files": 14
+    },
+    {
+      "path": "codegraph_payload_results_2026_10_30.part19.json",
+      "bytes": 197857,
+      "sha256": "cd6ae9cffa3c92ae6521e2da86339990c14e640548cd2e69704a542a61f86c26",
+      "files": 28
+    },
+    {
+      "path": "codegraph_payload_results_2026_10_30.part20.json",
+      "bytes": 235515,
+      "sha256": "76b05db9c90a81f0f3a9899bde7bcba205a921b916a34e595737d06c267f5911",
+      "files": 6
+    },
+    {
+      "path": "codegraph_payload_results_2026_10_30.part21.json",
+      "bytes": 259399,
+      "sha256": "c051b0fde85cf3ed0325af1079b89175f8c399555c2989d29da9d91b363e04cf",
+      "files": 12
+    },
+    {
+      "path": "codegraph_payload_results_2026_10_30.part22.json",
+      "bytes": 79569,
+      "sha256": "83d23c3d5c834be7d6aa08454a98b8edf827aac7d1d2e4f228870b09e6084569",
+      "files": 7
+    }
+  ],
+  "private_files_retained_locally": [
+    {
+      "path": "native-grading/10-scikit-learn__scikit-learn-14894-native/grade/config.json",
+      "bytes": 2173,
+      "sha256": "95236f1a355abdd71e15c97441b03d9164cd3b9804152c8d1a14e022fcf76a66",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/10-scikit-learn__scikit-learn-14894-native/grade/eval.sh",
+      "bytes": 1586,
+      "sha256": "62a5e76f5825b3c7cfbe6ae3711c51209294d852cc5d1e71fb655657a19b8de8",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/10-scikit-learn__scikit-learn-14894-native/grade/resolution.json",
+      "bytes": 8434,
+      "sha256": "4056e886e68fb4b8666591853dfad8ad80dc1c2d54e30d574da289be1a9062d4",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/10-scikit-learn__scikit-learn-14894-native/grade/stdout/scope.json",
+      "bytes": 200,
+      "sha256": "683965aa807e2883c10f88932ba6458d5adf0605363750cf183744ad59cfb7e3",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/10-scikit-learn__scikit-learn-14894-native/grade/stdout/call-0001/capture.json",
+      "bytes": 330,
+      "sha256": "9676ae6afa5a6666bdde3fb4b203a238a99a77b23c4fb05cda34d1fd7a5d3c5b",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/10-scikit-learn__scikit-learn-14894-native/grade/stdout/call-0001/stdout.bin",
+      "bytes": 29943,
+      "sha256": "faa688e5c211afecb400560c66bcb5926415989beba09c8f25886a8933959eb0",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/10-scikit-learn__scikit-learn-14894-native/grade/stdout/call-0001/stdout.utf8",
+      "bytes": 29943,
+      "sha256": "faa688e5c211afecb400560c66bcb5926415989beba09c8f25886a8933959eb0",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/10-scikit-learn__scikit-learn-14894-native/grade/logs/codenib-215d326e0108/source-payload-confirmation-native/scikit-learn__scikit-learn-14894/run_instance.log",
+      "bytes": 12525,
+      "sha256": "7423c6617dac5ee44a46842eadce0e40494fa48964f876749eb356dca9adadb1",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/10-scikit-learn__scikit-learn-14894-native/grade/logs/codenib-215d326e0108/source-payload-confirmation-native/scikit-learn__scikit-learn-14894/test_output.txt",
+      "bytes": 29943,
+      "sha256": "faa688e5c211afecb400560c66bcb5926415989beba09c8f25886a8933959eb0",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/10-scikit-learn__scikit-learn-14894-native/grade/logs/codenib-215d326e0108/source-payload-confirmation-native/scikit-learn__scikit-learn-14894/report.json",
+      "bytes": 8688,
+      "sha256": "00c59c58c03dac998d0bf5abb3b51759dea2e8deabee1fe7b3c89e9a7971727f",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/10-scikit-learn__scikit-learn-14894-native/grade/logs/codenib-215d326e0108/source-payload-confirmation-native/scikit-learn__scikit-learn-14894/eval.sh",
+      "bytes": 1586,
+      "sha256": "62a5e76f5825b3c7cfbe6ae3711c51209294d852cc5d1e71fb655657a19b8de8",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/10-scikit-learn__scikit-learn-14894-native/grade/logs/codenib-215d326e0108/source-payload-confirmation-native/scikit-learn__scikit-learn-14894/patch.diff",
+      "bytes": 2191,
+      "sha256": "c81b9e9c154f17b667049d02050d24bae7f4c4bc90adf5a70fe085a4cadac470",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/11-scikit-learn__scikit-learn-14894-codegraph/grade/config.json",
+      "bytes": 2176,
+      "sha256": "af540694649951cd189fc51377f113251599c21d93178ee3acf745aa8743a30b",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/11-scikit-learn__scikit-learn-14894-codegraph/grade/eval.sh",
+      "bytes": 1586,
+      "sha256": "62a5e76f5825b3c7cfbe6ae3711c51209294d852cc5d1e71fb655657a19b8de8",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/11-scikit-learn__scikit-learn-14894-codegraph/grade/resolution.json",
+      "bytes": 8434,
+      "sha256": "8294a25ec13530dde92645b435bd6105cc5e8e644b67316d2d01aa14fea7c4b3",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/11-scikit-learn__scikit-learn-14894-codegraph/grade/stdout/scope.json",
+      "bytes": 200,
+      "sha256": "683965aa807e2883c10f88932ba6458d5adf0605363750cf183744ad59cfb7e3",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/11-scikit-learn__scikit-learn-14894-codegraph/grade/stdout/call-0001/capture.json",
+      "bytes": 330,
+      "sha256": "ea0eee90a38fb7164d727045d6e77f6e77705ccc9fc3a4c8a79fdcc76cd93162",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/11-scikit-learn__scikit-learn-14894-codegraph/grade/stdout/call-0001/stdout.bin",
+      "bytes": 30013,
+      "sha256": "6e8cddcf7b81b49ced39bfdd252c932a6a1ecdac8b635b3b8031c9505825d39c",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/11-scikit-learn__scikit-learn-14894-codegraph/grade/stdout/call-0001/stdout.utf8",
+      "bytes": 30013,
+      "sha256": "6e8cddcf7b81b49ced39bfdd252c932a6a1ecdac8b635b3b8031c9505825d39c",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/11-scikit-learn__scikit-learn-14894-codegraph/grade/logs/codenib-97429e201601/source-payload-confirmation-codegraph/scikit-learn__scikit-learn-14894/run_instance.log",
+      "bytes": 12628,
+      "sha256": "fb6251dd25d330851b088b8f9d97a32d9187277e057f37200ab6e098108ac7fd",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/11-scikit-learn__scikit-learn-14894-codegraph/grade/logs/codenib-97429e201601/source-payload-confirmation-codegraph/scikit-learn__scikit-learn-14894/test_output.txt",
+      "bytes": 30013,
+      "sha256": "6e8cddcf7b81b49ced39bfdd252c932a6a1ecdac8b635b3b8031c9505825d39c",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/11-scikit-learn__scikit-learn-14894-codegraph/grade/logs/codenib-97429e201601/source-payload-confirmation-codegraph/scikit-learn__scikit-learn-14894/report.json",
+      "bytes": 8688,
+      "sha256": "00c59c58c03dac998d0bf5abb3b51759dea2e8deabee1fe7b3c89e9a7971727f",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/11-scikit-learn__scikit-learn-14894-codegraph/grade/logs/codenib-97429e201601/source-payload-confirmation-codegraph/scikit-learn__scikit-learn-14894/eval.sh",
+      "bytes": 1586,
+      "sha256": "62a5e76f5825b3c7cfbe6ae3711c51209294d852cc5d1e71fb655657a19b8de8",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/11-scikit-learn__scikit-learn-14894-codegraph/grade/logs/codenib-97429e201601/source-payload-confirmation-codegraph/scikit-learn__scikit-learn-14894/patch.diff",
+      "bytes": 2261,
+      "sha256": "f6b8589fbc4c537d9b6230a5dac723dd0383a6fb97f74336801f33e1cb7fb012",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/00-sphinx-doc__sphinx-8120-native/grade/config.json",
+      "bytes": 2155,
+      "sha256": "bed049e6788560fe7630dbf78a08ca0634266189969da422825a3ba449d3b9ea",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/00-sphinx-doc__sphinx-8120-native/grade/eval.sh",
+      "bytes": 2297,
+      "sha256": "9260c9305fbbf1f8e8c5dfeca757d2d8cd18271fc6cadb42319a1e94dbd02195",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/00-sphinx-doc__sphinx-8120-native/grade/resolution.json",
+      "bytes": 3766,
+      "sha256": "2fbef4b243afef2faecad7bb390bf9fdbf3b818a54b305d42dd4dc38f4faeb50",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/00-sphinx-doc__sphinx-8120-native/grade/stdout/scope.json",
+      "bytes": 200,
+      "sha256": "683965aa807e2883c10f88932ba6458d5adf0605363750cf183744ad59cfb7e3",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/00-sphinx-doc__sphinx-8120-native/grade/stdout/call-0001/capture.json",
+      "bytes": 332,
+      "sha256": "ff5c35de78fa28943c23c61778ceb45c549e4124a8689e1f2a8cfabbf68f6b3a",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/00-sphinx-doc__sphinx-8120-native/grade/stdout/call-0001/stdout.bin",
+      "bytes": 655241,
+      "sha256": "ba9428422fb37f1565502e731ee5bc22a059e7f6df6827002a380a4568301a10",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/00-sphinx-doc__sphinx-8120-native/grade/stdout/call-0001/stdout.utf8",
+      "bytes": 655241,
+      "sha256": "ba9428422fb37f1565502e731ee5bc22a059e7f6df6827002a380a4568301a10",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/00-sphinx-doc__sphinx-8120-native/grade/logs/codenib-9db812d52dba/source-payload-confirmation-native/sphinx-doc__sphinx-8120/run_instance.log",
+      "bytes": 6038,
+      "sha256": "3afcd2226bc3816bc299d17a0489992dc2341211b1981562c28d97c85bc7e6c0",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/00-sphinx-doc__sphinx-8120-native/grade/logs/codenib-9db812d52dba/source-payload-confirmation-native/sphinx-doc__sphinx-8120/test_output.txt",
+      "bytes": 655241,
+      "sha256": "ba9428422fb37f1565502e731ee5bc22a059e7f6df6827002a380a4568301a10",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/00-sphinx-doc__sphinx-8120-native/grade/logs/codenib-9db812d52dba/source-payload-confirmation-native/sphinx-doc__sphinx-8120/report.json",
+      "bytes": 3719,
+      "sha256": "11968fe14a11b0ce106c45b07986b157086d011bc4cda552d81f8daddbcad9b1",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/00-sphinx-doc__sphinx-8120-native/grade/logs/codenib-9db812d52dba/source-payload-confirmation-native/sphinx-doc__sphinx-8120/eval.sh",
+      "bytes": 2297,
+      "sha256": "9260c9305fbbf1f8e8c5dfeca757d2d8cd18271fc6cadb42319a1e94dbd02195",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/00-sphinx-doc__sphinx-8120-native/grade/logs/codenib-9db812d52dba/source-payload-confirmation-native/sphinx-doc__sphinx-8120/patch.diff",
+      "bytes": 714,
+      "sha256": "31a0a073cf715f17b14d49609d71d06b42d8aaa38c5e6b46de9751c07a399712",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/06-pylint-dev__pylint-4970-codenib/grade/config.json",
+      "bytes": 2156,
+      "sha256": "fa1574d950d6624ef7514b3052093fe0b6e72695245c37bf67b9104718c9d98b",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/06-pylint-dev__pylint-4970-codenib/grade/eval.sh",
+      "bytes": 1368,
+      "sha256": "7a6faf7f0dc28a1a5be841222d53030e4dc815abdef68f930944e50f979a175d",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/06-pylint-dev__pylint-4970-codenib/grade/resolution.json",
+      "bytes": 2526,
+      "sha256": "d58a884baf6ca475ddce3af53cf9c2513945ac3f84592bd88af41964c356befd",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/06-pylint-dev__pylint-4970-codenib/grade/stdout/scope.json",
+      "bytes": 200,
+      "sha256": "683965aa807e2883c10f88932ba6458d5adf0605363750cf183744ad59cfb7e3",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/06-pylint-dev__pylint-4970-codenib/grade/stdout/call-0001/capture.json",
+      "bytes": 330,
+      "sha256": "f9da3dde082fb0a21afaa5e36de711e8772efea28a13aefff3c08311166cdd40",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/06-pylint-dev__pylint-4970-codenib/grade/stdout/call-0001/stdout.bin",
+      "bytes": 20975,
+      "sha256": "d28cbef1eb866e1a682dc01c4b934d3d678b6e3c7be635ef25b73582556bfd17",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/06-pylint-dev__pylint-4970-codenib/grade/stdout/call-0001/stdout.utf8",
+      "bytes": 20975,
+      "sha256": "d28cbef1eb866e1a682dc01c4b934d3d678b6e3c7be635ef25b73582556bfd17",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/06-pylint-dev__pylint-4970-codenib/grade/logs/codenib-8b6f9bb1bad3/source-payload-confirmation-codenib/pylint-dev__pylint-4970/run_instance.log",
+      "bytes": 6807,
+      "sha256": "22debc65c7cb1d419e7424614a9e74bd4441057716d59a2dd46ef00373e1d039",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/06-pylint-dev__pylint-4970-codenib/grade/logs/codenib-8b6f9bb1bad3/source-payload-confirmation-codenib/pylint-dev__pylint-4970/test_output.txt",
+      "bytes": 20975,
+      "sha256": "d28cbef1eb866e1a682dc01c4b934d3d678b6e3c7be635ef25b73582556bfd17",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/06-pylint-dev__pylint-4970-codenib/grade/logs/codenib-8b6f9bb1bad3/source-payload-confirmation-codenib/pylint-dev__pylint-4970/report.json",
+      "bytes": 2262,
+      "sha256": "a3995a269a52aebade1682b414a96e0542f0da4510a699687cd502eb1bd40be3",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/06-pylint-dev__pylint-4970-codenib/grade/logs/codenib-8b6f9bb1bad3/source-payload-confirmation-codenib/pylint-dev__pylint-4970/eval.sh",
+      "bytes": 1368,
+      "sha256": "7a6faf7f0dc28a1a5be841222d53030e4dc815abdef68f930944e50f979a175d",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/06-pylint-dev__pylint-4970-codenib/grade/logs/codenib-8b6f9bb1bad3/source-payload-confirmation-codenib/pylint-dev__pylint-4970/patch.diff",
+      "bytes": 2230,
+      "sha256": "a032c6b4710f077636da3be46afc69c92374d57638df0ebfd468ff79561abeed",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/01-sphinx-doc__sphinx-8120-codegraph/grade/config.json",
+      "bytes": 2158,
+      "sha256": "87b072393bea72861177fd62ec8d74ab79e3a057568f5ef384e85828c8a853dc",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/01-sphinx-doc__sphinx-8120-codegraph/grade/eval.sh",
+      "bytes": 2297,
+      "sha256": "9260c9305fbbf1f8e8c5dfeca757d2d8cd18271fc6cadb42319a1e94dbd02195",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/01-sphinx-doc__sphinx-8120-codegraph/grade/resolution.json",
+      "bytes": 3766,
+      "sha256": "c7ea277b3da0c175ba588ee71ace40ddddcf3a32f387d8b4e74c941c216bbb83",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/01-sphinx-doc__sphinx-8120-codegraph/grade/stdout/scope.json",
+      "bytes": 200,
+      "sha256": "683965aa807e2883c10f88932ba6458d5adf0605363750cf183744ad59cfb7e3",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/01-sphinx-doc__sphinx-8120-codegraph/grade/stdout/call-0001/capture.json",
+      "bytes": 332,
+      "sha256": "cce957505ed5145053ded4259964d83b0cc9fe8577dc5b38fb2fffd04594e61f",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/01-sphinx-doc__sphinx-8120-codegraph/grade/stdout/call-0001/stdout.bin",
+      "bytes": 656736,
+      "sha256": "3bf6f8deda5e34ed8adb229965ad6d025b5b13ba9eb92581ee3d5efc4a09a504",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/01-sphinx-doc__sphinx-8120-codegraph/grade/stdout/call-0001/stdout.utf8",
+      "bytes": 656736,
+      "sha256": "3bf6f8deda5e34ed8adb229965ad6d025b5b13ba9eb92581ee3d5efc4a09a504",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/01-sphinx-doc__sphinx-8120-codegraph/grade/logs/codenib-a56065ef6631/source-payload-confirmation-codegraph/sphinx-doc__sphinx-8120/run_instance.log",
+      "bytes": 9248,
+      "sha256": "2b036c881e6df2b4fbe4f1ce8d6838fc77c8725aba11041a08f068d1b4888cb0",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/01-sphinx-doc__sphinx-8120-codegraph/grade/logs/codenib-a56065ef6631/source-payload-confirmation-codegraph/sphinx-doc__sphinx-8120/test_output.txt",
+      "bytes": 656736,
+      "sha256": "3bf6f8deda5e34ed8adb229965ad6d025b5b13ba9eb92581ee3d5efc4a09a504",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/01-sphinx-doc__sphinx-8120-codegraph/grade/logs/codenib-a56065ef6631/source-payload-confirmation-codegraph/sphinx-doc__sphinx-8120/report.json",
+      "bytes": 3719,
+      "sha256": "11968fe14a11b0ce106c45b07986b157086d011bc4cda552d81f8daddbcad9b1",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/01-sphinx-doc__sphinx-8120-codegraph/grade/logs/codenib-a56065ef6631/source-payload-confirmation-codegraph/sphinx-doc__sphinx-8120/eval.sh",
+      "bytes": 2297,
+      "sha256": "9260c9305fbbf1f8e8c5dfeca757d2d8cd18271fc6cadb42319a1e94dbd02195",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/01-sphinx-doc__sphinx-8120-codegraph/grade/logs/codenib-a56065ef6631/source-payload-confirmation-codegraph/sphinx-doc__sphinx-8120/patch.diff",
+      "bytes": 3203,
+      "sha256": "073e434984017117e7cf9d19c2e953bf1a1c181d966391692fbb217e361d5d7b",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/09-scikit-learn__scikit-learn-14894-codenib/grade/config.json",
+      "bytes": 2174,
+      "sha256": "d58a20456acf2c8f7a3a43ef4abec9fd7336617ed79960fa422faf4a23912f6b",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/09-scikit-learn__scikit-learn-14894-codenib/grade/eval.sh",
+      "bytes": 1586,
+      "sha256": "62a5e76f5825b3c7cfbe6ae3711c51209294d852cc5d1e71fb655657a19b8de8",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/09-scikit-learn__scikit-learn-14894-codenib/grade/resolution.json",
+      "bytes": 8434,
+      "sha256": "72bddf0af9edda2fd48715e3bc1fbf0fe11015d515c7879a292e195194a2727e",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/09-scikit-learn__scikit-learn-14894-codenib/grade/stdout/scope.json",
+      "bytes": 200,
+      "sha256": "683965aa807e2883c10f88932ba6458d5adf0605363750cf183744ad59cfb7e3",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/09-scikit-learn__scikit-learn-14894-codenib/grade/stdout/call-0001/capture.json",
+      "bytes": 330,
+      "sha256": "48a5b6de268dc3d67ba179489ac3234bd12b7f045c97040ca345d4efb163c067",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/09-scikit-learn__scikit-learn-14894-codenib/grade/stdout/call-0001/stdout.bin",
+      "bytes": 30156,
+      "sha256": "cb4cf8d7e2a1dbcf9df8b7a439ae6d013905fd37591d4defa79bde0a2f2874cf",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/09-scikit-learn__scikit-learn-14894-codenib/grade/stdout/call-0001/stdout.utf8",
+      "bytes": 30156,
+      "sha256": "cb4cf8d7e2a1dbcf9df8b7a439ae6d013905fd37591d4defa79bde0a2f2874cf",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/09-scikit-learn__scikit-learn-14894-codenib/grade/logs/codenib-26d018269ab6/source-payload-confirmation-codenib/scikit-learn__scikit-learn-14894/run_instance.log",
+      "bytes": 13828,
+      "sha256": "78712b18eeaece041563046df23cb60ec6887f12bcf98fdbf37739524df21af5",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/09-scikit-learn__scikit-learn-14894-codenib/grade/logs/codenib-26d018269ab6/source-payload-confirmation-codenib/scikit-learn__scikit-learn-14894/test_output.txt",
+      "bytes": 30156,
+      "sha256": "cb4cf8d7e2a1dbcf9df8b7a439ae6d013905fd37591d4defa79bde0a2f2874cf",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/09-scikit-learn__scikit-learn-14894-codenib/grade/logs/codenib-26d018269ab6/source-payload-confirmation-codenib/scikit-learn__scikit-learn-14894/report.json",
+      "bytes": 8688,
+      "sha256": "00c59c58c03dac998d0bf5abb3b51759dea2e8deabee1fe7b3c89e9a7971727f",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/09-scikit-learn__scikit-learn-14894-codenib/grade/logs/codenib-26d018269ab6/source-payload-confirmation-codenib/scikit-learn__scikit-learn-14894/eval.sh",
+      "bytes": 1586,
+      "sha256": "62a5e76f5825b3c7cfbe6ae3711c51209294d852cc5d1e71fb655657a19b8de8",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/09-scikit-learn__scikit-learn-14894-codenib/grade/logs/codenib-26d018269ab6/source-payload-confirmation-codenib/scikit-learn__scikit-learn-14894/patch.diff",
+      "bytes": 2400,
+      "sha256": "00cbb51b6c49f3af3b5fcbf487c8e19f77066ba1a8ffa98d99f251121aee8f1a",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/07-pylint-dev__pylint-4970-native/grade/config.json",
+      "bytes": 2155,
+      "sha256": "0c6c146eefa20d815a63df391c3b832c4aff32124911d15c708df5c700a48234",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/07-pylint-dev__pylint-4970-native/grade/eval.sh",
+      "bytes": 1368,
+      "sha256": "7a6faf7f0dc28a1a5be841222d53030e4dc815abdef68f930944e50f979a175d",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/07-pylint-dev__pylint-4970-native/grade/resolution.json",
+      "bytes": 2526,
+      "sha256": "151db9efb9209edb60bc2a1b6d5ad2e3c3c34914c8e6dbb69cb5392609c13afc",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/07-pylint-dev__pylint-4970-native/grade/stdout/scope.json",
+      "bytes": 200,
+      "sha256": "683965aa807e2883c10f88932ba6458d5adf0605363750cf183744ad59cfb7e3",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/07-pylint-dev__pylint-4970-native/grade/stdout/call-0001/capture.json",
+      "bytes": 330,
+      "sha256": "1cc8aa90000c0db9ad872d74e29aab31a378b7491093503229b0bafccbf221a1",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/07-pylint-dev__pylint-4970-native/grade/stdout/call-0001/stdout.bin",
+      "bytes": 20583,
+      "sha256": "057d4960af267d08c30465392521c32bb74170a6eeda06e889aca99d2b9234a0",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/07-pylint-dev__pylint-4970-native/grade/stdout/call-0001/stdout.utf8",
+      "bytes": 20583,
+      "sha256": "057d4960af267d08c30465392521c32bb74170a6eeda06e889aca99d2b9234a0",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/07-pylint-dev__pylint-4970-native/grade/logs/codenib-ec75f1fa8515/source-payload-confirmation-native/pylint-dev__pylint-4970/run_instance.log",
+      "bytes": 6376,
+      "sha256": "5d5808b3fe2420812d02779629270e6d390dd6e22d06b33effb3de43877881e7",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/07-pylint-dev__pylint-4970-native/grade/logs/codenib-ec75f1fa8515/source-payload-confirmation-native/pylint-dev__pylint-4970/test_output.txt",
+      "bytes": 20583,
+      "sha256": "057d4960af267d08c30465392521c32bb74170a6eeda06e889aca99d2b9234a0",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/07-pylint-dev__pylint-4970-native/grade/logs/codenib-ec75f1fa8515/source-payload-confirmation-native/pylint-dev__pylint-4970/report.json",
+      "bytes": 2262,
+      "sha256": "a3995a269a52aebade1682b414a96e0542f0da4510a699687cd502eb1bd40be3",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/07-pylint-dev__pylint-4970-native/grade/logs/codenib-ec75f1fa8515/source-payload-confirmation-native/pylint-dev__pylint-4970/eval.sh",
+      "bytes": 1368,
+      "sha256": "7a6faf7f0dc28a1a5be841222d53030e4dc815abdef68f930944e50f979a175d",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/07-pylint-dev__pylint-4970-native/grade/logs/codenib-ec75f1fa8515/source-payload-confirmation-native/pylint-dev__pylint-4970/patch.diff",
+      "bytes": 1838,
+      "sha256": "e52ea79e354e16ca5e724c793c92fcb5ce0c4ed268cc512ae01dda54c0a84d03",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/04-pylint-dev__pylint-4970-codegraph/grade/config.json",
+      "bytes": 2158,
+      "sha256": "78ee62ad44b2eaf8b1f929a8b5db5321bad2e23dab62d85d18df8f98722e27bf",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/04-pylint-dev__pylint-4970-codegraph/grade/eval.sh",
+      "bytes": 1368,
+      "sha256": "7a6faf7f0dc28a1a5be841222d53030e4dc815abdef68f930944e50f979a175d",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/04-pylint-dev__pylint-4970-codegraph/grade/resolution.json",
+      "bytes": 2526,
+      "sha256": "ce1475a055e16de1519bb901c39de9e159f104365f84637d614ed2202fd692ce",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/04-pylint-dev__pylint-4970-codegraph/grade/stdout/scope.json",
+      "bytes": 200,
+      "sha256": "683965aa807e2883c10f88932ba6458d5adf0605363750cf183744ad59cfb7e3",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/04-pylint-dev__pylint-4970-codegraph/grade/stdout/call-0001/capture.json",
+      "bytes": 330,
+      "sha256": "6f792511b5d30dccd623a836e38758568c2ca6ac1529c4c43150f7e0a642b9a8",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/04-pylint-dev__pylint-4970-codegraph/grade/stdout/call-0001/stdout.bin",
+      "bytes": 21469,
+      "sha256": "53c4266ebe61b2641adfccf95a8238789bdbf4af1d3823029eac6cbb6e748975",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/04-pylint-dev__pylint-4970-codegraph/grade/stdout/call-0001/stdout.utf8",
+      "bytes": 21469,
+      "sha256": "53c4266ebe61b2641adfccf95a8238789bdbf4af1d3823029eac6cbb6e748975",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/04-pylint-dev__pylint-4970-codegraph/grade/logs/codenib-9bbf33c904a2/source-payload-confirmation-codegraph/pylint-dev__pylint-4970/run_instance.log",
+      "bytes": 7674,
+      "sha256": "4568b9ad8930a7c8177c1704c739189f3f36a1a922ad286e4170aad2208e9813",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/04-pylint-dev__pylint-4970-codegraph/grade/logs/codenib-9bbf33c904a2/source-payload-confirmation-codegraph/pylint-dev__pylint-4970/test_output.txt",
+      "bytes": 21469,
+      "sha256": "53c4266ebe61b2641adfccf95a8238789bdbf4af1d3823029eac6cbb6e748975",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/04-pylint-dev__pylint-4970-codegraph/grade/logs/codenib-9bbf33c904a2/source-payload-confirmation-codegraph/pylint-dev__pylint-4970/report.json",
+      "bytes": 2262,
+      "sha256": "a3995a269a52aebade1682b414a96e0542f0da4510a699687cd502eb1bd40be3",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/04-pylint-dev__pylint-4970-codegraph/grade/logs/codenib-9bbf33c904a2/source-payload-confirmation-codegraph/pylint-dev__pylint-4970/eval.sh",
+      "bytes": 1368,
+      "sha256": "7a6faf7f0dc28a1a5be841222d53030e4dc815abdef68f930944e50f979a175d",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/04-pylint-dev__pylint-4970-codegraph/grade/logs/codenib-9bbf33c904a2/source-payload-confirmation-codegraph/pylint-dev__pylint-4970/patch.diff",
+      "bytes": 2724,
+      "sha256": "aefa21c5b9d0b2048dc409adee676f204c901055bc9c9b649cfe253542a1043a",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/02-sphinx-doc__sphinx-8120-serena/grade/config.json",
+      "bytes": 2155,
+      "sha256": "1e439b4b44b3ee4d3db4d96751d924c38be0e9cf4da0c900ee67f6d084e61db8",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/02-sphinx-doc__sphinx-8120-serena/grade/eval.sh",
+      "bytes": 2297,
+      "sha256": "9260c9305fbbf1f8e8c5dfeca757d2d8cd18271fc6cadb42319a1e94dbd02195",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/02-sphinx-doc__sphinx-8120-serena/grade/resolution.json",
+      "bytes": 3766,
+      "sha256": "0c0ffd1f6c24a37501afb01e737d38bace6aa411c254215e229f90e97d54032d",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/02-sphinx-doc__sphinx-8120-serena/grade/stdout/scope.json",
+      "bytes": 200,
+      "sha256": "683965aa807e2883c10f88932ba6458d5adf0605363750cf183744ad59cfb7e3",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/02-sphinx-doc__sphinx-8120-serena/grade/stdout/call-0001/capture.json",
+      "bytes": 332,
+      "sha256": "4806aa9aeeca0fd7254069137a3f4d4b7015604c18ed19ca632040a4b8936906",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/02-sphinx-doc__sphinx-8120-serena/grade/stdout/call-0001/stdout.bin",
+      "bytes": 655240,
+      "sha256": "30dd6cd737db01f40911160a142cb241b7affc1cecd5634ab32a1dabd335297c",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/02-sphinx-doc__sphinx-8120-serena/grade/stdout/call-0001/stdout.utf8",
+      "bytes": 655240,
+      "sha256": "30dd6cd737db01f40911160a142cb241b7affc1cecd5634ab32a1dabd335297c",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/02-sphinx-doc__sphinx-8120-serena/grade/logs/codenib-870693d09a27/source-payload-confirmation-serena/sphinx-doc__sphinx-8120/run_instance.log",
+      "bytes": 6038,
+      "sha256": "e28ee10185ad928bbfb68c0eb058364653bc78c40724327ea2613cb0e783d77e",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/02-sphinx-doc__sphinx-8120-serena/grade/logs/codenib-870693d09a27/source-payload-confirmation-serena/sphinx-doc__sphinx-8120/test_output.txt",
+      "bytes": 655240,
+      "sha256": "30dd6cd737db01f40911160a142cb241b7affc1cecd5634ab32a1dabd335297c",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/02-sphinx-doc__sphinx-8120-serena/grade/logs/codenib-870693d09a27/source-payload-confirmation-serena/sphinx-doc__sphinx-8120/report.json",
+      "bytes": 3719,
+      "sha256": "11968fe14a11b0ce106c45b07986b157086d011bc4cda552d81f8daddbcad9b1",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/02-sphinx-doc__sphinx-8120-serena/grade/logs/codenib-870693d09a27/source-payload-confirmation-serena/sphinx-doc__sphinx-8120/eval.sh",
+      "bytes": 2297,
+      "sha256": "9260c9305fbbf1f8e8c5dfeca757d2d8cd18271fc6cadb42319a1e94dbd02195",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/02-sphinx-doc__sphinx-8120-serena/grade/logs/codenib-870693d09a27/source-payload-confirmation-serena/sphinx-doc__sphinx-8120/patch.diff",
+      "bytes": 714,
+      "sha256": "31a0a073cf715f17b14d49609d71d06b42d8aaa38c5e6b46de9751c07a399712",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/05-pylint-dev__pylint-4970-serena/grade/config.json",
+      "bytes": 2155,
+      "sha256": "d7dc1d2059ed9571d8f6e3f03bce2218d4537816ea571311a8aa7d2d4e3c5625",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/05-pylint-dev__pylint-4970-serena/grade/eval.sh",
+      "bytes": 1368,
+      "sha256": "7a6faf7f0dc28a1a5be841222d53030e4dc815abdef68f930944e50f979a175d",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/05-pylint-dev__pylint-4970-serena/grade/resolution.json",
+      "bytes": 2526,
+      "sha256": "8d9f67d387627b8d6cf3ecabfa9e4169d57595b211baf9c6c56b110c7dbc7be8",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/05-pylint-dev__pylint-4970-serena/grade/stdout/scope.json",
+      "bytes": 200,
+      "sha256": "683965aa807e2883c10f88932ba6458d5adf0605363750cf183744ad59cfb7e3",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/05-pylint-dev__pylint-4970-serena/grade/stdout/call-0001/capture.json",
+      "bytes": 330,
+      "sha256": "b3f6adc3dad792e8220bac5456b5e2a399f5cb0b13a0f2b0af2089508381c4b3",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/05-pylint-dev__pylint-4970-serena/grade/stdout/call-0001/stdout.bin",
+      "bytes": 21958,
+      "sha256": "121488ecd2c48897432720fa6b16f04e7d03408e8c792fe692ddedb33011dacf",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/05-pylint-dev__pylint-4970-serena/grade/stdout/call-0001/stdout.utf8",
+      "bytes": 21958,
+      "sha256": "121488ecd2c48897432720fa6b16f04e7d03408e8c792fe692ddedb33011dacf",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/05-pylint-dev__pylint-4970-serena/grade/logs/codenib-4147605f2bf5/source-payload-confirmation-serena/pylint-dev__pylint-4970/run_instance.log",
+      "bytes": 8647,
+      "sha256": "5f7f84fd327ec090bd9cef2ff5af1485a42f8988c815704ebdec237a23e07258",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/05-pylint-dev__pylint-4970-serena/grade/logs/codenib-4147605f2bf5/source-payload-confirmation-serena/pylint-dev__pylint-4970/test_output.txt",
+      "bytes": 21958,
+      "sha256": "121488ecd2c48897432720fa6b16f04e7d03408e8c792fe692ddedb33011dacf",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/05-pylint-dev__pylint-4970-serena/grade/logs/codenib-4147605f2bf5/source-payload-confirmation-serena/pylint-dev__pylint-4970/report.json",
+      "bytes": 2262,
+      "sha256": "a3995a269a52aebade1682b414a96e0542f0da4510a699687cd502eb1bd40be3",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/05-pylint-dev__pylint-4970-serena/grade/logs/codenib-4147605f2bf5/source-payload-confirmation-serena/pylint-dev__pylint-4970/eval.sh",
+      "bytes": 1368,
+      "sha256": "7a6faf7f0dc28a1a5be841222d53030e4dc815abdef68f930944e50f979a175d",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/05-pylint-dev__pylint-4970-serena/grade/logs/codenib-4147605f2bf5/source-payload-confirmation-serena/pylint-dev__pylint-4970/patch.diff",
+      "bytes": 3188,
+      "sha256": "4da03585a5c4931985a9a2f7fa7a4853dc965cb3ee3577e2f6dc0a9373d111cd",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/08-scikit-learn__scikit-learn-14894-serena/grade/config.json",
+      "bytes": 2173,
+      "sha256": "dc75db09f1e5bcf4886830b641b0cf6a13c5c63db26f248cfc02894e7f303c5b",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/08-scikit-learn__scikit-learn-14894-serena/grade/eval.sh",
+      "bytes": 1586,
+      "sha256": "62a5e76f5825b3c7cfbe6ae3711c51209294d852cc5d1e71fb655657a19b8de8",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/08-scikit-learn__scikit-learn-14894-serena/grade/resolution.json",
+      "bytes": 8434,
+      "sha256": "24bbacc4587110574aa115c811ee4d8d37c0a2a50e67efbfa6058b9ca4c6fd50",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/08-scikit-learn__scikit-learn-14894-serena/grade/stdout/scope.json",
+      "bytes": 200,
+      "sha256": "683965aa807e2883c10f88932ba6458d5adf0605363750cf183744ad59cfb7e3",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/08-scikit-learn__scikit-learn-14894-serena/grade/stdout/call-0001/capture.json",
+      "bytes": 330,
+      "sha256": "7ce9ff441e71271bdbe16c20f2b9c93f17e46b09dda08a10c5aa343df928a342",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/08-scikit-learn__scikit-learn-14894-serena/grade/stdout/call-0001/stdout.bin",
+      "bytes": 30377,
+      "sha256": "5690c2dc308dcb1442b97ee12738e7c6e4417e8ba93218c0928f42bf7da87e3f",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/08-scikit-learn__scikit-learn-14894-serena/grade/stdout/call-0001/stdout.utf8",
+      "bytes": 30377,
+      "sha256": "5690c2dc308dcb1442b97ee12738e7c6e4417e8ba93218c0928f42bf7da87e3f",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/08-scikit-learn__scikit-learn-14894-serena/grade/logs/codenib-b23343b35205/source-payload-confirmation-serena/scikit-learn__scikit-learn-14894/run_instance.log",
+      "bytes": 14264,
+      "sha256": "4c7eda48b006d1929c57c0bf2c33c313365f935d9216135ea7eaae69d2aca20e",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/08-scikit-learn__scikit-learn-14894-serena/grade/logs/codenib-b23343b35205/source-payload-confirmation-serena/scikit-learn__scikit-learn-14894/test_output.txt",
+      "bytes": 30377,
+      "sha256": "5690c2dc308dcb1442b97ee12738e7c6e4417e8ba93218c0928f42bf7da87e3f",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/08-scikit-learn__scikit-learn-14894-serena/grade/logs/codenib-b23343b35205/source-payload-confirmation-serena/scikit-learn__scikit-learn-14894/report.json",
+      "bytes": 8688,
+      "sha256": "00c59c58c03dac998d0bf5abb3b51759dea2e8deabee1fe7b3c89e9a7971727f",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/08-scikit-learn__scikit-learn-14894-serena/grade/logs/codenib-b23343b35205/source-payload-confirmation-serena/scikit-learn__scikit-learn-14894/eval.sh",
+      "bytes": 1586,
+      "sha256": "62a5e76f5825b3c7cfbe6ae3711c51209294d852cc5d1e71fb655657a19b8de8",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/08-scikit-learn__scikit-learn-14894-serena/grade/logs/codenib-b23343b35205/source-payload-confirmation-serena/scikit-learn__scikit-learn-14894/patch.diff",
+      "bytes": 2621,
+      "sha256": "10f19898b86c3aa64aec3a1d782d2a7052aaee2b5be185498a15f3abf5c3ee1d",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/03-sphinx-doc__sphinx-8120-codenib/grade/config.json",
+      "bytes": 2156,
+      "sha256": "ced73fbe16382bc47d31f8b76de0c6269bfb9ae44f176bc291266c45253a556e",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/03-sphinx-doc__sphinx-8120-codenib/grade/eval.sh",
+      "bytes": 2297,
+      "sha256": "9260c9305fbbf1f8e8c5dfeca757d2d8cd18271fc6cadb42319a1e94dbd02195",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/03-sphinx-doc__sphinx-8120-codenib/grade/resolution.json",
+      "bytes": 3766,
+      "sha256": "b6470a6f5d52d7a90c7cbcf43ef7ef282303746d15e9e0097fbfc53144af774f",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/03-sphinx-doc__sphinx-8120-codenib/grade/stdout/scope.json",
+      "bytes": 200,
+      "sha256": "683965aa807e2883c10f88932ba6458d5adf0605363750cf183744ad59cfb7e3",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/03-sphinx-doc__sphinx-8120-codenib/grade/stdout/call-0001/capture.json",
+      "bytes": 332,
+      "sha256": "0f968d4ced0a68ed41fbea50e227ba20cc1f1147dfb4c421e6c598bfed2f8078",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/03-sphinx-doc__sphinx-8120-codenib/grade/stdout/call-0001/stdout.bin",
+      "bytes": 657228,
+      "sha256": "8d2b61bdb25933403450970ab95e24d574ed35ae7364b39cafe5d6ff674839b0",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/03-sphinx-doc__sphinx-8120-codenib/grade/stdout/call-0001/stdout.utf8",
+      "bytes": 657228,
+      "sha256": "8d2b61bdb25933403450970ab95e24d574ed35ae7364b39cafe5d6ff674839b0",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/03-sphinx-doc__sphinx-8120-codenib/grade/logs/codenib-e280d4d3dedb/source-payload-confirmation-codenib/sphinx-doc__sphinx-8120/run_instance.log",
+      "bytes": 8153,
+      "sha256": "a1eb8eb4511afe4cf45ccf5b5c4c591cadbe91b913c4d4184c3adced37bf706e",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/03-sphinx-doc__sphinx-8120-codenib/grade/logs/codenib-e280d4d3dedb/source-payload-confirmation-codenib/sphinx-doc__sphinx-8120/test_output.txt",
+      "bytes": 657228,
+      "sha256": "8d2b61bdb25933403450970ab95e24d574ed35ae7364b39cafe5d6ff674839b0",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/03-sphinx-doc__sphinx-8120-codenib/grade/logs/codenib-e280d4d3dedb/source-payload-confirmation-codenib/sphinx-doc__sphinx-8120/report.json",
+      "bytes": 3719,
+      "sha256": "11968fe14a11b0ce106c45b07986b157086d011bc4cda552d81f8daddbcad9b1",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/03-sphinx-doc__sphinx-8120-codenib/grade/logs/codenib-e280d4d3dedb/source-payload-confirmation-codenib/sphinx-doc__sphinx-8120/eval.sh",
+      "bytes": 2297,
+      "sha256": "9260c9305fbbf1f8e8c5dfeca757d2d8cd18271fc6cadb42319a1e94dbd02195",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    },
+    {
+      "path": "native-grading/03-sphinx-doc__sphinx-8120-codenib/grade/logs/codenib-e280d4d3dedb/source-payload-confirmation-codenib/sphinx-doc__sphinx-8120/patch.diff",
+      "bytes": 2664,
+      "sha256": "2741ffb0815dbab67d68c4482eef9e10074b474a617315da0a20b4aa2c16a40b",
+      "reason": "Original private native grading/test material; exact selected statuses remain in public receipts"
+    }
+  ],
+  "retention": "Original prospective protocol, all earlier model/native outcomes and new preparation failures remain unchanged.",
+  "source_credit": "No ContextBench score, inferred solver-read credit or complete HTTP count.",
+  "external_enrollment": 0,
+  "confirmation_b_unopened": true,
+  "public_package_unchanged": true,
+  "format": "Reconstruct each entry in part order from gzip+base64 or prior identical_to aliases; verify original length/SHA and each part SHA."
+}

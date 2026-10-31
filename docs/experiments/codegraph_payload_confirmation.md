@@ -3,9 +3,12 @@
 This comparison tests whether the merged source-delivery improvements help a
 complete coding workflow. It retains Native, Serena, colbymchenry/codegraph and
 CodeNib, voluntary tool choice, original native repair grading and the existing
-quality, time and model-usage gates. All twelve fresh preparations and native
-readiness pass, and the complete execution is sealed before inference. No new
-model task has run and no benefit result is established.
+quality, time and model-usage gates. The [completed assessment](codegraph_payload_results.md)
+now covers all twelve workflows, sixty tasks, 48 source explanations and twelve
+native repair grades. No complete eligible alternative exists, so the frozen
+decision is insufficient evidence and promotion remains held. CodeNib is
+slower in the descriptive raw timings and receives no recorded product call.
+The original pre-inference packet below remains unchanged.
 
 ## Fixed implementation and membership
 
@@ -178,7 +181,12 @@ absent and BM25 state unchanged; this is not full-graph admission. All 49
 current preparation/audit/native-control containers are independently absent,
 as are the three retained offline SDK fixture containers. Original and
 reference controls execute all 149 selected native outcomes per control.
-Complete workflow execution and answer/native grading remain open.
+All sixty model tasks subsequently terminate, and all 596 original selected
+native outcomes execute without collection errors or missing tests. Source
+assessment accepts 31/48 explanations, and native grading accepts 8/12 repairs.
+The separate [results packet](codegraph_payload_results_2026_10_30.json) retains
+these outcomes and all 5,294 original input hashes; it does not replace this
+prospective seal or any earlier cohort.
 
 Merged #931 now passes main Docs, lightweight installation, unit/integration
 and all twenty release verifier jobs. Conditional serial/native/consumer
