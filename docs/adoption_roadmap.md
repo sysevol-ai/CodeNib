@@ -399,10 +399,17 @@ in the exact installed CI build, while three preservation controls pass. The
 correction filters the original BM25 score/tie order before its limit without
 mutating shared state; all nine controls, 356 related cases and the 8,976-case
 unit tier pass. [Revised source evidence](experiments/codegraph_bm25_inner_cap_2026_10_31.json)
-retains the failures and original 2/3 Ask pass set. Revised CI-wheel admission
-and final remote checks remain open before #951 can merge. This is exposed
-internal source retrieval, with no typed graph preparation, model SDK question,
-new cohort, independent success or external user. #867's unsupported concurrent
+retains the failures and original 2/3 Ask pass set. The revised unmodified CI
+wheel `8b3ca291` matches all 486 Python files and unchanged native/worker bytes.
+Its [installed admission](experiments/codegraph_bm25_inner_cap_ci_2026_10_31.json)
+passes the unchanged real-ranker controls 9/9, fresh source-preserved migration,
+complete test discovery, query-time exclusion and closed contexts. The unchanged
+Ask gate retains exactly the original 2/3 pass set; the valid review is resolved
+after that verification; all 17 executed source-head checks pass with eight
+explicit skips. Final-head checks/reviews are tracked in
+[#951](https://github.com/sysevol-ai/CodeNib/pull/951). This is exposed internal
+source retrieval, with no typed graph preparation, model SDK question, new
+cohort, independent success or external user. #867's unsupported concurrent
 root ownership problem remains open and is not represented as fixed by this
 discovery change.
 

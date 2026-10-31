@@ -94,7 +94,19 @@ pass, and unfiltered behavior stays unchanged after filtered queries.
 The [inner-limit packet](codegraph_bm25_inner_cap_2026_10_31.json) retains the
 review reproduction, initial fixture import errors, installed baseline and
 final source/related/full-tier verification. The unchanged source Ask check
-still passes the same 2/3 cases. Admission of the revised unmodified CI build
-remains open; the earlier CI success does not close this gate.
+still passes the same 2/3 cases.
+
+The revised unmodified CI wheel `8b3ca291` matches all 486 Python files of
+reviewed source `bcc056fe`; its native module and worker remain byte-identical.
+The unchanged installed real-ranker controls now pass all nine cases, including
+all six failures reproduced in the prior CI product. The same fresh installed
+MCP driver also preserves unchanged-source migration, complete test discovery,
+test exclusion and closed contexts. Its unchanged Ask check retains exactly
+the baseline 2/3 pass set, including the same missing required groups.
+The [revised CI packet](codegraph_bm25_inner_cap_ci_2026_10_31.json) retains
+these actual replies, the original index archive, updated manifest, resolved
+review and negative diagnosis of the remaining Ask miss. All 17 executed
+source-head checks pass with eight explicit skips. Exact final-head checks and
+reviews are tracked separately in [#951](https://github.com/sysevol-ai/CodeNib/pull/951).
 No model SDK question or new cohort runs. Prior scores stay frozen, independent
 successes remain 0/2 and external enrollment remains 0/5; public 0.2.4 is unchanged.
