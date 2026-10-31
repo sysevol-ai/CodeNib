@@ -356,8 +356,28 @@ skips. The separate [unmodified CI admission](experiments/codegraph_ignored_cach
 matches all 486 Python files and every developer product byte, then repeats
 the actual MCP control with normal worker exit. Its 42-record packet retains
 the original local attempts separately. All 20 executed source-head checks
-pass with eight explicit skips; final documentation reconciliation leaves
-product bytes unchanged. No complete-workflow comparison or success is added.
+pass with eight explicit skips. Final documentation head `02370918` retains
+those product bytes and passes all 20 executed checks with eight explicit
+skips. #949 is merged as `979ffbaf` with its reviewed tree and real-newline
+squash message verified. Main `979ffbaf` passes preflight, unit and integration;
+native, serial, graph-consumer and slow tiers are explicitly skipped rather
+than repeating `90d4a8ed`'s complete seven-job chain. All twenty executed main
+release verifiers, Docs and lightweight installation pass, with five tag-only
+publication skips. No complete-workflow comparison or success is added.
+
+The [pinned Serena REPL diagnostic](experiments/codegraph_serena_alias_repl.md)
+now observes the actual completed-cohort interface on the same exposed
+24-file source. Serena 2.1.0/Pyright 1.1.403 returns eight import-name references
+to the original function, unchanged after all 21 documents are opened; none
+is one of the eleven required call tokens. Two rendered execution errors have
+MCP `is_error=false` and remain failures. The 51-record packet retains both
+errors, controller failures, exact source/coordinates and five actors' absence;
+243 installed files remain local/hash-bound, with all 242 `RECORD` hashes
+matching. This is a direct-query observation, not a test of further REPL
+composition or comparative task benefit. Keep the CodeNib graph's original
+post-rebinding negative and every completed cohort unchanged. A real
+cross-file maintenance consumer remains the next gate before more provider
+work or paid efficacy rounds.
 
 The latest four-arm round records 8,821,055 normalized final main/auxiliary tokens
 and $9.311356 in SDK estimates, not invoices. The separate diagnostic adds
