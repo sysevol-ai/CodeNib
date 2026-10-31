@@ -1250,6 +1250,38 @@ to local agent activation. The public site remains usable during Spark outage.
 
 ### A6 — Expand distribution with measured demand
 
+OKF distribution gate: the source-checkout exporter now adds `--format okf`
+for complete, current cached Wikis, using the existing immutable SQLite snapshot,
+authenticated source reads and atomic directory publication. It emits OKF v0.2
+chapters, source-reference concepts, exact excerpts, evidence sidecars, indexes,
+a snapshot log and a hashed file inventory. Explicit `--agent-dir` maintains
+CodeNib's own AGENTS.md/CLAUDE.md pointer block. It requires no frontend build
+or model calls and does not mint claim-verification events. Local acceptance
+on 2026-10-31 passes 200 final changed-surface cases, the 9,009-case unit tier
+before the marker repair, strict MkDocs, the public-doc audit and all-file
+pinned hooks. Review repaired linked `[E1](#evidence-E1)` ledger markers that
+otherwise became broken Markdown anchors; the final regression covers both
+source and relation links. A built, installed wheel exports the real persisted
+two-chapter BM25/manifest/SQLite fixture, writes its agent pointer and validates
+all nine payload hashes outside the source checkout. The pinned Google parser
+accepts all three generated concepts without verification events. The prior
+reference-viewer acceptance remains a separate retained receipt; its
+relative-link click limitation is documented beside the consumer command.
+[#953](https://github.com/sysevol-ai/CodeNib/pull/953) carries this gate; PR
+checks and public release remain open. No OpenWiki backend integration or
+dependency-driven Wiki update engine is included in this gate.
+
+Related-work boundary: OpenWiki already provides Wiki MCP retrieval, versioned
+file/line-range Claims with relocation, and the public LEDGER history-replay
+evaluation. Its 2026-10-28 evidence-graph experiment also exposes locate/expand
+navigation over document evidence. CodeNib's prospective distinction is
+compiler/LSP-backed code identity and references; better invalidation recall,
+lower update cost and reader-task gains still require controlled experiments.
+Contracts: [OKF v0.2](https://github.com/GoogleCloudPlatform/open-knowledge-format/blob/ad30107c31c06aec8a7d5636e0d1058118604e6f/SPEC.md),
+[OpenWiki Claims resolver](https://github.com/langchain-ai/openwiki/blob/305599f8e44203f9ca6b74bb6b38eebaf0b0405e/src/claims/evidence/repository/resolver.ts),
+[LEDGER](https://github.com/langchain-ai/openwiki/blob/305599f8e44203f9ca6b74bb6b38eebaf0b0405e/evals/ledger/README.md),
+[evidence-graph experiment](https://www.langchain.com/blog/building-agent-memory-openwiki-graphs).
+
 Status: the existing Pages workflow and composite Action default to `fast`,
 which produces a static index-derived preview and portable BM25 artifact without
 an embedding download. The real publication smoke exercises this default and

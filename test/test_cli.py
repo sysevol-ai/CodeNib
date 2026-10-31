@@ -220,6 +220,78 @@ def test_export_parser_accepts_pages_mount_options() -> None:
     assert args.frontend_dir == "/tmp/frontend"
 
 
+@pytest.mark.parametrize(
+    "extra",
+    [
+        [],
+        ["--frontend-dir", "/frontend"],
+        ["--base-path", "/wiki"],
+        ["--trial-api-base", "https://example.com"],
+    ],
+)
+def test_okf_export_validates_inputs_before_repository_work(monkeypatch, extra):
+    monkeypatch.setattr(
+        cli, "resolve_repo_path", lambda _: pytest.fail("unexpected repository work")
+    )
+    values = ["export", "--format", "okf"]
+    if extra:
+        values += [
+            "--wiki-config",
+            "/wiki.yaml",
+            "--wiki-repo",
+            "demo",
+            "--output",
+            "/output",
+        ] + extra
+    with pytest.raises(cli.CLIError, match="OKF export"):
+        cli._run_export(cli.build_parser().parse_args(values))
+
+
+def test_okf_cli_routes_cached_export_and_explicit_agent_pointer(
+    tmp_path, monkeypatch, capsys
+):
+    from codenib.web import static_export
+    from codenib.wiki import agent_pointer
+
+    calls = []
+    output = tmp_path / "bundle"
+
+    def export(config, repo_id, destination, **kwargs):
+        calls.append((config, repo_id, destination, kwargs))
+        return SimpleNamespace(
+            output_dir=output,
+            repo_id=repo_id,
+            page_count=2,
+            manifest_path=output / "codenib-okf.json",
+        )
+
+    monkeypatch.setattr(static_export, "export_cached_wiki", export)
+    monkeypatch.setattr(
+        agent_pointer,
+        "write_agent_pointers",
+        lambda bundle, directory: calls.append((bundle, directory)) or [],
+    )
+    args = cli.build_parser().parse_args(
+        [
+            "export",
+            "--format",
+            "okf",
+            "--wiki-config",
+            "/wiki.yaml",
+            "--wiki-repo",
+            "demo",
+            "--output",
+            str(output),
+            "--agent-dir",
+            str(tmp_path),
+        ]
+    )
+    assert cli._run_export(args) == 0
+    assert calls[0][3]["export_format"] == "okf"
+    assert calls[1] == (output, tmp_path)
+    assert "OKF Wiki:" in capsys.readouterr().out
+
+
 def test_export_rejects_ambiguous_cached_source_before_repository_work(monkeypatch):
     monkeypatch.setattr(
         cli, "resolve_repo_path", lambda _: pytest.fail("unexpected repository work")

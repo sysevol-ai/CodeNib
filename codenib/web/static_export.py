@@ -950,7 +950,9 @@ def _generation_summary(pages: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _file_inventory(ownership: object) -> list[dict[str, Any]]:
+def _file_inventory(
+    ownership: object, manifest_name: str = STATIC_EXPORT_MANIFEST
+) -> list[dict[str, Any]]:
     return [
         {
             "path": record.path,
@@ -961,7 +963,7 @@ def _file_inventory(ownership: object) -> list[dict[str, Any]]:
             directory_ownership_file_records(ownership),  # type: ignore[arg-type]
             key=lambda item: PurePosixPath(item.path),
         )
-        if record.path != STATIC_EXPORT_MANIFEST
+        if record.path != manifest_name
     ]
 
 
@@ -1064,6 +1066,7 @@ def export_static_wiki(
     wiki_store: WikiStore | None = None,
     wiki_entry: RepoEntry | None = None,
     trial_api_base: str | None = None,
+    export_format: str = "static",
 ) -> StaticExportResult:
     """Publish a source-bound Wiki with no model calls.
 
@@ -1071,7 +1074,18 @@ def export_static_wiki(
     both must be supplied together. Otherwise use the deterministic builder.
     The caller owns the store snapshot for this call. Existing directory
     publication retains its atomic replacement and source validation boundary.
+    OKF requires cached pages and skips the frontend and web-only graph assets.
     """
+
+    if export_format not in {"static", "okf"}:
+        raise ValueError("Wiki export format must be static or okf")
+    if export_format == "okf":
+        if wiki_store is None or wiki_entry is None:
+            raise ValueError("OKF export requires precomputed cached Wiki pages")
+        if frontend_dir is not None or base_path != "/" or trial_api_base is not None:
+            raise ValueError(
+                "OKF export does not accept frontend, base-path or browser-trial options"
+            )
 
     if (wiki_store is None) != (wiki_entry is None):
         raise ValueError(
@@ -1130,7 +1144,12 @@ def export_static_wiki(
         output_dir,
     )
     base_path = normalize_base_path(base_path)
-    frontend = _prebuilt_frontend(frontend_dir)
+    frontend = _prebuilt_frontend(frontend_dir) if export_format == "static" else None
+    from ..wiki.okf import OKF_EXPORT_MANIFEST, render_okf_bundle
+
+    manifest_name = (
+        OKF_EXPORT_MANIFEST if export_format == "okf" else STATIC_EXPORT_MANIFEST
+    )
     environment = os.environ if environ is None else environ
 
     local = None
@@ -1243,6 +1262,9 @@ def export_static_wiki(
                 normalized = _normalize_page(
                     builder, page, verify_citations=cached_wiki is not None
                 )
+                if export_format == "okf":
+                    pages.append(normalized)
+                    continue
                 if cached_wiki is not None:
                     # Cached asset URLs belong to the live server. Re-render
                     # typed diagrams locally and rediscover source-bound images;
@@ -1321,53 +1343,72 @@ def export_static_wiki(
         try:
             stage = OwnedDirectoryStage.prepare(
                 output_dir,
-                required_destination_file=STATIC_EXPORT_MANIFEST,
+                required_destination_file=manifest_name,
                 allow_empty_destination=True,
             )
         except (OSError, RuntimeError) as exc:
             raise ValueError(
                 "refusing to replace a non-empty directory that is not a CodeNib "
-                f"static export: {output_dir}"
+                f"{export_format} export: {output_dir}"
             ) from exc
 
-        frontend_options = {"trial_api_base": trial_api_base} if trial_api_base else {}
-        _copy_frontend(frontend, stage, base_path=base_path, **frontend_options)
-        _write_bytes(
-            stage, "runtime-config.js", _runtime_config(base_path, trial_api_base)
-        )
-        _write_bytes(
-            stage,
-            "404.html",
-            _not_found_page(base_path, external_script=bool(trial_api_base)),
-        )
-        _write_json(stage, "data/repos.json", [repo_info])
+        if export_format == "okf":
+            snapshot_at = (
+                bundle.manifest.compiled_at or bundle.manifest.indexes["bm25"].built_at
+            )
+            payloads = render_okf_bundle(
+                tree,
+                pages,
+                repository=bundle.entry.repo,
+                commit=bundle.manifest.commit,
+                source_fingerprint=bundle.manifest.source_fingerprint,
+                snapshot_at=snapshot_at,
+            )
+            for relative, payload in sorted(payloads.items()):
+                _write_bytes(stage, relative, payload)
+        else:
+            frontend_options = (
+                {"trial_api_base": trial_api_base} if trial_api_base else {}
+            )
+            _copy_frontend(frontend, stage, base_path=base_path, **frontend_options)
+            _write_bytes(
+                stage, "runtime-config.js", _runtime_config(base_path, trial_api_base)
+            )
+            _write_bytes(
+                stage,
+                "404.html",
+                _not_found_page(base_path, external_script=bool(trial_api_base)),
+            )
+            _write_json(stage, "data/repos.json", [repo_info])
 
-        _write_json(
-            stage,
-            f"{repo_root}/wiki.json",
-            {"repo": bundle.entry.repo, "pages": tree},
-        )
-        _write_json(
-            stage,
-            f"{repo_root}/commits.json",
-            {"available": False, "commits": [], "selected": None},
-        )
-        for relative, payload in sorted(repository_assets.items()):
-            _write_bytes(stage, relative, payload)
-        _write_json(stage, f"{repo_root}/wiki-map.json", _area_map(bundle, tree, pages))
-        for page, page_id in zip(pages, page_ids, strict=True):
-            component = quote(page_id, safe="")
-            _write_json(stage, f"{repo_root}/pages/{component}.json", page)
             _write_json(
                 stage,
-                f"{repo_root}/page-graphs/{component}.json",
-                graphs[page_id],
+                f"{repo_root}/wiki.json",
+                {"repo": bundle.entry.repo, "pages": tree},
             )
             _write_json(
                 stage,
-                f"{repo_root}/page-boundaries/{component}.json",
-                boundaries[page_id],
+                f"{repo_root}/commits.json",
+                {"available": False, "commits": [], "selected": None},
             )
+            for relative, payload in sorted(repository_assets.items()):
+                _write_bytes(stage, relative, payload)
+            _write_json(
+                stage, f"{repo_root}/wiki-map.json", _area_map(bundle, tree, pages)
+            )
+            for page, page_id in zip(pages, page_ids, strict=True):
+                component = quote(page_id, safe="")
+                _write_json(stage, f"{repo_root}/pages/{component}.json", page)
+                _write_json(
+                    stage,
+                    f"{repo_root}/page-graphs/{component}.json",
+                    graphs[page_id],
+                )
+                _write_json(
+                    stage,
+                    f"{repo_root}/page-boundaries/{component}.json",
+                    boundaries[page_id],
+                )
 
         source_manifest = bundle.manifest
         staged_payload_ownership = stage.capture_ownership()
@@ -1406,9 +1447,12 @@ def export_static_wiki(
             "capabilities": capabilities,
             "generation": _generation_summary(pages),
             "base_path": base_path,
-            "files": _file_inventory(staged_payload_ownership),
+            "files": _file_inventory(staged_payload_ownership, manifest_name),
         }
-        manifest_file = _write_json(stage, STATIC_EXPORT_MANIFEST, export_manifest)
+        if export_format == "okf":
+            export_manifest["format"] = "okf"
+            export_manifest["okf_version"] = "0.2"
+        manifest_file = _write_json(stage, manifest_name, export_manifest)
 
         expected_manifest_bytes = _json_bytes(export_manifest)
 
@@ -1423,7 +1467,7 @@ def export_static_wiki(
             )
             records = candidate.file_records()
             candidate_manifest = next(
-                (record for record in records if record.path == STATIC_EXPORT_MANIFEST),
+                (record for record in records if record.path == manifest_name),
                 None,
             )
             candidate_files = [
@@ -1436,7 +1480,7 @@ def export_static_wiki(
                     records,
                     key=lambda item: PurePosixPath(item.path),
                 )
-                if record.path != STATIC_EXPORT_MANIFEST
+                if record.path != manifest_name
             ]
             if (
                 candidate_manifest is None
@@ -1484,6 +1528,7 @@ def export_cached_wiki(
     frontend_dir: str | os.PathLike[str] | None = None,
     base_path: str = "/",
     trial_api_base: str | None = None,
+    export_format: str = "static",
 ) -> StaticExportResult:
     """Publish one configured repository from a quiescent Wiki snapshot.
 
@@ -1526,6 +1571,7 @@ def export_cached_wiki(
             wiki_store=store,
             wiki_entry=entry,
             trial_api_base=trial_api_base,
+            export_format=export_format,
         )
 
 
