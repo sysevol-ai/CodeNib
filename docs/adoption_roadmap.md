@@ -105,8 +105,9 @@ resource failures and update costs. BM25/native fallback is not typed-graph use.
 The three latest confirmation sources are now exposed and stay frozen; fixed
 Matplotlib/Django/xarray issue, source and grading material remain unopened.
 
-The current [Python identity candidate](experiments/codegraph_python_walrus.md)
-in [#933](https://github.com/sysevol-ai/CodeNib/pull/933) repairs both reproduced
+The [Python identity repair](experiments/codegraph_python_walrus.md)
+is merged in [#933](https://github.com/sysevol-ai/CodeNib/pull/933) as `d32b073c`.
+It repairs both reproduced
 Pylint construction blockers: an unqualified module variable and a decorated
 field write corroborated by an independently declared field in the same LSP
 response. An installed two-module control admits all 878 selected documents,
@@ -120,6 +121,16 @@ repeats the full admission with all 485 packaged Python files and its native
 extension verified, without source overlays. Actual model use, workflow
 quality/time, independent confirmation and external reuse remain open.
 No completed cohort, test selection or score changes.
+
+The [source-contract adoption diagnostic](experiments/codegraph_reference_adoption_freeze_2026_10_30.json)
+prospectively binds 24,225 inputs before one exposed Pylint question. It asks
+whether the model voluntarily uses graph-backed source and produces a correct
+read-only answer; native tools remain available and no product call is forced.
+The included Max route has a $1 SDK-estimate guard, with no API/account/provider
+fallback. Three owned preparation containers are independently absent, including
+the control with failure injected after creation. At the seal, no model task has run.
+This single product condition supplies no comparative efficiency, independent
+success or external-use evidence; the further confirmation set stays unopened.
 
 The latest round records 8,821,055 normalized final main/auxiliary tokens and
 $9.311356 in SDK estimates, not invoices. The recorded estimate lower bound

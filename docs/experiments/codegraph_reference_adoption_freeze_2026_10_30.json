@@ -1,0 +1,348 @@
+{
+  "schema": "codenib.reference-adoption-prospective-packet.v1",
+  "status": "prospectively sealed; no model task run",
+  "scope": "One Pylint source-contract task in one CodeNib development condition. Native tools available and no forced product call; no comparison, independent success or external adoption claim.",
+  "sealed_utc": "2026-10-31T02:55:45.809803+00:00",
+  "binding_sha256": "a3be7db75f5101f97af6e7d5c92598a6a3347feebb5a5a366c08a42a0b1516c9",
+  "files_sealed": 24225,
+  "model_calls_before_seal": 0,
+  "reserved_confirmation_opened": false,
+  "source_commit": "40cc2ffd7887959157aaf469e09585ec2be7f528",
+  "product_merge": "d32b073c542b34c47009bf9dd01593bab735333f",
+  "sdk_estimate_guard_usd": 1.0,
+  "authorized_api_ceiling_usd": 500,
+  "external_users": 0,
+  "private_rubric": {
+    "path": "private-rubric.json",
+    "bytes": 1204,
+    "sha256": "d1868cf4db498ed4dee181e1f8299d39633cf036193ca861284701032d02b7ad",
+    "location": "Outside every model source scope; assess only after the entire one-task batch is terminal."
+  },
+  "parent_bindings": [
+    {
+      "path": "/tmp/codenib-source-payload-confirmation-20261030/execution-binding.json",
+      "sha256": "66becb6b784a7560ef7cf0ce2ce980002634939f00aeadd0d38ebd6dc130c68d",
+      "verified_files": 5294
+    },
+    {
+      "path": "/tmp/codenib-guidance-adoption-20261030/execution-binding.json",
+      "sha256": "3d9e3bac6862f20e483f9919adec476ced598e3bb1ee43130af949ed3c677f54",
+      "verified_files": 7357
+    }
+  ],
+  "operator_containers_independently_absent": [
+    "9a438c61f49bb9ccfe408346bd32c35bb7566078f228ab640b60863f74e0f410",
+    "646545b84ea9b9d3981d92cfe015d7014ff44de7c3f62624986e843c81978a34",
+    "94277359cbb9356e908c16704aebc269283914ac401d740174ed09c305709dcc"
+  ],
+  "private_raw_artifacts": {
+    "product-wheel/codenib-0.2.4-cp310-abi3-manylinux_2_28_aarch64.whl": {
+      "bytes": 3823801,
+      "sha256": "4413d8f141a438b19899a35070d036c68f1bb24166fae452c91acf7f1eadccc4",
+      "retention": "Exact binary retained locally, outside model source scope."
+    },
+    "operator-final/00-pylint-result-contract-development-codenib/index-artifacts.tar": {
+      "bytes": 48348160,
+      "sha256": "4d45a3a0352b9c0f749d85a10422b85daea97aea9367774de3bac3ef54faeaeb",
+      "retention": "Original model-free prepared index retained locally; not used to warm the model task."
+    }
+  },
+  "lossless_public_files": 42,
+  "files": [
+    {
+      "path": "auth-preflight.json",
+      "bytes": 380,
+      "sha256": "fa1465ff5b3725a1fde69f25d6146d5e27cee5015ce953c2196ab33f0765cf0c",
+      "fragments": 1
+    },
+    {
+      "path": "execution-binding.json",
+      "bytes": 4881280,
+      "sha256": "a3be7db75f5101f97af6e7d5c92598a6a3347feebb5a5a366c08a42a0b1516c9",
+      "fragments": 33
+    },
+    {
+      "path": "freeze_inputs.py",
+      "bytes": 4605,
+      "sha256": "b71bbcd2cfd8f50c3e52a150a02fc2a4e1c386faa7054a512a0acc38b42ca17b",
+      "fragments": 1
+    },
+    {
+      "path": "input-preparation-1.json",
+      "bytes": 309,
+      "sha256": "91476cea07915098780e9e0f0e2c9ba1c6e9b48456d5207357c3f6dbb4864f9f",
+      "fragments": 1
+    },
+    {
+      "path": "input-preparation-1.log",
+      "bytes": 158,
+      "sha256": "7049cb277fa253dd01b405791e84347d316defb4af3f0f6dd9f7ff8cfc2cd2cd",
+      "fragments": 1
+    },
+    {
+      "path": "operator-failure.log",
+      "bytes": 1091,
+      "sha256": "ab44e632aa44ea9882bf39f4d27d59cfdbd64a26f81445fa422b0aaab7d46d7c",
+      "fragments": 1
+    },
+    {
+      "path": "operator-failure/00-pylint-result-contract-development-codenib/common-source.json",
+      "bytes": 258392,
+      "sha256": "a085cb4b5a380d357458191ebbdfb83344b7f9841ab266c054e3289ad59b949c",
+      "fragments": 2
+    },
+    {
+      "path": "operator-failure/00-pylint-result-contract-development-codenib/final-source.json",
+      "bytes": 258392,
+      "sha256": "a085cb4b5a380d357458191ebbdfb83344b7f9841ab266c054e3289ad59b949c"
+    },
+    {
+      "path": "operator-failure/00-pylint-result-contract-development-codenib/receipt.json",
+      "bytes": 2663,
+      "sha256": "ace6cebe55f5030f72e93c760ad189067b23acd4ffa84a3f7839874acb5150fd",
+      "fragments": 1
+    },
+    {
+      "path": "operator-final.log",
+      "bytes": 8474,
+      "sha256": "9e0221ecb62d5ae62d55b30fb896bf159dbeaea1ac96ac8847cefe96c2d54067",
+      "fragments": 1
+    },
+    {
+      "path": "operator-final/00-pylint-result-contract-development-codenib/common-source.json",
+      "bytes": 258392,
+      "sha256": "a085cb4b5a380d357458191ebbdfb83344b7f9841ab266c054e3289ad59b949c"
+    },
+    {
+      "path": "operator-final/00-pylint-result-contract-development-codenib/final-graph-status.log",
+      "bytes": 1232,
+      "sha256": "ddb331c0be8d4bde10b5f08d1ee5781d44c2a8295772373959931a1932fe26c0",
+      "fragments": 1
+    },
+    {
+      "path": "operator-final/00-pylint-result-contract-development-codenib/final-source.json",
+      "bytes": 258392,
+      "sha256": "a085cb4b5a380d357458191ebbdfb83344b7f9841ab266c054e3289ad59b949c"
+    },
+    {
+      "path": "operator-final/00-pylint-result-contract-development-codenib/index-source.log",
+      "bytes": 1109,
+      "sha256": "97054735c9cf7d8da0eeae9f66e5f73e254d344304cd8c610c56765676082fdf",
+      "fragments": 1
+    },
+    {
+      "path": "operator-final/00-pylint-result-contract-development-codenib/install-candidate.log",
+      "bytes": 276,
+      "sha256": "77386424356bbfe1f8ece444e2ba4aa31434a8f38d5bd4ad425c4f68225dd223",
+      "fragments": 1
+    },
+    {
+      "path": "operator-final/00-pylint-result-contract-development-codenib/manifest-path.log",
+      "bytes": 89,
+      "sha256": "7952b0f7c5706f913015376c6f84eaf47cdffd7a349ea6a6dc95ea8a1aa50c8c",
+      "fragments": 1
+    },
+    {
+      "path": "operator-final/00-pylint-result-contract-development-codenib/pre-model-source.json",
+      "bytes": 258392,
+      "sha256": "a085cb4b5a380d357458191ebbdfb83344b7f9841ab266c054e3289ad59b949c"
+    },
+    {
+      "path": "operator-final/00-pylint-result-contract-development-codenib/prepare-directories.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "fragments": 1
+    },
+    {
+      "path": "operator-final/00-pylint-result-contract-development-codenib/receipt.json",
+      "bytes": 101097,
+      "sha256": "404fe24e70daf495ee01766d2070911f9ec8fe0860eafe6025b0b4fdb532222a",
+      "fragments": 1
+    },
+    {
+      "path": "operator-final/00-pylint-result-contract-development-codenib/verify-installed-bytes.log",
+      "bytes": 52969,
+      "sha256": "21cd812a0a12e710add3d3964d7a142f187ad6743950f6149bee90e01c38d282",
+      "fragments": 1
+    },
+    {
+      "path": "operator-final/00-pylint-result-contract-development-codenib/wire/connection-pmchkx0m/call-000001.json",
+      "bytes": 34127,
+      "sha256": "73922d0519ff14cf7872b3f91fc7bea7dbb43c6568fa702a3aeeddbbd2ecb385",
+      "fragments": 1
+    },
+    {
+      "path": "operator-success.log",
+      "bytes": 8439,
+      "sha256": "18aeb3d7c14149d148024f8d6994ead76e4c3bcc6d329def0e9808e7f9c13be0",
+      "fragments": 1
+    },
+    {
+      "path": "operator-success/00-pylint-result-contract-development-codenib/common-source.json",
+      "bytes": 258392,
+      "sha256": "a085cb4b5a380d357458191ebbdfb83344b7f9841ab266c054e3289ad59b949c"
+    },
+    {
+      "path": "operator-success/00-pylint-result-contract-development-codenib/final-source.json",
+      "bytes": 258392,
+      "sha256": "a085cb4b5a380d357458191ebbdfb83344b7f9841ab266c054e3289ad59b949c"
+    },
+    {
+      "path": "operator-success/00-pylint-result-contract-development-codenib/index-source.log",
+      "bytes": 1111,
+      "sha256": "9147763da86d00e595e567c504e00749b378c3ae76e1369f772d546a9e7c9133",
+      "fragments": 1
+    },
+    {
+      "path": "operator-success/00-pylint-result-contract-development-codenib/install-candidate.log",
+      "bytes": 276,
+      "sha256": "202d8f57e71602ccbc2daa75a15d76d4c51924b876a122793d7815dffd991b22",
+      "fragments": 1
+    },
+    {
+      "path": "operator-success/00-pylint-result-contract-development-codenib/pre-model-source.json",
+      "bytes": 258392,
+      "sha256": "a085cb4b5a380d357458191ebbdfb83344b7f9841ab266c054e3289ad59b949c"
+    },
+    {
+      "path": "operator-success/00-pylint-result-contract-development-codenib/prepare-directories.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "operator-success/00-pylint-result-contract-development-codenib/receipt.json",
+      "bytes": 96069,
+      "sha256": "2e3689df1d57a2fb47fd8c33fcd1c16c8bd2f829172a1afb2945ad18db20ab72",
+      "fragments": 1
+    },
+    {
+      "path": "operator-success/00-pylint-result-contract-development-codenib/verify-installed-bytes.log",
+      "bytes": 52969,
+      "sha256": "21cd812a0a12e710add3d3964d7a142f187ad6743950f6149bee90e01c38d282"
+    },
+    {
+      "path": "operator-success/00-pylint-result-contract-development-codenib/wire/connection-2z3huoer/call-000001.json",
+      "bytes": 34159,
+      "sha256": "d467d3f6ff005b6c87c94bf2aac4a986d39428ffd531fb041f723dc2553377e0",
+      "fragments": 1
+    },
+    {
+      "path": "policy.json",
+      "bytes": 4755,
+      "sha256": "d2c641a69627144eeee94f298d1d90468ecbf644e3e6126283c1dbead985488c",
+      "fragments": 1
+    },
+    {
+      "path": "prepare_inputs.py",
+      "bytes": 9610,
+      "sha256": "a89d4ecfa2ba7a7da82ab90353a9e2f482f3d4d8cee4acbd5970fd1ea15782ec",
+      "fragments": 1
+    },
+    {
+      "path": "provider-constraints.json",
+      "bytes": 1315,
+      "sha256": "089b22ecb22346aa34526249c83a19aef596d022af1b72f11326746b8c8a8e8d",
+      "fragments": 1
+    },
+    {
+      "path": "run_probe.py",
+      "bytes": 10533,
+      "sha256": "ad83c0cd8e782d84152066fc438238b2409606b8f049e0adc416114066cacfdf",
+      "fragments": 1
+    },
+    {
+      "path": "runtime-v1/base_driver.py",
+      "bytes": 53127,
+      "sha256": "63d9d2343d1c4fc288e9a882d3b22f46990893d804b88a7c0fb835db77016203",
+      "fragments": 1
+    },
+    {
+      "path": "runtime-v1/benchmark_context_claude.py",
+      "bytes": 38115,
+      "sha256": "c050cf9d04f3afa47e1a742955949c5c7f9c2b6ca511527a44a880ed7373ec89",
+      "fragments": 1
+    },
+    {
+      "path": "runtime-v1/codegraph_pilot_mcp_proxy.py",
+      "bytes": 6090,
+      "sha256": "55663f2c403d0700b072f7735efd80cf32d003ccaae27dfb939294f536442cfe",
+      "fragments": 1
+    },
+    {
+      "path": "runtime-v1/codegraph_pilot_scope.py",
+      "bytes": 21756,
+      "sha256": "397924d40a7118805b0fd7d65ad0bce934127b80c59b4e0fc439497e30069d8f",
+      "fragments": 1
+    },
+    {
+      "path": "runtime-v1/sdk_deadline.py",
+      "bytes": 1443,
+      "sha256": "563f3a5f298d67e12458d0699f00486903811fa40a54c0a71583b319f2187de9",
+      "fragments": 1
+    },
+    {
+      "path": "tasks.json",
+      "bytes": 846,
+      "sha256": "264f404102b5f8b45f43a4a9feef40e2720acd0395f993fee3c2928e5fe3c3d8",
+      "fragments": 1
+    },
+    {
+      "path": "wheel-binding.json",
+      "bytes": 53285,
+      "sha256": "f39d0b9df29ff585fa757ba4203362d98cea50097a10f79f231dbdbdacdbcd9c",
+      "fragments": 1
+    }
+  ],
+  "parts": [
+    {
+      "path": "codegraph_reference_adoption_freeze_2026_10_30.part01.json",
+      "bytes": 243764,
+      "sha256": "ccf66c0314d9f55fc74dca3542847dd0ae485ee2c915f8883c1f0693cc8001f3",
+      "fragments": 6
+    },
+    {
+      "path": "codegraph_reference_adoption_freeze_2026_10_30.part02.json",
+      "bytes": 257217,
+      "sha256": "2ef27885082e602e042681e691a0b8ff6e42e786ad72fb74d32923c07e899724",
+      "fragments": 5
+    },
+    {
+      "path": "codegraph_reference_adoption_freeze_2026_10_30.part03.json",
+      "bytes": 240635,
+      "sha256": "5c3c671e6160ca32421affcac45b7fb01c00c9cbd34472ac76a96924db3a0846",
+      "fragments": 4
+    },
+    {
+      "path": "codegraph_reference_adoption_freeze_2026_10_30.part04.json",
+      "bytes": 258354,
+      "sha256": "dd92b4acea55dbb7fd4eb58b7de3901496d62a9bcc26503f920333d38d13ebcf",
+      "fragments": 5
+    },
+    {
+      "path": "codegraph_reference_adoption_freeze_2026_10_30.part05.json",
+      "bytes": 243513,
+      "sha256": "e6135f0540b0a9bb38bfdd58c1b3bb76f6dc3b48747f3ffaef2489aa48948eba",
+      "fragments": 6
+    },
+    {
+      "path": "codegraph_reference_adoption_freeze_2026_10_30.part06.json",
+      "bytes": 279208,
+      "sha256": "b140e678e9108892521004ec0ac8fee2e1109b8e7e10e6a437a349da568d35fd",
+      "fragments": 7
+    },
+    {
+      "path": "codegraph_reference_adoption_freeze_2026_10_30.part07.json",
+      "bytes": 280861,
+      "sha256": "66c7cde46ecdc36bb8d3412d88e676553c3fdf43d7637bc5647a378931ddc8ea",
+      "fragments": 30
+    },
+    {
+      "path": "codegraph_reference_adoption_freeze_2026_10_30.part08.json",
+      "bytes": 104584,
+      "sha256": "f0a73f060d46251c275ef19ecc7b6bc8a0ddaa02bf37480f2f4ec0ae1ead4951",
+      "fragments": 12
+    }
+  ],
+  "format": "Verify part hashes; decode each gzip+base64 fragment and verify fragment bytes/hash. Concatenate numbered fragments for a path or reuse an earlier whole-file identical_to alias. Verify every completed file against this index. No expected answer or previous grading enters the model scope.",
+  "benefit_gate": "Full workflow quality, 20% complete-time/fee improvement, normalized-usage bounds, two successful independent confirmations and external repeat use remain unproved."
+}

@@ -86,10 +86,47 @@ promotion. All 5,294 execution inputs remain unchanged; all sixty SDK tasks,
 not establish model savings when CodeNib is never called. Its 24.168-second
 optional setup explains only 24.148 seconds of the 179.861-second observed gap
 to Native. Further startup removal alone cannot meet the target in an
-arithmetic scenario; metadata/model-latency causation remains unknown. The next
-candidate must answer an actual source-linked cross-file decision with useful
-voluntary calls before another efficacy claim. Keep the reserved second set
-unopened until a new candidate and complete protocol are prospectively fixed.
+arithmetic scenario; metadata/model-latency causation remains unknown.
+
+The [merged Python identity repair](codegraph_python_walrus.md) now admits the
+complete selected Pylint graph and exact source delivery through its actual CI
+wheel. The [prospective source-contract diagnostic](codegraph_reference_adoption_freeze_2026_10_30.json)
+binds 24,225 inputs, including both prior frozen programs, pinned providers,
+runtime helpers, wheel, prompt and the private source rubric. It asks one
+read-only question about the similarity result's callers and reporting paths
+on an already exposed source. Native tools remain available; no product call
+is forced. Useful typed-graph use requires an original graph-backed response
+in confirmed model input supporting a correct final claim, plus source
+preservation and fewer than 450 final words. BM25-only or unused tools do not
+establish graph use. One unblinded maintainer assesses the complete terminal
+batch; there is no comparison or independent adjudication.
+
+The diagnostic keeps Agent SDK 0.2.174, CLI 2.1.310 and Opus 5.5 with medium
+effort, adaptive thinking, automatic tool choice and a requested 16,384-token
+thinking/text limit. Current [model requirements](https://platform.claude.com/docs/en/models/opus-5-5/migration-guide),
+[signed-in subscription routing](https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan)
+and [cumulative SDK accounting](https://code.claude.com/docs/en/agent-sdk/cost-tracking)
+were checked before the seal. A $1 SDK-estimate guard is separate from the
+unchanged $500 API ceiling; no API/account/provider fallback is permitted.
+Estimates remain distinct from invoices and interrupted latest usage remains
+unknown. Each model task is capped at 24 turns and 900 seconds, with bounded
+connection, disconnect and interrupt/drain deadlines and a 1,800-second
+controller deadline. Setup uses prepared dependencies and providers with no
+fresh-install comparison. Observed Docker limits are two CPUs, 4 GiB and
+256 PIDs, with source writable, providers read-only and network disabled.
+No HOME override is introduced.
+
+The exact model-free controller passes installed-byte, one-tool/instruction,
+graph-source and source-preservation checks; all three preparation containers
+are independently absent. Its injected failure after creation verifies owner
+cleanup. Preserve the initial input-preparation mistake and both successful
+preparations. The 42-record prospective packet in eight bounded parts verifies
+all original bytes before inference, with the private rubric and archived
+preparation artifacts outside model source scope. At the seal there are zero
+model tasks. This checks useful tool use, not comparative efficacy. Complete
+workflow quality/time, the 20%
+endpoint, normalized-usage bounds, both successful independent confirmations
+and five-user consent/reuse remain open. Keep the reserved second set unopened.
 
 The separate network-disabled pinned CLI/SDK control retains all original
 metadata/schema delivery observations; it is not historical native HTTP
