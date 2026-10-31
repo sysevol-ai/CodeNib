@@ -474,6 +474,12 @@ function routeColumns(
         }
       }
     }
+    if (!Number.isFinite(cost)) {
+      // A busy gap may need shared lanes. Keep the route in a valid gap
+      // rather than falling back to the midpoint through an unrelated box.
+      best = gaps.map(([lo, hi]) => Math.max(lo, Math.min(hi, want)))
+        .sort((a, b) => Math.abs(a - want) - Math.abs(b - want))[0];
+    }
     taken.push(best);
     plans[index].pass = best;
   });
@@ -567,6 +573,8 @@ export interface AtlasCell extends PosterArea {
   share: number;
   /** Title size: bigger areas get bigger names. */
   fontSize: number;
+  /** Space above the title for inset journey tags. */
+  titleOffset: number;
 }
 
 export interface AtlasLayout {
@@ -583,7 +591,11 @@ const ATLAS_GAP = 6;
  * them as a map: size is still a fact about the code, a lone curve is not a
  * picture of it.
  */
-export function layoutAtlas(areas: PosterArea[], width: number): AtlasLayout {
+export function layoutAtlas(
+  areas: PosterArea[],
+  width: number,
+  tags: Map<string, number> = new Map(),
+): AtlasLayout {
   const shown = areas.filter((area) => area.symbols > 0).sort(
     (a, b) => b.symbols - a.symbols || a.id.localeCompare(b.id),
   );
@@ -656,8 +668,9 @@ export function layoutAtlas(areas: PosterArea[], width: number): AtlasLayout {
       ? 12
       : Math.round(Math.max(13, Math.min(22, Math.sqrt(cell.w * cell.h) / 16)));
     const lineHeight = Math.round(fontSize * 1.25);
-    const fits = cell.w >= 72 && cell.h >= 40;
-    const maxLines = Math.max(1, Math.min(3, Math.floor((cell.h - 30) / lineHeight)));
+    const titleOffset = tags.get(area.id) ? 18 : 0;
+    const fits = cell.w >= 72 && cell.h >= 40 + titleOffset;
+    const maxLines = Math.max(1, Math.min(3, Math.floor((cell.h - 30 - titleOffset) / lineHeight)));
     return {
       ...area,
       ...cell,
@@ -666,6 +679,7 @@ export function layoutAtlas(areas: PosterArea[], width: number): AtlasLayout {
         : [],
       share: area.symbols / total,
       fontSize,
+      titleOffset,
     };
   });
   return { width, height, cells };

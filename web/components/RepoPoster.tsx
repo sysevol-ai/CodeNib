@@ -284,8 +284,8 @@ export default function RepoPoster({
     [map, mode, linked, hops, canvasWidth, stopTags],
   );
   const atlas = useMemo(
-    () => (mode === "atlas" ? layoutAtlas(map.areas, canvasWidth) : null),
-    [map, mode, canvasWidth],
+    () => (mode === "atlas" ? layoutAtlas(map.areas, canvasWidth, stopTags) : null),
+    [map, mode, canvasWidth, stopTags],
   );
   const edges = layout?.edges ?? [];
   // In the atlas the recorded links are listed, not drawn; they still open
@@ -524,17 +524,17 @@ export default function RepoPoster({
                       key={index}
                       className="poster-node-title"
                       x="12"
-                      y={10 + cell.fontSize + index * lineHeight}
+                      y={10 + cell.titleOffset + cell.fontSize + index * lineHeight}
                       style={{ fontSize: cell.fontSize }}
                     >
                       {line}
                     </text>
                   ))}
-                  {cell.lines.length > 0 && cell.w >= 150 && cell.h >= cell.lines.length * lineHeight + 44 && (
+                  {cell.lines.length > 0 && cell.w >= 150 && cell.h >= cell.titleOffset + cell.lines.length * lineHeight + 44 && (
                     <text
                       className="poster-node-meta"
                       x="12"
-                      y={10 + cell.fontSize + (cell.lines.length - 1) * lineHeight + 22}
+                      y={10 + cell.titleOffset + cell.fontSize + (cell.lines.length - 1) * lineHeight + 22}
                     >
                       {number.format(cell.symbols)} symbols · {cell.files} file{cell.files === 1 ? "" : "s"}
                     </text>

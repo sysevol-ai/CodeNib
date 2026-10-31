@@ -243,6 +243,28 @@ describe("layoutPoster schematic routes", () => {
   it("steps stroke widths in three classes", () => {
     expect(new Set(layout.edges.map((edge) => edge.width)).size).toBeLessThanOrEqual(3);
   });
+
+  it("keeps skipping links outside boxes when the gap lanes are exhausted", () => {
+    const areas = [..."abcdef"].map((id) => ({ id, title: id, symbols: 10, files: 1 }));
+    const links = ["ab", "bc", "cd", "ae", "ef", "fd", "ac", "ad", "bd", "ca", "da", "db"]
+      .map(([source, target], index) => ({ source, target, weight: index < 6 ? 100 - index : 16 - index }));
+    const dense = layoutPoster(areas, links, { width: 1000 });
+    for (const edge of dense.edges) {
+      const points = routePoints(edge.d);
+      for (let i = 1; i < points.length; i += 1) {
+        const [a, b] = [points[i - 1], points[i]];
+        for (const node of dense.nodes) {
+          // Straight runs and bend control polygons must stay out of every
+          // box, including intermediate areas unrelated to this reference.
+          const crosses = Math.min(a.x, b.x) < node.x + node.w - 1 &&
+            Math.max(a.x, b.x) > node.x + 1 &&
+            Math.min(a.y, b.y) < node.y + node.h - 1 &&
+            Math.max(a.y, b.y) > node.y + 1;
+          expect(crosses, `${edge.source}→${edge.target} crosses ${node.id}`).toBe(false);
+        }
+      }
+    }
+  });
 });
 
 describe("posterMode", () => {
@@ -282,6 +304,17 @@ describe("layoutAtlas", () => {
         expect(apart).toBe(true);
       }
     }
+  });
+
+  it("reserves a title row below journey tags in sparse phone maps", () => {
+    const area = { id: "request", title: "Request Lifecycle Handling", symbols: 10, files: 1 };
+    const plain = layoutAtlas([area], 350).cells[0];
+    const tagged = layoutAtlas([area], 350, new Map([[area.id, 6]])).cells[0];
+    expect(plain.titleOffset).toBe(0);
+    expect(tagged.lines.join(" ")).toBe(area.title);
+    // Tags occupy y=7..21; title glyphs start at 10 + titleOffset.
+    expect(10 + tagged.titleOffset).toBeGreaterThan(21);
+    expect(tagged.h).toBe(plain.h);
   });
 });
 
