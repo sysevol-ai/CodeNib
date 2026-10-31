@@ -1,0 +1,108 @@
+metadata {
+  tool_info {
+    name: "scip-python"
+    version: "0.6.6"
+  }
+  project_root: "file:///tmp/codenib-reference-evidence-20261030/walrus-fixture"
+  text_document_encoding: UTF8
+}
+documents {
+  relative_path: "nested.py"
+  occurrences {
+    range: 0
+    range: 0
+    range: 0
+    symbol: "scip-python python codenib-walrus-fixture 0.0.0 nested/__init__:"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 0
+    range: 0
+    range: 5
+    symbol: "scip-python python codenib-walrus-fixture 0.0.0 nested/items."
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 1
+    range: 0
+    range: 6
+    symbol: "scip-python python codenib-walrus-fixture 0.0.0 nested/result."
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 1
+    range: 10
+    range: 14
+    symbol: "text."
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 1
+    range: 19
+    range: 23
+    symbol: "local 0"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 1
+    range: 27
+    range: 32
+    symbol: "scip-python python codenib-walrus-fixture 0.0.0 nested/items."
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 1
+    range: 37
+    range: 41
+    symbol: "text."
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 1
+    range: 45
+    range: 49
+    symbol: "local 0"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 1
+    range: 50
+    range: 55
+    symbol: "scip-python python python-stdlib 3.11 builtins/str#strip()."
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 2
+    range: 0
+    range: 5
+    symbol: "scip-python python codenib-walrus-fixture 0.0.0 nested/value."
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 2
+    range: 8
+    range: 12
+    symbol: "text."
+    symbol_roles: 8
+  }
+  symbols {
+    symbol: "scip-python python codenib-walrus-fixture 0.0.0 nested/__init__:"
+    documentation: "(module) nested"
+  }
+  symbols {
+    symbol: "scip-python python codenib-walrus-fixture 0.0.0 nested/items."
+    documentation: "```python\nbuiltins.list\n```"
+  }
+  symbols {
+    symbol: "scip-python python codenib-walrus-fixture 0.0.0 nested/result."
+    documentation: "```python\nbuiltins.list\n```"
+  }
+  symbols {
+    symbol: "local 0"
+    documentation: "```python\n(variable) item: str\n```"
+  }
+  symbols {
+    symbol: "scip-python python codenib-walrus-fixture 0.0.0 nested/value."
+    documentation: "```python\nbuiltins.str\n```"
+  }
+}

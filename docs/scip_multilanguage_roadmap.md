@@ -100,6 +100,16 @@ the existing basedpyright provider. This is unreleased source correctness work
 for [#871](https://github.com/sysevol-ai/CodeNib/issues/871), not a backend,
 acceleration or task-benefit promotion. The A0 objective remains active.
 
+The draft [module assignment-expression repair](experiments/codegraph_python_walrus.md)
+recovers scip-python 0.6.6's unqualified variable ID only from exact source
+definitions, occurrence spelling and the compiler-owned module namespace.
+Captured serial/native parity and strict rejection boundaries pass; builder
+identity 9 rebuilds old graph views while persisted schema 5 is unchanged.
+The full pinned Pylint control reaches a later decorated field-write ownership
+failure and remains unadmitted. No backend, C++ acceleration gate, partial-index
+policy or benefit result is promoted. Complete construction and reference-source
+validation remain open.
+
 The [deferred source-first controls](experiments/codegraph_source_default.md)
 retain a full-source SymPy failure at two CPUs/4 GiB. A smaller 2,560 MiB V8
 heap also fails; the 32 GiB reference completes a first graph request in

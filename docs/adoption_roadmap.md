@@ -105,6 +105,14 @@ resource failures and update costs. BM25/native fallback is not typed-graph use.
 The three latest confirmation sources are now exposed and stay frozen; fixed
 Matplotlib/Django/xarray issue, source and grading material remain unopened.
 
+The current [module assignment-expression candidate](experiments/codegraph_python_walrus.md)
+addresses a real Pylint construction blocker found before reference-source
+delivery can be evaluated. Source-authenticated qualification repairs a bare
+compiler variable ID, with captured-fixture serial/native parity. The complete
+Pylint graph still fails at a later decorated field-write ownership check;
+keep the candidate draft and that gate open. No test exclusion, partial graph,
+new model result or change to the completed cohort is accepted.
+
 The latest round records 8,821,055 normalized final main/auxiliary tokens and
 $9.311356 in SDK estimates, not invoices. The recorded estimate lower bound
 across rounds is $44.4223508 plus earlier unknown usage. Keep the authorized

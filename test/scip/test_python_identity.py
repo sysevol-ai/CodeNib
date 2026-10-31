@@ -109,6 +109,114 @@ def _outside_family(root):
     return resolve
 
 
+def _walrus_index(root, files=("left.py",)):
+    """Extend the captured document to check per-file identity and metadata."""
+    source = (CAPTURES / "module_walrus.source").read_text()
+    captured = Parse((CAPTURES / "module_walrus.decoded").read_text(), Index())
+    index = Index()
+    for relative in files:
+        (root / relative).write_text(source)
+        document = index.documents.add()
+        document.CopyFrom(captured.documents[0])
+        document.relative_path = relative
+        for occurrence in document.occurrences:
+            occurrence.symbol = occurrence.symbol.replace(
+                " nested/", f" {Path(relative).stem}/"
+            )
+        for information in document.symbols:
+            information.symbol = information.symbol.replace(
+                " nested/", f" {Path(relative).stem}/"
+            )
+        document.symbols.add(
+            symbol="text.", documentation=["Original variable metadata"]
+        )
+    return index
+
+
+def test_module_comprehension_walrus_qualifies_each_document_binding(tmp_path):
+    index = _walrus_index(tmp_path, ("left.py", "right.py"))
+
+    report = normalize_python_index(index, tmp_path)
+
+    targets = []
+    for document in index.documents:
+        occurrences = [o for o in document.occurrences if o.symbol.endswith("/text.")]
+        assert len(occurrences) == 3
+        assert len({o.symbol for o in occurrences}) == 1
+        assert [tuple(o.range) for o in occurrences] == [
+            (1, 10, 1, 14),
+            (1, 37, 1, 41),
+            (2, 8, 2, 12),
+        ]
+        assert [o.symbol_roles for o in occurrences] == [8, 1, 8]
+        targets.append(occurrences[0].symbol)
+        information = next(s for s in document.symbols if s.symbol == targets[-1])
+        assert information.documentation == ["Original variable metadata"]
+    assert targets[0] != targets[1]
+    assert len(report["qualified_module_assignment_symbols"]) == 2
+    assert set(report["source_sha256"]) == {"left.py", "right.py"}
+    assert report["positional_definition_queries"] == 0
+    frozen = index.SerializeToString()
+    assert (
+        normalize_python_index(index, tmp_path)["qualified_module_assignment_symbols"]
+        == []
+    )
+    assert index.SerializeToString() == frozen
+
+
+def test_walrus_qualification_rejects_mismatched_reference_atomically(tmp_path):
+    index = _walrus_index(tmp_path)
+    index.documents[0].occurrences[-1].range[:] = [2, 0, 5]
+    before = index.SerializeToString()
+
+    with pytest.raises(ValueError, match="assignment symbol.*source"):
+        normalize_python_index(index, tmp_path)
+
+    assert index.SerializeToString() == before
+
+
+@pytest.mark.parametrize(
+    "source,definition",
+    [
+        ("text = 1\n", [0, 0, 4]),
+        ("def run():\n    return (text := 1)\n", [1, 12, 16]),
+        ("run = lambda: (text := 1)\n", [0, 15, 19]),
+    ],
+)
+def test_nonmodule_walrus_or_ordinary_assignment_keeps_strict_global_parser(
+    tmp_path, source, definition
+):
+    (tmp_path / "nested.py").write_text(source)
+    index = Index()
+    document = index.documents.add(relative_path="nested.py", position_encoding=1)
+    module = document.occurrences.add(
+        symbol="scip-python python fixture 0.0.0 nested/__init__:", symbol_roles=1
+    )
+    module.range.extend([0, 0, 0])
+    occurrence = document.occurrences.add(symbol="text.", symbol_roles=1)
+    occurrence.range.extend(definition)
+    before = index.SerializeToString()
+
+    with pytest.raises(ValueError, match="invalid global Python SCIP symbol"):
+        normalize_python_index(index, tmp_path)
+
+    assert index.SerializeToString() == before
+
+
+def test_module_walrus_rejects_another_binding_using_the_same_bare_id(tmp_path):
+    index = _walrus_index(tmp_path)
+    path = tmp_path / "left.py"
+    path.write_text(path.read_text() + "def run():\n    text = 1\n")
+    occurrence = index.documents[0].occurrences.add(symbol="text.", symbol_roles=1)
+    occurrence.range.extend([4, 4, 8])
+    before = index.SerializeToString()
+
+    with pytest.raises(ValueError, match="assignment symbol.*source"):
+        normalize_python_index(index, tmp_path)
+
+    assert index.SerializeToString() == before
+
+
 def test_captured_definitions_and_branch_targets_are_recovered(tmp_path):
     index = _fixture(tmp_path)
     observed = []
@@ -908,6 +1016,7 @@ def test_expired_recovery_budget_does_not_start_a_provider(tmp_path, monkeypatch
         "field_redefinitions",
         "attribute_fields",
         "attribute_writes",
+        "module_walrus",
     ],
 )
 def test_native_decoder_preserves_recovered_definitions_and_references(tmp_path, case):

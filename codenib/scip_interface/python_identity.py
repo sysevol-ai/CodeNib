@@ -56,6 +56,7 @@ class _Declaration:
     nonlocals: set[str] = field(default_factory=set)
     receiver: tuple[int, int] | None = None
     instance_parameter: _Declaration | None = None
+    module_assignment_expression: bool = False
 
 
 @dataclass
@@ -198,7 +199,7 @@ def _declarations(source: _Source, parser) -> list[_Declaration]:
             for child in target.named_children:
                 record_rebinding(child)
 
-    def visit(node, parent):
+    def visit(node, parent, inside_lambda=False):
         if node.type == "nonlocal_statement" and parent is not None:
             parent.nonlocals.update(
                 content[child.start_byte : child.end_byte].decode("utf-8")
@@ -269,6 +270,12 @@ def _declarations(source: _Source, parser) -> list[_Declaration]:
                         extent=(*node.start_point, *node.end_point),
                         parent=parent,
                         receiver=receiver,
+                        module_assignment_expression=(
+                            node.type == "named_expression"
+                            and not node.has_error
+                            and parent is None
+                            and not inside_lambda
+                        ),
                     )
                 )
         elif node.type in {"for_statement", "for_in_clause"}:
@@ -281,10 +288,81 @@ def _declarations(source: _Source, parser) -> list[_Declaration]:
             for child in node.named_children:
                 record_rebinding(child)
         for child in node.named_children:
-            visit(child, parent)
+            visit(child, parent, inside_lambda or node.type == "lambda")
 
     visit(tree.root_node, None)
     return result
+
+
+def _qualify_module_assignment_symbols(document, source, module_namespace):
+    """Recover a captured scip-python bare term from its compiler module owner.
+
+    A walrus in a module comprehension binds in the containing module, not the
+    comprehension. scip-python 0.6.6 can emit just ``text.`` at its definition
+    and reads. Require the exact source declaration, every definition anchor,
+    and every occurrence's spelling before qualifying that document's ID. Other
+    malformed globals keep the strict parser; no occurrence or test is dropped.
+    """
+    declarations = {
+        declaration.start: declaration
+        for declaration in source.declarations
+        if declaration.module_assignment_expression
+    }
+    if not declarations:
+        return []
+    names = {}
+    for occurrence in document.occurrences:
+        declaration = declarations.get(tuple(occurrence.range[:2]))
+        if (
+            declaration is not None
+            and occurrence.symbol_roles & _DEFINITION
+            and tuple(occurrence.range[2:]) == declaration.end
+            and occurrence.symbol == _escape(declaration.name) + "."
+        ):
+            names[occurrence.symbol] = declaration.name
+    if not names:
+        return []
+    if not module_namespace:
+        raise ValueError("Python module assignment symbol has no compiler namespace")
+    replacements = {symbol: module_namespace + symbol for symbol in names}
+    counts = Counter()
+    for occurrence in document.occurrences:
+        name = names.get(occurrence.symbol)
+        if name is None:
+            continue
+        line, start, end_line, end = occurrence.range
+        declaration = declarations.get((line, start))
+        if (
+            line != end_line
+            or source.lines[line].encode("utf-8")[start:end].decode("utf-8") != name
+            or (
+                occurrence.symbol_roles & _DEFINITION
+                and (
+                    declaration is None
+                    or declaration.name != name
+                    or declaration.end != (end_line, end)
+                )
+            )
+        ):
+            raise ValueError("Python module assignment symbol disagrees with source")
+        counts[occurrence.symbol] += 1
+    for occurrence in document.occurrences:
+        occurrence.symbol = replacements.get(occurrence.symbol, occurrence.symbol)
+    for information in document.symbols:
+        information.symbol = replacements.get(information.symbol, information.symbol)
+        for relationship in information.relationships:
+            relationship.symbol = replacements.get(
+                relationship.symbol, relationship.symbol
+            )
+    return [
+        {
+            "file": document.relative_path,
+            "original": symbol,
+            "qualified": replacement,
+            "occurrences": counts[symbol],
+        }
+        for symbol, replacement in replacements.items()
+    ]
 
 
 def _binding_key(relative, symbol):
@@ -482,6 +560,7 @@ def normalize_python_index(
     replacement_sources = []
     source_only = []
     unmapped_attributes = []
+    qualified_assignments = []
     for document in candidate.documents:
         relative = document.relative_path
         if path_allowed is not None and not path_allowed(relative):
@@ -535,6 +614,9 @@ def normalize_python_index(
             _symbol_parts(module_namespace)[0] if module_namespace else None
         )
         source.declarations = _declarations(source, parser)
+        qualified_assignments.extend(
+            _qualify_module_assignment_symbols(document, source, module_namespace)
+        )
         observed = []
         assignments = []
         for declaration in source.declarations:
@@ -706,6 +788,7 @@ def normalize_python_index(
         if len(rows) > 1 or any(d.symbol != original[1] for _, d in rows)
     }
     changed_files = {relative for rows in changed.values() for relative, _ in rows}
+    changed_files.update(row["file"] for row in qualified_assignments)
     # Several physical declarations can intentionally define one lexical
     # binding (branches, reassignments, or property accessors). Keep their
     # static union. LSP is needed when a provider ID spans different bindings,
@@ -935,6 +1018,7 @@ def normalize_python_index(
         "utf8_replacement_sources": replacement_sources,
         "source_only_definitions": source_only,
         "unmapped_attribute_definitions": unmapped_attributes,
+        "qualified_module_assignment_symbols": qualified_assignments,
         "definition_provider": provider,
         "position_encoding": "UTF8",
         "source_sha256": {
