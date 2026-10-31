@@ -1,0 +1,276 @@
+{
+  "schema": "codenib.ignored-cache-ci.terminal.v1",
+  "goal": "active",
+  "records": 42,
+  "record_manifest": [
+    {
+      "path": "admission.stdout",
+      "bytes": 245,
+      "sha256": "3e6c28c962f590b4defe42ec0f1ae55937f55562e6388fcf029b3b2ce6adc504"
+    },
+    {
+      "path": "admit_ci_wheel.py",
+      "bytes": 2865,
+      "sha256": "f3b00160bd3b5600ac4bfe10cb0bee7ebd1ad48c40bffba3c1a3542ca2a1d097"
+    },
+    {
+      "path": "artifact-provenance.json",
+      "bytes": 356,
+      "sha256": "77da93fec75ca3d44625d73ee7565af002a120c6dd96710b525c753e4095753f"
+    },
+    {
+      "path": "ci-wheel-binding.json",
+      "bytes": 125599,
+      "sha256": "f5c295e3ff119c6eb144341e18d0146215d8d12f237e16fb1558de74f5dc45c0"
+    },
+    {
+      "path": "freeze_ci_evidence.py",
+      "bytes": 5894,
+      "sha256": "befe0b5205cc4f3e6416102906aaca87807f48d64764e75ed57369c1732f703c"
+    },
+    {
+      "path": "install.stdout",
+      "bytes": 170,
+      "sha256": "f309ee6450b9ebc439007484314bdf6240bb99f335a60c53bfcc75ac2a2de66f"
+    },
+    {
+      "path": "installed-mcp-1/manifest.initial.json",
+      "bytes": 3351,
+      "sha256": "732f13d7ef5392bff6094e2933bc58b9ba15a9a5cbdac60a57f823555a63e0a2"
+    },
+    {
+      "path": "installed-mcp-1/producer.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "installed-mcp-1/producer.stdout",
+      "bytes": 67,
+      "sha256": "d8edcb85333fd0e434498f484368e0764d1410e64524f1e2da34e0e2e3c70b44"
+    },
+    {
+      "path": "installed-mcp-1/protocol.json",
+      "bytes": 3786,
+      "sha256": "8b41bd7928d08bb69ae28d8bb48bacedd4c461286265b4cf5bf78d0dcd8e34a7"
+    },
+    {
+      "path": "installed-mcp-1/run-state.json",
+      "bytes": 21419,
+      "sha256": "d7760b9202cfea2dab6f04f5c2c2762add2ea83c572781bc437bf518fbcb240f"
+    },
+    {
+      "path": "installed-mcp-1/source/asset.bin",
+      "bytes": 5,
+      "sha256": "15eb60527ec991296a84c414b57cc5b19c6e66579a01486c8f4057f495d0b08e"
+    },
+    {
+      "path": "installed-mcp-1/source/extra_consumer.py",
+      "bytes": 65,
+      "sha256": "2de7c0efa840a30d93f126d8e6026bc37d897265ddaaf4699c136feca310f84c"
+    },
+    {
+      "path": "installed-mcp-1/source/local.py",
+      "bytes": 77,
+      "sha256": "54015f1a55e32d4acccb0b697cf64e219319378b085c27000b2a1990c67db15c"
+    },
+    {
+      "path": "installed-mcp-1/source/localdeps/libdefs.py",
+      "bytes": 40,
+      "sha256": "25360649551526fab085e09c301fd2e868f730d62e0aeaf4df3840ab009ab53e"
+    },
+    {
+      "path": "installed-mcp-1/source/missing_consumer.py",
+      "bytes": 76,
+      "sha256": "94843ef0a53bf424c9c988c87566b9ab5972be039f66d9dbe89b57b6909800c0"
+    },
+    {
+      "path": "installed-mcp-1/source/multiline.py",
+      "bytes": 73,
+      "sha256": "567c46c4239b160d0c037583e2722fcfde887a81c796a01d1694cc46835d1890"
+    },
+    {
+      "path": "installed-mcp-1/source/negative.py",
+      "bytes": 61,
+      "sha256": "66e7d14c4d0f0043a247c8780daeac4d1e87a28e2a5bde91c2b16f2ac859b0a4"
+    },
+    {
+      "path": "installed-mcp-1/source/note.txt",
+      "bytes": 8,
+      "sha256": "da68f54607d5f5644954096ce1597c006c5bb9f2497e07441bf064b81003ef8a"
+    },
+    {
+      "path": "installed-mcp-1/source/other.py",
+      "bytes": 40,
+      "sha256": "59a762ea21440f692a403c96223a32c9e95d7801cc924e536eada75dbb1fc560"
+    },
+    {
+      "path": "installed-mcp-1/source/pkg/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "installed-mcp-1/source/pkg/__pycache__/__init__.cpython-312.pyc",
+      "bytes": 166,
+      "sha256": "5c682aa215c39bef398870a016488075da7d89f6088d4e7ac4d359299a09fa7f"
+    },
+    {
+      "path": "installed-mcp-1/source/pkg/__pycache__/origin.cpython-312.pyc",
+      "bytes": 287,
+      "sha256": "f16f50910443518fae12aa6bba29438dee3048d9507384f05e181185e35e6852"
+    },
+    {
+      "path": "installed-mcp-1/source/pkg/bridge.py",
+      "bytes": 62,
+      "sha256": "221fbda81a5904fd8b67ab9b3c96697f382e772d456a18c0d60012bd0dd5fb08"
+    },
+    {
+      "path": "installed-mcp-1/source/pkg/cycle_a.py",
+      "bytes": 106,
+      "sha256": "062386d1d94dca5a6ea8ec3fcb38c004766fdbc4ea43f2029194c0f20b36bfb2"
+    },
+    {
+      "path": "installed-mcp-1/source/pkg/cycle_b.py",
+      "bytes": 61,
+      "sha256": "584e6430184baac0947f07c7f0472326b2908f167bf3cc10644743a58318052c"
+    },
+    {
+      "path": "installed-mcp-1/source/pkg/origin.py",
+      "bytes": 76,
+      "sha256": "edf8d3dc6f6bc69f4ad1ae94ddc01d407f61915e634f7213b67b0b2260327a6a"
+    },
+    {
+      "path": "installed-mcp-1/source/pkg/tail.py",
+      "bytes": 58,
+      "sha256": "9ad8bd4db8ef2f20fce7e717949bbe9ca6886917d1947f34fdc85680b136b90f"
+    },
+    {
+      "path": "installed-mcp-1/source/pyrightconfig.json",
+      "bytes": 127,
+      "sha256": "01557ce3b97cfc7ee61dd00fd2fb7d2d1b5a776f16ec515c28abaca4958c5dd5"
+    },
+    {
+      "path": "installed-mcp-1/source/rebound.py",
+      "bytes": 142,
+      "sha256": "244d105637630a167940b1624f856f44c39e045d34d69fea55e110811cb672f3"
+    },
+    {
+      "path": "installed-mcp-1/source/shadow.py",
+      "bytes": 103,
+      "sha256": "14d614b10be0235317b15df0f952ede8d019d06074c4a7910b82fa86731a38e6"
+    },
+    {
+      "path": "installed-mcp-1/source/single.py",
+      "bytes": 64,
+      "sha256": "2abd149c1336851061234c8926a13bd6740851262780936ad796375b59939cee"
+    },
+    {
+      "path": "installed-mcp-1/source/stub_consumer.py",
+      "bytes": 67,
+      "sha256": "3e8d3f013858597fba0d9243f240e59b17fd5756c8143bf43326d4afba79eaee"
+    },
+    {
+      "path": "installed-mcp-1/source/unicode.py",
+      "bytes": 75,
+      "sha256": "b8cd3c33cf6e6c4d98aa4c11e1bd4a4dca702cbe694c8fd8a701296e4f98dc2a"
+    },
+    {
+      "path": "installed-mcp-1/source/unrelated.py",
+      "bytes": 42,
+      "sha256": "49b7fb935b7a5e308a0e35030e8b77e2344ceef8dae4c745692e094e589c8b3a"
+    },
+    {
+      "path": "installed-mcp-1/source/vendor_stubs/vendorpkg/__init__.pyi",
+      "bytes": 37,
+      "sha256": "a196736aa2642f325455d76c06ebffb5f70713be9506d9cc0059137aca01df8a"
+    },
+    {
+      "path": "installed-mcp-1/source/wildcard.py",
+      "bytes": 46,
+      "sha256": "7d6d4ad3301b2d9f4f91017947e1a9f0fbf4085b65b919b67d98c7e9fe5e9021"
+    },
+    {
+      "path": "installed-mcp-1.stdout",
+      "bytes": 1067,
+      "sha256": "b6d77fe9dad71b3c978b9091cf49fd9100f0953dffe9cce8e803f5f9625b37ec"
+    },
+    {
+      "path": "launch-environment.json",
+      "bytes": 303,
+      "sha256": "cbc43cc94926c527eeb3b6b8896bb3565641c9749110d0a55e697655670df896"
+    },
+    {
+      "path": "mcp_cache_gate.py",
+      "bytes": 9713,
+      "sha256": "0f8f8c26164e73e4d4c70680fe8255fcfbf34ea5bd71907cdb186ba8a0de1cd0"
+    },
+    {
+      "path": "remote-checks-source-head.json",
+      "bytes": 8983,
+      "sha256": "ee1d17c1d5ac7418a35ef82a5d1763579a4a49db18dfe93f70243c248884d2bf"
+    },
+    {
+      "path": "verification.json",
+      "bytes": 1143,
+      "sha256": "b5b29d2b1c9ca7f101c19d2060430ffcfcd84964919b7dac6b58634d16b9e863"
+    }
+  ],
+  "local_only_manifest": [
+    {
+      "path": "artifact.zip",
+      "bytes": 3779335,
+      "sha256": "9f8c1e91f641fc29d032a80ed6ee7bb34c5ddd1182ffbc6eb1de1c2023b84690"
+    },
+    {
+      "path": "codenib-0.2.4-cp310-abi3-manylinux_2_28_aarch64.whl",
+      "bytes": 3839504,
+      "sha256": "53b58f6ba693903da5dc01731d59b7b7b2a8f8021d8433a3397c1817e834dc49"
+    }
+  ],
+  "bundle": {
+    "encoding": "concatenated-base64-gzip-json",
+    "decoded_bytes": 255439,
+    "decoded_sha256": "6de340c065ac65186374c927443ca336f349e8bcba6d05e79077a2db22c73c64",
+    "parts": [
+      {
+        "path": "codegraph_ignored_cache_ci_2026_10_31.part01.json",
+        "bytes": 100030,
+        "sha256": "a840d62e67838b7ff7a54580d6bfcc876a4e85adcecd8cb6ab7c08c188618a8e"
+      },
+      {
+        "path": "codegraph_ignored_cache_ci_2026_10_31.part02.json",
+        "bytes": 29398,
+        "sha256": "5994437e0537c3f26bbb8b011cd2f8e799637ab9e39f4e515eb2117406dafd4b"
+      }
+    ]
+  },
+  "verification": {
+    "goal": "active",
+    "ci_wheel_sha256": "53b58f6ba693903da5dc01731d59b7b7b2a8f8021d8433a3397c1817e834dc49",
+    "source_head": "89424a800df162f752b272c0d6bc45e204409981",
+    "packaged_python_files": 486,
+    "all_developer_product_bytes_equal": true,
+    "actual_mcp_admission": "passes",
+    "selected_identity_unchanged": {
+      "fingerprint": "sha256-v2:69f557edb25703d88aff1e86e12af34f8cb1b119e9c44a305024d8e6b5875759",
+      "file_count": 24
+    },
+    "same_context_worker_manifest_without_rebuild": true,
+    "real_selected_edit_rejected_before_rpc_and_worker_reaped": true,
+    "owners": [
+      {
+        "pid": 1209679,
+        "returncode": 0,
+        "independently_absent": true
+      }
+    ],
+    "source_head_checks": {
+      "executed_pass": 20,
+      "explicit_skips": 8
+    },
+    "previous_local_packet_retained": "codegraph_ignored_cache_2026_10_31.json remains immutable, including its then-open CI gate and all failures.",
+    "model_questions": 0,
+    "independent_successes": 0,
+    "external_users": 0,
+    "scope": "Unmodified CI functional admission. No speed comparator, whole-workflow rescore, provider change, public package release or comparative benefit."
+  }
+}

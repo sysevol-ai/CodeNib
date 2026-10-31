@@ -37,6 +37,7 @@ from ._contained_source import (
     _SourceCleanupSlot,
     _verify_windows_pinned_repository_root,
     _version_identity,
+    _windows_binding_identity,
     _windows_entry_is_reparse,
     _windows_find_child,
     _windows_identity_is_reliable,
@@ -2183,11 +2184,29 @@ def _update_inventory_record(
     link_target: str | None,
     windows_reparse_point: _WindowsReparsePoint | None = None,
 ) -> None:
+    """Bind selected shape and bytes without versioning excluded child churn.
+
+    Keep directory object/mode identity across scans; its selected children are
+    recorded individually. Timestamps and link counts also change when ignored
+    caches appear, so they cannot version this retained view. Full directory
+    versions still bracket each scan, and file/link versions remain strict.
+    Publication retains the existing final inventory/root/link checks under
+    the authentication lease; no saved inventory or lock order is changed.
+    """
+
     _update_frame(hasher, b"inventory-kind", kind)
     _update_frame(hasher, b"inventory-path", os.fsencode(relative))
-    identity = b",".join(
-        repr(value).encode("ascii") for value in _entry_version_identity(metadata)
-    )
+    if kind == b"directory":
+        if isinstance(metadata, _WindowsHandleMetadata):
+            entry_identity = (
+                *_windows_binding_identity(metadata),
+                metadata.delete_pending,
+            )
+        else:
+            entry_identity = _binding_identity(metadata)
+    else:
+        entry_identity = _entry_version_identity(metadata)
+    identity = b",".join(repr(value).encode("ascii") for value in entry_identity)
     _update_frame(hasher, b"inventory-identity", identity)
     if link_target is not None:
         _update_frame(hasher, b"inventory-link-target", os.fsencode(link_target))
