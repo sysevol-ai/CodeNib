@@ -248,6 +248,20 @@ failed 128 MiB capture control's 96 unadmitted staged replies and 304 unexecuted
 positions, plus all setup/verification failures. No timing comparator, product
 change, model inference, external enrollment or promotion is added.
 
+The [shared-client generation-owner repair](experiments/codegraph_lsp_generation_owner.md)
+bounds shutdown writes/waits, retains an unreaped owner for retry and rejects
+replacement or false readiness after a missing initialize result. Eight final
+regressions reproduce on unchanged source; 16 related cases and 9,025 final
+local unit tests pass. A separately installed replay preserves the entire prior
+graph/occurrence/quality/receipt admission and observes the real provider exit
+with pipes closed. Source-only alias controls recover the exposed call and
+verify post-response/stale rejection, explicit recapture and bounded cleanup,
+but still cover only 10/11 required fixture calls with 0/5 negative calls
+included. Rebinding remains partial; there is no live MCP route promotion or
+complete-task comparison. Merged [#942](https://github.com/sysevol-ai/CodeNib/pull/942)
+passes main Docs and all twenty executed release verifiers, with five tag-only
+skips. The full objective and all workflow/use gates remain active.
+
 The latest four-arm round records 8,821,055 normalized final main/auxiliary tokens
 and $9.311356 in SDK estimates, not invoices. The separate diagnostic adds
 78,348 tokens and $0.1850155 in SDK estimates within its $1 guard. The recorded

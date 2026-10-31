@@ -149,6 +149,8 @@ def test_new_server_does_not_consume_old_transport_state(transport, monkeypatch)
     client._response_buffer[1] = stale
     client._pending_ids.add(99)
     client._active_progress["old-server"] = time.monotonic()
+    # The previous owner has been released before this fresh process starts.
+    client.process = None
     write(_frame({"jsonrpc": "2.0", "id": 1, "result": {"capabilities": {}}}))
     monkeypatch.setattr(
         lsp_module,
