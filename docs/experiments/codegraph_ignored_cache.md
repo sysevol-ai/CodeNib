@@ -1,7 +1,8 @@
 # Retain queries after ignored cache generation
 
 Creating an ignored cache must not invalidate an unchanged selected source
-view. The local candidate keeps the existing MCP connection, definition worker
+view. The repair in [#949](https://github.com/sysevol-ai/CodeNib/pull/949)
+keeps the existing MCP connection, definition worker
 and index after Python creates `pkg/__pycache__`; a subsequent selected-source
 edit still rejects the query before another definition request and reaps the
 worker. This is a functional repair, not evidence of comparative task benefit.
@@ -33,8 +34,19 @@ The same installed MCP driver runs against the admitted combined CI wheel and
 a developer wheel differing in exactly `source_fingerprint.py` and wheel
 `RECORD`. The former reproduces the stale-source error; the latter passes cache
 creation, same-worker reuse and genuine-edit rejection. Both workers exit
-normally and are independently absent. The developer overlay is not an
-unmodified CI build; current CI-wheel admission remains open.
+normally and are independently absent. The developer overlay is retained as
+that local control, separately from the actual CI build.
+
+The [unmodified CI admission](codegraph_ignored_cache_ci_2026_10_31.json)
+closes the installed-build gate. Wheel `53b58f6b` from source head `89424a80`
+matches all 486 packaged Python files and the worker asset to the reviewed
+source; every product byte equals the developer admission. Only
+`source_fingerprint.py` differs from the previous admitted CI product. The same
+unchanged MCP driver passes all three phases on this actual wheel, with its
+worker normally reaped and independently absent. All 20 executed source-head
+PR checks pass with eight conditional/publication skips. Later documentation
+reconciliation retains these exact product bytes; final review and check status
+is tracked in the PR.
 
 The first POSIX test attempt used the wrong fingerprint attribute; its failure
 is retained separately from the six corrected regressions. The first full
