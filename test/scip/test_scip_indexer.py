@@ -119,9 +119,9 @@ def test_python_repo_indexing(httpie_cli_repo, test_output_dir, tmp_path_factory
             if "type" in v.attributes() and v["type"] == "symbol"
         ]
         for i, node in enumerate(file_vertices[:3]):
-            print(f"  File node {i+1}: {node}")
+            print(f"  File node {i + 1}: {node}")
         for i, node in enumerate(symbol_vertices[:3]):
-            print(f"  Symbol node {i+1}: {node}")
+            print(f"  Symbol node {i + 1}: {node}")
     else:
         pytest.skip(
             "Failed to run indexing pipeline for test_python_repo,"
@@ -182,9 +182,9 @@ def test_samplemod_repo_indexing(samplemod_repo, test_output_dir, tmp_path_facto
             if "type" in v.attributes() and v["type"] == "symbol"
         ]
         for i, node in enumerate(file_vertices[:3]):
-            print(f"  File node {i+1}: {node}")
+            print(f"  File node {i + 1}: {node}")
         for i, node in enumerate(symbol_vertices[:3]):
-            print(f"  Symbol node {i+1}: {node}")
+            print(f"  Symbol node {i + 1}: {node}")
     else:
         pytest.skip(
             "Failed to run indexing pipeline for samplemod_repo,"

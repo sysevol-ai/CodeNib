@@ -7,7 +7,6 @@
 from __future__ import annotations
 
 import base64
-import binascii
 import hashlib
 import html
 import json
@@ -79,9 +78,9 @@ _WINDOWS_RESERVED_NAMES = frozenset(
     | {f"LPT{index}" for index in range(1, 10)}
 )
 _ASSET_LOCKS_GUARD = threading.Lock()
-_ASSET_LOCKS: weakref.WeakValueDictionary[
-    str, threading.Lock
-] = weakref.WeakValueDictionary()
+_ASSET_LOCKS: weakref.WeakValueDictionary[str, threading.Lock] = (
+    weakref.WeakValueDictionary()
+)
 MediaEvidenceBuilder = Callable[[Mapping[str, Any]], Mapping[str, Any] | None]
 
 
@@ -398,7 +397,7 @@ class GeminiInteractionsImageGenerator:
                 raise ValueError("generated image exceeds the byte limit")
             try:
                 data = base64.b64decode(encoded, validate=True)
-            except (ValueError, binascii.Error) as exc:
+            except ValueError as exc:
                 raise ValueError(
                     "Gemini image response contains invalid base64"
                 ) from exc

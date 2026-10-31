@@ -710,7 +710,7 @@ def build_gt_metadata(
     locator = GTLocator(work_dir=work_dir, language=language)
     results = []
     for i, instance in enumerate(dataset):
-        logger.info(f"Processing instance {i+1}/{len(dataset)}")
+        logger.info(f"Processing instance {i + 1}/{len(dataset)}")
         try:
             result = locator.analyze_instance(instance)
             results.append(result)
@@ -820,7 +820,7 @@ def main():
     success_count = sum(1 for r in results if not r.get("error"))
     error_count = len(results) - success_count
 
-    logger.info(f"\n{'='*60}")
+    logger.info(f"\n{'=' * 60}")
     logger.info(f"Analysis complete!")
     logger.info(f"Total instances: {len(results)}")
     logger.info(f"Successful: {success_count}")
@@ -828,7 +828,7 @@ def main():
     logger.info(f"Results saved to: {output_path}")
     default_work_dir = user_state_dir() / "tmp"
     logger.info(f"Repositories cached in: {args.work_dir or default_work_dir}")
-    logger.info(f"{'='*60}")
+    logger.info(f"{'=' * 60}")
 
     if args.keep_repos:
         logger.info(f"Keeping all repositories in: {args.work_dir or default_work_dir}")

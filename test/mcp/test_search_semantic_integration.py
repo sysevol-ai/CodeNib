@@ -136,7 +136,7 @@ class TestSearchSemanticIntegration:
         # Print results for manual inspection
         print("\n=== Search Results ===")
         for i, r in enumerate(results):
-            print(f"{i+1}. {r['node_name']} (score: {r['score']:.3f})")
+            print(f"{i + 1}. {r['node_name']} (score: {r['score']:.3f})")
             print(f"   File: {r['file']}")
             print(f"   Type: {r['type']}")
             print()

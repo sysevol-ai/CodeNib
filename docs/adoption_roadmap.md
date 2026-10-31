@@ -56,6 +56,16 @@ three repairs; all 596 original selected outcomes execute. No complete
 eligible alternative exists, so the frozen decision is insufficient evidence.
 This supplies zero independent success confirmations.
 
+The repository-wide style gate now passes locally with the pinned hooks and
+160 targeted unit cases. Eleven Python files preserve their executable AST
+and prompt literals, allowing only removal of a redundant exception alternative
+and its unused import. Generated homepage bundles retain their original bytes.
+The pending Python navigation repairs
+[#945](https://github.com/sysevol-ai/CodeNib/pull/945) and
+[#946](https://github.com/sysevol-ai/CodeNib/pull/946) must incorporate this base,
+repeat installed-package admission and reconcile their shared roadmap changes
+before merging. This closes a local style blocker, not the workflow-benefit gate.
+
 CodeNib's observed complete time is 738.588 seconds versus Native 558.727 and
 Serena 666.964, with no recorded CodeNib or Serena product call. Against Native,
 CodeNib takes 32.2% more time and 21.0% more normalized tokens; against Serena,

@@ -645,9 +645,9 @@ def build_embeddings(args):
     # Process each instance
     for idx, instance in enumerate(dataset_instances):
         instance_id = instance["instance_id"]
-        logger.info(f"\n{'='*80}")
-        logger.info(f"Processing [{idx+1}/{len(dataset_instances)}]: {instance_id}")
-        logger.info(f"{'='*80}")
+        logger.info(f"\n{'=' * 80}")
+        logger.info(f"Processing [{idx + 1}/{len(dataset_instances)}]: {instance_id}")
+        logger.info(f"{'=' * 80}")
 
         vector_store = None
         try:
@@ -908,7 +908,7 @@ def build_embeddings(args):
                     torch.cuda.empty_cache()
             except Exception:
                 pass
-    logger.info(f"\n{'='*80}")
+    logger.info(f"\n{'=' * 80}")
     logger.info("Hierarchical embedding build complete!")
     logger.info(
         "Processed %d instance(s): %d built, %d reused, %d failed",
@@ -919,7 +919,7 @@ def build_embeddings(args):
     )
     if args.enable_profiler or args.profile_dir:
         logger.info(f"Profile logs stored in: {profile_output_dir}")
-    logger.info(f"{'='*80}")
+    logger.info(f"{'=' * 80}")
     if failures:
         raise RuntimeError(
             "Embedding build failed for "
@@ -976,9 +976,9 @@ def build_embeddings_isolated(args):
         cmd = child_argv + ["--filter-instance", instance_filter]
 
         logger.info(
-            f"\n{'='*80}\n"
-            f"[isolated {idx+1}/{len(dataset_instances)}] {instance_id}\n"
-            f"{'='*80}"
+            f"\n{'=' * 80}\n"
+            f"[isolated {idx + 1}/{len(dataset_instances)}] {instance_id}\n"
+            f"{'=' * 80}"
         )
 
         # Trust only artifacts carrying a passing model-specific quality report.
@@ -1037,10 +1037,10 @@ def build_embeddings_isolated(args):
             failed += 1
 
     logger.info(
-        f"\n{'='*80}\n"
+        f"\n{'=' * 80}\n"
         f"Isolated build complete: {succeeded} succeeded, {failed} failed, "
         f"{skipped} skipped\n"
-        f"{'='*80}"
+        f"{'=' * 80}"
     )
     if failed:
         sys.exit(1)

@@ -356,7 +356,7 @@ def run_benchmark(
             print(f"[SKIP] {cfg['label']} — pass --include-llm to enable")
             continue
 
-        print(f"\n{'─'*60}")
+        print(f"\n{'─' * 60}")
         print(f"Backend: {cfg['label']}")
         print(f"Model:   {cfg['model']}")
 

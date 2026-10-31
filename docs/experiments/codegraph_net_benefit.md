@@ -23,6 +23,15 @@ authorized. Established 2026-10-26 (Pacific); target review 2026-11-09.
 [#874](https://github.com/sysevol-ai/CodeNib/issues/874) hold current outcomes
 and open gates.
 
+Repository-wide pinned style checks and 160 targeted unit cases pass locally.
+AST comparison retains all prompt text and Python behavior apart from removing
+an exception alternative already covered by `ValueError`; generated homepage
+assets are unchanged. The pending navigation repairs
+[#945](https://github.com/sysevol-ai/CodeNib/pull/945) and
+[#946](https://github.com/sysevol-ai/CodeNib/pull/946) still require this base,
+current installed-wheel admission and shared-document reconciliation. No new
+model question, workflow comparator, success confirmation or participant is added.
+
 The separate [source-contract adoption check](codegraph_reference_adoption_results_2026_10_30.json)
 is also complete: one exposed-source question, 0/1 full acceptance and zero
 CodeNib calls. Native Grep/Read supply the correct core contract and callers,
