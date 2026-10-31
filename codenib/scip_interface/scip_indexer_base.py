@@ -10,6 +10,7 @@ Base class for SCIP indexers across different languages.
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -27,6 +28,11 @@ if TYPE_CHECKING:
 
 logger = get_logger("scip_indexer_base")
 
+_SCIP_BLOCK_MARKER = re.compile(r'[{}"]')
+_SCIP_QUOTED_END = re.compile(r'[^"\\]*(?:\\[\s\S][^"\\]*)*"')
+_SCIP_ESCAPE = re.compile(r"\\([\s\S])")
+_SCIP_ESCAPES = {"n": "\n", "t": "\t", "r": "\r"}
+
 
 def extract_symbol(text: str) -> Optional[str]:
     """Return the unescaped value of the first ``symbol: "..."`` field in a
@@ -39,7 +45,7 @@ def extract_symbol(text: str) -> Optional[str]:
     ``\\"`` for JS string-literal object keys like ``"version"``) in half
     and yields a trailing ``\\`` on the captured portion.
 
-    The function walks the literal, honouring protobuf TextFormat escapes
+    The function reads the literal, honouring protobuf TextFormat escapes
     (``\\"``, ``\\\\``, ``\\'``, ``\\n``, ``\\t``, ``\\r``), and returns the
     decoded string. Unknown ``\\x`` escapes fall through to the next char
     (matches protobuf's lenient TextFormat parser).
@@ -61,33 +67,15 @@ def extract_symbol(text: str) -> Optional[str]:
         if i >= len(text) or text[i] != '"':
             pos = k + len(kw)
             continue
-        i += 1
-        buf: List[str] = []
-        while i < len(text):
-            ch = text[i]
-            if ch == '"':
-                return "".join(buf)
-            if ch == "\\" and i + 1 < len(text):
-                nxt = text[i + 1]
-                if nxt == "n":
-                    buf.append("\n")
-                elif nxt == "t":
-                    buf.append("\t")
-                elif nxt == "r":
-                    buf.append("\r")
-                elif nxt == "\\":
-                    buf.append("\\")
-                elif nxt == '"':
-                    buf.append('"')
-                elif nxt == "'":
-                    buf.append("'")
-                else:
-                    buf.append(nxt)
-                i += 2
-                continue
-            buf.append(ch)
-            i += 1
-        return None
+        quoted = _SCIP_QUOTED_END.match(text, i + 1)
+        if quoted is None:
+            return None
+        value = text[i + 1 : quoted.end() - 1]
+        if "\\" not in value:
+            return value
+        return _SCIP_ESCAPE.sub(
+            lambda match: _SCIP_ESCAPES.get(match[1], match[1]), value
+        )
     return None
 
 
@@ -121,32 +109,27 @@ def extract_scip_blocks(text: str, keyword: str) -> List[str]:
             continue
         start = b + 1
         depth = 1
-        in_string = False
-        escape = False
         matched = False
         i = start
-        while i < len(text):
-            ch = text[i]
-            if in_string:
-                if escape:
-                    escape = False
-                elif ch == "\\":
-                    escape = True
-                elif ch == '"':
-                    in_string = False
+        # Skip ordinary text in the regex engine. A quoted literal is one
+        # token, so escaped quotes and literal braces never affect depth.
+        while marker := _SCIP_BLOCK_MARKER.search(text, i):
+            ch = marker[0]
+            i = marker.end()
+            if ch == '"':
+                quoted = _SCIP_QUOTED_END.match(text, i)
+                if quoted is None:
+                    break
+                i = quoted.end()
+            elif ch == "{":
+                depth += 1
             else:
-                if ch == '"':
-                    in_string = True
-                elif ch == "{":
-                    depth += 1
-                elif ch == "}":
-                    depth -= 1
-                    if depth == 0:
-                        blocks.append(text[start:i])
-                        pos = i + 1
-                        matched = True
-                        break
-            i += 1
+                depth -= 1
+                if depth == 0:
+                    blocks.append(text[start : marker.start()])
+                    pos = i
+                    matched = True
+                    break
         if not matched:
             break
     return blocks

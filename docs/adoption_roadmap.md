@@ -186,6 +186,19 @@ gate partly unobserved. Retain all 97 records and this coverage gap. No model
 question runs; the full matched coding, confirmation and external-use gates
 remain open.
 
+The [shared SCIP text scanner](experiments/codegraph_scip_text_scan.md) removes
+another measured decoding cost while preserving the existing parser contract.
+Three fresh decoders per implementation on one complete saved artifact reduce
+median decode time from 13.316s to 6.409s (51.87%); every ordered node/edge
+attribute and endpoint agrees. The SCIP unit tier passes 368 cases, five
+existing synthetic C++ parity cases pass, and the full local unit tier passes
+9,009 tests. An installed developer wheel verifies all 485 Python/native bytes
+and reproduces exact normalized text, full graph/occurrence/report outputs and
+artifact receipts from fixed raw compiler output. All 126 records, three
+harness failures and exact owner cleanup remain. This additional component
+is not measured in the complete preparation pair or the frozen coding cohort;
+no broader benefit, independent success or external user is added.
+
 The latest four-arm round records 8,821,055 normalized final main/auxiliary tokens
 and $9.311356 in SDK estimates, not invoices. The separate diagnostic adds
 78,348 tokens and $0.1850155 in SDK estimates within its $1 guard. The recorded
