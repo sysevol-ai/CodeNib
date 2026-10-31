@@ -28,8 +28,10 @@ repository-wide pinned style checks; 160 targeted unit cases pass locally.
 AST comparison retains all prompt text and Python behavior apart from removing
 an exception alternative already covered by `ValueError`; generated homepage
 assets are unchanged. All 17 executed PR checks pass with eight explicit skips.
-[#946](https://github.com/sysevol-ai/CodeNib/pull/946) incorporates this base
-and requires fresh installed-wheel admission; [#945](https://github.com/sysevol-ai/CodeNib/pull/945)
+[#946](https://github.com/sysevol-ai/CodeNib/pull/946) incorporates this base;
+its [fresh installed-wheel admission](codegraph_python_wildcard_reconciled_2026_10_31.json)
+passes actual compiler/MCP, declared post-edit rebuilding and all four retained
+complete-source artifact hashes. [#945](https://github.com/sysevol-ai/CodeNib/pull/945)
 still needs base/shared-document reconciliation and current package checks.
 No new model question, workflow comparator, success confirmation or participant
 is added.

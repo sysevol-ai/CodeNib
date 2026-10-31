@@ -109,10 +109,21 @@ lines with the original negative; both LSP owners exit. Its 17 executed checks
 pass, with nine skips explicit, including a separate initial draft unit skip;
 the labeled unit job executes and passes. No public release is made.
 
-The baseline style blocker is repaired in #947, with 17 executed PR checks
-passing and eight conditional/publication skips explicit. This branch now
-incorporates that base and its roadmap updates. The product repair is
-unchanged; the four formatted package modules invalidate the old all-package
-byte-equality claim for this new tree. Require a fresh unmodified CI-wheel
-compiler/MCP and complete-source admission before merging. Both earlier
-packets stay immutable and all whole-task/use gates remain open.
+The [current-base admission](codegraph_python_wildcard_reconciled_2026_10_31.json)
+incorporates merged #947 and retains 87 exact records in seven bounded parts;
+six large originals remain local by hash. Its unmodified CI wheel from source
+head `884f61d9` has SHA-256
+`5677397a453e5b301981b6d0bbb6219525ea27baf30dd5fdf4d1b5856baf0cf1`.
+All 485 Python files match that checkout. Only four style-base modules differ
+from the earlier admitted CI wheel; their ASTs and prompt literals agree,
+allowing the redundant exception/import removal. Every other product file is
+byte identical. The fresh installed compiler/MCP and declared-edit rebuild
+pass, with both host LSP owners exiting. A fresh offline complete-source replay
+retains all four artifact hashes and every original occurrence; it exercises
+zero new wildcard recoveries and reaps its LSP before container removal and
+final source verification. This remains preservation evidence.
+
+The current source head passes 17 executed PR checks with eight explicit skips.
+All-files pinned hooks and 287 relevant local unit cases pass on the new base.
+Final documentation-head checks and merge reconciliation remain required.
+The earlier packets stay immutable and all whole-task/use gates remain open.
