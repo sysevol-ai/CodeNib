@@ -112,8 +112,8 @@ def _build_graph_with_scip(
 ) -> CodeGraph:
     """Build a CodeGraph via SCIP cold-start (LSIndexer.run_pipeline).
 
-    Reuses a cached graph only for the same language and source commit,
-    falling back to a full pipeline when that exact cache is absent.
+    Reuse a graph only for the same language and source commit. The pipeline
+    builds on a cache miss; a failed build must not be attempted a second time.
     """
     source_commit = _git("rev-parse", "HEAD", cwd=project_root)
     output_dir = output_dir / language / source_commit
@@ -122,11 +122,7 @@ def _build_graph_with_scip(
         output_dir=output_dir,
         language=language,
     )
-    # Try loading cached graph first
     graph = indexer.run_pipeline(skip_level="graph", report_profile=False, **kwargs)
-    if graph is None:
-        # No cache, do full pipeline
-        graph = indexer.run_pipeline(skip_level=None, report_profile=False, **kwargs)
     assert graph is not None, f"SCIP run_pipeline returned None for {language}"
     return graph
 
@@ -1031,13 +1027,14 @@ class TestSWEBenchPython:
             pytest.skip(f"Cannot clone repo: {e}")
             return None  # unreachable; satisfies linter
 
-    def test_graph_patch(self, repo_dir, tmp_path):
+    def test_graph_patch(self, repo_dir, tmp_path, request):
         earlier = _get_earlier_commit(repo_dir, self.LATER, self.N_BACK)
 
         _git("checkout", "-f", earlier, cwd=repo_dir)
 
         # Start LSP early for warm-up (parallel with SCIP)
         patcher = GraphPatcher(str(repo_dir), None, "python")
+        request.addfinalizer(patcher.stop_lsp)
         patcher.start_lsp()
 
         g = _build_graph_with_scip(
