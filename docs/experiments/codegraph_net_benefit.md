@@ -131,9 +131,19 @@ the actual locally built wheel passes complete-artifact parity and a
 source-verified MCP graph query. The 130-record packet preserves setup failures
 and exact cleanup/source checks. These are gate-only source-checkout timings;
 installed admission reuses the existing complete index. No complete
-preparation or coding-task improvement, independent success or external
-participant is added. Measure full first/post-edit preparation next, before
-claiming a broader gain or spending another model round.
+coding-task improvement, independent success or external participant is added.
+Merged [#937](https://github.com/sysevol-ai/CodeNib/pull/937) passes seventeen
+executed PR checks and twenty main release verifiers; main unit/integration
+and Docs build/deploy pass, with conditional jobs explicitly skipped.
+The [separate preparation pair](codegraph_preparation_pair_2026_10_30.json)
+retains 97 records: first graph requests take 185.678s → 188.577s, while
+post-edit requests take 217.153s → 212.595s with prepared dependencies/providers.
+The single sequential pair does not establish an overall gain. Final full
+graph/occurrence/report outputs agree and all 24 source windows verify; first
+full artifacts are overwritten before export, leaving that prospective quality
+gate partly unobserved. Preserve this gap and both original outcomes. Prioritize
+SCIP generation and source-update costs with authenticated source proof before
+claiming broader gains or spending another model round.
 
 The [merged Python identity repair](codegraph_python_walrus.md) now admits the
 complete selected Pylint graph and exact source delivery through its actual CI

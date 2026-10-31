@@ -5,7 +5,10 @@ file within one validation call. On one complete captured CodeNib Python graph,
 three fresh-object repeats per implementation reduce median gate time from
 27.925s to 2.084s, with identical query-surface, ordered occurrence and quality
 report outputs. This is a component result; complete first-query, post-edit and
-coding-task savings have not been measured for this candidate.
+coding-task gains are not established. A subsequent complete-preparation pair
+observes 185.678s → 188.577s for the first graph request and 217.153s → 212.595s
+after a source edit, with preinstalled dependencies/providers. That single
+pair shows no clear overall speedup.
 
 The [exact evidence packet](codegraph_preparation_policy_2026_10_30.json)
 retains 130 text records in three bounded parts, including unsuccessful setup
@@ -88,7 +91,56 @@ performance endpoint.
 | Initial wheel builds omit native code because Python headers are unavailable | Reject those wheels; extract temporary development headers and build protocol 6. No dependency or global header installation changes. |
 | Initial installed admission requests an unrelated full workspace-provisioning capability denied by Docker's default `kcmp` policy | Remove that extra harness assertion in a new attempt. Native import and actual graph directory guards remain required; no product safety check or container privilege changes. |
 
-The next gate is matched complete first-query and post-edit preparation, then
-a useful actual coding workflow. Keep all prior outcomes and the unopened
-independent confirmation set intact. This iteration submits no model query
-and changes neither the authorized budget nor the external enrollment gate.
+## Complete first-query and source-refresh observations
+
+The [separate preparation-pair packet](codegraph_preparation_pair_2026_10_30.json)
+retains 97 exact records in two bounded parts. Its protocol, controller hashes,
+requests, wheel identities, resource caps and one inert comment edit are fixed
+before either controller runs. Baseline then candidate each run one first
+graph request and one post-edit request through the normal installed MCP CLI,
+without a profiler. Both use the same pinned source and selection. Dependencies
+and providers are preinstalled; each container has two CPUs, 4GiB memory,
+256 PIDs and no network.
+
+| Observed component | Baseline | Candidate | Difference |
+| --- | --- | --- | --- |
+| First graph-enabled MCP request | 185.678s | 188.577s | 1.56% slower |
+| Expected changed-source refusal | 0.059s | 0.058s | Retained failure cost |
+| Explicit BM25 rebuild | 3.372s | 3.514s | Retained update cost |
+| Graph-enabled MCP request after rebuilding | 217.153s | 212.595s | 2.10% faster |
+
+The standalone SCIP generation stage takes 84.51s / 103.29s before/after the
+edit in the baseline and 112.16s / 122.15s in the candidate. These observed
+durations vary substantially; this single sequential pair does not isolate
+filesystem, provider, build-provenance or shared-host effects. Do not attribute
+that variation to the path-policy change or infer that the gate-only reduction
+transfers directly to complete preparation.
+
+Both final post-edit generations admit all 1,172 selected documents without
+partial indexing. Their complete query surfaces, all 786,078 ordered
+occurrences and source-selection reports agree. All 24 returned source
+windows/pointers match captured versions, both 2,390-file checkouts preserve
+only the exact frozen comment edit and both exact owned containers are absent.
+The baseline remains the earlier exact CI wheel whose private loader docstring
+differs from main; the candidate is the locally built wheel with separately
+bound native bytes. Source checkout absolute paths differ per arm.
+
+The prospective quality gate is partly unobserved: the controller exports only
+the final index, overwriting the first full manifest/graph/occurrence snapshot.
+Keep the original first replies and complete stderr, but do not claim complete
+first-generation artifact parity. This coverage gap is retained rather than
+changing the earlier gate or rerunning the control to replace its outcome.
+There is one pair, no randomized order and no independent replication.
+
+The gate optimization is merged in
+[#937](https://github.com/sysevol-ai/CodeNib/pull/937) as `ef2b7731` after all
+seventeen executed PR checks pass, including fourteen release verifiers, with
+eight conditional skips. Main preflight/unit/integration, Docs build/deploy
+and all twenty release verifiers pass; five conditional full-CI jobs and five
+tag-only release jobs remain skipped. Public package 0.2.4 is unchanged.
+
+Hold promotion. Prioritize SCIP generation and source-update preparation costs
+while retaining source-selection/currentness proof. A useful actual coding
+workflow, two independent successes and external consent/reuse remain open.
+Both controls submit zero model questions and leave every completed cohort,
+the unopened confirmation set and authorized budget unchanged.
