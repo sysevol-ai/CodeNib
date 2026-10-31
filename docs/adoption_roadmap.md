@@ -67,8 +67,9 @@ its [current installed-package admission](experiments/codegraph_python_wildcard_
 passes actual compiler/MCP, post-edit rebuilding and full-source preservation.
 Only the four verified style-base modules differ from the earlier wheel;
 all four complete-source artifact hashes remain unchanged.
-[#945](https://github.com/sysevol-ai/CodeNib/pull/945) still needs base and
-shared-document reconciliation plus current package checks. Style verification
+[#945](https://github.com/sysevol-ai/CodeNib/pull/945) is stacked on #946 for
+shared-document integration and still needs current combined package checks
+and restacking after its dependency merges. Style verification
 does not close the workflow-benefit gate.
 
 CodeNib's observed complete time is 738.588 seconds versus Native 558.727 and
@@ -296,33 +297,27 @@ main CI jobs remain verified. The private function-flow route remains
 unpromoted.
 
 The [source-bound definition candidate](experiments/codegraph_source_definitions.md)
-is implemented in draft [#945](https://github.com/sysevol-ai/CodeNib/pull/945)
-at the actual deferred, full-surface MCP boundary. Separate installed-wheel
-controls return exact function declarations
-without a graph on the generated fixture and all 2,390 CodeNib source files;
-ambiguous definitions close the worker before normal complete-graph fallback.
-Post-response edits reject publication, stale queries make no worker request,
-explicit rebuilding reloads in the same connection, and stopped-worker cleanup
-passes. A separate ownership audit exposes delayed cleanup after immediate
-source revocation; the final candidate reaps that worker before returning the
-stale-source error, with two before/after regressions retained. The final unit
-tier passes 9,052 with 24 skips. A separate unmodified source-built CI wheel
-passes the same actual MCP, source-update and complete-source controls; all
-486 Python files, native bytes and worker asset match the admitted candidate.
-The [CI supplement](experiments/codegraph_source_definitions_ci_2026_10_31.json)
-retains five workers' cleanup and all 21 executed source-head checks passing,
-with nine skips explicit. These are functional controls with prepared tools,
-without a timing comparison or public release. Full-source worker RSS is about 1.54 GiB in one
-observation. References remain graph-backed: the fixture finds 10/11 required
-call lines and includes one post-rebinding negative. A separately installed
-prior version returns identical reference node fields from the same artifact;
-this diagnoses existing coverage and static-binding semantics, without changing
-the failed physical-call gate. Default exploration, representative dependency
-coverage, complete-task benefit, voluntary use and all independent/external
-gates remain open. Source-head CI-wheel admission is verified; the draft is
-unmerged while final-head reconciliation and the baseline all-files gate
-remain open. All-files hooks retain existing
-failures outside the feature. No model question or participant is added.
+in draft [#945](https://github.com/sysevol-ai/CodeNib/pull/945) admits an exact
+captured Python function/class at the deferred full-surface MCP boundary.
+The original installed and unmodified CI-wheel controls cover all 2,390 source
+files, graph fallback, immediate source revocation, prompt worker cleanup,
+stale-query rejection and explicit same-session reloading. The final original
+unit tier passes 9,052 with 24 skips; the 95-record
+[CI supplement](experiments/codegraph_source_definitions_ci_2026_10_31.json)
+retains all five worker exits and 21 passing executed source-head checks, with
+nine explicit skips. Full-source worker RSS is about 1.54 GiB in one
+observation, without a comparative memory or timing claim.
+
+This branch now incorporates #947 and is stacked on #946 for shared-document
+integration. Only the four style-base modules and #946's two admitted product
+files differ from the older definition candidate. Fresh combined installed
+MCP/fallback/lifecycle/complete-source admission is required; preserve the
+older 10/11-plus-one reference result rather than rescoring it. #946 separately
+finds 11/11 positives with the same raw-compiler alias-binding negative.
+Default exploration, representative provider/configuration coverage, actual
+source-linked use, whole-task benefit and independent/external gates stay
+open. Merge #946, restack #945 and reconcile its current checks before merging.
+No model question, public package release or participant is added.
 
 The latest four-arm round records 8,821,055 normalized final main/auxiliary tokens
 and $9.311356 in SDK estimates, not invoices. The separate diagnostic adds

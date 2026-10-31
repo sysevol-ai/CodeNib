@@ -32,7 +32,8 @@ assets are unchanged. All 17 executed PR checks pass with eight explicit skips.
 its [fresh installed-wheel admission](codegraph_python_wildcard_reconciled_2026_10_31.json)
 passes actual compiler/MCP, declared post-edit rebuilding and all four retained
 complete-source artifact hashes. [#945](https://github.com/sysevol-ai/CodeNib/pull/945)
-still needs base/shared-document reconciliation and current package checks.
+is stacked on #946 for shared-document integration and still needs combined
+package admission plus restacking after that dependency merges.
 No new model question, workflow comparator, success confirmation or participant
 is added.
 
@@ -287,10 +288,12 @@ successes remain 0/2 and external enrollment/reuse remains 0/5. The separate
 the unmodified wheel from source head `721adc08`: all 486 Python files, native
 bytes and worker asset match, and actual MCP/fallback/lifecycle/complete-source
 controls pass with five workers reaped. Its 21 executed checks pass with nine
-explicit skips. The draft remains unmerged pending final-head reconciliation
-and the unrelated baseline all-files lint failures; no whole-task gate changes.
+explicit skips. The draft now incorporates #947 and is stacked on #946 for document
+integration. Its source-definition implementation is unchanged. Require fresh
+combined installed MCP/fallback/lifecycle/complete-source admission, then merge
+#946 and restack this branch. Earlier packets and whole-task gates stay unchanged.
 
-The [wildcard-reference repair](codegraph_python_wildcard.md) in draft [#946](https://github.com/sysevol-ai/CodeNib/pull/946) separately preserves the original strict call oracle while improving its positive recall: actual compiler/MCP calls find all 11 positive lines with the same one of five negatives. Source-backed standard definition replies authorize only existing compiler module reads; coincident targets and lexical-binding unions remain intact. The final unit tier passes 9,038 with 24 skips, and the offline installed complete-source replay preserves all 786,078 original occurrences and the exact normalized text. Builder identity advances to 10, while graph layout stays 5. The separate [CI supplement](codegraph_python_wildcard_ci_2026_10_31.json) admits the unmodified wheel from source head `807ddfbd`: all 485 Python files, native bytes and other product files equal the developer candidate, and fresh compiler/MCP/post-edit controls pass. All 17 executed source-head checks pass, with nine skips explicit. Final-head/base reconciliation, baseline all-files failures and representative wildcard/update coverage remain open. It changes no frozen cohort, independent success, external-use count or whole-task decision.
+The [wildcard-reference repair](codegraph_python_wildcard.md) in [#946](https://github.com/sysevol-ai/CodeNib/pull/946) separately preserves the original strict call oracle while improving its positive recall: actual compiler/MCP calls find all 11 positive lines with the same one of five negatives. Source-backed standard definition replies authorize only existing compiler module reads; coincident targets and lexical-binding unions remain intact. The final unit tier passes 9,038 with 24 skips, and the offline installed complete-source replay preserves all 786,078 original occurrences and the exact normalized text. Builder identity advances to 10, while graph layout stays 5. The separate [CI supplement](codegraph_python_wildcard_ci_2026_10_31.json) admits the unmodified wheel from source head `807ddfbd`: all 485 Python files, native bytes and other product files equal the developer candidate, and fresh compiler/MCP/post-edit controls pass. All 17 executed source-head checks pass, with nine skips explicit. The separate [current-base supplement](codegraph_python_wildcard_reconciled_2026_10_31.json) retains 87 records: fresh installed compiler/MCP, declared-edit rebuilding and complete-source replay pass on #947, with all four artifact hashes preserved. Final merge checks and representative wildcard/update coverage remain open; the raw-compiler alias-binding negative stays separate from intentional static unions. It changes no frozen cohort, independent success, external-use count or whole-task decision.
 
 The [merged Python identity repair](codegraph_python_walrus.md) now admits the
 complete selected Pylint graph and exact source delivery through its actual CI

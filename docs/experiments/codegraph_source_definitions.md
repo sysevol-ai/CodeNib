@@ -79,14 +79,15 @@ The final unit tier passes 9,052 with 24 skips and 46 warnings. Earlier
 revocation regressions fail before the repair; 93 related tests pass after it.
 Functional controls may overlap unit tests and supply no timing comparison.
 
-Changed-file pinned hooks pass. The separate all-files run fails on existing
-format/lint problems in twelve files outside this feature, each verified equal
-to the base commit. Three unrelated formatter edits are retained as a diagnostic
-patch and reverted; no all-files pass is claimed.
+The original frozen all-files run retains format/lint failures in twelve
+files outside the feature and its three reverted formatter edits. Merged
+[#947](https://github.com/sysevol-ai/CodeNib/pull/947) repairs that baseline
+without changing prompt text or generated homepage bundles. Those earlier
+failed logs remain unchanged; current combined checks are recorded separately.
 
 ## References remain an open gate
 
-The complete-graph fallback finds ten of eleven expected positive fixture call
+The original frozen complete-graph fallback finds ten of eleven expected positive fixture call
 lines, misses a wildcard-import call and includes one post-rebinding call from
 the five negative cases. The prior installed version returns identical node
 fields from the exact same graph artifact. This does not establish compiler
@@ -96,8 +97,11 @@ The existing Python identity layer deliberately retains possible declarations
 sharing a lexical binding. Such static reference candidates are not physical
 runtime call identities. Preserve that contract and the failed call gate;
 neither silent filtering nor changing the oracle would prove improved
-correctness. Wildcard recall and representative semantic/configuration coverage
-remain separate follow-up work. The earlier failed function-type/flow controls
+correctness. The separate [wildcard repair](codegraph_python_wildcard.md)
+now finds 11/11 positive lines in its own admitted compiler/MCP control; the
+remaining raw-compiler alias-binding error stays distinct from intentional
+lexical unions. Neither result changes the old packet. Combined runtime and
+representative semantic/configuration coverage remain required. The earlier failed function-type/flow controls
 and frozen 400-query diagnostic are unchanged.
 
 ## Ownership and product decision
@@ -121,7 +125,9 @@ users and seven-day reuse remain 0/5. No model inference, account fallback or
 new spend is added. A0 and issue #874 remain active.
 
 Implementation is in draft [#945](https://github.com/sysevol-ai/CodeNib/pull/945),
-based directly on merged #944. The separate
+stacked on [#946](https://github.com/sysevol-ai/CodeNib/pull/946), which
+incorporates merged #947. This orders shared-document integration; the
+source-definition implementation is unchanged. The original separate
 [CI-wheel supplement](codegraph_source_definitions_ci_2026_10_31.json)
 reconstructs 95 records in two parts without replacing the original packet.
 The unmodified aarch64 wheel from source head `721adc08` has SHA-256
@@ -133,6 +139,6 @@ stopped-worker cleanup. All 21 executed source-head checks pass; nine skips,
 including the initial draft unit job, stay explicit. The separate labeled unit
 job executes and passes. No public release is made.
 
-Keep the draft unmerged while final-head reconciliation and the unrelated
-baseline all-files lint failures are reconciled. Comparative benefit, reference
+Keep the draft unmerged until #946 is merged, this branch is restacked and
+current combined installed-package/final-head checks pass. Comparative benefit, reference
 call identity and repeat-use gates remain open.
