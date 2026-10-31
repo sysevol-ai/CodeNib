@@ -121,20 +121,29 @@ repeats the full admission with all 485 packaged Python files and its native
 extension verified, without source overlays. Actual model use, workflow
 quality/time, independent confirmation and external reuse remain open.
 No completed cohort, test selection or score changes.
+Main's unit, integration, serial integration, SCIP/core and graph-consumer
+checks pass, along with all twenty executed release verifiers. Slow and
+publication-only skips remain explicit; no public package is republished.
 
 The [source-contract adoption diagnostic](experiments/codegraph_reference_adoption_freeze_2026_10_30.json)
-prospectively binds 24,225 inputs before one exposed Pylint question. It asks
-whether the model voluntarily uses graph-backed source and produces a correct
-read-only answer; native tools remain available and no product call is forced.
-The included Max route has a $1 SDK-estimate guard, with no API/account/provider
-fallback. Three owned preparation containers are independently absent, including
-the control with failure injected after creation. At the seal, no model task has run.
-This single product condition supplies no comparative efficiency, independent
-success or external-use evidence; the further confirmation set stays unopened.
+binds 24,225 inputs before one exposed Pylint question. Its
+[completed assessment](experiments/codegraph_reference_adoption_results_2026_10_30.json)
+records four native Grep and four Read calls, zero CodeNib calls and no typed
+graph preparation. The core contract/callers are correct, but the full answer
+fails the unchanged <450-word gate at 463 words and recommends a test order
+that clears its appended inputs. SDK connection and tool inventory are verified;
+actual HTTP tool visibility and choice causation remain unknown. All four owned
+containers are independently absent and every frozen input is unchanged. This
+single product condition supplies no comparative efficiency, independent success
+or external-use evidence. Stop repeating paid exact-name probes; establish a
+real workflow/discovery need before another efficacy cohort. The reserved set
+stays unopened.
 
-The latest round records 8,821,055 normalized final main/auxiliary tokens and
-$9.311356 in SDK estimates, not invoices. The recorded estimate lower bound
-across rounds is $44.4223508 plus earlier unknown usage. Keep the authorized
+The latest four-arm round records 8,821,055 normalized final main/auxiliary tokens
+and $9.311356 in SDK estimates, not invoices. The separate diagnostic adds
+78,348 tokens and $0.1850155 in SDK estimates within its $1 guard. The recorded
+estimate lower bound across rounds is $44.6073663 plus earlier unknown usage.
+Keep the authorized
 $500 API ceiling and existing native subscription route; no API-key/account
 fallback or complete HTTP-count claim. External enrollment, consent and
 seven-day repeat use remain 0/5, and no outreach is authorized.

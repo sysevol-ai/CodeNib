@@ -23,6 +23,12 @@ authorized. Established 2026-10-26 (Pacific); target review 2026-11-09.
 [#874](https://github.com/sysevol-ai/CodeNib/issues/874) hold current outcomes
 and open gates.
 
+The separate [source-contract adoption check](codegraph_reference_adoption_results_2026_10_30.json)
+is also complete: one exposed-source question, 0/1 full acceptance and zero
+CodeNib calls. Native Grep/Read supply the correct core contract and callers,
+but the answer exceeds its frozen word limit and gives unsound test setup
+advice. This adds no graph efficacy, independent success or external participant.
+
 ## Current iteration objective
 
 On 2026-10-29 the maintainer authorized continued product iteration toward a
@@ -123,10 +129,45 @@ cleanup. Preserve the initial input-preparation mistake and both successful
 preparations. The 42-record prospective packet in eight bounded parts verifies
 all original bytes before inference, with the private rubric and archived
 preparation artifacts outside model source scope. At the seal there are zero
-model tasks. This checks useful tool use, not comparative efficacy. Complete
-workflow quality/time, the 20%
-endpoint, normalized-usage bounds, both successful independent confirmations
-and five-user consent/reuse remain open. Keep the reserved second set unopened.
+model tasks; prospective commit `465410d8` precedes the single SDK query.
+
+The [terminal results](codegraph_reference_adoption_results_2026_10_30.json)
+retain 23 exact records in one bounded part, including original hooks, actual
+SDK tool results, the unchanged private rubric and the original final answer.
+The SDK connects and advertises `explore_context`, but the model selects four
+Grep and four Read calls. All eight original deliveries validate against their
+captured replies and pinned source; no search is re-executed to replace them.
+The final product state is BM25-only, with no graph preparation or product call.
+SDK inventory does not prove historical HTTP tool-schema visibility or explain
+the choice of native tools.
+
+The core contract/caller answer is correct. Full source acceptance fails because
+the proposed append-streams, then `open()`, then `close()` order discards the
+appended inputs. Executing the exact original `SimilarChecker.open` body after
+the terminal demonstrates that reset; it is assessment evidence, never model
+feedback or a changed native grade. Call `open()` before appending streams for
+meaningful nonempty-input no-match coverage. The final 463 `str.split()` words
+also violate the unchanged strict <450 limit. Preserve both rejections and
+the correct existing-test discussion; no shortened replacement answer is scored.
+
+Final cumulative main/auxiliary usage is 78,348 normalized tokens and
+$0.1850155 in SDK estimates, with thinking already included in output. The
+main model and hook effort are Opus 5.5/medium; a small Haiku 5.5 auxiliary use
+is included once. Nine SDK turns are not a complete HTTP-request count. Actual
+invoice charges remain unknown, and the observed rate event confirms included
+usage with overage rejected. No API/account/provider fallback occurs. The
+controller's 33.162-second install/index-to-disconnect observation uses prepared
+dependencies, excludes source-copy/export/cleanup overhead and has no comparator;
+it establishes no complete-workflow time advantage.
+
+All 24,225 inputs remain unchanged and all four owned containers are independently
+absent. A read-only integration audit finds no `CLAUDE.md` in the examined earlier
+Pylint workspace, so settings-source suppression alone does not establish a
+missing generated-instruction cause. Stop repeating paid exact-name questions
+until a real workflow/discovery need is established. Complete workflow
+quality/time, the 20% endpoint, normalized-usage bounds, both successful
+independent confirmations and five-user consent/reuse remain open. Keep the
+reserved second set unopened.
 
 The separate network-disabled pinned CLI/SDK control retains all original
 metadata/schema delivery observations; it is not historical native HTTP
