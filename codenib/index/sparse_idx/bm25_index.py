@@ -409,10 +409,29 @@ class BM25Retriever:
             "vocabulary": len(self._index.idf),
         }
 
-    def invoke(self, query: str) -> List[Document]:
+    def invoke(self, query: str, *, filter_test: bool = False) -> List[Document]:
         if self._index is None:
             return []
         count = min(self.k, len(self.documents))
+        if filter_test:
+            if count <= 0:
+                return []
+            # Apply eligibility before k; a test-saturated prefix must not
+            # hide implementation documents. Keep the same score/tie order
+            # as get_top_n without mutating the shared retriever's limit.
+            scores = self._index.get_scores(query.split())
+            results = []
+            for position in scores.argsort()[::-1]:
+                document = self.documents[position]
+                identity = document.metadata.get("node_id") or document.metadata.get(
+                    "file", ""
+                )
+                if is_test_file(identity):
+                    continue
+                results.append(document)
+                if len(results) == count:
+                    break
+            return results
         return list(
             self._index.get_top_n(
                 query.split(),
@@ -940,8 +959,13 @@ class BM25CodeIndexer:
 
         logger.debug(f"BM25 search with k={top_k}, num_documents={len(self.documents)}")
 
-        # Retrieve results and truncate to requested top_k
-        results = self.retriever.invoke(query)
+        # Exclude tests before the retriever's own candidate limit as well
+        # as the requested top_k; filtering a capped prefix can lose all hits.
+        results = (
+            self.retriever.invoke(query, filter_test=True)
+            if filter_test
+            else self.retriever.invoke(query)
+        )
         logger.info(f"BM25 retrieval returned {len(results)} results")
 
         # Convert results to NodeInfo objects and apply filtering

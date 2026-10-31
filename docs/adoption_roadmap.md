@@ -391,11 +391,20 @@ exclusion still works. Six builder controls and four candidate-pool controls
 retain their original before/after outcomes. Implementation-only retrieval now
 excludes test hits before its bounded candidate limit. The original 2/3 Ask
 pass set is restored after the first candidate's Wiki regression; the remaining
-pre-existing miss stays explicit. Current CI-wheel admission and final remote
-checks remain open. This is exposed internal source retrieval, with no typed
-graph preparation, model SDK question, new cohort, independent success or
-external user. #867's unsupported concurrent-root ownership problem remains
-open and is not represented as fixed by this discovery change.
+pre-existing miss stays explicit. The first #951 head's unmodified CI wheel
+passes the same migration and Ask controls, with all 17 executed checks passing
+and eight explicit skips. A valid review still finds test filtering after the
+inner 128-candidate limit. Six real-ranker regressions reproduce that failure
+in the exact installed CI build, while three preservation controls pass. The
+correction filters the original BM25 score/tie order before its limit without
+mutating shared state; all nine controls, 356 related cases and the 8,976-case
+unit tier pass. [Revised source evidence](experiments/codegraph_bm25_inner_cap_2026_10_31.json)
+retains the failures and original 2/3 Ask pass set. Revised CI-wheel admission
+and final remote checks remain open before #951 can merge. This is exposed
+internal source retrieval, with no typed graph preparation, model SDK question,
+new cohort, independent success or external user. #867's unsupported concurrent
+root ownership problem remains open and is not represented as fixed by this
+discovery change.
 
 The latest four-arm round records 8,821,055 normalized final main/auxiliary tokens
 and $9.311356 in SDK estimates, not invoices. The separate diagnostic adds

@@ -1,0 +1,162 @@
+{
+  "schema": "codenib.bm25-inner-cap.terminal.v1",
+  "records": 23,
+  "record_manifest": [
+    {
+      "path": "after.stdout",
+      "bytes": 98,
+      "sha256": "5fa64129adccee0a5e31fc1a7bfd16a00a9e992901532a02fe70a55bfc0c0f6e"
+    },
+    {
+      "path": "ask-quality-source.stdout",
+      "bytes": 1719,
+      "sha256": "1b684c7a4a90b7851cf93a7a78afd0a3ef5c3c29f659718bff0c8d302dc4daeb"
+    },
+    {
+      "path": "baseline.json",
+      "bytes": 303,
+      "sha256": "91395c374cebe6996f953e23304187b7fa316ff4602785f0bf90292f3b103d68"
+    },
+    {
+      "path": "before-2.stdout",
+      "bytes": 6321,
+      "sha256": "a36299ae2c9d889490147d41f528bdc82dfe0c8fef38c935b704818f4e137faf"
+    },
+    {
+      "path": "before.stdout",
+      "bytes": 5755,
+      "sha256": "8c844c23e4833ff80d77b4949a2f64d66b9cf198b215170e2d7318bf5afb3714"
+    },
+    {
+      "path": "bm25_index.before.py",
+      "bytes": 51012,
+      "sha256": "c5bccbeaaf29fb27c506c5fb74d532e316bf2dd181ce745c0784dc2371c0e2a4"
+    },
+    {
+      "path": "freeze_evidence.py",
+      "bytes": 5275,
+      "sha256": "0a05fa76efeb3374278f81a71e9710086e39708c266e687da16fee4401d1c4c7"
+    },
+    {
+      "path": "hooks-1.stdout",
+      "bytes": 1280,
+      "sha256": "a1ac7736a8cbf4a4a3f0cc7a3d253a7f9982963b3b665627a40bfd597271da55"
+    },
+    {
+      "path": "installed-cap-before/index-128-True/bm25_metadata.json",
+      "bytes": 93,
+      "sha256": "4f62f03f0e3dd330d13a11766abaa5aa471118abe3b042703b8e3a7fd9769ca6"
+    },
+    {
+      "path": "installed-cap-before/index-128-True/documents.json",
+      "bytes": 92774,
+      "sha256": "55596b35023053fca8b733e58d3fdd428e5a6522e53c0826f4a0ed7284b4b251"
+    },
+    {
+      "path": "installed-cap-before/index-3-True/bm25_metadata.json",
+      "bytes": 91,
+      "sha256": "2750b756e9550852dbd6bced5b29672f5ac0c22502609e6f796308d30edff682"
+    },
+    {
+      "path": "installed-cap-before/index-3-True/documents.json",
+      "bytes": 3412,
+      "sha256": "8d2d8cc1bba1ebd29ecf490b6c52daea41a49afdade5f05996208dc8a40015a9"
+    },
+    {
+      "path": "installed-cap-before/protocol.json",
+      "bytes": 411,
+      "sha256": "7fba9b94c7b314f41f6432851f110bf31a65ae32a79b7f1c03cbeb5fe88cd0b3"
+    },
+    {
+      "path": "installed-cap-before/run-state.json",
+      "bytes": 10983,
+      "sha256": "03799dff1a244f214deb333b8e13076cf9fe21c6e746821130def344546b92b9"
+    },
+    {
+      "path": "installed-cap-before.stdout",
+      "bytes": 1756,
+      "sha256": "91c516ab6e291d6694533cc9766705c5385033cb4280a9b37531cf346dafea37"
+    },
+    {
+      "path": "installed_cap_control.py",
+      "bytes": 3495,
+      "sha256": "5782530ff690e8b7338c66850d7b177722a5ce7eccefc821c66b4ab02c06d340"
+    },
+    {
+      "path": "source/codenib/index/sparse_idx/bm25_index.py",
+      "bytes": 52084,
+      "sha256": "8119fbdbdd714b3e31ef9e4d9c693fd38fb11808ce6dc115ec1a83615fdd22e9"
+    },
+    {
+      "path": "source/scripts/check_ask_retrieval.py",
+      "bytes": 6421,
+      "sha256": "211576dc0bf92e7534c838ee3f4ac2ead81cded7a314dc2111a472fde417f61b"
+    },
+    {
+      "path": "source/test/index/sparse_idx/test_bm25_test_filter.py",
+      "bytes": 2943,
+      "sha256": "61f8fdbfa7290b6f78753b434ed1676c1d946617ee0e3d3b8fe792c5ecd750ad"
+    },
+    {
+      "path": "targeted.stdout",
+      "bytes": 446,
+      "sha256": "4d8a83c341da084159828c64e15c0c318ccb7d8728553fe12892c53e5eb7bad9"
+    },
+    {
+      "path": "test_bm25_test_filter.py",
+      "bytes": 2943,
+      "sha256": "61f8fdbfa7290b6f78753b434ed1676c1d946617ee0e3d3b8fe792c5ecd750ad"
+    },
+    {
+      "path": "unit-full.stdout",
+      "bytes": 54562,
+      "sha256": "16dbca38cde0d49c7b1197a8751a9ee8453a3843a29e286e1c995362c6d82773"
+    },
+    {
+      "path": "verification.json",
+      "bytes": 1596,
+      "sha256": "aea5c75b5d5f353060afa9e836b36840eedfbfdfa48641b1761cce068ffd880c"
+    }
+  ],
+  "local_only_manifest": [],
+  "bundle": {
+    "encoding": "concatenated-base64-gzip-json",
+    "decoded_bytes": 411044,
+    "decoded_sha256": "828c158e481f396d9a305ca3861669f9d950f2c5c0dfbcd696acf1617b0f2db6",
+    "parts": [
+      {
+        "path": "codegraph_bm25_inner_cap_2026_10_31.part01.json",
+        "bytes": 97682,
+        "sha256": "8bca6b1592ff60ec90bbb0adb4526d036b3c723733d15ce1da6060269d9fbff4"
+      }
+    ]
+  },
+  "verification": {
+    "goal": "active",
+    "finding": "A real retriever cap of 128 (also reproduced at 3) precedes test filtering. The first PR head passes its original mock controls and CI checks but loses every implementation hit under test saturation.",
+    "fix": "Apply test eligibility while selecting k from the original full BM25 score/tie order. Leave the shared retriever limit and unfiltered path unchanged.",
+    "actual_prior_ci_wheel": "737d768c46117726553c3853eb936e04d6ba2e822095319686b723558a7c957d",
+    "installed_prior_ci_regressions_failed": 6,
+    "installed_prior_ci_preservation_passed": 3,
+    "unit_regressions_source": "nine passed; six regressions and three preservation controls",
+    "targeted_passed": 356,
+    "targeted_skipped": 1,
+    "targeted_deselected": 7,
+    "full_unit_passed": 8976,
+    "full_unit_skipped": 51,
+    "full_unit_deselected": 212,
+    "warnings": 46,
+    "ask_passed": 2,
+    "ask_total": 3,
+    "overall_ask_green": false,
+    "preexisting_ask_miss_retained": true,
+    "retained_controller_failures": [
+      "The first baseline invocation has four genuine cap failures and two fixture import failures; corrected before-2 and the byte-bound installed control reproduce all six cap failures.",
+      "The first nine-case post-fix run overlapped a formatter invocation. Every hook passed without modifying files; the authoritative targeted and full tiers run after formatting."
+    ],
+    "current_ci_admission": "open for the revised product; b24 CI admission is retained separately with its valid unresolved review",
+    "model_sdk_questions": 0,
+    "independent_successes": 0,
+    "external_users": 0
+  }
+}

@@ -31,9 +31,11 @@ Four regressions covering directory/suffix test names through both builders
 fail on unchanged production code and pass after repair. Two explicit-exclusion
 controls continue to pass. Two additional bounded-pool regressions fail on the
 old search executor, while both supporting-evidence opt-in controls pass.
-The focused builder/search suite passes 41 cases. The final combined unit tier
-passes 8,967 cases with 51 skips, 212 marker deselections and 46 warnings after
-pinned formatting. The earlier 8,963-case run remains retained separately.
+The first focused builder/search suite passes 41 cases, and its unit tier
+passes 8,967 cases. The subsequent real-ranker repair below passes 356 related
+cases with one skip and seven marker deselections. Its final combined unit tier
+passes 8,976 cases with 51 skips, 212 marker deselections and 46 warnings after
+pinned formatting. Both earlier unit runs remain retained separately.
 
 The same installed MCP driver runs before and after a real recipe update on
 one unchanged CodeNib checkout and cache location. The baseline uses actual CI
@@ -68,7 +70,31 @@ a green overall Ask gate. Queries, required paths and `top_k` are unchanged.
 
 The [exact evidence packet](codegraph_bm25_test_coverage_2026_10_31.json)
 retains the maintenance replies, original discovery miss, source/version
-checks, builder regressions and installed before/after migration. The developer
-overlay is not an unmodified CI build; current CI admission remains open.
+checks, builder regressions and installed before/after migration.
+
+## Preserve implementation hits beyond the inner limit
+
+The first PR head's unmodified CI wheel `737d768c` matches all 486 Python files,
+the native module and worker bytes of developer candidate `a1a1c9db`. Its fresh
+installed migration and unchanged Ask checks reproduce the discovery gain and
+2/3 parity. All 17 executed source-head checks pass with eight explicit skips.
+The [CI packet](codegraph_bm25_test_coverage_ci_2026_10_31.json) also retains a
+valid unresolved review: BM25 applied test filtering after its own maximum of
+128 candidates. Sufficient test hits could still hide all implementation code;
+the original mocked candidate-pool tests did not exercise that inner limit.
+
+Six real-ranker regressions reproduce this failure in that exact installed CI
+product, while three preservation controls pass. They cover candidate limits
+3 and 128, eager and reloaded indexes, and the real implementation executor.
+The correction selects eligible documents from the original complete BM25
+score/tie order before applying its limit. It does not change the shared limit,
+unfiltered ranking, query budget or index serialization. All nine cases now
+pass, and unfiltered behavior stays unchanged after filtered queries.
+
+The [inner-limit packet](codegraph_bm25_inner_cap_2026_10_31.json) retains the
+review reproduction, initial fixture import errors, installed baseline and
+final source/related/full-tier verification. The unchanged source Ask check
+still passes the same 2/3 cases. Admission of the revised unmodified CI build
+remains open; the earlier CI success does not close this gate.
 No model SDK question or new cohort runs. Prior scores stay frozen, independent
 successes remain 0/2 and external enrollment remains 0/5; public 0.2.4 is unchanged.
