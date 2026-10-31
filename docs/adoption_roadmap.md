@@ -413,6 +413,20 @@ cohort, independent success or external user. #867's unsupported concurrent
 root ownership problem remains open and is not represented as fixed by this
 discovery change.
 
+Main `c25f191c` passes all twenty executed Release verifiers and Docs. Its
+trusted Full CI passes preflight, vendored core build, unit and integration,
+then fails the legacy serial BM25 assertion that filtering must reduce the
+number of results (`20 < 20`). The [serial-contract correction](experiments/codegraph_bm25_serial_contract.md)
+checks test exclusion, retained implementation, eligible capacity and preserved
+implementation order. The same stronger test fails on actual prior CI product
+`737d768c` and passes on repaired product `8b3ca291`; no product code changes.
+The focused tests pass 13 cases, and the corrected-environment local serial
+tier passes 26 with 23 explicit skips, 9,190 deselections and five warnings.
+Original failures and the native-runner coverage gap remain explicit. Final
+PR checks/reviews and the corrected trusted-main serial/native/consumer chain
+remain open. This test repair does not close the 2/3 Ask quality gap or any
+whole-workflow, independent-success or external-use gate.
+
 The latest four-arm round records 8,821,055 normalized final main/auxiliary tokens
 and $9.311356 in SDK estimates, not invoices. The separate diagnostic adds
 78,348 tokens and $0.1850155 in SDK estimates within its $1 guard. The recorded
