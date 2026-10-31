@@ -172,9 +172,19 @@ an independently installed local wheel verifies all 485 Python files/native
 bytes and serves a source-verified graph query. The packet retains setup
 failures, twelve exact source windows and all four owned containers' absence.
 This is gate-only source-checkout timing; the installed admission reuses the
-captured index. Complete first/post-edit preparation savings remain unmeasured,
-and no model question runs. The full matched coding, confirmation and
-external-use gates remain open.
+captured index. Merged [#937](https://github.com/sysevol-ai/CodeNib/pull/937)
+passes all seventeen executed PR checks and twenty executed main release
+verifiers; main unit/integration and Docs build/deploy also pass. Conditional
+native/serial/consumer/slow/tag skips remain explicit; public 0.2.4 is unchanged.
+The [separate full preparation pair](experiments/codegraph_preparation_pair_2026_10_30.json)
+observes first graph requests of 185.678s → 188.577s and post-edit requests of
+217.153s → 212.595s with prepared dependencies/providers. One sequential pair
+shows no clear overall gain; SCIP generation varies substantially. Both final
+complete graph/occurrence/report outputs agree and 24 source windows verify,
+but initial full artifacts were not exported, leaving that prospective quality
+gate partly unobserved. Retain all 97 records and this coverage gap. No model
+question runs; the full matched coding, confirmation and external-use gates
+remain open.
 
 The latest four-arm round records 8,821,055 normalized final main/auxiliary tokens
 and $9.311356 in SDK estimates, not invoices. The separate diagnostic adds
