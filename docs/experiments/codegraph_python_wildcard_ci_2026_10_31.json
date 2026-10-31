@@ -1,0 +1,309 @@
+{
+  "schema": "codenib.python-wildcard-ci.terminal.v1",
+  "goal": "active",
+  "records": 47,
+  "record_manifest": [
+    {
+      "path": "ci-wheel-binding.json",
+      "bytes": 53841,
+      "sha256": "7afb9ebabdd0d19c7c03214122c029dafa310d96c19fa17c74e0be7729dd17ba"
+    },
+    {
+      "path": "compiler-1/declared-edit-verification.json",
+      "bytes": 2276,
+      "sha256": "4d30adc5cdc723db49725445cd772afc252072d9b177948520e4283d12f994a8"
+    },
+    {
+      "path": "compiler-1/graph.pkl",
+      "bytes": 4432,
+      "sha256": "f8bf0b2be159acc93c7acf1019defa3171bda6e4844c7fa724a0a6db9ab80b3a"
+    },
+    {
+      "path": "compiler-1/index.decoded",
+      "bytes": 31981,
+      "sha256": "f032f35db31ebde71c68125a1fd9124ca7d340811b3c7ba4d983f1e8a8f1a3d2"
+    },
+    {
+      "path": "compiler-1/index.scip",
+      "bytes": 16696,
+      "sha256": "343df2fe46a56ce0d71888ac5fe1a2e90a7b06a661632e86bbb9114e65326950"
+    },
+    {
+      "path": "compiler-1/lsp_index.pkl",
+      "bytes": 13631,
+      "sha256": "f9459c1b447cc70bf9fddc69f4c9575a9f9d9cf241c20edc958efbbaab9ac158"
+    },
+    {
+      "path": "compiler-1/manifest.after-rebuild.json",
+      "bytes": 14856,
+      "sha256": "6e79a37c217eb07f3f1f2c932a592b5bbe10f0079ab0677eac58fd8769340019"
+    },
+    {
+      "path": "compiler-1/protocol.json",
+      "bytes": 5171,
+      "sha256": "d81333a6262e28a1692fbb44933aee88e6d77a7dfc3964ef51be1ce3f5b6881b"
+    },
+    {
+      "path": "compiler-1/rebuilt-graph.pkl",
+      "bytes": 4444,
+      "sha256": "31eca634c616918575e33647a597632b0ecc2cc699764e7e31bd2ffb3fe3ecbd"
+    },
+    {
+      "path": "compiler-1/rebuilt-index.decoded",
+      "bytes": 32101,
+      "sha256": "6926c1692a6da4ff3f204f0c1ab143e86eb8292b095994504fa605e6af2ff1ba"
+    },
+    {
+      "path": "compiler-1/rebuilt-index.scip",
+      "bytes": 16812,
+      "sha256": "e7eea9ca746f490ca3db20f2429b4cf5a3171c0425c3f16faac222b7274f711d"
+    },
+    {
+      "path": "compiler-1/rebuilt-lsp_index.pkl",
+      "bytes": 13739,
+      "sha256": "3d0482a71eb80fd596ffc2d2a3f21f798634adaeef6f1c6004661e90d307cfcb"
+    },
+    {
+      "path": "compiler-1/run-state.json",
+      "bytes": 71795,
+      "sha256": "8252942c12cc08f7844d49545bf9b5d58e7c10bc621d466fd2a823fe2cfc380e"
+    },
+    {
+      "path": "compiler-1/source/asset.bin",
+      "bytes": 5,
+      "sha256": "15eb60527ec991296a84c414b57cc5b19c6e66579a01486c8f4057f495d0b08e"
+    },
+    {
+      "path": "compiler-1/source/extra_consumer.py",
+      "bytes": 65,
+      "sha256": "2de7c0efa840a30d93f126d8e6026bc37d897265ddaaf4699c136feca310f84c"
+    },
+    {
+      "path": "compiler-1/source/local.py",
+      "bytes": 81,
+      "sha256": "c9fdb9ba2c4c7000c6f8cac91a0fbb61e0a893612b07f7e1f4e1262cc4a03f69"
+    },
+    {
+      "path": "compiler-1/source/localdeps/libdefs.py",
+      "bytes": 40,
+      "sha256": "25360649551526fab085e09c301fd2e868f730d62e0aeaf4df3840ab009ab53e"
+    },
+    {
+      "path": "compiler-1/source/missing_consumer.py",
+      "bytes": 76,
+      "sha256": "94843ef0a53bf424c9c988c87566b9ab5972be039f66d9dbe89b57b6909800c0"
+    },
+    {
+      "path": "compiler-1/source/multiline.py",
+      "bytes": 77,
+      "sha256": "abc12677e0753c1fb8bbba05e68a4fe5aee5c433651e23bce8e8ca9a52c8c21a"
+    },
+    {
+      "path": "compiler-1/source/negative.py",
+      "bytes": 61,
+      "sha256": "66e7d14c4d0f0043a247c8780daeac4d1e87a28e2a5bde91c2b16f2ac859b0a4"
+    },
+    {
+      "path": "compiler-1/source/note.txt",
+      "bytes": 8,
+      "sha256": "da68f54607d5f5644954096ce1597c006c5bb9f2497e07441bf064b81003ef8a"
+    },
+    {
+      "path": "compiler-1/source/other.py",
+      "bytes": 40,
+      "sha256": "59a762ea21440f692a403c96223a32c9e95d7801cc924e536eada75dbb1fc560"
+    },
+    {
+      "path": "compiler-1/source/pkg/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "compiler-1/source/pkg/bridge.py",
+      "bytes": 66,
+      "sha256": "34b68acbfa19fc9e12766070270c7dfa367bece9e2fbb866faab51e506d88c0e"
+    },
+    {
+      "path": "compiler-1/source/pkg/cycle_a.py",
+      "bytes": 110,
+      "sha256": "91abd2948b7790df9a79ed48cfdb397d3bac403f785fe59dbc2d92fa9f20c2b1"
+    },
+    {
+      "path": "compiler-1/source/pkg/cycle_b.py",
+      "bytes": 61,
+      "sha256": "584e6430184baac0947f07c7f0472326b2908f167bf3cc10644743a58318052c"
+    },
+    {
+      "path": "compiler-1/source/pkg/origin.py",
+      "bytes": 68,
+      "sha256": "6fa0acbf19da2d52d26fd5d21247d39e565977a773a47933cd4a3775ef261275"
+    },
+    {
+      "path": "compiler-1/source/pkg/tail.py",
+      "bytes": 58,
+      "sha256": "9ad8bd4db8ef2f20fce7e717949bbe9ca6886917d1947f34fdc85680b136b90f"
+    },
+    {
+      "path": "compiler-1/source/pyrightconfig.json",
+      "bytes": 127,
+      "sha256": "01557ce3b97cfc7ee61dd00fd2fb7d2d1b5a776f16ec515c28abaca4958c5dd5"
+    },
+    {
+      "path": "compiler-1/source/rebound.py",
+      "bytes": 146,
+      "sha256": "a4b2d78e1b3964bf79bbe0d31d5ef9c9f513f810a2a6085a03b7732ff75764e4"
+    },
+    {
+      "path": "compiler-1/source/shadow.py",
+      "bytes": 107,
+      "sha256": "21854e89a06d2c1400dfd4ba00320412b0962bed1efb66bb52356c05d4b9df7c"
+    },
+    {
+      "path": "compiler-1/source/single.py",
+      "bytes": 68,
+      "sha256": "f31a31f44d626273c2574a2c16302b9e7eaf74f9f19b9f5c25bd7f82d6c28840"
+    },
+    {
+      "path": "compiler-1/source/stub_consumer.py",
+      "bytes": 67,
+      "sha256": "3e8d3f013858597fba0d9243f240e59b17fd5756c8143bf43326d4afba79eaee"
+    },
+    {
+      "path": "compiler-1/source/unicode.py",
+      "bytes": 79,
+      "sha256": "fa9e0c19d5270fae018af8a7994de1b8b39bcc930036797c42a4ef0b0446c130"
+    },
+    {
+      "path": "compiler-1/source/unrelated.py",
+      "bytes": 42,
+      "sha256": "49b7fb935b7a5e308a0e35030e8b77e2344ceef8dae4c745692e094e589c8b3a"
+    },
+    {
+      "path": "compiler-1/source/vendor_stubs/vendorpkg/__init__.pyi",
+      "bytes": 37,
+      "sha256": "a196736aa2642f325455d76c06ebffb5f70713be9506d9cc0059137aca01df8a"
+    },
+    {
+      "path": "compiler-1/source/wildcard.py",
+      "bytes": 46,
+      "sha256": "7d6d4ad3301b2d9f4f91017947e1a9f0fbf4085b65b919b67d98c7e9fe5e9021"
+    },
+    {
+      "path": "control.stderr",
+      "bytes": 9991,
+      "sha256": "3fe70b5346754518e6a30a462b65a65855fb0218dfb96222e75a43b8048e7f63"
+    },
+    {
+      "path": "control.stdout",
+      "bytes": 2250,
+      "sha256": "5c6cb8304eb6b3957670b8ebd6aa8d13cc4f281bf5d6b3c14f22d1f54e8e6c72"
+    },
+    {
+      "path": "freeze_ci.py",
+      "bytes": 6401,
+      "sha256": "8339975679db54ebe1050a05e9a6513eb6e4fc8f2938fdc6d1482074e5cc8055"
+    },
+    {
+      "path": "imported-modules.json",
+      "bytes": 12991,
+      "sha256": "cd8c5d2765bb43b08e4d14c775fdcc0da900438014509b3cb08def348ff9ab8c"
+    },
+    {
+      "path": "install.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "install.stdout",
+      "bytes": 173,
+      "sha256": "60408f68f9fa96220c44e2be1645a44bf55495a17cae18ab54af10897a404095"
+    },
+    {
+      "path": "launcher.py",
+      "bytes": 875,
+      "sha256": "3a9568cdd29b9d4a0476fa1b976de1954c46add0ef752a6c4ad8cbb2c57e1f95"
+    },
+    {
+      "path": "remote-checks.json",
+      "bytes": 10169,
+      "sha256": "cbf9d3659c35b9b4db766eff34b74a4b0d543184201d0cf200c334dcdd5007cc"
+    },
+    {
+      "path": "run_ci_gate.py",
+      "bytes": 12977,
+      "sha256": "35c3cff8dfca8b40000a60c196050908926161cd79f823ce6db8029ae0d1f787"
+    },
+    {
+      "path": "terminal-verification.json",
+      "bytes": 1074,
+      "sha256": "ff080677cdf18ff1c08714a4a0d73c80e6c19ffa25304c6334207dc82b55ab86"
+    }
+  ],
+  "local_only_manifest": [
+    {
+      "path": "artifact.zip",
+      "bytes": 3766616,
+      "sha256": "962e4ec3c04f8b72f0983102783335b8fb1676b37b3870c60d4bccf2c28da292"
+    },
+    {
+      "path": "codenib-0.2.4-cp310-abi3-manylinux_2_28_aarch64.whl",
+      "bytes": 3826751,
+      "sha256": "d805f0a0af19bfa80a92c2482b6df4b649bb09cebba05c12cc241bd6230fdc43"
+    }
+  ],
+  "bundle": {
+    "encoding": "concatenated-base64-gzip-json",
+    "decoded_bytes": 460299,
+    "decoded_sha256": "0268f350b52426ce2fff339f289890fadc18cb3d7060124101f4640a586c8949",
+    "parts": [
+      {
+        "path": "codegraph_python_wildcard_ci_2026_10_31.part01.json",
+        "bytes": 100030,
+        "sha256": "096672f4382ed43d47a7b174b5bae27d9d78ac4b81496019c30c79996da236ea"
+      },
+      {
+        "path": "codegraph_python_wildcard_ci_2026_10_31.part02.json",
+        "bytes": 30098,
+        "sha256": "aaae4966a83c237b368781306818157057a122ad30e6b9cc36d555e00bb5ba3f"
+      }
+    ]
+  },
+  "verification": {
+    "status": "verified",
+    "source_head": "807ddfbd6a78d04bae4a1eef7ffde7644248f194",
+    "wheel_sha256": "d805f0a0af19bfa80a92c2482b6df4b649bb09cebba05c12cc241bd6230fdc43",
+    "all_485_python_and_native_and_other_product_payloads_equal_developer_wheel": true,
+    "loaded_codenib_modules_from_installed_prefix": 114,
+    "actual_installed_compiler_MCP_and_declared_edit_rebuild": "passed",
+    "fixture_positives": 11,
+    "fixture_required": 11,
+    "original_negative_included": [
+      [
+        "rebound.py",
+        4,
+        4
+      ]
+    ],
+    "strict_physical_call_gate": false,
+    "owners": [
+      {
+        "pid": 1168956,
+        "returncode": 0,
+        "independently_absent": true
+      },
+      {
+        "pid": 1168984,
+        "returncode": 0,
+        "independently_absent": true
+      }
+    ],
+    "executed_checks_passed": 17,
+    "explicit_skips": 9,
+    "complete_source_replay": "The earlier installed replay uses exactly identical product bytes; retained separately, not re-executed or regraded here.",
+    "model_questions": 0,
+    "independent_successes": 0,
+    "external_users": 0,
+    "goal": "active"
+  },
+  "decision": "Unmodified CI-wheel admission passes. Keep original packets/outcomes, strict call-identity failure, broader representative coverage, baseline all-files failures, merge reconciliation and whole-workflow/use gates open. No public release or independent success."
+}

@@ -37,6 +37,9 @@ executables and SCIP/Fact/clangd Python gates through `make core-test`) — see
 - HuggingFace dataset cache lives at `~/.codenib/`.
 - Git fixtures that copy or swap `.git` must disable automatic maintenance
   before committing, so transient maintenance files cannot race the snapshot.
+- SCIP identity captures use filename-driven parametrization with a fixed
+  single-file shape. Put independently shaped multi-file captures in their own
+  fixture directory so existing globs do not collect them as compatible cases.
 - CodeNib's managed loggers do not propagate to the root logger. Attach
   `caplog.handler` to the actual logger and use `caplog.set_level` for the
   expected severity when asserting its records. Console setup can change

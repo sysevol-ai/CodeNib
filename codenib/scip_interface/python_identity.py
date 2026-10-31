@@ -11,7 +11,8 @@ physical declarations. Positional LSP definitions distinguish provider IDs
 that span different lexical bindings; a reference the provider finds no
 definition for keeps the ID's static declarations and is reported. Source-only
 definitions are reported; no reference is invented for them. The raw compiler
-artifact is retained.
+artifact is retained. A compiler read mislabeled as a wildcard-imported module
+can be retargeted only by exact, indexed positional definition evidence.
 """
 
 from __future__ import annotations
@@ -68,6 +69,9 @@ class _Source:
     declarations: list[_Declaration] = field(default_factory=list)
     parameter_anchors: dict[tuple[int, int], set[str]] = field(default_factory=dict)
     rebound_parameters: set[str] = field(default_factory=set)
+    wildcard_reads: set[tuple[tuple[int, int, int, int], str]] = field(
+        default_factory=set
+    )
 
     def column(self, line: int, column: int, encoding: int) -> int:
         """Convert a SCIP column to a UTF-8 byte column without rounding."""
@@ -183,11 +187,12 @@ def _parameter_names(node):
                     yield from _parameter_names(name)
 
 
-def _declarations(source: _Source, parser) -> list[_Declaration]:
+def _declarations(source: _Source, parser, module_reads=()) -> list[_Declaration]:
     # Use the compiler/LSP's UTF-8 text view; keep original bytes for receipts.
     content = "\n".join(source.lines).encode("utf-8")
     tree = parser.parse(content)
     result = []
+    wildcard_modules = set()
 
     def record_rebinding(target):
         if target is None or target.type in {"attribute", "subscript"}:
@@ -201,6 +206,12 @@ def _declarations(source: _Source, parser) -> list[_Declaration]:
                 record_rebinding(child)
 
     def visit(node, parent, inside_lambda=False):
+        if node.type == "import_from_statement" and any(
+            child.type == "wildcard_import" for child in node.named_children
+        ):
+            module = node.child_by_field_name("module_name")
+            if module is not None:
+                wildcard_modules.add((*module.start_point, *module.end_point))
         if node.type == "nonlocal_statement" and parent is not None:
             parent.nonlocals.update(
                 content[child.start_byte : child.end_byte].decode("utf-8")
@@ -293,6 +304,23 @@ def _declarations(source: _Source, parser) -> list[_Declaration]:
             visit(child, parent, inside_lambda or node.type == "lambda")
 
     visit(tree.root_node, None)
+    imported = {
+        occurrence.symbol
+        for occurrence in module_reads
+        if tuple(occurrence.range) in wildcard_modules
+    }
+    declarations = {declaration.start for declaration in result}
+    for occurrence in module_reads:
+        span = tuple(occurrence.range)
+        if (
+            occurrence.symbol not in imported
+            or span in wildcard_modules
+            or span[:2] in declarations
+        ):
+            continue
+        node = tree.root_node.descendant_for_point_range(span[:2], span[2:])
+        if node.type == "identifier" and (*node.start_point, *node.end_point) == span:
+            source.wildcard_reads.add((span, occurrence.symbol))
     return result
 
 
@@ -556,6 +584,59 @@ def _attribute_assignment_targets(
     ]
 
 
+def _wildcard_targets(locations, root, sources, declarations, families):
+    """Corroborate every target before replacing an existing module read.
+
+    Import resolution remains the provider's job. No name-based export table,
+    Python execution or partial set of external/unindexed targets is admitted.
+    Preserve the selected lexical binding's static declaration union.
+    """
+    if not locations:
+        return [], "no_definition"
+    targets = []
+    for location in locations:
+        try:
+            parsed = urlparse(str(location.get("targetUri") or location.get("uri")))
+            if parsed.scheme != "file" or parsed.netloc not in {"", "localhost"}:
+                return [], "target_not_local"
+            relative = (
+                Path(url2pathname(parsed.path)).resolve().relative_to(root).as_posix()
+            )
+            source = sources.get(relative)
+            if source is None:
+                return [], "target_not_indexed"
+            span = location.get("targetSelectionRange") or location.get("range") or {}
+            start, end = span["start"], span["end"]
+            coordinates = (
+                start["line"],
+                start["character"],
+                end["line"],
+                end["character"],
+            )
+            if any(type(value) is not int for value in coordinates):
+                return [], "target_range_unsupported"
+            line, column, end_line, end_column = coordinates
+            column = source.column(line, column, 2)
+            end_column = source.column(end_line, end_column, 2)
+            target = declarations.get((relative, line, column))
+            if target is None or target.end != (end_line, end_column):
+                return [], "target_not_exact_declaration"
+        except (AttributeError, KeyError, OSError, TypeError, ValueError):
+            return [], "target_range_unsupported"
+        binding = _source_binding(target)
+        selected = [
+            member
+            for _, member in families.get(
+                _binding_key(relative, target.original), ((relative, target),)
+            )
+            if _source_binding(member) == binding
+        ]
+        for member in selected:
+            if member not in targets:
+                targets.append(member)
+    return targets, "resolved"
+
+
 def normalize_python_index(
     index: Index,
     project_root: str | Path,
@@ -640,7 +721,18 @@ def normalize_python_index(
         project_prefix = (
             _symbol_parts(module_namespace)[0] if module_namespace else None
         )
-        source.declarations = _declarations(source, parser)
+        source.declarations = _declarations(
+            source,
+            parser,
+            [
+                occurrence
+                for occurrence in document.occurrences
+                if len(occurrence.range) == 4
+                and occurrence.symbol.endswith("/__init__:")
+                and occurrence.symbol_roles & _READ
+                and not occurrence.symbol_roles & _DEFINITION
+            ],
+        )
         qualified_assignments.extend(
             _qualify_module_assignment_symbols(document, source, module_namespace)
         )
@@ -828,6 +920,8 @@ def normalize_python_index(
     queries = 0
     restored = 0
     unanswered = []
+    wildcard_recovered = []
+    wildcard_unresolved = []
     provider = None
     deadline = time.monotonic() + _REPAIR_TIMEOUT
     with ExitStack() as cleanup:
@@ -1039,6 +1133,49 @@ def normalize_python_index(
             ]
             del document.symbols[:]
             document.symbols.extend(retained)
+        # Required identity recovery has priority in the same bounded client
+        # lifetime. Optional wildcard recovery never invents reads or silently
+        # discards an unresolved original. Exhausted scope stays explicit.
+        for document in candidate.documents:
+            relative = document.relative_path
+            source = sources.get(relative)
+            if source is None or not source.wildcard_reads:
+                continue
+            rewritten = []
+            for occurrence in document.occurrences:
+                if (
+                    tuple(occurrence.range),
+                    occurrence.symbol,
+                ) not in source.wildcard_reads:
+                    rewritten.append(occurrence)
+                    continue
+                item = {
+                    "file": relative,
+                    "range": list(occurrence.range),
+                    "original": occurrence.symbol,
+                }
+                changed_files.add(relative)
+                if time.monotonic() >= deadline:
+                    targets, reason = [], "repair_deadline"
+                else:
+                    locations = resolve(relative, *occurrence.range[:2])
+                    targets, reason = _wildcard_targets(
+                        locations, root, sources, declarations_by_position, families
+                    )
+                if not targets:
+                    rewritten.append(occurrence)
+                    wildcard_unresolved.append({**item, "reason": reason})
+                    continue
+                for target in targets:
+                    copy = type(occurrence)()
+                    copy.CopyFrom(occurrence)
+                    copy.symbol = target.symbol
+                    rewritten.append(copy)
+                wildcard_recovered.append(
+                    {**item, "targets": [target.symbol for target in targets]}
+                )
+            del document.occurrences[:]
+            document.occurrences.extend(rewritten)
     for relative, source in sources.items():
         if source.path.read_bytes() != source.content:
             raise RuntimeError(
@@ -1060,6 +1197,8 @@ def normalize_python_index(
         "source_only_definitions": source_only,
         "unmapped_attribute_definitions": unmapped_attributes,
         "qualified_module_assignment_symbols": qualified_assignments,
+        "recovered_wildcard_references": wildcard_recovered,
+        "unresolved_wildcard_references": wildcard_unresolved,
         "definition_provider": provider,
         "position_encoding": "UTF8",
         "source_sha256": {
