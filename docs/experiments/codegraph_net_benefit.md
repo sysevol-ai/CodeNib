@@ -282,9 +282,13 @@ being regraded. The implementation does not promote the private type/flow
 prototype, alter default exploration, replace graph references or change public
 0.2.4. Prepared tools, developer wheels and functional controls do not satisfy
 the complete-workflow 20% gate. Model questions remain unchanged, independent
-successes remain 0/2 and external enrollment/reuse remains 0/5. Source-built
-CI-wheel admission and exact-head remote checks remain pending; the draft is
-unmerged and the unrelated baseline all-files lint failures remain explicit.
+successes remain 0/2 and external enrollment/reuse remains 0/5. The separate
+[CI-wheel supplement](codegraph_source_definitions_ci_2026_10_31.json) verifies
+the unmodified wheel from source head `721adc08`: all 486 Python files, native
+bytes and worker asset match, and actual MCP/fallback/lifecycle/complete-source
+controls pass with five workers reaped. Its 21 executed checks pass with nine
+explicit skips. The draft remains unmerged pending final-head reconciliation
+and the unrelated baseline all-files lint failures; no whole-task gate changes.
 
 The [wildcard-reference repair](codegraph_python_wildcard.md) in draft [#946](https://github.com/sysevol-ai/CodeNib/pull/946) separately preserves the original strict call oracle while improving its positive recall: actual compiler/MCP calls find all 11 positive lines with the same one of five negatives. Source-backed standard definition replies authorize only existing compiler module reads; coincident targets and lexical-binding unions remain intact. The final unit tier passes 9,038 with 24 skips, and the offline installed complete-source replay preserves all 786,078 original occurrences and the exact normalized text. Builder identity advances to 10, while graph layout stays 5. The separate [CI supplement](codegraph_python_wildcard_ci_2026_10_31.json) admits the unmodified wheel from source head `807ddfbd`: all 485 Python files, native bytes and other product files equal the developer candidate, and fresh compiler/MCP/post-edit controls pass. All 17 executed source-head checks pass, with nine skips explicit. Final-head/base reconciliation, baseline all-files failures and representative wildcard/update coverage remain open. It changes no frozen cohort, independent success, external-use count or whole-task decision.
 

@@ -121,6 +121,18 @@ users and seven-day reuse remain 0/5. No model inference, account fallback or
 new spend is added. A0 and issue #874 remain active.
 
 Implementation is in draft [#945](https://github.com/sysevol-ai/CodeNib/pull/945),
-based directly on merged #944. Source-built CI-wheel admission and exact-head
-remote checks remain pending; keep the draft unmerged while those gates and
-the unrelated baseline all-files lint failures are reconciled.
+based directly on merged #944. The separate
+[CI-wheel supplement](codegraph_source_definitions_ci_2026_10_31.json)
+reconstructs 95 records in two parts without replacing the original packet.
+The unmodified aarch64 wheel from source head `721adc08` has SHA-256
+`f14e45e4d2c179771064f248ed08e581438b60e77f2170552ccf61cf386db943`.
+All 486 Python files, native bytes and the worker asset match the developer
+candidate. Fresh actual installed MCP/fallback, source-generation/lifecycle
+and complete-source controls pass; all five workers exit, including bounded
+stopped-worker cleanup. All 21 executed source-head checks pass; nine skips,
+including the initial draft unit job, stay explicit. The separate labeled unit
+job executes and passes. No public release is made.
+
+Keep the draft unmerged while final-head reconciliation and the unrelated
+baseline all-files lint failures are reconciled. Comparative benefit, reference
+call identity and repeat-use gates remain open.

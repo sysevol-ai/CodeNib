@@ -306,17 +306,22 @@ explicit rebuilding reloads in the same connection, and stopped-worker cleanup
 passes. A separate ownership audit exposes delayed cleanup after immediate
 source revocation; the final candidate reaps that worker before returning the
 stale-source error, with two before/after regressions retained. The final unit
-tier passes 9,052 with 24 skips. These are functional
-controls with prepared tools and developer-assembled wheels, not a timing
-comparison or public release. Full-source worker RSS is about 1.54 GiB in one
+tier passes 9,052 with 24 skips. A separate unmodified source-built CI wheel
+passes the same actual MCP, source-update and complete-source controls; all
+486 Python files, native bytes and worker asset match the admitted candidate.
+The [CI supplement](experiments/codegraph_source_definitions_ci_2026_10_31.json)
+retains five workers' cleanup and all 21 executed source-head checks passing,
+with nine skips explicit. These are functional controls with prepared tools,
+without a timing comparison or public release. Full-source worker RSS is about 1.54 GiB in one
 observation. References remain graph-backed: the fixture finds 10/11 required
 call lines and includes one post-rebinding negative. A separately installed
 prior version returns identical reference node fields from the same artifact;
 this diagnoses existing coverage and static-binding semantics, without changing
 the failed physical-call gate. Default exploration, representative dependency
 coverage, complete-task benefit, voluntary use and all independent/external
-gates remain open. Source-built CI-wheel admission and exact-head remote
-checks remain pending; the draft is unmerged. All-files hooks retain existing
+gates remain open. Source-head CI-wheel admission is verified; the draft is
+unmerged while final-head reconciliation and the baseline all-files gate
+remain open. All-files hooks retain existing
 failures outside the feature. No model question or participant is added.
 
 The latest four-arm round records 8,821,055 normalized final main/auxiliary tokens
