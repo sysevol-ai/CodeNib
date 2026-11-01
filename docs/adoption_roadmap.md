@@ -20,7 +20,8 @@ The current decision is to hold CodeGraph promotion and narrow investment to
 opt-in navigation and measured reliability costs. The matched cohorts and the
 [internal maintenance audit](experiments/codegraph_root_maintenance.md) have
 not established net benefit. Stop repeating similar paid cohorts without a
-product change or real consumer need; inspect unused initialization locally.
+product change or real consumer need. The [local startup audit](experiments/codegraph_startup_cost.md)
+is complete and establishes no whole-workflow improvement.
 
 Model-planned grep followed by Jev remains a candidate retrieval path under
 A2/A3, using the user's OpenRouter account. It must not require embeddings,
@@ -427,10 +428,12 @@ checks with one explicit Docs deploy skip. The original `20 < 20` failure and
 same-test old/current installed controls remain retained. Thirteen focused
 cases and the corrected-environment local serial tier pass (26 passed, 23
 skipped). The corrected [trusted run](https://github.com/sysevol-ai/CodeNib/actions/runs/41250167117)
-passes preflight, vendored core build, unit, integration, serial integration
-(38 passed, 11 skipped) and SCIP/core. Graph-consumer verification remains queued;
-the full chain is not yet terminal. All twenty executed Release verifiers and
-Docs pass. The existing 2/3 Ask check and whole-workflow benefit gates stay open.
+passes all seven executed jobs: preflight, vendored core build, unit,
+integration, serial integration (38 passed, 11 skipped), SCIP/core and graph
+consumers. Slow is explicitly skipped; the repaired commit's chain is terminal
+success. All twenty executed Release verifiers and Docs pass. Later main
+changes have their own runs. The existing 2/3 Ask check and whole-workflow
+benefit gates stay open.
 
 The [exposed root-maintenance diagnostic](experiments/codegraph_root_maintenance.md)
 answers one real internal cross-file decision under four configured-tool
@@ -446,18 +449,25 @@ and #867 is restored after an accidental PR-keyword closure. This internal
 case adds neither independent success nor external use.
 
 Keep promotion on hold and preserve opt-in navigation. Stop repeating similar
-paid cohorts without a product change or real consumer need. The next bounded
-step is local inspection of unused initialization: CodeNib spends 12.600
-seconds initializing in this case before zero product calls. A smaller startup
-cost alone will not satisfy the unchanged whole-workflow benefit threshold.
+paid cohorts without a product change or real consumer need. The bounded
+[local inspection of unused initialization](experiments/codegraph_startup_cost.md)
+is complete: CodeNib spends 12.600 seconds initializing in this case before
+zero product calls. Instrumentation observes eager BM25 preparation and seven
+full source-fingerprint passes; the cumulative times overlap. Preserve the
+source checks. A separate token-cache microbenchmark retains all tested outputs
+but establishes no installed CLI or task improvement. No new cache or startup
+mode is shipped on that basis. A real consumer and useful voluntary use remain
+the next benefit-validation input; smaller startup cost alone cannot close it.
 
 The earlier complete four-arm round records 8,821,055 normalized final
 main/auxiliary tokens and $9.311356 in SDK estimates, not invoices. The separate
 diagnostic adds 78,348 tokens and $0.1850155 within its $1 guard. The
 root-maintenance diagnostic adds 851,304 tokens and $1.4367266 in SDK estimates.
 The recorded estimate lower bound across rounds is $46.0440929 plus earlier
-unknown usage. Keep the authorized $500 API ceiling and existing native
-subscription route; no API-key/account
+unknown usage. These estimates cover the recorded experimental SDK clients;
+coding-agent usage and invoices are outside that accounting. The local startup
+audit adds no SDK question. Keep the authorized $500 API ceiling and existing
+native subscription route; no API-key/account
 fallback or complete HTTP-count claim. External enrollment, consent and
 seven-day repeat use remain 0/5, and no outreach is authorized.
 
@@ -476,7 +486,7 @@ remain in force.
 | G1: daily workflow | Dirty initialization, source-current queries, explicit same-session reload, Python identity recovery, bounded source delivery and deferred preparation are merged. The [workflow receipts](experiments/codegraph_reload_2026_10_27.json), [identity repair](experiments/codegraph_python_identity.md), [recovery probe](experiments/codegraph_agent_recovery_v1.md) and [reference semantics](experiments/codegraph_reference_semantics.md) retain their original outcomes and costs. The [wildcard-reference repair](experiments/codegraph_python_wildcard.md) in [#946](https://github.com/sysevol-ai/CodeNib/pull/946) now passes the normal strict compiler/MCP route: all 11 original positive call lines are found, with the original post-rebinding negative retained. Thirteen final boundary cases, both decoders and the 9,038-pass/24-skip unit tier pass; the full installed CodeNib replay preserves all 786,078 occurrences and existing graph bytes. Builder identity 10 requires explicit rebuilding; graph layout 5 is unchanged. #945 has a separate [combined CI-wheel admission](experiments/codegraph_source_definitions_reconciled_2026_10_31.json) on merged #946/#947: actual MCP/fallback, lifecycle and complete-source controls pass with all six owners reaped, and its admitted source head passes 21 executed checks with eight explicit skips. Both components remain unreleased and do not change frozen cohorts. The [ignored-cache repair](experiments/codegraph_ignored_cache.md) in [#949](https://github.com/sysevol-ai/CodeNib/pull/949) retains actual installed MCP queries after excluded bytecode generation while still rejecting a genuine selected edit; its unmodified CI-wheel admission matches all 486 Python files and retains worker cleanup. | The [scikit-learn cold-start gate](https://github.com/sysevol-ai/CodeNib/issues/901) remains closed by the original full verification chain. [#903](https://github.com/sysevol-ai/CodeNib/pull/903) retains only independent fixture failure/cleanup fixes; its unchanged [historical readiness receipt](experiments/codegraph_python_cold_start_2026_10_28.json) preserves the superseded provider/environment candidate without reinstating that dependency. The fix’s separate [CI-wheel admission](experiments/codegraph_python_wildcard_ci_2026_10_31.json) verifies identical product bytes and actual post-edit compiler/MCP behavior, with 17 executed source-head checks passing and nine explicit skips. The baseline all-files repair #947 is merged and incorporated. The [reconciled CI-wheel admission](experiments/codegraph_python_wildcard_reconciled_2026_10_31.json) passes compiler/MCP, declared-edit reloading and a fresh complete-source replay; all four artifacts remain byte identical. Its 87-record packet preserves the older controls. #946 is merged as `ad87b872` with its reviewed tree preserved and 18 executed final checks passing; #945 is also merged as `90d4a8ed` with its reviewed tree preserved and 21 executed final checks passing. Main `90d4a8ed` passes all seven executed trusted CI jobs, including serial integration, SCIP/core and graph consumers, plus all twenty release verifiers; slow and tag-only publication skips remain explicit. #948 changes documentation only and retains those product bytes. Complete representative wildcard/configuration/update coverage. The raw compiler alias-binding error remains separate from intentional static unions. The [standard-navigation/runtime diagnostic](experiments/codegraph_python_rebinding.md) confirms the original counterexample and shows why one definition query does not repair it; check actual competitor alias composition and a real maintenance need before another provider or efficacy round. Preserve static binding unions and the failed physical-call gate. Actual source-linked decisions, useful voluntary calls, representative whole-workflow costs, external consent and repeat use remain open; automatic rebuilding is not authorized by a stale query. |
 | G2: matched benefit | The [source-payload confirmation](experiments/codegraph_payload_results.md) completes 60 tasks, 48 source judgments and 596 original selected native outcomes. Native/Serena/Codegraph/CodeNib accept 11/10/8/10 tasks and each passes 2/3 repairs. CodeNib takes 738.588s versus Native 558.727s and Serena 666.964s; recorded MCP attempts are 0/0/6/0. All 5,294 inputs and previous outcomes remain unchanged. The later [internal maintenance audit](experiments/codegraph_root_maintenance.md) accepts 0/4 answers under its frozen word limit; CodeNib takes 16.8% more cold total time than Serena and records no product call. No complete eligible alternative or independent success is established. | Hold promotion and comparative-efficiency claims. Stop similar paid cohorts without a product change or real consumer need. Useful voluntary use, complete quality/cost gates, two independent success confirmations and external reuse remain required; the further fixed confirmation set remains unopened. |
 | G3: repeat use | The user confirms no recruitment program is currently available; no external participant is enrolled. SDK probes are maintainer-operated connectivity checks; the pilot contract now contains an unsent invitation/consent hand-off. | Five consenting users attempt setup on their own repositories; observe a first successful source-linked query and seven days of actual use, targeting voluntary return by at least three. Confirm recruitment and consent; keep missing observations explicit. |
-| G4: product decision | Hold promotion and narrow investment after the complete matched cohorts and exposed maintenance diagnostic fail to establish benefit. Preserve opt-in source-current navigation and bounded indexed references, with explicit preparation/resource costs. Retain every repair failure, source judgment and word-limit rejection. The next bounded action is local inspection of the 12.600s unused initialization; there is no further same-kind paid cohort planned. | A real consumer, representative G1 coverage, useful voluntary calls, the unchanged complete-workflow benefit gate, two independent successes and five-user repeat use remain required. Lower startup cost alone cannot close those gates. The bounded scope decision is recorded; A0 and #874 stay active. |
+| G4: product decision | Hold promotion and narrow investment after the complete matched cohorts and exposed maintenance diagnostic fail to establish benefit. Preserve opt-in source-current navigation and bounded indexed references, with explicit preparation/resource costs. Retain every repair failure, source judgment and word-limit rejection. The [local startup audit](experiments/codegraph_startup_cost.md) completes without a model question or product change; eager preparation and repeated source checks remain explicit. No further same-kind paid cohort is planned. | A real consumer, representative G1 coverage, useful voluntary calls, the unchanged complete-workflow benefit gate, two independent successes and five-user repeat use remain required. Neither a token microbenchmark nor lower startup cost alone closes those gates. The bounded scope decision is recorded; A0 and #874 stay active. |
 
 Preserve complete denominators, actual costs and unavailable outcomes. Static
 ARB scores, graph-query speed, ContextBench rank, source-delivery checks and

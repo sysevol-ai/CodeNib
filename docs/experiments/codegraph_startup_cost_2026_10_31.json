@@ -1,0 +1,199 @@
+{
+  "schema": "codenib.startup-cost.terminal.v1",
+  "records": 11,
+  "record_manifest": [
+    {
+      "path": "controls/v1/01-codenib__roots-867-codenib/initialize-product.log",
+      "bytes": 1473,
+      "sha256": "d04443c3dc7e4f15e1230929f1ea8992de5a692ae15d62048f84191726468285"
+    },
+    {
+      "path": "controls/v1/01-codenib__roots-867-codenib/profile-stats.log",
+      "bytes": 12437,
+      "sha256": "09ad34cb6792f75598cc242750497986f3074b9bd09d5a9de7c03a103431ad97"
+    },
+    {
+      "path": "controls/v1/01-codenib__roots-867-codenib/receipt.json",
+      "bytes": 112227,
+      "sha256": "c22d643a19bc4b964020b2ce10bb63f1e01c0e681b55262c3c29e823fce5080a"
+    },
+    {
+      "path": "controls/v1/01-codenib__roots-867-codenib/verify-installed-product-bytes.log",
+      "bytes": 68577,
+      "sha256": "9ca536a423f9f9745e8c94c35d4cc8957957335f0d0623a372addefb9d319f63"
+    },
+    {
+      "path": "freeze_profile.py",
+      "bytes": 4848,
+      "sha256": "6fe11cf1fc4d85d896c9ae9c2b6cfcf8abf2e9b3f4c168ada17bd9c73da9210d"
+    },
+    {
+      "path": "profile-init.stdout",
+      "bytes": 512,
+      "sha256": "a6d624ac3895f47d8c4084274f21d841493be464b0839bf1f3559a919cff56ac"
+    },
+    {
+      "path": "profile_init.py",
+      "bytes": 3693,
+      "sha256": "601bdc39ff785337816c5d03a7b88be41ae3212e7b1323db9cb2421cac4ee11d"
+    },
+    {
+      "path": "prototype_tokens.py",
+      "bytes": 3745,
+      "sha256": "e499c6dd4387a9f1a8f8e9aafd802a09e82df77ea92dca93ba532b8912c40404"
+    },
+    {
+      "path": "token-prototype-v1.json",
+      "bytes": 1591,
+      "sha256": "232454967eea72a8eadafd6195f47309633a8094834f2c9ea591382991f855d6"
+    },
+    {
+      "path": "token-prototype-v1.stdout",
+      "bytes": 1263,
+      "sha256": "599fa3acac3463a8f49470f8f236fe325a830579e1bd325135b83704fd7c4755"
+    },
+    {
+      "path": "verification.json",
+      "bytes": 2393,
+      "sha256": "c1c143704db47a3130f190468aad76474ca9355e0c268a15348ab3b5327128dc"
+    }
+  ],
+  "local_only_manifest": [
+    {
+      "path": "controls/v1/01-codenib__roots-867-codenib/common-git.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "controls/v1/01-codenib__roots-867-codenib/common-source.json",
+      "bytes": 424406,
+      "sha256": "68e96ae15ccf7f83d3077dd509958b96775fd17419937e621370b10abb9761d4"
+    },
+    {
+      "path": "controls/v1/01-codenib__roots-867-codenib/common-workspace-owner.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "controls/v1/01-codenib__roots-867-codenib/final-graph-status.log",
+      "bytes": 124,
+      "sha256": "add2bb9fc244d506f4ee03da480ec1ca70a4acc9fa87fd9521f1a6bf53227a37"
+    },
+    {
+      "path": "controls/v1/01-codenib__roots-867-codenib/install-product.log",
+      "bytes": 1535,
+      "sha256": "23b351b9a229079f915a6059b147bd756a30ab4abd10fec810cc6cfbddbad57d"
+    },
+    {
+      "path": "controls/v1/01-codenib__roots-867-codenib/launcher.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "controls/v1/01-codenib__roots-867-codenib/product-venv.log",
+      "bytes": 138,
+      "sha256": "7e70384cac45258a54a81bd9d47effc9a7bac0432781acf88986c2f78b5b6f23"
+    },
+    {
+      "path": "controls/v1/01-codenib__roots-867-codenib/profile.tar",
+      "bytes": 498688,
+      "sha256": "0c374e01ec19216b5bb50faf44dc8956651892052e32fbfbe39f228e42457b4f"
+    },
+    {
+      "path": "controls/v1/01-codenib__roots-867-codenib/verify-common-runtime.log",
+      "bytes": 227,
+      "sha256": "54efea1e163cab60ac0ef7421b60a457706bef13438119efbb167fd266735394"
+    },
+    {
+      "path": "controls/v1/01-codenib__roots-867-codenib/verify-product-identity.log",
+      "bytes": 1076,
+      "sha256": "710095c3e4fd20ee8925ce0f389da9afe522d44bf02f38f5b58bf0fcae7c691a"
+    }
+  ],
+  "bundle": {
+    "encoding": "concatenated-base64-gzip-json",
+    "decoded_bytes": 285393,
+    "decoded_sha256": "1b668fbc1eabc7e21a1c9edce158418c2dd01ddd75bbc4d4925f50684d7744c0",
+    "parts": [
+      {
+        "path": "codegraph_startup_cost_2026_10_31.part01.json",
+        "bytes": 100030,
+        "sha256": "d54cf2c373dd16a11dc1730f928340e999fd0ae33a9c0caab522363377af1dc2"
+      },
+      {
+        "path": "codegraph_startup_cost_2026_10_31.part02.json",
+        "bytes": 44022,
+        "sha256": "b9eed52389c4641ddf985da5c298950bec4316a413f62773589d736d8676c90a"
+      }
+    ]
+  },
+  "verification": {
+    "goal": "active",
+    "promotion": "hold",
+    "model_questions": 0,
+    "scope": "Local instrumentation of the previously recorded installed 8b3ca291 candidate, plus a separate host tokenization prototype. No current-release or whole-workflow improvement claim.",
+    "source_commit": "c25f191ccee9067939303be85c9c9d74ee4d0134",
+    "unprofiled_original_init_seconds": 12.6000821236521,
+    "profile_total_function_seconds": 23.998,
+    "profile_cumulative_seconds": {
+      "index_repository": 13.631,
+      "seven_fingerprint_repository_calls": 8.744,
+      "code_token_processing": 3.263,
+      "seven_client_invocations": 3.567
+    },
+    "cumulative_times_overlap_and_are_not_additive": true,
+    "profile_interpreter": "3.13.18",
+    "profile_resources": {
+      "cpus": 2,
+      "memory_gib": 4
+    },
+    "host_prototype_python": "3.12.3 (main, Jun 19 2026, 12:46:00) [GCC 13.3.0]",
+    "host_prototype_arch": "aarch64",
+    "host_prototype_python_files": 1179,
+    "host_prototype_inputs": 2363,
+    "token_prototype": [
+      {
+        "tokenizer": "code-v2",
+        "exact_outputs_equal": true,
+        "samples_seconds": {
+          "baseline": [
+            0.8400659747421741,
+            0.8286034148186445,
+            0.8297886792570353
+          ],
+          "prototype": [
+            0.5000876784324646,
+            0.4900958891957998,
+            0.49135528691112995
+          ]
+        },
+        "baseline_median_seconds": 0.8297886792570353,
+        "prototype_median_seconds": 0.49135528691112995,
+        "reduction_percent": 40.78549163251144
+      },
+      {
+        "tokenizer": "legacy",
+        "exact_outputs_equal": true,
+        "samples_seconds": {
+          "baseline": [
+            0.8064783699810505,
+            0.8052806816995144,
+            0.8032164350152016
+          ],
+          "prototype": [
+            0.4760961886495352,
+            0.47538353502750397,
+            0.4751311242580414
+          ]
+        },
+        "baseline_median_seconds": 0.8052806816995144,
+        "prototype_median_seconds": 0.47538353502750397,
+        "reduction_percent": 40.96672802031895
+      }
+    ],
+    "decision": "Keep required source checks. Do not ship a global token cache or new deferral mode on this microbenchmark alone; no repeated same-kind paid cohort. A real source-linked consumer and useful voluntary calls remain the next benefit-validation input.",
+    "independent_successes": 0,
+    "external_users": 0,
+    "original_cohort_answers_grades_timing_unchanged": true
+  }
+}
