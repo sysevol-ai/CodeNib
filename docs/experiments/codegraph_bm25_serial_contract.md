@@ -48,9 +48,10 @@ tree and an inspected real-newline squash message.
 
 The corrected [trusted run](https://github.com/sysevol-ai/CodeNib/actions/runs/41250167117)
 passes preflight, vendored core build, unit, integration, serial integration
-(38 passed, 11 skipped, 9,190 deselected, five warnings) and SCIP/core.
-Graph-consumer verification remains queued; the complete chain is not yet
-terminal. All twenty executed Release verifiers and Docs pass. The original
+(38 passed, 11 skipped, 9,190 deselected, five warnings), SCIP/core and graph
+consumers. All seven executed jobs pass and slow is explicitly skipped; the
+repaired commit's complete chain is terminal success. All twenty executed
+Release verifiers and Docs pass. Later main changes have separate runs. The original
 failed run remains a failure. The existing Ask check remains 2/3 and no model
 SDK question is part of this test correction. The separate
 [root-maintenance diagnostic](codegraph_root_maintenance.md) retains its own
