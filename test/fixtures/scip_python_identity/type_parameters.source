@@ -1,0 +1,21 @@
+class Box[T]:
+    def __init__(self, value: T) -> None:
+        self.value = value
+
+    def get(self) -> T:
+        return self.value
+
+
+def first[U](items: list[U]) -> U:
+    return items[0]
+
+
+def build():
+    class Edge[V]:
+        node: V
+
+    type Alias = list[int]
+    return Edge, Alias
+
+
+type Pair[K] = tuple[K, K]

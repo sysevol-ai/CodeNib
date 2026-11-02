@@ -35,6 +35,7 @@ fewer queries when source declarations establish a shared lexical binding.
 | `attribute_writes` | LSP can select a later instance-field write; retain the existing field definition in the same physical class rather than publishing a new definition. |
 | `decorated_field_writes` | A decorated method's field write is returned together with its constructor field definition. Require that independent definition in the same physical class and an unrebound compiler-anchored receiver; keep every returned target validated regardless of response order. |
 | `attribute_write_receivers.fixture` | Captured controls keep direct compiler-declared field targets valid for other/static-method arguments, while refusing write anchors after instance-parameter assignment, loop or match-pattern rebinding. |
+| `type_parameters` | PEP 695 type parameters (`class Box[T]`, `def first[U]`) and `type` aliases receive their owner's symbol. Their definitions would make a class or function contain itself, so they and their reads are dropped. No positional LSP query is needed. |
 | `module_walrus` | A module comprehension's assignment expression produces bare `text.` definition/read IDs in scip-python 0.6.6. Qualify only source-authenticated module bindings, retaining references and document isolation. No positional LSP query is needed. |
 
 The separate `scip_python_nested_collision.fixture` retains the original

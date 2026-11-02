@@ -13,6 +13,9 @@ definition for keeps the ID's static declarations and is reported. Source-only
 definitions are reported; no reference is invented for them. The raw compiler
 artifact is retained. A compiler read mislabeled as a wildcard-imported module
 can be retargeted only by exact, indexed positional definition evidence.
+scip-python 0.6.6 labels PEP 695 type parameters and ``type`` alias names with
+their owner's symbol; those occurrences are dropped rather than published as
+a declaration that contains itself.
 """
 
 from __future__ import annotations
@@ -71,6 +74,10 @@ class _Source:
     rebound_parameters: set[str] = field(default_factory=set)
     wildcard_reads: set[tuple[tuple[int, int, int, int], str]] = field(
         default_factory=set
+    )
+    # (scope extent, name) for each PEP 695 type parameter or alias name.
+    type_bindings: list[tuple[tuple[int, int, int, int], str]] = field(
+        default_factory=list
     )
 
     def column(self, line: int, column: int, encoding: int) -> int:
@@ -187,12 +194,71 @@ def _parameter_names(node):
                     yield from _parameter_names(name)
 
 
+def _type_parameter_names(node):
+    """Yield the bound identifier of each PEP 695 type parameter."""
+
+    if node is None:
+        return
+    for child in node.named_children:
+        while child is not None and child.type != "identifier":
+            child = child.named_children[0] if child.named_children else None
+        if child is not None:
+            yield child
+
+
+def _drop_type_binding_occurrences(document, source: _Source, relative: str):
+    """Remove occurrences scip-python gives their PEP 695 owner's symbol.
+
+    scip-python 0.6.6 labels ``T`` in ``class Box[T]`` with ``Box#`` and an
+    alias name in ``type Alias = ...`` with the enclosing function or module.
+    A definition with that symbol makes its owner contain itself, which the
+    graph must refuse. The name is source-bound to the type parameter or
+    alias, never to the owner, so neither the definition nor its reads are
+    evidence about the owner.
+    """
+
+    if not source.type_bindings:
+        return []
+    dropped, kept = [], []
+    for occurrence in document.occurrences:
+        if (
+            len(occurrence.range) == 4
+            and occurrence.symbol
+            and not occurrence.symbol.startswith("local ")
+            and occurrence.range[0] == occurrence.range[2]
+        ):
+            line, start, _, end = occurrence.range
+            text = source.lines[line].encode("utf-8")[start:end].decode("utf-8")
+            position = (line, start)
+            if text != _name(occurrence.symbol) and any(
+                name == text and scope[:2] <= position < scope[2:]
+                for scope, name in source.type_bindings
+            ):
+                dropped.append(
+                    {
+                        "file": relative,
+                        "range": list(occurrence.range),
+                        "symbol": occurrence.symbol,
+                        "definition": bool(occurrence.symbol_roles & _DEFINITION),
+                    }
+                )
+                continue
+        kept.append(occurrence)
+    if dropped:
+        del document.occurrences[:]
+        document.occurrences.extend(kept)
+    return dropped
+
+
 def _declarations(source: _Source, parser, module_reads=()) -> list[_Declaration]:
     # Use the compiler/LSP's UTF-8 text view; keep original bytes for receipts.
     content = "\n".join(source.lines).encode("utf-8")
     tree = parser.parse(content)
     result = []
     wildcard_modules = set()
+
+    def _text(node):
+        return content[node.start_byte : node.end_byte].decode("utf-8")
 
     def record_rebinding(target):
         if target is None or target.type in {"attribute", "subscript"}:
@@ -218,6 +284,34 @@ def _declarations(source: _Source, parser, module_reads=()) -> list[_Declaration
                 for child in node.named_children
                 if child.type == "identifier"
             )
+        if node.type in {"function_definition", "class_definition"}:
+            for parameter in _type_parameter_names(
+                node.child_by_field_name("type_parameters")
+            ):
+                source.type_bindings.append(
+                    ((*node.start_point, *node.end_point), _text(parameter))
+                )
+        elif node.type == "type_alias_statement":
+            left = node.child_by_field_name("left")
+            alias = left.named_children[0] if left and left.named_children else None
+            if alias is not None and alias.type == "generic_type":
+                for parameter in _type_parameter_names(
+                    next(
+                        (c for c in alias.named_children if c.type == "type_parameter"),
+                        None,
+                    )
+                ):
+                    source.type_bindings.append(
+                        ((*node.start_point, *node.end_point), _text(parameter))
+                    )
+                alias = alias.named_children[0] if alias.named_children else None
+            if alias is not None and alias.type == "identifier":
+                scope = (
+                    parent.extent
+                    if parent is not None
+                    else (0, 0, len(source.lines), 0)
+                )
+                source.type_bindings.append((scope, _text(alias)))
         if node.type in {"function_definition", "class_definition"}:
             name = node.child_by_field_name("name")
             if name is not None and not node.has_error:
@@ -669,6 +763,7 @@ def normalize_python_index(
     source_only = []
     unmapped_attributes = []
     qualified_assignments = []
+    type_binding_occurrences = []
     for document in candidate.documents:
         relative = document.relative_path
         if path_allowed is not None and not path_allowed(relative):
@@ -733,6 +828,12 @@ def normalize_python_index(
                 and not occurrence.symbol_roles & _DEFINITION
             ],
         )
+        dropped = _drop_type_binding_occurrences(document, source, relative)
+        if dropped:
+            type_binding_occurrences.extend(dropped)
+            by_position = defaultdict(list)
+            for occurrence in document.occurrences:
+                by_position[tuple(occurrence.range[:2])].append(occurrence)
         qualified_assignments.extend(
             _qualify_module_assignment_symbols(document, source, module_namespace)
         )
@@ -908,6 +1009,7 @@ def normalize_python_index(
     }
     changed_files = {relative for rows in changed.values() for relative, _ in rows}
     changed_files.update(row["file"] for row in qualified_assignments)
+    changed_files.update(row["file"] for row in type_binding_occurrences)
     # Several physical declarations can intentionally define one lexical
     # binding (branches, reassignments, or property accessors). Keep their
     # static union. LSP is needed when a provider ID spans different bindings,
@@ -1197,6 +1299,7 @@ def normalize_python_index(
         "source_only_definitions": source_only,
         "unmapped_attribute_definitions": unmapped_attributes,
         "qualified_module_assignment_symbols": qualified_assignments,
+        "dropped_type_binding_occurrences": type_binding_occurrences,
         "recovered_wildcard_references": wildcard_recovered,
         "unresolved_wildcard_references": wildcard_unresolved,
         "definition_provider": provider,
