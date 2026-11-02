@@ -34,7 +34,11 @@ from .._version import package_version
 from ..compiler.manifest import RepoManifest
 from ..log_utils import set_console_log_level
 from .context import IndexedQueryError, ServerContext, StaleSourceError
-from .explore_bounds import MAX_MCP_EXPLORE_PAYLOAD_BYTES
+from .explore_bounds import (
+    MAX_MCP_EXPLORE_PAYLOAD_BYTES,
+    MAX_MCP_EXPLORE_TEXT_BYTES,
+    TEXT_RESPONSE_MEASURE,
+)
 from .explore_session import ExploreSessionLedger, ExploreSessionRuntime
 from .graph_warmup import FAILED, READY, RUNNING, GraphTarget, GraphWarmup
 from .prompts import (
@@ -45,6 +49,9 @@ from .prompts import (
     CODENIB_GUIDE,
 )
 from .tool_surface import (
+    EXPLORE_OUTPUT_JSON,
+    EXPLORE_OUTPUT_TEXT,
+    EXPLORE_OUTPUTS,
     TOOL_SURFACE_EXPLORE,
     TOOL_SURFACE_FULL,
     TOOL_SURFACES,
@@ -651,6 +658,12 @@ async def explore_context(
                 )
             )
             raise
+        if mcp.explore_output == EXPLORE_OUTPUT_TEXT and ctx.grep_jev is None:
+            return runtime.ledger.project(
+                response,
+                max_response_bytes=MAX_MCP_EXPLORE_TEXT_BYTES,
+                response_measure=TEXT_RESPONSE_MEASURE,
+            )
         return runtime.ledger.project(
             response, max_response_bytes=MAX_MCP_EXPLORE_PAYLOAD_BYTES
         )
@@ -1169,6 +1182,15 @@ def _parse_args(
     )
     parser.add_argument("--defer-graph", action="store_true")
     parser.add_argument(
+        "--explore-output",
+        choices=sorted(EXPLORE_OUTPUTS),
+        default=EXPLORE_OUTPUT_TEXT,
+        help=(
+            "explore_context result form: readable text for agents, or "
+            "structured JSON for programmatic clients."
+        ),
+    )
+    parser.add_argument(
         "--retrieval-route",
         choices=("indexed", "grep-jev"),
         default="indexed",
@@ -1194,6 +1216,8 @@ def init_grep_jev_server(repository: str, config) -> None:
         _ctx.close()
     _ctx = ServerContext(manifest=RepoManifest(repo_path=str(root)), grep_jev=config)
     configure_tool_surface(TOOL_SURFACE_EXPLORE, preload_explore=False)
+    # Keep plan.retrieval's models and reported cost visible to the agent.
+    mcp.set_explore_output(EXPLORE_OUTPUT_JSON)
     mcp._lowlevel_server.instructions = CODENIB_GREP_INSTRUCTIONS
 
 
@@ -1499,6 +1523,7 @@ def main(argv: list[str] | None = None) -> None:
     args = _parse_args(argv)
     set_console_log_level(args.log_level)
     configure_tool_surface(args.tool_surface)
+    mcp.set_explore_output(args.explore_output)
     manifest_path = args.manifest_flag or args.manifest
     if args.artifact and manifest_path:
         logger.error("Choose either a manifest or --artifact, not both")

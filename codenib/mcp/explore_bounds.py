@@ -30,13 +30,19 @@ from mcp.types import CallToolResult, TextContent
 MAX_EXPLORE_CALL_RESULT_BYTES = 256 * 1024
 MCP_ENVELOPE_RESERVE_BYTES = 4 * 1024
 MAX_EXPLORE_PAYLOAD_BYTES = MAX_EXPLORE_CALL_RESULT_BYTES - MCP_ENVELOPE_RESERVE_BYTES
-# Delivery budget for MCP clients. Claude Code moves a text tool result longer
-# than 50,000 characters into a file instead of showing it to the model. The
-# pretty-printed text copy is at most about 60% of the measured call result,
-# so projecting to this budget keeps that copy near 44,000 characters.
+# Delivery budgets for MCP clients. Claude Code moves a tool result longer than
+# 50,000 characters into a file instead of showing it to the model, and shows
+# a structured result as its compact structuredContent JSON, which is under
+# half of a structured call result. Both budgets keep what the model reads
+# below that threshold; a text-only result is measured directly.
 MAX_MCP_EXPLORE_PAYLOAD_BYTES = 72 * 1024
+MAX_MCP_EXPLORE_TEXT_BYTES = 40 * 1024
 
 _RESPONSE_MEASURE = "mcp-call-result-json-utf8-v1"
+# A text-only result: the readable rendering and no structured copy. Claude
+# Code shows the model a result's structuredContent as compact JSON whenever
+# it is present, so agents only see readable text without it.
+TEXT_RESPONSE_MEASURE = "mcp-text-content-utf8-v1"
 _UTF8_LIMITS = {
     "backend": 512,
     "capability": 256,
@@ -138,10 +144,30 @@ def _projection_stats(response: Mapping[str, Any]) -> _ProjectionStats:
     )
 
 
+def _response_measure(response: Mapping[str, Any]) -> str:
+    plan = response.get("plan")
+    delivery = plan.get("delivery") if isinstance(plan, Mapping) else None
+    measure = (
+        delivery.get("response_measure") if isinstance(delivery, Mapping) else None
+    )
+    return measure if measure == TEXT_RESPONSE_MEASURE else _RESPONSE_MEASURE
+
+
 def _as_call_tool_result(payload: Mapping[str, Any]) -> CallToolResult:
-    """Mirror MCPServer's structured-dict conversion without private APIs."""
+    """Build the call result a server sends for *payload*.
+
+    The default mirrors MCPServer's structured-dict conversion, whose text
+    block is a pretty-printed JSON copy. A response bounded for the text
+    measure is the readable rendering alone.
+    """
 
     structured = dict(payload)
+    if _response_measure(structured) == TEXT_RESPONSE_MEASURE:
+        from .explore_text import render_explore_text
+
+        return CallToolResult(
+            content=[TextContent(type="text", text=render_explore_text(structured))]
+        )
     text = pydantic_core.to_json(
         structured,
         fallback=str,
@@ -151,6 +177,12 @@ def _as_call_tool_result(payload: Mapping[str, Any]) -> CallToolResult:
         content=[TextContent(type="text", text=text)],
         structured_content=structured,
     )
+
+
+def explore_call_result(payload: Mapping[str, Any]) -> CallToolResult:
+    """Return the exact call result whose size the bound measured."""
+
+    return _as_call_tool_result(payload)
 
 
 def call_tool_result_bytes(result: CallToolResult) -> int:
@@ -270,7 +302,7 @@ def _sync_projection_summary(
             "applied": stats.applied,
             "encoded_bytes": encoded_bytes,
             "max_bytes": max_bytes,
-            "measure": _RESPONSE_MEASURE,
+            "measure": _response_measure(response),
             "metadata_fields_elided": stats.metadata_fields_elided,
             "metadata_bytes_omitted": stats.metadata_bytes_omitted,
             "relationships_summarized": stats.relationships_summarized,
@@ -654,9 +686,10 @@ def _minimal_response(
     original_delivery = (
         plan.get("delivery") if isinstance(plan.get("delivery"), Mapping) else {}
     )
+    measure = _response_measure(response)
     minimal_delivery = {
         "max_response_bytes": max_bytes,
-        "response_measure": _RESPONSE_MEASURE,
+        "response_measure": measure,
     }
     for key in ("session_dedup", "session_scope", "session_max_ranges"):
         if key in original_delivery:
@@ -699,7 +732,7 @@ def _minimal_response(
         "plan": {
             "delivery": {
                 "max_response_bytes": max_bytes,
-                "response_measure": _RESPONSE_MEASURE,
+                "response_measure": measure,
             }
         },
         "summary": {
@@ -723,23 +756,27 @@ def bound_explore_response(
     payload: Mapping[str, Any],
     *,
     max_bytes: int = MAX_EXPLORE_PAYLOAD_BYTES,
+    measure: str | None = None,
 ) -> dict[str, Any]:
     """Return a deterministic response whose MCP call-result fits *max_bytes*.
 
     Relationships are reduced atomically to header-only summaries before any
     source body is removed.  Extra anchors are lower priority than returned
     source bodies, and the highest-ranked body is the last evidence removed.
-    The input mapping is never mutated.
+    The input mapping is never mutated. *measure* selects the text block that
+    is counted; by default a response keeps the measure it was bounded with.
     """
 
     if isinstance(max_bytes, bool) or not isinstance(max_bytes, int) or max_bytes < 1:
         raise ValueError("max_bytes must be a positive integer")
+    if measure not in (None, _RESPONSE_MEASURE, TEXT_RESPONSE_MEASURE):
+        raise ValueError(f"unknown explore response measure: {measure!r}")
 
     response = copy.deepcopy(dict(payload))
     stats = _projection_stats(response)
     delivery = _delivery(response)
     delivery["max_response_bytes"] = max_bytes
-    delivery["response_measure"] = _RESPONSE_MEASURE
+    delivery["response_measure"] = measure or _response_measure(response)
     _refresh_returned_summary(response)
     _sync_projection_summary(response, stats, max_bytes=max_bytes)
     measured = _stamp_encoded_bytes(response)
@@ -816,11 +853,14 @@ def bound_explore_response(
 
 
 __all__ = [
+    "TEXT_RESPONSE_MEASURE",
     "MAX_EXPLORE_CALL_RESULT_BYTES",
     "MAX_EXPLORE_PAYLOAD_BYTES",
     "MAX_MCP_EXPLORE_PAYLOAD_BYTES",
+    "MAX_MCP_EXPLORE_TEXT_BYTES",
     "MCP_ENVELOPE_RESERVE_BYTES",
     "bound_explore_response",
     "call_tool_result_bytes",
+    "explore_call_result",
     "explore_call_result_bytes",
 ]

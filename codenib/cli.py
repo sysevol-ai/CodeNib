@@ -915,6 +915,8 @@ def _run_mcp(args: argparse.Namespace) -> int:
                 args.log_level,
                 "--tool-surface",
                 args.tool_surface,
+                "--explore-output",
+                getattr(args, "explore_output", "text"),
             )
         )
         if args.repository:
@@ -929,6 +931,8 @@ def _run_mcp(args: argparse.Namespace) -> int:
                 args.log_level,
                 "--tool-surface",
                 args.tool_surface,
+                "--explore-output",
+                getattr(args, "explore_output", "text"),
                 *(("--defer-graph",) if getattr(args, "defer_graph", False) else ()),
             ]
         )
@@ -3756,6 +3760,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--defer-graph",
         action="store_true",
         help="prepare a local graph on its first graph query",
+    )
+    mcp_parser.add_argument(
+        "--explore-output",
+        choices=("text", "json"),
+        default="text",
+        help=(
+            "explore_context result form: readable text for agents, or "
+            "structured JSON for programmatic clients"
+        ),
     )
     mcp_parser.add_argument(
         "--runtime-probe",

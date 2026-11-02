@@ -862,6 +862,37 @@ def test_refresh_waits_a_bounded_time_for_an_old_graph_build(local_server, monke
     asyncio.run(session())
 
 
+@pytest.mark.parametrize("output", ("text", "json"))
+def test_explore_output_is_readable_text_or_structured_json(
+    local_server, monkeypatch, output
+):
+    monkeypatch.setattr(server.mcp, "_explore_output", output)
+
+    async def session():
+        async with Client(server.mcp, mode="auto", cache=None) as client:
+            listed = {tool.name: tool for tool in (await client.list_tools()).tools}
+            result = await client.call_tool(
+                "explore_context", {"query": "original", "include_dependencies": False}
+            )
+            assert not result.is_error
+            text = result.content[0].text
+            if output == "text":
+                # Claude Code shows structuredContent as JSON whenever it is
+                # present, so a text result must not carry one.
+                assert listed["explore_context"].output_schema is None
+                assert result.structured_content is None
+                assert text.startswith("1 files, 1 source windows")
+                assert "--- sample.py:1" in text
+                assert "     1\tdef original():" in text
+                assert "source_fingerprint" not in text
+            else:
+                assert listed["explore_context"].output_schema is not None
+                assert result.structured_content["files"][0]["file"] == "sample.py"
+                assert json.loads(text) == result.structured_content
+
+    asyncio.run(session())
+
+
 @pytest.mark.parametrize("failure", ("provider", "source-edit", "already-stale"))
 def test_deferred_preparation_failure_never_delivers_graph_or_hides_stale_source(
     local_server, monkeypatch, failure

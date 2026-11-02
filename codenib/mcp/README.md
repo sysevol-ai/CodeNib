@@ -145,13 +145,17 @@ marked `verified: false`; they are not presented as live source.
 
 #### Result and connection bounds
 
-Explore results served over MCP are projected to 72 KiB per serialized
-`CallToolResult`, not just its inner response dictionary. Measurement covers
-the structured and text forms carried by the result; the budget keeps the text
-form under the 50,000 characters at which Claude Code moves a tool result into
-a file. CodeNib also enforces a 256 KiB (262,144-byte) hard ceiling on each
+`codenib mcp` serves `explore_context` as readable text by default:
+`explore_text.render_explore_text` (line-numbered source windows, direct
+static references, one-line notes), with no `structuredContent` and no output
+schema, because Claude Code presents structured content to the model as JSON
+whenever it is present. Text results are measured as
+`mcp-text-content-utf8-v1` and projected to 40 KiB. `--explore-output json`
+restores the structured result with its JSON text copy, measured over both
+forms and projected to 72 KiB per serialized `CallToolResult`; grep/Jev always
+uses JSON. CodeNib also enforces a 256 KiB (262,144-byte) hard ceiling on each
 serialized result. In-process callers of `explore_context_impl` keep the
-256 KiB projection.
+256 KiB JSON-measured projection.
 
 Every stdio connection owns an independent in-memory runtime ledger. It retains
 at most 160 verified source ranges and is not shared across connections or

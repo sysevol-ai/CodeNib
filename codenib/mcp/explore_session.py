@@ -74,6 +74,7 @@ class ExploreSessionLedger:
         response: Mapping[str, Any],
         *,
         max_response_bytes: int = MAX_EXPLORE_PAYLOAD_BYTES,
+        response_measure: str | None = None,
     ) -> dict[str, Any]:
         """Return a bounded copy with safe repeats replaced by direct pointers."""
 
@@ -93,7 +94,9 @@ class ExploreSessionLedger:
                 else:
                     self._annotate_retained(reference, call_id=call_id)
 
-            result = bound_explore_response(result, max_bytes=max_response_bytes)
+            result = bound_explore_response(
+                result, max_bytes=max_response_bytes, measure=response_measure
+            )
             proposed = previous_seen
             evicted = 0
             for _ in range(8):
@@ -114,7 +117,9 @@ class ExploreSessionLedger:
                     ranges=len(proposed),
                     evicted=evicted,
                 )
-                result = bound_explore_response(result, max_bytes=max_response_bytes)
+                result = bound_explore_response(
+                    result, max_bytes=max_response_bytes, measure=response_measure
+                )
                 if _delivery_signature(result) == before:
                     break
             else:  # pragma: no cover - fixed public budget converges immediately
