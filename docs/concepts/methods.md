@@ -208,7 +208,7 @@ and whether that content can be trusted.
 | Mechanism | What happens | Status |
 | --- | --- | --- |
 | Pull through tools | The agent calls search, navigation, and read tools as needed | Default for `query()`, MCP clients, and the Web UI |
-| Composite call | `explore_context` returns ranked anchors, the LSP route, dependency neighbors, and verified source windows under a 72 KiB result limit, and points back to ranges it already returned in the same connection | Recommended first call for MCP clients |
+| Composite call | `explore_context` returns ranked anchors, the LSP route, dependency neighbors, and verified source windows as line-numbered text under a 40 KiB limit, and points back to ranges it already returned in the same connection | Recommended first call for MCP clients |
 | Startup route context | `enable_lsp_route_context` adds LSP route anchors to the first prompt | Opt-in on `AgentRunner` and `CodeNibAgentOptions` |
 | Pre-loaded hints | The evaluation harness can insert BM25, embedding, or graph results into the first prompt and vary how strongly the agent is told to trust them | Research arms only; not a product default |
 

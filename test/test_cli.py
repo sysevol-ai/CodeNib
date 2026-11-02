@@ -1351,7 +1351,7 @@ def test_mcp_manifest_forwards_explore_tool_surface(
             "WARNING",
             "--tool-surface",
             "explore",
-            *(["--defer-graph"] if defer_graph else []),
+            *(["--defer-graph", "--explore-output", "json"] if defer_graph else []),
         ]
     )
 
@@ -1363,6 +1363,8 @@ def test_mcp_manifest_forwards_explore_tool_surface(
             "WARNING",
             "--tool-surface",
             "explore",
+            "--explore-output",
+            "json" if defer_graph else "text",
             *(["--defer-graph"] if defer_graph else []),
         ]
     ]
@@ -1405,6 +1407,8 @@ def test_mcp_portable_artifact_forwards_full_tool_surface(
             "ERROR",
             "--tool-surface",
             "full",
+            "--explore-output",
+            "text",
             "--repository",
             "owner/repository",
         ]
