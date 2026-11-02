@@ -103,9 +103,12 @@ characters. They accept integer `top_k` values from 1 through 100.
 
 ### `explore_context`
 
-Find implementation code and source evidence for a repository question. Start
-with `query` alone, putting known symbol names, error text, or file hints in
-that query. Inspect the returned source windows and file/line evidence.
+Explain how code in the repository fits together. Agents are told to call it
+first for questions that span functions or files and to keep Grep for exact
+strings. Put the question and any known names, error text or file hints in
+`query`; list known function or class names in `symbols`. The response groups
+current source windows by file with line ranges and adds static callers and
+callees of the main symbols when the graph is available.
 
 In on-demand graph mode, an ordinary cold query starts with source. Request
 `symbols` or `include_dependencies=true` when you need indexed relationships.

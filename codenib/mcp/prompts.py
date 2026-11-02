@@ -4,35 +4,38 @@
 
 """MCP prompt resource - guidance for calling agents."""
 
-CODENIB_FULL_INSTRUCTIONS = (
-    "CodeNib finds repository implementations and source evidence. "
-    "Use explore_context with a question or symbol name in query; include any "
-    "known file hints there. It returns bounded source windows with file and "
-    "line evidence. The full surface also exposes "
-    "lower-level search, LSP-shaped navigation, dependency, source, and "
-    "manifest tools when one operation must be forced explicitly. Graph "
-    "dependencies are indexed static references, including fields, type uses "
-    "and function values. They do not prove invocation or complete runtime "
-    "coverage; inspect source call sites before describing calls. In on-demand "
-    "graph mode, a cold query without symbols starts with source; symbols or "
-    "include_dependencies=true request provider and graph preparation. A complete "
-    "warm graph is reused; include_dependencies=false omits expansion. Check "
-    "source verification and coverage before relying on a result."
+# Agents choose between this tool and their built-in Grep/Read from these
+# words alone, so lead with when the tool is the better first call and what
+# one call returns. Keep preparation and response-field detail in the guides
+# and documentation, where it does not read as a reason to skip the tool.
+_EXPLORE_WHEN = (
+    "CodeNib has indexed this repository's source and its static references "
+    "(calls, imports, fields and types). Call explore_context first when a "
+    "question spans more than one function or file: how a feature works, where "
+    "a behavior is handled, what calls a function or what it calls, or what a "
+    "change would affect. One call returns the relevant definitions as source "
+    "windows read from the current checkout, grouped by file with line ranges "
+    "you can cite, together with their callers and callees when the graph is "
+    "available, so you do not need a separate Grep and Read for each of them. "
+    "Use Grep for an exact string and Read for a file you already know you "
+    "need. "
+)
+_EXPLORE_HOW = (
+    "Ask in plain language in query and include any names, error text or file "
+    "paths you know; list known function, class or method names in symbols to "
+    "center the answer on them. Callers and callees are static references: "
+    "confirm a runtime path in the returned source before stating that a call "
+    "happens."
 )
 
-CODENIB_EXPLORE_INSTRUCTIONS = (
-    "CodeNib finds implementations, source evidence, and indexed relationships "
-    "for repository questions. Start with explore_context using query alone: "
-    "a question, symbol name, error text, and any file hints belong in query. "
-    "Read the returned source windows and file/line evidence; check verification "
-    "and coverage diagnostics. In on-demand graph mode, a cold query without "
-    "symbols starts with source. For indexed relationships, provide symbols or "
-    "include_dependencies=true; preparation can install providers and build a "
-    "graph. A complete warm graph is reused; include_dependencies=false omits "
-    "expansion. Indexed references include fields, types, and function values. "
-    "Inspect source before claiming invocation or a complete runtime path; "
-    "external and dynamic calls may be absent."
+CODENIB_FULL_INSTRUCTIONS = (
+    _EXPLORE_WHEN
+    + _EXPLORE_HOW
+    + " The full tool surface also exposes lower-level search, navigation, "
+    "dependency and source tools for forcing a single operation."
 )
+
+CODENIB_EXPLORE_INSTRUCTIONS = _EXPLORE_WHEN + _EXPLORE_HOW
 
 CODENIB_GREP_INSTRUCTIONS = (
     "CodeNib searches current repository source with model-planned grep and Jev. "
@@ -48,10 +51,11 @@ CODENIB_GREP_INSTRUCTIONS = (
 CODENIB_EXPLORE_GUIDE = """\
 # CodeNib Explore Guide
 
-Find the code behind a repository question with `explore_context`. Start with
-`query` alone: use a question, symbol name, or error text, and include any known
-file hints in that query. The result provides bounded source windows with file
-paths and line ranges to inspect.
+Use `explore_context` first for a question that spans more than one function
+or file. Ask in plain language in `query`, with any names, error text or file
+hints you know, and list known function or class names in `symbols`. The result
+groups current source windows by file, with line ranges, and adds the static
+callers and callees of the main symbols when the graph is available.
 
 Use `budget="balanced"` initially, `budget="fast"` for orientation, or
 `budget="thorough"` for more returned context. The budget controls returned
@@ -59,9 +63,10 @@ context and does not request graph preparation.
 
 In on-demand graph mode, a cold query without symbols returns ranked source
 by default. When you need indexed relationships, provide `symbols` or
-`include_dependencies=true` to prepare and use the graph. That request can
-install providers and build the graph. Once a complete graph is ready,
-ordinary queries reuse it; set
+`include_dependencies=true`. A Python repository builds its graph in the
+background; until it is ready the answer comes from source search and a
+`graph_preparing` diagnostic says so, so repeat the query later for callers
+and callees. Once a complete graph is ready, ordinary queries reuse it; set
 `include_dependencies=false` to omit dependency expansion explicitly.
 
 Check `plan.route.provider` to see which navigation backend actually ran,
@@ -98,8 +103,9 @@ uses. Inspect source call sites to establish invocation; external and dynamic
 calls may be absent.
 
 In on-demand graph mode, a cold query without symbols starts with ranked source.
-For indexed relationships, provide symbols or `include_dependencies=true`;
-preparation can install providers and build the graph.
+For indexed relationships, provide symbols or `include_dependencies=true`. A
+Python repository builds its graph in the background and reports
+`graph_preparing` until it is ready; other languages build it on that request.
 Once a complete graph is ready, ordinary queries reuse it. The context budget
 controls returned context, not whether graph preparation is requested.
 
