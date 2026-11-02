@@ -10,6 +10,15 @@ exists. CodeNib takes 738.588 seconds versus Native 558.727 and Serena 666.964,
 and receives zero recorded product calls. No 20% whole-workflow benefit or
 independent success confirmation is established.
 
+The separate [guided startup review](codegraph_guided_startup_review.md)
+instructs actual CodeNib use on one exposed maintenance question. It records
+one delivered BM25-only call, 116.120 seconds of complete cold time versus
+Native's 112.915, and 5/7 source criteria versus 7/7. The lower SDK estimate
+accompanies different answer coverage and a source-derived counterexample to
+the guided proposal. This is conditional use, not voluntary adoption, a repair
+benchmark, typed-graph benefit or an independent success. Prior outcomes and
+the complete-workflow gates stay unchanged.
+
 Product correctness repairs, deferred source-first exploration, complete source
 windows and installed-wheel admission are verified within their documented
 scope. All original [v1](codegraph_matched_assessment_v1.md),
