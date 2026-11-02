@@ -467,6 +467,44 @@ def test_noncyclic_collisions_keep_each_call_in_its_lexical_function(tmp_path):
     }
 
 
+def test_pep695_type_bindings_do_not_make_their_owner_contain_itself(tmp_path):
+    index, resolve, queries = _captured_fixture(tmp_path, "type_parameters")
+    raw = tmp_path / "raw.decoded"
+    raw.write_text(MessageToString(index, as_utf8=True))
+    with pytest.raises(ValueError, match="containment cycle"):
+        SCIPPythonGraphDecoder(str(raw), str(tmp_path)).decode().validate_containment()
+
+    report = normalize_python_index(index, tmp_path, resolve_definitions=resolve)
+    decoded = tmp_path / "index.decoded"
+    decoded.write_text(MessageToString(index, as_utf8=True))
+    graph = SCIPPythonGraphDecoder(str(decoded), str(tmp_path)).decode()
+    graph.save_graph(str(tmp_path / "graph.pkl"))
+
+    names = {vertex["unified_name"] for vertex in graph.graph.vs}
+    assert {
+        "nested.py:Box",
+        "nested.py:Box.__init__()",
+        "nested.py:Box.get()",
+        "nested.py:first()",
+        "nested.py:build()",
+        "nested.py:build().Edge",
+        "nested.py:build().Edge.node",
+    } <= names
+    dropped = report["dropped_type_binding_occurrences"]
+    # T, V, the in-function alias, and the module alias with its parameter.
+    assert {tuple(row["range"]) for row in dropped if row["definition"]} == {
+        (0, 10, 0, 11),
+        (13, 15, 13, 16),
+        (16, 9, 16, 14),
+        (20, 5, 20, 9),
+        (20, 10, 20, 11),
+    }
+    # The fixture has no recursion: reads of a type name never reference
+    # their owner from inside it.
+    assert not any(edge.is_loop() for edge in graph.graph.es)
+    assert queries == []
+
+
 def test_utf16_provider_columns_become_exact_utf8_query_positions(tmp_path):
     index, resolve, queries = _captured_fixture(tmp_path, "unicode")
     normalize_python_index(index, tmp_path, resolve_definitions=resolve)
@@ -1169,6 +1207,7 @@ def test_expired_recovery_budget_does_not_start_a_provider(tmp_path, monkeypatch
         "attribute_writes",
         "decorated_field_writes",
         "module_walrus",
+        "type_parameters",
     ],
 )
 def test_native_decoder_preserves_recovered_definitions_and_references(tmp_path, case):
