@@ -1,0 +1,347 @@
+metadata {
+  tool_info {
+    name: "scip-python"
+    version: "0.6.6"
+  }
+  project_root: "file:///tmp/codenib-python-identity-20261102/type_parameters/repo"
+  text_document_encoding: UTF8
+}
+documents {
+  relative_path: "nested.py"
+  occurrences {
+    range: 0
+    range: 0
+    range: 0
+    symbol: "scip-python python identity 0 nested/__init__:"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 0
+    range: 6
+    range: 9
+    symbol: "scip-python python identity 0 nested/Box#"
+    symbol_roles: 1
+    enclosing_range: 0
+    enclosing_range: 0
+    enclosing_range: 5
+    enclosing_range: 25
+  }
+  occurrences {
+    range: 0
+    range: 10
+    range: 11
+    symbol: "scip-python python identity 0 nested/Box#"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 1
+    range: 8
+    range: 16
+    symbol: "scip-python python identity 0 nested/Box#__init__()."
+    symbol_roles: 1
+    enclosing_range: 1
+    enclosing_range: 4
+    enclosing_range: 2
+    enclosing_range: 26
+  }
+  occurrences {
+    range: 1
+    range: 17
+    range: 21
+    symbol: "scip-python python identity 0 nested/Box#__init__().(self)"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 1
+    range: 23
+    range: 28
+    symbol: "scip-python python identity 0 nested/Box#__init__().(value)"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 1
+    range: 30
+    range: 31
+    symbol: "scip-python python identity 0 nested/Box#"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 2
+    range: 8
+    range: 12
+    symbol: "scip-python python identity 0 nested/Box#__init__().(self)"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 2
+    range: 13
+    range: 18
+    symbol: "scip-python python identity 0 nested/Box#value."
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 2
+    range: 21
+    range: 26
+    symbol: "scip-python python identity 0 nested/Box#__init__().(value)"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 4
+    range: 8
+    range: 11
+    symbol: "scip-python python identity 0 nested/Box#get()."
+    symbol_roles: 1
+    enclosing_range: 4
+    enclosing_range: 4
+    enclosing_range: 5
+    enclosing_range: 25
+  }
+  occurrences {
+    range: 4
+    range: 21
+    range: 22
+    symbol: "scip-python python identity 0 nested/Box#"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 4
+    range: 12
+    range: 16
+    symbol: "scip-python python identity 0 nested/Box#get().(self)"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 5
+    range: 15
+    range: 19
+    symbol: "scip-python python identity 0 nested/Box#get().(self)"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 5
+    range: 20
+    range: 25
+    symbol: "scip-python python identity 0 nested/Box#value."
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 8
+    range: 4
+    range: 9
+    symbol: "scip-python python identity 0 nested/first()."
+    symbol_roles: 1
+    enclosing_range: 8
+    enclosing_range: 0
+    enclosing_range: 9
+    enclosing_range: 19
+  }
+  occurrences {
+    range: 8
+    range: 32
+    range: 33
+    symbol: "scip-python python identity 0 nested/first()."
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 8
+    range: 13
+    range: 18
+    symbol: "scip-python python identity 0 nested/first().(items)"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 8
+    range: 20
+    range: 24
+    symbol: "scip-python python python-stdlib 3.11 builtins/list#"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 8
+    range: 25
+    range: 26
+    symbol: "scip-python python identity 0 nested/first()."
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 9
+    range: 11
+    range: 16
+    symbol: "scip-python python identity 0 nested/first().(items)"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 12
+    range: 4
+    range: 9
+    symbol: "scip-python python identity 0 nested/build()."
+    symbol_roles: 1
+    enclosing_range: 12
+    enclosing_range: 0
+    enclosing_range: 17
+    enclosing_range: 22
+  }
+  occurrences {
+    range: 13
+    range: 10
+    range: 14
+    symbol: "scip-python python identity 0 nested/build().Edge#"
+    symbol_roles: 1
+    enclosing_range: 13
+    enclosing_range: 4
+    enclosing_range: 14
+    enclosing_range: 15
+  }
+  occurrences {
+    range: 13
+    range: 15
+    range: 16
+    symbol: "scip-python python identity 0 nested/build().Edge#"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 14
+    range: 8
+    range: 12
+    symbol: "scip-python python identity 0 nested/build().Edge#node."
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 14
+    range: 14
+    range: 15
+    symbol: "scip-python python identity 0 nested/build().Edge#"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 16
+    range: 9
+    range: 14
+    symbol: "scip-python python identity 0 nested/build()."
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 16
+    range: 17
+    range: 21
+    symbol: "scip-python python python-stdlib 3.11 builtins/list#"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 16
+    range: 22
+    range: 25
+    symbol: "scip-python python python-stdlib 3.11 builtins/int#"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 17
+    range: 11
+    range: 15
+    symbol: "scip-python python identity 0 nested/build().Edge#"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 17
+    range: 17
+    range: 22
+    symbol: "scip-python python identity 0 nested/build()."
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 20
+    range: 5
+    range: 9
+    symbol: "scip-python python identity 0 nested/"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 20
+    range: 10
+    range: 11
+    symbol: "scip-python python identity 0 nested/"
+    symbol_roles: 1
+  }
+  occurrences {
+    range: 20
+    range: 15
+    range: 20
+    symbol: "scip-python python python-stdlib 3.11 builtins/tuple#"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 20
+    range: 21
+    range: 22
+    symbol: "scip-python python identity 0 nested/"
+    symbol_roles: 8
+  }
+  occurrences {
+    range: 20
+    range: 24
+    range: 25
+    symbol: "scip-python python identity 0 nested/"
+    symbol_roles: 8
+  }
+  symbols {
+    symbol: "scip-python python identity 0 nested/__init__:"
+    documentation: "(module) nested"
+  }
+  symbols {
+    symbol: "scip-python python identity 0 nested/Box#"
+    documentation: "```python\nclass Box:\n```"
+  }
+  symbols {
+    symbol: "scip-python python identity 0 nested/Box#__init__()."
+    documentation: "```python\ndef __init__(\n  self,\n  value: T\n) -> None:\n```"
+  }
+  symbols {
+    symbol: "scip-python python identity 0 nested/Box#__init__().(self)"
+  }
+  symbols {
+    symbol: "scip-python python identity 0 nested/Box#__init__().(value)"
+  }
+  symbols {
+    symbol: "scip-python python identity 0 nested/Box#value."
+    documentation: "```python\n(variable) value: T@Box\n```"
+  }
+  symbols {
+    symbol: "scip-python python identity 0 nested/Box#get()."
+    documentation: "```python\ndef get(\n  self\n) -> T:\n```"
+  }
+  symbols {
+    symbol: "scip-python python identity 0 nested/Box#get().(self)"
+  }
+  symbols {
+    symbol: "scip-python python identity 0 nested/first()."
+    documentation: "```python\ndef first(\n  items: list[U]\n) -> U:\n```"
+  }
+  symbols {
+    symbol: "scip-python python identity 0 nested/first().(items)"
+  }
+  symbols {
+    symbol: "scip-python python identity 0 nested/build()."
+    documentation: "```python\ndef build(): # -> tuple[Type[Edge[Unknown]], Alias]:\n```"
+  }
+  symbols {
+    symbol: "scip-python python identity 0 nested/build().Edge#"
+    documentation: "```python\nclass Edge:\n```"
+  }
+  symbols {
+    symbol: "scip-python python identity 0 nested/build().Edge#node."
+    documentation: "```python\n(variable) node: V@Edge\n```"
+  }
+}
+external_symbols {
+  symbol: "scip-python python python-stdlib 3.11 builtins/list#"
+  documentation: "```python\n(class) list\n```"
+}
+external_symbols {
+  symbol: "scip-python python python-stdlib 3.11 builtins/int#"
+  documentation: "```python\n(class) int\n```"
+}
+external_symbols {
+  symbol: "scip-python python python-stdlib 3.11 builtins/tuple#"
+  documentation: "```python\n(class) tuple\n```"
+}
