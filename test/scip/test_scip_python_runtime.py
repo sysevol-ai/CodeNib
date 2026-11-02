@@ -224,20 +224,58 @@ def test_scip_binary_decode_uses_packaged_protobuf_descriptor(monkeypatch, tmp_p
     assert "calculator/release_sum()" in decoded
 
 
-def test_scip_python_applies_temporary_excludes_without_dirtying_repo(tmp_path):
+def _python_project(root: Path) -> None:
+    (root / "pkg").mkdir(parents=True)
+    (root / "pkg" / "__init__.py").write_text("")
+    (root / "pkg" / "mod.py").write_text("def f():\n    return 1\n")
+    (root / "pkg" / "py.typed").write_text("")
+    (root / "pkg" / "types.pyi").write_text("def f() -> int: ...\n")
+    (root / "README.md").write_text("docs\n")
+    (root / ".git").mkdir()
+    (root / ".git" / "hook.py").write_text("")
+
+
+def test_scip_python_applies_excludes_in_private_mirror(tmp_path):
+    repo = tmp_path / "repo"
+    _python_project(repo)
+    before = {path: path.stat() for path in repo.rglob("*")}
     indexer = SCIPPythonIndexer(
-        tmp_path,
+        repo,
         output_dir=tmp_path / "out",
         exclude_patterns=["third_party/**", ".next/**"],
     )
-    config_path = tmp_path / "pyrightconfig.json"
 
-    with indexer._temporary_exclude_config():
-        assert json.loads(config_path.read_text()) == {
+    with indexer._indexing_root() as root:
+        assert root != repo
+        assert not root.resolve().is_relative_to(repo.resolve())
+        assert json.loads((root / "pyrightconfig.json").read_text()) == {
             "exclude": [".next/**", "third_party/**"]
         }
+        mirrored = sorted(
+            path.relative_to(root).as_posix()
+            for path in root.rglob("*")
+            if path.is_file()
+        )
+        assert mirrored == [
+            "pkg/__init__.py",
+            "pkg/mod.py",
+            "pkg/py.typed",
+            "pkg/types.pyi",
+            "pyrightconfig.json",
+        ]
+        # Source verification compares link counts and change times, so the
+        # checkout must not gain a file or a hard link while indexing runs.
+        after = {path: path.stat() for path in repo.rglob("*")}
+        assert set(after) == set(before)
+        for path, stat in before.items():
+            if path.is_file():
+                assert (after[path].st_nlink, after[path].st_ctime_ns) == (
+                    stat.st_nlink,
+                    stat.st_ctime_ns,
+                )
 
-    assert not config_path.exists()
+    assert not root.exists()
+    assert not (repo / "pyrightconfig.json").exists()
 
 
 def test_scip_python_preserves_project_owned_pyright_config(tmp_path):
@@ -250,10 +288,92 @@ def test_scip_python_preserves_project_owned_pyright_config(tmp_path):
         exclude_patterns=["third_party/**"],
     )
 
-    with indexer._temporary_exclude_config():
+    with indexer._indexing_root() as root:
+        assert root == tmp_path
         assert config_path.read_text() == original
 
     assert config_path.read_text() == original
+
+
+@pytest.mark.parametrize(
+    "layout,expected",
+    [
+        ({"pyproject.toml": '[project]\nname = "pkg"\nversion = "1.2.3"\n'}, "1.2.3"),
+        (
+            {"pyproject.toml": '[tool.poetry]\nname = "pkg"\nversion = "0.4.0"\n'},
+            "0.4.0",
+        ),
+        ({"../pyproject.toml": '[project]\nversion = "9.0"\n'}, "9.0"),
+        ({"pyproject.toml": '[project]\ndynamic = ["version"]\n'}, "git"),
+        ({"pyproject.toml": "not = [valid"}, "git"),
+        ({}, "git"),
+    ],
+)
+def test_scip_python_infers_the_version_scip_python_would_use(
+    tmp_path, layout, expected
+):
+    repo = tmp_path / "workspace" / "repo"
+    repo.mkdir(parents=True)
+    for name, text in layout.items():
+        (repo / name).resolve().write_text(text)
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    (repo / "mod.py").write_text("x = 1\n")
+    subprocess.run(["git", "-C", str(repo), "add", "mod.py"], check=True)
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repo),
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@example.com",
+            "commit",
+            "-qm",
+            "init",
+        ],
+        check=True,
+    )
+    head = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    indexer = SCIPPythonIndexer(repo, output_dir=tmp_path / "out")
+
+    assert indexer._inferred_project_version() == (
+        head if expected == "git" else expected
+    )
+
+
+@pytest.mark.parametrize("version", ["0e322af87745eff34caffe4df68456ebc20d9068", None])
+def test_scip_python_pins_checkout_version_in_mirror(monkeypatch, tmp_path, version):
+    repo = tmp_path / "repo"
+    _python_project(repo)
+    indexer = SCIPPythonIndexer(
+        repo, output_dir=tmp_path / "out", exclude_patterns=["third_party/**"]
+    )
+    indexer._direct_indexer_path = "/tools/scip-python"
+    monkeypatch.setattr(indexer, "_check_indexer_available", lambda: True)
+    monkeypatch.setattr(indexer, "_inferred_project_version", lambda: version)
+    runs = []
+
+    def run(cmd, cwd):
+        runs.append((list(cmd), Path(cwd), (Path(cwd) / "pkg" / "mod.py").exists()))
+        return False
+
+    monkeypatch.setattr(indexer, "_run_direct", run)
+
+    assert indexer.generate_index() is False
+    [(cmd, cwd, mirrored)] = runs
+    assert cwd != repo and mirrored
+    assert cmd[cmd.index("--cwd") + 1] == str(cwd.resolve())
+    assert cmd[cmd.index("--project-name") + 1] == "repo"
+    if version is None:
+        assert "--project-version" not in cmd
+    else:
+        assert cmd[cmd.index("--project-version") + 1] == version
 
 
 @pytest.mark.parametrize("allow_partial", [False, True])

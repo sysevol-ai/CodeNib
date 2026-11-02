@@ -30,6 +30,11 @@ from mcp.types import CallToolResult, TextContent
 MAX_EXPLORE_CALL_RESULT_BYTES = 256 * 1024
 MCP_ENVELOPE_RESERVE_BYTES = 4 * 1024
 MAX_EXPLORE_PAYLOAD_BYTES = MAX_EXPLORE_CALL_RESULT_BYTES - MCP_ENVELOPE_RESERVE_BYTES
+# Delivery budget for MCP clients. Claude Code moves a text tool result longer
+# than 50,000 characters into a file instead of showing it to the model. The
+# pretty-printed text copy is at most about 60% of the measured call result,
+# so projecting to this budget keeps that copy near 44,000 characters.
+MAX_MCP_EXPLORE_PAYLOAD_BYTES = 72 * 1024
 
 _RESPONSE_MEASURE = "mcp-call-result-json-utf8-v1"
 _UTF8_LIMITS = {
@@ -813,6 +818,7 @@ def bound_explore_response(
 __all__ = [
     "MAX_EXPLORE_CALL_RESULT_BYTES",
     "MAX_EXPLORE_PAYLOAD_BYTES",
+    "MAX_MCP_EXPLORE_PAYLOAD_BYTES",
     "MCP_ENVELOPE_RESERVE_BYTES",
     "bound_explore_response",
     "call_tool_result_bytes",

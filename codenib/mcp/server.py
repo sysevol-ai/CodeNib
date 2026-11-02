@@ -34,7 +34,9 @@ from .._version import package_version
 from ..compiler.manifest import RepoManifest
 from ..log_utils import set_console_log_level
 from .context import IndexedQueryError, ServerContext
+from .explore_bounds import MAX_MCP_EXPLORE_PAYLOAD_BYTES
 from .explore_session import ExploreSessionLedger, ExploreSessionRuntime
+from .graph_warmup import FAILED, READY, GraphTarget, GraphWarmup
 from .prompts import (
     CODENIB_EXPLORE_GUIDE,
     CODENIB_EXPLORE_INSTRUCTIONS,
@@ -83,6 +85,13 @@ MCPServer = ToolSurfaceMCPServer
 # Local rebuilds replace the context between indexed calls under this lock.
 _ctx: Optional[ServerContext] = None
 _context_lock = RLock()
+# On-demand graph preparation runs here, outside ``_context_lock``.
+_graph_warmup = GraphWarmup()
+# How long one exploration call waits for a background graph before it
+# answers from source alone. Explicit graph tools still wait for the build.
+_EXPLORE_GRAPH_WAIT_SECONDS = 5.0
+# Whether this server starts a background build at load and after reloads.
+_warm_graph = False
 _SearchText = Annotated[str, Field(min_length=1)]
 _SearchQuery = Annotated[
     str,
@@ -182,12 +191,18 @@ def _indexed_tool_call(function: Callable[..., Any], ctx: ServerContext, *args) 
                 or _has_complete_graph(ctx)
             )
             args = (*args[:5], include_dependencies, *args[6:])
-        ctx = _prepare_graph_for_call(function, ctx, args)
+        extra: dict[str, Any] = {}
+        if function is explore_context_impl:
+            ctx, pending = _prepare_explore_graph(ctx, args)
+            if pending is not None:
+                extra["graph_preparation"] = pending
+        else:
+            ctx = _prepare_graph_for_call(function, ctx, args)
         from ..agent.source_definitions import SourceDefinitionUnavailable
 
         try:
             with ctx.indexed_query():
-                result = function(ctx, *args)
+                result = function(ctx, *args, **extra)
             if getattr(ctx, "_source_definition_provider", None) is not None:
                 ctx.lsp_provider_selection = ctx._source_definition_provider.selection()
             return result
@@ -221,19 +236,88 @@ def _has_complete_graph(ctx: ServerContext) -> bool:
     )
 
 
+def _builds_in_background(ctx: ServerContext) -> bool:
+    """Whether queries can run while this repository's graph is built.
+
+    Python indexing runs in a private mirror and never writes the checkout.
+    Other providers may write temporary configuration into it, which
+    concurrent source checks would reject, so their builds keep blocking
+    the calls that need them.
+    """
+
+    return bool(ctx.manifest.languages) and set(ctx.manifest.languages) <= {"python"}
+
+
+def _graph_target(ctx: ServerContext) -> GraphTarget:
+    if ctx._local_manifest_path is None or ctx.manifest.source_selection is None:
+        raise IndexedQueryError("On-demand graph preparation requires a local manifest")
+    return GraphTarget(
+        repository=Path(ctx.manifest.repo_path),
+        languages=tuple(ctx.manifest.languages),
+        source_selection=ctx.manifest.source_selection,
+        source_fingerprint=ctx.manifest.source_fingerprint,
+    )
+
+
+def _start_graph_warmup(ctx: ServerContext, *, force: bool = False) -> None:
+    """Start the background build for the context's current source.
+
+    The caller owns ``_context_lock``. Do not turn a query against changed
+    source into an implicit rebuild. An actor cannot outlive its source
+    generation or race a compiler that temporarily installs provider
+    configuration, so the source-definition worker closes first and stays
+    closed while the build runs. Cleanup failure stops here.
+    """
+
+    target = _graph_target(ctx)
+    with ctx.indexed_query():
+        pass
+    ctx.close_source_definition_provider()
+    _graph_warmup.start(target, force=force)
+
+
+def _prepare_explore_graph(
+    ctx: ServerContext, args
+) -> tuple[ServerContext, dict[str, Any] | None]:
+    """Use a ready graph, or answer from source while the graph is prepared.
+
+    An exploration call that asks for relationships starts the background
+    build when needed, then waits at most ``_EXPLORE_GRAPH_WAIT_SECONDS``.
+    If the graph is not ready by then, the call proceeds on retrieval alone
+    and the returned status tells the caller that relationships are pending
+    (or why they are unavailable). The build continues after the call.
+    """
+
+    if not isinstance(ctx, ServerContext) or not ctx._defer_graph:
+        return ctx, None
+    if not (bool(args[1]) or args[5]) or _has_complete_graph(ctx):
+        return ctx, None
+    if not _builds_in_background(ctx):
+        return _prepare_graph_for_call(explore_context_impl, ctx, args), None
+    _start_graph_warmup(ctx)
+    if _graph_warmup.wait(_EXPLORE_GRAPH_WAIT_SECONDS) == READY:
+        ctx = _refresh_local_context(ctx)
+        with ctx.indexed_query():
+            pass
+        if _has_complete_graph(ctx):
+            return ctx, None
+        status = _graph_warmup.status()
+        status.update(state=FAILED, error="the prepared graph could not be loaded")
+        return ctx, status
+    return ctx, _graph_warmup.status()
+
+
 def _prepare_graph_for_call(
     function, ctx: ServerContext, args, *, force_graph: bool = False
 ) -> ServerContext:
     """Build only for an opted-in graph request, then follow its publication.
 
-    The caller owns ``_context_lock`` across source checking, compilation and
-    authenticated reload. Concurrent requests therefore observe one successful
-    preparation; other processes reuse the compiler cache lock and update
-    checks. Lock order is context, query/source (released), compiler (released),
-    then the normal loader/old-context cleanup. Publication to this connection
-    linearizes at the loader's ``_ctx = new_context``. There is no detached job:
-    a cancelled thread finishes under the existing worker/lock ownership, and
-    exploration's existing barrier prevents a retry racing that worker.
+    Explicit graph tools wait for the connection's single background build;
+    concurrent requests therefore observe one preparation, and other
+    processes reuse the compiler cache lock and update checks. The caller
+    owns ``_context_lock`` while it waits. The build itself holds only the
+    compiler lock, and it publishes through the manifest; this connection
+    follows that publication through the normal authenticated reload.
     """
     if not isinstance(ctx, ServerContext) or not ctx._defer_graph:
         return ctx
@@ -257,26 +341,20 @@ def _prepare_graph_for_call(
         and args[1] is not None
         and args[2] is not None
         and not args[3]
+        and not _graph_warmup.running()
         and ctx.enable_source_definition_provider()
     ):
         return ctx
-    from ..codegraph_preparation import prepare_graph
-
-    if ctx._local_manifest_path is None or ctx.manifest.source_selection is None:
-        raise IndexedQueryError("On-demand graph preparation requires a local manifest")
-    # Do not turn a query against changed source into an implicit rebuild.
-    with ctx.indexed_query():
-        pass
-    # An actor cannot outlive its source generation or race a compiler that
-    # temporarily installs provider configuration. Cleanup failure stops here.
-    ctx.close_source_definition_provider()
-    try:
-        prepare_graph(
-            Path(ctx.manifest.repo_path),
-            languages=list(ctx.manifest.languages),
-            source_selection=ctx.manifest.source_selection,
-            expected_source_fingerprint=ctx.manifest.source_fingerprint,
+    # The call has already followed any published build, so a missing graph
+    # here needs a new one, as the synchronous preparation always did.
+    _start_graph_warmup(ctx, force=True)
+    if _graph_warmup.wait(None) != READY:
+        raise IndexedQueryError(
+            "On-demand graph preparation failed. Run `codenib codegraph init` "
+            "and retry; graph results were not delivered.",
+            _graph_warmup.status()["error"] or "graph preparation failed",
         )
+    try:
         # A restored temporary provider config changes directory metadata.
         # The preparation guard retains the root and exact source bytes;
         # reload recaptures them rather than querying the old binding.
@@ -313,6 +391,11 @@ def _refresh_local_context(ctx: ServerContext) -> ServerContext:
         or current.manifest.repo_path != ctx.manifest.repo_path
     ):
         raise IndexedQueryError("MCP repository was reconfigured; retry the query")
+    if _graph_warmup.running():
+        # The background build holds the compiler lock and publishes at the
+        # end. Keep serving the loaded views; the next call after it finishes
+        # reloads. Each query still verifies its own source.
+        return current
     path = current._local_manifest_path
     published = RepoManifest.load(path)
     if published.to_dict() != current.manifest.to_dict():
@@ -327,7 +410,9 @@ def _refresh_local_context(ctx: ServerContext) -> ServerContext:
             raise IndexedQueryError(
                 "Indexes are being rebuilt; retry the query"
             ) from exc
-        return get_context()
+        reloaded = get_context()
+        _warm_loaded_graph(reloaded)
+        return reloaded
     return current
 
 
@@ -483,7 +568,9 @@ async def explore_context(
                 )
             )
             raise
-        return runtime.ledger.project(response)
+        return runtime.ledger.project(
+            response, max_response_bytes=MAX_MCP_EXPLORE_PAYLOAD_BYTES
+        )
 
 
 @mcp.tool(
@@ -1034,16 +1121,19 @@ def init_server(
     artifact_binding: ContextArtifactBinding | None = None,
     source_binding: RepositorySourceBinding | None = None,
     defer_graph: bool = False,
+    warm_graph: bool = False,
 ) -> None:
     """Initialize the global ServerContext from a manifest file.
 
     Loads the manifest and opens all available indexes in the
     module-level ``_ctx``. Safe to call from tests with a temporary
-    manifest path.
+    manifest path. With ``defer_graph`` and ``warm_graph``, an incomplete
+    graph starts preparing in the background as soon as the server loads.
 
     Raises:
         FileNotFoundError: if ``manifest_path`` does not exist.
     """
+    global _graph_warmup, _warm_graph
     with _context_lock:
         if defer_graph and (
             isinstance(manifest_path, RepoManifest)
@@ -1057,7 +1147,26 @@ def init_server(
             artifact_binding=artifact_binding,
             source_binding=source_binding,
         )
-        get_context()._defer_graph = defer_graph
+        # A build belongs to the context it was started for.
+        _graph_warmup = GraphWarmup()
+        _warm_graph = defer_graph and warm_graph
+        ctx = get_context()
+        ctx._defer_graph = defer_graph
+        _warm_loaded_graph(ctx)
+
+
+def _warm_loaded_graph(ctx: ServerContext) -> None:
+    """Start the background build for a newly loaded incomplete graph."""
+
+    if not _warm_graph or not ctx._defer_graph or _has_complete_graph(ctx):
+        return
+    if not _builds_in_background(ctx):
+        return
+    try:
+        _start_graph_warmup(ctx)
+    except IndexedQueryError as exc:
+        # The next query reports the same source failure.
+        logger.warning("Graph preparation not started: %s", exc)
 
 
 def _init_server(
@@ -1380,7 +1489,12 @@ def main(argv: list[str] | None = None) -> None:
             binding.close()
         else:
             init_server(
-                manifest_path, **({"defer_graph": True} if args.defer_graph else {})
+                manifest_path,
+                **(
+                    {"defer_graph": True, "warm_graph": True}
+                    if args.defer_graph
+                    else {}
+                ),
             )
         logger.info("Starting MCP server on stdio...")
         mcp.run(transport="stdio")

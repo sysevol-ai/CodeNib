@@ -145,9 +145,10 @@ managed tool directory. Use the narrower `make scip` target when only the
 primary SCIP/clangd tool set is needed.
 
 CodeNib currently installs the official pinned `@sourcegraph/scip-python`
-package. Python path exclusions are applied through a temporary
-`pyrightconfig.json`; no custom `scip-python` fork or repository submodule is
-required.
+package. When a repository has no Pyright configuration of its own, CodeNib
+indexes a private copy of its Python files with a `pyrightconfig.json` that
+applies the path exclusions, so the checkout itself is never modified. No
+custom `scip-python` fork or repository submodule is required.
 
 Language-specific project preparation is exposed through Makefile targets
 where needed:
