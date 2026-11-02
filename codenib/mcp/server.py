@@ -1483,9 +1483,12 @@ def _init_server(
                         )
 
             if _reload and not verified:
-                raise RuntimeError(
-                    "Rebuilt indexes do not match current source; run "
-                    "`codenib codegraph init` and retry. " + str(source_error)
+                # A stale source, not a broken server: a deferred connection
+                # refreshes retrieval for the edit and retries the query.
+                raise StaleSourceError(
+                    "Indexed source changed. Run `codenib codegraph init` and "
+                    "retry; this MCP connection reloads rebuilt indexes.",
+                    str(source_error),
                 )
 
             new_context = ServerContext.load(
