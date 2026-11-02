@@ -771,6 +771,97 @@ def test_rebuilt_retrieval_starts_a_background_graph_for_new_source(
     assert builds[-1] == published.source_fingerprint
 
 
+def test_deferred_server_refreshes_retrieval_after_an_edit(local_server, monkeypatch):
+    from codenib import codegraph_preparation
+
+    repo, cache, initial = local_server
+    initial._defer_graph = True
+    refreshes = []
+
+    def refresh(repository, **options):
+        refreshes.append((Path(repository), options["languages"]))
+        return _publish(repo, cache, "sample.py", "updated").source_fingerprint
+
+    monkeypatch.setattr(codegraph_preparation, "refresh_retrieval", refresh)
+
+    async def session():
+        async with server._mcp_lifespan(None) as runtime:
+            first = await server.explore_context("original", include_dependencies=False)
+            assert first["summary"]["session_call"] == 1
+            (repo / "sample.py").write_text("def updated():\n    return 2\n")
+            second = await server.explore_context("updated", include_dependencies=False)
+            assert second["source"]["verified"] is True
+            assert second["summary"]["session_call"] == 2
+            contents = [
+                context["content"]
+                for group in second["files"]
+                for context in group["contexts"]
+            ]
+            assert any("def updated()" in content for content in contents)
+            current = server.get_context()
+            assert current is not initial and current.explore_runtime is runtime
+            assert current._defer_graph
+            await server.search_bm25("updated")
+            assert refreshes == [(Path(initial.manifest.repo_path), ["python"])]
+
+    asyncio.run(session())
+
+
+def test_failed_refresh_keeps_the_stale_source_rejection(local_server, monkeypatch):
+    from codenib import codegraph_preparation
+
+    repo, _cache, initial = local_server
+    initial._defer_graph = True
+
+    def refresh(*_args, **_options):
+        raise RuntimeError("compiler unavailable")
+
+    monkeypatch.setattr(codegraph_preparation, "refresh_retrieval", refresh)
+    (repo / "sample.py").write_text("def updated():\n    return 2\n")
+
+    async def session():
+        with pytest.raises(RuntimeError, match="Indexed source changed") as caught:
+            await server.search_bm25("updated")
+        assert "compiler unavailable" in str(caught.value.__cause__)
+
+    asyncio.run(session())
+
+
+def test_refresh_waits_a_bounded_time_for_an_old_graph_build(local_server, monkeypatch):
+    from codenib import codegraph_preparation
+
+    repo, _cache, initial = local_server
+    initial._defer_graph = True
+    started, release = Event(), Event()
+
+    def prepare(*_args, **_options):
+        started.set()
+        assert release.wait(timeout=10)
+
+    refreshes = []
+    monkeypatch.setattr(codegraph_preparation, "prepare_graph", prepare)
+    monkeypatch.setattr(
+        codegraph_preparation,
+        "refresh_retrieval",
+        lambda *_a, **_kw: refreshes.append(True),
+    )
+    monkeypatch.setattr(server, "_REFRESH_WAIT_FOR_GRAPH_SECONDS", 0.05)
+
+    async def session():
+        try:
+            with server._context_lock:
+                server._start_graph_warmup(server.get_context())
+            assert await asyncio.to_thread(started.wait, 5)
+            (repo / "sample.py").write_text("def updated():\n    return 2\n")
+            with pytest.raises(RuntimeError, match="retry the query in a moment"):
+                await server.search_bm25("updated")
+            assert refreshes == []
+        finally:
+            release.set()
+
+    asyncio.run(session())
+
+
 @pytest.mark.parametrize("failure", ("provider", "source-edit", "already-stale"))
 def test_deferred_preparation_failure_never_delivers_graph_or_hides_stale_source(
     local_server, monkeypatch, failure

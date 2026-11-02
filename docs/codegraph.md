@@ -124,8 +124,13 @@ repository dependencies. If a background build fails, exploration keeps
 answering from source and reports a `graph_unavailable` diagnostic with the
 reason; run `codenib codegraph init` to retry.
 
-Repeated initialization retains this policy and refreshes BM25 after edits;
-for Python, the reloaded server prepares the updated graph in the background.
+Edits do not stop the server. When source has changed, the next query
+re-indexes retrieval for the current checkout (about 1 s for Flask and 5 s for
+a 1,200-file Python repository on a developer machine), reloads, and answers
+from the edited source. For Python, the graph for the new source is then
+prepared in the background as above; other languages prepare it on the next
+relationship request. Repeated initialization retains this policy.
+
 Status distinguishes retrieval readiness from full graph readiness. Its
 full-readiness check still exits nonzero until both current indexes and
 providers are ready. To change the managed policy, uninstall the registration
@@ -254,11 +259,13 @@ the complete path is ready:
 codenib codegraph status /absolute/path/to/repository --json
 ```
 
-Source builds from `main` reject indexed queries after source changes. Rerun
+With `--defer-graph`, source builds from `main` re-index retrieval for edited
+source on the next query, as described above. Prebuilt registrations reject
+indexed queries after source changes: rerun
 `codenib codegraph init /absolute/path/to/repository`, then retry in the same
 agent connection. The server loads the published indexes after checking that
 they match current source. If the compiler is still publishing, retry after it
-finishes. Queries do not start an index build.
+finishes.
 
 Published 0.2.4 requires a clean checkout for rebuilding. Stop its CodeNib MCP
 server, rerun `init`, and restart the server to load the result. A running

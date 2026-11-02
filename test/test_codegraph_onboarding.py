@@ -1369,3 +1369,43 @@ def test_index_status_verifies_persisted_artifact_fingerprints(
     report = cli._codegraph_index_report(repo)
     assert report["ready"] is False
     assert expected_detail in report["detail"]
+
+
+def test_refresh_retrieval_rebuilds_bm25_for_edited_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from codenib.codegraph_preparation import refresh_retrieval
+    from codenib.paths import repo_index_dir
+    from codenib.repository_source_selection import DEFAULT_REPOSITORY_SOURCE_SELECTION
+
+    repo = _repository(tmp_path)
+    _initialize_git_repository(repo)
+    monkeypatch.setenv("CODENIB_HOME", str(tmp_path / "state"))
+    first, failed = cli.index_repository(
+        repo,
+        languages=["python"],
+        views=["bm25"],
+        source_selection=DEFAULT_REPOSITORY_SOURCE_SELECTION,
+        allow_graph_project_preparation=False,
+        allow_partial_graph_languages=False,
+    )
+    assert failed == []
+    (repo / "sample.py").write_text("def sample():\n    return 2\n", encoding="utf-8")
+
+    fingerprint = refresh_retrieval(
+        repo,
+        languages=["python"],
+        source_selection=DEFAULT_REPOSITORY_SOURCE_SELECTION,
+    )
+
+    manifest = RepoManifest.load(repo_index_dir(repo) / "repo_manifest.json")
+    assert fingerprint == manifest.source_fingerprint
+    assert fingerprint != first.source_fingerprint
+    assert manifest.index_is_current("bm25")
+    status = subprocess.run(
+        ["git", "-C", str(repo), "status", "--porcelain"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    assert status == " M sample.py\n"
