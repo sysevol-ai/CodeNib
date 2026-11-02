@@ -20,7 +20,7 @@ from mcp import Client
 from codenib.compiler.artifact_fingerprints import bm25_artifact_file_fingerprints
 from codenib.compiler.manifest import IndexEntry, RepoManifest
 from codenib.mcp import server
-from codenib.mcp.context import ServerContext
+from codenib.mcp.context import ServerContext, StaleSourceError
 from codenib.repository_source_selection import RepositorySourceSelection
 from codenib.source_fingerprint import fingerprint_repository
 
@@ -807,6 +807,50 @@ def test_deferred_server_refreshes_retrieval_after_an_edit(local_server, monkeyp
     asyncio.run(session())
 
 
+def test_edit_after_a_failed_graph_build_refreshes_retrieval(local_server, monkeypatch):
+    from codenib import codegraph_preparation
+
+    repo, cache, initial = local_server
+    initial._defer_graph = True
+    # A failed background build republishes the manifest for the old source.
+    failed = RepoManifest.load(cache / "repo_manifest.json")
+    failed.indexes["symbol_graph"] = IndexEntry(
+        index_type="symbol_graph",
+        path=str(cache / "symbol_graph"),
+        built_at="failed",
+        built_at_epoch=0.0,
+        status="failed",
+        commit=failed.commit,
+        source_fingerprint=failed.source_fingerprint,
+        source_selection_digest=failed.source_selection.digest,
+        metadata={"error": "containment cycle detected"},
+    )
+    failed.save(cache / "repo_manifest.json")
+    (repo / "sample.py").write_text("def updated():\n    return 2\n")
+    refreshes = []
+
+    def refresh(repository, **_options):
+        refreshes.append(Path(repository))
+        return _publish(repo, cache, "sample.py", "updated").source_fingerprint
+
+    monkeypatch.setattr(codegraph_preparation, "refresh_retrieval", refresh)
+
+    async def session():
+        # Reloading the republished manifest finds the edit; that is a stale
+        # source the connection can refresh, not an unexpected tool error.
+        response = await server.explore_context("updated", include_dependencies=False)
+        assert response["source"]["verified"] is True
+        contents = [
+            context["content"]
+            for group in response["files"]
+            for context in group["contexts"]
+        ]
+        assert any("def updated()" in content for content in contents)
+        assert refreshes == [Path(initial.manifest.repo_path)]
+
+    asyncio.run(session())
+
+
 def test_failed_refresh_keeps_the_stale_source_rejection(local_server, monkeypatch):
     from codenib import codegraph_preparation
 
@@ -1157,7 +1201,7 @@ def test_mismatched_rebuild_releases_new_source_and_remains_retryable(
     _publish(repo, cache, "sample.py", "updated")
     (repo / "sample.py").write_text("def latest():\n    return 3\n")
 
-    with pytest.raises(RuntimeError, match="do not match current source"):
+    with pytest.raises(StaleSourceError, match="Indexed source changed"):
         asyncio.run(server.search_bm25(query="updated"))
     assert server.get_context() is initial
     assert len(captured) == 1 and captured[0].closed
