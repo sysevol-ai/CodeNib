@@ -486,16 +486,14 @@ async def _wait_for_abandoned_explore_worker(
 @mcp.tool(
     name="explore_context",
     description=(
-        "Find implementation code and source evidence for a repository question. "
-        "Start with query alone; put known symbol names, error text, or file hints "
-        "in the query. Returns bounded source windows with file paths, line ranges, "
-        "verification, and coverage diagnostics. In on-demand graph mode, a cold "
-        "query without symbols starts with source; a complete warm graph is reused. "
-        "For indexed relationships, symbols or include_dependencies=true request "
-        "graph preparation, which can install providers and build an index. Set "
-        "include_dependencies=false to omit expansion. Prebuilt mode includes "
-        "dependencies by default. Indexed references require source inspection "
-        "before describing invocation or a complete runtime path."
+        "Explain how code in this repository fits together. Returns the "
+        "definitions relevant to a question as current source windows grouped by "
+        "file, with line ranges, plus the static callers and callees of the main "
+        "symbols. Use it before Grep and Read for questions that span functions "
+        "or files; use Grep for an exact string. Put the question and any known "
+        "names in query, and list known function or class names in symbols. "
+        "budget is fast, balanced (default) or thorough and sets how much source "
+        "comes back."
     ),
 )
 async def explore_context(

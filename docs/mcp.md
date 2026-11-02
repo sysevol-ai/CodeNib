@@ -181,13 +181,21 @@ with this scope and direction; published 0.2.4 retains the older response shape
 and legacy `callers`/`callees` labels. See [CodeGraph](codegraph.md) for the
 release and source-update boundaries.
 
-Use `explore_context` to find implementation code and source evidence for a
-repository question. Start with `query` alone, including any known symbol names,
-error text, or file hints:
+Use `explore_context` first for a question that spans more than one function
+or file: how a feature works, where a behavior is handled, what calls a
+function, or what a change would affect. One call returns the relevant
+definitions as current source windows grouped by file, with line ranges, plus
+the static callers and callees of the main symbols when the graph is available.
+Grep remains the right tool for an exact string. Ask in plain language and
+include any names, error text or file hints you know; list known function or
+class names in `symbols` to center the answer on them:
 
 ```json
-{"query": "Where is retry backoff implemented?"}
+{"query": "Where is retry backoff implemented?", "symbols": ["RetryPolicy"]}
 ```
+
+The server's instructions and tool description tell connected agents the same
+thing, so an agent can choose the tool without a project-specific prompt.
 
 In on-demand graph mode, a cold query without `symbols` starts with source.
 When you need indexed relationships, supply `symbols` or
