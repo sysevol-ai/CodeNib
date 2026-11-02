@@ -33,10 +33,10 @@ from pydantic import Field
 from .._version import package_version
 from ..compiler.manifest import RepoManifest
 from ..log_utils import set_console_log_level
-from .context import IndexedQueryError, ServerContext
+from .context import IndexedQueryError, ServerContext, StaleSourceError
 from .explore_bounds import MAX_MCP_EXPLORE_PAYLOAD_BYTES
 from .explore_session import ExploreSessionLedger, ExploreSessionRuntime
-from .graph_warmup import FAILED, READY, GraphTarget, GraphWarmup
+from .graph_warmup import FAILED, READY, RUNNING, GraphTarget, GraphWarmup
 from .prompts import (
     CODENIB_EXPLORE_GUIDE,
     CODENIB_EXPLORE_INSTRUCTIONS,
@@ -92,6 +92,8 @@ _graph_warmup = GraphWarmup()
 _EXPLORE_GRAPH_WAIT_SECONDS = 5.0
 # Whether this server starts a background build at load and after reloads.
 _warm_graph = False
+# A refresh after edits waits this long for a graph build of the old source.
+_REFRESH_WAIT_FOR_GRAPH_SECONDS = 30.0
 _SearchText = Annotated[str, Field(min_length=1)]
 _SearchQuery = Annotated[
     str,
@@ -185,7 +187,37 @@ def _indexed_tool_call(function: Callable[..., Any], ctx: ServerContext, *args) 
     loading), then query/view/source; the compiler lock is released before old
     context cleanup. Failed loading retains the existing context and uses the
     startup loader's retryable cleanup ownership.
+
+    In ``--defer-graph`` mode a query against edited source re-indexes
+    retrieval for the current checkout, reloads, and runs once more; the
+    rebuilt views verify the new source like any other generation.
     """
+
+    with _context_lock:
+        try:
+            return _indexed_tool_call_once(function, ctx, *args)
+        except StaleSourceError as stale:
+            # A worker whose cleanup is still pending keeps the source until
+            # the caller retries; never rebuild underneath it.
+            if not _refreshes_edited_source() or getattr(
+                stale, "source_definition_cleanup_error", None
+            ):
+                raise
+            try:
+                ctx = _refresh_edited_source()
+            except IndexedQueryError:
+                raise
+            except Exception as failure:
+                # Keep the original rejection and its recovery instruction.
+                logger.warning("Retrieval refresh after an edit failed: %s", failure)
+                raise stale from failure
+        return _indexed_tool_call_once(function, ctx, *args)
+
+
+def _indexed_tool_call_once(
+    function: Callable[..., Any], ctx: ServerContext, *args
+) -> Any:
+    """Run one indexed call against the current published generation."""
 
     with _context_lock:
         ctx = _refresh_local_context(ctx)
@@ -232,6 +264,59 @@ def _indexed_tool_call(function: Callable[..., Any], ctx: ServerContext, *args) 
                 )
             with ctx.indexed_query():
                 return function(ctx, *args)
+
+
+def _refreshes_edited_source() -> bool:
+    current = _ctx
+    return (
+        isinstance(current, ServerContext)
+        and current._defer_graph
+        and current._local_manifest_path is not None
+        and current.manifest.source_selection is not None
+        and current.artifact is None
+        and current.grep_jev is None
+    )
+
+
+def _refresh_edited_source() -> ServerContext:
+    """Re-index retrieval for edited source and load it in this connection.
+
+    The caller owns ``_context_lock``. A running graph build was started for
+    the old source and its checkout guard will reject it, so wait a bounded
+    time for it to release the compiler lock rather than racing it.
+    """
+
+    from ..codegraph_preparation import refresh_retrieval
+
+    if _graph_warmup.wait(_REFRESH_WAIT_FOR_GRAPH_SECONDS) == RUNNING:
+        raise IndexedQueryError(
+            "Source changed while the graph was being prepared; retry the query "
+            "in a moment."
+        )
+    current = get_context()
+    manifest = current.manifest
+    refresh_retrieval(
+        Path(manifest.repo_path),
+        languages=list(manifest.languages),
+        source_selection=manifest.source_selection,
+    )
+    # Reload even when the manifest is unchanged: the new generation
+    # recaptures the source binding that the stale check revoked.
+    from filelock import Timeout
+
+    current.ensure_explore_session()
+    try:
+        _init_server(current._local_manifest_path, _reload=True)
+    except Timeout as exc:
+        raise IndexedQueryError("Indexes are being rebuilt; retry the query") from exc
+    except Exception as exc:
+        raise IndexedQueryError(
+            "Source changed again while retrieval was refreshed; retry the query.",
+            str(exc),
+        ) from exc
+    reloaded = get_context()
+    _warm_loaded_graph(reloaded)
+    return reloaded
 
 
 def _has_complete_graph(ctx: ServerContext) -> bool:
