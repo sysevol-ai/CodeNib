@@ -432,6 +432,31 @@ def _diagnostic(code: str, detail: Any) -> dict[str, str]:
     return {"code": code, "detail": str(detail)[:512]}
 
 
+def _graph_preparation_diagnostic(status: Mapping[str, Any]) -> dict[str, str]:
+    elapsed = status.get("elapsed_seconds")
+    if status.get("state") == "running":
+        since = f" (started {elapsed:.0f}s ago)" if elapsed is not None else ""
+        return _diagnostic(
+            "graph_preparing",
+            "The relationship graph is still being prepared in the background"
+            f"{since}. This answer comes from source search only; repeat the "
+            "query later to include callers and callees.",
+        )
+    return _diagnostic(
+        "graph_unavailable",
+        "Relationships are unavailable because graph preparation failed: "
+        f"{status.get('error') or 'unknown error'}. This answer comes from "
+        "source search only. Run `codenib codegraph init` to retry.",
+    )
+
+
+def _symbol_search_text(symbol: str) -> str:
+    """Return the searchable name in ``path.py:Class.method()`` style input."""
+
+    name = symbol.rsplit(":", 1)[-1].removesuffix("()")
+    return name.replace(".", " ").strip()
+
+
 def _dependency_seed_candidates(
     explicit_symbols: Sequence[str],
     route_results: Sequence[Any],
@@ -503,8 +528,14 @@ def explore_context_impl(
     filter_test: bool = False,
     *,
     check_cancelled=None,
+    graph_preparation: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Return ranked, routed, dependency-aware source context in one call."""
+    """Return ranked, routed, dependency-aware source context in one call.
+
+    ``graph_preparation`` is the server's status for a graph that was asked
+    for but is not loaded yet. The call then answers from retrieval, with
+    requested symbol names added to the search text, and says so.
+    """
 
     normalized_query = required_text(
         query,
@@ -527,6 +558,16 @@ def explore_context_impl(
     window_limit = min(top_k, profile.max_windows)
 
     diagnostics: list[dict[str, str]] = []
+    retrieval_query = normalized_query
+    if graph_preparation is not None:
+        diagnostics.append(_graph_preparation_diagnostic(graph_preparation))
+        if getattr(ctx, "symbol_graph", None) is None and normalized_symbols:
+            # Without a graph the requested names can only reach source
+            # through retrieval, so search for them by name as well.
+            names = [_symbol_search_text(symbol) for symbol in normalized_symbols]
+            extra = " ".join(name for name in names if name not in retrieval_query)
+            if extra and len(retrieval_query) + len(extra) < MAX_SEARCH_QUERY_CHARS:
+                retrieval_query = f"{retrieval_query} {extra}"
     retrieval_response: Mapping[str, Any] | None = None
     retrieval_results: list[Any] = []
     if (
@@ -537,7 +578,7 @@ def explore_context_impl(
         try:
             result = search_context_impl(
                 ctx,
-                normalized_query,
+                retrieval_query,
                 top_k=max(window_limit, profile.route_top_k),
                 budget=normalized_budget,
                 level="l2",

@@ -108,10 +108,14 @@ with `query` alone, putting known symbol names, error text, or file hints in
 that query. Inspect the returned source windows and file/line evidence.
 
 In on-demand graph mode, an ordinary cold query starts with source. Request
-`symbols` or `include_dependencies=true` when you need indexed relationships;
-this can install providers and build the graph. A complete warm graph is
-reused by ordinary queries. Prebuilt mode keeps dependency expansion enabled
-by default.
+`symbols` or `include_dependencies=true` when you need indexed relationships.
+A Python repository builds its graph in the background from server start;
+until it is ready, such a request waits about five seconds, then answers from
+source search (with the requested names added to it) and reports a
+`graph_preparing` diagnostic, or `graph_unavailable` with the reason after a
+failed build. Other languages build the graph on that request. A complete
+graph is reused by ordinary queries. Prebuilt mode keeps dependency expansion
+enabled by default.
 
 - `query` (str): repository question or code query.
 - `symbols` (sequence of str, default empty): optional route and dependency
@@ -138,11 +142,13 @@ marked `verified: false`; they are not presented as live source.
 
 #### Result and connection bounds
 
-CodeNib enforces a 256 KiB (262,144-byte) hard ceiling on each serialized
-`explore_context` MCP `CallToolResult`, not just its inner response dictionary.
-Measurement covers the structured and text forms carried by the result.
-Explore results are projected below that ceiling to reserve space for the
-result/protocol envelope, so 256 KiB is not an application-payload budget.
+Explore results served over MCP are projected to 72 KiB per serialized
+`CallToolResult`, not just its inner response dictionary. Measurement covers
+the structured and text forms carried by the result; the budget keeps the text
+form under the 50,000 characters at which Claude Code moves a tool result into
+a file. CodeNib also enforces a 256 KiB (262,144-byte) hard ceiling on each
+serialized result. In-process callers of `explore_context_impl` keep the
+256 KiB projection.
 
 Every stdio connection owns an independent in-memory runtime ledger. It retains
 at most 160 verified source ranges and is not shared across connections or
@@ -310,8 +316,9 @@ loads the published generation after authenticating current source. A busy
 compiler returns a retry message. Connection delivery history and its worker
 barrier survive a successful reload. Reloading does not compile an index. In
 `--defer-graph` mode, an explicitly requested graph operation can prepare a
-complete graph for unchanged indexed source. Source changes still require
-explicit rebuilding before the query can proceed.
+complete graph for unchanged indexed source; for Python, a reload also starts
+that preparation in the background. Source changes still require explicit
+rebuilding before the query can proceed.
 Portable artifacts retain their selected snapshot and require explicit
 rebinding to change it.
 

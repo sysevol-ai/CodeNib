@@ -19,6 +19,11 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator, List, Optional, Union
 
+try:
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover - Python 3.10 compatibility
+    import tomli as tomllib
+
 from ..log_utils import get_logger
 from ..profiler import Profiler
 from .scip_indexer_base import SCIPIndexerBase
@@ -55,6 +60,45 @@ def _scip_python_index_timeout() -> float:
         )
         return float(_SCIP_PYTHON_INDEX_TIMEOUT_S)
     return timeout
+
+
+_MIRRORED_SUFFIXES = frozenset({".py", ".pyi"})
+_MIRRORED_NAMES = frozenset({"py.typed"})
+
+
+def _mirror_python_sources(source: Path, target: Path) -> int:
+    """Copy the files Pyright analyzes into *target*, keeping relative paths.
+
+    Files are copied rather than hard-linked: a link changes the original's
+    link count and change time, which source verification treats as an edit.
+    Symlinked directories are followed once, as Pyright follows them, and
+    ``.git`` is skipped. Returns the number of mirrored files.
+    """
+
+    count = 0
+    visited: set[str] = set()
+    for directory, names, files in os.walk(source, followlinks=True):
+        real = os.path.realpath(directory)
+        if real in visited:
+            names[:] = []
+            continue
+        visited.add(real)
+        names[:] = [name for name in names if name != ".git"]
+        relative = Path(directory).relative_to(source)
+        for name in files:
+            if Path(name).suffix not in _MIRRORED_SUFFIXES and (
+                name not in _MIRRORED_NAMES
+            ):
+                continue
+            origin = Path(directory) / name
+            if not origin.is_file():
+                continue
+            destination = target / relative / name
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(origin, destination)
+            count += 1
+    target.mkdir(parents=True, exist_ok=True)
+    return count
 
 
 def _read_varint(handle) -> Optional[int]:
@@ -338,21 +382,24 @@ class SCIPPythonIndexer(SCIPIndexerBase):
             return False
 
     @contextmanager
-    def _temporary_exclude_config(self) -> Iterator[None]:
-        """Apply CodeNib exclusions to scip-python without persisting config.
+    def _indexing_root(self) -> Iterator[Path]:
+        """Yield the directory scip-python runs in, never writing the checkout.
 
-        scip-python has no exclude flag, but it delegates project discovery to
-        Pyright. When the repository does not already own Pyright
-        configuration, an exact temporary ``pyrightconfig.json`` prevents
-        generated and vendored trees from entering the expensive analysis.
-        Existing project configuration always wins.
+        scip-python has no exclude flag; it reads Pyright configuration only
+        from its working directory. When the repository does not own Pyright
+        configuration, CodeNib's exclusions go into a private mirror of the
+        project's Python files, so generated and vendored trees stay out of
+        the expensive analysis while the checkout and its Git status are left
+        untouched (a concurrent source check sees no temporary file). SCIP
+        document paths are relative to the root, and the caller pins the
+        project version to the checkout's commit. Existing project
+        configuration always wins and runs in place.
         """
 
         if not self.exclude_patterns or self._has_project_pyright_config():
-            yield
+            yield self.project_root
             return
 
-        path = self.project_root / "pyrightconfig.json"
         payload = (
             json.dumps(
                 {"exclude": sorted(dict.fromkeys(self.exclude_patterns))},
@@ -360,30 +407,58 @@ class SCIPPythonIndexer(SCIPIndexerBase):
             )
             + "\n"
         )
-        try:
-            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        except FileExistsError:
-            yield
-            return
-        except OSError as exc:
-            logger.warning("Could not apply temporary Pyright excludes: %s", exc)
-            yield
-            return
-
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                handle.write(payload)
+        with tempfile.TemporaryDirectory(prefix="codenib-scip-python-") as scratch:
+            root = Path(scratch) / (self.project_root.name or "project")
+            with self.profiler.section("generate_index.mirror"):
+                count = _mirror_python_sources(self.project_root, root)
+            (root / "pyrightconfig.json").write_text(payload, encoding="utf-8")
             logger.info(
-                "Applying %d temporary Pyright exclusions",
+                "Applying %d Pyright exclusions in a private mirror of %d files",
                 len(self.exclude_patterns),
+                count,
             )
-            yield
-        finally:
+            yield root
+
+    def _inferred_project_version(self) -> Optional[str]:
+        """Return the project version scip-python infers for the checkout.
+
+        scip-python reads ``[project].version``, then ``[tool.poetry].version``,
+        from the nearest ``pyproject.toml`` at or above the project root, and
+        otherwise uses ``git rev-parse HEAD`` in its working directory. The
+        version is part of every symbol, and a mirror has neither file, so
+        the caller passes this value explicitly.
+        """
+
+        for directory in (self.project_root, *self.project_root.parents):
+            candidate = directory / "pyproject.toml"
+            if not candidate.is_file():
+                continue
             try:
-                if path.read_text(encoding="utf-8") == payload:
-                    path.unlink()
-            except OSError:
-                logger.warning("Could not remove temporary Pyright config at %s", path)
+                data = tomllib.loads(candidate.read_text(encoding="utf-8"))
+            except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError):
+                data = {}
+            project = data.get("project")
+            version = project.get("version") if isinstance(project, dict) else None
+            if version is None:
+                tool = data.get("tool")
+                poetry = tool.get("poetry") if isinstance(tool, dict) else None
+                version = poetry.get("version") if isinstance(poetry, dict) else None
+            if isinstance(version, str) and version:
+                return version
+            break
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=self.project_root,
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        version = result.stdout.strip()
+        return version if result.returncode == 0 and version else None
 
     def _get_decoder_class(self):
         """
@@ -437,21 +512,24 @@ class SCIPPythonIndexer(SCIPIndexerBase):
             }
             return False
 
-        cmd = self._build_index_command(
-            cwd=cwd or str(self.project_root),
-            project_name=project_name,
-            target_dir=target_dir,
-            output_file=pending,
-        )
-
-        logger.debug(f"Running command: {' '.join(cmd)}")
-
         with self.profiler.section("generate_index") as section:
-            with self._temporary_exclude_config():
+            with self._indexing_root() as root:
+                mirrored = root != self.project_root
+                cmd = self._build_index_command(
+                    cwd=str(root) if mirrored or not cwd else cwd,
+                    project_name=project_name,
+                    target_dir=target_dir,
+                    output_file=pending,
+                )
+                if mirrored:
+                    version = self._inferred_project_version()
+                    if version:
+                        cmd.extend(["--project-version", version])
+                logger.debug(f"Running command: {' '.join(cmd)}")
                 if self._direct_indexer_path:
-                    success = self._run_direct(cmd, self.project_root)
+                    success = self._run_direct(cmd, root)
                 else:
-                    success = self._run_in_conda_env(cmd, self.project_root)
+                    success = self._run_in_conda_env(cmd, root)
         duration = section.duration
 
         if success:

@@ -191,10 +191,12 @@ error text, or file hints:
 
 In on-demand graph mode, a cold query without `symbols` starts with source.
 When you need indexed relationships, supply `symbols` or
-`include_dependencies=true`; preparation can install providers and build the
-graph. Ordinary queries reuse a complete warm graph. Set
-`include_dependencies=false` to omit expansion explicitly. Prebuilt mode
-keeps dependencies enabled by default.
+`include_dependencies=true`. A Python repository builds its graph in the
+background from server start; until it is ready, such a request waits about
+five seconds, then answers from source and reports `graph_preparing`. Other
+languages build the graph on that request. Ordinary queries reuse a complete
+graph. Set `include_dependencies=false` to omit expansion explicitly. Prebuilt
+mode keeps dependencies enabled by default.
 
 An unreleased source build can answer an exact Python `lsp_definition` request
 before building the graph. Use a verified local Python-only repository, the
@@ -247,10 +249,11 @@ selected text fits the character cap. `original_chars` and `returned_chars`
 describe character projection of the selected window; `selection` records its
 original scope and omitted lines.
 
-Each complete serialized `explore_context` MCP `CallToolResult` has a hard
-256 KiB (262,144-byte) ceiling. Accounting includes the structured and text
-forms, and payload projection reserves room for the result/protocol envelope.
-The limit therefore does not grant 256 KiB to source content alone.
+Each `explore_context` result served over MCP is projected to 72 KiB, counting
+both its structured and text forms. That keeps the text form, which agents
+read, under the 50,000 characters at which Claude Code moves a tool result
+into a file. Lower-ranked bodies are removed or shortened first. Every
+serialized `CallToolResult` also has a hard 256 KiB (262,144-byte) ceiling.
 
 Within each independent stdio connection, the runtime ledger remembers at most
 160 verified source ranges. A repeated identical range may use a stable

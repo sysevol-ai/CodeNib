@@ -674,6 +674,103 @@ def test_deferred_graph_cancellation_keeps_status_responsive_and_retry_serial(
     asyncio.run(session())
 
 
+def test_deferred_explore_answers_from_source_while_graph_builds(
+    local_server, monkeypatch
+):
+    from codenib import codegraph_preparation
+
+    _repo, cache, initial = local_server
+    initial._defer_graph = True
+    started, release = Event(), Event()
+    calls = []
+
+    def prepare(*_args, **_options):
+        calls.append(True)
+        started.set()
+        assert release.wait(timeout=10)
+        _publish_test_graph(cache, initial)
+
+    monkeypatch.setattr(codegraph_preparation, "prepare_graph", prepare)
+    monkeypatch.setattr(server, "_EXPLORE_GRAPH_WAIT_SECONDS", 0.05)
+
+    async def session():
+        async with server._mcp_lifespan(None):
+            try:
+                pending = await server.explore_context(
+                    "where is the entry point", symbols=["original"]
+                )
+                assert started.is_set()
+                assert pending["diagnostics"][0]["code"] == "graph_preparing"
+                assert pending["relationships"] == []
+                # The requested name reaches source through retrieval.
+                assert [group["file"] for group in pending["files"]] == ["sample.py"]
+                plain = await server.explore_context(
+                    "original", include_dependencies=False
+                )
+                assert plain["source"]["verified"]
+            finally:
+                release.set()
+            assert await asyncio.to_thread(server._graph_warmup.wait, 5) == "ready"
+            ready = await server.explore_context(
+                "where is the entry point", symbols=["original"]
+            )
+            codes = [item["code"] for item in ready["diagnostics"]]
+            assert "graph_preparing" not in codes
+            assert server.get_context().symbol_graph is not None
+            assert len(calls) == 1
+
+    asyncio.run(session())
+
+
+def test_deferred_server_starts_graph_build_when_it_loads(local_server, monkeypatch):
+    from codenib import codegraph_preparation
+
+    _repo, cache, initial = local_server
+    calls = []
+
+    def prepare(*_args, **_options):
+        calls.append(True)
+        _publish_test_graph(cache, initial)
+
+    monkeypatch.setattr(codegraph_preparation, "prepare_graph", prepare)
+    server.init_server(cache / "repo_manifest.json", defer_graph=True, warm_graph=True)
+    assert server._graph_warmup.wait(5) == "ready"
+
+    async def session():
+        response = await server.explore_context("original")
+        assert response["plan"]["dependencies"]["enabled"] is True
+        assert server.get_context().symbol_graph is not None
+        assert len(calls) == 1
+
+    asyncio.run(session())
+
+
+def test_rebuilt_retrieval_starts_a_background_graph_for_new_source(
+    local_server, monkeypatch
+):
+    from codenib import codegraph_preparation
+
+    repo, cache, _initial = local_server
+    builds = []
+    monkeypatch.setattr(
+        codegraph_preparation,
+        "prepare_graph",
+        lambda *_args, **options: builds.append(options["expected_source_fingerprint"]),
+    )
+    server.init_server(cache / "repo_manifest.json", defer_graph=True, warm_graph=True)
+    assert server._graph_warmup.wait(5) == "ready"
+    (repo / "sample.py").write_text("def updated():\n    return 2\n")
+    published = _publish(repo, cache, "sample.py", "updated")
+
+    async def session():
+        await server.search_bm25(query="updated")
+        assert server._graph_warmup.wait(5) == "ready"
+
+    asyncio.run(session())
+    assert len(builds) == 2
+    assert builds[-1] == published.source_fingerprint
+
+
 @pytest.mark.parametrize("failure", ("provider", "source-edit", "already-stale"))
 def test_deferred_preparation_failure_never_delivers_graph_or_hides_stale_source(
     local_server, monkeypatch, failure
@@ -695,15 +792,23 @@ def test_deferred_preparation_failure_never_delivers_graph_or_hides_stale_source
         (repo / "sample.py").write_text("def changed():\n    return 2\n")
 
     async def session():
-        with pytest.raises(RuntimeError, match="(preparation failed|source changed)"):
-            await server.explore_context("original", include_dependencies=True)
         if failure == "provider":
-            response = await server.explore_context(
-                "original", include_dependencies=False
-            )
-            assert response["source"]["verified"]
-            assert response["summary"]["session_call"] == 1
+            # Exploration answers from source and names the failed build; a
+            # repeated request neither rebuilds nor delivers graph results.
+            for call in (1, 2):
+                response = await server.explore_context(
+                    "original", include_dependencies=True
+                )
+                assert response["source"]["verified"]
+                assert response["relationships"] == []
+                assert response["summary"]["session_call"] == call
+                codes = [item["code"] for item in response["diagnostics"]]
+                assert "graph_unavailable" in codes
+                detail = response["diagnostics"][codes.index("graph_unavailable")]
+                assert "provider unavailable" in detail["detail"]
         else:
+            with pytest.raises(RuntimeError, match="source changed"):
+                await server.explore_context("original", include_dependencies=True)
             with pytest.raises(RuntimeError, match="source changed"):
                 await server.search_bm25("original")
         assert len(calls) == (0 if failure == "already-stale" else 1)

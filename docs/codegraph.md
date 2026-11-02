@@ -93,36 +93,45 @@ Source builds support retrieval before graph preparation:
 codenib codegraph init . --defer-graph --tool-surface explore
 ```
 
-This builds BM25 and registers the agent connection without preparing language
-providers or building a graph. An `explore_context` query without symbols starts
-with ranked, verified source. It does not build an unused graph when the
-dependency option is omitted.
+This builds BM25 and registers the agent connection in a few seconds. An
+`explore_context` query without symbols starts with ranked, verified source
+and never waits for a graph.
+
+For a Python repository, the graph is prepared in the background as soon as
+the agent's MCP server starts: CodeNib installs its managed language providers
+if needed and builds the graph while the agent reads the task. Indexing runs
+in a private copy of the Python files, so the checkout, its `git status` and
+concurrent source checks are untouched while it runs.
 
 Provide `symbols` or set `include_dependencies=true` when you need indexed
-relationships; that request prepares the graph. Once a complete graph is ready,
-the same connection includes its dependencies by default. Set
-`include_dependencies=false` to omit dependency expansion even then. The
-response plan reports whether dependencies were enabled. Prebuilt mode keeps
-its existing default dependency expansion.
+relationships. If the graph is not ready within about five seconds, the call
+answers from source search alone, adds the requested symbol names to that
+search, and reports a `graph_preparing` diagnostic; repeat the query later to
+get callers and callees. Once a complete graph is ready, the same connection
+includes its dependencies by default. Set `include_dependencies=false` to omit
+dependency expansion even then. The response plan reports whether
+dependencies were enabled. Prebuilt mode keeps its existing default
+dependency expansion.
 
-On the full tool surface, dependency, regex-node and LSP queries also trigger
-preparation.
+Repositories in other languages prepare the graph on the first request for
+relationships, and that request waits for it. On the full tool surface,
+dependency, regex-node and LSP queries also wait for the graph, building it
+again if none is available.
 
-The first graph query may install CodeNib's managed providers and wait for
-indexing. It retains the normal source checks and refuses partial-language
+Preparation retains the normal source checks and refuses partial-language
 graphs. Missing project prerequisites remain errors; CodeNib does not install
-repository dependencies. A cancelled request may finish its local compilation;
-its response is discarded and a retry waits for that worker. Ordinary BM25
-retrieval remains available after a provider failure if source is unchanged.
+repository dependencies. If a background build fails, exploration keeps
+answering from source and reports a `graph_unavailable` diagnostic with the
+reason; run `codenib codegraph init` to retry.
 
 Repeated initialization retains this policy and refreshes BM25 after edits;
-the next graph query pays the graph update cost. Status distinguishes retrieval
-readiness from full graph readiness. Its full-readiness check still exits
-nonzero until both current indexes and providers are ready. To change the
-managed policy, uninstall the registration and initialize again. Include the
-first graph query and subsequent rebuilds in any workflow comparison: this
-option defers their cost and does not establish a task-efficiency gain. It
-awaits a package release.
+for Python, the reloaded server prepares the updated graph in the background.
+Status distinguishes retrieval readiness from full graph readiness. Its
+full-readiness check still exits nonzero until both current indexes and
+providers are ready. To change the managed policy, uninstall the registration
+and initialize again. Include graph preparation and rebuilds in any workflow
+comparison: this option moves their cost off the first query and does not by
+itself establish a task-efficiency gain. It awaits a package release.
 
 ## Select the repository source surface
 
