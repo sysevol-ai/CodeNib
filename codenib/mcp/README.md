@@ -317,11 +317,14 @@ For a local manifest server, rebuild with `codenib codegraph init` and retry in
 the same connection: the next indexed query or idle manifest-status request
 loads the published generation after authenticating current source. A busy
 compiler returns a retry message. Connection delivery history and its worker
-barrier survive a successful reload. Reloading does not compile an index. In
-`--defer-graph` mode, an explicitly requested graph operation can prepare a
-complete graph for unchanged indexed source; for Python, a reload also starts
-that preparation in the background. Source changes still require explicit
-rebuilding before the query can proceed.
+barrier survive a successful reload. In `--defer-graph` mode, an explicitly
+requested graph operation can prepare a complete graph for unchanged indexed
+source; for Python, a reload also starts that preparation in the background.
+A `--defer-graph` server also handles source changes itself: an indexed query
+that finds edited source re-indexes BM25 for the current checkout, reloads and
+runs once more. A graph build for the old source is waited on for up to 30
+seconds first; a refresh that cannot run keeps the original stale-source
+rejection. Prebuilt servers still require explicit rebuilding.
 Portable artifacts retain their selected snapshot and require explicit
 rebinding to change it.
 

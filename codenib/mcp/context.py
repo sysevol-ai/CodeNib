@@ -78,6 +78,10 @@ class IndexedQueryError(RuntimeError):
         super().__init__(self.public_message + (f" {detail}" if detail else ""))
 
 
+class StaleSourceError(IndexedQueryError):
+    """The checkout no longer matches the source the loaded views indexed."""
+
+
 def _running_event_loop() -> asyncio.AbstractEventLoop | None:
     """Return the active loop without requiring one during sync setup."""
 
@@ -463,7 +467,7 @@ class ServerContext:
                 "restart its CodeNib MCP server. "
             )
             if source is None:
-                raise IndexedQueryError(
+                raise StaleSourceError(
                     "Indexed source is unavailable. " + recovery,
                     self.source_error or "source binding is unverified",
                 )
@@ -473,7 +477,7 @@ class ServerContext:
                     source.verify_snapshot()
                 except (OSError, RuntimeError, ValueError) as exc:
                     self.source_error = source.failure_reason or str(exc)
-                    failure = IndexedQueryError(
+                    failure = StaleSourceError(
                         "Indexed source changed. " + recovery, self.source_error
                     )
                     # Authentication revokes source authority immediately. The

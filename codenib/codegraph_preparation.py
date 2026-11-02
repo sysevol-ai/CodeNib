@@ -111,6 +111,55 @@ def checkout_guard(repo_path: Path) -> Iterator[Callable[[str], None]]:
         yield require_unchanged
 
 
+def refresh_retrieval(
+    repository: Path,
+    *,
+    languages: list[str],
+    source_selection: RepositorySourceSelection,
+) -> str:
+    """Rebuild BM25 for the current checkout and return its source fingerprint.
+
+    This is the retrieval half of ``codenib codegraph init --defer-graph``,
+    run by an MCP server after the agent edits source. It shares the
+    compiler's cache lock and update path, keeps the checkout guard, and
+    leaves the old graph marked stale for a later preparation.
+    """
+    from .compiler.index_builders import IndexBuilderRegistry, register_default_builders
+    from .compiler.index_compiler import IndexCompiler, IndexCompilerConfig
+    from .paths import repo_index_dir
+
+    with checkout_guard(repository) as check_checkout:
+        registry = IndexBuilderRegistry()
+        register_default_builders(
+            registry,
+            languages=languages,
+            source_selection=source_selection,
+            allow_graph_project_preparation=False,
+            allow_partial_graph_languages=False,
+        )
+        compiler = IndexCompiler(
+            registry,
+            IndexCompilerConfig(
+                index_types=["bm25"],
+                languages=languages,
+                source_selection=source_selection,
+            ),
+        )
+        try:
+            manifest = compiler.update_repo(
+                str(repository),
+                index_types=["bm25"],
+                cache_dir=str(repo_index_dir(repository)),
+            )
+        finally:
+            check_checkout("retrieval refresh")
+        if not manifest.index_is_current("bm25"):
+            raise CodeGraphPreparationError(
+                "Retrieval refresh failed; run `codenib codegraph init` and retry"
+            )
+        return manifest.source_fingerprint
+
+
 def prepare_graph(
     repository: Path,
     *,
