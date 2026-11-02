@@ -257,10 +257,18 @@ selected text fits the character cap. `original_chars` and `returned_chars`
 describe character projection of the selected window; `selection` records its
 original scope and omitted lines.
 
-Each `explore_context` result served over MCP is projected to 72 KiB, counting
-both its structured and text forms. That keeps the text form, which agents
-read, under the 50,000 characters at which Claude Code moves a tool result
-into a file. Lower-ranked bodies are removed or shortened first. Every
+By default an `explore_context` result is readable text: each source window
+as line-numbered source under a `--- file:line` heading, the direct static
+references of the main symbols, and one-line notes. It has no
+`structuredContent`, because Claude Code shows a result's structured content to
+the model as JSON whenever it is present. The text is bounded to 40 KiB, well
+under the 50,000 characters at which Claude Code moves a tool result into a
+file; lower-ranked bodies are removed or shortened first.
+
+Programmatic clients can start the server with `--explore-output json` to get
+the complete response, including plan, provenance and session fields, as
+`structuredContent` with a JSON text copy, bounded to 72 KiB. The grep/Jev
+route always uses JSON so its cost and model fields stay visible. Every
 serialized `CallToolResult` also has a hard 256 KiB (262,144-byte) ceiling.
 
 Within each independent stdio connection, the runtime ledger remembers at most

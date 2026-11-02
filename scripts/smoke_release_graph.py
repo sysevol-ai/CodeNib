@@ -179,7 +179,14 @@ async def _assert_codegraph_mcp_async(
     stderr_path = root / "codegraph-mcp.log"
     parameters = StdioServerParameters(
         command=executable,
-        args=["mcp", str(repo), "--tool-surface", "full"],
+        args=[
+            "mcp",
+            str(repo),
+            "--tool-surface",
+            "full",
+            "--explore-output",
+            "json",
+        ],
         cwd=root,
         env=env,
     )
@@ -256,7 +263,17 @@ def _assert_codegraph_mcp(
     env: dict[str, str],
     callee: str = "release_sum",
 ) -> None:
-    print("+", executable, "mcp", str(repo), "--tool-surface", "full", flush=True)
+    print(
+        "+",
+        executable,
+        "mcp",
+        str(repo),
+        "--tool-surface",
+        "full",
+        "--explore-output",
+        "json",
+        flush=True,
+    )
     asyncio.run(
         _assert_codegraph_mcp_async(
             root,
@@ -284,7 +301,14 @@ def _assert_dirty_reinitialization(
     async def verify() -> None:
         parameters = StdioServerParameters(
             command=executable,
-            args=["mcp", str(repo), "--tool-surface", "full"],
+            args=[
+                "mcp",
+                str(repo),
+                "--tool-surface",
+                "full",
+                "--explore-output",
+                "json",
+            ],
             cwd=root,
             env=env,
         )
