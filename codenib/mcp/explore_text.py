@@ -112,6 +112,14 @@ def _context_lines(file_path: str, context: Mapping[str, Any]) -> list[str]:
     lines = [heading]
     if context.get("verified") is not True:
         lines.append("      (indexed copy; not verified against the current checkout)")
+    projection = context.get("source_projection")
+    if isinstance(projection, Mapping):
+        if projection.get("line_truncated") is True:
+            lines.append(
+                "      (a source line was clipped at the read character limit)"
+            )
+        elif projection.get("truncated") is True:
+            lines.append("      (source window shortened at the read limit)")
     lines.extend(_numbered(content, int(start) if start else 1))
     return lines
 
@@ -179,9 +187,16 @@ def _relationship_lines(relationship: Mapping[str, Any]) -> list[str]:
             f"{projection.get('original_nodes', 0)} symbols, "
             f"{projection.get('original_edges', 0)} references)"
         )
-    elif not outgoing and not incoming and not deeper:
+    elif (
+        not outgoing
+        and not incoming
+        and not deeper
+        and not relationship.get("truncated")
+    ):
         note = relationship.get("note")
         lines.append(f"  {note}" if note else "  no indexed references found")
+    if relationship.get("truncated") is True:
+        lines.append("  (relationship traversal truncated; more references may exist)")
     return lines
 
 
@@ -215,7 +230,7 @@ def render_explore_text(response: Mapping[str, Any]) -> str:
     if source.get("verified") is True:
         lines.append(
             "Source is read from the current checkout"
-            + (f" (HEAD {commit})" if commit else "")
+            + (f" (indexed commit {commit})" if commit else "")
             + "; line numbers are 1-based and safe to cite."
         )
     else:

@@ -154,7 +154,7 @@ def test_source_is_line_numbered_across_omitted_lines() -> None:
     ) in text
     assert "(same source as returned in call 1; not repeated)" in text
     assert "(explore_context call 2 in this session)" in text
-    assert "HEAD c12a5d874c5a" in text and "safe to cite" in text
+    assert "indexed commit c12a5d874c5a" in text and "safe to cite" in text
 
 
 def test_relationships_list_direct_neighbors_by_direction() -> None:
@@ -193,6 +193,35 @@ def test_unverified_source_is_marked_before_and_inside_windows() -> None:
 
     assert "could not be verified" in text
     assert "(indexed copy; not verified against the current checkout)" in text
+
+
+def test_manifest_commit_is_not_presented_as_checkout_head() -> None:
+    response = _response()
+    response["source"].update(commit_verified=False, checkout_commit="d" * 40)
+    text = render_explore_text(response)
+    assert "current checkout" in text
+    assert "indexed commit c12a5d874c5a" in text
+    assert "HEAD" not in text
+
+
+def test_traversal_truncation_is_visible_without_response_projection() -> None:
+    response = _response()
+    relationship = response["relationships"][0]
+    relationship["truncated"] = True
+    assert "response_projection" not in relationship
+    text = render_explore_text(response)
+    assert "references: Request.blueprints()" in text
+    assert "relationship traversal truncated" in text
+
+
+def test_text_marks_a_line_clipped_by_the_source_reader() -> None:
+    response = _response()
+    response["files"][0]["contexts"][0].update(
+        content="incomplete_call(", source_projection={"line_truncated": True}
+    )
+    text = render_explore_text(response)
+    assert "source line was clipped at the read character limit" in text
+    assert "    10\tincomplete_call(" in text
 
 
 def test_rendered_bound_measures_the_text_it_sends() -> None:
