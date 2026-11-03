@@ -261,7 +261,9 @@ def test_known_gap_module_comprehension_walrus_has_no_definition(tmp_path):
     assert not [o for o in index.documents[0].occurrences if "text" in o.symbol]
 
 
-@pytest.mark.parametrize("case", sorted(path.name for path in CAPTURES.iterdir()))
+@pytest.mark.parametrize(
+    "case", sorted(path.name for path in CAPTURES.iterdir() if path.is_dir())
+)
 def test_identity_recovery_has_nothing_to_repair(tmp_path, case):
     index, _, _ = _convert(tmp_path, case)
 
