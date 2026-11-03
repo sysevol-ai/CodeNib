@@ -281,6 +281,72 @@ builder or recovering incompatible state:
 codenib codegraph init . --rebuild
 ```
 
+## Check call-path rules
+
+An agent can find a call site, but it cannot promise that it found every path
+to one. A path rule asks the graph that question exhaustively and fails a
+build when a path breaks the rule. Each rule says: every reference path from
+an entry point to a `to` symbol passes a `through` symbol, or a function on
+the path that also references an `or_calls` symbol. An entry point is a
+symbol that nothing else in the checked files references, such as a public
+API or a command handler.
+
+Rules live in `.codenib/checks.yaml` in the repository unless `--rules` names
+another file:
+
+```yaml
+version: 1
+rules:
+  - id: tool-calls-pass-run-hooks
+    message: A tool call must pass the run's before_tool hooks.
+    to: [ToolRegistry.perform]
+    through: [Loop._call]
+    or_calls: [run_guard]
+    exclude: [tests, examples]
+```
+
+A symbol is a full graph name, a qualified name such as `Loop._call`, or a bare
+name; it must match exactly one node, or the command stops and lists the
+candidates. `exclude` removes files from the graph before checking, so a
+function that only tests call becomes an entry point. A bare directory
+excludes its subtree; `*` stays within one path segment and `**` crosses them.
+
+```bash
+codenib index /absolute/path/to/repository --preset graph
+codenib codegraph check /absolute/path/to/repository
+codenib codegraph check . --base origin/main --json
+```
+
+Each violation names the caller of the `to` symbol and a shortest path to it
+from an entry point that passes no guard:
+
+```text
+FAIL tool-calls-pass-run-hooks: A tool call must pass the run's before_tool hooks.
+  agent/ext/planning.py:93  Plan.execute() calls ToolRegistry.perform()
+      Plan.tools() -> Plan.execute() -> ToolRegistry.perform()
+  agent/ext/program.py:217  _Interpreter.expr() calls ToolRegistry.perform()  [unresolved call, matched by name]
+      ProgramTools.tools() -> ProgramTools.run() -> _Interpreter.block() -> _Interpreter.expr() ~> ToolRegistry.perform()
+```
+
+With `--base`, a violation is listed only when the changes since the merge
+base touch its unguarded region or its call; the others are counted. Changes
+include uncommitted edits and untracked files, so an agent can reindex and
+check its own edit before committing it. Exit status is 0 when every rule
+passes, 1 for violations and 2 for an invalid rule, revision or graph. The
+command checks the indexed source and refuses a graph that does not match the
+checkout or that any language failed to build, so index the working tree
+under review first.
+
+The check does not pass a path it cannot see. For Python, a call site that no
+resolved reference anchors is matched by callee name: first to a `to` symbol,
+then, when the resolved callers of a node all pass, to that node. The report
+marks such hops with `~>`. Guards and `or_calls` count only through resolved
+references. Both choices can report a path that does not exist at run time;
+neither hides one. Other languages use resolved references only, and the
+report states the files it checked each way. A reference is not always a call:
+passing a method as a callback also creates an edge, which is how handlers
+registered with a framework stay on the path.
+
 ## Recorded agent session
 
 The homepage's 15-second clip replays actual CLI output from
