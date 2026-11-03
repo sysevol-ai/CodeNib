@@ -15,7 +15,6 @@ import shlex
 import shutil
 import stat
 import sys
-from collections import Counter
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -28,7 +27,6 @@ from .provider_routes import (
     resolve_embedding_artifact_route,
     resolve_inference_route,
 )
-from .repository_filters import walk_repository_files
 from .repository_source_selection import (
     DEFAULT_REPOSITORY_SOURCE_SELECTION,
     RepositorySourceSelection,
@@ -356,25 +354,11 @@ def _detect_languages_for_surface(
     source_selection: RepositorySourceSelection = (DEFAULT_REPOSITORY_SOURCE_SELECTION),
 ) -> list[str]:
     """Detect registered source languages for one capability surface."""
-    from .languages import extension_to_language_map
-    from .source_fingerprint import lexical_repository_path
+    from .repository_filters import detect_repository_languages
 
-    root = lexical_repository_path(repo_path)
-    extension_map = extension_to_language_map(surface)
-    counts: Counter[str] = Counter()
-
-    for path in walk_repository_files(root, selection=source_selection):
-        language = extension_map.get(path.suffix.lower())
-        if language:
-            counts[language] += 1
-
-    return [
-        language
-        for language, _ in sorted(
-            counts.items(),
-            key=lambda item: (-item[1], item[0]),
-        )
-    ]
+    return detect_repository_languages(
+        repo_path, surface=surface, source_selection=source_selection
+    )
 
 
 def detect_languages(
@@ -639,6 +623,7 @@ def _prepare_index_compiler(
     embedding_credential_env: str | None = None,
     allow_graph_project_preparation: bool = True,
     allow_partial_graph_languages: bool = True,
+    language_selection: str | None = None,
 ) -> tuple[object, Path]:
     """Construct the shared compiler configuration and canonical cache path."""
     from .toolchains import activate_managed_toolchain
@@ -674,6 +659,7 @@ def _prepare_index_compiler(
         IndexCompilerConfig(
             index_types=list(views),
             languages=list(languages),
+            language_selection=language_selection,
             source_selection=source_selection,
         ),
     )
@@ -695,6 +681,7 @@ def index_repository(
     embedding_credential_env: str | None = None,
     allow_graph_project_preparation: bool = True,
     allow_partial_graph_languages: bool = True,
+    language_selection: str | None = None,
 ):
     """Build or update the requested repository views."""
     from .compiler.manifest import MANIFEST_FILENAME
@@ -711,6 +698,7 @@ def index_repository(
         embedding_credential_env=embedding_credential_env,
         allow_graph_project_preparation=allow_graph_project_preparation,
         allow_partial_graph_languages=allow_partial_graph_languages,
+        language_selection=language_selection,
     )
     manifest_path = cache_dir / MANIFEST_FILENAME
     if manifest_path.is_file() and not rebuild:
@@ -2678,6 +2666,7 @@ def _run_codegraph_init(args: argparse.Namespace) -> int:
                 rebuild=args.rebuild,
                 allow_graph_project_preparation=False,
                 allow_partial_graph_languages=False,
+                language_selection="explicit" if args.language else "auto",
             )
         except (OSError, RuntimeError, ValueError) as exc:
             check_checkout("indexing")

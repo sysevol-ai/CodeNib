@@ -295,10 +295,34 @@ def _refresh_edited_source() -> ServerContext:
         )
     current = get_context()
     manifest = current.manifest
+    retrieval = manifest.indexes.get("bm25")
+    mode = (
+        retrieval.metadata.get("language_selection") if retrieval is not None else None
+    )
+    languages = list(manifest.languages)
+    if mode == "auto":
+        from ..languages import graph_indexer_path
+        from ..repository_filters import detect_repository_languages
+
+        languages = [
+            language
+            for language in detect_repository_languages(
+                Path(manifest.repo_path),
+                surface="graph",
+                source_selection=manifest.source_selection,
+            )
+            if graph_indexer_path(language) is not None
+        ]
+        if not languages:
+            raise IndexedQueryError(
+                "No graph-capable source remains; run codegraph init"
+            )
     refresh_retrieval(
         Path(manifest.repo_path),
-        languages=list(manifest.languages),
+        languages=languages,
         source_selection=manifest.source_selection,
+        cache_dir=current._local_manifest_path.parent,
+        language_selection=mode,
     )
     # Reload even when the manifest is unchanged: the new generation
     # recaptures the source binding that the stale check revoked.
@@ -349,6 +373,7 @@ def _graph_target(ctx: ServerContext) -> GraphTarget:
         languages=tuple(ctx.manifest.languages),
         source_selection=ctx.manifest.source_selection,
         source_fingerprint=ctx.manifest.source_fingerprint,
+        cache_dir=ctx._local_manifest_path.parent,
     )
 
 

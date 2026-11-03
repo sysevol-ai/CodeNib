@@ -18,6 +18,32 @@ from .repository_source_selection import (
 
 REPOSITORY_FILTER_POLICY_VERSION = REPOSITORY_SOURCE_SELECTION_POLICY_VERSION
 
+
+def detect_repository_languages(
+    repo_path: str | os.PathLike[str],
+    *,
+    surface: str,
+    source_selection: RepositorySourceSelection = DEFAULT_REPOSITORY_SOURCE_SELECTION,
+) -> list[str]:
+    """Count registered source languages using the shared traversal policy."""
+    from collections import Counter
+
+    from .languages import extension_to_language_map
+    from .source_fingerprint import lexical_repository_path
+
+    root = lexical_repository_path(repo_path)
+    extension_map = extension_to_language_map(surface)
+    counts: Counter[str] = Counter()
+    for path in walk_repository_files(root, selection=source_selection):
+        language = extension_map.get(path.suffix.lower())
+        if language:
+            counts[language] += 1
+    return [
+        language
+        for language, _ in sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+    ]
+
+
 DEFAULT_IGNORED_DIRS = frozenset(
     {
         ".codenib_cache",

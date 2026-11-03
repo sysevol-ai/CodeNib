@@ -321,8 +321,11 @@ barrier survive a successful reload. In `--defer-graph` mode, an explicitly
 requested graph operation can prepare a complete graph for unchanged indexed
 source; for Python, a reload also starts that preparation in the background.
 A `--defer-graph` server also handles source changes itself: an indexed query
-that finds edited source re-indexes BM25 for the current checkout, reloads and
-runs once more. A graph build for the old source is waited on for up to 30
+that finds edited source re-indexes BM25 in the loaded manifest's cache, reloads
+and runs once more. A repository initialized without `--language` also detects
+new source languages; an explicit language list keeps its selected scope.
+Older indexes retain their recorded languages until `codegraph init` records
+that choice. A graph build for the old source is waited on for up to 30
 seconds first; a refresh that cannot run keeps the original stale-source
 rejection. Prebuilt servers still require explicit rebuilding.
 Portable artifacts retain their selected snapshot and require explicit
