@@ -21,6 +21,7 @@ from typing import Any
 from ...agent.lsp_graph import display_name, resolve_symbol_candidates
 from ...context_delivery import project_evidence_payloads
 from ...types import is_symbol_node, node_has_definition
+from ...utils import is_test_file
 from ..explore_bounds import MAX_EXPLORE_PAYLOAD_BYTES, bound_explore_response
 from ._validation import (
     MAX_EXPLORE_WINDOWS,
@@ -469,6 +470,10 @@ def _symbol_search_text(symbol: str) -> str:
     return name.replace(".", " ").strip()
 
 
+# Further candidates tried for call chains when a seed has none.
+_CHAIN_FALLBACK_SEEDS = 3
+
+
 def _dependency_seed_candidates(
     explicit_symbols: Sequence[str],
     route_results: Sequence[Any],
@@ -704,9 +709,22 @@ def explore_context_impl(
         and normalized_direction in {"impact", "both"}
         and getattr(ctx, "symbol_graph", None) is not None
     ):
-        for seed in dependency_seeds:
-            if len(call_chains) >= profile.chain_symbols:
+        # A seed that nothing references has no chain. Keep its note when the
+        # caller named it, and look further down the candidates for a chain.
+        chain_seeds = _dependency_seed_candidates(
+            route_symbols,
+            route_results,
+            retrieval_results,
+            limit=len(dependency_seeds) + _CHAIN_FALLBACK_SEEDS,
+        )
+        named = {symbol.strip().casefold() for symbol in route_symbols}
+        reached = 0
+        for seed in chain_seeds:
+            if reached >= profile.chain_symbols:
                 break
+            # Tests reach production code, not the other way round.
+            if seed.casefold() not in named and is_test_file(seed):
+                continue
             try:
                 chains = entry_chains_impl(
                     ctx,
@@ -720,10 +738,15 @@ def explore_context_impl(
                 diagnostics.append(_diagnostic("call_chains_failed", f"{seed}: {exc}"))
                 continue
             # An ambiguous or unknown name yields no chain; try the next seed.
-            if not chains.get("error") and (
-                chains["chains"] or "unresolved" not in str(chains.get("note"))
+            if chains.get("error") or (
+                not chains["chains"] and "unresolved" in str(chains.get("note"))
             ):
-                call_chains.append({"seed": seed, **chains})
+                continue
+            if chains["chains"]:
+                reached += 1
+            elif seed.casefold() not in named:
+                continue
+            call_chains.append({"seed": seed, **chains})
 
     # Retain canonical origin/merge metadata, but reserve delivery for requested
     # definitions before dense hits can fill every source-window slot.
