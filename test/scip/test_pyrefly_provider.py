@@ -174,3 +174,41 @@ def test_default_build_uses_pyrefly_and_keeps_only_the_index(tmp_path, environ):
     assert _scip_tool_name(indexer.index_file) == "pyrefly"
     assert not (tmp_path / "out" / "pyrefly-glean").exists()
     assert not any(path.name.startswith("pyrefly") for path in root.rglob("*"))
+
+
+@pytest.mark.skipif(
+    _installed_pyrefly() is None,
+    reason=f"pyrefly {PYREFLY_VERSION} is not installed",
+)
+def test_parameter_named_like_a_module_function_is_not_a_call(tmp_path, environ):
+    # After a branch that may rebind a parameter, pyrefly 1.4 names the read
+    # ``mod.revision``, the module function's name; the function scope must
+    # win, as in Python (alembic's command.upgrade has this shape).
+    root = tmp_path / "repo"
+    root.mkdir()
+    (root / "mod.py").write_text(
+        "def revision():\n"
+        "    return 1\n"
+        "\n"
+        "\n"
+        "def upgrade(config, revision):\n"
+        '    if ":" in revision:\n'
+        '        start, revision = revision.split(":", 2)\n'
+        "    return run(destination=revision)\n"
+        "\n"
+        "\n"
+        "def run(destination):\n"
+        "    return destination\n"
+    )
+    indexer = SCIPPythonIndexer(root, output_dir=tmp_path / "out")
+    assert indexer.generate_index(project_name="repo") is True
+
+    index = Index()
+    index.ParseFromString(indexer.index_file.read_bytes())
+    document = next(d for d in index.documents if d.relative_path == "mod.py")
+    read = [
+        occurrence.symbol
+        for occurrence in document.occurrences
+        if list(occurrence.range)[:2] == [7, 27]
+    ]
+    assert read and all(symbol.endswith("upgrade().(revision)") for symbol in read)
