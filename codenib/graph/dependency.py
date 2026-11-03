@@ -147,6 +147,9 @@ class EntryChainResult:
     entries_found: int = 0
     truncated: bool = False
     note: Optional[str] = None
+    # Set when nothing references the symbol and the chains reach a
+    # referenced method of the same name that dynamic dispatch may route to it.
+    via: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         payload: Dict[str, Any] = {
@@ -157,6 +160,8 @@ class EntryChainResult:
         }
         if self.note:
             payload["note"] = self.note
+        if self.via:
+            payload["via"] = self.via
         return payload
 
 
@@ -214,6 +219,7 @@ class DependencyAnalyzer:
         max_chains: int = 3,
         max_visited: int = 4000,
         max_scanned_edges: int = 40000,
+        follow_dispatch: bool = True,
     ) -> EntryChainResult:
         """Shortest static reference chains from entry symbols down to *symbol*.
 
@@ -299,11 +305,35 @@ class DependencyAnalyzer:
                 "called by a framework, a command line or external code"
             )
             same_named = self._referenced_same_named_methods(canonical)
-            if same_named:
-                result.note += (
-                    ", or reached by dynamic dispatch through a same-named "
-                    "method that is referenced: " + ", ".join(same_named)
+            if not same_named:
+                return result
+            if follow_dispatch:
+                # An override is usually called as ``self.method()``, which the
+                # index records against the base method: show how that is reached.
+                base = self.entry_chains(
+                    same_named[0],
+                    max_depth=max_depth,
+                    max_chains=max_chains,
+                    max_visited=max_visited,
+                    max_scanned_edges=max_scanned_edges,
+                    follow_dispatch=False,
                 )
+                if base.chains:
+                    result.chains = base.chains
+                    result.entries_found = base.entries_found
+                    result.truncated = base.truncated
+                    result.via = base.root
+                    result.note = (
+                        f"no indexed references to {root}; the chains reach the "
+                        f"same-named {base.root}, and dynamic dispatch may run "
+                        f"{root} there instead (static references cannot tell "
+                        "which override runs)"
+                    )
+                    return result
+            result.note += (
+                ", or reached by dynamic dispatch through a same-named "
+                "method that is referenced: " + ", ".join(same_named)
+            )
             return result
 
         def path_to_target(name: str) -> List[str]:
@@ -380,6 +410,7 @@ class DependencyAnalyzer:
         info = self.code_graph.get_node_info_by_name(canonical) or {}
         if info.get("type") != NODE_TYPE_METHOD:
             return []
+        own_file = info.get("file")
         display = self.code_graph.display_name(canonical).removesuffix("()")
         method = display.rsplit(".", 1)[-1].rsplit(":", 1)[-1]
         found: List[str] = []
@@ -391,10 +422,16 @@ class DependencyAnalyzer:
             if not other.endswith("." + method):
                 continue
             if self._has_chain_referrer(name, NeighborScanBudget(1000)):
-                found.append(self.code_graph.display_name(name))
-                if len(found) >= limit:
-                    break
-        return found
+                found.append(name)
+        # A base class in the same module is the likeliest dispatch target.
+        found.sort(
+            key=lambda name: (
+                (self.code_graph.get_node_info_by_name(name) or {}).get("file")
+                != own_file,
+                self.code_graph.display_name(name),
+            )
+        )
+        return [self.code_graph.display_name(name) for name in found[:limit]]
 
     def _has_chain_referrer(self, name: str, scan_budget: NeighborScanBudget) -> bool:
         neighbors = self.searcher.iter_neighbors(
