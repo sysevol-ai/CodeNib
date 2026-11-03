@@ -47,7 +47,9 @@ def checkout_snapshot(repo_path: Path) -> bytes:
 
 
 @contextmanager
-def checkout_guard(repo_path: Path) -> Iterator[Callable[[str], None]]:
+def checkout_guard(
+    repo_path: Path, *, cache_dir: Path | None = None
+) -> Iterator[Callable[[str], None]]:
     """Preserve visible source content and Git status across initialization.
 
     A phase succeeds only if its postcondition matches the captured source
@@ -65,10 +67,12 @@ def checkout_guard(repo_path: Path) -> Iterator[Callable[[str], None]]:
         pin_repository_source_root,
     )
 
+    cache_root = cache_dir or repo_index_dir(repo_path)
+
     def source_fingerprint(authority):
         with capture_repository_source(
             repo_path,
-            exclude_roots=(repo_index_dir(repo_path),),
+            exclude_roots=(cache_root,),
             expected_root_authority=authority,
         ) as source:
             return source.fingerprint
@@ -116,6 +120,8 @@ def refresh_retrieval(
     *,
     languages: list[str],
     source_selection: RepositorySourceSelection,
+    cache_dir: Path | None = None,
+    language_selection: str | None = None,
 ) -> str:
     """Rebuild BM25 for the current checkout and return its source fingerprint.
 
@@ -128,7 +134,8 @@ def refresh_retrieval(
     from .compiler.index_compiler import IndexCompiler, IndexCompilerConfig
     from .paths import repo_index_dir
 
-    with checkout_guard(repository) as check_checkout:
+    cache_root = cache_dir or repo_index_dir(repository)
+    with checkout_guard(repository, cache_dir=cache_root) as check_checkout:
         registry = IndexBuilderRegistry()
         register_default_builders(
             registry,
@@ -143,13 +150,14 @@ def refresh_retrieval(
                 index_types=["bm25"],
                 languages=languages,
                 source_selection=source_selection,
+                language_selection=language_selection,
             ),
         )
         try:
             manifest = compiler.update_repo(
                 str(repository),
                 index_types=["bm25"],
-                cache_dir=str(repo_index_dir(repository)),
+                cache_dir=str(cache_root),
             )
         finally:
             check_checkout("retrieval refresh")
@@ -166,6 +174,7 @@ def prepare_graph(
     languages: list[str],
     source_selection: RepositorySourceSelection,
     expected_source_fingerprint: str,
+    cache_dir: Path | None = None,
 ) -> None:
     """Prepare one graph through the existing toolchain/compiler boundaries.
 
@@ -201,11 +210,12 @@ def prepare_graph(
             command, timeout=kwargs.pop("timeout", 600), **kwargs
         )
 
-    with checkout_guard(repository) as check_checkout:
+    cache_root = cache_dir or repo_index_dir(repository)
+    with checkout_guard(repository, cache_dir=cache_root) as check_checkout:
         source = fingerprint_repository(
             repository,
             selection=source_selection,
-            exclude_roots=(repo_index_dir(repository),),
+            exclude_roots=(cache_root,),
         )
         if source.value != expected_source_fingerprint:
             raise CodeGraphPreparationError(
@@ -250,7 +260,7 @@ def prepare_graph(
             manifest = compiler.update_repo(
                 str(repository),
                 index_types=["symbol_graph"],
-                cache_dir=str(repo_index_dir(repository)),
+                cache_dir=str(cache_root),
             )
         finally:
             check_checkout("indexing")

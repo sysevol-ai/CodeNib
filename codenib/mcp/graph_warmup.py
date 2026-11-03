@@ -51,6 +51,7 @@ class GraphTarget:
     languages: tuple[str, ...]
     source_selection: RepositorySourceSelection
     source_fingerprint: str
+    cache_dir: Path | None = None
 
 
 def _default_prepare(target: GraphTarget) -> None:
@@ -61,6 +62,7 @@ def _default_prepare(target: GraphTarget) -> None:
         languages=list(target.languages),
         source_selection=target.source_selection,
         expected_source_fingerprint=target.source_fingerprint,
+        cache_dir=target.cache_dir,
     )
 
 

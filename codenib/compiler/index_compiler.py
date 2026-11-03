@@ -59,8 +59,12 @@ class IndexCompilerConfig:
     )
     languages: List[str] = field(default_factory=lambda: ["python"])
     source_selection: RepositorySourceSelection | None = None
+    # Onboarding policy for later MCP refreshes; None leaves it unspecified.
+    language_selection: str | None = None
 
     def __post_init__(self) -> None:
+        if self.language_selection not in (None, "auto", "explicit"):
+            raise ValueError("language_selection must be auto, explicit or None")
         if self.source_selection is None:
             return
         if type(self.source_selection) is not RepositorySourceSelection:
@@ -238,6 +242,8 @@ class IndexCompiler:
             )
         ]
         if not incomplete:
+            if self._record_language_selection(existing, types_to_update):
+                existing.save(manifest_path)
             identity = head_commit[:8] if head_commit else source.value[:19]
             logger.info("Indexes already at %s; nothing to update", identity)
             return existing
@@ -536,6 +542,9 @@ class IndexCompiler:
                 (head_commit or source.value)[:12],
             )
 
+        self._record_language_selection(
+            manifest, index_types or self._config.index_types
+        )
         manifest.derive_capabilities()
         now = datetime.now(timezone.utc)
         manifest.compiled_at = now.isoformat()
@@ -546,6 +555,21 @@ class IndexCompiler:
         logger.info("Manifest written to %s", manifest_path)
 
         return manifest
+
+    def _record_language_selection(self, manifest, index_types) -> bool:
+        """Retain onboarding policy within the existing compiler cache lock."""
+        mode = self._config.language_selection
+        entry = manifest.indexes.get("bm25")
+        if (
+            mode is None
+            or "bm25" not in index_types
+            or entry is None
+            or entry.status != "fresh"
+            or entry.metadata.get("language_selection") == mode
+        ):
+            return False
+        entry.metadata["language_selection"] = mode
+        return True
 
     @staticmethod
     def _require_cache_outside_source(

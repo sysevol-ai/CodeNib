@@ -238,6 +238,7 @@ def test_deferred_graph_builds_once_and_preserves_connection_ledger(
                     "languages": ["python"],
                     "source_selection": initial.manifest.source_selection,
                     "expected_source_fingerprint": initial.manifest.source_fingerprint,
+                    "cache_dir": cache,
                 },
             )
             current = server.get_context()
@@ -1190,3 +1191,86 @@ def test_old_cleanup_failure_keeps_its_owner_and_closes_unpublished_source(
     assert asyncio.run(server.search_bm25(query="original"))
     assert source.closed
     assert server.get_context() is not initial
+
+
+@pytest.mark.parametrize("language_selection", ["auto", "explicit"])
+def test_edit_refresh_uses_loaded_cache_and_retains_language_policy(
+    tmp_path, monkeypatch, language_selection
+):
+    import subprocess
+
+    from codenib.codegraph_preparation import refresh_retrieval
+    from codenib.languages import normalize_graph_language
+    from codenib.paths import repo_index_dir
+
+    repo = tmp_path / "repository"
+    repo.mkdir()
+    (repo / "sample.py").write_text("def original():\n    return 1\n")
+    git = [
+        "git",
+        "-c",
+        "maintenance.auto=false",
+        "-c",
+        "gc.auto=0",
+        "-c",
+        "core.hooksPath=/dev/null",
+        "-C",
+        str(repo),
+    ]
+    for args in [
+        ["init", "-q"],
+        ["add", "."],
+        [
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.invalid",
+            "commit",
+            "-qm",
+            "fixture",
+        ],
+    ]:
+        subprocess.run([*git, *args], check=True, capture_output=True)
+    monkeypatch.setenv("CODENIB_HOME", str(tmp_path / "default-state"))
+    monkeypatch.setattr(server, "_ctx", None)
+    cache = tmp_path / "custom-indexes"
+    selection = RepositorySourceSelection()
+    for mode in ("explicit", "auto", language_selection):
+        refresh_retrieval(
+            repo,
+            languages=["python"],
+            source_selection=selection,
+            cache_dir=cache,
+            language_selection=mode,
+        )
+        # This also exercises metadata publication on the unchanged-source path.
+        retained = RepoManifest.load(cache / "repo_manifest.json")
+        assert retained.indexes["bm25"].metadata["language_selection"] == mode
+    server.init_server(cache / "repo_manifest.json", defer_graph=True)
+    try:
+        (repo / "sample.py").write_text("def changed():\n    return 2\n")
+        (repo / "new.ts").write_text(
+            'export function new_feature_marker() { return "new_language"; }\n'
+        )
+        response = asyncio.run(
+            server.explore_context("new_feature_marker", include_dependencies=False)
+        )
+        current = server.get_context()
+        expected = (
+            {"python", normalize_graph_language("typescript")}
+            if language_selection == "auto"
+            else {"python"}
+        )
+        assert set(current.manifest.languages) == expected
+        assert current.manifest.index_is_current("bm25")
+        assert (
+            current.manifest.indexes["bm25"].metadata["language_selection"]
+            == language_selection
+        )
+        assert server._graph_target(current).cache_dir == cache
+        assert response["source"]["verified"]
+        if language_selection == "auto":
+            assert any(group["file"] == "new.ts" for group in response["files"])
+        assert not (repo_index_dir(repo) / "repo_manifest.json").exists()
+    finally:
+        server.get_context().close()
