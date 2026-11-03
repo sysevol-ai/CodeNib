@@ -3265,6 +3265,134 @@ def _run_codegraph_uninstall(args: argparse.Namespace) -> int:
         raise _codegraph_error(exc) from exc
 
 
+def _load_checkable_symbol_graph(repo_path: Path):
+    """Load the symbol graph only when it is current and no language failed.
+
+    A check over a stale or partial graph could pass paths it cannot see.
+    """
+
+    from .compiler.graph_artifact import load_authenticated_graph_artifact
+    from .compiler.manifest import MANIFEST_FILENAME, RepoManifest
+    from .paths import repo_index_dir
+
+    index = _codegraph_index_report(repo_path)
+    rebuild = f"run `codenib index {shlex.quote(str(repo_path))} --preset graph`"
+    if not (index["symbol_graph"] and index["source_matches"]):
+        raise CLIError(
+            f"the symbol graph does not match this checkout ({index['detail']}); "
+            f"{rebuild}"
+        )
+    manifest = RepoManifest.load(repo_index_dir(repo_path) / MANIFEST_FILENAME)
+    entry = manifest.indexes["symbol_graph"]
+    failed = entry.config.get("failed_languages") or {}
+    if entry.config.get("partial") is not False or failed:
+        detail = ", ".join(sorted(failed)) or "partial graph"
+        raise CLIError(f"the symbol graph is incomplete ({detail}); {rebuild}")
+    try:
+        graph = load_authenticated_graph_artifact(entry)
+    except (OSError, ValueError, RuntimeError) as exc:
+        raise CLIError(f"cannot load the symbol graph: {exc}") from exc
+    return graph, list(entry.config.get("languages") or [])
+
+
+def _changed_lines_since(repo_path: Path, base: str) -> dict[str, set[int]]:
+    import subprocess
+
+    from .graph.path_checks import parse_changed_lines
+
+    def git(*arguments: str) -> str:
+        completed = subprocess.run(
+            ["git", "-C", str(repo_path), *arguments],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if completed.returncode != 0:
+            detail = " ".join(completed.stderr.split())[:400]
+            raise CLIError(f"git {arguments[0]} failed: {detail}")
+        return completed.stdout
+
+    commit = git("rev-parse", "--verify", "--end-of-options", f"{base}^{{commit}}")
+    merge_base = git("merge-base", commit.strip(), "HEAD").strip()
+    # Against the working tree, so an agent's uncommitted edit counts as changed.
+    diff = git(
+        "diff",
+        "--unified=0",
+        "--no-color",
+        "--no-ext-diff",
+        "--find-renames",
+        merge_base,
+        "--",
+    )
+    changed = parse_changed_lines(diff)
+    for path in git("ls-files", "--others", "--exclude-standard", "-z").split("\0"):
+        if path:
+            try:
+                count = len((repo_path / path).read_bytes().splitlines())
+            except OSError:
+                continue
+            changed[path] = set(range(1, max(count, 1) + 1))
+    return changed
+
+
+def _run_codegraph_check(args: argparse.Namespace) -> int:
+    from .graph.path_checks import PathRuleError, check_paths, load_rules
+
+    repo_path = resolve_repo_path(args.repo)
+    rules_path = (
+        Path(args.rules) if args.rules else repo_path / ".codenib" / "checks.yaml"
+    )
+    try:
+        rules = load_rules(rules_path)
+        graph, languages = _load_checkable_symbol_graph(repo_path)
+        changed = _changed_lines_since(repo_path, args.base) if args.base else None
+        report = check_paths(graph, rules, repo_path, changed)
+    except PathRuleError as exc:
+        raise CLIError(str(exc)) from exc
+    data = report.to_dict()
+    data.update(
+        repository=str(repo_path),
+        rules_file=str(rules_path),
+        base=args.base,
+        graph_languages=languages,
+    )
+    if args.json:
+        print(json.dumps(data, indent=2, sort_keys=True))
+    else:
+        _print_path_check(data)
+    return 0 if report.passed else 1
+
+
+def _print_path_check(data: dict) -> None:
+    def short(name: str) -> str:
+        return name.rsplit(":", 1)[-1]
+
+    status = "PASS" if data["passed"] else f"FAIL ({data['violations']} violations)"
+    scope = f" since {data['base']}" if data["base"] else ""
+    print(f"Path rules{scope}: {status}")
+    for rule in data["rules"]:
+        print(f"{'PASS' if rule['passed'] else 'FAIL'} {rule['id']}: {rule['message']}")
+        for item in rule["violations"]:
+            where = f"{item['file']}:{item['line']}" if item["file"] else "?"
+            note = "" if item["resolved"] else "  [unresolved call, matched by name]"
+            print(f"  {where}  {short(item['caller'])} calls {short(item['to'])}{note}")
+            hops = [short(item["path"][0]["name"])]
+            for hop in item["path"][1:]:
+                arrow = "->" if hop["resolved"] else "~>"
+                hops.append(f"{arrow} {short(hop['name'])}")
+            print("      " + " ".join(hops))
+        if rule["unchanged_violations"]:
+            print(f"  ({rule['unchanged_violations']} unchanged violations not shown)")
+    coverage = data["coverage"]
+    print(
+        f"Coverage: graph of {', '.join(data['graph_languages']) or 'no languages'}; "
+        f"{coverage.get('python_files_scanned', 0)} Python files checked for "
+        "unresolved calls; "
+        f"{coverage.get('files_without_fallback', 0)} other files use resolved "
+        "references only."
+    )
+
+
 def _add_embedding_route_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--embedding-provider",
@@ -3928,6 +4056,27 @@ def build_parser() -> argparse.ArgumentParser:
         help="show removals without changing client configuration or receipts",
     )
     codegraph_uninstall_parser.set_defaults(handler=_run_codegraph_uninstall)
+
+    codegraph_check_parser = codegraph_subparsers.add_parser(
+        "check",
+        help="check call-path rules against the symbol graph; exit 1 on violations",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    codegraph_check_parser.add_argument("repo", nargs="?", default=".")
+    codegraph_check_parser.add_argument(
+        "--rules",
+        help="YAML rules file (default: .codenib/checks.yaml in the repository)",
+    )
+    codegraph_check_parser.add_argument(
+        "--base",
+        help="report only violations that the changes since this revision touch",
+    )
+    codegraph_check_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="print a machine-readable report",
+    )
+    codegraph_check_parser.set_defaults(handler=_run_codegraph_check)
 
     toolchain_parser = subparsers.add_parser(
         "toolchain",

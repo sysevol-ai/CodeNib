@@ -11,6 +11,14 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 ## [Unreleased]
 
+### Added
+
+- `codenib codegraph check` verifies call-path rules from
+  `.codenib/checks.yaml`: every path to a symbol must pass a guard, or a
+  function that calls a sanitizer. It reports a witness path per violation,
+  limits the report to a diff with `--base`, and exits 1 for CI. Unresolved
+  Python calls are matched by name so a missing type cannot hide a path.
+
 ## [0.2.5] - 2026-10-31
 
 ### Added
