@@ -185,6 +185,36 @@ def _relationship_lines(relationship: Mapping[str, Any]) -> list[str]:
     return lines
 
 
+def _chain_lines(item: Mapping[str, Any]) -> list[str]:
+    root = _symbol_label(item.get("root") or item.get("seed"))
+    chains = [chain for chain in item.get("chains") or [] if isinstance(chain, Mapping)]
+    if not chains:
+        note = item.get("note")
+        return [f"{root}: {note}" if note else f"{root}: no indexed referrers found"]
+    lines = [f"How {root} is reached:"]
+    for number, chain in enumerate(chains, 1):
+        steps = [step for step in chain.get("steps") or [] if isinstance(step, Mapping)]
+        for index, step in enumerate(steps):
+            label = _node_label(step)
+            if not index:
+                lines.append(f"  {number}. {label}")
+                continue
+            site = step.get("referenced_at")
+            where = ""
+            if isinstance(site, Mapping) and site.get("file"):
+                line = site.get("line")
+                where = f", referenced at {site['file']}" + (f":{line}" if line else "")
+            lines.append(f"     -> {label}{where}")
+        if chain.get("complete") is False:
+            lines.append(
+                "     (no entry reached within the search depth; the earliest "
+                "referrer found is shown first)"
+            )
+    if item.get("truncated"):
+        lines.append("  (search bounds reached; other chains may exist)")
+    return lines
+
+
 def render_explore_text(response: Mapping[str, Any]) -> str:
     """Return the agent-facing text for one bounded explore response."""
 
@@ -205,11 +235,16 @@ def render_explore_text(response: Mapping[str, Any]) -> str:
     diagnostics = [
         item for item in response.get("diagnostics") or [] if isinstance(item, Mapping)
     ]
+    call_chains = [
+        item for item in response.get("call_chains") or [] if isinstance(item, Mapping)
+    ]
+    chain_count = sum(len(item.get("chains") or []) for item in call_chains)
 
     windows = sum(len(group.get("contexts") or []) for group in files)
     lines = [
         f"{len(files)} files, {windows} source windows, "
-        f"{len(relationships)} relationship groups."
+        f"{len(relationships)} relationship groups"
+        + (f", {chain_count} call chains." if chain_count else ".")
     ]
     commit = str(source.get("commit") or "")[:12]
     if source.get("verified") is True:
@@ -232,6 +267,16 @@ def render_explore_text(response: Mapping[str, Any]) -> str:
             continue
         detail = _NOTE_TEXT.get(code, str(item.get("detail") or "").strip())
         lines.append(f"Note ({code}): {detail}" if detail else f"Note ({code})")
+
+    if call_chains:
+        lines.append("")
+        lines.append(
+            "Call chains (entry first; an entry is code nothing indexed "
+            "references, such as a command, route or framework hook; each arrow "
+            "is a static reference, so confirm it in the source):"
+        )
+        for item in call_chains:
+            lines.extend(_chain_lines(item))
 
     for group in files:
         file_path = str(group.get("file") or "")

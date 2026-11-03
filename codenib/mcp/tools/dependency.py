@@ -11,6 +11,8 @@ from typing import Any, Dict
 from ...agent.boundary import AGENT_LINE_OFFSET
 from ...types import EDGE_TYPE_REFERENCE
 from ._validation import (
+    MAX_CHAIN_DEPTH,
+    MAX_CHAINS,
     MAX_DEPENDENCY_EDGES,
     MAX_GRAPH_DEPTH,
     MAX_TOOL_RESULTS,
@@ -110,3 +112,38 @@ def dependency_subgraph_impl(
         },
         **payload,
     }
+
+
+def entry_chains_impl(
+    ctx: Any,
+    symbol: str,
+    max_depth: int = 8,
+    max_chains: int = 3,
+) -> Dict[str, Any]:
+    """Return static reference chains from entry symbols down to *symbol*.
+
+    Each chain starts at a function, method or class that no indexed code
+    references and ends at *symbol*; every later step names the line where the
+    previous step references it. Returns ``{"error": ...}`` without a graph.
+    """
+    symbol = required_text(symbol, name="symbol")
+    max_depth = bounded_integer(max_depth, name="max_depth", maximum=MAX_CHAIN_DEPTH)
+    max_chains = bounded_integer(max_chains, name="max_chains", maximum=MAX_CHAINS)
+    graph = getattr(ctx, "symbol_graph", None)
+    if graph is None:
+        return {"error": "symbol_graph index not available"}
+
+    from ...graph.dependency import DependencyAnalyzer
+
+    payload = (
+        DependencyAnalyzer(graph)
+        .entry_chains(symbol, max_depth=max_depth, max_chains=max_chains)
+        .to_dict()
+    )
+    for chain in payload["chains"]:
+        for step in chain["steps"]:
+            for location in (step, step.get("referenced_at") or {}):
+                line = location.get("line")
+                if isinstance(line, int) and not isinstance(line, bool):
+                    location["line"] = line + AGENT_LINE_OFFSET
+    return payload

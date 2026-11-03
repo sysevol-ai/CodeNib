@@ -5,9 +5,11 @@
 """Bounded dependency neighborhoods over indexed static references.
 
 ``impact`` follows incoming references, ``dependencies`` outgoing references,
-and ``subgraph`` both. Calls, field accesses, type uses and function values can
-all contribute references. Inspect source to distinguish actual invocations;
-these walks establish neither runtime control flow nor complete call coverage.
+and ``subgraph`` both; ``entry_chains`` walks incoming references back to
+symbols that nothing indexed references. Calls, field accesses, type uses and
+function values can all contribute references. Inspect source to distinguish
+actual invocations; these walks establish neither runtime control flow nor
+complete call coverage.
 
 The traversal uses :class:`RepoDependencySearcher` and BFS. Existing public
 caller/callee names remain aliases for reference direction. ``call_path`` is a
@@ -20,7 +22,14 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from ..types import EDGE_TYPE_REFERENCE, is_symbol_node, node_is_reference_only
+from ..types import (
+    EDGE_TYPE_REFERENCE,
+    NODE_TYPE_CLASS,
+    NODE_TYPE_FUNCTION,
+    NODE_TYPE_METHOD,
+    is_symbol_node,
+    node_is_reference_only,
+)
 from .code_graph import CodeGraph
 from .traverse_graph import NeighborScanBudget, RepoDependencySearcher
 
@@ -28,6 +37,11 @@ from .traverse_graph import NeighborScanBudget, RepoDependencySearcher
 # nesting), is structural, not a dependency — excluded from impact by default.
 _REFERENCE_EDGES = {EDGE_TYPE_REFERENCE}
 _DEFAULT_MAX_EDGES = 1000
+# Entry chains pass only through code that can call: fields and modules are
+# referenced, not invoked. Class references cover constructor calls.
+_CHAIN_KINDS = frozenset({NODE_TYPE_FUNCTION, NODE_TYPE_METHOD, NODE_TYPE_CLASS})
+# Candidate chains compared when choosing which ones to return.
+_CHAIN_OPTIONS = 200
 
 
 @dataclass
@@ -92,6 +106,60 @@ class DependencyResult:
         return [f for f, _ in sorted(best.items(), key=lambda kv: kv[1])]
 
 
+@dataclass
+class ChainStep:
+    """One symbol on an entry chain and where the previous step references it."""
+
+    node: DepNode
+    reference_file: Optional[str] = None
+    reference_line: Optional[int] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        payload = self.node.to_dict()
+        payload.pop("depth", None)
+        if self.reference_file is not None:
+            payload["referenced_at"] = {
+                "file": self.reference_file,
+                "line": self.reference_line,
+            }
+        return payload
+
+
+@dataclass
+class CallChain:
+    """Static reference chain, entry first and the queried symbol last."""
+
+    steps: List[ChainStep] = field(default_factory=list)
+    # False when no unreferenced entry was reached within the search bounds.
+    complete: bool = True
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "complete": self.complete,
+            "steps": [step.to_dict() for step in self.steps],
+        }
+
+
+@dataclass
+class EntryChainResult:
+    root: str
+    chains: List[CallChain] = field(default_factory=list)
+    entries_found: int = 0
+    truncated: bool = False
+    note: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {
+            "root": self.root,
+            "chains": [chain.to_dict() for chain in self.chains],
+            "entries_found": self.entries_found,
+            "truncated": self.truncated,
+        }
+        if self.note:
+            payload["note"] = self.note
+        return payload
+
+
 class DependencyAnalyzer:
     """Impact / dependency / path / subgraph queries over a :class:`CodeGraph`."""
 
@@ -137,6 +205,214 @@ class DependencyAnalyzer:
             max_nodes=max_nodes,
             max_edges=max_edges,
         )
+
+    def entry_chains(
+        self,
+        symbol: str,
+        *,
+        max_depth: int = 8,
+        max_chains: int = 3,
+        max_visited: int = 4000,
+        max_scanned_edges: int = 40000,
+    ) -> EntryChainResult:
+        """Shortest static reference chains from entry symbols down to *symbol*.
+
+        Walk incoming references through functions, methods and classes,
+        skipping tests and reference-only externals. An entry is a symbol with
+        no such referrer: the indexed code never references it, so a
+        framework, a command line or the outside world calls it. The shortest
+        chain comes first; each later chain adds the most symbols not yet
+        shown. When no entry is reached within the bounds, the longest partial
+        chains are returned instead and marked incomplete.
+        """
+        canonical, cands = self.code_graph.resolve_symbol(symbol)
+        if canonical is None and cands:
+            # ``Class.method`` also matches that method's parameters and
+            # locals; keep the candidate whose name ends with the request.
+            wanted = symbol.strip().strip("`'\"").removesuffix("()")
+            exact = [
+                name
+                for name in cands
+                if name.removesuffix("()").endswith((":" + wanted, "." + wanted))
+            ]
+            if len(exact) == 1:
+                canonical, _ = self.code_graph.resolve_symbol(exact[0])
+        root = self.code_graph.display_name(canonical) if canonical else symbol
+        result = EntryChainResult(root=root)
+        if canonical is None:
+            result.note = f"{symbol!r} unresolved" + (
+                f"; candidates: {cands}" if cands else " in the code graph"
+            )
+            return result
+
+        depth_of: Dict[str, int] = {canonical: 0}
+        # caller -> (callee one step closer to the target, reference site)
+        next_hop: Dict[str, Tuple[str, Optional[str], Optional[int]]] = {}
+        entries: List[str] = []
+        queue: deque[str] = deque([canonical])
+        scan_budget = NeighborScanBudget(max_scanned_edges)
+        while queue:
+            node = queue.popleft()
+            depth = depth_of[node]
+            if depth >= max(1, int(max_depth)):
+                # Not expanded, but an unreferenced symbol is still an entry.
+                if self._has_chain_referrer(node, scan_budget):
+                    result.truncated = True
+                else:
+                    entries.append(node)
+                continue
+            referenced = False
+            neighbors = self.searcher.iter_neighbors(
+                node,
+                direction="backward",
+                etype_filter=_REFERENCE_EDGES,
+                scan_budget=scan_budget,
+            )
+            for caller, (_src, _tgt, _w, attr) in neighbors:
+                if caller == node:
+                    continue
+                info = self.code_graph.get_node_info_by_name(caller) or {}
+                if info.get("type") not in _CHAIN_KINDS or node_is_reference_only(info):
+                    continue
+                referenced = True
+                if caller in depth_of:
+                    continue
+                if len(depth_of) >= max_visited:
+                    result.truncated = True
+                    continue
+                depth_of[caller] = depth + 1
+                next_hop[caller] = (
+                    node,
+                    attr.get("anchor_file"),
+                    attr.get("anchor_line"),
+                )
+                queue.append(caller)
+            if scan_budget.exhausted:
+                result.truncated = True
+                break
+            if not referenced and node != canonical:
+                entries.append(node)
+
+        if len(depth_of) == 1:
+            result.note = (
+                f"no indexed references to {root}; it may be an entry point "
+                "called by a framework, a command line or external code"
+            )
+            same_named = self._referenced_same_named_methods(canonical)
+            if same_named:
+                result.note += (
+                    ", or reached by dynamic dispatch through a same-named "
+                    "method that is referenced: " + ", ".join(same_named)
+                )
+            return result
+
+        def path_to_target(name: str) -> List[str]:
+            path = [name]
+            while path[-1] != canonical:
+                path.append(next_hop[path[-1]][0])
+            return path
+
+        complete = bool(entries)
+        candidates = sorted(entries, key=lambda name: (depth_of[name], name))
+        if not complete:
+            # No entry within bounds: show the deepest chains that were found.
+            candidates = sorted(
+                (name for name in depth_of if name != canonical),
+                key=lambda name: (-depth_of[name], name),
+            )
+        # The shortest chain first (the longest when only partial chains were
+        # found). Each later chain is the one that leaves the chains already
+        # shown closest to the target, so different ways of reaching it come
+        # before longer detours that share a route; then the shorter chain.
+        options = {name: path_to_target(name) for name in candidates[:_CHAIN_OPTIONS]}
+        paths: List[List[str]] = []
+        shown: Set[str] = {canonical}
+
+        def shared_tail(path: List[str]) -> int:
+            longest = 0
+            for other in paths:
+                common = 0
+                for left, right in zip(reversed(path), reversed(other), strict=False):
+                    if left != right:
+                        break
+                    common += 1
+                longest = max(longest, common)
+            return longest
+
+        while options and len(paths) < max(1, int(max_chains)):
+            start = min(
+                options,
+                key=lambda name: (
+                    shared_tail(options[name]),
+                    len(options[name]) if complete else -len(options[name]),
+                    name,
+                ),
+            )
+            path = options.pop(start)
+            if paths and not set(path) - shown:
+                break
+            paths.append(path)
+            shown.update(path)
+        labels = self._result_labels(
+            [canonical, *(name for path in paths for name in path)]
+        )
+        result.root = labels[canonical]
+        for path in paths:
+            steps = []
+            for index, name in enumerate(path):
+                node = self._node(name, index, result_name=labels[name])
+                site_file = site_line = None
+                if index:
+                    _callee, site_file, site_line = next_hop[path[index - 1]]
+                steps.append(ChainStep(node, site_file, site_line))
+            result.chains.append(CallChain(steps=steps, complete=complete))
+        result.entries_found = len(entries)
+        return result
+
+    def _referenced_same_named_methods(
+        self, canonical: str, limit: int = 3
+    ) -> List[str]:
+        """Same-named methods elsewhere that indexed code references.
+
+        A method override is usually called as ``self.method()`` through its
+        base class, which the index records against the base method.
+        """
+        info = self.code_graph.get_node_info_by_name(canonical) or {}
+        if info.get("type") != NODE_TYPE_METHOD:
+            return []
+        display = self.code_graph.display_name(canonical).removesuffix("()")
+        method = display.rsplit(".", 1)[-1].rsplit(":", 1)[-1]
+        found: List[str] = []
+        for vertex in self.code_graph.graph.vs:
+            name = vertex["name"]
+            if name == canonical or vertex.attributes().get("type") != NODE_TYPE_METHOD:
+                continue
+            other = self.code_graph.display_name(name).removesuffix("()")
+            if not other.endswith("." + method):
+                continue
+            if self._has_chain_referrer(name, NeighborScanBudget(1000)):
+                found.append(self.code_graph.display_name(name))
+                if len(found) >= limit:
+                    break
+        return found
+
+    def _has_chain_referrer(self, name: str, scan_budget: NeighborScanBudget) -> bool:
+        neighbors = self.searcher.iter_neighbors(
+            name,
+            direction="backward",
+            etype_filter=_REFERENCE_EDGES,
+            scan_budget=scan_budget,
+        )
+        for caller, _edge in neighbors:
+            info = self.code_graph.get_node_info_by_name(caller) or {}
+            if (
+                caller != name
+                and info.get("type") in _CHAIN_KINDS
+                and not node_is_reference_only(info)
+            ):
+                neighbors.close()
+                return True
+        return False
 
     def call_path(self, from_symbol: str, to_symbol: str) -> DependencyResult:
         """Legacy directed graph path; may include containment, not runtime calls."""
