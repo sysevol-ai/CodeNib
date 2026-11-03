@@ -26,6 +26,7 @@ except ModuleNotFoundError:  # pragma: no cover - Python 3.10 compatibility
 from .._compilation_process import run_compilation_process
 from ..log_utils import get_logger
 from ..profiler import Profiler
+from .pyrefly_provider import PYREFLY_PROVIDER, python_graph_provider
 from .scip_indexer_base import SCIPIndexerBase
 
 logger = get_logger("scip_python_indexer")
@@ -60,6 +61,12 @@ def _scip_python_index_timeout() -> float:
         )
         return float(_SCIP_PYTHON_INDEX_TIMEOUT_S)
     return timeout
+
+
+def _pyrefly_identity_recovery() -> bool:
+    """Whether to rerun ``normalize_python_index`` on pyrefly output (diagnostic)."""
+
+    return os.environ.get("CODENIB_PYREFLY_IDENTITY_RECOVERY", "") == "1"
 
 
 _MIRRORED_SUFFIXES = frozenset({".py", ".pyi"})
@@ -244,6 +251,8 @@ class SCIPPythonIndexer(SCIPIndexerBase):
         self.env_file = self.module_dir / "scip-environment.yml"
         self._direct_indexer_path: Optional[str] = None
         self.index_generation_report: Optional[dict] = None
+        # Opt-in prototype: CODENIB_PYTHON_GRAPH_PROVIDER=pyrefly.
+        self.graph_provider = python_graph_provider()
 
     def _check_indexer_available(self) -> bool:
         """
@@ -474,6 +483,10 @@ class SCIPPythonIndexer(SCIPIndexerBase):
             logger.info("Removed pre-existing SCIP index before generation")
         pending = self._pending_index_file
         pending.unlink(missing_ok=True)
+        if self.graph_provider == PYREFLY_PROVIDER:
+            return self._generate_pyrefly_index(
+                project_name=project_name, target_dir=target_dir
+            )
         if not self._check_indexer_available():
             self.index_generation_report = {
                 "backend": "scip-python",
@@ -549,6 +562,117 @@ class SCIPPythonIndexer(SCIPIndexerBase):
             }
             return False
 
+    def _generate_pyrefly_index(
+        self,
+        project_name: Optional[str] = None,
+        target_dir: Optional[str] = None,
+    ) -> bool:
+        """Build ``index.scip`` from a pyrefly Glean report (opt-in prototype).
+
+        pyrefly checks a private config naming every Python file under the
+        root, with CodeNib's exclusions, against a standard-library-only
+        interpreter like scip-python's. Its report is converted into a
+        scip-python-shaped index; nothing in the checkout is written.
+        """
+
+        from .pyrefly_glean import glean_to_scip_index
+        from .pyrefly_provider import (
+            pyrefly_command,
+            pyrefly_version,
+            resolve_pyrefly,
+            write_pyrefly_config,
+        )
+
+        executable = resolve_pyrefly()
+        report = {
+            "backend": PYREFLY_PROVIDER,
+            "status": "unavailable",
+            "complete": False,
+            "partial": False,
+            "document_count": 0,
+        }
+        self.index_generation_report = report
+        if executable is None:
+            logger.error("pyrefly provider selected but no pyrefly executable found")
+            return False
+        version = pyrefly_version(executable)
+        report["provider_version"] = version
+        pending = self._pending_index_file
+        glean_dir = self.output_dir / "pyrefly-glean"
+        shutil.rmtree(glean_dir, ignore_errors=True)
+        config = write_pyrefly_config(
+            self.output_dir / "pyrefly.toml",
+            self.project_root,
+            exclude_patterns=self.exclude_patterns,
+            target_dir=target_dir,
+        )
+        with self.profiler.section("generate_index") as section:
+            with self.profiler.section("generate_index.pyrefly") as run:
+                with _stdlib_only_python_shims(self.output_dir) as shim_dir:
+                    command = pyrefly_command(
+                        executable,
+                        config,
+                        glean_dir,
+                        interpreter=(
+                            str(Path(shim_dir) / "python3") if shim_dir else None
+                        ),
+                    )
+                    logger.debug("Running command: %s", " ".join(command))
+                    try:
+                        result = _run_checked_with_timeout(
+                            command,
+                            cwd=self.project_root,
+                            timeout=_scip_python_index_timeout(),
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE,
+                        )
+                        returncode = result.returncode
+                    except subprocess.CalledProcessError as exc:
+                        # Type errors exit 1; the report is still complete.
+                        returncode = exc.returncode
+                        if exc.stderr:
+                            logger.debug("pyrefly stderr: %s", exc.stderr[-2000:])
+                    except (subprocess.TimeoutExpired, OSError) as exc:
+                        logger.error("pyrefly failed: %s", exc)
+                        report["status"] = "failed"
+                        return False
+            report["pyrefly_seconds"] = round(run.duration, 3)
+            report["pyrefly_returncode"] = returncode
+            if returncode not in (0, 1) or not glean_dir.is_dir():
+                logger.error("pyrefly exited %s without a Glean report", returncode)
+                report["status"] = "failed"
+                return False
+            with self.profiler.section("generate_index.convert") as convert:
+                version_label = self._inferred_project_version() or "0"
+                index, stats = glean_to_scip_index(
+                    glean_dir,
+                    self.project_root,
+                    project_name=project_name or self.project_root.name,
+                    project_version=version_label,
+                    tool_version=version,
+                    path_allowed=self._path_allowed,
+                )
+                pending.write_bytes(index.SerializeToString())
+                os.replace(pending, self.index_file)
+            report["convert_seconds"] = round(convert.duration, 3)
+        report.update(
+            {
+                "status": "complete",
+                "complete": True,
+                "document_count": len(index.documents),
+                "conversion": stats,
+                "generate_seconds": round(section.duration, 3),
+            }
+        )
+        logger.info(
+            "pyrefly index: %d documents in %.2fs (pyrefly %.2fs, convert %.2fs)",
+            len(index.documents),
+            section.duration,
+            run.duration,
+            convert.duration,
+        )
+        return True
+
     def _usable_index_document_count(self, path: Optional[Path] = None) -> int:
         """Count path-addressable documents in a parseable SCIP artifact."""
 
@@ -581,6 +705,16 @@ class SCIPPythonIndexer(SCIPIndexerBase):
 
         self.decoded_input_receipt = None
         self.graph_output_receipt = None
+        if self.graph_provider == PYREFLY_PROVIDER and not _pyrefly_identity_recovery():
+            # pyrefly qualifies nested definitions with ``<locals>`` and the
+            # converter marks same-scope redefinitions, so the index already
+            # carries the identities recovery would restore.
+            if self.index_generation_report is not None:
+                self.index_generation_report["identity_recovery"] = {
+                    "status": "skipped",
+                    "reason": "pyrefly provides physical identities",
+                }
+            return self._process_decoded_index(output_file)
         temporary = None
         try:
             from ..compiler.artifact_fingerprints import regular_file_fingerprint
