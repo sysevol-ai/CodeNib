@@ -32,7 +32,7 @@ from ._validation import (
     bounded_integer,
     required_text,
 )
-from .dependency import dependency_subgraph_impl
+from .dependency import dependency_subgraph_impl, entry_chains_impl
 from .lsp import lsp_route_impl, normalize_lsp_route_symbols
 from .search import search_context_impl
 from .source import read_source_excerpt_impl, read_source_impl
@@ -48,6 +48,9 @@ class _ExploreBudget:
     dependency_depth: int
     dependency_nodes: int
     dependency_edges: int
+    chain_symbols: int
+    chain_depth: int
+    max_chains: int
 
 
 _BUDGETS = {
@@ -60,6 +63,9 @@ _BUDGETS = {
         dependency_depth=1,
         dependency_nodes=12,
         dependency_edges=32,
+        chain_symbols=1,
+        chain_depth=8,
+        max_chains=2,
     ),
     "balanced": _ExploreBudget(
         max_windows=8,
@@ -70,6 +76,9 @@ _BUDGETS = {
         dependency_depth=2,
         dependency_nodes=24,
         dependency_edges=80,
+        chain_symbols=1,
+        chain_depth=12,
+        max_chains=4,
     ),
     "thorough": _ExploreBudget(
         max_windows=12,
@@ -80,6 +89,9 @@ _BUDGETS = {
         dependency_depth=3,
         dependency_nodes=40,
         dependency_edges=160,
+        chain_symbols=2,
+        chain_depth=16,
+        max_chains=6,
     ),
 }
 _DIRECTIONS = frozenset({"impact", "dependencies", "both"})
@@ -685,6 +697,34 @@ def explore_context_impl(
             )
         )
 
+    # How the leading symbols are reached: entry-to-symbol reference chains.
+    call_chains: list[dict[str, Any]] = []
+    if (
+        dependency_seeds
+        and normalized_direction in {"impact", "both"}
+        and getattr(ctx, "symbol_graph", None) is not None
+    ):
+        for seed in dependency_seeds:
+            if len(call_chains) >= profile.chain_symbols:
+                break
+            try:
+                chains = entry_chains_impl(
+                    ctx,
+                    seed,
+                    max_depth=profile.chain_depth,
+                    max_chains=profile.max_chains,
+                )
+            except (
+                Exception
+            ) as exc:  # noqa: BLE001 - chains must not lose the other context
+                diagnostics.append(_diagnostic("call_chains_failed", f"{seed}: {exc}"))
+                continue
+            # An ambiguous or unknown name yields no chain; try the next seed.
+            if not chains.get("error") and (
+                chains["chains"] or "unresolved" not in str(chains.get("note"))
+            ):
+                call_chains.append({"seed": seed, **chains})
+
     # Retain canonical origin/merge metadata, but reserve delivery for requested
     # definitions before dense hits can fill every source-window slot.
     source_identity = _source_identity(ctx)
@@ -825,6 +865,7 @@ def explore_context_impl(
             "retrieval_hits": len(retrieval_results),
             "route_hits": len(route_results),
             "dependency_graphs": len(relationships),
+            "call_chains": sum(len(item["chains"]) for item in call_chains),
             "anchors": len(anchors),
             "files": len(grouped_files),
             "source_windows": len(projected_contexts),
@@ -832,6 +873,7 @@ def explore_context_impl(
         },
         "files": list(grouped_files.values()),
         "relationships": relationships,
+        "call_chains": call_chains,
         "diagnostics": diagnostics,
     }
     return bound_explore_response(response)

@@ -219,6 +219,27 @@ def test_explore_composes_routes_dependencies_and_verified_source(
             "note": "",
         },
     )
+    monkeypatch.setattr(
+        "codenib.mcp.tools.explore.entry_chains_impl",
+        lambda _ctx, seed, **_kwargs: {
+            "root": "src/service.py:process_request()",
+            "chains": [
+                {
+                    "complete": True,
+                    "steps": [
+                        {"name": "src/caller.py:call_service()", "line": 21},
+                        {
+                            "name": "src/service.py:process_request()",
+                            "line": 1,
+                            "referenced_at": {"file": "src/caller.py", "line": 22},
+                        },
+                    ],
+                }
+            ],
+            "entries_found": 1,
+            "truncated": False,
+        },
+    )
 
     result = explore_context_impl(
         ctx,
@@ -265,6 +286,11 @@ def test_explore_composes_routes_dependencies_and_verified_source(
         }
     ]
     assert result["relationships"][0]["seed"] == "process_request"
+    assert result["summary"]["call_chains"] == 1
+    assert result["call_chains"][0]["seed"] == "process_request"
+    assert [
+        step["name"] for step in result["call_chains"][0]["chains"][0]["steps"]
+    ] == ["src/caller.py:call_service()", "src/service.py:process_request()"]
     assert result["diagnostics"] == []
 
 
@@ -339,6 +365,15 @@ def test_explore_reports_dependency_backend_error(tmp_path, monkeypatch) -> None
     monkeypatch.setattr(
         "codenib.mcp.tools.explore.dependency_subgraph_impl",
         lambda *_args, **_kwargs: {"error": "ambiguous dependency seed"},
+    )
+    # An unresolved name yields no chain and no extra diagnostic.
+    monkeypatch.setattr(
+        "codenib.mcp.tools.explore.entry_chains_impl",
+        lambda _ctx, seed, **_kwargs: {
+            "root": seed,
+            "chains": [],
+            "note": f"{seed!r} unresolved; candidates: ['a.target', 'b.target']",
+        },
     )
 
     result = explore_context_impl(ctx, query="find target")

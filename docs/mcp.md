@@ -184,9 +184,13 @@ release and source-update boundaries.
 Use `explore_context` first for a question that spans more than one function
 or file: how a feature works, where a behavior is handled, what calls a
 function, or what a change would affect. One call returns the relevant
-definitions as current source windows grouped by file, with line ranges, plus
-the static callers and callees of the main symbols when the graph is available.
-Grep remains the right tool for an exact string. Ask in plain language and
+definitions as current source windows grouped by file, with line ranges. When
+the graph is available it also returns the static callers and callees of the
+main symbols, and call chains that show how the leading symbol is reached. Each
+chain starts at an entry point, meaning code that nothing in the repository
+references, such as a command, a route or a framework hook. It names the line
+where each step references the next. Grep remains the right tool for an exact
+string. Ask in plain language and
 include any names, error text or file hints you know; list known function or
 class names in `symbols` to center the answer on them:
 
