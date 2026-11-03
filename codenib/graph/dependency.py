@@ -40,6 +40,8 @@ _DEFAULT_MAX_EDGES = 1000
 # Entry chains pass only through code that can call: fields and modules are
 # referenced, not invoked. Class references cover constructor calls.
 _CHAIN_KINDS = frozenset({NODE_TYPE_FUNCTION, NODE_TYPE_METHOD, NODE_TYPE_CLASS})
+# Same-named candidates checked when a name is ambiguous.
+_AMBIGUOUS_CANDIDATES = 12
 # Candidate chains compared when choosing which ones to return.
 _CHAIN_OPTIONS = 200
 
@@ -147,9 +149,11 @@ class EntryChainResult:
     entries_found: int = 0
     truncated: bool = False
     note: Optional[str] = None
-    # Set when nothing references the symbol and the chains reach a
-    # referenced method of the same name that dynamic dispatch may route to it.
+    # Set when nothing references the symbol and the chains reach another
+    # symbol instead: a same-named method dynamic dispatch may route to it
+    # (``via_reason="dispatch"``) or a function it calls (``"callee"``).
     via: Optional[str] = None
+    via_reason: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         payload: Dict[str, Any] = {
@@ -162,6 +166,7 @@ class EntryChainResult:
             payload["note"] = self.note
         if self.via:
             payload["via"] = self.via
+            payload["via_reason"] = self.via_reason
         return payload
 
 
@@ -243,6 +248,20 @@ class DependencyAnalyzer:
             ]
             if len(exact) == 1:
                 canonical, _ = self.code_graph.resolve_symbol(exact[0])
+        picked_from = 0
+        if canonical is None and cands:
+            # Overrides are called through the method the index records, so of
+            # several same-named methods follow the only one code references.
+            called = []
+            for name in cands[:_AMBIGUOUS_CANDIDATES]:
+                resolved, _ = self.code_graph.resolve_symbol(name)
+                info = self.code_graph.get_node_info_by_name(resolved or "") or {}
+                if info.get(
+                    "type"
+                ) == NODE_TYPE_METHOD and self._called_beyond_overrides(resolved):
+                    called.append(resolved)
+            if len(called) == 1:
+                canonical, picked_from = called[0], len(cands)
         root = self.code_graph.display_name(canonical) if canonical else symbol
         result = EntryChainResult(root=root)
         if canonical is None:
@@ -278,11 +297,20 @@ class DependencyAnalyzer:
                 etype_filter=_REFERENCE_EDGES,
                 scan_budget=scan_budget,
             )
+            node_info = self.code_graph.get_node_info_by_name(node) or {}
             for caller, (_src, _tgt, _w, attr) in neighbors:
                 if caller == node:
                     continue
                 info = self.code_graph.get_node_info_by_name(caller) or {}
                 if info.get("type") not in _CHAIN_KINDS or node_is_reference_only(info):
+                    continue
+                # An override calling its base through super() is reached by
+                # dispatch through that base, so it is not a way in.
+                if (
+                    info.get("type") == NODE_TYPE_METHOD
+                    and node_info.get("type") == NODE_TYPE_METHOD
+                    and self._leaf_name(caller) == self._leaf_name(node)
+                ):
                     continue
                 referenced = True
                 if caller in depth_of:
@@ -305,39 +333,53 @@ class DependencyAnalyzer:
 
         if len(depth_of) == 1:
             result.note = (
-                f"no indexed references to {root}; it may be an entry point "
-                "called by a framework, a command line or external code"
+                f"nothing indexed references {root}: it is unused, or called "
+                "only from outside the repository (a framework hook, a command "
+                "line or a plugin)"
             )
             same_named = self._referenced_same_named_methods(canonical)
-            if not same_named:
-                return result
             if follow_dispatch:
                 # An override is usually called as ``self.method()``, which the
-                # index records against the base method: show how that is reached.
-                base = self.entry_chains(
-                    same_named[0],
-                    max_depth=max_depth,
-                    max_chains=max_chains,
-                    max_visited=max_visited,
-                    max_scanned_edges=max_scanned_edges,
-                    follow_dispatch=False,
-                )
-                if base.chains:
-                    result.chains = base.chains
-                    result.entries_found = base.entries_found
-                    result.truncated = base.truncated
-                    result.via = base.root
+                # index records against the base method; an unused wrapper still
+                # names the code that does its work. Show how either is reached.
+                targets = [(name, "dispatch") for name in same_named[:1]]
+                targets += [(name, "callee") for name in self._chain_callees(canonical)]
+                for target, reason in targets:
+                    other = self.entry_chains(
+                        target,
+                        max_depth=max_depth,
+                        max_chains=max_chains,
+                        max_visited=max_visited,
+                        max_scanned_edges=max_scanned_edges,
+                        follow_dispatch=False,
+                    )
+                    # The symbol itself calls the callee; it is no way in.
+                    chains = [
+                        chain
+                        for chain in other.chains
+                        if chain.steps and chain.steps[0].node.name != root
+                    ]
+                    if not chains:
+                        continue
+                    result.chains = chains
+                    result.entries_found = other.entries_found
+                    result.truncated = other.truncated
+                    result.via, result.via_reason = other.root, reason
                     result.note = (
-                        f"no indexed references to {root}; the chains reach the "
-                        f"same-named {base.root}, and dynamic dispatch may run "
+                        f"nothing indexed references {root}; the chains reach the "
+                        f"same-named {other.root}, and dynamic dispatch may run "
                         f"{root} there instead (static references cannot tell "
                         "which override runs)"
+                        if reason == "dispatch"
+                        else f"nothing indexed references {root}; it calls "
+                        f"{other.root}, and the chains show how that is reached"
                     )
                     return result
-            result.note += (
-                ", or reached by dynamic dispatch through a same-named "
-                "method that is referenced: " + ", ".join(same_named)
-            )
+            if same_named:
+                result.note += (
+                    ", or reached by dynamic dispatch through a same-named "
+                    "method that is referenced: " + ", ".join(same_named)
+                )
             return result
 
         def path_to_target(name: str) -> List[str]:
@@ -404,7 +446,55 @@ class DependencyAnalyzer:
                 steps.append(ChainStep(node, site_file, site_line))
             result.chains.append(CallChain(steps=steps, complete=complete))
         result.entries_found = len(entries)
+        if picked_from:
+            result.note = (
+                f"{symbol!r} names {picked_from} symbols; the chains follow "
+                f"{result.root}, the only one indexed code references"
+            )
         return result
+
+    def _called_beyond_overrides(self, canonical: str) -> bool:
+        """Whether code other than same-named overrides (``super()``) refers to it."""
+
+        method = self._leaf_name(canonical)
+        for caller, _edge in self.searcher.iter_neighbors(
+            canonical,
+            direction="backward",
+            etype_filter=_REFERENCE_EDGES,
+            scan_budget=NeighborScanBudget(1000),
+        ):
+            info = self.code_graph.get_node_info_by_name(caller) or {}
+            if info.get("type") not in _CHAIN_KINDS or node_is_reference_only(info):
+                continue
+            if caller != canonical and self._leaf_name(caller) != method:
+                return True
+        return False
+
+    def _leaf_name(self, name: str) -> str:
+        display = self.code_graph.display_name(name).removesuffix("()")
+        return display.rsplit(".", 1)[-1].rsplit(":", 1)[-1]
+
+    def _chain_callees(self, canonical: str, limit: int = 3) -> List[str]:
+        """Functions and methods *canonical* references, in source order."""
+
+        found: Dict[str, int] = {}
+        for callee, (_src, _tgt, _w, attr) in self.searcher.iter_neighbors(
+            canonical,
+            direction="forward",
+            etype_filter=_REFERENCE_EDGES,
+            scan_budget=NeighborScanBudget(1000),
+        ):
+            info = self.code_graph.get_node_info_by_name(callee) or {}
+            if (
+                callee == canonical
+                or info.get("type") not in {NODE_TYPE_FUNCTION, NODE_TYPE_METHOD}
+                or node_is_reference_only(info)
+            ):
+                continue
+            line = attr.get("anchor_line")
+            found[callee] = min(found.get(callee, line or 0), line or 0)
+        ordered = sorted(found, key=lambda name: (found[name], name))
+        return [self.code_graph.display_name(name) for name in ordered[:limit]]
 
     def _referenced_same_named_methods(
         self, canonical: str, limit: int = 3

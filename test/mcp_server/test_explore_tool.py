@@ -294,6 +294,53 @@ def test_explore_composes_routes_dependencies_and_verified_source(
     assert result["diagnostics"] == []
 
 
+def test_explore_chains_skip_seeds_nothing_references(tmp_path, monkeypatch) -> None:
+    _write_source(tmp_path, "src/service.py", "process_request")
+    ctx = _context(tmp_path)
+    hits = [
+        {"node_name": name, "type": "function", "file": "src/service.py"}
+        for name in ("dead_code", "process_request", "later_hit")
+    ]
+    monkeypatch.setattr(
+        "codenib.mcp.tools.explore.search_context_impl",
+        lambda *_args, **_kwargs: {"plan": {"name": "fast_lexical"}, "results": hits},
+    )
+    monkeypatch.setattr(
+        "codenib.mcp.tools.explore.lsp_route_impl", lambda *_args, **_kwargs: []
+    )
+    monkeypatch.setattr(
+        "codenib.mcp.tools.explore.dependency_subgraph_impl",
+        lambda _ctx, seed, **_kwargs: {"root": seed, "nodes": [], "edges": []},
+    )
+    asked = []
+
+    def entry_chains(_ctx, seed, **_kwargs):
+        asked.append(seed)
+        if seed in {"unused_helper", "dead_code"}:
+            return {
+                "root": seed,
+                "chains": [],
+                "note": f"nothing indexed references {seed}",
+            }
+        step = {"name": f"src/service.py:{seed}()", "line": 21}
+        return {"root": seed, "chains": [{"complete": True, "steps": [step]}]}
+
+    monkeypatch.setattr("codenib.mcp.tools.explore.entry_chains_impl", entry_chains)
+
+    result = explore_context_impl(
+        ctx, query="why is the helper wrong", symbols=["unused_helper"], top_k=3
+    )
+
+    # The named seed keeps its note; an unnamed seed without chains is skipped,
+    # and the search stops at the first seed that has chains.
+    assert asked == ["unused_helper", "dead_code", "process_request"]
+    assert [(item["seed"], len(item["chains"])) for item in result["call_chains"]] == [
+        ("unused_helper", 0),
+        ("process_request", 1),
+    ]
+    assert result["summary"]["call_chains"] == 1
+
+
 def test_explore_marks_unverified_indexed_fallback(tmp_path, monkeypatch) -> None:
     ctx = _context(tmp_path, verified=False)
     ctx.symbol_graph = None
