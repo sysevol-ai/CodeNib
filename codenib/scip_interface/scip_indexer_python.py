@@ -11,7 +11,6 @@ import math
 import os
 import shlex
 import shutil
-import signal
 import subprocess
 import sys
 import tempfile
@@ -24,6 +23,7 @@ try:
 except ModuleNotFoundError:  # pragma: no cover - Python 3.10 compatibility
     import tomli as tomllib
 
+from .._compilation_process import run_compilation_process
 from ..log_utils import get_logger
 from ..profiler import Profiler
 from .scip_indexer_base import SCIPIndexerBase
@@ -76,15 +76,17 @@ def _mirror_python_sources(source: Path, target: Path) -> int:
     """
 
     count = 0
-    visited: set[str] = set()
     for directory, names, files in os.walk(source, followlinks=True):
+        relative = Path(directory).relative_to(source)
         real = os.path.realpath(directory)
-        if real in visited:
+        ancestors = {
+            os.path.realpath(source.joinpath(*relative.parts[:depth]))
+            for depth in range(len(relative.parts))
+        }
+        if real in ancestors:
             names[:] = []
             continue
-        visited.add(real)
         names[:] = [name for name in names if name != ".git"]
-        relative = Path(directory).relative_to(source)
         for name in files:
             if Path(name).suffix not in _MIRRORED_SUFFIXES and (
                 name not in _MIRRORED_NAMES
@@ -148,37 +150,7 @@ def _run_checked_with_timeout(cmd, *, timeout, **popen_kwargs):
     runner so later steps block forever. Running in a new session and killing
     the group ensures no descendant leaks past the timeout.
     """
-    with subprocess.Popen(cmd, start_new_session=True, **popen_kwargs) as proc:
-        try:
-            stdout, stderr = proc.communicate(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            try:
-                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-            except ProcessLookupError:
-                # The process group may already have exited between timeout and kill.
-                # In that race, there is nothing left to terminate.
-                logger.debug("Process group %s already exited before SIGKILL", proc.pid)
-            proc.communicate()
-            raise
-        except BaseException:
-            # A benchmark cancellation must not orphan the Node indexer. The
-            # next run could otherwise race the old process for the same
-            # output and temporary repository configuration.
-            try:
-                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-            except ProcessLookupError:
-                logger.debug(
-                    "Process group %s already exited during cancellation",
-                    proc.pid,
-                )
-            proc.communicate()
-            raise
-        retcode = proc.poll()
-        if retcode:
-            raise subprocess.CalledProcessError(
-                retcode, cmd, output=stdout, stderr=stderr
-            )
-    return subprocess.CompletedProcess(proc.args, retcode, stdout, stderr)
+    return run_compilation_process(cmd, timeout=timeout, **popen_kwargs)
 
 
 @contextmanager

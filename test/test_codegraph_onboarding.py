@@ -794,6 +794,7 @@ def test_on_demand_preparation_preserves_source_and_mcp_stdio(
         )
 
     monkeypatch.setattr(preparation, "subprocess", SimpleNamespace(run=run))
+    monkeypatch.setattr("codenib._compilation_process.run_compilation_process", run)
     monkeypatch.setattr(toolchains, "install_requirements", install)
     monkeypatch.setattr(
         toolchains,

@@ -259,6 +259,8 @@ def test_mcp_lifespan_creates_and_discards_connection_runtime() -> None:
         assert runtime.ledger.stats()["calls"] == 0
 
     asyncio.run(run_lifespan())
+    # A new transport owns a fresh warmup after the prior connection closed.
+    asyncio.run(run_lifespan())
 
 
 def test_explore_context_serializes_calls_and_commits_in_order(

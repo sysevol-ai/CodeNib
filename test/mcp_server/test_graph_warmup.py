@@ -5,7 +5,10 @@
 from pathlib import Path
 from threading import Event
 
+import pytest
+
 from codenib.mcp.graph_warmup import (
+    CANCELLED,
     FAILED,
     IDLE,
     READY,
@@ -85,3 +88,62 @@ def test_failure_is_recorded_once_per_source():
     warmup.start(_target(), force=True)
     assert warmup.wait(5) == FAILED
     assert len(attempts) == 2
+
+
+def test_close_reaps_the_compiler_before_releasing_its_lock(monkeypatch, tmp_path):
+    import subprocess
+
+    from filelock import FileLock, Timeout
+
+    from codenib import _compilation_process
+
+    started = Event()
+    killed = []
+    lock_path = tmp_path / "compiler.lock"
+
+    class Process:
+        pid = 1234
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def communicate(self, timeout=None):
+            if timeout is not None:
+                started.set()
+                raise subprocess.TimeoutExpired(["compiler"], timeout)
+            assert killed
+            return None, None
+
+        def poll(self):
+            return None
+
+    def kill(_pid, _signal):
+        with pytest.raises(Timeout), FileLock(lock_path, timeout=0):
+            pass
+        killed.append(True)
+
+    monkeypatch.setattr(
+        _compilation_process.subprocess, "Popen", lambda *a, **k: Process()
+    )
+    monkeypatch.setattr(_compilation_process.os, "getpgid", lambda pid: pid)
+    monkeypatch.setattr(_compilation_process.os, "killpg", kill)
+
+    def prepare(_target):
+        with FileLock(lock_path):
+            _compilation_process.run_compilation_process(["compiler"], timeout=60)
+
+    warmup = GraphWarmup(prepare)
+    warmup.start(_target())
+    assert started.wait(5)
+    warmup.close()
+
+    assert killed == [True]
+    assert warmup.state == CANCELLED and not warmup._thread.is_alive()
+    with FileLock(lock_path, timeout=0):
+        pass
+    warmup.close()
+    with pytest.raises(RuntimeError, match="owner is closed"):
+        warmup.start(_target())
