@@ -10,7 +10,7 @@ import importlib.util
 import json
 import os
 import shlex
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Callable, Literal, Sequence
 
@@ -46,6 +46,7 @@ _TOOL_HINTS = {
     "scip-dotnet": "Install the managed scip-dotnet provider with `codenib toolchain install`.",
     "scip-go": "Install scip-go and make it available on PATH.",
     "scip-java": "Install scip-java or set the language-specific SCIP command.",
+    "pyrefly": 'Install the pinned pyrefly release with `pip install "codenib[graph]"`.',
     "scip-python": (
         "Install the managed `scip-python` provider with `codenib toolchain install`."
     ),
@@ -613,7 +614,18 @@ def _language_setup(
         )
 
     extras = []
+    note = ""
     if spec.key == "python":
+        from ..scip_interface.pyrefly_provider import (
+            PYREFLY_PROVIDER,
+            select_python_graph_provider,
+        )
+
+        provider = select_python_graph_provider(command_resolver=command_resolver)
+        if provider.name == PYREFLY_PROVIDER:
+            return _pyrefly_setup(spec.key, provider)
+        # scip-python output needs the Python LSP for identity recovery.
+        note = provider.note
         command = lsp_command_for_language("python") or []
         if command:
             extras.append(
@@ -653,11 +665,38 @@ def _language_setup(
                 str(project_file) if project_file else "no .sln/.csproj found",
             )
         )
-    return _scip_setup(
+    setup = _scip_setup(
         spec.key,
         repository=repository,
         command_resolver=command_resolver,
         extra=extras,
+    )
+    return replace(setup, note=note) if note else setup
+
+
+def _pyrefly_setup(language: str, provider) -> GraphLanguageSetup:
+    """Python graphs built by pyrefly need only the pinned pyrefly release."""
+
+    spec = get_language_spec(language)
+    assert spec is not None
+    ready = provider.executable is not None
+    return GraphLanguageSetup(
+        language=spec.key,
+        display_name=spec.display_name,
+        state="ready" if ready else "missing",
+        backend="scip",
+        command=["pyrefly", "check", "--report-glean"],
+        resolved_command=provider.executable,
+        prerequisites=[
+            GraphPrerequisite(
+                name="pyrefly",
+                kind="command",
+                ready=ready,
+                detail=provider.executable or provider.note,
+                resolved=provider.executable,
+            )
+        ],
+        note=provider.note,
     )
 
 

@@ -95,6 +95,8 @@ datasets = [
 graph = [
     "igraph>=0.11.6",
     "protobuf>=3.20.0",
+    # Builds the Python symbol graph; the Glean converter targets this release.
+    "pyrefly==1.4.0",
 ]
 mcp = [
     "mcp>=2.0.0,<3",
@@ -143,6 +145,7 @@ full = [
     "numpy>=1.24.0",
     "openai>=1.0.0",
     "protobuf>=3.20.0",
+    "pyrefly==1.4.0",
     "requests>=2.25.0",
     "sentence-transformers>=2.3.0",
     "transformers<5.17",
@@ -173,6 +176,7 @@ test = [
     "numpy>=1.24.0",
     "openai>=1.0.0",
     "protobuf>=3.20.0",
+    "pyrefly==1.4.0",
     "pytest>=6.0.0",
     "pytest-cov>=3.0.0",
     "pytest-timeout>=2.1.0",

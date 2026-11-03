@@ -56,7 +56,7 @@ without launching the live server after construction.
 
 | Language | Graph construction | Optional live LSP |
 |---|---|---|
-| Python | `scip-python`; source checkouts also require the Python LSP | `basedpyright-langserver` |
+| Python | `pyrefly`, with `scip-python` fallback | `basedpyright-langserver` |
 | JavaScript / TypeScript | `scip-typescript` | `typescript-language-server` |
 | Go | `scip-go` | `gopls` |
 | Rust | `rust-analyzer scip` | `rust-analyzer` |
@@ -68,11 +68,25 @@ without launching the live server after construction.
 | Ruby | `scip-ruby`, with Ruby LSP fallback | `ruby-lsp` |
 | PHP | project-local `scip-php`, with Intelephense fallback | `intelephense` |
 
-Python graph construction in current source checkouts also needs
-`basedpyright-langserver`; `codenib toolchain install --scope graph` installs
-both providers. This definition-identity recovery is not in the published
-0.2.4 package. After upgrading a source checkout, rebuild with `codenib index
-/path/to/repository --preset graph`.
+CodeNib builds Python graphs with [pyrefly](https://pyrefly.org), a type
+checker that the `graph` extra installs at a pinned release. CodeNib converts
+pyrefly's report into the same SCIP index that `scip-python` writes, so graphs
+and queries look the same. On five open-source repositories a build took
+about half as long. Without the pinned pyrefly, CodeNib falls back to
+`scip-python`. That route also needs `basedpyright-langserver` to recover
+definition identities, and `codenib toolchain install --scope graph` installs
+both.
+
+Set `CODENIB_PYTHON_GRAPH_PROVIDER=scip-python` to keep using `scip-python`, or
+`CODENIB_PYTHON_GRAPH_PROVIDER=pyrefly` to fail rather than fall back. A graph
+built by the other provider is rebuilt on the next index run.
+
+??? note "Where pyrefly and scip-python graphs differ"
+    On five open-source Python repositories, both providers found nearly the
+    same definitions (96.6–99.8% overlap by file and line) and pyrefly kept
+    94–99% of scip-python's reference sites. pyrefly 1.4 reports no reference
+    where code assigns an attribute through an object other than `self`, and
+    CodeNib derives keyword-argument references from pyrefly's call facts.
 
 Source builds keep separate locations for same-named nested functions,
 repeated class declarations and their members. A shared name can have several
@@ -144,11 +158,13 @@ make toolchain-doctor
 managed tool directory. Use the narrower `make scip` target when only the
 primary SCIP/clangd tool set is needed.
 
-CodeNib currently installs the official pinned `@sourcegraph/scip-python`
-package. When a repository has no Pyright configuration of its own, CodeNib
-indexes a private copy of its Python files with a `pyrightconfig.json` that
-applies the path exclusions, so the checkout itself is never modified. No
-custom `scip-python` fork or repository submodule is required.
+Neither Python provider modifies the checkout. pyrefly reads a private
+configuration that lists the repository's Python files and applies the path
+exclusions and the project's own Pyright scope. For the `scip-python` fallback,
+CodeNib installs the official pinned `@sourcegraph/scip-python` package. When a
+repository has no Pyright configuration of its own, CodeNib indexes a private
+copy of its Python files with a `pyrightconfig.json` that applies the same
+exclusions. No custom `scip-python` fork or repository submodule is required.
 
 Language-specific project preparation is exposed through Makefile targets
 where needed:
