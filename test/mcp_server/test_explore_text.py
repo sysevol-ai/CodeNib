@@ -302,6 +302,40 @@ def test_dispatch_chains_name_the_method_they_reach() -> None:
     ) in text
 
 
+def test_callee_chains_say_what_the_unused_symbol_calls() -> None:
+    response = _response(
+        call_chains=[
+            {
+                "seed": "old_api",
+                "root": "h.py:old_api()",
+                "via": "h.py:Base.merge()",
+                "via_reason": "callee",
+                "chains": [
+                    {
+                        "complete": True,
+                        "steps": [
+                            {"name": "h.py:main()", "file": "h.py", "line": 1},
+                            {
+                                "name": "h.py:Base.merge()",
+                                "file": "h.py",
+                                "line": 6,
+                                "referenced_at": {"file": "h.py", "line": 2},
+                            },
+                        ],
+                    }
+                ],
+            }
+        ]
+    )
+
+    text = render_explore_text(response)
+
+    assert (
+        "Nothing indexed references old_api(); it calls Base.merge(), which is "
+        "reached like this:\n  1. main() (h.py:1)\n"
+    ) in text
+
+
 def test_notes_explain_without_json_fields_or_redundant_graph_codes() -> None:
     text = render_explore_text(_response())
 

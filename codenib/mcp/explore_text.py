@@ -192,15 +192,19 @@ def _chain_lines(item: Mapping[str, Any]) -> list[str]:
         note = item.get("note")
         return [f"{root}: {note}" if note else f"{root}: no indexed referrers found"]
     via = item.get("via")
-    lines = [
-        f"How {root} is reached"
-        + (
-            f" (through the same-named {_symbol_label(via)}, which dynamic "
-            "dispatch may route to it):"
-            if via
-            else ":"
+    if not via:
+        heading = f"How {root} is reached:"
+    elif item.get("via_reason") == "callee":
+        heading = (
+            f"Nothing indexed references {root}; it calls {_symbol_label(via)}, "
+            "which is reached like this:"
         )
-    ]
+    else:
+        heading = (
+            f"How {root} is reached (through the same-named {_symbol_label(via)}, "
+            "which dynamic dispatch may route to it):"
+        )
+    lines = [heading]
     for number, chain in enumerate(chains, 1):
         steps = [step for step in chain.get("steps") or [] if isinstance(step, Mapping)]
         for index, step in enumerate(steps):

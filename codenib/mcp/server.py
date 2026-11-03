@@ -578,12 +578,16 @@ async def _wait_for_abandoned_explore_worker(
 @mcp.tool(
     name="explore_context",
     description=(
-        "Explain how code in this repository fits together. Returns the "
-        "definitions relevant to a question as current source windows grouped by "
-        "file, with line ranges, plus the static callers and callees of the main "
-        "symbols. Use it before Grep and Read for questions that span functions "
-        "or files; use Grep for an exact string. Put the question and any known "
-        "names in query, and list known function or class names in symbols. "
+        "Explain how code in this repository fits together, or trace how a "
+        "command, request or other entry point reaches the code behind a "
+        "behavior or bug. Returns the definitions relevant to a question as "
+        "current source windows grouped by file, with line ranges, plus the "
+        "static callers and callees of the main symbols and the call chains from "
+        "entry points to them. Use it before Grep and Read for questions that "
+        "span functions or files, and again with the suspect function in symbols "
+        "when diagnosing a bug; use Grep for an exact string. Put the question "
+        "and any known names in query, and list known function or class names "
+        "in symbols. "
         "budget is fast, balanced (default) or thorough and sets how much source "
         "comes back."
     ),

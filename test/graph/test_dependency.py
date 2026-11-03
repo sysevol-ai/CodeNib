@@ -370,7 +370,7 @@ def test_entry_chains_are_partial_when_no_entry_is_within_depth():
 def test_entry_chains_note_an_unreferenced_symbol():
     result = DependencyAnalyzer(_make_entry_graph()).entry_chains("cli.py:main()")
     assert result.chains == []
-    assert "no indexed references" in result.note
+    assert "nothing indexed references" in result.note
 
 
 def test_entry_at_the_depth_limit_is_still_an_entry():
@@ -425,6 +425,68 @@ def test_unreferenced_override_follows_the_referenced_method():
     assert _chain_names(result) == [["h.py:Base.merge()", "h.py:Base.opts()"]]
     assert "dynamic dispatch" in result.note
     assert result.to_dict()["via"] == "h.py:Base.opts()"
+
+
+def _make_delegation_graph() -> CodeGraph:
+    """``main()`` -> ``Base.merge()`` -> ``Base.opts()``.
+
+    ``Child.opts()`` calls ``Base.opts()`` through ``super()``; ``Other.opts()``
+    is never called; the unused ``old_api()`` only calls ``Base.merge()``.
+    """
+    g = CodeGraph()
+    gg = ig.Graph(directed=True)
+    names = [
+        "h.py:main()",
+        "h.py:Base.merge()",
+        "h.py:Base.opts()",
+        "h.py:Child.opts()",
+        "h.py:Other.opts()",
+        "h.py:old_api()",
+    ]
+    gg.add_vertices(len(names))
+    gg.vs["name"] = names
+    gg.vs["unified_name"] = names
+    gg.vs["type"] = ["function", "method", "method", "method", "method", "function"]
+    gg.vs["file"] = ["h.py"] * len(names)
+    gg.vs["start_line"] = [0, 5, 10, 20, 25, 30]
+    gg.vs["end_line"] = [3, 8, 15, 23, 28, 33]
+    gg.add_edges([(0, 1), (1, 2), (3, 2), (5, 1)])
+    gg.es["type"] = ["reference"] * 4
+    gg.es["anchor_file"] = ["h.py"] * 4
+    gg.es["anchor_line"] = [2, 7, 22, 31]
+    g.graph = gg
+    g.name_to_vertex = {name: index for index, name in enumerate(names)}
+    return g
+
+
+REACHES_BASE_OPTS = [
+    ["h.py:main()", "h.py:Base.merge()", "h.py:Base.opts()"],
+    ["h.py:old_api()", "h.py:Base.merge()", "h.py:Base.opts()"],
+]
+
+
+def test_super_calls_from_overrides_are_not_ways_in():
+    result = DependencyAnalyzer(_make_delegation_graph()).entry_chains(
+        "h.py:Base.opts()"
+    )
+    # Child.opts() reaches Base.opts() only through super().
+    assert _chain_names(result) == REACHES_BASE_OPTS
+
+
+def test_ambiguous_name_follows_the_only_method_code_calls():
+    result = DependencyAnalyzer(_make_delegation_graph()).entry_chains("opts")
+    assert result.root == "h.py:Base.opts()"
+    assert _chain_names(result) == REACHES_BASE_OPTS
+    assert "the only one indexed code references" in result.note
+
+
+def test_unused_wrapper_shows_how_its_callee_is_reached():
+    result = DependencyAnalyzer(_make_delegation_graph()).entry_chains("h.py:old_api()")
+    assert (result.via, result.via_reason) == ("h.py:Base.merge()", "callee")
+    # The wrapper itself is not offered as a way into its callee.
+    assert _chain_names(result) == [["h.py:main()", "h.py:Base.merge()"]]
+    assert result.note.startswith("nothing indexed references h.py:old_api()")
+    assert result.to_dict()["via_reason"] == "callee"
 
 
 def test_unreferenced_override_without_dispatch_only_names_the_method():
