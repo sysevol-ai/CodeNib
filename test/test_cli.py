@@ -500,6 +500,7 @@ def test_doctor_requires_the_repository_language_provider(
     expected_status: str,
 ) -> None:
     (tmp_path / "sample.py").write_text("def sample():\n    return 1\n")
+    monkeypatch.setenv("CODENIB_PYTHON_GRAPH_PROVIDER", "scip-python")
     monkeypatch.setattr(cli, "_check_module", lambda _name: True)
     monkeypatch.setattr(cli.shutil, "which", lambda command: tools.get(command))
 
@@ -518,6 +519,32 @@ def test_doctor_requires_the_repository_language_provider(
     assert code == expected_code
     assert expected_status in output
     assert "scip; command=scip-python index" in output
+
+
+def test_doctor_needs_only_pyrefly_for_the_default_python_graph(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from codenib.toolchains import PYREFLY_VERSION
+
+    pyrefly = tmp_path / "pyrefly"
+    pyrefly.write_text(f'#!/bin/sh\necho "pyrefly {PYREFLY_VERSION}"\n')
+    pyrefly.chmod(0o755)
+    (tmp_path / "sample.py").write_text("def sample():\n    return 1\n")
+    monkeypatch.delenv("CODENIB_PYTHON_GRAPH_PROVIDER", raising=False)
+    monkeypatch.setenv("CODENIB_PYREFLY", str(pyrefly))
+    monkeypatch.setattr(cli, "_check_module", lambda _name: True)
+    monkeypatch.setattr(cli.shutil, "which", lambda command: None)
+
+    code = cli.run(
+        ["doctor", str(tmp_path), "--require", "graph", "--language", "python"]
+    )
+
+    output = capsys.readouterr().out
+    assert code == 0
+    assert "[OK     ] Python (python)" in output
+    assert "scip; command=pyrefly check --report-glean" in output
 
 
 def test_doctor_model_config_reports_missing_named_key(

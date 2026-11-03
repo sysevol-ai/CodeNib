@@ -236,7 +236,10 @@ def test_search_with_filter_test(code_graph):
         is_test_file(result.node_id) for result in results_unfiltered
     ), "The fixture must exercise test-file exclusion"
     assert all(not is_test_file(result.node_id) for result in results_filtered)
-    assert any(result.node_id.startswith("sample/") for result in results_filtered)
+    # Implementation code never contains "test", so it only ties at zero above;
+    # check it survives the filter with a term it shares with the tests.
+    shared = indexer.search("hmm", top_k=limit, filter_test=True)
+    assert any(result.node_id.startswith("sample/") for result in shared)
 
     # Filtering before the retriever's cap can replace removed test hits with
     # later implementation hits, so a full result set need not become shorter.

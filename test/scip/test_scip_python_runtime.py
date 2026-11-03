@@ -14,6 +14,12 @@ from codenib.scip_interface.scip_indexer_python import SCIPPythonIndexer
 from codenib.scip_interface.scip_pb2 import Index
 
 
+@pytest.fixture(autouse=True)
+def _scip_python_provider(monkeypatch):
+    # These tests drive the scip-python route, which pyrefly replaces by default.
+    monkeypatch.setenv("CODENIB_PYTHON_GRAPH_PROVIDER", "scip-python")
+
+
 def test_checked_run_kills_process_group_when_caller_cancels(monkeypatch):
     class InterruptedProcess:
         pid = 1234

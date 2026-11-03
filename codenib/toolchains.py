@@ -93,6 +93,8 @@ class ToolchainPlan:
 
 
 SCIP_PYTHON_VERSION = "0.6.6"
+# Installed by the ``graph`` extra; the Glean converter targets this release.
+PYREFLY_VERSION = "1.4.0"
 SCIP_TYPESCRIPT_VERSION = "0.4.0"
 TYPESCRIPT_LANGUAGE_SERVER_VERSION = "5.3.0"
 TYPESCRIPT_VERSION = "6.0.3"
@@ -111,6 +113,10 @@ INTELEPHENSE_VERSION = "1.18.4"
 
 
 TOOL_RECIPES: Mapping[str, ToolRecipe] = {
+    "pyrefly": ToolRecipe(
+        manager="external",
+        hint=f'install pyrefly {PYREFLY_VERSION} with `pip install "codenib[graph]"`',
+    ),
     "scip-python": ToolRecipe(
         manager="npm",
         packages=(PackagePin("@sourcegraph/scip-python", SCIP_PYTHON_VERSION),),
@@ -260,9 +266,39 @@ def activate_managed_toolchain(
     return root
 
 
-def resolve_command(command: str, *, root: Path | None = None) -> str | None:
-    """Resolve a command from the managed root first, then the host PATH."""
+# Executables that CodeNib's own Python extras install. Wheels put them beside
+# the environment's interpreter, which need not be on an MCP client's PATH, so
+# they resolve through the installed distribution first.
+_DISTRIBUTION_COMMANDS: Mapping[str, str] = {"pyrefly": "pyrefly"}
 
+
+def _distribution_command(command: str) -> str | None:
+    from importlib.metadata import PackageNotFoundError, distribution
+
+    name = _DISTRIBUTION_COMMANDS.get(command)
+    if name is None:
+        return None
+    try:
+        package = distribution(name)
+    except PackageNotFoundError:
+        return None
+    for entry in package.files or ():
+        if entry.name in {command, f"{command}.exe"} and entry.parent.name in {
+            "bin",
+            "Scripts",
+        }:
+            binary = Path(package.locate_file(entry))
+            if binary.is_file() and os.access(binary, os.X_OK):
+                return str(binary.resolve())
+    return None
+
+
+def resolve_command(command: str, *, root: Path | None = None) -> str | None:
+    """Resolve a command from CodeNib's distributions, the managed root, then PATH."""
+
+    distributed = _distribution_command(command)
+    if distributed is not None:
+        return distributed
     suffixes = ("",)
     if os.name == "nt":
         suffixes += tuple(

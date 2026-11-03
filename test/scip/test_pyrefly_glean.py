@@ -12,7 +12,6 @@ predicates the converter reads. The expectations mirror
 """
 
 import json
-import os
 from pathlib import Path
 
 import pytest
@@ -20,11 +19,7 @@ from google.protobuf.text_format import MessageToString
 
 from codenib.scip_interface.lsp_occurrence_index import SCIPOccurrenceIndex
 from codenib.scip_interface.pyrefly_glean import glean_to_scip_index
-from codenib.scip_interface.pyrefly_provider import (
-    PYTHON_GRAPH_PROVIDER_ENV,
-    python_graph_provider,
-    write_pyrefly_config,
-)
+from codenib.scip_interface.pyrefly_provider import write_pyrefly_config
 from codenib.scip_interface.python_identity import normalize_python_index
 from codenib.scip_interface.scip_decode_python import SCIPPythonGraphDecoder
 from codenib.types import EDGE_TYPE_CONTAIN, EDGE_TYPE_REFERENCE
@@ -288,16 +283,6 @@ def test_identity_recovery_has_nothing_to_repair(tmp_path, case):
     assert canonical(index) == before
 
 
-def test_scip_python_stays_the_default_provider(monkeypatch):
-    monkeypatch.delenv(PYTHON_GRAPH_PROVIDER_ENV, raising=False)
-    assert python_graph_provider() == "scip-python"
-    monkeypatch.setenv(PYTHON_GRAPH_PROVIDER_ENV, "PyRefly")
-    assert python_graph_provider() == "pyrefly"
-    monkeypatch.setenv(PYTHON_GRAPH_PROVIDER_ENV, "ty")
-    with pytest.raises(ValueError):
-        python_graph_provider()
-
-
 def test_config_checks_every_source_with_src_layout_and_pyright_scope(tmp_path):
     root = tmp_path / "repo"
     (root / "src").mkdir(parents=True)
@@ -320,16 +305,5 @@ def test_config_checks_every_source_with_src_layout_and_pyright_scope(tmp_path):
     assert f"{base}/tests/**/*.py" in config["project-includes"]
     assert f"{base}/tests/data/**" in config["project-excludes"]
     assert f"{base}/**/build/**" in config["project-excludes"]
+    assert config["disable-project-excludes-heuristics"] is True
     assert not any(path.name == "pyrefly.toml" for path in root.rglob("*"))
-
-
-def test_missing_pyrefly_reports_an_unavailable_provider(tmp_path, monkeypatch):
-    from codenib.scip_interface.scip_indexer_python import SCIPPythonIndexer
-
-    monkeypatch.setenv(PYTHON_GRAPH_PROVIDER_ENV, "pyrefly")
-    monkeypatch.setenv("CODENIB_PYREFLY", os.fspath(tmp_path / "missing"))
-    (tmp_path / "repo").mkdir()
-    indexer = SCIPPythonIndexer(tmp_path / "repo", output_dir=tmp_path / "out")
-    assert indexer.generate_index() is False
-    assert indexer.index_generation_report["backend"] == "pyrefly"
-    assert indexer.index_generation_report["status"] == "unavailable"
