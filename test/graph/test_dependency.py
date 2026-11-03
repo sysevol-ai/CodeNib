@@ -269,3 +269,158 @@ def test_works_with_prepopulated_unified_dict():
     g = _make_graph(unified_empty=False)
     res = DependencyAnalyzer(g).impact("leaf", max_depth=3)
     assert {n.name for n in res.nodes} == {"a.c:mid()", "a.c:caller()"}
+
+
+def _make_entry_graph() -> CodeGraph:
+    """Two entries reach ``target``; a test and a field also reference it.
+
+    cli.py:main() -> svc.py:run() -> core.py:target()
+    web.py:handler() -> core.py:helper() -> core.py:target()
+    tests/test_core.py:test_target() -> core.py:target()   (test: skipped)
+    core.py:Config.value (field) -> core.py:target()       (field: skipped)
+    """
+    g = CodeGraph()
+    gg = ig.Graph(directed=True)
+    names = [
+        "cli.py:main()",
+        "svc.py:run()",
+        "core.py:target()",
+        "web.py:handler()",
+        "core.py:helper()",
+        "tests/test_core.py:test_target()",
+        "core.py:Config.value",
+    ]
+    gg.add_vertices(len(names))
+    gg.vs["name"] = names
+    gg.vs["unified_name"] = names
+    gg.vs["type"] = ["function"] * 6 + ["field"]
+    gg.vs["file"] = [name.split(":")[0] for name in names]
+    gg.vs["start_line"] = [0, 10, 20, 0, 30, 0, 40]
+    gg.vs["end_line"] = [5, 15, 25, 5, 35, 5, 41]
+    edges = [(0, 1), (1, 2), (3, 4), (4, 2), (5, 2), (6, 2)]
+    gg.add_edges(edges)
+    gg.es["type"] = ["reference"] * len(edges)
+    gg.es["anchor_file"] = [names[source].split(":")[0] for source, _ in edges]
+    gg.es["anchor_line"] = [2, 12, 3, 32, 1, 40]
+    g.graph = gg
+    g.name_to_vertex = {name: index for index, name in enumerate(names)}
+    return g
+
+
+def _chain_names(result):
+    return [[step.node.name for step in chain.steps] for chain in result.chains]
+
+
+def test_entry_chains_start_at_unreferenced_code_and_end_at_the_symbol():
+    result = DependencyAnalyzer(_make_entry_graph()).entry_chains("core.py:target()")
+    assert _chain_names(result) == [
+        ["cli.py:main()", "svc.py:run()", "core.py:target()"],
+        ["web.py:handler()", "core.py:helper()", "core.py:target()"],
+    ]
+    assert all(chain.complete for chain in result.chains)
+    assert result.entries_found == 2
+    first = result.chains[0]
+    # Each later step names the line where the previous step references it.
+    assert first.steps[0].reference_file is None
+    assert (first.steps[1].reference_file, first.steps[1].reference_line) == (
+        "cli.py",
+        2,
+    )
+    assert (first.steps[2].reference_file, first.steps[2].reference_line) == (
+        "svc.py",
+        12,
+    )
+    payload = result.to_dict()
+    assert payload["chains"][0]["steps"][2]["referenced_at"] == {
+        "file": "svc.py",
+        "line": 12,
+    }
+
+
+def test_entry_chains_prefer_distinct_first_callers():
+    g = _make_entry_graph()
+    # A second entry that also reaches target through run().
+    g.graph.add_vertices(1)
+    g.graph.vs[7]["name"] = g.graph.vs[7]["unified_name"] = "aaa.py:alt()"
+    g.graph.vs[7]["type"], g.graph.vs[7]["file"] = "function", "aaa.py"
+    g.graph.vs[7]["start_line"], g.graph.vs[7]["end_line"] = 0, 1
+    g.graph.add_edge(7, 1, type="reference", anchor_file="aaa.py", anchor_line=0)
+    g.name_to_vertex["aaa.py:alt()"] = 7
+
+    result = DependencyAnalyzer(g).entry_chains("core.py:target()", max_chains=2)
+    # alt() sorts first, but handler() enters through a different caller.
+    assert _chain_names(result) == [
+        ["aaa.py:alt()", "svc.py:run()", "core.py:target()"],
+        ["web.py:handler()", "core.py:helper()", "core.py:target()"],
+    ]
+
+
+def test_entry_chains_are_partial_when_no_entry_is_within_depth():
+    result = DependencyAnalyzer(_make_entry_graph()).entry_chains(
+        "core.py:target()", max_depth=1
+    )
+    assert result.truncated
+    assert [chain.complete for chain in result.chains] == [False, False]
+    assert _chain_names(result) == [
+        ["core.py:helper()", "core.py:target()"],
+        ["svc.py:run()", "core.py:target()"],
+    ]
+
+
+def test_entry_chains_note_an_unreferenced_symbol():
+    result = DependencyAnalyzer(_make_entry_graph()).entry_chains("cli.py:main()")
+    assert result.chains == []
+    assert "no indexed references" in result.note
+
+
+def test_entry_at_the_depth_limit_is_still_an_entry():
+    result = DependencyAnalyzer(_make_entry_graph()).entry_chains(
+        "core.py:target()", max_depth=2
+    )
+    assert all(chain.complete for chain in result.chains)
+    assert result.entries_found == 2
+    assert not result.truncated
+
+
+def _make_override_graph() -> CodeGraph:
+    """``Base.merge()`` calls ``self.opts()``; ``Child.opts()`` overrides it.
+
+    The index records the call against ``Base.opts()``; ``Base.opts().(other)``
+    is a parameter whose name also contains ``Base.opts``.
+    """
+    g = CodeGraph()
+    gg = ig.Graph(directed=True)
+    names = [
+        "h.py:Base.merge()",
+        "h.py:Base.opts()",
+        "h.py:Child.opts()",
+        "h.py:Base.opts().(other)",
+    ]
+    gg.add_vertices(len(names))
+    gg.vs["name"] = names
+    gg.vs["unified_name"] = names
+    gg.vs["type"] = ["method", "method", "method", "symbol"]
+    gg.vs["file"] = ["h.py"] * 4
+    gg.vs["start_line"] = [0, 10, 20, 10]
+    gg.vs["end_line"] = [5, 15, 25, 10]
+    gg.add_edges([(0, 1)])
+    gg.es["type"] = ["reference"]
+    gg.es["anchor_file"] = ["h.py"]
+    gg.es["anchor_line"] = [3]
+    g.graph = gg
+    g.name_to_vertex = {name: index for index, name in enumerate(names)}
+    return g
+
+
+def test_entry_chains_resolve_a_class_qualified_method():
+    result = DependencyAnalyzer(_make_override_graph()).entry_chains("Base.opts")
+    assert _chain_names(result) == [["h.py:Base.merge()", "h.py:Base.opts()"]]
+
+
+def test_unreferenced_override_points_to_the_referenced_method():
+    result = DependencyAnalyzer(_make_override_graph()).entry_chains(
+        "h.py:Child.opts()"
+    )
+    assert result.chains == []
+    assert "dynamic dispatch" in result.note
+    assert result.note.endswith("h.py:Base.opts()")

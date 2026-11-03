@@ -174,6 +174,101 @@ def test_relationships_list_direct_neighbors_by_direction() -> None:
     assert "(neighbors omitted to fit the response: 39 symbols, 57 references)" in text
 
 
+def test_call_chains_list_entry_first_with_reference_sites() -> None:
+    step = {"kind": "function"}
+    response = _response(
+        call_chains=[
+            {
+                "seed": "preprocess_request",
+                "root": "src/flask/app.py:Flask.preprocess_request()",
+                "chains": [
+                    {
+                        "complete": True,
+                        "steps": [
+                            {
+                                **step,
+                                "name": "src/flask/cli.py:run()",
+                                "file": "src/flask/cli.py",
+                                "line": 3,
+                            },
+                            {
+                                **step,
+                                "name": "src/flask/app.py:Flask.full_dispatch_request()",
+                                "file": "src/flask/app.py",
+                                "line": 867,
+                                "referenced_at": {
+                                    "file": "src/flask/cli.py",
+                                    "line": 9,
+                                },
+                            },
+                            {
+                                **step,
+                                "name": "src/flask/app.py:Flask.preprocess_request()",
+                                "file": "src/flask/app.py",
+                                "line": 10,
+                                "referenced_at": {
+                                    "file": "src/flask/app.py",
+                                    "line": 880,
+                                },
+                            },
+                        ],
+                    },
+                    {
+                        "complete": False,
+                        "steps": [
+                            {
+                                **step,
+                                "name": "src/flask/app.py:Flask.wsgi_app()",
+                                "file": "src/flask/app.py",
+                                "line": 900,
+                            },
+                            {
+                                **step,
+                                "name": "src/flask/app.py:Flask.preprocess_request()",
+                                "file": "src/flask/app.py",
+                                "line": 10,
+                                "referenced_at": {
+                                    "file": "src/flask/app.py",
+                                    "line": 905,
+                                },
+                            },
+                        ],
+                    },
+                ],
+                "truncated": True,
+            },
+            {
+                "seed": "unused",
+                "root": "src/flask/app.py:unused()",
+                "chains": [],
+                "note": "no indexed references to unused()",
+            },
+        ]
+    )
+
+    text = render_explore_text(response)
+
+    assert text.startswith(
+        "1 files, 2 source windows, 3 relationship groups, 2 call chains.\n"
+    )
+    assert (
+        "How Flask.preprocess_request() is reached:\n"
+        "  1. run() (src/flask/cli.py:3)\n"
+        "     -> Flask.full_dispatch_request() (src/flask/app.py:867), "
+        "referenced at src/flask/cli.py:9\n"
+        "     -> Flask.preprocess_request() (src/flask/app.py:10), "
+        "referenced at src/flask/app.py:880\n"
+        "  2. Flask.wsgi_app() (src/flask/app.py:900)\n"
+    ) in text
+    assert "no entry reached within the search depth" in text
+    assert "(search bounds reached; other chains may exist)" in text
+    assert "unused(): no indexed references to unused()" in text
+    # Chains come before the source windows they help navigate.
+    assert text.index("Call chains (entry first") < text.index(
+        "--- src/flask/app.py:10"
+    )
+
+
 def test_notes_explain_without_json_fields_or_redundant_graph_codes() -> None:
     text = render_explore_text(_response())
 

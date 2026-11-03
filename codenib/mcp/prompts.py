@@ -15,8 +15,10 @@ _EXPLORE_WHEN = (
     "a behavior is handled, what calls a function or what it calls, or what a "
     "change would affect. One call returns the relevant definitions as source "
     "windows read from the current checkout, grouped by file with line ranges "
-    "you can cite, together with their callers and callees when the graph is "
-    "available, so you do not need a separate Grep and Read for each of them. "
+    "you can cite. When the graph is available it adds their callers and "
+    "callees and the call chains that reach the main symbol from entry points "
+    "such as commands, routes or framework hooks, so you do not need a "
+    "separate Grep and Read for each of them. "
     "Use Grep for an exact string and Read for a file you already know you "
     "need. "
 )
@@ -54,8 +56,11 @@ CODENIB_EXPLORE_GUIDE = """\
 Use `explore_context` first for a question that spans more than one function
 or file. Ask in plain language in `query`, with any names, error text or file
 hints you know, and list known function or class names in `symbols`. The result
-groups current source windows by file, with line ranges, and adds the static
-callers and callees of the main symbols when the graph is available.
+groups current source windows by file, with line ranges. When the graph is
+available it adds the static callers and callees of the main symbols and call
+chains to the leading symbol: each chain starts at an entry point (code nothing
+indexed references, such as a command, route or framework hook) and names the
+line where every step references the next.
 
 Use `budget="balanced"` initially, `budget="fast"` for orientation, or
 `budget="thorough"` for more returned context. The budget controls returned
