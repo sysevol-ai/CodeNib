@@ -2067,7 +2067,7 @@ class SymbolGraphBuilder:
         source_selection: RepositorySourceSelection,
     ) -> Dict[str, Any]:
         graph_languages = self.languages or [self.language]
-        return {
+        identity = {
             "builder_schema": 10,
             "languages": list(graph_languages),
             "graph_route": self.graph_route,
@@ -2080,6 +2080,17 @@ class SymbolGraphBuilder:
             "repository_filter_policy": REPOSITORY_FILTER_POLICY_VERSION,
             "source_selection_digest": source_selection.digest,
         }
+        from ..languages import get_language_spec
+
+        if any(
+            (spec := get_language_spec(language)) is not None and spec.key == "python"
+            for language in graph_languages
+        ):
+            from ..scip_interface.pyrefly_provider import select_python_graph_provider
+
+            # A graph built by another provider or release is not reused.
+            identity["python_graph_provider"] = select_python_graph_provider().identity
+        return identity
 
     def __post_init__(self) -> None:
         self.source_selection = _snapshot_source_selection(self.source_selection)
