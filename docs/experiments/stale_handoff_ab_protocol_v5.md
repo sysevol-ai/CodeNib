@@ -6,8 +6,9 @@ SPDX-License-Identifier: Apache-2.0
 
 # Stale-handoff A/B, protocol v5
 
-Status: sealed on 2026-11-03 before any model call. Results are not in this
-document yet.
+Status: sealed on 2026-11-03 before any model call, and sealed again the same
+day after a first attempt was stopped (see [Deviation](#deviation)). Results are
+not in this document yet.
 
 Rounds v1 to v4 asked whether CodeNib's code graph helps an agent find its way
 through code it reads for the first time. It did not measurably help: on
@@ -127,6 +128,34 @@ Secondary outcomes:
 The planned SDK estimate is about $25. No new workflow starts once the observed
 estimate reaches $35.
 
+## Deviation
+
+The first attempt was stopped after 17 of the 99 workflows had started. Its
+sessions do not count; the round runs all 99 workflows again.
+
+- **What went wrong.** Each session ran in a container limited to 256
+  processes. In the black case the agent ran the project's full test suite in
+  parallel (`pytest -n auto`), which starts one worker per host CPU, 20 here, and
+  black's tests start process pools inside each worker. The suite reached the
+  process limit and hung, so the first two black sessions ran until the 600 s
+  limit. With a higher limit, the same suite passes in 23 s.
+- **Why it was stopped.** A session that ends without final usage was counted at
+  its $3 cap toward the $35 stop. With nine black sessions planned, the count
+  would have reached the stop before the round ended, although the sessions that
+  finished cost $0.11 to $0.16 each. The controller was stopped by hand, which
+  also ended the three sessions then running.
+- **What changed.**
+  - Containers allow 4,096 processes, in every arm.
+  - A session without final usage counts as $1 toward the stop.
+  - The prepare-only admission workflows ran again under the new limit and
+    recorded the same environment as before.
+
+  The 600 s limit, the policy, the tasks and the checks are unchanged.
+- **What was seen.** Session times from the first attempt were read to find the
+  cause. Two of its patches, both from cookiecutter, were graded to test the
+  grading script. No other outcomes were computed. The first attempt is archived
+  with the results.
+
 ## Limits
 
 - The cases are built so that the stale part matters and lies within reach of
@@ -147,7 +176,10 @@ All hashes are SHA-256.
 | Policy (`ab-policy-v5.json`) | `245add5c5299a0ffc72d00b571a8977fc0ab2b5d0cece4b5b3ef725dc8c2c040` |
 | Agent-visible tasks (`ab-tasks-v5.json`) | `c81c7d8e5138930bfa172a7453f72eefb3e851ab04ef61392c7581f7535b209a` |
 | Staleness checks (`stale_marks.py`) | `5d4694c60b4a529ab441a854735e9d343d98524b3e9b373b912607bceb4d4788` |
-| Execution binding (every input file, admission receipt, image and source head) | `2115188fe0cc2dd131fca3cf63219b012006c9a2e0c1fade01183c4a2fe7b6d1` |
+| Execution binding (every input file, admission receipt, image and source head) | `2ac3acc26f9d60ba387ab7f6707cc37c42b8c1b51eb51223b984c2f7bf19dc96` |
+
+The first seal's execution binding was
+`2115188fe0cc2dd131fca3cf63219b012006c9a2e0c1fade01183c4a2fe7b6d1`.
 
 The cases, diagnoses, changes, hidden tests and checks are published with the
 results.
