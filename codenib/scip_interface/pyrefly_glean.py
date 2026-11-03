@@ -596,6 +596,13 @@ class _Converter:
         inherited member is found on the first project base declaring it.
         """
 
+        # Python resolves a name in the enclosing function scopes before the
+        # module: a parameter or local that shares a module-level name is the
+        # binding a read inside that function uses, whatever pyrefly names it.
+        if site is not None:
+            local = self._lexical_local(qname, site)
+            if local:
+                return local
         rows = self.registry.get(qname)
         if rows:
             if site is not None and len(rows) > 1:
@@ -606,10 +613,6 @@ class _Converter:
         alias = self.report.aliases.get(qname)
         if alias is not None and depth < _ALIAS_DEPTH and alias != qname:
             return self.resolve(None, alias, depth + 1)
-        if site is not None and file == site[0]:
-            local = self._lexical_local(qname, site)
-            if local:
-                return local
         owner, _, member = qname.rpartition(".")
         if not owner or depth >= _ALIAS_DEPTH:
             return []
