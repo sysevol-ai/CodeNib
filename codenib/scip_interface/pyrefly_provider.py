@@ -2,25 +2,30 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Opt-in pyrefly route for the Python symbol graph (prototype).
+"""Choose and run the provider behind the Python symbol graph.
 
-Set ``CODENIB_PYTHON_GRAPH_PROVIDER=pyrefly`` to build ``index.scip`` from
-``pyrefly check --report-glean`` instead of scip-python. The converted index
-uses scip-python's symbol conventions, so decoding, the C++ parity decoder and
-the occurrence index run unchanged. scip-python stays the default.
+pyrefly builds the graph by default: ``pyrefly check --report-glean`` output is
+converted into a SCIP index with scip-python's symbol conventions, so decoding,
+the C++ decoder and the occurrence index run unchanged. The ``graph`` extra
+installs the pinned pyrefly release. When that release is not installed,
+CodeNib falls back to scip-python.
 
-``CODENIB_PYREFLY`` names the pyrefly executable; otherwise the managed
-toolchain and ``PATH`` are searched.
+``CODENIB_PYTHON_GRAPH_PROVIDER`` pins the choice: ``pyrefly`` fails instead of
+falling back, and ``scip-python`` keeps the previous provider.
+``CODENIB_PYREFLY`` names the pyrefly executable; otherwise the installed
+distribution, the managed toolchain and ``PATH`` are searched.
 """
 
 from __future__ import annotations
 
 import json
 import os
-import shutil
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Callable, Iterable, Mapping, Optional
+
+from ..toolchains import PYREFLY_VERSION, SCIP_PYTHON_VERSION
 
 PYTHON_GRAPH_PROVIDER_ENV = "CODENIB_PYTHON_GRAPH_PROVIDER"
 PYREFLY_EXECUTABLE_ENV = "CODENIB_PYREFLY"
@@ -29,13 +34,40 @@ PYREFLY_PROVIDER = "pyrefly"
 _PROVIDERS = (SCIP_PYTHON_PROVIDER, PYREFLY_PROVIDER)
 
 
-def python_graph_provider(environ: Optional[dict] = None) -> str:
-    """Return the configured Python graph provider; scip-python by default."""
+@dataclass(frozen=True, slots=True)
+class PythonGraphProvider:
+    """The provider that will build a Python graph, and why it was chosen."""
+
+    name: str
+    # Set when the provider is pyrefly and the pinned release was found.
+    executable: Optional[str] = None
+    # Chosen by CODENIB_PYTHON_GRAPH_PROVIDER rather than by default.
+    configured: bool = False
+    # Why pyrefly is not used, when it is not.
+    note: str = ""
+
+    @property
+    def ready(self) -> bool:
+        return self.name == SCIP_PYTHON_PROVIDER or self.executable is not None
+
+    @property
+    def identity(self) -> str:
+        """Provider and release, recorded with graph artifacts."""
+
+        if self.name == PYREFLY_PROVIDER:
+            return f"{PYREFLY_PROVIDER} {PYREFLY_VERSION}"
+        return f"{SCIP_PYTHON_PROVIDER} {SCIP_PYTHON_VERSION}"
+
+
+def configured_python_graph_provider(
+    environ: Optional[Mapping[str, str]] = None,
+) -> Optional[str]:
+    """Return the provider pinned by the environment, or ``None`` for the default."""
 
     environ = os.environ if environ is None else environ
     value = (environ.get(PYTHON_GRAPH_PROVIDER_ENV) or "").strip().lower()
     if not value:
-        return SCIP_PYTHON_PROVIDER
+        return None
     if value not in _PROVIDERS:
         raise ValueError(
             f"{PYTHON_GRAPH_PROVIDER_ENV}={value!r} is not one of {_PROVIDERS}"
@@ -43,27 +75,80 @@ def python_graph_provider(environ: Optional[dict] = None) -> str:
     return value
 
 
-def resolve_pyrefly() -> Optional[str]:
-    configured = os.environ.get(PYREFLY_EXECUTABLE_ENV)
+def resolve_pyrefly(
+    command_resolver: Optional[Callable[[str], Optional[str]]] = None,
+    environ: Optional[Mapping[str, str]] = None,
+) -> Optional[str]:
+    environ = os.environ if environ is None else environ
+    configured = environ.get(PYREFLY_EXECUTABLE_ENV)
     if configured:
         return configured if os.access(configured, os.X_OK) else None
-    from ..toolchains import resolve_command
+    if command_resolver is None:
+        from ..toolchains import resolve_command
 
-    return resolve_command("pyrefly") or shutil.which("pyrefly")
+        command_resolver = resolve_command
+    return command_resolver("pyrefly")
+
+
+def select_python_graph_provider(
+    environ: Optional[Mapping[str, str]] = None,
+    *,
+    command_resolver: Optional[Callable[[str], Optional[str]]] = None,
+) -> PythonGraphProvider:
+    """Pick pyrefly when its pinned release is installed, else scip-python.
+
+    A provider pinned by the environment is returned even when it cannot run,
+    so the build reports it as unavailable instead of silently switching.
+    """
+
+    configured = configured_python_graph_provider(environ)
+    if configured == SCIP_PYTHON_PROVIDER:
+        return PythonGraphProvider(SCIP_PYTHON_PROVIDER, configured=True)
+    executable = resolve_pyrefly(command_resolver, environ)
+    version = pyrefly_version(executable) if executable else ""
+    if executable and version == PYREFLY_VERSION:
+        return PythonGraphProvider(
+            PYREFLY_PROVIDER, executable=executable, configured=configured is not None
+        )
+    if executable:
+        note = (
+            f"pyrefly at {executable} reports version {version or 'unknown'}; "
+            f"CodeNib needs {PYREFLY_VERSION}"
+        )
+    else:
+        note = (
+            f"pyrefly {PYREFLY_VERSION} is not installed; "
+            'install it with `pip install "codenib[graph]"`'
+        )
+    if configured == PYREFLY_PROVIDER:
+        return PythonGraphProvider(PYREFLY_PROVIDER, configured=True, note=note)
+    return PythonGraphProvider(SCIP_PYTHON_PROVIDER, note=note)
+
+
+_VERSIONS: dict[tuple[str, int, int], str] = {}
 
 
 def pyrefly_version(executable: str) -> str:
+    """Return the executable's release, cached per file revision."""
+
     try:
-        result = subprocess.run(
-            [executable, "--version"],
-            capture_output=True,
-            text=True,
-            timeout=30,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired):
+        status = os.stat(executable)
+    except OSError:
         return ""
-    return result.stdout.strip().rsplit(" ", 1)[-1]
+    key = (executable, status.st_mtime_ns, status.st_size)
+    if key not in _VERSIONS:
+        try:
+            result = subprocess.run(
+                [executable, "--version"],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return ""
+        _VERSIONS[key] = result.stdout.strip().rsplit(" ", 1)[-1]
+    return _VERSIONS[key]
 
 
 def _toml_list(values: Iterable[str]) -> str:
@@ -116,6 +201,11 @@ def write_pyrefly_config(
                 f"project-includes = {_toml_list(includes)}",
                 f"project-excludes = {_toml_list(excludes)}",
                 f"search-path = {_toml_list(search_path)}",
+                # pyrefly's own heuristics exclude any path with a hidden
+                # component, including the root's parents (~/.codenib/repos/x),
+                # which leaves nothing to check. Apply only the listed scope,
+                # as scip-python's Pyright config does.
+                "disable-project-excludes-heuristics = true",
                 # Only the index is needed; diagnostics are not reported.
                 'preset = "off"',
                 # Pyright, behind scip-python, does not read ignore files.
@@ -193,10 +283,12 @@ __all__ = [
     "PYREFLY_EXECUTABLE_ENV",
     "PYREFLY_PROVIDER",
     "PYTHON_GRAPH_PROVIDER_ENV",
+    "PythonGraphProvider",
     "SCIP_PYTHON_PROVIDER",
+    "configured_python_graph_provider",
     "pyrefly_command",
     "pyrefly_version",
-    "python_graph_provider",
     "resolve_pyrefly",
+    "select_python_graph_provider",
     "write_pyrefly_config",
 ]
