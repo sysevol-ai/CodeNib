@@ -29,6 +29,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
+from .._compilation_process import CompilationCancelled, compilation_cancellation
 from ..repository_source_selection import RepositorySourceSelection
 
 logger = logging.getLogger(__name__)
@@ -37,6 +38,7 @@ IDLE = "idle"
 RUNNING = "running"
 READY = "ready"
 FAILED = "failed"
+CANCELLED = "cancelled"
 
 _MAX_ERROR_CHARS = 400
 
@@ -63,7 +65,14 @@ def _default_prepare(target: GraphTarget) -> None:
 
 
 class GraphWarmup:
-    """Own at most one graph preparation thread for an MCP connection."""
+    """Cancel and join the connection's build before releasing its owner.
+
+    Close linearizes under ``_condition`` when ``_closed`` is set; no new
+    worker can start afterward. Join runs outside that condition so the
+    worker can report completion. Its subprocess is reaped before its build
+    releases the compiler lock. The server may hold its context lock while
+    closing; the worker never acquires that lock.
+    """
 
     def __init__(self, prepare: Callable[[GraphTarget], None] = _default_prepare):
         self._prepare = prepare
@@ -74,6 +83,13 @@ class GraphWarmup:
         self._started: float | None = None
         self._finished: float | None = None
         self._thread: threading.Thread | None = None
+        self._stop = threading.Event()
+        self._closed = False
+
+    @property
+    def closed(self) -> bool:
+        with self._condition:
+            return self._closed
 
     @property
     def state(self) -> str:
@@ -93,6 +109,8 @@ class GraphWarmup:
         """
 
         with self._condition:
+            if self._closed:
+                raise RuntimeError("Graph preparation owner is closed")
             if self._state == RUNNING:
                 return self._state
             same_source = (
@@ -110,7 +128,7 @@ class GraphWarmup:
                 target=self._run,
                 args=(target,),
                 name="codenib-graph-warmup",
-                daemon=True,
+                daemon=False,
             )
             self._thread.start()
             return self._state
@@ -118,7 +136,10 @@ class GraphWarmup:
     def _run(self, target: GraphTarget) -> None:
         logger.info("Preparing the symbol graph in the background")
         try:
-            self._prepare(target)
+            with compilation_cancellation(self._stop.is_set):
+                self._prepare(target)
+        except CompilationCancelled as exc:
+            outcome, error = CANCELLED, str(exc)
         except BaseException as exc:  # noqa: B036 - record every failure
             message = " ".join(str(exc).split()) or type(exc).__name__
             outcome, error = FAILED, message[:_MAX_ERROR_CHARS]
@@ -131,6 +152,15 @@ class GraphWarmup:
             self._error = error
             self._finished = time.monotonic()
             self._condition.notify_all()
+
+    def close(self) -> None:
+        """Cancel subprocesses and join before returning ownership."""
+        with self._condition:
+            self._closed = True
+            self._stop.set()
+            worker = self._thread
+        if worker is not None and worker is not threading.current_thread():
+            worker.join()
 
     def wait(self, timeout: float | None) -> str:
         """Wait up to *timeout* seconds (forever for ``None``) for an outcome."""
@@ -156,6 +186,7 @@ class GraphWarmup:
 
 
 __all__ = [
+    "CANCELLED",
     "FAILED",
     "IDLE",
     "READY",

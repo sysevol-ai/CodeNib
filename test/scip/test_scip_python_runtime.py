@@ -273,9 +273,27 @@ def test_scip_python_applies_excludes_in_private_mirror(tmp_path):
                     stat.st_nlink,
                     stat.st_ctime_ns,
                 )
-
     assert not root.exists()
     assert not (repo / "pyrightconfig.json").exists()
+
+
+def test_mirror_preserves_alias_and_canonical_paths_but_stops_cycles(tmp_path):
+    repo = tmp_path / "repo"
+    package = repo / "pkg"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text("value = 1\n")
+    try:
+        (repo / "alias").symlink_to("pkg", target_is_directory=True)
+        (package / "loop").symlink_to("..", target_is_directory=True)
+    except OSError:
+        pytest.skip("directory symlinks are unavailable")
+    mirror = tmp_path / "mirror"
+
+    assert scip_indexer_python._mirror_python_sources(repo, mirror) == 2
+    assert sorted(p.relative_to(mirror).as_posix() for p in mirror.rglob("*.py")) == [
+        "alias/__init__.py",
+        "pkg/__init__.py",
+    ]
 
 
 def test_scip_python_preserves_project_owned_pyright_config(tmp_path):

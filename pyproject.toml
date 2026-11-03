@@ -43,6 +43,7 @@ dependencies = [
     "rank_bm25>=0.2.2",
     "regex>=2024.11.6",
     "rich>=14.0.0",
+    "tomli>=1.1.0; python_version < '3.11'",
     "tree-sitter>=0.25.2",
     "tree-sitter-language-pack>=1.8.1,<1.9.0",
     "uvicorn>=0.20.0",
@@ -182,7 +183,6 @@ test = [
     # Lets the serving endpoint tests run in the default tier; tests that
     # exercise the model runtime are marked `slow`.
     "sse-starlette>=2.0.0",
-    "tomli>=1.1.0; python_version < '3.11'",
     "transformers<5.17",
 ]
 

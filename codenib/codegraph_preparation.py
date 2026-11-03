@@ -144,9 +144,13 @@ def prepare_graph(
         )
 
     def install_command(command, **kwargs):
+        from ._compilation_process import run_compilation_process
+
         if not kwargs.get("capture_output"):
             kwargs.update(stdout=sys.stderr, stderr=sys.stderr)
-        return subprocess.run(command, **kwargs)
+        return run_compilation_process(
+            command, timeout=kwargs.pop("timeout", 600), **kwargs
+        )
 
     with checkout_guard(repository) as check_checkout:
         source = fingerprint_repository(

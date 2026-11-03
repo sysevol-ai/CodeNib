@@ -128,8 +128,15 @@ async def _mcp_lifespan(
 ) -> AsyncIterator[ExploreSessionRuntime | None]:
     """Own one fresh exploration runtime for each transport connection."""
 
+    global _graph_warmup
     ctx = _ctx
+    with _context_lock:
+        if _graph_warmup.closed:
+            _graph_warmup = GraphWarmup()
+            if ctx is not None:
+                _warm_loaded_graph(ctx)
     runtime = ctx.begin_explore_session() if ctx is not None else None
+    warmup = _graph_warmup
     try:
         yield runtime
     finally:
@@ -139,6 +146,7 @@ async def _mcp_lifespan(
             if _ctx is not None and _ctx is not ctx:
                 _ctx.end_explore_session(runtime)
         try:
+            await asyncio.to_thread(warmup.close)
             await asyncio.to_thread(_close_source_definition_sessions, ctx, runtime)
         except Exception as cleanup:
             if primary is None:
@@ -1141,6 +1149,8 @@ def init_server(
             or artifact_binding is not None
         ):
             raise ValueError("--defer-graph requires a local manifest file")
+        _graph_warmup.close()
+        _graph_warmup = GraphWarmup()
         _init_server(
             manifest_path,
             artifact=artifact,
@@ -1148,7 +1158,6 @@ def init_server(
             source_binding=source_binding,
         )
         # A build belongs to the context it was started for.
-        _graph_warmup = GraphWarmup()
         _warm_graph = defer_graph and warm_graph
         ctx = get_context()
         ctx._defer_graph = defer_graph
@@ -1505,6 +1514,8 @@ def main(argv: list[str] | None = None) -> None:
         logger.error("Failed to start server: %s", exc)
         logger.debug("MCP server startup failure", exc_info=True)
         sys.exit(1)
+    finally:
+        _graph_warmup.close()
 
 
 if __name__ == "__main__":
