@@ -269,6 +269,39 @@ def test_call_chains_list_entry_first_with_reference_sites() -> None:
     )
 
 
+def test_dispatch_chains_name_the_method_they_reach() -> None:
+    response = _response(
+        call_chains=[
+            {
+                "seed": "opts",
+                "root": "h.py:Child.opts()",
+                "via": "h.py:Base.opts()",
+                "chains": [
+                    {
+                        "complete": True,
+                        "steps": [
+                            {"name": "h.py:Base.merge()", "file": "h.py", "line": 1},
+                            {
+                                "name": "h.py:Base.opts()",
+                                "file": "h.py",
+                                "line": 11,
+                                "referenced_at": {"file": "h.py", "line": 4},
+                            },
+                        ],
+                    }
+                ],
+            }
+        ]
+    )
+
+    text = render_explore_text(response)
+
+    assert (
+        "How Child.opts() is reached (through the same-named Base.opts(), which "
+        "dynamic dispatch may route to it):\n  1. Base.merge() (h.py:1)\n"
+    ) in text
+
+
 def test_notes_explain_without_json_fields_or_redundant_graph_codes() -> None:
     text = render_explore_text(_response())
 

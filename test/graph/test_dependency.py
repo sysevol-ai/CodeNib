@@ -417,10 +417,19 @@ def test_entry_chains_resolve_a_class_qualified_method():
     assert _chain_names(result) == [["h.py:Base.merge()", "h.py:Base.opts()"]]
 
 
-def test_unreferenced_override_points_to_the_referenced_method():
+def test_unreferenced_override_follows_the_referenced_method():
     result = DependencyAnalyzer(_make_override_graph()).entry_chains(
         "h.py:Child.opts()"
     )
-    assert result.chains == []
+    assert result.via == "h.py:Base.opts()"
+    assert _chain_names(result) == [["h.py:Base.merge()", "h.py:Base.opts()"]]
     assert "dynamic dispatch" in result.note
+    assert result.to_dict()["via"] == "h.py:Base.opts()"
+
+
+def test_unreferenced_override_without_dispatch_only_names_the_method():
+    result = DependencyAnalyzer(_make_override_graph()).entry_chains(
+        "h.py:Child.opts()", follow_dispatch=False
+    )
+    assert result.chains == [] and result.via is None
     assert result.note.endswith("h.py:Base.opts()")
