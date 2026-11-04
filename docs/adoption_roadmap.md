@@ -46,7 +46,7 @@ Using the caller's agent to plan grep is a separate, unevaluated variant.
 | Static distribution | Static export and reusable Pages workflow exist; #784 verifies cached stories, citations, page maps and CodeNib backlinks without a backend. A 15-page public repository is locally curated. | The no-embedding workflow default is released in 0.2.4; the maintainer will deploy the static roots on DGX Spark later. |
 | MCP protocol | [#780](https://github.com/sysevol-ai/CodeNib/pull/780) merged as `bcd2c730` after all executed CI passed; its squash message was verified. [#779](https://github.com/sysevol-ai/CodeNib/issues/779) is closed. | Released in 0.2.4; the public PyPI wheel passes installed modern and legacy MCP identity checks. |
 | GitHub discovery | `mcp`, `mcp-server`, `claude-code`, and `codex` are set, with the six existing topics retained. The About description now names source context, call navigation, Claude Code, Codex and MCP. | Description, topics and unchanged homepage verified through GitHub metadata on 2026-09-26. |
-| Releases | Verified production remains [v0.2.4](https://github.com/sysevol-ai/CodeNib/releases/tag/v0.2.4). The 0.2.5 candidate from merged [#953](https://github.com/sysevol-ai/CodeNib/pull/953)/[#954](https://github.com/sysevol-ai/CodeNib/pull/954) is frozen at `2ca154013c5e1aa32bb348697f81d7c50cf0efda`. [TestPyPI 41253743350](https://github.com/sysevol-ai/CodeNib/actions/runs/41253743350) and the exact-commit full main package run pass; both public wheels and the sdist match their verified build hashes. Public install pins stay on 0.2.4. | Candidate preparation, full installed-package acceptance and the fresh anonymous Docs/assets gate are complete. Production authorization, an annotated `v0.2.5` tag at the accepted SHA, protected ownership preflight and PyPI/MCP/GitHub verification remain open. Later roadmap commits must not move the tag target. |
+| Releases | Production remains [v0.2.4](https://github.com/sysevol-ai/CodeNib/releases/tag/v0.2.4). The maintainer authorizes the complete 0.2.5 release on 2026-11-04, including the merged Python provider, static entry-path, path-check and MCP lifecycle repairs. A new `0.2.5rc1` candidate rehearses that expanded surface on TestPyPI; the original 0.2.5 artifacts and acceptance remain historical evidence. | Complete the new rehearsal, restore stable metadata, freeze and verify the final commit, then publish and verify PyPI/MCP/GitHub before updating public install pins. The old `2ca15401` tag target is superseded by this explicit scope decision. |
 | Related work | #777/#778 improve the Jev blog evidence; #773 changes blog layout. | Preserve their ownership; do not duplicate their chart or hardware corrections. Merged #770/#752 supply optional Wiki image generation and contextual repository diagrams; they are independent of the visitor/adoption acceptance gates. |
 
 ## Delivery order and acceptance gates
@@ -1376,53 +1376,42 @@ published on PyPI, the official MCP Registry and GitHub at
 checksums and the stable release remains latest. Public installation pins and
 their contract check continue to select 0.2.4.
 
-The 0.2.5 candidate is merged through
-[#953](https://github.com/sysevol-ai/CodeNib/pull/953) and
-[#954](https://github.com/sysevol-ai/CodeNib/pull/954). Its release surface is
-frozen at `2ca154013c5e1aa32bb348697f81d7c50cf0efda`, whose tree equals the
-reviewed release head. The exact-commit
-[TestPyPI rehearsal 41253743350](https://github.com/sysevol-ai/CodeNib/actions/runs/41253743350)
-passes its full matrix, public upload, download/hash comparison and installed
-CLI/BM25 smoke. The independent full
-[main package run 41253731903](https://github.com/sysevol-ai/CodeNib/actions/runs/41253731903)
-also passes. Any production `v0.2.5` tag must resolve to this accepted
-candidate; later documentation reconciliation is not permission to tag a
-newer `main` commit.
+The maintainer authorizes production release of the expanded 0.2.5 scope on
+2026-11-04. It includes the Wiki and OKF surface plus the subsequently merged
+Pyrefly provider, entry-path navigation, static path checks, deferred graph
+preparation and MCP refresh/ownership repairs. This scope decision supersedes
+the old tag target; it does not retroactively extend that candidate's tests.
 
-Local acceptance passes 9,010 unit cases, 200 frontend tests, 43
-release/Registry contracts, strict MkDocs, the public-doc boundary, lockfile
-validation and pinned all-file hooks. Installed CLI/BM25, Wiki, modern and
-legacy MCP, portable artifacts and OKF export pass in isolated environments.
-The official final-head PR build supplies both native manylinux wheels and
-the source-only sdist. The downloaded x86-64 wheel reproduces the persisted
-OKF export and pointer update, and all nine payload hashes match. These are
-release-admission checks, not CodeGraph workflow-benefit evidence. The public
-TestPyPI wheel also repeats OKF export successfully; an unchanged second
-agent-pointer update writes no files.
+The original candidate `2ca154013c5e1aa32bb348697f81d7c50cf0efda` and its
+[TestPyPI run 41253743350](https://github.com/sysevol-ai/CodeNib/actions/runs/41253743350)
+remain accepted historical evidence for the narrower scope. Its immutable
+TestPyPI 0.2.5 files will not be overwritten. The expanded code passes the
+[main Full CI chain 41753946979](https://github.com/sysevol-ai/CodeNib/actions/runs/41753946979)
+(unit, integration, serial integration, SCIP/core and graph consumer; slow
+explicitly skipped) and the
+[main distribution verifier 41754395018](https://github.com/sysevol-ai/CodeNib/actions/runs/41754395018).
+Those runs do not publish a production package.
 
-TestPyPI artifact SHA-256 values, independently downloaded and matched to
-the accepted workflow build (production rebuilds are verified separately):
+Current release gates are the new `0.2.5rc1` TestPyPI rehearsal and installed
+artifact checks, final stable-metadata restoration and exact-commit package
+verification, an annotated `v0.2.5` tag at the newly accepted commit, protected
+Registry ownership preflight and production PyPI/MCP/GitHub verification.
+Public install pins and candidate labels change only after that verification.
+Environment protections remain unchanged. Real OAuth consent, interactive
+vault unlock, hosted browser acceptance, website rollout and the A0 workflow
+benefit decision remain separate adoption gates.
 
-| Artifact | SHA-256 |
-| --- | --- |
-| `codenib-0.2.5-cp310-abi3-manylinux_2_28_aarch64.whl` | `88ed6beee697187e229323f4ae196f047a30749907b270466149efd206e88900` |
-| `codenib-0.2.5-cp310-abi3-manylinux_2_28_x86_64.whl` | `7e3a5e8973de300dc3db62eb4ef662b95e9195ae8472c0eeeddc0461858d3237` |
-| `codenib-0.2.5.tar.gz` | `9e7a669e451944ffd28c1a4d6080648fdae096a0273b20e4b9b7bda9f8f17877` |
-
-The manually dispatched
-[Docs run 41253745073](https://github.com/sysevol-ai/CodeNib/actions/runs/41253745073)
-passes at the candidate commit. Anonymous requests retrieve the candidate
-notes, the 0.2.4-pinned quickstart and both README images. The MCP DNS proof and
-protected environment secret metadata are present. Environment policies are
-unchanged: TestPyPI admits `main`, production admits `v*` tags, and MCP
-publication requires maintainer review.
-
-Open release gates are explicit production authorization, the annotated tag
-at the accepted SHA, protected ownership preflight and production PyPI/MCP/GitHub
-verification. Update public install pins, their contract and candidate labels
-only after that production verification. Real OAuth consent, interactive
-vault unlock, hosted browser acceptance and the maintainer-owned website
-rollout remain separate adoption gates.
+The release dependency review refreshes compatible HTTP/crypto locks and
+frontend build/test patches. It does not claim an advisory-free dependency
+tree. Mermaid's KaTeX advisory requires pre-existing prototype pollution and
+its offered upgrade crosses the current major; DOMPurify stays pinned. The
+locked optional LiteLLM 1.106.0 requires filelock below 4, retaining the local
+shared-directory advisory; locks must stay in owner-controlled directories.
+Python 3.10 retains Pillow 12.3 through the test-only matplotlib dependency;
+Python 3.11+ selects Pillow 13, and product code does not import Pillow.
+These limits remain explicit rather than dropping Python 3.10, overriding a
+provider's dependency contract, or claiming that lock updates protect every
+pre-existing user environment.
 
 Record baseline and subsequent counts for documentation-to-install clicks,
 successful local setup, first source-linked query, repeat use, Pages backlink

@@ -11,6 +11,8 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-11-04
+
 ### Added
 
 - `codenib codegraph check` verifies call-path rules from
@@ -18,11 +20,8 @@ All notable user-facing changes are recorded here. CodeNib follows
   function that calls a sanitizer. It reports a witness path per violation,
   limits the report to a diff with `--base`, and exits 1 for CI. Unresolved
   Python calls are matched by name so a missing type cannot hide a path.
-
-## [0.2.5] - 2026-10-31
-
-### Added
-
+- Bounded static entry paths in `explore_context`, with source locations,
+  explicit ambiguity and omitted-path diagnostics, and readable text output.
 - Public-repository visitor Wikis with linked chapters, persistent generation
   progress, resumable saved results, model selection, share cards and explicit
   owner publication to Browse. Saved results begin unlisted.
@@ -40,6 +39,10 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 ### Changed
 
+- Use pinned Pyrefly 1.4.0 as the default Python graph provider, with explicit
+  scip-python selection and fallback, source-scope checks and native parity.
+- Prepare deferred Python graphs in the background and answer from source
+  retrieval while graph preparation is still running.
 - Accept dirty checkouts during CodeGraph setup, reject stale indexed queries
   after edits and reload explicitly rebuilt indexes in the same MCP session.
 - Share the architecture reader between prepared and visitor Wikis, show
@@ -49,6 +52,14 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 ### Fixed
 
+- Refresh compatible locked HTTP/crypto dependencies and frontend build/test
+  dependencies for the release candidate.
+- Refresh deferred retrieval after source edits, retain stale-source detection
+  across reloads, and cancel owned graph builds during MCP shutdown.
+- Preserve call-chain source lines, delivery budgets and delegation; retain
+  uncertainty for bounded or ambiguous same-named method searches.
+- Resolve Python names in enclosing function scopes, reject rebound receiver
+  fields, and prevent PEP 695 names from inheriting their owner's identity.
 - Recover Python module, field and wildcard-reference identities; bind retrieval
   seeds to indexed spans and retain complete requested definitions within source
   delivery limits.
