@@ -17,17 +17,18 @@ these regressions**.
 The graph still did much better than choosing tests by import. Flagging every
 test file that imports a changed module caught 22 of 68 (32%) and flagged a
 median of 81 tests. Most of the graph's misses go through calls that a static
-graph does not see: framework code that calls methods by name, and operators
+graph candidate did not resolve: framework code that calls methods by name, and operators
 and constructors.
 
 ## Question and data
 
 Some agent patches pass SWE-bench's own tests but break other tests in the
-project's full suite. SWE-bench runs only the test files that the issue's pull
-request touched, so these regressions go unnoticed. A guardian would read the
+project's full suite. The study compares benchmark-selected tests with a broader
+developer test suite, exposing regressions outside that selection. A guardian would read the
 patch before it lands and point at the tests at risk.
 
-- **Cases.** The study by Wang, Pradel and Liu (ICSE 2026) ran the full suite on
+- **Cases.** The [study by Wang, Pradel and Liu](https://arxiv.org/abs/2503.15223)
+  and its [replication package](https://github.com/ZJU-CTAG/PatchDiff) ran the full suite on
   plausible SWE-bench Verified patches from three agents: CodeStory,
   LearnByInteract and OpenHands. Its published results list each patch that
   fails a test which passes with the developer's patch. Of these, 68 are
@@ -106,7 +107,8 @@ and the broken test:
   class, not to `__new__`.
 - **Bad patch data, 3 cases.** For three CodeStory instances, the patch in the
   published data has no source change, only a reproduction script or nothing.
-  The patch that was evaluated must have differed. They count as misses here;
+  The archived patch does not establish which source change caused the recorded
+  failure. They count as misses here;
   without them, the graph caught 32 of 65.
 - **Other, 6 cases.** In two, the broken tests do not exist at the base commit.
   In four, the check found no call path and the cause was not traced further.
@@ -120,10 +122,8 @@ projects it often means the changed code is reached only through such calls.
   points at half the hidden regressions for a few dozen tests. The import rule
   catches fewer and costs far more.
 - **Recall needs a record of which tests execute which code.** Calls by name
-  and operators are exactly what a coverage map captures. A guardian that keeps
-  one per test, updated as code changes, would see the paths the graph misses.
-  The graph would still explain why a test is at risk, through the path from
-  the test to the change, and would carry the notes attached to the code.
+  and operators could be captured by a per-test execution map. Whether a map
+  maintained across changes improves recall and cost is an untested hypothesis.
 - **One graph gap can be closed directly.** A constructor call could count as
   reaching the class's `__init__` and `__new__`.
 
@@ -135,6 +135,12 @@ projects it often means the changed code is reached only through such calls.
   flags a test helps only if the test is then run, or the warning is read.
 - No coverage-based guardian was measured. That needs each project's test
   environment, which this check did not use.
+- This evaluates the historical v4 candidate recorded in `SOURCE`, before the
+  current provider and path-query repairs. It does not measure the final merged
+  product. Frozen scores and denominators remain unchanged.
+- Of 507 broken-test labels, 413 match exact graph names, 63 match docstrings,
+  11 use a same-file/name fallback and 20 remain unmatched. A fallback need not
+  identify a unique physical test; unmatched labels remain in the denominator.
 
 ## Deviations
 
@@ -161,3 +167,29 @@ contains:
   graph build time.
 
 The graphs themselves are not included. Each was built in a median of 73 s.
+
+### Replay the archived summary
+
+The archived scripts use their own directory as the evidence root, although
+the archive stores them under `scripts/`. Stage byte-identical copies beside
+the data before running them. This packaging repair leaves the original
+archive, protocol, scripts and results unchanged:
+
+```bash
+scratch=$(mktemp -d)
+tar -xzf docs/experiments/guardian_regression_check_v1.tar.gz -C "$scratch"
+evidence="$scratch/guardian_regression_check_v1"
+cp "$evidence/scripts/build_graph.py" "$evidence/scripts/guardian.py" \
+   "$evidence/scripts/summarize.py" "$evidence/"
+cp "$evidence/summary.json" "$evidence/summary.recorded.json"
+python "$evidence/summarize.py"
+cmp "$evidence/summary.recorded.json" "$evidence/summary.json"
+```
+
+This replay regenerates the recorded summary byte for byte from all 103
+per-patch records, without indexing or model calls. Rebuilding graph-derived
+records is a separate operation: it needs the historical candidate identified
+in `SOURCE`, the pinned base checkouts under `wt/`, and their repository mirrors
+under `repos/`. Run the staged `build_graph.py` and `guardian.py` from that
+candidate only after preparing those inputs. The archive alone supplies the
+summary replay; it does not supply the 47 graphs or those checkouts.
