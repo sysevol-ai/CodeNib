@@ -19,6 +19,25 @@ the guided proposal. This is conditional use, not voluntary adoption, a repair
 benchmark, typed-graph benefit or an independent success. Prior outcomes and
 the complete-workflow gates stay unchanged.
 
+The later graph-tool A/B diagnostics also do not meet their registered benefit
+gates: [v1](codegraph_ab_results_v1.md), [v2](codegraph_ab_results_v2.md) and
+[v3](codegraph_ab_results_v3.md) retain graph setup costs and all strict and
+looser judgments. [v4](codegraph_ab_results_v4.md) accepts 21/36 diagnoses
+against native's 17/36, below its required five-diagnosis margin. The separate
+[stale-handoff v5](stale_handoff_ab_results_v5.md) accepts 33/33 repairs in each
+of plain, file and graph, leaving no room to measure improvement. Its post-run
+rule erratum changes no grade or outcome. These exposed, staged comparisons
+are not independent success confirmations or evidence for the final merged
+candidate. They do not authorize repeating paid cohorts until one wins.
+
+The [historical guardian check](guardian_regression_check_v1.md) is model-free:
+static graph impact flags a broken test in 32/68 regression cases, against
+22/68 for direct imports, with median control flag sets of 3 versus 81 tests.
+It still falls below the registered 70% recall threshold. The 103 records,
+47 base commits, unresolved test matches and original historical candidate are
+retained. Replaying its summary does not rerun project tests or evaluate a
+coverage-based guardian, the final product, or whole-workflow savings.
+
 Product correctness repairs, deferred source-first exploration, complete source
 windows and installed-wheel admission are verified within their documented
 scope. All original [v1](codegraph_matched_assessment_v1.md),
