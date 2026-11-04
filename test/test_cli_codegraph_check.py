@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import time
 from types import SimpleNamespace
 
 import igraph as ig
@@ -116,6 +117,31 @@ def test_a_stale_or_partial_graph_is_refused(repo, monkeypatch):
         cli._load_checkable_symbol_graph(repo)
 
 
+@pytest.mark.parametrize("completion", [{"partial": True}, {"complete": False}])
+def test_an_incomplete_generation_report_is_refused_without_partial_flags(
+    repo, monkeypatch, completion
+):
+    monkeypatch.setattr(
+        cli,
+        "_codegraph_index_report",
+        lambda _path: {"symbol_graph": True, "source_matches": True, "detail": ""},
+    )
+    entry = SimpleNamespace(
+        config={
+            "partial": False,
+            "partial_index": False,
+            "failed_languages": {},
+            "index_generation_reports": {"python": completion},
+        }
+    )
+    monkeypatch.setattr(
+        "codenib.compiler.manifest.RepoManifest.load",
+        lambda _path: SimpleNamespace(indexes={"symbol_graph": entry}),
+    )
+    with pytest.raises(cli.CLIError, match="incomplete"):
+        cli._load_checkable_symbol_graph(repo)
+
+
 def _git(repo, *arguments):
     subprocess.run(
         [
@@ -153,3 +179,111 @@ def test_base_reports_changes_since_the_merge_base_in_the_working_tree(tmp_path)
     assert changed == {"a.py": {2, 4}, "b.py": {1, 2}, "c.py": {1, 2}}
     with pytest.raises(cli.CLIError, match="git rev-parse failed"):
         cli._changed_lines_since(tmp_path, "--output=/tmp/x")
+
+
+@pytest.mark.parametrize("name", ["café.py", "two words.py", 'quote"tab\t.py'])
+def test_real_diff_filenames_preserve_changed_violations(tmp_path, name):
+    _git(tmp_path, "init", "-q")
+    _git(tmp_path, "config", "maintenance.auto", "false")
+    (tmp_path / name).write_text("def run():\n    pass\n")
+    _git(tmp_path, "add", "--", name)
+    _git(tmp_path, "commit", "-qm", "test: seed diff filename")
+    (tmp_path / name).write_text("def run():\n    sink()\n")
+    changed = cli._changed_lines_since(tmp_path, "HEAD")
+    assert changed == {name: {2}}
+    from codenib.graph.path_checks import PathRule, check_paths
+
+    graph = _graph(guarded=False)
+    graph.graph.vs["file"] = [name] * 3
+    graph.graph.es["anchor_file"] = [name]
+    result = check_paths(
+        graph,
+        [PathRule(id="guarded", to=("sink",), through=("guard",))],
+        tmp_path,
+        changed,
+    )
+    assert not result.passed and result.rules[0].violations[0].changed is True
+
+
+@pytest.mark.parametrize("complete", [False, True])
+def test_actual_compiler_publication_checks_completion_not_partial_permission(
+    tmp_path, monkeypatch, complete
+):
+    from codenib.compiler.index_builders import SymbolGraphBuilder
+    from codenib.compiler.manifest import IndexEntry, RepoManifest
+    from codenib.ls_router import GraphBuildResult
+    from codenib.repository_source_selection import RepositorySourceSelection
+    from codenib.source_fingerprint import fingerprint_repository
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    (repo / "a.py").write_text("def entry():\n    missing_sink()\n")
+    _git(repo, "init", "-q")
+    _git(repo, "config", "maintenance.auto", "false")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "test: seed compiler source")
+    commit = subprocess.check_output(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"], text=True
+    ).strip()
+    graph = CodeGraph(str(repo))
+    graph.add_root_node(".")
+    graph.add_file_node("a.py")
+    graph.build_range_indexes()
+    monkeypatch.setattr(
+        "codenib.ls_router.build_graph_for_languages_with_report",
+        lambda *_a, **_kw: GraphBuildResult(
+            graph=graph,
+            requested_languages=["python"],
+            available_languages=["python"],
+            failed_languages={},
+            index_generation_reports={
+                "python": {"complete": complete, "partial": not complete}
+            },
+        ),
+    )
+    status = SymbolGraphBuilder(
+        languages=["python"],
+        allow_partial_languages=True,
+        allow_partial_index=True,
+        source_coverage_fallback=True,
+    ).build(scope="current_repo", repo_path=str(repo), output_dir=str(cache / "graph"))
+    selection = RepositorySourceSelection()
+    source = fingerprint_repository(repo, selection=selection)
+    entry = IndexEntry(
+        index_type="symbol_graph",
+        path=status.path,
+        built_at="fixture",
+        built_at_epoch=time.time(),
+        status="fresh",
+        commit=commit,
+        source_fingerprint=source.value,
+        source_selection_digest=selection.digest,
+        config=status.metadata,
+    )
+    manifest = RepoManifest(
+        repo_path=str(repo),
+        commit=commit,
+        last_indexed_commit=commit,
+        source_fingerprint=source.value,
+        last_indexed_source_fingerprint=source.value,
+        source_selection=selection,
+        last_indexed_source_selection_digest=selection.digest,
+        languages=["python"],
+        file_count=source.file_count,
+        indexes={"symbol_graph": entry},
+    )
+    manifest.derive_capabilities()
+    manifest.save(cache / "repo_manifest.json")
+    monkeypatch.setattr("codenib.paths.repo_index_dir", lambda _path: cache)
+    report = cli._codegraph_index_report(repo)
+    assert report["symbol_graph"] and report["source_matches"]
+    assert report["symbol_graph_complete"] is False  # permission is not an outcome
+    if complete:
+        loaded, languages = cli._load_checkable_symbol_graph(repo)
+        assert loaded.graph.vcount() == 2 and languages == ["python"]
+    else:
+        assert entry.config["partial_index"] and entry.config["partial"] is False
+        with pytest.raises(cli.CLIError, match="incomplete"):
+            cli._load_checkable_symbol_graph(repo)

@@ -22,6 +22,15 @@ from LSP edits.
   serialized layout, keep the C++ decoder in sync — divergence is a silent
   correctness bug, not a build error.
 
+## Static path checks
+
+- Admit actual compiler completion, not permission flags that merely allow a
+  partial build. Keep the source and artifact authentication gates intact.
+- A line-only reference anchor cannot distinguish several same-named reads on
+  that line. Preserve unresolved candidates rather than sharing one call's proof.
+- Diff relevance covers every possible unguarded upstream caller, including
+  name-matched callers outside the selected indexed witness.
+
 ## Incremental patching (`graph/incremental/`)
 
 - One patcher per language (`patcher_python.py`, `patcher_go.py`,
