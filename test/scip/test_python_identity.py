@@ -467,6 +467,67 @@ def test_noncyclic_collisions_keep_each_call_in_its_lexical_function(tmp_path):
     }
 
 
+def test_module_walrus_can_coexist_with_pep695_bindings(tmp_path):
+    index = _walrus_index(tmp_path)
+    path = tmp_path / "left.py"
+    path.write_text(path.read_text() + "\ntype Alias = int\n")
+    report = normalize_python_index(index, tmp_path, resolve_definitions=lambda *_: [])
+    assert report["qualified_module_assignment_symbols"]
+    assert all(row.symbol != "text." for row in index.documents[0].occurrences)
+
+
+@pytest.mark.parametrize("same_owner", [False, True])
+def test_pep695_filter_retains_shadowing_import_references(tmp_path, same_owner):
+    from codenib.code_chunking.base import BaseCodeChunker
+
+    text = (
+        "class Box[T]:\n"
+        "    def f(self):\n"
+        "        from nested import Box as T\n"
+        "        return T\n"
+        if same_owner
+        else (
+            "type Alias = int\ndef f():\n"
+            "    from pkg import Real as Alias\n    return Alias()\n"
+        )
+    )
+    source = python_identity._Source(
+        tmp_path / "nested.py", text.encode(), text.split("\n")
+    )
+    parser = BaseCodeChunker._create_parser(
+        BaseCodeChunker._get_tree_sitter_language("python")
+    )
+    source.declarations = python_identity._declarations(source, parser)
+    document = Index().documents.add(relative_path="nested.py")
+    prefix = "scip-python python fixture 1 nested/"
+    document.occurrences.add(
+        range=[0, 0, 0, 0], symbol=prefix + "__init__:", symbol_roles=1
+    )
+    if same_owner:
+        symbol = prefix + "Box#"
+        document.occurrences.add(range=[0, 6, 0, 9], symbol=symbol, symbol_roles=1)
+        document.occurrences.add(range=[0, 10, 0, 11], symbol=symbol, symbol_roles=1)
+        reference = document.occurrences.add(
+            range=[3, 15, 3, 16], symbol=symbol, symbol_roles=8
+        )
+    else:
+        reference = document.occurrences.add(
+            range=[3, 11, 3, 16],
+            symbol="scip-python python pkg 1 pkg/Real#",
+            symbol_roles=8,
+        )
+    expected = (list(reference.range), reference.symbol)
+    dropped = python_identity._drop_type_binding_occurrences(
+        document, source, "nested.py"
+    )
+    assert [
+        (list(row.range), row.symbol)
+        for row in document.occurrences
+        if row.symbol_roles & 8
+    ] == [expected]
+    assert [row["range"] for row in dropped] == ([[0, 10, 0, 11]] if same_owner else [])
+
+
 def test_pep695_type_bindings_do_not_make_their_owner_contain_itself(tmp_path):
     index, resolve, queries = _captured_fixture(tmp_path, "type_parameters")
     raw = tmp_path / "raw.decoded"
