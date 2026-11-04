@@ -1423,6 +1423,13 @@ All production release gates are complete. Actual OAuth consent, interactive
 vault unlock, hosted browser acceptance, owner website rollout and the A0
 workflow-benefit decision remain separate adoption gates.
 
+The frozen tag README and PyPI long description retain an obsolete "clean
+repository" prerequisite. The canonical README and setup guides correct it;
+0.2.5 supports edited checkouts and retains its recorded dirty-worktree controls.
+PyPI stores the first uploaded release metadata, so this wording correction
+does not replace published artifacts or move the accepted tag. Keep that
+metadata limitation explicit when linking to the archived package description.
+
 The release dependency review refreshes compatible HTTP/crypto locks and
 frontend build/test patches. It does not claim an advisory-free dependency
 tree. Mermaid's KaTeX advisory requires pre-existing prototype pollution and
