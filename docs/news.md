@@ -11,13 +11,15 @@ the complete version history, see
 [GitHub Releases](https://github.com/sysevol-ai/CodeNib/releases) and the
 [changelog](https://github.com/sysevol-ai/CodeNib/blob/main/CHANGELOG.md).
 
-## Upcoming — repository Wikis and source-first agent setup
+## 2026-11-04 — repository Wikis and static path navigation
 
-The 0.2.5 candidate adds saved visitor Wikis, source-checked OKF export and
-optional BM25-first CodeGraph initialization. Production publication is pending;
-installation guides continue to select the verified 0.2.4 package.
+CodeNib 0.2.5 adds saved visitor Wikis, source-checked OKF export, Pyrefly-backed
+Python graphs and optional BM25-first setup with background preparation.
+Agents can follow selected static entry paths and use call-path rules in CI.
+Source-edit refresh, Python identities, LSP transport and context delivery also
+receive reliability fixes.
 
-[Read the 0.2.5 candidate notes](releases/0.2.5.md)
+[Read the 0.2.5 release notes](releases/0.2.5.md)
 
 ## 2026-09-26 — grep → Jev and static Wiki stories
 

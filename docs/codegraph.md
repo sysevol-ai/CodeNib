@@ -19,17 +19,16 @@ whether graph navigation helps your own workflow.
 
 ## One-command setup
 
-Install CodeNib 0.2.4 with the graph runtime and official MCP SDK:
+Install CodeNib 0.2.5 with the graph runtime and official MCP SDK:
 
 ```bash
-python -m pip install "codenib[graph,mcp]==0.2.4"
+python -m pip install "codenib[graph,mcp]==0.2.5"
 codenib codegraph init /absolute/path/to/repository
 ```
 
-Published 0.2.4 requires a clean Git checkout for initialization. Source builds
-from `main` add dirty-checkout initialization and per-query stale-index
-rejection, then reload rebuilt indexes within the same MCP connection. These
-fixes await a package release.
+CodeNib 0.2.5 accepts edited checkouts, rejects stale indexed results after
+source changes and reloads explicitly rebuilt indexes within the same MCP
+connection.
 
 The initializer detects repository languages and installed agent clients. It
 then installs package-managed graph providers, builds `bm25` and
@@ -44,7 +43,7 @@ CodeNib does not edit Codex TOML, Claude JSON, `.mcp.json`, `AGENTS.md`, or
 readable repository slug plus a path digest makes the server name unique, so
 several checkouts can coexist.
 
-On `main`, initialization accepts uncommitted edits, including new, deleted and
+Initialization accepts uncommitted edits, including new, deleted and
 renamed files. It indexes the current working tree and checks that visible source
 content, the Git commit and status remain unchanged through toolchain setup,
 indexing and native client registration. CodeNib may install its
@@ -67,7 +66,7 @@ Running the same initialization again reuses a current index and matching
 native registrations. CodeNib refuses to overwrite an unmanaged server with
 the same name or a managed registration whose command has drifted.
 
-Source builds also let you expose a single composed exploration tool to your
+You can expose a single composed exploration tool to your
 agent:
 
 ```bash
@@ -83,11 +82,11 @@ New registrations use `full` by
 default. Repeated initialization retains the existing selection. To change
 it, run `codenib codegraph uninstall .` before initializing again. The tool
 selection does not change which indexes are prepared; the smaller list does not establish lower task
-cost or better answers. This option awaits a package release.
+cost or better answers.
 
 ## Prepare the graph when needed
 
-Source builds support retrieval before graph preparation:
+Start with retrieval before graph preparation:
 
 ```bash
 codenib codegraph init . --defer-graph --tool-surface explore
@@ -136,7 +135,7 @@ full-readiness check still exits nonzero until both current indexes and
 providers are ready. To change the managed policy, uninstall the registration
 and initialize again. Include graph preparation and rebuilds in any workflow
 comparison: this option moves their cost off the first query and does not by
-itself establish a task-efficiency gain. It awaits a package release.
+itself establish a task-efficiency gain.
 
 ## Select the repository source surface
 
@@ -213,21 +212,21 @@ Use a symbol returned by that lookup to follow indexed static references:
 > before explaining which functions actually invoke it.
 
 References can come from calls, fields, type annotations or function values.
-Source builds from `main` add `semantics` with that scope and the incoming/outgoing
-reference direction. Published 0.2.4 keeps the older result format. Existing
+Responses include `semantics` with that scope and the incoming/outgoing
+reference direction. Existing
 `callers`/`callees` result labels retain their legacy names.
 External and dynamic calls may be missing; an empty neighborhood does not prove
 there are no callers. Use the returned paths and lines with `read_source` to
 check actual invocations and behavior.
 
-Unreleased source builds also recover some Python references after
+CodeNib also recovers some Python references after
 `from module import *` when the compiler incorrectly points a name at the
 whole module. Recovery requires a position-based definition reply matching an
 exact declaration in indexed source. Unsupported targets remain reported in
 the build diagnostics. Rebuild an existing Python graph once to pick up this
 repair with `codenib codegraph init . --rebuild`. A name that is reassigned can
 still reference several static candidates; inspect the source before deciding
-which implementation runs. Published 0.2.4 does not include this repair.
+which implementation runs.
 
 Useful full-surface tools include:
 
@@ -259,17 +258,13 @@ the complete path is ready:
 codenib codegraph status /absolute/path/to/repository --json
 ```
 
-With `--defer-graph`, source builds from `main` re-index retrieval for edited
+With `--defer-graph`, CodeNib re-indexes retrieval for edited
 source on the next query, as described above. Prebuilt registrations reject
 indexed queries after source changes: rerun
 `codenib codegraph init /absolute/path/to/repository`, then retry in the same
 agent connection. The server loads the published indexes after checking that
 they match current source. If the compiler is still publishing, retry after it
 finishes.
-
-Published 0.2.4 requires a clean checkout for rebuilding. Stop its CodeNib MCP
-server, rerun `init`, and restart the server to load the result. A running
-0.2.4 session can return stale facts after an edit.
 
 Views whose complete identities remain
 current are reused; affected requested views rebuild atomically. File-level
@@ -282,9 +277,6 @@ codenib codegraph init . --rebuild
 ```
 
 ## Check call-path rules
-
-This command is available in source builds from `main`; published 0.2.4 does
-not include it.
 
 Use a path rule to flag indexed reference paths that bypass a declared boundary.
 Each rule says: every reference path from

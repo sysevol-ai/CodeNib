@@ -34,7 +34,7 @@ through `graph_route="lsp"` for regression checks and for loose-file fallback.
 Scala has no registered LSP graph route today; its active graph support is the
 `scip-java` route only.
 
-The merged Python provider change in
+The Python provider shipped in 0.2.5 through
 [#968](https://github.com/sysevol-ai/CodeNib/pull/968) prefers pinned pyrefly 1.4.0 and converts its Glean report into the existing
 SCIP symbol and position contract. An unavailable or failed automatic provider
 falls back to scip-python 0.6.6; explicitly selecting pyrefly fails instead of
@@ -119,7 +119,7 @@ cover the original IPython snapshot, failed pytest admission and captured
 regressions. Both complete saved graphs have serial/native parity and no
 multiple containment parents. Builder schema 8 invalidates old manifest-bound
 artifacts; persisted graph layout remains schema 5. Graph setup now includes
-the existing basedpyright provider. This is unreleased source correctness work
+the existing basedpyright provider. This correctness work ships in 0.2.5
 for [#871](https://github.com/sysevol-ai/CodeNib/issues/871), not a backend,
 acceleration or task-benefit promotion. The A0 objective remains active.
 
