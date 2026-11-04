@@ -195,6 +195,7 @@ def test_actual_server_surface_works_with_modern_and_legacy_clients(
 def test_sequential_clients_get_independent_explore_ledgers(
     monkeypatch, tmp_path
 ) -> None:
+    monkeypatch.setattr(server_mod.mcp, "_explore_output", "json")
     original_surface = server_mod.mcp.tool_surface
     original_ctx = server_mod._ctx
     repo = tmp_path / "repo"
