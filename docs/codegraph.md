@@ -283,6 +283,9 @@ codenib codegraph init . --rebuild
 
 ## Check call-path rules
 
+This command is available in source builds from `main`; published 0.2.4 does
+not include it.
+
 Use a path rule to flag indexed reference paths that bypass a declared boundary.
 Each rule says: every reference path from
 an entry point to a `to` symbol passes a `through` symbol, or a function on

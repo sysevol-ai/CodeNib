@@ -36,7 +36,9 @@ static graph impact flags a broken test in 32/68 regression cases, against
 It still falls below the registered 70% recall threshold. The 103 records,
 47 base commits, unresolved test matches and original historical candidate are
 retained. Replaying its summary does not rerun project tests or evaluate a
-coverage-based guardian, the final product, or whole-workflow savings.
+coverage-based guardian, the final product, or whole-workflow savings. The
+47 archived guardian instances remain exposed and must not count as future
+unseen confirmation tasks.
 
 Product correctness repairs, deferred source-first exploration, complete source
 windows and installed-wheel admission are verified within their documented

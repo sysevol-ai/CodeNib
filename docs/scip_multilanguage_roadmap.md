@@ -34,8 +34,8 @@ through `graph_route="lsp"` for regression checks and for loose-file fallback.
 Scala has no registered LSP graph route today; its active graph support is the
 `scip-java` route only.
 
-The Python provider change in [#968](https://github.com/sysevol-ai/CodeNib/pull/968)
-prefers pinned pyrefly 1.4.0 and converts its Glean report into the existing
+The merged Python provider change in
+[#968](https://github.com/sysevol-ai/CodeNib/pull/968) prefers pinned pyrefly 1.4.0 and converts its Glean report into the existing
 SCIP symbol and position contract. An unavailable or failed automatic provider
 falls back to scip-python 0.6.6; explicitly selecting pyrefly fails instead of
 silently switching. Cache publication records the provider that actually built
@@ -50,9 +50,10 @@ selected documents, 34,131 nodes and 160,086 edges without partial indexing or
 project preparation, in 83.505 seconds. It retains 30,364 unresolved project
 references, so complete indexing does not imply complete relationship coverage.
 Serial and native decoding reproduce the same complete query-surface digest;
-all five native test executables pass. Required current-head CI and dependency
-merges remain the PR's acceptance gates. The persisted graph schema and C++
-decoder interface are unchanged. This provider change
+all five native test executables pass. The PR's dependencies, current-head CI
+and valid review findings are reconciled; actual Python 3.10 indexing also
+passes. Package-release admission remains separate. The persisted graph schema
+and C++ decoder interface are unchanged. This provider change
 does not promote a new language, a C++ acceleration gate, or a task-benefit claim;
 the frozen A/B candidates and outcomes remain separate historical evidence.
 
