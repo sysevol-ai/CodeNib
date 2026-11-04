@@ -44,6 +44,10 @@ SPDX-License-Identifier: Apache-2.0
   <a href="https://docs.codenib.ai/codegraph/#recorded-agent-session">Pinned source, transcript and setup details</a>.
 </p>
 
+New in **0.2.5**: saved repository Wikis and portable OKF export, Pyrefly-backed
+Python graphs, static entry-path navigation and call-path rule checks.
+[Read the release notes](https://docs.codenib.ai/releases/0.2.5/).
+
 ## Quickstart
 
 Requires Python 3.10+, Git, a clean repository, and Claude Code or Codex.
@@ -102,7 +106,7 @@ costs when assessing graph navigation on your own tasks.
 
 None of these repository tools needs its own model or API key; your agent
 uses its own model. [Detailed comparison, sources and boundaries](https://docs.codenib.ai/comparison/).
-CodeNib 0.2.4 also includes an optional [grep → Jev route](https://docs.codenib.ai/guides/grep-jev/)
+CodeNib also includes an optional [grep → Jev route](https://docs.codenib.ai/guides/grep-jev/)
 using OpenRouter for planning and reranking; selected code goes to remote
 models. Authorization previews remain opt-in. The historical research result
 above is separate from the product evaluation and the model-free CodeGraph row.
