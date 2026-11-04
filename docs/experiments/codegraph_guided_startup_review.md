@@ -77,8 +77,9 @@ at medium effort with adaptive thinking and automatic API tool choice; final
 usage also includes Haiku 5.5 auxiliary work. Each receives two CPUs, 4 GiB,
 256 PIDs, 24 turns and a 600-second question deadline. Native runs first. Both
 original SDK terminals succeed, usage is complete and source is preserved.
-Selected initialization/exploration function ASTs still match inspected main
-`2a28e48b`; this is not a current release-wide admission.
+At the recorded review, the selected initialization/exploration function ASTs
+matched inspected main `2a28e48b`. Later startup and output changes are outside
+that receipt; this is not a current release-wide admission.
 
 ## Protocol and decision boundary
 
