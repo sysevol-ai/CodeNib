@@ -22,6 +22,8 @@ import sys
 import time
 from pathlib import Path
 from typing import Any, Optional
+from urllib.parse import unquote, urlparse
+from urllib.request import url2pathname
 
 from ...languages import lsp_command_for_language, normalize_graph_language
 from ...log_utils import get_logger
@@ -1416,10 +1418,16 @@ class LSPClient:
 
 def uri_to_relpath(uri: str, project_root: str) -> Optional[str]:
     """Convert a file:// URI to a path relative to the project root."""
-    if not uri.startswith("file://"):
+    if not uri or not uri.startswith("file://"):
         return None
-    abs_path = uri[7:]  # strip file://
+    parsed = urlparse(uri)
+    abs_path = url2pathname(unquote(parsed.path))
     try:
-        return str(Path(abs_path).relative_to(project_root))
+        return (
+            Path(abs_path)
+            .resolve()
+            .relative_to(Path(project_root).resolve())
+            .as_posix()
+        )
     except ValueError:
         return abs_path

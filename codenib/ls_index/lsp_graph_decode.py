@@ -16,6 +16,7 @@ import json
 from pathlib import Path
 from typing import Iterable, Mapping, Optional
 from urllib.parse import unquote, urlparse
+from urllib.request import url2pathname
 
 from ..graph.code_graph import CodeGraph
 from ..types import (
@@ -347,10 +348,10 @@ def _uri_to_relpath(uri: str, project_root: Optional[Path]) -> Optional[str]:
     parsed = urlparse(uri)
     if parsed.scheme != "file":
         return None
-    path = Path(unquote(parsed.path))
+    path = Path(url2pathname(unquote(parsed.path)))
     if project_root is not None:
         try:
-            return path.resolve().relative_to(project_root).as_posix()
+            return path.resolve().relative_to(project_root.resolve()).as_posix()
         except ValueError:
             return None
     return path.as_posix()
