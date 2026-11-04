@@ -46,7 +46,7 @@ Using the caller's agent to plan grep is a separate, unevaluated variant.
 | Static distribution | Static export and reusable Pages workflow exist; #784 verifies cached stories, citations, page maps and CodeNib backlinks without a backend. A 15-page public repository is locally curated. | The no-embedding workflow default is released in 0.2.4; the maintainer will deploy the static roots on DGX Spark later. |
 | MCP protocol | [#780](https://github.com/sysevol-ai/CodeNib/pull/780) merged as `bcd2c730` after all executed CI passed; its squash message was verified. [#779](https://github.com/sysevol-ai/CodeNib/issues/779) is closed. | Released in 0.2.4; the public PyPI wheel passes installed modern and legacy MCP identity checks. |
 | GitHub discovery | `mcp`, `mcp-server`, `claude-code`, and `codex` are set, with the six existing topics retained. The About description now names source context, call navigation, Claude Code, Codex and MCP. | Description, topics and unchanged homepage verified through GitHub metadata on 2026-09-26. |
-| Releases | Production remains [v0.2.4](https://github.com/sysevol-ai/CodeNib/releases/tag/v0.2.4). The maintainer authorizes the complete 0.2.5 release on 2026-11-04, including the merged Python provider, static entry-path, path-check and MCP lifecycle repairs. A new `0.2.5rc1` candidate rehearses that expanded surface on TestPyPI; the original 0.2.5 artifacts and acceptance remain historical evidence. | Complete the new rehearsal, restore stable metadata, freeze and verify the final commit, then publish and verify PyPI/MCP/GitHub before updating public install pins. The old `2ca15401` tag target is superseded by this explicit scope decision. |
+| Releases | Production remains [v0.2.4](https://github.com/sysevol-ai/CodeNib/releases/tag/v0.2.4). The expanded 0.2.5rc1 candidate from merged [#977](https://github.com/sysevol-ai/CodeNib/pull/977) passes all 22 [TestPyPI rehearsal checks](https://github.com/sysevol-ai/CodeNib/actions/runs/41808932328) at ffbe8ee3. Both public wheels and the sdist are independently downloaded and byte-matched; installed Pyrefly, path-rule and static-chain controls pass. Stable metadata is restored for final acceptance. | Verify the final merged stable-package commit, tag exactly that accepted source, complete protected PyPI/MCP/GitHub publication and update public install pins afterward. Historical candidate 2ca15401 is superseded. |
 | Related work | #777/#778 improve the Jev blog evidence; #773 changes blog layout. | Preserve their ownership; do not duplicate their chart or hardware corrections. Merged #770/#752 supply optional Wiki image generation and contextual repository diagrams; they are independent of the visitor/adoption acceptance gates. |
 
 ## Delivery order and acceptance gates
@@ -1392,11 +1392,41 @@ explicitly skipped) and the
 [main distribution verifier 41754395018](https://github.com/sysevol-ai/CodeNib/actions/runs/41754395018).
 Those runs do not publish a production package.
 
-Current release gates are the new `0.2.5rc1` TestPyPI rehearsal and installed
-artifact checks, final stable-metadata restoration and exact-commit package
-verification, an annotated `v0.2.5` tag at the newly accepted commit, protected
-Registry ownership preflight and production PyPI/MCP/GitHub verification.
-Public install pins and candidate labels change only after that verification.
+The expanded `0.2.5rc1` candidate from merged
+[#977](https://github.com/sysevol-ai/CodeNib/pull/977) is accepted at
+`ffbe8ee30a22e6111dc19ed5659c9981daeafb71`.
+[TestPyPI rehearsal 41808932328](https://github.com/sysevol-ai/CodeNib/actions/runs/41808932328)
+passes all 22 jobs, including upload and public installed-package verification.
+Both public wheels and the sdist are independently downloaded and match the
+verified build bytes:
+
+| TestPyPI artifact | SHA-256 |
+| --- | --- |
+| `codenib-0.2.5rc1-cp310-abi3-manylinux_2_28_aarch64.whl` | `fecb93fea15cba0ca7e8dcc77cb75d24e5eaa9d255af2bdbc8fa08bb8885f968` |
+| `codenib-0.2.5rc1-cp310-abi3-manylinux_2_28_x86_64.whl` | `5a0f964cb9917b2a22abe946d1a6c696e06e0ba5d2aba1691c34eefdeb768ba8` |
+| `codenib-0.2.5rc1.tar.gz` | `6c9c7357b2c83f28333fb395d2f0f6cce63221cc397a5e84399b6db8aa06d4d0` |
+
+An isolated installed-wheel control outside the checkout confirms provider
+identity `pyrefly 1.4.0`, a real unguarded-path violation (exit 1), stale graph
+rejection after an edit (exit 2), acceptance after rebuilding the guarded source
+(exit 0), and two source-linked static entry chains through MCP. Indexing and
+serving preserve the fixture source. The initial local harness searched the
+wrong cache root after its three functional CLI checks; that lookup failure is
+retained separately and corrected using `CODENIB_HOME` isolation. It is not a
+product failure or a benchmark outcome.
+
+The stable candidate restores version metadata and contracts, removes the
+temporary rehearsal page/navigation and updates packaged release documentation.
+Production/native/script implementation and resolved dependency choices match
+the admitted rehearsal. The final annotated tag must target the stable
+finalization PR's exact accepted merge commit; later documentation changes do
+not move that target. The complete source CI chain is retained at
+[41808847659](https://github.com/sysevol-ai/CodeNib/actions/runs/41808847659).
+
+Current release gates are final exact-commit stable-package verification,
+an annotated `v0.2.5` tag at the newly accepted commit, protected Registry
+ownership preflight and production PyPI/MCP/GitHub verification. Public install
+pins and candidate labels change only after that verification.
 Environment protections remain unchanged. Real OAuth consent, interactive
 vault unlock, hosted browser acceptance, website rollout and the A0 workflow
 benefit decision remain separate adoption gates.

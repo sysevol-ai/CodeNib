@@ -252,9 +252,9 @@ before treating an edge as invocation. External and dynamic calls may be absent.
 
 Returns `root`, `direction`, `nodes`, `edges`, `truncated`, and `note`.
 Each node's optional `line` is 1-based.
-Source builds from `main` also return `semantics` describing edge meaning,
+CodeNib 0.2.5 also returns `semantics` describing edge meaning,
 reference direction and coverage. Legacy result labels `callers` / `callees`
-remain compatible. Published 0.2.4 retains the older response shape; see the
+remain compatible. Version 0.2.4 retains the older response shape; see the
 [CodeGraph guide](../../docs/codegraph.md) for the release boundary.
 
 ### `lsp_definition` / `lsp_references` / `lsp_route`
@@ -263,7 +263,7 @@ Manifest-bound C/C++ queries use the authenticated persisted graph; they do not
 reuse an unauthenticated project-local clangd index. Portable artifacts expose
 only their supported portable views and never attach a native provider.
 
-In unreleased source builds, a verified local Python-only manifest with
+In CodeNib 0.2.5, a verified local Python-only manifest with
 `--defer-graph --tool-surface full` can serve an exact positional definition
 through locally installed `browser-basedpyright` 1.39.8 software. Prepare it
 with `codenib toolchain install /path/to/repository --scope lsp`. The provider
@@ -271,7 +271,7 @@ captures every selected file and prepares every selected Python file. Only one
 location matching an exact captured function/class declaration is admitted.
 It returns a definition candidate, without proving a unique runtime call
 target. Python positions use zero-based UTF-8 byte columns; output lines remain
-1-based. Published 0.2.4 does not contain this path.
+1-based. Version 0.2.4 does not contain this path.
 
 Ambiguous or unsupported definitions, symbol lookups, references and routes
 retain the complete-graph route. Missing pinned software or an explicit
