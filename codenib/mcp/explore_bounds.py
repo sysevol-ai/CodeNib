@@ -89,6 +89,7 @@ class _ProjectionStats:
     relationships_summarized: int = 0
     relationship_nodes_omitted: int = 0
     relationship_edges_omitted: int = 0
+    call_chains_omitted: int = 0
     anchors_omitted: int = 0
     content_bodies_omitted: int = 0
     content_bodies_truncated: int = 0
@@ -103,6 +104,7 @@ class _ProjectionStats:
             (
                 self.metadata_fields_elided,
                 self.relationships_summarized,
+                self.call_chains_omitted,
                 self.anchors_omitted,
                 self.content_bodies_omitted,
                 self.content_bodies_truncated,
@@ -134,6 +136,7 @@ def _projection_stats(response: Mapping[str, Any]) -> _ProjectionStats:
         relationships_summarized=count("relationships_summarized"),
         relationship_nodes_omitted=count("relationship_nodes_omitted"),
         relationship_edges_omitted=count("relationship_edges_omitted"),
+        call_chains_omitted=count("call_chains_omitted"),
         anchors_omitted=count("anchors_omitted"),
         content_bodies_omitted=count("content_bodies_omitted"),
         content_bodies_truncated=count("content_bodies_truncated"),
@@ -308,6 +311,7 @@ def _sync_projection_summary(
             "relationships_summarized": stats.relationships_summarized,
             "relationship_nodes_omitted": stats.relationship_nodes_omitted,
             "relationship_edges_omitted": stats.relationship_edges_omitted,
+            "call_chains_omitted": stats.call_chains_omitted,
             "anchors_omitted": stats.anchors_omitted,
             "content_bodies_omitted": stats.content_bodies_omitted,
             "content_bodies_truncated": stats.content_bodies_truncated,
@@ -366,6 +370,13 @@ def _refresh_returned_summary(response: dict[str, Any]) -> None:
     returned_chars, returned_bytes = _returned_content(response)
     summary["returned_content_chars"] = returned_chars
     summary["returned_content_bytes"] = returned_bytes
+    chains = response.get("call_chains")
+    if isinstance(chains, list):
+        summary["call_chains"] = sum(
+            len(group.get("chains") or [])
+            for group in chains
+            if isinstance(group, Mapping)
+        )
 
     files = response.get("files")
     if isinstance(files, list):
@@ -397,6 +408,38 @@ def _ensure_budget_diagnostic(response: dict[str, Any]) -> None:
             ),
         }
     )
+
+
+def _summarize_call_chains(
+    response: dict[str, Any], stats: _ProjectionStats, *, max_bytes: int
+) -> int:
+    """Remove whole lower-priority chains before sacrificing source bodies."""
+    groups = response.get("call_chains")
+    measured = _stamp_encoded_bytes(response)
+    if not isinstance(groups, list):
+        return measured
+    for group in reversed(groups):
+        if not isinstance(group, dict) or not isinstance(group.get("chains"), list):
+            continue
+        chains = group["chains"]
+        prior = group.get("response_projection")
+        original = (
+            prior.get("original_chains", len(chains))
+            if isinstance(prior, Mapping)
+            else len(chains)
+        )
+        while chains and measured > max_bytes:
+            chains.pop()
+            stats.call_chains_omitted += 1
+            group["response_projection"] = {
+                "reason": "response_budget",
+                "original_chains": original,
+                "returned_chains": len(chains),
+            }
+            _refresh_returned_summary(response)
+            _sync_projection_summary(response, stats, max_bytes=max_bytes)
+            measured = _stamp_encoded_bytes(response)
+    return measured
 
 
 def _summarize_relationships(
@@ -760,8 +803,8 @@ def bound_explore_response(
 ) -> dict[str, Any]:
     """Return a deterministic response whose MCP call-result fits *max_bytes*.
 
-    Relationships are reduced atomically to header-only summaries before any
-    source body is removed.  Extra anchors are lower priority than returned
+    Relationships and whole call chains are reduced before any source body
+    is removed. Extra anchors are lower priority than returned
     source bodies, and the highest-ranked body is the last evidence removed.
     The input mapping is never mutated. *measure* selects the text block that
     is counted; by default a response keeps the measure it was bounded with.
@@ -800,6 +843,8 @@ def bound_explore_response(
     _sync_projection_summary(response, stats, max_bytes=max_bytes)
 
     measured = _summarize_relationships(response, stats, max_bytes=max_bytes)
+    if measured > max_bytes:
+        measured = _summarize_call_chains(response, stats, max_bytes=max_bytes)
     if measured > max_bytes:
         measured = _trim_extra_anchors(response, stats, max_bytes=max_bytes)
 

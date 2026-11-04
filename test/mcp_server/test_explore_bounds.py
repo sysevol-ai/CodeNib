@@ -10,12 +10,14 @@ import asyncio
 from copy import deepcopy
 from typing import Any
 
+import pytest
 from mcp.server import MCPServer
 
 from codenib.mcp.explore_bounds import (
     MAX_EXPLORE_CALL_RESULT_BYTES,
     MAX_EXPLORE_PAYLOAD_BYTES,
     MCP_ENVELOPE_RESERVE_BYTES,
+    TEXT_RESPONSE_MEASURE,
     bound_explore_response,
     call_tool_result_bytes,
     explore_call_result_bytes,
@@ -319,3 +321,46 @@ def test_ultra_minimal_envelope_is_idempotent() -> None:
     assert first == second
     assert explore_call_result_bytes(first) <= 2_000
     assert first["summary"]["response_projection"]["minimal"] is True
+
+
+@pytest.mark.parametrize("measure", [None, TEXT_RESPONSE_MEASURE])
+def test_large_call_chains_are_projected_before_source_is_lost(measure) -> None:
+    from codenib.mcp.explore_text import render_explore_text
+
+    context = _context("source", content_chars=40, anchor_count=1)
+    payload = _response(contexts=[context])
+    path = "src/" + "long_package/" * 10 + "module.py"
+    payload["call_chains"] = [
+        {
+            "root": f"seed-{seed}",
+            "seed": f"seed-{seed}",
+            "chains": [
+                {
+                    "complete": False,
+                    "steps": [
+                        {
+                            "name": path + f":Controller{step}.method()",
+                            "file": path,
+                            "line": step + 1,
+                            "kind": "method",
+                            "referenced_at": {"file": path, "line": step + 1},
+                        }
+                        for step in range(17)
+                    ],
+                }
+                for _ in range(6)
+            ],
+        }
+        for seed in range(2)
+    ]
+    bounded = bound_explore_response(payload, max_bytes=16_000, measure=measure)
+    assert _all_contexts(bounded)[0]["content"] == context["content"]
+    projection = bounded["summary"]["response_projection"]
+    assert projection["call_chains_omitted"] > 0 and not projection["minimal"]
+    assert projection["encoded_bytes"] <= 16_000
+    assert any(group.get("response_projection") for group in bounded["call_chains"])
+    assert bound_explore_response(bounded, max_bytes=16_000, measure=measure) == bounded
+    assert len(payload["call_chains"][0]["chains"]) == 6
+    text = render_explore_text(bounded)
+    assert "call chains omitted to fit the response" in text
+    assert "no indexed referrers found" not in text

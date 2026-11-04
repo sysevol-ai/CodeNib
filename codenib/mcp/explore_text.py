@@ -196,14 +196,23 @@ def _relationship_lines(relationship: Mapping[str, Any]) -> list[str]:
         note = relationship.get("note")
         lines.append(f"  {note}" if note else "  no indexed references found")
     if relationship.get("truncated") is True:
-        lines.append("  (relationship traversal truncated; more references may exist)")
+        lines.append("  (relationship result truncated; more references may exist)")
     return lines
 
 
 def _chain_lines(item: Mapping[str, Any]) -> list[str]:
     root = _symbol_label(item.get("root") or item.get("seed"))
     chains = [chain for chain in item.get("chains") or [] if isinstance(chain, Mapping)]
+    projection = item.get("response_projection")
+    omitted = (
+        int(projection.get("original_chains", 0)) - len(chains)
+        if isinstance(projection, Mapping)
+        else 0
+    )
+    budget_note = f"{omitted} call chains omitted to fit the response"
     if not chains:
+        if omitted:
+            return [f"{root}: {budget_note}"]
         note = item.get("note")
         return [f"{root}: {note}" if note else f"{root}: no indexed referrers found"]
     via = item.get("via")
@@ -216,6 +225,8 @@ def _chain_lines(item: Mapping[str, Any]) -> list[str]:
             else ":"
         )
     ]
+    if omitted:
+        lines.append(f"  ({budget_note})")
     for number, chain in enumerate(chains, 1):
         steps = [step for step in chain.get("steps") or [] if isinstance(step, Mapping)]
         for index, step in enumerate(steps):

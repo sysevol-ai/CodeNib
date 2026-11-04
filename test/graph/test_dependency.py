@@ -18,6 +18,7 @@ import igraph as ig
 
 from codenib.graph.code_graph import CodeGraph
 from codenib.graph.dependency import DependencyAnalyzer
+from codenib.types import EDGE_TYPE_REFERENCE, NODE_TYPE_FUNCTION
 
 
 def _make_graph(unified_empty: bool = True) -> CodeGraph:
@@ -324,17 +325,64 @@ def test_entry_chains_start_at_unreferenced_code_and_end_at_the_symbol():
     assert first.steps[0].reference_file is None
     assert (first.steps[1].reference_file, first.steps[1].reference_line) == (
         "cli.py",
-        2,
+        3,
     )
     assert (first.steps[2].reference_file, first.steps[2].reference_line) == (
         "svc.py",
-        12,
+        13,
     )
     payload = result.to_dict()
     assert payload["chains"][0]["steps"][2]["referenced_at"] == {
         "file": "svc.py",
-        "line": 12,
+        "line": 13,
     }
+
+
+def test_scan_exhaustion_does_not_turn_a_partial_chain_into_an_entry():
+    graph = _make_entry_graph()
+    graph.graph = graph.graph.induced_subgraph([0, 1, 2])
+    graph.name_to_vertex = {v["name"]: v.index for v in graph.graph.vs}
+    result = DependencyAnalyzer(graph).entry_chains(
+        "core.py:target()", max_depth=1, max_scanned_edges=1
+    )
+    assert result.truncated
+    assert result.entries_found == 0
+    assert _chain_names(result) == [["svc.py:run()", "core.py:target()"]]
+    assert result.chains[0].complete is False
+
+
+def test_callsite_zero_is_rendered_as_the_first_source_line():
+    graph = _make_entry_graph()
+    graph.graph.es[0]["anchor_line"] = 0
+    result = DependencyAnalyzer(graph).entry_chains("core.py:target()")
+    assert result.chains[0].steps[1].reference_line == 1
+    assert result.to_dict()["chains"][0]["steps"][1]["referenced_at"]["line"] == 1
+
+
+def test_redundant_partial_candidate_does_not_hide_another_branch():
+    names = ["entry", "left_top", "left", "b", "a", "target", "right_top", "right"]
+    graph = CodeGraph()
+    raw = ig.Graph(directed=True)
+    raw.add_vertices(len(names))
+    raw.vs["name"] = raw.vs["unified_name"] = [f"a.py:{name}()" for name in names]
+    raw.vs["type"] = [NODE_TYPE_FUNCTION] * len(names)
+    raw.vs["file"] = ["a.py"] * len(names)
+    raw.vs["start_line"] = list(range(len(names)))
+    raw.vs["end_line"] = list(range(1, len(names) + 1))
+    edges = [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5), (0, 6), (6, 7), (7, 3)]
+    raw.add_edges(edges)
+    raw.es["type"] = [EDGE_TYPE_REFERENCE] * len(edges)
+    graph.graph = raw
+    graph.name_to_vertex = {v["name"]: v.index for v in raw.vs}
+    result = DependencyAnalyzer(graph).entry_chains(
+        "a.py:target()", max_depth=4, max_chains=2
+    )
+    assert len(result.chains) == 2
+    assert {chain.steps[0].node.name for chain in result.chains} == {
+        "a.py:left_top()",
+        "a.py:right_top()",
+    }
+    assert all(not chain.complete for chain in result.chains)
 
 
 def test_entry_chains_prefer_distinct_first_callers():
