@@ -37,8 +37,8 @@
     "playwright": "^1.56.1",
     "pngjs": "^7.0.0",
     "typescript": "^5.9.3",
-    "vite": "^7.1.7",
-    "vitest": "^4.1.8"
+    "vite": "^7.3.7",
+    "vitest": "^4.1.12"
   },
   "overrides": {
     "dompurify": "3.4.17",

@@ -52,6 +52,8 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 ### Fixed
 
+- Refresh compatible locked HTTP/crypto dependencies and frontend build/test
+  dependencies for the release candidate.
 - Refresh deferred retrieval after source edits, retain stale-source detection
   across reloads, and cancel owned graph builds during MCP shutdown.
 - Preserve call-chain source lines, delivery budgets and delegation; retain

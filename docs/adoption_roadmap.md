@@ -1401,6 +1401,18 @@ Environment protections remain unchanged. Real OAuth consent, interactive
 vault unlock, hosted browser acceptance, website rollout and the A0 workflow
 benefit decision remain separate adoption gates.
 
+The release dependency review refreshes compatible HTTP/crypto locks and
+frontend build/test patches. It does not claim an advisory-free dependency
+tree. Mermaid's KaTeX advisory requires pre-existing prototype pollution and
+its offered upgrade crosses the current major; DOMPurify stays pinned. The
+locked optional LiteLLM 1.106.0 requires filelock below 4, retaining the local
+shared-directory advisory; locks must stay in owner-controlled directories.
+Python 3.10 retains Pillow 12.3 through the test-only matplotlib dependency;
+Python 3.11+ selects Pillow 13, and product code does not import Pillow.
+These limits remain explicit rather than dropping Python 3.10, overriding a
+provider's dependency contract, or claiming that lock updates protect every
+pre-existing user environment.
+
 Record baseline and subsequent counts for documentation-to-install clicks,
 successful local setup, first source-linked query, repeat use, Pages backlink
 visits, and OpenRouter connection completion. Prefer opt-in local reports and
