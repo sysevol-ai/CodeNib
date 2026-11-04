@@ -325,6 +325,7 @@ def test_ultra_minimal_envelope_is_idempotent() -> None:
 
 @pytest.mark.parametrize("measure", [None, TEXT_RESPONSE_MEASURE])
 def test_large_call_chains_are_projected_before_source_is_lost(measure) -> None:
+    from codenib.mcp.explore_session import ExploreSessionLedger
     from codenib.mcp.explore_text import render_explore_text
 
     context = _context("source", content_chars=40, anchor_count=1)
@@ -364,3 +365,10 @@ def test_large_call_chains_are_projected_before_source_is_lost(measure) -> None:
     text = render_explore_text(bounded)
     assert "call chains omitted to fit the response" in text
     assert "no indexed referrers found" not in text
+    ledger = ExploreSessionLedger()
+    first = ledger.project(payload, max_response_bytes=16_000, response_measure=measure)
+    second = ledger.project(
+        payload, max_response_bytes=16_000, response_measure=measure
+    )
+    assert _all_contexts(first)[0]["content"] == _all_contexts(second)[0]["content"]
+    assert _all_contexts(second)[0]["session_dedup"]["source_call"] == 1
