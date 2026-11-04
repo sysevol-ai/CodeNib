@@ -339,7 +339,7 @@ def test_traversal_truncation_is_visible_without_response_projection() -> None:
     assert "response_projection" not in relationship
     text = render_explore_text(response)
     assert "references: Request.blueprints()" in text
-    assert "relationship traversal truncated" in text
+    assert "relationship result truncated" in text
 
 
 def test_text_marks_a_line_clipped_by_the_source_reader() -> None:

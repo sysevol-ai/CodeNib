@@ -108,7 +108,7 @@ class DependencyResult:
 
 @dataclass
 class ChainStep:
-    """One symbol on an entry chain and where the previous step references it."""
+    """One chain symbol and its incoming reference's 1-based output location."""
 
     node: DepNode
     reference_file: Optional[str] = None
@@ -231,7 +231,7 @@ class DependencyAnalyzer:
         shown. When no entry is reached within the bounds, the longest partial
         chains are returned instead and marked incomplete.
         """
-        canonical, cands = self.code_graph.resolve_symbol(symbol)
+        canonical, cands = self.code_graph.resolve_symbol(symbol, candidate_limit=None)
         if canonical is None and cands:
             # ``Class.method`` also matches that method's parameters and
             # locals; keep the candidate whose name ends with the request.
@@ -247,7 +247,10 @@ class DependencyAnalyzer:
         result = EntryChainResult(root=root)
         if canonical is None:
             result.note = f"{symbol!r} unresolved" + (
-                f"; candidates: {cands}" if cands else " in the code graph"
+                f"; candidates: {cands[:8]}"
+                + (f" (+{len(cands) - 8} more)" if len(cands) > 8 else "")
+                if cands
+                else " in the code graph"
             )
             return result
 
@@ -262,7 +265,8 @@ class DependencyAnalyzer:
             depth = depth_of[node]
             if depth >= max(1, int(max_depth)):
                 # Not expanded, but an unreferenced symbol is still an entry.
-                if self._has_chain_referrer(node, scan_budget):
+                has_referrer = self._has_chain_referrer(node, scan_budget)
+                if has_referrer or scan_budget.exhausted:
                     result.truncated = True
                 else:
                     entries.append(node)
@@ -380,7 +384,7 @@ class DependencyAnalyzer:
             )
             path = options.pop(start)
             if paths and not set(path) - shown:
-                break
+                continue
             paths.append(path)
             shown.update(path)
         labels = self._result_labels(
@@ -394,6 +398,9 @@ class DependencyAnalyzer:
                 site_file = site_line = None
                 if index:
                     _callee, site_file, site_line = next_hop[path[index - 1]]
+                    # Graph anchors use source's 0-based coordinates.
+                    if site_line is not None:
+                        site_line += 1
                 steps.append(ChainStep(node, site_file, site_line))
             result.chains.append(CallChain(steps=steps, complete=complete))
         result.entries_found = len(entries)

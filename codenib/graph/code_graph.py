@@ -964,12 +964,13 @@ class CodeGraph:
         info = self.get_node_info_by_name(name) or {}
         return info.get("unified_name") or name
 
-    def resolve_symbol(self, symbol):
+    def resolve_symbol(self, symbol, *, candidate_limit=8):
         """Map a readable/bare *symbol* to (canonical_name | None, candidates).
 
         Tries the canonical name first, then the readable ``unified_name``
         (full display, then bare token), then a substring match. ``None`` when
         ambiguous or missing; candidates are readable display names.
+        ``candidate_limit=None`` retains all candidates for resolution decisions.
         """
         n2v = self.name_to_vertex or {}
         s = (symbol or "").strip().strip("`'\"")
@@ -996,7 +997,8 @@ class CodeGraph:
             base = s.split(".")[-1].split(":")[-1]
             cands = [k for k in n2v if k.endswith("." + s) or k.split(".")[-1] == base]
         canonical = cands[0] if len(cands) == 1 else None
-        return canonical, [self.display_name(c) for c in cands[:8]]
+        visible = cands if candidate_limit is None else cands[:candidate_limit]
+        return canonical, [self.display_name(c) for c in visible]
 
     def get_node_info_by_name(self, node_name):
         """
