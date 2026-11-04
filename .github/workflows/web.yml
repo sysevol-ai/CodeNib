@@ -35,7 +35,8 @@ jobs:
   verify:
     # Pull requests execute this repository's frontend build. Keep untrusted
     # checkout code off the persistent self-hosted runner.
-    runs-on: ubuntu-latest
+    # Playwright 1.56 supports Ubuntu 24.04; ubuntu-latest now selects 26.04.
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     defaults:
       run:
