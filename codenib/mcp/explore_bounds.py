@@ -311,7 +311,6 @@ def _sync_projection_summary(
             "relationships_summarized": stats.relationships_summarized,
             "relationship_nodes_omitted": stats.relationship_nodes_omitted,
             "relationship_edges_omitted": stats.relationship_edges_omitted,
-            "call_chains_omitted": stats.call_chains_omitted,
             "anchors_omitted": stats.anchors_omitted,
             "content_bodies_omitted": stats.content_bodies_omitted,
             "content_bodies_truncated": stats.content_bodies_truncated,
@@ -321,6 +320,10 @@ def _sync_projection_summary(
             "minimal": stats.minimal,
         }
     )
+    if stats.call_chains_omitted:
+        # Optional navigation must not grow chain-free response envelopes:
+        # even a zero-valued field can change source clipping and ledger reuse.
+        projection["call_chains_omitted"] = stats.call_chains_omitted
 
 
 def _stamp_encoded_bytes(response: dict[str, Any]) -> int:
