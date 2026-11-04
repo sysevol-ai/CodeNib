@@ -733,28 +733,56 @@ class _Converter:
         return [row.symbol for row in candidates if row.parent.qname in lineage]
 
     def _inherited(self, owner: str, member: str, depth: int) -> list[str]:
-        seen = {owner}
-        queue = [owner]
-        while queue:
-            current = queue.pop(0)
-            classes = [
-                row for row in self.registry.get(current, ()) if row.kind == "cls"
-            ]
-            if not classes:
-                alias = self.report.aliases.get(current)
-                if alias and alias not in seen and depth < _ALIAS_DEPTH:
-                    seen.add(alias)
-                    queue.append(alias)
-                continue
-            for cls in classes:
-                if current != owner:
-                    rows = self.registry.get(f"{current}.{member}")
-                    if rows:
-                        return [row.symbol for row in rows if row.symbol]
-                for base in cls.bases:
-                    if base not in seen and len(seen) < 64:
-                        seen.add(base)
-                        queue.append(base)
+        """Use Python's C3 order; ambiguous or incomplete hierarchies fail closed."""
+
+        memo: dict[str, list[str]] = {}
+
+        def linearize(name: str, active: frozenset[str]) -> Optional[list[str]]:
+            aliases: set[str] = set()
+            while name in self.report.aliases:
+                if name in aliases or len(aliases) + depth >= _ALIAS_DEPTH:
+                    return None
+                aliases.add(name)
+                name = self.report.aliases[name]
+            if name in active or len(active) >= 64 or len(memo) >= 64:
+                return None
+            if name in memo:
+                return memo[name]
+            if name in {"object", "builtins.object"}:
+                return ["builtins.object"]
+            classes = [r for r in self.registry.get(name, ()) if r.kind == "cls"]
+            if len(classes) != 1 or len(classes[0].bases) > 64:
+                return None
+            parents = [linearize(base, active | {name}) for base in classes[0].bases]
+            if any(parent is None for parent in parents):
+                return None
+            # Canonical parent identities also handle aliases in direct bases.
+            sequences = [list(parent) for parent in parents]
+            sequences.append([parent[0] for parent in parents])
+            order = [name]
+            while sequences := [sequence for sequence in sequences if sequence]:
+                candidate = next(
+                    (
+                        sequence[0]
+                        for sequence in sequences
+                        if not any(sequence[0] in other[1:] for other in sequences)
+                    ),
+                    None,
+                )
+                if candidate is None or candidate in order or len(order) >= 64:
+                    return None
+                order.append(candidate)
+                for sequence in sequences:
+                    if sequence[0] == candidate:
+                        sequence.pop(0)
+            memo[name] = order
+            return order
+
+        order = linearize(owner, frozenset())
+        for base in order[1:] if order else ():
+            rows = self.registry.get(f"{base}.{member}")
+            if rows:
+                return [row.symbol for row in rows if row.symbol]
         return []
 
     def external(self, file: Optional[str], qname: str) -> Optional[str]:
@@ -1089,13 +1117,44 @@ _TARGETS = frozenset(
 
 
 def _receiver_writes(body, receiver: bytes) -> Iterable[tuple[int, int, str]]:
-    """Yield attribute-name spans written through ``receiver`` in one body."""
+    """Yield attribute writes only when the method's receiver stays bound.
 
+    This is a conservative whole-body check, not control-flow type inference:
+    any observed receiver rebinding rejects synthesis for this method.
+    """
+
+    writes = []
     stack = [body]
     while stack:
         node = stack.pop()
         if node.type in _SCOPES:
+            name = node.child_by_field_name("name")
+            if name is not None and name.text == receiver:
+                return
             continue
+        if node.type in {"import_statement", "import_from_statement"}:
+            module = node.child_by_field_name("module_name")
+            for imported in node.named_children:
+                if imported == module:
+                    continue
+                alias = imported.child_by_field_name("alias")
+                if alias is None and imported.type == "dotted_name":
+                    alias = imported.named_children[0]
+                if alias is not None and alias.text == receiver:
+                    return
+        target = None
+        if node.type in {"assignment", "augmented_assignment"}:
+            target = node.child_by_field_name("left")
+        elif node.type == "named_expression":
+            target = node.child_by_field_name("name")
+        elif node.type in {"for_statement", "for_in_clause"}:
+            target = node.child_by_field_name("left")
+        elif node.type == "as_pattern":
+            target = node.child_by_field_name("alias")
+        elif node.type in {"case_pattern", "delete_statement"}:
+            target = node
+        if _binds_receiver(target, receiver):
+            return
         if node.type in {
             "assignment",
             "augmented_assignment",
@@ -1117,10 +1176,12 @@ def _receiver_writes(body, receiver: bytes) -> Iterable[tuple[int, int, str]]:
                         and obj.type == "identifier"
                         and obj.text == receiver
                     ):
-                        yield (
-                            attribute.start_byte,
-                            attribute.end_byte,
-                            attribute.text.decode("utf-8"),
+                        writes.append(
+                            (
+                                attribute.start_byte,
+                                attribute.end_byte,
+                                attribute.text.decode("utf-8"),
+                            )
                         )
                 elif target.type in _TARGETS:
                     targets.extend(target.named_children)
@@ -1136,6 +1197,15 @@ def _receiver_writes(body, receiver: bytes) -> Iterable[tuple[int, int, str]]:
             )
             continue
         stack.extend(node.named_children)
+    yield from writes
+
+
+def _binds_receiver(target, receiver: bytes) -> bool:
+    if target is None or target.type in {"attribute", "subscript"}:
+        return False
+    if target.type == "identifier":
+        return target.text == receiver
+    return any(_binds_receiver(child, receiver) for child in target.named_children)
 
 
 def glean_to_scip_index(

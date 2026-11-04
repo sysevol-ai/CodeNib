@@ -182,7 +182,10 @@ def write_pyrefly_config(
         if scoped:
             includes = []
             for entry in scoped:
-                if (project_root / entry).is_file():
+                if (
+                    any(character in entry for character in "*?[")
+                    or (project_root / entry).is_file()
+                ):
                     includes.append(f"{root}/{entry}")
                 else:
                     includes.extend(

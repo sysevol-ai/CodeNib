@@ -34,6 +34,25 @@ through `graph_route="lsp"` for regression checks and for loose-file fallback.
 Scala has no registered LSP graph route today; its active graph support is the
 `scip-java` route only.
 
+The Python provider change in [#968](https://github.com/sysevol-ai/CodeNib/pull/968)
+prefers pinned pyrefly 1.4.0 and converts its Glean report into the existing
+SCIP symbol and position contract. An unavailable or failed automatic provider
+falls back to scip-python 0.6.6; explicitly selecting pyrefly fails instead of
+silently switching. Cache publication records the provider that actually built
+the graph. Pyright include globs retain their scope; receiver-field synthesis
+rejects observed rebinding, and inherited members follow bounded Python C3
+resolution. Unknown or conflicting hierarchies do not supply a guessed target.
+
+The local provider/converter/compiler gate passes 276 tests before the added
+live ownership control. A real CodeNib source-checkout build admits all 1,193
+selected documents, 34,131 nodes and 160,086 edges without partial indexing or
+project preparation, in 83.918 seconds. It retains 30,364 unresolved project
+references, so complete indexing does not imply complete relationship coverage.
+Serial/native parity remains the open promotion gate for this PR. The persisted
+graph schema and C++ decoder interface are unchanged. This provider change
+does not promote a new language, a C++ acceleration gate, or a task-benefit claim;
+the frozen A/B candidates and outcomes remain separate historical evidence.
+
 The 0.2.2 repository-source authority gate temporarily disables manifest-bound
 query-time reuse of native clangd `.idx` files for C and C++, including the
 default/legacy source policy. Those files commonly live below the
