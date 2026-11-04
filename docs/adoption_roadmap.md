@@ -46,7 +46,7 @@ Using the caller's agent to plan grep is a separate, unevaluated variant.
 | Static distribution | Static export and reusable Pages workflow exist; #784 verifies cached stories, citations, page maps and CodeNib backlinks without a backend. A 15-page public repository is locally curated. | The no-embedding workflow default is released in 0.2.4; the maintainer will deploy the static roots on DGX Spark later. |
 | MCP protocol | [#780](https://github.com/sysevol-ai/CodeNib/pull/780) merged as `bcd2c730` after all executed CI passed; its squash message was verified. [#779](https://github.com/sysevol-ai/CodeNib/issues/779) is closed. | Released in 0.2.4; the public PyPI wheel passes installed modern and legacy MCP identity checks. |
 | GitHub discovery | `mcp`, `mcp-server`, `claude-code`, and `codex` are set, with the six existing topics retained. The About description now names source context, call navigation, Claude Code, Codex and MCP. | Description, topics and unchanged homepage verified through GitHub metadata on 2026-09-26. |
-| Releases | Production remains [v0.2.4](https://github.com/sysevol-ai/CodeNib/releases/tag/v0.2.4). The maintainer authorizes the complete 0.2.5 release on 2026-11-04, including the merged Python provider, static entry-path, path-check and MCP lifecycle repairs. A new `0.2.5rc1` candidate rehearses that expanded surface on TestPyPI; the original 0.2.5 artifacts and acceptance remain historical evidence. | Complete the new rehearsal, restore stable metadata, freeze and verify the final commit, then publish and verify PyPI/MCP/GitHub before updating public install pins. The old `2ca15401` tag target is superseded by this explicit scope decision. |
+| Releases | Production remains [v0.2.4](https://github.com/sysevol-ai/CodeNib/releases/tag/v0.2.4). The authorized expanded 0.2.5 scope is prepared through [#977](https://github.com/sysevol-ai/CodeNib/pull/977), with a separate 0.2.5rc1 TestPyPI rehearsal and stable-metadata restoration. Historical candidate 2ca15401 is superseded. | Reconcile the exact rehearsal receipts before accepting this stable candidate; then verify its final merged commit, annotate v0.2.5 at that commit, complete protected production publication and update public pins after registry/package checks. |
 | Related work | #777/#778 improve the Jev blog evidence; #773 changes blog layout. | Preserve their ownership; do not duplicate their chart or hardware corrections. Merged #770/#752 supply optional Wiki image generation and contextual repository diagrams; they are independent of the visitor/adoption acceptance gates. |
 
 ## Delivery order and acceptance gates
@@ -1392,11 +1392,17 @@ explicitly skipped) and the
 [main distribution verifier 41754395018](https://github.com/sysevol-ai/CodeNib/actions/runs/41754395018).
 Those runs do not publish a production package.
 
-Current release gates are the new `0.2.5rc1` TestPyPI rehearsal and installed
-artifact checks, final stable-metadata restoration and exact-commit package
-verification, an annotated `v0.2.5` tag at the newly accepted commit, protected
-Registry ownership preflight and production PyPI/MCP/GitHub verification.
-Public install pins and candidate labels change only after that verification.
+[#977](https://github.com/sysevol-ai/CodeNib/pull/977) prepares the expanded
+`0.2.5rc1` TestPyPI rehearsal. The stable candidate restores only version
+metadata and contracts and removes the temporary rehearsal page/navigation;
+its production implementation and dependency choices must match the admitted
+rehearsal. Reconcile the exact rehearsal commit, run and artifact hashes here
+before accepting the final tag target.
+
+Current release gates are final exact-commit stable-package verification,
+an annotated `v0.2.5` tag at the newly accepted commit, protected Registry
+ownership preflight and production PyPI/MCP/GitHub verification. Public install
+pins and candidate labels change only after that verification.
 Environment protections remain unchanged. Real OAuth consent, interactive
 vault unlock, hosted browser acceptance, website rollout and the A0 workflow
 benefit decision remain separate adoption gates.
