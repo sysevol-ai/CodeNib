@@ -27,9 +27,11 @@ def _reset_ctx():
     """Ensure _ctx is cleaned up after each test."""
     original = server_mod._ctx
     original_surface = server_mod.mcp.tool_surface
+    original_output = server_mod.mcp.explore_output
     yield
     server_mod._ctx = original
     server_mod.configure_tool_surface(original_surface)
+    server_mod.mcp.set_explore_output(original_output)
 
 
 def _make_server_ctx(*, bm25_results=None, regex_results=None, zoekt_results=None):
