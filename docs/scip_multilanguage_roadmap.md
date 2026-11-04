@@ -43,13 +43,16 @@ the graph. Pyright include globs retain their scope; receiver-field synthesis
 rejects observed rebinding, and inherited members follow bounded Python C3
 resolution. Unknown or conflicting hierarchies do not supply a guessed target.
 
-The local provider/converter/compiler gate passes 276 tests before the added
-live ownership control. A real CodeNib source-checkout build admits all 1,193
+The provider/converter/compiler and captured serial/native gate passes all 424
+tests, including the live pinned-provider ownership control. A fixed, clean
+CodeNib source-checkout build admits all 1,193
 selected documents, 34,131 nodes and 160,086 edges without partial indexing or
-project preparation, in 83.918 seconds. It retains 30,364 unresolved project
+project preparation, in 83.505 seconds. It retains 30,364 unresolved project
 references, so complete indexing does not imply complete relationship coverage.
-Serial/native parity remains the open promotion gate for this PR. The persisted
-graph schema and C++ decoder interface are unchanged. This provider change
+Serial and native decoding reproduce the same complete query-surface digest;
+all five native test executables pass. Required current-head CI and dependency
+merges remain the PR's acceptance gates. The persisted graph schema and C++
+decoder interface are unchanged. This provider change
 does not promote a new language, a C++ acceleration gate, or a task-benefit claim;
 the frozen A/B candidates and outcomes remain separate historical evidence.
 
@@ -85,7 +88,7 @@ The regression reproduces the old failure; 206 related tests pass. This fixes
 LSP selection, while the active SCIP provider's missing property-assignment
 definitions remain a separate limitation. No backend or schema is promoted.
 
-Python definition identities in the active SCIP route are recovered from the
+In the scip-python fallback, definition identities are recovered from the
 indexed source before serial and C++ decoding. Same-named nested definitions,
 alternative class members and constructor fields retain separate locations;
 cross-scope compiler collisions use positional LSP evidence. Shared lexical
