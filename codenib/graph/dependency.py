@@ -225,6 +225,7 @@ class DependencyAnalyzer:
         max_visited: int = 4000,
         max_scanned_edges: int = 40000,
         follow_dispatch: bool = True,
+        _excluded_entries: frozenset[str] = frozenset(),
     ) -> EntryChainResult:
         """Shortest static reference chains from entry symbols down to *symbol*.
 
@@ -249,18 +250,22 @@ class DependencyAnalyzer:
             if len(exact) == 1:
                 canonical, _ = self.code_graph.resolve_symbol(exact[0])
         picked_from = 0
-        if canonical is None and cands:
-            # Overrides are called through the method the index records, so of
-            # several same-named methods follow the only one code references.
+        if canonical is None and cands and len(cands) <= _AMBIGUOUS_CANDIDATES:
+            # Infer a unique referenced method only from the entire pool.
+            # An uninspected candidate must retain ambiguity.
             called = []
-            for name in cands[:_AMBIGUOUS_CANDIDATES]:
+            unknown = False
+            for name in cands:
                 resolved, _ = self.code_graph.resolve_symbol(name)
                 info = self.code_graph.get_node_info_by_name(resolved or "") or {}
-                if info.get(
-                    "type"
-                ) == NODE_TYPE_METHOD and self._called_beyond_overrides(resolved):
+                if info.get("type") != NODE_TYPE_METHOD:
+                    continue
+                referenced = self._has_indexed_chain_referrer(resolved)
+                if referenced is None:
+                    unknown = True
+                elif referenced:
                     called.append(resolved)
-            if len(called) == 1:
+            if len(called) == 1 and not unknown:
                 canonical, picked_from = called[0], len(cands)
         root = self.code_graph.display_name(canonical) if canonical else symbol
         result = EntryChainResult(root=root)
@@ -287,7 +292,7 @@ class DependencyAnalyzer:
                 has_referrer = self._has_chain_referrer(node, scan_budget)
                 if has_referrer or scan_budget.exhausted:
                     result.truncated = True
-                else:
+                elif node not in _excluded_entries:
                     entries.append(node)
                 continue
             referenced = False
@@ -297,20 +302,11 @@ class DependencyAnalyzer:
                 etype_filter=_REFERENCE_EDGES,
                 scan_budget=scan_budget,
             )
-            node_info = self.code_graph.get_node_info_by_name(node) or {}
             for caller, (_src, _tgt, _w, attr) in neighbors:
                 if caller == node:
                     continue
                 info = self.code_graph.get_node_info_by_name(caller) or {}
                 if info.get("type") not in _CHAIN_KINDS or node_is_reference_only(info):
-                    continue
-                # An override calling its base through super() is reached by
-                # dispatch through that base, so it is not a way in.
-                if (
-                    info.get("type") == NODE_TYPE_METHOD
-                    and node_info.get("type") == NODE_TYPE_METHOD
-                    and self._leaf_name(caller) == self._leaf_name(node)
-                ):
                     continue
                 referenced = True
                 if caller in depth_of:
@@ -328,7 +324,7 @@ class DependencyAnalyzer:
             if scan_budget.exhausted:
                 result.truncated = True
                 break
-            if not referenced and node != canonical:
+            if not referenced and node != canonical and node not in _excluded_entries:
                 entries.append(node)
 
         if len(depth_of) == 1:
@@ -352,6 +348,7 @@ class DependencyAnalyzer:
                         max_visited=max_visited,
                         max_scanned_edges=max_scanned_edges,
                         follow_dispatch=False,
+                        _excluded_entries=_excluded_entries | {canonical},
                     )
                     # The symbol itself calls the callee; it is no way in.
                     chains = [
@@ -393,7 +390,11 @@ class DependencyAnalyzer:
         if not complete:
             # No entry within bounds: show the deepest chains that were found.
             candidates = sorted(
-                (name for name in depth_of if name != canonical),
+                (
+                    name
+                    for name in depth_of
+                    if name != canonical and name not in _excluded_entries
+                ),
                 key=lambda name: (-depth_of[name], name),
             )
         # The shortest chain first (the longest when only partial chains were
@@ -453,22 +454,22 @@ class DependencyAnalyzer:
             )
         return result
 
-    def _called_beyond_overrides(self, canonical: str) -> bool:
-        """Whether code other than same-named overrides (``super()``) refers to it."""
+    def _has_indexed_chain_referrer(self, canonical: str) -> Optional[bool]:
+        """Return unknown if the scan cap cannot establish absence of a referrer."""
 
-        method = self._leaf_name(canonical)
+        budget = NeighborScanBudget(1000)
         for caller, _edge in self.searcher.iter_neighbors(
             canonical,
             direction="backward",
             etype_filter=_REFERENCE_EDGES,
-            scan_budget=NeighborScanBudget(1000),
+            scan_budget=budget,
         ):
             info = self.code_graph.get_node_info_by_name(caller) or {}
             if info.get("type") not in _CHAIN_KINDS or node_is_reference_only(info):
                 continue
-            if caller != canonical and self._leaf_name(caller) != method:
+            if caller != canonical:
                 return True
-        return False
+        return None if budget.exhausted else False
 
     def _leaf_name(self, name: str) -> str:
         display = self.code_graph.display_name(name).removesuffix("()")

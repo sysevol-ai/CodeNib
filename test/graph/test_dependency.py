@@ -15,10 +15,11 @@ with canonical ``name`` = content hash and the readable name in
 from __future__ import annotations
 
 import igraph as ig
+import pytest
 
 from codenib.graph.code_graph import CodeGraph
 from codenib.graph.dependency import DependencyAnalyzer
-from codenib.types import EDGE_TYPE_REFERENCE, NODE_TYPE_FUNCTION
+from codenib.types import EDGE_TYPE_REFERENCE, NODE_TYPE_FUNCTION, NODE_TYPE_METHOD
 
 
 def _make_graph(unified_empty: bool = True) -> CodeGraph:
@@ -508,16 +509,18 @@ def _make_delegation_graph() -> CodeGraph:
 
 
 REACHES_BASE_OPTS = [
+    ["h.py:Child.opts()", "h.py:Base.opts()"],
     ["h.py:main()", "h.py:Base.merge()", "h.py:Base.opts()"],
     ["h.py:old_api()", "h.py:Base.merge()", "h.py:Base.opts()"],
 ]
 
 
-def test_super_calls_from_overrides_are_not_ways_in():
+def test_same_named_method_references_remain_indexed_paths():
     result = DependencyAnalyzer(_make_delegation_graph()).entry_chains(
         "h.py:Base.opts()"
     )
-    # Child.opts() reaches Base.opts() only through super().
+    # The persisted reference does not attest inheritance or runtime dispatch.
+    # Keep it rather than assuming a same-named edge is only super().
     assert _chain_names(result) == REACHES_BASE_OPTS
 
 
@@ -543,3 +546,60 @@ def test_unreferenced_override_without_dispatch_only_names_the_method():
     )
     assert result.chains == [] and result.via is None
     assert result.note.endswith("h.py:Base.opts()")
+
+
+def _named_chain_graph(names, edges, kinds):
+    graph = CodeGraph()
+    names = [f"a.py:{name}()" for name in names]
+    graph.graph = ig.Graph(n=len(names), edges=edges, directed=True)
+    for key, values in {
+        "name": names,
+        "unified_name": names,
+        "type": kinds,
+        "file": ["a.py"] * len(names),
+        "start_line": list(range(len(names))),
+        "end_line": list(range(len(names))),
+    }.items():
+        graph.graph.vs[key] = values
+    graph.graph.es["type"] = [EDGE_TYPE_REFERENCE] * len(edges)
+    graph.name_to_vertex = {name: i for i, name in enumerate(names)}
+    return graph
+
+
+def test_same_named_delegation_keeps_the_actual_entry_path():
+    graph = _named_chain_graph(
+        ["main", "Facade.save", "Repository.save"],
+        [(0, 1), (1, 2)],
+        [NODE_TYPE_FUNCTION, NODE_TYPE_METHOD, NODE_TYPE_METHOD],
+    )
+    result = DependencyAnalyzer(graph).entry_chains(
+        "a.py:Repository.save()", follow_dispatch=False
+    )
+    assert _chain_names(result) == [
+        ["a.py:main()", "a.py:Facade.save()", "a.py:Repository.save()"]
+    ]
+
+
+@pytest.mark.parametrize("count", [9, 13])
+def test_candidate_and_processing_caps_do_not_infer_a_unique_method(count):
+    names = [f"Class{i}.save" for i in range(count)] + ["main", "other_entry"]
+    graph = _named_chain_graph(
+        names,
+        [(count, 0), (count + 1, count - 1)],
+        [NODE_TYPE_METHOD] * count + [NODE_TYPE_FUNCTION] * 2,
+    )
+    result = DependencyAnalyzer(graph).entry_chains("save")
+    assert result.chains == []
+    assert "unresolved" in result.note and "more)" in result.note
+
+
+def test_fallback_excludes_wrapper_before_spending_the_single_chain_slot():
+    graph = _named_chain_graph(
+        ["old_api", "helper", "main", "middle"],
+        [(0, 1), (2, 3), (3, 1)],
+        [NODE_TYPE_FUNCTION] * 4,
+    )
+    result = DependencyAnalyzer(graph).entry_chains("a.py:old_api()", max_chains=1)
+    assert result.via_reason == "callee"
+    assert _chain_names(result) == [["a.py:main()", "a.py:middle()", "a.py:helper()"]]
+    assert result.entries_found == 1
