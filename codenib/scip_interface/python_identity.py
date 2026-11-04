@@ -79,6 +79,9 @@ class _Source:
     type_bindings: list[tuple[tuple[int, int, int, int], str]] = field(
         default_factory=list
     )
+    import_bindings: list[tuple[tuple[int, int, int, int], str]] = field(
+        default_factory=list
+    )
 
     def column(self, line: int, column: int, encoding: int) -> int:
         """Convert a SCIP column to a UTF-8 byte column without rounding."""
@@ -215,10 +218,42 @@ def _drop_type_binding_occurrences(document, source: _Source, relative: str):
     graph must refuse. The name is source-bound to the type parameter or
     alias, never to the owner, so neither the definition nor its reads are
     evidence about the owner.
+
+    Require the symbol from the enclosing source owner's definition, and keep
+    reads bound by imports in nested bodies rather than matching spelling alone.
     """
 
     if not source.type_bindings:
         return []
+    module_namespace = next(
+        (
+            _namespace(row.symbol)
+            for row in document.occurrences
+            if row.symbol_roles & _DEFINITION and row.symbol.endswith("/__init__:")
+        ),
+        None,
+    )
+    definitions = defaultdict(set)
+    for row in document.occurrences:
+        if row.symbol_roles & _DEFINITION:
+            definitions[tuple(row.range)].add(row.symbol)
+
+    def owner_symbols(scope):
+        owners = [
+            declaration
+            for declaration in source.declarations
+            if declaration.kind in {"class", "function"}
+            and declaration.extent[:2] <= scope[:2]
+            and scope[2:] <= declaration.extent[2:]
+        ]
+        if not owners:
+            return {module_namespace} if module_namespace else set()
+        owner = max(owners, key=lambda declaration: declaration.extent[:2])
+        return definitions.get((*owner.start, *owner.end), set())
+
+    bindings = [
+        (scope, name, owner_symbols(scope)) for scope, name in source.type_bindings
+    ]
     dropped, kept = [], []
     for occurrence in document.occurrences:
         if (
@@ -230,10 +265,21 @@ def _drop_type_binding_occurrences(document, source: _Source, relative: str):
             line, start, _, end = occurrence.range
             text = source.lines[line].encode("utf-8")[start:end].decode("utf-8")
             position = (line, start)
-            if text != _name(occurrence.symbol) and any(
-                name == text and scope[:2] <= position < scope[2:]
-                for scope, name in source.type_bindings
-            ):
+            wrong_owner = any(
+                name == text
+                and scope[:2] <= position < scope[2:]
+                and occurrence.symbol in symbols
+                for scope, name, symbols in bindings
+            )
+            imported = (
+                occurrence.symbol != module_namespace
+                and not occurrence.symbol_roles & _DEFINITION
+                and any(
+                    name == text and scope[:2] <= position < scope[2:]
+                    for scope, name in source.import_bindings
+                )
+            )
+            if text != _name(occurrence.symbol) and wrong_owner and not imported:
                 dropped.append(
                     {
                         "file": relative,
@@ -272,6 +318,25 @@ def _declarations(source: _Source, parser, module_reads=()) -> list[_Declaration
                 record_rebinding(child)
 
     def visit(node, parent, inside_lambda=False):
+        if node.type in {"import_statement", "import_from_statement"}:
+            owner = node.parent
+            while owner is not None and owner.type not in {
+                "function_definition",
+                "class_definition",
+            }:
+                owner = owner.parent
+            body = owner.child_by_field_name("body") if owner is not None else None
+            if body is not None:
+                scope = (*body.start_point, *body.end_point)
+                module = node.child_by_field_name("module_name")
+                for imported in node.named_children:
+                    if imported == module:
+                        continue
+                    alias = imported.child_by_field_name("alias")
+                    if alias is None and imported.type == "dotted_name":
+                        alias = imported.named_children[0]
+                    if alias is not None and alias.type == "identifier":
+                        source.import_bindings.append((scope, _text(alias)))
         if node.type == "import_from_statement" and any(
             child.type == "wildcard_import" for child in node.named_children
         ):
@@ -828,15 +893,15 @@ def normalize_python_index(
                 and not occurrence.symbol_roles & _DEFINITION
             ],
         )
+        qualified_assignments.extend(
+            _qualify_module_assignment_symbols(document, source, module_namespace)
+        )
         dropped = _drop_type_binding_occurrences(document, source, relative)
         if dropped:
             type_binding_occurrences.extend(dropped)
             by_position = defaultdict(list)
             for occurrence in document.occurrences:
                 by_position[tuple(occurrence.range[:2])].append(occurrence)
-        qualified_assignments.extend(
-            _qualify_module_assignment_symbols(document, source, module_namespace)
-        )
         observed = []
         assignments = []
         for declaration in source.declarations:
