@@ -52,6 +52,9 @@ executables and SCIP/Fact/clangd Python gates through `make core-test`) — see
 
 ## Gotchas
 
+- Metadata-inventory regressions must change file size or entry identity rather
+  than assume separate writes receive distinct timestamps. Source-read content
+  authentication has its own byte-hash checks; keep those assertions separate.
 - BM25 eligibility or candidate-limit changes must also run
   `pytest test/index/sparse_idx/test_bm25_index.py`; this real SCIP-backed
   graph test is serial and excluded from the unit tier. Filtering before a

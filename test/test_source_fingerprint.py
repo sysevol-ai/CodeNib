@@ -1544,7 +1544,9 @@ def test_repository_source_binding_ignores_excluded_directory_churn(
         output.unlink()
         cache.rmdir()
         assert binding.authenticated_identity_snapshot() == original
-        source.write_bytes(b"VALUE = 2\n")
+        # Inventory versions use metadata; a size change remains observable
+        # even when both writes occur within one filesystem timestamp tick.
+        source.write_bytes(b"VALUE = changed\n")
         with pytest.raises(RepositoryChangedError):
             binding.verify_snapshot()
         assert not binding.usable
