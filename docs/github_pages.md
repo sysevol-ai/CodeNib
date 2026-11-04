@@ -185,12 +185,13 @@ index-derived pages. It does not export generated story prose automatically.
 
 ### Export an OKF Bundle
 
-The next release adds [Open Knowledge Format v0.2](https://github.com/GoogleCloudPlatform/open-knowledge-format/blob/ad30107c31c06aec8a7d5636e0d1058118604e6f/SPEC.md)
-as an export format. Until that release, run the command from a source checkout
-containing the OKF exporter (`python -m pip install -e .`). Use an existing,
-complete cached Wiki and the same quiescent-database requirements above:
+CodeNib 0.2.5 includes the OKF exporter for
+[Open Knowledge Format v0.2](https://github.com/GoogleCloudPlatform/open-knowledge-format/blob/ad30107c31c06aec8a7d5636e0d1058118604e6f/SPEC.md).
+In the environment that owns your existing, complete cached Wiki, install the
+published package and use the same quiescent-database requirements above:
 
 ```bash
+python -m pip install --upgrade "codenib==0.2.5"
 codenib export --format okf --wiki-config /path/to/qa_config.yaml \
   --wiki-repo psf__requests --output /path/to/requests-wiki
 ```
