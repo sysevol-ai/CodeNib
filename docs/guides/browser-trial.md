@@ -12,7 +12,7 @@ OpenRouter and submit a question, your browser asks a model to plan bounded grep
 searches, then asks Jev to rank the matching source. Results link to file and
 line ranges at the Wiki's published commit.
 
-**Optional deployment preview in CodeNib 0.2.4:** this feature has not been
+**Optional deployment preview in CodeNib 0.2.5:** this feature has not been
 enabled on the public demo. The complete browser flow has passed with real
 Requests source and fixture provider responses. Actual provider consent and
 production-host acceptance remain deployment gates. Those checks do not establish
@@ -76,7 +76,7 @@ The package includes the prebuilt frontend; Node.js and a CodeNib checkout are
 not required. After completing the deployment gates below, opt in when exporting:
 
 ```bash
-python -m pip install "codenib[grep]==0.2.4"
+python -m pip install "codenib[grep]==0.2.5"
 codenib export --wiki-config /path/to/qa_config.yaml \
   --wiki-repo psf__requests --output /path/to/site \
   --base-path / \

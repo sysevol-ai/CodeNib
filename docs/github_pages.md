@@ -31,12 +31,12 @@ permissions:
 
 jobs:
   publish:
-    uses: sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@3f3bc2cf44ba83d1d86e9e5eb74f8da0f8bc63ac # v0.2.4
+    uses: sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@49a83746e1fa76bd81299f172bbb16d7084c24d3 # v0.2.5
     with:
       preset: fast
 ```
 
-The commit pin resolves to v0.2.4 and keeps the compiler, frontend, Action,
+The commit pin resolves to v0.2.5 and keeps the compiler, frontend, Action,
 and artifact schema on one reviewed version. When upgrading, update both
 the commit SHA and its version comment. In the repository's **Settings > Pages**, select
 **GitHub Actions** as the source.
@@ -51,7 +51,7 @@ browser; the BM25 artifact remains reusable through local or MCP serving.
 These are index-derived pages. Model-written story pages require a separate,
 explicit generation step before cached-story export.
 
-The v0.2.4 workflow and composite Action use `fast` by default. The example
+The v0.2.5 workflow and composite Action use `fast` by default. The example
 selects it explicitly; repositories still pinned to v0.2.3 must set `fast`
 to avoid that version's semantic default and embedding download.
 
@@ -62,7 +62,7 @@ Select `semantic` when consumers need the portable dense-vector view:
 ```yaml
 jobs:
   publish:
-    uses: sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@3f3bc2cf44ba83d1d86e9e5eb74f8da0f8bc63ac # v0.2.4
+    uses: sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@49a83746e1fa76bd81299f172bbb16d7084c24d3 # v0.2.5
     with:
       preset: semantic
 ```
@@ -81,7 +81,7 @@ artifact or Pages workflow:
 ```yaml
 jobs:
   publish:
-    uses: sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@3f3bc2cf44ba83d1d86e9e5eb74f8da0f8bc63ac # v0.2.4
+    uses: sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@49a83746e1fa76bd81299f172bbb16d7084c24d3 # v0.2.5
     with:
       preset: semantic
       embedding-provider: openai
@@ -125,7 +125,7 @@ Pages artifacts.
 
 ## Publish an Existing Story Wiki
 
-Cached-story export is included in CodeNib 0.2.4 with a prebuilt frontend.
+Cached-story export is included in CodeNib 0.2.5 with a prebuilt frontend.
 It needs no Node.js installation or CodeNib source checkout. The reusable Pages
 workflow builds an index-derived preview; exporting existing story pages is a
 separate operator command.
@@ -141,7 +141,7 @@ WAL, SHM or rollback journal. The command reads a private immutable snapshot;
 it does not change the database, configuration or registry:
 
 ```bash
-python -m pip install "codenib==0.2.4"
+python -m pip install "codenib==0.2.5"
 codenib export --wiki-config /path/to/qa_config.yaml \
   --wiki-repo psf__requests --output /path/to/site \
   --base-path /requests
@@ -298,7 +298,7 @@ The composite Action can be used directly when another static host or artifact
 store owns deployment:
 
 ```yaml
-- uses: sysevol-ai/CodeNib/.github/actions/publish@3f3bc2cf44ba83d1d86e9e5eb74f8da0f8bc63ac # v0.2.4
+- uses: sysevol-ai/CodeNib/.github/actions/publish@49a83746e1fa76bd81299f172bbb16d7084c24d3 # v0.2.5
   id: codenib
   with:
     preset: fast

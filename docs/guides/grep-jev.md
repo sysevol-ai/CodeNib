@@ -11,7 +11,7 @@ model. CodeNib uses your OpenRouter account to plan local `rg` searches, then
 Jev ranks the matching code blocks. Results include verified source excerpts,
 file paths, line numbers, actual model IDs, and reported API usage.
 
-**Optional route in CodeNib 0.2.4.** The
+**Optional route in CodeNib 0.2.5.** The
 [CodeGraph setup](../codegraph.md) remains available for model-free search and
 typed graph navigation. Browser authorization remains a preview while actual
 provider-consent and interactive desktop-unlock acceptance are open.
@@ -21,7 +21,7 @@ provider-consent and interactive desktop-unlock acceptance are open.
 Install the optional runtime, then connect your repository:
 
 ```bash
-python -m pip install "codenib[grep,mcp,auth]==0.2.4"
+python -m pip install "codenib[grep,mcp,auth]==0.2.5"
 codenib init /path/to/your/repository
 ```
 

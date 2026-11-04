@@ -87,7 +87,7 @@ File- and symbol-level delta repair is not enabled on the product path.
 The language registry's incremental-backend entries must not be read as a
 claim that every CLI index update performs delta repair.
 
-CodeNib 0.2.4 includes the optional [grep → Jev route](guides/grep-jev.md).
+CodeNib includes the optional [grep → Jev route](guides/grep-jev.md).
 It uses the caller's OpenRouter account without requiring embeddings or a
 prebuilt graph. OAuth onboarding and the browser trial retain their separate
 acceptance gates. The historical research [71.4% Recall@5](evaluation/grep_jev.md)

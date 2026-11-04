@@ -163,7 +163,7 @@ and does not import LocAgent, LiteLLM, or LlamaIndex. `--base-url` accepts any
 OpenAI-compatible endpoint, such as a LiteLLM proxy.
 
 ```bash
-python -m pip install "codenib[agent,graph]==0.2.4"
+python -m pip install "codenib[agent,graph]==0.2.5"
 codenib toolchain install /path/to/repository --scope graph
 ```
 

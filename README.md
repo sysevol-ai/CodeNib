@@ -50,7 +50,8 @@ Python graphs, static entry-path navigation and call-path rule checks.
 
 ## Quickstart
 
-Requires Python 3.10+, Git, a clean repository, and Claude Code or Codex.
+Requires Python 3.10+, Git, and Claude Code or Codex. Initialization accepts
+uncommitted edits and preserves the checkout.
 
 ```bash
 python -m pip install "codenib[graph,mcp]"

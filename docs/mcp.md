@@ -11,17 +11,17 @@ CodeNib serves a pre-built repository manifest to coding agents over
 construction and query serving are separate: build or update a repository once,
 then reuse that manifest across agent sessions.
 
-For the unreleased source-checkout route that searches directly with your
+For the optional source-only route that searches directly with your
 OpenRouter account, see [grep and Jev](guides/grep-jev.md). It exposes
 `explore_context` without an index, embedding model, GPU, or graph build.
 
 ## Install And Index
 
-For Codex or Claude Code, the recommended 0.2.4 path prepares the graph index
+For Codex or Claude Code, the recommended 0.2.5 path prepares the graph index
 and native client configuration together:
 
 ```bash
-python -m pip install "codenib[graph,mcp]==0.2.4"
+python -m pip install "codenib[graph,mcp]==0.2.5"
 codenib codegraph init /path/to/repository
 ```
 
@@ -38,14 +38,14 @@ For a custom MCP client or a retrieval-only setup, build and launch the server
 manually. The smaller no-model fallback is:
 
 ```bash
-python -m pip install "codenib[mcp]==0.2.4"
+python -m pip install "codenib[mcp]==0.2.5"
 codenib index /path/to/repository --preset fast
 ```
 
 Add static navigation and dependency tools without an embedding download:
 
 ```bash
-python -m pip install "codenib[graph,mcp]==0.2.4"
+python -m pip install "codenib[graph,mcp]==0.2.5"
 codenib toolchain install /path/to/repository --scope graph
 codenib index /path/to/repository --preset graph
 ```
@@ -140,8 +140,8 @@ absolute path to a repository previously indexed with `codenib index`. The
 declared launch is equivalent to:
 
 ```bash
-uvx --with "codenib[mcp]==0.2.4" \
-  "codenib==0.2.4" mcp /absolute/path/to/repository
+uvx --with "codenib[mcp]==0.2.5" \
+  "codenib==0.2.5" mcp /absolute/path/to/repository
 ```
 
 The Registry path is intentionally query-only and model-free. It can always
@@ -176,9 +176,8 @@ For `dependency_subgraph`, `impact` follows incoming references,
 `dependencies` follows outgoing references, and `both` follows both directions.
 References may represent calls, fields, types or function values. Read the
 source before describing an invocation or runtime path; external and dynamic
-relationships may be missing. Source builds from `main` include `semantics`
-with this scope and direction; published 0.2.4 retains the older response shape
-and legacy `callers`/`callees` labels. See [CodeGraph](codegraph.md) for the
+relationships may be missing. Responses include `semantics` with this scope
+and direction while retaining legacy `callers`/`callees` labels. See [CodeGraph](codegraph.md) for the
 release and source-update boundaries.
 
 Use `explore_context` first for a question that spans more than one function
@@ -210,7 +209,7 @@ languages build the graph on that request. Ordinary queries reuse a complete
 graph. Set `include_dependencies=false` to omit expansion explicitly. Prebuilt
 mode keeps dependencies enabled by default.
 
-An unreleased source build can answer an exact Python `lsp_definition` request
+CodeNib can answer an exact Python `lsp_definition` request
 before building the graph. Use a verified local Python-only repository, the
 full tool surface, and locally prepared LSP tools:
 
@@ -232,7 +231,7 @@ startup still has a preparation cost. Ambiguous or unsupported positions,
 missing software, symbol lookups, references and routes use the existing
 complete-graph preparation. An explicitly configured `CODENIB_PYTHON_LSP_CMD`
 keeps its existing provider route. Portable artifacts and the `explore` tool
-surface do not expose this shortcut. Published 0.2.4 does not include it.
+surface do not expose this shortcut.
 After a source edit, rebuild explicitly; the same MCP connection then reloads
 the new source generation. Changed source is never silently rebuilt by a query.
 
@@ -303,7 +302,7 @@ before a result is returned.
 silently labels a sparse fallback as hybrid or graph-expanded execution.
 BM25 views built from the current source checkout include selected test files.
 Set `filter_test=true` to omit their matches. After upgrading, rerun initialization
-to rebuild older test-filtered views; this change awaits a package release.
+to rebuild older test-filtered views.
 Across all search tools, ranked metadata is retained while source bodies share
 a 10,000-character response budget. Projected hits report original and returned
 character counts under `content_projection`. Path and symbol fields have
@@ -323,7 +322,7 @@ Parameter and return schemas live in
 The `full` preset requests BM25, vectors, a symbol graph, and Zoekt:
 
 ```bash
-python -m pip install "codenib[full]==0.2.4"
+python -m pip install "codenib[full]==0.2.5"
 codenib toolchain install /path/to/repository --scope graph
 codenib index /path/to/repository --preset full
 ```

@@ -11,12 +11,12 @@ pasting a key into your repository or MCP configuration. Authorization and
 model requests go directly from your machine to OpenRouter. A CodeNib hosted
 service does not receive the key.
 
-Install CodeNib 0.2.4 with local authorization support. Browser consent and
+Install CodeNib 0.2.5 with local authorization support. Browser consent and
 interactive desktop unlock remain preview interactions pending acceptance;
 existing-key transport and isolated native credential-store checks pass.
 
 ```bash
-python -m pip install "codenib[grep,mcp,auth]==0.2.4"
+python -m pip install "codenib[grep,mcp,auth]==0.2.5"
 codenib auth login
 ```
 

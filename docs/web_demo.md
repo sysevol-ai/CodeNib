@@ -10,7 +10,7 @@ For one local repository, use the packaged two-command path in the
 [Quickstart](quickstart.md):
 
 ```bash
-python -m pip install "codenib[semantic]==0.2.4"
+python -m pip install "codenib[semantic]==0.2.5"
 codenib wiki /path/to/repository
 ```
 
@@ -136,16 +136,17 @@ provider usage before explicitly resuming.
 
 ### Enable visitor generation on the demo server
 
-This feature needs the current backend and frontend source; the published
-0.2.4 wheel predates it. In the same environment that runs the demo:
+CodeNib 0.2.5 includes visitor generation and the matching frontend. In the
+same environment that runs the demo:
 
 ```bash
-pip install -e '.[grep]'
+python -m pip install "codenib[grep]==0.2.5"
 export CODENIB_VISITOR_WIKI=1
 ```
 
-Restart the existing `codenib-web` service with that environment and rebuild
-and deploy `web/dist` using the production instructions below. Keep HTTPS
+Restart the existing `codenib-web` service with that environment. The wheel
+includes its matching frontend; source deployments should rebuild and deploy
+`web/dist` using the production instructions below. Keep HTTPS
 and the existing `/api` proxy. The SPA fallback must serve both
 `/preview/owner/repo` and `/wiki/<id>` on refresh. `GET /api/visitor-wikis`
 reports whether creation is enabled. Static exports link to the live demo
