@@ -32,6 +32,11 @@ so stale notes did not cause enough errors to measure. The result is no room
 for a staleness check in these cases. Neither check could meet the margin
 anyway: each needed 5 more accepted fixes than plain and had none.
 
+The protocol's [post-run interpretation erratum](
+stale_handoff_ab_protocol_v5.md#post-run-interpretation-erratum-2026-11-04)
+corrects a separate branch that could wrongly call a file-level check sufficient.
+It does not affect this ceiling outcome, the frozen policy, or any session grade.
+
 Every one of the 11 cases was fixed in all nine of its sessions. No fix failed,
 so no fix failed the way the diagnosis's literal fix does.
 
@@ -81,7 +86,9 @@ and point in different directions for different measures.
 - **First attempt.** It was stopped after 17 workflows because black's test
   suite hung under the container's process limit. The second attempt raised the
   limit and ran all 99 workflows; see the protocol's
-  [Deviation](stale_handoff_ab_protocol_v5.md#deviation) section.
+  [Deviation](stale_handoff_ab_protocol_v5.md#deviation) section. Two first-attempt
+  cookiecutter patches had already been graded to debug the grader. The repeated
+  cohort is therefore not an independent unseen confirmation.
 - **Interim look.** At the project owner's request, the first 70 finished
   workflows were graded during the run with the same grading function. All 70
   were accepted. The run was not changed, and the result above comes from the
