@@ -2120,6 +2120,61 @@ class TestSymbolGraphBuilder:
         assert disabled.artifact_identity()["allow_project_preparation"] is False
         assert enabled.artifact_identity() != disabled.artifact_identity()
 
+    def test_fallback_graph_is_not_reused_as_the_requested_python_provider(
+        self, monkeypatch, tmp_path
+    ):
+        from codenib import ls_router
+        from codenib.scip_interface import pyrefly_provider
+        from codenib.toolchains import PYREFLY_VERSION, SCIP_PYTHON_VERSION
+
+        monkeypatch.setattr(
+            pyrefly_provider,
+            "select_python_graph_provider",
+            lambda: pyrefly_provider.PythonGraphProvider("pyrefly", executable="mock"),
+        )
+        graph = _minimal_code_graph(str(tmp_path))
+        monkeypatch.setattr(
+            ls_router,
+            "build_graph_for_languages_with_report",
+            lambda *_args, **_kwargs: GraphBuildResult(
+                graph=graph,
+                requested_languages=["python"],
+                available_languages=["python"],
+                failed_languages={},
+                index_generation_reports={
+                    "python": {
+                        "backend": "scip-python",
+                        "provider_version": SCIP_PYTHON_VERSION,
+                        "complete": True,
+                        "fallback_from": {"provider": "pyrefly"},
+                    }
+                },
+            ),
+        )
+        builder = SymbolGraphBuilder(languages=["python"])
+        status = builder.build(
+            scope="current_repo",
+            repo_path=str(tmp_path),
+            output_dir=str(tmp_path / "graph"),
+        )
+        assert builder.artifact_identity()["python_graph_provider"] == (
+            f"pyrefly {PYREFLY_VERSION}"
+        )
+        assert status.metadata["python_graph_provider"] == (
+            f"scip-python {SCIP_PYTHON_VERSION}"
+        )
+        assert not IndexCompiler._entry_matches_builder(
+            SimpleNamespace(config=status.metadata), builder
+        )
+        monkeypatch.setattr(
+            pyrefly_provider,
+            "select_python_graph_provider",
+            lambda: pyrefly_provider.PythonGraphProvider("scip-python"),
+        )
+        assert IndexCompiler._entry_matches_builder(
+            SimpleNamespace(config=status.metadata), builder
+        )
+
     def test_full_rebuild_does_not_reuse_stale_occurrence_sidecar(
         self, monkeypatch, tmp_path
     ):

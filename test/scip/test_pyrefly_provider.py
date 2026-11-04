@@ -212,3 +212,39 @@ def test_parameter_named_like_a_module_function_is_not_a_call(tmp_path, environ)
         if list(occurrence.range)[:2] == [7, 27]
     ]
     assert read and all(symbol.endswith("upgrade().(revision)") for symbol in read)
+
+
+@pytest.mark.skipif(
+    _installed_pyrefly() is None,
+    reason=f"pyrefly {PYREFLY_VERSION} is not installed",
+)
+def test_live_pyright_glob_and_rebound_receiver_keep_source_ownership(
+    tmp_path, environ
+):
+    root = tmp_path / "repo"
+    root.mkdir()
+    (root / "pyrightconfig.json").write_text('{"include": ["**/*.py"]}')
+    (root / "mod.py").write_text(
+        "class Other:\n"
+        "    def __init__(self):\n        self.closed = False\n"
+        "class Host:\n"
+        "    def close(self):\n        self = Other()\n        self.closed = True\n"
+        "class Root:\n    value = 1\n"
+        "class Left(Root): pass\n"
+        "class Right:\n    value = 2\n"
+        "class Child(Left, Right): pass\n"
+        "def read():\n    return Child().value\n"
+    )
+    indexer = SCIPPythonIndexer(root, output_dir=tmp_path / "out")
+    assert indexer.generate_index(project_name="repo")
+    assert indexer.index_generation_report["backend"] == "pyrefly"
+    index = Index()
+    index.ParseFromString(indexer.index_file.read_bytes())
+    [document] = [d for d in index.documents if d.relative_path == "mod.py"]
+    definitions = [o.symbol for o in document.occurrences if o.symbol_roles & 1]
+    assert any(s.endswith("Other#closed.") for s in definitions)
+    assert not any(s.endswith("Host#closed.") for s in definitions)
+    value_reads = [
+        o.symbol for o in document.occurrences if list(o.range)[:2] == [14, 19]
+    ]
+    assert value_reads and all(s.endswith("Root#value.") for s in value_reads)

@@ -13,12 +13,19 @@ predicates the converter reads. The expectations mirror
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from google.protobuf.text_format import MessageToString
 
 from codenib.scip_interface.lsp_occurrence_index import SCIPOccurrenceIndex
-from codenib.scip_interface.pyrefly_glean import glean_to_scip_index
+from codenib.scip_interface.pyrefly_glean import (
+    _Converter,
+    _Definition,
+    _python_parser,
+    _receiver_writes,
+    glean_to_scip_index,
+)
 from codenib.scip_interface.pyrefly_provider import write_pyrefly_config
 from codenib.scip_interface.python_identity import normalize_python_index
 from codenib.scip_interface.scip_decode_python import SCIPPythonGraphDecoder
@@ -283,6 +290,21 @@ def test_identity_recovery_has_nothing_to_repair(tmp_path, case):
     assert canonical(index) == before
 
 
+@pytest.mark.parametrize(
+    "case", sorted(path.name for path in CAPTURES.iterdir() if path.is_dir())
+)
+def test_pyrefly_capture_preserves_serial_native_query_surface(tmp_path, case):
+    pytest.importorskip("codenib_core")
+    from codenib.scip_interface.query_surface import query_surface_sha256
+    from codenib.scip_interface.scip_decode_core import SCIPDecoderCore
+
+    _, serial, _ = _convert(tmp_path, case)
+    native = SCIPDecoderCore(
+        str(tmp_path / "index.decoded"), str(tmp_path), language="python"
+    ).decode()
+    assert query_surface_sha256(native) == query_surface_sha256(serial)
+
+
 def test_config_checks_every_source_with_src_layout_and_pyright_scope(tmp_path):
     root = tmp_path / "repo"
     (root / "src").mkdir(parents=True)
@@ -307,3 +329,111 @@ def test_config_checks_every_source_with_src_layout_and_pyright_scope(tmp_path):
     assert f"{base}/**/build/**" in config["project-excludes"]
     assert config["disable-project-excludes-heuristics"] is True
     assert not any(path.name == "pyrefly.toml" for path in root.rglob("*"))
+
+
+@pytest.mark.parametrize("include", ["**/*.py", "src/*/api?.py", "pkg/**/*.pyi"])
+def test_pyright_include_globs_remain_globs(tmp_path, include):
+    (tmp_path / "pyrightconfig.json").write_text(json.dumps({"include": [include]}))
+    config = write_pyrefly_config(tmp_path / "generated.toml", tmp_path).read_text()
+    assert f'"{tmp_path.as_posix()}/{include}"' in config
+    assert f"{include}/**/*.py" not in config
+
+
+@pytest.mark.parametrize(
+    "binding",
+    [
+        "self = Other()",
+        "self, other = others",
+        "self += other",
+        "if (self := other): pass",
+        "for self in others: pass",
+        "with other as self: pass",
+        "try: pass\nexcept Exception as self: pass",
+        "match other:\n    case self: pass",
+        "del self",
+        "import other as self",
+        "from other import self",
+        "def self(): pass",
+        "class self: pass",
+    ],
+)
+def test_rebound_receiver_never_synthesizes_owner_fields(binding):
+    body = "\n".join("    " + line for line in binding.splitlines())
+    # A write before rebinding must not escape the whole-body guard either.
+    source = (
+        f"def close(self):\n    self.before = True\n{body}\n    self.closed = True\n"
+    )
+    tree = _python_parser().parse(source.encode())
+    assert not tree.root_node.has_error
+    method = tree.root_node.named_children[0]
+    assert list(_receiver_writes(method.child_by_field_name("body"), b"self")) == []
+
+
+def test_receiver_guard_ignores_nested_scope_and_attribute_assignments():
+    tree = _python_parser().parse(
+        b"def close(self):\n"
+        b"    def inner(self):\n        self = Other()\n        self.hidden = True\n"
+        b"    self.closed = True\n    self.items[0] = other\n"
+    )
+    method = tree.root_node.named_children[0]
+    writes = list(_receiver_writes(method.child_by_field_name("body"), b"self"))
+    assert [name for _, _, name in writes] == ["closed"]
+
+
+def _hierarchy_converter(bases, members, aliases=None):
+    converter = object.__new__(_Converter)
+    converter.report = SimpleNamespace(aliases=aliases or {})
+    converter.registry = {
+        name: [_Definition("cls", name, "mod.py", 0, 1, None, None, bases=parents)]
+        for name, parents in bases.items()
+    }
+    for name in members:
+        converter.registry[name] = [
+            _Definition("variable", name, "mod.py", 0, 1, None, None, symbol=name)
+        ]
+    return converter
+
+
+def test_inherited_member_matches_python_c3_instead_of_breadth_first():
+    class Root:
+        value = "Root.value"
+
+    class Left(Root):
+        pass
+
+    class Right:
+        value = "Right.value"
+
+    class Child(Left, Right):
+        pass
+
+    converter = _hierarchy_converter(
+        {"Child": ("Left", "Alias"), "Left": ("Root",), "Right": (), "Root": ()},
+        ["Root.value", "Right.value"],
+        {"Alias": "Right"},
+    )
+    assert converter._inherited("Child", "value", 0) == [Child.value]
+    assert [cls.__name__ for cls in Child.__mro__][1:4] == ["Left", "Root", "Right"]
+
+
+@pytest.mark.parametrize(
+    "bases,aliases",
+    [
+        ({"Child": ("Child",)}, {}),
+        ({"Child": ("Missing", "Root"), "Root": ()}, {}),
+        ({"Child": ("Alias",)}, {"Alias": "Other", "Other": "Alias"}),
+        (
+            {
+                "Child": ("Left", "Right"),
+                "Left": ("A", "B"),
+                "Right": ("B", "A"),
+                "A": (),
+                "B": (),
+            },
+            {},
+        ),
+    ],
+)
+def test_unproven_mro_does_not_choose_an_inherited_member(bases, aliases):
+    converter = _hierarchy_converter(bases, ["Root.value", "A.value"], aliases)
+    assert converter._inherited("Child", "value", 0) == []
