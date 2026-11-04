@@ -193,6 +193,62 @@ def test_a_diff_lists_only_the_violations_it_touches(tmp_path):
     assert result.passed and result.unchanged_violations == 1
 
 
+def test_distinct_rule_targets_do_not_guard_each_other(tmp_path):
+    graph = _graph(
+        [_fn("execute"), _fn("perform"), _fn("guard")],
+        [("a.py:execute()", "a.py:perform()", 1)],
+    )
+    rule = PathRule(id="multi", to=("execute", "perform"), through=("guard",))
+    (violation,) = _check(graph, tmp_path, rule).violations
+    assert _names(violation) == ["execute()", "perform()"]
+
+
+@pytest.mark.parametrize("first_read", ["other.sink()", "callback = other.sink"])
+def test_a_same_line_reference_cannot_hide_another_unresolved_call(
+    tmp_path, first_read
+):
+    (tmp_path / "a.py").write_text(
+        f"def run(other, host):\n    {first_read}; host.sink()\n\n"
+        "def sink():\n    pass\n\ndef guard():\n    pass\n"
+    )
+    graph = _graph(
+        [
+            _fn("run", start=0, end=1),
+            _fn("sink", start=3, end=4),
+            _fn("guard", start=6, end=7),
+            _fn("Other.sink", "b.py", 0, 1),
+        ],
+        [("a.py:run()", "b.py:Other.sink()", 1)],
+    )
+    rule = PathRule(id="same-line", to=("a.py:sink",), through=("guard",))
+    (violation,) = _check(graph, tmp_path, rule).violations
+    assert not violation.resolved and violation.caller == "a.py:run()"
+
+
+def test_changed_region_includes_unresolved_callers_beyond_the_indexed_witness(
+    tmp_path,
+):
+    (tmp_path / "a.py").write_text(
+        "def old():\n    helper()\n\ndef fresh(host):\n    host.helper()\n\n"
+        "def helper():\n    sink()\n\ndef guard():\n    pass\n\n"
+        "def sink():\n    pass\n"
+    )
+    graph = _graph(
+        [
+            _fn("old", start=0, end=1),
+            _fn("fresh", start=3, end=4),
+            _fn("helper", start=6, end=7),
+            _fn("guard", start=9, end=10),
+            _fn("sink", start=12, end=13),
+        ],
+        [("a.py:old()", "a.py:helper()", 1), ("a.py:helper()", "a.py:sink()", 7)],
+    )
+    result = _check(graph, tmp_path, changed={"a.py": {5}})
+    (violation,) = result.violations
+    assert violation.changed is True and result.unchanged_violations == 0
+    assert _names(violation) == ["old()", "helper()", "sink()"]
+
+
 @pytest.mark.parametrize(
     "symbol, message",
     [("run", "found a.py:A.run(), a.py:B.run()"), ("missing", "found none")],

@@ -4,27 +4,28 @@
 
 """Deterministic call-path rules over the code graph.
 
-An agent can find a call site, but it cannot promise that it found every path
-to one. A path rule asks the graph that question exhaustively: every reference
+Check declared rules across the current indexed reference graph: every reference
 path from an entry point to a ``to`` symbol must pass a ``through`` symbol, or
 a function on the path that also references an ``or_calls`` symbol (such as a
 guard factory). Entry points are nodes with no callers left after ``exclude``
 removes files such as tests.
 
-The checker never passes a path it cannot see. A call the indexer could not
-resolve has no edge, so for Python sources a call site that is not anchored by
-any resolved reference is matched by its callee name: first to a ``to``
-symbol, then, only when the resolved callers of a node all pass, to that node.
+For Python sources, calls without an unambiguous line anchor are also matched
+by callee name. Multiple same-named reads on one line keep the possible calls
+unresolved. Name-matched upstream callers contribute to diff relevance even
+when a fully indexed witness already exists.
 Such hops are marked ``resolved: false``. Guards and ``or_calls`` count only
-through resolved references. Both choices can over-report; neither hides a
-path. Other languages use resolved references only, which the report states.
+through resolved references. These are static reference policies, not proof of
+runtime coverage or guard execution order. Other languages use resolved
+references only; parse failures and fallback coverage are reported explicitly.
 """
 
 from __future__ import annotations
 
 import ast
+import codecs
 import re
-from collections import deque
+from collections import Counter, deque
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
@@ -346,6 +347,17 @@ class _GraphView:
                 errors.append(f"{path}: {type(exc).__name__}")
                 continue
             scanned += 1
+            # Edges retain lines, not columns. Multiple reads of a same-named
+            # member (including non-call reads) cannot share one call's proof.
+            reads = Counter(
+                (
+                    node.end_lineno if isinstance(node, ast.Attribute) else node.lineno,
+                    node.attr if isinstance(node, ast.Attribute) else node.id,
+                )
+                for node in ast.walk(tree)
+                if isinstance(node, (ast.Name, ast.Attribute))
+                and isinstance(node.ctx, ast.Load)
+            )
             for call in ast.walk(tree):
                 if not isinstance(call, ast.Call):
                     continue
@@ -355,7 +367,7 @@ class _GraphView:
                     name, line = call.func.id, call.func.lineno
                 else:
                     continue
-                if (path, line - 1, name) in self.anchors:
+                if (path, line - 1, name) in self.anchors and reads[(line, name)] == 1:
                     continue
                 caller = self._innermost(by_file.get(path, ()), line - 1)
                 if caller is None:
@@ -461,22 +473,23 @@ def _check_rule(
     direct: Dict[Tuple[int, int], Optional[_CallSite]] = {}
     for sink in sinks:
         for caller, _ in callers(sink, loose=False):
-            if caller not in sinks:
+            if caller != sink:
                 direct[(sink, caller)] = None
         for site in unresolved.get(view.bare(sink), ()):
             key = (sink, site.caller)
-            if site.caller not in sinks and not excluded(site.caller):
+            if site.caller != sink and not excluded(site.caller):
                 direct.setdefault(key, site)
 
     for (sink, caller), site in sorted(direct.items()):
         if guarded(caller):
             continue
-        found = None
-        for loose in (False, True):
-            found = _unguarded_entry(caller, loose, callers, guarded)
-            if found[0] is not None:
-                break
-        entry_path, region = found
+        # Prefer a fully indexed witness, but diff relevance covers *every*
+        # possible unguarded upstream caller, including unresolved new ones.
+        entry_path, region = _unguarded_entry(caller, False, callers, guarded)
+        loose_path, loose_region = _unguarded_entry(caller, True, callers, guarded)
+        region |= loose_region
+        if entry_path is None:
+            entry_path = loose_path
         if entry_path is None:
             continue
         hops = [view.hop(node, resolved) for node, resolved in entry_path]
@@ -609,7 +622,11 @@ def parse_changed_lines(diff: str) -> Dict[str, Set[int]]:
     current: Optional[str] = None
     for line in diff.splitlines():
         if line.startswith("+++ "):
-            target = line[4:]
+            target = line[4:].split("\t", 1)[0]
+            if target.startswith('"') and target.endswith('"'):
+                target = codecs.escape_decode(target[1:-1].encode("utf-8"))[0].decode(
+                    "utf-8", errors="surrogateescape"
+                )
             current = target[2:] if target.startswith("b/") else None
             if current is not None:
                 changed.setdefault(current, set())

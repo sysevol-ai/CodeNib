@@ -283,9 +283,8 @@ codenib codegraph init . --rebuild
 
 ## Check call-path rules
 
-An agent can find a call site, but it cannot promise that it found every path
-to one. A path rule asks the graph that question exhaustively and fails a
-build when a path breaks the rule. Each rule says: every reference path from
+Use a path rule to flag indexed reference paths that bypass a declared boundary.
+Each rule says: every reference path from
 an entry point to a `to` symbol passes a `through` symbol, or a function on
 the path that also references an `or_calls` symbol. An entry point is a
 symbol that nothing else in the checked files references, such as a public
@@ -334,18 +333,23 @@ include uncommitted edits and untracked files, so an agent can reindex and
 check its own edit before committing it. Exit status is 0 when every rule
 passes, 1 for violations and 2 for an invalid rule, revision or graph. The
 command checks the indexed source and refuses a graph that does not match the
-checkout or that any language failed to build, so index the working tree
+checkout, has a partial compiler index, or has an incomplete language report.
+Permission to attempt partial indexing does not by itself reject a completed
+index. Index the working tree
 under review first.
 
-The check does not pass a path it cannot see. For Python, a call site that no
-resolved reference anchors is matched by callee name: first to a `to` symbol,
-then, when the resolved callers of a node all pass, to that node. The report
-marks such hops with `~>`. Guards and `or_calls` count only through resolved
-references. Both choices can report a path that does not exist at run time;
-neither hides one. Other languages use resolved references only, and the
-report states the files it checked each way. A reference is not always a call:
-passing a method as a callback also creates an edge, which is how handlers
-registered with a framework stay on the path.
+For Python, calls without an unambiguous resolved reference at that line are
+also matched by callee name. Several same-named reads on one line retain the
+possible unresolved calls; one resolved edge cannot explain them all. The
+report marks name-matched hops with `~>` and includes their upstream regions
+when filtering a diff, even if the selected witness uses only indexed edges.
+
+These rules describe static references. Passing a method as a callback also
+creates an edge. `or_calls` checks whether a function references the named
+symbol; it does not establish execution order, branch conditions, or successful
+guard execution. Python's dynamic calls can escape name matching, and other
+languages use resolved references only. The report states parse failures and
+fallback coverage; a passing check does not prove every runtime path is guarded.
 
 ## Recorded agent session
 

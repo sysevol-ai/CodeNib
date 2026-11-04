@@ -3285,7 +3285,18 @@ def _load_checkable_symbol_graph(repo_path: Path):
     manifest = RepoManifest.load(repo_index_dir(repo_path) / MANIFEST_FILENAME)
     entry = manifest.indexes["symbol_graph"]
     failed = entry.config.get("failed_languages") or {}
-    if entry.config.get("partial") is not False or failed:
+    reports = entry.config.get("index_generation_reports") or {}
+    incomplete = any(
+        report.get("partial") is True or report.get("complete") is False
+        for report in reports.values()
+        if isinstance(report, dict)
+    )
+    if (
+        entry.config.get("partial") is not False
+        or entry.config.get("partial_index")
+        or failed
+        or incomplete
+    ):
         detail = ", ".join(sorted(failed)) or "partial graph"
         raise CLIError(f"the symbol graph is incomplete ({detail}); {rebuild}")
     try:
