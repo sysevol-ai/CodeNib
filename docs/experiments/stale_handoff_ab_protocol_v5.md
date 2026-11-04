@@ -6,9 +6,10 @@ SPDX-License-Identifier: Apache-2.0
 
 # Stale-handoff A/B, protocol v5
 
-Status: sealed on 2026-11-03 before any model call, and sealed again the same
-day after a first attempt was stopped (see [Deviation](#deviation)). Results are
-not in this document yet.
+Status: completed; see [results v5](stale_handoff_ab_results_v5.md). The protocol
+was sealed on 2026-11-03 before any model call, and sealed again the same day
+after a first attempt was stopped (see [Deviation](#deviation)). The original
+decision rule is retained below with an explicit post-run interpretation erratum.
 
 Rounds v1 to v4 asked whether CodeNib's code graph helps an agent find its way
 through code it reads for the first time. It did not measurably help: on
@@ -128,6 +129,25 @@ Secondary outcomes:
 The planned SDK estimate is about $25. No new workflow starts once the observed
 estimate reaches $35.
 
+### Post-run interpretation erratum (2026-11-04)
+
+The last branch of the sealed rule is too broad: the graph check can help
+without meeting the graph-versus-file margin, while the file check itself does
+not help. For example, totals of plain 15, file 17 and graph 20 (assuming the
+graph's case-win criterion is met) satisfy that branch, although the file check
+does not meet the five-fix improvement criterion. Such a result would not
+establish that a file-level check is enough.
+
+For future use, that conclusion requires the file check itself to meet both
+help criteria. If only the graph check helps but fails the graph-versus-file
+condition, the comparison between checks is inconclusive. The earlier branches,
+including the ceiling rule, retain their order.
+
+This is a post-run correction, not a replacement of the frozen policy or a
+regrading. The observed totals were 33/33 in all arms, so the first, ceiling
+branch applies and the erratum does not change this round's outcome. The archive,
+execution bindings and session grades remain unchanged.
+
 ## Deviation
 
 The first attempt was stopped after 17 of the 99 workflows had started. Its
@@ -166,6 +186,9 @@ sessions do not count; the round runs all 99 workflows again.
   checks.
 - The agent has no git history. In practice an agent could diff against the
   commit a note was written at, which this round does not test.
+- The second attempt reused the cases after two first-attempt cookiecutter
+  patches had been graded for grader debugging. It is not an independent unseen
+  confirmation; the stopped attempt and the exposure are retained separately.
 
 ## Commitments
 
