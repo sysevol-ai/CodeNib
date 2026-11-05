@@ -6,28 +6,36 @@ SPDX-License-Identifier: Apache-2.0
 
 # Guardian check with constructor edges, v1
 
-Linking constructor calls to the constructor they run lets the static guardian
-catch 3 more of the 68 real agent regressions, at the same typical cost on
-patches that broke nothing. Within three calls it now flags a broken test in 35 cases (51%),
-up from 32 (47%). On the clean patches it still flags a median of 3 tests, with
-a 90th percentile of 365. That meets the rule set before the run, so **constructor
-edges should be added to CodeNib's graph**.
+Adding approximate constructor-reference edges lets the static guardian flag
+a broken test in 35 of 68 historical agent regressions (51%) within three
+calls, up from 32 (47%). On the 35 clean patches the median remains 3 flagged
+tests and the 90th percentile remains 365, although four individual flag sets
+grow. This meets the original gain/cost rule; **product promotion remains on
+hold until constructor resolution is validated against Python's method
+resolution order (MRO)**.
 
-They do not change the [first check's](guardian_regression_check_v1.md)
+The archived protocol and summary retain their original recommendation to add
+the edges. Review found that the archived depth-first lookup can select a
+different constructor from Python's C3 MRO. This qualification preserves the
+original scores, scripts, decision rule and archive; it does not rerun or
+regrade the experiment.
+
+The constructor-edge results preserve the [first check's](guardian_regression_check_v1.md)
 conclusion. The best static variant reaches 41 of 68 (60%) at any depth, still
 below the 70% bar, so a guardian still needs a record of which tests run which
 code.
 
 ## What changed
 
-A call `C(...)` runs C's `__init__` and `__new__`, but CodeNib's symbol graph
-links the call to the class C only. A change inside a constructor was therefore
-unreachable from the tests that construct the class. This round adds an edge
-from each definition that calls a class to the constructor methods that the
-call runs:
+A class call can execute construction methods such as `__new__` and
+`__init__`, while CodeNib's symbol graph links the call to the class itself.
+Missing constructor links can therefore make a constructor change unreachable
+from tests that construct the class. This experiment adds approximate reference
+edges from calling definitions to candidate constructor methods:
 
 - **Which constructor.** The class's own `__init__` and `__new__`, or else the
-  first ones found in its base classes, searched left to right.
+  first ones found by a depth-first, left-to-right search of its base classes.
+  This is an approximation rather than Python's C3 MRO.
 - **Which calls.** The calling definition must reference the class in the graph
   and contain a call by the class's name. Import aliases (`from … import C as
   D`) and module-level aliases (`D = Distance` in Django's GIS code) count.
@@ -62,10 +70,15 @@ Against the decision rule:
   functions, against a limit of 1%. The 90th percentile is 365, unchanged and
   within the limit of 1.5 times the first check's.
 
-The outcome is to add constructor edges to the graph. No case was lost, since
-the edges only add paths.
+The archived rule's outcome is to add constructor edges to the graph. It is a
+decision under this experiment's approximate resolver, not validation of
+runtime constructor identity. No previously caught case was lost, since the
+edges only add paths. A corrected resolver needs separate validation before
+product promotion, without replacing this frozen run.
 
 ## Which cases it caught
+
+These are paths in the augmented static graph, not verified runtime traces.
 
 - **xarray-4629, two patches.** The first check found no path. The broken test
   builds its data with a helper that calls `Dataset(...)`. The new edge leads
@@ -92,9 +105,11 @@ tests. They grew on 17 of the 68 cases, by a median of 225 tests among those
 
 ## What this means
 
-- **Add the edges to the graph build.** They cost about 10% more reference
-  edges and nothing on clean patches at the primary depth. The same resolution
-  rules can run where the graph is built, rather than on a stored copy.
+- **Validate resolution before adding product edges.** The experiment adds
+  about 10% more reference edges. At the primary depth, the control median
+  and 90th percentile are unchanged, but four of 35 controls flag more tests.
+  Validate a resolver against C3 MRO and ambiguous or unsupported constructor
+  cases before promoting it to graph construction.
 - **Static impact still misses these regressions.** The remaining misses are
   framework calls by name and operators. The next step is the coverage check
   in [#975](https://github.com/sysevol-ai/CodeNib/issues/975).
@@ -104,6 +119,12 @@ tests. They grew on 17 of the 68 cases, by a median of 225 tests among those
 
 ## Limits
 
+- **Constructor lookup can select the wrong inherited method.** If `B(A)`
+  inherits `A.__init__`, `C(A)` overrides it, and `D(B, C)` defines neither
+  constructor, Python's MRO is `D, B, C, A, object` and selects `C.__init__`.
+  The archived depth-first search instead selects `A.__init__` through `B`.
+  The measured gain belongs to this approximate graph; it does not establish
+  that all added edges identify constructors that execute at runtime.
 - **The call check is by name.** A definition that references class C and also
   calls a different callable of the same name gets a wrong edge.
 - **Calls through variables are missed**, such as `cls(...)`.
