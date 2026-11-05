@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Optional, Sequence
-from urllib.parse import unquote, urlparse
+from urllib.parse import urlparse
 from urllib.request import url2pathname
 
 from codenib.agent.lsp_provider import (
@@ -348,7 +348,7 @@ def _uri_to_relpath(uri: str, project_root: Path) -> Optional[str]:
     parsed = urlparse(uri)
     if parsed.scheme != "file":
         return None
-    path = Path(url2pathname(unquote(parsed.path))).resolve()
+    path = Path(url2pathname(parsed.path)).resolve()
     try:
         return path.relative_to(project_root.resolve()).as_posix()
     except ValueError:

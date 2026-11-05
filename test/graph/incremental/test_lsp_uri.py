@@ -7,13 +7,9 @@
 from __future__ import annotations
 
 import os
-import sys
 from pathlib import Path
-from unittest.mock import MagicMock
 
-# Allow decoding tests to run in lightweight environments without C-extension igraph
-if "igraph" not in sys.modules:
-    sys.modules["igraph"] = MagicMock()
+import pytest
 
 from codenib.eval.agent_runner.live_lsp_provider import (
     _uri_to_relpath as live_uri_to_relpath,
@@ -30,15 +26,13 @@ def test_uri_to_relpath_posix():
     assert live_uri_to_relpath(uri, Path(root)) == "codenib/graph.py"
 
 
+@pytest.mark.skipif(os.name != "nt", reason="Windows drive-root conversion")
 def test_uri_to_relpath_windows():
     root = "C:/Users/project"
     uri = "file:///C:/Users/project/codenib/graph.py"
-    if os.name == "nt":
-        assert uri_to_relpath(uri, root) == "codenib/graph.py"
-        assert decode_uri_to_relpath(uri, Path(root)) == "codenib/graph.py"
-        assert live_uri_to_relpath(uri, Path(root)) == "codenib/graph.py"
-    else:
-        assert uri_to_relpath(uri, root) is not None
+    assert uri_to_relpath(uri, root) == "codenib/graph.py"
+    assert decode_uri_to_relpath(uri, Path(root)) == "codenib/graph.py"
+    assert live_uri_to_relpath(uri, Path(root)) == "codenib/graph.py"
 
 
 def test_uri_to_relpath_encoded_spaces():
@@ -47,6 +41,31 @@ def test_uri_to_relpath_encoded_spaces():
     assert uri_to_relpath(uri, root) == "path with spaces/module.py"
     assert decode_uri_to_relpath(uri, Path(root)) == "path with spaces/module.py"
     assert live_uri_to_relpath(uri, Path(root)) == "path with spaces/module.py"
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    [
+        "module.py",
+        "path with spaces/module.py",
+        "name%20literal.py",
+        "name%2Fliteral.py",
+        "name%25literal.py",
+        "name%2520literal.py",
+        "hash#literal.py",
+        "café.py",
+    ],
+)
+def test_uri_to_relpath_round_trip(tmp_path: Path, relative_path: str) -> None:
+    source = tmp_path / relative_path
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text("VALUE = 1\n", encoding="utf-8")
+
+    uri = source.as_uri()
+
+    assert uri_to_relpath(uri, str(tmp_path)) == relative_path
+    assert decode_uri_to_relpath(uri, tmp_path) == relative_path
+    assert live_uri_to_relpath(uri, tmp_path) == relative_path
 
 
 def test_uri_to_relpath_non_file_and_empty():

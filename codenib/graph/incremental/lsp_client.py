@@ -22,7 +22,7 @@ import sys
 import time
 from pathlib import Path
 from typing import Any, Optional
-from urllib.parse import unquote, urlparse
+from urllib.parse import urlparse
 from urllib.request import url2pathname
 
 from ...languages import lsp_command_for_language, normalize_graph_language
@@ -1421,7 +1421,8 @@ def uri_to_relpath(uri: str, project_root: str) -> Optional[str]:
     if not uri or not uri.startswith("file://"):
         return None
     parsed = urlparse(uri)
-    abs_path = url2pathname(unquote(parsed.path))
+    # url2pathname also decodes percent escapes; decode the URI only once.
+    abs_path = url2pathname(parsed.path)
     try:
         return (
             Path(abs_path)
