@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import Header from "@/components/Header";
 import { GUARD_CASES, type GuardCase, type GuardHop } from "@/lib/guardCases";
@@ -46,26 +46,52 @@ function testName(test: string) {
 }
 
 function Patch({ text }: { text: string }) {
-  return (
-    <pre className="guard-patch">
-      {text.split("\n").map((line, index) => {
-        const kind = line.startsWith("@@")
-          ? "hunk"
-          : line.startsWith("+++") || line.startsWith("---") || line.startsWith("diff ") || line.startsWith("index ")
-            ? "meta"
-            : line.startsWith("+")
-              ? "add"
-              : line.startsWith("-")
-                ? "del"
-                : "ctx";
-        return (
-          <span key={index} className={kind}>
-            {line || " "}
-          </span>
-        );
-      })}
-    </pre>
-  );
+  // Number each line from its hunk header: old and new line, then the marker.
+  let oldLine = 0;
+  let newLine = 0;
+  const rows = text.split("\n").map((line, index) => {
+    const hunk = /^@@ -(\d+)(?:,\d+)? \+(\d+)/.exec(line);
+    if (hunk) {
+      oldLine = Number(hunk[1]);
+      newLine = Number(hunk[2]);
+      return (
+        <span key={index} className="hunk">
+          {line}
+        </span>
+      );
+    }
+    if (line.startsWith("+++ ")) {
+      return (
+        <span key={index} className="file">
+          {line.slice(4).replace(/^b\//, "")}
+        </span>
+      );
+    }
+    if (/^(diff |index |--- |new file|deleted file|similarity|rename )/.test(line)) return null;
+    const mark = line.charAt(0);
+    let left = "";
+    let right = "";
+    let kind = "ctx";
+    if (mark === "+") {
+      right = String(newLine++);
+      kind = "add";
+    } else if (mark === "-") {
+      left = String(oldLine++);
+      kind = "del";
+    } else {
+      left = String(oldLine++);
+      right = String(newLine++);
+    }
+    return (
+      <span key={index} className={kind}>
+        <i className="ln">{left}</i>
+        <i className="ln">{right}</i>
+        <i className="mk">{mark === "+" || mark === "-" ? mark : ""}</i>
+        <code>{line.slice(1) || " "}</code>
+      </span>
+    );
+  });
+  return <pre className="guard-patch">{rows}</pre>;
 }
 
 function CaseDetail({ item }: { item: GuardCase }) {
@@ -154,11 +180,30 @@ function CaseDetail({ item }: { item: GuardCase }) {
 }
 
 export default function GuardCasesPage() {
+  const detailRef = useRef<HTMLDivElement>(null);
+  const firstRender = useRef(true);
   const [selected, setSelected] = useState(() => {
     const requested = new URLSearchParams(window.location.search).get("case");
     return GUARD_CASES.find((item) => item.id === requested)?.id ?? GUARD_CASES[0].id;
   });
   const item = GUARD_CASES.find((entry) => entry.id === selected) ?? GUARD_CASES[0];
+
+  // Switching cases replaces the whole detail. If its top has scrolled out of
+  // view, bring the new case's header back below the site header, instead of
+  // leaving the reader in the middle of a different case.
+  useLayoutEffect(() => {
+    if (firstRender.current) {
+      firstRender.current = false;
+      return;
+    }
+    const detail = detailRef.current;
+    if (!detail) return;
+    const header = document.querySelector(".site-header")?.getBoundingClientRect().height ?? 64;
+    const top = detail.getBoundingClientRect().top;
+    if (top < header || top > window.innerHeight * 0.7) {
+      window.scrollTo({ top: Math.max(0, window.scrollY + top - header - 16) });
+    }
+  }, [selected]);
 
   useEffect(() => {
     document.title = "CodeNib guard: real agent patches";
@@ -214,7 +259,9 @@ export default function GuardCasesPage() {
               );
             })}
           </nav>
-          <CaseDetail item={item} />
+          <div className="guard-detail-slot" ref={detailRef}>
+            <CaseDetail key={item.id} item={item} />
+          </div>
         </div>
       </main>
     </div>
