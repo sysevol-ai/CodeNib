@@ -124,7 +124,7 @@ await page.route("**/api/repos/*/source**", (r) =>
 );
 await page.route("**/api/repos", (r) => r.fulfill(json(REPOS)));
 
-await page.goto(`${BASE}/`, { waitUntil: "networkidle" });
+await page.goto(`${BASE}/wikis`, { waitUntil: "networkidle" });
 await page.locator(".repo-card:not(.add-repo)").first().click();
 await page.waitForTimeout(800);
 

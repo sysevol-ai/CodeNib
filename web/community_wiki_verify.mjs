@@ -234,13 +234,13 @@ try {
     );
     const page = await context.newPage();
     page.on("pageerror", (error) => errors.push(error.message));
-    await page.goto(base);
+    await page.goto(`${base}/wikis`);
     await page.getByRole("heading", { name: "Continue reading" }).waitFor();
     assert.equal(
       await page.getByText("Your saved Wikis", { exact: true }).count(),
       0,
     );
-    await page.getByRole("link", { name: "Browse", exact: true }).click();
+    await page.getByRole("link", { name: "Wikis", exact: true }).click();
     await page
       .getByRole("link", { name: "Open psf/requests wiki", exact: true })
       .waitFor();

@@ -310,7 +310,7 @@ export default function Landing({ browse = false }: { browse?: boolean }) {
             Explore how real projects work. Read a featured guide or discover
             one shared by the community.
           </p>
-          <AppLink href="/" className="btn-outline">
+          <AppLink href="/wikis" className="btn-outline">
             Create a Wiki →
           </AppLink>
         </section>

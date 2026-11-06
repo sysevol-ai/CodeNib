@@ -36,7 +36,7 @@ async function run({ mock, name, ask, mobile }) {
   if (mock) await mockBackend(page);
   else await page.route("**/api/**", (r) => r.abort());
 
-  await page.goto("http://127.0.0.1:3000/", { waitUntil: "networkidle" });
+  await page.goto("http://127.0.0.1:3000/wikis", { waitUntil: "networkidle" });
   await page.waitForTimeout(800);
 
   const result = { name };

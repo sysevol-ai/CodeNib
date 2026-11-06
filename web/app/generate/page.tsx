@@ -107,7 +107,7 @@ export default function GenerateWikiPage({
             ) : (
               <p>
                 This server has not enabled visitor Wiki generation yet. You can
-                still read the <AppLink href="/">ready Wikis</AppLink>.
+                still read the <AppLink href="/wikis">ready Wikis</AppLink>.
               </p>
             )}
           </div>

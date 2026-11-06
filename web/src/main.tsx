@@ -15,6 +15,7 @@ const SavedWikiPage = lazy(() => import("@/app/saved-wiki/page"));
 const AddRepo = lazy(() => import("@/app/add-repo/page"));
 const RepositoryRoute = lazy(() => import("@/components/RepositoryRoute"));
 const ShareCardPage = lazy(() => import("@/app/share-card/page"));
+const GuardCasesPage = lazy(() => import("@/app/guard/page"));
 
 function RouteLoading() {
   return (
@@ -31,6 +32,10 @@ function App() {
   if (segments.length === 0) {
     const repo = new URLSearchParams(location.search).get("repo");
     if (repo) return <RepositoryRoute key={repo} input={repo} />;
+    // The demo opens on real guard cases; the Wiki home moved to /wikis.
+    return <GuardCasesPage />;
+  }
+  if (segments[0] === "wikis" && segments.length === 1) {
     return <Landing />;
   }
   if (segments[0] === "share-card" && segments.length <= 2) {

@@ -7,6 +7,7 @@ const events = new Set([
   "page_view", "example_view", "example_source_open", "example_github_open",
   "example_wiki_open", "example_share", "repository_submit",
   "generation_form_view", "generation_start", "first_chapter_read", "agent_setup_open",
+  "guard_case_view", "install_command_copy",
 ]);
 let send;
 
