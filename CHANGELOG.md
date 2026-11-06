@@ -11,8 +11,6 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 ## [Unreleased]
 
-## [0.2.6] - 2026-11-06
-
 ### Added
 
 - `codenib guard check` compares the working tree with a commit and lists the
