@@ -84,7 +84,8 @@ try {
   await copyPage.goto(base, { waitUntil: "networkidle" });
   await copyPage.locator("button.copy").click();
   assert.equal(await copyPage.evaluate(() => navigator.clipboard.readText()),
-    'python -m pip install "codenib[graph]"\ncodenib guard install --agent claude');
+    'git clone https://github.com/sysevol-ai/CodeNib && cd CodeNib\n(cd web && npm ci && npm run build)\n' +
+    'python -m pip install ".[graph]"\ncd /path/to/your/repo && codenib guard install --agent claude');
   await copyPage.locator(".strip .u").first().hover();
   assert.match(await copyPage.locator(".unit-tip").textContent(), /django\/django-11149 · CodeStory: flagged/);
   await copyContext.close();

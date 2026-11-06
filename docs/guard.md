@@ -33,8 +33,14 @@ second for a small project to a few minutes for one the size of Django.
 
 ## Add it to your agent
 
+The guard is on CodeNib's main branch and ships in the next release. Until
+then, install CodeNib from source; building it needs Python 3.10 or newer,
+Git and Node.js 20 or newer:
+
 ```bash
-python -m pip install "codenib[graph]"
+git clone https://github.com/sysevol-ai/CodeNib && cd CodeNib
+(cd web && npm ci && npm run build)
+python -m pip install ".[graph]"
 cd /path/to/repository
 codenib guard install --agent claude      # or --agent codex, or --agent all
 ```
