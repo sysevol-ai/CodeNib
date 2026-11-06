@@ -29,6 +29,14 @@ The homepage's evidence is generated, not typed:
 - Patches and full-suite results are from PatchDiff (Wang, Pradel and Liu,
   ICSE 2026), CC BY 4.0. Keep the attribution next to the case.
 
+- The xarray case is the one the plan named; its caption says why its list is
+  long (a module-level import made the guard count the whole file as changed).
+- "What it looks like in Claude Code" condenses a real headless session with
+  the guard hooks on CodeNib's own repository. Its sanitized transcript is
+  `assets/demos/guard-session.jsonl`; quotes on the page are verbatim from it.
+  Replace it with a session from the #975 in-the-loop A/B when that runs, and
+  never with a staged one.
+
 The install commands only work once a CodeNib release includes `codenib
 guard`; publish the homepage after that release.
 

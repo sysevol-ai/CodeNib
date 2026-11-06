@@ -30,7 +30,10 @@ async function assertReadable(page) {
     overflow: document.documentElement.scrollWidth > innerWidth,
     title: document.querySelector(".hero h1")?.textContent,
     brokenTest: document.querySelector(".hero-panel .r-broken")?.textContent,
-    chain: [...document.querySelectorAll(".chain .c-name")].map(node => node.textContent),
+    chains: ["xarray", "sympy"].map(id => [...document.querySelectorAll(`#case-${id} .chain .c-name`)]
+      .map(node => node.textContent)),
+    shownCase: ["xarray", "sympy"].filter(id =>
+      getComputedStyle(document.getElementById(`case-${id}`)).display !== "none"),
     squares: [...document.querySelectorAll(".strip")].map(strip => [
       strip.querySelectorAll(".u").length, strip.querySelectorAll(".u.hit").length]),
     install: document.getElementById("install-command")?.textContent,
@@ -39,8 +42,11 @@ async function assertReadable(page) {
   assert.equal(state.overflow, false, "the homepage must not scroll sideways");
   assert.match(state.title, /What did it break\?/);
   assert.match(state.brokenTest, /test_check_homomorphism/);
-  assert.deepEqual(state.chain, ["test_check_homomorphism", "homomorphism",
-    "_check_homomorphism", "_check_homomorphism._image"]);
+  assert.deepEqual(state.chains, [
+    ["TestDataset.test_copy", "create_test_data", "Dataset.__init__", "merge_data_and_coords"],
+    ["test_check_homomorphism", "homomorphism", "_check_homomorphism", "_check_homomorphism._image"],
+  ]);
+  assert.deepEqual(state.shownCase, ["xarray"], "the sketch's xarray case shows first");
   assert.deepEqual(state.squares, [[68, 35], [68, 22]], "the chart is static HTML");
   assert.match(state.install, /codenib guard install --agent claude/);
   assert.equal(state.monoDiff, "pre", "the patch keeps its line structure");

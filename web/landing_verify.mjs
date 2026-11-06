@@ -62,6 +62,21 @@ try {
   assert.equal(await fallback.locator("button.copy").isVisible(), false, "no dead button without JavaScript");
   await noJs.close();
 
+  // The case switch is plain radio inputs, so it works with JavaScript off.
+  for (const javaScriptEnabled of [true, false]) {
+    const switchContext = await browser.newContext({ javaScriptEnabled, viewport: { width: 1280, height: 900 } });
+    const switchPage = await switchContext.newPage();
+    await switchPage.goto(base);
+    assert.ok(await switchPage.locator("#case-xarray").isVisible());
+    assert.equal(await switchPage.locator("#case-sympy").isVisible(), false);
+    await switchPage.locator('label[for="pick-sympy"]').click();
+    assert.ok(await switchPage.locator("#case-sympy").isVisible());
+    assert.equal(await switchPage.locator("#case-xarray").isVisible(), false);
+    await switchPage.keyboard.press("ArrowLeft");
+    assert.ok(await switchPage.locator("#case-xarray").isVisible(), "arrow keys move between cases");
+    await switchContext.close();
+  }
+
   // Copy puts the two commands on the clipboard without their prompts, and
   // the chart names the case under the pointer.
   const copyContext = await browser.newContext({ permissions: ["clipboard-read", "clipboard-write"] });

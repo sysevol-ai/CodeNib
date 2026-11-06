@@ -186,12 +186,42 @@ main > section { padding: 96px 0 0; }
 .verdicts .v-fail::before { content: "\2717"; color: var(--t-del); }
 
 /* ---- real case ---- */
-.case-frame { margin-top: 32px; }
+.case-pick { position: absolute; opacity: 0; pointer-events: none; }
+.case-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 28px; }
+.case-tabs label {
+  cursor: pointer; padding: 9px 14px; border-radius: var(--r-ui);
+  border: 1px solid var(--line-strong); color: var(--ink-2); font-size: 14px;
+  transition: border-color .15s, background .15s, color .15s;
+}
+.case-tabs label strong { color: var(--ink); font-weight: 600; margin-right: 4px; }
+.case-tabs label:hover { border-color: var(--ink-3); }
+#pick-xarray:checked ~ .case-tabs label[for="pick-xarray"],
+#pick-sympy:checked ~ .case-tabs label[for="pick-sympy"] { border-color: var(--accent); background: rgba(11, 87, 208, 0.06); color: var(--ink); box-shadow: inset 0 0 0 1px var(--accent); }
+#pick-xarray:focus-visible ~ .case-tabs label[for="pick-xarray"],
+#pick-sympy:focus-visible ~ .case-tabs label[for="pick-sympy"] { outline: 3px solid var(--accent); outline-offset: 3px; }
+#pick-xarray:checked ~ #case-sympy, #pick-sympy:checked ~ #case-xarray { display: none; }
+.case-frame { margin-top: 16px; }
 .case-panels { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; align-items: stretch; }
 .case-caption { margin-top: 18px; display: grid; gap: 8px; max-width: 86ch; }
 .case-caption p { color: var(--ink); font-size: 15px; }
 .case-caption em.mono { font-style: normal; font-size: 0.9em; color: var(--ink-2); }
 .case-caption .case-source { color: var(--ink-2); font-size: 13.5px; }
+
+/* ---- replay ---- */
+.agent-grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: clamp(32px, 5vw, 80px); align-items: start; }
+.agent-grid code { font-size: 0.9em; }
+.replay-steps { list-style: none; padding: 8px 18px 14px; }
+.replay-steps li { display: grid; grid-template-columns: 3.4rem minmax(0, 1fr); gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--t-line); font-size: 14px; color: var(--t-soft); }
+.replay-steps li:last-child { border-bottom: 0; }
+.replay-steps p + p { margin-top: 6px; }
+.replay-steps code { color: var(--t-text); }
+.r-time { color: var(--t-muted); font-size: 12px; padding-top: 2px; }
+.r-who { color: var(--t-text); font-size: 12.5px; font-weight: 600; letter-spacing: 0.01em; }
+.r-quote { color: var(--t-text); }
+.r-hook .r-who { color: var(--t-accent); }
+.r-hooktext, .r-cmd { font-size: 12px; line-height: 1.65; color: var(--t-soft); overflow-wrap: anywhere; }
+.r-hooktext { word-break: break-all; }
+.r-hook > div { padding: 10px 12px; margin: -4px 0; border-radius: var(--r-ui); background: rgba(138, 180, 248, 0.08); box-shadow: inset 0 0 0 1px rgba(138, 180, 248, 0.3); }
 
 /* ---- evidence ---- */
 .evidence-grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: clamp(32px, 5vw, 80px); align-items: start; }
@@ -279,10 +309,11 @@ body > footer { border-top: 1px solid var(--line); }
 @media (max-width: 1080px) {
   .hero-grid { grid-template-columns: minmax(0, 1fr); }
   .case-panels { grid-template-columns: minmax(0, 1fr); }
-  .evidence-grid, .notes-grid, .install-grid { grid-template-columns: minmax(0, 1fr); }
+  .evidence-grid, .notes-grid, .install-grid, .agent-grid { grid-template-columns: minmax(0, 1fr); }
   .more-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 640px) {
+  .replay-steps li { grid-template-columns: minmax(0, 1fr); gap: 4px; }
   .verdicts div { grid-template-columns: minmax(0, 1fr); gap: 2px; }
   .hero-panel .report { font-size: 12px; }
   .wrap { padding-inline: 18px; }
@@ -367,8 +398,40 @@ body > footer { border-top: 1px solid var(--line); }
   <section id="real-case" class="case" aria-labelledby="case-title">
     <div class="wrap">
       <h2 id="case-title">A patch that passed SWE-bench, and the test it broke.</h2>
-      <p class="section-sub">OpenHands fixed sympy issue 24443, and SWE-bench marked it solved, because SWE-bench runs only the test files that the issue&rsquo;s own pull request changed. The project&rsquo;s full suite has 11,144 test functions.</p>
-      <figure class="case-frame">
+      <p class="section-sub">These agent patches passed SWE-bench, which runs only the test files that the issue&rsquo;s own pull request changed. The project&rsquo;s full suite found a test each one broke, and the guard had named that test before.</p>
+      <input class="case-pick" type="radio" name="case" id="pick-xarray" checked>
+      <input class="case-pick" type="radio" name="case" id="pick-sympy">
+      <div class="case-tabs" role="group" aria-label="Choose a case">
+        <label for="pick-xarray"><strong>xarray</strong> test_copy &middot; OpenHands</label>
+        <label for="pick-sympy"><strong>sympy</strong> test_check_homomorphism &middot; OpenHands</label>
+      </div>
+      <figure class="case-frame" id="case-xarray">
+        <div class="case-panels">
+          <div class="panel">
+            <div class="panel-bar"><span>The agent&rsquo;s patch</span><span class="mono">xarray/core/merge.py</span></div>
+<pre class="diff mono" aria-label="The agent's patch to xarray/core/merge.py"><span class="hunk">@@ -15,6 +15,7 @@ from typing import (</span><span class="ctx">     Union,</span><span class="ctx"> )</span><span class="ctx"> </span><span class="add">+import copy</span><span class="ctx"> import pandas as pd</span><span class="hunk">@@ -501,7 +502,7 @@ def merge_attrs(variable_attrs, combine_attrs):</span><span class="ctx">     if combine_attrs == &quot;drop&quot;:</span><span class="ctx">         return {}</span><span class="ctx">     elif combine_attrs == &quot;override&quot;:</span><span class="del">-        return variable_attrs[0]</span><span class="add">+        return copy.deepcopy(variable_attrs[0])</span><span class="ctx">     elif combine_attrs == &quot;no_conflicts&quot;:</span></pre>
+          </div>
+          <div class="panel">
+            <div class="panel-bar"><span>Why the guard flagged test_copy</span><span class="mono">call path in the graph</span></div>
+            <ol class="chain mono" aria-label="Call path from test_copy to the changed file">
+              <li><span class="c-name">TestDataset.test_copy</span><span class="c-where">calls at test_dataset.py:2428</span></li>
+              <li><span class="c-name">create_test_data</span><span class="c-where">calls at test_dataset.py:72</span></li>
+              <li><span class="c-name">Dataset.__init__</span><span class="c-where">calls at dataset.py:630</span></li>
+              <li class="c-changed"><span class="c-name">merge_data_and_coords</span><span class="c-where">in merge.py, which the patch changed</span></li>
+            </ol>
+            <dl class="verdicts">
+              <div><dt>SWE-bench&rsquo;s tests</dt><dd class="v-pass">pass, so the patch counts as solved</dd></div>
+              <div><dt>Full test suite</dt><dd class="v-fail">TestDataset::test_copy fails</dd></div>
+              <div><dt>CodeNib guard</dt><dd>flagged test_copy, among 1,304 of 2,198 tests</dd></div>
+            </dl>
+          </div>
+        </div>
+        <figcaption class="case-caption">
+          <p>In the study&rsquo;s full-suite run, <code>TestDataset::test_copy</code> fails with this patch and passes with the developer&rsquo;s fix. The new <code>import copy</code> sits outside any function, so the guard counted all of <code>merge.py</code> as changed. That is why the path ends at <code>merge_data_and_coords</code> rather than the edited <code>merge_attrs</code>, and why the list is long. The sympy case shows a precise one.</p>
+          <p class="case-source">Guard output: <code>codenib guard</code> at xarray&rsquo;s base commit with OpenHands&rsquo; patch applied. Patch and full-suite results: Wang, Pradel and Liu, <a class="text-link" href="https://arxiv.org/abs/2503.15223">ICSE 2026</a>, data under CC BY 4.0. <a class="text-link" href="https://demo.codenib.ai/">Browse more cases, including misses &rarr;</a></p>
+        </figcaption>
+      </figure>
+      <figure class="case-frame" id="case-sympy">
         <div class="case-panels">
           <div class="panel">
             <div class="panel-bar"><span>The agent&rsquo;s patch</span><span class="mono">sympy/combinatorics/homomorphisms.py, dedented</span></div>
@@ -390,9 +453,32 @@ body > footer { border-top: 1px solid var(--line); }
           </div>
         </div>
         <figcaption class="case-caption">
-          <p>In the study&rsquo;s full-suite run, <code>test_check_homomorphism</code> fails with this patch and passes with the developer&rsquo;s fix. Running the 3 flagged tests before finishing would have caught it.</p>
+          <p>In the study&rsquo;s full-suite run, <code>test_check_homomorphism</code> fails with this patch and passes with the developer&rsquo;s fix. The guard listed 3 of sympy&rsquo;s 11,144 tests; running them before finishing would have caught it.</p>
           <p class="case-source">Guard output: <code>codenib guard</code> at sympy&rsquo;s base commit with the patch applied, with directories left out to fit. Patch and full-suite results: Wang, Pradel and Liu, <a class="text-link" href="https://arxiv.org/abs/2503.15223">ICSE 2026</a>, data under CC BY 4.0. <a class="text-link" href="https://demo.codenib.ai/">Browse more cases, including misses &rarr;</a></p>
         </figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section id="in-agent" aria-labelledby="agent-title">
+    <div class="wrap agent-grid">
+      <div>
+        <h2 id="agent-title">What it looks like in Claude Code.</h2>
+        <p class="section-sub">A real session with the hooks installed, on CodeNib&rsquo;s own repository. We asked for a genuine fix to <code>is_test_file</code>, a function 13 modules use, and let the agent work.</p>
+        <p class="section-sub">When it tried to stop, the guard handed back 160 tests that reach the change, and the agent ran them before finishing. Nothing was broken this time, so the session shows the hook doing its job, not a catch.</p>
+        <p class="section-sub">It also showed a flaw: the suggested command led with the tests the agent had just edited. Tests that reach the change through calls now come first.</p>
+        <p class="evidence-links"><a class="text-link" href="assets/demos/guard-session.jsonl">Read the transcript</a> &middot; headless Claude Code 2.1.318, 6 November 2026, paths removed</p>
+      </div>
+      <figure class="panel replay" aria-label="Condensed timeline of the session">
+        <div class="panel-bar"><span>Claude Code session, condensed</span><span class="mono">codenib &middot; base f8fef754</span></div>
+        <ol class="replay-steps">
+          <li><span class="r-time mono">0:00</span><div><p class="r-who">You</p><p>&ldquo;In codenib/utils.py, is_test_file treats any file whose name starts with &lsquo;test&rsquo; as a test file &hellip; Make it match only real test file names &hellip; Add a unit test for the new behaviour.&rdquo;</p></div></li>
+          <li><span class="r-time mono">1:54</span><div><p class="r-who">Claude Code</p><p>Edits <code>codenib/utils.py</code> and <code>test/test_source_classification.py</code>, runs the new tests and 100 related ones, and starts the unit tier in the background. Then it tries to stop:</p><p class="r-quote">&ldquo;The unit tier is still running in the background. Once it finishes, I&rsquo;ll check that the new tests fail against the old rule.&rdquo;</p></div></li>
+          <li class="r-hook"><span class="r-time mono">2:02</span><div><p class="r-who">Stop hook &middot; CodeNib guard</p><p class="mono r-hooktext">160 tests reach the changed code within 3 calls.<br>- test/agent/test_repository_search.py::test_implementation_candidates_survive_test_saturated_rankings: &hellip; (test/agent/test_repository_search.py:161) -&gt; is_test_file<br>&hellip;</p></div></li>
+          <li><span class="r-time mono">2:04</span><div><p class="r-who">Claude Code</p><p class="r-quote">&ldquo;The guard hook lists tests that reach this change, so I&rsquo;ll run the command it gave and check on the unit tier.&rdquo;</p><p class="mono r-cmd">$ python -m pytest &hellip; (the 20 tests in the hook&rsquo;s command)<br>33 passed in 0.69s</p></div></li>
+          <li><span class="r-time mono">3:32</span><div><p class="r-who">Claude Code</p><p>Runs the whole unit tier with and without the change and reports the same 43 failures both ways, so none come from the change; 9,071 tests pass. It also checks that its new tests fail on the old rule.</p></div></li>
+          <li><span class="r-time mono">8:55</span><div><p class="r-who">Claude Code</p><p class="r-quote">&ldquo;All the new tests pass, but the unit tier has 43 failures that also occur without this change. Nothing is committed.&rdquo;</p></div></li>
+        </ol>
       </figure>
     </div>
   </section>
@@ -402,7 +488,7 @@ body > footer { border-top: 1px solid var(--line); }
       <div>
         <h2 id="evidence-title">About half of the hidden regressions, at three tests a patch.</h2>
         <p class="section-sub">We ran the guard on 68 agent patches that pass SWE-bench but break other tests in the project&rsquo;s full suite. It flagged a broken test in 35 of them. On patches that broke nothing, it flagged a median of 3 tests out of thousands.</p>
-        <p class="section-sub">Most of the other 33 go through calls a code graph cannot see: framework code that calls methods by name, operators such as <code>==</code>, and tests that start the program in a separate process. Adding a record of which tests run which lines is the next step.</p>
+        <p class="section-sub">Most of the other 33 go through calls a code graph cannot see: framework code that calls methods by name, operators such as <code>==</code>, and tests that start the program in a separate process. Those need a record of which tests run which lines, a coverage map; that version is in progress.</p>
         <p class="evidence-links"><a class="text-link" href="https://github.com/sysevol-ai/CodeNib/pull/976">Method and data</a> · <a class="text-link" href="https://github.com/sysevol-ai/CodeNib/issues/975">What comes next</a></p>
       </div>
       <figure class="units" aria-labelledby="units-caption">
