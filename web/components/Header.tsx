@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { AppLink } from "@/lib/router";
-import { assetUrl } from "@/lib/runtime";
+import { assetUrl, guardHome } from "@/lib/runtime";
 import { AGENT_SETUP_URL } from "@/components/AgentSetup";
 import { recordExperience } from "@/lib/experience";
 
@@ -81,8 +81,8 @@ export default function Header({
       </AppLink>
       {center}
       <div className="header-right">
-        <AppLink className="header-link" href="/">Guard cases</AppLink>
-        <AppLink className="header-link" href="/browse">Wikis</AppLink>
+        {guardHome() && <AppLink className="header-link" href="/guard">Guard cases</AppLink>}
+        <AppLink className="header-link" href="/browse">{guardHome() ? "Wikis" : "Browse"}</AppLink>
         <a className="header-link agent-setup-link" href={AGENT_SETUP_URL} target="_blank" rel="noreferrer" onClick={() => recordExperience("agent_setup_open")}>
           Use with your agent
         </a>

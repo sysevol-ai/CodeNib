@@ -240,7 +240,7 @@ try {
       await page.getByText("Your saved Wikis", { exact: true }).count(),
       0,
     );
-    await page.getByRole("link", { name: "Wikis", exact: true }).click();
+    await page.getByRole("link", { name: "Browse", exact: true }).click();
     await page
       .getByRole("link", { name: "Open psf/requests wiki", exact: true })
       .waitFor();

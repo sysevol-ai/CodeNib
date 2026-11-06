@@ -41,6 +41,11 @@ The homepage's evidence is generated, not typed:
 The install commands only work once a CodeNib release includes `codenib
 guard`; publish the homepage after that release.
 
+The demo (`web/`) is also the Wiki UI packaged with CodeNib, so its home page
+is a deployment setting: the hosted demo's `runtime-config.js` sets
+`home: "guard"` to open on the guard cases. Without it, `/` stays the Wiki
+home. `/guard` and `/wikis` always reach the two pages.
+
 The Requests example below now serves the Wiki homepage (`/wikis` on the demo).
 
 The example is one selected call path, not a runtime trace or a whole-repository

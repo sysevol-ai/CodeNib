@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 import "@/app/globals.css";
 import { githubPathInput } from "@/lib/githubPreview";
 import { routeSegments, useBrowserLocation } from "@/lib/router";
-import { assetUrl, restoreStaticRoute } from "@/lib/runtime";
+import { assetUrl, guardHome, restoreStaticRoute } from "@/lib/runtime";
 import { startExperienceEvents } from "@/lib/experience";
 
 const AskPage = lazy(() => import("@/app/[repoId]/ask/page"));
@@ -32,7 +32,11 @@ function App() {
   if (segments.length === 0) {
     const repo = new URLSearchParams(location.search).get("repo");
     if (repo) return <RepositoryRoute key={repo} input={repo} />;
-    // The demo opens on real guard cases; the Wiki home moved to /wikis.
+    // The hosted demo opens on real guard cases (runtime `home: "guard"`);
+    // a local Wiki keeps its home. Both pages also have their own routes.
+    return guardHome() ? <GuardCasesPage /> : <Landing />;
+  }
+  if (segments[0] === "guard" && segments.length === 1) {
     return <GuardCasesPage />;
   }
   if (segments[0] === "wikis" && segments.length === 1) {

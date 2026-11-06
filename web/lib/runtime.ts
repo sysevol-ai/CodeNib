@@ -7,6 +7,8 @@ declare global {
       dataBase?: string;
       trialApiBase?: string;
       experienceEvents?: boolean;
+      // The hosted demo opens on the guard cases; a local Wiki keeps its home.
+      home?: "wiki" | "guard";
     };
   }
 }
@@ -28,6 +30,10 @@ export function appBasePath(): string {
 export function apiBase(): string {
   if (typeof window === "undefined") return "";
   return (window.__CODENIB_API_BASE__ ?? "").replace(/\/+$/, "");
+}
+
+export function guardHome(): boolean {
+  return typeof window !== "undefined" && window.__CODENIB_RUNTIME__?.home === "guard";
 }
 
 export function isStaticRuntime(): boolean {
