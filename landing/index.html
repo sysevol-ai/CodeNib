@@ -7,14 +7,14 @@ SPDX-License-Identifier: Apache-2.0
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CodeNib: Understand Unfamiliar Code with Evidence.</title>
-<meta name="description" content="Understand unfamiliar code with evidence. Try a Requests question, follow its call path, and inspect the source. Then explore your own repository or connect your agent.">
-<meta property="og:title" content="CodeNib: Understand Unfamiliar Code with Evidence.">
-<meta property="og:description" content="A real question, an interactive code path, and the source behind it. Explore a repository Wiki, then bring that context to your coding agent.">
+<title>CodeNib: What Did Your Coding Agent Break?</title>
+<meta name="description" content="Before Claude Code or Codex finishes, CodeNib lists the tests its change reaches and the call path to each one. Local, deterministic, no model calls.">
+<meta property="og:title" content="CodeNib: What Did Your Coding Agent Break?">
+<meta property="og:description" content="A change-time guard for coding agents: the tests a change reaches, with call paths, and notes that notice when their code moves.">
 <meta property="og:image" content="https://codenib.ai/assets/explore/requests-card.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="CodeNib's Requests example: follow indexed calls and inspect their source.">
+<meta property="og:image:alt" content="CodeNib">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://codenib.ai/">
 <meta name="twitter:card" content="summary_large_image">
@@ -36,12 +36,9 @@ SPDX-License-Identifier: Apache-2.0
   font-display: swap;
 }
 
-/* Light page chrome around the dark evidence example. The same neutral greys
-   and single blue as the demo (web/app/globals.css). */
+/* Light page, dark terminal panels. The same neutral greys and single blue as
+   the demo (web/app/globals.css). */
 :root {
-  /* Read by the shared example component (shadow DOM) for its type. */
-  --font-geist-sans: "Geist";
-  --font-geist-mono: "Geist Mono";
   --bg: #ffffff;
   --surface: #ffffff;
   --subtle: #f8f9fa;
@@ -53,6 +50,18 @@ SPDX-License-Identifier: Apache-2.0
   --accent: #0b57d0;
   --accent-hover: #0842a0;
   --accent-ink: #ffffff;
+  /* Terminal panels */
+  --t-bg: #121315;
+  --t-bar: #1a1b1e;
+  --t-line: rgba(232, 234, 237, 0.12);
+  --t-text: #e8eaed;
+  --t-soft: #bdc1c6;
+  --t-muted: #9aa0a6;
+  --t-accent: #8ab4f8;
+  --t-add: #81c995;
+  --t-del: #f28b82;
+  --t-add-bg: rgba(129, 201, 149, 0.10);
+  --t-del-bg: rgba(242, 139, 130, 0.10);
   --r-box: 10px;   /* containers */
   --r-ui: 6px;     /* interactive */
 }
@@ -67,17 +76,21 @@ body {
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
 }
-.mono { font-family: "Geist Mono", ui-monospace, monospace; }
+::selection { background: rgba(11, 87, 208, 0.18); }
+.mono, code { font-family: "Geist Mono", ui-monospace, monospace; }
+code { font-size: 0.92em; }
 a { color: inherit; text-decoration: none; }
 img { max-width: 100%; height: auto; display: block; }
-/* One content width everywhere: nav, hero, shot, grid, footer share edges. */
 .wrap { max-width: 1280px; margin: 0 auto; padding: 0 32px; }
+a:focus-visible, button:focus-visible, summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
+[id] { scroll-margin-top: 84px; }
+.text-link { color: var(--accent); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+.text-link:hover { color: var(--accent-hover); }
 
 /* ---- nav ---- */
-/* Page chrome only: the example has its own header and footer. */
 body > header {
   position: sticky; top: 0; z-index: 20;
-  background: var(--bg);
+  background: rgba(255, 255, 255, 0.94);
   border-bottom: 1px solid var(--line);
 }
 .nav { display: flex; align-items: center; gap: 28px; height: 64px; }
@@ -90,7 +103,7 @@ body > header {
 
 .btn {
   display: inline-flex; align-items: center; gap: 8px;
-  font-size: 14.5px; font-weight: 540; white-space: nowrap;
+  font-size: 14.5px; font-weight: 560; white-space: nowrap;
   padding: 9px 18px; border-radius: var(--r-ui);
   transition: background .15s, border-color .15s;
 }
@@ -100,136 +113,188 @@ body > header {
 .btn-ghost:hover { border-color: var(--ink-3); background: var(--subtle); }
 .btn-lg { font-size: 15.5px; padding: 12px 24px; }
 
-/* ---- hero: question, explanation, calls, source ---- */
-.stage {
-  --h-text: #e8eaed; --h-soft: #bdc1c6; --h-muted: #9aa0a6;
-  --h-line: rgba(232, 234, 237, 0.12); --h-line-strong: rgba(232, 234, 237, 0.26);
-  --h-accent: #8ab4f8; --h-trace: #8ab4f8;
-  position: relative; overflow: hidden;
-  padding: clamp(28px, 3.5vw, 48px) 0;
-  color: var(--h-text);
-  background: #121315;
-}
-.stage-row {
-  position: relative; width: 100%;
-  display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
-  column-gap: clamp(32px, 4.5vw, 72px); align-items: stretch;
-}
-.stage-intro { min-width: 0; padding-top: 18px; }
-.stage-intro h1 { margin: 0 0 20px; color: #fff; font-size: clamp(2.4rem, 3.7vw, 3.4rem); font-weight: 650; line-height: 1.08; letter-spacing: -0.045em; text-wrap: balance; }
-.stage-sub { max-width: 46ch; color: var(--h-soft); font-size: 17px; line-height: 1.65; }
-.stage-ctas { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
-.stage .btn-primary { background: var(--h-accent); color: #062e6f; }
-.stage .btn-primary:hover { background: #aecbfa; }
-.stage .btn-ghost { background: transparent; border-color: var(--h-line-strong); color: var(--h-text); }
-.stage .btn-ghost:hover { background: rgba(255, 255, 255, 0.06); border-color: var(--h-soft); }
-.stage-note { margin-top: 12px; color: var(--h-muted); font-size: 13px; }
-.example-tasks { display: grid; gap: 8px; margin-top: 30px; }
-.example-tasks > p { color: var(--h-soft); font-size: 13px; font-weight: 600; margin-bottom: 2px; }
-.example-tasks button { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 44px; padding: 11px 14px; border: 1px solid var(--h-line); border-radius: var(--r-ui); background: rgba(255, 255, 255, 0.03); color: var(--h-soft); font: inherit; font-size: 14px; line-height: 1.45; cursor: pointer; text-align: left; }
-.example-tasks button::after { content: "→"; color: var(--h-accent); }
-.example-tasks button:hover { border-color: var(--h-line-strong); background: rgba(255, 255, 255, 0.05); color: #fff; }
-.example-tasks button[aria-pressed="true"] { border-color: var(--h-accent); background: rgba(138, 180, 248, 0.1); color: #fff; }
-.example-tasks button:focus-visible { outline: 3px solid var(--h-trace); outline-offset: 3px; }
-html:not(.js) .example-tasks { display: none; }
-.stage-evidence { min-width: 0; }
-.repository-handoff { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: clamp(32px, 4.5vw, 72px); align-items: start; }
-.repository-handoff .section-sub { font-size: 16px; }
-.repo-entry { padding: 24px; border: 1px solid var(--line); border-radius: var(--r-box); background: var(--surface); }
-.repo-entry label { display: block; font-size: 14px; font-weight: 600; margin-bottom: 8px; }
-.repo-entry-row { display: flex; gap: 8px; }
-.repo-entry input { min-width: 0; flex: 1; font: inherit; font-size: 15px; padding: 13px 16px; border: 1px solid var(--line-strong); border-radius: var(--r-ui); background: var(--surface); color: var(--ink); }
-.repo-entry input::placeholder { color: var(--ink-2); }
-.repo-entry input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.repo-entry button { font: inherit; font-size: 15px; font-weight: 600; border: 0; cursor: pointer; padding: 12px 20px; }
-.repo-entry button:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
-.repo-entry p { font-size: 13px; color: var(--ink-2); margin-top: 12px; }
-.repo-entry strong { color: var(--ink); }
-.repository-more { margin-top: 20px; font-size: 14px; color: var(--ink-2); }
-/* The shared example (shadow DOM) takes the stage's palette through the
-   properties it reads. */
-.stage codenib-explorer {
-  display: block; min-width: 0;
-  --bg-surface: #1a1b1e; --bg-muted: rgba(255, 255, 255, 0.03);
-  --border-subtle: rgba(232, 234, 237, 0.14); --text-primary: #e8eaed;
-  --text-secondary: #bdc1c6; --accent: #8ab4f8; --accent-soft: rgba(138, 180, 248, 0.14);
-  --explore-code-bg: #111214; --explore-code-rule: rgba(232, 234, 237, 0.12);
-  --explore-code-line: rgba(138, 180, 248, 0.16); --explore-code-mark: #8ab4f8;
-}
-.agent-handoff { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: clamp(32px, 4.5vw, 72px); align-items: start; }
-.agent-handoff .setup { margin-top: 0; }
+/* ---- type ---- */
+h2 { font-size: clamp(1.7rem, 3vw, 2.3rem); font-weight: 640; letter-spacing: -0.03em; line-height: 1.15; text-wrap: balance; }
+.section-sub { margin-top: 14px; color: var(--ink-2); font-size: 16.5px; max-width: 62ch; }
+.section-sub + .section-sub { margin-top: 12px; }
+main > section { padding: 96px 0 0; }
 
-/* Static product preview: visiting the landing page never loads the demo. */
-.frame {
-  border: 1px solid var(--line); border-radius: var(--r-box);
-  background: var(--surface); overflow: hidden;
+/* ---- hero ---- */
+.hero { padding: clamp(48px, 6vw, 88px) 0 0; }
+.hero h1 {
+  max-width: 15ch;
+  font-size: clamp(2.6rem, 5vw, 4.4rem); font-weight: 660; line-height: 1.02;
+  letter-spacing: -0.04em; text-wrap: balance;
 }
-.frame-bar {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 10px 16px; border-bottom: 1px solid var(--line);
-  background: var(--subtle); color: var(--ink-2); font-size: 12px;
-}
-.agent-demo { display: block; width: 100%; height: auto; background: #121315; }
-.preview-caption { padding: 12px 16px; font-size: 13px; color: var(--ink-2); }
-.evidence { margin-top: 24px; padding: 16px 20px; border: 1px solid var(--line); border-radius: var(--r-ui); background: var(--subtle); font-size: 15px; color: var(--ink-2); }
-.evidence strong { color: var(--ink); font-weight: 600; }
-.evidence a, .text-link { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
-.setup pre { overflow-x: auto; margin: 20px 0; padding: 18px; background: #121315; color: #e8eaed; border-radius: var(--r-ui); font-size: 13px; }
-.setup p { margin-top: 14px; color: var(--ink-2); font-size: 15px; }
-.setup code { font-family: "Geist Mono", ui-monospace, monospace; }
-a:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; }
-[id] { scroll-margin-top: 84px; }
+.hero-sub { margin-top: 24px; max-width: 54ch; color: var(--ink-2); font-size: clamp(17px, 1.6vw, 19.5px); line-height: 1.55; }
+.hero-ctas { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 32px; }
+.hero-note { margin-top: 14px; color: var(--ink-2); font-size: 13.5px; }
 
-/* ---- sections ---- */
-main > section { padding: 80px 0 0; }
-h2 { font-size: clamp(1.7rem, 3vw, 2.3rem); font-weight: 620; letter-spacing: -0.025em; line-height: 1.15; }
-.section-sub { margin-top: 12px; color: var(--ink-2); font-size: 16.5px; max-width: 58ch; }
+/* ---- terminal panels ---- */
+.panel { min-width: 0; background: var(--t-bg); color: var(--t-text); border-radius: var(--r-box); overflow: hidden; }
+.panel-bar {
+  display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 16px;
+  padding: 11px 18px; background: var(--t-bar); border-bottom: 1px solid var(--t-line);
+  color: var(--t-soft); font-size: 13px; font-weight: 560;
+}
+.panel-bar .mono { color: var(--t-muted); font-size: 12px; font-weight: 400; }
+.panel ::selection { background: rgba(138, 180, 248, 0.3); }
+.diff, .report { font-size: 12.5px; line-height: 1.7; }
+.diff { display: block; margin: 0; padding: 14px 0; overflow-x: auto; white-space: pre; color: var(--t-soft); tab-size: 4; }
+.diff > span { display: block; min-width: max-content; padding: 1px 18px; }
+.diff .hunk { margin-bottom: 6px; }
+.diff .hunk { color: var(--t-muted); }
+.diff .ctx { color: var(--t-soft); }
+.diff .del { color: var(--t-del); background: var(--t-del-bg); }
+.diff .add { color: var(--t-add); background: var(--t-add-bg); }
+.diff { scrollbar-color: rgba(232, 234, 237, 0.25) transparent; }
+.report { padding: 16px 18px 18px; }
+.report p { overflow-wrap: anywhere; }
+.r-muted { color: var(--t-muted); }
+.r-indent { padding-left: 2ch; }
+.r-head { margin-top: 12px; color: var(--t-text); }
+.r-head:first-child { margin-top: 0; }
+.r-head strong { color: var(--t-accent); font-weight: 600; }
+.r-gap { margin-top: 14px; }
+.r-list { list-style: none; margin: 8px 0 12px; display: grid; gap: 4px; }
+.r-list li { padding: 4px 1ch 4px 3ch; text-indent: -2ch; border-radius: 4px; word-break: break-all; }
+.r-list li::before { content: "- "; color: var(--t-muted); }
+.r-list .r-broken { background: var(--t-del-bg); box-shadow: inset 0 0 0 1px rgba(242, 139, 130, 0.45); }
 
-/* Product paths */
-/* Three paths as a ruled row, not three boxed cards. */
-.bento { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 32px; margin-top: 32px; }
-.cell {
-  border-top: 1px solid var(--ink);
-  padding-top: 20px;
-  display: flex; flex-direction: column; gap: 10px;
-}
-.cell h3 { font-size: 18px; font-weight: 600; }
-.cell p { font-size: 14.5px; color: var(--ink-2); }
-.cell .text-link { margin-top: auto; font-size: 14px; }
-.bento + .section-sub { margin-top: 32px; }
+/* ---- hero panel ---- */
+.hero-grid { display: grid; grid-template-columns: minmax(0, 6fr) minmax(0, 5fr); gap: clamp(32px, 5vw, 72px); align-items: center; }
+.hero-panel { box-shadow: 0 18px 48px -18px rgba(32, 33, 36, 0.35); }
+.hero-panel .report { font-size: 12.5px; }
 
-/* latest article */
-.latest-card {
-  display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr);
-  margin-top: 28px; overflow: hidden;
-  border: 1px solid var(--line); border-radius: var(--r-box);
-  background: var(--surface);
-  transition: border-color .2s;
-}
-.latest-card:hover { border-color: var(--ink-3); }
-.latest-copy { display: flex; flex-direction: column; justify-content: center; padding: 40px; }
-.latest-meta {
-  display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center;
-  color: var(--ink-2); font-family: "Geist Mono", monospace; font-size: 12px;
-}
-.latest-meta .tag { color: var(--accent); font-weight: 600; }
-.latest-card h3 {
-  margin-top: 18px; font-size: clamp(1.65rem, 3vw, 2.35rem);
-  font-weight: 620; letter-spacing: -.03em; line-height: 1.1;
-}
-.latest-card p { margin-top: 14px; color: var(--ink-2); font-size: 15.5px; max-width: 46ch; }
-.latest-more { margin-top: 23px; color: var(--accent); font-size: 14.5px; font-weight: 600; }
-.latest-art {
-  display: flex; align-items: center; min-height: 320px;
-  border-left: 1px solid var(--line); background: var(--subtle); padding: 24px;
-}
-.latest-art img { width: 100%; border: 1px solid var(--line); border-radius: var(--r-ui); }
+/* ---- call chain ---- */
+.chain { list-style: none; padding: 20px 18px 8px; display: grid; gap: 0; font-size: 13px; }
+.chain li { position: relative; display: grid; gap: 2px; padding: 0 0 18px 26px; }
+.chain li::before { content: ""; position: absolute; left: 4px; top: 6px; width: 9px; height: 9px; border-radius: 50%; border: 2px solid var(--t-accent); background: var(--t-bg); }
+.chain li::after { content: ""; position: absolute; left: 9px; top: 19px; bottom: 2px; width: 2px; background: rgba(138, 180, 248, 0.35); }
+.chain li:last-child { padding-bottom: 8px; }
+.chain li:last-child::after { display: none; }
+.chain .c-name { color: var(--t-text); overflow-wrap: anywhere; }
+.chain .c-where { color: var(--t-muted); font-size: 12px; }
+.chain .c-changed::before { border-color: var(--t-add); background: var(--t-add); }
+.chain .c-changed .c-where { color: var(--t-add); }
+.verdicts { margin: 6px 18px 18px; border-top: 1px solid var(--t-line); font-size: 13.5px; }
+.verdicts div { display: grid; grid-template-columns: 10.5rem minmax(0, 1fr); gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--t-line); }
+.verdicts dt { color: var(--t-muted); }
+.verdicts dd { color: var(--t-text); }
+.verdicts .v-pass::before, .verdicts .v-fail::before { display: inline-block; width: 1.2em; font-weight: 700; }
+.verdicts .v-pass::before { content: "\2713"; color: var(--t-add); }
+.verdicts .v-fail::before { content: "\2717"; color: var(--t-del); }
 
-/* final CTA */
-.cta-block { padding: 80px 0; }
-.cta-block .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 24px; }
-.cta-block h2 { font-size: clamp(1.7rem, 3vw, 2.3rem); }
-.cta-block .ctas { display: flex; gap: 12px; flex-wrap: wrap; }
+/* ---- real case ---- */
+.case-pick { position: absolute; opacity: 0; pointer-events: none; }
+.case-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 28px; }
+.case-tabs label {
+  cursor: pointer; padding: 9px 14px; border-radius: var(--r-ui);
+  border: 1px solid var(--line-strong); color: var(--ink-2); font-size: 14px;
+  transition: border-color .15s, background .15s, color .15s;
+}
+.case-tabs label strong { color: var(--ink); font-weight: 600; margin-right: 4px; }
+.case-tabs label:hover { border-color: var(--ink-3); }
+#pick-xarray:checked ~ .case-tabs label[for="pick-xarray"],
+#pick-sympy:checked ~ .case-tabs label[for="pick-sympy"] { border-color: var(--accent); background: rgba(11, 87, 208, 0.06); color: var(--ink); box-shadow: inset 0 0 0 1px var(--accent); }
+#pick-xarray:focus-visible ~ .case-tabs label[for="pick-xarray"],
+#pick-sympy:focus-visible ~ .case-tabs label[for="pick-sympy"] { outline: 3px solid var(--accent); outline-offset: 3px; }
+#pick-xarray:checked ~ #case-sympy, #pick-sympy:checked ~ #case-xarray { display: none; }
+.case-frame { margin-top: 16px; }
+.case-panels { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; align-items: stretch; }
+.case-caption { margin-top: 18px; display: grid; gap: 8px; max-width: 86ch; }
+.case-caption p { color: var(--ink); font-size: 15px; }
+.case-caption em.mono { font-style: normal; font-size: 0.9em; color: var(--ink-2); }
+.case-caption .case-source { color: var(--ink-2); font-size: 13.5px; }
+
+/* ---- replay ---- */
+.agent-grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: clamp(32px, 5vw, 80px); align-items: start; }
+.agent-grid code { font-size: 0.9em; }
+.replay-steps { list-style: none; padding: 8px 18px 14px; }
+.replay-steps li { display: grid; grid-template-columns: 3.4rem minmax(0, 1fr); gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--t-line); font-size: 14px; color: var(--t-soft); }
+.replay-steps li:last-child { border-bottom: 0; }
+.replay-steps p + p { margin-top: 6px; }
+.replay-steps code { color: var(--t-text); }
+.r-time { color: var(--t-muted); font-size: 12px; padding-top: 2px; }
+.r-who { color: var(--t-text); font-size: 12.5px; font-weight: 600; letter-spacing: 0.01em; }
+.r-quote { color: var(--t-text); }
+.r-hook .r-who { color: var(--t-accent); }
+.r-hooktext, .r-cmd { font-size: 12px; line-height: 1.65; color: var(--t-soft); overflow-wrap: anywhere; }
+.r-hooktext { word-break: break-all; }
+.r-hook > div { padding: 10px 12px; margin: -4px 0; border-radius: var(--r-ui); background: rgba(138, 180, 248, 0.08); box-shadow: inset 0 0 0 1px rgba(138, 180, 248, 0.3); }
+
+/* ---- evidence ---- */
+.evidence-grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: clamp(32px, 5vw, 80px); align-items: start; }
+.evidence-links { margin-top: 20px; font-size: 14.5px; color: var(--ink-3); }
+.units { position: relative; min-width: 0; padding-top: 6px; }
+.units > figcaption { color: var(--ink-2); font-size: 13.5px; }
+.units-legend { display: flex; flex-wrap: wrap; gap: 6px 20px; margin-top: 10px; color: var(--ink-2); font-size: 13px; }
+.units-legend span { display: inline-flex; align-items: center; gap: 8px; }
+.units-table { width: 100%; margin-top: 18px; border-collapse: collapse; }
+.units-table th, .units-table td { text-align: left; vertical-align: top; padding: 14px 0; border-top: 1px solid var(--line); }
+.units-table thead th { padding: 0 0 10px; border-top: 0; color: var(--ink-2); font-size: 12.5px; font-weight: 560; }
+.units-table tbody th { width: 11rem; padding-right: 20px; font-size: 14.5px; font-weight: 600; }
+.units-table tbody th span { display: block; color: var(--ink-2); font-size: 12.5px; font-weight: 400; }
+.units-table .num { text-align: right; padding-left: 20px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.units-table td.num strong { font-size: 22px; font-weight: 620; letter-spacing: -0.02em; }
+.units-table thead .num { max-width: 9rem; white-space: normal; }
+.strip { display: grid; grid-template-columns: repeat(17, 12px); gap: 3px; }
+.count { display: block; margin-top: 8px; color: var(--ink-2); font-size: 13px; font-variant-numeric: tabular-nums; }
+.count strong { color: var(--ink); font-size: 15px; font-weight: 620; }
+.u { display: inline-block; width: 12px; height: 12px; border-radius: 3px; border: 1.5px solid var(--ink-3); background: var(--surface); }
+.u.hit { border-color: var(--accent); background: var(--accent); }
+.strip .u { cursor: default; }
+.strip .u:hover, .strip .u.active { outline: 2px solid var(--ink); outline-offset: 1px; }
+.unit-tip {
+  position: absolute; z-index: 5; pointer-events: none;
+  padding: 6px 10px; border-radius: var(--r-ui);
+  background: var(--ink); color: #fff; font-size: 12.5px; white-space: nowrap;
+  box-shadow: 0 4px 14px rgba(32, 33, 36, 0.18);
+}
+.units-cases { margin-top: 16px; font-size: 13.5px; }
+.units-cases summary { cursor: pointer; color: var(--accent); width: max-content; }
+.units-cases table { width: 100%; margin-top: 10px; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.units-cases th, .units-cases td { text-align: left; padding: 4px 12px 4px 0; border-bottom: 1px solid var(--line); }
+.units-cases thead th { color: var(--ink-2); font-weight: 560; }
+.units-cases td:first-child { font-family: "Geist Mono", ui-monospace, monospace; font-size: 12.5px; }
+
+/* ---- notes ---- */
+.notes-grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: clamp(32px, 5vw, 80px); align-items: start; }
+.cmd {
+  margin-top: 24px; padding: 16px 18px; border-radius: var(--r-ui);
+  background: var(--t-bg); color: var(--t-text); font-size: 13px; line-height: 1.7;
+  overflow-x: auto; white-space: pre;
+}
+.cmd .prompt { color: var(--t-muted); user-select: none; }
+.notes-panel .report { padding-bottom: 14px; }
+.panel-foot { padding: 12px 18px 16px; border-top: 1px solid var(--t-line); color: var(--t-muted); font-size: 13px; }
+.panel-foot code { color: var(--t-soft); }
+
+/* ---- install ---- */
+.install-grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: clamp(32px, 5vw, 80px); align-items: start; padding-top: 48px; border-top: 1px solid var(--line); }
+.cmd-block { position: relative; }
+.cmd-block .cmd { margin-top: 0; padding: 20px 96px 20px 20px; font-size: 14px; }
+.copy {
+  position: absolute; top: 14px; right: 14px;
+  font: inherit; font-size: 13px; font-weight: 560; cursor: pointer;
+  padding: 6px 12px; border-radius: var(--r-ui);
+  border: 1px solid rgba(232, 234, 237, 0.26); background: transparent; color: var(--t-text);
+  transition: background .15s, border-color .15s;
+}
+.copy:hover { background: rgba(255, 255, 255, 0.08); border-color: var(--t-soft); }
+.copy:focus-visible { outline-color: var(--t-accent); }
+.copy[hidden] { display: none; }
+.install-facts { margin-top: 20px; padding-left: 1.2em; display: grid; gap: 10px; color: var(--ink-2); font-size: 15px; max-width: 66ch; }
+.install-facts code { color: var(--ink); }
+
+/* ---- more ---- */
+.more { padding-bottom: 96px; }
+.more h2 { font-size: clamp(1.3rem, 2vw, 1.5rem); }
+.more-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 32px; margin-top: 24px; }
+.more-row a { display: grid; gap: 6px; padding-top: 16px; border-top: 1px solid var(--ink); }
+.more-row strong { font-size: 16px; font-weight: 600; }
+.more-row span { color: var(--ink-2); font-size: 14.5px; }
+.more-row a:hover strong { color: var(--accent); }
 
 body > footer { border-top: 1px solid var(--line); }
 .foot { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 24px; padding-top: 26px; padding-bottom: 26px; font-size: 14px; color: var(--ink-2); }
@@ -240,42 +305,46 @@ body > footer { border-top: 1px solid var(--line); }
 .foot .spacer { margin-left: auto; }
 .foot a:hover { color: var(--ink); }
 
-/* ---- mobile ---- */
-@media (max-width: 860px) {
-  .nav { gap: 16px; }
-  .nav a.gh { display: none; }
-  .stage-row { grid-template-columns: minmax(0, 1fr); row-gap: 32px; }
-  .stage-intro { display: contents; }
-  .stage-copy { order: 0; }
-  .stage-evidence { order: 1; }
-  .example-tasks { order: 2; margin-top: 0; }
-  .repository-handoff { grid-template-columns: minmax(0, 1fr); gap: 24px; }
-  .agent-handoff { grid-template-columns: minmax(0, 1fr); }
-  .bento { grid-template-columns: 1fr; }
-  .latest-card { grid-template-columns: 1fr; }
-  .latest-copy { padding: 30px 28px; }
-  .latest-art { min-height: 0; border-top: 1px solid var(--line); border-left: 0; }
-  main > section { padding-top: 56px; }
+/* ---- responsive ---- */
+@media (max-width: 1080px) {
+  .hero-grid { grid-template-columns: minmax(0, 1fr); }
+  .case-panels { grid-template-columns: minmax(0, 1fr); }
+  .evidence-grid, .notes-grid, .install-grid, .agent-grid { grid-template-columns: minmax(0, 1fr); }
+  .more-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
-@media (max-width: 540px) {
+@media (max-width: 640px) {
+  .replay-steps li { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .verdicts div { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .hero-panel .report { font-size: 12px; }
   .wrap { padding-inline: 18px; }
-  .stage-intro h1 { font-size: 34px; }
-  .stage-sub { font-size: 16px; }
-  .stage-ctas { gap: 8px; }
-  .stage-ctas .btn { font-size: 13px; padding: 10px 12px; }
-  .stage-ctas .btn-primary span { display: none; }
-  .repo-entry-row { flex-direction: column; }
-  .repo-entry { padding: 20px; }
-  .nav { gap: 12px; }
+  .nav { gap: 16px; }
+  .nav a.gh, .nav .docs-link { display: none; }
   .brand img { height: 28px; max-width: 122px; }
-  .nav .docs-link { display: none; }
-  /* The hero's own "Try an example" button sits right below. */
-  .nav .example-link { display: none; }
-  .nav .btn { padding: 8px 12px; }
-  .latest-art { padding: 12px; }
+  .nav .btn { padding: 8px 14px; }
+  main > section { padding-top: 64px; }
+  .hero h1 { font-size: clamp(2.1rem, 10vw, 2.6rem); }
+  .hero-ctas .btn { width: 100%; justify-content: center; }
+  .units-table thead { display: none; }
+  .units-table, .units-table tbody, .units-table tr { display: block; }
+  .units-table tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; padding: 14px 0; border-top: 1px solid var(--line); }
+  .units-table tbody th, .units-table td { display: block; padding: 0; border: 0; width: auto; }
+  .units-table td:not(.num) { grid-column: 1 / -1; grid-row: 2; margin-top: 10px; }
+  .units-table tbody th { grid-column: 1; grid-row: 1; }
+  .units-table td.num { grid-column: 2; grid-row: 1; padding: 0; }
+  .units-table td.num::after { content: " tests on a clean patch"; display: block; color: var(--ink-2); font-size: 12px; }
+  .more-row { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  .cmd-block .cmd { padding-right: 20px; padding-top: 52px; }
+  .diff, .report { font-size: 12px; }
+}
+@media (max-width: 360px) {
+  .strip { grid-template-columns: repeat(17, 11px); gap: 2px; }
+  .u { width: 11px; height: 11px; }
 }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
+}
+@media (forced-colors: active) {
+  .u.hit { background: CanvasText; border-color: CanvasText; }
 }
 </style>
 </head>
@@ -286,150 +355,223 @@ body > footer { border-top: 1px solid var(--line); }
     <a class="brand" href="/">
       <img src="assets/codenib-logo.svg" alt="CodeNib">
     </a>
+    <a class="link" href="#evidence">Evidence</a>
     <a class="link" href="/blogs/">Blog</a>
     <a class="link docs-link" href="https://docs.codenib.ai">Docs</a>
-    <a class="link" href="https://demo.codenib.ai">Demo</a>
     <a class="link gh" href="https://github.com/sysevol-ai/CodeNib" aria-label="Source on GitHub">
       <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
     </a>
-    <a class="link example-link" href="#example-source">Try an example</a>
+    <a class="btn btn-primary nav-install" href="#install">Install</a>
   </div>
 </header>
 
 <main>
-  <!-- The existing, source-pinned Requests example is the first experience.
-       Its evidence is bundled locally; following a Wiki link is explicit. -->
-  <div class="stage">
-    <div class="wrap stage-row">
-      <div class="stage-intro">
-        <div class="stage-copy">
-          <h1>Understand unfamiliar code<br>with evidence.</h1>
-          <p class="stage-sub">Explore how a repository works, follow its call paths, and inspect the source behind each explanation.</p>
-          <div class="stage-ctas">
-            <a class="btn btn-primary btn-lg" href="#example-source">Try an example <span aria-hidden="true">→</span></a>
-            <a class="btn btn-ghost btn-lg" href="#get-started">Use with your agent</a>
-          </div>
-          <p class="stage-note">No account or API key needed for the example.</p>
-        </div>
-        <div class="example-tasks" role="group" aria-label="Choose a code question">
-          <p>Start with a question</p>
-          <button type="button" data-example-task="auth" aria-pressed="true" aria-controls="example-source">Why does a redirect remove authentication?</button>
-          <button type="button" data-example-task="request" aria-pressed="false" aria-controls="example-source">Which functions handle a redirected request?</button>
-          <button type="button" data-example-task="impact" aria-pressed="false" aria-controls="example-source">What could change if I edit rebuild_auth()?</button>
-        </div>
-      </div>
-      <div class="stage-evidence" id="example-source">
-        <codenib-explorer id="requests-auth"><a href="https://demo.codenib.ai/psf__requests?p=redirects">Explore how Requests handles redirects →</a></codenib-explorer>
-        <noscript><p class="stage-note">A redirect to a different hostname removes the Authorization header. <a href="https://github.com/psf/requests/blob/f361ead047be5cb873174218582f7d8b9fcd9f49/src/requests/sessions.py#L324-L327">Read the exact source on GitHub →</a></p></noscript>
-      </div>
-    </div>
-  </div>
-
-  <section id="your-repository" aria-labelledby="your-repository-title">
-    <div class="wrap repository-handoff">
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="wrap hero-grid">
       <div>
-        <h2 id="your-repository-title">Now explore your own repository.</h2>
-        <p class="section-sub">Turn a public GitHub repository into a navigable Wiki with explanations and source references. Keep reading as chapters finish, then return to your saved link.</p>
-        <p class="repository-more">Want to keep exploring first? <a class="text-link" href="https://demo.codenib.ai/browse">Browse ready Wikis →</a></p>
-      </div>
-      <form class="repo-entry" action="https://demo.codenib.ai/" method="get">
-        <label for="repository">Public GitHub repository</label>
-        <div class="repo-entry-row">
-          <input id="repository" name="repo" placeholder="https://github.com/owner/repo" type="text" inputmode="url" maxlength="2048" autocomplete="off" spellcheck="false" aria-describedby="repository-cost repository-limits" required>
-          <button class="btn btn-primary" type="submit">Open Wiki →</button>
+        <h1 id="hero-title">Your coding agent says it&rsquo;s done. What did it break?</h1>
+        <p class="hero-sub">Before Claude Code or Codex finishes, CodeNib lists the tests its change reaches and the call path to each one. It runs on your machine and calls no model.</p>
+        <div class="hero-ctas">
+          <a class="btn btn-primary btn-lg" href="#install">Add it to Claude Code or Codex</a>
+          <a class="btn btn-ghost btn-lg" href="#real-case">See a real case</a>
         </div>
-        <p id="repository-cost"><strong>Ready Wikis open instantly.</strong> A new Wiki uses your OpenRouter account and credits. Choose a model and a $0.25–$5 spending limit before starting; a provider call already in progress can exceed that limit.</p>
-        <p id="repository-limits"><strong>Hosted limits:</strong> 20 MiB download, 40 MiB retained files, 4,000 files and 50,000 code chunks. Files over 4 MiB are skipped.</p>
-        <p><a class="text-link" href="https://demo.codenib.ai/add-repo">Check repository eligibility before connecting OpenRouter →</a></p>
-      </form>
-    </div>
-  </section>
-
-  <section>
-    <div class="wrap agent-handoff">
-      <div class="setup" id="get-started">
-        <h2>Take that context to your coding agent.</h2>
-        <p>Build a local index for Claude Code or Codex. Find definitions, follow callers and read the source in your own checkout.</p>
-        <pre><code>python -m pip install "codenib[graph,mcp]"
-codenib codegraph init /path/to/your/repo</code></pre>
-        <p>Python 3.10+, Git, a clean checkout, and Claude Code or Codex. This shipping CodeGraph path runs locally without a model, API key, or GPU for CodeNib; your agent uses its own model. It is separate from the grep/Jev experiment.</p>
-        <p><a class="text-link" href="https://docs.codenib.ai/codegraph/">Setup and language prerequisites</a> · Ask your agent to start with <code>explore_context</code>.</p>
+        <p class="hero-note">For Python repositories with pytest-style tests. Open source, Apache-2.0.</p>
       </div>
-      <figure class="frame">
-        <div class="frame-bar"><span>Requests · Claude Code + CodeNib</span><span>15-second replay</span></div>
-        <video class="agent-demo" controls muted playsinline preload="none" width="1080" height="608" poster="assets/demos/codegraph-claude.png" aria-label="Recorded CodeGraph setup, Claude Code source lookup and caller-chain trace" aria-describedby="agent-demo-caption">
-          <source src="assets/demos/codegraph-claude.webm" type="video/webm">
-          <source src="assets/demos/codegraph-claude.mp4" type="video/mp4">
-          <img src="assets/demos/codegraph-claude.png" alt="CodeNib finds where Requests strips authentication on redirects and traces the caller chain from the public API">
-        </video>
-        <figcaption class="preview-caption" id="agent-demo-caption">Real CLI output, replayed with waits condensed. <a class="text-link" href="https://docs.codenib.ai/codegraph/#recorded-agent-session">Transcript and sources</a>.</figcaption>
+      <figure class="panel hero-panel">
+        <div class="panel-bar"><span>Stop hook &rarr; Claude Code</span><span class="mono">sympy &middot; patch by OpenHands</span></div>
+        <div class="report mono">
+          <p class="r-muted">CodeNib guard compared this session&rsquo;s changes with the code graph of commit 809c53c07748.</p>
+          <p class="r-head"><strong>3 tests</strong> reach the changed code within 3 calls.</p>
+          <ul class="r-list">
+            <li class="r-broken">test_homomorphisms.py::test_check_homomorphism</li>
+            <li>test_homomorphisms.py::test_homomorphism</li>
+            <li>test_homomorphisms.py::test_isomorphisms</li>
+          </ul>
+          <p class="r-muted">Command that runs them: python -m pytest sympy/combinatorics/tests/test_homomorphisms.py::test_check_homomorphism &hellip;</p>
+          <p class="r-gap">A failure that the change caused needs a fix before the work is done.</p>
+        </div>
+        <figcaption class="panel-foot">The message the agent receives as it tries to finish, shortened: each test also comes with its call path. The marked test is the one this patch broke.</figcaption>
       </figure>
     </div>
   </section>
 
-  <section>
+  <section id="real-case" class="case" aria-labelledby="case-title">
     <div class="wrap">
-      <h2>Evidence you can inspect. Tools you can compare.</h2>
-      <p class="section-sub">Follow source locations, check language coverage, and reproduce the retrieval methods.</p>
-      <div class="bento">
-        <div class="cell">
-          <h3>Follow definitions and calls</h3>
-          <p>Bounded context and typed SCIP/LSP graphs help your agent navigate from a question to the source. Compare the fit with grep, Serena, CodeGraph, and DeepWiki.</p>
-          <a class="text-link" href="https://docs.codenib.ai/comparison/">Compare repository tools →</a>
-        </div>
-        <div class="cell">
-          <h3>Know your language's support</h3>
-          <p>14 language entries, 12 with graph backends. See which providers, prerequisites, and capabilities apply to your repository.</p>
-          <a class="text-link" href="https://docs.codenib.ai/language_capabilities/">Open the language matrix →</a>
-        </div>
-        <div class="cell">
-          <h3>Reproduce the methods</h3>
-          <p>Pinned LocAgent, Agentless, CoSIL, OrcaLoca, and RepoNavigator contracts. Dataset and scorer checks make the evaluation boundaries visible.</p>
-          <a class="text-link" href="https://docs.codenib.ai/agent_integrations/">Explore agent integrations →</a>
-        </div>
+      <h2 id="case-title">A patch that passed SWE-bench, and the test it broke.</h2>
+      <p class="section-sub">These agent patches passed SWE-bench, which runs only the test files that the issue&rsquo;s own pull request changed. The project&rsquo;s full suite found a test each one broke, and the guard had named that test before.</p>
+      <input class="case-pick" type="radio" name="case" id="pick-xarray" checked>
+      <input class="case-pick" type="radio" name="case" id="pick-sympy">
+      <div class="case-tabs" role="group" aria-label="Choose a case">
+        <label for="pick-xarray"><strong>xarray</strong> test_copy &middot; OpenHands</label>
+        <label for="pick-sympy"><strong>sympy</strong> test_check_homomorphism &middot; OpenHands</label>
       </div>
-      <p class="section-sub">Share a Wiki from your own repository with the existing <a class="text-link" href="https://docs.codenib.ai/github_pages/">GitHub Pages workflow</a>.</p>
-      <p class="evidence">
-        <strong>71.4% code-block Recall@5.</strong>
-        Model-planned grep → Jev on 100 real issues. +12.8 points over the same grep candidates without reranking.<br>
-        <a href="https://docs.codenib.ai/evaluation/grep_jev/">Experimental result · Method and limitations</a>
-      </p>
-    </div>
-  </section>
-
-  <section>
-    <div class="wrap">
-      <h2>From the blog</h2>
-      <p class="section-sub">Architecture, benchmark results and deployment guides from the team building CodeNib.</p>
-      <a class="latest-card" href="/blogs/contextbench-500-tasks/" aria-label="Read CodeNib on ContextBench: 77% Line Recall Before Repair">
-        <div class="latest-copy">
-          <div class="latest-meta">
-            <span class="tag">Coding agents</span>
-            <time datetime="2026-10-21">October 21, 2026</time>
+      <figure class="case-frame" id="case-xarray">
+        <div class="case-panels">
+          <div class="panel">
+            <div class="panel-bar"><span>The agent&rsquo;s patch</span><span class="mono">xarray/core/merge.py</span></div>
+<pre class="diff mono" aria-label="The agent's patch to xarray/core/merge.py"><span class="hunk">@@ -15,6 +15,7 @@ from typing import (</span><span class="ctx">     Union,</span><span class="ctx"> )</span><span class="ctx"> </span><span class="add">+import copy</span><span class="ctx"> import pandas as pd</span><span class="hunk">@@ -501,7 +502,7 @@ def merge_attrs(variable_attrs, combine_attrs):</span><span class="ctx">     if combine_attrs == &quot;drop&quot;:</span><span class="ctx">         return {}</span><span class="ctx">     elif combine_attrs == &quot;override&quot;:</span><span class="del">-        return variable_attrs[0]</span><span class="add">+        return copy.deepcopy(variable_attrs[0])</span><span class="ctx">     elif combine_attrs == &quot;no_conflicts&quot;:</span></pre>
           </div>
-          <h3>CodeNib on ContextBench: 77% Line Recall Before Repair</h3>
-          <p>Search alone reaches 77.07% line recall. Our complete agent ranks #1 in line recall and Pass@1 on ContextBench's Agent systems leaderboard as of October 23, 2026 (UTC). See how the search and source handoff work.</p>
-          <span class="latest-more">Read the article →</span>
+          <div class="panel">
+            <div class="panel-bar"><span>Why the guard flagged test_copy</span><span class="mono">call path in the graph</span></div>
+            <ol class="chain mono" aria-label="Call path from test_copy to the changed file">
+              <li><span class="c-name">TestDataset.test_copy</span><span class="c-where">calls at test_dataset.py:2428</span></li>
+              <li><span class="c-name">create_test_data</span><span class="c-where">calls at test_dataset.py:72</span></li>
+              <li><span class="c-name">Dataset.__init__</span><span class="c-where">calls at dataset.py:630</span></li>
+              <li class="c-changed"><span class="c-name">merge_data_and_coords</span><span class="c-where">in merge.py, which the patch changed</span></li>
+            </ol>
+            <dl class="verdicts">
+              <div><dt>SWE-bench&rsquo;s tests</dt><dd class="v-pass">pass, so the patch counts as solved</dd></div>
+              <div><dt>Full test suite</dt><dd class="v-fail">TestDataset::test_copy fails</dd></div>
+              <div><dt>CodeNib guard</dt><dd>flagged test_copy, among 1,304 of 2,198 tests</dd></div>
+            </dl>
+          </div>
         </div>
-        <div class="latest-art">
-          <img src="/assets/blogs/contextbench-search-handoff.svg" width="1600" height="840" loading="lazy" alt="">
+        <figcaption class="case-caption">
+          <p>In the study&rsquo;s full-suite run, <code>TestDataset::test_copy</code> fails with this patch and passes with the developer&rsquo;s fix. The new <code>import copy</code> sits outside any function, so the guard counted all of <code>merge.py</code> as changed. That is why the path ends at <code>merge_data_and_coords</code> rather than the edited <code>merge_attrs</code>, and why the list is long. The sympy case shows a precise one.</p>
+          <p class="case-source">Guard output: <code>codenib guard</code> at xarray&rsquo;s base commit with OpenHands&rsquo; patch applied. Patch and full-suite results: Wang, Pradel and Liu, <a class="text-link" href="https://arxiv.org/abs/2503.15223">ICSE 2026</a>, data under CC BY 4.0. <a class="text-link" href="https://demo.codenib.ai/guard">Browse more cases, including misses &rarr;</a></p>
+        </figcaption>
+      </figure>
+      <figure class="case-frame" id="case-sympy">
+        <div class="case-panels">
+          <div class="panel">
+            <div class="panel-bar"><span>The agent&rsquo;s patch</span><span class="mono">sympy/combinatorics/homomorphisms.py, dedented</span></div>
+<pre class="diff mono" aria-label="The agent's patch to _check_homomorphism._image, with 12 columns of shared indentation removed"><span class="hunk">@@ -333,8 +333,14 @@ def _image(r):</span><span class="ctx"> while i &lt; len(r):</span><span class="ctx">     power = r_arr[j][1]</span><span class="del">-    if isinstance(domain, PermutationGroup) and r[i] in gens:</span><span class="del">-        s = domain.generators[gens.index(r[i])]</span><span class="add">+    if isinstance(domain, PermutationGroup):</span><span class="add">+        # For PermutationGroup, we need to map both original and inverted generators</span><span class="add">+        # to their corresponding domain generators</span><span class="add">+        s = r[i]  # Default to r[i] if no match found</span><span class="add">+        for j, g in enumerate(domain.generators):</span><span class="add">+            if r[i] == g or r[i] == g**-1:</span><span class="add">+                s = g  # Use the original generator, not domain.generators[j]</span><span class="add">+                break</span><span class="ctx">     else:</span><span class="ctx">         s = r[i]</span></pre>
+          </div>
+          <div class="panel">
+            <div class="panel-bar"><span>Why the guard flagged the broken test</span><span class="mono">call path in the graph</span></div>
+            <ol class="chain mono" aria-label="Call path from the test to the changed code">
+              <li><span class="c-name">test_check_homomorphism</span><span class="c-where">calls at test_homomorphisms.py:109</span></li>
+              <li><span class="c-name">homomorphism</span><span class="c-where">calls at homomorphisms.py:306</span></li>
+              <li><span class="c-name">_check_homomorphism</span><span class="c-where">calls at homomorphisms.py:350</span></li>
+              <li class="c-changed"><span class="c-name">_check_homomorphism._image</span><span class="c-where">changed by the patch</span></li>
+            </ol>
+            <dl class="verdicts">
+              <div><dt>SWE-bench&rsquo;s tests</dt><dd class="v-pass">pass, so the patch counts as solved</dd></div>
+              <div><dt>Full test suite</dt><dd class="v-fail">test_check_homomorphism fails</dd></div>
+              <div><dt>CodeNib guard</dt><dd>flagged 3 of 11,144 tests, this one among them</dd></div>
+            </dl>
+          </div>
         </div>
-      </a>
+        <figcaption class="case-caption">
+          <p>In the study&rsquo;s full-suite run, <code>test_check_homomorphism</code> fails with this patch and passes with the developer&rsquo;s fix. The guard listed 3 of sympy&rsquo;s 11,144 tests; running them before finishing would have caught it.</p>
+          <p class="case-source">Guard output: <code>codenib guard</code> at sympy&rsquo;s base commit with the patch applied, with directories left out to fit. Patch and full-suite results: Wang, Pradel and Liu, <a class="text-link" href="https://arxiv.org/abs/2503.15223">ICSE 2026</a>, data under CC BY 4.0. <a class="text-link" href="https://demo.codenib.ai/guard">Browse more cases, including misses &rarr;</a></p>
+        </figcaption>
+      </figure>
     </div>
   </section>
 
-  <div class="cta-block">
-    <div class="wrap">
-      <h2>Try it where you write code.</h2>
-      <div class="ctas">
-        <a class="btn btn-primary btn-lg" href="#get-started">Use with your agent</a>
-        <a class="btn btn-ghost btn-lg" href="https://github.com/sysevol-ai/CodeNib/releases">Latest releases</a>
+  <section id="in-agent" aria-labelledby="agent-title">
+    <div class="wrap agent-grid">
+      <div>
+        <h2 id="agent-title">What it looks like in Claude Code.</h2>
+        <p class="section-sub">The same sympy issue as the case above, given to Claude Code with the guard installed, the way SWE-bench poses it. OpenHands&rsquo; patch broke <code>test_check_homomorphism</code>; Claude Code&rsquo;s fix did not.</p>
+        <p class="section-sub">Before it finished, the guard handed back 7 tests, including <code>test_composition_series</code> in another file, which reaches the change through <code>is_isomorphic</code>. The agent ran them, and all passed.</p>
+        <p class="section-sub">In three real sessions so far, Claude Code broke nothing the guard listed, so none of them shows a catch yet. When one does, it will replace this one. We will not stage one.</p>
+        <p class="evidence-links">Transcripts: <a class="text-link" href="assets/demos/guard-session-sympy-24443.jsonl">this session</a> &middot; <a class="text-link" href="assets/demos/guard-session-sympy-22456.jsonl">sympy-22456</a> &middot; <a class="text-link" href="assets/demos/guard-session-codenib.jsonl">a CodeNib fix</a>. Headless Claude Code 2.1.318, 6 November 2026, paths removed.</p>
+      </div>
+      <figure class="panel replay" aria-label="Condensed timeline of the session">
+        <div class="panel-bar"><span>Claude Code session, condensed</span><span class="mono">sympy-24443 &middot; base 809c53c0</span></div>
+        <ol class="replay-steps">
+          <li><span class="r-time mono">0:00</span><div><p class="r-who">You</p><p>&ldquo;<code>_check_homomorphism</code> is broken on PermutationGroups &hellip; ValueError: The given images do not define a homomorphism &hellip; Fix this issue in the repository in the current directory.&rdquo;</p></div></li>
+          <li><span class="r-time mono">3:39</span><div><p class="r-who">Claude Code</p><p class="r-quote">&ldquo;The new test fails with the error from the issue. Now the fix: walk <code>array_form</code> directly and map each symbol straight to its domain generator.&rdquo;</p><p>Edits <code>homomorphisms.py</code>, runs <code>sympy/combinatorics</code>: 166 passed, 3 skipped.</p></div></li>
+          <li><span class="r-time mono">4:59</span><div><p class="r-who">Claude Code</p><p class="r-quote">&ldquo;I fixed the bug from the issue: <code>homomorphism(D3, D3, D3.generators, D3.generators)</code> now works &hellip;&rdquo;</p></div></li>
+          <li class="r-hook"><span class="r-time mono">5:13</span><div><p class="r-who">Stop hook &middot; CodeNib guard</p><p class="mono r-hooktext">7 tests reach the changed code within 3 calls.<br>- &hellip;test_perm_groups.py::test_composition_series: test_composition_series (&hellip;test_perm_groups.py:1143) -&gt; is_isomorphic (&hellip;homomorphisms.py:560) -&gt; group_isomorphism (&hellip;homomorphisms.py:528) -&gt; _check_homomorphism<br>&hellip;</p></div></li>
+          <li><span class="r-time mono">5:15</span><div><p class="r-who">Claude Code</p><p class="r-quote">&ldquo;The combinatorics run should already have covered these, but it had 3 skips, so I&rsquo;ll run the listed tests directly to confirm none of them were skipped.&rdquo;</p><p class="mono r-cmd">$ python -m pytest &hellip; (the 7 tests in the hook&rsquo;s command)<br>7 passed in 1.20s</p></div></li>
+          <li><span class="r-time mono">5:21</span><div><p class="r-who">Claude Code</p><p class="r-quote">&ldquo;All 7 tests that the CodeNib guard flagged as reaching the changed code pass, and none were skipped, so the fix stands with no further changes.&rdquo;</p></div></li>
+        </ol>
+      </figure>
+    </div>
+  </section>
+
+  <section id="evidence" aria-labelledby="evidence-title">
+    <div class="wrap evidence-grid">
+      <div>
+        <h2 id="evidence-title">About half of the hidden regressions, at three tests a patch.</h2>
+        <p class="section-sub">We ran the guard on 68 agent patches that pass SWE-bench but break other tests in the project&rsquo;s full suite. It flagged a broken test in 35 of them. On patches that broke nothing, it flagged a median of 3 tests out of thousands.</p>
+        <p class="section-sub">Most of the other 33 go through calls a code graph cannot see: framework code that calls methods by name, operators such as <code>==</code>, and tests that start the program in a separate process. Those need a record of which tests run which lines, a coverage map; that version is in progress.</p>
+        <p class="evidence-links"><a class="text-link" href="https://github.com/sysevol-ai/CodeNib/pull/976">Method and data</a> · <a class="text-link" href="https://github.com/sysevol-ai/CodeNib/issues/975">What comes next</a></p>
+      </div>
+      <figure class="units" aria-labelledby="units-caption">
+        <figcaption id="units-caption">Each square is one of the 68 regressions, in the same order in both rows.</figcaption>
+        <div class="units-legend" aria-hidden="true"><span><i class="u hit"></i> a broken test was flagged</span><span><i class="u"></i> missed</span></div>
+        <table class="units-table">
+          <thead><tr><th scope="col">Method</th><th scope="col">Regressions flagged</th><th scope="col" class="num">Tests flagged on a clean patch, median</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">CodeNib guard<span>call graph, 3 calls deep</span></th><td><span class="strip" role="img" aria-label="35 of 68 regressions flagged"><i class="u hit" data-case="django/django-11149 · CodeStory: flagged"></i><i class="u hit" data-case="django/django-11749 · OpenHands: flagged"></i><i class="u hit" data-case="django/django-12858 · LearnByInteract: flagged"></i><i class="u hit" data-case="django/django-13112 · CodeStory: flagged"></i><i class="u hit" data-case="django/django-13933 · CodeStory: flagged"></i><i class="u hit" data-case="django/django-13933 · OpenHands: flagged"></i><i class="u hit" data-case="django/django-15268 · CodeStory: flagged"></i><i class="u hit" data-case="psf/requests-2317 · LearnByInteract: flagged"></i><i class="u hit" data-case="sphinx-doc/sphinx-11445 · LearnByInteract: flagged"></i><i class="u hit" data-case="sphinx-doc/sphinx-8593 · CodeStory: flagged"></i><i class="u hit" data-case="sympy/sympy-22456 · CodeStory: flagged"></i><i class="u hit" data-case="sympy/sympy-22456 · LearnByInteract: flagged"></i><i class="u hit" data-case="sympy/sympy-22456 · OpenHands: flagged"></i><i class="u hit" data-case="sympy/sympy-24443 · CodeStory: flagged"></i><i class="u hit" data-case="sympy/sympy-24443 · LearnByInteract: flagged"></i><i class="u hit" data-case="sympy/sympy-24443 · OpenHands: flagged"></i><i class="u hit" data-case="astropy/astropy-14508 · LearnByInteract: flagged"></i><i class="u hit" data-case="django/django-12209 · CodeStory: flagged"></i><i class="u hit" data-case="django/django-12209 · LearnByInteract: flagged"></i><i class="u hit" data-case="django/django-12209 · OpenHands: flagged"></i><i class="u hit" data-case="django/django-12273 · CodeStory: flagged"></i><i class="u hit" data-case="django/django-12304 · CodeStory: flagged"></i><i class="u hit" data-case="django/django-12663 · LearnByInteract: flagged"></i><i class="u hit" data-case="django/django-12663 · OpenHands: flagged"></i><i class="u hit" data-case="django/django-15161 · CodeStory: flagged"></i><i class="u hit" data-case="django/django-15268 · OpenHands: flagged"></i><i class="u hit" data-case="django/django-17084 · LearnByInteract: flagged"></i><i class="u hit" data-case="pydata/xarray-4629 · LearnByInteract: flagged"></i><i class="u hit" data-case="pydata/xarray-4629 · OpenHands: flagged"></i><i class="u hit" data-case="pydata/xarray-7393 · LearnByInteract: flagged"></i><i class="u hit" data-case="scikit-learn/scikit-learn-25102 · LearnByInteract: flagged"></i><i class="u hit" data-case="scikit-learn/scikit-learn-25102 · OpenHands: flagged"></i><i class="u hit" data-case="sympy/sympy-12096 · LearnByInteract: flagged"></i><i class="u hit" data-case="sympy/sympy-13877 · LearnByInteract: flagged"></i><i class="u hit" data-case="sympy/sympy-14711 · OpenHands: flagged"></i><i class="u" data-case="django/django-11292 · LearnByInteract: missed"></i><i class="u" data-case="django/django-15382 · CodeStory: missed"></i><i class="u" data-case="django/django-16661 · CodeStory: missed"></i><i class="u" data-case="django/django-16661 · LearnByInteract: missed"></i><i class="u" data-case="sphinx-doc/sphinx-8120 · OpenHands: missed"></i><i class="u" data-case="sympy/sympy-20801 · CodeStory: missed"></i><i class="u" data-case="django/django-11265 · LearnByInteract: missed"></i><i class="u" data-case="django/django-11292 · CodeStory: missed"></i><i class="u" data-case="django/django-11292 · OpenHands: missed"></i><i class="u" data-case="django/django-11880 · CodeStory: missed"></i><i class="u" data-case="django/django-12663 · CodeStory: missed"></i><i class="u" data-case="django/django-12708 · CodeStory: missed"></i><i class="u" data-case="django/django-13012 · CodeStory: missed"></i><i class="u" data-case="django/django-13028 · LearnByInteract: missed"></i><i class="u" data-case="django/django-13121 · CodeStory: missed"></i><i class="u" data-case="django/django-13279 · CodeStory: missed"></i><i class="u" data-case="django/django-14771 · CodeStory: missed"></i><i class="u" data-case="django/django-15022 · OpenHands: missed"></i><i class="u" data-case="django/django-7530 · OpenHands: missed"></i><i class="u" data-case="matplotlib/matplotlib-14623 · LearnByInteract: missed"></i><i class="u" data-case="sphinx-doc/sphinx-7440 · LearnByInteract: missed"></i><i class="u" data-case="sphinx-doc/sphinx-9230 · OpenHands: missed"></i><i class="u" data-case="sympy/sympy-12096 · CodeStory: missed"></i><i class="u" data-case="sympy/sympy-12096 · OpenHands: missed"></i><i class="u" data-case="sympy/sympy-12419 · OpenHands: missed"></i><i class="u" data-case="sympy/sympy-13031 · CodeStory: missed"></i><i class="u" data-case="sympy/sympy-15017 · CodeStory: missed"></i><i class="u" data-case="sympy/sympy-15017 · LearnByInteract: missed"></i><i class="u" data-case="sympy/sympy-15017 · OpenHands: missed"></i><i class="u" data-case="sympy/sympy-15875 · OpenHands: missed"></i><i class="u" data-case="sympy/sympy-19346 · CodeStory: missed"></i><i class="u" data-case="sympy/sympy-19346 · LearnByInteract: missed"></i><i class="u" data-case="sympy/sympy-20801 · LearnByInteract: missed"></i></span><span class="count"><strong>35</strong> of 68</span></td><td class="num"><strong>3</strong></td></tr>
+            <tr><th scope="row">Tests that import the file<span>file-level selection</span></th><td><span class="strip" role="img" aria-label="22 of 68 regressions flagged"><i class="u hit" data-case="django/django-11149 · CodeStory: flagged"></i><i class="u hit" data-case="django/django-11749 · OpenHands: flagged"></i><i class="u hit" data-case="django/django-12858 · LearnByInteract: flagged"></i><i class="u hit" data-case="django/django-13112 · CodeStory: flagged"></i><i class="u hit" data-case="django/django-13933 · CodeStory: flagged"></i><i class="u hit" data-case="django/django-13933 · OpenHands: flagged"></i><i class="u hit" data-case="django/django-15268 · CodeStory: flagged"></i><i class="u hit" data-case="psf/requests-2317 · LearnByInteract: flagged"></i><i class="u hit" data-case="sphinx-doc/sphinx-11445 · LearnByInteract: flagged"></i><i class="u hit" data-case="sphinx-doc/sphinx-8593 · CodeStory: flagged"></i><i class="u hit" data-case="sympy/sympy-22456 · CodeStory: flagged"></i><i class="u hit" data-case="sympy/sympy-22456 · LearnByInteract: flagged"></i><i class="u hit" data-case="sympy/sympy-22456 · OpenHands: flagged"></i><i class="u hit" data-case="sympy/sympy-24443 · CodeStory: flagged"></i><i class="u hit" data-case="sympy/sympy-24443 · LearnByInteract: flagged"></i><i class="u hit" data-case="sympy/sympy-24443 · OpenHands: flagged"></i><i class="u" data-case="astropy/astropy-14508 · LearnByInteract: missed"></i><i class="u" data-case="django/django-12209 · CodeStory: missed"></i><i class="u" data-case="django/django-12209 · LearnByInteract: missed"></i><i class="u" data-case="django/django-12209 · OpenHands: missed"></i><i class="u" data-case="django/django-12273 · CodeStory: missed"></i><i class="u" data-case="django/django-12304 · CodeStory: missed"></i><i class="u" data-case="django/django-12663 · LearnByInteract: missed"></i><i class="u" data-case="django/django-12663 · OpenHands: missed"></i><i class="u" data-case="django/django-15161 · CodeStory: missed"></i><i class="u" data-case="django/django-15268 · OpenHands: missed"></i><i class="u" data-case="django/django-17084 · LearnByInteract: missed"></i><i class="u" data-case="pydata/xarray-4629 · LearnByInteract: missed"></i><i class="u" data-case="pydata/xarray-4629 · OpenHands: missed"></i><i class="u" data-case="pydata/xarray-7393 · LearnByInteract: missed"></i><i class="u" data-case="scikit-learn/scikit-learn-25102 · LearnByInteract: missed"></i><i class="u" data-case="scikit-learn/scikit-learn-25102 · OpenHands: missed"></i><i class="u" data-case="sympy/sympy-12096 · LearnByInteract: missed"></i><i class="u" data-case="sympy/sympy-13877 · LearnByInteract: missed"></i><i class="u" data-case="sympy/sympy-14711 · OpenHands: missed"></i><i class="u hit" data-case="django/django-11292 · LearnByInteract: flagged"></i><i class="u hit" data-case="django/django-15382 · CodeStory: flagged"></i><i class="u hit" data-case="django/django-16661 · CodeStory: flagged"></i><i class="u hit" data-case="django/django-16661 · LearnByInteract: flagged"></i><i class="u hit" data-case="sphinx-doc/sphinx-8120 · OpenHands: flagged"></i><i class="u hit" data-case="sympy/sympy-20801 · CodeStory: flagged"></i><i class="u" data-case="django/django-11265 · LearnByInteract: missed"></i><i class="u" data-case="django/django-11292 · CodeStory: missed"></i><i class="u" data-case="django/django-11292 · OpenHands: missed"></i><i class="u" data-case="django/django-11880 · CodeStory: missed"></i><i class="u" data-case="django/django-12663 · CodeStory: missed"></i><i class="u" data-case="django/django-12708 · CodeStory: missed"></i><i class="u" data-case="django/django-13012 · CodeStory: missed"></i><i class="u" data-case="django/django-13028 · LearnByInteract: missed"></i><i class="u" data-case="django/django-13121 · CodeStory: missed"></i><i class="u" data-case="django/django-13279 · CodeStory: missed"></i><i class="u" data-case="django/django-14771 · CodeStory: missed"></i><i class="u" data-case="django/django-15022 · OpenHands: missed"></i><i class="u" data-case="django/django-7530 · OpenHands: missed"></i><i class="u" data-case="matplotlib/matplotlib-14623 · LearnByInteract: missed"></i><i class="u" data-case="sphinx-doc/sphinx-7440 · LearnByInteract: missed"></i><i class="u" data-case="sphinx-doc/sphinx-9230 · OpenHands: missed"></i><i class="u" data-case="sympy/sympy-12096 · CodeStory: missed"></i><i class="u" data-case="sympy/sympy-12096 · OpenHands: missed"></i><i class="u" data-case="sympy/sympy-12419 · OpenHands: missed"></i><i class="u" data-case="sympy/sympy-13031 · CodeStory: missed"></i><i class="u" data-case="sympy/sympy-15017 · CodeStory: missed"></i><i class="u" data-case="sympy/sympy-15017 · LearnByInteract: missed"></i><i class="u" data-case="sympy/sympy-15017 · OpenHands: missed"></i><i class="u" data-case="sympy/sympy-15875 · OpenHands: missed"></i><i class="u" data-case="sympy/sympy-19346 · CodeStory: missed"></i><i class="u" data-case="sympy/sympy-19346 · LearnByInteract: missed"></i><i class="u" data-case="sympy/sympy-20801 · LearnByInteract: missed"></i></span><span class="count"><strong>22</strong> of 68</span></td><td class="num"><strong>81</strong></td></tr>
+          </tbody>
+        </table>
+        <details class="units-cases">
+          <summary>All 68 cases</summary>
+          <table>
+            <thead><tr><th scope="col">Instance</th><th scope="col">Agent</th><th scope="col">Guard</th><th scope="col">Import</th></tr></thead>
+            <tbody><tr><td>django/django-11149</td><td>CodeStory</td><td>flagged</td><td>flagged</td></tr><tr><td>django/django-11749</td><td>OpenHands</td><td>flagged</td><td>flagged</td></tr><tr><td>django/django-12858</td><td>LearnByInteract</td><td>flagged</td><td>flagged</td></tr><tr><td>django/django-13112</td><td>CodeStory</td><td>flagged</td><td>flagged</td></tr><tr><td>django/django-13933</td><td>CodeStory</td><td>flagged</td><td>flagged</td></tr><tr><td>django/django-13933</td><td>OpenHands</td><td>flagged</td><td>flagged</td></tr><tr><td>django/django-15268</td><td>CodeStory</td><td>flagged</td><td>flagged</td></tr><tr><td>psf/requests-2317</td><td>LearnByInteract</td><td>flagged</td><td>flagged</td></tr><tr><td>sphinx-doc/sphinx-11445</td><td>LearnByInteract</td><td>flagged</td><td>flagged</td></tr><tr><td>sphinx-doc/sphinx-8593</td><td>CodeStory</td><td>flagged</td><td>flagged</td></tr><tr><td>sympy/sympy-22456</td><td>CodeStory</td><td>flagged</td><td>flagged</td></tr><tr><td>sympy/sympy-22456</td><td>LearnByInteract</td><td>flagged</td><td>flagged</td></tr><tr><td>sympy/sympy-22456</td><td>OpenHands</td><td>flagged</td><td>flagged</td></tr><tr><td>sympy/sympy-24443</td><td>CodeStory</td><td>flagged</td><td>flagged</td></tr><tr><td>sympy/sympy-24443</td><td>LearnByInteract</td><td>flagged</td><td>flagged</td></tr><tr><td>sympy/sympy-24443</td><td>OpenHands</td><td>flagged</td><td>flagged</td></tr><tr><td>astropy/astropy-14508</td><td>LearnByInteract</td><td>flagged</td><td>missed</td></tr><tr><td>django/django-12209</td><td>CodeStory</td><td>flagged</td><td>missed</td></tr><tr><td>django/django-12209</td><td>LearnByInteract</td><td>flagged</td><td>missed</td></tr><tr><td>django/django-12209</td><td>OpenHands</td><td>flagged</td><td>missed</td></tr><tr><td>django/django-12273</td><td>CodeStory</td><td>flagged</td><td>missed</td></tr><tr><td>django/django-12304</td><td>CodeStory</td><td>flagged</td><td>missed</td></tr><tr><td>django/django-12663</td><td>LearnByInteract</td><td>flagged</td><td>missed</td></tr><tr><td>django/django-12663</td><td>OpenHands</td><td>flagged</td><td>missed</td></tr><tr><td>django/django-15161</td><td>CodeStory</td><td>flagged</td><td>missed</td></tr><tr><td>django/django-15268</td><td>OpenHands</td><td>flagged</td><td>missed</td></tr><tr><td>django/django-17084</td><td>LearnByInteract</td><td>flagged</td><td>missed</td></tr><tr><td>pydata/xarray-4629</td><td>LearnByInteract</td><td>flagged</td><td>missed</td></tr><tr><td>pydata/xarray-4629</td><td>OpenHands</td><td>flagged</td><td>missed</td></tr><tr><td>pydata/xarray-7393</td><td>LearnByInteract</td><td>flagged</td><td>missed</td></tr><tr><td>scikit-learn/scikit-learn-25102</td><td>LearnByInteract</td><td>flagged</td><td>missed</td></tr><tr><td>scikit-learn/scikit-learn-25102</td><td>OpenHands</td><td>flagged</td><td>missed</td></tr><tr><td>sympy/sympy-12096</td><td>LearnByInteract</td><td>flagged</td><td>missed</td></tr><tr><td>sympy/sympy-13877</td><td>LearnByInteract</td><td>flagged</td><td>missed</td></tr><tr><td>sympy/sympy-14711</td><td>OpenHands</td><td>flagged</td><td>missed</td></tr><tr><td>django/django-11292</td><td>LearnByInteract</td><td>missed</td><td>flagged</td></tr><tr><td>django/django-15382</td><td>CodeStory</td><td>missed</td><td>flagged</td></tr><tr><td>django/django-16661</td><td>CodeStory</td><td>missed</td><td>flagged</td></tr><tr><td>django/django-16661</td><td>LearnByInteract</td><td>missed</td><td>flagged</td></tr><tr><td>sphinx-doc/sphinx-8120</td><td>OpenHands</td><td>missed</td><td>flagged</td></tr><tr><td>sympy/sympy-20801</td><td>CodeStory</td><td>missed</td><td>flagged</td></tr><tr><td>django/django-11265</td><td>LearnByInteract</td><td>missed</td><td>missed</td></tr><tr><td>django/django-11292</td><td>CodeStory</td><td>missed</td><td>missed</td></tr><tr><td>django/django-11292</td><td>OpenHands</td><td>missed</td><td>missed</td></tr><tr><td>django/django-11880</td><td>CodeStory</td><td>missed</td><td>missed</td></tr><tr><td>django/django-12663</td><td>CodeStory</td><td>missed</td><td>missed</td></tr><tr><td>django/django-12708</td><td>CodeStory</td><td>missed</td><td>missed</td></tr><tr><td>django/django-13012</td><td>CodeStory</td><td>missed</td><td>missed</td></tr><tr><td>django/django-13028</td><td>LearnByInteract</td><td>missed</td><td>missed</td></tr><tr><td>django/django-13121</td><td>CodeStory</td><td>missed</td><td>missed</td></tr><tr><td>django/django-13279</td><td>CodeStory</td><td>missed</td><td>missed</td></tr><tr><td>django/django-14771</td><td>CodeStory</td><td>missed</td><td>missed</td></tr><tr><td>django/django-15022</td><td>OpenHands</td><td>missed</td><td>missed</td></tr><tr><td>django/django-7530</td><td>OpenHands</td><td>missed</td><td>missed</td></tr><tr><td>matplotlib/matplotlib-14623</td><td>LearnByInteract</td><td>missed</td><td>missed</td></tr><tr><td>sphinx-doc/sphinx-7440</td><td>LearnByInteract</td><td>missed</td><td>missed</td></tr><tr><td>sphinx-doc/sphinx-9230</td><td>OpenHands</td><td>missed</td><td>missed</td></tr><tr><td>sympy/sympy-12096</td><td>CodeStory</td><td>missed</td><td>missed</td></tr><tr><td>sympy/sympy-12096</td><td>OpenHands</td><td>missed</td><td>missed</td></tr><tr><td>sympy/sympy-12419</td><td>OpenHands</td><td>missed</td><td>missed</td></tr><tr><td>sympy/sympy-13031</td><td>CodeStory</td><td>missed</td><td>missed</td></tr><tr><td>sympy/sympy-15017</td><td>CodeStory</td><td>missed</td><td>missed</td></tr><tr><td>sympy/sympy-15017</td><td>LearnByInteract</td><td>missed</td><td>missed</td></tr><tr><td>sympy/sympy-15017</td><td>OpenHands</td><td>missed</td><td>missed</td></tr><tr><td>sympy/sympy-15875</td><td>OpenHands</td><td>missed</td><td>missed</td></tr><tr><td>sympy/sympy-19346</td><td>CodeStory</td><td>missed</td><td>missed</td></tr><tr><td>sympy/sympy-19346</td><td>LearnByInteract</td><td>missed</td><td>missed</td></tr><tr><td>sympy/sympy-20801</td><td>LearnByInteract</td><td>missed</td><td>missed</td></tr></tbody>
+          </table>
+        </details>
+        <div class="unit-tip" role="status" hidden></div>
+      </figure>
+    </div>
+  </section>
+
+  <section id="notes" aria-labelledby="notes-title">
+    <div class="wrap notes-grid">
+      <div>
+        <h2 id="notes-title">Notes that notice when the code moves.</h2>
+        <p class="section-sub">Some things an agent cannot learn from the code: why a function is shaped this way, the fix that was tried and reverted, the flag production depends on. Write them down next to the function they are about.</p>
+        <p class="section-sub">When that function changes, the guard hands the note to the agent and marks it as possibly out of date, until someone confirms it still holds.</p>
+<pre class="cmd mono"><span class="prompt">$</span> codenib guard note add \
+    "Cart copies its items, so callers can reuse their list." \
+    --anchor shop/pricing.py:Cart.__init__ --kind invariant</pre>
+      </div>
+      <div class="panel notes-panel">
+        <div class="panel-bar"><span>After an edit to Cart.__init__</span><span class="mono">codenib guard check</span></div>
+        <div class="report mono">
+          <p class="r-head">Notes on this code (1):</p>
+          <p class="r-indent">[invariant] Cart copies its items, so callers can reuse their list.</p>
+          <p class="r-head r-gap">Notes that may be out of date (1):</p>
+          <p class="r-indent">[invariant] Cart copies its items, so callers can reuse their list.</p>
+          <p class="r-indent r-muted">.codenib/notes/cart-copies-its-items-so-callers.md; Cart.__init__ changed</p>
+          <p class="r-indent r-muted">After checking one, run `codenib guard note confirm &lt;file&gt;`.</p>
+        </div>
+        <p class="panel-foot">Notes are Markdown files in <code>.codenib/notes/</code>, reviewed in pull requests like code.</p>
       </div>
     </div>
-  </div>
+  </section>
+
+  <section id="install" class="install" aria-labelledby="install-title">
+    <div class="wrap install-grid">
+      <div>
+        <h2 id="install-title">Add it to your agent.</h2>
+        <p class="section-sub">Two commands in your repository. The guard then runs each time Claude Code or Codex is about to finish, and hands back the tests its change reaches.</p>
+      </div>
+      <div class="install-steps">
+        <div class="cmd-block">
+<pre class="cmd mono" id="install-command"><span class="prompt">$</span> python -m pip install "codenib[graph]"
+<span class="prompt">$</span> codenib guard install --agent claude</pre>
+          <button class="copy" type="button" data-copy="install-command" data-copied="Copied" hidden>Copy</button>
+        </div>
+        <ul class="install-facts">
+          <li>Use <code>--agent codex</code> or <code>--agent all</code> for Codex. Codex runs a new hook after you trust it in <code>/hooks</code>.</li>
+          <li>The first graph of a commit takes one to three minutes on a repository the size of Django or sympy; later sessions reuse it. Run <code>codenib guard check</code> any time to see the report yourself.</li>
+          <li>Requires Python 3.10+ and Git. Remove it with <code>codenib guard uninstall</code>.</li>
+          <li>The hook sends nothing anywhere. With <code>--share-first-run</code> it sends one anonymous event the first time it reports, so we can count installs that work.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="more" aria-labelledby="more-title">
+    <div class="wrap">
+      <h2 id="more-title">Also in CodeNib</h2>
+      <div class="more-row">
+        <a href="https://demo.codenib.ai/wikis"><strong>Repository Wikis</strong><span>Source-linked explanations of public repositories.</span></a>
+        <a href="https://docs.codenib.ai/codegraph/"><strong>Search tools for agents</strong><span>Definitions, callers and call chains over MCP.</span></a>
+        <a href="https://docs.codenib.ai/language_capabilities/"><strong>Language support</strong><span>Which graph providers each language has.</span></a>
+        <a href="/blogs/"><strong>Blog</strong><span>Benchmarks, methods and what did not work.</span></a>
+      </div>
+    </div>
+  </section>
 </main>
-<script type="module" src="assets/explore/repo-explorer.js"></script>
-<script type="module" src="assets/explore/landing-entry.js"></script>
 
 <footer>
   <div class="wrap foot">
@@ -443,10 +585,9 @@ codenib codegraph init /path/to/your/repo</code></pre>
     <a href="https://demo.codenib.ai">Demo</a>
     <a href="https://github.com/sysevol-ai/CodeNib">GitHub</a>
     <a href="https://github.com/sysevol-ai/CodeNib/releases">Releases</a>
-    <span>© 2026 CodeNib</span>
+    <span>&copy; 2026 CodeNib</span>
   </div>
 </footer>
-
-
+<script type="module" src="assets/guard/landing-guard.js"></script>
 </body>
 </html>

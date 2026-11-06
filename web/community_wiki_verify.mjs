@@ -234,7 +234,7 @@ try {
     );
     const page = await context.newPage();
     page.on("pageerror", (error) => errors.push(error.message));
-    await page.goto(base);
+    await page.goto(`${base}/wikis`);
     await page.getByRole("heading", { name: "Continue reading" }).waitFor();
     assert.equal(
       await page.getByText("Your saved Wikis", { exact: true }).count(),

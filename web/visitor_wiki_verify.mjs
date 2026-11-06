@@ -169,7 +169,7 @@ try {
     assert.equal(posts, 0);
     assert.equal(await page.evaluate(() => localStorage.getItem("codenib-wiki-attempts-v1")), null);
     await page.screenshot({ path: `${output}/visitor-wiki-${mobile ? "mobile" : "desktop"}-rejected.png`, fullPage: true });
-    await page.goto(base);
+    await page.goto(`${base}/wikis`);
     await page
       .getByLabel("Explore your own repository")
       .fill("https://github.com/owner/repo");

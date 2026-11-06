@@ -84,7 +84,9 @@ async function fixtures(context, { metrics = false, unavailable = false } = {}) 
 }
 
 try {
-  for (const [site, base] of [["landing", landing], ["wiki", wiki]]) {
+  // codenib.ai now leads with the guard (landing_verify.mjs); the Requests
+  // example lives on the Wiki home, /wikis.
+  for (const [site, base] of [["wiki", `${wiki}/wikis`]]) {
     for (const width of [1440, 390, 320]) {
       const context = await browser.newContext({ viewport: { width, height: 960 }, reducedMotion: "no-preference" });
       const writes = await fixtures(context);
@@ -136,7 +138,7 @@ try {
   const context = await browser.newContext();
   await fixtures(context);
   const page = await context.newPage();
-  await page.goto(`${wiki}/`);
+  await page.goto(`${wiki}/wikis`);
   await page.goto(`${wiki}/psf/requests?p=redirects`);
   await page.waitForURL(`${wiki}/psf__requests?p=redirects`);
   await page.reload();
@@ -155,7 +157,7 @@ try {
   const offline = await browser.newContext();
   const offlineWrites = await fixtures(offline, { unavailable: true });
   const offlinePage = await offline.newPage();
-  await offlinePage.goto(wiki);
+  await offlinePage.goto(`${wiki}/wikis`);
   await offlinePage.locator('codenib-explorer [data-node="3"]').click();
   assert.match(await offlinePage.locator(".source-code").innerText(), /return True/);
   await offlinePage.goto(`${wiki}/psf/requests`);
@@ -173,7 +175,7 @@ try {
     return route.fulfill({ json: [repo] });
   });
   const early = await delayed.newPage();
-  await early.goto(wiki);
+  await early.goto(`${wiki}/wikis`);
   await early.getByRole("textbox", { name: "Explore your own repository" }).fill("psf/requests");
   await early.getByRole("button", { name: "Open Wiki" }).click();
   await early.getByText("Checking for a ready Wiki…", { exact: true }).waitFor();
@@ -189,7 +191,7 @@ try {
     if (privacy) await measured.addInitScript(() => Object.defineProperty(navigator, "doNotTrack", { value: "1" }));
     const events = await fixtures(measured, { metrics: true });
     const p = await measured.newPage();
-    await p.goto(wiki, { waitUntil: "networkidle" });
+    await p.goto(`${wiki}/wikis`, { waitUntil: "networkidle" });
     await p.locator('codenib-explorer [data-node="3"]').click();
     await p.locator('codenib-explorer [data-node="2"]').click();
     await p.getByRole("textbox", { name: "Explore your own repository" }).fill("https://github.com/private-example/do-not-log");

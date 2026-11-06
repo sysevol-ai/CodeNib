@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { AppLink } from "@/lib/router";
-import { assetUrl } from "@/lib/runtime";
+import { assetUrl, guardHome } from "@/lib/runtime";
 import { AGENT_SETUP_URL } from "@/components/AgentSetup";
 import { recordExperience } from "@/lib/experience";
 
@@ -77,11 +77,12 @@ export default function Header({
   return (
     <header className="site-header">
       <AppLink href="/" className="brand">
-        <img className="brand-mark" src={assetUrl("/codenib-icon.svg")} alt="" /> CodeNib Wiki
+        <img className="brand-mark" src={assetUrl("/codenib-icon.svg")} alt="" /> CodeNib
       </AppLink>
       {center}
       <div className="header-right">
-        <AppLink className="header-link" href="/browse">Browse</AppLink>
+        {guardHome() && <AppLink className="header-link" href="/guard">Guard cases</AppLink>}
+        <AppLink className="header-link" href="/browse">{guardHome() ? "Wikis" : "Browse"}</AppLink>
         <a className="header-link agent-setup-link" href={AGENT_SETUP_URL} target="_blank" rel="noreferrer" onClick={() => recordExperience("agent_setup_open")}>
           Use with your agent
         </a>

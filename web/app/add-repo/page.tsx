@@ -10,7 +10,7 @@ export default function AddRepo() {
     <div className="landing">
       <Header />
       <main className="hero">
-        <AppLink href="/">← Ready Wikis</AppLink>
+        <AppLink href="/wikis">← Ready Wikis</AppLink>
         <h1>Start with a GitHub URL</h1>
         <p className="hero-sub">
           Generate a source-linked Repo Wiki from a public repository. Review
