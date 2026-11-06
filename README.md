@@ -44,9 +44,10 @@ SPDX-License-Identifier: Apache-2.0
   <a href="https://docs.codenib.ai/codegraph/#recorded-agent-session">Pinned source, transcript and setup details</a>.
 </p>
 
-New in **0.2.5**: saved repository Wikis and portable OKF export, Pyrefly-backed
-Python graphs, static entry-path navigation and call-path rule checks.
-[Read the release notes](https://docs.codenib.ai/releases/0.2.5/).
+New in **0.2.6**: `codenib guard` lists the tests a change reaches, and the call
+path to each, before Claude Code or Codex finishes, and keeps notes anchored to
+the code they describe.
+[Read the release notes](https://docs.codenib.ai/releases/0.2.6/).
 
 ## Quickstart
 

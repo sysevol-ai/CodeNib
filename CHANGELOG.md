@@ -11,6 +11,30 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 ## [Unreleased]
 
+## [0.2.6] - 2026-11-06
+
+### Added
+
+- `codenib guard check` compares the working tree with a commit and lists the
+  tests that reach the changed definitions within three calls, each with its
+  call path and call lines. The graph is built from the commit's tracked files
+  and cached per commit. `--json` and `--exit-code` serve scripts and CI.
+- `codenib guard install` adds SessionStart and Stop hooks for Claude Code and
+  Codex. Before the agent finishes, the hook hands back the tests its change
+  reaches; it reports each change once and never fails the agent's turn.
+- Notes anchored to code: `codenib guard note add|list|confirm` keeps Markdown
+  notes in `.codenib/notes/`. The guard shows notes on changed code and flags
+  notes whose code changed.
+- Constructor edges for the guard's Python call graph: `C(...)` reaches C's own
+  or inherited `__init__` and `__new__`, including through aliases.
+- The packaged Wiki UI includes real guard cases at `/guard`. A deployment can
+  open on them with `home: "guard"` in its runtime configuration.
+
+### Changed
+
+- The opt-in first-party funnel collector accepts `install_command_copy`,
+  `guard_case_view` and an opt-in, once-per-user `guard_first_run` event.
+
 ## [0.2.5] - 2026-11-04
 
 ### Added
