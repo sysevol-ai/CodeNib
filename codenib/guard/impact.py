@@ -284,5 +284,9 @@ class ImpactGraph:
                     path=tuple(path),
                 )
             )
-        result.tests.sort(key=lambda t: (t.depth, t.test_id))
+        # Tests that reach the change through calls come first; tests that were
+        # themselves edited (depth 0) last, since whoever edited them has
+        # usually just run them. A real session filled the suggested command
+        # with the agent's own new tests and left out the ones that call in.
+        result.tests.sort(key=lambda t: (t.depth == 0, t.depth, t.test_id))
         return result

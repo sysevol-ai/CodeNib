@@ -31,6 +31,7 @@ from filelock import FileLock
 from ..paths import repo_index_dir, repo_state_dir
 
 KEEP_SNAPSHOTS = 3
+FAILURE_TTL = 3600  # seconds before a failed build is tried again
 GUARD_LANGUAGES = ("python",)
 
 
@@ -103,6 +104,25 @@ def cached_snapshot(repo: Path, commit: str) -> Optional[Snapshot]:
     return Snapshot(commit, root / ready["source"], ready.get("seconds"))
 
 
+def has_python(repo: Path, commit: str) -> bool:
+    """Whether ``commit`` tracks any Python file the guard can graph."""
+
+    names = git(repo, "ls-tree", "-r", "--name-only", "-z", commit).split("\0")
+    return any(name.endswith((".py", ".pyi")) for name in names)
+
+
+def failed_snapshot(repo: Path, commit: str) -> Optional[str]:
+    """Why a build of ``commit`` failed within the last hour, or ``None``."""
+
+    path = _snapshot_root(repo, commit) / "failed.json"
+    try:
+        if time.time() - path.stat().st_mtime > FAILURE_TTL:
+            return None
+        return json.loads(path.read_text())["error"]
+    except (OSError, ValueError, KeyError):
+        return None
+
+
 def _extract(repo: Path, commit: str, destination: Path) -> None:
     archive = git(repo, "archive", "--format=tar", commit, binary=True)
     with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
@@ -137,18 +157,28 @@ def build_snapshot(repo: Path, commit: str) -> Snapshot:
         source = root / (repo.resolve().name or "repository")
         source.mkdir(parents=True)
         started = time.monotonic()
-        _extract(repo, commit, source)
-        with redirect_stdout(sys.stderr):
-            _, failed = index_repository(
-                source,
-                languages=list(GUARD_LANGUAGES),
-                views=["symbol_graph"],
-                allow_partial_graph_languages=False,
-            )
-        if failed:
-            raise SnapshotError(
-                f"graph build failed for {commit[:12]}: {', '.join(failed)}"
-            )
+        try:
+            if not has_python(repo, commit):
+                raise SnapshotError(
+                    f"{commit[:12]} has no Python files; the guard supports "
+                    "Python repositories"
+                )
+            _extract(repo, commit, source)
+            with redirect_stdout(sys.stderr):
+                _, failed = index_repository(
+                    source,
+                    languages=list(GUARD_LANGUAGES),
+                    views=["symbol_graph"],
+                    allow_partial_graph_languages=False,
+                )
+            if failed:
+                raise SnapshotError(
+                    f"graph build failed for {commit[:12]}: {', '.join(failed)}"
+                )
+        except Exception as exc:
+            # Recorded so a waiting hook stops waiting; the next build retries.
+            (root / "failed.json").write_text(json.dumps({"error": str(exc)}))
+            raise
         seconds = round(time.monotonic() - started, 1)
         (root / "ready.json").write_text(
             json.dumps({"commit": commit, "source": source.name, "seconds": seconds})

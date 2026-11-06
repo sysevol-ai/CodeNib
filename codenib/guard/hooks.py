@@ -39,7 +39,9 @@ from .snapshot import (
     SnapshotError,
     build_in_background,
     cached_snapshot,
+    failed_snapshot,
     guard_dir,
+    has_python,
     resolve_commit,
 )
 
@@ -277,6 +279,8 @@ def _wait_for_graph(repo: Path, commit: str) -> bool:
 
     if cached_snapshot(repo, commit) is not None:
         return True
+    if failed_snapshot(repo, commit) is not None:
+        return False
     lock_path = guard_dir(repo) / "snapshots" / f"{commit}.lock"
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     lock = FileLock(str(lock_path))
@@ -292,6 +296,8 @@ def _wait_for_graph(repo: Path, commit: str) -> bool:
         time.sleep(2)
         if cached_snapshot(repo, commit) is not None:
             return True
+        if failed_snapshot(repo, commit) is not None:
+            return False
     return False
 
 
@@ -306,8 +312,11 @@ def stop(agent: str, payload: Dict[str, object]) -> Tuple[str, str]:
     session = str(payload.get("session_id") or "unknown")
     entry = _update_session(repo, session)
     base = str(entry.get("base") or resolve_commit(repo))
+    if not has_python(repo, base):
+        return "", "skipped: no Python files"
     if not _wait_for_graph(repo, base):
-        return "", f"skipped: graph of {base[:12]} still building"
+        reason = failed_snapshot(repo, base) or "still building"
+        return "", f"skipped: graph of {base[:12]}: {reason}"
     report = run_guard(repo, base)
     if not report.has_findings:
         return "", "no tests or notes at risk"
@@ -329,6 +338,8 @@ def session_start(agent: str, payload: Dict[str, object]) -> str:
     session = str(payload.get("session_id") or "unknown")
     entry = _update_session(repo, session, base=commit)
     base = str(entry["base"])
+    if not has_python(repo, base):
+        return "skipped: no Python files"
     if cached_snapshot(repo, base) is None:
         build_in_background(repo, base, _log_path(repo))
         return f"session base {base[:12]}; building its graph"
