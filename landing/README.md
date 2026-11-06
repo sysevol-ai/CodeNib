@@ -32,8 +32,9 @@ The homepage's evidence is generated, not typed:
 - The xarray case is the one the plan named; its caption says why its list is
   long (a module-level import made the guard count the whole file as changed).
 - "What it looks like in Claude Code" condenses a real headless session with
-  the guard hooks on CodeNib's own repository. Its sanitized transcript is
-  `assets/demos/guard-session.jsonl`; quotes on the page are verbatim from it.
+  the guard hooks on SWE-bench Verified sympy-24443, the hero case's issue.
+  Sanitized transcripts of all three recorded sessions are in
+  `assets/demos/guard-session-*.jsonl`; quotes on the page are verbatim.
   Replace it with a session from the #975 in-the-loop A/B when that runs, and
   never with a staged one.
 
