@@ -184,3 +184,14 @@ def test_base_changed_lines_uses_base_side_numbers():
     changed, added = base_changed_lines(diff)
     assert changed == {"shop/a.py": {3, 4, 10, 20}, "shop/gone.py": {1, 2, 3, 4}}
     assert added == ["shop/new.py"]
+
+
+def test_tests_that_call_in_come_before_edited_tests(tmp_path, make_graph, write_files):
+    root = _repo(tmp_path, write_files)
+    graph = ImpactGraph(make_graph(NODES, EDGES), root)
+    # The edit touches Base.__init__ and the test file's own test_build.
+    impact = graph.impact({"shop/pricing.py": {3}, "tests/test_shop.py": {9}}, depth=3)
+    assert [(t.test_id, t.depth) for t in impact.tests] == [
+        ("tests/test_shop.py::test_build", 2),
+        ("tests/test_shop.py::TestKind::test_kind", 0),
+    ]
