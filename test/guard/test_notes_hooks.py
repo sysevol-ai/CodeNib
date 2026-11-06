@@ -174,3 +174,28 @@ def test_hook_errors_never_fail_the_turn(monkeypatch, capsys):
     monkeypatch.setattr(hooks, "_repo_root", lambda cwd: None)
     assert hooks.run_hook("claude", "stop", "{}") == 0
     assert capsys.readouterr().out == ""
+
+
+def test_stop_skips_repositories_without_python(git_repo, tmp_path, monkeypatch):
+    monkeypatch.setenv("CODENIB_HOME", str(tmp_path / "home"))
+    git_repo.commit({"app.js": "console.log(1)\n"}, "init")
+    (git_repo.root / "app.js").write_text("console.log(2)\n")
+    payload = {"session_id": "s", "cwd": str(git_repo.root), "stop_hook_active": False}
+    assert hooks.stop("claude", payload) == ("", "skipped: no Python files")
+
+
+def test_a_failed_build_is_recorded_and_retried_later(git_repo, tmp_path, monkeypatch):
+    import os
+
+    from codenib.guard import snapshot
+
+    monkeypatch.setenv("CODENIB_HOME", str(tmp_path / "home"))
+    commit = git_repo.commit({"app.js": "console.log(1)\n"}, "init")
+    with pytest.raises(snapshot.SnapshotError, match="no Python files"):
+        snapshot.build_snapshot(git_repo.root, commit)
+    assert "no Python files" in snapshot.failed_snapshot(git_repo.root, commit)
+    assert hooks._wait_for_graph(git_repo.root, commit) is False
+    marker = snapshot.guard_dir(git_repo.root) / "snapshots" / commit / "failed.json"
+    old = marker.stat().st_mtime - snapshot.FAILURE_TTL - 1
+    os.utime(marker, (old, old))
+    assert snapshot.failed_snapshot(git_repo.root, commit) is None
