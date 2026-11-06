@@ -38,8 +38,11 @@ The homepage's evidence is generated, not typed:
   Replace it with a session from the #975 in-the-loop A/B when that runs, and
   never with a staged one.
 
-The install commands only work once a CodeNib release includes `codenib
-guard`; publish the homepage after that release.
+Until a CodeNib release includes `codenib guard`, the install block builds
+CodeNib from source (the wheel needs the prebuilt Wiki frontend, so a plain
+`pip install git+…` does not work). After that release, replace the first
+three lines with `python -m pip install "codenib[graph]"` and update the copy
+check in `web/landing_verify.mjs`.
 
 The demo (`web/`) is also the Wiki UI packaged with CodeNib, so its home page
 is a deployment setting: the hosted demo's `runtime-config.js` sets

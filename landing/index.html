@@ -542,18 +542,21 @@ body > footer { border-top: 1px solid var(--line); }
     <div class="wrap install-grid">
       <div>
         <h2 id="install-title">Add it to your agent.</h2>
-        <p class="section-sub">Two commands in your repository. The guard then runs each time Claude Code or Codex is about to finish, and hands back the tests its change reaches.</p>
+        <p class="section-sub">Install CodeNib, then one command in your repository. The guard then runs each time Claude Code or Codex is about to finish, and hands back the tests its change reaches.</p>
+        <p class="section-sub">The guard is on CodeNib&rsquo;s main branch and ships in the next release, which turns the first three lines into one <code>pip install</code>.</p>
       </div>
       <div class="install-steps">
         <div class="cmd-block">
-<pre class="cmd mono" id="install-command"><span class="prompt">$</span> python -m pip install "codenib[graph]"
-<span class="prompt">$</span> codenib guard install --agent claude</pre>
+<pre class="cmd mono" id="install-command"><span class="prompt">$</span> git clone https://github.com/sysevol-ai/CodeNib &amp;&amp; cd CodeNib
+<span class="prompt">$</span> (cd web &amp;&amp; npm ci &amp;&amp; npm run build)
+<span class="prompt">$</span> python -m pip install ".[graph]"
+<span class="prompt">$</span> cd /path/to/your/repo &amp;&amp; codenib guard install --agent claude</pre>
           <button class="copy" type="button" data-copy="install-command" data-copied="Copied" hidden>Copy</button>
         </div>
         <ul class="install-facts">
           <li>Use <code>--agent codex</code> or <code>--agent all</code> for Codex. Codex runs a new hook after you trust it in <code>/hooks</code>.</li>
           <li>The first graph of a commit takes one to three minutes on a repository the size of Django or sympy; later sessions reuse it. Run <code>codenib guard check</code> any time to see the report yourself.</li>
-          <li>Requires Python 3.10+ and Git. Remove it with <code>codenib guard uninstall</code>.</li>
+          <li>Building from source needs Python 3.10+, Git and Node.js 20+; it takes under a minute. Remove the hooks with <code>codenib guard uninstall</code>.</li>
           <li>The hook sends nothing anywhere. With <code>--share-first-run</code> it sends one anonymous event the first time it reports, so we can count installs that work.</li>
         </ul>
       </div>
