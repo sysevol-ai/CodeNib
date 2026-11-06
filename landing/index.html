@@ -50,18 +50,22 @@ SPDX-License-Identifier: Apache-2.0
   --accent: #0b57d0;
   --accent-hover: #0842a0;
   --accent-ink: #ffffff;
-  /* Terminal panels */
-  --t-bg: #121315;
-  --t-bar: #1a1b1e;
-  --t-line: rgba(232, 234, 237, 0.12);
-  --t-text: #e8eaed;
-  --t-soft: #bdc1c6;
-  --t-muted: #9aa0a6;
-  --t-accent: #8ab4f8;
-  --t-add: #81c995;
-  --t-del: #f28b82;
-  --t-add-bg: rgba(129, 201, 149, 0.10);
-  --t-del-bg: rgba(242, 139, 130, 0.10);
+  /* Code panels: the demo's light code surfaces (web/app/globals.css). */
+  --t-bg: #ffffff;
+  --t-code: #f8f9fa;
+  --t-bar: #f8f9fa;
+  --t-line: #dadce0;
+  --t-text: #1f1f1f;
+  --t-soft: #3c4043;
+  --t-muted: #5f6368;
+  --t-faint: #80868b;
+  --t-accent: #0b57d0;
+  --t-accent-soft: #e8f0fe;
+  --t-accent-border: #a8c7fa;
+  --t-add: #137333;
+  --t-del: #a50e0e;
+  --t-add-bg: #e6f4ea;
+  --t-del-bg: #fce8e6;
   --r-box: 10px;   /* containers */
   --r-ui: 6px;     /* interactive */
 }
@@ -131,23 +135,28 @@ main > section { padding: 96px 0 0; }
 .hero-note { margin-top: 14px; color: var(--ink-2); font-size: 13.5px; }
 
 /* ---- terminal panels ---- */
-.panel { min-width: 0; background: var(--t-bg); color: var(--t-text); border-radius: var(--r-box); overflow: hidden; }
+.panel { min-width: 0; background: var(--t-bg); color: var(--t-text); border: 1px solid var(--t-line); border-radius: var(--r-box); overflow: hidden; }
 .panel-bar {
   display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 16px;
   padding: 11px 18px; background: var(--t-bar); border-bottom: 1px solid var(--t-line);
   color: var(--t-soft); font-size: 13px; font-weight: 560;
 }
 .panel-bar .mono { color: var(--t-muted); font-size: 12px; font-weight: 400; }
-.panel ::selection { background: rgba(138, 180, 248, 0.3); }
+.panel ::selection { background: rgba(11, 87, 208, 0.16); }
 .diff, .report { font-size: 12.5px; line-height: 1.7; }
-.diff { display: block; margin: 0; padding: 14px 0; overflow-x: auto; white-space: pre; color: var(--t-soft); tab-size: 4; }
-.diff > span { display: block; min-width: max-content; padding: 1px 18px; }
+.diff { display: block; margin: 0; padding: 10px 0; overflow-x: auto; white-space: pre; color: var(--t-soft); background: var(--t-code); tab-size: 4; counter-reset: none; }
+.diff > span { display: grid; grid-template-columns: 3.2ch 3.2ch 1.6ch auto; column-gap: 1ch; min-width: max-content; padding: 1px 18px 1px 10px; }
+.diff .ln { color: var(--t-faint); text-align: right; user-select: none; font-style: normal; font-variant-numeric: tabular-nums; }
+.diff .mk { font-style: normal; }
+.diff code { font: inherit; }
+.diff .mk { user-select: none; }
+.diff .hunk { display: block; padding-left: 18px; }
 .diff .hunk { margin-bottom: 6px; }
 .diff .hunk { color: var(--t-muted); }
 .diff .ctx { color: var(--t-soft); }
 .diff .del { color: var(--t-del); background: var(--t-del-bg); }
 .diff .add { color: var(--t-add); background: var(--t-add-bg); }
-.diff { scrollbar-color: rgba(232, 234, 237, 0.25) transparent; }
+.diff { scrollbar-color: #bdc1c6 transparent; }
 .report { padding: 16px 18px 18px; }
 .report p { overflow-wrap: anywhere; }
 .r-muted { color: var(--t-muted); }
@@ -159,18 +168,18 @@ main > section { padding: 96px 0 0; }
 .r-list { list-style: none; margin: 8px 0 12px; display: grid; gap: 4px; }
 .r-list li { padding: 4px 1ch 4px 3ch; text-indent: -2ch; border-radius: 4px; word-break: break-all; }
 .r-list li::before { content: "- "; color: var(--t-muted); }
-.r-list .r-broken { background: var(--t-del-bg); box-shadow: inset 0 0 0 1px rgba(242, 139, 130, 0.45); }
+.r-list .r-broken { background: var(--t-del-bg); box-shadow: inset 0 0 0 1px #f4c7c3; color: var(--t-del); }
 
 /* ---- hero panel ---- */
 .hero-grid { display: grid; grid-template-columns: minmax(0, 6fr) minmax(0, 5fr); gap: clamp(32px, 5vw, 72px); align-items: center; }
-.hero-panel { box-shadow: 0 18px 48px -18px rgba(32, 33, 36, 0.35); }
+.hero-panel { box-shadow: 0 1px 4px rgba(32, 33, 36, 0.08); }
 .hero-panel .report { font-size: 12.5px; }
 
 /* ---- call chain ---- */
 .chain { list-style: none; padding: 20px 18px 8px; display: grid; gap: 0; font-size: 13px; }
 .chain li { position: relative; display: grid; gap: 2px; padding: 0 0 18px 26px; }
 .chain li::before { content: ""; position: absolute; left: 4px; top: 6px; width: 9px; height: 9px; border-radius: 50%; border: 2px solid var(--t-accent); background: var(--t-bg); }
-.chain li::after { content: ""; position: absolute; left: 9px; top: 19px; bottom: 2px; width: 2px; background: rgba(138, 180, 248, 0.35); }
+.chain li::after { content: ""; position: absolute; left: 9px; top: 19px; bottom: 2px; width: 2px; background: var(--t-accent-border); }
 .chain li:last-child { padding-bottom: 8px; }
 .chain li:last-child::after { display: none; }
 .chain .c-name { color: var(--t-text); overflow-wrap: anywhere; }
@@ -202,6 +211,8 @@ main > section { padding: 96px 0 0; }
 #pick-xarray:checked ~ #case-sympy, #pick-sympy:checked ~ #case-xarray { display: none; }
 .case-frame { margin-top: 16px; }
 .case-panels { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; align-items: stretch; }
+.case-panels .panel { display: flex; flex-direction: column; }
+.case-panels .panel .diff { flex: 1; }
 .case-caption { margin-top: 18px; display: grid; gap: 8px; max-width: 86ch; }
 .case-caption p { color: var(--ink); font-size: 15px; }
 .case-caption em.mono { font-style: normal; font-size: 0.9em; color: var(--ink-2); }
@@ -221,7 +232,7 @@ main > section { padding: 96px 0 0; }
 .r-hook .r-who { color: var(--t-accent); }
 .r-hooktext, .r-cmd { font-size: 12px; line-height: 1.65; color: var(--t-soft); overflow-wrap: anywhere; }
 .r-hooktext { word-break: break-all; }
-.r-hook > div { padding: 10px 12px; margin: -4px 0; border-radius: var(--r-ui); background: rgba(138, 180, 248, 0.08); box-shadow: inset 0 0 0 1px rgba(138, 180, 248, 0.3); }
+.r-hook > div { padding: 10px 12px; margin: -4px 0; border-radius: var(--r-ui); background: var(--t-accent-soft); box-shadow: inset 0 0 0 1px var(--t-accent-border); }
 
 /* ---- evidence ---- */
 .evidence-grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: clamp(32px, 5vw, 80px); align-items: start; }
@@ -262,11 +273,12 @@ main > section { padding: 96px 0 0; }
 .notes-grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: clamp(32px, 5vw, 80px); align-items: start; }
 .cmd {
   margin-top: 24px; padding: 16px 18px; border-radius: var(--r-ui);
-  background: var(--t-bg); color: var(--t-text); font-size: 13px; line-height: 1.7;
-  overflow-x: auto; white-space: pre;
+  background: var(--t-code); color: var(--t-text); border: 1px solid var(--t-line);
+  font-size: 13px; line-height: 1.7; overflow-x: auto; white-space: pre;
 }
-.cmd .prompt { color: var(--t-muted); user-select: none; }
+.cmd .prompt { color: var(--t-faint); user-select: none; }
 .notes-panel .report { padding-bottom: 14px; }
+.notes-grid .cmd { white-space: pre-wrap; overflow-wrap: anywhere; }
 .panel-foot { padding: 12px 18px 16px; border-top: 1px solid var(--t-line); color: var(--t-muted); font-size: 13px; }
 .panel-foot code { color: var(--t-soft); }
 
@@ -278,11 +290,11 @@ main > section { padding: 96px 0 0; }
   position: absolute; top: 14px; right: 14px;
   font: inherit; font-size: 13px; font-weight: 560; cursor: pointer;
   padding: 6px 12px; border-radius: var(--r-ui);
-  border: 1px solid rgba(232, 234, 237, 0.26); background: transparent; color: var(--t-text);
+  border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink);
   transition: background .15s, border-color .15s;
 }
-.copy:hover { background: rgba(255, 255, 255, 0.08); border-color: var(--t-soft); }
-.copy:focus-visible { outline-color: var(--t-accent); }
+.copy:hover { background: var(--subtle); border-color: var(--ink-3); }
+.copy:focus-visible { outline-color: var(--accent); }
 .copy[hidden] { display: none; }
 .install-facts { margin-top: 20px; padding-left: 1.2em; display: grid; gap: 10px; color: var(--ink-2); font-size: 15px; max-width: 66ch; }
 .install-facts code { color: var(--ink); }
@@ -409,7 +421,7 @@ body > footer { border-top: 1px solid var(--line); }
         <div class="case-panels">
           <div class="panel">
             <div class="panel-bar"><span>The agent&rsquo;s patch</span><span class="mono">xarray/core/merge.py</span></div>
-<pre class="diff mono" aria-label="The agent's patch to xarray/core/merge.py"><span class="hunk">@@ -15,6 +15,7 @@ from typing import (</span><span class="ctx">     Union,</span><span class="ctx"> )</span><span class="ctx"> </span><span class="add">+import copy</span><span class="ctx"> import pandas as pd</span><span class="hunk">@@ -501,7 +502,7 @@ def merge_attrs(variable_attrs, combine_attrs):</span><span class="ctx">     if combine_attrs == &quot;drop&quot;:</span><span class="ctx">         return {}</span><span class="ctx">     elif combine_attrs == &quot;override&quot;:</span><span class="del">-        return variable_attrs[0]</span><span class="add">+        return copy.deepcopy(variable_attrs[0])</span><span class="ctx">     elif combine_attrs == &quot;no_conflicts&quot;:</span></pre>
+<pre class="diff mono" aria-label="The agent's patch to xarray/core/merge.py"><span class="hunk">@@ -15,6 +15,7 @@ from typing import (</span><span class="ctx"><i class="ln">15</i><i class="ln">15</i><i class="mk"></i><code>    Union,</code></span><span class="ctx"><i class="ln">16</i><i class="ln">16</i><i class="mk"></i><code>)</code></span><span class="ctx"><i class="ln">17</i><i class="ln">17</i><i class="mk"></i><code> </code></span><span class="add"><i class="ln"></i><i class="ln">18</i><i class="mk">+</i><code>import copy</code></span><span class="ctx"><i class="ln">18</i><i class="ln">19</i><i class="mk"></i><code>import pandas as pd</code></span><span class="hunk">@@ -501,7 +502,7 @@ def merge_attrs(variable_attrs, combine_attrs):</span><span class="ctx"><i class="ln">501</i><i class="ln">502</i><i class="mk"></i><code>    if combine_attrs == &quot;drop&quot;:</code></span><span class="ctx"><i class="ln">502</i><i class="ln">503</i><i class="mk"></i><code>        return {}</code></span><span class="ctx"><i class="ln">503</i><i class="ln">504</i><i class="mk"></i><code>    elif combine_attrs == &quot;override&quot;:</code></span><span class="del"><i class="ln">504</i><i class="ln"></i><i class="mk">-</i><code>        return variable_attrs[0]</code></span><span class="add"><i class="ln"></i><i class="ln">505</i><i class="mk">+</i><code>        return copy.deepcopy(variable_attrs[0])</code></span><span class="ctx"><i class="ln">505</i><i class="ln">506</i><i class="mk"></i><code>    elif combine_attrs == &quot;no_conflicts&quot;:</code></span></pre>
           </div>
           <div class="panel">
             <div class="panel-bar"><span>Why the guard flagged test_copy</span><span class="mono">call path in the graph</span></div>
@@ -434,8 +446,8 @@ body > footer { border-top: 1px solid var(--line); }
       <figure class="case-frame" id="case-sympy">
         <div class="case-panels">
           <div class="panel">
-            <div class="panel-bar"><span>The agent&rsquo;s patch</span><span class="mono">sympy/combinatorics/homomorphisms.py, dedented</span></div>
-<pre class="diff mono" aria-label="The agent's patch to _check_homomorphism._image, with 12 columns of shared indentation removed"><span class="hunk">@@ -333,8 +333,14 @@ def _image(r):</span><span class="ctx"> while i &lt; len(r):</span><span class="ctx">     power = r_arr[j][1]</span><span class="del">-    if isinstance(domain, PermutationGroup) and r[i] in gens:</span><span class="del">-        s = domain.generators[gens.index(r[i])]</span><span class="add">+    if isinstance(domain, PermutationGroup):</span><span class="add">+        # For PermutationGroup, we need to map both original and inverted generators</span><span class="add">+        # to their corresponding domain generators</span><span class="add">+        s = r[i]  # Default to r[i] if no match found</span><span class="add">+        for j, g in enumerate(domain.generators):</span><span class="add">+            if r[i] == g or r[i] == g**-1:</span><span class="add">+                s = g  # Use the original generator, not domain.generators[j]</span><span class="add">+                break</span><span class="ctx">     else:</span><span class="ctx">         s = r[i]</span></pre>
+            <div class="panel-bar"><span>The agent&rsquo;s patch</span><span class="mono">sympy/combinatorics/homomorphisms.py</span></div>
+<pre class="diff mono" aria-label="The agent's patch to _check_homomorphism._image, with 12 columns of shared indentation removed"><span class="hunk">@@ -333,8 +333,14 @@ def _image(r):</span><span class="ctx"><i class="ln">334</i><i class="ln">334</i><i class="mk"></i><code>while i &lt; len(r):</code></span><span class="ctx"><i class="ln">335</i><i class="ln">335</i><i class="mk"></i><code>    power = r_arr[j][1]</code></span><span class="del"><i class="ln">336</i><i class="ln"></i><i class="mk">-</i><code>    if isinstance(domain, PermutationGroup) and r[i] in gens:</code></span><span class="del"><i class="ln">337</i><i class="ln"></i><i class="mk">-</i><code>        s = domain.generators[gens.index(r[i])]</code></span><span class="add"><i class="ln"></i><i class="ln">336</i><i class="mk">+</i><code>    if isinstance(domain, PermutationGroup):</code></span><span class="add"><i class="ln"></i><i class="ln">337</i><i class="mk">+</i><code>        # For PermutationGroup, we need to map both original and inverted generators</code></span><span class="add"><i class="ln"></i><i class="ln">338</i><i class="mk">+</i><code>        # to their corresponding domain generators</code></span><span class="add"><i class="ln"></i><i class="ln">339</i><i class="mk">+</i><code>        s = r[i]  # Default to r[i] if no match found</code></span><span class="add"><i class="ln"></i><i class="ln">340</i><i class="mk">+</i><code>        for j, g in enumerate(domain.generators):</code></span><span class="add"><i class="ln"></i><i class="ln">341</i><i class="mk">+</i><code>            if r[i] == g or r[i] == g**-1:</code></span><span class="add"><i class="ln"></i><i class="ln">342</i><i class="mk">+</i><code>                s = g  # Use the original generator, not domain.generators[j]</code></span><span class="add"><i class="ln"></i><i class="ln">343</i><i class="mk">+</i><code>                break</code></span><span class="ctx"><i class="ln">338</i><i class="ln">344</i><i class="mk"></i><code>    else:</code></span><span class="ctx"><i class="ln">339</i><i class="ln">345</i><i class="mk"></i><code>        s = r[i]</code></span></pre>
           </div>
           <div class="panel">
             <div class="panel-bar"><span>Why the guard flagged the broken test</span><span class="mono">call path in the graph</span></div>
