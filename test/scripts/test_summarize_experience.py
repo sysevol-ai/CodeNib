@@ -34,3 +34,21 @@ def test_source_funnel_requires_a_later_step_in_the_same_tab(capsys):
     assert "source_inspection -> agent_setup_open: 2/3" in landing
     assert "source_inspection -> repository_submit: 1/1" in wiki
     assert "source_inspection -> agent_setup_open: 0/1" in wiki
+
+
+def test_install_copy_after_source_inspection_and_cli_first_runs(capsys):
+    def event(name, visit, surface="landing"):
+        return f"experience_event event={name} surface={surface} visit={visit * 32}"
+
+    summarize(
+        [
+            event("example_source_open", "a"),
+            event("install_command_copy", "a"),
+            event("install_command_copy", "b"),
+            event("guard_first_run", "c", "cli"),
+        ]
+    )
+    cli, landing = capsys.readouterr().out.split("landing:")
+    assert "cli: 1 observed tab visits" in cli and "guard_first_run: 1" in cli
+    assert "install_command_copy: 2" in landing
+    assert "source_inspection -> install_command_copy: 1/1" in landing

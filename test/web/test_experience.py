@@ -87,3 +87,17 @@ def test_collector_stops_reading_oversized_stream(collector, caplog):
     )
     assert response.status_code == 413
     assert not any("experience_event" in r.message for r in caplog.records)
+
+
+def test_cli_surface_carries_only_the_guard_first_run(collector, caplog):
+    first_run = dict(event="guard_first_run", surface="cli", visit="b" * 32)
+    assert collector.post("/api/experience-events", json=first_run).status_code == 204
+    for payload in (
+        {**first_run, "surface": "landing"},
+        {**first_run, "event": "page_view"},
+    ):
+        assert collector.post("/api/experience-events", json=payload).status_code == 422
+    messages = [r.message for r in caplog.records if r.name == experience.logger.name]
+    assert messages == [
+        "experience_event event=guard_first_run surface=cli visit=" + "b" * 32
+    ]
