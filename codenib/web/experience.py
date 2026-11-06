@@ -32,8 +32,12 @@ class ExperienceEvent(BaseModel):
         "generation_start",
         "first_chapter_read",
         "agent_setup_open",
+        "guard_case_view",
+        "install_command_copy",
+        "guard_first_run",
     ]
-    surface: Literal["landing", "wiki"]
+    # "cli" is the guard hook's single opt-in first-run event.
+    surface: Literal["landing", "wiki", "cli"]
     visit: str = Field(pattern=r"^[a-f0-9]{32}$", max_length=32)
 
 
@@ -50,6 +54,8 @@ async def experience_event(request: Request):
         event = ExperienceEvent.model_validate_json(payload)
     except ValidationError:
         # Never echo or log the rejected body, including unknown fields.
+        return Response(status_code=422)
+    if (event.surface == "cli") != (event.event == "guard_first_run"):
         return Response(status_code=422)
     now = monotonic()
     # One event-loop operation: there is no await between admission and append.

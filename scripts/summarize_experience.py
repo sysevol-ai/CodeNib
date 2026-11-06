@@ -3,7 +3,8 @@
 
 """Summarize opt-in experience events from service logs on stdin.
 
-Counts are browser-tab visits, not people. Origins have separate sessions;
+Counts are browser-tab visits, not people; ``cli`` counts opted-in guard
+installations whose hook reported for the first time. Origins have separate sessions;
 disabled telemetry, privacy signals, blocked requests and rate limiting make
 these partial observations, not a census or a causal conversion estimate.
 """
@@ -13,7 +14,7 @@ import sys
 from collections import defaultdict
 
 PATTERN = re.compile(
-    r"experience_event event=([a-z_]+) surface=(landing|wiki) visit=([a-f0-9]{32})"
+    r"experience_event event=([a-z_]+) surface=(landing|wiki|cli) visit=([a-f0-9]{32})"
 )
 
 
@@ -38,6 +39,9 @@ def summarize(lines):
             "generation_start",
             "first_chapter_read",
             "agent_setup_open",
+            "guard_case_view",
+            "install_command_copy",
+            "guard_first_run",
         ):
             print(f"  {event}: {sum(event in seen for seen in sessions.values())}")
         for start, finish in (
@@ -57,7 +61,7 @@ def summarize(lines):
             for seen in sessions.values()
             if any(event in seen for event in source_events)
         ]
-        for finish in ("repository_submit", "agent_setup_open"):
+        for finish in ("repository_submit", "agent_setup_open", "install_command_copy"):
             reached = sum(
                 finish in seen and seen[finish] > source_position
                 for seen, source_position in inspected

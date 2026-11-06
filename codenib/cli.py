@@ -4089,6 +4089,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     codegraph_check_parser.set_defaults(handler=_run_codegraph_check)
 
+    from .guard.cli import add_guard_parser
+
+    add_guard_parser(subparsers, argparse.ArgumentDefaultsHelpFormatter)
+
     toolchain_parser = subparsers.add_parser(
         "toolchain",
         help="inspect or install repository language providers",
