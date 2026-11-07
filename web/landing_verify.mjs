@@ -73,9 +73,18 @@ try {
       assert.ok(labels.length && labels.every(label => !label.includes("…")), "map labels must not be cut");
     }
     await page.locator(".home-map-tab").first().click();
-    // Every language sits in one tier, and the heading counts them.
-    assert.equal(await page.locator(".lang-tier").count(), 3);
-    assert.equal(parseInt(await page.locator("#languages-title").innerText(), 10), await page.locator(".lang-names li").count());
+    // Every language has its own icon, and the heading counts them. The strip's
+    // second copy exists only to make the loop seamless.
+    const languages = page.locator('.lang-list:not([aria-hidden="true"]) .lang-item');
+    assert.equal(parseInt(await page.locator("#languages-title").innerText(), 10), await languages.count());
+    assert.equal(await languages.locator("svg").count(), await languages.count());
+    for (const href of await languages.locator("use").evaluateAll(uses => uses.map(use => use.getAttribute("href")))) {
+      assert.equal(await page.locator(href).count(), 1, `${href} must exist`);
+    }
+    // The recorded session replaces the video, in full for reduced motion.
+    assert.equal(await page.locator("video").count(), 0);
+    assert.ok(await page.locator(".replay-log .line").first().isVisible());
+    assert.ok(await page.locator(".replay-log .line.stats").count() === 1);
     // One dark family: no section inverts to a light background.
     const lightest = await page.evaluate(() => Math.max(...[...document.querySelectorAll("main section, .cta-block")].map(section => {
       const [red, green, blue, alpha = 1] = getComputedStyle(section).backgroundColor.match(/[\d.]+/g).map(Number);
@@ -190,6 +199,35 @@ try {
     console.log(`Verified landing at ${width}px.`);
     await context.close();
   }
+
+  // The replay plays once it is reached, can be stopped, and can jump to a step.
+  // The strip moves until it is stopped.
+  const moving = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  moving.setDefaultTimeout(10000);
+  const player = await moving.newPage();
+  await player.goto(base, { waitUntil: "networkidle" });
+  const replay = player.locator("[data-replay]");
+  assert.equal(await player.locator(".replay-log .line.is-on").count(), 0, "the replay waits to be reached");
+  await replay.scrollIntoViewIfNeeded();
+  await player.locator(".replay-log .line.is-on").first().waitFor();
+  await player.locator(".replay-toggle").click();
+  assert.equal(await player.locator(".replay-toggle").innerText(), "Play");
+  const stopped = await player.locator(".replay-log .line.is-on").count();
+  await player.waitForTimeout(1500);
+  assert.equal(await player.locator(".replay-log .line.is-on").count(), stopped, "pause must stop the replay");
+  await player.locator('[data-seek="2"]').click();
+  await player.locator(".replay-toggle", { hasText: "Replay" }).waitFor({ timeout: 20000 });
+  assert.equal(await player.locator(".replay-log .line:not(.is-on)").count(), 0, "the session must finish");
+  assert.equal(await player.locator(".g-item:not(.is-on)").count(), 0, "the whole graph must be drawn");
+  const logBox = await player.locator(".replay-log").evaluate(log => log.scrollHeight - log.scrollTop - log.clientHeight);
+  assert.ok(logBox < 2, "the transcript follows its last line");
+  await player.locator(".replay-toggle").click();
+  assert.equal(await player.locator(".replay-toggle").innerText(), "Pause");
+  const strip = player.locator(".lang-track");
+  assert.notEqual(await strip.evaluate(track => getComputedStyle(track).animationName), "none");
+  await player.locator(".lang-toggle").click();
+  assert.equal(await strip.evaluate(track => getComputedStyle(track).animationPlayState), "paused");
+  await moving.close();
 
   const noJs = await browser.newContext({ javaScriptEnabled: false, viewport: { width: 390, height: 844 } });
   noJs.setDefaultTimeout(10000);

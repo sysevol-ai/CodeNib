@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import html
 import importlib.util
+import re
 import sys
 from pathlib import Path
 
@@ -20,8 +21,26 @@ _LANGUAGES_PATH = _PROJECT_ROOT / "codenib" / "languages.py"
 
 BEGIN_MARKER = "<!-- BEGIN CODENIB_LANGUAGE_CAPABILITIES -->"
 END_MARKER = "<!-- END CODENIB_LANGUAGE_CAPABILITIES -->"
-LANDING_BEGIN_MARKER = "<!-- BEGIN CODENIB_LANGUAGE_TIERS -->"
-LANDING_END_MARKER = "<!-- END CODENIB_LANGUAGE_TIERS -->"
+LANDING_BEGIN_MARKER = "<!-- BEGIN CODENIB_LANGUAGE_STRIP -->"
+LANDING_END_MARKER = "<!-- END CODENIB_LANGUAGE_STRIP -->"
+_ICONS = _PROJECT_ROOT / "landing" / "assets" / "languages"
+# Icon file and hover color for each language; colors are tuned to read on dark.
+_LANDING_LANGUAGES = {
+    "Python": ("python", "#ffd845"),
+    "Go": ("go", "#00add8"),
+    "Rust": ("rust", "#dea584"),
+    "C/C++": ("cplusplus", "#659ad2"),
+    "C#": ("csharp", "#a97bdc"),
+    "Java": ("java", "#f0605f"),
+    "Ruby": ("ruby", "#e8534a"),
+    "PHP": ("php", "#8f9ed1"),
+    "Kotlin": ("kotlin", "#b98cff"),
+    "Swift": ("swift", "#f77d4e"),
+    "Scala": ("scala", "#e8534a"),
+    "Lua": ("lua", "#7d8cff"),
+    "JavaScript": ("javascript", "#f0db4f"),
+    "TypeScript": ("typescript", "#4a9be0"),
+}
 
 
 def _yes_no(value: bool) -> str:
@@ -88,54 +107,59 @@ def replace_block(text: str, block: str) -> str:
     return before.rstrip() + "\n\n" + block + after
 
 
-def _landing_tier(title: str, detail: str, names: list[str]) -> list[str]:
-    items = "".join(f"<li>{html.escape(name)}</li>" for name in names)
-    return [
-        '  <div class="lang-tier">',
-        f"    <div><h3>{title}</h3><p>{detail}</p></div>",
-        f'    <ul class="lang-names">{items}</ul>',
-        "  </div>",
-    ]
+def _landing_item(name: str, tag: str) -> str:
+    icon, color = _LANDING_LANGUAGES[name]
+    return (
+        f'<li class="lang-item lang-{tag.split()[-1]}" style="--brand:{color}">'
+        f'<svg aria-hidden="true"><use href="#lang-{icon}"/></svg>'
+        f'<span class="lang-name">{html.escape(name)}</span>'
+        f'<span class="lang-tag">{tag}</span></li>'
+    )
 
 
-def render_landing_tiers() -> str:
-    """Return the homepage's language tiers, sorted from the registry."""
+def _landing_sprite(names: list[str]) -> str:
+    symbols = []
+    for name in names:
+        icon = _LANDING_LANGUAGES[name][0]
+        source = (_ICONS / f"{icon}.svg").read_text(encoding="utf-8")
+        path = re.search(r'<path d="[^"]+"/>', source).group(0)
+        symbols.append(
+            f'<symbol id="lang-{icon}" viewBox="0 0 128 128">{path}</symbol>'
+        )
+    return f'<svg class="lang-sprite" aria-hidden="true">{"".join(symbols)}</svg>'
+
+
+def render_landing_strip() -> str:
+    """Return the homepage's scrolling language strip, sorted from the registry."""
 
     rows = _language_capability_rows()
     with_graph = [row for row in rows if row.graph_backend]
-    updated = [row.display_name for row in with_graph if row.incremental_backend]
-    rebuilt = [row.display_name for row in with_graph if not row.incremental_backend]
-    search = [row.display_name for row in rows if not row.graph_backend]
+    tagged = [
+        *((r.display_name, "live graph") for r in with_graph if r.incremental_backend),
+        *((r.display_name, "graph") for r in with_graph if not r.incremental_backend),
+        *((r.display_name, "search") for r in rows if not r.graph_backend),
+    ]
+    items = "".join(_landing_item(name, tag) for name, tag in tagged)
     lines = [
         '<div class="section-head">',
         f'  <h2 id="languages-title">{len(rows)} languages, '
         f'<span class="dim">{len(with_graph)} with a code graph.</span></h2>',
-        '  <p class="section-sub">Find your language to see what CodeNib can do '
-        "with it.</p>",
+        '  <p class="section-sub">See what CodeNib can do with yours, from a graph '
+        "that updates as files change to plain code search.</p>",
         "</div>",
-        '<div class="lang-tiers">',
-        *_landing_tier(
-            "Code graph, updated as files change",
-            "Indexed with SCIP or clangd, then patched through a language server.",
-            updated,
-        ),
-        *_landing_tier(
-            "Code graph, rebuilt when you re-index",
-            "Indexed with SCIP. Picking up a change takes a fresh index.",
-            rebuilt,
-        ),
-        *_landing_tier(
-            "Code search without a graph",
-            "Search and source reads work. Definitions and callers need a graph.",
-            search,
-        ),
+        _landing_sprite([row.display_name for row in rows]),
+        '<div class="lang-marquee" role="region" aria-labelledby="languages-title">',
+        '  <div class="lang-track">',
+        f'    <ul class="lang-list">{items}</ul>',
+        f'    <ul class="lang-list" aria-hidden="true">{items}</ul>',
+        "  </div>",
         "</div>",
     ]
     return "\n".join(f"      {line}" for line in lines)
 
 
-def replace_landing_tiers(text: str, tiers: str) -> str:
-    """Replace the generated tiers between the homepage's markers."""
+def replace_landing_strip(text: str, strip: str) -> str:
+    """Replace the generated strip between the homepage's markers."""
 
     before, begin, tail = text.partition(LANDING_BEGIN_MARKER)
     if not begin:
@@ -143,7 +167,7 @@ def replace_landing_tiers(text: str, tiers: str) -> str:
     _, end, after = tail.partition(LANDING_END_MARKER)
     if not end:
         raise ValueError(f"missing marker: {LANDING_END_MARKER}")
-    return f"{before}{begin}\n{tiers}\n      {end}{after}"
+    return f"{before}{begin}\n{strip}\n      {end}{after}"
 
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:
@@ -159,12 +183,12 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         help="Fail if the generated block in a file is out of date",
     )
     parser.add_argument(
-        "--write-landing", type=Path, help="Update the homepage's language tiers"
+        "--write-landing", type=Path, help="Update the homepage's language strip"
     )
     parser.add_argument(
         "--check-landing",
         type=Path,
-        help="Fail if the homepage's language tiers are out of date",
+        help="Fail if the homepage's language strip is out of date",
     )
     return parser.parse_args(argv)
 
@@ -180,15 +204,15 @@ def main(argv: list[str] | None = None) -> int:
         path = args.write_landing
         text = path.read_text(encoding="utf-8")
         path.write_text(
-            replace_landing_tiers(text, render_landing_tiers()), encoding="utf-8"
+            replace_landing_strip(text, render_landing_strip()), encoding="utf-8"
         )
         return 0
 
     if args.check_landing:
         path = args.check_landing
         actual = path.read_text(encoding="utf-8")
-        if actual != replace_landing_tiers(actual, render_landing_tiers()):
-            print(f"{path} language tiers are out of date", file=sys.stderr)
+        if actual != replace_landing_strip(actual, render_landing_strip()):
+            print(f"{path} language strip is out of date", file=sys.stderr)
             print(
                 f"Run: python {Path(__file__).as_posix()} --write-landing {path}",
                 file=sys.stderr,

@@ -37,7 +37,7 @@ model call; the user's agent still uses its own model.
 
 Sections share one content edge but not one layout: a split hero, a full-width
 example on a darker well, a narrow repository form, a full-width terminal, the
-ContextBench band one step brighter than the page, and language tiers. Keep that
+ContextBench band one step brighter than the page, and a language strip. Keep that
 variation when adding a section. Left-column content follows its text directly;
 do not push it down with `margin-top: auto` or `justify-content: space-between`.
 
@@ -49,8 +49,11 @@ The ContextBench band describes a research agent that searches with glob, grep
 and reads and has no graph expansion. Keep that sentence with the ranking and the
 date, and keep the ranking out of the hero: it was not earned by the Wiki.
 
-The language tiers between the `CODENIB_LANGUAGE_TIERS` markers are generated
-from the language registry. To refresh them:
+The language strip between the `CODENIB_LANGUAGE_STRIP` markers is generated from
+the language registry, with icons from `assets/languages/` (see its `LICENSE.txt`).
+It moves for more than five seconds, so keep its pause control, and keep it static
+for reduced motion. A new language needs an icon and a hover color in
+`scripts/language_capability_matrix.py`. To refresh it:
 
 ```bash
 python scripts/language_capability_matrix.py --write-landing landing/index.html
@@ -151,13 +154,23 @@ sessions, privacy controls and blocked requests omit visits, and reopening a
 saved Wiki can produce a read without a generation event. A ready first chapter
 is a browser observation, not proof of a successful coding-agent query.
 
-The 15-second CLI replay is rendered from selected fields of
-`assets/demos/codegraph-claude.json`, an actual CodeGraph/Claude Code run.
-It condenses waits and does not imitate the interactive Claude UI. With the
-Web dev dependencies, Playwright Chromium and ffmpeg installed, regenerate
-the GIF, WebM, MP4 and static poster with `node scripts/render_agent_demo.mjs`
-from the repository root. This command makes no model calls. Keep the
-recorded source/CodeNib commits and cost/measurement limitations intact.
+The agent replay is generated from selected fields of
+`assets/demos/codegraph-claude.json`, an actual CodeGraph/Claude Code run, so it
+adds no output of its own. It condenses waits and does not imitate the interactive
+Claude UI. Keep the recorded source commit and the cost basis intact. To refresh it
+without any model call:
+
+```bash
+python scripts/render_agent_replay.py --write landing/index.html
+```
+
+The whole transcript and graph are in the page; `assets/demos/agent-replay.js` only
+hides what it has not reached yet, and does nothing for reduced motion. At phone
+width the graph is hidden because the transcript lists each hop.
+
+The README and docs still use the rendered video. With the Web dev dependencies,
+Playwright Chromium and ffmpeg installed, regenerate the GIF, WebM, MP4 and poster
+with `node scripts/render_agent_demo.mjs` from the repository root.
 
 ## Static routes
 
