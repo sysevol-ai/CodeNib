@@ -14,6 +14,7 @@ Writes four files to ``landing/assets/blogs/``:
 Every SVG embeds a Geist subset, so it renders in the site font when it is
 loaded through ``<img>`` or opened on its own. Values are copied from the
 frozen submission results (``RESULTS.md`` at the pinned submission commit).
+Output is recolored for the site's dark pages by ``blog_figure_theme.py``.
 
 Requires fontTools with WOFF2 support (``pip install "fonttools[woff]"``).
 Then render the 1600x840 sharing image with Playwright::
@@ -35,6 +36,7 @@ from pathlib import Path
 
 from fontTools import subset
 from fontTools.ttLib import TTFont
+from blog_figure_theme import dark_figure
 from fontTools.varLib import instancer
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -854,7 +856,7 @@ def main() -> None:
     args.out.mkdir(parents=True, exist_ok=True)
     for name, render in FIGURES.items():
         path = args.out / name
-        path.write_text(render(), encoding="utf-8")
+        path.write_text(dark_figure(render()), encoding="utf-8")
         print(
             f"{path.relative_to(ROOT) if path.is_relative_to(ROOT) else path}"
             f"  {path.stat().st_size // 1024} KiB"

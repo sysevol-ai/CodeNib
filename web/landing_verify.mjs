@@ -47,24 +47,61 @@ try {
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     const card = await explorer.boundingBox(), form = await page.locator(".repo-entry").boundingBox();
     assert.ok(card.y < form.y, "the example must precede the own-repository form");
+    const questions = await page.locator(".example-tasks").boundingBox();
+    const questionsEnd = questions.y + questions.height;
+    assert.ok(questionsEnd <= card.y && card.y - questionsEnd < 24, "the questions lead straight into the example");
+    const heading = await page.locator(".example-band .section-head").boundingBox();
+    assert.ok(questions.y - (heading.y + heading.height) < 48, "no gap between the heading and the questions");
     if (width > 860) {
       const map = await page.locator("#codenib-hero-map").boundingBox();
       assert.ok(map.y + map.height <= 900, "the map must be visible in the desktop hero");
-      assert.ok(Math.abs(map.x - card.x) < 1, "the map and the example must share an edge");
-      for (const selector of [".repo-entry", ".agent-handoff .frame"]) {
-        const box = await page.locator(selector).boundingBox();
-        assert.ok(Math.abs(box.x - card.x) < 1, "right columns must share an edge");
-      }
+      assert.ok(card.x < map.x && card.width > map.width, "the example fills the page, not one column");
+      const copy = await page.locator(".stage-copy").boundingBox();
+      assert.ok(Math.abs((copy.y - map.y) - (map.y + map.height - copy.y - copy.height)) < 2, "the hero copy sits level with the map");
     } else {
       const map = await page.locator("#codenib-hero-map").boundingBox();
       assert.ok(map.y < 620, "the map should follow a compact mobile introduction");
       assert.ok(card.y > map.y + map.height, "the example follows the map");
-      const questions = await page.locator(".example-tasks").boundingBox();
-      assert.ok(questions.y >= card.y + card.height, "mobile questions follow the first example");
     }
-    const order = await explorer.evaluate(host => [".example-question", ".answer", ".flow", ".source"]
-      .map(selector => host.shadowRoot.querySelector(selector).getBoundingClientRect().y));
-    assert.ok(order.every((value, index) => !index || value > order[index - 1]),
+    // One repository selector, and every map label keeps its whole name.
+    assert.equal(await page.locator(".stage-ready").count(), 0);
+    assert.equal(await page.locator('.stage a[href$="/browse"]').count(), 1);
+    for (const tab of await page.locator(".home-map-tab").all()) {
+      await tab.click();
+      await page.locator("#codenib-hero-map .wg-label").first().waitFor();
+      const labels = await page.locator("#codenib-hero-map .wg-label").allTextContents();
+      assert.ok(labels.length && labels.every(label => !label.includes("…")), "map labels must not be cut");
+    }
+    await page.locator(".home-map-tab").first().click();
+    // Every language has its own icon, and the heading counts them. The strip's
+    // second copy exists only to make the loop seamless.
+    const languages = page.locator('.lang-list:not([aria-hidden="true"]) .lang-item');
+    assert.equal(parseInt(await page.locator("#languages-title").innerText(), 10), await languages.count());
+    assert.equal(await languages.locator("svg").count(), await languages.count());
+    for (const href of await languages.locator("use").evaluateAll(uses => uses.map(use => use.getAttribute("href")))) {
+      assert.equal(await page.locator(href).count(), 1, `${href} must exist`);
+    }
+    // The recorded session replaces the video, in full for reduced motion.
+    assert.equal(await page.locator("video").count(), 0);
+    assert.ok(await page.locator(".replay-log .line").first().isVisible());
+    assert.ok(await page.locator(".replay-log .line.stats").count() === 1);
+    // One dark family: no section inverts to a light background.
+    const lightest = await page.evaluate(() => Math.max(...[...document.querySelectorAll("main section, .cta-block")].map(section => {
+      const [red, green, blue, alpha = 1] = getComputedStyle(section).backgroundColor.match(/[\d.]+/g).map(Number);
+      return alpha ? (red + green + blue) / 3 : 0;
+    })));
+    assert.ok(lightest < 40, "sections must stay in one dark family");
+    // The ranking stays with its scope, away from the hero.
+    assert.equal(await page.locator(".stage").getByText("ContextBench").count(), 0);
+    assert.match(await page.locator(".proof-band").innerText(), /October 23, 2026 \(UTC\)[\s\S]*not the Wiki or the code graph/);
+    assert.match(await page.locator(".methods").innerText(), /71\.4% code-block Recall@5 on 100 real issues/);
+    const [question, answer, flow, source] = await explorer.evaluate(host => [".example-question", ".answer", ".flow", ".source"]
+      .map(selector => {
+        const { x, y } = host.shadowRoot.querySelector(selector).getBoundingClientRect();
+        return { x, y };
+      }));
+    // The source follows the call path: below it, or beside it in the wide layout.
+    assert.ok(question.y < answer.y && answer.y < flow.y && (flow.y < source.y || flow.x < source.x),
       "the example must read question, explanation, call path, source");
     assert.match(await explorer.locator(".syntax").innerText(), /del headers\["Authorization"\]/);
     await page.locator('.stage-ctas a[href="#example-source"]').click();
@@ -126,8 +163,14 @@ try {
     assert.ok((await explorer.boundingBox()).y < 150, "the existing example link must still work");
 
     const formText = await page.locator(".repo-entry").innerText();
-    for (const value of ["OpenRouter", "$0.25–$5", "spending limit", "20 MiB", "40 MiB", "4,000", "50,000", "4 MiB"]) {
+    for (const value of ["OpenRouter", "$0.25–$5", "spending limit"]) {
       assert.ok(formText.includes(value), `${value} must be visible at the repository entry`);
+    }
+    assert.equal(await page.locator(".repo-details").getAttribute("open"), null);
+    await page.locator(".repo-details summary").click();
+    const detailsText = await page.locator(".repo-details").innerText();
+    for (const value of ["20 MiB", "40 MiB", "4,000", "50,000", "4 MiB", "can exceed"]) {
+      assert.ok(detailsText.includes(value), `${value} must be one click away at the repository entry`);
     }
     let submitted;
     await page.route("https://demo.codenib.ai/**", route => {
@@ -143,6 +186,12 @@ try {
     await page.goto(base, { waitUntil: "networkidle" });
     await revealPage(page);
     await page.screenshot({ path: `${output}/landing-${width}.png`, fullPage: true });
+    const pageBackground = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+    for (const path of ["/blogs/", "/blogs/contextbench-500-tasks/"]) {
+      await page.goto(`${base}${path}`, { waitUntil: "networkidle" });
+      assert.equal(await page.evaluate(() => getComputedStyle(document.body).backgroundColor), pageBackground, `${path} must share the homepage's background`);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    }
     assert.deepEqual(errors, []);
     assert.deepEqual(remote, []);
     assert.deepEqual(failed, []);
@@ -150,6 +199,35 @@ try {
     console.log(`Verified landing at ${width}px.`);
     await context.close();
   }
+
+  // The replay plays once it is reached, can be stopped, and can jump to a step.
+  // The strip moves until it is stopped.
+  const moving = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  moving.setDefaultTimeout(10000);
+  const player = await moving.newPage();
+  await player.goto(base, { waitUntil: "networkidle" });
+  const replay = player.locator("[data-replay]");
+  assert.equal(await player.locator(".replay-log .line.is-on").count(), 0, "the replay waits to be reached");
+  await replay.scrollIntoViewIfNeeded();
+  await player.locator(".replay-log .line.is-on").first().waitFor();
+  await player.locator(".replay-toggle").click();
+  assert.equal(await player.locator(".replay-toggle").innerText(), "Play");
+  const stopped = await player.locator(".replay-log .line.is-on").count();
+  await player.waitForTimeout(1500);
+  assert.equal(await player.locator(".replay-log .line.is-on").count(), stopped, "pause must stop the replay");
+  await player.locator('[data-seek="2"]').click();
+  await player.locator(".replay-toggle", { hasText: "Replay" }).waitFor({ timeout: 20000 });
+  assert.equal(await player.locator(".replay-log .line:not(.is-on)").count(), 0, "the session must finish");
+  assert.equal(await player.locator(".g-item:not(.is-on)").count(), 0, "the whole graph must be drawn");
+  const logBox = await player.locator(".replay-log").evaluate(log => log.scrollHeight - log.scrollTop - log.clientHeight);
+  assert.ok(logBox < 2, "the transcript follows its last line");
+  await player.locator(".replay-toggle").click();
+  assert.equal(await player.locator(".replay-toggle").innerText(), "Pause");
+  const strip = player.locator(".lang-track");
+  assert.notEqual(await strip.evaluate(track => getComputedStyle(track).animationName), "none");
+  await player.locator(".lang-toggle").click();
+  assert.equal(await strip.evaluate(track => getComputedStyle(track).animationPlayState), "paused");
+  await moving.close();
 
   const noJs = await browser.newContext({ javaScriptEnabled: false, viewport: { width: 390, height: 844 } });
   noJs.setDefaultTimeout(10000);

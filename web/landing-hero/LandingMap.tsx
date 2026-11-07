@@ -30,20 +30,25 @@ export default function LandingMap({ maps, demo }: { maps: CapturedMap[]; demo: 
   const wiki = `${demo}/${encodeURIComponent(current.id)}`;
   return (
     <div className="home-map">
-      <div className="home-map-tabs" role="tablist" aria-label="Choose a repository">
-        {maps.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            role="tab"
-            aria-selected={item.id === current.id}
-            className={`home-map-tab${item.id === current.id ? " is-active" : ""}`}
-            onClick={() => setSelected(item.id)}
-          >
-            {item.label}
-            <span>{item.language}</span>
-          </button>
-        ))}
+      <div className="home-map-bar">
+        <div className="home-map-tabs" role="tablist" aria-label="Choose a repository">
+          {maps.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              role="tab"
+              aria-selected={item.id === current.id}
+              className={`home-map-tab${item.id === current.id ? " is-active" : ""}`}
+              onClick={() => setSelected(item.id)}
+            >
+              {item.label}
+              <span>{item.language}</span>
+            </button>
+          ))}
+        </div>
+        <a className="home-map-all" href={`${demo}/browse`}>
+          All Wikis <span aria-hidden="true">→</span>
+        </a>
       </div>
       <HeroGraph
         key={current.id}

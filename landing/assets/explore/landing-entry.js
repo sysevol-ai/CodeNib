@@ -12,8 +12,8 @@ taskButtons.forEach(button => {
     if (!explorer) return;
     explorer.setAttribute("task", button.dataset.exampleTask);
     taskButtons.forEach(item => item.setAttribute("aria-pressed", String(item === button)));
-    // Keep task switching local. On a narrow screen the example is above the
-    // questions; bring the explanation back into view without moving focus.
+    // Keep task switching local. On a narrow screen the questions stack above
+    // the example; bring the explanation into view without moving focus.
     if (matchMedia("(max-width: 860px)").matches) {
       explorer.scrollIntoView({ block: "start", behavior: "instant" });
     }
@@ -30,6 +30,13 @@ document.querySelectorAll('a[href="#example-source"]').forEach(link => {
     });
     selected.focus({ preventScroll: true });
   });
+});
+// The language strip moves for more than five seconds, so it needs a stop.
+document.querySelector(".lang-toggle")?.addEventListener("click", event => {
+  const paused = event.currentTarget.getAttribute("aria-pressed") !== "true";
+  event.currentTarget.setAttribute("aria-pressed", String(paused));
+  event.currentTarget.textContent = paused ? "Play" : "Pause";
+  document.querySelector(".lang-marquee")?.classList.toggle("is-paused", paused);
 });
 document.querySelector(".repo-entry")?.addEventListener("submit", () => recordExperience("repository_submit"));
 document.querySelectorAll('a[href="#get-started"]').forEach(link => {
