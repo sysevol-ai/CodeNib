@@ -18,7 +18,11 @@ from codenib.compiler.manifest import RepoManifest
 from codenib.graph.code_graph import CodeGraph
 from codenib.mcp import server
 from codenib.mcp.context import ServerContext
-from codenib.mcp.tools.dependency import dependency_subgraph_impl
+from codenib.mcp.tools.dependency import (
+    MAX_DEPENDENCY_PAYLOAD_BYTES,
+    bound_dependency_payload,
+    dependency_subgraph_impl,
+)
 from codenib.source_fingerprint import capture_repository_source
 from codenib.types import EDGE_TYPE_REFERENCE, NODE_TYPE_FIELD, NODE_TYPE_FUNCTION
 
@@ -117,6 +121,78 @@ def test_dependency_tool_caps_dense_edge_output():
     assert out["truncated"] is True
 
 
+def test_dependency_subgraph_bounds_dense_payload_under_delivery_budget():
+    dense = _dense_graph(60)
+    ctx = SimpleNamespace(symbol_graph=dense)
+    out = dependency_subgraph_impl(
+        ctx,
+        "node_0",
+        direction="both",
+        depth=2,
+        max_nodes=60,
+        max_edges=400,
+    )
+
+    root = out["root"]
+    assert out["truncated"] is True
+    assert "response_projection" in out
+    projection = out["response_projection"]
+    assert projection["reason"] == "response_budget"
+    assert projection["original_edges"] == 400
+    assert projection["returned_edges"] < 400
+    assert projection["returned_edges"] == len(out["edges"])
+    assert projection["returned_nodes"] == len(out["nodes"])
+    assert projection["indirect_edges_omitted"] > 0
+
+    # Direct edges connected to root are prioritized
+    direct_edges = [
+        e for e in out["edges"] if e["source"] == root or e["target"] == root
+    ]
+    assert len(direct_edges) > 0
+
+    # No dangling nodes: all returned nodes appear in at least one edge or are root
+    active_names = {root} | {e["source"] for e in out["edges"]} | {e["target"] for e in out["edges"]}
+    assert all(node["name"] in active_names for node in out["nodes"])
+
+    # Formatted payload stays under the delivery budget
+    import pydantic_core
+
+    measured_bytes = len(pydantic_core.to_json(out, indent=2))
+    assert measured_bytes <= MAX_DEPENDENCY_PAYLOAD_BYTES
+
+
+def test_dependency_subgraph_preserves_small_graphs_without_projection():
+    ctx = SimpleNamespace(symbol_graph=_graph())
+    out = dependency_subgraph_impl(ctx, "mid", direction="both", depth=1)
+    assert "response_projection" not in out
+    assert len(out["nodes"]) == 2
+    assert len(out["edges"]) == 2
+    assert out["truncated"] is False
+
+
+def test_bound_dependency_payload_custom_byte_limit():
+    dense = _dense_graph(20)
+    ctx = SimpleNamespace(symbol_graph=dense)
+    tight_limit = 4_096
+    out = dependency_subgraph_impl(
+        ctx,
+        "node_0",
+        direction="both",
+        depth=2,
+        max_nodes=20,
+        max_edges=100,
+        max_payload_bytes=tight_limit,
+    )
+
+    assert out["truncated"] is True
+    assert "response_projection" in out
+    assert out["response_projection"]["max_payload_bytes"] == tight_limit
+
+    import pydantic_core
+
+    assert len(pydantic_core.to_json(out, indent=2)) <= tight_limit
+
+
 @pytest.mark.parametrize(
     ("kwargs", "message"),
     [
@@ -186,7 +262,7 @@ def test_client_receives_mixed_references_and_their_semantics(
         "def selected(value: Alias):\n"
         "    return invoked(), callback, field, value\n"
     )
-    (repo / "sample.py").write_text(source)
+    (repo / "sample.py").write_bytes(source.encode("utf-8"))
     graph = CodeGraph()
     graph.graph.add_vertices(5)
     names = ["selected", "invoked", "callback", "field", "Alias"]
