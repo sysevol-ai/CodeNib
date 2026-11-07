@@ -42,17 +42,23 @@ SPDX-License-Identifier: Apache-2.0
   /* Read by the shared example component (shadow DOM) for its type. */
   --font-geist-sans: "Geist";
   --font-geist-mono: "Geist Mono";
-  --bg: #ffffff;
-  --surface: #ffffff;
-  --subtle: #f8f9fa;
-  --line: #dadce0;
-  --line-strong: #bdc1c6;
-  --ink: #1f1f1f;
-  --ink-2: #5f6368;
-  --ink-3: #80868b;
-  --accent: #0b57d0;
-  --accent-hover: #0842a0;
-  --accent-ink: #ffffff;
+  color-scheme: dark;
+  --bg: #121315;
+  --surface: #1a1b1e;
+  --subtle: #17181b;
+  --line: rgba(232, 234, 237, 0.12);
+  --line-strong: rgba(232, 234, 237, 0.26);
+  --ink: #e8eaed;
+  --ink-2: #bdc1c6;
+  --ink-3: #9aa0a6;
+  --accent: #8ab4f8;
+  --accent-hover: #aecbfa;
+  --accent-ink: #062e6f;
+  /* Page width follows the screen up to where code and text stop gaining. */
+  --wrap: 1600px;
+  --gutter: clamp(18px, 4vw, 64px);
+  --column-gap: clamp(32px, 4.5vw, 72px);
+  --section: clamp(48px, 4.5vw, 72px);
   --r-box: 10px;   /* containers */
   --r-ui: 6px;     /* interactive */
 }
@@ -71,7 +77,9 @@ body {
 a { color: inherit; text-decoration: none; }
 img { max-width: 100%; height: auto; display: block; }
 /* One content width everywhere: nav, hero, shot, grid, footer share edges. */
-.wrap { max-width: 1280px; margin: 0 auto; padding: 0 32px; }
+.wrap { max-width: var(--wrap); margin: 0 auto; padding-inline: var(--gutter); }
+h1, h2, h3 { text-wrap: balance; }
+p { text-wrap: pretty; }
 
 /* ---- nav ---- */
 /* Page chrome only: the example has its own header and footer. */
@@ -106,16 +114,15 @@ body > header {
   --h-line: rgba(232, 234, 237, 0.12); --h-line-strong: rgba(232, 234, 237, 0.26);
   --h-accent: #8ab4f8; --h-trace: #8ab4f8;
   position: relative; overflow: hidden;
-  padding: clamp(28px, 3.5vw, 48px) 0;
+  padding: clamp(32px, 4vw, 56px) 0 var(--section);
   color: var(--h-text);
-  background: #121315;
 }
 .stage-row {
   position: relative; width: 100%;
   display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
-  column-gap: clamp(32px, 4.5vw, 72px); align-items: stretch;
+  column-gap: var(--column-gap); align-items: stretch;
 }
-.stage-intro { min-width: 0; padding-top: 18px; }
+.stage-intro { display: flex; flex-direction: column; min-width: 0; padding-top: 18px; }
 .stage-intro h1 { margin: 0 0 20px; color: #fff; font-size: clamp(2.4rem, 3.7vw, 3.4rem); font-weight: 650; line-height: 1.08; letter-spacing: -0.045em; text-wrap: balance; }
 .stage-sub { max-width: 46ch; color: var(--h-soft); font-size: 17px; line-height: 1.65; }
 .stage-ctas { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
@@ -124,7 +131,7 @@ body > header {
 .stage .btn-ghost { background: transparent; border-color: var(--h-line-strong); color: var(--h-text); }
 .stage .btn-ghost:hover { background: rgba(255, 255, 255, 0.06); border-color: var(--h-soft); }
 .stage-note { margin-top: 12px; color: var(--h-muted); font-size: 13px; }
-.example-tasks { display: grid; gap: 8px; margin-top: 30px; }
+.example-tasks { display: grid; gap: 8px; margin-top: auto; padding-top: 30px; }
 .example-tasks > p { color: var(--h-soft); font-size: 13px; font-weight: 600; margin-bottom: 2px; }
 .example-tasks button { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 44px; padding: 11px 14px; border: 1px solid var(--h-line); border-radius: var(--r-ui); background: rgba(255, 255, 255, 0.03); color: var(--h-soft); font: inherit; font-size: 14px; line-height: 1.45; cursor: pointer; text-align: left; }
 .example-tasks button::after { content: "→"; color: var(--h-accent); }
@@ -132,8 +139,8 @@ body > header {
 .example-tasks button[aria-pressed="true"] { border-color: var(--h-accent); background: rgba(138, 180, 248, 0.1); color: #fff; }
 .example-tasks button:focus-visible { outline: 3px solid var(--h-trace); outline-offset: 3px; }
 html:not(.js) .example-tasks { display: none; }
-.stage-evidence { min-width: 0; }
-.repository-handoff { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: clamp(32px, 4.5vw, 72px); align-items: start; }
+.stage-evidence { min-width: 0; display: flex; flex-direction: column; }
+.repository-handoff { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: var(--column-gap); align-items: center; }
 .repository-handoff .section-sub { font-size: 16px; }
 .repo-entry { padding: 24px; border: 1px solid var(--line); border-radius: var(--r-box); background: var(--surface); }
 .repo-entry label { display: block; font-size: 14px; font-weight: 600; margin-bottom: 8px; }
@@ -149,14 +156,14 @@ html:not(.js) .example-tasks { display: none; }
 /* The shared example (shadow DOM) takes the stage's palette through the
    properties it reads. */
 .stage codenib-explorer {
-  display: block; min-width: 0;
+  display: block; flex: 1 1 auto; min-width: 0;
   --bg-surface: #1a1b1e; --bg-muted: rgba(255, 255, 255, 0.03);
   --border-subtle: rgba(232, 234, 237, 0.14); --text-primary: #e8eaed;
   --text-secondary: #bdc1c6; --accent: #8ab4f8; --accent-soft: rgba(138, 180, 248, 0.14);
   --explore-code-bg: #111214; --explore-code-rule: rgba(232, 234, 237, 0.12);
   --explore-code-line: rgba(138, 180, 248, 0.16); --explore-code-mark: #8ab4f8;
 }
-.agent-handoff { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: clamp(32px, 4.5vw, 72px); align-items: start; }
+.agent-handoff { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: var(--column-gap); align-items: center; }
 .agent-handoff .setup { margin-top: 0; }
 
 /* Static product preview: visiting the landing page never loads the demo. */
@@ -174,29 +181,33 @@ html:not(.js) .example-tasks { display: none; }
 .evidence { margin-top: 24px; padding: 16px 20px; border: 1px solid var(--line); border-radius: var(--r-ui); background: var(--subtle); font-size: 15px; color: var(--ink-2); }
 .evidence strong { color: var(--ink); font-weight: 600; }
 .evidence a, .text-link { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
-.setup pre { overflow-x: auto; margin: 20px 0; padding: 18px; background: #121315; color: #e8eaed; border-radius: var(--r-ui); font-size: 13px; }
+.setup pre { overflow-x: auto; margin: 20px 0; padding: 18px; background: #0d0e10; border: 1px solid var(--line); color: #e8eaed; border-radius: var(--r-ui); font-size: 13px; }
 .setup p { margin-top: 14px; color: var(--ink-2); font-size: 15px; }
 .setup code { font-family: "Geist Mono", ui-monospace, monospace; }
 a:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; }
 [id] { scroll-margin-top: 84px; }
 
 /* ---- sections ---- */
-main > section { padding: 80px 0 0; }
+main > section { padding: var(--section) 0; border-top: 1px solid var(--line); }
 h2 { font-size: clamp(1.7rem, 3vw, 2.3rem); font-weight: 620; letter-spacing: -0.025em; line-height: 1.15; }
 .section-sub { margin-top: 12px; color: var(--ink-2); font-size: 16.5px; max-width: 58ch; }
+/* A heading and its sentence share the row, so neither leaves the other side empty. */
+.section-head { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); column-gap: var(--column-gap); align-items: baseline; }
+.section-head .section-sub { margin-top: 0; }
+.proof-row { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); column-gap: var(--column-gap); align-items: center; margin-top: 32px; }
+.proof-row .section-sub, .proof-row .evidence { margin-top: 0; }
 
 /* Product paths */
 /* Three paths as a ruled row, not three boxed cards. */
 .bento { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 32px; margin-top: 32px; }
 .cell {
-  border-top: 1px solid var(--ink);
+  border-top: 1px solid var(--line-strong);
   padding-top: 20px;
   display: flex; flex-direction: column; gap: 10px;
 }
 .cell h3 { font-size: 18px; font-weight: 600; }
 .cell p { font-size: 14.5px; color: var(--ink-2); }
 .cell .text-link { margin-top: auto; font-size: 14px; }
-.bento + .section-sub { margin-top: 32px; }
 
 /* latest article */
 .latest-card {
@@ -226,7 +237,7 @@ h2 { font-size: clamp(1.7rem, 3vw, 2.3rem); font-weight: 620; letter-spacing: -0
 .latest-art img { width: 100%; border: 1px solid var(--line); border-radius: var(--r-ui); }
 
 /* final CTA */
-.cta-block { padding: 80px 0; }
+.cta-block { padding: var(--section) 0; border-top: 1px solid var(--line); }
 .cta-block .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 24px; }
 .cta-block h2 { font-size: clamp(1.7rem, 3vw, 2.3rem); }
 .cta-block .ctas { display: flex; gap: 12px; flex-wrap: wrap; }
@@ -245,17 +256,17 @@ body > footer { border-top: 1px solid var(--line); }
   .nav { gap: 16px; }
   .nav a.gh { display: none; }
   .stage-row { grid-template-columns: minmax(0, 1fr); row-gap: 32px; }
+  .section-head, .proof-row { grid-template-columns: minmax(0, 1fr); row-gap: 12px; }
   .stage-intro { display: contents; }
   .stage-copy { order: 0; }
   .stage-evidence { order: 1; }
-  .example-tasks { order: 2; margin-top: 0; }
+  .example-tasks { order: 2; margin-top: 0; padding-top: 0; }
   .repository-handoff { grid-template-columns: minmax(0, 1fr); gap: 24px; }
   .agent-handoff { grid-template-columns: minmax(0, 1fr); }
   .bento { grid-template-columns: 1fr; }
   .latest-card { grid-template-columns: 1fr; }
   .latest-copy { padding: 30px 28px; }
   .latest-art { min-height: 0; border-top: 1px solid var(--line); border-left: 0; }
-  main > section { padding-top: 56px; }
 }
 @media (max-width: 540px) {
   .wrap { padding-inline: 18px; }
@@ -278,13 +289,14 @@ body > footer { border-top: 1px solid var(--line); }
   html { scroll-behavior: auto; }
 }
 </style>
+<meta name="theme-color" content="#121315">
 </head>
 <body>
 
 <header>
   <div class="wrap nav">
     <a class="brand" href="/">
-      <img src="assets/codenib-logo.svg" alt="CodeNib">
+      <img src="assets/codenib-logo-dark.svg" alt="CodeNib">
     </a>
     <a class="link" href="/blogs/">Blog</a>
     <a class="link docs-link" href="https://docs.codenib.ai">Docs</a>
@@ -303,7 +315,7 @@ body > footer { border-top: 1px solid var(--line); }
     <div class="wrap stage-row">
       <div class="stage-intro">
         <div class="stage-copy">
-          <h1>Understand unfamiliar code<br>with evidence.</h1>
+          <h1>Understand unfamiliar code with evidence.</h1>
           <p class="stage-sub">Explore how a repository works, follow its call paths, and inspect the source behind each explanation.</p>
           <div class="stage-ctas">
             <a class="btn btn-primary btn-lg" href="#example-source">Try an example <span aria-hidden="true">→</span></a>
@@ -369,8 +381,10 @@ codenib codegraph init /path/to/your/repo</code></pre>
 
   <section>
     <div class="wrap">
-      <h2>Evidence you can inspect. Tools you can compare.</h2>
-      <p class="section-sub">Follow source locations, check language coverage, and reproduce the retrieval methods.</p>
+      <div class="section-head">
+        <h2>Evidence you can inspect. Tools you can compare.</h2>
+        <p class="section-sub">Follow source locations, check language coverage, and reproduce the retrieval methods.</p>
+      </div>
       <div class="bento">
         <div class="cell">
           <h3>Follow definitions and calls</h3>
@@ -388,19 +402,23 @@ codenib codegraph init /path/to/your/repo</code></pre>
           <a class="text-link" href="https://docs.codenib.ai/agent_integrations/">Explore agent integrations →</a>
         </div>
       </div>
+      <div class="proof-row">
       <p class="section-sub">Share a Wiki from your own repository with the existing <a class="text-link" href="https://docs.codenib.ai/github_pages/">GitHub Pages workflow</a>.</p>
       <p class="evidence">
         <strong>71.4% code-block Recall@5.</strong>
         Model-planned grep → Jev on 100 real issues. +12.8 points over the same grep candidates without reranking.<br>
         <a href="https://docs.codenib.ai/evaluation/grep_jev/">Experimental result · Method and limitations</a>
       </p>
+      </div>
     </div>
   </section>
 
   <section>
     <div class="wrap">
-      <h2>From the blog</h2>
-      <p class="section-sub">Architecture, benchmark results and deployment guides from the team building CodeNib.</p>
+      <div class="section-head">
+        <h2>From the blog</h2>
+        <p class="section-sub">Architecture, benchmark results and deployment guides from the team building CodeNib.</p>
+      </div>
       <a class="latest-card" href="/blogs/contextbench-500-tasks/" aria-label="Read CodeNib on ContextBench: 77% Line Recall Before Repair">
         <div class="latest-copy">
           <div class="latest-meta">
