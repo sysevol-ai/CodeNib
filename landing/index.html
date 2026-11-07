@@ -59,6 +59,8 @@ SPDX-License-Identifier: Apache-2.0
   --gutter: clamp(18px, 4vw, 64px);
   --column-gap: clamp(32px, 4.5vw, 72px);
   --section: clamp(48px, 4.5vw, 72px);
+  --section-lg: clamp(56px, 6vw, 96px);
+  --well: #0c0d0f;
   --r-box: 10px;   /* containers */
   --r-ui: 6px;     /* interactive */
 }
@@ -114,16 +116,17 @@ body > header {
   --h-line: rgba(232, 234, 237, 0.12); --h-line-strong: rgba(232, 234, 237, 0.26);
   --h-accent: #8ab4f8; --h-trace: #8ab4f8;
   position: relative; overflow: hidden;
-  padding: clamp(32px, 4vw, 56px) 0 var(--section);
   color: var(--h-text);
 }
 .stage-row {
   position: relative; width: 100%;
   display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
   column-gap: var(--column-gap); align-items: stretch;
+  padding-block: clamp(32px, 4vw, 56px) var(--section);
 }
-.stage-intro { display: flex; flex-direction: column; min-width: 0; padding-top: 18px; }
-.stage-intro h1 { margin: 0 0 20px; color: #fff; font-size: clamp(2.4rem, 3.7vw, 3.4rem); font-weight: 650; line-height: 1.08; letter-spacing: -0.045em; text-wrap: balance; }
+/* The copy is shorter than the map, so it sits level with the map's middle. */
+.stage-intro { display: flex; flex-direction: column; justify-content: center; min-width: 0; }
+.stage-intro h1 { margin: 0 0 20px; color: #fff; font-size: clamp(2.4rem, 3.7vw, 3.4rem); font-weight: 650; line-height: 1.08; letter-spacing: -0.04em; text-wrap: balance; }
 .stage-sub { max-width: 46ch; color: var(--h-soft); font-size: 17px; line-height: 1.65; }
 .stage-ctas { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
 .stage .btn-primary { background: var(--h-accent); color: #062e6f; }
@@ -131,32 +134,30 @@ body > header {
 .stage .btn-ghost { background: transparent; border-color: var(--h-line-strong); color: var(--h-text); }
 .stage .btn-ghost:hover { background: rgba(255, 255, 255, 0.06); border-color: var(--h-soft); }
 .stage-note { margin-top: 12px; color: var(--h-muted); font-size: 13px; }
-.example-tasks { display: grid; gap: 8px; margin-top: auto; padding-top: 30px; }
-.example-tasks > p { color: var(--h-soft); font-size: 13px; font-weight: 600; margin-bottom: 2px; }
-.example-tasks button { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 44px; padding: 11px 14px; border: 1px solid var(--h-line); border-radius: var(--r-ui); background: rgba(255, 255, 255, 0.03); color: var(--h-soft); font: inherit; font-size: 14px; line-height: 1.45; cursor: pointer; text-align: left; }
-.example-tasks button::after { content: "→"; color: var(--h-accent); }
+.stage-map { --map-height: clamp(440px, 36vw, 600px); display: flex; flex-direction: column; min-width: 0; }
+/* Stands in, at the same size, until the interactive map loads. */
+#codenib-hero-map .wiki-graph.is-embedded { min-height: var(--map-height); }
+.stage-map-preview { display: block; flex: 1 1 auto; margin-top: 44px; min-height: var(--map-height); }
+.stage-map-preview img { width: 100%; height: 100%; object-fit: cover; border-radius: var(--r-box); }
+@media (max-width: 600px) { .stage-map { --map-height: 500px; } }
+
+/* The example fills the page on a darker well: the questions lead straight
+   into the panel they control. */
+.example-band { padding-block: var(--section-lg); background: var(--well); border-block: 1px solid var(--line); }
+.example-tasks { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 32px; }
+.example-tasks button { min-height: 44px; padding: 10px 14px; border: 1px solid var(--h-line); border-radius: var(--r-ui); background: rgba(255, 255, 255, 0.03); color: var(--h-soft); font: inherit; font-size: 14px; line-height: 1.4; cursor: pointer; text-align: left; transition: border-color .15s, background .15s, color .15s; }
 .example-tasks button:hover { border-color: var(--h-line-strong); background: rgba(255, 255, 255, 0.05); color: #fff; }
 .example-tasks button[aria-pressed="true"] { border-color: var(--h-accent); background: rgba(138, 180, 248, 0.1); color: #fff; }
 .example-tasks button:focus-visible { outline: 3px solid var(--h-trace); outline-offset: 3px; }
 html:not(.js) .example-tasks { display: none; }
-.stage-evidence { min-width: 0; display: flex; flex-direction: column; }
-.stage-example { margin-top: var(--section); padding-top: var(--section); border-top: 1px solid var(--line); }
-.stage-example h2 { color: #fff; margin-bottom: 16px; }
-.stage-map { display: flex; flex-direction: column; min-width: 0; }
-/* Stands in, at the same size, until the interactive map loads. */
-.stage-map-preview { display: block; flex: 1 1 auto; margin-top: 44px; min-height: clamp(400px, 29vw, 560px); }
-.stage-map-preview img { width: 100%; height: 100%; object-fit: cover; border-radius: var(--r-box); }
-@media (max-width: 600px) { .stage-map-preview { min-height: 500px; } }
-.stage-ready { display: grid; gap: 10px; margin-top: auto; padding-top: 30px; }
-.stage-ready > p { color: var(--h-soft); font-size: 13px; font-weight: 600; }
-.stage-ready-list { display: flex; flex-wrap: wrap; gap: 8px; }
-.stage-ready-list a { display: inline-flex; align-items: baseline; gap: 7px; padding: 8px 12px; color: var(--h-text); font-size: 13px; font-weight: 600; border: 1px solid var(--h-line); border-radius: var(--r-ui); transition: border-color .15s, background .15s; }
-.stage-ready-list a:hover { border-color: var(--h-line-strong); background: rgba(255, 255, 255, 0.05); }
-.stage-ready-list a span { color: var(--h-muted); font-family: "Geist Mono", ui-monospace, monospace; font-size: 11px; font-weight: 400; }
-.stage-ready-list a.is-more { color: var(--h-accent); }
-.repository-handoff { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: var(--column-gap); align-items: center; }
-.repository-handoff .section-sub { font-size: 16px; }
-.repo-entry { padding: 24px; border: 1px solid var(--line); border-radius: var(--r-box); background: var(--surface); }
+.stage-evidence { min-width: 0; display: flex; flex-direction: column; margin-top: 12px; }
+
+/* A narrow, quiet interval between two wide bands. */
+#your-repository { padding-block: var(--section-lg); border-top: 0; }
+.repo-inner { max-width: calc(760px + 2 * var(--gutter)); }
+.repo-head { text-align: center; }
+.repo-head .section-sub { margin-inline: auto; }
+.repo-entry { margin-top: 32px; }
 .repo-entry label { display: block; font-size: 14px; font-weight: 600; margin-bottom: 8px; }
 .repo-entry-row { display: flex; gap: 8px; }
 .repo-entry input { min-width: 0; flex: 1; font: inherit; font-size: 15px; padding: 13px 16px; border: 1px solid var(--line-strong); border-radius: var(--r-ui); background: var(--surface); color: var(--ink); }
@@ -164,9 +165,13 @@ html:not(.js) .example-tasks { display: none; }
 .repo-entry input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .repo-entry button { font: inherit; font-size: 15px; font-weight: 600; border: 0; cursor: pointer; padding: 12px 20px; }
 .repo-entry button:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
-.repo-entry p { font-size: 13px; color: var(--ink-2); margin-top: 12px; }
-.repo-entry strong { color: var(--ink); }
-.repository-more { margin-top: 20px; font-size: 14px; color: var(--ink-2); }
+.repo-entry p { font-size: 14px; color: var(--ink-2); margin-top: 12px; }
+.repo-entry strong { color: var(--ink); font-weight: 600; }
+.repo-details { margin-top: 10px; font-size: 14px; color: var(--ink-2); }
+.repo-details summary { width: fit-content; color: var(--ink); cursor: pointer; }
+.repo-details summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.repo-details p { margin-top: 8px; }
+.repository-more { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 24px; margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--line); font-size: 14px; color: var(--ink-2); }
 /* The shared example (shadow DOM) takes the stage's palette through the
    properties it reads. */
 .stage codenib-explorer {
@@ -177,27 +182,25 @@ html:not(.js) .example-tasks { display: none; }
   --explore-code-bg: #111214; --explore-code-rule: rgba(232, 234, 237, 0.12);
   --explore-code-line: rgba(138, 180, 248, 0.16); --explore-code-mark: #8ab4f8;
 }
-.agent-handoff { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: var(--column-gap); align-items: center; }
-.agent-handoff .setup { margin-top: 0; }
 
-/* Static product preview: visiting the landing page never loads the demo. */
-.frame {
+/* One terminal across the page: the commands, then the recorded session. */
+.terminal {
+  margin-top: 32px; overflow: hidden;
   border: 1px solid var(--line); border-radius: var(--r-box);
-  background: var(--surface); overflow: hidden;
+  background: #0d0e10;
 }
 .frame-bar {
   display: flex; align-items: center; justify-content: space-between;
   padding: 10px 16px; border-bottom: 1px solid var(--line);
   background: var(--subtle); color: var(--ink-2); font-size: 12px;
 }
+.terminal-body { display: grid; grid-template-columns: minmax(0, 6fr) minmax(0, 7fr); }
+.terminal-setup { display: flex; flex-direction: column; justify-content: center; gap: 16px; min-width: 0; padding: clamp(20px, 2.4vw, 36px); border-right: 1px solid var(--line); color: var(--ink-2); font-size: 15px; }
+.terminal-setup pre { overflow-x: auto; color: #e8eaed; font-size: 14px; line-height: 1.8; }
+.terminal-setup code { font-family: "Geist Mono", ui-monospace, monospace; }
 .agent-demo { display: block; width: 100%; height: auto; background: #121315; }
-.preview-caption { padding: 12px 16px; font-size: 13px; color: var(--ink-2); }
-.evidence { margin-top: 24px; padding: 16px 20px; border: 1px solid var(--line); border-radius: var(--r-ui); background: var(--subtle); font-size: 15px; color: var(--ink-2); }
-.evidence strong { color: var(--ink); font-weight: 600; }
-.evidence a, .text-link { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
-.setup pre { overflow-x: auto; margin: 20px 0; padding: 18px; background: #0d0e10; border: 1px solid var(--line); color: #e8eaed; border-radius: var(--r-ui); font-size: 13px; }
-.setup p { margin-top: 14px; color: var(--ink-2); font-size: 15px; }
-.setup code { font-family: "Geist Mono", ui-monospace, monospace; }
+.preview-caption { padding: 12px 16px; border-top: 1px solid var(--line); font-size: 13px; color: var(--ink-2); }
+.text-link { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
 a:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; }
 [id] { scroll-margin-top: 84px; }
 
@@ -208,47 +211,44 @@ h2 { font-size: clamp(1.7rem, 3vw, 2.3rem); font-weight: 620; letter-spacing: -0
 /* A heading and its sentence share the row, so neither leaves the other side empty. */
 .section-head { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); column-gap: var(--column-gap); align-items: baseline; }
 .section-head .section-sub { margin-top: 0; }
-.proof-row { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); column-gap: var(--column-gap); align-items: center; margin-top: 32px; }
-.proof-row .section-sub, .proof-row .evidence { margin-top: 0; }
 
-/* Product paths */
-/* Three paths as a ruled row, not three boxed cards. */
-.bento { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 32px; margin-top: 32px; }
-.cell {
-  border-top: 1px solid var(--line-strong);
-  padding-top: 20px;
-  display: flex; flex-direction: column; gap: 10px;
+/* The one light band: the result and its diagram, printed on paper. */
+.proof-band {
+  --ink: #15171a; --ink-2: #454b53; --accent: #174ea6;
+  --line: rgba(21, 23, 26, 0.14);
+  padding-block: var(--section-lg); border-top: 0;
+  background: #eceef1; color: var(--ink);
 }
-.cell h3 { font-size: 18px; font-weight: 600; }
-.cell p { font-size: 14.5px; color: var(--ink-2); }
-.cell .text-link { margin-top: auto; font-size: 14px; }
+.proof-band ::selection { background: rgba(23, 78, 166, 0.2); }
+.proof-copy { display: grid; gap: 12px; }
+.proof-band .section-sub { color: var(--ink-2); max-width: 66ch; }
+.proof-figure { display: block; margin-top: 32px; overflow: hidden; border: 1px solid var(--line); border-radius: var(--r-box); background: #fff; transition: border-color .2s; }
+.proof-figure:hover { border-color: var(--accent); }
+.proof-figure img { width: 100%; }
+.proof-links { display: flex; flex-wrap: wrap; gap: 8px 28px; margin-top: 20px; font-size: 15px; }
 
-/* latest article */
-.latest-card {
-  display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr);
-  margin-top: 28px; overflow: hidden;
-  border: 1px solid var(--line); border-radius: var(--r-box);
-  background: var(--surface);
-  transition: border-color .2s;
-}
-.latest-card:hover { border-color: var(--ink-3); }
-.latest-copy { display: flex; flex-direction: column; justify-content: center; padding: 40px; }
-.latest-meta {
-  display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center;
-  color: var(--ink-2); font-family: "Geist Mono", monospace; font-size: 12px;
-}
-.latest-meta .tag { color: var(--accent); font-weight: 600; }
-.latest-card h3 {
-  margin-top: 18px; font-size: clamp(1.65rem, 3vw, 2.35rem);
-  font-weight: 620; letter-spacing: -.03em; line-height: 1.1;
-}
-.latest-card p { margin-top: 14px; color: var(--ink-2); font-size: 15.5px; max-width: 46ch; }
-.latest-more { margin-top: 23px; color: var(--accent); font-size: 14.5px; font-weight: 600; }
-.latest-art {
-  display: flex; align-items: center; min-height: 320px;
-  border-left: 1px solid var(--line); background: var(--subtle); padding: 24px;
-}
-.latest-art img { width: 100%; border: 1px solid var(--line); border-radius: var(--r-ui); }
+/* Language support as a table: one row per capability, one column per language. */
+.proof-band + section { border-top: 0; padding-block: var(--section-lg); }
+.lang-scroll { position: relative; margin-top: 32px; overflow-x: auto; border: 1px solid var(--line); border-radius: var(--r-box); }
+.lang-scroll:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.lang-grid { width: 100%; min-width: 1040px; border-collapse: collapse; font-size: 13px; }
+.lang-grid th, .lang-grid td { padding: 12px 4px; text-align: center; white-space: nowrap; border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
+.lang-grid thead th { width: 6%; border-top: 0; color: var(--ink); font-weight: 600; }
+.lang-grid tbody th { color: var(--ink); font-weight: 500; }
+.lang-grid th:first-child { position: sticky; left: 0; z-index: 1; width: auto; padding-inline: 16px; border-left: 0; background: var(--bg); text-align: left; }
+.lang-grid td.on { background: rgba(138, 180, 248, 0.1); color: var(--ink); }
+.cap-yes { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.cap-no { display: inline-block; width: 10px; height: 1px; vertical-align: middle; background: var(--ink-3); }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.lang-note { margin-top: 12px; font-size: 14px; color: var(--ink-2); }
+.lang-note code { font-family: "Geist Mono", ui-monospace, monospace; font-size: 13px; }
+
+/* The methods behind the claims: a ruled list of names and where to check them. */
+.methods { margin-top: var(--section); border-bottom: 1px solid var(--line); }
+.methods > div { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 5fr) minmax(0, 3fr); column-gap: var(--column-gap); padding-block: 16px; border-top: 1px solid var(--line); font-size: 15px; }
+.methods dt { font-weight: 600; }
+.methods dd { color: var(--ink-2); }
+.methods dd:last-child { text-align: right; }
 
 /* final CTA */
 .cta-block { padding: var(--section) 0; border-top: 1px solid var(--line); }
@@ -266,22 +266,25 @@ body > footer { border-top: 1px solid var(--line); }
 .foot a:hover { color: var(--ink); }
 
 /* ---- mobile ---- */
+@media (min-width: 861px) {
+  /* Room for the question tabs above the example, under the sticky header. */
+  #example-source, #requests-auth { scroll-margin-top: 140px; }
+}
 @media (max-width: 860px) {
   .nav { gap: 16px; }
   .nav a.gh { display: none; }
   .stage-row { grid-template-columns: minmax(0, 1fr); row-gap: 32px; }
-  .section-head, .proof-row { grid-template-columns: minmax(0, 1fr); row-gap: 12px; }
-  .stage-intro { display: contents; }
-  .stage-copy { order: 0; }
-  .stage-evidence, .stage-map { order: 1; }
-  .stage-ready { order: 2; margin-top: 0; padding-top: 0; }
-  .example-tasks { order: 2; margin-top: 0; padding-top: 0; }
-  .repository-handoff { grid-template-columns: minmax(0, 1fr); gap: 24px; }
-  .agent-handoff { grid-template-columns: minmax(0, 1fr); }
-  .bento { grid-template-columns: 1fr; }
-  .latest-card { grid-template-columns: 1fr; }
-  .latest-copy { padding: 30px 28px; }
-  .latest-art { min-height: 0; border-top: 1px solid var(--line); border-left: 0; }
+  .section-head { grid-template-columns: minmax(0, 1fr); row-gap: 12px; }
+  .example-tasks { grid-template-columns: minmax(0, 1fr); margin-top: 24px; }
+  .terminal-body { grid-template-columns: minmax(0, 1fr); }
+  .terminal-setup { border-right: 0; border-bottom: 1px solid var(--line); }
+  .methods > div { grid-template-columns: minmax(0, 1fr); row-gap: 4px; }
+  .methods dd:last-child { text-align: left; }
+}
+@media (max-width: 600px) {
+  /* The diagram's type is unreadable at phone width; the article has a tall version. */
+  .proof-figure { display: none; }
+  .lang-grid th:first-child { min-width: 150px; padding-inline: 12px; white-space: normal; }
 }
 @media (max-width: 540px) {
   .wrap { padding-inline: 18px; }
@@ -291,14 +294,13 @@ body > footer { border-top: 1px solid var(--line); }
   .stage-ctas .btn { font-size: 13px; padding: 10px 12px; }
   .stage-ctas .btn-primary span { display: none; }
   .repo-entry-row { flex-direction: column; }
-  .repo-entry { padding: 20px; }
   .nav { gap: 12px; }
   .brand img { height: 28px; max-width: 122px; }
   .nav .docs-link { display: none; }
   /* The hero's own "Try an example" button sits right below. */
   .nav .example-link { display: none; }
   .nav .btn { padding: 8px 12px; }
-  .latest-art { padding: 12px; }
+  .terminal-setup pre { font-size: 12px; }
 }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
@@ -332,60 +334,44 @@ body > footer { border-top: 1px solid var(--line); }
       <div class="stage-intro">
         <div class="stage-copy">
           <h1>Understand unfamiliar code with evidence.</h1>
-          <p class="stage-sub">Explore how a repository works, follow its call paths, and inspect the source behind each explanation.</p>
+          <p class="stage-sub">Read a Wiki of how a repository works, follow its call paths, and inspect the source behind each explanation.</p>
           <div class="stage-ctas">
             <a class="btn btn-primary btn-lg" href="#example-source">Try an example <span aria-hidden="true">→</span></a>
             <a class="btn btn-ghost btn-lg" href="#get-started">Use with your agent</a>
           </div>
           <p class="stage-note">No account or API key needed for the example.</p>
         </div>
-        <div class="stage-ready">
-          <p>Ready to read, no setup</p>
-          <div class="stage-ready-list">
-            <a href="https://demo.codenib.ai/psf__requests">requests <span>Python</span></a>
-            <a href="https://demo.codenib.ai/gin-gonic__gin">gin <span>Go</span></a>
-            <a href="https://demo.codenib.ai/nushell__nushell">nushell <span>Rust</span></a>
-            <a href="https://demo.codenib.ai/fmtlib__fmt">fmt <span>C++</span></a>
-            <a href="https://demo.codenib.ai/pydata__xarray">xarray <span>Python</span></a>
-            <a href="https://demo.codenib.ai/scikit-learn__scikit-learn">scikit-learn <span>Python</span></a>
-            <a href="https://demo.codenib.ai/caddyserver__caddy">caddy <span>Go</span></a>
-            <a href="https://demo.codenib.ai/redis__redis">redis <span>C</span></a>
-            <a class="is-more" href="https://demo.codenib.ai/browse">All Wikis →</a>
-          </div>
-        </div>
       </div>
       <!-- The map's data is captured at build time (web/scripts/capture-landing-maps.mjs),
            so this page makes no request to the demo. -->
       <div id="codenib-hero-map" class="stage-map" data-demo="https://demo.codenib.ai">
-        <a class="stage-map-preview" href="https://demo.codenib.ai/psf__requests"><img src="assets/explore/requests-map.png" width="1103" height="700" alt="A map of the psf/requests Wiki: pages as coloured nodes, joined by the references recorded between its areas."></a>
+        <a class="stage-map-preview" href="https://demo.codenib.ai/psf__requests"><img src="assets/explore/requests-map.png" width="1104" height="779" alt="A map of the psf/requests Wiki: pages as coloured nodes, joined by the references recorded between its areas."></a>
       </div>
     </div>
-    <div class="wrap stage-row stage-example">
-      <div class="stage-intro">
-        <div class="stage-copy">
-          <h2>Ask one question. Land on the exact lines.</h2>
-          <p class="stage-sub">Each step is a call the index recorded. Click one to read the source it points at. No account or API key needed.</p>
+    <section class="example-band" aria-labelledby="example-title">
+      <div class="wrap">
+        <div class="section-head">
+          <h2 id="example-title">Ask one question. Land on the exact lines.</h2>
+          <p class="section-sub">Each step is a call the index recorded. Click one to read the source it points at. No account or API key needed.</p>
         </div>
         <div class="example-tasks" role="group" aria-label="Choose a code question">
-          <p>Start with a question</p>
           <button type="button" data-example-task="auth" aria-pressed="true" aria-controls="example-source">Why does a redirect remove authentication?</button>
           <button type="button" data-example-task="request" aria-pressed="false" aria-controls="example-source">Which functions handle a redirected request?</button>
           <button type="button" data-example-task="impact" aria-pressed="false" aria-controls="example-source">What could change if I edit rebuild_auth()?</button>
         </div>
+        <div class="stage-evidence" id="example-source">
+          <codenib-explorer id="requests-auth"><a href="https://demo.codenib.ai/psf__requests?p=redirects">Explore how Requests handles redirects →</a></codenib-explorer>
+          <noscript><p class="stage-note">A redirect to a different hostname removes the Authorization header. <a href="https://github.com/psf/requests/blob/f361ead047be5cb873174218582f7d8b9fcd9f49/src/requests/sessions.py#L324-L327">Read the exact source on GitHub →</a></p></noscript>
+        </div>
       </div>
-      <div class="stage-evidence" id="example-source">
-        <codenib-explorer id="requests-auth"><a href="https://demo.codenib.ai/psf__requests?p=redirects">Explore how Requests handles redirects →</a></codenib-explorer>
-        <noscript><p class="stage-note">A redirect to a different hostname removes the Authorization header. <a href="https://github.com/psf/requests/blob/f361ead047be5cb873174218582f7d8b9fcd9f49/src/requests/sessions.py#L324-L327">Read the exact source on GitHub →</a></p></noscript>
-      </div>
-    </div>
+    </section>
   </div>
 
   <section id="your-repository" aria-labelledby="your-repository-title">
-    <div class="wrap repository-handoff">
-      <div>
+    <div class="wrap repo-inner">
+      <div class="repo-head">
         <h2 id="your-repository-title">Now explore your own repository.</h2>
         <p class="section-sub">Turn a public GitHub repository into a navigable Wiki with explanations and source references. Keep reading as chapters finish, then return to your saved link.</p>
-        <p class="repository-more">Want to keep exploring first? <a class="text-link" href="https://demo.codenib.ai/browse">Browse ready Wikis →</a></p>
       </div>
       <form class="repo-entry" action="https://demo.codenib.ai/" method="get">
         <label for="repository">Public GitHub repository</label>
@@ -393,89 +379,102 @@ body > footer { border-top: 1px solid var(--line); }
           <input id="repository" name="repo" placeholder="https://github.com/owner/repo" type="text" inputmode="url" maxlength="2048" autocomplete="off" spellcheck="false" aria-describedby="repository-cost repository-limits" required>
           <button class="btn btn-primary" type="submit">Open Wiki →</button>
         </div>
-        <p id="repository-cost"><strong>Ready Wikis open instantly.</strong> A new Wiki uses your OpenRouter account and credits. Choose a model and a $0.25–$5 spending limit before starting; a provider call already in progress can exceed that limit.</p>
-        <p id="repository-limits"><strong>Hosted limits:</strong> 20 MiB download, 40 MiB retained files, 4,000 files and 50,000 code chunks. Files over 4 MiB are skipped.</p>
-        <p><a class="text-link" href="https://demo.codenib.ai/add-repo">Check repository eligibility before connecting OpenRouter →</a></p>
+        <p id="repository-cost"><strong>Ready Wikis open instantly.</strong> A new Wiki uses your OpenRouter account and credits, with a $0.25–$5 spending limit you choose before starting.</p>
+        <details class="repo-details">
+          <summary>Hosted limits and spending details</summary>
+          <p id="repository-limits">20 MiB download, 40 MiB retained files, 4,000 files and 50,000 code chunks. Files over 4 MiB are skipped. A provider call already in progress can exceed your spending limit.</p>
+          <p><a class="text-link" href="https://demo.codenib.ai/add-repo">Check repository eligibility before connecting OpenRouter →</a></p>
+        </details>
       </form>
+      <p class="repository-more">
+        <span>Want to keep exploring first? <a class="text-link" href="https://demo.codenib.ai/browse">Browse ready Wikis →</a></span>
+        <span>Share yours with the <a class="text-link" href="https://docs.codenib.ai/github_pages/">GitHub Pages workflow</a>.</span>
+      </p>
     </div>
   </section>
 
   <section>
-    <div class="wrap agent-handoff">
-      <div class="setup" id="get-started">
+    <div class="wrap" id="get-started">
+      <div class="section-head">
         <h2>Take that context to your coding agent.</h2>
-        <p>Build a local index for Claude Code or Codex. Find definitions, follow callers and read the source in your own checkout.</p>
-        <pre><code>python -m pip install "codenib[graph,mcp]"
-codenib codegraph init /path/to/your/repo</code></pre>
-        <p>Python 3.10+, Git, a clean checkout, and Claude Code or Codex. This shipping CodeGraph path runs locally without a model, API key, or GPU for CodeNib; your agent uses its own model. It is separate from the grep/Jev experiment.</p>
-        <p><a class="text-link" href="https://docs.codenib.ai/codegraph/">Setup and language prerequisites</a> · Ask your agent to start with <code>explore_context</code>.</p>
+        <p class="section-sub">Build a local index for Claude Code or Codex. Find definitions, follow callers and read the source in your own checkout.</p>
       </div>
-      <figure class="frame">
+      <figure class="terminal">
         <div class="frame-bar"><span>Requests · Claude Code + CodeNib</span><span>15-second replay</span></div>
-        <video class="agent-demo" controls muted playsinline preload="none" width="1080" height="608" poster="assets/demos/codegraph-claude.png" aria-label="Recorded CodeGraph setup, Claude Code source lookup and caller-chain trace" aria-describedby="agent-demo-caption">
-          <source src="assets/demos/codegraph-claude.webm" type="video/webm">
-          <source src="assets/demos/codegraph-claude.mp4" type="video/mp4">
-          <img src="assets/demos/codegraph-claude.png" alt="CodeNib finds where Requests strips authentication on redirects and traces the caller chain from the public API">
-        </video>
+        <div class="terminal-body">
+          <div class="terminal-setup">
+            <pre><code>python -m pip install "codenib[graph,mcp]"
+codenib codegraph init /path/to/your/repo</code></pre>
+            <p>Needs Python 3.10+, Git, a clean checkout, and Claude Code or Codex. CodeNib runs locally here with no model, API key or GPU of its own; your agent uses its own model.</p>
+            <p><a class="text-link" href="https://docs.codenib.ai/codegraph/">Setup and language prerequisites</a> · Ask your agent to start with <code>explore_context</code>.</p>
+          </div>
+          <video class="agent-demo" controls muted playsinline preload="none" width="1080" height="608" poster="assets/demos/codegraph-claude.png" aria-label="Recorded CodeGraph setup, Claude Code source lookup and caller-chain trace" aria-describedby="agent-demo-caption">
+            <source src="assets/demos/codegraph-claude.webm" type="video/webm">
+            <source src="assets/demos/codegraph-claude.mp4" type="video/mp4">
+            <img src="assets/demos/codegraph-claude.png" alt="CodeNib finds where Requests strips authentication on redirects and traces the caller chain from the public API">
+          </video>
+        </div>
         <figcaption class="preview-caption" id="agent-demo-caption">Real CLI output, replayed with waits condensed. <a class="text-link" href="https://docs.codenib.ai/codegraph/#recorded-agent-session">Transcript and sources</a>.</figcaption>
       </figure>
     </div>
   </section>
 
-  <section>
+  <section class="proof-band" aria-labelledby="proof-title">
     <div class="wrap">
       <div class="section-head">
-        <h2>Evidence you can inspect. Tools you can compare.</h2>
-        <p class="section-sub">Follow source locations, check language coverage, and reproduce the retrieval methods.</p>
-      </div>
-      <div class="bento">
-        <div class="cell">
-          <h3>Follow definitions and calls</h3>
-          <p>Bounded context and typed SCIP/LSP graphs help your agent navigate from a question to the source. Compare the fit with grep, Serena, CodeGraph, and DeepWiki.</p>
-          <a class="text-link" href="https://docs.codenib.ai/comparison/">Compare repository tools →</a>
-        </div>
-        <div class="cell">
-          <h3>Know your language's support</h3>
-          <p>14 language entries, 12 with graph backends. See which providers, prerequisites, and capabilities apply to your repository.</p>
-          <a class="text-link" href="https://docs.codenib.ai/language_capabilities/">Open the language matrix →</a>
-        </div>
-        <div class="cell">
-          <h3>Reproduce the methods</h3>
-          <p>Pinned LocAgent, Agentless, CoSIL, OrcaLoca, and RepoNavigator contracts. Dataset and scorer checks make the evaluation boundaries visible.</p>
-          <a class="text-link" href="https://docs.codenib.ai/agent_integrations/">Explore agent integrations →</a>
+        <h2 id="proof-title">#1 in line recall and Pass@1 on ContextBench's Agent systems leaderboard.</h2>
+        <div class="proof-copy">
+          <p class="section-sub">77.90% line recall and 388 of 500 tasks resolved (77.60% Pass@1), on the official leaderboard as of October 23, 2026 (UTC). Search alone reaches 77.07% line recall before any repair.</p>
+          <p class="section-sub">This is our research agent, not the Wiki or the code graph: two Claude Haiku 5.5 workers search with glob, grep and reads, then Claude Opus 5.5 repairs.</p>
         </div>
       </div>
-      <div class="proof-row">
-      <p class="section-sub">Share a Wiki from your own repository with the existing <a class="text-link" href="https://docs.codenib.ai/github_pages/">GitHub Pages workflow</a>.</p>
-      <p class="evidence">
-        <strong>71.4% code-block Recall@5.</strong>
-        Model-planned grep → Jev on 100 real issues. +12.8 points over the same grep candidates without reranking.<br>
-        <a href="https://docs.codenib.ai/evaluation/grep_jev/">Experimental result · Method and limitations</a>
+      <a class="proof-figure" href="/blogs/contextbench-500-tasks/" aria-label="Read CodeNib on ContextBench: 77% Line Recall Before Repair">
+        <img src="/assets/blogs/contextbench-search-handoff.svg" width="1600" height="840" loading="lazy" alt="">
+      </a>
+      <p class="proof-links">
+        <a class="text-link" href="/blogs/contextbench-500-tasks/">Read how the search and handoff work →</a>
+        <a class="text-link" href="/blogs/contextbench-500-tasks/#scope">Scope and evidence →</a>
       </p>
-      </div>
     </div>
   </section>
 
-  <section>
+  <section aria-labelledby="languages-title">
     <div class="wrap">
+      <!-- BEGIN CODENIB_LANGUAGE_GRID -->
       <div class="section-head">
-        <h2>From the blog</h2>
-        <p class="section-sub">Architecture, benchmark results and deployment guides from the team building CodeNib.</p>
+        <h2 id="languages-title">14 languages, 12 with a code graph.</h2>
+        <p class="section-sub">See which capabilities apply to your repository before you build an index.</p>
       </div>
-      <a class="latest-card" href="/blogs/contextbench-500-tasks/" aria-label="Read CodeNib on ContextBench: 77% Line Recall Before Repair">
-        <div class="latest-copy">
-          <div class="latest-meta">
-            <span class="tag">Coding agents</span>
-            <time datetime="2026-10-21">October 21, 2026</time>
-          </div>
-          <h3>CodeNib on ContextBench: 77% Line Recall Before Repair</h3>
-          <p>Search alone reaches 77.07% line recall. Our complete agent ranks #1 in line recall and Pass@1 on ContextBench's Agent systems leaderboard as of October 23, 2026 (UTC). See how the search and source handoff work.</p>
-          <span class="latest-more">Read the article →</span>
+      <div class="lang-scroll" role="region" tabindex="0" aria-labelledby="languages-title">
+        <table class="lang-grid">
+          <thead><tr><th scope="col">Capability</th><th scope="col">Python</th><th scope="col">Go</th><th scope="col">Rust</th><th scope="col">C/C++</th><th scope="col">C#</th><th scope="col">Java</th><th scope="col">Ruby</th><th scope="col">PHP</th><th scope="col">Kotlin</th><th scope="col">Swift</th><th scope="col">Scala</th><th scope="col">Lua</th><th scope="col">JavaScript</th><th scope="col">TypeScript</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">Code search</th><td class="on"><span class="cap-yes"></span><span class="sr">Yes</span></td><td class="on"><span class="cap-yes"></span><span class="sr">Yes</span></td><td class="on"><span class="cap-yes"></span><span class="sr">Yes</span></td><td class="on"><span class="cap-yes"></span><span class="sr">Yes</span></td><td class="on"><span class="cap-yes"></span><span class="sr">Yes</span></td><td class="on"><span class="cap-yes"></span><span class="sr">Yes</span></td><td class="on"><span class="cap-yes"></span><span class="sr">Yes</span></td><td class="on"><span class="cap-yes"></span><span class="sr">Yes</span></td><td class="on"><span class="cap-yes"></span><span class="sr">Yes</span></td><td class="on"><span class="cap-yes"></span><span class="sr">Yes</span></td><td class="on"><span class="cap-yes"></span><span class="sr">Yes</span></td><td class="on"><span class="cap-yes"></span><span class="sr">Yes</span></td><td class="on"><span class="cap-yes"></span><span class="sr">Yes</span></td><td class="on"><span class="cap-yes"></span><span class="sr">Yes</span></td></tr>
+            <tr><th scope="row">Code graph</th><td class="on">SCIP</td><td class="on">SCIP</td><td class="on">SCIP</td><td class="on">clangd</td><td class="on">SCIP</td><td class="on">SCIP</td><td class="on">SCIP</td><td class="on">SCIP</td><td class="on">SCIP</td><td><span class="cap-no"></span><span class="sr">No</span></td><td class="on">SCIP</td><td><span class="cap-no"></span><span class="sr">No</span></td><td class="on">SCIP</td><td class="on">SCIP</td></tr>
+            <tr><th scope="row">Incremental graph updates</th><td class="on">LSP</td><td class="on">LSP</td><td class="on">LSP</td><td class="on">clangd</td><td><span class="cap-no"></span><span class="sr">No</span></td><td><span class="cap-no"></span><span class="sr">No</span></td><td><span class="cap-no"></span><span class="sr">No</span></td><td><span class="cap-no"></span><span class="sr">No</span></td><td><span class="cap-no"></span><span class="sr">No</span></td><td><span class="cap-no"></span><span class="sr">No</span></td><td><span class="cap-no"></span><span class="sr">No</span></td><td><span class="cap-no"></span><span class="sr">No</span></td><td class="on">LSP</td><td class="on">LSP</td></tr>
+            <tr><th scope="row">Language server command</th><td class="on"><span class="cap-yes"></span><span class="sr">Yes</span></td><td class="on"><span class="cap-yes"></span><span class="sr">Yes</span></td><td class="on"><span class="cap-yes"></span><span class="sr">Yes</span></td><td class="on"><span class="cap-yes"></span><span class="sr">Yes</span></td><td class="on"><span class="cap-yes"></span><span class="sr">Yes</span></td><td class="on"><span class="cap-yes"></span><span class="sr">Yes</span></td><td class="on"><span class="cap-yes"></span><span class="sr">Yes</span></td><td class="on"><span class="cap-yes"></span><span class="sr">Yes</span></td><td class="on"><span class="cap-yes"></span><span class="sr">Yes</span></td><td><span class="cap-no"></span><span class="sr">No</span></td><td><span class="cap-no"></span><span class="sr">No</span></td><td><span class="cap-no"></span><span class="sr">No</span></td><td class="on"><span class="cap-yes"></span><span class="sr">Yes</span></td><td class="on"><span class="cap-yes"></span><span class="sr">Yes</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <!-- END CODENIB_LANGUAGE_GRID -->
+      <p class="lang-note">Registered capabilities, not the tools on your machine; <code>codenib toolchain status</code> shows those. <a class="text-link" href="https://docs.codenib.ai/language_capabilities/">Open the language matrix →</a></p>
+      <dl class="methods">
+        <div>
+          <dt>Reproduce the methods</dt>
+          <dd>LocAgent, Agentless, CoSIL, OrcaLoca, RepoNavigator</dd>
+          <dd><a class="text-link" href="https://docs.codenib.ai/agent_integrations/">Explore agent integrations →</a></dd>
         </div>
-        <div class="latest-art">
-          <img src="/assets/blogs/contextbench-search-handoff.svg" width="1600" height="840" loading="lazy" alt="">
+        <div>
+          <dt>Compare the fit</dt>
+          <dd>grep, Serena, CodeGraph, DeepWiki</dd>
+          <dd><a class="text-link" href="https://docs.codenib.ai/comparison/">Compare repository tools →</a></dd>
         </div>
-      </a>
+        <div>
+          <dt>Experimental retrieval</dt>
+          <dd>71.4% code-block Recall@5 on 100 real issues, 12.8 points above the same grep candidates without reranking.</dd>
+          <dd><a class="text-link" href="https://docs.codenib.ai/evaluation/grep_jev/">Method and limitations →</a></dd>
+        </div>
+      </dl>
     </div>
   </section>
 

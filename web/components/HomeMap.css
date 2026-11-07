@@ -54,3 +54,26 @@
   outline: 2px solid var(--h-trace);
   outline-offset: 2px;
 }
+/* Tabs on the left, the way out to every Wiki on the right (codenib.ai). */
+.home-map-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 16px;
+}
+.home-map-all {
+  color: var(--h-accent);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-decoration: none;
+}
+.home-map-all:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.home-map-all:focus-visible {
+  outline: 2px solid var(--h-trace);
+  outline-offset: 2px;
+}

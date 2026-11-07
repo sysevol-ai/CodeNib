@@ -13,6 +13,13 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 ### Changed
 
+- The codenib.ai homepage no longer repeats one layout. The example fills the
+  page with its questions above it, the repository form is a short narrow band,
+  and the agent setup is one wide terminal. The ContextBench result and its
+  diagram move up from the blog card into their own light band, and language
+  support is now a table generated from the language registry. Hosted limits
+  fold away under the repository form; the OpenRouter cost stays visible.
+- Map labels now wrap onto two lines instead of cutting off long page names.
 - On a wide screen a Wiki now opens as a workspace: the page list, a map of the
   Wiki and the reader, side by side. Pages are nodes, and the heavy lines are
   references the code index recorded between areas; click one to read an example

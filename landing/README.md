@@ -28,13 +28,29 @@ types described below. Record live acceptance in the first-visit milestone in
 
 Keep the reading order: try the example, explore a public repository, connect
 a local coding agent, then inspect technical evidence and documentation. The
-repository entry must show OpenRouter funding, the spending-limit boundary and
-hosted file/chunk limits before handoff. Keep the example above the repository
-form on phones; task choices follow the example there. `/#example-source` and
-`/#requests-auth` both reach the example. Hero, repository and agent sections
-share their content edges and column split; preserve those alignments when
-changing copy. Local Agent setup makes no CodeNib model call; the user's
-agent still uses its own model.
+repository entry must keep OpenRouter funding and the spending limit visible
+next to the form; hosted file/chunk limits and the in-flight call caveat sit one
+click away in its `<details>`. Task choices sit directly above the example at
+every width, and the example stays above the repository form. `/#example-source`
+and `/#requests-auth` both reach the example. Local Agent setup makes no CodeNib
+model call; the user's agent still uses its own model.
+
+Sections share one content edge but not one layout: a split hero, a full-width
+example on a darker well, a narrow repository form, a full-width terminal, one
+light band and a full-width language grid. Keep that variation when adding a
+section. Left-column content follows its text directly; do not push it down with
+`margin-top: auto` or `justify-content: space-between`.
+
+The ContextBench band describes a research agent that searches with glob, grep
+and reads and has no graph expansion. Keep that sentence with the ranking and the
+date, and keep the ranking out of the hero: it was not earned by the Wiki.
+
+The language grid between the `CODENIB_LANGUAGE_GRID` markers is generated from
+the language registry. To refresh it:
+
+```bash
+python scripts/language_capability_matrix.py --write-landing landing/index.html
+```
 
 The example is one selected call path, not a runtime trace or a whole-repository
 architecture. `assets/explore/requests.js` records the full source commit,

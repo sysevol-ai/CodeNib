@@ -805,6 +805,7 @@ multilang-registry-check:
 		test/test_language_capability_matrix.py \
 		test/test_ls_router_registry.py
 	python scripts/language_capability_matrix.py --check docs/language_capabilities.md
+	python scripts/language_capability_matrix.py --check-landing landing/index.html
 
 lsp-smoke-system-deps-ubuntu:
 	$(call require-command,sudo)

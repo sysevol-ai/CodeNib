@@ -4,7 +4,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import type { WikiAreaLink } from "@/lib/api";
-import { neighborhood, type WikiGraph, type WikiGraphEdge, type WikiGraphNode } from "@/lib/wikiGraph";
+import { labelLines, neighborhood, type WikiGraph, type WikiGraphEdge, type WikiGraphNode } from "@/lib/wikiGraph";
 import "./WikiGraphPane.css";
 
 interface View {
@@ -20,16 +20,16 @@ interface Point {
 
 interface PlacedLabel {
   id: string;
-  text: string;
+  lines: string[];
   anchor: "start" | "middle" | "end";
   dx: number;
   dy: number;
 }
 
-const short = (title: string) => (title.length > 30 ? `${title.slice(0, 29)}…` : title);
 // Geist at the label size averages about this wide per character.
 const LABEL_CHAR_PX = 6.1;
 const LABEL_HEIGHT_PX = 15;
+const LABEL_LINE_PX = 14;
 const LABEL_MARGIN_PX = 8;
 // Room for the repository name above an embedded map.
 const HEADER_PX = 44;
@@ -64,8 +64,9 @@ function placeLabels(
     .sort((a, b) => priority(b) - priority(a) || b.radius - a.radius);
   for (const node of ordered) {
     const point = points.get(node.id)!;
-    const text = short(node.title);
-    const width = text.length * LABEL_CHAR_PX;
+    const lines = labelLines(node.title);
+    const extra = (lines.length - 1) * LABEL_LINE_PX;
+    const width = Math.max(...lines.map((line) => line.length)) * LABEL_CHAR_PX;
     const sx = point.x * view.k + view.x;
     const sy = point.y * view.k + view.y;
     const radius = node.radius * view.k;
@@ -73,7 +74,7 @@ function placeLabels(
     const beside = Math.abs(away) > 40;
     let anchor: PlacedLabel["anchor"] = !beside ? "middle" : away > 0 ? "start" : "end";
     let dx = !beside ? 0 : away > 0 ? radius + 7 : -(radius + 7);
-    const dy = beside ? 4 : point.y < center.y ? -(radius + 8) : radius + 15;
+    const dy = beside ? 4 - extra / 2 : point.y < center.y ? -(radius + 8) - extra : radius + 15;
     // Near an edge of the pane, the label moves to the node's inner side.
     if (anchor === "end" && sx + dx - width < LABEL_MARGIN_PX) {
       anchor = "start";
@@ -83,14 +84,14 @@ function placeLabels(
       dx = -(radius + 7);
     }
     const left = sx + dx - (anchor === "middle" ? width / 2 : anchor === "end" ? width : 0);
-    const box = { left, right: left + width, top: sy + dy - 11, bottom: sy + dy - 11 + LABEL_HEIGHT_PX };
+    const box = { left, right: left + width, top: sy + dy - 11, bottom: sy + dy - 11 + LABEL_HEIGHT_PX + extra };
     const hits = (other: typeof box) =>
       box.left < other.right && box.right > other.left && box.top < other.bottom && box.bottom > other.top;
     const clash = taken.some(hits) || marks.some((mark) => mark.id !== node.id && hits(mark));
     const outside = box.left < 0 || box.right > paneWidth;
     if ((clash || outside) && priority(node) < 4) continue;
     taken.push(box);
-    placed.push({ id: node.id, text, anchor, dx, dy });
+    placed.push({ id: node.id, lines, anchor, dx, dy });
   }
   return placed;
 }
@@ -170,7 +171,8 @@ export default function WikiGraphPane({
     const [minX, maxX, minY, maxY] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
     // A phone has no room for labels at the sides; they move inward instead.
     const fitX = (size.width - (size.width < 520 ? 56 : 190)) / Math.max(maxX - minX, 1);
-    const fitY = (size.height - 170 - (header ? HEADER_PX : 0)) / Math.max(maxY - minY, 1);
+    // An embedded map has no toolbar, so its nodes can use more of the pane.
+    const fitY = (size.height - (embedded && size.width >= 520 ? 124 : 170) - (header ? HEADER_PX : 0)) / Math.max(maxY - minY, 1);
     const scale = Math.min(fitX, fitY);
     const stretchX = Math.min(Math.max(fitX, 0.1), scale * 1.45, 2.4);
     const stretchY = Math.min(Math.max(fitY, 0.1), scale * 1.45, 2.4);
@@ -179,7 +181,7 @@ export default function WikiGraphPane({
       points: next,
       center: { x: ((minX + maxX) / 2) * stretchX, y: ((minY + maxY) / 2) * stretchY },
     };
-  }, [graph, size, header]);
+  }, [graph, size, header, embedded]);
 
   const fitted = useMemo((): View | null => {
     if (!size.width || !size.height || !points.size) return null;
@@ -356,17 +358,22 @@ export default function WikiGraphPane({
             })}
             {labels.map((label) => {
               const point = points.get(label.id)!;
+              const x = point.x + label.dx / view.k;
               return (
                 <text
                   key={label.id}
-                  x={point.x + label.dx / view.k}
+                  x={x}
                   y={point.y + label.dy / view.k}
                   textAnchor={label.anchor}
                   fontSize={11.5 / view.k}
-                  strokeWidth={3 / view.k}
+                  strokeWidth={4 / view.k}
                   className={`wg-label${near.has(label.id) ? " is-near" : ""}${label.id === activeId ? " is-active" : ""}`}
                 >
-                  {label.text}
+                  {label.lines.map((line, index) => (
+                    <tspan key={index} x={x} dy={index ? LABEL_LINE_PX / view.k : 0}>
+                      {line}
+                    </tspan>
+                  ))}
                 </text>
               );
             })}

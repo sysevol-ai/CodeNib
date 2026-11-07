@@ -47,24 +47,49 @@ try {
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     const card = await explorer.boundingBox(), form = await page.locator(".repo-entry").boundingBox();
     assert.ok(card.y < form.y, "the example must precede the own-repository form");
+    const questions = await page.locator(".example-tasks").boundingBox();
+    const questionsEnd = questions.y + questions.height;
+    assert.ok(questionsEnd <= card.y && card.y - questionsEnd < 24, "the questions lead straight into the example");
+    const heading = await page.locator(".example-band .section-head").boundingBox();
+    assert.ok(questions.y - (heading.y + heading.height) < 48, "no gap between the heading and the questions");
     if (width > 860) {
       const map = await page.locator("#codenib-hero-map").boundingBox();
       assert.ok(map.y + map.height <= 900, "the map must be visible in the desktop hero");
-      assert.ok(Math.abs(map.x - card.x) < 1, "the map and the example must share an edge");
-      for (const selector of [".repo-entry", ".agent-handoff .frame"]) {
-        const box = await page.locator(selector).boundingBox();
-        assert.ok(Math.abs(box.x - card.x) < 1, "right columns must share an edge");
-      }
+      assert.ok(card.x < map.x && card.width > map.width, "the example fills the page, not one column");
+      const copy = await page.locator(".stage-copy").boundingBox();
+      assert.ok(Math.abs((copy.y - map.y) - (map.y + map.height - copy.y - copy.height)) < 2, "the hero copy sits level with the map");
     } else {
       const map = await page.locator("#codenib-hero-map").boundingBox();
       assert.ok(map.y < 620, "the map should follow a compact mobile introduction");
       assert.ok(card.y > map.y + map.height, "the example follows the map");
-      const questions = await page.locator(".example-tasks").boundingBox();
-      assert.ok(questions.y >= card.y + card.height, "mobile questions follow the first example");
     }
-    const order = await explorer.evaluate(host => [".example-question", ".answer", ".flow", ".source"]
-      .map(selector => host.shadowRoot.querySelector(selector).getBoundingClientRect().y));
-    assert.ok(order.every((value, index) => !index || value > order[index - 1]),
+    // One repository selector, and every map label keeps its whole name.
+    assert.equal(await page.locator(".stage-ready").count(), 0);
+    assert.equal(await page.locator('.stage a[href$="/browse"]').count(), 1);
+    for (const tab of await page.locator(".home-map-tab").all()) {
+      await tab.click();
+      await page.locator("#codenib-hero-map .wg-label").first().waitFor();
+      const labels = await page.locator("#codenib-hero-map .wg-label").allTextContents();
+      assert.ok(labels.length && labels.every(label => !label.includes("…")), "map labels must not be cut");
+    }
+    await page.locator(".home-map-tab").first().click();
+    // The grid is generated from the registry: every row has every language.
+    const columns = await page.locator(".lang-grid thead th").count();
+    assert.ok(columns > 1, "the language grid must have language columns");
+    for (const row of await page.locator(".lang-grid tbody tr").all()) {
+      assert.equal(await row.locator("th, td").count(), columns);
+    }
+    // The ranking stays with its scope, away from the hero.
+    assert.equal(await page.locator(".stage").getByText("ContextBench").count(), 0);
+    assert.match(await page.locator(".proof-band").innerText(), /October 23, 2026 \(UTC\)[\s\S]*not the Wiki or the code graph/);
+    assert.match(await page.locator(".methods").innerText(), /71\.4% code-block Recall@5 on 100 real issues/);
+    const [question, answer, flow, source] = await explorer.evaluate(host => [".example-question", ".answer", ".flow", ".source"]
+      .map(selector => {
+        const { x, y } = host.shadowRoot.querySelector(selector).getBoundingClientRect();
+        return { x, y };
+      }));
+    // The source follows the call path: below it, or beside it in the wide layout.
+    assert.ok(question.y < answer.y && answer.y < flow.y && (flow.y < source.y || flow.x < source.x),
       "the example must read question, explanation, call path, source");
     assert.match(await explorer.locator(".syntax").innerText(), /del headers\["Authorization"\]/);
     await page.locator('.stage-ctas a[href="#example-source"]').click();
@@ -126,8 +151,14 @@ try {
     assert.ok((await explorer.boundingBox()).y < 150, "the existing example link must still work");
 
     const formText = await page.locator(".repo-entry").innerText();
-    for (const value of ["OpenRouter", "$0.25–$5", "spending limit", "20 MiB", "40 MiB", "4,000", "50,000", "4 MiB"]) {
+    for (const value of ["OpenRouter", "$0.25–$5", "spending limit"]) {
       assert.ok(formText.includes(value), `${value} must be visible at the repository entry`);
+    }
+    assert.equal(await page.locator(".repo-details").getAttribute("open"), null);
+    await page.locator(".repo-details summary").click();
+    const detailsText = await page.locator(".repo-details").innerText();
+    for (const value of ["20 MiB", "40 MiB", "4,000", "50,000", "4 MiB", "can exceed"]) {
+      assert.ok(detailsText.includes(value), `${value} must be one click away at the repository entry`);
     }
     let submitted;
     await page.route("https://demo.codenib.ai/**", route => {

@@ -12,8 +12,8 @@ taskButtons.forEach(button => {
     if (!explorer) return;
     explorer.setAttribute("task", button.dataset.exampleTask);
     taskButtons.forEach(item => item.setAttribute("aria-pressed", String(item === button)));
-    // Keep task switching local. On a narrow screen the example is above the
-    // questions; bring the explanation back into view without moving focus.
+    // Keep task switching local. On a narrow screen the questions stack above
+    // the example; bring the explanation into view without moving focus.
     if (matchMedia("(max-width: 860px)").matches) {
       explorer.scrollIntoView({ block: "start", behavior: "instant" });
     }

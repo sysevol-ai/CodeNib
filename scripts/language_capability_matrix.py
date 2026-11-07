@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import argparse
+import html
 import importlib.util
 import sys
 from pathlib import Path
@@ -19,6 +20,9 @@ _LANGUAGES_PATH = _PROJECT_ROOT / "codenib" / "languages.py"
 
 BEGIN_MARKER = "<!-- BEGIN CODENIB_LANGUAGE_CAPABILITIES -->"
 END_MARKER = "<!-- END CODENIB_LANGUAGE_CAPABILITIES -->"
+LANDING_BEGIN_MARKER = "<!-- BEGIN CODENIB_LANGUAGE_GRID -->"
+LANDING_END_MARKER = "<!-- END CODENIB_LANGUAGE_GRID -->"
+_LANDING_BACKEND_NAMES = {"scip": "SCIP", "lsp": "LSP"}
 
 
 def _yes_no(value: bool) -> str:
@@ -85,6 +89,66 @@ def replace_block(text: str, block: str) -> str:
     return before.rstrip() + "\n\n" + block + after
 
 
+def _landing_cell(value: str | bool | None) -> str:
+    """Return one table cell: a backend's name, a yes dot, or a no dash."""
+
+    if not value:
+        return '<td><span class="cap-no"></span><span class="sr">No</span></td>'
+    if value is True:
+        return (
+            '<td class="on"><span class="cap-yes"></span>'
+            '<span class="sr">Yes</span></td>'
+        )
+    name = _LANDING_BACKEND_NAMES.get(value, value)
+    return f'<td class="on">{html.escape(name)}</td>'
+
+
+def render_landing_grid() -> str:
+    """Return the homepage's language grid, with counts taken from the registry."""
+
+    rows = _language_capability_rows()
+    with_graph = sum(1 for row in rows if row.graph_backend)
+    capabilities = (
+        ("Code search", [row.chunker and row.agent for row in rows]),
+        ("Code graph", [row.graph_backend for row in rows]),
+        ("Incremental graph updates", [row.incremental_backend for row in rows]),
+        ("Language server command", [row.lsp for row in rows]),
+    )
+    columns = "".join(
+        f'<th scope="col">{html.escape(row.display_name)}</th>' for row in rows
+    )
+    lines = [
+        '<div class="section-head">',
+        f'  <h2 id="languages-title">{len(rows)} languages, '
+        f"{with_graph} with a code graph.</h2>",
+        '  <p class="section-sub">See which capabilities apply to your repository '
+        "before you build an index.</p>",
+        "</div>",
+        '<div class="lang-scroll" role="region" tabindex="0" '
+        'aria-labelledby="languages-title">',
+        '  <table class="lang-grid">',
+        f'    <thead><tr><th scope="col">Capability</th>{columns}</tr></thead>',
+        "    <tbody>",
+    ]
+    for label, values in capabilities:
+        cells = "".join(_landing_cell(value) for value in values)
+        lines.append(f'      <tr><th scope="row">{label}</th>{cells}</tr>')
+    lines += ["    </tbody>", "  </table>", "</div>"]
+    return "\n".join(f"      {line}" for line in lines)
+
+
+def replace_landing_grid(text: str, grid: str) -> str:
+    """Replace the generated grid between the homepage's markers."""
+
+    before, begin, tail = text.partition(LANDING_BEGIN_MARKER)
+    if not begin:
+        raise ValueError(f"missing marker: {LANDING_BEGIN_MARKER}")
+    _, end, after = tail.partition(LANDING_END_MARKER)
+    if not end:
+        raise ValueError(f"missing marker: {LANDING_END_MARKER}")
+    return f"{before}{begin}\n{grid}\n      {end}{after}"
+
+
 def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Render/check docs/language_capabilities.md from LanguageSpec."
@@ -97,6 +161,14 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         type=Path,
         help="Fail if the generated block in a file is out of date",
     )
+    parser.add_argument(
+        "--write-landing", type=Path, help="Update the homepage's language grid"
+    )
+    parser.add_argument(
+        "--check-landing",
+        type=Path,
+        help="Fail if the homepage's language grid is out of date",
+    )
     return parser.parse_args(argv)
 
 
@@ -106,6 +178,26 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.write and args.check:
         raise SystemExit("--write and --check are mutually exclusive")
+
+    if args.write_landing:
+        path = args.write_landing
+        text = path.read_text(encoding="utf-8")
+        path.write_text(
+            replace_landing_grid(text, render_landing_grid()), encoding="utf-8"
+        )
+        return 0
+
+    if args.check_landing:
+        path = args.check_landing
+        actual = path.read_text(encoding="utf-8")
+        if actual != replace_landing_grid(actual, render_landing_grid()):
+            print(f"{path} language grid is out of date", file=sys.stderr)
+            print(
+                f"Run: python {Path(__file__).as_posix()} --write-landing {path}",
+                file=sys.stderr,
+            )
+            return 1
+        return 0
 
     if args.write:
         path = args.write

@@ -202,3 +202,26 @@ export function neighborhood(graph: WikiGraph, id: string | null): Set<string> {
   }
   return near;
 }
+
+const LABEL_ONE_LINE_CHARS = 28;
+
+/**
+ * A page title as map label lines. Long titles take two lines at the most
+ * balanced word break, so a label never loses the end of its name.
+ */
+export function labelLines(title: string): string[] {
+  if (title.length <= LABEL_ONE_LINE_CHARS) return [title];
+  const words = title.split(" ");
+  let best = [title];
+  let widest = title.length;
+  for (let split = 1; split < words.length; split += 1) {
+    const first = words.slice(0, split).join(" ");
+    const second = words.slice(split).join(" ");
+    const wider = Math.max(first.length, second.length);
+    if (wider < widest) {
+      best = [first, second];
+      widest = wider;
+    }
+  }
+  return best;
+}

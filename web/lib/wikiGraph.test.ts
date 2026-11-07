@@ -4,7 +4,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { WikiAreaMap, WikiPageRef } from "@/lib/api";
-import { AREA_COLORS, buildWikiGraph, NEUTRAL_COLOR, neighborhood } from "@/lib/wikiGraph";
+import { AREA_COLORS, buildWikiGraph, labelLines, NEUTRAL_COLOR, neighborhood } from "@/lib/wikiGraph";
 
 const page = (id: string, children: WikiPageRef[] = []): WikiPageRef => ({
   id,
@@ -83,5 +83,23 @@ describe("neighborhood", () => {
     const graph = buildWikiGraph(pages, map);
     expect([...neighborhood(graph, "a")].sort()).toEqual(["a", "a1", "a2", "b"]);
     expect(neighborhood(graph, null).size).toBe(0);
+  });
+});
+
+describe("labelLines", () => {
+  it("keeps a short title on one line", () => {
+    expect(labelLines("Session Orchestration")).toEqual(["Session Orchestration"]);
+  });
+
+  it("breaks a long title at its most balanced word and loses nothing", () => {
+    const title = "Framework Integration and Benchmark Workflows";
+    const lines = labelLines(title);
+    expect(lines).toEqual(["Framework Integration", "and Benchmark Workflows"]);
+    expect(lines.join(" ")).toBe(title);
+  });
+
+  it("leaves one unbreakable word whole", () => {
+    const word = "x".repeat(40);
+    expect(labelLines(word)).toEqual([word]);
   });
 });
