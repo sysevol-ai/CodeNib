@@ -136,10 +136,11 @@ try {
   await page.waitForSelector(".wiki-map-show");
   assert.equal(await page.locator(".wiki-graph").count(), 0);
   // The map is drawn by the time the browser could paint it: no blank first frame.
-  const drawn = await page.evaluate(() => {
+  const drawn = await page.evaluate(() => new Promise(resolve => {
     document.querySelector(".wiki-map-show").click();
-    return document.querySelectorAll(".wiki-graph .wg-node").length;
-  });
+    // Runs before the next paint; a size measured in a passive effect is still zero here.
+    requestAnimationFrame(() => resolve(document.querySelectorAll(".wiki-graph .wg-node").length));
+  }));
   assert.equal(drawn, 5, "showing the map painted a blank frame first");
   await context.close();
 
