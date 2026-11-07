@@ -6,8 +6,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
 import json
+from typing import Any, Dict, Optional
 
 from ...agent.boundary import AGENT_LINE_OFFSET
 from ...types import EDGE_TYPE_REFERENCE
@@ -59,9 +59,7 @@ def bound_dependency_payload(
 
     # Prioritize direct edges (connected to root) over indirect cross-edges
     direct = [e for e in edges if e.get("source") == root or e.get("target") == root]
-    indirect = [
-        e for e in edges if e.get("source") != root and e.get("target") != root
-    ]
+    indirect = [e for e in edges if e.get("source") != root and e.get("target") != root]
     candidates = direct + indirect
 
     low = 0
@@ -70,7 +68,11 @@ def bound_dependency_payload(
     while low <= high:
         mid = (low + high) // 2
         sub_edges = candidates[:mid]
-        active = {root} | {e.get("source") for e in sub_edges} | {e.get("target") for e in sub_edges}
+        active = (
+            {root}
+            | {e.get("source") for e in sub_edges}
+            | {e.get("target") for e in sub_edges}
+        )
         sub_nodes = [n for n in nodes if n.get("name") in active]
         returned_indirect = sum(
             1 for e in sub_edges if e.get("source") != root and e.get("target") != root
@@ -98,7 +100,11 @@ def bound_dependency_payload(
             high = mid - 1
 
     sub_edges = candidates[:best_k]
-    active = {root} | {e.get("source") for e in sub_edges} | {e.get("target") for e in sub_edges}
+    active = (
+        {root}
+        | {e.get("source") for e in sub_edges}
+        | {e.get("target") for e in sub_edges}
+    )
     sub_nodes = [n for n in nodes if n.get("name") in active]
 
     bounded = dict(payload)
@@ -136,6 +142,11 @@ def dependency_subgraph_impl(
     aliases and result labels remain compatible. Reference edges can include
     calls, fields, types and function values; they do not establish invocation.
     Returns ``{"error": ...}`` when the symbol graph is unavailable.
+
+    The serialized response is bounded by ``max_payload_bytes`` (default
+    ``MAX_DEPENDENCY_PAYLOAD_BYTES``; ``0`` disables the bound). A bounded
+    response keeps edges incident to the root first and reports the original
+    and returned counts in ``response_projection``.
     """
     symbol = required_text(symbol, name="symbol")
     depth = bounded_integer(depth, name="depth", maximum=MAX_GRAPH_DEPTH)

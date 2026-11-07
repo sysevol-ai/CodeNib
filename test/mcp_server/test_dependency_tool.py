@@ -151,7 +151,11 @@ def test_dependency_subgraph_bounds_dense_payload_under_delivery_budget():
     assert len(direct_edges) > 0
 
     # No dangling nodes: all returned nodes appear in at least one edge or are root
-    active_names = {root} | {e["source"] for e in out["edges"]} | {e["target"] for e in out["edges"]}
+    active_names = (
+        {root}
+        | {e["source"] for e in out["edges"]}
+        | {e["target"] for e in out["edges"]}
+    )
     assert all(node["name"] in active_names for node in out["nodes"])
 
     # Formatted payload stays under the delivery budget
@@ -191,6 +195,43 @@ def test_bound_dependency_payload_custom_byte_limit():
     import pydantic_core
 
     assert len(pydantic_core.to_json(out, indent=2)) <= tight_limit
+
+
+def test_bound_dependency_payload_keeps_root_edges_before_cross_edges():
+    filler = "x" * 200
+    nodes = [{"name": "root", "file": "a.py", "line": 1, "kind": "function"}]
+    edges = []
+    for i in range(5):
+        nodes.append({"name": f"near_{i}", "file": filler, "line": 1})
+        edges.append({"source": "root", "target": f"near_{i}", "type": "reference"})
+    for i in range(40):
+        nodes.append({"name": f"far_{i}", "file": filler, "line": 1})
+        edges.append({"source": f"near_{i % 5}", "target": f"far_{i}", "type": "r"})
+    # Cross edges come first in the input; prioritization must reorder them.
+    payload = {"root": "root", "nodes": nodes, "edges": edges[5:] + edges[:5]}
+
+    out = bound_dependency_payload(payload, max_payload_bytes=3_000)
+
+    assert out["truncated"] is True
+    returned = out["edges"]
+    assert returned[:5] == edges[:5]
+    assert len(returned) < len(edges)
+    projection = out["response_projection"]
+    assert projection["original_edges"] == 45
+    assert projection["returned_edges"] == len(returned)
+    assert projection["indirect_edges_omitted"] == 45 - len(returned)
+    active = (
+        {"root"} | {e["source"] for e in returned} | {e["target"] for e in returned}
+    )
+    assert {n["name"] for n in out["nodes"]} == active
+    assert len(json.dumps(out, indent=2).encode("utf-8")) <= 3_000
+    # The caller's payload is not mutated.
+    assert len(payload["edges"]) == 45
+
+
+def test_bound_dependency_payload_zero_limit_disables_bound():
+    payload = {"root": "r", "nodes": [], "edges": [{"source": "r", "target": "x"}]}
+    assert bound_dependency_payload(payload, max_payload_bytes=0) is payload
 
 
 @pytest.mark.parametrize(

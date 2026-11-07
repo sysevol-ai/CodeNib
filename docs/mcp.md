@@ -177,8 +177,11 @@ For `dependency_subgraph`, `impact` follows incoming references,
 References may represent calls, fields, types or function values. Read the
 source before describing an invocation or runtime path; external and dynamic
 relationships may be missing. Responses include `semantics` with this scope
-and direction while retaining legacy `callers`/`callees` labels. See [CodeGraph](codegraph.md) for the
-release and source-update boundaries.
+and direction while retaining legacy `callers`/`callees` labels. A response
+whose JSON would exceed about 36 KB keeps the edges that touch the queried
+symbol first, drops the rest with their unconnected nodes, sets `truncated`,
+and reports the original and returned counts in `response_projection`. See
+[CodeGraph](codegraph.md) for the release and source-update boundaries.
 
 Use `explore_context` first for a question that spans more than one function
 or file: how a feature works, where a behavior is handled, what calls a
