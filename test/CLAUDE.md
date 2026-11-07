@@ -52,6 +52,10 @@ executables and SCIP/Fact/clangd Python gates through `make core-test`) — see
 
 ## Gotchas
 
+- An optional dependency absent from `sys.modules` may still be installed.
+  Use the declared test dependencies or `pytest.importorskip`, rather than
+  inserting a global mock during collection. Check neighboring real-object
+  tests in the same invocation when changing import setup.
 - Metadata-inventory regressions must change file size or entry identity rather
   than assume separate writes receive distinct timestamps. Source-read content
   authentication has its own byte-hash checks; keep those assertions separate.
