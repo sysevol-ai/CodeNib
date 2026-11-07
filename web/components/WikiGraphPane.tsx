@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import type { WikiAreaLink } from "@/lib/api";
 import { neighborhood, type WikiGraph, type WikiGraphEdge, type WikiGraphNode } from "@/lib/wikiGraph";
@@ -31,6 +31,8 @@ const short = (title: string) => (title.length > 30 ? `${title.slice(0, 29)}…`
 const LABEL_CHAR_PX = 6.1;
 const LABEL_HEIGHT_PX = 15;
 const LABEL_MARGIN_PX = 8;
+// Room for the repository name above an embedded map.
+const HEADER_PX = 44;
 
 /**
  * Labels hold their on-screen size at any zoom. Each sits on the side facing
@@ -126,6 +128,9 @@ export default function WikiGraphPane({
   onOpenReference,
   onHide,
   onResizeReader,
+  embedded = false,
+  header,
+  idle,
 }: {
   graph: WikiGraph;
   activeId: string;
@@ -135,8 +140,13 @@ export default function WikiGraphPane({
   onRetry?: () => void;
   onPick: (id: string) => void;
   onOpenReference: (link: WikiAreaLink) => void;
-  onHide: () => void;
-  onResizeReader: (delta: number) => void;
+  onHide?: () => void;
+  onResizeReader?: (delta: number) => void;
+  /** Inside a page rather than a workspace: the page keeps the wheel and touch. */
+  embedded?: boolean;
+  header?: ReactNode;
+  /** What the status line says when nothing is under the pointer. */
+  idle?: { title: string; detail: string };
 }) {
   const paneRef = useRef<HTMLElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -158,8 +168,9 @@ export default function WikiGraphPane({
     const ys = graph.nodes.map((node) => node.y);
     if (!xs.length || !size.width || !size.height) return { points: next, center: { x: 0, y: 0 } };
     const [minX, maxX, minY, maxY] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
-    const fitX = (size.width - 190) / Math.max(maxX - minX, 1);
-    const fitY = (size.height - 170) / Math.max(maxY - minY, 1);
+    // A phone has no room for labels at the sides; they move inward instead.
+    const fitX = (size.width - (size.width < 520 ? 56 : 190)) / Math.max(maxX - minX, 1);
+    const fitY = (size.height - 170 - (header ? HEADER_PX : 0)) / Math.max(maxY - minY, 1);
     const scale = Math.min(fitX, fitY);
     const stretchX = Math.min(Math.max(fitX, 0.1), scale * 1.45, 2.4);
     const stretchY = Math.min(Math.max(fitY, 0.1), scale * 1.45, 2.4);
@@ -168,12 +179,13 @@ export default function WikiGraphPane({
       points: next,
       center: { x: ((minX + maxX) / 2) * stretchX, y: ((minY + maxY) / 2) * stretchY },
     };
-  }, [graph, size]);
+  }, [graph, size, header]);
 
   const fitted = useMemo((): View | null => {
     if (!size.width || !size.height || !points.size) return null;
-    return { k: 1, x: size.width / 2 - center.x, y: (size.height - 40) / 2 - center.y };
-  }, [points, center, size]);
+    const top = header ? HEADER_PX : 0;
+    return { k: 1, x: size.width / 2 - center.x, y: (size.height - 40 + top) / 2 - center.y };
+  }, [points, center, size, header]);
   const view = movedView ?? fitted;
   const viewRef = useRef(view);
   viewRef.current = view;
@@ -193,7 +205,7 @@ export default function WikiGraphPane({
   // A non-passive listener: the wheel zooms the map, not the page behind it.
   useEffect(() => {
     const svg = svgRef.current;
-    if (!svg) return undefined;
+    if (!svg || embedded) return undefined;
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
       const box = svg.getBoundingClientRect();
@@ -207,7 +219,7 @@ export default function WikiGraphPane({
     };
     svg.addEventListener("wheel", onWheel, { passive: false });
     return () => svg.removeEventListener("wheel", onWheel);
-  }, []);
+  }, [embedded]);
 
   const labels = useMemo(() => {
     if (!view || !points.size) return [];
@@ -232,12 +244,14 @@ export default function WikiGraphPane({
     }
     const node = hoverNode ? byId.get(hoverNode) : null;
     if (node) return { title: node.title, detail: "Click to read this page" };
-    return null;
-  }, [hoverEdge, hoverNode, byId]);
+    return idle ?? null;
+  }, [hoverEdge, hoverNode, byId, idle]);
 
   return (
     <section
-      className={`wiki-graph${graph.edges.filter((edge) => edge.kind === "references").length > 30 ? " is-dense" : ""}`}
+      className={`wiki-graph${graph.edges.filter((edge) => edge.kind === "references").length > 30 ? " is-dense" : ""}${
+        embedded ? " is-embedded" : ""
+      }`}
       ref={paneRef}
       aria-label="Map of this Wiki"
     >
@@ -246,7 +260,7 @@ export default function WikiGraphPane({
         width={size.width}
         height={size.height}
         onPointerDown={(event) => {
-          drag.current = { x: event.clientX, y: event.clientY, moved: false };
+          if (!embedded) drag.current = { x: event.clientX, y: event.clientY, moved: false };
         }}
         onPointerMove={(event) => {
           const start = drag.current;
@@ -360,14 +374,17 @@ export default function WikiGraphPane({
         )}
       </svg>
 
-      <div className="wiki-graph-controls">
-        <button type="button" onClick={() => setMovedView(null)}>
-          Fit
-        </button>
-        <button type="button" onClick={onHide}>
-          Hide map
-        </button>
-      </div>
+      {header && <div className="wiki-graph-head">{header}</div>}
+      {!embedded && (
+        <div className="wiki-graph-controls">
+          <button type="button" onClick={() => setMovedView(null)}>
+            Fit
+          </button>
+          <button type="button" onClick={onHide}>
+            Hide map
+          </button>
+        </div>
+      )}
 
       <div className="wiki-graph-foot" role="status">
         {status ? (
@@ -376,7 +393,7 @@ export default function WikiGraphPane({
           </p>
         ) : (
           <p>
-            <span>Drag to pan · Scroll to zoom · Click a page to read it</span>
+            <span>{embedded ? "Click a page to read it" : "Drag to pan · Scroll to zoom · Click a page to read it"}</span>
           </p>
         )}
         <dl className="wiki-graph-legend">
@@ -403,6 +420,7 @@ export default function WikiGraphPane({
         )}
       </div>
 
+      {onResizeReader && (
       <div
         className="wiki-graph-splitter"
         role="separator"
@@ -429,6 +447,7 @@ export default function WikiGraphPane({
           target.addEventListener("pointerup", up);
         }}
       />
+      )}
     </section>
   );
 }

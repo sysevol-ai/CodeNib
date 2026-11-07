@@ -140,6 +140,20 @@ body > header {
 .example-tasks button:focus-visible { outline: 3px solid var(--h-trace); outline-offset: 3px; }
 html:not(.js) .example-tasks { display: none; }
 .stage-evidence { min-width: 0; display: flex; flex-direction: column; }
+.stage-example { margin-top: var(--section); padding-top: var(--section); border-top: 1px solid var(--line); }
+.stage-example h2 { color: #fff; margin-bottom: 16px; }
+.stage-map { display: flex; flex-direction: column; min-width: 0; }
+/* Stands in, at the same size, until the interactive map loads. */
+.stage-map-preview { display: block; flex: 1 1 auto; margin-top: 44px; min-height: clamp(400px, 29vw, 560px); }
+.stage-map-preview img { width: 100%; height: 100%; object-fit: cover; border-radius: var(--r-box); }
+@media (max-width: 600px) { .stage-map-preview { min-height: 500px; } }
+.stage-ready { display: grid; gap: 10px; margin-top: auto; padding-top: 30px; }
+.stage-ready > p { color: var(--h-soft); font-size: 13px; font-weight: 600; }
+.stage-ready-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.stage-ready-list a { display: inline-flex; align-items: baseline; gap: 7px; padding: 8px 12px; color: var(--h-text); font-size: 13px; font-weight: 600; border: 1px solid var(--h-line); border-radius: var(--r-ui); transition: border-color .15s, background .15s; }
+.stage-ready-list a:hover { border-color: var(--h-line-strong); background: rgba(255, 255, 255, 0.05); }
+.stage-ready-list a span { color: var(--h-muted); font-family: "Geist Mono", ui-monospace, monospace; font-size: 11px; font-weight: 400; }
+.stage-ready-list a.is-more { color: var(--h-accent); }
 .repository-handoff { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: var(--column-gap); align-items: center; }
 .repository-handoff .section-sub { font-size: 16px; }
 .repo-entry { padding: 24px; border: 1px solid var(--line); border-radius: var(--r-box); background: var(--surface); }
@@ -259,7 +273,8 @@ body > footer { border-top: 1px solid var(--line); }
   .section-head, .proof-row { grid-template-columns: minmax(0, 1fr); row-gap: 12px; }
   .stage-intro { display: contents; }
   .stage-copy { order: 0; }
-  .stage-evidence { order: 1; }
+  .stage-evidence, .stage-map { order: 1; }
+  .stage-ready { order: 2; margin-top: 0; padding-top: 0; }
   .example-tasks { order: 2; margin-top: 0; padding-top: 0; }
   .repository-handoff { grid-template-columns: minmax(0, 1fr); gap: 24px; }
   .agent-handoff { grid-template-columns: minmax(0, 1fr); }
@@ -289,6 +304,7 @@ body > footer { border-top: 1px solid var(--line); }
   html { scroll-behavior: auto; }
 }
 </style>
+<link rel="stylesheet" href="assets/hero-map/hero-map.css">
 <meta name="theme-color" content="#121315">
 </head>
 <body>
@@ -322,6 +338,33 @@ body > footer { border-top: 1px solid var(--line); }
             <a class="btn btn-ghost btn-lg" href="#get-started">Use with your agent</a>
           </div>
           <p class="stage-note">No account or API key needed for the example.</p>
+        </div>
+        <div class="stage-ready">
+          <p>Ready to read, no setup</p>
+          <div class="stage-ready-list">
+            <a href="https://demo.codenib.ai/psf__requests">requests <span>Python</span></a>
+            <a href="https://demo.codenib.ai/gin-gonic__gin">gin <span>Go</span></a>
+            <a href="https://demo.codenib.ai/nushell__nushell">nushell <span>Rust</span></a>
+            <a href="https://demo.codenib.ai/fmtlib__fmt">fmt <span>C++</span></a>
+            <a href="https://demo.codenib.ai/pydata__xarray">xarray <span>Python</span></a>
+            <a href="https://demo.codenib.ai/scikit-learn__scikit-learn">scikit-learn <span>Python</span></a>
+            <a href="https://demo.codenib.ai/caddyserver__caddy">caddy <span>Go</span></a>
+            <a href="https://demo.codenib.ai/redis__redis">redis <span>C</span></a>
+            <a class="is-more" href="https://demo.codenib.ai/browse">All Wikis →</a>
+          </div>
+        </div>
+      </div>
+      <!-- The map's data is captured at build time (web/scripts/capture-landing-maps.mjs),
+           so this page makes no request to the demo. -->
+      <div id="codenib-hero-map" class="stage-map" data-demo="https://demo.codenib.ai">
+        <a class="stage-map-preview" href="https://demo.codenib.ai/psf__requests"><img src="assets/explore/requests-map.png" width="1103" height="700" alt="A map of the psf/requests Wiki: pages as coloured nodes, joined by the references recorded between its areas."></a>
+      </div>
+    </div>
+    <div class="wrap stage-row stage-example">
+      <div class="stage-intro">
+        <div class="stage-copy">
+          <h2>Ask one question. Land on the exact lines.</h2>
+          <p class="stage-sub">Each step is a call the index recorded. Click one to read the source it points at. No account or API key needed.</p>
         </div>
         <div class="example-tasks" role="group" aria-label="Choose a code question">
           <p>Start with a question</p>
@@ -448,6 +491,7 @@ codenib codegraph init /path/to/your/repo</code></pre>
 </main>
 <script type="module" src="assets/explore/repo-explorer.js"></script>
 <script type="module" src="assets/explore/landing-entry.js"></script>
+<script type="module" src="assets/hero-map/hero-map.js"></script>
 
 <footer>
   <div class="wrap foot">

@@ -18,7 +18,62 @@
   overflow: hidden;
   color: var(--wg-text);
   background: var(--wg-bg);
-  border-inline: 1px solid var(--border-subtle);
+  border-inline: 1px solid var(--border-subtle, rgba(232, 234, 237, 0.12));
+}
+/* Inside a page: a framed picture that leaves the wheel and touch to the page. */
+.wiki-graph.is-embedded {
+  position: relative;
+  top: auto;
+  align-self: stretch;
+  height: 100%;
+  min-height: clamp(400px, 29vw, 560px);
+  border: 1px solid rgba(232, 234, 237, 0.14);
+  border-radius: 10px;
+}
+.wiki-graph.is-embedded svg {
+  position: absolute;
+  inset: 0;
+  cursor: default;
+  touch-action: auto;
+}
+@media (max-width: 600px) {
+  .wiki-graph.is-embedded {
+    min-height: 500px;
+  }
+}
+.hero-graph {
+  display: grid;
+  min-width: 0;
+  height: 100%;
+}
+.wiki-graph-head {
+  position: absolute;
+  inset: 14px 18px auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 2px 18px;
+  pointer-events: none;
+}
+.wiki-graph-title {
+  color: var(--wg-text);
+  font-size: 19px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  text-decoration: none;
+  pointer-events: auto;
+}
+.wiki-graph-title span {
+  color: var(--wg-hot);
+}
+.wiki-graph-title:hover {
+  color: #fff;
+}
+.wiki-graph-stats {
+  margin: 0;
+  color: var(--wg-muted);
+  font-size: 12px;
 }
 /* With many links only the current page's stand out at full strength. */
 .wiki-graph.is-dense {

@@ -3,7 +3,8 @@
 
 import { useEffect, useState } from "react";
 
-import RepoPoster from "@/components/RepoPoster";
+import HeroGraph from "@/components/HeroGraph";
+import { navigate } from "@/lib/router";
 import "./HomeMap.css";
 import {
   fetchWikiAreaMap,
@@ -31,6 +32,23 @@ export interface Loaded {
   journey: Journey | null;
 }
 
+type LoadedGraph = Pick<Loaded, "id" | "map" | "pages">;
+
+const graphCache = new Map<string, Promise<LoadedGraph>>();
+
+/** What the home map draws: the areas and the page tree, nothing per page. */
+function loadRepoGraph(id: string): Promise<LoadedGraph> {
+  let pending = graphCache.get(id);
+  if (!pending) {
+    pending = Promise.all([fetchWikiAreaMap(id), fetchWikiTree(id, { cachedOnly: true })]).then(
+      ([map, tree]) => ({ id, map, pages: tree.pages }),
+    );
+    pending.catch(() => graphCache.delete(id));
+    graphCache.set(id, pending);
+  }
+  return pending;
+}
+
 const cache = new Map<string, Promise<Loaded>>();
 
 /** Map, page tree and traced path of one prepared repository, shared. */
@@ -55,20 +73,20 @@ export function loadRepoMap(id: string): Promise<Loaded> {
   return pending;
 }
 
-/** The home page's live map: one indexed repository at a time, with its
- *  traced path played when it appears. */
+/** The home page's live map: one indexed repository at a time, drawn the way
+ *  its Wiki draws it. */
 export default function HomeMap({ repos }: { repos: RepoInfo[] }) {
   const available = HOME_MAP_REPOS.filter(
     (item) => repos.length === 0 || repos.some((repo) => repo.id === item.id),
   );
   const [selected, setSelected] = useState(available[0]?.id ?? HOME_MAP_REPOS[0].id);
-  const [loaded, setLoaded] = useState<Loaded | null>(null);
+  const [loaded, setLoaded] = useState<LoadedGraph | null>(null);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     setFailed(false);
-    loadRepoMap(selected)
+    loadRepoGraph(selected)
       .then((value) => {
         if (!cancelled) setLoaded(value);
       })
@@ -84,7 +102,7 @@ export default function HomeMap({ repos }: { repos: RepoInfo[] }) {
   useEffect(() => {
     if (!loaded) return;
     const timer = window.setTimeout(() => {
-      for (const item of available) if (item.id !== selected) void loadRepoMap(item.id).catch(() => {});
+      for (const item of available) if (item.id !== selected) void loadRepoGraph(item.id).catch(() => {});
     }, 1500);
     return () => window.clearTimeout(timer);
   }, [loaded?.id]);
@@ -110,17 +128,16 @@ export default function HomeMap({ repos }: { repos: RepoInfo[] }) {
         ))}
       </div>
       {showing && showing.map.areas.some((area) => area.symbols > 0) ? (
-        <RepoPoster
+        <HeroGraph
           key={showing.id}
-          variant="hero"
-          repoId={showing.id}
-          repo={repo}
-          map={showing.map}
+          repoName={repo?.repo ?? showing.id.replace("__", "/")}
           pages={showing.pages}
-          journey={showing.journey}
+          map={showing.map}
+          wikiHref={`/${encodeURIComponent(showing.id)}`}
+          onPick={(page) => navigate(`/${encodeURIComponent(showing.id)}?p=${encodeURIComponent(page)}`)}
         />
       ) : (
-        <div className="repo-poster is-hero home-map-placeholder" role="status">
+        <div className="home-map-placeholder" role="status">
           <span>{failed ? "This map could not be loaded. Pick another repository." : "Loading the map…"}</span>
         </div>
       )}

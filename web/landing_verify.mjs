@@ -37,6 +37,9 @@ try {
     await page.goto(base, { waitUntil: "networkidle" });
     const explorer = page.locator("codenib-explorer");
     await explorer.locator(".node").first().waitFor();
+    // The interactive map replaces its stand-in, and draws from bundled data.
+    await page.locator("#codenib-hero-map .wg-node").first().waitFor();
+    assert.equal(await page.locator("#codenib-hero-map .stage-map-preview").count(), 0);
     await page.evaluate(() => document.fonts.ready);
     assert.equal(await page.title(), "CodeNib: Understand Unfamiliar Code with Evidence.");
     assert.equal(await page.locator(".stage-ctas .btn-primary").count(), 1);
@@ -45,14 +48,17 @@ try {
     const card = await explorer.boundingBox(), form = await page.locator(".repo-entry").boundingBox();
     assert.ok(card.y < form.y, "the example must precede the own-repository form");
     if (width > 860) {
-      const source = await explorer.locator(".source").boundingBox();
-      assert.ok(source.y + source.height <= 900, "source must be visible in the desktop hero");
+      const map = await page.locator("#codenib-hero-map").boundingBox();
+      assert.ok(map.y + map.height <= 900, "the map must be visible in the desktop hero");
+      assert.ok(Math.abs(map.x - card.x) < 1, "the map and the example must share an edge");
       for (const selector of [".repo-entry", ".agent-handoff .frame"]) {
         const box = await page.locator(selector).boundingBox();
         assert.ok(Math.abs(box.x - card.x) < 1, "right columns must share an edge");
       }
     } else {
-      assert.ok(card.y < 550, "the example should follow a compact mobile introduction");
+      const map = await page.locator("#codenib-hero-map").boundingBox();
+      assert.ok(map.y < 620, "the map should follow a compact mobile introduction");
+      assert.ok(card.y > map.y + map.height, "the example follows the map");
       const questions = await page.locator(".example-tasks").boundingBox();
       assert.ok(questions.y >= card.y + card.height, "mobile questions follow the first example");
     }
