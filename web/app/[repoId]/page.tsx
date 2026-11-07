@@ -14,6 +14,10 @@ import Header from "@/components/Header";
 import Markdown from "@/components/Markdown";
 import SystemArchitecture, { type ArchitectureJourney } from "@/components/SystemArchitecture";
 import PageBoundaryCard from "@/components/PageBoundary";
+import CallPathFigure from "@/components/CallPathFigure";
+import MainPath from "@/components/MainPath";
+import WikiToc from "@/components/WikiToc";
+import { childPages } from "@/lib/wikiNav";
 import AreaMap from "@/components/AreaMap";
 import RepoPoster from "@/components/RepoPoster";
 import { ghFileUrl } from "@/lib/github";
@@ -38,7 +42,6 @@ import {
   fetchWikiPage,
   fetchWikiTree,
   isSourceCheckedWikiPage,
-  materializedWikiMediaSlots,
   repoRelative,
   shouldWithholdWikiPage,
   type CodemapResponse,
@@ -86,51 +89,6 @@ function stripGeneratedDiagrams(
     .trimEnd();
 }
 
-
-function TocTree({
-  pages,
-  activeId,
-  onPick,
-}: {
-  pages: WikiPageRef[];
-  activeId: string;
-  onPick: (id: string) => void;
-}) {
-  const cacheLabels = {
-    ready: "Cached page",
-    cold: "First load will generate this page",
-    retryable: "Quality retry queued",
-    degraded: "Page needs review",
-  } as const;
-  return (
-    <ul className="toc-tree">
-      {pages.map((p) => (
-        <li key={p.id}>
-          <button
-            className={`toc-link ${p.id === activeId ? "active" : ""}`}
-            aria-current={p.id === activeId ? "page" : undefined}
-            title={p.title}
-            onClick={() => onPick(p.id)}
-          >
-            <span className="toc-label">{p.title}</span>
-            {p.cache_state && p.cache_state !== "ready" && (
-              // Ready is the normal state; only pages that still need work
-              // carry a marker, so the marker means something.
-              <span
-                className={`toc-cache-state ${p.cache_state}`}
-                aria-label={cacheLabels[p.cache_state]}
-                title={cacheLabels[p.cache_state]}
-              />
-            )}
-          </button>
-          {p.children.length > 0 && (
-            <TocTree pages={p.children} activeId={activeId} onPick={onPick} />
-          )}
-        </li>
-      ))}
-    </ul>
-  );
-}
 
 /** The Overview's first prose paragraph: no heading, reader-question quote,
  *  or list, which the poster has no room for. */
@@ -211,10 +169,11 @@ function MediaPreview({
   slot: WikiMediaSlot;
   trace?: ArchitectureJourney;
 }) {
+  const adapter = slot.render_contract?.adapter;
+  if (adapter === "flow") return <CallPathFigure slot={slot} />;
   const asset = slot.asset;
   const src = asset?.uri ? mediaAssetUrl(asset.uri) : null;
   if (!src || !asset) return null;
-  const adapter = slot.render_contract?.adapter;
   if (
     adapter === "architecture" &&
     slot.render_contract?.provenance === "architecture-plan"
@@ -348,8 +307,11 @@ function MultimodalMedia({
   /** The Overview's entry path, drawn inside the architecture card. */
   trace?: ArchitectureJourney;
 }) {
-  const visibleSlots = materializedWikiMediaSlots(slots).filter((slot) =>
-    slot.asset?.uri ? Boolean(mediaAssetUrl(slot.asset.uri)) : false,
+  // A call path is drawn from its contract, so it needs no stored image.
+  const visibleSlots = slots.filter(
+    (slot) =>
+      slot.render_contract?.adapter === "flow" ||
+      (slot.asset?.uri ? Boolean(mediaAssetUrl(slot.asset.uri)) : false),
   );
   if (!visibleSlots.length) return null;
 
@@ -363,20 +325,23 @@ function MultimodalMedia({
               <div className="wiki-story-map-frame">
                 <MediaPreview slot={slot} trace={trace} />
               </div>
-              <div className="wiki-story-map-footer">
-                <MediaStatus slot={slot} />
-                <MediaCitations slot={slot} repo={repo} />
-                {assetUrl && (
-                  <a
-                    className="wiki-media-open"
-                    href={assetUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    {mediaOpenLabel(slot)}
-                  </a>
-                )}
-              </div>
+              {/* A call path's own caption says where it came from. */}
+              {slot.render_contract?.adapter !== "flow" && (
+                <div className="wiki-story-map-footer">
+                  <MediaStatus slot={slot} />
+                  <MediaCitations slot={slot} repo={repo} />
+                  {assetUrl && (
+                    <a
+                      className="wiki-media-open"
+                      href={assetUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {mediaOpenLabel(slot)}
+                    </a>
+                  )}
+                </div>
+              )}
             </article>
           );
         })}
@@ -858,15 +823,10 @@ export default function WikiPageView({
       )
     : "";
   const wikiMarkdown = splitWikiMarkdown(renderedMarkdown);
-  // On the Overview the recorded entry path is drawn inside the architecture
-  // card, so the page tells one path instead of two stacked ones.
-  const hasArchitecture = [...wikiMedia.lead, ...wikiMedia.bridge, ...wikiMedia.body].some(
-    (slot) =>
-      slot.render_contract?.adapter === "architecture" &&
-      slot.render_contract?.provenance === "architecture-plan",
-  );
+  // On the Overview the recorded entry path gets its own figure, the first
+  // thing after the map, so the prose below can stop repeating it.
   const lifted =
-    page && activeId === "overview" && hasArchitecture
+    page && activeId === "overview"
       ? extractJourney(wikiMarkdown.body)
       : { journey: null, rest: wikiMarkdown.body };
   // The Overview opens on the poster: areas, recorded references and the
@@ -879,29 +839,37 @@ export default function WikiPageView({
     !!areaMap &&
     areaMap.reason !== "outline_pending" &&
     areaMap.areas.filter((area) => area.symbols > 0).length >= 2;
-  const posterJourney =
-    activeId === "overview"
-      ? lifted.journey ?? extractJourney(wikiMarkdown.body).journey
-      : null;
+  const posterJourney = activeId === "overview" ? lifted.journey : null;
+  const renderStageText = (markdown: string) => (
+    <Markdown
+      citations={page?.citations}
+      relations={page?.evidence?.relations}
+      onCite={(index) => setSourceCitation(page?.citations[index] ?? null)}
+      repoId={repoId}
+      onPageLink={pick}
+    >
+      {markdown}
+    </Markdown>
+  );
   const trace = lifted.journey
     ? {
         journey: lifted.journey,
         citations: page?.citations,
         onPick: pick,
-        showPath: !showPoster,
-        renderText: (markdown: string) => (
-          <Markdown
-            citations={page?.citations}
-            relations={page?.evidence?.relations}
-            onCite={(index) => setSourceCitation(page?.citations[index] ?? null)}
-            repoId={repoId}
-            onPageLink={pick}
-          >
-            {markdown}
-          </Markdown>
-        ),
+        showPath: false,
+        renderText: renderStageText,
       }
     : undefined;
+  // The main path figure replaces its own contract slot, and the semantic
+  // architecture waits behind a disclosure so the page leads with real calls.
+  const bridgeSlots = wikiMedia.bridge.filter(
+    (slot) => !(lifted.journey && slot.id === "overview-main-path"),
+  );
+  const architectureSlots = lifted.journey
+    ? bridgeSlots.filter((slot) => slot.render_contract?.adapter === "architecture")
+    : [];
+  const figureSlots = bridgeSlots.filter((slot) => !architectureSlots.includes(slot));
+  const deeperPages = childPages(pages, activeId);
   const openGraph = (seed?: string) => {
     setGraphSeed(seed);
     setGraphOpen(true);
@@ -1018,7 +986,7 @@ export default function WikiPageView({
           ) : pages.length === 0 ? (
             <div className="muted small">No pages in this wiki yet.</div>
           ) : (
-            <TocTree pages={pages} activeId={activeId} onPick={pick} />
+            <WikiToc pages={pages} activeId={activeId} onPick={pick} />
           )}
         </aside>
 
@@ -1072,14 +1040,6 @@ export default function WikiPageView({
                       </figure>
                     )
                   )}
-                  {boundary?.available && (
-                    <PageBoundaryCard
-                      boundary={boundary}
-                      commit={repo?.commit_short}
-                      onFocus={hasGraph ? (symbol) => openGraph(symbol) : undefined}
-                      onOpenMap={hasGraph ? () => openGraph() : undefined}
-                    />
-                  )}
                   {wikiMedia.lead.length > 0 && (
                     <MultimodalMedia
                       slots={wikiMedia.lead}
@@ -1088,13 +1048,35 @@ export default function WikiPageView({
                       trace={trace}
                     />
                   )}
-                  {wikiMedia.bridge.length > 0 && (
+                  {lifted.journey && (
+                    <MainPath
+                      journey={lifted.journey}
+                      onPick={pick}
+                      renderText={renderStageText}
+                    />
+                  )}
+                  {figureSlots.length > 0 && (
                     <MultimodalMedia
-                      slots={wikiMedia.bridge}
+                      slots={figureSlots}
                       repo={repo}
                       variant="bridge"
                       trace={trace}
                     />
+                  )}
+                  {boundary?.available && (
+                    <details className="wiki-disclosure">
+                      <summary>
+                        Callers and calls in the code graph ({boundary.inbound.length} in,{" "}
+                        {boundary.outbound.length} out
+                        {boundary.truncated ? ", more in the map" : ""})
+                      </summary>
+                      <PageBoundaryCard
+                        boundary={boundary}
+                        commit={repo?.commit_short}
+                        onFocus={hasGraph ? (symbol) => openGraph(symbol) : undefined}
+                        onOpenMap={hasGraph ? () => openGraph() : undefined}
+                      />
+                    </details>
                   )}
                   {lifted.rest && (
                     <Markdown
@@ -1112,7 +1094,33 @@ export default function WikiPageView({
                   {wikiMedia.body.length > 0 && (
                     <MultimodalMedia slots={wikiMedia.body} repo={repo} trace={trace} />
                   )}
+                  {architectureSlots.length > 0 && (
+                    <details className="wiki-disclosure">
+                      <summary>How the parts fit together</summary>
+                      <MultimodalMedia
+                        slots={architectureSlots}
+                        repo={repo}
+                        variant="bridge"
+                        trace={trace}
+                      />
+                    </details>
+                  )}
                 </div>
+              )}
+              {/* A withheld page must not strand a reader above its detail pages. */}
+              {page && deeperPages.length > 0 && (
+                <nav className="wiki-go-deeper" aria-label="Go deeper">
+                  <h2>Go deeper</h2>
+                  <ul>
+                    {deeperPages.map((item) => (
+                      <li key={item.id}>
+                        <button type="button" onClick={() => pick(item.id)}>
+                          {item.title}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </nav>
               )}
               {page && (
                 <div
@@ -1128,7 +1136,9 @@ export default function WikiPageView({
                     {generationMode === "offline"
                       ? "Built from the index"
                       : withheldByQualityGuard
-                        ? "Explanation withheld: it did not pass source checks"
+                        ? page.grounding?.valid === false
+                          ? "Explanation withheld: it did not pass source checks"
+                          : "Explanation withheld: it did not pass reader checks"
                         : sourceChecked
                           ? "Written by a model, every claim linked to source"
                           : page.generation?.fallback

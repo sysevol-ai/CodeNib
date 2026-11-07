@@ -15,11 +15,16 @@ from dataclasses import asdict, dataclass, field
 from itertools import islice
 from typing import Any, Iterable, Literal, Mapping
 
-from .visual_ir import architecture_contract_from_plan
+from .importance import FIGURE_TIERS, TIER_DETAIL
+from .visual_ir import (
+    architecture_contract_from_plan,
+    flow_contract_from_plan,
+    flow_contract_from_relations,
+)
 
 MediaKind = Literal["diagram", "image", "storyboard", "chart", "video"]
 MediaPlacement = Literal["lead", "section", "aside", "appendix"]
-MEDIA_PLAN_VERSION = 13
+MEDIA_PLAN_VERSION = 14
 
 _MAX_SOURCE_CITATIONS = 6
 
@@ -75,6 +80,40 @@ def _safe_contract(factory, *args, **kwargs) -> dict[str, Any] | None:
         return None
 
 
+def _call_path_title(contract: Mapping[str, Any]) -> str:
+    """Name the path by its ends and say that it is one path of many."""
+
+    data = contract["data"]
+    nodes = {node["id"]: node["label"] for node in data["nodes"]}
+    targets = {edge["target"] for edge in data["edges"]}
+    sources = {edge["source"] for edge in data["edges"]}
+    start = next(node for node in nodes if node not in targets)
+    end = next(node for node in nodes if node not in sources)
+    return f"Selected call path: {nodes[start]} → {nodes[end]}"
+
+
+def _call_path_slot(
+    *,
+    slot_id: str,
+    contract: dict[str, Any],
+    citations: tuple[str, ...],
+    purpose: str,
+) -> dict[str, Any]:
+    return WikiMediaSlot(
+        id=slot_id,
+        kind="diagram",
+        placement="aside",
+        title=_call_path_title(contract),
+        purpose=purpose,
+        source_citations=citations,
+        prompt=(
+            "Draw the supplied call path exactly. Every arrow is a call recorded "
+            "in the index; do not add, remove or rename a step."
+        ),
+        render_contract=contract,
+    ).to_dict()
+
+
 def plan_media_slots(
     *,
     page_id: str,
@@ -85,28 +124,55 @@ def plan_media_slots(
     story: Mapping[str, Any] | None = None,
     flow: Mapping[str, Any] | None = None,
     architecture: Mapping[str, Any] | None = None,
+    tier: str = TIER_DETAIL,
 ) -> list[dict[str, Any]]:
     """Return deterministic media slots for a wiki page.
 
     These slots intentionally describe *what* should be rendered, not *how* to
     call a provider. That keeps the wiki API stable while allowing future VLM
     adapters and human-prior configuration to fill the assets later.
+
+    The Overview draws the main path the index recorded from the public entry
+    inward (``flow``), beside its semantic architecture when one was admitted.
+    A page in ``FIGURE_TIERS`` draws the longest call path among its relations.
+    Arrows always come from the index; a page with no such path draws nothing.
     """
 
-    del diagram, story, flow, relations
+    del diagram, story
+    citation_files = _citation_files(citations)
     if page_id != "overview":
-        return []
+        if tier not in FIGURE_TIERS:
+            return []
+        contract = _safe_contract(flow_contract_from_relations, relations)
+        if contract is None:
+            return []
+        return [
+            _call_path_slot(
+                slot_id=f"{page_id or 'page'}-call-path",
+                contract=contract,
+                citations=citation_files,
+                purpose="Show how this area's code calls through, step by step.",
+            )
+        ]
+
+    slots: list[dict[str, Any]] = []
+    flow_contract = _safe_contract(flow_contract_from_plan, flow)
+    if flow_contract is not None:
+        slots.append(
+            _call_path_slot(
+                slot_id="overview-main-path",
+                contract=flow_contract,
+                citations=citation_files,
+                purpose="Show the main path through the code, from the public entry.",
+            )
+        )
     structure_contract = _safe_contract(
         architecture_contract_from_plan,
         architecture,
     )
     if structure_contract is None:
-        # A local call chain can be a debug/configuration side path, not a
-        # system overview. Do not fill a rejected architecture's slot with
-        # an unrelated flow or relation image. Indexed maps remain separate.
-        return []
+        return slots
 
-    citation_files = _citation_files(citations)
     page_slug = page_id or "page"
     page_title = title or page_slug
     authored_title = (
@@ -146,7 +212,7 @@ def plan_media_slots(
         ),
         render_contract=structure_contract,
     )
-    return [slot.to_dict()]
+    return [slot.to_dict(), *slots]
 
 
 __all__ = ["MEDIA_PLAN_VERSION", "WikiMediaSlot", "plan_media_slots"]

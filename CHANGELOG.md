@@ -11,7 +11,27 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 ## [Unreleased]
 
+### Changed
+
+- Wikis are easier to read. Publication now also checks how a page reads:
+  template sections and printed reader questions are gone, a page opens on what
+  the code does rather than on an identifier, and limits apply to inline code,
+  sentence length and page length. A page that fails gets one rewrite. The model
+  reader review now blocks detail pages it rates below its floor. Existing Wiki
+  pages regenerate the next time they are opened, or when a prewarm runs.
+- The page list opens on the Overview and at most five pages, ranked from the
+  recorded call graph. Detail pages wait behind their parent and lower-ranked
+  areas behind "More topics"; none are removed, and a parent page links to its
+  detail pages under "Go deeper".
+- The Overview leads with the main path through the code, one sentence per
+  recorded call, chosen from the call graph rather than from what a search
+  retrieved. The semantic architecture sits behind "How the parts fit together",
+  and a page's callers and calls behind a disclosure.
+
 ### Added
+
+- The most important detail pages draw their longest recorded call path, labelled
+  as one selected path. No model chooses the arrows.
 
 - `codenib guard check` compares the working tree with a commit and lists the
   tests that reach the changed definitions within three calls, each with its

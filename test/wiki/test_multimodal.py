@@ -150,7 +150,7 @@ def test_call_graph_inputs_never_become_the_architecture_card():
     assert slots == []
 
 
-def test_recorded_entry_path_does_not_replace_a_missing_architecture():
+def test_recorded_entry_path_is_drawn_when_architecture_is_missing():
     flow = {
         "title": "From `dispatch()` to `save()`",
         "steps": [
@@ -159,17 +159,22 @@ def test_recorded_entry_path_does_not_replace_a_missing_architecture():
         ],
     }
     slots = plan_media_slots(page_id="overview", title="Overview", flow=flow)
-    assert slots == []
+    assert [slot["id"] for slot in slots] == ["overview-main-path"]
+    assert slots[0]["title"] == "Selected call path: dispatch() → save()"
+    assert slots[0]["render_contract"]["provenance"] == "relations"
 
-    # With an admitted architecture the recorded path never becomes a second
-    # picture.
+    # With an admitted architecture both are planned: the roles and the path
+    # the code actually takes. The reader chooses which one to lead with.
     slots = plan_media_slots(
         page_id="overview",
         title="Overview",
         architecture=_architecture_plan(),
         flow=flow,
     )
-    assert [slot["id"] for slot in slots] == ["overview-system-architecture"]
+    assert [slot["id"] for slot in slots] == [
+        "overview-system-architecture",
+        "overview-main-path",
+    ]
 
 
 def test_child_pages_never_receive_an_automatic_architecture_visual():
@@ -209,7 +214,7 @@ def test_invalid_architecture_plan_is_omitted_instead_of_falling_back_to_calls()
     assert slots == []
 
 
-def test_architecture_without_role_evidence_does_not_turn_into_a_local_call_flow():
+def test_architecture_without_role_evidence_leaves_only_the_recorded_path():
     relations = [
         {
             "id": "R1",
@@ -237,4 +242,6 @@ def test_architecture_without_role_evidence_does_not_turn_into_a_local_call_flow
         relations=relations,
         flow=flow,
     )
-    assert slots == []
+    # The rejected architecture is not replaced by a relation map: only the
+    # recorded main path, labelled as a selected path, is drawn.
+    assert [slot["id"] for slot in slots] == ["overview-main-path"]

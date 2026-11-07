@@ -765,6 +765,176 @@ def plan_narrative_report(
     }
 
 
+# Readability gates, calibrated on 108 published pages of four prepared Wikis.
+# A limit marks prose nobody wants to read, not a house style: most of those
+# pages sat inside the ratio limits, while 97 carried the template headings and
+# 75 opened on a code identifier.
+READABILITY_MAX_CODE_SPANS_PER_100_WORDS = 15.0
+READABILITY_MAX_CODE_LED_RATIO = 0.6
+READABILITY_MIN_PLAIN_SENTENCE_RATIO = 0.15
+READABILITY_MAX_SENTENCE_WORDS = 45
+READABILITY_MAX_WORDS_OVERVIEW = 450
+READABILITY_MAX_WORDS_PAGE = 800
+# The shortest of those pages had 87 words. A page below this says nothing; an
+# empty model reply otherwise leaves one sentence that passes every ratio.
+READABILITY_MIN_WORDS = 40
+# Ratios say little about a page of two or three sentences.
+_READABILITY_MIN_SENTENCES_FOR_RATIOS = 4
+READER_REVIEW_MIN_SCORE_OVERVIEW = 3
+READER_REVIEW_MIN_SCORE_PAGE = 4
+
+_TEMPLATE_SECTION_TITLES = _FRAMING_SECTION_TITLES
+_READER_QUESTION_CALLOUT = re.compile(
+    r"^>\s*\*\*Reader question:\*\*", flags=re.MULTILINE
+)
+_CODE_SPAN = re.compile(r"`[^`\n]+`")
+_LEADING_MARKUP = re.compile(r"^[\s*_>#-]+")
+# A sentence opening this way needs one before it to make sense.
+LEANS_ON_EARLIER_SENTENCE = re.compile(
+    r"^(?:it|its|they|their|these|those|also|then|next|however|instead)\b",
+    re.IGNORECASE,
+)
+
+
+def _starts_with_code(sentence: str) -> bool:
+    return _LEADING_MARKUP.sub("", sentence).startswith("`")
+
+
+def readability_report(markdown: str, *, overview: bool = False) -> dict[str, Any]:
+    """Measure whether a person would keep reading a page.
+
+    Returns the measurements, the names of the failed limits in
+    ``readability_failures``, and ``readability_valid``. Code excerpts, tables,
+    relation rows, journey lists and navigation are not prose and are not
+    measured. The opening must lead with what the code does and make sense on
+    its own: it never begins with a pronoun, an Overview's first sentence has no
+    code at all, and any other page's does not begin with an identifier.
+    """
+
+    body = re.sub(r"^#\s+.*$", "", markdown, count=1, flags=re.MULTILINE)
+    template_sections = [
+        title.strip()
+        for title in re.findall(r"^#{2,6}\s+(.+?)\s*$", body, flags=re.MULTILINE)
+        if title.strip().casefold() in _TEMPLATE_SECTION_TITLES
+    ]
+    question_callout = bool(_READER_QUESTION_CALLOUT.search(body))
+    measured = re.sub(r"^\s*(?:>|\|).*$", "", body, flags=re.MULTILINE)
+    # A transition is an italic line of its own. Left wrapped, its closing
+    # asterisk hides the sentence end and it reads as one long sentence with the
+    # paragraph below.
+    measured = re.sub(r"^\*([^*\n]+)\*(?=\s|$)", r"\1", measured, flags=re.MULTILINE)
+    sentences = _prose_sentences(measured)
+    first_section = re.search(r"^##\s+\S", measured, flags=re.MULTILINE)
+    intro = measured[: first_section.start()] if first_section else measured
+    intro_sentences = _prose_sentences(intro)
+    opening = (intro_sentences or sentences or [""])[0]
+
+    code_spans = 0
+    words = 0
+    code_led = 0
+    plain = 0
+    longest = 0
+    for sentence in sentences:
+        spans = len(_CODE_SPAN.findall(sentence))
+        count = len(re.findall(r"\S+", _CODE_SPAN.sub("x", sentence)))
+        code_spans += spans
+        words += count
+        code_led += int(_starts_with_code(sentence))
+        plain += int(not spans)
+        longest = max(longest, count)
+    total = len(sentences)
+    density = round(100 * code_spans / words, 1) if words else 0.0
+    led_ratio = round(code_led / total, 2) if total else 0.0
+    plain_ratio = round(plain / total, 2) if total else 0.0
+    opening_plain = (
+        bool(opening)
+        and not LEANS_ON_EARLIER_SENTENCE.match(_LEADING_MARKUP.sub("", opening))
+        and ("`" not in opening if overview else not _starts_with_code(opening))
+    )
+    word_limit = (
+        READABILITY_MAX_WORDS_OVERVIEW if overview else READABILITY_MAX_WORDS_PAGE
+    )
+
+    failures = []
+    if template_sections:
+        failures.append("template_sections")
+    if question_callout:
+        failures.append("reader_question_callout")
+    if not opening_plain:
+        failures.append("opening_not_plain")
+    if longest > READABILITY_MAX_SENTENCE_WORDS:
+        failures.append("sentence_too_long")
+    if words > word_limit:
+        failures.append("page_too_long")
+    # An Overview's numbered main path is content too, though not measured prose.
+    has_main_path = any(is_journey_list(block.strip()) for block in body.split("\n\n"))
+    if words < READABILITY_MIN_WORDS and not (overview and has_main_path):
+        failures.append("too_little_prose")
+    if total >= _READABILITY_MIN_SENTENCES_FOR_RATIOS:
+        if density > READABILITY_MAX_CODE_SPANS_PER_100_WORDS:
+            failures.append("code_density")
+        if led_ratio > READABILITY_MAX_CODE_LED_RATIO:
+            failures.append("code_led_sentences")
+        if plain_ratio < READABILITY_MIN_PLAIN_SENTENCE_RATIO:
+            failures.append("too_few_plain_sentences")
+    return {
+        "readability_valid": not failures,
+        "readability_failures": failures,
+        "template_sections": template_sections,
+        "opening_sentence": opening[:300],
+        "opening_plain": opening_plain,
+        "prose_words": words,
+        "code_spans_per_100_words": density,
+        "code_led_sentence_ratio": led_ratio,
+        "plain_sentence_ratio": plain_ratio,
+        "longest_sentence_words": longest,
+    }
+
+
+def _reader_review_score(review: Mapping[str, Any]) -> int:
+    try:
+        return int(review.get("score") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def reader_review_weak(
+    review: Mapping[str, Any] | None,
+    *,
+    overview: bool = False,
+) -> bool:
+    """Return whether a reader review's complaints justify one rewrite."""
+
+    if not isinstance(review, Mapping):
+        return False
+    floor = (
+        READER_REVIEW_MIN_SCORE_OVERVIEW if overview else READER_REVIEW_MIN_SCORE_PAGE
+    )
+    return bool(
+        _reader_review_score(review) < floor
+        or review.get("jargon")
+        or review.get("repetition")
+    )
+
+
+def reader_review_valid(
+    review: Mapping[str, Any] | None,
+    *,
+    overview: bool = False,
+) -> bool:
+    """Apply the reader rubric's floor; a missing review blocks nothing.
+
+    The model reviewer can be unavailable, and deterministic checks must hold
+    without it. It never withholds an Overview: its questions about failure
+    cases rarely fit a landing page, and without that page a reader has no way
+    in. Jargon and repetition flags earn a rewrite but are too noisy to block on.
+    """
+
+    if overview or not isinstance(review, Mapping):
+        return True
+    return _reader_review_score(review) >= READER_REVIEW_MIN_SCORE_PAGE
+
+
 def page_quality_report(
     markdown: str,
     plan: dict[str, Any],
@@ -776,6 +946,8 @@ def page_quality_report(
     require_interaction: bool = False,
     require_grounded_thesis: bool = False,
     require_story: bool = False,
+    require_readability: bool = False,
+    readability_overview: bool = False,
     minimum_source_evidence: int = 0,
     maximum_planned_sections: int | None = None,
     maximum_planned_claims: int | None = None,
@@ -847,6 +1019,7 @@ def page_quality_report(
         evidence_items=evidence_items,
     )
     story_report = story_quality_report(plan)
+    reading_report = readability_report(markdown, overview=readability_overview)
     # Relation rows are the rendered form of graph edges; a page that shows
     # its handoffs as rows has explained an interaction as surely as one that
     # narrates it.
@@ -900,7 +1073,9 @@ def page_quality_report(
             plain = re.sub(r"\[(?:E|R)\d+\](?:\([^)]*\))?", " ", body)
             plain = re.sub(r"[`*_[\]()#>-]", " ", plain)
             plain = re.sub(r"\s+", " ", plain).strip()
-            if len(plain) < 60:
+            # Recorded relation rows are content a reader can follow, even with
+            # no sentence around them.
+            if len(plain) < 60 and not interaction_rows(body):
                 thin_sections.append(match.group(1).strip())
     required_sections = 2 if require_dense_sections else min(3, len(sections))
     required_blocks = required_sections + int(require_cited_intro)
@@ -916,16 +1091,8 @@ def page_quality_report(
         and sentence_report["sentence_redundancy_valid"]
         and plan_report["plan_role_integrity_valid"]
         and (not require_grounded_thesis or plan_report["thesis_grounded"])
-        and (
-            not require_story
-            or (
-                story_report["story_valid"]
-                and (
-                    reader_question_rendered
-                    or not story_report["story_question_present"]
-                )
-            )
-        )
+        and (not require_story or story_report["story_valid"])
+        and (not require_readability or reading_report["readability_valid"])
         and source_evidence_count >= minimum_source_evidence
         and not missing_claim_roles
         and editorial_budget_valid
@@ -940,10 +1107,9 @@ def page_quality_report(
             )
         )
     )
-    # Whether a page *reads* as an explanation rather than a catalog is a
-    # judgement. The regex heuristics that used to gate on it are kept as
-    # advice for operators and for the model-judged story review; they no
-    # longer decide whether a grounded page is published.
+    # These density and novelty heuristics are advice for operators and the
+    # model-judged review. The measured limits in ``readability_report`` are
+    # what decide whether a grounded page reads well enough to publish.
     narrative_advisories = []
     if require_narrative_novelty and narrative_report["redundant_sections"]:
         narrative_advisories.append(
@@ -979,6 +1145,7 @@ def page_quality_report(
         "require_interaction": require_interaction,
         "require_grounded_thesis": require_grounded_thesis,
         "require_story": require_story,
+        "require_readability": require_readability,
         "reader_question_rendered": reader_question_rendered,
         "minimum_source_evidence": minimum_source_evidence,
         "source_evidence_count": source_evidence_count,
@@ -1000,6 +1167,7 @@ def page_quality_report(
         **integrity_report,
         **plan_report,
         **story_report,
+        **reading_report,
     }
 
 
@@ -1033,7 +1201,8 @@ def audit_page(page: dict[str, Any]) -> dict[str, Any]:
     integrity = prose_integrity_report(markdown)
     duplicate_blocks = duplicate_prose_blocks(markdown)
     grounding_valid = bool(grounding.get("valid"))
-    current_promotional_phrases = promotional_phrases(markdown)
+    # Praise in prose is a style problem; the word in a quoted excerpt is not.
+    current_promotional_phrases = promotional_phrases(strip_code_fences(markdown))
     style_valid = not current_promotional_phrases
     reader_question_match = re.search(
         r"^>\s*\*\*Reader question:\*\*[^\n]+$",
@@ -1053,10 +1222,13 @@ def audit_page(page: dict[str, Any]) -> dict[str, Any]:
         and str(story_question.get("statement") or "").strip()
     )
     if "valid" in quality:
+        # A page generated before the callout was retired still has to show
+        # the question its story planned; a newer page plans none for readers.
         structural_valid = bool(
             quality.get("valid")
             and (
-                not require_story
+                bool(quality.get("require_readability"))
+                or not require_story
                 or reader_question_rendered
                 or not story_question_present
             )
@@ -1072,6 +1244,17 @@ def audit_page(page: dict[str, Any]) -> dict[str, Any]:
             and not duplicate_blocks
         )
     require_novelty = page.get("id") == "overview"
+    reading = readability_report(markdown, overview=require_novelty)
+    # Older cached pages are reported but not failed: they predate the limits
+    # and are replaced when the page prompt version changes.
+    require_readability = bool(quality.get("require_readability"))
+    review_valid = reader_review_valid(
+        quality.get("story_review"),
+        overview=require_novelty,
+    )
+    readability_ready = not require_readability or bool(
+        reading["readability_valid"] and review_valid
+    )
     require_interaction = (
         bool(quality.get("require_interaction"))
         if "require_interaction" in quality
@@ -1104,7 +1287,11 @@ def audit_page(page: dict[str, Any]) -> dict[str, Any]:
             and narrative_valid
             and visual_contract_valid
             and visual_ready
+            and readability_ready
         ),
+        "readability_ready": readability_ready,
+        "reader_review_valid": review_valid,
+        "require_readability": require_readability,
         "grounding_valid": grounding_valid,
         "style_valid": style_valid,
         "promotional_phrases": current_promotional_phrases,
@@ -1132,6 +1319,7 @@ def audit_page(page: dict[str, Any]) -> dict[str, Any]:
         **synthesis,
         **sentences,
         **integrity,
+        **reading,
     }
 
 
@@ -1146,6 +1334,7 @@ def summarize_page_audits(pages: Iterable[dict[str, Any]]) -> dict[str, Any]:
         "grounding_valid": sum(bool(item["grounding_valid"]) for item in details),
         "structural_valid": sum(bool(item["structural_valid"]) for item in details),
         "narrative_valid": sum(bool(item["narrative_valid"]) for item in details),
+        "readability_ready": sum(bool(item["readability_ready"]) for item in details),
         "visual_contract_valid": sum(
             bool(item["visual_contract_valid"]) for item in details
         ),
@@ -1188,6 +1377,8 @@ def _readiness_failures(detail: dict[str, Any]) -> list[str]:
         failures.append("structure")
     if not detail.get("narrative_valid"):
         failures.append("narrative")
+    if not detail.get("readability_ready", True):
+        failures.append("readability")
     if not detail.get("visual_contract_valid"):
         failures.append("visual-contract")
     if not detail.get("visual_ready"):
@@ -1256,6 +1447,9 @@ def audit_wiki(builder: Any) -> dict[str, Any]:
         "grounding_valid": sum(bool(item.get("grounding_valid")) for item in details),
         "structural_valid": sum(bool(item.get("structural_valid")) for item in details),
         "narrative_valid": sum(bool(item.get("narrative_valid")) for item in details),
+        "readability_ready": sum(
+            bool(item.get("readability_ready")) for item in details
+        ),
         "fallbacks": sum(bool(item.get("fallback")) for item in details),
         "details": details,
     }
@@ -1289,6 +1483,10 @@ def audit_cache(
 
 
 __all__ = [
+    "LEANS_ON_EARLIER_SENTENCE",
+    "readability_report",
+    "reader_review_valid",
+    "reader_review_weak",
     "audit_cache",
     "audit_page",
     "audit_wiki",

@@ -53,7 +53,12 @@ export function splitWikiMarkdown(markdown: string): WikiMarkdownParts {
 export function partitionWikiMediaSlots(
   slots: WikiMediaSlot[] | null | undefined,
 ): { lead: WikiMediaSlot[]; bridge: WikiMediaSlot[]; body: WikiMediaSlot[] } {
-  const visible = materializedWikiMediaSlots(slots);
+  // A call path is drawn natively from its contract and needs no asset.
+  const visible = (slots ?? []).filter(
+    (slot) =>
+      slot.render_contract?.adapter === "flow" ||
+      materializedWikiMediaSlots([slot]).length > 0,
+  );
   return {
     lead: visible.filter((slot) => slot.placement === "lead"),
     bridge: visible.filter((slot) => slot.placement === "aside"),
@@ -63,6 +68,38 @@ export function partitionWikiMediaSlots(
   };
 }
 
+
+/** Whether a stage has only the call site's fallback, with no written sentence. */
+export function isBareHandoff(text: string): boolean {
+  return /^(?:hands off to|receives the work from)\s+`[^`]+`\.?(?:\s*\[[ER]\d+\](?:\([^)]*\))?)*\s*$/i.test(
+    text.trim(),
+  );
+}
+
+export interface CallPathStep {
+  id: string;
+  label: string;
+}
+
+/** Order a flow contract's nodes along its one directed path. */
+export function callPathSteps(slot: WikiMediaSlot): CallPathStep[] {
+  const contract = slot.render_contract;
+  if (contract?.adapter !== "flow") return [];
+  const { nodes, edges } = contract.data;
+  const targets = new Set(edges.map((edge) => edge.target));
+  const nextOf = new Map(edges.map((edge) => [edge.source, edge.target]));
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const steps: CallPathStep[] = [];
+  const seen = new Set<string>();
+  let cursor = nodes.find((node) => !targets.has(node.id))?.id;
+  while (cursor && byId.has(cursor) && !seen.has(cursor)) {
+    seen.add(cursor);
+    const node = byId.get(cursor)!;
+    steps.push({ id: node.id, label: node.label });
+    cursor = nextOf.get(cursor);
+  }
+  return steps;
+}
 
 export interface WikiRetryNotice {
   headline: string;

@@ -58,6 +58,13 @@ from .evidence import (
     remove_promotional_sentences,
 )
 from .fences import fence_marker as _fence_marker
+from .importance import (
+    TIER_DETAIL,
+    TIER_PRIMARY,
+    file_weights,
+    main_path_start,
+    page_tiers,
+)
 from .multimodal import MEDIA_PLAN_VERSION, plan_media_slots
 from .outline import (
     _is_supporting_file,
@@ -65,12 +72,14 @@ from .outline import (
     _page_allows_supporting_files,
     generate_outline,
 )
+from .quality import LEANS_ON_EARLIER_SENTENCE
 from .quality import duplicate_prose_blocks as _duplicate_prose_blocks
 from .quality import leading_code_subject as _leading_code_subject
 from .quality import narrative_density_report as _narrative_density_report
 from .quality import page_quality_report as _page_quality_report
 from .quality import parse_story_review
 from .quality import prose_terms as _prose_terms
+from .quality import reader_review_valid, reader_review_weak
 from .quality import redundancy_terms as _redundancy_terms
 from .quality import (
     section_sentence_redundancy_report as _section_sentence_redundancy_report,
@@ -119,7 +128,7 @@ _MAX_CONTEXT_EVIDENCE_CHARS = 2400
 # A quoted body should carry an idea, not reproduce a file.
 _MAX_EXCERPT_LINES = 14
 _OUTLINE_PROMPT_VERSION = "13"
-_PAGE_PROMPT_VERSION = "129"
+_PAGE_PROMPT_VERSION = "130"
 _MAX_PLAN_REPAIRS = 3
 _MAX_FACT_PLAN_MODEL_CALLS = 3
 _MAX_COMPOSITION_PLAN_REPAIRS = 1
@@ -959,6 +968,16 @@ def _drop_duplicate_framing(
         with_pairs = len(_duplicate_prose_blocks(_section_markdown(title, kept)))
         without_pairs = len(_duplicate_prose_blocks(_section_markdown(title, without)))
         if with_pairs > without_pairs:
+            kept = without
+            continue
+        # A transition that says what the next paragraph is about to say adds
+        # nothing, even when the two are worded too differently to be duplicates.
+        following = next((part for part in without if part not in framing_parts), "")
+        framing_terms = _prose_terms(framing)
+        if (
+            len(framing_terms) >= 5
+            and len(framing_terms & _prose_terms(following)) / len(framing_terms) >= 0.5
+        ):
             kept = without
     return kept
 
@@ -2365,6 +2384,40 @@ def _subsystem_table(overview_context: dict[str, Any]) -> str:
     return "\n".join(links[:8])
 
 
+def _without_path_only_sections(plan: dict[str, Any]) -> dict[str, Any]:
+    """Drop Overview sections that only list calls the main path already draws.
+
+    The last section stays when nothing else would, because a page needs one.
+    """
+
+    sections = plan.get("sections") or []
+    kept = [
+        section
+        for section in sections
+        if any(
+            str(claim.get("role") or "") != "flow"
+            for claim in section.get("claims") or []
+        )
+    ]
+    if not kept or len(kept) == len(sections):
+        return plan
+    return {**plan, "sections": kept}
+
+
+def _starts_with_code(text: str) -> bool:
+    return re.sub(r"^[\s*_>#-]+", "", text).startswith("`")
+
+
+def _without_repeated_subject(statement: str, entity: str) -> str:
+    """Drop a stage sentence's leading subject when its row already names it."""
+
+    match = re.match(rf"^`?{re.escape(entity)}`?\s+(\S.*)$", statement, flags=re.DOTALL)
+    if match is None:
+        return statement
+    rest = match.group(1)
+    return rest[:1].upper() + rest[1:]
+
+
 def _fact_plan_markdown(
     plan: dict[str, Any],
     evidence: List[EvidenceItem],
@@ -2418,42 +2471,45 @@ def _fact_plan_markdown(
         readme_intro = _readme_intro(evidence)
         if readme_intro is not None:
             intro = (readme_intro[0], [readme_intro[1]])
-    question_block = ""
     story = plan.get("story") or {}
-    reader_question = story.get("reader_question") or {}
-    question = str(reader_question.get("statement") or "").strip()
-    question_ids = [str(item) for item in reader_question.get("evidence") or []]
-    if question and question_ids:
-        question = display_statement(question).rstrip("?") + "?"
-        question_block = f"> **Reader question:** {question} " + " ".join(
-            f"[{item}]" for item in question_ids
-        )
-    # Framing first, then the scan table, then the detail -- a reader who has
-    # not seen the codebase needs to know what this area is for before being
-    # handed symbol-level handoffs.
+    # What this area is for comes first and needs no heading of its own: a
+    # reader who has not seen the codebase should learn it before any symbols.
+    # The story's reader question stays in the plan, where it steers the
+    # argument. Printed on the page it only repeated the opening sentence.
     purpose_block = ""
     purpose = {} if concise_overview else plan.get("purpose") or {}
     purpose_statements = [str(item).strip() for item in purpose.get("statements") or []]
     purpose_statements = [item for item in purpose_statements if item]
+    purpose_ids = [str(item) for item in purpose.get("evidence") or []]
     if purpose_statements:
         sentences = [
             display_statement(item).rstrip(".") + "." for item in purpose_statements
         ]
+        # A sentence with no code at all opens best; failing that, one that does
+        # not lead with an identifier still beats a thesis that does. Either way
+        # it must make sense first, so a later "It also ..." cannot open a page.
+        openers = [
+            item for item in sentences if not LEANS_ON_EARLIER_SENTENCE.match(item)
+        ]
+        plain_opening = next((item for item in openers if "`" not in item), None)
+        if plain_opening is None and intro and _starts_with_code(intro[0]):
+            plain_opening = next(
+                (item for item in openers if not _starts_with_code(item)), None
+            )
+        if (
+            intro is not None
+            and "`" in intro[0]
+            and plain_opening is not None
+            and purpose_ids
+        ):
+            # Open on the plain statement; the thesis keeps its place as the
+            # argument that follows.
+            sentences.remove(plain_opening)
+            sentences.insert(0, intro[0])
+            intro = (plain_opening, purpose_ids)
         purpose_block = " ".join(sentences)
-        ids = [str(item) for item in purpose.get("evidence") or []]
-        if ids:
-            purpose_block += " " + " ".join(f"[{item}]" for item in ids)
-
-    map_block = ""
-    rows = [] if concise_overview else plan.get("map") or []
-    if rows:
-        lines = ["| Capability | Implemented by | Source |", "|---|---|---|"]
-        for row in rows:
-            concern = _format_supported_literals(str(row.get("concern") or "")).strip()
-            entity = _format_supported_literals(str(row.get("entity") or "")).strip()
-            ids = " ".join(f"[{item}]" for item in row.get("evidence") or [])
-            lines.append(f"| {concern} | {entity} | {ids} |")
-        map_block = "\n".join(lines)
+        if purpose_ids:
+            purpose_block += " " + " ".join(f"[{item}]" for item in purpose_ids)
 
     # Mermaid node ids must be opaque; the labels carry the real names.
     flow_block = ""
@@ -2527,6 +2583,8 @@ def _fact_plan_markdown(
             head = f"{index}. **`{entity}`**"
             if owner is not None:
                 head += f" · [{owner['title']}](?p={owner['id']})"
+            statement = _without_repeated_subject(statement, entity)
+            statement = statement[:1].upper() + statement[1:]
             lines.append(
                 f"{head}: {statement}. " + " ".join(f"[{item}]" for item in ids)
             )
@@ -2719,20 +2777,15 @@ def _fact_plan_markdown(
     blocks = []
     if intro is not None:
         blocks.append(intro[0] + " " + " ".join(f"[{item}]" for item in intro[1]))
-    if question_block:
-        blocks.append(question_block)
-    if journey_block:
-        blocks.extend((f"## {journey_title}", journey_block))
     if purpose_block and intro is not None:
-        # "Purpose and scope" restating the thesis is the page-level twin of
-        # a transition restating its claim; the duplicate-block gate rejects
-        # the page for it, so the renderer keeps only the thesis.
+        # A purpose restating the thesis is the page-level twin of a transition
+        # restating its claim; the renderer keeps only the thesis.
         if _duplicate_prose_blocks("\n\n".join([blocks[0], purpose_block])):
             purpose_block = ""
     if purpose_block:
-        blocks.extend(("## Purpose and scope", purpose_block))
-    if map_block:
-        blocks.extend(("## At a glance", map_block))
+        blocks.append(purpose_block)
+    if journey_block:
+        blocks.extend((f"## {journey_title}", journey_block))
     if flow_block:
         blocks.extend((f"## {flow_title}", flow_block))
     for title, parts in rendered_sections:
@@ -2777,12 +2830,13 @@ def _compact_dense_plan(
 def _candidate_score(
     report: dict[str, Any],
     quality: dict[str, Any],
-) -> tuple[int, int, int, int, int, float]:
+) -> tuple[int, int, int, int, int, int, float]:
     """Rank publishable page candidates with grounding as the hard boundary."""
 
     return (
         int(bool(report.get("valid"))),
         int(bool(quality.get("valid"))),
+        -len(quality.get("readability_failures") or []),
         -len(report.get("promotional_phrases") or []),
         int(quality.get("rendered_sections") or 0),
         int(quality.get("substantive_blocks") or 0),
@@ -2800,6 +2854,56 @@ def _readme_intro(evidence: List[EvidenceItem]) -> tuple[str, str] | None:
         if summary:
             return summary, item.id
     return None
+
+
+def _readme_sentence_without_praise(text: str) -> str:
+    """Delete praise from inside a README sentence, keeping what it describes.
+
+    Unlike cutting the sentence at the first flagged word, this keeps the noun:
+    ``Requests is a simple, yet elegant, HTTP library`` says what Requests is
+    once the adjectives are gone. Returns ``""`` unless that leaves one
+    complete statement with no praise in it.
+    """
+
+    value = re.sub(r"\s+", " ", text).strip()
+    phrases = promotional_phrases(value)
+    if not phrases:
+        return ""
+    sentence = re.split(r"(?<=[.!?])\s", value, maxsplit=1)[0]
+    for phrase in sorted(phrases, key=len, reverse=True):
+        # A praise word takes its partner and its intensifier with it:
+        # "simple, yet elegant," and "extremely fast" both go as one.
+        sentence = re.sub(
+            r"(?:\b(?:very|extremely|highly|blazingly|incredibly)\s+)?"
+            r"(?:\b[\w-]+,?\s+(?:yet|and|but)\s+)?"
+            rf"\b{re.escape(phrase)}\b"
+            r"(?:,?\s+(?:yet|and|but)\s+[\w-]+)?,?\s*",
+            "",
+            sentence,
+            flags=re.IGNORECASE,
+        )
+    sentence = re.sub(r"\s+", " ", sentence).strip(" ,;:-")
+    if (
+        promotional_phrases(sentence)
+        or not re.search(
+            r"\b(?:is|are)\s+(?:a|an|the)\s+\S+\s+\S", sentence, flags=re.IGNORECASE
+        )
+        or re.search(
+            r"\b(?:a|an|the)\s+(?:and|or|yet|but)\b", sentence, flags=re.IGNORECASE
+        )
+    ):
+        return ""
+
+    def fix_article(match: re.Match[str]) -> str:
+        word = match.group(2)
+        acronym = word[:2].isupper() and word[:1] in "AEFHILMNORSX"
+        vowel = word[:1].lower() in "aeiou" and not word.lower().startswith(
+            ("uni", "use", "usa", "one", "eu")
+        )
+        return f"{'an' if acronym or vowel else 'a'} {word}"
+
+    sentence = re.sub(r"\b(a|an) (\S+)", fix_article, sentence)
+    return sentence.rstrip(".!?") + "."
 
 
 def _canonical_readme_sentence(text: str, repository_name: str = "") -> str:
@@ -2893,17 +2997,32 @@ def _ensure_cited_intro(
 
     first_section = re.search(r"^##\s+\S", markdown, flags=re.MULTILINE)
     original_intro = markdown[: first_section.start()] if first_section else markdown
-    reader_question = next(
-        (
-            block.strip()
-            for block in re.split(r"\n\s*\n", original_intro)
-            if re.match(r"^>\s*\*\*Reader question:\*\*", block.strip())
-        ),
-        "",
-    )
     intro = _readme_intro(evidence)
     if canonical_readme and intro is not None:
         text, evidence_id = intro
+        without_praise = _readme_sentence_without_praise(text)
+        if without_praise:
+            thesis = re.sub(r"^#\s+.*$", "", original_intro, flags=re.MULTILINE).strip()
+            thesis = " ".join(thesis.split())
+            thesis_opening = re.split(r"(?<=[.!?])\s", thesis, maxsplit=1)[0]
+            if thesis.startswith(without_praise) or (
+                len(thesis_opening) >= 40 and "`" not in thesis_opening
+            ):
+                # Already applied, or the plan opens in plain words and saying
+                # what the project is twice would only read worse.
+                return markdown
+            # A sentence this short says what the project is and little else,
+            # so the plan's thesis stays beside it.
+            if len(without_praise) >= 40 or thesis:
+                sections = markdown[first_section.start() :] if first_section else ""
+                sections = _drop_redundant_purpose_section(sections, without_praise)
+                opening = f"{without_praise} [{evidence_id}]"
+                if (
+                    thesis
+                    and len(_prose_terms(thesis) - _prose_terms(without_praise)) >= 3
+                ):
+                    opening += f" {thesis}"
+                return f"{opening}\n\n{sections.lstrip()}".rstrip()
         canonical = _canonical_readme_sentence(text, repository_name)
         canonical_plain = re.sub(r"[`*_[\]()#>-]", " ", canonical)
         canonical_plain = re.sub(r"\s+", " ", canonical_plain).strip()
@@ -2921,8 +3040,6 @@ def _ensure_cited_intro(
             sections = markdown[first_section.start() :] if first_section else ""
             sections = _drop_redundant_purpose_section(sections, canonical)
             opening = f"{canonical} [{evidence_id}]"
-            if reader_question:
-                opening += f"\n\n{reader_question}"
             return f"{opening}\n\n{sections.lstrip()}".rstrip()
         intro = None
 
@@ -2988,8 +3105,6 @@ Return ONLY JSON with this shape:
 "evidence":["E1","E2"]}}}}]}},
 "purpose":{{"statements":["what this area is responsible for",
 "what a reader can do with it"],"evidence":["E1","E2"]}},
-"map":[{{"concern":"Short capability name","entity":"`Class.method()`",
-"evidence":["E1"]}}],
 "flow":{{"title":"What the diagram shows","steps":[{{"from":"`Class.method()`",
 "to":"`Other.call()`","label":"what moves","evidence":["R1"]}}]}},
 "architecture":{{"title":"","components":[],"connections":[],
@@ -3030,7 +3145,7 @@ caller, in plain language, before any symbol-by-symbol detail. Name concrete
 components, but explain the responsibility rather than reciting a call. It is
 still grounded -- cite the evidence the responsibility rests on.
 
-For an Overview, omit `purpose`, `map`, `flow`, `journey`, every section `lead`,
+For an Overview, omit `purpose`, `flow`, `journey`, every section `lead`,
 and every section `excerpt`. Write exactly one `architecture` object for the
 Overview. Its semantic primary path is the only Overview path visualization;
 do not also produce a code-entity sequence or call path. Sections add only
@@ -3065,16 +3180,27 @@ trust, process, persistence, or execution boundaries. Every boundary needs
 members and E# evidence. Supporting detail belongs in component
 responsibilities, not in more nodes or edges.
 
-The no-evaluation rule below applies to `purpose` and `map` exactly as it
-does to claims: describe what the code does and why, never how good it is. Do
+The no-evaluation rule below applies to `purpose` exactly as it does to claims:
+describe what the code does and why, never how good it is. Do
 not write that something is fast, flexible, easy, powerful, or efficient --
 not even when the project's own README says so. Say what it does and what it
 is for instead.
 
-Write `map` as 3-6 rows pairing a capability a reader would look for with the
-concrete code entity that implements it, so the page can be scanned before it
-is read. Each row cites the evidence for that pairing. Omit `map` when the
-evidence does not support at least three distinct pairings.
+Write for a developer who has never opened this repository and is deciding
+whether to keep reading:
+- Say what the code does for its caller first, in plain words, and name an
+  identifier only where the reader needs the name to find the code. Begin the
+  thesis, the purpose and most claims with the behavior, not an identifier.
+- The thesis is the page's first sentence, so it must make sense alone. Never
+  begin it with It, They or These, and do not begin anything with "This area",
+  "This module" or "This page": say what the code does, such as "Redirects are
+  followed until a final response arrives".
+- Keep several sentences on each page free of identifiers altogether, and use
+  at most two identifiers in any sentence.
+- Keep sentences under 30 words. Never write two sentences that say the same
+  thing about the same code; a page makes each point once.
+- On an Overview, the thesis says what the project is and who uses it, with no
+  identifiers at all.
 
 Open each section with `lead`: one or two sentences at the level of mechanism
 -- what problem this part of the system solves and how it is arranged -- before
@@ -4195,6 +4321,47 @@ Return ONLY JSON:
 "jargon":false,"repetition":false,"notes":""}}"""
 
 
+# What each readability limit means, in words a model can act on.
+_READABILITY_PROBLEMS = {
+    "opening_not_plain": (
+        "The first sentence leads with a code identifier or a pronoun such as It. "
+        "Open by saying in plain words what this code does."
+    ),
+    "code_density": "There are too many code identifiers per sentence.",
+    "code_led_sentences": "Too many sentences begin with a code identifier.",
+    "too_few_plain_sentences": "Too few sentences are free of code identifiers.",
+    "sentence_too_long": "At least one sentence runs past 45 words.",
+    "page_too_long": "The page is too long; each point should be made once.",
+}
+
+_READABILITY_REWRITE_PROMPT = """\
+Rewrite the statements below so a developer new to {repo} wants to keep reading.
+
+Page title: {title}
+
+What is wrong with them now:
+{problems}
+
+Statements:
+{statements}
+
+Source evidence:
+{evidence}
+
+Keep every fact, and do not add a fact, file, symbol or benefit. Say what the
+code does for its caller first, in plain words, and name an identifier only
+where the reader needs it to find the code. Most statements must not begin with
+an identifier, and several must contain none. The statement with id "thesis"
+must make sense as the page's first sentence: it must not begin with an identifier
+or a word such as It or They{overview_rule}. Use one sentence per statement,
+under 30 words. Drop nothing, but when two statements say the same thing, make
+the second one add what the first left out. Do not call anything fast, simple,
+powerful or easy.
+
+Return ONLY JSON: {{"statements":[{{"id":"thesis","statement":"..."}}]}}
+"""
+
+
 _STYLE_REPAIR_PROMPT = """\
 Make a minimal style edit to the Markdown below.
 
@@ -4238,6 +4405,7 @@ class AgentWiki:
         # page as a reader would. Off by default so unit fixtures that count
         # model calls are unaffected; the web app turns it on.
         self._story_review_enabled = bool(story_review)
+        self._tiers: Optional[Dict[str, str]] = None
         self._cache_llm_identity = getattr(llm, "cache_identity", "")
         self._api_base = api_base
         self._api_key = api_key
@@ -4581,15 +4749,61 @@ class AgentWiki:
             p["id"] = pid
             self._normalize(p.get("children", []) or [], seen, first=False)
 
+    def _page_tiers(
+        self,
+        outline_pages: List[Dict[str, Any]],
+        *,
+        compute: bool = True,
+    ) -> Dict[str, str]:
+        """Return each page's reading tier, ranked from the recorded call graph.
+
+        The graph can be slow to load, so a cached-only read never computes it
+        and keeps outline order until a tier has been stored. A failure to read
+        the graph falls back to outline order and is not stored.
+        """
+
+        if self._tiers is not None:
+            return self._tiers
+        cached = self._read_cache("importance")
+        if isinstance(cached, dict) and isinstance(cached.get("tiers"), dict):
+            self._tiers = dict(cached["tiers"])
+            return self._tiers
+        if not compute:
+            return page_tiers(outline_pages)
+        try:
+            graph = self._bundle.code_graph()
+            raw_graph = graph.get_graph() if graph is not None else None
+            weights = file_weights(
+                raw_graph,
+                relative_path=self._rel,
+                is_test=is_test_file,
+            )
+        except Exception as exc:  # noqa: BLE001 - ranking is optional enrichment
+            logger.debug("wiki page ranking unavailable: %s", exc)
+            weights = {}
+        # Remembered for this instance either way, so a broken index is not
+        # reloaded on every request, but only a real ranking is stored.
+        self._tiers = page_tiers(outline_pages, weights)
+        if weights:
+            self._write_cache("importance", {"tiers": self._tiers})
+        return self._tiers
+
     def _page_tree_refs(
         self,
         outline_pages: List[Dict[str, Any]],
+        *,
+        compute_tiers: bool = True,
     ) -> List[dict]:
+        tiers = self._page_tiers(outline_pages, compute=compute_tiers)
+
         def refs(pages: List[Dict[str, Any]], *, top_level: bool = False) -> List[dict]:
             return [
                 {
                     "id": p["id"],
                     "title": p.get("title", p["id"]),
+                    "tier": tiers.get(
+                        p["id"], TIER_PRIMARY if top_level else TIER_DETAIL
+                    ),
                     "cache_state": self._page_cache_state(
                         (
                             self._overview_page_meta(p, outline_pages[1:])
@@ -4623,7 +4837,7 @@ class AgentWiki:
         outline = self.cached_outline()
         if outline is None:
             return None
-        return self._page_tree_refs(outline["pages"])
+        return self._page_tree_refs(outline["pages"], compute_tiers=False)
 
     def cached_page(self, page_id: str) -> Optional[dict]:
         """Read a ready page without generation, media refresh or cache writes.
@@ -4826,6 +5040,63 @@ class AgentWiki:
                     found.append((child.target, sub.index))
         return found[0] if len(found) == 1 else None
 
+    def _main_path_evidence(
+        self,
+        raw_graph: Any,
+        by_symbol: Mapping[str, EvidenceItem],
+        *,
+        entry_files: set[str],
+        next_id: int,
+    ) -> Optional[EvidenceItem]:
+        """Return evidence for the callable where the main path starts.
+
+        Reuses the page's evidence when it already cites that callable. Returns
+        ``None`` when the graph has no answer or its source cannot be read.
+        """
+
+        try:
+            vid = main_path_start(
+                raw_graph,
+                relative_path=self._rel,
+                is_test=is_test_file,
+                entry_files=entry_files,
+            )
+        except Exception as exc:  # noqa: BLE001 - the path has a fallback
+            logger.debug("wiki main path ranking unavailable: %s", exc)
+            return None
+        if vid is None:
+            return None
+        vertex = raw_graph.vs[vid]
+        target = self._graph_endpoint(vertex)
+        known = by_symbol.get(_canonical_symbol(target["label"]))
+        if known is not None:
+            return known
+        attrs = vertex.attributes()
+        span = (attrs.get("start_line"), attrs.get("end_line"))
+        target_file = self._rel(target["file"]) or ""
+        if not target_file or not all(
+            isinstance(value, int) and not isinstance(value, bool) for value in span
+        ):
+            return None
+        start_line, end_line = span[0] + 1, span[1] + 1
+        source = self._wb.source(target_file, start_line, end_line)
+        content = _prepare_evidence_content(
+            target_file,
+            (source or {}).get("content", "") if source else "",
+        )
+        if not content:
+            return None
+        return EvidenceItem(
+            id=f"E{next_id}",
+            file=target_file,
+            start_line=start_line,
+            end_line=end_line,
+            symbol=target["label"],
+            kind=target["kind"].lower(),
+            content=content,
+            routes=("entry path",),
+        )
+
     def _entry_path(
         self,
         evidence: Sequence[EvidenceItem],
@@ -4880,8 +5151,6 @@ class AgentWiki:
             and is_public(item.symbol)
             and not is_test_file(item.file)
         ]
-        if not starts:
-            return [], [], []
         starts.sort(
             key=lambda item: (
                 -int(item.file.replace("\\", "/") in entry_files),
@@ -4892,11 +5161,27 @@ class AgentWiki:
         )
         by_symbol = {_canonical_symbol(item.symbol): item for item in evidence}
         existing_pairs = {(item.source, item.target) for item in relations}
-        current = starts[0]
+        new_items: List[EvidenceItem] = []
+        # The graph picks the path, so it does not change with what this page's
+        # search retrieved. Cited evidence is the fallback when it cannot.
+        ranked_start = self._main_path_evidence(
+            raw_graph,
+            by_symbol,
+            entry_files=entry_files,
+            next_id=len(evidence) + 1,
+        )
+        if ranked_start is not None:
+            if ranked_start.routes == ("entry path",):
+                new_items.append(ranked_start)
+                by_symbol[_canonical_symbol(ranked_start.symbol)] = ranked_start
+            current = ranked_start
+        elif starts:
+            current = starts[0]
+        else:
+            return [], [], []
         path: List[dict[str, Any]] = [
             {"evidence": current.id, "symbol": current.symbol, "relation": None}
         ]
-        new_items: List[EvidenceItem] = []
         new_relations: List[RelationItem] = []
         visited = {_canonical_symbol(current.symbol)}
         vid_of: dict[str, int] = {}
@@ -5243,7 +5528,7 @@ class AgentWiki:
 
         if self._serve_from_memory(page_id, retry_degraded_now):
             page = self._refresh_source_excerpts(
-                self._refresh_media_plan(self._pages[page_id])
+                self._refresh_media_plan(self._pages[page_id], tier_of=self._page_tier)
             )
             self._pages[page_id] = page
             return page
@@ -5259,7 +5544,9 @@ class AgentWiki:
         with _bounded_generation_lock(self._page_generation_lock(page_id)):
             if self._serve_from_memory(page_id, retry_degraded_now):
                 page = self._refresh_source_excerpts(
-                    self._refresh_media_plan(self._pages[page_id], meta)
+                    self._refresh_media_plan(
+                        self._pages[page_id], meta, tier_of=self._page_tier
+                    )
                 )
                 self._pages[page_id] = page
                 return page
@@ -5275,7 +5562,7 @@ class AgentWiki:
                     and not self._cached_page_needs_regeneration(cached)
                 ):
                     refreshed = self._refresh_source_excerpts(
-                        self._refresh_media_plan(cached, meta)
+                        self._refresh_media_plan(cached, meta, tier_of=self._page_tier)
                     )
                     if refreshed is not cached:
                         cached = refreshed
@@ -5296,6 +5583,7 @@ class AgentWiki:
                         architecture=page.get("architecture"),
                         flow=_journey_flow(page.get("journey")),
                         relations=(page.get("evidence") or {}).get("relations") or (),
+                        tier=self._page_tier(str(page.get("id") or meta.get("id"))),
                     )
                 page["media_plan_version"] = MEDIA_PLAN_VERSION
                 self._anchor_source_excerpts(page)
@@ -5363,12 +5651,26 @@ class AgentWiki:
                 return
         page["excerpt_version"] = EXCERPT_VERSION
 
+    def _page_tier(self, page_id: str) -> str:
+        """Look up a page's tier without ever generating an outline."""
+
+        outline = self.cached_outline()
+        if outline is None:
+            return TIER_DETAIL
+        return self._page_tiers(outline["pages"]).get(page_id, TIER_DETAIL)
+
     @staticmethod
     def _refresh_media_plan(
         page: Dict[str, Any],
         meta: Optional[Dict[str, Any]] = None,
+        *,
+        tier_of: Optional[Callable[[str], str]] = None,
     ) -> Dict[str, Any]:
-        """Refresh derived visual planning without regenerating page prose."""
+        """Refresh derived visual planning without regenerating page prose.
+
+        ``tier_of`` is called only when a refresh is due, because ranking pages
+        may load the code graph.
+        """
 
         if (
             page.get("media_plan_version") == MEDIA_PLAN_VERSION
@@ -5376,15 +5678,17 @@ class AgentWiki:
         ):
             return page
         fallback = meta or {}
+        page_id = str(page.get("id") or fallback.get("id") or "")
         return {
             **page,
             "media_slots": plan_media_slots(
-                page_id=str(page.get("id") or fallback.get("id") or ""),
+                page_id=page_id,
                 title=str(page.get("title") or fallback.get("title") or ""),
                 citations=page.get("citations") or (),
                 architecture=page.get("architecture"),
                 flow=_journey_flow(page.get("journey")),
                 relations=(page.get("evidence") or {}).get("relations") or (),
+                tier=tier_of(page_id) if tier_of else TIER_DETAIL,
             ),
             "media_plan_version": MEDIA_PLAN_VERSION,
         }
@@ -7106,31 +7410,36 @@ class AgentWiki:
         if len(stages) < 3:
             return None
         narration: dict[str, str] = {}
-        try:
-            prompt = _JOURNEY_PROMPT.format(
-                repo=str(getattr(self._bundle.entry, "repo", "") or ""),
-                path=" -> ".join(
-                    f"{step['evidence']} `{str(step['symbol']).rsplit(':', 1)[-1]}`"
-                    for step in stages
-                ),
-                evidence="\n\n".join(
-                    by_id[step["evidence"]].prompt_block() for step in stages
-                ),
-            )
-            text = self._client().complete(
-                [{"role": "user", "content": prompt}],
-                max_tokens=900,
-                temperature=0.0,
-            )
-            match = re.search(r"\{.*\}", text or "", re.DOTALL)
-            raw = json.loads(match.group(0)) if match else {}
-            for stage in raw.get("stages") or []:
-                if isinstance(stage, dict):
-                    narration[str(stage.get("evidence") or "")] = str(
-                        stage.get("statement") or ""
-                    ).strip()
-        except Exception as exc:  # noqa: BLE001 - the path renders without it
-            logger.debug("wiki journey narration unavailable: %s", exc)
+        # A reply that cannot be read gets one more try: without these sentences
+        # the main path is only a list of names.
+        for _attempt in range(2):
+            try:
+                prompt = _JOURNEY_PROMPT.format(
+                    repo=str(getattr(self._bundle.entry, "repo", "") or ""),
+                    path=" -> ".join(
+                        f"{step['evidence']} `{str(step['symbol']).rsplit(':', 1)[-1]}`"
+                        for step in stages
+                    ),
+                    evidence="\n\n".join(
+                        by_id[step["evidence"]].prompt_block() for step in stages
+                    ),
+                )
+                text = self._client().complete(
+                    [{"role": "user", "content": prompt}],
+                    max_tokens=1200,
+                    temperature=0.0,
+                )
+                match = re.search(r"\{.*\}", text or "", re.DOTALL)
+                raw = json.loads(match.group(0)) if match else {}
+                for stage in raw.get("stages") or []:
+                    if isinstance(stage, dict):
+                        narration[str(stage.get("evidence") or "")] = str(
+                            stage.get("statement") or ""
+                        ).strip()
+            except Exception as exc:  # noqa: BLE001 - the path renders without it
+                logger.debug("wiki journey narration unavailable: %s", exc)
+            if narration:
+                break
         return _journey_from_path(stages, narration, evidence, relations)
 
     def _review_story(self, markdown: str) -> dict[str, Any] | None:
@@ -7157,7 +7466,135 @@ class AgentWiki:
         except Exception as exc:  # noqa: BLE001 - review is optional
             logger.debug("wiki story review unavailable: %s", exc)
             return None
-        return parse_story_review(text)
+        review = parse_story_review(text)
+        # Zero on every question is not a verdict. Asked six times about one page
+        # at temperature 0, the demo model scored it 6, 8, 6, 0, 0, 0.
+        if review is not None and review["score"] == 0:
+            logger.debug("wiki story review discarded: scored nothing at all")
+            return None
+        return review
+
+    def _rewrite_for_readers(
+        self,
+        meta: Dict[str, Any],
+        plan: Dict[str, Any],
+        problems: Sequence[str],
+        evidence: List[EvidenceItem],
+        relations: List[RelationItem],
+        *,
+        overview: bool,
+    ) -> Optional[Dict[str, Any]]:
+        """Return a copy of ``plan`` whose sentences were rewritten for readers.
+
+        Only the wording changes, and each new sentence must pass the same
+        source-support check as the one it replaces; a rejected sentence keeps
+        its old wording. Returns ``None`` when the model changed nothing usable.
+        """
+
+        rewritten = copy.deepcopy(plan)
+        targets: Dict[str, tuple[Any, Any, List[str]]] = {}
+
+        def add_statements(prefix: str, block: Any) -> None:
+            """Collect the several sentences a purpose or a section lead holds."""
+
+            if not isinstance(block, dict):
+                return
+            ids = [str(item) for item in block.get("evidence") or []]
+            sentences = block.get("statements")
+            for index, statement in enumerate(
+                sentences if isinstance(sentences, list) else []
+            ):
+                if statement:
+                    targets[f"{prefix}.{index}"] = (sentences, index, ids)
+
+        thesis = rewritten.get("thesis")
+        if isinstance(thesis, dict) and thesis.get("statement"):
+            targets["thesis"] = (
+                thesis,
+                "statement",
+                [str(item) for item in thesis.get("evidence") or []],
+            )
+        add_statements("p", rewritten.get("purpose"))
+        for section_index, section in enumerate(rewritten.get("sections") or []):
+            add_statements(f"l{section_index}", section.get("lead"))
+            for claim_index, claim in enumerate(section.get("claims") or []):
+                # A flow claim has to name both ends of a call, so plain wording
+                # would turn a valid claim into an invalid one.
+                if claim.get("statement") and claim.get("role") != "flow":
+                    targets[f"c{section_index}.{claim_index}"] = (
+                        claim,
+                        "statement",
+                        [str(item) for item in claim.get("evidence") or []],
+                    )
+        if not targets:
+            return None
+        statements = [
+            {
+                "id": key,
+                "statement": str(holder[field]),
+                "evidence": ids,
+            }
+            for key, (holder, field, ids) in targets.items()
+        ]
+        prompt = _READABILITY_REWRITE_PROMPT.format(
+            repo=str(getattr(self._bundle.entry, "repo", "") or ""),
+            title=str(meta.get("title") or ""),
+            problems=json.dumps(list(problems), indent=2),
+            statements=json.dumps(statements, indent=2),
+            evidence=self._evidence_context(evidence),
+            overview_rule=" and must contain none" if overview else "",
+        )
+        try:
+            text = self._client().complete(
+                [{"role": "user", "content": prompt}],
+                max_tokens=2400,
+                temperature=0.0,
+            )
+        except Exception as exc:  # noqa: BLE001 - the original plan still stands
+            logger.debug("wiki readability rewrite unavailable: %s", exc)
+            return None
+        match = re.search(r"\{.*\}", text or "", re.DOTALL)
+        if match is None:
+            return None
+        try:
+            payload = json.loads(match.group(0))
+        except json.JSONDecodeError:
+            return None
+        changed = False
+        by_id = {item.id: item for item in evidence}
+        for item in payload.get("statements") or []:
+            if not isinstance(item, dict):
+                continue
+            target = targets.get(str(item.get("id")))
+            statement = re.sub(r"\s+", " ", str(item.get("statement") or "")).strip()
+            if target is None or not statement:
+                continue
+            holder, field, ids = target
+            # The plan's shape is one sentence per statement, and its role check
+            # withholds a page that breaks that.
+            if statement == holder[field] or (
+                len(re.findall(r"[.!?](?=\s|$)", statement)) > 1
+            ):
+                continue
+            cited = [by_id[key] for key in ids if key in by_id]
+            if str(item.get("id")) == "thesis":
+                admitted = (
+                    _supported_thesis(
+                        {"statement": statement, "evidence": ids},
+                        evidence,
+                        relations,
+                    )
+                    is not None
+                )
+            else:
+                # A claim that cites only relations has no body to re-check
+                # against, so it keeps the sentence the plan already admitted.
+                admitted = bool(cited) and _claim_has_local_support(statement, cited)
+            if not admitted or promotional_phrases(statement):
+                continue
+            holder[field] = statement
+            changed = True
+        return rewritten if changed else None
 
     def _repair_style(
         self,
@@ -7292,6 +7729,8 @@ class AgentWiki:
         plan = _normalize_plan_support(plan, evidence, relations)
         plan = _renderable_plan(plan, evidence, relations)
         dense_sections = meta.get("id") == "overview"
+        if dense_sections and plan.get("journey"):
+            plan = _without_path_only_sections(plan)
         if dense_sections or self._concise:
             plan = _apply_overview_editorial_budget(plan)
             # ``journey`` here is the call path the index recorded from the
@@ -7331,6 +7770,8 @@ class AgentWiki:
             "require_story": bool(
                 dense_sections and story_origin in {"planned", "mixed"}
             ),
+            "require_readability": True,
+            "readability_overview": dense_sections,
             "minimum_source_evidence": (min(2, len(evidence)) if dense_sections else 0),
             "maximum_planned_sections": (
                 _OVERVIEW_MAX_SECTIONS if dense_sections else None
@@ -7628,14 +8069,104 @@ class AgentWiki:
                     report = candidate_report
                     quality = candidate_quality
                     repaired = True
-        markdown = _link_evidence_markers(markdown)
+        can_rewrite = bool(
+            structured_render and not model_failed and not model_planning_failed
+        )
+
+        def render_rewrite(
+            problems: Sequence[str],
+        ) -> tuple[dict[str, Any], str, dict[str, Any], dict[str, Any]] | None:
+            """Rewrite the plan's sentences and render them for comparison."""
+
+            rewritten = self._rewrite_for_readers(
+                meta,
+                plan,
+                problems,
+                evidence,
+                relations,
+                overview=dense_sections,
+            )
+            if rewritten is None:
+                return None
+            candidate = _fact_plan_markdown(
+                rewritten,
+                evidence,
+                relations,
+                overview_context=overview_context,
+                concise_overview=dense_sections,
+            )
+            candidate = _remove_orphan_headings(candidate)
+            candidate = _ensure_cited_intro(
+                candidate,
+                evidence,
+                canonical_readme=dense_sections,
+                repository_name=repository_name,
+            )
+            return (
+                rewritten,
+                candidate,
+                grounding_report(candidate, evidence, relations),
+                _page_quality_report(candidate, rewritten, **quality_requirements),
+            )
+
+        if (
+            can_rewrite
+            and quality.get("require_readability")
+            and quality.get("readability_failures")
+        ):
+            attempt = render_rewrite(
+                [
+                    _READABILITY_PROBLEMS.get(failure, failure)
+                    for failure in quality["readability_failures"]
+                ]
+            )
+            if attempt is not None and _candidate_score(
+                attempt[2], attempt[3]
+            ) > _candidate_score(report, quality):
+                plan, markdown, report, quality = attempt
+                repaired = True
+        linked_markdown = _link_evidence_markers(markdown)
         review_started = perf_counter()
         if self._story_review_enabled:
             self._progress("reviewing", str(meta.get("id") or ""))
-        story_review = self._review_story(markdown)
+        story_review = self._review_story(linked_markdown)
+        if (
+            can_rewrite
+            and story_review is not None
+            and reader_review_weak(story_review, overview=dense_sections)
+        ):
+            # A reviewer's complaint gets one rewrite. The new text is kept only
+            # when it still passes every check and the reviewer rates it higher.
+            problems = [
+                "The reader review found: "
+                + (str(story_review.get("notes") or "").strip() or "weak explanation"),
+            ]
+            if story_review.get("repetition"):
+                problems.append("Two sentences say the same thing about the same code.")
+            attempt = render_rewrite(problems)
+            if attempt is not None and _candidate_score(
+                attempt[2], attempt[3]
+            ) >= _candidate_score(report, quality):
+                candidate_review = self._review_story(
+                    _link_evidence_markers(attempt[1])
+                )
+                if candidate_review is not None and (
+                    int(candidate_review.get("score") or 0),
+                    not candidate_review.get("repetition"),
+                ) > (
+                    int(story_review.get("score") or 0),
+                    not story_review.get("repetition"),
+                ):
+                    plan, markdown, report, quality = attempt
+                    story_review = candidate_review
+                    repaired = True
+                    linked_markdown = _link_evidence_markers(markdown)
+        markdown = linked_markdown
         review_ms = (perf_counter() - review_started) * 1000
         if story_review is not None:
             quality = {**quality, "story_review": story_review}
+            if not reader_review_valid(story_review, overview=dense_sections):
+                quality = {**quality, "valid": False, "reader_review_failed": True}
         blocking_plan_warnings = _blocking_plan_warnings(plan_warnings)
         # Keep the generation label aligned with the public audit.  A readable
         # grounding floor remains useful as a diagnostic, but it must not call
@@ -7681,6 +8212,7 @@ class AgentWiki:
                 architecture=plan.get("architecture"),
                 flow=_journey_flow(plan.get("journey")),
                 relations=evidence_payload["relations"],
+                tier=self._page_tier(str(meta.get("id") or "")),
             ),
             **(
                 {"journey": copy.deepcopy(plan.get("journey"))}

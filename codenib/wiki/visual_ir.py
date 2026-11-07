@@ -35,6 +35,8 @@ _ADAPTER_PROVENANCE = {
 _MAX_CONTRACT_BYTES = 64 * 1024
 _MAX_NODES = 12
 _MAX_FLOW_NODES = 7
+_MIN_CALL_PATH_NODES = 3
+_MAX_CALL_PATH_SEARCH = 20_000
 _MAX_EDGES = 18
 _MAX_PANELS = 8
 _MAX_BARS = 10
@@ -961,6 +963,88 @@ def flow_contract_from_plan(flow: Any) -> dict[str, Any] | None:
         return None
 
 
+def _is_callable_endpoint(endpoint: str) -> bool:
+    label = _endpoint_parts(endpoint)[0]
+    return "(" in label and label.endswith(")")
+
+
+def _is_test_endpoint(endpoint: str) -> bool:
+    file = endpoint.rsplit(":", 1)[0].replace("\\", "/") if ":" in endpoint else ""
+    name = file.rsplit("/", 1)[-1]
+    return bool(
+        re.search(r"(^|/)(tests?|testing)/", file)
+        or name.startswith("test_")
+        or name.endswith("_test.py")
+    )
+
+
+def flow_contract_from_relations(
+    relations: Iterable[Mapping[str, Any]],
+    *,
+    min_nodes: int = _MIN_CALL_PATH_NODES,
+) -> dict[str, Any] | None:
+    """Pick the longest call path among a page's recorded relations.
+
+    Every arrow is a relation the index recorded, so no model chooses the
+    picture. Only calls between callables in non-test code qualify: a reference
+    to a type or a test is not a step in how the code runs. Returns ``None``
+    when no path reaches ``min_nodes``; a two-node path explains nothing the
+    prose does not already say.
+    """
+
+    outgoing: dict[str, list[tuple[str, str]]] = {}
+    try:
+        relation_values = islice(iter(relations), _MAX_EDGES * 3)
+    except TypeError:
+        return None
+    for raw in relation_values:
+        if not isinstance(raw, Mapping):
+            continue
+        source = str(raw.get("source") or "").strip()
+        target = str(raw.get("target") or "").strip()
+        reference = str(raw.get("id") or "").strip()
+        if (
+            not source
+            or not target
+            or not reference
+            or source.casefold() == target.casefold()
+            or not _is_callable_endpoint(source)
+            or not _is_callable_endpoint(target)
+            or _is_test_endpoint(source)
+            or _is_test_endpoint(target)
+        ):
+            continue
+        outgoing.setdefault(source, []).append((target, reference))
+
+    best: list[tuple[str, str, str]] = []
+    budget = [_MAX_CALL_PATH_SEARCH]
+
+    def walk(node: str, path: list[tuple[str, str, str]], seen: set[str]) -> None:
+        nonlocal best
+        if len(path) > len(best):
+            best = list(path)
+        if len(path) + 1 >= _MAX_FLOW_NODES:
+            return
+        for target, reference in outgoing.get(node, ()):
+            if target in seen or budget[0] <= 0:
+                continue
+            budget[0] -= 1
+            walk(target, [*path, (node, target, reference)], {*seen, target})
+
+    for start in outgoing:
+        walk(start, [], {start})
+    if len(best) + 1 < min_nodes:
+        return None
+    return flow_contract_from_plan(
+        {
+            "steps": [
+                {"from": source, "to": target, "label": "", "evidence": [reference]}
+                for source, target, reference in best
+            ]
+        }
+    )
+
+
 def storyboard_contract_from_story(story: Any) -> dict[str, Any] | None:
     """Build storyboard panels from final story beats, never generic filler."""
 
@@ -1246,6 +1330,7 @@ __all__ = [
     "architecture_contract_from_relations",
     "bar_chart_contract",
     "flow_contract_from_plan",
+    "flow_contract_from_relations",
     "normalize_render_contract",
     "page_visual_contract_report",
     "page_visual_evidence_refs",

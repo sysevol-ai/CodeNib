@@ -1572,6 +1572,8 @@ def _audit_local_wiki(local) -> dict[str, object]:
         llm=client,
         api_base=config.wiki_generation_api_base,
         api_key=config.wiki_generation_api_key,
+        # The audit judges what readers get, so it runs the served reader review.
+        story_review=True,
     )
     report = audit_wiki(builder)
     return {

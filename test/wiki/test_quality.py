@@ -275,12 +275,13 @@ def test_page_quality_can_enforce_the_editorial_story_contract():
         plan,
         require_story=True,
     )
-    assert omitted["valid"] is False
+    # The question steers the plan; a page need not print it.
+    assert omitted["valid"] is True
     assert omitted["story_valid"] is True
     assert omitted["reader_question_rendered"] is False
 
     # A story without a question is not a defect: no question beats a
-    # template one, so the gate only insists a planned question be rendered.
+    # template one.
     del plan["story"]["reader_question"]
     unquestioned = page_quality_report(markdown, plan, require_story=True)
     assert unquestioned["valid"] is True
