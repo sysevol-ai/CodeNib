@@ -6,7 +6,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
+import json
 
 from ...agent.boundary import AGENT_LINE_OFFSET
 from ...types import EDGE_TYPE_REFERENCE
@@ -20,6 +21,104 @@ from ._validation import (
     required_text,
 )
 
+MAX_DEPENDENCY_PAYLOAD_BYTES = 36 * 1024
+
+
+def _measure_payload_bytes(payload: Dict[str, Any]) -> int:
+    """Return serialized indented UTF-8 size of an MCP tool payload."""
+    try:
+        import pydantic_core
+
+        return len(pydantic_core.to_json(payload, indent=2))
+    except (ImportError, TypeError):
+        return len(json.dumps(payload, indent=2).encode("utf-8"))
+
+
+def bound_dependency_payload(
+    payload: Dict[str, Any],
+    *,
+    max_payload_bytes: int = MAX_DEPENDENCY_PAYLOAD_BYTES,
+) -> Dict[str, Any]:
+    """Bound dependency subgraph response to fit within client delivery limits.
+
+    Claude Code and MCP hosts offload tool results exceeding 50,000 characters
+    into disk files, preventing LLMs from seeing graph relationships directly.
+    When a subgraph with dense edges exceeds *max_payload_bytes*, this helper
+    preserves the queried root and high-priority direct (radius-1) edges first,
+    omitting distant indirect cross-edges and dangling nodes, while reporting
+    exact counts in a structured response_projection block.
+    """
+    if max_payload_bytes <= 0 or _measure_payload_bytes(payload) <= max_payload_bytes:
+        return payload
+
+    root = payload.get("root", "")
+    nodes = list(payload.get("nodes") or [])
+    edges = list(payload.get("edges") or [])
+    original_node_count = len(nodes)
+    original_edge_count = len(edges)
+
+    # Prioritize direct edges (connected to root) over indirect cross-edges
+    direct = [e for e in edges if e.get("source") == root or e.get("target") == root]
+    indirect = [
+        e for e in edges if e.get("source") != root and e.get("target") != root
+    ]
+    candidates = direct + indirect
+
+    low = 0
+    high = len(candidates)
+    best_k = 0
+    while low <= high:
+        mid = (low + high) // 2
+        sub_edges = candidates[:mid]
+        active = {root} | {e.get("source") for e in sub_edges} | {e.get("target") for e in sub_edges}
+        sub_nodes = [n for n in nodes if n.get("name") in active]
+        returned_indirect = sum(
+            1 for e in sub_edges if e.get("source") != root and e.get("target") != root
+        )
+        trial_projection = {
+            "reason": "response_budget",
+            "original_nodes": original_node_count,
+            "returned_nodes": len(sub_nodes),
+            "original_edges": original_edge_count,
+            "returned_edges": len(sub_edges),
+            "indirect_edges_omitted": len(indirect) - returned_indirect,
+            "max_payload_bytes": max_payload_bytes,
+        }
+        trial = dict(
+            payload,
+            nodes=sub_nodes,
+            edges=sub_edges,
+            truncated=True,
+            response_projection=trial_projection,
+        )
+        if _measure_payload_bytes(trial) <= max_payload_bytes:
+            best_k = mid
+            low = mid + 1
+        else:
+            high = mid - 1
+
+    sub_edges = candidates[:best_k]
+    active = {root} | {e.get("source") for e in sub_edges} | {e.get("target") for e in sub_edges}
+    sub_nodes = [n for n in nodes if n.get("name") in active]
+
+    bounded = dict(payload)
+    bounded["nodes"] = sub_nodes
+    bounded["edges"] = sub_edges
+    bounded["truncated"] = True
+    returned_indirect = sum(
+        1 for e in sub_edges if e.get("source") != root and e.get("target") != root
+    )
+    bounded["response_projection"] = {
+        "reason": "response_budget",
+        "original_nodes": original_node_count,
+        "returned_nodes": len(sub_nodes),
+        "original_edges": original_edge_count,
+        "returned_edges": len(sub_edges),
+        "indirect_edges_omitted": len(indirect) - returned_indirect,
+        "max_payload_bytes": max_payload_bytes,
+    }
+    return bounded
+
 
 def dependency_subgraph_impl(
     ctx: Any,
@@ -28,6 +127,7 @@ def dependency_subgraph_impl(
     depth: int = 2,
     max_nodes: int = 60,
     max_edges: int = 400,
+    max_payload_bytes: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Return ``DependencyAnalyzer`` output as a JSON dict.
 
@@ -92,7 +192,7 @@ def dependency_subgraph_impl(
         line = node.get("line")
         if isinstance(line, int) and not isinstance(line, bool):
             node["line"] = line + AGENT_LINE_OFFSET
-    return {
+    response = {
         "semantics": {
             "edge_type": EDGE_TYPE_REFERENCE,
             "reference_direction": {
@@ -112,6 +212,12 @@ def dependency_subgraph_impl(
         },
         **payload,
     }
+    limit = (
+        MAX_DEPENDENCY_PAYLOAD_BYTES
+        if max_payload_bytes is None
+        else max(0, int(max_payload_bytes))
+    )
+    return bound_dependency_payload(response, max_payload_bytes=limit)
 
 
 def entry_chains_impl(
@@ -147,3 +253,11 @@ def entry_chains_impl(
                 if isinstance(line, int) and not isinstance(line, bool):
                     location["line"] = line + AGENT_LINE_OFFSET
     return payload
+
+
+__all__ = [
+    "MAX_DEPENDENCY_PAYLOAD_BYTES",
+    "bound_dependency_payload",
+    "dependency_subgraph_impl",
+    "entry_chains_impl",
+]
