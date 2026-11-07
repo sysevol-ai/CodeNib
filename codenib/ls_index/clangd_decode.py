@@ -30,6 +30,8 @@ import time
 import zlib
 from pathlib import Path
 from typing import Any, List, Mapping, Optional, Tuple
+from urllib.parse import urlparse
+from urllib.request import url2pathname
 
 from ..graph.code_graph import CodeGraph
 from ..types import (
@@ -1397,16 +1399,22 @@ class ClangdGraphDecoder:
 
     def _file_uri_to_relative(self, uri: str) -> str:
         """Convert file URI to project-relative path."""
-        if uri.startswith("file://"):
-            abs_path = uri[7:]
+        parsed = urlparse(uri)
+        if parsed.scheme == "file":
+            abs_path = url2pathname(parsed.path)
         else:
             abs_path = uri
 
         try:
-            rel = Path(abs_path).relative_to(self.project_root)
-            return str(rel)
+            rel = (
+                Path(abs_path)
+                .resolve()
+                .relative_to(self.project_root.resolve())
+                .as_posix()
+            )
+            return rel
         except ValueError:
-            return abs_path
+            return Path(abs_path).as_posix()
 
     # ------------------------------------------------------------------
     # Kind mapping
