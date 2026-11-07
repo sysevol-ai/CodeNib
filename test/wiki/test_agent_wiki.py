@@ -71,6 +71,19 @@ from codenib.wiki.store import WikiGenerationBusyError, WikiStoreError
 from codenib.wiki.story import finalize_story_ir, story_quality_report
 
 
+def _skip_readability_gate(monkeypatch):
+    """Let a tiny fixture page test something other than how a page reads."""
+
+    report = agent_wiki_module._page_quality_report
+    monkeypatch.setattr(
+        agent_wiki_module,
+        "_page_quality_report",
+        lambda markdown, plan, **options: report(
+            markdown, plan, **{**options, "require_readability": False}
+        ),
+    )
+
+
 class _FakeVectorStore:
     def __init__(self, nodes):
         self.nodes = nodes
@@ -1260,7 +1273,8 @@ def test_fact_plan_story_reorders_sections_and_renders_grounded_transitions():
         "Accept input",
         "Persist result",
     ]
-    assert "**Reader question:**" in markdown
+    # The question steers the plan; printed, it only repeated the opening.
+    assert "**Reader question:**" not in markdown
     assert markdown.index("## Accept input") < markdown.index("## Persist result")
     assert "*The normalization stage hands its result" in markdown
     assert rendered["story"]["evidence_budget"]["allocated_source_evidence"] == 2
@@ -4990,11 +5004,11 @@ def test_overview_uses_canonical_readme_intro():
         "through a local developer Wiki. [E1]"
     )
     assert "This document provides" not in rendered
-    assert "> **Reader question:** How does source become a Wiki? [E1]" in rendered
+    assert "**Reader question:**" not in rendered
     assert "## Workflow" in rendered
 
 
-def test_overview_keeps_supported_thesis_when_canonical_intro_is_a_fragment():
+def test_overview_keeps_the_noun_when_removing_praise_from_a_readme_intro():
     evidence = [
         EvidenceItem(
             id="E1",
@@ -5020,7 +5034,7 @@ def test_overview_keeps_supported_thesis_when_canonical_intro_is_a_fragment():
         repository_name="jq",
     )
 
-    assert rendered == draft
+    assert rendered.startswith("jq is a command-line JSON processor. [E1]")
     assert not rendered.startswith("jq is a lightweight.")
 
 
@@ -5085,7 +5099,8 @@ def test_overview_truncates_promotional_readme_tail_at_complete_clause():
         repository_name="fmt",
     )
 
-    assert rendered.startswith("{fmt} is an open-source formatting library. [E1]")
+    assert rendered.startswith("{fmt} is an open-source formatting library")
+    assert "fast" not in rendered.split("[E1]", 1)[0]
     assert "providing a and" not in rendered
 
 
@@ -6426,7 +6441,9 @@ def test_overview_uses_validated_fact_plan_without_narration(tmp_path):
     assert "## Workflow" in page["markdown"]
 
 
-def test_generated_page_uses_fact_plan_and_reports_grounding(tmp_path):
+def test_generated_page_uses_fact_plan_and_reports_grounding(tmp_path, monkeypatch):
+    _skip_readability_gate(monkeypatch)
+
     class LLM:
         cache_identity = "fake"
 
@@ -6518,7 +6535,8 @@ def test_generated_page_uses_fact_plan_and_reports_grounding(tmp_path):
     assert len(llm.calls) == 1
 
 
-def test_empty_fact_plan_replans_from_original_evidence(tmp_path):
+def test_empty_fact_plan_replans_from_original_evidence(tmp_path, monkeypatch):
+    _skip_readability_gate(monkeypatch)
     valid_plan = json.dumps(
         {
             "thesis": {
@@ -6605,7 +6623,10 @@ def test_empty_fact_plan_replans_from_original_evidence(tmp_path):
     assert "is indexed from" not in page["markdown"]
 
 
-def test_structured_page_deduplicates_without_free_form_markdown_repair(tmp_path):
+def test_structured_page_deduplicates_without_free_form_markdown_repair(
+    tmp_path, monkeypatch
+):
+    _skip_readability_gate(monkeypatch)
     node = {
         "file": "src/core.py",
         "node_name": "Router",
@@ -6636,7 +6657,7 @@ def test_structured_page_deduplicates_without_free_form_markdown_repair(tmp_path
     wiki._fact_plan = lambda *_args: (
         {
             "thesis": {
-                "statement": "`Router` defines the repository request boundary",
+                "statement": "The repository request boundary is defined by `Router`",
                 "evidence": ["E1"],
             },
             "sections": [
@@ -6687,7 +6708,10 @@ def test_structured_page_deduplicates_without_free_form_markdown_repair(tmp_path
     assert page["markdown"].count("`Router` dispatches") == 1
 
 
-def test_generation_separates_soft_composition_and_semantic_diagnostics(tmp_path):
+def test_generation_separates_soft_composition_and_semantic_diagnostics(
+    tmp_path, monkeypatch
+):
+    _skip_readability_gate(monkeypatch)
     node = {
         "file": "src/core.py",
         "node_name": "Router",
@@ -7299,6 +7323,7 @@ def test_agent_wiki_cached_page_tree_reads_store_without_generating(
         {
             "id": "runtime",
             "title": "Runtime",
+            "tier": "primary",
             "cache_state": "cold",
             "children": [],
         }
@@ -8370,10 +8395,10 @@ def test_overview_journey_is_admitted_and_rendered_with_topic_links():
     )
     assert "## From `request()` to a response" in markdown
     assert (
-        "1. **`request()`** · [Public API](?p=public-api): opens a Session and "
+        "1. **`request()`** · [Public API](?p=public-api): Opens a Session and "
         "forwards the method and url. [E1]" in markdown
     )
-    assert "3. **`HTTPAdapter.send()`**: opens the connection" in markdown
+    assert "3. **`HTTPAdapter.send()`**: Opens the connection" in markdown
     assert "_private_helper" not in markdown
     assert "## Explore the system" in markdown
     assert "- [Public API](?p=public-api)" in markdown
@@ -8577,7 +8602,7 @@ def test_journey_from_path_admits_narration_and_falls_back_to_call_sites():
     markdown = _fact_plan_markdown(rendered, evidence, relations, concise_overview=True)
     assert "## From `request()` to `HTTPAdapter.send()`" in markdown
     assert (
-        "2. **`Session.request()`**: hands off to `HTTPAdapter.send()`. [R2]"
+        "2. **`Session.request()`**: Hands off to `HTTPAdapter.send()`. [R2]"
         in markdown
     )
 

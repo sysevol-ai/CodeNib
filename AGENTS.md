@@ -71,6 +71,15 @@ prompt or silently exclude tests needed by a validation chapter. Keep the same
 reader rubric available on prepared and newly generated visitor pages. Compare
 the same source/outline/evidence when evaluating prose; a longer explanation or
 a green citation check does not establish parity with indexed examples.
+Readers told us the Wiki helps but that it is too fine-grained, sounds
+machine-written and is hard to picture, so how a page reads is a publication
+gate alongside its citations. Keep `quality.readability_report` blocking, and
+change a limit only with measurements of published pages, recorded in
+`docs/wiki_story_pipeline.md`. A page that fails must keep a path to passing, so
+a new limit needs a renderer rule or a rewrite that can satisfy it; a withheld
+page is worse for a reader than an imperfect one. Rank pages and choose figures
+from the recorded call graph, not from a model, and keep detail pages reachable
+rather than removing them.
 A ready chapter must not silently hide a rejected architecture or unavailable
 code index: display explicit visual coverage. Hosted graph views must come from
 the pinned compiler/source artifacts, never model-authored arrows. Keep source

@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { WikiMediaSlot, WikiPage } from "./api";
 import {
+  callPathSteps,
   extractJourney,
+  isBareHandoff,
   stageRoles,
   stageSentence,
   partitionWikiMediaSlots,
@@ -216,5 +218,87 @@ describe("stageSentence", () => {
       "Hands off.",
     );
     expect(stageSentence(stage("get()", "`request()` is next."))).toBe("`request()` is next.");
+  });
+});
+
+describe("isBareHandoff", () => {
+  it("recognizes a stage with only its call site", () => {
+    expect(isBareHandoff("Hands off to `request()`. [R9](#evidence-R9)")).toBe(true);
+    expect(isBareHandoff("Receives the work from `send()`. [R1]")).toBe(true);
+  });
+
+  it("keeps a written sentence", () => {
+    expect(isBareHandoff("Builds a `Request` and sends it. [E2]")).toBe(false);
+    expect(isBareHandoff("Hands off to `send()` after merging settings. [E2]")).toBe(
+      false,
+    );
+  });
+});
+
+describe("callPathSteps", () => {
+  const flow = (edges: Array<[string, string]>): WikiMediaSlot =>
+    ({
+      id: "page-call-path",
+      kind: "diagram",
+      placement: "aside",
+      title: "Selected call path",
+      purpose: "",
+      source_citations: [],
+      render_contract: {
+        schema_version: 1,
+        adapter: "flow",
+        provenance: "relations",
+        evidence: ["R1"],
+        data: {
+          nodes: ["c", "a", "b"].map((id) => ({
+            id,
+            label: `${id}()`,
+            detail: "",
+            evidence: ["R1"],
+          })),
+          edges: edges.map(([source, target]) => ({
+            source,
+            target,
+            label: "",
+            evidence: ["R1"],
+          })),
+        },
+      },
+    }) as unknown as WikiMediaSlot;
+
+  it("follows the path, not the node order", () => {
+    const steps = callPathSteps(
+      flow([
+        ["b", "c"],
+        ["a", "b"],
+      ]),
+    );
+    expect(steps.map((step) => step.label)).toEqual(["a()", "b()", "c()"]);
+  });
+
+  it("stops rather than looping on a malformed contract", () => {
+    expect(
+      callPathSteps(
+        flow([
+          ["a", "b"],
+          ["b", "a"],
+        ]),
+      ).length,
+    ).toBeLessThanOrEqual(3);
+  });
+
+  it("draws nothing for another kind of visual", () => {
+    expect(callPathSteps(slot("image", "aside"))).toEqual([]);
+  });
+});
+
+describe("partitionWikiMediaSlots with call paths", () => {
+  it("shows a call path even though it has no stored image", () => {
+    const callPath = {
+      ...slot("page-call-path", "aside", false),
+      render_contract: { adapter: "flow" },
+    } as unknown as WikiMediaSlot;
+    expect(partitionWikiMediaSlots([callPath]).bridge).toEqual([callPath]);
+    expect(partitionWikiMediaSlots([slot("plain", "aside", false)]).bridge).toEqual([]);
   });
 });

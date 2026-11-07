@@ -9,6 +9,7 @@ import SystemArchitecture from "@/components/SystemArchitecture";
 import SavedWikiMaps from "@/components/SavedWikiMaps";
 import RepoPoster from "@/components/RepoPoster";
 import { extractJourney, splitWikiMarkdown } from "@/lib/wikiPresentation";
+import { pagePath, visibleChapters } from "@/lib/wikiNav";
 import WikiGenerationForm from "@/components/WikiGenerationForm";
 import WikiRunActivity from "@/components/WikiRunActivity";
 import {
@@ -17,7 +18,6 @@ import {
   type Citation,
   type RepoInfo,
   type WikiPage,
-  type WikiPageRef,
 } from "@/lib/api";
 import { AppLink } from "@/lib/router";
 import { withBasePath } from "@/lib/runtime";
@@ -37,16 +37,6 @@ import {
   type SavedWiki,
 } from "@/lib/visitorWiki";
 
-function chapterRows(
-  pages: WikiPageRef[],
-  depth = 0,
-): Array<WikiPageRef & { depth: number }> {
-  return pages.flatMap((page) => [
-    { ...page, depth },
-    ...chapterRows(page.children, depth + 1),
-  ]);
-}
-
 export default function SavedWikiPage({ id }: { id: string }) {
   const [wiki, setWiki] = useState<SavedWiki | null>(null);
   const [error, setError] = useState("");
@@ -56,6 +46,7 @@ export default function SavedWikiPage({ id }: { id: string }) {
   const [page, setPage] = useState<WikiPage | null>(null);
   const [pageError, setPageError] = useState("");
   const [citation, setCitation] = useState<Citation | null>(null);
+  const [openChapters, setOpenChapters] = useState<Set<string>>(() => new Set());
   const [refresh, setRefresh] = useState(0);
   const [modelCatalog, setModelCatalog] = useState<WikiModelCatalog | null>(null);
   useEffect(() => {
@@ -535,27 +526,48 @@ export default function SavedWikiPage({ id }: { id: string }) {
                     : "No chapters were generated."}
                 </p>
               ) : (
-                chapterRows(wiki.pages).map((item) => {
+                visibleChapters(wiki.pages, active, openChapters).map(({ page: item, depth }) => {
                   const state = wiki.page_states[item.id] || "pending";
+                  const expanded =
+                    openChapters.has(item.id) || pagePath(wiki.pages, active).includes(item.id);
                   return (
-                    <button
-                      key={item.id}
-                      className={`saved-wiki-chapter ${active === item.id ? "active" : ""}`}
-                      style={{ paddingLeft: 12 + Math.min(item.depth, 3) * 16 }}
-                      onClick={() => pick(item.id)}
-                      aria-current={active === item.id ? "page" : undefined}
-                    >
-                      <span>{item.title}</span>
-                      <span className={`chapter-state ${state}`}>
-                        {state === "ready"
-                          ? "Ready"
-                          : state === "running"
-                            ? "Generating"
-                            : state === "needs_review"
-                              ? "Needs review"
-                              : "Pending"}
-                      </span>
-                    </button>
+                    <div className="saved-wiki-chapter-row" key={item.id}>
+                      <button
+                        className={`saved-wiki-chapter ${active === item.id ? "active" : ""}`}
+                        style={{ paddingLeft: 12 + Math.min(depth, 3) * 16 }}
+                        onClick={() => pick(item.id)}
+                        aria-current={active === item.id ? "page" : undefined}
+                      >
+                        <span>{item.title}</span>
+                        <span className={`chapter-state ${state}`}>
+                          {state === "ready"
+                            ? "Ready"
+                            : state === "running"
+                              ? "Generating"
+                              : state === "needs_review"
+                                ? "Needs review"
+                                : "Pending"}
+                        </span>
+                      </button>
+                      {item.children.length > 0 && (
+                        <button
+                          type="button"
+                          className={`toc-group-toggle ${expanded ? "open" : ""}`}
+                          aria-expanded={expanded}
+                          aria-label={`${expanded ? "Hide" : "Show"} ${item.children.length} detail chapters under ${item.title}`}
+                          onClick={() =>
+                            setOpenChapters((current) => {
+                              const next = new Set(current);
+                              if (next.has(item.id)) next.delete(item.id);
+                              else next.add(item.id);
+                              return next;
+                            })
+                          }
+                        >
+                          <span aria-hidden="true">›</span>
+                        </button>
+                      )}
+                    </div>
                   );
                 })
               )}
@@ -704,7 +716,7 @@ export default function SavedWikiPage({ id }: { id: string }) {
                       {ready
                         ? "Loading this chapter…"
                         : wiki.page_states[active] === "needs_review"
-                          ? "This chapter did not pass source checks. Its draft is withheld; the owner can resume to retry it."
+                          ? "This chapter did not pass source or reader checks. Its draft is withheld; the owner can resume to retry it."
                           : running
                             ? completed === 0
                               ? "The first chapter appears after writing and source checks finish. Keep this page open to watch it arrive."

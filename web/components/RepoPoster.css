@@ -107,7 +107,8 @@
 .poster-edge-line {
   fill: none;
   stroke-linejoin: round;
-  stroke: rgba(232, 234, 237, 0.2);
+  /* The traced path is the picture; every other reference stays in the back. */
+  stroke: rgba(232, 234, 237, 0.09);
   transition: stroke 0.2s ease;
 }
 .poster-edge-hit {

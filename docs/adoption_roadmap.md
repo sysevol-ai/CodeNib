@@ -969,6 +969,14 @@ billed calls without an explicit opt-in; paired results include failures.
 
 ### A5 — Generate complete Repo Wikis and activate coding agents
 
+Reader quality gate: users report that the Wiki helps but is too fine-grained,
+sounds machine-written and is hard to picture. Publication now also checks how a
+page reads, the page list opens on call-graph-ranked pages, and important pages
+draw recorded call paths; the rules are in
+[the story pipeline](wiki_story_pipeline.md). Open gate: show the new pages to
+the users who gave that feedback, and record whether they read further. Passing
+the limits does not establish that they will.
+
 Status: navigable visitor Wikis, incremental reading and explicit community
 publication are on `main`. Function declarations in landing/demo excerpts
 ([#821](https://github.com/sysevol-ai/CodeNib/pull/821)) and nested Python indexing

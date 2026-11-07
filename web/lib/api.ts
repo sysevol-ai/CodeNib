@@ -150,6 +150,8 @@ export async function fetchRepos(
 export interface WikiPageRef {
   id: string;
   title: string;
+  /** How a reader first meets this page, ranked from the call graph. */
+  tier?: "primary" | "key" | "more" | "detail";
   cache_state?: "ready" | "cold" | "retryable" | "degraded";
   children: WikiPageRef[];
 }
