@@ -101,12 +101,12 @@
 }
 
 [data-theme="dark"] {
-  --bg-page: #202124;
-  --bg-surface: #292a2d;
-  --bg-subtle: #303134;
-  --bg-muted: #28292c;
-  --border-subtle: #3c4043;
-  --border-strong: #5f6368;
+  --bg-page: #121315;
+  --bg-surface: #1a1b1e;
+  --bg-subtle: #1f2023;
+  --bg-muted: #17181b;
+  --border-subtle: #2a2b2f;
+  --border-strong: #4a4c50;
   --text-primary: #e8eaed;     /* 13.4:1 */
   --text-secondary: #bdc1c6;   /* 8.9:1 */
   --text-muted: #9aa0a6;       /* 6.1:1 */
@@ -117,7 +117,7 @@
   --accent-ink: #d3e3fd;
   --accent-contrast: #062e6f;  /* 6.1:1 on --accent */
   --focus-ring: 0 0 0 3px rgba(138, 180, 248, 0.3);
-  --code-bg: #28292c;
+  --code-bg: #17181b;
   --code-line-active: rgba(138, 180, 248, 0.16);
   --shadow-sm: 0 1px 4px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.06);
   --shadow-pop: 0 6px 18px rgba(0, 0, 0, 0.5);
@@ -6554,19 +6554,26 @@ a.codepanel-name:hover {
   --h-trace: #8ab4f8;
   position: relative;
   display: grid;
-  gap: clamp(56px, 7vw, 96px);
-  padding: clamp(40px, 5vw, 64px) var(--wiki-gutter) clamp(56px, 6vw, 88px);
+  gap: clamp(48px, 4.5vw, 72px);
+  padding: clamp(32px, 4vw, 56px) var(--wiki-gutter) clamp(48px, 4.5vw, 72px);
   overflow: hidden;
   color: var(--h-text);
   background: var(--h-bg);
 }
-.home-hero,
-.home-example {
+.home-hero {
   position: relative;
   display: grid;
   grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
   column-gap: clamp(32px, 4.5vw, 72px);
   align-items: stretch;
+}
+/* The heading sits above the example and takes the full width with it, so a
+   short intro never leaves a tall empty column beside a tall panel. */
+.home-example {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  row-gap: 24px;
 }
 .home-hero-intro {
   display: flex;
@@ -6646,13 +6653,15 @@ a.codepanel-name:hover {
   color: var(--h-muted);
   font-size: var(--fs-caption);
 }
-/* Top-aligned with the example it introduces, and kept in view beside it. */
 .home-example-intro {
-  position: sticky;
-  top: calc(var(--top-h) + 32px);
-  align-self: start;
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  column-gap: clamp(32px, 4.5vw, 72px);
+  align-items: baseline;
   min-width: 0;
-  padding-top: 24px;
+}
+.home-example-intro h2 {
+  margin: 0;
 }
 .home-ready {
   display: grid;
@@ -6729,6 +6738,26 @@ a.codepanel-name:hover {
 .landing .landing-catalog .repo-grid {
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
 }
+/* The home page shows a sample, not the catalog: only whole rows, at any width. */
+.landing .landing-catalog .repo-grid.is-preview {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+@media (max-width: 1799px) {
+  .landing .landing-catalog .repo-grid.is-preview { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .repo-grid.is-preview > :nth-child(n + 9) { display: none; }
+}
+@media (max-width: 1439px) {
+  .landing .landing-catalog .repo-grid.is-preview { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .repo-grid.is-preview > :nth-child(9) { display: flex; }
+}
+@media (max-width: 1079px) {
+  .landing .landing-catalog .repo-grid.is-preview { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .repo-grid.is-preview > :nth-child(9) { display: none; }
+}
+@media (max-width: 679px) {
+  .landing .landing-catalog .repo-grid.is-preview { grid-template-columns: minmax(0, 1fr); }
+  .repo-grid.is-preview > :nth-child(n + 7) { display: none; }
+}
 .landing .preview-footer {
   padding-inline: var(--wiki-gutter);
 }
@@ -6742,8 +6771,8 @@ a.codepanel-name:hover {
     gap: 28px;
   }
   .home-example-intro {
-    position: static;
-    padding-top: 0;
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 12px;
   }
 }
 @media (max-width: 520px) {

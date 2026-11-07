@@ -1,12 +1,11 @@
 // SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
-import RepoPoster from "@/components/RepoPoster";
+import HeroGraph from "@/components/HeroGraph";
 import "@/components/HomeMap.css";
 import type { RepoInfo, WikiAreaMap, WikiPageRef } from "@/lib/api";
-import { extractJourney, splitWikiMarkdown } from "@/lib/wikiPresentation";
 
 export interface CapturedMap {
   id: string;
@@ -15,22 +14,18 @@ export interface CapturedMap {
   repo: Pick<RepoInfo, "repo" | "commit_short" | "base_commit" | "source_url" | "file_count">;
   map: WikiAreaMap;
   pages: WikiPageRef[];
-  /** The Overview body; its traced path is read the same way the Wiki reads it. */
+  /** The Overview's traced path, which the repository video reads. */
   overview: string;
 }
 
 /**
- * The codenib.ai hero: the same live map as the demo home, drawn from maps
- * captured at build time, so the marketing page makes no request to the demo.
- * Areas and the Wiki link open the repository on the demo.
+ * The codenib.ai hero: the same map as the demo home, drawn from maps captured
+ * at build time, so the marketing page makes no request to the demo. Pages and
+ * the repository name open the Wiki on the demo.
  */
 export default function LandingMap({ maps, demo }: { maps: CapturedMap[]; demo: string }) {
   const [selected, setSelected] = useState(maps[0]?.id);
   const current = maps.find((item) => item.id === selected) ?? maps[0];
-  const journey = useMemo(
-    () => (current ? extractJourney(splitWikiMarkdown(current.overview).body).journey : null),
-    [current],
-  );
   if (!current) return null;
   const wiki = `${demo}/${encodeURIComponent(current.id)}`;
   return (
@@ -50,15 +45,11 @@ export default function LandingMap({ maps, demo }: { maps: CapturedMap[]; demo: 
           </button>
         ))}
       </div>
-      <RepoPoster
+      <HeroGraph
         key={current.id}
-        variant="hero"
-        repoId={current.id}
-        repo={{ id: current.id, ...current.repo } as RepoInfo}
-        map={current.map}
+        repoName={current.repo.repo}
         pages={current.pages}
-        journey={journey}
-        sourceRepoId={null}
+        map={current.map}
         wikiHref={wiki}
         onPick={(page) => {
           window.location.href = `${wiki}?p=${encodeURIComponent(page)}`;

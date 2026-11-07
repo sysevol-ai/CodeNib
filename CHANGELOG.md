@@ -13,6 +13,12 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 ### Changed
 
+- On a wide screen a Wiki now opens as a workspace: the page list, a map of the
+  Wiki and the reader, side by side. Pages are nodes, and the heavy lines are
+  references the code index recorded between areas; click one to read an example
+  in the source. The map can be hidden, and narrower windows keep the
+  single-column page.
+- The Wiki UI opens in the dark theme unless the reader has chosen otherwise.
 - Wikis are easier to read. Publication now also checks how a page reads:
   template sections and printed reader questions are gone, a page opens on what
   the code does rather than on an identifier, and limits apply to inline code,

@@ -136,7 +136,8 @@ try {
           assert.ok(Math.abs(before.y - after.y) < 1, `${scenario}: a late visual displaced readable prose`);
           if (overview) {
             await page.getByRole("button", { name: "Retry map" }).click();
-            await page.locator(".repo-poster").waitFor();
+            // Wide windows show the map beside the reader; narrow ones keep the poster.
+            await page.locator(width >= 1200 ? ".wiki-graph .wg-edge.is-references" : ".repo-poster").first().waitFor();
           }
         }
         if (stalled) await page.clock.runFor(250);

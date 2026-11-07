@@ -9,7 +9,7 @@ import { recordExperience } from "@/lib/experience";
 import { AppLink } from "@/lib/router";
 import "./guard.css";
 
-const INSTALL_URL = "https://codenib.ai/#install";
+const INSTALL_URL = "https://docs.codenib.ai/guard/";
 const METHOD_URL =
   "https://github.com/sysevol-ai/CodeNib/pull/976";
 

@@ -3,11 +3,18 @@
 
 /* The repository switcher above the hero map, on the demo home and on
    codenib.ai. Colors come from the stage's --h-* properties. */
+/* The map takes its column's full height, so both sides of the hero end level. */
+.home-map-placeholder {
+  background: #0e0f11;
+  border: 1px solid rgba(232, 234, 237, 0.14);
+  border-radius: 10px;
+}
 .home-map {
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 12px;
+  height: 100%;
   min-width: 0;
-  align-content: start;
 }
 .home-map-tabs {
   display: flex;

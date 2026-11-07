@@ -5,12 +5,13 @@ export default `
 :host {
   display: block;
   min-width: 0;
+  container: explorer / inline-size;
   color: var(--text-primary, #0f172a);
   font: 14px/1.5 var(--font-geist-sans, system-ui), sans-serif;
   text-align: left;
 }
 * { box-sizing: border-box; }
-article { background: var(--bg-surface, #fff); border: 1px solid var(--border-subtle, #e2e8f0); border-radius: 10px; overflow: hidden; }
+article { display: flex; flex-direction: column; height: 100%; background: var(--bg-surface, #fff); border: 1px solid var(--border-subtle, #e2e8f0); border-radius: 10px; overflow: hidden; }
 header { padding: 22px 24px 12px; }
 .repo { color: var(--text-primary, #0f172a); font-weight: 600; }
 h2 { margin: 0 0 6px; font-size: clamp(18px, 2vw, 23px); letter-spacing: -.025em; line-height: 1.3; font-weight: 650; }
@@ -30,13 +31,13 @@ button:focus-visible, a:focus-visible, .source-scroll:focus-visible { outline: 3
 .answer { display: flex; gap: 9px; margin: 0 24px; font-size: 13px; color: var(--text-secondary, #475569); }
 .answer-marker { color: var(--accent, #2563eb); font-size: 20px; }
 .answer code { font-size: 12px; color: var(--text-primary, #0f172a); }
-.source { margin: 0 16px; background: var(--explore-code-bg, #101b2c); border-radius: 6px; color: #e2e8f0; overflow: hidden; }
+.source { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; margin: 0 16px; background: var(--explore-code-bg, #101b2c); border-radius: 6px; color: #e2e8f0; overflow: hidden; }
 .source-head { display: flex; gap: 8px; justify-content: space-between; align-items: center; padding: 10px 12px; font-size: 11px; border-bottom: 1px solid var(--explore-code-rule, #263244); }
 .source-label { font-family: ui-monospace, monospace; }
 a { color: var(--accent, #2563eb); text-decoration: none; }
 a:hover { text-decoration: underline; }
 .source-link { color: #93c5fd; white-space: nowrap; }
-.source-scroll { height: 266px; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; font: 12px/1.65 ui-monospace, monospace; }
+.source-scroll { flex: 1 1 266px; min-height: 266px; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; font: 12px/1.65 ui-monospace, monospace; }
 .source-code { position: relative; display: flex; min-width: max-content; }
 pre { position: relative; margin: 0; padding: 12px 14px 12px 0; font: inherit; tab-size: 4; }
 .line-numbers { position: relative; flex: 0 0 40px; padding: 12px 10px 12px 0; color: #94a3b8; text-align: right; user-select: none; }
@@ -57,7 +58,8 @@ footer { display: flex; justify-content: space-between; gap: 12px; padding: 16px
 .wiki-link { font-weight: 650; font-size: 13px; }
 .share { font-size: 11px; color: var(--text-secondary, #475569); border: 0; background: transparent; padding: 6px 0; }
 .share:hover { text-decoration: underline; }
-.share-status { min-height: 34px; font-size: 12px; padding: 0 24px 16px; overflow-wrap: anywhere; }
+.share-status { font-size: 12px; padding: 0 24px 16px; overflow-wrap: anywhere; }
+.share-status:empty { display: none; }
 .provenance { font-size: 11px; color: var(--text-secondary, #64748b); }
 .provenance a { color: inherit; }
 @media (max-width: 600px) {
@@ -70,6 +72,26 @@ footer { display: flex; justify-content: space-between; gap: 12px; padding: 16px
   .answer { margin: 0 16px; }
   .source { margin: 0 10px; }
   footer { padding: 14px 16px; }
+}
+/* Wide containers read like a debugger: the call path beside the source. */
+@container explorer (min-width: 980px) {
+  article {
+    display: grid;
+    grid-template-columns: minmax(300px, 32%) minmax(0, 1fr);
+    grid-template-rows: auto auto 1fr auto auto;
+    grid-template-areas: "head source" "answer source" "flow source" "foot foot" "status status";
+  }
+  header { grid-area: head; }
+  .answer { grid-area: answer; }
+  .flow { grid-area: flow; grid-template-columns: minmax(0, 1fr); align-content: start; padding: 16px 16px 16px 24px; }
+  .node { display: grid; grid-template-columns: 22px 1fr; align-items: center; gap: 2px 6px; }
+  .node code { grid-column: 2; }
+  .edge { height: 22px; min-height: 22px; font-size: 18px; }
+  .edge span { display: inline-block; transform: rotate(90deg); }
+  .source { grid-area: source; margin: 16px 16px 0 0; }
+  .source-scroll { min-height: 360px; }
+  footer { grid-area: foot; }
+  .share-status { grid-area: status; }
 }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }
 `;

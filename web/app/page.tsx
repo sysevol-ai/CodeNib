@@ -202,6 +202,9 @@ function LibraryCard({ item }: { item: LibraryWiki }) {
   );
 }
 
+// Enough for two full rows at the widest home grid.
+const HOME_CARDS = 10;
+
 export default function Landing({ browse = false }: { browse?: boolean }) {
   const staticRuntime = isStaticRuntime();
   const location = useBrowserLocation();
@@ -278,6 +281,14 @@ export default function Landing({ browse = false }: { browse?: boolean }) {
         `${r.repo} ${r.language} ${r.summary}`.toLowerCase().includes(needle),
       ),
     [repos, needle],
+  );
+  // Repositories with a code map first: their cards open on a picture of the code.
+  const featuredPreview = useMemo(
+    () =>
+      [...featured].sort(
+        (a, b) => Number(!!b.capabilities?.codemap) - Number(!!a.capabilities?.codemap),
+      ),
+    [featured],
   );
   const published = community.filter((w) =>
     `${w.repository} ${w.summary} ${w.languages.join(" ")}`
@@ -502,7 +513,7 @@ export default function Landing({ browse = false }: { browse?: boolean }) {
             )}
           </div>
         )}
-        <div className="repo-grid">
+        <div className={`repo-grid${!browse && !needle ? " is-preview" : ""}`}>
           {tab === "mine" &&
             personal.map((item) => <LibraryCard key={item.id} item={item} />)}
           {showCommunity &&
@@ -510,9 +521,10 @@ export default function Landing({ browse = false }: { browse?: boolean }) {
               .slice(0, browse ? undefined : 3)
               .map((wiki) => <CommunityCard key={wiki.id} wiki={wiki} />)}
           {showFeatured &&
-            featured
-              .slice(0, browse || needle ? undefined : 6)
-              .map((r) => <RepoCard key={r.id} r={r} />)}
+            (browse || needle
+              ? featured
+              : featuredPreview.slice(0, HOME_CARDS - Math.min(published.length, 3))
+            ).map((r) => <RepoCard key={r.id} r={r} />)}
         </div>
         {!browse && (
           <AppLink className="browse-more" href="/browse">
