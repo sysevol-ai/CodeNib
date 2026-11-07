@@ -39,13 +39,13 @@ describe("buildWikiGraph", () => {
     expect(graph.colors.get("b")).toBe(AREA_COLORS[1]);
   });
 
-  it("draws recorded calls only between pages that exist", () => {
-    const calls = buildWikiGraph(pages, map).edges.filter((edge) => edge.kind === "calls");
-    expect(calls.map((edge) => edge.id)).toEqual(["a~b"]);
-    expect(calls[0].link?.example.anchor?.file).toBe("x.py");
+  it("draws recorded references only between pages that exist", () => {
+    const references = buildWikiGraph(pages, map).edges.filter((edge) => edge.kind === "references");
+    expect(references.map((edge) => edge.id)).toEqual(["a~b"]);
+    expect(references[0].link?.example.anchor?.file).toBe("x.py");
   });
 
-  it("claims no calls when the repository has no code graph", () => {
+  it("claims no references when the repository has no code graph", () => {
     const graph = buildWikiGraph(pages, { available: false, areas: [], links: [], reason: "graph_unavailable" });
     expect(graph.edges.every((edge) => edge.kind === "contains")).toBe(true);
     expect(graph.nodes).toHaveLength(5);

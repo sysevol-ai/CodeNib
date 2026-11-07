@@ -838,13 +838,13 @@ export default function WikiPageView({
   }, []);
 
   let mapNote: string | null = null;
-  if (areaMapError) mapNote = "The recorded calls could not be loaded.";
-  else if (!areaMap) mapNote = "Loading recorded calls…";
+  if (areaMapError) mapNote = "The recorded references could not be loaded.";
+  else if (!areaMap) mapNote = "Loading recorded references…";
   else if (areaMap.reason === "graph_unavailable")
     mapNote = "No code graph for this repository, so this map shows the outline only.";
   else if (areaMap.reason === "outline_pending") mapNote = "The outline is still being prepared.";
   else if (!areaMap.available || areaMap.links.length === 0)
-    mapNote = "No calls between these areas were found in the current index.";
+    mapNote = "No references between these areas were found in the current index.";
 
   const setMapPreference = (hidden: boolean) => {
     setMapHidden(hidden);
@@ -861,7 +861,7 @@ export default function WikiPageView({
     });
   };
 
-  const openRecordedCall = (link: WikiAreaLink) => {
+  const openRecordedReference = (link: WikiAreaLink) => {
     const anchor = link.example.anchor;
     if (!anchor?.file || anchor.line == null) return;
     setSourceCitation({
@@ -869,7 +869,7 @@ export default function WikiPageView({
       start_line: anchor.line,
       end_line: anchor.line,
       node_name: link.example.target,
-      type: "call",
+      type: "reference",
       score: null,
       content: null,
     });
@@ -1101,7 +1101,7 @@ export default function WikiPageView({
           <WikiGraphPane
             graph={wikiGraph}
             activeId={activeId}
-            hasCalls={wikiGraph.edges.some((edge) => edge.kind === "calls")}
+            hasReferences={wikiGraph.edges.some((edge) => edge.kind === "references")}
             note={mapNote}
             onRetry={
               areaMapError || areaMap?.reason === "outline_pending"
@@ -1112,7 +1112,7 @@ export default function WikiPageView({
                 : undefined
             }
             onPick={pick}
-            onOpenCall={openRecordedCall}
+            onOpenReference={openRecordedReference}
             onHide={() => setMapPreference(true)}
             onResizeReader={resizeReader}
           />

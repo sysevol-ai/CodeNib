@@ -68,7 +68,7 @@ try {
   // Layout: the map and reader fill the window, and every page but Overview is a node.
   assert.equal(await page.locator(".wiki-grid.is-workspace").count(), 1);
   assert.equal(await page.locator(".wg-node").count(), 5);
-  assert.equal(await page.locator(".wg-edge.is-calls").count(), 1);
+  assert.equal(await page.locator(".wg-edge.is-references").count(), 1);
   assert.equal(await page.locator(".wiki-onthispage").isVisible(), false);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
   assert.ok(overflow <= 0, `page overflows by ${overflow}px`);
@@ -86,14 +86,14 @@ try {
   assert.equal(await camera(), before, "choosing a page moved the map");
   assert.equal(await page.locator('.wg-node[aria-current="page"]').getAttribute("aria-label"), "Adapters");
 
-  // A recorded call says what it is and opens its source.
+  // A recorded reference says what it is and opens its source.
   // The middle of the curve: a curved path's bounding box centre is not on its line.
-  const middle = await page.locator(".wg-edge.is-calls .wg-edge-hit").evaluate(path => {
+  const middle = await page.locator(".wg-edge.is-references .wg-edge-hit").evaluate(path => {
     const point = path.getPointAtLength(path.getTotalLength() / 2).matrixTransform(path.getScreenCTM());
     return { x: point.x, y: point.y };
   });
   await page.mouse.move(middle.x, middle.y);
-  await page.waitForFunction(() => document.querySelector(".wiki-graph-foot")?.textContent.includes("7 recorded calls"));
+  await page.waitForFunction(() => document.querySelector(".wiki-graph-foot")?.textContent.includes("9 recorded references · 7 distinct pairs"));
   await page.mouse.click(middle.x, middle.y);
   await page.waitForFunction(() => document.body.textContent.includes("a.py:12") || document.querySelector(".source-panel, .source-drawer, [class*=source]")?.textContent.includes("a.py"));
 
@@ -115,6 +115,19 @@ try {
   await page.waitForSelector(".wiki-graph .wg-node");
   assert.equal(Math.round(await readerWidth()), Math.round(resized));
 
+  // A saved reader width never pushes the page wider than a smaller window.
+  await page.setViewportSize({ width: 1200, height: 800 });
+  await page.evaluate(() => localStorage.setItem("cm-wiki-reader-width", "1000"));
+  await page.reload();
+  await page.waitForSelector(".wiki-graph .wg-node");
+  const squeezed = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
+  assert.ok(squeezed <= 0, `a saved reader width overflows by ${squeezed}px`);
+  assert.ok((await page.locator(".wiki-graph").boundingBox()).width >= 319, "the map keeps its minimum width");
+  await page.evaluate(() => localStorage.removeItem("cm-wiki-reader-width"));
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.reload();
+  await page.waitForSelector(".wiki-graph .wg-node");
+
   // Hiding the map returns the plain document; the choice is remembered.
   await page.getByRole("button", { name: "Hide map" }).click();
   assert.equal(await page.locator(".wiki-graph").count(), 0);
@@ -122,8 +135,12 @@ try {
   await page.reload();
   await page.waitForSelector(".wiki-map-show");
   assert.equal(await page.locator(".wiki-graph").count(), 0);
-  await page.locator(".wiki-map-show").click();
-  await page.waitForSelector(".wiki-graph .wg-node");
+  // The map is drawn by the time the browser could paint it: no blank first frame.
+  const drawn = await page.evaluate(() => {
+    document.querySelector(".wiki-map-show").click();
+    return document.querySelectorAll(".wiki-graph .wg-node").length;
+  });
+  assert.equal(drawn, 5, "showing the map painted a blank frame first");
   await context.close();
 
   // Below 1200 px the page stays a document, with no map to squeeze the reader.
@@ -143,7 +160,7 @@ try {
   await outline.goto(`${base}/example__map?p=sessions`);
   await outline.waitForSelector(".wiki-graph .wg-node");
   await outline.waitForFunction(() => document.querySelector(".wiki-graph-note"));
-  assert.equal(await outline.locator(".wg-edge.is-calls").count(), 0);
+  assert.equal(await outline.locator(".wg-edge.is-references").count(), 0);
   await plain.close();
 
   assert.deepEqual(errors, []);

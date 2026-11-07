@@ -137,7 +137,7 @@ try {
           if (overview) {
             await page.getByRole("button", { name: "Retry map" }).click();
             // Wide windows show the map beside the reader; narrow ones keep the poster.
-            await page.locator(width >= 1200 ? ".wiki-graph .wg-edge.is-calls" : ".repo-poster").first().waitFor();
+            await page.locator(width >= 1200 ? ".wiki-graph .wg-edge.is-references" : ".repo-poster").first().waitFor();
           }
         }
         if (stalled) await page.clock.runFor(250);

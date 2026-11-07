@@ -42,7 +42,7 @@
 .wg-edge.is-contains .wg-edge-line {
   stroke: var(--wg-line);
 }
-.wg-edge.is-calls .wg-edge-line {
+.wg-edge.is-references .wg-edge-line {
   stroke: var(--wg-call);
 }
 .wg-edge.is-hot .wg-edge-line {
@@ -204,7 +204,10 @@
 .wiki-grid.is-workspace {
   --rail-left: 244px;
   /* The reader stops at a comfortable width; extra screen goes to the map. */
-  grid-template-columns: var(--rail-left) minmax(320px, 1fr) var(--reader-w, clamp(560px, 50%, 980px));
+  /* A saved width never pushes the reader off a smaller window. */
+  grid-template-columns:
+    var(--rail-left) minmax(320px, 1fr)
+    min(var(--reader-w, clamp(560px, 50%, 980px)), calc(100% - var(--rail-left) - 320px));
   padding-inline: 0;
 }
 .wiki-grid.is-workspace .wiki-toc {

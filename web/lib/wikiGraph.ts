@@ -33,8 +33,8 @@ export interface WikiGraphEdge {
   id: string;
   source: string;
   target: string;
-  /** `calls` comes from the code index; `contains` is only the page outline. */
-  kind: "calls" | "contains";
+  /** `references` comes from the code index; `contains` is only the page outline. */
+  kind: "references" | "contains";
   link?: WikiAreaLink;
 }
 
@@ -47,7 +47,8 @@ export interface WikiGraph {
 const PAGE_RADIUS: Record<string, number> = { primary: 6.5, key: 6, more: 4.5, detail: 4.5 };
 
 /**
- * Pages become nodes; recorded calls between areas become the heavy edges.
+ * Pages become nodes; references recorded between areas become the heavy edges.
+ * The index records references, so these include calls, field reads and type uses.
  * The Overview is not a node: the whole map already is the overview.
  */
 export function buildWikiGraph(pages: WikiPageRef[], map: WikiAreaMap | null): WikiGraph {
@@ -105,7 +106,7 @@ export function buildWikiGraph(pages: WikiPageRef[], map: WikiAreaMap | null): W
         id: `${link.source}~${link.target}`,
         source: link.source,
         target: link.target,
-        kind: "calls",
+        kind: "references",
         link,
       });
     }
@@ -143,7 +144,7 @@ export function layoutWikiGraph(nodes: WikiGraphNode[], edges: WikiGraphEdge[], 
     const a = position.get(edge.source);
     const b = position.get(edge.target);
     if (!a || !b) return [];
-    return edge.kind === "calls"
+    return edge.kind === "references"
       ? [{ a, b, length: 190, strength: 0.012 }]
       : [{ a, b, length: 58, strength: 0.09 }];
   });

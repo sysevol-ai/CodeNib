@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import type { WikiAreaLink } from "@/lib/api";
 import { neighborhood, type WikiGraph, type WikiGraphEdge, type WikiGraphNode } from "@/lib/wikiGraph";
@@ -93,7 +93,7 @@ function placeLabels(
   return placed;
 }
 
-/** A curved path between two nodes, so two-way calls stay two visible lines. */
+/** A curved path between two nodes, so two-way references stay two visible lines. */
 function edgePath(a: Point, b: Point, ar: number, br: number, curved: boolean): string {
   const dx = b.x - a.x;
   const dy = b.y - a.y;
@@ -109,40 +109,40 @@ function edgePath(a: Point, b: Point, ar: number, br: number, curved: boolean): 
   return `M${x1} ${y1}Q${(x1 + x2) / 2 - uy * bend} ${(y1 + y2) / 2 + ux * bend} ${x2} ${y2}`;
 }
 
-const callWidth = (link?: WikiAreaLink) => 0.8 + Math.log10(Math.max(link?.calls ?? 1, 1)) * 0.9;
+const referenceWidth = (link?: WikiAreaLink) => 0.8 + Math.log10(Math.max(link?.weight ?? 1, 1)) * 0.9;
 
 /**
- * The Wiki as one picture: pages are nodes, and heavy lines are calls the code
- * index recorded between areas. Choosing a page never moves the camera, so the
- * reader keeps their place in the map.
+ * The Wiki as one picture: pages are nodes, and heavy lines are references the
+ * code index recorded between areas (calls, field reads, type uses). Choosing a
+ * page never moves the camera, so the reader keeps their place in the map.
  */
 export default function WikiGraphPane({
   graph,
   activeId,
-  hasCalls,
+  hasReferences,
   note,
   onRetry,
   onPick,
-  onOpenCall,
+  onOpenReference,
   onHide,
   onResizeReader,
 }: {
   graph: WikiGraph;
   activeId: string;
-  hasCalls: boolean;
-  /** Why the map shows no recorded calls, in the reader's terms. */
+  hasReferences: boolean;
+  /** Why the map shows no recorded references, in the reader's terms. */
   note: string | null;
   onRetry?: () => void;
   onPick: (id: string) => void;
-  onOpenCall: (link: WikiAreaLink) => void;
+  onOpenReference: (link: WikiAreaLink) => void;
   onHide: () => void;
   onResizeReader: (delta: number) => void;
 }) {
   const paneRef = useRef<HTMLElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
-  const [view, setView] = useState<View | null>(null);
-  const [userMoved, setUserMoved] = useState(false);
+  // Null until the reader pans or zooms; until then the view is the fitted one.
+  const [movedView, setMovedView] = useState<View | null>(null);
   const [hoverNode, setHoverNode] = useState<string | null>(null);
   const [hoverEdge, setHoverEdge] = useState<WikiGraphEdge | null>(null);
   const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null);
@@ -170,24 +170,25 @@ export default function WikiGraphPane({
     };
   }, [graph, size]);
 
-  const fit = useCallback((): View | null => {
+  const fitted = useMemo((): View | null => {
     if (!size.width || !size.height || !points.size) return null;
     return { k: 1, x: size.width / 2 - center.x, y: (size.height - 40) / 2 - center.y };
   }, [points, center, size]);
+  const view = movedView ?? fitted;
+  const viewRef = useRef(view);
+  viewRef.current = view;
 
-  useEffect(() => {
+  // Measured before paint, so the map never shows a blank first frame.
+  useLayoutEffect(() => {
     const pane = paneRef.current;
     if (!pane) return undefined;
-    const observer = new ResizeObserver(([entry]) => {
-      setSize({ width: entry.contentRect.width, height: entry.contentRect.height });
+    setSize({ width: pane.clientWidth, height: pane.clientHeight });
+    const observer = new ResizeObserver(() => {
+      setSize({ width: pane.clientWidth, height: pane.clientHeight });
     });
     observer.observe(pane);
     return () => observer.disconnect();
   }, []);
-
-  useEffect(() => {
-    if (!userMoved) setView(fit());
-  }, [fit, userMoved]);
 
   // A non-passive listener: the wheel zooms the map, not the page behind it.
   useEffect(() => {
@@ -198,13 +199,11 @@ export default function WikiGraphPane({
       const box = svg.getBoundingClientRect();
       const px = event.clientX - box.left;
       const py = event.clientY - box.top;
-      setUserMoved(true);
-      setView((current) => {
-        if (!current) return current;
-        const k = Math.min(4, Math.max(0.3, current.k * Math.exp(-event.deltaY * 0.0012)));
-        const ratio = k / current.k;
-        return { k, x: px - (px - current.x) * ratio, y: py - (py - current.y) * ratio };
-      });
+      const current = viewRef.current;
+      if (!current) return;
+      const k = Math.min(4, Math.max(0.3, current.k * Math.exp(-event.deltaY * 0.0012)));
+      const ratio = k / current.k;
+      setMovedView({ k, x: px - (px - current.x) * ratio, y: py - (py - current.y) * ratio });
     };
     svg.addEventListener("wheel", onWheel, { passive: false });
     return () => svg.removeEventListener("wheel", onWheel);
@@ -226,9 +225,9 @@ export default function WikiGraphPane({
       const anchor = link.example.anchor;
       return {
         title: `${byId.get(link.source)?.title} → ${byId.get(link.target)?.title}`,
-        detail: `${link.calls} recorded ${link.calls === 1 ? "call" : "calls"}${
-          anchor?.file ? ` · ${anchor.file.split("/").pop()}:${anchor.line} · click to read it` : ""
-        }`,
+        detail: `${link.weight} recorded ${link.weight === 1 ? "reference" : "references"}${
+          link.calls !== link.weight ? ` · ${link.calls} distinct pairs` : ""
+        }${anchor?.file ? ` · ${anchor.file.split("/").pop()}:${anchor.line} · click to read it` : ""}`,
       };
     }
     const node = hoverNode ? byId.get(hoverNode) : null;
@@ -238,7 +237,7 @@ export default function WikiGraphPane({
 
   return (
     <section
-      className={`wiki-graph${graph.edges.filter((edge) => edge.kind === "calls").length > 30 ? " is-dense" : ""}`}
+      className={`wiki-graph${graph.edges.filter((edge) => edge.kind === "references").length > 30 ? " is-dense" : ""}`}
       ref={paneRef}
       aria-label="Map of this Wiki"
     >
@@ -258,8 +257,8 @@ export default function WikiGraphPane({
           start.moved = true;
           start.x = event.clientX;
           start.y = event.clientY;
-          setUserMoved(true);
-          setView((current) => current && { ...current, x: current.x + dx, y: current.y + dy });
+          const current = viewRef.current;
+          if (current) setMovedView({ ...current, x: current.x + dx, y: current.y + dy });
         }}
         onPointerUp={() => {
           // Let the click that ends a drag be ignored by nodes and edges.
@@ -285,24 +284,24 @@ export default function WikiGraphPane({
               const pb = points.get(edge.target);
               if (!a || !b || !pa || !pb) return null;
               const hot = edge === hoverEdge || edge.source === activeId || edge.target === activeId;
-              const isCall = edge.kind === "calls";
-              const d = edgePath(pa, pb, a.radius, b.radius, isCall);
+              const isReference = edge.kind === "references";
+              const d = edgePath(pa, pb, a.radius, b.radius, isReference);
               return (
                 <g key={edge.id} className={`wg-edge is-${edge.kind}${hot ? " is-hot" : ""}`}>
                   <path
                     d={d}
                     className="wg-edge-line"
-                    strokeWidth={isCall ? callWidth(edge.link) : 1}
-                    markerEnd={isCall ? `url(#wg-arrow${hot ? "-hot" : ""})` : undefined}
+                    strokeWidth={isReference ? referenceWidth(edge.link) : 1}
+                    markerEnd={isReference ? `url(#wg-arrow${hot ? "-hot" : ""})` : undefined}
                   />
-                  {isCall && (
+                  {isReference && (
                     <path
                       d={d}
                       className="wg-edge-hit"
                       onPointerEnter={() => setHoverEdge(edge)}
                       onPointerLeave={() => setHoverEdge(null)}
                       onClick={() => {
-                        if (!drag.current?.moved && edge.link) onOpenCall(edge.link);
+                        if (!drag.current?.moved && edge.link) onOpenReference(edge.link);
                       }}
                     />
                   )}
@@ -362,13 +361,7 @@ export default function WikiGraphPane({
       </svg>
 
       <div className="wiki-graph-controls">
-        <button
-          type="button"
-          onClick={() => {
-            setUserMoved(false);
-            setView(fit());
-          }}
-        >
+        <button type="button" onClick={() => setMovedView(null)}>
           Fit
         </button>
         <button type="button" onClick={onHide}>
@@ -387,10 +380,10 @@ export default function WikiGraphPane({
           </p>
         )}
         <dl className="wiki-graph-legend">
-          {hasCalls && (
+          {hasReferences && (
             <div>
-              <dt className="is-calls" aria-hidden="true" />
-              <dd>Calls recorded in the code index</dd>
+              <dt className="is-references" aria-hidden="true" />
+              <dd>References recorded in the code index</dd>
             </div>
           )}
           <div>
