@@ -5,8 +5,10 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type MouseEvent,
 } from "react";
 import AskIcon from "@/components/AskIcon";
@@ -17,6 +19,8 @@ import PageBoundaryCard from "@/components/PageBoundary";
 import CallPathFigure from "@/components/CallPathFigure";
 import MainPath from "@/components/MainPath";
 import WikiToc from "@/components/WikiToc";
+import WikiGraphPane from "@/components/WikiGraphPane";
+import { buildWikiGraph } from "@/lib/wikiGraph";
 import { childPages } from "@/lib/wikiNav";
 import AreaMap from "@/components/AreaMap";
 import RepoPoster from "@/components/RepoPoster";
@@ -46,6 +50,7 @@ import {
   shouldWithholdWikiPage,
   type CodemapResponse,
   type PageBoundary,
+  type WikiAreaLink,
   type WikiAreaMap,
   type Citation,
   type CommitRef,
@@ -427,6 +432,27 @@ function MultimodalMedia({
   );
 }
 
+// Below this width the map would squeeze the reader, so the page stays a document.
+const WORKSPACE_MEDIA = "(min-width: 1200px)";
+const MAP_HIDDEN_KEY = "cm-wiki-map-hidden";
+const READER_WIDTH_KEY = "cm-wiki-reader-width";
+
+function readStored(key: string): string | null {
+  try {
+    return typeof window === "undefined" ? null : window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeStored(key: string, value: string) {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // A reader without storage still gets the setting for this visit.
+  }
+}
+
 export default function WikiPageView({
   repoId,
   initialPageId = "overview",
@@ -446,6 +472,14 @@ export default function WikiPageView({
   const [boundary, setBoundary] = useState<PageBoundary | null>(null);
   const [boundaryReadyFor, setBoundaryReadyFor] = useState<string | null>(null);
   const [areaMap, setAreaMap] = useState<WikiAreaMap | null>(null);
+  const [wideEnough, setWideEnough] = useState(
+    () => typeof window !== "undefined" && window.matchMedia(WORKSPACE_MEDIA).matches,
+  );
+  const [mapHidden, setMapHidden] = useState(() => readStored(MAP_HIDDEN_KEY) === "1");
+  const [readerWidth, setReaderWidth] = useState<number | null>(() => {
+    const stored = Number(readStored(READER_WIDTH_KEY));
+    return Number.isFinite(stored) && stored > 0 ? stored : null;
+  });
   const [areaMapError, setAreaMapError] = useState(false);
   const [areaMapAttempt, setAreaMapAttempt] = useState(0);
   const areaMapDeadline = useRef({ repoId, attempt: -1, expiresAt: 0 });
@@ -788,6 +822,59 @@ export default function WikiPageView({
     return () => document.removeEventListener("keydown", onKey);
   }, [sourceCitation]);
 
+  // Decided before the page list loads, so the reader never jumps on first paint.
+  const workspace = wideEnough && !mapHidden;
+  const wikiGraph = useMemo(
+    () => buildWikiGraph(pages, areaMap),
+    [pages, areaMap],
+  );
+
+  useEffect(() => {
+    const query = window.matchMedia(WORKSPACE_MEDIA);
+    const update = () => setWideEnough(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+
+  let mapNote: string | null = null;
+  if (areaMapError) mapNote = "The recorded calls could not be loaded.";
+  else if (!areaMap) mapNote = "Loading recorded calls…";
+  else if (areaMap.reason === "graph_unavailable")
+    mapNote = "No code graph for this repository, so this map shows the outline only.";
+  else if (areaMap.reason === "outline_pending") mapNote = "The outline is still being prepared.";
+  else if (!areaMap.available || areaMap.links.length === 0)
+    mapNote = "No calls between these areas were found in the current index.";
+
+  const setMapPreference = (hidden: boolean) => {
+    setMapHidden(hidden);
+    writeStored(MAP_HIDDEN_KEY, hidden ? "1" : "0");
+  };
+
+  // The reader takes between 480 px and whatever leaves the map 320 px.
+  const resizeReader = (delta: number) => {
+    setReaderWidth((current) => {
+      const start = current ?? window.innerWidth / 2;
+      const next = Math.round(Math.min(window.innerWidth - 244 - 320, Math.max(480, start + delta)));
+      writeStored(READER_WIDTH_KEY, String(next));
+      return next;
+    });
+  };
+
+  const openRecordedCall = (link: WikiAreaLink) => {
+    const anchor = link.example.anchor;
+    if (!anchor?.file || anchor.line == null) return;
+    setSourceCitation({
+      file: anchor.file,
+      start_line: anchor.line,
+      end_line: anchor.line,
+      node_name: link.example.target,
+      type: "call",
+      score: null,
+      content: null,
+    });
+  };
+
   const hasGraph = !!repo?.capabilities?.codemap;
   const browserTrial =
     staticRuntime &&
@@ -833,6 +920,7 @@ export default function WikiPageView({
   // traced path, drawn from the index. It replaces the lead paragraph, the
   // compact area map and the architecture card's own copy of the path.
   const showPoster =
+    !workspace &&
     activeId === "overview" &&
     !!page &&
     !withheldByQualityGuard &&
@@ -943,7 +1031,14 @@ export default function WikiPageView({
         }
       />
 
-      <div className={`wiki-grid${activeId === "overview" ? " is-overview" : ""}`}>
+      <div
+        className={`wiki-grid${activeId === "overview" ? " is-overview" : ""}${workspace ? " is-workspace" : ""}`}
+        style={
+          workspace && readerWidth
+            ? ({ "--reader-w": `${readerWidth}px` } as CSSProperties)
+            : undefined
+        }
+      >
         {tocOpen && <div className="toc-scrim" onClick={() => setTocOpen(false)} aria-hidden />}
         <aside className={`wiki-toc ${tocOpen ? "open" : ""}`} data-rail="left">
           <div className="rail-title">{repo ? repo.repo : repoId}</div>
@@ -986,9 +1081,42 @@ export default function WikiPageView({
           ) : pages.length === 0 ? (
             <div className="muted small">No pages in this wiki yet.</div>
           ) : (
-            <WikiToc pages={pages} activeId={activeId} onPick={pick} />
+            <>
+              {wideEnough && mapHidden && (
+                <button type="button" className="wiki-map-show" onClick={() => setMapPreference(false)}>
+                  Show map
+                </button>
+              )}
+              <WikiToc
+                pages={pages}
+                activeId={activeId}
+                onPick={pick}
+                colors={workspace ? wikiGraph.colors : undefined}
+              />
+            </>
           )}
         </aside>
+
+        {workspace && (
+          <WikiGraphPane
+            graph={wikiGraph}
+            activeId={activeId}
+            hasCalls={wikiGraph.edges.some((edge) => edge.kind === "calls")}
+            note={mapNote}
+            onRetry={
+              areaMapError || areaMap?.reason === "outline_pending"
+                ? () => {
+                    setAreaMapError(false);
+                    setAreaMapAttempt((attempt) => attempt + 1);
+                  }
+                : undefined
+            }
+            onPick={pick}
+            onOpenCall={openRecordedCall}
+            onHide={() => setMapPreference(true)}
+            onResizeReader={resizeReader}
+          />
+        )}
 
         <main className="wiki-main" aria-busy={!page && !pageError}>
           {showPoster && areaMap && (
@@ -1019,7 +1147,7 @@ export default function WikiPageView({
                       {wikiMarkdown.lead}
                     </Markdown>
                   )}
-                  {activeId === "overview" && !showPoster && (
+                  {activeId === "overview" && !showPoster && !workspace && (
                     areaMap?.available ? (
                       <AreaMap map={areaMap} commit={repo?.commit_short} onPick={pick} />
                     ) : (

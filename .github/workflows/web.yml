@@ -73,6 +73,9 @@ jobs:
       - name: Verify page list, call path figures and detail links
         run: node wiki_navigation_verify.mjs
 
+      - name: Verify the map and reader workspace
+        run: node wiki_workspace_verify.mjs
+
       - name: Verify optional repository diagrams and late responses
         run: node visual_evidence_verify.mjs
 

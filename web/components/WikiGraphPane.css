@@ -1,0 +1,261 @@
+/* SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
+ * SPDX-License-Identifier: Apache-2.0 */
+
+/* The map keeps its own dark surface in both themes, like the repository poster. */
+.wiki-graph {
+  --wg-bg: #0e0f11;
+  --wg-text: #e8eaed;
+  --wg-soft: #bdc1c6;
+  --wg-muted: #9aa0a6;
+  --wg-line: rgba(232, 234, 237, 0.12);
+  --wg-call: rgba(232, 234, 237, 0.3);
+  --wg-hot: #8ab4f8;
+  position: sticky;
+  top: var(--top-h);
+  align-self: start;
+  height: calc(100vh - var(--top-h));
+  min-width: 0;
+  overflow: hidden;
+  color: var(--wg-text);
+  background: var(--wg-bg);
+  border-inline: 1px solid var(--border-subtle);
+}
+/* With many links only the current page's stand out at full strength. */
+.wiki-graph.is-dense {
+  --wg-call: rgba(232, 234, 237, 0.15);
+}
+.wiki-graph svg {
+  display: block;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.wiki-graph svg:active {
+  cursor: grabbing;
+}
+
+.wg-edge-line {
+  fill: none;
+  vector-effect: non-scaling-stroke;
+  transition: stroke 0.15s ease, opacity 0.15s ease;
+}
+.wg-edge.is-contains .wg-edge-line {
+  stroke: var(--wg-line);
+}
+.wg-edge.is-calls .wg-edge-line {
+  stroke: var(--wg-call);
+}
+.wg-edge.is-hot .wg-edge-line {
+  stroke: var(--wg-hot);
+}
+.wg-edge-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 14;
+  cursor: pointer;
+}
+.wg-arrow {
+  fill: var(--wg-call);
+}
+.wg-arrow.is-hot {
+  fill: var(--wg-hot);
+}
+
+.wg-node {
+  cursor: pointer;
+  outline: none;
+}
+.wg-node-hit {
+  fill: transparent;
+}
+.wg-node-mark {
+  stroke: var(--wg-bg);
+  stroke-width: 2;
+  transition: opacity 0.15s ease;
+}
+.wg-node.is-page:not(.is-near) .wg-node-mark {
+  opacity: 0.62;
+}
+.wg-node:hover .wg-node-mark {
+  opacity: 1;
+}
+.wg-node-ring,
+.wg-node:focus-visible .wg-node-hit {
+  fill: none;
+  stroke: var(--wg-hot);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+.wg-label {
+  fill: var(--wg-soft);
+  font-family: var(--font-geist-sans, "Geist"), system-ui, sans-serif;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  paint-order: stroke;
+  stroke: var(--wg-bg);
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+.wg-label.is-near {
+  fill: var(--wg-text);
+}
+.wg-label.is-active {
+  font-weight: 650;
+}
+
+.wiki-graph-controls {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  display: flex;
+  gap: 6px;
+}
+.wiki-graph-controls button {
+  padding: 5px 10px;
+  color: var(--wg-soft);
+  font-size: 12px;
+  background: rgba(14, 15, 17, 0.8);
+  border: 1px solid var(--wg-line);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.wiki-graph-controls button:hover {
+  color: var(--wg-text);
+  border-color: rgba(232, 234, 237, 0.3);
+}
+.wiki-graph-controls button:focus-visible,
+.wiki-graph-splitter:focus-visible {
+  outline: 2px solid var(--wg-hot);
+  outline-offset: 1px;
+}
+
+.wiki-graph-foot {
+  position: absolute;
+  inset: auto 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 18px;
+  min-height: 44px;
+  padding: 10px 16px;
+  color: var(--wg-muted);
+  font-size: 12px;
+  background: linear-gradient(to top, var(--wg-bg) 62%, transparent);
+  pointer-events: none;
+}
+.wiki-graph-foot p {
+  margin: 0;
+  min-width: 0;
+}
+.wiki-graph-foot b {
+  color: var(--wg-text);
+  font-weight: 600;
+}
+.wiki-graph-note {
+  flex-basis: 100%;
+}
+.wiki-graph-note button {
+  padding: 2px 8px;
+  color: var(--wg-hot);
+  font-size: 12px;
+  background: transparent;
+  border: 1px solid var(--wg-line);
+  border-radius: 6px;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.wiki-graph-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 0;
+}
+.wiki-graph-legend div {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.wiki-graph-legend dd {
+  margin: 0;
+}
+.wiki-graph-legend dt {
+  width: 18px;
+  height: 0;
+  border-top: 2px solid var(--wg-call);
+}
+.wiki-graph-legend dt.is-contains {
+  border-top: 1px solid rgba(232, 234, 237, 0.26);
+}
+
+.wiki-graph-splitter {
+  position: absolute;
+  inset: 0 -3px 0 auto;
+  width: 7px;
+  cursor: col-resize;
+  touch-action: none;
+}
+.wiki-graph-splitter:hover,
+.wiki-graph-splitter:active {
+  background: rgba(138, 180, 248, 0.35);
+}
+
+/* --- The three-pane workspace --- */
+.wiki-grid.is-workspace {
+  --rail-left: 244px;
+  /* The reader stops at a comfortable width; extra screen goes to the map. */
+  grid-template-columns: var(--rail-left) minmax(320px, 1fr) var(--reader-w, clamp(560px, 50%, 980px));
+  padding-inline: 0;
+}
+.wiki-grid.is-workspace .wiki-toc {
+  width: auto;
+  max-height: calc(100vh - var(--top-h));
+  padding: 20px 12px 20px 18px;
+}
+.wiki-grid.is-workspace .wiki-onthispage {
+  display: none;
+}
+.wiki-grid.is-workspace .wiki-main {
+  min-width: 0;
+  padding: 28px clamp(24px, 3vw, 44px) 96px;
+}
+.wiki-grid.is-workspace .wiki-content {
+  max-width: 820px;
+  margin-inline: auto;
+}
+/* Prose, panels and code share one right edge. */
+.wiki-grid.is-workspace .wiki-content :is(p, ul, ol, table, pre, details, figure) {
+  max-width: 100%;
+}
+
+.toc-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  border-radius: 50%;
+}
+.wiki-map-show {
+  display: block;
+  width: 100%;
+  margin: 0 0 14px;
+  padding: 6px 10px;
+  color: var(--text-secondary);
+  font-size: var(--fs-small);
+  text-align: left;
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.wiki-map-show:hover {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wg-edge-line,
+  .wg-node-mark {
+    transition: none;
+  }
+}

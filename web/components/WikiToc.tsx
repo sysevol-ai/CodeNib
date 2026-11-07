@@ -24,10 +24,13 @@ export default function WikiToc({
   pages,
   activeId,
   onPick,
+  colors,
 }: {
   pages: WikiPageRef[];
   activeId: string;
   onPick: (id: string) => void;
+  /** Each page's colour on the map, when the map is showing. */
+  colors?: Map<string, string>;
 }) {
   const [choices, setChoices] = useState<Record<string, boolean>>({});
   const [moreChoice, setMoreChoice] = useState<boolean | null>(null);
@@ -49,6 +52,9 @@ export default function WikiToc({
                 title={page.title}
                 onClick={() => onPick(page.id)}
               >
+                {colors?.has(page.id) && (
+                  <span className="toc-dot" style={{ background: colors.get(page.id) }} aria-hidden="true" />
+                )}
                 <span className="toc-label">{page.title}</span>
                 {page.cache_state && page.cache_state !== "ready" && (
                   // Ready is the normal state; only pages that still need work
