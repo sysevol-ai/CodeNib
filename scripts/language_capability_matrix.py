@@ -20,9 +20,8 @@ _LANGUAGES_PATH = _PROJECT_ROOT / "codenib" / "languages.py"
 
 BEGIN_MARKER = "<!-- BEGIN CODENIB_LANGUAGE_CAPABILITIES -->"
 END_MARKER = "<!-- END CODENIB_LANGUAGE_CAPABILITIES -->"
-LANDING_BEGIN_MARKER = "<!-- BEGIN CODENIB_LANGUAGE_GRID -->"
-LANDING_END_MARKER = "<!-- END CODENIB_LANGUAGE_GRID -->"
-_LANDING_BACKEND_NAMES = {"scip": "SCIP", "lsp": "LSP"}
+LANDING_BEGIN_MARKER = "<!-- BEGIN CODENIB_LANGUAGE_TIERS -->"
+LANDING_END_MARKER = "<!-- END CODENIB_LANGUAGE_TIERS -->"
 
 
 def _yes_no(value: bool) -> str:
@@ -89,56 +88,54 @@ def replace_block(text: str, block: str) -> str:
     return before.rstrip() + "\n\n" + block + after
 
 
-def _landing_cell(value: str | bool | None) -> str:
-    """Return one table cell: a backend's name, a yes dot, or a no dash."""
-
-    if not value:
-        return '<td><span class="cap-no"></span><span class="sr">No</span></td>'
-    if value is True:
-        return (
-            '<td class="on"><span class="cap-yes"></span>'
-            '<span class="sr">Yes</span></td>'
-        )
-    name = _LANDING_BACKEND_NAMES.get(value, value)
-    return f'<td class="on">{html.escape(name)}</td>'
+def _landing_tier(title: str, detail: str, names: list[str]) -> list[str]:
+    items = "".join(f"<li>{html.escape(name)}</li>" for name in names)
+    return [
+        '  <div class="lang-tier">',
+        f"    <div><h3>{title}</h3><p>{detail}</p></div>",
+        f'    <ul class="lang-names">{items}</ul>',
+        "  </div>",
+    ]
 
 
-def render_landing_grid() -> str:
-    """Return the homepage's language grid, with counts taken from the registry."""
+def render_landing_tiers() -> str:
+    """Return the homepage's language tiers, sorted from the registry."""
 
     rows = _language_capability_rows()
-    with_graph = sum(1 for row in rows if row.graph_backend)
-    capabilities = (
-        ("Code search", [row.chunker and row.agent for row in rows]),
-        ("Code graph", [row.graph_backend for row in rows]),
-        ("Incremental graph updates", [row.incremental_backend for row in rows]),
-        ("Language server command", [row.lsp for row in rows]),
-    )
-    columns = "".join(
-        f'<th scope="col">{html.escape(row.display_name)}</th>' for row in rows
-    )
+    with_graph = [row for row in rows if row.graph_backend]
+    updated = [row.display_name for row in with_graph if row.incremental_backend]
+    rebuilt = [row.display_name for row in with_graph if not row.incremental_backend]
+    search = [row.display_name for row in rows if not row.graph_backend]
     lines = [
         '<div class="section-head">',
         f'  <h2 id="languages-title">{len(rows)} languages, '
-        f"{with_graph} with a code graph.</h2>",
-        '  <p class="section-sub">See which capabilities apply to your repository '
-        "before you build an index.</p>",
+        f'<span class="dim">{len(with_graph)} with a code graph.</span></h2>',
+        '  <p class="section-sub">Find your language to see what CodeNib can do '
+        "with it.</p>",
         "</div>",
-        '<div class="lang-scroll" role="region" tabindex="0" '
-        'aria-labelledby="languages-title">',
-        '  <table class="lang-grid">',
-        f'    <thead><tr><th scope="col">Capability</th>{columns}</tr></thead>',
-        "    <tbody>",
+        '<div class="lang-tiers">',
+        *_landing_tier(
+            "Code graph, updated as files change",
+            "Indexed with SCIP or clangd, then patched through a language server.",
+            updated,
+        ),
+        *_landing_tier(
+            "Code graph, rebuilt when you re-index",
+            "Indexed with SCIP. Picking up a change takes a fresh index.",
+            rebuilt,
+        ),
+        *_landing_tier(
+            "Code search without a graph",
+            "Search and source reads work. Definitions and callers need a graph.",
+            search,
+        ),
+        "</div>",
     ]
-    for label, values in capabilities:
-        cells = "".join(_landing_cell(value) for value in values)
-        lines.append(f'      <tr><th scope="row">{label}</th>{cells}</tr>')
-    lines += ["    </tbody>", "  </table>", "</div>"]
     return "\n".join(f"      {line}" for line in lines)
 
 
-def replace_landing_grid(text: str, grid: str) -> str:
-    """Replace the generated grid between the homepage's markers."""
+def replace_landing_tiers(text: str, tiers: str) -> str:
+    """Replace the generated tiers between the homepage's markers."""
 
     before, begin, tail = text.partition(LANDING_BEGIN_MARKER)
     if not begin:
@@ -146,7 +143,7 @@ def replace_landing_grid(text: str, grid: str) -> str:
     _, end, after = tail.partition(LANDING_END_MARKER)
     if not end:
         raise ValueError(f"missing marker: {LANDING_END_MARKER}")
-    return f"{before}{begin}\n{grid}\n      {end}{after}"
+    return f"{before}{begin}\n{tiers}\n      {end}{after}"
 
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:
@@ -162,12 +159,12 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         help="Fail if the generated block in a file is out of date",
     )
     parser.add_argument(
-        "--write-landing", type=Path, help="Update the homepage's language grid"
+        "--write-landing", type=Path, help="Update the homepage's language tiers"
     )
     parser.add_argument(
         "--check-landing",
         type=Path,
-        help="Fail if the homepage's language grid is out of date",
+        help="Fail if the homepage's language tiers are out of date",
     )
     return parser.parse_args(argv)
 
@@ -183,15 +180,15 @@ def main(argv: list[str] | None = None) -> int:
         path = args.write_landing
         text = path.read_text(encoding="utf-8")
         path.write_text(
-            replace_landing_grid(text, render_landing_grid()), encoding="utf-8"
+            replace_landing_tiers(text, render_landing_tiers()), encoding="utf-8"
         )
         return 0
 
     if args.check_landing:
         path = args.check_landing
         actual = path.read_text(encoding="utf-8")
-        if actual != replace_landing_grid(actual, render_landing_grid()):
-            print(f"{path} language grid is out of date", file=sys.stderr)
+        if actual != replace_landing_tiers(actual, render_landing_tiers()):
+            print(f"{path} language tiers are out of date", file=sys.stderr)
             print(
                 f"Run: python {Path(__file__).as_posix()} --write-landing {path}",
                 file=sys.stderr,

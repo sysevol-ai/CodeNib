@@ -73,12 +73,15 @@ try {
       assert.ok(labels.length && labels.every(label => !label.includes("…")), "map labels must not be cut");
     }
     await page.locator(".home-map-tab").first().click();
-    // The grid is generated from the registry: every row has every language.
-    const columns = await page.locator(".lang-grid thead th").count();
-    assert.ok(columns > 1, "the language grid must have language columns");
-    for (const row of await page.locator(".lang-grid tbody tr").all()) {
-      assert.equal(await row.locator("th, td").count(), columns);
-    }
+    // Every language sits in one tier, and the heading counts them.
+    assert.equal(await page.locator(".lang-tier").count(), 3);
+    assert.equal(parseInt(await page.locator("#languages-title").innerText(), 10), await page.locator(".lang-names li").count());
+    // One dark family: no section inverts to a light background.
+    const lightest = await page.evaluate(() => Math.max(...[...document.querySelectorAll("main section, .cta-block")].map(section => {
+      const [red, green, blue, alpha = 1] = getComputedStyle(section).backgroundColor.match(/[\d.]+/g).map(Number);
+      return alpha ? (red + green + blue) / 3 : 0;
+    })));
+    assert.ok(lightest < 40, "sections must stay in one dark family");
     // The ranking stays with its scope, away from the hero.
     assert.equal(await page.locator(".stage").getByText("ContextBench").count(), 0);
     assert.match(await page.locator(".proof-band").innerText(), /October 23, 2026 \(UTC\)[\s\S]*not the Wiki or the code graph/);
@@ -174,6 +177,12 @@ try {
     await page.goto(base, { waitUntil: "networkidle" });
     await revealPage(page);
     await page.screenshot({ path: `${output}/landing-${width}.png`, fullPage: true });
+    const pageBackground = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+    for (const path of ["/blogs/", "/blogs/contextbench-500-tasks/"]) {
+      await page.goto(`${base}${path}`, { waitUntil: "networkidle" });
+      assert.equal(await page.evaluate(() => getComputedStyle(document.body).backgroundColor), pageBackground, `${path} must share the homepage's background`);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    }
     assert.deepEqual(errors, []);
     assert.deepEqual(remote, []);
     assert.deepEqual(failed, []);

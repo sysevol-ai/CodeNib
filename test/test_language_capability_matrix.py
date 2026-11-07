@@ -10,9 +10,9 @@ from pathlib import Path
 
 from scripts.language_capability_matrix import (
     render_block,
-    render_landing_grid,
+    render_landing_tiers,
     replace_block,
-    replace_landing_grid,
+    replace_landing_tiers,
 )
 
 
@@ -23,8 +23,8 @@ def test_language_capability_doc_is_current():
     assert replace_block(text, render_block()) == text
 
 
-def test_homepage_language_grid_is_current():
+def test_homepage_language_tiers_are_current():
     path = Path("landing/index.html")
     text = path.read_text(encoding="utf-8")
 
-    assert replace_landing_grid(text, render_landing_grid()) == text
+    assert replace_landing_tiers(text, render_landing_tiers()) == text

@@ -134,7 +134,7 @@
 
 .cost-bar .cost-repair {
   background: #0d9488;
-  border-left: 2px solid #fff;
+  border-left: 2px solid var(--surface);
 }
 
 .cost-split figcaption {

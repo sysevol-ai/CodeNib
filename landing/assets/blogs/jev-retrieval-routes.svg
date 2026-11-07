@@ -1,28 +1,28 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 840" width="1600" height="840" role="img" aria-labelledby="t d">
+<svg data-theme="dark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 840" width="1600" height="840" role="img" aria-labelledby="t d">
   <title id="t">How code candidates reach the reranker</title>
   <desc id="d">The same 100 issues and base-commit source snapshots feed four retrieval routes: BM25 top 100, model-planned grep with at most 100 chunks, CodeRankEmbed with FAISS top 100, and BM25 plus dense retrieval fused by reciprocal rank into 100 candidates. Model-planned grep uses one Sonnet 4.6 call to plan up to six regex or glob actions, runs rg locally, maps each match to its smallest enclosing chunk, then interleaves and deduplicates. Each route has its own frozen candidate pool, scored by Qwen3-Reranker 4B and Jev 1.13. Qwen 0.6B was additionally tested on BM25 and grep. Final quality uses code-block Recall@5 with base-aligned labels; route latency includes retrieval and reranking.</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
-      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+      <path d="M0,0 L10,5 L0,10 z" fill="#80868b"/>
     </marker>
     <marker id="arrow-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
-      <path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/>
+      <path d="M0,0 L10,5 L0,10 z" fill="#5f93ee"/>
     </marker>
     <style>
-      text { font-family: Geist, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; fill: #0f172a; }
+      text { font-family: Geist, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; fill: #e8eaed; }
       .mono { font-family: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
       .h { font-size: 22px; font-weight: 650; }
       .b { font-size: 18px; font-weight: 600; }
       .t { font-size: 17px; }
-      .s { font-size: 16px; fill: #475569; }
-      .kicker { font-size: 14px; font-weight: 650; letter-spacing: 0.08em; fill: #2563eb; }
-      .step { fill: #ffffff; stroke: #cbd5e1; stroke-width: 1.5; }
-      .lane { fill: #f8fafc; stroke: #e2e8f0; stroke-width: 1.5; }
-      .flow { fill: none; stroke: #94a3b8; stroke-width: 2; }
+      .s { font-size: 16px; fill: #bdc1c6; }
+      .kicker { font-size: 14px; font-weight: 650; letter-spacing: 0.08em; fill: #8ab4f8; }
+      .step { fill: #1a1b1e; stroke: #44484f; stroke-width: 1.5; }
+      .lane { fill: #212327; stroke: #303338; stroke-width: 1.5; }
+      .flow { fill: none; stroke: #80868b; stroke-width: 2; }
     </style>
   </defs>
 
-  <rect x="0" y="0" width="1600" height="840" fill="#ffffff"/>
+  <rect x="0" y="0" width="1600" height="840" fill="#1a1b1e"/>
 
   <text x="40" y="52" class="kicker">RETRIEVAL, THEN JUDGMENT</text>
   <text x="40" y="86" class="h" style="font-size:28px">Retrieval decides what can be found. The reranker only orders it.</text>
@@ -37,12 +37,12 @@
 
   <!-- Issue to routes -->
   <path d="M260,395 C282,395 280,200 298,200" class="flow" marker-end="url(#arrow)"/>
-  <path d="M260,395 L298,395" class="flow" style="stroke:#2563eb" marker-end="url(#arrow-blue)"/>
+  <path d="M260,395 L298,395" class="flow" style="stroke:#5f93ee" marker-end="url(#arrow-blue)"/>
   <path d="M260,395 C282,395 280,585 298,585" class="flow" marker-end="url(#arrow)"/>
 
   <!-- Lane A: BM25 -->
   <rect x="300" y="130" width="700" height="140" rx="14" class="lane"/>
-  <circle cx="330" cy="161" r="7" fill="#64748b"/>
+  <circle cx="330" cy="161" r="7" fill="#8d939b"/>
   <text x="346" y="167" class="b">BM25</text>
   <text x="976" y="167" class="s" text-anchor="end">K = 100 · coverage 63.78%</text>
   <rect x="324" y="186" width="300" height="64" rx="10" class="step"/>
@@ -54,8 +54,8 @@
   <text x="684" y="236" class="t">lexical score</text>
 
   <!-- Lane B: model-planned grep -->
-  <rect x="300" y="300" width="700" height="190" rx="14" class="lane" style="stroke:#93c5fd"/>
-  <circle cx="330" cy="331" r="7" fill="#2563eb"/>
+  <rect x="300" y="300" width="700" height="190" rx="14" class="lane" style="stroke:#5f93ee"/>
+  <circle cx="330" cy="331" r="7" fill="#5f93ee"/>
   <text x="346" y="337" class="b">Model-planned grep</text>
   <text x="976" y="337" class="s" text-anchor="end">mean 17.47 chunks · coverage 75.83%</text>
   <rect x="324" y="356" width="145" height="110" rx="10" class="step"/>
@@ -84,7 +84,7 @@
 
   <!-- Lane C: dense and hybrid controls -->
   <rect x="300" y="520" width="700" height="140" rx="14" class="lane"/>
-  <circle cx="330" cy="551" r="7" fill="#0d9488"/>
+  <circle cx="330" cy="551" r="7" fill="#1d9c8f"/>
   <text x="346" y="557" class="b">Dense and hybrid</text>
   <text x="976" y="557" class="s" text-anchor="end">K = 100 · coverage 71.98% / 75.28%</text>
   <rect x="324" y="576" width="300" height="64" rx="10" class="step"/>
@@ -97,7 +97,7 @@
 
   <!-- Routes to pool -->
   <path d="M1000,200 C1022,200 1020,380 1038,380" class="flow" marker-end="url(#arrow)"/>
-  <path d="M1000,395 L1038,395" class="flow" style="stroke:#2563eb" marker-end="url(#arrow-blue)"/>
+  <path d="M1000,395 L1038,395" class="flow" style="stroke:#5f93ee" marker-end="url(#arrow-blue)"/>
   <path d="M1000,590 C1022,590 1020,410 1038,410" class="flow" marker-end="url(#arrow)"/>
 
   <!-- Pool -->
@@ -109,7 +109,7 @@
   <text x="1060" y="456" class="s">BM25 and grep</text>
   <text x="1060" y="478" class="s">use no embeddings</text>
 
-  <path d="M1230,395 L1268,395" class="flow" style="stroke:#2563eb" marker-end="url(#arrow-blue)"/>
+  <path d="M1230,395 L1268,395" class="flow" style="stroke:#5f93ee" marker-end="url(#arrow-blue)"/>
 
   <!-- Reranker -->
   <rect x="1270" y="130" width="300" height="430" rx="14" class="lane"/>
@@ -121,7 +121,7 @@
   <text x="1308" y="272" class="s">0.6B: BM25 / grep only</text>
   <text x="1308" y="296" class="s">scores query–code pairs</text>
   <text x="1308" y="318" class="s" style="font-size:16px">local H100</text>
-  <rect x="1290" y="350" width="260" height="196" rx="10" class="step" style="stroke:#2563eb;stroke-width:2"/>
+  <rect x="1290" y="350" width="260" height="196" rx="10" class="step" style="stroke:#5f93ee;stroke-width:2"/>
   <text x="1308" y="379" class="b">Jev 1.13 · Decisions</text>
   <text x="1308" y="408" class="s">one four-level</text>
   <text x="1308" y="432" class="s">relevance question</text>
@@ -130,16 +130,16 @@
   <text x="1308" y="504" class="s">the scores and keeps</text>
   <text x="1308" y="528" class="s">failed batches in order</text>
 
-  <path d="M1420,560 L1420,598" class="flow" style="stroke:#2563eb" marker-end="url(#arrow-blue)"/>
+  <path d="M1420,560 L1420,598" class="flow" style="stroke:#5f93ee" marker-end="url(#arrow-blue)"/>
 
   <!-- Output -->
-  <rect x="1270" y="600" width="300" height="120" rx="14" class="step" style="stroke:#2563eb;stroke-width:2"/>
+  <rect x="1270" y="600" width="300" height="120" rx="14" class="step" style="stroke:#5f93ee;stroke-width:2"/>
   <text x="1292" y="636" class="b">Top 5 results</text>
   <text x="1292" y="664" class="s">Compare complete paths:</text>
   <text x="1292" y="696" class="t">Recall@5, latency and cost</text>
 
   <!-- Footnote -->
-  <line x1="40" y1="752" x2="1560" y2="752" stroke="#e2e8f0" stroke-width="1.5"/>
+  <line x1="40" y1="752" x2="1560" y2="752" stroke="#303338" stroke-width="1.5"/>
   <text x="40" y="786" class="t">Coverage is the ceiling: a reranker cannot recover code that never entered the pool.</text>
   <text x="40" y="814" class="s">All four routes use base-aligned labels on the same 100 CodeNib Base issues. Each route's candidate pool is frozen and shared by its rerankers.</text>
 </svg>

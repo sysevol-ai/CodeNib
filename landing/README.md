@@ -36,17 +36,21 @@ and `/#requests-auth` both reach the example. Local Agent setup makes no CodeNib
 model call; the user's agent still uses its own model.
 
 Sections share one content edge but not one layout: a split hero, a full-width
-example on a darker well, a narrow repository form, a full-width terminal, one
-light band and a full-width language grid. Keep that variation when adding a
-section. Left-column content follows its text directly; do not push it down with
-`margin-top: auto` or `justify-content: space-between`.
+example on a darker well, a narrow repository form, a full-width terminal, the
+ContextBench band one step brighter than the page, and language tiers. Keep that
+variation when adding a section. Left-column content follows its text directly;
+do not push it down with `margin-top: auto` or `justify-content: space-between`.
+
+The homepage and the blog stay in one dark family: surfaces step in brightness
+and nothing inverts. Blog figures are SVGs with their own colors, so run new ones
+through `python scripts/blog_figure_theme.py landing/assets/blogs/NEW.svg`.
 
 The ContextBench band describes a research agent that searches with glob, grep
 and reads and has no graph expansion. Keep that sentence with the ranking and the
 date, and keep the ranking out of the hero: it was not earned by the Wiki.
 
-The language grid between the `CODENIB_LANGUAGE_GRID` markers is generated from
-the language registry. To refresh it:
+The language tiers between the `CODENIB_LANGUAGE_TIERS` markers are generated
+from the language registry. To refresh them:
 
 ```bash
 python scripts/language_capability_matrix.py --write-landing landing/index.html
