@@ -7,21 +7,20 @@ SPDX-License-Identifier: Apache-2.0
 
 <div align="center">
   <img src="https://raw.githubusercontent.com/sysevol-ai/CodeNib/main/assets/codenib_logo.svg" alt="CodeNib" width="440">
-  <h1>Find the right code. Follow its references.</h1>
-  <p>Give Claude Code and Codex source context and typed graph navigation across languages.</p>
+  <h1>Understand unfamiliar code with evidence.</h1>
   <p>
-    <strong>71.4% code-block Recall@5 on 100 real issues.</strong><br>
-    Model-planned grep → Jev: +12.8 percentage points over the same grep candidates without reranking.<br>
-    <a href="https://docs.codenib.ai/evaluation/grep_jev/">Experimental result · Method and limitations</a>
+    Read a Wiki of how a repository works, follow its call paths on a map,
+    and open the source behind every explanation.<br>
+    Then give Claude Code or Codex the same index.
   </p>
   <p>
-    <a href="#quickstart">Use with your agent</a>
+    <a href="https://demo.codenib.ai"><strong>Browse a Wiki</strong></a>
     &nbsp;&middot;&nbsp;
-    <a href="https://demo.codenib.ai">Browse a Wiki</a>
+    <a href="#use-it-with-your-coding-agent">Use with your agent</a>
+    &nbsp;&middot;&nbsp;
+    <a href="https://docs.codenib.ai/">Docs</a>
     &nbsp;&middot;&nbsp;
     <a href="https://docs.codenib.ai/language_capabilities/">Languages</a>
-    &nbsp;&middot;&nbsp;
-    <a href="https://docs.codenib.ai/agent_integrations/">Reproductions</a>
     &nbsp;&middot;&nbsp;
     <a href="https://github.com/sysevol-ai/CodeNib/releases">Releases</a>
   </p>
@@ -36,19 +35,86 @@ SPDX-License-Identifier: Apache-2.0
 </div>
 
 <p align="center">
+  <a href="https://demo.codenib.ai/psf__requests?p=redirects">
+    <img src="https://raw.githubusercontent.com/sysevol-ai/CodeNib/main/assets/readme/wiki-map-requests.png" alt="The CodeNib Wiki for psf/requests: the page list on the left, a map of the Wiki's areas joined by recorded references in the middle, and the Redirect Resolution page on the right, which traces Session.send() to resolve_redirects() to get_redirect_target() with a file and line for each step" width="100%">
+  </a>
+</p>
+<p align="center"><sub>
+  The <a href="https://demo.codenib.ai/psf__requests?p=redirects">Requests Wiki</a>.
+  Each node on the map is a page, and the heavy lines are references the code
+  index recorded between areas. The page cites a file and line range for each claim.
+</sub></p>
+
+New in **0.2.5**: saved repository Wikis and portable OKF export, Pyrefly-backed
+Python graphs, static entry-path navigation and call-path rule checks.
+[Read the release notes](https://docs.codenib.ai/releases/0.2.5/). The map
+workspace and call-path pages shown here are on `main` and the hosted demo, and
+are not yet in a PyPI release.
+
+## A Wiki you can follow down to the source
+
+CodeNib indexes a repository, groups its code into areas, and writes a Wiki
+page for each one. The map and the call paths come from the code index, so you
+can check every arrow against the source.
+
+- **Start from the map.** Pages are nodes. Drag to pan, scroll to zoom, and
+  click a node to read its page. Click a heavy line to read an example of the
+  references behind it.
+- **Follow one path through the code.** The Overview opens on the main path
+  through the repository, one sentence per recorded call. The most important
+  detail pages draw their longest recorded call path. No model chooses the
+  arrows.
+- **Check each claim.** Sentences end with the file and line range they come
+  from, and each page lists its callers and calls in the code graph.
+- **Ask a follow-up.** *Ask this repository* answers a question with source
+  citations, using the model you configure.
+
+<p align="center">
+  <a href="https://demo.codenib.ai/gin-gonic__gin">
+    <img src="https://raw.githubusercontent.com/sysevol-ai/CodeNib/main/assets/readme/wiki-callpath-gin.png" alt="The CodeNib Wiki for gin-gonic/gin: a map of eight areas such as Radix Routing Tree and Engine Lifecycle, beside the Overview, which follows one recorded path from GET() through RouterGroup.handle and Engine.addRoute() to node.addRoute, citing the file and line of each call" width="100%">
+  </a>
+</p>
+<p align="center"><sub>
+  The <a href="https://demo.codenib.ai/gin-gonic__gin">gin Wiki</a> opens on one
+  recorded path, from <code>GET()</code> to <code>node.insertChild()</code>.
+</sub></p>
+
+### Open a Wiki
+
+| To | Do this |
+| --- | --- |
+| Read one now | Open a [ready Wiki](https://demo.codenib.ai/browse) for requests, scikit-learn, sympy, fmt, redis, caddy, gin, hugo and more. No account or API key. |
+| Map a public GitHub repository | Paste its URL on [demo.codenib.ai](https://demo.codenib.ai), or replace `github.com` with `demo.codenib.ai` in the URL. A new Wiki uses your OpenRouter account, with a $0.25–$5 spending limit you set before it starts. |
+| Map your own checkout | Run the Wiki locally, as below. |
+| Share it | Publish the Wiki, with its source citations, to [GitHub Pages](https://docs.codenib.ai/github_pages/). |
+
+To build a Wiki with the map on your machine:
+
+```bash
+python -m pip install "codenib[graph]"
+codenib wiki /path/to/your/repo --preset graph
+```
+
+This builds a search index and a symbol graph, then opens the Wiki at
+`http://localhost:3000`. Pages are written from the index without a model.
+Add `--generate --model <provider/model>` for model-written pages.
+[Local Wiki guide](https://docs.codenib.ai/quickstart/)
+
+<a id="quickstart"></a>
+
+## Use it with your coding agent
+
+Build the same index for Claude Code or Codex. Your agent can then find
+definitions, follow callers and read the source in your own checkout.
+
+<p align="center">
   <a href="https://github.com/sysevol-ai/CodeNib/blob/main/landing/assets/demos/codegraph-claude.mp4">
     <img src="https://raw.githubusercontent.com/sysevol-ai/CodeNib/main/landing/assets/demos/codegraph-claude.png" alt="Play a recorded Claude Code session on Requests: explore_context finds where authentication is stripped on redirects, then one dependency_subgraph call traces the four-hop caller chain from the public API" width="100%">
   </a>
 </p>
-<p align="center"><a href="https://github.com/sysevol-ai/CodeNib/blob/main/landing/assets/demos/codegraph-claude.mp4">▶ Watch the 15-second replay</a> · real CLI output · waits condensed ·
-  <a href="https://docs.codenib.ai/codegraph/#recorded-agent-session">Pinned source, transcript and setup details</a>.
-</p>
-
-New in **0.2.5**: saved repository Wikis and portable OKF export, Pyrefly-backed
-Python graphs, static entry-path navigation and call-path rule checks.
-[Read the release notes](https://docs.codenib.ai/releases/0.2.5/).
-
-## Quickstart
+<p align="center"><sub><a href="https://github.com/sysevol-ai/CodeNib/blob/main/landing/assets/demos/codegraph-claude.mp4">▶ Watch the 15-second replay</a> · real CLI output · waits condensed ·
+  <a href="https://docs.codenib.ai/codegraph/#recorded-agent-session">Pinned source, transcript and setup details</a>
+</sub></p>
 
 Requires Python 3.10+, Git, and Claude Code or Codex. Initialization accepts
 uncommitted edits and preserves the checkout.
@@ -61,30 +127,14 @@ codenib codegraph init /path/to/your/repo
 Then ask your agent: **“Use CodeNib's `explore_context` to find where request
 retry behavior is implemented. Cite the files and lines.”**
 
-This shipping path builds local search and a typed symbol graph, then connects
-installed agent clients. It needs no model, API key, or GPU for CodeNib;
-your agent uses its own model. It is separate from the grep/Jev experiment
-above. Language toolchain and project prerequisites vary.
+This builds local search and a typed symbol graph, then connects installed
+agent clients. CodeNib needs no model, API key, or GPU of its own; your agent
+uses its own model. Language toolchain and project prerequisites vary.
 
 [Setup and troubleshooting](https://docs.codenib.ai/codegraph/)
 · [Source exclusions](https://docs.codenib.ai/codegraph/#select-the-repository-source-surface)
 · [All MCP tools](https://docs.codenib.ai/mcp/)
-· [Local Wiki](https://docs.codenib.ai/quickstart/)
-
-## Why CodeNib
-
-- **Inspect the evidence.** Retrieve bounded code context with file and line
-  references, then navigate definitions and static references. Read the source
-  at each reference before describing a call path.
-- **Use the same tools across languages.** The registry tracks 14 language
-  entries, including 12 with graph backends. Check capability and setup
-  differences in the [language matrix](https://docs.codenib.ai/language_capabilities/).
-- **Compare methods on the same source.** Pinned agent contracts, datasets,
-  and scorer checks make the [reproduction surface](https://docs.codenib.ai/agent_integrations/)
-  inspectable.
-- **Share what you found.** Export a Wiki with source citations to your own
-  [GitHub Pages](https://docs.codenib.ai/github_pages/), or browse the
-  [public examples](https://demo.codenib.ai).
+· [Change guard](https://docs.codenib.ai/guard/) (on `main`: lists the tests a change reaches before your agent finishes)
 
 ## How it compares
 
@@ -109,27 +159,43 @@ None of these repository tools needs its own model or API key; your agent
 uses its own model. [Detailed comparison, sources and boundaries](https://docs.codenib.ai/comparison/).
 CodeNib also includes an optional [grep → Jev route](https://docs.codenib.ai/guides/grep-jev/)
 using OpenRouter for planning and reranking; selected code goes to remote
-models. Authorization previews remain opt-in. The historical research result
-above is separate from the product evaluation and the model-free CodeGraph row.
+models. Authorization previews remain opt-in.
 
 ## Languages
 
-Graph backends: **Python, Go, Rust, C/C++, C#, Java, Ruby, PHP, Kotlin,
-Scala, JavaScript, and TypeScript**. Swift and Lua support chunking/retrieval.
-Provider prerequisites and coverage differ by language.
+CodeNib registers 14 languages, 12 of them with a code graph.
 
-The [generated language matrix](https://docs.codenib.ai/language_capabilities/)
-separates chunking, graph backends, incremental-backend support, and decoder
-parity. The product currently reuses or rebuilds views; file-level delta
-repair is not enabled.
+| Support | Languages |
+| --- | --- |
+| Code graph with an incremental backend (LSP or clangd) | Python, Go, Rust, C/C++, JavaScript, TypeScript |
+| Code graph | C#, Java, Ruby, PHP, Kotlin, Scala |
+| Search only, no definitions or callers | Swift, Lua |
+
+These are registered capabilities, not the tools on your machine;
+`codenib toolchain status` shows those. The product currently reuses or
+rebuilds views; file-level delta repair is not enabled. The
+[language matrix](https://docs.codenib.ai/language_capabilities/) lists each
+backend and its prerequisites.
 
 ## Results and reproductions
+
+- **#1 in line recall and Pass@1 on ContextBench's Agent systems leaderboard**:
+  77.90% line recall and 388 of 500 tasks resolved (77.60% Pass@1), as of
+  October 23, 2026 (UTC). This is our research agent, not the Wiki or the code
+  graph: two Claude Haiku 5.5 workers search with glob, grep and reads, then
+  Claude Opus 5.5 repairs.
+  [How it works](https://codenib.ai/blogs/contextbench-500-tasks/)
+  · [Scope and evidence](https://codenib.ai/blogs/contextbench-500-tasks/#scope)
+- **71.4% code-block Recall@5 on 100 real issues** with model-planned
+  grep → Jev, 12.8 percentage points above the same grep candidates without
+  reranking. This is an experimental retrieval route, separate from the
+  model-free CodeGraph.
+  [Method and limitations](https://docs.codenib.ai/evaluation/grep_jev/)
 
 | Start here | What you can inspect |
 | --- | --- |
 | [Context methods and support matrix](https://docs.codenib.ai/concepts/methods/) | Every retrieval pipeline, LLM workflow and agent route, sorted by the views it reads and who controls the search |
 | [Benchmarks](https://docs.codenib.ai/evaluation/) | Localization, agent-context and resolution layers, evidence levels, and the method × benchmark matrix over CodeNib Base/Synthesis, SWE-bench Lite, Loc-Bench, SWE-Explore, Agent Retrieval Bench and ContextBench |
-| [grep → Jev result](https://docs.codenib.ai/evaluation/grep_jev/) | 100-issue retrieval comparison, candidate controls, model use and limitations |
 | [Agent integration matrix](https://docs.codenib.ai/agent_integrations/) | Revision-pinned LocAgent, Agentless, CoSIL, OrcaLoca and RepoNavigator contracts; compatibility does not imply reproduced paper scores |
 | [SWE-Explore validation](https://docs.codenib.ai/evaluation/swe_explore/) | 1,020/1,020 real-output metric cells match the pinned official evaluator on a fixed 20-case run |
 | [DGX Spark deployment](https://docs.codenib.ai/guides/reference-deployments/dgx-spark/) | Local Wiki, CodeGraph and model serving on GB10; a deployment guide, not a token-saving benchmark |
