@@ -986,10 +986,11 @@ def flow_contract_from_relations(
     """Pick the longest call path among a page's recorded relations.
 
     Every arrow is a relation the index recorded, so no model chooses the
-    picture. Only calls between callables in non-test code qualify: a reference
-    to a type or a test is not a step in how the code runs. Returns ``None``
-    when no path reaches ``min_nodes``; a two-node path explains nothing the
-    prose does not already say.
+    picture. The index records references, and a callback handed around is a
+    reference too, so a relation qualifies only when its ``invoked`` flag says
+    the source shows a call at that line. It must also join callables in
+    non-test code. Returns ``None`` when no path reaches ``min_nodes``; a
+    two-node path explains nothing the prose does not already say.
     """
 
     outgoing: dict[str, list[tuple[str, str]]] = {}
@@ -1004,7 +1005,8 @@ def flow_contract_from_relations(
         target = str(raw.get("target") or "").strip()
         reference = str(raw.get("id") or "").strip()
         if (
-            not source
+            not raw.get("invoked")
+            or not source
             or not target
             or not reference
             or source.casefold() == target.casefold()

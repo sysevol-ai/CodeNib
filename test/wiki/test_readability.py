@@ -12,11 +12,12 @@ from codenib.wiki.agent_wiki import (
     _drop_duplicate_framing,
     _ensure_cited_intro,
     _fact_plan_markdown,
+    _line_invokes,
     _readme_sentence_without_praise,
     _without_path_only_sections,
     _without_repeated_subject,
 )
-from codenib.wiki.evidence import EvidenceItem
+from codenib.wiki.evidence import EvidenceItem, RelationItem
 from codenib.wiki.multimodal import plan_media_slots
 from codenib.wiki.quality import (
     audit_page,
@@ -621,17 +622,21 @@ def test_rewrite_gives_up_quietly(reply, tmp_path):
     )
 
 
+def _call(reference, source, target):
+    return {"id": reference, "source": source, "target": target, "invoked": True}
+
+
 _CALLS = [
-    {"id": "R1", "source": "a.py:Api.get()", "target": "b.py:Session.send()"},
-    {"id": "R2", "source": "b.py:Session.send()", "target": "c.py:Adapter.send()"},
-    {"id": "R3", "source": "c.py:Adapter.send()", "target": "d.py:build()"},
+    _call("R1", "a.py:Api.get()", "b.py:Session.send()"),
+    _call("R2", "b.py:Session.send()", "c.py:Adapter.send()"),
+    _call("R3", "c.py:Adapter.send()", "d.py:build()"),
 ]
 
 
 def test_the_longest_recorded_call_path_is_drawn():
     contract = flow_contract_from_relations(
         [
-            {"id": "R9", "source": "z.py:other()", "target": "c.py:Adapter.send()"},
+            _call("R9", "z.py:other()", "c.py:Adapter.send()"),
             *_CALLS,
         ]
     )
@@ -659,18 +664,23 @@ def test_the_longest_recorded_call_path_is_drawn():
         _CALLS[:1],
         # A reference to a type is not a step in how the code runs.
         [
-            {"id": "R1", "source": "a.py:go()", "target": "a.py:Config"},
-            {"id": "R2", "source": "a.py:Config", "target": "a.py:load()"},
+            _call("R1", "a.py:go()", "a.py:Config"),
+            _call("R2", "a.py:Config", "a.py:load()"),
         ],
         # Neither is a test calling into the code.
         [
-            {"id": "R1", "source": "tests/test_a.py:test_go()", "target": "a.py:go()"},
-            {"id": "R2", "source": "a.py:go()", "target": "a.py:run()"},
+            _call("R1", "tests/test_a.py:test_go()", "a.py:go()"),
+            _call("R2", "a.py:go()", "a.py:run()"),
+        ],
+        # A callback handed around is a reference, not a call.
+        [
+            {"id": "R1", "source": "a.py:go()", "target": "a.py:run()"},
+            {"id": "R2", "source": "a.py:run()", "target": "a.py:save()"},
         ],
         # An arrow with no recorded relation id cannot be cited.
         [
-            {"source": "a.py:go()", "target": "a.py:run()"},
-            {"source": "a.py:run()", "target": "a.py:save()"},
+            {"source": "a.py:go()", "target": "a.py:run()", "invoked": True},
+            {"source": "a.py:run()", "target": "a.py:save()", "invoked": True},
         ],
     ],
 )
@@ -681,9 +691,9 @@ def test_nothing_is_drawn_without_a_real_call_path(relations):
 def test_a_cycle_ends_the_path():
     contract = flow_contract_from_relations(
         [
-            {"id": "R1", "source": "a.py:go()", "target": "a.py:run()"},
-            {"id": "R2", "source": "a.py:run()", "target": "a.py:save()"},
-            {"id": "R3", "source": "a.py:save()", "target": "a.py:go()"},
+            _call("R1", "a.py:go()", "a.py:run()"),
+            _call("R2", "a.py:run()", "a.py:save()"),
+            _call("R3", "a.py:save()", "a.py:go()"),
         ]
     )
 
@@ -691,10 +701,7 @@ def test_a_cycle_ends_the_path():
 
 
 def test_a_long_path_stays_within_the_figure_limit():
-    relations = [
-        {"id": f"R{i}", "source": f"a.py:f{i}()", "target": f"a.py:f{i + 1}()"}
-        for i in range(12)
-    ]
+    relations = [_call(f"R{i}", f"a.py:f{i}()", f"a.py:f{i + 1}()") for i in range(12)]
 
     assert len(flow_contract_from_relations(relations)["data"]["nodes"]) == 7
 
@@ -1086,3 +1093,100 @@ def test_a_review_that_scores_nothing_is_not_a_verdict(tmp_path):
 
     assert "story_review" not in page["quality"]
     assert page["generation"]["mode"] == "generated"
+
+
+@pytest.mark.parametrize(
+    ("line", "target", "expected"),
+    [
+        ("    return self.send(prep)", "a.py:Session.send()", True),
+        ("    result = send (prep)", "a.py:send()", True),
+        ("    let value = parse::<Config>(text);", "a.rs:parse()", True),
+        ("    jar = RequestsCookieJar()", "a.py:RequestsCookieJar.__init__()", True),
+        # A callback handed along names the function but does not call it.
+        ("    hooks = {'response': send}", "a.py:send()", False),
+        ("    register(handler=send)", "a.py:send()", False),
+        # Another name that merely ends the same way.
+        ("    resend(prep)", "a.py:send()", False),
+    ],
+)
+def test_a_line_must_call_the_target_not_just_name_it(line, target, expected):
+    assert _line_invokes(line, target) is expected
+
+
+def test_relation_is_invoked_only_when_the_source_shows_a_call(tmp_path):
+    wiki = _wiki(SimpleNamespace(), tmp_path)
+    lines = {3: "    return handle(request)", 7: "    hooks['done'] = handle"}
+    wiki._rel = lambda file: file
+    wiki._wb = SimpleNamespace(
+        source=lambda _file, start, _end: {"content": lines[start]}
+    )
+    called = RelationItem("R1", "a.py:go()", "a.py:handle()", ("a.py:3",))
+    passed = RelationItem("R2", "a.py:go()", "a.py:handle()", ("a.py:7",))
+    mixed = RelationItem("R3", "a.py:go()", "a.py:handle()", ("a.py:7", "a.py:3"))
+
+    assert wiki._relation_is_invoked(called) is True
+    assert wiki._relation_is_invoked(passed) is False
+    assert wiki._relation_is_invoked(mixed) is True
+
+
+def test_a_language_with_paren_free_calls_cannot_prove_a_call(tmp_path):
+    wiki = _wiki(SimpleNamespace(), tmp_path)
+    wiki._rel = lambda file: file
+    wiki._wb = SimpleNamespace(source=lambda *_args: {"content": "  handle request"})
+
+    assert wiki._anchor_invokes("a.rb", 3, "a.rb:handle()") is None
+    assert wiki._anchor_invokes("a.py", 3, "a.py:handle()") is False
+
+
+def test_an_unreadable_line_proves_nothing(tmp_path):
+    def broken(*_args):
+        raise OSError("gone")
+
+    wiki = _wiki(SimpleNamespace(), tmp_path)
+    wiki._rel = lambda file: file
+    wiki._wb = SimpleNamespace(source=broken)
+
+    assert wiki._anchor_invokes("a.py", 3, "a.py:handle()") is None
+
+
+def test_a_moved_thesis_keeps_its_own_citations():
+    other = EvidenceItem(
+        id="E2",
+        file="src/other.py",
+        start_line=1,
+        end_line=2,
+        symbol="other",
+        kind="function",
+        content='def other():\n    """Each repository request reaches one handler."""\n',
+    )
+    plan = {
+        **_plan("`Router` dispatches each repository request"),
+        "purpose": {
+            "statements": ["Each repository request reaches one handler"],
+            "evidence": ["E2"],
+        },
+    }
+
+    markdown = _fact_plan_markdown(plan, [_EVIDENCE, other], [])
+
+    opening, moved = markdown.split("\n\n")[:2]
+    assert opening == "Each repository request reaches one handler. [E2]"
+    assert moved == "`Router` dispatches each repository request. [E1]"
+
+
+def test_short_sentences_still_count():
+    short = " ".join(["Requests go in. A router reads them."] * 8)
+    page = f"Requests go in. [E1]\n\n## Flow\n\n{short} [E1]\n"
+
+    report = readability_report(page)
+
+    assert report["prose_words"] >= 40
+    assert "too_little_prose" not in report["readability_failures"]
+    assert report["opening_sentence"].startswith("Requests go in")
+    assert report["opening_plain"] is True
+
+
+def test_a_short_opening_on_code_is_still_seen():
+    page = "`a()` runs. [E1]\n\nThe rest of this opening explains what it does. [E1]"
+
+    assert readability_report(page)["opening_plain"] is False

@@ -71,8 +71,8 @@ Deterministic and blocking:
 | Longest sentence | 45 words | none |
 | Length | 40 to 450 words on an Overview, 40 to 800 elsewhere | none |
 
-None of the 108 pages passed all of these. On the same repository at the same
-commit, the rewritten pipeline passed 12 of 13.
+None of the 108 pages passed all of these. On one of those repositories at the
+same commit, the rewritten pipeline passed 26 of 27 pages across two runs.
 
 The ratio limits apply from four sentences up, and an Overview's numbered main
 path counts as content for the minimum. Code excerpts, tables, relation rows, the
@@ -119,8 +119,9 @@ Without a usable graph, tiers follow outline order and are not stored.
 
 The same weights choose where the Overview's main path starts: the public callable
 that nothing else calls and whose heaviest walk through the code weighs the most,
-preferring a manifest entry point when one has a path. Each hop still follows a
-recorded call. On Requests this starts at `get()` in `api.py`, whichever code the
+preferring a manifest entry point when one has a path. Each hop follows a reference
+whose line in the source is a call, or a base method to the subclass that implements
+it. On Requests this starts at `get()` in `api.py`, whichever code the
 page's search happened to retrieve.
 
 ## Frontend rules
@@ -131,8 +132,10 @@ page's search happened to retrieve.
   It is never built from a static call graph. A missing architecture is a
   composition warning, not a reason to withhold the page.
 - `primary` and `key` pages draw their longest recorded call path of at least
-  three steps, and draw nothing when there is none. No model chooses the arrows,
-  and only calls between callables in non-test code qualify.
+  three steps, and draw nothing when there is none. No model chooses the arrows.
+  The index records references, and a callback handed around is one too, so an
+  arrow qualifies only when the source shows a call at its recorded line, between
+  callables in non-test code.
 - The page list opens on `primary` pages. Whatever holds the current page opens
   by itself, so the page being read never disappears from its own navigation.
 - A parent page ends with "Go deeper" links to its detail pages. Callers and

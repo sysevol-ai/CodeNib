@@ -137,7 +137,7 @@ def _without_internal_wiki_navigation(
     return "\n\n".join(explanatory_blocks)
 
 
-def _prose_sentences(markdown: str) -> list[str]:
+def _prose_sentences(markdown: str, *, min_chars: int = 25) -> list[str]:
     without_fences = strip_code_fences(_without_internal_wiki_navigation(markdown))
     without_headings = re.sub(
         r"^#{1,6}\s+.*$",
@@ -155,7 +155,7 @@ def _prose_sentences(markdown: str) -> list[str]:
         cleaned = _EVIDENCE_MARKER.sub("", sentence)
         cleaned = re.sub(r"\s+", " ", cleaned).strip()
         plain = re.sub(r"[`*_[\]()#>-]", "", cleaned).strip()
-        if len(plain) >= 25:
+        if len(plain) >= min_chars:
             sentences.append(cleaned)
     return sentences
 
@@ -823,10 +823,12 @@ def readability_report(markdown: str, *, overview: bool = False) -> dict[str, An
     # asterisk hides the sentence end and it reads as one long sentence with the
     # paragraph below.
     measured = re.sub(r"^\*([^*\n]+)\*(?=\s|$)", r"\1", measured, flags=re.MULTILINE)
-    sentences = _prose_sentences(measured)
+    # The other checks skip short fragments, but here a short sentence still
+    # counts towards length and can be the opening a reader sees first.
+    sentences = _prose_sentences(measured, min_chars=1)
     first_section = re.search(r"^##\s+\S", measured, flags=re.MULTILINE)
     intro = measured[: first_section.start()] if first_section else measured
-    intro_sentences = _prose_sentences(intro)
+    intro_sentences = _prose_sentences(intro, min_chars=1)
     opening = (intro_sentences or sentences or [""])[0]
 
     code_spans = 0

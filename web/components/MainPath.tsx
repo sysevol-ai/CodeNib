@@ -33,7 +33,8 @@ export default function MainPath({
       <figcaption className="main-path-head">
         <h2 className="main-path-title">{titleWithCode(journey.title)}</h2>
         <p className="main-path-note">
-          One path selected from the code index. Each arrow is a recorded call.
+          One path selected from the code index. Each arrow is a call found in the
+          source, or a base method leading to the subclass that implements it.
         </p>
       </figcaption>
       <ol className="main-path-steps">

@@ -2404,6 +2404,34 @@ def _without_path_only_sections(plan: dict[str, Any]) -> dict[str, Any]:
     return {**plan, "sections": kept}
 
 
+# Calls can be written without parentheses in these languages, so a line without
+# them says nothing either way.
+_CALLS_WITHOUT_PARENS = frozenset({".rb", ".kt", ".kts", ".swift", ".scala", ".lua"})
+
+
+def _line_invokes(line: str, target_label: str) -> bool:
+    """Return whether a source line calls ``target_label``, not just names it.
+
+    The index records references, and a callback handed to another function
+    is one. A call is the target's name followed by parentheses, allowing for
+    generics. A constructor is called through its class's name.
+    """
+
+    name = re.sub(r"\([^)]*\)$", "", target_label.rsplit(":", 1)[-1]).strip()
+    parts = name.split(".")
+    leaf = parts[-1]
+    if leaf in {"__init__", "__new__"} and len(parts) >= 2:
+        leaf = parts[-2]
+    if not leaf:
+        return False
+    return bool(
+        re.search(
+            rf"(?<![\w]){re.escape(leaf)}\s*(?:::)?(?:<[^<>()]*>)?\s*\(",
+            line,
+        )
+    )
+
+
 def _starts_with_code(text: str) -> bool:
     return re.sub(r"^[\s*_>#-]+", "", text).startswith("`")
 
@@ -2477,6 +2505,7 @@ def _fact_plan_markdown(
     # The story's reader question stays in the plan, where it steers the
     # argument. Printed on the page it only repeated the opening sentence.
     purpose_block = ""
+    moved_thesis = ""
     purpose = {} if concise_overview else plan.get("purpose") or {}
     purpose_statements = [str(item).strip() for item in purpose.get("statements") or []]
     purpose_statements = [item for item in purpose_statements if item]
@@ -2502,14 +2531,16 @@ def _fact_plan_markdown(
             and plain_opening is not None
             and purpose_ids
         ):
-            # Open on the plain statement; the thesis keeps its place as the
-            # argument that follows.
+            # Open on the plain statement; the thesis follows as the argument,
+            # still cited by its own evidence.
             sentences.remove(plain_opening)
-            sentences.insert(0, intro[0])
+            moved_thesis = f"{intro[0]} " + " ".join(f"[{item}]" for item in intro[1])
             intro = (plain_opening, purpose_ids)
         purpose_block = " ".join(sentences)
-        if purpose_ids:
+        if purpose_block and purpose_ids:
             purpose_block += " " + " ".join(f"[{item}]" for item in purpose_ids)
+        if moved_thesis:
+            purpose_block = f"{moved_thesis} {purpose_block}".strip()
 
     # Mermaid node ids must be opaque; the labels carry the real names.
     flow_block = ""
@@ -5040,6 +5071,42 @@ class AgentWiki:
                     found.append((child.target, sub.index))
         return found[0] if len(found) == 1 else None
 
+    def _anchor_invokes(
+        self,
+        file: Optional[str],
+        line: int,
+        target_label: str,
+    ) -> Optional[bool]:
+        """Check one 1-based line of source for a call to ``target_label``.
+
+        Returns ``None`` when the source cannot settle it: the line cannot be
+        read, or the language allows calls without parentheses.
+        """
+
+        relative = self._rel(file) or ""
+        if not relative or os.path.splitext(relative)[1] in _CALLS_WITHOUT_PARENS:
+            return None
+        try:
+            source = self._wb.source(relative, line, line)
+        except Exception as exc:  # noqa: BLE001 - the answer is simply unknown
+            logger.debug("wiki call check could not read %s: %s", relative, exc)
+            return None
+        text = (source or {}).get("content") if isinstance(source, Mapping) else None
+        if not text:
+            return None
+        return _line_invokes(str(text), target_label)
+
+    def _relation_is_invoked(self, relation: RelationItem) -> bool:
+        """Return whether source shows a call at any of a relation's anchors."""
+
+        for anchor in relation.anchors:
+            file, separator, line = str(anchor).rpartition(":")
+            if not separator or not line.isdigit():
+                continue
+            if self._anchor_invokes(file, int(line), relation.target):
+                return True
+        return False
+
     def _main_path_evidence(
         self,
         raw_graph: Any,
@@ -5245,6 +5312,15 @@ class AgentWiki:
                     continue
                 target_file = self._rel(target["file"]) or ""
                 if not target_file or is_test_file(target_file):
+                    continue
+                # A reference is not a call: a callback handed along must not
+                # become a step in the main path. An unreadable line stays in.
+                if (
+                    self._anchor_invokes(
+                        edge.anchor_file, edge.anchor_line + 1, target["label"]
+                    )
+                    is False
+                ):
                     continue
                 if os.path.isabs(target["file"]) and repo_dir:
                     try:
@@ -8191,6 +8267,10 @@ class AgentWiki:
         # page with graph relations cannot finish an otherwise successful model
         # call and then fail while planning its optional media metadata.
         evidence_payload = evidence_metadata(evidence, relations)
+        for payload, relation in zip(
+            evidence_payload["relations"], relations, strict=True
+        ):
+            payload["invoked"] = self._relation_is_invoked(relation)
         total_ms = (perf_counter() - generation_started) * 1000
         generation_metrics = {
             "total_ms": round(total_ms, 1),
