@@ -8,48 +8,33 @@ Run it locally from the repository root:
 python -m http.server 7870 --directory landing
 ```
 
-Deploy `landing/` as the document root for `codenib.ai`. The homepage presents
-the change guard (`codenib guard`): what it tells a coding agent before it
-finishes, one real agent patch that passed SWE-bench and broke another test,
-the guard's result on all 68 such regressions, notes anchored to code, and the
-install commands. Repository Wikis, MCP search and the blog are secondary links.
+Deploy `landing/` as the document root for `codenib.ai`. The homepage leads
+with the same interactive Requests example as the Wiki homepage: a question,
+an explanation, four steps and clickable source. The marketing page offers
+three questions about authentication, request flow and caller impact, all
+bounded to that selected path. Its four source excerpts and three recorded
+call sites are bundled with the site; exploring it
+makes no request to the live Wiki service or a model. Visiting a Wiki is an
+explicit link. The repository form needs the matching Wiki frontend's `?repo=`
+resolver; deploy that frontend before publishing the new marketing form.
 
-Everything on the homepage is static HTML; `assets/guard/landing-guard.js` only
-adds the copy button, the chart's case names and the opt-in funnel events. Keep
-it that way: the case, the call path, the chart and the commands must read in
-full without the script.
+When changing the shared example component, build the Wiki frontend with
+`cd web && npm run build` from the same commit and deploy its `dist/` alongside
+the static homepage. Preserve the hosted `runtime-config.js`. After publishing,
+verify both example fragment links, the source controls and the repository
+handoff on desktop and mobile, as well as the real page title and asset content
+types described below. Record live acceptance in the first-visit milestone in
+`docs/adoption_roadmap.md`; a merged PR alone does not confirm publication.
 
-The homepage's evidence is generated, not typed:
-
-- The hook message and the call path are actual `codenib guard` output for
-  sympy-24443 with the OpenHands patch applied at SWE-bench's base commit.
-- The 68 squares per row come from the guard check's per-case results
-  (pull request #976): one square per regression, in the same order in both
-  rows. Regenerate them with the check's scripts rather than editing by hand.
-- Patches and full-suite results are from PatchDiff (Wang, Pradel and Liu,
-  ICSE 2026), CC BY 4.0. Keep the attribution next to the case.
-
-- The xarray case is the one the plan named; its caption says why its list is
-  long (a module-level import made the guard count the whole file as changed).
-- "What it looks like in Claude Code" condenses a real headless session with
-  the guard hooks on SWE-bench Verified sympy-24443, the hero case's issue.
-  Sanitized transcripts of all three recorded sessions are in
-  `assets/demos/guard-session-*.jsonl`; quotes on the page are verbatim.
-  Replace it with a session from the #975 in-the-loop A/B when that runs, and
-  never with a staged one.
-
-Until a CodeNib release includes `codenib guard`, the install block builds
-CodeNib from source (the wheel needs the prebuilt Wiki frontend, so a plain
-`pip install git+…` does not work). After that release, replace the first
-three lines with `python -m pip install "codenib[graph]"` and update the copy
-check in `web/landing_verify.mjs`.
-
-The demo (`web/`) is also the Wiki UI packaged with CodeNib, so its home page
-is a deployment setting: the hosted demo's `runtime-config.js` sets
-`home: "guard"` to open on the guard cases. Without it, `/` stays the Wiki
-home. `/guard` and `/wikis` always reach the two pages.
-
-The Requests example below now serves the Wiki homepage (`/wikis` on the demo).
+Keep the reading order: try the example, explore a public repository, connect
+a local coding agent, then inspect technical evidence and documentation. The
+repository entry must show OpenRouter funding, the spending-limit boundary and
+hosted file/chunk limits before handoff. Keep the example above the repository
+form on phones; task choices follow the example there. `/#example-source` and
+`/#requests-auth` both reach the example. Hero, repository and agent sections
+share their content edges and column split; preserve those alignments when
+changing copy. Local Agent setup makes no CodeNib model call; the user's
+agent still uses its own model.
 
 The example is one selected call path, not a runtime trace or a whole-repository
 architecture. `assets/explore/requests.js` records the full source commit,
@@ -79,26 +64,26 @@ Provider-free desktop/mobile, keyboard, routing, sharing and event checks:
 node web/first_visit_verify.mjs http://127.0.0.1:3012 http://127.0.0.1:7882
 ```
 
-For the homepage's layout at six widths, the page without JavaScript, copying
-the install commands, the chart's case names and the opt-in events under Do Not
-Track and Global Privacy Control:
+For the marketing page's task choices, source selection, alignment, repository
+handoff, legacy anchors, no-JavaScript fallback and opt-in event behavior:
 
 ```bash
 node web/landing_verify.mjs http://127.0.0.1:7870 /tmp/codenib-landing
 ```
 
-For opening and refreshing the actual homepage while its script is delayed or
-fails:
+For opening and refreshing the actual homepage while the example's style
+dependency is delayed or fails:
 
 ```bash
 node web/landing_loading_verify.mjs
 node web/landing_loading_verify.mjs https://codenib.ai /tmp/codenib-landing-live
 ```
 
-The first command starts its own local static server. It checks that the case,
-the call path, the chart's 136 squares and the install commands are on the page
-before the script arrives, that a failed script leaves no dead copy button, and
-that the page never scrolls sideways.
+The first command starts its own local static server. The regression samples
+painted frames at desktop/mobile widths and keeps a readable Wiki link when
+the example cannot load. Shared styles live in `repo-explorer-styles.js` and
+are installed synchronously with the shadow markup; do not replace them with
+an external shadow stylesheet that can expose raw code before it loads.
 
 For the Wiki reading column and shared map's first paint, including delayed,
 unavailable and failed visual responses while opening and refreshing:
@@ -122,8 +107,8 @@ Without that opt-in, neither site sends analytics. Do Not Track and Global
 Privacy Control suppress collection. Keep deployment settings outside source
 defaults; retain ordinary service logs according to the operator's policy.
 
-The payload contains only a fixed event name, `landing`/`wiki`/`cli`, and a
-random identifier (a tab session in a browser). No cookies, URLs, input, source, prompts or keys are
+The payload contains only a fixed event name, `landing`/`wiki`, and a random
+tab-session identifier. No cookies, URLs, input, source, prompts or keys are
 sent. Events are deduplicated per tab session; the collector accepts at most
 120 events per minute per worker. This is an intentionally small first-party
 baseline, not an analytics platform. To count observed steps from service logs:
@@ -133,21 +118,8 @@ journalctl --user -u codenib-demo-backend --since today --no-pager \
   | python scripts/summarize_experience.py
 ```
 
-The guard funnel has two steps:
-
-- `install_command_copy`: a visitor copied the install commands on the homepage.
-  `guard_case_view` records that the real case was on screen first.
-- `guard_first_run`, surface `cli`: an installed guard hook reported for the
-  first time. The hook sends it only when the user installed with
-  `codenib guard install --share-first-run`, at most once per user, and it
-  carries no repository, agent or machine detail. The collector accepts the
-  `cli` surface for this event only.
-
-First runs divided by copies is a lower bound on activation; report both counts
-and the window, since most installs will not opt in.
-
-For the Wiki, use source inspection (`example_source_open` /
-`example_github_open`) followed by `repository_submit` or `agent_setup_open`. The log
+Use source inspection (`example_source_open` / `example_github_open`) followed
+by `repository_submit` or `agent_setup_open` as the marketing funnel. The log
 summary reports both `source_inspection` cohorts using each tab's first event
 positions, and counts the next step only when it appears later in the service
 log. Viewing the hero or switching its question does not count as inspecting

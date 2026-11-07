@@ -1,9 +1,6 @@
 // SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 // SPDX-License-Identifier: Apache-2.0
 // Provider-free: node web/landing_loading_verify.mjs LANDING_URL [OUTPUT]
-//
-// The homepage must read in full before, and without, its one script: the
-// case, the call path, the chart and the install commands are static HTML.
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import { spawn } from "node:child_process";
@@ -24,34 +21,6 @@ function gate() {
     release: () => release(), seen: () => seen() };
 }
 
-async function assertReadable(page) {
-  await page.locator(".hero h1").waitFor();
-  const state = await page.evaluate(() => ({
-    overflow: document.documentElement.scrollWidth > innerWidth,
-    title: document.querySelector(".hero h1")?.textContent,
-    brokenTest: document.querySelector(".hero-panel .r-broken")?.textContent,
-    chains: ["xarray", "sympy"].map(id => [...document.querySelectorAll(`#case-${id} .chain .c-name`)]
-      .map(node => node.textContent)),
-    shownCase: ["xarray", "sympy"].filter(id =>
-      getComputedStyle(document.getElementById(`case-${id}`)).display !== "none"),
-    squares: [...document.querySelectorAll(".strip")].map(strip => [
-      strip.querySelectorAll(".u").length, strip.querySelectorAll(".u.hit").length]),
-    install: document.getElementById("install-command")?.textContent,
-    monoDiff: getComputedStyle(document.querySelector(".diff")).whiteSpace,
-  }));
-  assert.equal(state.overflow, false, "the homepage must not scroll sideways");
-  assert.match(state.title, /What did it break\?/);
-  assert.match(state.brokenTest, /test_check_homomorphism/);
-  assert.deepEqual(state.chains, [
-    ["TestDataset.test_copy", "create_test_data", "Dataset.__init__", "merge_data_and_coords"],
-    ["test_check_homomorphism", "homomorphism", "_check_homomorphism", "_check_homomorphism._image"],
-  ]);
-  assert.deepEqual(state.shownCase, ["xarray"], "the sketch's xarray case shows first");
-  assert.deepEqual(state.squares, [[68, 35], [68, 22]], "the chart is static HTML");
-  assert.match(state.install, /codenib guard install --agent claude/);
-  assert.equal(state.monoDiff, "pre", "the patch keeps its line structure");
-}
-
 try {
   if (server) {
     for (let attempt = 0; ; attempt++) {
@@ -67,39 +36,67 @@ try {
       const context = await browser.newContext({ viewport: { width, height: 900 } });
       context.setDefaultTimeout(10000);
       let turn = gate();
-      await context.route(/\/assets\/guard\/landing-guard\.js(?:\?.*)?$/, async route => {
+      // The former shadow CSS and its replacement module share this gate, so
+      // the regression also fails against the original published homepage.
+      await context.route(/\/repo-explorer(?:-styles\.js|\.css)(?:\?.*)?$/, async route => {
         turn.seen();
         await turn.pending;
         return failure ? route.abort("failed") : route.continue();
       });
       const page = await context.newPage();
-      const errors = [];
-      page.on("pageerror", error => errors.push(error.message));
+      await page.addInitScript(() => {
+        window.exampleFrames = [];
+        const sample = () => {
+          const root = document.querySelector("codenib-explorer")?.shadowRoot;
+          const row = root?.querySelector(".code-line");
+          if (row) {
+            const notes = [...root.querySelectorAll("[data-note]")].filter(node =>
+              getComputedStyle(node).visibility === "visible" && getComputedStyle(node).display !== "none");
+            window.exampleFrames.push({ rowsStyled: getComputedStyle(row).display === "block", visibleNotes: notes.length });
+          }
+          requestAnimationFrame(sample);
+        };
+        requestAnimationFrame(sample);
+      });
       for (const navigation of ["open", "refresh"]) {
         if (navigation === "open") await page.goto(base, { waitUntil: "commit" });
         else { turn = gate(); await page.reload({ waitUntil: "commit" }); }
         await turn.arrived;
-        // The script is held: everything a visitor reads is already there.
-        await assertReadable(page);
+        await page.locator(".stage h1").waitFor();
+        await page.waitForTimeout(150);
+        const frames = await page.evaluate(() => window.exampleFrames);
+        assert.ok(frames.every(frame => frame.rowsStyled && frame.visibleNotes === 1),
+          "the homepage painted raw source, concatenated line numbers or hidden notes before styles loaded");
+        const fallback = page.locator("codenib-explorer > a");
+        assert.equal(await fallback.isVisible(), true, "keep a readable fallback while the example loads");
         if (width !== 320 && !failure) {
+          // Capture the pending frame directly: Playwright's screenshot waits
+          // for fonts, which can wait for the intentionally held module.
           const capture = await context.newCDPSession(page);
           const { data } = await capture.send("Page.captureScreenshot", { format: "png" });
           await fs.writeFile(`${output}/${width}-${navigation}-pending.png`, Buffer.from(data, "base64"));
           await capture.detach();
         }
         turn.release();
-        await page.waitForLoadState("load");
-        await assertReadable(page);
+        await page.waitForLoadState("domcontentloaded");
         if (failure) {
-          assert.equal(await page.locator("button.copy").isVisible(), false,
-            "a failed script leaves no dead copy button");
-        } else if (width !== 320) {
-          await page.screenshot({ path: `${output}/${width}-${navigation}-ready.png` });
+          assert.equal(await fallback.isVisible(), true, "a failed style dependency must preserve the Wiki link");
+          assert.match(await fallback.getAttribute("href"), /psf__requests\?p=redirects$/);
+        } else {
+          await page.locator("codenib-explorer .source-scroll").waitFor();
+          await page.waitForTimeout(150);
+          const painted = await page.evaluate(() => window.exampleFrames);
+          assert.ok(painted.length > 0);
+          assert.ok(painted.every(frame => frame.rowsStyled && frame.visibleNotes === 1),
+            "the example must be styled on its first painted frame");
+          await page.locator('codenib-explorer [data-node="3"]').click();
+          assert.match(await page.locator("codenib-explorer .syntax").innerText(), /old_parsed.hostname != new_parsed.hostname/);
+          if (width !== 320) await page.screenshot({ path: `${output}/${width}-${navigation}-ready.png` });
         }
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
       }
-      assert.deepEqual(errors, []);
       await context.close();
-      console.log(`Homepage first paint: ${width}px ${failure ? "failed" : "delayed"} script, open and refresh passed.`);
+      console.log(`Homepage first paint: ${width}px ${failure ? "failed" : "delayed"} styles, open and refresh passed.`);
     }
   }
 } finally {
