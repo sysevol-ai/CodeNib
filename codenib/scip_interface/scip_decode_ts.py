@@ -551,9 +551,9 @@ class SCIPTypeScriptGraphDecoder:
             # Store unified_name as node attribute
             if unified_symbol in self.code_graph.name_to_vertex:
                 vertex_id = self.code_graph.name_to_vertex[unified_symbol]
-                self.code_graph.graph.vs[vertex_id][
-                    "unified_name"
-                ] = self._get_unified_name(unified_symbol, file_path, symbol_type)
+                self.code_graph.graph.vs[vertex_id]["unified_name"] = (
+                    self._get_unified_name(unified_symbol, file_path, symbol_type)
+                )
 
             # Add containment edge
             self.logger.scip_debug(
@@ -592,9 +592,9 @@ class SCIPTypeScriptGraphDecoder:
             # Store unified_name
             if unified_symbol in self.code_graph.name_to_vertex:
                 vertex_id = self.code_graph.name_to_vertex[unified_symbol]
-                self.code_graph.graph.vs[vertex_id][
-                    "unified_name"
-                ] = self._get_unified_name(unified_symbol, file_path, symbol_type)
+                self.code_graph.graph.vs[vertex_id]["unified_name"] = (
+                    self._get_unified_name(unified_symbol, file_path, symbol_type)
+                )
 
             # Add 'contain' edge from current scope to symbol
             self.code_graph._add_edge(
@@ -615,9 +615,9 @@ class SCIPTypeScriptGraphDecoder:
             if unified_symbol in self.code_graph.name_to_vertex:
                 vid = self.code_graph.name_to_vertex[unified_symbol]
                 if not self.code_graph.graph.vs[vid].attributes().get("unified_name"):
-                    self.code_graph.graph.vs[vid][
-                        "unified_name"
-                    ] = self._get_unified_name(unified_symbol, file_path, symbol_type)
+                    self.code_graph.graph.vs[vid]["unified_name"] = (
+                        self._get_unified_name(unified_symbol, file_path, symbol_type)
+                    )
 
     def save_graph(self, output_path):
         self.code_graph.save_graph(output_path)

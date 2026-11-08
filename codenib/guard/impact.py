@@ -78,9 +78,7 @@ def _base_hunks(
             old = (
                 None
                 if source == "/dev/null"
-                else source[2:]
-                if source.startswith("a/")
-                else source
+                else source[2:] if source.startswith("a/") else source
             )
             continue
         if line.startswith("+++ "):

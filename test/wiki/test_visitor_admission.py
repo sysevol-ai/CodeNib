@@ -194,9 +194,7 @@ def submitting_manager(tmp_path, monkeypatch, verify, clock=lambda: 1000.0):
     return manager
 
 
-def test_a_refused_key_leaves_the_visitor_free_to_retry_at_once(
-    tmp_path, monkeypatch
-):
+def test_a_refused_key_leaves_the_visitor_free_to_retry_at_once(tmp_path, monkeypatch):
     keys = []
 
     def verify(key):
@@ -213,9 +211,7 @@ def test_a_refused_key_leaves_the_visitor_free_to_retry_at_once(
     assert keys == ["sk-or-typo", "sk-or-good"]
 
 
-def test_other_refusals_keep_the_minute_and_say_how_long_is_left(
-    tmp_path, monkeypatch
-):
+def test_other_refusals_keep_the_minute_and_say_how_long_is_left(tmp_path, monkeypatch):
     now = [1000.0]
 
     def unreachable(_key):

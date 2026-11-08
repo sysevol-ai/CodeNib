@@ -177,7 +177,6 @@ def test_indexer_does_not_inherit_provider_credentials(tmp_path, monkeypatch):
     assert (tmp_path / "env.txt").read_text() == "False"
 
 
-
 def node_script(directory: Path, interpreter: str) -> str:
     tool = directory / "scip-python"
     tool.write_text(f"#!/usr/bin/env {interpreter}\nconsole.log('index')\n")
@@ -229,6 +228,7 @@ def test_interpreters_found_on_the_path_and_native_tools_pass(tmp_path):
 def test_indexer_exit_status_is_returned(tmp_path):
     command = [sys.executable, "-c", "raise SystemExit(127)"]
     assert visitor_graph._run_index(command, tmp_path, lambda: None) == 127
+
 
 def test_saved_projection_preserves_real_edges_and_embeds_pinned_source(tmp_path):
     (tmp_path / "caller.py").write_text("def caller():\n    return callee()\n")
