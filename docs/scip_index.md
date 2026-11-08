@@ -189,6 +189,17 @@ cmake -S . -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 For Make/Autotools projects, `bear -- make` can capture the compilation
 database.
 
+Without one, `codenib index` generates it without writing to your checkout.
+CMake configures into CodeNib's state directory, never `<repo>/build`.
+Make and Autotools builds run in a copy of the checkout kept in that state
+directory, without `.git`, so the build cannot change your repository. Later
+runs reuse the generated database. Two things differ from building in place:
+
+- Symbols defined only in files the build generates, such as headers made by
+  `configure`, are not part of the graph, because those files live in the copy.
+- Uninitialized submodules are not fetched. Run `git submodule update --init`
+  first if their code should be indexed.
+
 ## Python API
 
 `LSIndexer` is the low-level API behind graph construction. Always pass the
