@@ -32,6 +32,8 @@ import zlib
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator, List, Mapping, Optional, Tuple
+from urllib.parse import unquote, urlparse
+from urllib.request import url2pathname
 
 from ..graph.code_graph import CodeGraph
 from ..types import (
@@ -1448,7 +1450,15 @@ class ClangdGraphDecoder:
     def _file_uri_to_relative(self, uri: str) -> str:
         """Convert file URI to project-relative path."""
         if uri.startswith("file://"):
-            abs_path = uri[7:]
+            # clangd percent-encodes every byte outside [A-Za-z0-9-_.~/:], so
+            # spaces, '+', '#', '%' and non-ASCII names arrive escaped. Decode
+            # once; a path without '%' is already plain.
+            if os.sep != "/":
+                abs_path = url2pathname(urlparse(uri).path)
+            elif "%" in uri:
+                abs_path = unquote(uri[7:], errors="surrogateescape")
+            else:
+                abs_path = uri[7:]
         else:
             abs_path = uri
 
@@ -1464,9 +1474,9 @@ class ClangdGraphDecoder:
 
         try:
             rel = Path(abs_path).relative_to(self.project_root)
-            return str(rel)
+            return rel.as_posix()
         except ValueError:
-            return abs_path
+            return abs_path if os.sep == "/" else Path(abs_path).as_posix()
 
     # ------------------------------------------------------------------
     # Kind mapping

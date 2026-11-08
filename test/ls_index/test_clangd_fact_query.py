@@ -203,9 +203,9 @@ def _expected_snapshot_id(
 
 
 @pytest.fixture()
-def clangd_fixture(tmp_path: Path) -> tuple[Path, Path]:
+def clangd_fixture(tmp_path: Path, request: pytest.FixtureRequest) -> tuple[Path, Path]:
     root = tmp_path / "repo"
-    source = root / "src" / "main.cpp"
+    source = root / getattr(request, "param", "src") / "main.cpp"
     source.parent.mkdir(parents=True)
     source.write_text(
         "int target() { return 1; }\n"
@@ -690,6 +690,33 @@ def test_symbol_results_errors_counts_and_relations_match_graph(
             index, symbol=target, include_declaration=False, top_k=100
         )
     )
+
+
+@pytest.mark.parametrize(
+    "clangd_fixture", ["dir with space", "c++", "café", "100%"], indirect=True
+)
+def test_escaped_source_paths_match_graph(clangd_fixture) -> None:
+    """clangd percent-encodes paths; both readers return the decoded path."""
+
+    root, idx_directory = clangd_fixture
+    (source,) = [path for path in root.rglob("main.cpp")]
+    expected = source.relative_to(root).as_posix()
+    assert "%" in source.as_uri()
+    graph = ClangdGraphDecoder(str(idx_directory), str(root)).materialize_code_graph()
+    index = codenib_core.decode_clangd_fact_query_index(
+        idx_directory=str(idx_directory), project_root=str(root)
+    )["index"]
+
+    files = {
+        (graph.get_node_info_by_name(name) or {}).get("file")
+        for name in _definition_symbols(graph)
+    }
+    assert files == {expected}
+    for seed in _seeds(graph):
+        assert _outcome(
+            lambda seed=seed: lsp_definition(graph, symbol=seed, top_k=100)
+        ) == _outcome(lambda seed=seed: lsp_definition(index, symbol=seed, top_k=100))
+    assert index.has_occurrence_at(expected, 1, 22) is True
 
 
 def test_native_file_discovery_is_stable_by_filename(

@@ -765,10 +765,43 @@ bool path_has_prefix(const std::filesystem::path &path,
   return true;
 }
 
+int hex_value(char c) {
+  if (c >= '0' && c <= '9')
+    return c - '0';
+  if (c >= 'a' && c <= 'f')
+    return c - 'a' + 10;
+  if (c >= 'A' && c <= 'F')
+    return c - 'A' + 10;
+  return -1;
+}
+
+// clangd percent-encodes every byte outside [A-Za-z0-9-_.~/:]. Decode each
+// valid escape once and keep an invalid one as written, like Python's
+// urllib.parse.unquote in ClangdGraphDecoder._file_uri_to_relative.
+std::string percent_decode(const std::string &text) {
+  if (text.find('%') == std::string::npos)
+    return text;
+  std::string decoded;
+  decoded.reserve(text.size());
+  for (std::size_t i = 0; i < text.size(); ++i) {
+    if (text[i] == '%' && i + 2 < text.size()) {
+      const int high = hex_value(text[i + 1]);
+      const int low = hex_value(text[i + 2]);
+      if (high >= 0 && low >= 0) {
+        decoded.push_back(static_cast<char>(high * 16 + low));
+        i += 2;
+        continue;
+      }
+    }
+    decoded.push_back(text[i]);
+  }
+  return decoded;
+}
+
 std::string relative_file(std::string uri,
                           const std::filesystem::path &project_root) {
   if (uri.rfind("file://", 0) == 0)
-    uri.erase(0, 7);
+    uri = percent_decode(uri.substr(7));
   auto path = std::filesystem::path(uri).lexically_normal();
   if (path_has_prefix(path, project_root)) {
     const auto relative = path.lexically_relative(project_root);
