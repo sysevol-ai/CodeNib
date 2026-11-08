@@ -11,6 +11,7 @@ ClangdGraphDecoder (idx_decode + idx_parser) to build a CodeGraph
 directly from the binary .idx format.
 """
 
+import functools
 import json
 import os
 import re
@@ -36,6 +37,11 @@ from .index_quality import (
 )
 
 logger = get_logger("clangd_indexer")
+
+# bear's compilation database, written to CodeNib state instead of the
+# checkout. A later run discovers it here before the prepared copy, the way it
+# used to find the checkout file, so the clangd input path stays stable.
+BEAR_COMPDB_FILENAME = "compile_commands.bear.json"
 
 
 class ClangdIndexer:
@@ -312,7 +318,7 @@ class ClangdIndexer:
         ]
         comp_db = discover_compilation_database(
             self.project_root,
-            extra_candidates=(self.output_dir / "compile_commands.json",),
+            extra_candidates=self._state_compdb_candidates(),
         )
         if comp_db is not None:
             candidates.extend(self._build_candidate_idx_dirs(comp_db))
@@ -366,7 +372,7 @@ class ClangdIndexer:
         else:
             self.compdb_path = discover_compilation_database(
                 self.project_root,
-                extra_candidates=(self.output_dir / "compile_commands.json",),
+                extra_candidates=self._state_compdb_candidates(),
             )
 
         if (
@@ -569,8 +575,14 @@ class ClangdIndexer:
         cmd = self._build_index_command(comp_db)
         logger.info(f"Starting clangd: {' '.join(cmd)}")
 
-        # Clear stale .idx and graph files before re-indexing
-        self.clear_cache(level="all")
+        # Clear stale .idx and graph files before re-indexing, but only in
+        # CodeNib state. A project-local .cache/clangd/index belongs to the
+        # user's editor clangd; this run points clangd at a compilation
+        # database in state, so its shards are written next to that instead.
+        self.clear_cache(level="raw")
+        if self.idx_directory.exists() and self._in_state_dir(self.idx_directory):
+            shutil.rmtree(self.idx_directory)
+            logger.info(f"Removed {self.idx_directory}")
 
         # Build candidate .idx directories before indexing starts,
         # snapshot mtime so we can detect changes (not just new files).
@@ -707,8 +719,12 @@ class ClangdIndexer:
                 )
                 return True
 
-        # Fallback: pick first candidate with any .idx files
+        # Fallback: pick first candidate with any .idx files. Shards that
+        # predate this run outside CodeNib state (an editor's index, which is
+        # no longer cleared above) are not this run's output.
         for d in candidate_dirs:
+            if pre_mtimes.get(d, 0) and not self._in_state_dir(d):
+                continue
             if d.exists():
                 idx_files = list(d.glob("*.idx"))
                 if idx_files:
@@ -719,6 +735,15 @@ class ClangdIndexer:
                     return True
 
         return False
+
+    def _in_state_dir(self, path: Path) -> bool:
+        """Whether a path lies inside this indexer's CodeNib output directory."""
+
+        try:
+            path.resolve().relative_to(self.output_dir.resolve())
+        except ValueError:
+            return False
+        return True
 
     def _build_candidate_idx_dirs(self, comp_db: Path) -> List[Path]:
         """Build a list of candidate directories where clangd may write .idx files,
@@ -1080,27 +1105,20 @@ class ClangdIndexer:
         A ``make clean`` is run first so that incremental builds do not cause
         bear to miss already-compiled translation units.
         """
-        candidates = (
-            self.project_root / "compile_commands.json",
-            self.project_root / "build" / "compile_commands.json",
-        )
-
         make_overrides = self._indexing_make_overrides(self.project_root)
 
         # Clean first so bear can observe all compiler invocations
         self._run_build_command(["make", "clean"])
 
         # Try parallel build first (-k = keep going on errors)
-        self._clear_compdb_candidates(candidates)
-        self._run_build_command(["bear", "--", "make", "-k", "-j", *make_overrides])
-        best = self._snapshot_best_compdb(candidates, "root-parallel")
+        best = self._bear_capture(
+            ["make", "-k", "-j", *make_overrides], "root-parallel"
+        )
         if best and self._is_preferred_compdb(best):
             return best
 
         # Retry without -j (some Makefiles break under parallelism)
-        self._clear_compdb_candidates(candidates)
-        self._run_build_command(["bear", "--", "make", "-k", *make_overrides])
-        serial = self._snapshot_best_compdb(candidates, "root-serial")
+        serial = self._bear_capture(["make", "-k", *make_overrides], "root-serial")
         return self._better_compdb(best, serial)
 
     def _try_subdirectory_make(self) -> Optional[Path]:
@@ -1129,10 +1147,6 @@ class ClangdIndexer:
             self._run_build_command(["git", "submodule", "update", "--init"])
 
         best: Optional[Path] = None
-        compdb_candidates = (
-            self.project_root / "compile_commands.json",
-            self.project_root / "build" / "compile_commands.json",
-        )
         for subdir in candidates:
             logger.info(
                 "Found Makefile in subdirectory %s, attempting bear -- make there",
@@ -1140,39 +1154,18 @@ class ClangdIndexer:
             )
             self._run_build_command(["make", "-C", str(subdir), "clean"])
             make_overrides = self._indexing_make_overrides(subdir)
-            self._clear_compdb_candidates(compdb_candidates)
-            self._run_build_command(
-                [
-                    "bear",
-                    "--",
-                    "make",
-                    "-k",
-                    "-C",
-                    str(subdir),
-                    "-j",
-                    *make_overrides,
-                ]
-            )
             label = f"{subdir.relative_to(self.project_root)}-parallel"
-            generated = self._snapshot_best_compdb(compdb_candidates, label)
+            generated = self._bear_capture(
+                ["make", "-k", "-C", str(subdir), "-j", *make_overrides], label
+            )
             best = self._better_compdb(best, generated)
             if generated and self._is_preferred_compdb(generated):
                 return generated
 
-            self._clear_compdb_candidates(compdb_candidates)
-            self._run_build_command(
-                [
-                    "bear",
-                    "--",
-                    "make",
-                    "-k",
-                    "-C",
-                    str(subdir),
-                    *make_overrides,
-                ]
-            )
             label = f"{subdir.relative_to(self.project_root)}-serial"
-            generated = self._snapshot_best_compdb(compdb_candidates, label)
+            generated = self._bear_capture(
+                ["make", "-k", "-C", str(subdir), *make_overrides], label
+            )
             best = self._better_compdb(best, generated)
             if generated and self._is_preferred_compdb(generated):
                 return generated
@@ -1233,17 +1226,53 @@ class ClangdIndexer:
                 value = item
         return value
 
-    @staticmethod
-    def _clear_compdb_candidates(candidates) -> None:
-        for candidate in candidates:
-            try:
-                Path(candidate).unlink(missing_ok=True)
-            except OSError as exc:
-                logger.debug(
-                    "Ignoring compilation database cleanup failure for %s: %s",
-                    candidate,
-                    exc,
-                )
+    def _state_compdb_candidates(self) -> tuple:
+        """Compilation databases CodeNib keeps in its own state directory."""
+
+        return (self.bear_compdb_path, self.output_dir / "compile_commands.json")
+
+    @property
+    def bear_compdb_path(self) -> Path:
+        """Where bear writes its compilation database: CodeNib state."""
+
+        return self.output_dir / BEAR_COMPDB_FILENAME
+
+    def _bear_command(self, make_command: List[str]) -> List[str]:
+        """Wrap a make command so bear writes into CodeNib state.
+
+        bear otherwise writes compile_commands.json into its working
+        directory, the user's checkout. Bear 3 spells the output option
+        ``--output``; Bear 2 spells it ``-o``.
+        """
+
+        flag = "-o" if _bear_major_version() == 2 else "--output"
+        return ["bear", flag, str(self.bear_compdb_path), "--", *make_command]
+
+    def _bear_capture(self, make_command: List[str], label: str) -> Optional[Path]:
+        """Run make under bear; snapshot the best database it produced.
+
+        Besides bear's own output, a checkout compilation database counts
+        only if this build wrote it (a project whose Makefile emits one).
+        Databases that predate the run are neither deleted nor reused here;
+        run_pipeline already compares them as discovered candidates.
+        """
+
+        checkout_paths = (
+            self.project_root / "compile_commands.json",
+            self.project_root / "build" / "compile_commands.json",
+        )
+        before = {path: _file_signature(path) for path in checkout_paths}
+        try:
+            self.bear_compdb_path.unlink(missing_ok=True)
+        except OSError as exc:
+            logger.debug("Could not clear %s: %s", self.bear_compdb_path, exc)
+        self._run_build_command(self._bear_command(make_command))
+        written = [
+            path
+            for path in checkout_paths
+            if _file_signature(path) not in (None, before[path])
+        ]
+        return self._snapshot_best_compdb([self.bear_compdb_path, *written], label)
 
     def _snapshot_best_compdb(self, candidates, label: str) -> Optional[Path]:
         valid = [Path(path) for path in candidates if self._is_valid_compdb(Path(path))]
@@ -1402,6 +1431,30 @@ class ClangdIndexer:
 # by other clangd-driving code paths without becoming part of the class
 # surface area).
 # ──────────────────────────────────────────────────────────────────────────
+
+
+@functools.lru_cache(maxsize=1)
+def _bear_major_version() -> Optional[int]:
+    """Return bear's major version, or None when it cannot be determined."""
+
+    try:
+        result = subprocess.run(
+            ["bear", "--version"], capture_output=True, text=True, timeout=30
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    match = re.search(r"(\d+)\.\d+", f"{result.stdout} {result.stderr}")
+    return int(match.group(1)) if match else None
+
+
+def _file_signature(path: Path) -> Optional[tuple]:
+    """Identity of a file's current contents, or None when it is absent."""
+
+    try:
+        stat = path.stat()
+    except OSError:
+        return None
+    return (stat.st_ino, stat.st_size, stat.st_mtime_ns)
 
 
 def _clangd_progress_reader(stream, progress_state: dict) -> None:

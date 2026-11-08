@@ -186,16 +186,20 @@ def test_subdirectory_bear_accepts_compdb_even_when_build_fails(tmp_path, monkey
     def fake_run(command):
         commands.append(command)
         if command[0] == "bear":
-            _write_compdb(project / "compile_commands.json", sources)
+            _write_compdb(Path(command[command.index("--output") + 1]), sources)
             return False
         return True
 
+    monkeypatch.setattr(
+        "codenib.ls_index.clangd_indexer._bear_major_version", lambda: 3
+    )
     monkeypatch.setattr(indexer, "_run_build_command", fake_run)
 
     compdb = indexer._try_subdirectory_make()
 
     assert compdb is not None
     assert compilation_database_entry_count(compdb) == 10
+    assert not (project / "compile_commands.json").exists()
     bear_commands = [command for command in commands if command[0] == "bear"]
     assert len(bear_commands) == 1
     assert "CFLAGS_EXTRA=-Wno-error" in bear_commands[0]
