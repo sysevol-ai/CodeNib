@@ -108,11 +108,13 @@ Build the same index for Claude Code or Codex. Your agent can then find
 definitions, follow callers and read the source in your own checkout.
 
 <p align="center">
-  <a href="https://github.com/sysevol-ai/CodeNib/blob/main/landing/assets/demos/codegraph-claude.mp4">
-    <img src="https://raw.githubusercontent.com/sysevol-ai/CodeNib/main/landing/assets/demos/codegraph-claude.png" alt="Play a recorded Claude Code session on Requests: explore_context finds where authentication is stripped on redirects, then one dependency_subgraph call traces the four-hop caller chain from the public API" width="100%">
+  <a href="https://codenib.ai/#get-started">
+    <img src="https://raw.githubusercontent.com/sysevol-ai/CodeNib/main/assets/readme/agent-replay-requests.png" alt="A recorded Claude Code session on Requests. Left: codenib codegraph init, the prompt, explore_context returning rebuild_auth() at sessions.py:282-300, and one dependency_subgraph call listing four hops, then the agent's answer. Right: the caller graph, with eight public entry points such as get() and post() reaching Session.request(), Session.send(), resolve_redirects() and rebuild_auth()" width="100%">
   </a>
 </p>
-<p align="center"><sub><a href="https://github.com/sysevol-ai/CodeNib/blob/main/landing/assets/demos/codegraph-claude.mp4">▶ Watch the 15-second replay</a> · real CLI output · waits condensed ·
+<p align="center"><sub>
+  One recorded Claude Code session on Requests: 14.1 s, 3 turns, 2 CodeNib tools.
+  <a href="https://codenib.ai/#get-started">▶ Watch it replay</a> ·
   <a href="https://docs.codenib.ai/codegraph/#recorded-agent-session">Pinned source, transcript and setup details</a>
 </sub></p>
 
