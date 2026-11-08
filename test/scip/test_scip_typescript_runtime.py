@@ -419,6 +419,9 @@ def test_existing_config_without_manifest_keeps_scip_package_boundary(
     assert _checkout_snapshot(project) == before
 
 
+NPM_CI_THEN_FALLBACK = [["npm", "ci"], ["npm", "install", "--no-package-lock"]]
+
+
 class _FakeNpm:
     """Stand-in for ``subprocess.run`` that records install commands."""
 
@@ -460,7 +463,7 @@ def test_failed_install_is_recorded_outside_checkout_and_skipped(
     project, indexer = _npm_project(tmp_path, monkeypatch)
     fake = _FakeNpm(fail=True)
 
-    assert _install(indexer, monkeypatch, fake) == [["npm", "ci"], ["npm", "install"]]
+    assert _install(indexer, monkeypatch, fake) == NPM_CI_THEN_FALLBACK
     # Per-repository CodeNib state: not the checkout, not an index view.
     record = repo_state_dir(project) / indexer._INSTALL_FAILURE_RECORD_NAME
     assert record.parent.is_relative_to(tmp_path / "home")
@@ -497,7 +500,7 @@ def test_failed_install_retries_when_its_inputs_change(tmp_path, monkeypatch, ch
     else:
         fake.npm_version = "11.0.0"
 
-    assert _install(indexer, monkeypatch, fake) == [["npm", "ci"], ["npm", "install"]]
+    assert _install(indexer, monkeypatch, fake) == NPM_CI_THEN_FALLBACK
     # The new failure replaces the old record, so the next build skips again.
     assert _install(indexer, monkeypatch, fake) == []
 
@@ -518,7 +521,7 @@ def test_failed_install_retries_after_expiry_or_on_request(
     else:
         monkeypatch.setenv(ts_indexer.RETRY_FAILED_INSTALL_ENV, "1")
 
-    assert _install(indexer, monkeypatch, fake) == [["npm", "ci"], ["npm", "install"]]
+    assert _install(indexer, monkeypatch, fake) == NPM_CI_THEN_FALLBACK
 
 
 def test_successful_install_keeps_sentinel_cache_and_clears_failure(
@@ -533,8 +536,12 @@ def test_successful_install_keeps_sentinel_cache_and_clears_failure(
     assert _install(indexer, monkeypatch, fake) == [["npm", "ci"]]
     assert not indexer._install_failure_record.exists()
     lockfile = project / "package-lock.json"
-    sentinel = project / PROJECT_INSTALL_SENTINEL
+    sentinel = repo_state_dir(project) / PROJECT_INSTALL_SENTINEL
     assert sentinel.read_text() == hashlib.sha1(lockfile.read_bytes()).hexdigest()
+    assert sorted(p.name for p in project.iterdir()) == [
+        "package-lock.json",
+        "package.json",
+    ]
 
     # With node_modules and a matching sentinel, nothing runs at all.
     (project / "node_modules").mkdir()
@@ -544,3 +551,136 @@ def test_successful_install_keeps_sentinel_cache_and_clears_failure(
         lambda *a, **k: pytest.fail("cached install must not run a command"),
     )
     indexer._install_dependencies()
+
+
+@pytest.mark.parametrize(
+    "files, which, expected",
+    [
+        ({}, {"npm"}, [["npm", "install", "--no-package-lock"]]),
+        ({"package-lock.json": "{}"}, {"npm"}, NPM_CI_THEN_FALLBACK),
+        (
+            {"yarn.lock": ""},
+            {"yarn"},
+            [
+                ["yarn", "install", "--frozen-lockfile"],
+                ["yarn", "install", "--pure-lockfile"],
+            ],
+        ),
+        (
+            {"pnpm-lock.yaml": ""},
+            {"pnpm"},
+            [
+                ["pnpm", "install", "--frozen-lockfile"],
+                ["pnpm", "install", "--no-frozen-lockfile", "--config.lockfile=false"],
+            ],
+        ),
+        (
+            {"pnpm-workspace.yaml": ""},
+            {"pnpm"},
+            [["pnpm", "install", "--no-frozen-lockfile", "--config.lockfile=false"]],
+        ),
+        (
+            {"bun.lock": ""},
+            {"bun"},
+            [["bun", "install", "--frozen-lockfile"], ["bun", "install", "--no-save"]],
+        ),
+    ],
+)
+def test_installs_never_write_a_lockfile(tmp_path, monkeypatch, files, which, expected):
+    """Every install, and every fallback, leaves the checkout's lockfiles alone."""
+
+    monkeypatch.setenv(CODENIB_HOME_ENV, str(tmp_path / "home"))
+    monkeypatch.delenv(ts_indexer.RETRY_FAILED_INSTALL_ENV, raising=False)
+    project = tmp_path / "repo"
+    project.mkdir()
+    (project / "package.json").write_text('{"name": "demo"}\n')
+    for name, text in files.items():
+        (project / name).write_text(text)
+    monkeypatch.setattr(
+        ts_indexer.shutil,
+        "which",
+        lambda tool: f"/bin/{tool}" if tool in which else None,
+    )
+    indexer = SCIPTypeScriptIndexer(project, output_dir=tmp_path / "index")
+
+    assert _install(indexer, monkeypatch, _FakeNpm(fail=True)) == expected
+
+
+def _capture_pipeline(indexer, monkeypatch) -> dict:
+    observed: dict[str, object] = {}
+
+    def run_pipeline(_self, **kwargs):
+        observed.update(kwargs)
+        patched = kwargs.get("patched_tsconfig")
+        observed["config"] = (
+            json.loads(Path(patched).read_text(encoding="utf-8")) if patched else None
+        )
+        return "graph"
+
+    monkeypatch.setattr(SCIPIndexerBase, "run_pipeline", run_pipeline)
+    monkeypatch.setattr(indexer, "_install_dependencies", lambda: None)
+    assert indexer.run_pipeline(report_profile=False) == "graph"
+    return observed
+
+
+def test_index_without_root_config_uses_the_external_config(tmp_path, monkeypatch):
+    project = tmp_path / "repo"
+    (project / "src").mkdir(parents=True)
+    (project / "package.json").write_text('{"name": "demo"}\n', encoding="utf-8")
+    (project / "src" / "main.js").write_text("export const x = 1;\n")
+    indexer = SCIPTypeScriptIndexer(project, output_dir=tmp_path / "index")
+
+    observed = _capture_pipeline(indexer, monkeypatch)
+
+    # scip-typescript's --infer-tsconfig would write tsconfig.json into the
+    # checkout; the external config lives in the index directory instead.
+    assert observed["infer_tsconfig"] is False
+    assert str(observed["patched_tsconfig"]).startswith(str(tmp_path / "index"))
+    assert observed["config"]["compilerOptions"] == {"allowJs": True}
+    assert f"{project.resolve()}/**/*.js" in observed["config"]["include"]
+    assert sorted(p.name for p in project.iterdir()) == ["package.json", "src"]
+    assert not (tmp_path / "index" / ".tsconfig.scip.readonly.json").exists()
+    command = indexer._build_index_command(
+        infer_tsconfig=False, patched_tsconfig=observed["patched_tsconfig"]
+    )
+    assert "--infer-tsconfig" not in command
+
+
+def test_index_with_workspaces_and_no_root_config_still_infers(tmp_path, monkeypatch):
+    """Workspace members are indexed one by one; that path is unchanged."""
+
+    project = tmp_path / "repo"
+    project.mkdir()
+    (project / "package.json").write_text(
+        '{"name": "demo", "workspaces": ["packages/*"]}\n', encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        ts_indexer.shutil,
+        "which",
+        lambda tool: f"/bin/{tool}" if tool == "npm" else None,
+    )
+    indexer = SCIPTypeScriptIndexer(project, output_dir=tmp_path / "index")
+
+    observed = _capture_pipeline(indexer, monkeypatch)
+
+    assert observed["npm_workspaces"] is True
+    assert observed["infer_tsconfig"] is True
+    assert observed.get("patched_tsconfig") is None
+
+
+def test_generate_index_does_not_infer_beside_an_external_config(tmp_path, monkeypatch):
+    project = tmp_path / "repo"
+    project.mkdir()
+    indexer = SCIPTypeScriptIndexer(project, output_dir=tmp_path / "index")
+    seen: dict[str, object] = {}
+
+    def generate_index(_self, **kwargs):
+        seen.update(kwargs)
+        return True
+
+    monkeypatch.setattr(SCIPIndexerBase, "generate_index", generate_index)
+
+    assert indexer.generate_index(patched_tsconfig=str(tmp_path / "x.json"))
+    assert seen["infer_tsconfig"] is False
+    assert indexer.generate_index()
+    assert seen["infer_tsconfig"] is True
