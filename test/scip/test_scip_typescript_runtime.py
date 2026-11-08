@@ -2,14 +2,19 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Fast tests for TypeScript repository filtering before SCIP generation."""
+"""Fast tests for TypeScript project preparation before SCIP generation."""
 
+import hashlib
 import json
+import logging
+import subprocess
 from pathlib import Path
 
 import pytest
 
+from codenib.paths import CODENIB_HOME_ENV, PROJECT_INSTALL_SENTINEL, repo_state_dir
 from codenib.repository_filters import default_exclude_patterns
+from codenib.scip_interface import scip_indexer_ts as ts_indexer
 from codenib.scip_interface.scip_indexer_base import SCIPIndexerBase
 from codenib.scip_interface.scip_indexer_ts import SCIPTypeScriptIndexer
 from codenib.scip_interface.typescript_semantics import (
@@ -412,3 +417,130 @@ def test_existing_config_without_manifest_keeps_scip_package_boundary(
     assert "patched_tsconfig" not in observed
     assert observed["infer_tsconfig"] is False
     assert _checkout_snapshot(project) == before
+
+
+class _FakeNpm:
+    """Stand-in for ``subprocess.run`` that records install commands."""
+
+    def __init__(self, *, fail: bool, npm_version: str = "10.9.7"):
+        self.fail = fail
+        self.npm_version = npm_version
+        self.installs: list[list[str]] = []
+
+    def __call__(self, cmd, **kwargs):
+        if cmd[1:] == ["--version"]:
+            version = self.npm_version if cmd[0] == "npm" else "v22.22.2"
+            return subprocess.CompletedProcess(cmd, 0, stdout=f"{version}\n")
+        self.installs.append(list(cmd))
+        if self.fail:
+            raise subprocess.CalledProcessError(1, cmd, stderr="gyp ERR! not ok")
+        return subprocess.CompletedProcess(cmd, 0, stdout="")
+
+
+def _npm_project(tmp_path, monkeypatch):
+    monkeypatch.setenv(CODENIB_HOME_ENV, str(tmp_path / "home"))
+    monkeypatch.delenv(ts_indexer.RETRY_FAILED_INSTALL_ENV, raising=False)
+    project = tmp_path / "repo"
+    project.mkdir()
+    (project / "package.json").write_text('{"name": "demo"}\n')
+    (project / "package-lock.json").write_text('{"lockfileVersion": 1}\n')
+    return project, SCIPTypeScriptIndexer(project, output_dir=tmp_path / "index")
+
+
+def _install(indexer, monkeypatch, fake):
+    monkeypatch.setattr(ts_indexer.subprocess, "run", fake)
+    fake.installs.clear()
+    indexer._install_dependencies()
+    return fake.installs
+
+
+def test_failed_install_is_recorded_outside_checkout_and_skipped(
+    tmp_path, monkeypatch, caplog
+):
+    project, indexer = _npm_project(tmp_path, monkeypatch)
+    fake = _FakeNpm(fail=True)
+
+    assert _install(indexer, monkeypatch, fake) == [["npm", "ci"], ["npm", "install"]]
+    # Per-repository CodeNib state: not the checkout, not an index view.
+    record = repo_state_dir(project) / indexer._INSTALL_FAILURE_RECORD_NAME
+    assert record.parent.is_relative_to(tmp_path / "home")
+    assert not any((tmp_path / "index").iterdir())
+    assert json.loads(record.read_text())["inputs"]["tool_versions"] == {
+        "node": "v22.22.2",
+        "npm": "10.9.7",
+    }
+    assert sorted(p.name for p in project.iterdir()) == [
+        "package-lock.json",
+        "package.json",
+    ]
+
+    caplog.set_level(logging.WARNING, logger=ts_indexer.logger.name)
+    ts_indexer.logger.addHandler(caplog.handler)
+    try:
+        assert _install(indexer, monkeypatch, fake) == []
+    finally:
+        ts_indexer.logger.removeHandler(caplog.handler)
+    assert "Skipping dependency install: npm ci failed" in caplog.text
+    assert ts_indexer.RETRY_FAILED_INSTALL_ENV in caplog.text
+
+
+@pytest.mark.parametrize("changed", ["lockfile", "package_json", "npm_version"])
+def test_failed_install_retries_when_its_inputs_change(tmp_path, monkeypatch, changed):
+    project, indexer = _npm_project(tmp_path, monkeypatch)
+    fake = _FakeNpm(fail=True)
+    _install(indexer, monkeypatch, fake)
+
+    if changed == "lockfile":
+        (project / "package-lock.json").write_text('{"lockfileVersion": 3}\n')
+    elif changed == "package_json":
+        (project / "package.json").write_text('{"name": "demo", "private": true}\n')
+    else:
+        fake.npm_version = "11.0.0"
+
+    assert _install(indexer, monkeypatch, fake) == [["npm", "ci"], ["npm", "install"]]
+    # The new failure replaces the old record, so the next build skips again.
+    assert _install(indexer, monkeypatch, fake) == []
+
+
+@pytest.mark.parametrize("trigger", ["expired", "forced"])
+def test_failed_install_retries_after_expiry_or_on_request(
+    tmp_path, monkeypatch, trigger
+):
+    _project, indexer = _npm_project(tmp_path, monkeypatch)
+    fake = _FakeNpm(fail=True)
+    _install(indexer, monkeypatch, fake)
+
+    if trigger == "expired":
+        record_path = indexer._install_failure_record
+        record = json.loads(record_path.read_text())
+        record["failed_at"] -= indexer._INSTALL_FAILURE_TTL_SEC + 1
+        record_path.write_text(json.dumps(record))
+    else:
+        monkeypatch.setenv(ts_indexer.RETRY_FAILED_INSTALL_ENV, "1")
+
+    assert _install(indexer, monkeypatch, fake) == [["npm", "ci"], ["npm", "install"]]
+
+
+def test_successful_install_keeps_sentinel_cache_and_clears_failure(
+    tmp_path, monkeypatch
+):
+    project, indexer = _npm_project(tmp_path, monkeypatch)
+    fake = _FakeNpm(fail=True)
+    _install(indexer, monkeypatch, fake)
+    monkeypatch.setenv(ts_indexer.RETRY_FAILED_INSTALL_ENV, "1")
+    fake.fail = False
+
+    assert _install(indexer, monkeypatch, fake) == [["npm", "ci"]]
+    assert not indexer._install_failure_record.exists()
+    lockfile = project / "package-lock.json"
+    sentinel = project / PROJECT_INSTALL_SENTINEL
+    assert sentinel.read_text() == hashlib.sha1(lockfile.read_bytes()).hexdigest()
+
+    # With node_modules and a matching sentinel, nothing runs at all.
+    (project / "node_modules").mkdir()
+    monkeypatch.setattr(
+        ts_indexer.subprocess,
+        "run",
+        lambda *a, **k: pytest.fail("cached install must not run a command"),
+    )
+    indexer._install_dependencies()
