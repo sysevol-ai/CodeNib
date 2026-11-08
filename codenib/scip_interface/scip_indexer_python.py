@@ -824,7 +824,15 @@ class SCIPPythonIndexer(SCIPIndexerBase):
                     "status": "skipped",
                     "reason": "pyrefly provides physical identities",
                 }
-            return self._process_decoded_index(output_file)
+            # Read occurrences from the binary index this run decoded instead of
+            # scanning the decoded text again; the text still feeds the graph
+            # decoder and the native fact query unchanged.
+            occurrence_index, fingerprint = self._occurrences_from_binary_index()
+            return self._process_decoded_index(
+                output_file,
+                occurrence_index=occurrence_index,
+                decoded_fingerprint=fingerprint,
+            )
         temporary = None
         try:
             from ..compiler.artifact_fingerprints import regular_file_fingerprint
