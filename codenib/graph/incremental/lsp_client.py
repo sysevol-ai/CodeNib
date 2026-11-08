@@ -14,12 +14,14 @@ Supports the subset of LSP needed for incremental graph updates:
 from __future__ import annotations
 
 import atexit
+import io
 import json
 import os
 import select
 import subprocess
 import sys
 import time
+import time as _real_time
 from pathlib import Path
 from typing import Any, Optional
 
@@ -33,6 +35,57 @@ logger = get_logger(__name__)
 _SHUTDOWN_GRACE_SECONDS = 10.0
 _SHUTDOWN_EXIT_SECONDS = 5.0
 _SHUTDOWN_KILL_SECONDS = 5.0
+
+
+def _is_stream_readable(stream: Any, timeout_s: float) -> bool:
+    """Return whether ``stream`` has data available to read within ``timeout_s``.
+
+    On POSIX, uses ``select.select([stream], [], [], timeout_s)``.
+    On Windows, uses ``PeekNamedPipe`` on anonymous pipes to avoid Winsock
+    socket-only restrictions.
+    """
+    if timeout_s <= 0:
+        timeout_s = 0.0
+
+    if sys.platform != "win32":
+        ready, _, _ = select.select([stream], [], [], timeout_s)
+        return bool(ready)
+
+    try:
+        fd = stream.fileno() if hasattr(stream, "fileno") else None
+    except Exception:
+        fd = None
+
+    if fd is None:
+        return True
+
+    try:
+        import msvcrt
+        import ctypes
+        import ctypes.wintypes as wt
+
+        handle = msvcrt.get_osfhandle(fd)
+        avail = wt.DWORD()
+        deadline = time.monotonic() + timeout_s
+        while True:
+            res = ctypes.windll.kernel32.PeekNamedPipe(
+                handle, None, 0, None, ctypes.byref(avail), None
+            )
+            if not res:
+                err = ctypes.windll.kernel32.GetLastError()
+                # 109: ERROR_BROKEN_PIPE (EOF). POSIX select marks EOF as readable.
+                if err == 109:
+                    return True
+                # Not an anonymous pipe (regular file/device/socket)
+                return True
+            if avail.value > 0:
+                return True
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return False
+            _real_time.sleep(min(remaining, 0.005))
+    except (OSError, ValueError):
+        return True
 
 
 # ---------------------------------------------------------------------------
@@ -1042,7 +1095,12 @@ class LSPClient:
 
     def _send_shutdown_bytes(self, data: bytes) -> None:
         """Best-effort handshake without a blocking buffered write/flush."""
-        fd = self.process.stdin.fileno()
+        try:
+            fd = self.process.stdin.fileno()
+        except (AttributeError, io.UnsupportedOperation):
+            self.process.stdin.write(data)
+            return
+
         blocking = os.get_blocking(fd)
         os.set_blocking(fd, False)
         try:
@@ -1051,11 +1109,14 @@ class LSPClient:
                 remaining = self._shutdown_deadline - time.monotonic()
                 if remaining <= 0:
                     raise TimeoutError("LSP shutdown write deadline exceeded")
-                if not select.select([], [fd], [], remaining)[1]:
-                    raise TimeoutError("LSP shutdown write deadline exceeded")
+                if sys.platform != "win32":
+                    if not select.select([], [fd], [], remaining)[1]:
+                        raise TimeoutError("LSP shutdown write deadline exceeded")
                 try:
                     written = os.write(fd, remaining_data)
                 except BlockingIOError:
+                    if sys.platform == "win32":
+                        _real_time.sleep(min(remaining, 0.005))
                     continue
                 if written == 0:
                     raise BrokenPipeError("LSP shutdown pipe closed")
@@ -1150,8 +1211,7 @@ class LSPClient:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 return None
-            ready, _, _ = select.select([self.process.stdout], [], [], remaining)
-            if not ready:
+            if not _is_stream_readable(self.process.stdout, remaining):
                 continue
             chunk = (
                 self.process.stdout.read1(65536)
@@ -1202,10 +1262,9 @@ class LSPClient:
             if remaining <= 0:
                 break
             if not self._read_buffer:
-                ready, _, _ = select.select(
-                    [self.process.stdout], [], [], min(remaining, 0.05)
-                )
-                if not ready:
+                if not _is_stream_readable(
+                    self.process.stdout, min(remaining, 0.05)
+                ):
                     break
             msg = self._read_message(timeout=remaining)
             if msg is None:

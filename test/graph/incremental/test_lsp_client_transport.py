@@ -17,10 +17,6 @@ import pytest
 import codenib.graph.incremental.lsp_client as lsp_module
 from codenib.graph.incremental.lsp_client import LSPClient
 
-pytestmark = pytest.mark.skipif(
-    os.name == "nt", reason="The stdio select transport requires POSIX pipes"
-)
-
 
 def _frame(message):
     body = json.dumps(message, ensure_ascii=False).encode("utf-8")

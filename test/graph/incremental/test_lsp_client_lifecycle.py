@@ -20,8 +20,6 @@ import pytest
 import codenib.graph.incremental.lsp_client as lsp_module
 from codenib.graph.incremental.lsp_client import LSPClient
 
-pytestmark = pytest.mark.skipif(os.name == "nt", reason="POSIX stdio transport")
-
 
 class _RetainedProcess:
     def __init__(self):
@@ -279,8 +277,8 @@ def test_unread_full_stdin_pipe_cannot_block_shutdown(tmp_path, monkeypatch):
     rescuer = threading.Thread(target=rescue_blocked_write)
 
     try:
-        assert select.select([process.stdout], [], [], 2)[0]
-        assert process.stdout.readline() == b"ready\n"
+        assert lsp_module._is_stream_readable(process.stdout, 2)
+        assert process.stdout.readline().rstrip(b"\r\n") == b"ready"
         fd = process.stdin.fileno()
         os.set_blocking(fd, False)
         try:
