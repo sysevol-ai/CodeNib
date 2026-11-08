@@ -13,6 +13,11 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 ### Fixed
 
+- On wide screens the demo home now stops at codenib.ai's width, centred, with
+  the header on the same edges, instead of stretching across the window. Its
+  headings use codenib.ai's two-line form. On both sites a wide example gives
+  the call path more room and the source a larger face, so short code no
+  longer leaves half the pane empty.
 - A refused Wiki submission now says why: the key was not accepted, has no
   credit, is a management key, or OpenRouter could not be reached. A refused
   key no longer uses up the one try per minute, other waits count down on the

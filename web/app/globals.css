@@ -6529,6 +6529,26 @@ a.codepanel-name:hover {
   border-top: 0;
   padding-top: 8px;
 }
+/* As on codenib.ai, the second sentence of a heading takes its own line in
+   a quieter tone, so the break is chosen rather than wherever the text wraps. */
+.home-stage :is(h1, h2) .dim {
+  display: block;
+  color: var(--h-muted);
+}
+/* On wide screens the home stops at codenib.ai's width (a 1600px frame with
+   64px gutters), centred, and the header's brand and links share its edges.
+   Narrower windows keep the gutter they had. */
+@media (min-width: 1600px) {
+  .landing {
+    --home-edge: max(60px, calc((100% - 1472px) / 2));
+  }
+  .landing > .site-header,
+  .landing .home-stage,
+  .landing .landing-catalog,
+  .landing .landing-agent {
+    padding-inline: var(--home-edge);
+  }
+}
 /* The shared example is a shadow-DOM component themed through these
    properties; on the stage it takes the stage's dark palette. */
 .home-example .first-visit-explorer {

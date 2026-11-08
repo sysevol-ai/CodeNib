@@ -169,9 +169,11 @@ try {
     assert.equal(await page.locator(".repo-details").getAttribute("open"), null);
     await page.locator(".repo-details summary").click();
     const detailsText = await page.locator(".repo-details").innerText();
-    for (const value of ["20 MiB", "40 MiB", "4,000", "50,000", "4 MiB", "can exceed"]) {
+    for (const value of ["20 MiB", "40 MiB", "4,000", "4 MiB", "can exceed"]) {
       assert.ok(detailsText.includes(value), `${value} must be one click away at the repository entry`);
     }
+    // Chunks are an internal step, not a limit a visitor can check (#1000).
+    assert.ok(!/chunk/i.test(detailsText), "the repository entry must not name a chunk limit");
     let submitted;
     await page.route("https://demo.codenib.ai/**", route => {
       submitted = route.request().url();
