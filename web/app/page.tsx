@@ -330,7 +330,9 @@ export default function Landing({ browse = false }: { browse?: boolean }) {
           <section className="home-hero" aria-label="CodeNib Wiki">
             <div className="home-hero-intro">
               <div>
-                <h1>Understand a repo.<br />Follow the code.</h1>
+                <h1>
+                  Understand a repo. <span className="dim">Follow the code.</span>
+                </h1>
                 <p className="home-sub">
                   Every repository here is mapped from its code index: its parts,
                   the calls between them, and the path a request takes through
@@ -368,7 +370,9 @@ export default function Landing({ browse = false }: { browse?: boolean }) {
           </section>
           <section className="home-example" aria-label="Try a real example">
             <div className="home-example-intro">
-              <h2>Ask one question. Land on the exact lines.</h2>
+              <h2>
+                Ask one question. <span className="dim">Land on the exact lines.</span>
+              </h2>
               <p className="home-sub">
                 Each step is a call the index recorded. Click one to read the source
                 it points at. No account or API key needed.

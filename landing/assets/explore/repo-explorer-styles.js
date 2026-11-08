@@ -37,14 +37,14 @@ button:focus-visible, a:focus-visible, .source-scroll:focus-visible { outline: 3
 a { color: var(--accent, #2563eb); text-decoration: none; }
 a:hover { text-decoration: underline; }
 .source-link { color: #93c5fd; white-space: nowrap; }
-.source-scroll { flex: 1 1 266px; min-height: 266px; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; font: 12px/1.65 ui-monospace, monospace; }
+.source-scroll { --code-lh: 1.65; flex: 1 1 266px; min-height: 266px; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; font-family: ui-monospace, monospace; font-size: var(--code-size, 12px); line-height: var(--code-lh); }
 .source-code { position: relative; display: flex; min-width: max-content; }
 pre { position: relative; margin: 0; padding: 12px 14px 12px 0; font: inherit; tab-size: 4; }
 .line-numbers { position: relative; flex: 0 0 40px; padding: 12px 10px 12px 0; color: #94a3b8; text-align: right; user-select: none; }
 .code-line { display: block; }
 .code-line.selected { color: #dbeafe; }
 .code-line.gap { color: #64748b; letter-spacing: .1em; }
-.line-highlight { position: absolute; inset-inline: 0; top: calc(12px + var(--selected-row) * 1.65em); height: 1.65em; background: var(--explore-code-line, #1e3a5f); box-shadow: inset 3px 0 var(--explore-code-mark, #60a5fa); }
+.line-highlight { position: absolute; inset-inline: 0; top: calc(12px + var(--selected-row) * var(--code-lh) * 1em); height: calc(var(--code-lh) * 1em); background: var(--explore-code-line, #1e3a5f); box-shadow: inset 3px 0 var(--explore-code-mark, #60a5fa); }
 .hljs-keyword { color: #ff9da4; }
 .hljs-string { color: #a5d6ff; }
 .hljs-comment { color: #9caec4; }
@@ -92,6 +92,13 @@ footer { display: flex; justify-content: space-between; gap: 12px; padding: 16px
   .source-scroll { min-height: 360px; }
   footer { grid-area: foot; }
   .share-status { grid-area: status; }
+}
+/* A very wide example gives the path more room and the source a larger face,
+   so short lines of code do not leave the pane half empty. */
+@container explorer (min-width: 1180px) {
+  article { grid-template-columns: minmax(340px, 36%) minmax(0, 1fr); }
+  /* The pane grows with the excerpt, so the larger face never hides its last lines. */
+  .source-scroll { --code-size: 13.5px; --code-lh: 1.7; flex: 1 1 auto; }
 }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }
 `;
