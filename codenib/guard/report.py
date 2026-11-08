@@ -115,6 +115,23 @@ def working_tree_diff(repo: Path, commit: str) -> Tuple[str, List[str]]:
     return diff, untracked
 
 
+def change_digest(diff: str, untracked: List[str]) -> str:
+    """Identify one working-tree change by its diff and the names of new files."""
+
+    payload = diff + "\0" + "\0".join(sorted(untracked))
+    return hashlib.sha256(payload.encode("utf-8", "surrogateescape")).hexdigest()
+
+
+def working_tree_digest(repo: Path, commit: str) -> str:
+    """The ``diff_sha256`` a report on ``commit`` would carry, without a graph.
+
+    Two git calls, so a caller can recognise a change it has already reported
+    before waiting for a graph build or running the impact query.
+    """
+
+    return change_digest(*working_tree_diff(repo.resolve(), commit))
+
+
 def run_guard(
     repo: Path,
     base: str = "HEAD",
@@ -140,11 +157,7 @@ def run_guard(
         base=base,
         base_commit=commit,
         impact=impact,
-        diff_sha256=hashlib.sha256(
-            (diff + "\0" + "\0".join(sorted(untracked))).encode(
-                "utf-8", "surrogateescape"
-            )
-        ).hexdigest(),
+        diff_sha256=change_digest(diff, untracked),
         graph_seconds=snapshot.seconds,
     )
     notes, report.note_errors = load_notes(repo)

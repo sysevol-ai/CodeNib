@@ -21,8 +21,10 @@ from codenib.guard.notes import (
     definition_hash,
     load_notes,
 )
+from codenib.guard.report import working_tree_digest
 
-SOURCE = textwrap.dedent("""\
+SOURCE = textwrap.dedent(
+    """\
     class Loader:
         @staticmethod
         def load(path):
@@ -31,7 +33,8 @@ SOURCE = textwrap.dedent("""\
 
     def parse(text):
         return text.split()
-    """)
+    """
+)
 
 
 def test_note_round_trip_and_staleness(tmp_path, write_files):
@@ -182,6 +185,56 @@ def test_stop_skips_repositories_without_python(git_repo, tmp_path, monkeypatch)
     (git_repo.root / "app.js").write_text("console.log(2)\n")
     payload = {"session_id": "s", "cwd": str(git_repo.root), "stop_hook_active": False}
     assert hooks.stop("claude", payload) == ("", "skipped: no Python files")
+
+
+def _reported_session(git_repo, tmp_path, monkeypatch):
+    """A session whose base is committed and whose current change was reported."""
+
+    monkeypatch.setenv("CODENIB_HOME", str(tmp_path / "home"))
+    base = git_repo.commit({"shop.py": "def total():\n    return 1\n"}, "init")
+    (git_repo.root / "shop.py").write_text("def total():\n    return 2\n")
+    (git_repo.root / "new_helper.py").write_text("X = 1\n")
+    repo = hooks._repo_root(str(git_repo.root))
+    hooks._update_session(
+        repo, "s", base=base, reported=working_tree_digest(repo, base)
+    )
+    return {"session_id": "s", "cwd": str(git_repo.root), "stop_hook_active": False}
+
+
+def test_stop_skips_a_reported_change_before_any_graph_work(
+    git_repo, tmp_path, monkeypatch
+):
+    payload = _reported_session(git_repo, tmp_path, monkeypatch)
+
+    def no_graph_work(*args, **kwargs):
+        raise AssertionError("a reported change needs no graph")
+
+    monkeypatch.setattr(hooks, "_wait_for_graph", no_graph_work)
+    monkeypatch.setattr(hooks, "run_guard", no_graph_work)
+    assert hooks.stop("claude", payload) == ("", "already reported this change")
+
+
+@pytest.mark.parametrize(
+    "edit",
+    [
+        lambda root: (root / "shop.py").write_text("def total():\n    return 3\n"),
+        lambda root: (root / "another_new.py").write_text("Y = 2\n"),
+    ],
+    ids=["edited-file", "new-untracked-file"],
+)
+def test_stop_runs_the_guard_for_a_change_not_yet_reported(
+    git_repo, tmp_path, monkeypatch, edit
+):
+    payload = _reported_session(git_repo, tmp_path, monkeypatch)
+    edit(git_repo.root)
+    waited = []
+    monkeypatch.setattr(
+        hooks, "_wait_for_graph", lambda repo, commit: waited.append(commit) or False
+    )
+    monkeypatch.setattr(hooks, "failed_snapshot", lambda repo, commit: None)
+    out, reason = hooks.stop("claude", payload)
+    assert out == "" and reason.endswith("still building")
+    assert len(waited) == 1
 
 
 def test_a_failed_build_is_recorded_and_retried_later(git_repo, tmp_path, monkeypatch):
