@@ -26,6 +26,11 @@ them, and keeps working.
 - **Why.** Each test comes with its path, such as
   `test_checkout_total (tests/test_checkout.py:6) -> checkout (shop/checkout.py:5) -> Cart.__init__`.
   The location after each name is the line where it makes the next call.
+- **Edited tests.** An existing test whose own lines the change rewrote now
+  checks the new behaviour, so it passing shows little. The guard lists these
+  tests first, with a command that runs them as they were at the base commit
+  and then restores your edits. A test added next to an existing one does not
+  count as an edit of it.
 
 The graph is built from the commit you compare against, not from your edited
 files, and kept for later runs. The first build of a commit takes from under a

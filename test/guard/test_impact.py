@@ -9,9 +9,16 @@ from __future__ import annotations
 import textwrap
 
 from codenib.graph.constructor_edges import constructor_edges, short_name
-from codenib.guard.impact import ImpactGraph, base_changed_lines, pytest_id, symbol_id
+from codenib.guard.impact import (
+    ImpactGraph,
+    base_changed_lines,
+    base_rewritten_lines,
+    pytest_id,
+    symbol_id,
+)
 
-PRICING = textwrap.dedent("""\
+PRICING = textwrap.dedent(
+    """\
     class Base:
         def __init__(self, items):
             self.items = list(items)
@@ -23,8 +30,10 @@ PRICING = textwrap.dedent("""\
 
 
     Basket = Cart
-    """)
-USES = textwrap.dedent("""\
+    """
+)
+USES = textwrap.dedent(
+    """\
     from shop.pricing import Cart as C, Basket
 
 
@@ -38,8 +47,10 @@ USES = textwrap.dedent("""\
 
     def basket():
         return Basket([])
-    """)
-TESTS = textwrap.dedent("""\
+    """
+)
+TESTS = textwrap.dedent(
+    """\
     from shop.uses import build
 
 
@@ -50,7 +61,8 @@ TESTS = textwrap.dedent("""\
     class TestKind:
         def test_kind(self):
             assert kind(None) is False
-    """)
+    """
+)
 
 NODES = [
     ("shop/pricing.py", "file", None, None, None),
@@ -163,7 +175,8 @@ def test_unknown_python_files_are_reported_as_unmapped(
 
 
 def test_base_changed_lines_uses_base_side_numbers():
-    diff = textwrap.dedent("""\
+    diff = textwrap.dedent(
+        """\
         diff --git a/shop/a.py b/shop/a.py
         --- a/shop/a.py
         +++ b/shop/a.py
@@ -180,7 +193,8 @@ def test_base_changed_lines_uses_base_side_numbers():
         --- a/shop/gone.py
         +++ /dev/null
         @@ -1,4 +0,0 @@
-        """)
+        """
+    )
     changed, added = base_changed_lines(diff)
     assert changed == {"shop/a.py": {3, 4, 10, 20}, "shop/gone.py": {1, 2, 3, 4}}
     assert added == ["shop/new.py"]
@@ -195,3 +209,63 @@ def test_tests_that_call_in_come_before_edited_tests(tmp_path, make_graph, write
         ("tests/test_shop.py::test_build", 2),
         ("tests/test_shop.py::TestKind::test_kind", 0),
     ]
+
+
+def test_base_rewritten_lines_ignore_pure_insertions():
+    diff = textwrap.dedent(
+        """\
+        diff --git a/tests/test_shop.py b/tests/test_shop.py
+        --- a/tests/test_shop.py
+        +++ b/tests/test_shop.py
+        @@ -3,2 +3,2 @@ def helper():
+        -    old
+        -    old
+        +    new
+        +    new
+        @@ -10,0 +11,3 @@ def test_build():
+        +def test_added():
+        +    pass
+        +
+        @@ -20 +22,0 @@ class TestKind:
+        -    gone
+        diff --git a/tests/test_new.py b/tests/test_new.py
+        --- /dev/null
+        +++ b/tests/test_new.py
+        @@ -0,0 +1 @@
+        +def test_new(): pass
+        """
+    )
+    assert base_rewritten_lines(diff) == {"tests/test_shop.py": {3, 4, 20}}
+    changed, added = base_changed_lines(diff)  # the shared parser is unchanged
+    assert changed == {"tests/test_shop.py": {3, 4, 10, 20}}
+    assert added == ["tests/test_new.py"]
+
+
+def test_edited_existing_tests_come_first(tmp_path, make_graph, write_files):
+    root = _repo(tmp_path, write_files)
+    graph = ImpactGraph(make_graph(NODES, EDGES), root)
+    # Base.__init__ changes and test_kind's own assertion is rewritten.
+    impact = graph.impact(
+        {"shop/pricing.py": {3}, "tests/test_shop.py": {10}},
+        depth=3,
+        rewritten_lines={"shop/pricing.py": {3}, "tests/test_shop.py": {10}},
+    )
+    assert impact.edited_tests == ["tests/test_shop.py::TestKind::test_kind"]
+    assert [(t.test_id, t.depth) for t in impact.tests] == [
+        ("tests/test_shop.py::TestKind::test_kind", 0),
+        ("tests/test_shop.py::test_build", 2),
+    ]
+
+
+def test_code_added_after_a_test_leaves_it_unedited(tmp_path, make_graph, write_files):
+    root = _repo(tmp_path, write_files)
+    graph = ImpactGraph(make_graph(NODES, EDGES), root)
+    # A new test inserted after test_build counts as a change to test_build's
+    # last line, but rewrites none of its lines.
+    impact = graph.impact(
+        {"tests/test_shop.py": {5}},
+        depth=3,
+        rewritten_lines={"tests/test_shop.py": set()},
+    )
+    assert [t.test_id for t in impact.tests] == ["tests/test_shop.py::test_build"]
+    assert impact.edited_tests == []

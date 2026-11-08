@@ -88,6 +88,9 @@ All notable user-facing changes are recorded here. CodeNib follows
   tests that reach the changed definitions within three calls, each with its
   call path and call lines. The graph is built from the commit's tracked files
   and cached per commit. `--json` and `--exit-code` serve scripts and CI.
+  Existing tests that the change itself rewrote come first, with a command that
+  runs them as they were at the base commit, since an edited test that passes
+  says little about the behaviour it protected.
 - `codenib guard install` adds SessionStart and Stop hooks for Claude Code and
   Codex. Before the agent finishes, the hook hands back the tests its change
   reaches; it reports each change once and never fails the agent's turn.
