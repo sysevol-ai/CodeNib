@@ -34,7 +34,7 @@ from typing import Dict, List, Optional, Tuple
 from filelock import FileLock, Timeout
 
 from ..paths import user_state_dir
-from .report import render_for_agent, run_guard
+from .report import render_for_agent, run_guard, working_tree_digest
 from .snapshot import (
     SnapshotError,
     build_in_background,
@@ -314,13 +314,18 @@ def stop(agent: str, payload: Dict[str, object]) -> Tuple[str, str]:
     base = str(entry.get("base") or resolve_commit(repo))
     if not has_python(repo, base):
         return "", "skipped: no Python files"
+    reported = entry.get("reported", [])
+    # Only changes with findings are recorded, so a recorded change would be
+    # reported again: skip it before waiting for a graph or running the guard.
+    if working_tree_digest(repo, base) in reported:
+        return "", "already reported this change"
     if not _wait_for_graph(repo, base):
         reason = failed_snapshot(repo, base) or "still building"
         return "", f"skipped: graph of {base[:12]}: {reason}"
     report = run_guard(repo, base)
     if not report.has_findings:
         return "", "no tests or notes at risk"
-    if report.diff_sha256 in entry.get("reported", []):
+    if report.diff_sha256 in reported:  # the tree moved to a reported change meanwhile
         return "", "already reported this change"
     _update_session(repo, session, reported=report.diff_sha256)
     _report_first_run()
