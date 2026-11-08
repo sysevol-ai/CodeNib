@@ -565,25 +565,40 @@ class CodeGraph:
         pickled with the graph by `save_graph`, so subsequent `load_graph`
         calls do not need to rebuild.
 
-        Cost: O(V + E) — one linear pass over vertices and edges.
+        Cost: O(V + E) — one linear pass over vertices and edges. Attribute
+        columns are read in bulk; a per-element ``vs[i]`` / ``es[i]`` lookup
+        costs several times more on graphs with 100k+ reference edges.
         """
+        vs = self.graph.vs
+        es = self.graph.es
+        vcount = self.graph.vcount()
+        ecount = self.graph.ecount()
+        vertex_attributes = set(vs.attributes())
+        edge_attributes = set(es.attributes())
+
+        def column(seq, present, name, count):
+            # A missing attribute reads as None, like ``attributes().get``.
+            return seq[name] if name in present else [None] * count
+
         nodes: Dict[str, List[Tuple[int, int, int]]] = defaultdict(list)
-        for vid in range(self.graph.vcount()):
-            v = self.graph.vs[vid]
-            attrs = v.attributes()
-            f = attrs.get("file")
-            s = attrs.get("start_line")
-            e = attrs.get("end_line")
+        for vid, (f, s, e) in enumerate(
+            zip(
+                column(vs, vertex_attributes, "file", vcount),
+                column(vs, vertex_attributes, "start_line", vcount),
+                column(vs, vertex_attributes, "end_line", vcount),
+            )
+        ):
             if f and s is not None and e is not None:
                 nodes[f].append((s, e, vid))
         self._file_nodes = dict(nodes)
 
         edges: Dict[str, List[Tuple[int, int]]] = defaultdict(list)
-        for eid in range(self.graph.ecount()):
-            edge = self.graph.es[eid]
-            attrs = edge.attributes()
-            f = attrs.get("anchor_file")
-            line = attrs.get("anchor_line")
+        for eid, (f, line) in enumerate(
+            zip(
+                column(es, edge_attributes, "anchor_file", ecount),
+                column(es, edge_attributes, "anchor_line", ecount),
+            )
+        ):
             if f and line is not None:
                 edges[f].append((line, eid))
         for f in edges:
@@ -591,11 +606,14 @@ class CodeGraph:
         self._file_edge_anchors = dict(edges)
 
         unified: Dict[str, List[str]] = defaultdict(list)
-        for vid in range(self.graph.vcount()):
-            v = self.graph.vs[vid]
-            uname = v.attributes().get("unified_name")
+        names = None
+        for vid, uname in enumerate(
+            column(vs, vertex_attributes, "unified_name", vcount)
+        ):
             if uname:
-                unified[uname].append(v["name"])
+                if names is None:
+                    names = vs["name"]
+                unified[uname].append(names[vid])
         self._unified_to_names = dict(unified)
         self._unified_index_cache = None
 

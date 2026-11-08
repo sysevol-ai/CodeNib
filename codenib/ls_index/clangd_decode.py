@@ -22,14 +22,16 @@ Two-pass approach for graph building:
   Pass 2: Resolve definitions, build graph nodes and edges
 """
 
+import gc
 import logging
 import os
 import struct
 import threading
 import time
 import zlib
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, List, Mapping, Optional, Tuple
+from typing import Any, Iterator, List, Mapping, Optional, Tuple
 
 from ..graph.code_graph import CodeGraph
 from ..types import (
@@ -132,6 +134,41 @@ def native_clangd_position_encoding(value: Optional[str] = None) -> str:
             f"{_NATIVE_POSITION_ENCODING_ENV} must be UTF8, UTF16, or UTF32; "
             f"got {raw!r}"
         ) from exc
+
+
+def _is_normalized_relative_path(text: str) -> bool:
+    """Whether POSIX pathlib renders this relative path text unchanged.
+
+    pathlib drops empty and "." components and a trailing separator; it keeps
+    ".." because relative_to() is purely lexical.
+    """
+
+    if not text or text[0] == "/" or text[-1] == "/" or "//" in text:
+        return False
+    return not (
+        text == "." or text.startswith("./") or text.endswith("/.") or "/./" in text
+    )
+
+
+@contextmanager
+def _gc_paused() -> Iterator[None]:
+    """Suspend the cyclic garbage collector while decoding records.
+
+    Decoding allocates millions of small, acyclic dicts and tuples that stay
+    alive until the graph is built, so every generation-2 pass rescans the
+    whole record heap without freeing anything. On redis (699 .idx files)
+    those passes were about a quarter of decode wall time. Reference counting
+    still frees everything; collection resumes on exit. Nested use is a no-op.
+    """
+
+    if not gc.isenabled():
+        yield
+        return
+    gc.disable()
+    try:
+        yield
+    finally:
+        gc.enable()
 
 
 def _validate_native_query_contract(contract: Mapping[str, Any]) -> None:
@@ -945,6 +982,14 @@ class ClangdGraphDecoder:
     ):
         self.idx_directory = Path(idx_directory)
         self.project_root = Path(project_root).resolve()
+        root_text = str(self.project_root)
+        # The string fast path in _file_uri_to_relative mirrors POSIX pathlib
+        # normalization only; other platforms always take the Path route.
+        self._project_root_prefix: Optional[str] = (
+            None
+            if os.sep != "/"
+            else root_text if root_text.endswith("/") else f"{root_text}/"
+        )
         self.position_encoding = native_clangd_position_encoding(position_encoding)
         self.code_graph = CodeGraph(str(self.project_root))
 
@@ -997,11 +1042,12 @@ class ClangdGraphDecoder:
             return self.code_graph
         logger.info(f"Starting clangd idx decode from {self.idx_directory}")
 
-        self.collect_records()
+        with _gc_paused():
+            self.collect_records()
 
-        # Pass 2: build the graph
-        self.code_graph.add_root_node(ROOT_NODE)
-        self._build_graph()
+            # Pass 2: build the graph
+            self.code_graph.add_root_node(ROOT_NODE)
+            self._build_graph()
         if self.query_snapshot_id:
             self.code_graph.snapshot_id = self.query_snapshot_id
         self._graph_materialized = True
@@ -1320,6 +1366,16 @@ class ClangdGraphDecoder:
             logger.warning(f"No .idx files found in {self.idx_directory}")
             return
 
+        with _gc_paused():
+            self._merge_idx_files(idx_files)
+
+        logger.info(
+            f"Collected {len(self._symbols)} symbols, "
+            f"{sum(len(v) for v in self._refs.values())} refs, "
+            f"{len(self._relations)} relations"
+        )
+
+    def _merge_idx_files(self, idx_files: List[Path]) -> None:
         # Merge into temporary accumulators before replacing decoder state.
         symbols = dict(self._symbols)
         refs = {symbol_id: list(values) for symbol_id, values in self._refs.items()}
@@ -1359,12 +1415,6 @@ class ClangdGraphDecoder:
         self._refs = refs
         self._relations = relations
 
-        logger.info(
-            f"Collected {len(self._symbols)} symbols, "
-            f"{sum(len(v) for v in self._refs.values())} refs, "
-            f"{len(self._relations)} relations"
-        )
-
     # ------------------------------------------------------------------
     # Name mapping
     # ------------------------------------------------------------------
@@ -1401,6 +1451,16 @@ class ClangdGraphDecoder:
             abs_path = uri[7:]
         else:
             abs_path = uri
+
+        # Every reference location passes through here, and constructing a
+        # Path per call cost about a sixth of redis decode time. A remainder
+        # that pathlib would not normalize (no empty, "." or trailing parts)
+        # is exactly what relative_to() returns, so slice it directly.
+        prefix = self._project_root_prefix
+        if prefix is not None and abs_path.startswith(prefix):
+            relative = abs_path[len(prefix) :]
+            if _is_normalized_relative_path(relative):
+                return relative
 
         try:
             rel = Path(abs_path).relative_to(self.project_root)

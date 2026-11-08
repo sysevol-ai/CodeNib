@@ -277,6 +277,54 @@ def test_build_range_indexes_is_idempotent():
     assert g._file_edge_anchors == snapshot_edges
 
 
+def _per_element_range_indexes(g: CodeGraph):
+    """The original per-vertex/per-edge build, kept as the reference."""
+
+    nodes, edges, unified = {}, {}, {}
+    for vid in range(g.graph.vcount()):
+        attrs = g.graph.vs[vid].attributes()
+        f, s, e = attrs.get("file"), attrs.get("start_line"), attrs.get("end_line")
+        if f and s is not None and e is not None:
+            nodes.setdefault(f, []).append((s, e, vid))
+        if attrs.get("unified_name"):
+            unified.setdefault(attrs["unified_name"], []).append(
+                g.graph.vs[vid]["name"]
+            )
+    for eid in range(g.graph.ecount()):
+        attrs = g.graph.es[eid].attributes()
+        f, line = attrs.get("anchor_file"), attrs.get("anchor_line")
+        if f and line is not None:
+            edges.setdefault(f, []).append((line, eid))
+    return nodes, {f: sorted(v) for f, v in edges.items()}, unified
+
+
+def test_bulk_range_index_build_matches_per_element_reference():
+    g = _build_multi_edge_graph()
+    g.add_symbol_node("foo.py:loose", 3)
+    g._add_vertex("unscoped", {"type": "symbol", "file": "foo.py"})
+    g._add_vertex("first", {"unified_name": "foo.py:shared"})
+    g._add_vertex("second", {"unified_name": "foo.py:shared"})
+    g._add_edge("foo.py:caller", "unscoped", EDGE_TYPE_REFERENCE, "foo.py", None)
+    g._add_edge("foo.py:caller", "first", EDGE_TYPE_REFERENCE, "bar.py", 7)
+    g.build_range_indexes()
+
+    nodes, edges, unified = _per_element_range_indexes(g)
+    assert g._file_nodes == nodes
+    assert g._file_edge_anchors == edges
+    assert g._unified_to_names == unified
+    assert unified["foo.py:shared"] == ["first", "second"]
+
+
+def test_range_index_build_tolerates_absent_attributes():
+    g = CodeGraph()
+    g.graph.add_vertices(2)
+    g.graph.add_edges([(0, 1)])
+    g.build_range_indexes()
+    assert g._file_nodes == {}
+    assert g._file_edge_anchors == {}
+    assert g._unified_to_names == {}
+
+
 def test_save_load_graph_roundtrip():
     g = _build_simple_graph()
 

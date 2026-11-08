@@ -228,27 +228,35 @@ class ClangdIndexer:
         logger.info(f"Processing {len(idx_files)} .idx files from {self.idx_directory}")
 
         try:
+            from .clangd_decode import _gc_paused
+
             decoder_class = self._get_decoder_class()
 
-            with self.profiler.section("process_index.decode") as section:
-                decoder = decoder_class(
-                    idx_directory=str(self.idx_directory),
-                    project_root=str(self.project_root),
-                )
-                graph: CodeGraph = decoder.decode()
-            duration = section.duration
+            # Keep the collector paused until the decoder's record heap is
+            # released; resuming earlier makes the next allocation rescan it.
+            with _gc_paused():
+                with self.profiler.section("process_index.decode") as section:
+                    decoder = decoder_class(
+                        idx_directory=str(self.idx_directory),
+                        project_root=str(self.project_root),
+                    )
+                    graph: CodeGraph = decoder.decode()
+                duration = section.duration
 
-            # Build line-range indexes once the graph is fully assembled.
-            # Must happen before save_graph so the indexes are persisted.
-            with self.profiler.section("process_index.build_range_indexes"):
-                graph.build_range_indexes()
+                # Build line-range indexes once the graph is fully assembled.
+                # Must happen before save_graph so the indexes are persisted.
+                with self.profiler.section("process_index.build_range_indexes"):
+                    graph.build_range_indexes()
 
-            if output_file:
-                with self.profiler.section("process_index.save_graph") as save_section:
-                    graph.save_graph(output_file)
-                save_duration = save_section.duration
-                logger.info(f"Saved graph to {output_file}")
-                logger.info(f"Graph saving took: {save_duration:.2f}s")
+                if output_file:
+                    with self.profiler.section(
+                        "process_index.save_graph"
+                    ) as save_section:
+                        graph.save_graph(output_file)
+                    save_duration = save_section.duration
+                    logger.info(f"Saved graph to {output_file}")
+                    logger.info(f"Graph saving took: {save_duration:.2f}s")
+                del decoder
 
             logger.info(f"Index processing took: {duration:.2f}s")
             return graph

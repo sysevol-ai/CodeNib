@@ -17,7 +17,7 @@ from collections import namedtuple
 from pathlib import Path
 from typing import ClassVar, List, Optional, Tuple
 
-from tree_sitter import Parser
+from tree_sitter import Parser, Query, QueryCursor
 from tree_sitter_language_pack import get_language
 
 from ..log_utils import get_logger
@@ -38,6 +38,8 @@ class BaseCodeChunker(ABC):
 
     _language_cache: ClassVar[dict[str, object]] = {}
     _language_cache_lock: ClassVar[threading.Lock] = threading.Lock()
+    _node_type_query_cache: ClassVar[dict[tuple, Optional[Query]]] = {}
+    _node_type_query_lock: ClassVar[threading.Lock] = threading.Lock()
 
     def __init__(
         self,
@@ -607,6 +609,72 @@ class BaseCodeChunker(ABC):
             # stack on generated C/C++ expression trees thousands of nodes deep.
             stack.extend(reversed(node.children))
         return nodes
+
+    def _find_nodes_by_types(
+        self, root_node, node_types: Tuple[str, ...]
+    ) -> dict[str, list]:
+        """Return ``_find_nodes_by_type`` results for several types at once.
+
+        One native tree-sitter query visits the tree instead of a Python walk
+        per type, which materializes a Node for every descendant; on redis
+        those walks were the largest cost of clangd graph decode. Per type,
+        the result is the same list in the same source-order depth-first
+        order. For nodes of one type with distinct, non-empty spans, that
+        order is exactly ``(start_byte, -end_byte)``: disjoint nodes are
+        ordered by start, and an ancestor starts no later and ends later than
+        its descendants. Any input outside that proof, a type that also names
+        an anonymous node, or a query that hits its match limit uses the walk.
+        """
+
+        query = self._node_type_query(node_types)
+        if query is not None:
+            cursor = QueryCursor(query)
+            captured = cursor.captures(root_node).get("node", [])
+            if not cursor.did_exceed_match_limit:
+                found: dict[str, list] = {node_type: [] for node_type in node_types}
+                for node in captured:
+                    found[node.type].append(node)
+                ordered = {}
+                for node_type, nodes in found.items():
+                    nodes.sort(key=lambda node: (node.start_byte, -node.end_byte))
+                    spans = {(node.start_byte, node.end_byte) for node in nodes}
+                    if len(spans) != len(nodes) or any(
+                        start == end for start, end in spans
+                    ):
+                        break
+                    ordered[node_type] = nodes
+                else:
+                    return ordered
+        return {
+            node_type: self._find_nodes_by_type(root_node, node_type)
+            for node_type in node_types
+        }
+
+    def _node_type_query(self, node_types: Tuple[str, ...]):
+        """Compile (once per language) a query capturing named node types."""
+
+        language = self.parser.language
+        key = (language, node_types)
+        with self._node_type_query_lock:
+            if key in self._node_type_query_cache:
+                return self._node_type_query_cache[key]
+        query = None
+        try:
+            # A query pattern ``(t)`` matches named nodes only, while the walk
+            # compares type strings, so require every type to be named-only.
+            if all(
+                language.id_for_node_kind(node_type, True) is not None
+                and language.id_for_node_kind(node_type, False) is None
+                for node_type in node_types
+            ):
+                patterns = " ".join(f"({node_type})" for node_type in node_types)
+                query = Query(language, f"[{patterns}] @node")
+        except Exception as exc:  # noqa: BLE001 - the Python walk stays exact
+            logger.debug("Node-type query unavailable for %s: %s", node_types, exc)
+            query = None
+        with self._node_type_query_lock:
+            self._node_type_query_cache[key] = query
+        return query
 
     def save_chunks_to_json(self, chunks: List[CodeChunk], output_path: str):
         """
