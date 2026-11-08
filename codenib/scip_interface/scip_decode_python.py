@@ -27,7 +27,13 @@ from ..types import (
     NODE_TYPE_METHOD,
     ROOT_NODE,
 )
-from .scip_indexer_base import extract_scip_blocks, extract_symbol
+from .scip_decode_view import (
+    document_path,
+    document_path_from_text,
+    occurrence_view,
+    occurrence_view_from_text,
+)
+from .scip_indexer_base import extract_scip_blocks
 
 
 class SCIPPythonGraphDecoder:
@@ -41,16 +47,23 @@ class SCIPPythonGraphDecoder:
     - References between symbols
     """
 
-    def __init__(self, index_file_path, project_root=None):
+    # Takes the parsed index that the decoded file was written from.
+    accepts_scip_index = True
+
+    def __init__(self, index_file_path, project_root=None, *, scip_index=None):
         """
         Initialize the Python SCIP decoder.
 
         Args:
             index_file_path: Path to the decoded SCIP index file
             project_root: Root directory of the Python project
+            scip_index: The parsed ``Index`` the decoded file was written from.
+                When given, it is read instead of the file, with the same
+                result; the caller binds the two.
         """
         self.index_file_path = index_file_path
         self.project_root = project_root
+        self.scip_index = scip_index
         self.code_graph = CodeGraph(project_root)
         self.indexed_directories = set()
         self.logger = get_logger(__name__)
@@ -63,6 +76,15 @@ class SCIPPythonGraphDecoder:
         Returns:
             CodeGraph: The constructed code graph
         """
+        if self.scip_index is not None:
+            self.logger.info("Starting SCIP Python decode from the parsed index")
+            self.code_graph.add_root_node(ROOT_NODE)
+            with self.code_graph.batch_edges():
+                for document in self.scip_index.documents:
+                    self._process_document_message(document)
+            self._fix_unified_names()
+            return self.code_graph
+
         self.logger.info(f"Starting SCIP Python decode from {self.index_file_path}")
         try:
             with open(self.index_file_path, "r") as f:
@@ -116,12 +138,26 @@ class SCIPPythonGraphDecoder:
         Args:
             document_text: Text content of the document block
         """
-        # Extract file path
-        file_match = re.search(r'relative_path:\s*"([^"]+)"', document_text)
-        if not file_match:
+        if not self._add_document(document_path_from_text(document_text)):
             return
 
-        file_path = file_match.group(1)
+        # Process occurrences
+        # Brace-balanced: see extract_scip_blocks docstring (regex truncates
+        # on symbols containing literal "{" / "}").
+        for occurrence in extract_scip_blocks(document_text, "occurrences"):
+            self._process_occurrence(occurrence)
+
+    def _process_document_message(self, document):
+        """Process one document of the parsed index as its decoded text."""
+        if not self._add_document(document_path(document)):
+            return
+        for occurrence in document.occurrences:
+            self._process_occurrence_view(occurrence_view(occurrence))
+
+    def _add_document(self, file_path):
+        """Add a document's directories and file node; False to skip it."""
+        if not file_path:
+            return False
 
         # Iteratively extract the directory path from the file path
         dir_path = Path(file_path).parent
@@ -142,13 +178,7 @@ class SCIPPythonGraphDecoder:
         self.code_graph._add_edge(
             str(Path(file_path).parent), file_path, EDGE_TYPE_CONTAIN
         )
-
-        # Process occurrences
-        # Brace-balanced: see extract_scip_blocks docstring (regex truncates
-        # on symbols containing literal "{" / "}").
-        occurrences = extract_scip_blocks(document_text, "occurrences")
-        for occurrence in occurrences:
-            self._process_occurrence(occurrence)
+        return True
 
     def _process_occurrence(self, occurrence_text):
         """
@@ -157,19 +187,23 @@ class SCIPPythonGraphDecoder:
         Args:
             occurrence_text: Text content of the occurrence
         """
+        self._process_occurrence_view(occurrence_view_from_text(occurrence_text))
+
+    def _process_occurrence_view(self, view):
+        """Process the values read from one occurrence (see ``OccurrenceView``)."""
         # Skip stdlib symbols
-        if "python-stdlib" in occurrence_text:
+        if view.python_stdlib:
             return
 
-        # Extract ranges
-        ranges = re.findall(r"range:\s*(\d+)", occurrence_text)
+        # "range:" values, enclosing_range included
+        ranges = view.ranges
         if len(ranges) < 3:
             return
 
         line = int(ranges[0])
 
-        # Extract symbol (unescape-aware; see extract_symbol docstring).
-        symbol = extract_symbol(occurrence_text)
+        # Unescaped symbol (see extract_symbol docstring).
+        symbol = view.symbol
         if not symbol:
             return
 
@@ -177,18 +211,12 @@ class SCIPPythonGraphDecoder:
         if symbol.startswith("local "):
             return
 
-        # Extract symbol_roles
-        symbol_roles_match = re.search(r"symbol_roles:\s*(\d+)", occurrence_text)
-        if not symbol_roles_match:
+        # TextFormat omits a zero symbol_roles
+        if view.symbol_roles is None:
             return
 
-        symbol_roles = int(symbol_roles_match.group(1))
-
-        # Extract enclosing range if available
-        enclosing_ranges = re.findall(r"enclosing_range:\s*(\d+)", occurrence_text)
-
         # Process the symbol
-        self._process_symbol(symbol, line, symbol_roles, enclosing_ranges)
+        self._process_symbol(symbol, line, view.symbol_roles, view.enclosing_ranges)
 
     def _unify_symbol_name(self, symbol):
         """

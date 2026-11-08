@@ -31,7 +31,13 @@ from ..types import (
     NODE_TYPE_METHOD,
     ROOT_NODE,
 )
-from .scip_indexer_base import extract_scip_blocks, extract_symbol
+from .scip_decode_view import (
+    document_path,
+    document_path_from_text,
+    occurrence_view,
+    occurrence_view_from_text,
+)
+from .scip_indexer_base import extract_scip_blocks
 
 
 class SCIPRustGraphDecoder:
@@ -46,7 +52,10 @@ class SCIPRustGraphDecoder:
     - References between symbols
     """
 
-    def __init__(self, index_file_path, project_root=None):
+    # Takes the parsed index that the decoded file was written from.
+    accepts_scip_index = True
+
+    def __init__(self, index_file_path, project_root=None, *, scip_index=None):
         """
         Initialize the Rust SCIP decoder.
 
@@ -55,6 +64,8 @@ class SCIPRustGraphDecoder:
             project_root: Root directory of the Rust project
         """
         self.index_file_path = index_file_path
+        # The parsed Index the decoded file was written from, read instead of it.
+        self.scip_index = scip_index
         self.project_root = Path(project_root) if project_root else None
         self.code_graph = CodeGraph(project_root)
         self.indexed_directories = set()
@@ -72,6 +83,14 @@ class SCIPRustGraphDecoder:
         Returns:
             CodeGraph: The constructed code graph
         """
+        if self.scip_index is not None:
+            self.logger.info("Starting SCIP Rust decode from the parsed index")
+            self.code_graph.add_root_node(ROOT_NODE)
+            with self.code_graph.batch_edges():
+                for document in self.scip_index.documents:
+                    self._process_document_message(document)
+            return self.code_graph
+
         self.logger.info(f"Starting SCIP Rust decode from {self.index_file_path}")
         try:
             with open(self.index_file_path, "r") as f:
@@ -103,16 +122,29 @@ class SCIPRustGraphDecoder:
         Args:
             document_text: Text content of the document block
         """
-        # Extract file path
-        file_match = re.search(r'relative_path:\s*"([^"]+)"', document_text)
-        if not file_match:
+        file_path = document_path_from_text(document_text)
+        if not self._add_document(file_path):
             return
 
-        file_path = file_match.group(1)
+        # Process occurrences
+        # Brace-balanced: see extract_scip_blocks docstring (regex truncates
+        # on symbols containing literal "{" / "}").
+        for occurrence in extract_scip_blocks(document_text, "occurrences"):
+            self._process_occurrence(occurrence, file_path)
 
+    def _process_document_message(self, document):
+        """Process one document of the parsed index as its decoded text."""
+        file_path = document_path(document)
+        if not self._add_document(file_path):
+            return
+        for occurrence in document.occurrences:
+            self._process_occurrence_view(occurrence_view(occurrence), file_path)
+
+    def _add_document(self, file_path):
+        """Add a Rust document's directories and file node; False to skip it."""
         # Only process Rust files
-        if not file_path.endswith(".rs"):
-            return
+        if not file_path or not file_path.endswith(".rs"):
+            return False
 
         # Add directory hierarchy
         dir_path = Path(file_path).parent
@@ -138,13 +170,7 @@ class SCIPRustGraphDecoder:
         # Load workspace crate names once (for third-party filtering)
         if self.internal_crates is None:
             self.internal_crates = self._load_workspace_crates()
-
-        # Process occurrences
-        # Brace-balanced: see extract_scip_blocks docstring (regex truncates
-        # on symbols containing literal "{" / "}").
-        occurrences = extract_scip_blocks(document_text, "occurrences")
-        for occurrence in occurrences:
-            self._process_occurrence(occurrence, file_path)
+        return True
 
     def _load_workspace_crates(self):
         """
@@ -223,8 +249,14 @@ class SCIPRustGraphDecoder:
             occurrence_text: Text content of the occurrence
             file_path: Path to the file containing this occurrence
         """
-        # Extract ranges
-        ranges = re.findall(r"range:\s*(\d+)", occurrence_text)
+        self._process_occurrence_view(
+            occurrence_view_from_text(occurrence_text), file_path
+        )
+
+    def _process_occurrence_view(self, view, file_path):
+        """Process the values read from one occurrence (see ``OccurrenceView``)."""
+        # "range:" values, enclosing_range included
+        ranges = view.ranges
         if len(ranges) < 3:
             return
 
@@ -232,8 +264,8 @@ class SCIPRustGraphDecoder:
         col_start = int(ranges[1])
         col_end = int(ranges[2])
 
-        # Extract symbol (unescape-aware; see extract_symbol docstring).
-        symbol = extract_symbol(occurrence_text)
+        # Unescaped symbol (see extract_symbol docstring).
+        symbol = view.symbol
         if not symbol:
             return
 
@@ -259,15 +291,11 @@ class SCIPRustGraphDecoder:
             elif parts[1] != "crate":
                 return
 
-        # Extract symbol_roles
-        symbol_roles_match = re.search(r"symbol_roles:\s*(\d+)", occurrence_text)
-        if symbol_roles_match:
-            symbol_roles = int(symbol_roles_match.group(1))
-        else:
-            symbol_roles = 0  # Reference
+        # TextFormat omits a zero symbol_roles (a reference)
+        symbol_roles = view.symbol_roles or 0
 
-        # Extract enclosing range if available
-        enclosing_ranges = re.findall(r"enclosing_range:\s*(\d+)", occurrence_text)
+        # Enclosing range if available
+        enclosing_ranges = view.enclosing_ranges
 
         # Process the symbol
         self._process_symbol(
@@ -519,9 +547,9 @@ class SCIPRustGraphDecoder:
                 )
                 if unified_symbol in self.code_graph.name_to_vertex:
                     vertex_id = self.code_graph.name_to_vertex[unified_symbol]
-                    self.code_graph.graph.vs[vertex_id]["unified_name"] = (
-                        self._get_unified_name(unified_symbol, file_path, symbol_type)
-                    )
+                    self.code_graph.graph.vs[vertex_id][
+                        "unified_name"
+                    ] = self._get_unified_name(unified_symbol, file_path, symbol_type)
 
                 self.code_graph.add_containment_edge(unified_symbol)
 
@@ -542,9 +570,9 @@ class SCIPRustGraphDecoder:
                 )
                 if unified_symbol in self.code_graph.name_to_vertex:
                     vertex_id = self.code_graph.name_to_vertex[unified_symbol]
-                    self.code_graph.graph.vs[vertex_id]["unified_name"] = (
-                        self._get_unified_name(unified_symbol, file_path, symbol_type)
-                    )
+                    self.code_graph.graph.vs[vertex_id][
+                        "unified_name"
+                    ] = self._get_unified_name(unified_symbol, file_path, symbol_type)
 
                 self.code_graph.add_containment_edge(unified_symbol)
             else:
@@ -554,9 +582,9 @@ class SCIPRustGraphDecoder:
                 )
                 if unified_symbol in self.code_graph.name_to_vertex:
                     vertex_id = self.code_graph.name_to_vertex[unified_symbol]
-                    self.code_graph.graph.vs[vertex_id]["unified_name"] = (
-                        self._get_unified_name(unified_symbol, file_path, symbol_type)
-                    )
+                    self.code_graph.graph.vs[vertex_id][
+                        "unified_name"
+                    ] = self._get_unified_name(unified_symbol, file_path, symbol_type)
 
                 self.code_graph._add_edge(
                     self.code_graph.current_scope, unified_symbol, EDGE_TYPE_CONTAIN
@@ -570,9 +598,9 @@ class SCIPRustGraphDecoder:
             if unified_symbol in self.code_graph.name_to_vertex:
                 vid = self.code_graph.name_to_vertex[unified_symbol]
                 if not self.code_graph.graph.vs[vid].attributes().get("unified_name"):
-                    self.code_graph.graph.vs[vid]["unified_name"] = (
-                        self._get_unified_name(unified_symbol, file_path, symbol_type)
-                    )
+                    self.code_graph.graph.vs[vid][
+                        "unified_name"
+                    ] = self._get_unified_name(unified_symbol, file_path, symbol_type)
 
     def save_graph(self, output_path):
         """

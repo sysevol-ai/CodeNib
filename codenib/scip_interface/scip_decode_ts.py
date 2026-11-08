@@ -16,17 +16,31 @@ from ..types import (
     NODE_TYPE_METHOD,
     ROOT_NODE,
 )
-from .scip_indexer_base import extract_scip_blocks, extract_symbol
+from .scip_decode_view import (
+    document_path,
+    document_path_from_text,
+    occurrence_view,
+    occurrence_view_from_text,
+    symbol_view,
+)
+from .scip_indexer_base import extract_scip_blocks
 from .typescript_semantics import (
     enrich_typescript_import_edges,
+    enrich_typescript_import_edges_from_views,
     extract_typescript_symbol_kinds,
+    typescript_symbol_kinds,
 )
 
 
 class SCIPTypeScriptGraphDecoder:
-    def __init__(self, index_file_path, project_root=None):
+    # Takes the parsed index that the decoded file was written from.
+    accepts_scip_index = True
+
+    def __init__(self, index_file_path, project_root=None, *, scip_index=None):
         self.index_file_path = index_file_path
         self.project_root = project_root
+        # The parsed Index the decoded file was written from, read instead of it.
+        self.scip_index = scip_index
         self.code_graph = CodeGraph(project_root)
         self.indexed_directories = set()
         self.logger = get_logger(__name__)
@@ -41,6 +55,8 @@ class SCIPTypeScriptGraphDecoder:
         self._symbol_kinds = {}
 
     def decode(self):
+        if self.scip_index is not None:
+            return self._decode_index()
         self.logger.info(f"Starting SCIP TypeScript decode from {self.index_file_path}")
 
         try:
@@ -80,6 +96,42 @@ class SCIPTypeScriptGraphDecoder:
 
         return self.code_graph
 
+    def _decode_index(self):
+        """``decode`` over the parsed index: the same passes, read once."""
+        self.logger.info("Starting SCIP TypeScript decode from the parsed index")
+        index = self.scip_index
+        documents = [
+            (
+                document_path(document),
+                [occurrence_view(occurrence) for occurrence in document.occurrences],
+            )
+            for document in index.documents
+        ]
+        self._symbol_kinds = typescript_symbol_kinds(
+            symbol_view(info)
+            for document in index.documents
+            for info in document.symbols
+        )
+        self.code_graph.add_root_node(ROOT_NODE)
+        for _path, occurrences in documents:
+            for occurrence in occurrences:
+                self._prescan_occurrence(occurrence)
+        with self.code_graph.batch_edges():
+            for file_path, occurrences in documents:
+                if not self._add_document(file_path):
+                    continue
+                for occurrence in occurrences:
+                    self._process_occurrence_view(occurrence, file_path)
+        enrich_typescript_import_edges_from_views(
+            self.code_graph, documents, self.project_root
+        )
+        self.logger.info(
+            f"Decoded {len(documents)} documents, "
+            f"nodes={self.code_graph.graph.vcount()}, "
+            f"edges={self.code_graph.graph.ecount()}"
+        )
+        return self.code_graph
+
     def _prescan_project_packages(self, document_blocks):
         """Walk every occurrence in every document and seed
         ``_project_packages`` from DEFINITIONS (``symbol_roles & 1``) whose
@@ -93,27 +145,37 @@ class SCIPTypeScriptGraphDecoder:
         """
         for document in document_blocks:
             for occurrence in extract_scip_blocks(document, "occurrences"):
-                symbol = extract_symbol(occurrence)
-                if not symbol or not symbol.startswith("scip-typescript "):
-                    continue
-                parts = symbol.split(" ")
-                if len(parts) < 5:
-                    continue
-                if parts[2] == "." or parts[3] == ".":
-                    continue
-                m = re.search(r"symbol_roles:\s*(\d+)", occurrence)
-                if not m:
-                    continue
-                if int(m.group(1)) & 1:
-                    self._project_packages.add(parts[2])
+                self._prescan_occurrence(occurrence_view_from_text(occurrence))
+
+    def _prescan_occurrence(self, view):
+        symbol = view.symbol
+        if not symbol or not symbol.startswith("scip-typescript "):
+            return
+        parts = symbol.split(" ")
+        if len(parts) < 5:
+            return
+        if parts[2] == "." or parts[3] == ".":
+            return
+        if view.symbol_roles is None:
+            return
+        if view.symbol_roles & 1:
+            self._project_packages.add(parts[2])
 
     def _process_document(self, document_text):
-        # Extract file path
-        file_match = re.search(r'relative_path:\s*"([^"]+)"', document_text)
-        if not file_match:
+        file_path = document_path_from_text(document_text)
+        if not self._add_document(file_path):
             return
 
-        file_path = file_match.group(1)
+        # Process occurrences.  Use brace-balanced parsing (not a naive
+        # regex) so SCIP symbols containing literal "{" / "}" — e.g. a
+        # JS object key written as 'obj{}' — do not truncate the block.
+        for occurrence in extract_scip_blocks(document_text, "occurrences"):
+            self._process_occurrence(occurrence, file_path)
+
+    def _add_document(self, file_path):
+        """Add a document's directories and file node; False to skip it."""
+        if not file_path:
+            return False
         # Track this file path for index file resolution
         self.document_file_paths.add(file_path)
 
@@ -138,24 +200,24 @@ class SCIPTypeScriptGraphDecoder:
         self.code_graph._add_edge(
             str(Path(file_path).parent), file_path, EDGE_TYPE_CONTAIN
         )
-
-        # Process occurrences.  Use brace-balanced parsing (not a naive
-        # regex) so SCIP symbols containing literal "{" / "}" — e.g. a
-        # JS object key written as 'obj{}' — do not truncate the block.
-        occurrences = extract_scip_blocks(document_text, "occurrences")
-        for occurrence in occurrences:
-            self._process_occurrence(occurrence, file_path)
+        return True
 
     def _process_occurrence(self, occurrence_text, file_path):
-        # Extract ranges first
-        ranges = re.findall(r"range:\s*(\d+)", occurrence_text)
+        self._process_occurrence_view(
+            occurrence_view_from_text(occurrence_text), file_path
+        )
+
+    def _process_occurrence_view(self, view, file_path):
+        """Process the values read from one occurrence (see ``OccurrenceView``)."""
+        # "range:" values, enclosing_range included
+        ranges = view.ranges
         if len(ranges) < 3:
             return
 
         line = int(ranges[0])
 
-        # Extract symbol (unescape-aware; see extract_symbol docstring).
-        symbol = extract_symbol(occurrence_text)
+        # Unescaped symbol (see extract_symbol docstring).
+        symbol = view.symbol
         if not symbol:
             return
 
@@ -171,9 +233,9 @@ class SCIPTypeScriptGraphDecoder:
         if symbol.startswith("local "):
             return
 
-        # Extract symbol_roles early (needed for external-package filtering)
-        symbol_roles_match = re.search(r"symbol_roles:\s*(\d+)", occurrence_text)
-        symbol_roles = int(symbol_roles_match.group(1)) if symbol_roles_match else 0
+        # symbol_roles early (needed for external-package filtering); TextFormat
+        # omits a zero value
+        symbol_roles = view.symbol_roles or 0
 
         # Filter external / third-party package references.
         # SCIP symbol: "scip-typescript npm <pkg> <ver> <descriptor>"
@@ -198,8 +260,8 @@ class SCIPTypeScriptGraphDecoder:
             ):
                 return
 
-        # Extract enclosing range if available
-        enclosing_ranges = re.findall(r"enclosing_range:\s*(\d+)", occurrence_text)
+        # Enclosing range if available
+        enclosing_ranges = view.enclosing_ranges
 
         # Process the symbol (pass file_path for index handling)
         self._process_symbol(symbol, line, symbol_roles, enclosing_ranges, file_path)
@@ -489,9 +551,9 @@ class SCIPTypeScriptGraphDecoder:
             # Store unified_name as node attribute
             if unified_symbol in self.code_graph.name_to_vertex:
                 vertex_id = self.code_graph.name_to_vertex[unified_symbol]
-                self.code_graph.graph.vs[vertex_id]["unified_name"] = (
-                    self._get_unified_name(unified_symbol, file_path, symbol_type)
-                )
+                self.code_graph.graph.vs[vertex_id][
+                    "unified_name"
+                ] = self._get_unified_name(unified_symbol, file_path, symbol_type)
 
             # Add containment edge
             self.logger.scip_debug(
@@ -530,9 +592,9 @@ class SCIPTypeScriptGraphDecoder:
             # Store unified_name
             if unified_symbol in self.code_graph.name_to_vertex:
                 vertex_id = self.code_graph.name_to_vertex[unified_symbol]
-                self.code_graph.graph.vs[vertex_id]["unified_name"] = (
-                    self._get_unified_name(unified_symbol, file_path, symbol_type)
-                )
+                self.code_graph.graph.vs[vertex_id][
+                    "unified_name"
+                ] = self._get_unified_name(unified_symbol, file_path, symbol_type)
 
             # Add 'contain' edge from current scope to symbol
             self.code_graph._add_edge(
@@ -553,9 +615,9 @@ class SCIPTypeScriptGraphDecoder:
             if unified_symbol in self.code_graph.name_to_vertex:
                 vid = self.code_graph.name_to_vertex[unified_symbol]
                 if not self.code_graph.graph.vs[vid].attributes().get("unified_name"):
-                    self.code_graph.graph.vs[vid]["unified_name"] = (
-                        self._get_unified_name(unified_symbol, file_path, symbol_type)
-                    )
+                    self.code_graph.graph.vs[vid][
+                        "unified_name"
+                    ] = self._get_unified_name(unified_symbol, file_path, symbol_type)
 
     def save_graph(self, output_path):
         self.code_graph.save_graph(output_path)

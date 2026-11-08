@@ -229,6 +229,11 @@ Cache reuse is controlled by `skip_level`:
 | `"decode"` | `index.decoded` | graph construction |
 | `"graph"` | `graph.pkl` | load the persisted graph |
 
+When a run decodes `index.scip` itself, the occurrence index and the Python,
+Go, Rust and TypeScript graph decoders read the parsed index instead of
+scanning `index.decoded` again, and build the same result. `index.decoded` is
+still written, for the C++ decoder, fact queries and later `"decode"` reuse.
+
 `clear_cache()` uses the same stage names as preservation boundaries:
 
 ```python
