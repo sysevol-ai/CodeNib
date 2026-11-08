@@ -29,8 +29,7 @@ pytestmark = [
 
 FILES = {
     "shop/__init__.py": "",
-    "shop/pricing.py": textwrap.dedent(
-        """\
+    "shop/pricing.py": textwrap.dedent("""\
         def round_cents(value):
             return round(value, 2)
 
@@ -41,19 +40,15 @@ FILES = {
 
             def total(self):
                 return round_cents(sum(price for _, price in self.items))
-        """
-    ),
-    "shop/checkout.py": textwrap.dedent(
-        """\
+        """),
+    "shop/checkout.py": textwrap.dedent("""\
         from shop.pricing import Cart
 
 
         def checkout(items):
             return {"total": Cart(items).total()}
-        """
-    ),
-    "tests/test_shop.py": textwrap.dedent(
-        """\
+        """),
+    "tests/test_shop.py": textwrap.dedent("""\
         from shop.checkout import checkout
         from shop.pricing import Cart, round_cents
 
@@ -71,8 +66,7 @@ FILES = {
 
         def test_round():
             assert round_cents(1.234) == 1.23
-        """
-    ),
+        """),
 }
 
 
@@ -122,7 +116,7 @@ def test_guard_reports_constructor_change_and_hook_reports_once(
 
 
 def test_guard_flags_an_edited_test_and_runs_its_original(
-    git_repo, tmp_path, monkeypatch, write_files
+    git_repo, tmp_path, monkeypatch, write_files, bash
 ):
     monkeypatch.setenv("CODENIB_HOME", str(tmp_path / "home"))
     git_repo.commit(FILES, "init")
@@ -149,7 +143,7 @@ def test_guard_flags_an_edited_test_and_runs_its_original(
         "PATH": os.path.dirname(sys.executable) + os.pathsep + os.environ["PATH"],
     }
     done = subprocess.run(
-        ["bash", "-c", report.original_tests_command()],
+        [bash, "-c", report.original_tests_command()],
         cwd=git_repo.root,
         env=env,
         capture_output=True,

@@ -66,11 +66,21 @@ def hook_command(agent: str, event: str, python: Optional[str] = None) -> str:
     """
 
     interpreter = Path(python or sys.executable)
-    script = interpreter.with_name("codenib")
-    if script.is_file() and os.access(script, os.X_OK):
+    exe_names = ("codenib.exe", "codenib") if sys.platform == "win32" else ("codenib",)
+    script = next(
+        (
+            interpreter.with_name(name)
+            for name in exe_names
+            if interpreter.with_name(name).is_file()
+            and os.access(interpreter.with_name(name), os.X_OK)
+        ),
+        None,
+    )
+    if script is not None:
         program = shlex.quote(str(script))
     else:
-        program = f"{shlex.quote(str(interpreter))} -m codenib"
+        target = python or str(interpreter)
+        program = f"{shlex.quote(target)} -m codenib"
     return f"{program} guard hook --agent {agent} --event {event}"
 
 

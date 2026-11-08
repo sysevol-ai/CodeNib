@@ -6,7 +6,9 @@
 
 from __future__ import annotations
 
+import shutil
 import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Dict, List, Optional, Sequence, Tuple
@@ -74,6 +76,7 @@ def git_repo(tmp_path):
         ("user.name", "Test"),
         ("gc.auto", "0"),
         ("maintenance.auto", "false"),
+        ("core.hooksPath", ""),
     ):
         git(root, "config", key, value)
 
@@ -89,3 +92,19 @@ def git_repo(tmp_path):
 @pytest.fixture
 def write_files():
     return write
+
+
+@pytest.fixture
+def bash() -> str:
+    if sys.platform != "win32":
+        return shutil.which("bash") or "bash"
+    git_bin = shutil.which("git")
+    if git_bin:
+        git_parent = Path(git_bin).parent.parent
+        for candidate in (
+            git_parent / "bin" / "bash.exe",
+            git_parent / "usr" / "bin" / "bash.exe",
+        ):
+            if candidate.exists():
+                return str(candidate)
+    return shutil.which("bash") or "bash"
