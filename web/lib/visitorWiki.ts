@@ -144,6 +144,19 @@ export function rememberWikiAttempt(attempt: WikiAttempt): void {
   }
 }
 
+/** The server answered and refused: the outcome is known, unlike a timeout. */
+export class WikiRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    /** Seconds until the server accepts another try, when it said so. */
+    readonly retryAfter?: number,
+  ) {
+    super(message);
+    this.name = "WikiRequestError";
+  }
+}
+
 async function request<T>(path: string, init: RequestInit = {}, timeoutMs = 35000): Promise<T> {
   if (isStaticRuntime())
     throw new Error("Open the live demo to generate a saved Wiki.");
@@ -168,12 +181,16 @@ async function request<T>(path: string, init: RequestInit = {}, timeoutMs = 3500
       referrerPolicy: "no-referrer",
     });
     const body = await response.json();
-    if (!response.ok)
-      throw new Error(
+    if (!response.ok) {
+      const wait = Number(response.headers.get("Retry-After"));
+      throw new WikiRequestError(
         typeof body.detail === "string"
           ? body.detail
           : "The saved Wiki request failed.",
+        response.status,
+        Number.isFinite(wait) && wait > 0 ? wait : undefined,
       );
+    }
     return body as T;
   } catch (error) {
     if (controller.signal.aborted)

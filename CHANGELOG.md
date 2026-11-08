@@ -13,6 +13,11 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 ### Fixed
 
+- A refused Wiki submission now says why: the key was not accepted, has no
+  credit, is a management key, or OpenRouter could not be reached. A refused
+  key no longer uses up the one try per minute, other waits count down on the
+  form, and "Check saved attempt" appears only when the server may have
+  accepted the run. The server logs each refusal's reason, never the key.
 - A hosted server whose `PATH` lacks Node.js now reports that the Python
   indexer cannot run, instead of starting it and recording a bare "index
   failed". Failed indexing logs the indexer's exit status.

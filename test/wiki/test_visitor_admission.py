@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import io
+import logging
 import threading
 import zipfile
 from contextlib import contextmanager
@@ -16,7 +17,7 @@ from fastapi.testclient import TestClient
 
 from codenib.storage import SQLiteWikiStore
 from codenib.web.visitor_wikis import router
-from codenib.wiki import visitor_graph, visitor_source
+from codenib.wiki import visitor_graph, visitor_provider, visitor_source
 from codenib.wiki.visitor_provider import WikiRunStopped
 from codenib.wiki.visitor_wiki import VisitorWikiError, VisitorWikis
 
@@ -177,9 +178,141 @@ def test_failed_check_releases_its_slot_and_remains_rate_limited(tmp_path):
     with pytest.raises(RuntimeError):
         manager.check_repository("owner/repo", "client")
     assert not manager._active
-    with pytest.raises(VisitorWikiError, match="one minute"):
+    with pytest.raises(VisitorWikiError, match=r"Please wait \d+ seconds"):
         manager.check_repository("owner/repo", "client")
     assert not manager.store.scan()
+
+
+def submitting_manager(tmp_path, monkeypatch, verify, clock=lambda: 1000.0):
+    manager = VisitorWikis(
+        SQLiteWikiStore(tmp_path / "wiki.sqlite3"),
+        verify=verify,
+        resolve=lambda *_: COMMIT,
+        clock=clock,
+    )
+    monkeypatch.setattr(manager, "_dispatch", lambda *_: None)
+    return manager
+
+
+def test_a_refused_key_leaves_the_visitor_free_to_retry_at_once(
+    tmp_path, monkeypatch
+):
+    keys = []
+
+    def verify(key):
+        keys.append(key)
+        if key == "sk-or-typo":
+            raise visitor_provider.KeyRejected("OpenRouter did not accept this key.")
+
+    manager = submitting_manager(tmp_path, monkeypatch, verify)
+    with pytest.raises(VisitorWikiError, match="did not accept this key"):
+        manager.submit("a" * 64, "owner/repo", "b" * 64, "sk-or-typo", 2, "client")
+    assert not manager.store.scan() and not manager._active
+    state = manager.submit("a" * 64, "owner/repo", "b" * 64, "sk-or-good", 2, "client")
+    assert state["status"] == "queued"
+    assert keys == ["sk-or-typo", "sk-or-good"]
+
+
+def test_other_refusals_keep_the_minute_and_say_how_long_is_left(
+    tmp_path, monkeypatch
+):
+    now = [1000.0]
+
+    def unreachable(_key):
+        raise WikiRunStopped("Could not reach OpenRouter to check this key.")
+
+    manager = submitting_manager(tmp_path, monkeypatch, unreachable, lambda: now[0])
+    with pytest.raises(VisitorWikiError, match="Could not reach OpenRouter"):
+        manager.submit("a" * 64, "owner/repo", "b" * 64, "sk-or-key", 2, "client")
+    now[0] += 21
+    with pytest.raises(VisitorWikiError, match="Please wait 39 seconds") as error:
+        manager.submit("a" * 64, "owner/repo", "b" * 64, "sk-or-key", 2, "client")
+    assert error.value.retry_after == 39
+    now[0] += 39
+    with pytest.raises(VisitorWikiError, match="Could not reach OpenRouter"):
+        manager.submit("a" * 64, "owner/repo", "b" * 64, "sk-or-key", 2, "client")
+
+
+@pytest.mark.parametrize(
+    "status, message, rejected",
+    [
+        (401, "did not accept this key", True),
+        (403, "did not accept this key", True),
+        (402, "no credit left", True),
+        (429, r"could not check this key \(HTTP 429\)", False),
+        (503, r"could not check this key \(HTTP 503\)", False),
+    ],
+)
+def test_key_check_says_what_to_fix(monkeypatch, status, message, rejected):
+    def answer(*_args):
+        raise visitor_provider.OpenRouterHTTPError(status, "HTTP")
+
+    monkeypatch.setattr(visitor_provider, "provider_json", answer)
+    with pytest.raises(WikiRunStopped, match=message) as error:
+        visitor_provider.verify_key("sk-or-key")
+    assert isinstance(error.value, visitor_provider.KeyRejected) is rejected
+    assert "No model call was made" in str(error.value)
+    assert "Completed pages are saved" not in str(error.value)
+
+
+@pytest.mark.parametrize(
+    "data, message",
+    [
+        ({"is_management_key": True, "is_provisioning_key": False}, "management key"),
+        (
+            {"is_management_key": False, "limit_remaining": 0},
+            "used up its credit limit",
+        ),
+    ],
+)
+def test_unusable_keys_are_refused_as_keys(monkeypatch, data, message):
+    monkeypatch.setattr(visitor_provider, "provider_json", lambda *_: {"data": data})
+    with pytest.raises(visitor_provider.KeyRejected, match=message):
+        visitor_provider.verify_key("sk-or-key")
+
+
+def test_unreachable_openrouter_is_not_blamed_on_the_key(monkeypatch):
+    def offline(*_args):
+        raise WikiRunStopped("OpenRouter request failed; no automatic retry.")
+
+    monkeypatch.setattr(visitor_provider, "provider_json", offline)
+    with pytest.raises(WikiRunStopped, match="Could not reach OpenRouter") as error:
+        visitor_provider.verify_key("sk-or-key")
+    assert not isinstance(error.value, visitor_provider.KeyRejected)
+
+
+def test_refused_submissions_are_logged_and_rate_limits_carry_retry_after(
+    tmp_path, monkeypatch, caplog
+):
+    def verify(key):
+        raise visitor_provider.KeyRejected("OpenRouter did not accept this key.")
+
+    from codenib.web import visitor_wikis as route
+
+    app = FastAPI()
+    app.include_router(router)
+    app.state.visitor_wikis = submitting_manager(tmp_path, monkeypatch, verify)
+    monkeypatch.setenv("CODENIB_VISITOR_WIKI", "1")
+    client = TestClient(app)
+    caplog.set_level(logging.WARNING, logger=route.logger.name)
+    route.logger.addHandler(caplog.handler)
+    headers = {"Authorization": "Bearer sk-or-secret-value", "X-Wiki-Owner": "b" * 64}
+    body = {"repository": "owner/repo", "budget_usd": 2}
+    base = "/api/visitor-wikis"
+    try:
+        refused = client.post(f"{base}/{'a' * 64}", json=body, headers=headers)
+        assert refused.status_code == 409
+        assert "did not accept this key" in refused.json()["detail"]
+        app.state.visitor_wikis._recent["testclient"] = 1000.0 - 15
+        limited = client.post(f"{base}/{'c' * 64}", json=body, headers=headers)
+    finally:
+        route.logger.removeHandler(caplog.handler)
+    assert limited.status_code == 429
+    assert limited.headers["Retry-After"] == "45"
+    assert limited.json()["detail"] == "Please wait 45 seconds before trying again."
+    assert "submission refused: OpenRouter did not accept this key." in caplog.text
+    assert "submission rate-limited: Please wait 45 seconds" in caplog.text
+    assert "sk-or-secret-value" not in caplog.text
 
 
 def test_check_permits_an_immediate_funded_submission(tmp_path, monkeypatch):

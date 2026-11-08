@@ -13,6 +13,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import hmac
+import math
 import re
 import secrets
 import threading
@@ -29,6 +30,7 @@ from .store import WikiGenerationBusyError
 from .visitor_provider import (
     WIKI_MODELS,
     WIKI_RETRIEVAL_IDENTITY,
+    KeyRejected,
     VisitorProvider,
     WikiRunStopped,
     verify_key,
@@ -46,6 +48,15 @@ logger = get_logger(__name__)
 
 class VisitorWikiError(Exception):
     """A bounded, credential-free public error."""
+
+
+class VisitorWikiRateLimited(VisitorWikiError):
+    """One admission per client a minute; says how long until the next."""
+
+    def __init__(self, retry_after: int):
+        unit = "second" if retry_after == 1 else "seconds"
+        super().__init__(f"Please wait {retry_after} {unit} before trying again.")
+        self.retry_after = retry_after
 
 
 def _entry(attempt: str) -> str:
@@ -448,8 +459,12 @@ class VisitorWikis:
                     "no new model call was started."
                 )
             self._recent = {ip: at for ip, at in self._recent.items() if now - at < 60}
-            if client in self._recent or len(self._recent) >= 1024:
-                raise VisitorWikiError("Please wait one minute before trying again.")
+            if client in self._recent:
+                raise VisitorWikiRateLimited(
+                    max(1, math.ceil(60 - (now - self._recent[client])))
+                )
+            if len(self._recent) >= 1024:
+                raise VisitorWikiRateLimited(60)
             self._recent[client] = now
             self._active.add(token)
 
@@ -560,6 +575,10 @@ class VisitorWikis:
         except WikiRunStopped as exc:
             with self._mutex:
                 self._active.discard(attempt)
+                # A refused key reached neither GitHub nor a model, so it does
+                # not cost the visitor their one admission this minute.
+                if isinstance(exc, KeyRejected):
+                    self._recent.pop(client, None)
             raise VisitorWikiError(str(exc)) from None
         except BaseException:
             with self._mutex:

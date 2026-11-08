@@ -32,6 +32,9 @@ try {
     let statusReads = 0;
     let statusOffline = false;
     let checks = 0;
+    // Refusals answered before any run is accepted; each is used once.
+    const refusals = [];
+    let refused = 0;
     const pages = [
       { id: "overview", title: "Overview", children: [] },
       { id: "pipeline", title: "Request pipeline", children: [] },
@@ -85,6 +88,15 @@ try {
           message: "Stopped. Completed pages are saved.",
         };
         return route.fulfill({ json: { stopping: true } });
+      }
+      if (request.method() === "POST" && refusals.length) {
+        refused++;
+        const refusal = refusals.shift();
+        return route.fulfill({
+          status: refusal.status,
+          headers: refusal.wait ? { "Retry-After": String(refusal.wait) } : {},
+          json: { detail: refusal.detail },
+        });
       }
       if (request.method() === "POST") {
         await new Promise((resolve) => setTimeout(resolve, 400));
@@ -189,13 +201,35 @@ try {
     assert.ok((await snapshot.innerText()).includes("65 code files in 3 folders"));
     assert.equal(await snapshot.locator(".wg-edge.is-hot").count(), 0, "a picture of the source highlights nothing");
     assert.equal(posts, 0);
+    // A refused key says what to fix; nothing was accepted, so there is no
+    // saved attempt to check, and an immediate retry is allowed.
+    const keyRefusal = "OpenRouter did not accept this key. Check that you copied the whole inference key. No model call was made.";
+    refusals.push(
+      { status: 409, detail: keyRefusal },
+      { status: 429, wait: 2, detail: "Please wait 2 seconds before trying again." },
+    );
+    const generate = page.getByRole("button", { name: "Generate Wiki", exact: true });
+    await page.getByLabel("OpenRouter inference key").fill("sk-or-fixture-typo");
+    await page.getByRole("checkbox").check();
+    await generate.click();
+    await page.getByText(keyRefusal, { exact: true }).waitFor();
+    assert.equal(await page.getByRole("button", { name: "Check saved attempt" }).count(), 0);
+    assert.ok(await generate.isEnabled(), "a refused key must not block the retry");
+    // A rate limit counts down, and the button waits with it.
+    await page.getByLabel("OpenRouter inference key").fill("sk-or-fixture-value");
+    await generate.click();
+    await page.getByText("Please wait 2 seconds before trying again.", { exact: true }).waitFor();
+    await page.getByText(/You can try again in [12] seconds?\./).waitFor();
+    assert.ok(await generate.isDisabled());
+    assert.equal(await page.getByRole("button", { name: "Check saved attempt" }).count(), 0);
+    await page.getByText(/You can try again in/).waitFor({ state: "detached", timeout: 5000 });
+    assert.ok(await generate.isEnabled());
+    assert.equal(refused, 2);
+    assert.equal(posts, 0);
     await page
       .getByLabel("OpenRouter inference key")
       .fill("sk-or-fixture-value");
-    await page.getByRole("checkbox").check();
-    await page
-      .getByRole("button", { name: "Generate Wiki", exact: true })
-      .click();
+    await generate.click();
     await page.getByText("Checking your account and repository…", { exact: true }).waitFor();
     // Before the plan, the map is the snapshot and the reader is the run.
     await page.getByRole("heading", { level: 1, name: "Reading repo" }).waitFor();
@@ -436,6 +470,7 @@ try {
       stoppedWikiStopsPolling: true,
       liveActivityExplainsWork: true,
       mapShowsSnapshotThenChapters: true,
+      refusalsAreExplainedAndRetryable: true,
       staleProgressIsNotServerConnectivity: true,
       reconnectDoesNotGenerate: true,
       reducedMotionRespected: true,

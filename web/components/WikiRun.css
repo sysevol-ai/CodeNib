@@ -924,6 +924,16 @@ button.run-step-title:hover {
   cursor: not-allowed;
   opacity: 0.4;
 }
+.wgf-error p {
+  margin: 0;
+}
+.wgf-error p + p {
+  margin-top: 8px;
+}
+.wgf-wait {
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
 .wiki-starting {
   display: flex;
   align-items: flex-start;

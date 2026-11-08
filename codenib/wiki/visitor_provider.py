@@ -118,6 +118,32 @@ class WikiRunStopped(BaseException):
     """
 
 
+class OpenRouterHTTPError(WikiRunStopped):
+    """OpenRouter answered with a status other than 200; the body is not kept."""
+
+    def __init__(self, status: int, message: str):
+        super().__init__(message)
+        self.status = status
+
+
+class KeyRejected(WikiRunStopped):
+    """The key itself cannot start a run. Nothing was downloaded or spent."""
+
+
+_KEY_NOT_ACCEPTED = (
+    "OpenRouter did not accept this key. Check that you copied the whole "
+    "inference key. No model call was made."
+)
+_KEY_REJECTIONS = {
+    401: _KEY_NOT_ACCEPTED,
+    403: _KEY_NOT_ACCEPTED,
+    402: (
+        "This OpenRouter key has no credit left. Add credit or raise its limit, "
+        "then try again. No model call was made."
+    ),
+}
+
+
 def provider_json(key: str, path: str, payload: dict | None = None) -> dict:
     """Fixed origin, no redirects/retries, no provider bodies in exceptions."""
     import requests
@@ -136,9 +162,10 @@ def provider_json(key: str, path: str, payload: dict | None = None) -> dict:
                 stream=True,
             ) as response:
                 if response.status_code != 200:
-                    raise WikiRunStopped(
+                    raise OpenRouterHTTPError(
+                        response.status_code,
                         f"OpenRouter returned HTTP {response.status_code}. "
-                        "Completed pages are saved; no automatic retry."
+                        "Completed pages are saved; no automatic retry.",
                     )
                 data = bytearray()
                 for chunk in response.iter_content(8192):
@@ -154,16 +181,33 @@ def provider_json(key: str, path: str, payload: dict | None = None) -> dict:
 
 
 def verify_key(key: str) -> None:
-    data = provider_json(key, "/api/v1/key").get("data")
+    """Check the key before any download; each refusal says what to fix."""
+    try:
+        data = provider_json(key, "/api/v1/key").get("data")
+    except OpenRouterHTTPError as exc:
+        if exc.status in _KEY_REJECTIONS:
+            raise KeyRejected(_KEY_REJECTIONS[exc.status]) from None
+        raise WikiRunStopped(
+            f"OpenRouter could not check this key (HTTP {exc.status}). "
+            "No model call was made; try again shortly."
+        ) from None
+    except WikiRunStopped:
+        raise WikiRunStopped(
+            "Could not reach OpenRouter to check this key. "
+            "No model call was made; try again shortly."
+        ) from None
     if (
         not isinstance(data, dict)
         or data.get("is_management_key") is not False
         or data.get("is_provisioning_key", False) is not False
     ):
-        raise WikiRunStopped("Use an OpenRouter inference key, not a management key.")
+        raise KeyRejected("Use an OpenRouter inference key, not a management key.")
     remaining = data.get("limit_remaining")
     if isinstance(remaining, (int, float)) and remaining <= 0:
-        raise WikiRunStopped("This OpenRouter key has no remaining credit.")
+        raise KeyRejected(
+            "This OpenRouter key has used up its credit limit. Raise the limit "
+            "or use another key. No model call was made."
+        )
 
 
 class VisitorProvider:
