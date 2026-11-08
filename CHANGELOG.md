@@ -11,6 +11,12 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 ## [Unreleased]
 
+### Fixed
+
+- A hosted server whose `PATH` lacks Node.js now reports that the Python
+  indexer cannot run, instead of starting it and recording a bare "index
+  failed". Failed indexing logs the indexer's exit status.
+
 ### Changed
 
 - The writing model list now offers Claude Opus 5.5 and Claude Haiku 5.5 (in

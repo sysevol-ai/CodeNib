@@ -12,6 +12,7 @@ Wiki outputs. This does not provide a retained index or a graph database.
 from __future__ import annotations
 
 import os
+import shutil
 import signal
 import subprocess
 import tempfile
@@ -34,11 +35,42 @@ class _IndexUnusable(Exception):
     """A fixed, content-free reason the compiler index cannot be used."""
 
 
-def _run_index(command, directory, check):
+def _index_path() -> str:
+    return managed_path(current=os.environ.get("PATH", ""))
+
+
+def _missing_interpreter(tool: str, path: str):
+    """The interpreter a script's ``#!`` line names, when it cannot be found.
+
+    scip-python is a Node.js script. A service whose PATH lacks ``node`` finds
+    the script, but the script exits at once with status 127.
+    """
+    try:
+        with open(tool, "rb") as handle:
+            first = handle.readline(256)
+    except OSError:
+        return None
+    if not first.startswith(b"#!"):
+        return None
+    words = first[2:].decode("utf-8", "ignore").split()
+    if words and Path(words[0]).name == "env":
+        words = [word for word in words[1:] if not word.startswith("-")]
+    if not words:
+        return None
+    name = words[0]
+    if os.path.isabs(name):
+        found = os.access(name, os.X_OK)
+    else:
+        found = shutil.which(name, path=path)
+    return None if found else Path(name).name
+
+
+def _run_index(command, directory, check) -> int:
+    """Run the indexer and return its exit status."""
     # The caller owns this group until exit. Stop/timeout kills descendants
     # before temporary source is removed; no detached work survives a run.
     env = {
-        "PATH": managed_path(current=os.environ.get("PATH", "")),
+        "PATH": _index_path(),
         "HOME": str(directory),
         "NODE_OPTIONS": "--max-old-space-size=2048",
         "LANG": "C.UTF-8",
@@ -58,7 +90,7 @@ def _run_index(command, directory, check):
                 if time.monotonic() >= deadline:
                     raise TimeoutError("Python indexing reached its time limit")
                 try:
-                    return process.wait(timeout=0.25) == 0
+                    return process.wait(timeout=0.25)
                 except subprocess.TimeoutExpired:
                     continue
         finally:
@@ -94,6 +126,18 @@ def build_visitor_graph(bundle, check, progress):
             reason="tool_unavailable", note="The Python indexer is unavailable."
         )
         return
+    missing = _missing_interpreter(tool, _index_path())
+    if missing:
+        # Say so instead of starting a process that can only fail.
+        logger.warning(
+            "Visitor Wiki code indexing skipped: %s is not on the server PATH",
+            missing,
+        )
+        coverage.update(
+            reason="tool_unavailable",
+            note=f"The Python indexer needs {missing}, which this server cannot find.",
+        )
+        return
     progress("indexing", "")
     try:
         from ..scip_interface.scip_indexer_python import SCIPPythonIndexer
@@ -120,8 +164,10 @@ def build_visitor_graph(bundle, check, progress):
             indexer._direct_indexer_path = tool
             command = indexer._build_index_command(project_name="visitor-wiki")
             command.extend(["--project-version", bundle.entry.base_commit])
-            if not _run_index(command, root, check):
-                raise _IndexUnusable("indexer failed")
+            status = _run_index(command, root, check)
+            if status != 0:
+                # The status alone is logged; indexer output can quote source.
+                raise _IndexUnusable(f"indexer exited with status {status}")
             check()
             if not 0 < indexer.index_file.stat().st_size <= _MAX_INDEX_BYTES:
                 raise _IndexUnusable("index size limit")
