@@ -221,7 +221,10 @@ automatically just because the page is reopened.
 Each run has a reported-cost budget of $0.25–$5, a 160-call ceiling and a
 30-minute cooperative time budget. The server checks cancellation between
 source/model operations; an in-flight provider request has its own timeout.
-One submission per client address per minute limits admission. Configure
+One submission per client address per minute limits admission. A submission
+whose key OpenRouter refuses (not accepted, no credit, or a management key)
+does not count, because it reaches neither GitHub nor a model; it says what
+to fix. Otherwise a refusal says how many seconds remain. Configure
 trusted proxy addresses on the existing server correctly instead of trusting
 arbitrary forwarded headers. Interrupted workers do not restart themselves:
 the owner explicitly resumes with a new key, keeping already saved chapters.

@@ -11,6 +11,7 @@ import {
   type WikiModelCatalog,
   type WikiModelChoice,
   type WikiRepositoryCheck,
+  WikiRequestError,
 } from "@/lib/visitorWiki";
 import { recordExperience } from "@/lib/experience";
 import WikiRepositoryRules, { mebibytes } from "./WikiRepositoryRules";
@@ -48,11 +49,16 @@ export default function WikiGenerationForm({
   const keyInput = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // Only an unanswered request may have been accepted; a refusal was not.
+  const [outcomeUnknown, setOutcomeUnknown] = useState(false);
+  const [retryAt, setRetryAt] = useState<number | null>(null);
+  const [now, setNow] = useState(() => Date.now());
   const [budget, setBudget] = useState(2);
   const [catalog, setCatalog] = useState<WikiModelCatalog>(FALLBACK_WIKI_MODELS);
   const [model, setModel] = useState(FALLBACK_WIKI_MODELS.default);
   const [eligibility, setEligibility] = useState<WikiRepositoryCheck | null>(null);
   const [checkError, setCheckError] = useState("");
+  const [checkLimited, setCheckLimited] = useState(false);
   const [checkRetry, setCheckRetry] = useState(0);
   const admitted = resume || eligibility?.eligible === true;
   const checked = useRef(onChecked);
@@ -62,6 +68,7 @@ export default function WikiGenerationForm({
     let active = true;
     setEligibility(null);
     setCheckError("");
+    setCheckLimited(false);
     checked.current?.(null);
     checkWikiRepository(attempt.repository)
       .then((result) => {
@@ -70,7 +77,9 @@ export default function WikiGenerationForm({
         checked.current?.(result);
       })
       .catch((reason) => {
-        if (active) setCheckError(reason instanceof Error ? reason.message : "Could not check this repository.");
+        if (!active) return;
+        setCheckError(reason instanceof Error ? reason.message : "Could not check this repository.");
+        setCheckLimited(reason instanceof WikiRequestError && reason.status === 429);
       });
     return () => { active = false; };
   }, [attempt.repository, resume, checkRetry]);
@@ -90,6 +99,20 @@ export default function WikiGenerationForm({
       cancelled = true;
     };
   }, []);
+  // Count down to the moment the server accepts another try.
+  useEffect(() => {
+    if (retryAt === null) return;
+    const timer = setInterval(() => {
+      const current = Date.now();
+      setNow(current);
+      if (current >= retryAt) {
+        setRetryAt(null);
+        setError("");
+      }
+    }, 250);
+    return () => clearInterval(timer);
+  }, [retryAt]);
+  const waitSeconds = retryAt === null ? 0 : Math.max(1, Math.ceil((retryAt - now) / 1000));
   const chosen = catalog.models.find((choice) => choice.id === model);
   const rejected = !!checkError || eligibility?.eligible === false;
   return (
@@ -97,12 +120,13 @@ export default function WikiGenerationForm({
       className={`wiki-generation-form${resume ? " is-resume" : ""}`}
       onSubmit={async (event) => {
         event.preventDefault();
-        if (busy || !admitted || !keyInput.current) return;
+        if (busy || !admitted || retryAt !== null || !keyInput.current) return;
         const key = keyInput.current.value.trim();
         keyInput.current.value = "";
         if (!key) return;
         setBusy(true);
         setError("");
+        setOutcomeUnknown(false);
         try {
           await startWiki(attempt, key, budget, model);
           recordExperience("generation_start");
@@ -113,6 +137,12 @@ export default function WikiGenerationForm({
               ? reason.message
               : "Could not start generation.",
           );
+          const refused = reason instanceof WikiRequestError;
+          setOutcomeUnknown(!refused);
+          if (refused && reason.retryAfter) {
+            setNow(Date.now());
+            setRetryAt(Date.now() + reason.retryAfter * 1000);
+          }
         } finally {
           setBusy(false);
         }
@@ -163,9 +193,11 @@ export default function WikiGenerationForm({
                 )}
                 {rejected && (
                   <p className="wgf-check-actions">
-                    <a href="https://docs.codenib.ai/web_demo/" target="_blank" rel="noopener noreferrer">
-                      Run CodeNib locally ↗
-                    </a>
+                    {!checkLimited && (
+                      <a href="https://docs.codenib.ai/web_demo/" target="_blank" rel="noopener noreferrer">
+                        Run CodeNib locally ↗
+                      </a>
+                    )}
                     <button type="button" className="btn-ghost" onClick={() => setCheckRetry((value) => value + 1)}>
                       Check again
                     </button>
@@ -262,7 +294,7 @@ export default function WikiGenerationForm({
           anyone with its link. The key is never saved.
         </span>
       </label>
-      <button type="submit" className="wgf-submit" disabled={busy || !admitted}>
+      <button type="submit" className="wgf-submit" disabled={busy || !admitted || retryAt !== null}>
         {busy
           ? "Starting generation…"
           : resume
@@ -279,12 +311,22 @@ export default function WikiGenerationForm({
         </div>
       )}
       {error && (
-        <p role="alert" className="trial-error">
-          {error}{" "}
-          <button type="button" className="btn-ghost" onClick={onStarted}>
-            Check saved attempt
-          </button>
-        </p>
+        <div role="alert" className="trial-error wgf-error">
+          <p>{error}</p>
+          {retryAt !== null && (
+            <p className="wgf-wait" aria-live="off">
+              You can try again in {waitSeconds} {waitSeconds === 1 ? "second" : "seconds"}.
+            </p>
+          )}
+          {outcomeUnknown && (
+            <p>
+              The server may still have accepted this run.{" "}
+              <button type="button" className="btn-ghost" onClick={onStarted}>
+                Check saved attempt
+              </button>
+            </p>
+          )}
+        </div>
       )}
       {!resume && (
         <details className="wgf-rules">

@@ -16,12 +16,19 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from ..log_utils import get_logger
 from ..storage import SQLiteWikiStore
 from ..wiki.store import WikiGenerationBusyError
 from ..wiki.visitor_models import WIKI_MODELS, wiki_model_catalog
 from ..wiki.visitor_source import generation_limits
-from ..wiki.visitor_wiki import VisitorWikiError, VisitorWikis
+from ..wiki.visitor_wiki import (
+    VisitorWikiError,
+    VisitorWikiRateLimited,
+    VisitorWikis,
+)
 from .config import load_config
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/visitor-wikis")
 _manager_lock = threading.Lock()
@@ -116,7 +123,8 @@ def check_repository(
             repository, request.client.host if request.client else "unknown"
         )
     except VisitorWikiError as exc:
-        raise HTTPException(429, str(exc), headers={"Retry-After": "60"}) from None
+        wait = exc.retry_after if isinstance(exc, VisitorWikiRateLimited) else 60
+        raise HTTPException(429, str(exc), headers={"Retry-After": str(wait)}) from None
 
 
 @router.get("/models")
@@ -149,7 +157,14 @@ async def generate(
             request.client.host if request.client else "unknown",
             payload.model,
         )
+    except VisitorWikiRateLimited as exc:
+        logger.warning("Visitor Wiki submission rate-limited: %s", exc)
+        raise HTTPException(
+            429, str(exc), headers={"Retry-After": str(exc.retry_after)}
+        ) from None
     except (VisitorWikiError, WikiGenerationBusyError) as exc:
+        # These messages are fixed strings; none carries the key.
+        logger.warning("Visitor Wiki submission refused: %s", exc)
         raise HTTPException(409, str(exc)) from None
     response.headers["Cache-Control"] = "no-store"
     return state

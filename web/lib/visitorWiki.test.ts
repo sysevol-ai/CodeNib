@@ -9,6 +9,7 @@ import {
   recentWikis,
   startWiki,
   stopWiki,
+  WikiRequestError,
 } from "./visitorWiki";
 
 let stored: Map<string, string>;
@@ -107,4 +108,23 @@ it("stop uses only the owner's recovery token and static exports never send it",
   vi.stubGlobal("window", { __CODENIB_RUNTIME__: { mode: "static" } });
   await expect(stopWiki(attempt)).rejects.toThrow("live demo");
   expect(fetch).toHaveBeenCalledTimes(1);
+});
+
+it("a refusal carries its status and wait, so the form knows nothing was accepted", async () => {
+  const attempt = newWikiAttempt("owner/repo");
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(
+    JSON.stringify({ detail: "Please wait 39 seconds before trying again." }),
+    { status: 429, headers: { "Retry-After": "39" } },
+  )));
+  const refused = await startWiki(attempt, "sk-or-key", 2).catch((error) => error);
+  expect(refused).toBeInstanceOf(WikiRequestError);
+  expect(refused).toMatchObject({ status: 429, retryAfter: 39, message: "Please wait 39 seconds before trying again." });
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(
+    JSON.stringify({ detail: "OpenRouter did not accept this key." }), { status: 409 },
+  )));
+  const rejected = await startWiki(attempt, "sk-or-key", 2).catch((error) => error);
+  expect(rejected).toMatchObject({ status: 409, retryAfter: undefined });
+  vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("Failed to fetch"); }));
+  const unreachable = await startWiki(attempt, "sk-or-key", 2).catch((error) => error);
+  expect(unreachable).not.toBeInstanceOf(WikiRequestError);
 });
