@@ -11,18 +11,19 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 ## [Unreleased]
 
+## [0.2.6] - 2026-11-08
+
 ### Added
 
 - The most important detail pages draw their longest recorded call path, labelled
   as one selected path. No model chooses the arrows.
-
-- `codenib guard check` compares the working tree with a commit and lists the
-  tests that reach the changed definitions within three calls, each with its
-  call path and call lines. The graph is built from the commit's tracked files
-  and cached per commit. `--json` and `--exit-code` serve scripts and CI.
-  Existing tests that the change itself rewrote come first, with a command that
-  runs them as they were at the base commit, since an edited test that passes
-  says little about the behaviour it protected.
+- Preview, for Python projects: `codenib guard check` compares the working tree
+  with a commit and lists the tests that reach the changed definitions within
+  three calls, each with its call path and call lines. The graph is built from
+  the commit's tracked files and cached per commit. `--json` and `--exit-code`
+  serve scripts and CI. Existing tests that the change itself rewrote come
+  first, with a command that runs them as they were at the base commit, since
+  an edited test that passes says little about the behaviour it protected.
 - `codenib guard install` adds SessionStart and Stop hooks for Claude Code and
   Codex. Before the agent finishes, the hook hands back the tests its change
   reaches; it reports each change once, returns before any graph work when the

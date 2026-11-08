@@ -239,6 +239,7 @@ nav:
           - Naming: branding.md
   - News:
       - news.md
+      - Release 0.2.6 candidate: releases/0.2.6.md
       - Release 0.2.5: releases/0.2.5.md
       - Release 0.2.4: releases/0.2.4.md
       - Release 0.2.3: releases/0.2.3.md
