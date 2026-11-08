@@ -4,6 +4,9 @@
 
 """Regression for overlapping chunk ranges in materialized clangd graphs."""
 
+import os
+from pathlib import Path
+
 import pytest
 
 from codenib.ls_index.clangd_decode import (
@@ -106,3 +109,45 @@ def test_conversion_function_is_a_method_with_an_enclosing_body(tmp_path, monkey
     assert {node.name for node in graph.query_range("value.hpp", 2, 2).defined} == {
         "conversion"
     }
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    [
+        "src/main.cpp",
+        "src/path with spaces/file.cpp",
+        "src/name%20literal.cpp",
+        "src/name%2Fliteral.cpp",
+        "src/name%25literal.cpp",
+        "src/hash#literal.cpp",
+        "src/café.cpp",
+        "src/c++/file.cpp",
+    ],
+)
+def test_clangd_file_uri_to_relative_round_trip(
+    tmp_path: Path, relative_path: str
+) -> None:
+    source = tmp_path / relative_path
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text("int x = 1;\n", encoding="utf-8")
+
+    decoder = ClangdGraphDecoder(str(tmp_path / "index"), str(tmp_path))
+    uri = source.as_uri()
+    assert decoder._file_uri_to_relative(uri) == relative_path
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows drive-root conversion")
+def test_clangd_file_uri_to_relative_windows_drive():
+    root = "C:/workspace/repo"
+    uri = "file:///C:/workspace/repo/src/main.cpp"
+    decoder = ClangdGraphDecoder(f"{root}/index", root)
+    assert decoder._file_uri_to_relative(uri) == "src/main.cpp"
+
+
+def test_clangd_file_uri_to_relative_non_file_and_external():
+    root = "/workspace/repo"
+    decoder = ClangdGraphDecoder(f"{root}/index", root)
+    assert (
+        decoder._file_uri_to_relative("/external/path/file.cpp")
+        == "/external/path/file.cpp"
+    )
