@@ -262,7 +262,7 @@ export const FALLBACK_WIKI_MODELS: WikiModelCatalog = {
   default: "deepseek/deepseek-v4.1-flash",
   prices: "recorded",
   models: [
-    { id: "deepseek/deepseek-v4.1-flash", label: "DeepSeek V4.1 Flash", provider: "DeepSeek", input_usd: 0.3, output_usd: 1.2, context: 1048576, tested: true },
+    { id: "deepseek/deepseek-v4.1-flash", label: "DeepSeek V4.1 Flash", provider: "DeepSeek", input_usd: 0.051, output_usd: 0.567, context: 1048576, tested: true },
     { id: "anthropic/claude-sonnet-4.6", label: "Claude Sonnet 4.6", provider: "Anthropic", input_usd: 3, output_usd: 15, context: 1000000, tested: true },
   ],
 };

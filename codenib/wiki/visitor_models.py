@@ -3,7 +3,7 @@
 
 """Writing models a visitor may choose for a Wiki run, and what each accepts.
 
-Every entry was checked against OpenRouter's model catalog (2026-09-28) for
+Every entry was checked against OpenRouter's model catalog (2026-11-07) for
 JSON-schema structured output, which the chapter planner requires. Requests
 set ``provider.require_parameters``, so a parameter a model does not accept
 makes the call unroutable; the flags below keep ``temperature`` and
@@ -40,14 +40,16 @@ WIKI_MODEL_CHOICES: tuple[WikiModel, ...] = (
         "deepseek/deepseek-v4.1-flash",
         "DeepSeek V4.1 Flash",
         "DeepSeek",
-        0.30,
-        1.20,
+        0.051,
+        0.567,
         1048576,
         tested=True,
     ),
     WikiModel(
-        "deepseek/deepseek-v4-pro", "DeepSeek V4 Pro", "DeepSeek", 0.96, 1.91, 1048576
+        "deepseek/deepseek-v4-pro", "DeepSeek V4 Pro", "DeepSeek", 0.90, 1.50, 1048576
     ),
+    # Claude 5.x accepts neither sampling parameters nor turning thinking off:
+    # both are left out, so these run with adaptive thinking at their default.
     WikiModel(
         "anthropic/claude-sonnet-5.5",
         "Claude Sonnet 5.5",
@@ -55,14 +57,28 @@ WIKI_MODEL_CHOICES: tuple[WikiModel, ...] = (
         2.00,
         10.00,
         1000000,
+        temperature=False,
+        reasoning=False,
     ),
     WikiModel(
-        "anthropic/claude-haiku-4.5",
-        "Claude Haiku 4.5",
+        "anthropic/claude-opus-5.5",
+        "Claude Opus 5.5",
         "Anthropic",
-        1.00,
-        5.00,
-        200000,
+        4.00,
+        20.00,
+        1000000,
+        temperature=False,
+        reasoning=False,
+    ),
+    WikiModel(
+        "anthropic/claude-haiku-5.5",
+        "Claude Haiku 5.5",
+        "Anthropic",
+        0.10,
+        0.50,
+        1000000,
+        temperature=False,
+        reasoning=False,
     ),
     WikiModel(
         "anthropic/claude-sonnet-4.6",
@@ -74,8 +90,8 @@ WIKI_MODEL_CHOICES: tuple[WikiModel, ...] = (
         tested=True,
     ),
     WikiModel(
-        "openai/gpt-6-sol",
-        "GPT-6 Sol",
+        "openai/gpt-6.1-sol",
+        "GPT-6.1 Sol",
         "OpenAI",
         2.00,
         10.00,
@@ -92,30 +108,33 @@ WIKI_MODEL_CHOICES: tuple[WikiModel, ...] = (
         temperature=False,
     ),
     WikiModel(
-        "google/gemini-3.8-flash", "Gemini 3.8 Flash", "Google", 0.75, 3.75, 1048576
+        "google/gemini-4-argon", "Gemini 4 Argon", "Google", 2.00, 10.00, 1048576
+    ),
+    WikiModel(
+        "google/gemini-3.8-flash", "Gemini 3.8 Flash", "Google", 0.825, 4.125, 1048576
     ),
     WikiModel("qwen/qwen3.8-max-0902", "Qwen3.8 Max", "Qwen", 2.00, 6.00, 1000000),
     WikiModel("qwen/qwen3.8-flash", "Qwen3.8 Flash", "Qwen", 0.15, 0.47, 1000000),
     WikiModel("moonshotai/kimi-k2.6", "Kimi K2.6", "Moonshot AI", 0.65, 3.41, 262144),
-    WikiModel("z-ai/glm-5.3", "GLM 5.3", "Z.ai", 1.40, 4.40, 1310720),
-    WikiModel("z-ai/glm-5.3-flash", "GLM 5.3 Flash", "Z.ai", 0.15, 0.50, 1310720),
+    WikiModel("z-ai/glm-5.3", "GLM 5.3", "Z.ai", 0.07, 1.40, 1048576),
+    WikiModel("z-ai/glm-5.3-flash", "GLM 5.3 Flash", "Z.ai", 0.034, 0.083, 1048576),
     WikiModel(
-        "mistralai/mistral-medium-3-5",
-        "Mistral Medium 3.5",
+        "mistralai/mistral-large-4-0",
+        "Mistral Large 4",
         "Mistral",
-        1.50,
-        7.50,
-        262144,
+        0.70,
+        2.10,
+        1048576,
     ),
-    WikiModel("x-ai/grok-4.3", "Grok 4.3", "xAI", 1.25, 2.50, 1000000),
+    WikiModel("x-ai/grok-4.7", "Grok 4.7", "xAI", 2.00, 6.00, 500000),
     WikiModel("minimax/minimax-m3", "MiniMax M3", "MiniMax", 0.30, 1.20, 1048576),
     WikiModel(
         "meta-llama/llama-4-maverick",
         "Llama 4 Maverick",
         "Meta",
-        0.19,
-        0.65,
-        1048576,
+        0.35,
+        1.00,
+        524288,
         reasoning=False,
     ),
 )

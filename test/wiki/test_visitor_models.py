@@ -62,7 +62,10 @@ def test_choices_are_unique_and_include_the_default_and_tested_models():
     "model, temperature, reasoning",
     [
         ("deepseek/deepseek-v4.1-flash", True, True),
-        ("openai/gpt-6-sol", False, True),
+        ("openai/gpt-6.1-sol", False, True),
+        # Claude 5.x rejects sampling parameters and turning thinking off.
+        ("anthropic/claude-sonnet-5.5", False, False),
+        ("anthropic/claude-opus-5.5", False, False),
         ("meta-llama/llama-4-maverick", True, False),
     ],
 )

@@ -15,7 +15,7 @@ describe("WikiGenerationForm", () => {
     );
     expect(html).toContain('<optgroup label="DeepSeek">');
     expect(html).toContain('<optgroup label="Anthropic">');
-    expect(html).toContain("DeepSeek V4.1 Flash · $0.30 in / $1.20 out");
+    expect(html).toContain("DeepSeek V4.1 Flash · $0.05 in / $0.57 out");
     expect(html).toContain("Complete Wikis have been generated with this model.");
   });
 
