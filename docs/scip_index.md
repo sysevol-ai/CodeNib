@@ -46,7 +46,11 @@ The CLI stores manifests and reusable indexes below
 `$CODENIB_HOME/repositories` (by default `~/.codenib/repositories`), not in the
 target checkout. Some language indexers still need to resolve project
 dependencies and may create normal toolchain files such as `node_modules` or a
-project-local bundle. If a JavaScript/TypeScript dependency install fails,
+project-local bundle. JavaScript/TypeScript installs never create or rewrite a
+lockfile, and a project without a `tsconfig.json` or `jsconfig.json` is indexed
+through a config kept with the index. One exception remains: in a workspace
+without a root config, scip-typescript writes a `tsconfig.json` into each
+member package that has none. If a JavaScript/TypeScript dependency install fails,
 CodeNib records the failure in the repository's state directory under
 `$CODENIB_HOME/repositories` and skips the install for 24 hours while
 `package.json`, the lockfile, the install command and the Node and

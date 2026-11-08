@@ -172,7 +172,7 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
         # Indexer-only experiment: skip install if lockfile unchanged from
         # the cached prior install. Saves ~30s per cold-start on monorepos
         # like docusaurus where yarn install does a no-op integrity check.
-        sentinel = self.project_root / PROJECT_INSTALL_SENTINEL
+        sentinel = self._install_sentinel
         node_modules = self.project_root / "node_modules"
         lockfile = self._find_lockfile()
         if lockfile and node_modules.is_dir() and sentinel.exists():
@@ -211,28 +211,36 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
 
         # Determine install command and a fallback without --frozen-lockfile.
         # The fallback is used when the lock file is out of sync with
-        # package.json (common for old swebench commits).
+        # package.json (common for old swebench commits). No command may
+        # create or rewrite a lockfile: the checkout is the user's, and a
+        # changed file would also mark the new index stale. The fallbacks
+        # therefore install from package.json without a lockfile.
         cmd: List[str]
         fallback_cmd: Optional[List[str]] = None
 
         if has_bun_lock and shutil.which("bun"):
             cmd = ["bun", "install", "--frozen-lockfile"]
-            fallback_cmd = ["bun", "install"]
+            fallback_cmd = ["bun", "install", "--no-save"]
         elif (self.project_root / "yarn.lock").exists() and shutil.which("yarn"):
             cmd = ["yarn", "install", "--frozen-lockfile"]
-            fallback_cmd = ["yarn", "install"]
+            fallback_cmd = ["yarn", "install", "--pure-lockfile"]
         elif (self.project_root / "pnpm-lock.yaml").exists() and shutil.which("pnpm"):
             cmd = ["pnpm", "install", "--frozen-lockfile"]
-            fallback_cmd = ["pnpm", "install", "--no-frozen-lockfile"]
+            fallback_cmd = [
+                "pnpm",
+                "install",
+                "--no-frozen-lockfile",
+                "--config.lockfile=false",
+            ]
         elif (self.project_root / "pnpm-workspace.yaml").exists() and shutil.which(
             "pnpm"
         ):
-            cmd = ["pnpm", "install", "--no-frozen-lockfile"]
+            cmd = ["pnpm", "install", "--no-frozen-lockfile", "--config.lockfile=false"]
         elif (self.project_root / "package-lock.json").exists():
             cmd = ["npm", "ci"]
-            fallback_cmd = ["npm", "install"]
+            fallback_cmd = ["npm", "install", "--no-package-lock"]
         else:
-            cmd = ["npm", "install"]
+            cmd = ["npm", "install", "--no-package-lock"]
 
         if self._install_failed_before(cmd, fallback_cmd):
             return
@@ -257,6 +265,12 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
     @property
     def _install_failure_record(self) -> Path:
         return repo_state_dir(self.project_root) / self._INSTALL_FAILURE_RECORD_NAME
+
+    @property
+    def _install_sentinel(self) -> Path:
+        """Lockfile hash of the last successful install, kept out of the checkout."""
+
+        return repo_state_dir(self.project_root) / PROJECT_INSTALL_SENTINEL
 
     def _install_inputs(
         self, cmd: List[str], fallback_cmd: Optional[List[str]]
@@ -359,11 +373,12 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
                 timeout=timeout_sec,
             )
             # Cache: write lockfile hash so next call can skip if unchanged
-            sentinel = self.project_root / PROJECT_INSTALL_SENTINEL
+            sentinel = self._install_sentinel
             lockfile = self._find_lockfile()
             if lockfile:
                 # Best-effort: cache write is non-fatal; next run will retry.
                 try:
+                    sentinel.parent.mkdir(parents=True, exist_ok=True)
                     sentinel.write_text(hashlib.sha1(lockfile.read_bytes()).hexdigest())
                 except Exception as cache_err:
                     logger.debug("skip-cache write failed (%s); continuing", cache_err)
@@ -739,6 +754,26 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
         )
         return True
 
+    def _infers_root_config(self, kwargs: dict) -> bool:
+        """Whether scip-typescript would infer a config for the project root.
+
+        That happens without a root ``tsconfig.json`` or ``jsconfig.json``.
+        With a workspace flag scip-typescript indexes the member packages
+        instead, and still infers a config inside each one that lacks it.
+        """
+
+        if not kwargs.get("infer_tsconfig"):
+            return False
+        if any(
+            kwargs.get(flag)
+            for flag in ("yarn_workspaces", "pnpm_workspaces", "npm_workspaces")
+        ):
+            return False
+        return (
+            not (self.project_root / "tsconfig.json").exists()
+            and not (self.project_root / "jsconfig.json").exists()
+        )
+
     def _normalize_workspace_kwargs(self, kwargs: dict) -> dict:
         """
         Ensure workspace flags are consistent with available package managers.
@@ -804,7 +839,12 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
         # Guardrail: if no explicit ts/js config exists, force infer mode.
         has_tsconfig = (self.project_root / "tsconfig.json").exists()
         has_jsconfig = (self.project_root / "jsconfig.json").exists()
-        if not infer_tsconfig and not has_tsconfig and not has_jsconfig:
+        if (
+            not infer_tsconfig
+            and not patched_tsconfig
+            and not has_tsconfig
+            and not has_jsconfig
+        ):
             infer_tsconfig = True
             logger.info(
                 "No tsconfig.json/jsconfig.json in %s; forcing infer_tsconfig=True",
@@ -913,10 +953,18 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
         if needs_generate:
             if allow_project_preparation:
                 self._install_dependencies()
-                patched_tsconfig = self._ensure_allow_js()
-                if patched_tsconfig is not None:
-                    kwargs["patched_tsconfig"] = str(patched_tsconfig)
-                    cleanup_patched_tsconfig = True
+                if self._infers_root_config(kwargs):
+                    # --infer-tsconfig writes tsconfig.json into the checkout,
+                    # which also marks the new index stale. Use read-only
+                    # onboarding's config, kept in the index directory.
+                    read_only_tsconfig = self._create_read_only_tsconfig()
+                    kwargs["patched_tsconfig"] = str(read_only_tsconfig)
+                    kwargs["infer_tsconfig"] = False
+                else:
+                    patched_tsconfig = self._ensure_allow_js()
+                    if patched_tsconfig is not None:
+                        kwargs["patched_tsconfig"] = str(patched_tsconfig)
+                        cleanup_patched_tsconfig = True
             else:
                 logger.info(
                     "Skipping project dependency installation for read-only "
