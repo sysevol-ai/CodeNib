@@ -13,6 +13,8 @@ from types import SimpleNamespace
 import pytest
 
 from codenib.guard import hooks
+from codenib.guard.impact import Impact
+from codenib.guard.impact import TestAtRisk as AtRisk
 from codenib.guard.notes import (
     NoteError,
     add_note,
@@ -21,7 +23,7 @@ from codenib.guard.notes import (
     definition_hash,
     load_notes,
 )
-from codenib.guard.report import working_tree_digest
+from codenib.guard.report import GuardReport, working_tree_diff, working_tree_digest
 
 SOURCE = textwrap.dedent(
     """\
@@ -235,6 +237,80 @@ def test_stop_runs_the_guard_for_a_change_not_yet_reported(
     out, reason = hooks.stop("claude", payload)
     assert out == "" and reason.endswith("still building")
     assert len(waited) == 1
+
+
+def _no_graph_work(*args, **kwargs):
+    raise AssertionError("this stop needs no graph")
+
+
+def test_stop_returns_at_once_for_an_unchanged_tree(git_repo, tmp_path, monkeypatch):
+    monkeypatch.setenv("CODENIB_HOME", str(tmp_path / "home"))
+    git_repo.commit({"shop.py": "def total():\n    return 1\n"}, "init")
+    monkeypatch.setattr(hooks, "_wait_for_graph", _no_graph_work)
+    monkeypatch.setattr(hooks, "run_guard", _no_graph_work)
+    payload = {"session_id": "s", "cwd": str(git_repo.root), "stop_hook_active": False}
+    assert hooks.stop("claude", payload) == ("", "no changes since the session base")
+
+
+def test_stop_still_checks_notes_on_an_unchanged_tree(git_repo, tmp_path, monkeypatch):
+    monkeypatch.setenv("CODENIB_HOME", str(tmp_path / "home"))
+    git_repo.commit(
+        {"shop.py": "def total():\n    return 1\n", ".codenib/notes/n.md": "note\n"},
+        "init",
+    )
+    monkeypatch.setattr(hooks, "_wait_for_graph", lambda repo, commit: False)
+    monkeypatch.setattr(hooks, "failed_snapshot", lambda repo, commit: None)
+    payload = {"session_id": "s", "cwd": str(git_repo.root), "stop_hook_active": False}
+    assert hooks.stop("claude", payload)[1].endswith("still building")
+
+
+def _report(test_ids, repo, base):
+    """A report with fixed findings for the working tree's current change."""
+
+    diff, untracked = working_tree_diff(repo, base)
+    report = GuardReport(
+        repository=str(repo),
+        base=base,
+        base_commit=base,
+        impact=Impact(tests=[AtRisk(t, t, 1, ()) for t in test_ids]),
+        diff_sha256=hooks.change_digest(diff, untracked),
+    )
+    report.tracked_diff_sha256 = hooks.change_digest(diff, [])
+    return report
+
+
+def test_same_findings_for_the_same_edits_are_reported_once(
+    git_repo, tmp_path, monkeypatch
+):
+    monkeypatch.setenv("CODENIB_HOME", str(tmp_path / "home"))
+    git_repo.commit({"shop.py": "def total():\n    return 1\n"}, "init")
+    monkeypatch.setattr(hooks, "_wait_for_graph", lambda repo, commit: True)
+    monkeypatch.setattr(
+        hooks, "run_guard", lambda repo, base: _report(["t::a", "t::b"], repo, base)
+    )
+    monkeypatch.setattr(hooks, "render_for_agent", lambda report: "tests at risk")
+    monkeypatch.setattr(hooks, "_report_first_run", lambda: None)
+    payload = {"session_id": "s", "cwd": str(git_repo.root), "stop_hook_active": False}
+
+    (git_repo.root / "shop.py").write_text("def total():\n    return 2\n")
+    assert hooks.stop("claude", payload)[0]  # first report
+    (git_repo.root / "notes.txt").write_text("a new file, not in the graph\n")
+    assert hooks.stop("claude", payload) == (
+        "",
+        "already reported these findings for the same edits",
+    )
+    assert hooks.stop("claude", payload) == ("", "already reported this change")
+    (git_repo.root / "shop.py").write_text("def total():\n    return 3\n")
+    assert hooks.stop("claude", payload)[0]  # new edits: the same tests are repeated
+
+
+def test_findings_digest_ignores_order():
+    def report(ids):
+        tests = [AtRisk(t, t, 1, ()) for t in ids]
+        return GuardReport("r", "HEAD", "c", Impact(tests=tests))
+
+    assert report(["a", "b"]).findings_sha256 == report(["b", "a"]).findings_sha256
+    assert report(["a"]).findings_sha256 != report(["a", "b"]).findings_sha256
 
 
 def test_a_failed_build_is_recorded_and_retried_later(git_repo, tmp_path, monkeypatch):

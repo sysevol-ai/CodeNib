@@ -41,11 +41,28 @@ class GuardReport:
     stale_notes: List[Tuple[Note, List[AnchorStatus]]] = field(default_factory=list)
     note_errors: List[str] = field(default_factory=list)
     diff_sha256: str = ""
+    tracked_diff_sha256: str = ""  # the diff of tracked files alone, without new files
     graph_seconds: Optional[float] = None
 
     @property
     def has_findings(self) -> bool:
         return bool(self.impact.tests or self.notes_on_change or self.stale_notes)
+
+    @property
+    def findings_sha256(self) -> str:
+        """Identify what the report tells the agent, independent of order."""
+
+        parts = sorted(f"test {t.test_id}" for t in self.impact.tests)
+        parts += sorted(
+            f"note {n.path} {' '.join(sorted(symbols))}"
+            for n, symbols in self.notes_on_change
+        )
+        parts += sorted(
+            f"stale {n.path} "
+            + " ".join(sorted(f"{s.anchor.symbol}={s.state}" for s in states))
+            for n, states in self.stale_notes
+        )
+        return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
 
     def pytest_command(self, limit: int = COMMAND_TESTS) -> str:
         ids = [t.test_id for t in self.impact.tests[:limit]]
@@ -158,6 +175,9 @@ def run_guard(
         base_commit=commit,
         impact=impact,
         diff_sha256=change_digest(diff, untracked),
+        tracked_diff_sha256=hashlib.sha256(
+            diff.encode("utf-8", "surrogateescape")
+        ).hexdigest(),
         graph_seconds=snapshot.seconds,
     )
     notes, report.note_errors = load_notes(repo)

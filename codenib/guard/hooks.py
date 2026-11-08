@@ -34,7 +34,8 @@ from typing import Dict, List, Optional, Tuple
 from filelock import FileLock, Timeout
 
 from ..paths import user_state_dir
-from .report import render_for_agent, run_guard, working_tree_digest
+from .notes import NOTES_DIR
+from .report import change_digest, render_for_agent, run_guard, working_tree_diff
 from .snapshot import (
     SnapshotError,
     build_in_background,
@@ -193,8 +194,9 @@ def _update_session(repo: Path, session: str, **values) -> Dict[str, object]:
         entry = dict(sessions.get(session) or {})
         if "base" in values:
             entry.setdefault("base", values["base"])  # a resumed session keeps its base
-        if "reported" in values:
-            entry["reported"] = [*entry.get("reported", []), values["reported"]][-20:]
+        for key in ("reported", "reported_findings"):
+            if key in values:
+                entry[key] = [*entry.get(key, []), values[key]][-20:]
         entry["seen"] = time.time()
         sessions[session] = entry
         newest = sorted(sessions.items(), key=lambda kv: kv[1].get("seen", 0))[
@@ -314,10 +316,15 @@ def stop(agent: str, payload: Dict[str, object]) -> Tuple[str, str]:
     base = str(entry.get("base") or resolve_commit(repo))
     if not has_python(repo, base):
         return "", "skipped: no Python files"
+    diff, untracked = working_tree_diff(repo, base)
+    # An unchanged tree puts no test at risk. With notes, the guard still runs:
+    # it reports notes whose code has changed since they were written.
+    if not diff and not untracked and not (repo / NOTES_DIR).is_dir():
+        return "", "no changes since the session base"
     reported = entry.get("reported", [])
     # Only changes with findings are recorded, so a recorded change would be
     # reported again: skip it before waiting for a graph or running the guard.
-    if working_tree_digest(repo, base) in reported:
+    if change_digest(diff, untracked) in reported:
         return "", "already reported this change"
     if not _wait_for_graph(repo, base):
         reason = failed_snapshot(repo, base) or "still building"
@@ -327,7 +334,15 @@ def stop(agent: str, payload: Dict[str, object]) -> Tuple[str, str]:
         return "", "no tests or notes at risk"
     if report.diff_sha256 in reported:  # the tree moved to a reported change meanwhile
         return "", "already reported this change"
-    _update_session(repo, session, reported=report.diff_sha256)
+    # New files are not in the graph, so adding one can leave both the edits to
+    # tracked files and the findings as they were: the report would repeat.
+    repeat = f"{report.tracked_diff_sha256}:{report.findings_sha256}"
+    if repeat in entry.get("reported_findings", []):
+        _update_session(repo, session, reported=report.diff_sha256)
+        return "", "already reported these findings for the same edits"
+    _update_session(
+        repo, session, reported=report.diff_sha256, reported_findings=repeat
+    )
     _report_first_run()
     return _output(agent, render_for_agent(report)), (
         f"reported {len(report.impact.tests)} tests, "
