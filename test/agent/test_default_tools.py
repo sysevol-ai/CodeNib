@@ -341,9 +341,16 @@ class TestGrep:
         assert ".py:" in result
 
     def test_ripgrep_timeout_is_enforced(self, tmp_path, monkeypatch):
-        slow_rg = tmp_path / "slow-rg"
-        slow_rg.write_text("#!/bin/sh\nsleep 2\n", encoding="utf-8")
-        slow_rg.chmod(0o755)
+        if sys.platform == "win32":
+            slow_rg = tmp_path / "slow-rg.bat"
+            slow_rg.write_text(
+                f'@"{sys.executable}" -c "import time; time.sleep(2)"\n',
+                encoding="utf-8",
+            )
+        else:
+            slow_rg = tmp_path / "slow-rg"
+            slow_rg.write_text("#!/bin/sh\nsleep 2\n", encoding="utf-8")
+            slow_rg.chmod(0o755)
         monkeypatch.setattr(
             "codenib.agent.tools.defaults.shutil.which",
             lambda _command: str(slow_rg),
@@ -357,13 +364,20 @@ class TestGrep:
     def test_ripgrep_stderr_is_drained_into_a_bounded_prefix(
         self, tmp_path, monkeypatch
     ):
-        noisy_rg = tmp_path / "noisy-rg"
         script = "import sys; sys.stderr.write('x' * 1000000); raise SystemExit(2)"
-        noisy_rg.write_text(
-            f"#!{sys.executable}\n{script}\n",
-            encoding="utf-8",
-        )
-        noisy_rg.chmod(0o755)
+        if sys.platform == "win32":
+            noisy_rg = tmp_path / "noisy-rg.bat"
+            noisy_rg.write_text(
+                f'@"{sys.executable}" -c "{script}"\n',
+                encoding="utf-8",
+            )
+        else:
+            noisy_rg = tmp_path / "noisy-rg"
+            noisy_rg.write_text(
+                f"#!{sys.executable}\n{script}\n",
+                encoding="utf-8",
+            )
+            noisy_rg.chmod(0o755)
         monkeypatch.setattr(
             "codenib.agent.tools.defaults.shutil.which",
             lambda _command: str(noisy_rg),
@@ -450,6 +464,7 @@ class TestGlob:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skipif(os.name == "nt", reason="requires POSIX shell")
 class TestBash:
     def test_basic_echo(self):
         result = _bash("echo hello")
