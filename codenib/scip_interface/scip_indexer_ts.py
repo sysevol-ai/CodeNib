@@ -14,6 +14,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import time
 from pathlib import Path
 from typing import List, Optional, Union
@@ -35,6 +36,28 @@ _LOCKFILE_NAMES = (
     "bun.lock",
     "bun.lockb",
 )
+
+
+def _anchor_tsconfig_pattern(base_dir: Path, pattern: str) -> str:
+    cleaned = str(pattern).strip()
+    if not cleaned:
+        return ""
+    normalized = cleaned.replace("\\", "/")
+    parts = normalized.split("/")
+    glob_index = next(
+        (i for i, part in enumerate(parts) if any(c in part for c in "*?[]{}")),
+        len(parts),
+    )
+    dir_part = "/".join(parts[:glob_index])
+    glob_part = "/".join(parts[glob_index:])
+    resolved_dir = (
+        (base_dir / dir_part).resolve().as_posix()
+        if dir_part
+        else base_dir.resolve().as_posix()
+    )
+    if glob_part:
+        return f"{resolved_dir}/{glob_part}"
+    return resolved_dir
 
 
 class SCIPTypeScriptIndexer(SCIPIndexerBase):
@@ -79,9 +102,10 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
         Returns:
             bool: True if scip-typescript is available, False otherwise
         """
+        executable = shutil.which("scip-typescript") or "scip-typescript"
         try:
             result = subprocess.run(
-                ["scip-typescript", "--version"],
+                [executable, "--version"],
                 check=True,
                 capture_output=True,
                 text=True,
@@ -200,6 +224,7 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
                     capture_output=True,
                     text=True,
                     timeout=120,
+                    shell=sys.platform == "win32",
                 )
                 logger.info("pnpm installed successfully")
             except Exception as e:
@@ -290,6 +315,7 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
                     capture_output=True,
                     text=True,
                     timeout=10,
+                    shell=sys.platform == "win32",
                 )
                 versions[tool] = result.stdout.strip() or None
             except (OSError, subprocess.SubprocessError):
@@ -371,6 +397,7 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
                 capture_output=True,
                 text=True,
                 timeout=timeout_sec,
+                shell=sys.platform == "win32",
             )
             # Cache: write lockfile hash so next call can skip if unchanged
             sentinel = self._install_sentinel
@@ -411,6 +438,7 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
                     capture_output=True,
                     text=True,
                     timeout=timeout_sec,
+                    shell=sys.platform == "win32",
                 )
                 return True
             except Exception as e2:
@@ -569,6 +597,7 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
             ),
             None,
         )
+        project_root = self.project_root.resolve().as_posix().rstrip("/")
         payload: dict[str, object] = {
             "compilerOptions": {"allowJs": True},
             # A config's implicit include is relative to the config file, not
@@ -578,17 +607,16 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
             # ``**/*`` include accepts once allowJs is on (``*.ts``, ``*.mts``
             # and ``*.cts`` also match their ``.d.*`` declaration forms).
             "include": [
-                f"{self.project_root.resolve()}/**/*.js",
-                f"{self.project_root.resolve()}/**/*.jsx",
-                f"{self.project_root.resolve()}/**/*.mjs",
-                f"{self.project_root.resolve()}/**/*.cjs",
-                f"{self.project_root.resolve()}/**/*.ts",
-                f"{self.project_root.resolve()}/**/*.tsx",
-                f"{self.project_root.resolve()}/**/*.mts",
-                f"{self.project_root.resolve()}/**/*.cts",
+                f"{project_root}/**/*.js",
+                f"{project_root}/**/*.jsx",
+                f"{project_root}/**/*.mjs",
+                f"{project_root}/**/*.cjs",
+                f"{project_root}/**/*.ts",
+                f"{project_root}/**/*.tsx",
+                f"{project_root}/**/*.mts",
+                f"{project_root}/**/*.cts",
             ],
         }
-        project_root = self.project_root.resolve().as_posix().rstrip("/")
         anchored_excludes = []
         for raw_pattern in self.exclude_patterns:
             pattern = str(raw_pattern).strip()
@@ -710,7 +738,8 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
             ):
                 return None
             surface["exclude"] = [
-                str((config_path.parent / pattern).resolve()) for pattern in excludes
+                _anchor_tsconfig_pattern(config_path.parent, pattern)
+                for pattern in excludes
             ]
         return surface
 

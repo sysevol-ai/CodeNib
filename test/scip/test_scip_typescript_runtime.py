@@ -135,8 +135,8 @@ def test_read_only_pipeline_uses_external_config_for_jsconfig(tmp_path, monkeypa
     config = observed["config"]
     assert isinstance(config, dict)
     assert config["extends"] == str((project / "jsconfig.json").resolve())
-    assert f"{project.resolve()}/**/*.js" in config["include"]
     root = project.resolve().as_posix()
+    assert f"{root}/**/*.js" in config["include"]
     assert config["exclude"] == [f"{root}/custom/**", f"{root}/dist/**"]
     assert not (project / "tsconfig.json").exists()
     assert not (tmp_path / "index" / ".tsconfig.scip.readonly.json").exists()
@@ -394,10 +394,12 @@ def test_read_only_wrapper_preserves_inherited_excludes(tmp_path, monkeypatch):
         tmp_path, monkeypatch, project, exclude_patterns=["dist/**"]
     )
 
+    root = project.resolve().as_posix()
+    configs_root = configs.resolve().as_posix()
     assert observed["config"]["exclude"] == [
-        f"{project}/generated/**",
-        f"{configs}/private/**",
-        f"{project}/dist/**",
+        f"{root}/generated/**",
+        f"{configs_root}/private/**",
+        f"{root}/dist/**",
     ]
     assert _checkout_snapshot(project) == before
 
@@ -637,7 +639,7 @@ def test_index_without_root_config_uses_the_external_config(tmp_path, monkeypatc
     assert observed["infer_tsconfig"] is False
     assert str(observed["patched_tsconfig"]).startswith(str(tmp_path / "index"))
     assert observed["config"]["compilerOptions"] == {"allowJs": True}
-    assert f"{project.resolve()}/**/*.js" in observed["config"]["include"]
+    assert f"{project.resolve().as_posix()}/**/*.js" in observed["config"]["include"]
     assert sorted(p.name for p in project.iterdir()) == ["package.json", "src"]
     assert not (tmp_path / "index" / ".tsconfig.scip.readonly.json").exists()
     command = indexer._build_index_command(

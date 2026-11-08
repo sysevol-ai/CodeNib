@@ -7,11 +7,13 @@
 """
 Base class for SCIP indexers across different languages.
 """
+
 from __future__ import annotations
 
 import hashlib
 import os
 import re
+import shutil
 import subprocess
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -328,8 +330,14 @@ class SCIPIndexerBase(ABC):
                     env = os.environ.copy()
                     env["RUSTUP_TOOLCHAIN"] = rust_toolchain()
 
+                exec_cmd = list(cmd)
+                if exec_cmd and not Path(exec_cmd[0]).is_file():
+                    resolved_bin = shutil.which(exec_cmd[0])
+                    if resolved_bin:
+                        exec_cmd[0] = resolved_bin
+
                 subprocess.run(
-                    cmd,
+                    exec_cmd,
                     check=True,
                     cwd=self.project_root,
                     capture_output=True,
