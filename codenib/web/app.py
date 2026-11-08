@@ -20,8 +20,10 @@ from __future__ import annotations
 import argparse
 import asyncio
 import hashlib
+import json
 import os
 import threading
+import weakref
 from collections.abc import Mapping
 from contextlib import asynccontextmanager, contextmanager
 from functools import partial
@@ -1193,6 +1195,38 @@ async def wiki_page_graph(repo_id: str, page_id: str) -> dict:
         )
 
 
+# Area maps by loaded graph, then by outline. A bundle loads its graph once,
+# so a new index generation brings a new graph and drops its old entries.
+_AREA_MAPS: "weakref.WeakKeyDictionary[object, dict[str, dict]]" = (
+    weakref.WeakKeyDictionary()
+)
+_AREA_MAPS_LOCK = threading.Lock()
+
+
+def _area_map(graph, areas: list[dict], **kwargs) -> dict:
+    """Project the outline's areas onto the graph once per graph and outline.
+
+    The home page asks for every catalog card's map on each visit, and the
+    projection walks the whole graph. Neither input changes within a
+    generation, so later visits read the stored map.
+    """
+
+    from .codemap import build_area_map
+
+    key = json.dumps(areas, sort_keys=True)
+    try:
+        with _AREA_MAPS_LOCK:
+            stored = _AREA_MAPS.get(graph, {}).get(key)
+    except TypeError:  # a graph that cannot be weakly referenced is not kept
+        return build_area_map(graph, areas, **kwargs)
+    if stored is not None:
+        return stored
+    result = build_area_map(graph, areas, **kwargs)
+    with _AREA_MAPS_LOCK:
+        _AREA_MAPS.setdefault(graph, {})[key] = result
+    return result
+
+
 @app.get("/api/repos/{repo_id}/wiki-map")
 async def wiki_area_map(repo_id: str) -> dict:
     """How the wiki's top-level areas call each other in the indexed graph.
@@ -1245,11 +1279,10 @@ async def wiki_area_map(repo_id: str) -> dict:
             return areas
 
         areas = await _run_pinned_thread(collect)
-        from .codemap import build_area_map
 
         # No prose or evidence generation is necessary for this projection.
         return await _run_pinned_thread(
-            build_area_map,
+            _area_map,
             graph,
             areas,
             repo_dir=getattr(entry, "repo_dir", None),

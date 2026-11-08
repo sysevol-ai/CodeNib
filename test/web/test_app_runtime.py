@@ -121,6 +121,48 @@ def test_area_map_works_before_pages_or_evidence_are_generated(monkeypatch):
     assert asyncio.run(web_app.wiki_area_map("repo"))["reason"] == "graph_unavailable"
 
 
+def test_wiki_area_map_is_built_once_per_graph_and_outline(monkeypatch):
+    from codenib.web import codemap
+
+    class Graph:
+        pass
+
+    outline = {"pages": [{"id": "runtime", "files": ["runtime.py"]}]}
+
+    class Builder:
+        def cached_outline(self):
+            return outline
+
+    graphs = [Graph()]
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(repo_dir="/repo"), code_graph=lambda: graphs[0]
+    )
+    monkeypatch.setattr(web_app, "_bundle", lambda _id: bundle)
+    monkeypatch.setattr(web_app, "_wiki", lambda *_args: Builder())
+    builds = []
+
+    def build(graph, areas, **_kw):
+        builds.append((graph, [area["files"] for area in areas]))
+        return {"available": True, "build": len(builds)}
+
+    monkeypatch.setattr(codemap, "build_area_map", build)
+
+    first = asyncio.run(web_app.wiki_area_map("repo"))
+    assert asyncio.run(web_app.wiki_area_map("repo")) == first
+    assert len(builds) == 1
+
+    # A changed outline and a new generation's graph are each built afresh.
+    outline["pages"][0]["files"] = ["runtime.py", "loop.py"]
+    assert asyncio.run(web_app.wiki_area_map("repo"))["build"] == 2
+    graphs[0] = Graph()
+    assert asyncio.run(web_app.wiki_area_map("repo"))["build"] == 3
+    assert [files for _graph, files in builds] == [
+        [["runtime.py"]],
+        [["runtime.py", "loop.py"]],
+        [["runtime.py", "loop.py"]],
+    ]
+
+
 def test_visual_evidence_summary_hides_stale_facts_and_keeps_ready_bindings():
     persisted = {
         "media_manifest": {

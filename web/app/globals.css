@@ -6276,7 +6276,7 @@ a.codepanel-name:hover {
   .header-right > a[href="https://docs.codenib.ai"] { display: none; }
 }
 .landing > .landing-catalog { width: 100%; }
-.browse-intro > .btn-outline { right: 24px; }
+.browse-intro > .btn-outline { right: var(--wiki-gutter); }
 .browse-tabs a[aria-current="page"] { background: var(--accent-soft); }
 .landing-catalog .search-box input { padding-left: 16px; }
 .browse-intro { padding-top: 28px; padding-bottom: 12px; margin-bottom: 8px; }
@@ -6362,7 +6362,9 @@ a.codepanel-name:hover {
    map's right edge and the catalog share the same two edges. The two rows
    use the same column split, so the intro columns and the right-hand
    objects line up down the page. */
-.home-stage {
+.home-stage,
+.home-stage ~ .landing-catalog,
+.home-stage ~ .preview-footer {
   --h-bg: #121315;
   --h-text: #e8eaed;
   --h-soft: #bdc1c6;
@@ -6371,6 +6373,8 @@ a.codepanel-name:hover {
   --h-line-strong: rgba(232, 234, 237, 0.26);
   --h-accent: #8ab4f8;
   --h-trace: #8ab4f8;
+}
+.home-stage {
   position: relative;
   display: grid;
   gap: clamp(48px, 4.5vw, 72px);
@@ -6535,20 +6539,6 @@ a.codepanel-name:hover {
   display: block;
   color: var(--h-muted);
 }
-/* On wide screens the home stops at codenib.ai's width (a 1600px frame with
-   64px gutters), centred, and the header's brand and links share its edges.
-   Narrower windows keep the gutter they had. */
-@media (min-width: 1600px) {
-  .landing {
-    --home-edge: max(60px, calc((100% - 1472px) / 2));
-  }
-  .landing > .site-header,
-  .landing .home-stage,
-  .landing .landing-catalog,
-  .landing .landing-agent {
-    padding-inline: var(--home-edge);
-  }
-}
 /* The shared example is a shadow-DOM component themed through these
    properties; on the stage it takes the stage's dark palette. */
 .home-example .first-visit-explorer {
@@ -6577,14 +6567,12 @@ a.codepanel-name:hover {
 .landing .landing-catalog .repo-grid {
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
 }
-/* The home page shows a sample, not the catalog: only whole rows, at any width. */
+/* The home page shows a sample, not the catalog: only whole rows, at any width.
+   The page stops at 1472px, so four columns is the most it holds. */
 .landing .landing-catalog .repo-grid.is-preview {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
-@media (max-width: 1799px) {
-  .landing .landing-catalog .repo-grid.is-preview { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-  .repo-grid.is-preview > :nth-child(n + 9) { display: none; }
-}
+.repo-grid.is-preview > :nth-child(n + 9) { display: none; }
 @media (max-width: 1439px) {
   .landing .landing-catalog .repo-grid.is-preview { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .repo-grid.is-preview > :nth-child(9) { display: flex; }
@@ -6599,6 +6587,144 @@ a.codepanel-name:hover {
 }
 .landing .preview-footer {
   padding-inline: var(--wiki-gutter);
+}
+/* The header's brand starts where the content does, at every width. */
+.landing > .site-header {
+  padding-inline: var(--wiki-gutter);
+}
+/* On wide screens every section of the home and the catalog stops at
+   codenib.ai's width (a 1600px frame with 64px gutters), centred, and the
+   header's brand and links share its edges. This follows the gutter rules
+   above so it wins over them; narrower windows keep the gutter they had. */
+@media (min-width: 1600px) {
+  .landing {
+    --home-edge: max(60px, calc((100% - 1472px) / 2));
+  }
+  .landing > .site-header,
+  .landing .home-stage,
+  .landing .landing-catalog,
+  .landing .landing-agent,
+  .landing .preview-footer {
+    padding-inline: var(--home-edge);
+  }
+  .browse-intro > .btn-outline {
+    right: var(--home-edge);
+  }
+}
+/* Below the stage, the catalog continues it: the same surface, heading form,
+   column split and quiet lines, so the home reads as one page rather than a
+   stage with an older list under it. */
+.landing .home-stage ~ .landing-catalog {
+  margin: 0;
+  padding-bottom: clamp(48px, 4.5vw, 72px);
+  color: var(--h-text);
+  background: var(--h-bg);
+}
+.landing .home-stage ~ .preview-footer {
+  border-top: 1px solid var(--h-line);
+  color: var(--h-muted);
+  background: var(--h-bg);
+}
+.landing .home-stage ~ .preview-footer a {
+  color: var(--h-accent);
+}
+.home-stage ~ .landing-catalog .landing-catalog-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  column-gap: clamp(32px, 4.5vw, 72px);
+  align-items: baseline;
+  border-top: 0;
+  padding-top: 0;
+}
+.home-stage ~ .landing-catalog .landing-catalog-heading h2 {
+  margin: 0;
+  color: #fff;
+  font-size: clamp(28px, 2.8vw, 40px);
+  font-weight: var(--fw-strong);
+  line-height: 1.1;
+  letter-spacing: -0.035em;
+  text-wrap: balance;
+}
+.home-stage ~ .landing-catalog h2 .dim {
+  display: block;
+  color: var(--h-muted);
+}
+.home-stage ~ .landing-catalog .landing-catalog-tools {
+  display: grid;
+  gap: 20px;
+  justify-items: start;
+}
+.home-stage ~ .landing-catalog .landing-catalog-tools p {
+  max-width: 46ch;
+  margin: 0;
+  color: var(--h-soft);
+  font-size: var(--fs-lead);
+  line-height: 1.65;
+}
+.home-stage ~ .landing-catalog .search-box {
+  width: min(100%, 420px);
+}
+.home-stage ~ .landing-catalog .search-box input {
+  border-color: var(--h-line-strong);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--h-text);
+}
+.home-stage ~ .landing-catalog .search-box input::placeholder {
+  color: var(--h-muted);
+}
+.home-stage ~ .landing-catalog .repo-grid {
+  margin: 32px 0 0;
+}
+.home-stage ~ .landing-catalog .browse-more {
+  margin-top: 28px;
+}
+.home-stage ~ .landing-catalog .repo-card {
+  border-color: var(--h-line);
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--h-text);
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+.home-stage ~ .landing-catalog .repo-card:hover,
+.home-stage ~ .landing-catalog .repo-card:focus-visible {
+  border-color: var(--h-line-strong);
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: none;
+}
+.home-stage ~ .landing-catalog .repo-card .repo-card-title {
+  color: var(--h-text);
+}
+.home-stage ~ .landing-catalog .repo-card .repo-card-desc {
+  color: var(--h-soft);
+}
+.home-stage ~ .landing-catalog .repo-card .repo-card-footer {
+  color: var(--h-muted);
+}
+.home-stage ~ .landing-catalog .repo-card .lang {
+  border-color: var(--h-line-strong);
+  color: var(--h-muted);
+}
+.home-stage ~ .landing-catalog .repo-card .repo-card-go {
+  border-color: var(--h-line);
+  background: transparent;
+  color: var(--h-muted);
+}
+.home-stage ~ .landing-catalog .repo-card:hover .repo-card-go {
+  border-color: var(--h-line-strong);
+  color: var(--h-text);
+}
+.home-stage ~ .landing-catalog .map-thumb {
+  border-bottom-color: var(--h-line);
+  background: rgba(0, 0, 0, 0.18);
+}
+.home-stage ~ .landing-catalog .wiki-community-label,
+.home-stage ~ .landing-catalog .browse-more {
+  color: var(--h-accent);
+}
+@media (max-width: 1000px) {
+  .home-stage ~ .landing-catalog .landing-catalog-heading {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 16px;
+  }
 }
 @media (max-width: 1000px) {
   .home-hero,
@@ -6660,12 +6786,15 @@ a.codepanel-name:hover {
   opacity: 1;
   animation: map-thumb-flow 1.6s linear infinite;
 }
+/* Dots take their area's colour from the full map; the ring in the card's
+   surface keeps crossing lines from running through them. */
 .map-thumb-dot {
-  fill: #17181b;
-  stroke: #8ab4f8;
-  stroke-width: 1.2;
+  stroke: #17181b;
+  stroke-width: 1.5;
+  transition: stroke 0.2s ease;
 }
-.repo-card:hover .map-thumb-dot {
+.repo-card:hover .map-thumb-dot,
+.repo-card:focus-visible .map-thumb-dot {
   stroke: #d3e3fd;
 }
 .map-thumb-loading {

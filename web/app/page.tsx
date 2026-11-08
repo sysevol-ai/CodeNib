@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import Header from "@/components/Header";
 import { fetchRepos, type RepoInfo } from "@/lib/api";
-import { primaryLanguage } from "@/lib/landing";
+import { plainSummary, primaryLanguage } from "@/lib/landing";
 import RepositoryEntry from "@/components/RepositoryEntry";
 import FirstVisitExplorer from "@/components/FirstVisitExplorer";
 import HomeMap from "@/components/HomeMap";
@@ -22,9 +22,9 @@ function repoDescription(r: RepoInfo): ReactNode {
   // `summary` is chosen server-side to be a statement of purpose; the raw
   // README blurb is often a chat invitation or a pager note, so it is not a
   // fallback here.
-  const text =
-    r.summary ||
-    `${primaryLanguage(r)} repository indexed at ${r.commit_short}.`;
+  const text = plainSummary(
+    r.summary || `${primaryLanguage(r)} repository indexed at ${r.commit_short}.`,
+  );
   return text
     .split(/(`[^`]+`)/)
     .map((part, index) =>
@@ -108,21 +108,28 @@ function RepoCard({ r }: { r: RepoInfo }) {
           <span className="mono">{r.commit_short}</span>
         )}
       </div>
-      <span className="repo-card-go" aria-hidden>
-        <svg
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M5 12h14M13 6l6 6-6 6" />
-        </svg>
-      </span>
+      <CardArrow />
     </AppLink>
+  );
+}
+
+/** Every card opens a page on this site, so every card ends in the same arrow. */
+function CardArrow() {
+  return (
+    <span className="repo-card-go" aria-hidden>
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M5 12h14M13 6l6 6-6 6" />
+      </svg>
+    </span>
   );
 }
 
@@ -138,19 +145,19 @@ function CommunityCard({ wiki }: { wiki: PublicWiki }) {
       <MapThumb wikiId={wiki.id} />
       <div className="repo-card-title">{wiki.repository}</div>
       <div className="repo-card-desc">
-        {wiki.summary ||
+        {plainSummary(wiki.summary || "") ||
           "Explore this repository through its source-linked Wiki."}
       </div>
       <div className="repo-card-footer">
-        <span className="wiki-community-label">Community</span>
+        {wiki.languages[0] && (
+          <span className="lang">{primaryLanguage({ language: wiki.languages[0] })}</span>
+        )}
         <span>
           {wiki.chapters} {wiki.chapters === 1 ? "chapter" : "chapters"}
         </span>
-        {wiki.languages[0] && <span>{wiki.languages[0]}</span>}
+        <span className="wiki-community-label">Community</span>
       </div>
-      <span className="repo-card-go" aria-hidden>
-        ↗
-      </span>
+      <CardArrow />
     </AppLink>
   );
 }
@@ -195,15 +202,13 @@ function LibraryCard({ item }: { item: LibraryWiki }) {
           Open to publish to Community →
         </span>
       )}
-      <span className="repo-card-go" aria-hidden>
-        →
-      </span>
+      <CardArrow />
     </AppLink>
   );
 }
 
-// Enough for two full rows at the widest home grid.
-const HOME_CARDS = 10;
+// Enough for whole rows at every home grid width: two of four, three of three.
+const HOME_CARDS = 9;
 
 export default function Landing({ browse = false }: { browse?: boolean }) {
   const staticRuntime = isStaticRuntime();
@@ -416,7 +421,7 @@ export default function Landing({ browse = false }: { browse?: boolean }) {
       )}
       <section className="landing-catalog" aria-label="Wiki collection">
         <div className="landing-catalog-heading">
-          <div>
+          <div className="landing-catalog-title">
             {browse ? (
               <nav className="browse-tabs" aria-label="Wiki collections">
                 {[
@@ -439,22 +444,26 @@ export default function Landing({ browse = false }: { browse?: boolean }) {
                 ))}
               </nav>
             ) : (
-              <>
-                <h2>Explore a Wiki</h2>
-                <p className="small muted">
-                  Architecture, explanations, and the source behind them.
-                </p>
-              </>
+              <h2>
+                Explore a Wiki. <span className="dim">Start with any of these.</span>
+              </h2>
             )}
           </div>
-          <div className="search-box">
-            <input
-              type="search"
-              value={q}
-              onChange={(event) => setQ(event.target.value)}
-              placeholder="Search repositories or topics…"
-              aria-label="Search Wikis"
-            />
+          <div className="landing-catalog-tools">
+            {!browse && (
+              <p className="small muted">
+                Architecture, explanations, and the source behind them.
+              </p>
+            )}
+            <div className="search-box">
+              <input
+                type="search"
+                value={q}
+                onChange={(event) => setQ(event.target.value)}
+                placeholder="Search repositories or topics…"
+                aria-label="Search Wikis"
+              />
+            </div>
           </div>
         </div>
         {tab === "mine" && (
