@@ -58,7 +58,7 @@ def test_indexer_only_receives_source_and_empty_environment(tmp_path, monkeypatc
         )
         assert command[command.index("--project-version") + 1] == "c" * 40
         Path(command[command.index("--output") + 1]).write_bytes(b"fixture")
-        return True
+        return 0
 
     monkeypatch.setattr(
         visitor_graph, "resolve_command", lambda _: "/fixture/scip-python"
@@ -97,7 +97,7 @@ def test_packages_below_the_root_reach_the_indexer(tmp_path, monkeypatch, caplog
             p.relative_to(root).as_posix() for p in root.rglob("*.py")
         )
         seen["config"] = json.loads((root / "pyrightconfig.json").read_text())
-        return False
+        return 1
 
     monkeypatch.setattr(
         visitor_graph, "resolve_command", lambda _: "/fixture/scip-python"
@@ -115,7 +115,8 @@ def test_packages_below_the_root_reach_the_indexer(tmp_path, monkeypatch, caplog
     # A "**/*.py" include made Pyright index root-level files only.
     assert seen["config"]["include"] == ["."]
     assert bundle.graph_coverage["reason"] == "index_failed"
-    assert "Visitor Wiki code indexing failed (indexer failed)" in caplog.text
+    failed = "Visitor Wiki code indexing failed (indexer exited with status 1)"
+    assert failed in caplog.text
 
 
 @pytest.mark.integration
@@ -172,9 +173,62 @@ def test_indexer_does_not_inherit_provider_credentials(tmp_path, monkeypatch):
         "import os,pathlib; pathlib.Path('env.txt').write_text("
         "str('OPENROUTER_API_KEY' in os.environ))",
     ]
-    assert visitor_graph._run_index(command, tmp_path, lambda: None)
+    assert visitor_graph._run_index(command, tmp_path, lambda: None) == 0
     assert (tmp_path / "env.txt").read_text() == "False"
 
+
+
+def node_script(directory: Path, interpreter: str) -> str:
+    tool = directory / "scip-python"
+    tool.write_text(f"#!/usr/bin/env {interpreter}\nconsole.log('index')\n")
+    tool.chmod(0o755)
+    return str(tool)
+
+
+def test_missing_node_is_reported_without_starting_the_indexer(
+    tmp_path, monkeypatch, caplog
+):
+    """A service PATH without node made every hosted index fail with status 127."""
+    (tmp_path / "source").mkdir()
+    (tmp_path / "source" / "caller.py").write_text("def caller():\n    return 1\n")
+    tool = node_script(tmp_path, "codenib-test-missing-node")
+    started = []
+    monkeypatch.setattr(visitor_graph, "resolve_command", lambda _: tool)
+    monkeypatch.setattr(visitor_graph, "_run_index", lambda *args: started.append(1))
+    caplog.set_level(logging.WARNING, logger=visitor_graph.logger.name)
+    visitor_graph.logger.addHandler(caplog.handler)
+    try:
+        with capture_repository_source(tmp_path / "source") as source:
+            bundle = graph_bundle(source)
+            stages = []
+            visitor_graph.build_visitor_graph(
+                bundle, lambda: None, lambda stage, _page: stages.append(stage)
+            )
+    finally:
+        visitor_graph.logger.removeHandler(caplog.handler)
+    assert not started and stages == []
+    assert bundle.graph_coverage["reason"] == "tool_unavailable"
+    assert "codenib-test-missing-node" in bundle.graph_coverage["note"]
+    assert "codenib-test-missing-node is not on the server PATH" in caplog.text
+
+
+def test_interpreters_found_on_the_path_and_native_tools_pass(tmp_path):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "node").write_text("#!/bin/sh\n")
+    (bin_dir / "node").chmod(0o755)
+    tool = node_script(tmp_path, "node")
+    assert visitor_graph._missing_interpreter(tool, str(bin_dir)) is None
+    assert visitor_graph._missing_interpreter(tool, str(tmp_path / "empty")) == "node"
+    native = tmp_path / "native"
+    native.write_bytes(b"\x7fELF\x02\x01")
+    assert visitor_graph._missing_interpreter(str(native), "") is None
+    assert visitor_graph._missing_interpreter(str(tmp_path / "absent"), "") is None
+
+
+def test_indexer_exit_status_is_returned(tmp_path):
+    command = [sys.executable, "-c", "raise SystemExit(127)"]
+    assert visitor_graph._run_index(command, tmp_path, lambda: None) == 127
 
 def test_saved_projection_preserves_real_edges_and_embeds_pinned_source(tmp_path):
     (tmp_path / "caller.py").write_text("def caller():\n    return callee()\n")

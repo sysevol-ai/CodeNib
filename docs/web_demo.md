@@ -243,9 +243,14 @@ for other repositories.
 ## Prerequisites
 
 - A CodeNib source checkout with development dependencies (`make dev`).
-- Node.js `^20.19.0` or `>=22.12.0` (only for frontend source development,
-  matching the checked-in Vite toolchain). Install deps once with
-  `make web-deps`.
+- Node.js `^20.19.0` or `>=22.12.0` for frontend source development,
+  matching the checked-in Vite toolchain. Install deps once with
+  `make web-deps`. A server that generates visitor Wikis also needs `node`
+  on the backend's own `PATH`: the Python indexer behind their code maps,
+  scip-python, is a Node.js program. A systemd service does not inherit your
+  shell's `PATH`, so set it in the unit when Node lives in a user directory.
+  Without it the Wiki text is still generated, without code maps, and the
+  saved Wiki says why.
 - An LLM provider reachable through LiteLLM, for Ask answers and generated
   wiki pages:
   - `OPENAI_API_KEY` for the default `gpt-4o` (a non-thinking model; set
