@@ -8,19 +8,33 @@
 SCIP indexer for TypeScript and JavaScript projects using scip-typescript.
 """
 
+import hashlib
 import json
+import os
 import re
 import shutil
 import subprocess
+import time
 from pathlib import Path
 from typing import List, Optional, Union
 
 from ..log_utils import get_logger
-from ..paths import PROJECT_INSTALL_SENTINEL
+from ..paths import PROJECT_INSTALL_SENTINEL, repo_state_dir
 from ..profiler import Profiler
 from .scip_indexer_base import SCIPIndexerBase
 
 logger = get_logger("scip_ts_indexer")
+
+# Set to 1 to retry a dependency install that already failed for the same inputs.
+RETRY_FAILED_INSTALL_ENV = "CODENIB_RETRY_FAILED_INSTALL"
+
+_LOCKFILE_NAMES = (
+    "yarn.lock",
+    "package-lock.json",
+    "pnpm-lock.yaml",
+    "bun.lock",
+    "bun.lockb",
+)
 
 
 class SCIPTypeScriptIndexer(SCIPIndexerBase):
@@ -158,21 +172,9 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
         # Indexer-only experiment: skip install if lockfile unchanged from
         # the cached prior install. Saves ~30s per cold-start on monorepos
         # like docusaurus where yarn install does a no-op integrity check.
-        import hashlib
-
         sentinel = self.project_root / PROJECT_INSTALL_SENTINEL
         node_modules = self.project_root / "node_modules"
-        lockfile = None
-        for name in (
-            "yarn.lock",
-            "package-lock.json",
-            "pnpm-lock.yaml",
-            "bun.lock",
-            "bun.lockb",
-        ):
-            if (self.project_root / name).exists():
-                lockfile = self.project_root / name
-                break
+        lockfile = self._find_lockfile()
         if lockfile and node_modules.is_dir() and sentinel.exists():
             cur_h = hashlib.sha1(lockfile.read_bytes()).hexdigest()
             try:
@@ -232,15 +234,120 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
         else:
             cmd = ["npm", "install"]
 
-        self._run_install(cmd, fallback_cmd, timeout_sec)
+        if self._install_failed_before(cmd, fallback_cmd):
+            return
+        if self._run_install(cmd, fallback_cmd, timeout_sec):
+            self._install_failure_record.unlink(missing_ok=True)
+        else:
+            self._record_install_failure(cmd, fallback_cmd)
+
+    def _find_lockfile(self) -> Optional[Path]:
+        for name in _LOCKFILE_NAMES:
+            if (self.project_root / name).exists():
+                return self.project_root / name
+        return None
+
+    # A failed install is remembered in CodeNib's per-repository state, so
+    # rebuilds do not repeat a failure that costs tens of seconds. It stays out
+    # of the checkout and of index view directories, which artifacts copy.
+    # Changed inputs, expiry, or RETRY_FAILED_INSTALL_ENV retry it.
+    _INSTALL_FAILURE_RECORD_NAME = "dependency_install_failure.json"
+    _INSTALL_FAILURE_TTL_SEC = 24 * 60 * 60
+
+    @property
+    def _install_failure_record(self) -> Path:
+        return repo_state_dir(self.project_root) / self._INSTALL_FAILURE_RECORD_NAME
+
+    def _install_inputs(
+        self, cmd: List[str], fallback_cmd: Optional[List[str]]
+    ) -> dict:
+        """Return the inputs that decide whether a dependency install fails."""
+
+        def sha1(path: Optional[Path]) -> Optional[str]:
+            if path is None or not path.is_file():
+                return None
+            return hashlib.sha1(path.read_bytes()).hexdigest()
+
+        versions = {}
+        for tool in dict.fromkeys(["node", cmd[0]]):
+            try:
+                result = subprocess.run(
+                    [tool, "--version"],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+                versions[tool] = result.stdout.strip() or None
+            except (OSError, subprocess.SubprocessError):
+                versions[tool] = None
+        lockfile = self._find_lockfile()
+        return {
+            "commands": [cmd, fallback_cmd],
+            "lockfile": lockfile.name if lockfile else None,
+            "lockfile_sha1": sha1(lockfile),
+            "package_json_sha1": sha1(self.project_root / "package.json"),
+            "tool_versions": versions,
+        }
+
+    def _install_failed_before(
+        self, cmd: List[str], fallback_cmd: Optional[List[str]]
+    ) -> bool:
+        """Return True when the same install failed within the retry window."""
+        record_path = self._install_failure_record
+        if not record_path.is_file():
+            return False
+        if os.environ.get(RETRY_FAILED_INSTALL_ENV, "").lower() in ("1", "true", "yes"):
+            logger.info(
+                "%s is set; retrying dependency install", RETRY_FAILED_INSTALL_ENV
+            )
+            return False
+        try:
+            record = json.loads(record_path.read_text(encoding="utf-8"))
+            age = time.time() - float(record["failed_at"])
+            same_inputs = record["inputs"] == self._install_inputs(cmd, fallback_cmd)
+        except Exception:
+            return False  # unreadable record; retry the install
+        if not same_inputs or not 0 <= age < self._INSTALL_FAILURE_TTL_SEC:
+            return False
+        logger.warning(
+            "Skipping dependency install: %s failed %.0f min ago with the same "
+            "package.json, lockfile and toolchain; indexing without it. "
+            "Set %s=1 or delete %s to retry.",
+            " ".join(cmd),
+            age / 60,
+            RETRY_FAILED_INSTALL_ENV,
+            record_path,
+        )
+        return True
+
+    def _record_install_failure(
+        self, cmd: List[str], fallback_cmd: Optional[List[str]]
+    ) -> None:
+        record_path = self._install_failure_record
+        # Best-effort: without a record the next build simply retries.
+        try:
+            record = {
+                "failed_at": time.time(),
+                "inputs": self._install_inputs(cmd, fallback_cmd),
+            }
+            record_path.parent.mkdir(parents=True, exist_ok=True)
+            record_path.write_text(
+                json.dumps(record, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+        except OSError as record_err:
+            logger.debug("install failure record write failed (%s)", record_err)
 
     def _run_install(
         self,
         cmd: List[str],
         fallback_cmd: Optional[List[str]],
         timeout_sec: int,
-    ) -> None:
-        """Execute an install command, retrying with fallback on failure."""
+    ) -> bool:
+        """Execute an install command, retrying with fallback on failure.
+
+        Returns True when the install or its fallback succeeded.
+        """
         logger.info("Installing TypeScript dependencies: %s", " ".join(cmd))
         try:
             subprocess.run(
@@ -252,39 +359,27 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
                 timeout=timeout_sec,
             )
             # Cache: write lockfile hash so next call can skip if unchanged
-            import hashlib
-
             sentinel = self.project_root / PROJECT_INSTALL_SENTINEL
-            lockfile = None
-            for name in (
-                "yarn.lock",
-                "package-lock.json",
-                "pnpm-lock.yaml",
-                "bun.lock",
-                "bun.lockb",
-            ):
-                if (self.project_root / name).exists():
-                    lockfile = self.project_root / name
-                    break
+            lockfile = self._find_lockfile()
             if lockfile:
                 # Best-effort: cache write is non-fatal; next run will retry.
                 try:
                     sentinel.write_text(hashlib.sha1(lockfile.read_bytes()).hexdigest())
                 except Exception as cache_err:
                     logger.debug("skip-cache write failed (%s); continuing", cache_err)
-            return
+            return True
         except FileNotFoundError:
             logger.warning(
                 "Package manager command not found (%s). Continuing without install.",
                 cmd[0],
             )
-            return
+            return False
         except subprocess.TimeoutExpired:
             logger.warning(
                 "Dependency install timed out after %ss. Continuing anyway.",
                 timeout_sec,
             )
-            return
+            return False
         except subprocess.CalledProcessError as e:
             logger.warning("Dependency install failed: %s", e)
             if e.stderr:
@@ -302,8 +397,10 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
                     text=True,
                     timeout=timeout_sec,
                 )
+                return True
             except Exception as e2:
                 logger.warning("Fallback install also failed: %s", e2)
+        return False
 
     _PATCHED_TSCONFIG_NAME = ".tsconfig.scip.json"
     _READ_ONLY_TSCONFIG_NAME = ".tsconfig.scip.readonly.json"
