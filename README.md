@@ -209,7 +209,7 @@ backend and its prerequisites.
 · [Contributing](https://github.com/sysevol-ai/CodeNib/blob/main/CONTRIBUTING.md)
 · [CI and testing](https://docs.codenib.ai/ci_cd/)
 · [Changelog](https://github.com/sysevol-ai/CodeNib/blob/main/CHANGELOG.md)
-· [Discord](https://discord.gg/ySer6CGn4)
+· [Discord](https://discord.com/invite/AtrukE7Jpx)
 
 CodeNib is in beta; public interfaces may change before a stable release.
 Historical research artifacts retain their published dataset identifiers.
