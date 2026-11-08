@@ -11,6 +11,7 @@ import re
 import stat
 import tempfile
 import zipfile
+from collections import Counter
 from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
 from types import SimpleNamespace
@@ -27,7 +28,65 @@ MAX_ARCHIVE_BYTES = 20 * 1024 * 1024
 MAX_SOURCE_BYTES = 40 * 1024 * 1024
 MAX_FILE_BYTES = 4 * 1024 * 1024
 MAX_FILES = 4000
-MAX_CHUNKS = 50000
+OUTLINE_FOLDERS = 12
+
+
+def source_outline(paths, extensions, limit: int = OUTLINE_FOLDERS) -> dict:
+    """Count code files by folder, for the map drawn before chapters exist.
+
+    Only files in a supported source language count. A folder that holds most
+    of the code is opened, so ``src/pkg`` shows its subfolders rather than one
+    large node, and a chain of single folders keeps its full name. Folders past
+    ``limit`` are summed into ``more``; nothing here reads file contents.
+    """
+
+    files = [
+        PurePosixPath(path).parts
+        for path in paths
+        if PurePosixPath(path).suffix in extensions
+    ]
+    prefix: tuple[str, ...] = ()
+    while True:
+        inside = [parts for parts in files if parts[: len(prefix)] == prefix]
+        nested = Counter(
+            parts[len(prefix)] for parts in inside if len(parts) > len(prefix) + 1
+        )
+        if not nested:
+            break
+        name, count = nested.most_common(1)[0]
+        if count < 0.7 * len(inside):
+            break
+        prefix += (name,)
+    inside = [parts for parts in files if parts[: len(prefix)] == prefix]
+    direct = sum(1 for parts in inside if len(parts) == len(prefix) + 1)
+    groups = Counter(
+        parts[len(prefix)] for parts in inside if len(parts) > len(prefix) + 1
+    )
+    folders = []
+    for name, count in groups.items():
+        path = prefix + (name,)
+        while True:
+            below = [parts for parts in inside if parts[: len(path)] == path]
+            deeper = {parts[len(path)] for parts in below if len(parts) > len(path) + 1}
+            if len(deeper) != 1 or any(len(parts) == len(path) + 1 for parts in below):
+                break
+            path += (deeper.pop(),)
+        folders.append({"path": "/".join(path), "files": count})
+    if direct:
+        folders.append({"path": "/".join(prefix), "files": direct, "direct": True})
+    folders.sort(key=lambda folder: (-folder["files"], folder["path"]))
+    rest = folders[limit:]
+    # Code outside the opened folder is summed with the smaller folders.
+    outside = [parts for parts in files if parts[: len(prefix)] != prefix]
+    return {
+        "files": len(files),
+        "root": "/".join(prefix),
+        "folders": folders[:limit],
+        "more": {
+            "folders": len(rest) + len({parts[0] for parts in outside}),
+            "files": sum(folder["files"] for folder in rest) + len(outside),
+        },
+    }
 
 
 def generation_limits() -> dict:
@@ -38,7 +97,6 @@ def generation_limits() -> dict:
         "max_file_bytes": MAX_FILE_BYTES,
         "max_files": MAX_FILES,
         "max_archive_entries": MAX_FILES * 2,
-        "max_chunks": MAX_CHUNKS,
         "source_languages": sorted(set(extension_to_language_map("chunker").values())),
         "graph_languages": ["python"],
     }
@@ -210,15 +268,11 @@ def visitor_source(
     with tempfile.TemporaryDirectory(prefix="codenib-visitor-wiki-") as directory:
         root = Path(directory)
         skipped_files = extract_source(payload, root, check)
-        progress("analyzing", "")
         with capture_repository_source(root, check_cancelled=check) as binding:
             extensions = extension_to_language_map("chunker")
+            paths = list(binding.borrow_reader().file_paths)
             languages = sorted(
-                {
-                    extensions[Path(p).suffix]
-                    for p in binding.borrow_reader().file_paths
-                    if Path(p).suffix in extensions
-                }
+                {extensions[Path(p).suffix] for p in paths if Path(p).suffix in extensions}
             )
             if not languages:
                 raise WikiRunStopped(
@@ -227,6 +281,9 @@ def visitor_source(
                     if skipped_files
                     else "No supported source language was found in this repository."
                 )
+            outline = source_outline(paths, extensions)
+            # The third argument carries facts a reader can see while waiting.
+            progress("analyzing", "", {"source_tree": outline})
             chunks = CodeChunker(
                 language=languages[0],
                 chunk_depth=2,
@@ -235,14 +292,12 @@ def visitor_source(
                     languages=languages, filter_tests=False, max_file_size_mb=4
                 ),
             ).chunk_repository_source(binding, check_cancelled=check)
+            # Tree-sitter definitions only name the outline's symbols; source
+            # is retrieved by grep and Jev, so no chunk index is built. The
+            # file and byte limits above already bound this parse.
             if not chunks:
                 raise WikiRunStopped(
                     "No usable source code was found in the supported languages."
-                )
-            if len(chunks) > MAX_CHUNKS:
-                raise WikiRunStopped(
-                    f"Source analysis exceeds the {MAX_CHUNKS:,} code-section hosted "
-                    "limit. Run CodeNib locally for this repository."
                 )
             documents = [
                 SimpleNamespace(
@@ -278,6 +333,7 @@ def visitor_source(
                 bm25=None,
                 wiki_documents=documents,
                 skipped_files=skipped_files,
+                source_tree=outline,
                 source_reader=binding.borrow_reader(),
                 code_graph=lambda: None,
             )
@@ -307,6 +363,7 @@ def check_repository(repository: str, check) -> dict:
                 eligible=True,
                 languages=bundle.manifest.languages,
                 source_files=bundle.manifest.file_count,
+                source_tree=bundle.source_tree,
                 skipped_files=bundle.skipped_files,
                 message="This snapshot fits the hosted source limits. "
                 "Generation checks them again before any model call.",

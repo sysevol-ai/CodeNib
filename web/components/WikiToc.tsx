@@ -2,10 +2,19 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 
 import type { WikiPageRef } from "@/lib/api";
+import type { WikiPageState } from "@/lib/visitorWiki";
+import { NEUTRAL_COLOR } from "@/lib/wikiGraph";
 import { pagePath, partitionWikiNav } from "@/lib/wikiNav";
+
+const STATE_LABELS: Record<WikiPageState, string> = {
+  pending: "Planned",
+  running: "Being written",
+  ready: "Ready",
+  needs_review: "Withheld after source checks",
+};
 
 const CACHE_LABELS = {
   ready: "Cached page",
@@ -25,12 +34,15 @@ export default function WikiToc({
   activeId,
   onPick,
   colors,
+  states,
 }: {
   pages: WikiPageRef[];
   activeId: string;
   onPick: (id: string) => void;
   /** Each page's colour on the map, when the map is showing. */
   colors?: Map<string, string>;
+  /** A Wiki being written: each dot shows its page's state, as on the map. */
+  states?: Record<string, WikiPageState>;
 }) {
   const [choices, setChoices] = useState<Record<string, boolean>>({});
   const [moreChoice, setMoreChoice] = useState<boolean | null>(null);
@@ -43,8 +55,9 @@ export default function WikiToc({
       {items.map((page) => {
         const open = choices[page.id] ?? activePath.includes(page.id);
         const detailCount = page.children.length;
+        const state = states ? states[page.id] ?? "pending" : undefined;
         return (
-          <li key={page.id}>
+          <li key={page.id} className={state ? `is-${state}` : undefined}>
             <div className="toc-row">
               <button
                 className={`toc-link ${page.id === activeId ? "active" : ""}`}
@@ -52,11 +65,20 @@ export default function WikiToc({
                 title={page.title}
                 onClick={() => onPick(page.id)}
               >
-                {colors?.has(page.id) && (
-                  <span className="toc-dot" style={{ background: colors.get(page.id) }} aria-hidden="true" />
+                {state ? (
+                  <span
+                    className={`toc-dot is-${state}`}
+                    style={{ "--dot": colors?.get(page.id) ?? NEUTRAL_COLOR } as CSSProperties}
+                    aria-hidden="true"
+                  />
+                ) : (
+                  colors?.has(page.id) && (
+                    <span className="toc-dot" style={{ background: colors.get(page.id) }} aria-hidden="true" />
+                  )
                 )}
                 <span className="toc-label">{page.title}</span>
-                {page.cache_state && page.cache_state !== "ready" && (
+                {state && state !== "ready" && <span className="sr-only">, {STATE_LABELS[state]}</span>}
+                {!state && page.cache_state && page.cache_state !== "ready" && (
                   // Ready is the normal state; only pages that still need work
                   // carry a marker, so the marker means something.
                   <span

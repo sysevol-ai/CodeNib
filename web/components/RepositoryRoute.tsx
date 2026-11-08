@@ -7,6 +7,7 @@ import RepositoryEntry, { repositoryDestination } from "@/components/RepositoryE
 import { fetchRepos } from "@/lib/api";
 import { parseGitHubRepository } from "@/lib/githubPreview";
 import { navigate } from "@/lib/router";
+import "./WikiRun.css";
 
 /** Resolve a GitHub-shaped URL against the catalog before offering generation. */
 const AskPage = lazy(() => import("@/app/[repoId]/ask/page"));
@@ -41,9 +42,10 @@ export default function RepositoryRoute({ input, page, askQuery }: { input: stri
   }, [input, repo?.slug, page, retry, askQuery]);
   if (legacyAsk) return <AskPage repoId={legacyAsk} query={askQuery || ""} />;
   return <><Header /><main className="repository-route">
+    {repo && !error && <span className="wgf-spinner" aria-hidden="true" />}
     <h1>{repo ? `Opening ${repo.slug}` : "Enter a GitHub repository"}</h1>
     {repo && !error && <p role="status">Checking for a ready Wiki…</p>}
-    {error && <p role="alert">{error} <button className="btn-outline" onClick={() => setRetry(value => value + 1)}>Retry</button></p>}
+    {error && <p role="alert" className="trial-error">{error} <button className="btn-ghost" onClick={() => setRetry(value => value + 1)}>Retry</button></p>}
     {!repo && <><p>Use a public GitHub URL or owner/repo.</p><RepositoryEntry /></>}
   </main></>;
 }

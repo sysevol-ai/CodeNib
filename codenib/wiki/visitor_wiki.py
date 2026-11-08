@@ -606,8 +606,11 @@ class VisitorWikis:
                 )
                 previous_unknown = state["unreported_call_cost"]
 
-                def progress(stage, page):
+                def progress(stage, page, facts=None):
                     state.update(stage=stage, active_page=page)
+                    # Only named, public facts about the snapshot are kept.
+                    if facts and "source_tree" in facts:
+                        state["source_tree"] = facts["source_tree"]
                     event = {"stage": stage, "page": page, "at": self.clock()}
                     state["history"] = [*state["history"], event][-200:]
                     self._save(state)
@@ -651,6 +654,20 @@ class VisitorWikis:
                         state["languages"] = getattr(
                             getattr(bundle, "manifest", None), "languages", []
                         )
+                        coverage = getattr(bundle, "graph_coverage", None)
+                        if coverage:
+                            state["code_index"] = {
+                                key: coverage[key]
+                                for key in (
+                                    "available",
+                                    "reason",
+                                    "note",
+                                    "files",
+                                    "nodes",
+                                    "edges",
+                                )
+                                if key in coverage
+                            }
                         self._save(state)
                         retrieval_identity = state.get(
                             "retrieval_identity", "grep_jev_v1"

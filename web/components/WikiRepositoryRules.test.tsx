@@ -12,7 +12,6 @@ it("explains the enforced limits, excluded files and separate graph coverage", (
     max_file_bytes: 4 * 1024 * 1024,
     max_files: 4000,
     max_archive_entries: 8000,
-    max_chunks: 50000,
     source_languages: ["python", "typescript"],
     graph_languages: ["python"],
   }} />);
@@ -23,4 +22,5 @@ it("explains the enforced limits, excluded files and separate graph coverage", (
   expect(html).toContain("python, typescript");
   expect(html).toContain("cover python source only");
   expect(html).toContain("does not guarantee completion");
+  expect(html).not.toMatch(/chunk|code section/i);
 });

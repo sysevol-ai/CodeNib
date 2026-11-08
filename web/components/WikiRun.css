@@ -1,0 +1,1057 @@
+/* SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
+ * SPDX-License-Identifier: Apache-2.0 */
+
+/* A visitor's own Wiki: starting it, watching it be written, reading it.
+   It uses the prepared Wiki's workspace; the map carries the progress, and
+   this sheet styles the reader's side of it. */
+:root {
+  --own-error: #b3261e;
+  --own-wait: #8a5a00;
+  --own-ok: #1e8e3e;
+}
+[data-theme="dark"] {
+  --own-error: #f2b8b5;
+  --own-wait: #f6c26b;
+  --own-ok: #81c995;
+}
+.saved-wiki .trial-error,
+.own-start .trial-error,
+.repository-route .trial-error {
+  color: var(--own-error);
+}
+
+/* --- Page list: each dot shows its chapter's state, as on the map --- */
+.toc-dot.is-ready {
+  background: var(--dot);
+}
+.toc-dot.is-pending,
+.toc-dot.is-running,
+.toc-dot.is-needs_review {
+  box-sizing: border-box;
+  width: 9px;
+  height: 9px;
+  background: transparent;
+}
+.toc-dot.is-pending {
+  border: 1.5px solid color-mix(in srgb, var(--dot) 60%, transparent);
+}
+.toc-dot.is-running {
+  border: 1.5px solid color-mix(in srgb, var(--dot) 30%, transparent);
+  border-top-color: var(--dot);
+  animation: run-spin 0.9s linear infinite;
+}
+.toc-dot.is-needs_review {
+  border: 1.5px dashed var(--text-faint);
+}
+.toc-tree li.is-pending > .toc-row .toc-link:not(.active),
+.toc-tree li.is-needs_review > .toc-row .toc-link:not(.active) {
+  color: var(--text-muted);
+}
+.toc-tree li.is-running > .toc-row .toc-link:not(.active) {
+  color: var(--text-primary);
+}
+
+/* --- Rail --- */
+.own-rail-sub {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  justify-content: space-between;
+}
+.own-rail-sub a {
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+.own-rail-sub a:hover {
+  color: var(--text-primary);
+}
+.own-rail-status {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.own-rail-empty {
+  margin: 4px 10px;
+  color: var(--text-muted);
+  font-size: var(--fs-caption);
+  line-height: 1.55;
+}
+.own-rail-foot {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+  margin-top: 22px;
+  padding: 16px 10px 0;
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-caption);
+}
+.own-rail-foot:empty {
+  display: none;
+}
+.own-publication {
+  margin: 0;
+  color: var(--text-muted);
+}
+.own-rail-link {
+  padding: 0;
+  color: var(--text-secondary);
+  font: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  text-decoration: none;
+}
+.own-rail-link:hover {
+  color: var(--text-primary);
+}
+
+/* --- The run, in the reader's column --- */
+.run-log {
+  padding-top: 8px;
+}
+.run-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px 28px;
+}
+.run-head h1 {
+  margin: 0 0 12px;
+  font-size: clamp(30px, 3.2vw, 42px);
+  font-weight: 650;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  text-wrap: balance;
+}
+.run-lead {
+  max-width: 60ch;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--fs-lead);
+  line-height: 1.55;
+}
+.run-actions {
+  flex: 0 0 auto;
+  padding-top: 8px;
+}
+.run-actions.is-inline {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 0 4px;
+}
+.run-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 40px;
+  margin: 30px 0 8px;
+  padding: 16px 0;
+  border-block: 1px solid var(--border);
+}
+.run-facts dt {
+  margin-bottom: 4px;
+  color: var(--text-muted);
+  font-size: var(--fs-caption);
+}
+.run-facts dd {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.run-facts dd span {
+  color: var(--text-muted);
+}
+.run-facts dd small {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: var(--fs-caption);
+}
+.run-notice {
+  margin: 18px 0 0;
+  color: var(--text-secondary);
+  font-size: var(--fs-small);
+  line-height: 1.6;
+}
+.run-notice strong {
+  color: var(--own-wait);
+  font-weight: 600;
+}
+
+/* Every step on one rail. A chapter's mark takes its colour from the map. */
+.run-steps {
+  --step: var(--text-secondary);
+  position: relative;
+  margin: 18px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.run-step {
+  position: relative;
+  display: grid;
+  grid-template-columns: 18px 76px minmax(0, 1fr);
+  gap: 0 14px;
+  align-items: baseline;
+  padding: 9px 0;
+  font-size: 15px;
+  line-height: 1.45;
+}
+/* The rail that joins one mark to the next. */
+.run-step::before {
+  content: "";
+  position: absolute;
+  top: 26px;
+  bottom: -6px;
+  left: 8.5px;
+  width: 1px;
+  background: var(--border);
+}
+.run-step:last-child::before {
+  display: none;
+}
+.run-mark {
+  position: relative;
+  top: 2px;
+  justify-self: center;
+  box-sizing: border-box;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+svg.run-mark {
+  top: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 0;
+  fill: none;
+  stroke: var(--text-muted);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.run-step.is-chapter.is-done .run-mark {
+  background: var(--step);
+}
+.run-step.is-current .run-mark {
+  border: 1.5px solid color-mix(in srgb, var(--step) 30%, transparent);
+  border-top-color: var(--step);
+  animation: run-spin 0.9s linear infinite;
+}
+.run-step.is-next .run-mark {
+  border: 1.5px solid var(--border-2);
+}
+.run-step.is-chapter.is-next .run-mark {
+  border-color: color-mix(in srgb, var(--step) 55%, transparent);
+}
+.run-step.is-withheld .run-mark {
+  border: 1.5px dashed var(--text-faint);
+}
+.run-step time {
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.run-step-body {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.run-step-title {
+  justify-self: start;
+  padding: 0;
+  color: var(--text-secondary);
+  font: inherit;
+  text-align: left;
+  background: none;
+  border: 0;
+  overflow-wrap: anywhere;
+}
+button.run-step-title {
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 3px;
+  transition: text-decoration-color 0.15s ease, color 0.15s ease;
+}
+button.run-step-title:hover {
+  color: var(--text-primary);
+  text-decoration-color: currentColor;
+}
+.run-step.is-current .run-step-title {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.run-step.is-next .run-step-title {
+  color: var(--text-muted);
+}
+.run-step-detail {
+  color: var(--text-muted);
+  font-size: var(--fs-small);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.run-step.is-current .run-step-detail {
+  color: var(--text-secondary);
+}
+.run-step.is-withheld .run-step-detail {
+  color: var(--own-wait);
+}
+.run-stream {
+  margin-top: 2px;
+  color: var(--text-secondary);
+  font-size: var(--fs-small);
+  font-variant-numeric: tabular-nums;
+}
+/* The same caret as the homepage replay, in the chapter's colour. */
+.run-caret {
+  display: inline-block;
+  width: 7px;
+  height: 1.05em;
+  margin-left: 4px;
+  vertical-align: -0.16em;
+  background: var(--step);
+  animation: run-blink 1.1s steps(1) infinite;
+}
+.run-more,
+.run-note {
+  margin: 18px 0 0;
+  color: var(--text-muted);
+  font-size: var(--fs-caption);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.run-more summary {
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.run-more ul {
+  max-height: 220px;
+  overflow-y: auto;
+  padding-left: 18px;
+}
+.run-stopped {
+  margin: 26px 0 0;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-small);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.run-stopped strong {
+  color: var(--own-wait);
+  font-weight: 600;
+}
+.run-stopped p {
+  margin: 8px 0;
+  color: var(--text-secondary);
+}
+.run-stopping {
+  color: var(--text-secondary);
+  font-size: var(--fs-caption);
+}
+.run-foot {
+  margin-top: 32px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: var(--fs-caption);
+  line-height: 1.6;
+}
+.run-foot p {
+  max-width: 62ch;
+  margin: 0 0 10px;
+}
+.run-link {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+.run-link code {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 6px 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+  font-size: 12px;
+  background: var(--bg-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow-wrap: anywhere;
+}
+.saved-wiki .btn-ghost,
+.own-start .btn-ghost,
+.repository-route .btn-ghost {
+  padding: 7px 12px;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--fs-caption);
+  background: transparent;
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.saved-wiki .btn-ghost:hover,
+.own-start .btn-ghost:hover,
+.repository-route .btn-ghost:hover {
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+
+/* While a chapter is open, the run folds into one line above it. */
+.run-strip {
+  margin: 0 0 28px;
+  border-bottom: 1px solid var(--border);
+}
+.run-strip > summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 2px 0 14px;
+  list-style: none;
+  cursor: pointer;
+}
+.run-strip > summary::-webkit-details-marker {
+  display: none;
+}
+.run-strip-mark {
+  --step: var(--own-ok);
+  flex: 0 0 auto;
+  align-self: center;
+  box-sizing: border-box;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--step);
+}
+.run-strip-mark.is-running {
+  background: transparent;
+  border: 1.5px solid color-mix(in srgb, var(--step) 30%, transparent);
+  border-top-color: var(--step);
+  animation: run-spin 0.9s linear infinite;
+}
+.run-strip-text {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  min-width: 0;
+  font-size: var(--fs-small);
+}
+.run-strip-text b {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.run-strip-text span {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.run-strip-toggle {
+  margin-left: auto;
+  color: var(--text-secondary);
+  font-size: var(--fs-caption);
+  white-space: nowrap;
+}
+.run-strip-toggle::after {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 8px;
+  vertical-align: 2px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg);
+  transition: transform 0.2s ease;
+}
+.run-strip[open] .run-strip-toggle::after {
+  transform: rotate(-135deg) translate(-2px, -2px);
+}
+.run-strip[open] > .run-log {
+  padding-bottom: 24px;
+}
+.run-strip .run-facts {
+  margin-top: 6px;
+}
+
+/* --- Reader states around the run --- */
+.own-opening,
+.own-loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 24px 0;
+  color: var(--text-secondary);
+  font-size: var(--fs-small);
+}
+.own-notice {
+  margin: 0 0 18px;
+  color: var(--own-ok);
+  font-size: var(--fs-small);
+}
+.own-selected-note {
+  --step: var(--text-muted);
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  margin: 0 0 22px;
+  color: var(--text-secondary);
+  font-size: var(--fs-small);
+  line-height: 1.6;
+}
+.own-selected-note.is-needs_review::before {
+  border: 1.5px dashed var(--text-faint);
+}
+.own-selected-note::before {
+  content: "";
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid var(--step);
+  border-radius: 50%;
+  transform: translateY(1px);
+}
+.own-inline-map {
+  margin: 0 0 26px;
+}
+.own-inline-map .wiki-graph.is-embedded {
+  min-height: 340px;
+}
+@media (max-width: 600px) {
+  .own-inline-map .wiki-graph.is-embedded {
+    min-height: 380px;
+  }
+  /* The page list and the status line carry the states on a phone. */
+  .own-inline-map .wg-states {
+    display: none;
+  }
+}
+.own-publish {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px 24px;
+  margin: 0 0 32px;
+  padding: 18px 20px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+.own-publish h2 {
+  margin: 0 0 4px;
+  font-size: var(--fs-body);
+  font-weight: 600;
+}
+.own-publish p {
+  max-width: 62ch;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--fs-caption);
+  line-height: 1.6;
+}
+.own-publish-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 18px;
+}
+.saved-wiki .wiki-resume {
+  margin: 22px 0 0;
+}
+.saved-wiki-source {
+  margin-top: 24px;
+  padding: 16px;
+  font-size: var(--fs-caption);
+  background: var(--bg-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow-wrap: anywhere;
+}
+.saved-wiki-source > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.saved-wiki-source pre {
+  max-height: 480px;
+  overflow: auto;
+  font-size: var(--fs-caption);
+}
+.saved-wiki-sources {
+  margin-top: 24px;
+  font-size: var(--fs-caption);
+}
+.saved-wiki-sources summary {
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.saved-wiki-sources button {
+  display: block;
+  padding: 6px 0;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-align: left;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+/* --- Starting a Wiki: the snapshot's map, then the form --- */
+.own-start {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) min(560px, 44%);
+  grid-template-rows: auto 1fr;
+  grid-template-areas: "map copy" "map form";
+  min-height: calc(100vh - var(--top-h));
+}
+.own-start-copy {
+  grid-area: copy;
+  padding: 36px clamp(28px, 3.2vw, 52px) 0;
+}
+.own-start-map {
+  grid-area: map;
+  position: sticky;
+  top: var(--top-h);
+  height: calc(100vh - var(--top-h));
+  min-width: 0;
+  border-right: 1px solid var(--border);
+}
+.own-start-map .wiki-graph.is-embedded {
+  height: 100%;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+}
+.own-start-form {
+  grid-area: form;
+  padding: 26px clamp(28px, 3.2vw, 52px) 72px;
+}
+.own-back {
+  color: var(--text-muted);
+  font-size: var(--fs-caption);
+  text-decoration: none;
+}
+.own-back:hover {
+  color: var(--text-primary);
+}
+.own-title {
+  margin: 20px 0 14px;
+  font-size: clamp(32px, 3.4vw, 46px);
+  font-weight: 650;
+  line-height: 1.08;
+  letter-spacing: -0.035em;
+  overflow-wrap: anywhere;
+}
+.own-title span {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+.own-lead {
+  max-width: 52ch;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--fs-lead);
+  line-height: 1.55;
+}
+.own-wait {
+  color: var(--text-secondary);
+  font-size: var(--fs-small);
+}
+.own-aside {
+  max-width: 60ch;
+  margin: 30px 0 0;
+  color: var(--text-muted);
+  font-size: var(--fs-caption);
+  line-height: 1.6;
+}
+.generation-notice {
+  padding: 16px 0;
+  color: var(--text-secondary);
+  border-block: 1px solid var(--border);
+}
+@media (max-width: 1099px) {
+  .own-start {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto;
+    grid-template-areas: "copy" "map" "form";
+    max-width: 760px;
+    min-height: 0;
+    margin: 0 auto;
+  }
+  .own-start-copy {
+    padding: 28px 20px 0;
+  }
+  .own-start-map {
+    position: relative;
+    top: auto;
+    height: auto;
+    margin: 24px 20px 0;
+    border-right: 0;
+  }
+  .own-start-map .wiki-graph.is-embedded {
+    height: 360px;
+    border: 1px solid rgba(232, 234, 237, 0.14);
+    border-radius: 10px;
+  }
+  .own-start-form {
+    padding: 8px 20px 56px;
+  }
+}
+@media (max-width: 600px) {
+  .own-start-map .wiki-graph.is-embedded {
+    height: 400px;
+    min-height: 0;
+  }
+}
+
+/* --- The form --- */
+.wiki-generation-form {
+  display: grid;
+  gap: 22px;
+  margin: 0;
+}
+.wgf-head h2 {
+  margin: 0 0 6px;
+  font-size: var(--fs-h3);
+  font-weight: 600;
+}
+.wgf-head p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--fs-small);
+}
+.wgf-check {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  gap: 12px;
+  padding: 14px 0;
+  font-size: var(--fs-small);
+  line-height: 1.55;
+  border-block: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+.wgf-check p {
+  margin: 0;
+  color: var(--text-primary);
+}
+.wgf-check .wgf-quiet {
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: var(--fs-caption);
+}
+.wgf-check details {
+  margin-top: 6px;
+  color: var(--text-secondary);
+  font-size: var(--fs-caption);
+}
+.wgf-check details summary {
+  cursor: pointer;
+}
+.wgf-check ul {
+  max-height: 200px;
+  overflow-y: auto;
+  padding-left: 18px;
+}
+.wgf-check-mark {
+  box-sizing: border-box;
+  width: 12px;
+  height: 12px;
+  margin-top: 4px;
+  border-radius: 50%;
+}
+.wgf-check.is-checking .wgf-check-mark {
+  border: 1.5px solid var(--border-2);
+  border-top-color: var(--text-primary);
+  animation: run-spin 0.9s linear infinite;
+}
+.wgf-check.is-admitted .wgf-check-mark {
+  background: var(--own-ok);
+}
+.wgf-check.is-rejected .wgf-check-mark {
+  border: 1.5px solid var(--own-error);
+}
+.wgf-check.is-rejected p:first-child {
+  color: var(--own-error);
+}
+.wgf-check-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin-top: 10px !important;
+}
+.wgf-field {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.wgf-field > label,
+.wgf-field > legend {
+  padding: 0;
+  margin-bottom: 8px;
+  color: var(--text-primary);
+  font-size: var(--fs-caption);
+  font-weight: 600;
+}
+.wgf-field > label {
+  margin-bottom: 0;
+}
+.wgf-field select,
+.wgf-field input[type="password"] {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--fs-small);
+  background: var(--bg-muted);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-md);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.wgf-field input[type="password"]::placeholder {
+  color: var(--text-faint);
+}
+.wgf-field select:focus-visible,
+.wgf-field input[type="password"]:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+.wgf-field input:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.wgf-note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--fs-caption);
+  line-height: 1.6;
+}
+.wgf-segments {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  max-width: 300px;
+  padding: 3px;
+  background: var(--bg-muted);
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+}
+.wgf-segments label {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 36px;
+  color: var(--text-secondary);
+  font-size: var(--fs-small);
+  font-variant-numeric: tabular-nums;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.wgf-segments label:hover {
+  color: var(--text-primary);
+}
+.wgf-segments label.is-chosen {
+  color: var(--text-primary);
+  font-weight: 600;
+  background: var(--bg-subtle);
+  box-shadow: var(--shadow-sm);
+}
+.wgf-segments input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.wgf-segments label:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.wiki-consent {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  color: var(--text-secondary);
+  font-size: var(--fs-caption);
+  line-height: 1.6;
+}
+.wiki-consent input {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  accent-color: var(--text-primary);
+}
+/* The primary action keeps the homepage's near-white button. */
+.wgf-submit {
+  justify-self: start;
+  min-height: 44px;
+  padding: 10px 20px;
+  color: var(--bg-page);
+  font: inherit;
+  font-size: var(--fs-small);
+  font-weight: 600;
+  background: var(--text-primary);
+  border: 0;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.wgf-submit:hover:not(:disabled) {
+  opacity: 0.9;
+}
+.wgf-submit:active:not(:disabled) {
+  transform: translateY(1px);
+}
+.wgf-submit:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.wgf-submit:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+.wiki-starting {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  color: var(--text-primary);
+  font-size: var(--fs-small);
+}
+.wiki-starting p {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+  font-size: var(--fs-caption);
+}
+.wgf-spinner {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  width: 12px;
+  height: 12px;
+  margin-top: 4px;
+  border: 1.5px solid var(--border-2);
+  border-top-color: var(--text-primary);
+  border-radius: 50%;
+  animation: run-spin 0.9s linear infinite;
+}
+.wgf-rules {
+  padding-top: 16px;
+  color: var(--text-secondary);
+  font-size: var(--fs-caption);
+  border-top: 1px solid var(--border);
+}
+.wgf-rules > summary {
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.wgf-rules > summary:hover {
+  color: var(--text-primary);
+}
+.wiki-repository-rules {
+  line-height: 1.6;
+}
+.wiki-repository-rules p {
+  margin: 10px 0;
+}
+.wiki-repository-rules ul {
+  padding-left: 18px;
+}
+.wiki-repository-rules li {
+  margin: 4px 0;
+}
+.wiki-repository-rules details summary {
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+/* --- Opening a repository by its GitHub address --- */
+.repository-route {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 14px;
+  min-height: calc(70vh - var(--top-h));
+  padding: 48px 20px;
+  text-align: center;
+}
+.repository-route h1 {
+  margin: 0;
+  font-size: clamp(26px, 3vw, 36px);
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  overflow-wrap: anywhere;
+}
+.repository-route p {
+  margin: 0;
+  color: var(--text-secondary);
+}
+.repository-route .wgf-spinner {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+.repository-route .repository-entry {
+  width: min(560px, 100%);
+  margin-top: 10px;
+  text-align: left;
+}
+.own-add p {
+  max-width: 56ch;
+  line-height: 1.6;
+}
+.own-add .own-back {
+  margin-top: 8px;
+}
+
+/* Motion means progress: a silent or unreachable server stops every mark. */
+.run-log.is-still .run-step.is-current .run-mark,
+.run-log.is-still .run-caret,
+.run-strip-mark.is-still,
+.own-rail.is-still .toc-dot.is-running {
+  animation: none;
+}
+.run-strip-mark.is-paused {
+  --step: var(--own-wait);
+  background: transparent;
+  border: 1.5px solid var(--step);
+}
+.run-strip-text .run-strip-wait {
+  color: var(--own-wait);
+}
+
+@keyframes run-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes run-blink {
+  50% {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  /* A still arc and a solid caret keep the state without the motion. */
+  .toc-dot.is-running,
+  .run-step.is-current .run-mark,
+  .run-strip-mark.is-running,
+  .wgf-spinner,
+  .wgf-check.is-checking .wgf-check-mark {
+    animation: none;
+  }
+  .run-caret {
+    animation: none;
+  }
+}

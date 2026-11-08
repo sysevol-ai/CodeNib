@@ -716,18 +716,91 @@ def test_real_source_preparation_enumerates_symbols_without_bm25_or_embeddings(
         "github_bytes",
         lambda *_: archive("repo/main.py", b"def run():\n    return 1\n"),
     )
-    stages = []
+    stages, facts = [], []
     with visitor_source.visitor_source(
         "owner/repo",
         COMMIT,
         ATTEMPT,
         lambda: None,
-        lambda stage, _: stages.append(stage),
+        lambda stage, _, seen=None: (stages.append(stage), facts.append(seen)),
     ) as (bundle, source):
         assert bundle.vector_store is None and bundle.bm25 is None
         assert WikiBuilder(bundle)._symbols()[0].file == "main.py"
         assert source.read_bytes("main.py", max_bytes=1024).startswith(b"def run")
     assert stages == ["downloading", "analyzing"]
+    # The folder outline is known as analysis starts, before any chunking.
+    outline = {
+        "files": 1,
+        "root": "",
+        "folders": [{"path": "", "files": 1, "direct": True}],
+        "more": {"folders": 0, "files": 0},
+    }
+    assert facts == [None, {"source_tree": outline}]
+    assert bundle.source_tree == outline
+
+
+PY = {".py": "python", ".ts": "typescript"}
+
+
+def test_source_outline_opens_the_folder_that_holds_most_code():
+    paths = [f"src/pkg/core/m{i}.py" for i in range(6)]
+    paths += [f"src/pkg/io/m{i}.py" for i in range(3)]
+    paths += ["src/pkg/__init__.py", "tests/test_core.py", "README.md", "docs/a.md"]
+    outline = visitor_source.source_outline(paths, PY)
+    assert outline["files"] == 11
+    assert outline["root"] == "src/pkg"
+    assert outline["folders"] == [
+        {"path": "src/pkg/core", "files": 6},
+        {"path": "src/pkg/io", "files": 3},
+        {"path": "src/pkg", "files": 1, "direct": True},
+    ]
+    # Code outside the opened folder is not lost: it is summed into "more".
+    assert outline["more"] == {"folders": 1, "files": 1}
+
+
+def test_source_outline_names_single_folder_chains_and_sums_the_rest():
+    paths = [f"src/app/m{i}.ts" for i in range(4)] + [f"tests/t{i}.py" for i in range(4)]
+    paths += [f"pkg{i}/x.py" for i in range(3)] + ["setup.py"]
+    outline = visitor_source.source_outline(paths, PY, limit=3)
+    assert outline["root"] == ""
+    assert outline["folders"] == [
+        {"path": "src/app", "files": 4},
+        {"path": "tests", "files": 4},
+        {"path": "", "files": 1, "direct": True},
+    ]
+    assert outline["more"] == {"folders": 3, "files": 3}
+
+
+def test_progress_keeps_only_public_snapshot_facts(manager):
+    tree = {"files": 2, "root": "", "folders": [], "more": {"folders": 0, "files": 0}}
+
+    @contextmanager
+    def reporting_prepare(_repository, _commit, _attempt, _check, progress):
+        progress("analyzing", "", {"source_tree": tree, "secret": KEY})
+        yield SimpleNamespace(
+            graph_coverage={
+                "available": True,
+                "backend": "scip-python",
+                "files": 2,
+                "nodes": 9,
+                "edges": 12,
+                "reason": None,
+                "note": "Python only.",
+            }
+        ), None
+
+    manager.prepare = reporting_prepare
+    state = submit(manager)
+    assert state["source_tree"] == tree
+    assert state["code_index"] == {
+        "available": True,
+        "reason": None,
+        "note": "Python only.",
+        "files": 2,
+        "nodes": 9,
+        "edges": 12,
+    }
+    assert KEY not in json.dumps(state)
 
 
 def test_concurrent_stale_owner_cannot_repeat_a_funded_run(manager, monkeypatch):

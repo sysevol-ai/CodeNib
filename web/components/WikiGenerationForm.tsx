@@ -16,6 +16,7 @@ import { recordExperience } from "@/lib/experience";
 import WikiRepositoryRules, { mebibytes } from "./WikiRepositoryRules";
 
 const usd = (value: number) => `$${value.toFixed(2).replace(/\.00$/, "")}`;
+const BUDGETS = [1, 2, 5];
 
 function contextLabel(tokens: number) {
   return tokens >= 1_000_000
@@ -35,10 +36,13 @@ function byProvider(models: WikiModelChoice[]) {
 export default function WikiGenerationForm({
   attempt,
   onStarted,
+  onChecked,
   resume = false,
 }: {
   attempt: WikiAttempt;
   onStarted: () => void;
+  /** The source check's result, so the page can draw the snapshot. */
+  onChecked?: (result: WikiRepositoryCheck | null) => void;
   resume?: boolean;
 }) {
   const keyInput = useRef<HTMLInputElement>(null);
@@ -51,13 +55,20 @@ export default function WikiGenerationForm({
   const [checkError, setCheckError] = useState("");
   const [checkRetry, setCheckRetry] = useState(0);
   const admitted = resume || eligibility?.eligible === true;
+  const checked = useRef(onChecked);
+  checked.current = onChecked;
   useEffect(() => {
     if (resume) return;
     let active = true;
     setEligibility(null);
     setCheckError("");
+    checked.current?.(null);
     checkWikiRepository(attempt.repository)
-      .then((result) => { if (active) setEligibility(result); })
+      .then((result) => {
+        if (!active) return;
+        setEligibility(result);
+        checked.current?.(result);
+      })
       .catch((reason) => {
         if (active) setCheckError(reason instanceof Error ? reason.message : "Could not check this repository.");
       });
@@ -80,9 +91,10 @@ export default function WikiGenerationForm({
     };
   }, []);
   const chosen = catalog.models.find((choice) => choice.id === model);
+  const rejected = !!checkError || eligibility?.eligible === false;
   return (
     <form
-      className="wiki-generation-form"
+      className={`wiki-generation-form${resume ? " is-resume" : ""}`}
       onSubmit={async (event) => {
         event.preventDefault();
         if (busy || !admitted || !keyInput.current) return;
@@ -106,42 +118,66 @@ export default function WikiGenerationForm({
         }
       }}
     >
-      <h2>{resume ? "Continue your Wiki" : "Generate your Repo Wiki"}</h2>
-      <p>
-        {resume
-          ? "Ready chapters are reused. Only unfinished chapters need generation."
-          : "Start with an Overview and a few core chapters, with source citations. Read each chapter as soon as it is ready."}
-      </p>
-      {!resume && (
-        <p className="small muted">
-          Your Wiki will appear in My Wikis. When it is ready, you can choose
-          Publish to Community to share it with other readers.
-        </p>
-      )}
-      <WikiRepositoryRules limits={eligibility?.limits} />
-      {!resume && (
-        <div className="wiki-repository-check" role={eligibility?.eligible === false || checkError ? "alert" : "status"}>
-          {!eligibility && !checkError ? (
-            <p>Checking the repository size and source languages… No API key or model call is needed.</p>
-          ) : (
-            <>
-              <p>{checkError || eligibility?.message}</p>
-              {eligibility?.eligible && <p className="small muted">Checked {eligibility.source_files?.toLocaleString()} source files at <code>{eligibility.commit?.slice(0, 8)}</code>. No model call was made.</p>}
-              {!!eligibility?.skipped_files?.length && (
-                <details>
-                  <summary>{eligibility.skipped_files.length} oversized {eligibility.skipped_files.length === 1 ? "file will" : "files will"} be skipped</summary>
-                  <ul>{eligibility.skipped_files.map((file) => <li key={file.path}><code>{file.path}</code> ({mebibytes(file.size_bytes)})</li>)}</ul>
-                </details>
-              )}
-              {(checkError || eligibility?.eligible === false) && (
-                <p><a href="https://docs.codenib.ai/web_demo/" target="_blank" rel="noopener noreferrer">Run CodeNib locally ↗</a>{" "}<button type="button" className="btn-ghost" onClick={() => setCheckRetry((value) => value + 1)}>Check again</button></p>
-              )}
-            </>
-          )}
+      {resume && (
+        <div className="wgf-head">
+          <h2>Continue your Wiki</h2>
+          <p>Ready chapters are reused. Only unfinished chapters need generation.</p>
         </div>
       )}
       {!resume && (
-        <>
+        <div
+          className={`wgf-check${rejected ? " is-rejected" : eligibility ? " is-admitted" : " is-checking"}`}
+          role={rejected ? "alert" : "status"}
+        >
+          <span className="wgf-check-mark" aria-hidden="true" />
+          <div>
+            {!eligibility && !checkError ? (
+              <p>Checking the repository size and source languages… No API key or model call is needed.</p>
+            ) : (
+              <>
+                <p>{checkError || eligibility?.message}</p>
+                {eligibility?.eligible && (
+                  <p className="wgf-quiet">
+                    Checked {eligibility.source_files?.toLocaleString()} files at{" "}
+                    <code>{eligibility.commit?.slice(0, 8)}</code>
+                    {eligibility.source_tree
+                      ? `, ${eligibility.source_tree.files.toLocaleString()} of them in a supported language`
+                      : ""}
+                    . No model call was made.
+                  </p>
+                )}
+                {!!eligibility?.skipped_files?.length && (
+                  <details>
+                    <summary>
+                      {eligibility.skipped_files.length} oversized{" "}
+                      {eligibility.skipped_files.length === 1 ? "file will" : "files will"} be skipped
+                    </summary>
+                    <ul>
+                      {eligibility.skipped_files.map((file) => (
+                        <li key={file.path}>
+                          <code>{file.path}</code> ({mebibytes(file.size_bytes)})
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+                {rejected && (
+                  <p className="wgf-check-actions">
+                    <a href="https://docs.codenib.ai/web_demo/" target="_blank" rel="noopener noreferrer">
+                      Run CodeNib locally ↗
+                    </a>
+                    <button type="button" className="btn-ghost" onClick={() => setCheckRetry((value) => value + 1)}>
+                      Check again
+                    </button>
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
+      {!resume && (
+        <div className="wgf-field">
           <label htmlFor="wiki-generation-model">Writing model</label>
           <select
             id="wiki-generation-model"
@@ -160,7 +196,7 @@ export default function WikiGenerationForm({
             ))}
           </select>
           {chosen && (
-            <p className="small muted wiki-model-note">
+            <p className="wgf-note">
               {usd(chosen.input_usd)} per million input tokens and{" "}
               {usd(chosen.output_usd)} per million output tokens,{" "}
               {contextLabel(chosen.context)} context
@@ -170,48 +206,53 @@ export default function WikiGenerationForm({
                 : "Not yet tested with CodeNib. If a chapter fails, the run stops and finished chapters are kept."}
             </p>
           )}
-        </>
+        </div>
       )}
-      <label htmlFor="wiki-generation-key">OpenRouter inference key</label>
-      <input
-        id="wiki-generation-key"
-        ref={keyInput}
-        type="password"
-        autoComplete="off"
-        spellCheck={false}
-        required
-        maxLength={1024}
-        disabled={busy || !admitted}
-        placeholder="sk-or-…"
-      />
-      <p className="small muted">
-        Create a key with a credit limit in{" "}
-        <a
-          href="https://openrouter.ai/settings/keys"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          OpenRouter settings ↗
-        </a>
-        .
-      </p>
-      <label htmlFor="wiki-generation-budget">Budget for this run</label>
-      <select
-        id="wiki-generation-budget"
-        value={budget}
-        disabled={busy}
-        onChange={(event) => setBudget(Number(event.target.value))}
-      >
-        <option value={1}>$1</option>
-        <option value={2}>$2</option>
-        <option value={5}>$5</option>
-      </select>
-      <p className="small muted">
-        Stops new calls when reported spending reaches this amount. A call
-        already in progress can exceed it. Set a credit limit on your OpenRouter
-        key; include BYOK usage if you also use your own provider keys through
-        OpenRouter.
-      </p>
+      <div className="wgf-field">
+        <label htmlFor="wiki-generation-key">OpenRouter inference key</label>
+        <input
+          id="wiki-generation-key"
+          ref={keyInput}
+          type="password"
+          autoComplete="off"
+          spellCheck={false}
+          required
+          maxLength={1024}
+          disabled={busy || !admitted}
+          placeholder="sk-or-…"
+        />
+        <p className="wgf-note">
+          Create a key with a credit limit in{" "}
+          <a href="https://openrouter.ai/settings/keys" target="_blank" rel="noopener noreferrer">
+            OpenRouter settings ↗
+          </a>
+          .
+        </p>
+      </div>
+      <fieldset className="wgf-field wgf-budget">
+        <legend>Budget for this run</legend>
+        <div className="wgf-segments">
+          {BUDGETS.map((value) => (
+            <label key={value} className={budget === value ? "is-chosen" : undefined}>
+              <input
+                type="radio"
+                name="wiki-generation-budget"
+                value={value}
+                checked={budget === value}
+                disabled={busy}
+                onChange={() => setBudget(value)}
+              />
+              <span>${value}</span>
+            </label>
+          ))}
+        </div>
+        <p className="wgf-note">
+          Stops new calls when reported spending reaches this amount. A call
+          already in progress can exceed it. Set a credit limit on your OpenRouter
+          key; include BYOK usage if you also use your own provider keys through
+          OpenRouter.
+        </p>
+      </fieldset>
       <label className="wiki-consent">
         <input type="checkbox" required disabled={busy || !admitted} />
         <span>
@@ -221,7 +262,7 @@ export default function WikiGenerationForm({
           anyone with its link. The key is never saved.
         </span>
       </label>
-      <button type="submit" className="btn-primary" disabled={busy || !admitted}>
+      <button type="submit" className="wgf-submit" disabled={busy || !admitted}>
         {busy
           ? "Starting generation…"
           : resume
@@ -230,11 +271,7 @@ export default function WikiGenerationForm({
       </button>
       {busy && (
         <div className="wiki-starting" role="status">
-          <span className="wiki-run-pulse is-animated" aria-hidden="true">
-            <i />
-            <i />
-            <i />
-          </span>
+          <span className="wgf-spinner" aria-hidden="true" />
           <div>
             <strong>Checking your account and repository…</strong>
             <p>Your Wiki opens when the server accepts this run.</p>
@@ -248,6 +285,12 @@ export default function WikiGenerationForm({
             Check saved attempt
           </button>
         </p>
+      )}
+      {!resume && (
+        <details className="wgf-rules">
+          <summary>Hosted limits and which repositories qualify</summary>
+          <WikiRepositoryRules limits={eligibility?.limits} />
+        </details>
       )}
     </form>
   );

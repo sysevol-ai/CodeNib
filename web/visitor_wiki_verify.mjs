@@ -10,10 +10,11 @@ const output = process.argv[3] || "/tmp/codenib-visitor-wiki-browser";
 await fs.mkdir(output, { recursive: true });
 const browser = await chromium.launch({ headless: true });
 const reports = [];
+const tree = { files: 65, root: "", folders: [{ path: "src", files: 40 }, { path: "tests", files: 24 }, { path: "", files: 1, direct: true }], more: { folders: 0, files: 0 } };
 const limits = {
   max_archive_bytes: 20 * 1024 * 1024, max_source_bytes: 40 * 1024 * 1024,
   max_file_bytes: 4 * 1024 * 1024, max_files: 4000, max_archive_entries: 8000,
-  max_chunks: 50000, source_languages: ["python", "typescript"], graph_languages: ["python"],
+  source_languages: ["python", "typescript"], graph_languages: ["python"],
 };
 let lastPage;
 try {
@@ -55,7 +56,7 @@ try {
         await new Promise((resolve) => setTimeout(resolve, 400));
         return route.fulfill({ json: {
           eligible: !rejected, limits,
-          commit: "c".repeat(40), source_files: 65, languages: ["python"],
+          commit: "c".repeat(40), source_files: 65, languages: ["python"], source_tree: tree,
           message: rejected
             ? "The repository download exceeds the 20 MiB hosted archive limit. Run CodeNib locally for this repository."
             : "This snapshot fits the hosted source limits. Generation checks them again before any model call.",
@@ -117,7 +118,12 @@ try {
           budget_usd: 2,
           unreported_call_cost: false,
           stalled: false,
-          history: [{ stage: "downloading", page: "", at: Date.now() / 1000 }],
+          source_tree: tree,
+          history: [
+            { stage: "connecting", page: "", at: Date.now() / 1000 },
+            { stage: "downloading", page: "", at: Date.now() / 1000 },
+            { stage: "analyzing", page: "", at: Date.now() / 1000 },
+          ],
         };
         return route.fulfill({ status: 202, json: state });
       }
@@ -177,6 +183,11 @@ try {
     await page.getByLabel("OpenRouter inference key").waitFor();
     await page.getByText("This snapshot fits the hosted source limits. Generation checks them again before any model call.", { exact: true }).waitFor();
     assert.equal(checks, 2);
+    const snapshot = page.getByLabel("The snapshot as a map");
+    await snapshot.locator(".wg-node").nth(3).waitFor();
+    assert.equal(await snapshot.locator(".wg-node").count(), 4, "the opened folder and its three groups");
+    assert.ok((await snapshot.innerText()).includes("65 code files in 3 folders"));
+    assert.equal(await snapshot.locator(".wg-edge.is-hot").count(), 0, "a picture of the source highlights nothing");
     assert.equal(posts, 0);
     await page
       .getByLabel("OpenRouter inference key")
@@ -186,13 +197,19 @@ try {
       .getByRole("button", { name: "Generate Wiki", exact: true })
       .click();
     await page.getByText("Checking your account and repository…", { exact: true }).waitFor();
-    await page.getByText("Analyzing source files", { exact: true }).waitFor();
+    // Before the plan, the map is the snapshot and the reader is the run.
+    await page.getByRole("heading", { level: 1, name: "Reading repo" }).waitFor();
     assert.equal(posts, 1);
     const savedURL = page.url();
-    await page.locator(".wiki-document-skeleton").waitFor();
-    assert.ok(await page.getByLabel("Current agent activity").isVisible());
+    const run = page.getByLabel("Wiki generation");
+    assert.ok((await run.innerText()).includes("Reading the source files"));
+    assert.ok((await run.innerText()).includes("Downloaded the snapshot"));
+    assert.equal(await run.locator('[aria-current="step"]').count(), 1);
+    const map = page.getByLabel("Map of this Wiki");
+    await map.locator(".wg-node").nth(3).waitFor();
+    assert.equal(await map.locator(".wg-node.is-running").count(), 1, "the opened folder turns while reading");
     await page.screenshot({
-      path: `${output}/visitor-wiki-${mobile ? "mobile" : "desktop"}-first-chapter.png`,
+      path: `${output}/visitor-wiki-${mobile ? "mobile" : "desktop"}-reading.png`,
       fullPage: true,
     });
     state = {
@@ -211,56 +228,57 @@ try {
       history: [
         ...state.history,
         { stage: "outline", page: "", at: Date.now() / 1000 },
+        { stage: "retrieving", page: "overview", at: Date.now() / 1000 },
         { stage: "planning_page", page: "pipeline", at: Date.now() / 1000 },
       ],
     };
+    // The first ready chapter opens by itself; the run folds into one line.
     await page
       .getByRole("heading", { name: "Repository overview", exact: true })
       .waitFor();
-    const activity = page.getByLabel("Current agent activity");
-    await activity.getByText("Working on: Request pipeline", { exact: true }).waitFor();
-    assert.equal(await activity.locator("details").getAttribute("open"), null);
-    await activity.getByText("Waiting for the model to respond…", { exact: true }).waitFor();
+    const strip = page.locator(".run-strip");
+    await strip.getByText("Writing “Request pipeline”", { exact: true }).waitFor();
+    assert.equal(await strip.getAttribute("open"), null);
+    assert.equal(await page.locator(".toc-dot.is-ready").count(), 1);
+    assert.equal(await page.locator(".toc-dot.is-running").count(), 1);
+    if (!mobile) {
+      assert.equal(await map.locator(".wg-node.is-running").count(), 1, "the chapter being written turns on the map");
+      assert.equal(await map.locator(".wg-node-orbit").count(), 1);
+    }
+    await strip.locator(":scope > summary").click();
+    await strip.getByText("Waiting for the model to respond", { exact: true }).waitFor();
     state = { ...state, response_chars: 512, updated_at: Date.now() / 1000 };
-    await activity.getByText("Receiving the model’s response…", { exact: true }).waitFor();
-    await activity.getByText("Live activity & timing", { exact: true }).click();
-    assert.ok((await activity.innerText()).includes("Asking the model to compose"));
-    assert.ok(await activity.getByText("Next", { exact: true }).isVisible());
-    assert.equal(await activity.locator(".wiki-run-recent li").count(), 3);
-    assert.equal(await activity.locator(".is-animated").count(), 1);
+    await strip.getByText("Receiving the model’s response · 512 characters", { exact: true }).waitFor();
+    assert.ok((await strip.innerText()).includes("Drafting and checking this chapter"));
+    assert.equal(await strip.locator('[aria-current="step"]').count(), 1);
+    assert.equal(await strip.locator(".run-strip-mark").evaluate((element) => getComputedStyle(element).animationName), "run-spin");
     await page.emulateMedia({ reducedMotion: "reduce" });
-    assert.equal(await activity.locator(".wiki-run-pulse i").first().evaluate(
-      (element) => getComputedStyle(element).animationName,
-    ), "none");
+    assert.equal(await strip.locator(".run-strip-mark").evaluate((element) => getComputedStyle(element).animationName), "none");
+    if (!mobile)
+      assert.equal(await map.locator(".wg-node-orbit").evaluate((element) => getComputedStyle(element).animationName), "none");
     await page.emulateMedia({ reducedMotion: "no-preference" });
-    await activity.getByText("Live activity & timing", { exact: true }).click();
-    await page.locator(".wiki-progress > details > summary").click();
-    await page.getByText("Skipped 1 file larger than 4 MiB", { exact: true }).click();
+    await strip.getByText("1 file over 4 MiB left out", { exact: true }).click();
     assert.ok(await page.getByText("assets/diagram.png", { exact: true }).isVisible());
-    await page.locator(".wiki-progress > details > summary").click();
-    assert.equal(await page.getByRole("link", { name: "Read 1 / 2 ready chapters" }).getAttribute("href"), "#saved-wiki-chapters");
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.screenshot({
       path: `${output}/visitor-wiki-${mobile ? "mobile" : "desktop"}-progress.png`,
       fullPage: true,
     });
     state = { ...state, updated_at: Date.now() / 1000 - 50 };
-    await activity.getByText("Waiting for the next update", { exact: true }).waitFor();
-    assert.ok((await activity.innerText()).includes("operation has not reported a new result"));
+    const quiet = strip.locator(".run-strip-wait");
+    await strip.getByText("Waiting for the next update", { exact: true }).waitFor();
+    assert.ok((await strip.innerText()).includes("operation has not reported a new result"));
     // Successful status polls must not reset worker progress age.
     state = { ...state, updated_at: Date.now() / 1000 - 185 };
-    await activity.getByText("No recent progress reported", { exact: true }).waitFor();
-    assert.equal(await activity.locator(".is-animated").count(), 0);
-    assert.ok((await activity.innerText()).includes("does not confirm that it has stopped"));
-    await activity.getByText("Live activity & timing", { exact: true }).click();
-    assert.ok((await activity.innerText()).includes("Checked"));
-    await activity.getByText("Live activity & timing", { exact: true }).click();
+    await strip.getByText("No recent progress reported", { exact: true }).waitFor();
+    assert.equal(await strip.locator(".run-strip-mark").evaluate((element) => getComputedStyle(element).animationName), "none");
+    if (!mobile) assert.equal(await map.locator(".wg-node-orbit").evaluate((element) => getComputedStyle(element).animationName), "none");
+    assert.ok((await strip.innerText()).includes("does not confirm that it has stopped"));
     await page.screenshot({
       path: `${output}/visitor-wiki-${mobile ? "mobile" : "desktop"}-delayed.png`,
       fullPage: true,
     });
-    await page.getByRole("button", { name: "Toggle color theme" }).click();
-    const contrast = await activity.evaluate((element) => {
+    const contrastOf = () => strip.locator(".run-notice strong").evaluate((element) => {
       const luminance = (color) => {
         const channels = color.match(/[\d.]+/g).slice(0, 3).map(Number).map((value) => {
           const channel = value / 255;
@@ -268,24 +286,26 @@ try {
         });
         return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
       };
-      const text = luminance(getComputedStyle(element.querySelector(".wiki-run-status")).color);
-      const background = luminance(getComputedStyle(element).backgroundColor);
+      const text = luminance(getComputedStyle(element).color);
+      const background = luminance(getComputedStyle(document.body).backgroundColor);
       return (Math.max(text, background) + 0.05) / (Math.min(text, background) + 0.05);
     });
-    assert.ok(contrast >= 4.5, "delayed status must remain legible in dark mode");
+    assert.ok((await contrastOf()) >= 4.5, "delayed status must remain legible");
+    await page.getByRole("button", { name: "Toggle color theme" }).click();
+    assert.ok((await contrastOf()) >= 4.5, "delayed status must remain legible in the other theme");
     await page.screenshot({
-      path: `${output}/visitor-wiki-${mobile ? "mobile" : "desktop"}-dark-delayed.png`,
+      path: `${output}/visitor-wiki-${mobile ? "mobile" : "desktop"}-other-theme-delayed.png`,
       fullPage: true,
     });
     await page.getByRole("button", { name: "Toggle color theme" }).click();
     statusOffline = true;
-    await activity.getByText("Connection interrupted", { exact: true }).waitFor();
-    assert.equal(await activity.locator(".is-animated").count(), 0);
-    assert.ok((await activity.innerText()).includes("server may still be working"));
+    await strip.getByText("Connection interrupted", { exact: true }).waitFor();
+    assert.equal(await strip.locator(".run-strip-mark").evaluate((element) => getComputedStyle(element).animationName), "none");
+    assert.ok((await strip.innerText()).includes("server may still be working"));
     statusOffline = false;
     state = { ...state, updated_at: Date.now() / 1000, calls: 5 };
-    await activity.getByText("Generation in progress", { exact: true }).waitFor();
-    assert.equal(await activity.locator(".is-animated").count(), 1);
+    await quiet.waitFor({ state: "detached" });
+    assert.equal(await strip.locator(".run-strip-mark").evaluate((element) => getComputedStyle(element).animationName), "run-spin");
     assert.equal(posts, 1, "status reconnect must not submit another funded run");
     await page.reload();
     await page
@@ -296,20 +316,21 @@ try {
       JSON.stringify({ ...localStorage, ...sessionStorage }),
     );
     assert.ok(!storage.includes("sk-or-fixture-value"));
-    await page.getByRole("button", { name: "Stop generation" }).click();
-    await page.getByText("Generation paused", { exact: true }).waitFor();
+    await strip.locator(":scope > summary").click();
+    await strip.getByRole("button", { name: "Stop generation" }).click();
+    await strip.locator(":scope > summary").getByText("Generation paused", { exact: true }).waitFor();
     assert.equal(stops, 1);
-    await page
+    await strip
       .getByRole("button", { name: "Continue unfinished chapters" })
       .click();
-    await page
+    await strip
       .getByLabel("OpenRouter inference key")
       .fill("sk-or-fixture-value");
-    await page.getByRole("checkbox").check();
-    await page
+    await strip.getByRole("checkbox").check();
+    await strip
       .getByRole("button", { name: "Resume unfinished chapters" })
       .click();
-    await page.getByText("Analyzing source files", { exact: true }).waitFor();
+    await page.getByRole("heading", { level: 1, name: "Reading repo" }).waitFor();
     assert.equal(posts, 2);
     state = {
       ...state,
@@ -319,10 +340,11 @@ try {
       page_states: { overview: "ready", pipeline: "ready" },
       active_page: "",
       reported_cost_usd: 0.046,
+      history: [...state.history, { stage: "saving_graphs", page: "", at: Date.now() / 1000 }],
     };
-    await page.getByText("2 chapters ready · Generation details", { exact: true }).click();
-    await page.getByText("Your Wiki is ready", { exact: true }).waitFor();
-    assert.equal(await page.getByLabel("Current agent activity").count(), 0);
+    await strip.locator(":scope > summary").getByText("2 chapters, all source-checked", { exact: true }).waitFor();
+    assert.equal(await page.locator(".toc-dot.is-running, .toc-dot.is-pending").count(), 0);
+    await page.getByRole("heading", { name: "Your Wiki is ready to share" }).waitFor();
     const completedReads = statusReads;
     await page.waitForTimeout(2300);
     assert.equal(statusReads, completedReads, "completed Wikis stop polling");
@@ -354,7 +376,7 @@ try {
     );
     state.status = "partial";
     await page.goto(savedURL);
-    await page.getByText("Generation paused", { exact: true }).waitFor();
+    await page.locator(".run-strip summary").getByText("Generation paused", { exact: true }).waitFor();
     assert.equal(
       await page
         .getByRole("button", { name: "Continue unfinished chapters" })
@@ -375,7 +397,7 @@ try {
       message: "The repository archive could not be read safely.",
     };
     await page.reload();
-    await page.getByText("Generation stopped", { exact: true }).waitFor();
+    await page.getByRole("heading", { level: 1, name: "Generation stopped" }).waitFor();
     const failure = page.getByRole("alert");
     assert.ok((await failure.innerText()).includes(state.message));
     assert.ok((await failure.innerText()).includes("No model calls were made."));
@@ -390,7 +412,7 @@ try {
     await page.getByRole("button", { name: "Refresh status" }).click();
     await refreshed;
     assert.equal(statusReads, pausedReads + 1);
-    await page.getByText("Generation stopped", { exact: true }).waitFor();
+    await page.getByRole("heading", { level: 1, name: "Generation stopped" }).waitFor();
     await page.screenshot({
       path: `${output}/visitor-wiki-${mobile ? "mobile" : "desktop"}-stopped.png`,
       fullPage: true,
@@ -413,6 +435,7 @@ try {
       stoppedWikiShowsReason: true,
       stoppedWikiStopsPolling: true,
       liveActivityExplainsWork: true,
+      mapShowsSnapshotThenChapters: true,
       staleProgressIsNotServerConnectivity: true,
       reconnectDoesNotGenerate: true,
       reducedMotionRespected: true,
