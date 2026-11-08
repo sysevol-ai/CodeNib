@@ -62,9 +62,9 @@ def _is_stream_readable(stream: Any, timeout_s: float) -> bool:
         return True
 
     try:
-        import msvcrt
         import ctypes
         import ctypes.wintypes as wt
+        import msvcrt
 
         handle = msvcrt.get_osfhandle(fd)
         avail = wt.DWORD()
@@ -1264,9 +1264,7 @@ class LSPClient:
             if remaining <= 0:
                 break
             if not self._read_buffer:
-                if not _is_stream_readable(
-                    self.process.stdout, min(remaining, 0.05)
-                ):
+                if not _is_stream_readable(self.process.stdout, min(remaining, 0.05)):
                     break
             msg = self._read_message(timeout=remaining)
             if msg is None:
@@ -1482,12 +1480,17 @@ def uri_to_relpath(uri: str, project_root: str) -> Optional[str]:
     parsed = urlparse(uri)
     # url2pathname also decodes percent escapes; decode the URI only once.
     abs_path = url2pathname(parsed.path)
+    path = Path(abs_path)
+    root = Path(project_root)
+    # Match the path as written first: a file under a symlinked directory
+    # that points outside the project resolves to a path outside the root.
     try:
-        return (
-            Path(abs_path)
-            .resolve()
-            .relative_to(Path(project_root).resolve())
-            .as_posix()
-        )
+        relative = path.relative_to(root)
+    except ValueError:
+        relative = None
+    if relative is not None and ".." not in relative.parts:
+        return relative.as_posix()
+    try:
+        return path.resolve().relative_to(root.resolve()).as_posix()
     except ValueError:
         return abs_path
