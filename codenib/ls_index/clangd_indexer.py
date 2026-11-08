@@ -19,6 +19,7 @@ import shutil
 import subprocess
 import threading
 import time
+from contextlib import contextmanager
 from pathlib import Path
 from typing import List, Optional, Union
 
@@ -26,6 +27,12 @@ from ..graph.code_graph import CodeGraph
 from ..log_utils import get_logger
 from ..paths import CLANGD_INDEX_DIRNAME, temp_state_dir
 from ..profiler import Profiler
+from .clangd_build_tree import (
+    copy_source_tree,
+    isolated_build_environment,
+    rewrite_compile_database,
+    without_git_repository_variables,
+)
 from .clangd_contract import clangd_background_index_command
 from .index_quality import (
     IndexQualityPolicy,
@@ -42,6 +49,9 @@ logger = get_logger("clangd_indexer")
 # checkout. A later run discovers it here before the prepared copy, the way it
 # used to find the checkout file, so the clangd input path stays stable.
 BEAR_COMPDB_FILENAME = "compile_commands.bear.json"
+# Per-repository build state: the checkout copy Make/Autotools builds run in,
+# and the CMake binary directory. Nothing is built inside the checkout.
+BUILD_STATE_DIRNAME = "clangd-build"
 
 
 class ClangdIndexer:
@@ -84,6 +94,10 @@ class ClangdIndexer:
         self.compdb_warning_rewrite_count = 0
         self.index_quality_report: Optional[dict] = None
         self._quality_policy = IndexQualityPolicy()
+        # Where build commands run: the checkout copy while a Make/Autotools
+        # compilation database is generated, with git isolated from it.
+        self.build_root = self.project_root
+        self._build_env: Optional[dict] = None
 
         # clangd decides its own output location (project-local
         # .cache/clangd/index/).  _run_clangd_indexer overwrites this
@@ -433,7 +447,10 @@ class ClangdIndexer:
             should_regenerate_compdb = self.compdb_path is None or (
                 not requested_compdb
                 and self.compdb_path is not None
-                and not self._is_preferred_compdb(self.compdb_path)
+                and (
+                    not self._is_preferred_compdb(self.compdb_path)
+                    or self._compdb_lost_its_build_copy(self.compdb_path)
+                )
             )
             if should_regenerate_compdb and allow_project_preparation:
                 existing = self.compdb_path
@@ -1002,8 +1019,10 @@ class ClangdIndexer:
         if not cmake_lists.exists() or not shutil.which("cmake"):
             return None
 
-        build_dir = self.project_root / "build"
-        build_dir.mkdir(exist_ok=True)
+        # Configure out of source into CodeNib state; never touch the
+        # checkout's own build/ directory.
+        build_dir = self.cmake_build_dir
+        build_dir.mkdir(parents=True, exist_ok=True)
 
         cmd = [
             "cmake",
@@ -1018,7 +1037,8 @@ class ClangdIndexer:
             subprocess.run(
                 cmd,
                 check=True,
-                cwd=self.project_root,
+                cwd=build_dir,
+                env=without_git_repository_variables(),
                 capture_output=True,
                 text=True,
             )
@@ -1039,6 +1059,10 @@ class ClangdIndexer:
             logger.info("make not found; cannot run bear -- make")
             return None
 
+        with self._building_in_copy():
+            return self._generate_compdb_with_bear()
+
+    def _generate_compdb_with_bear(self) -> Optional[Path]:
         best: Optional[Path] = None
 
         # Strategy 1: No root Makefile at all — check if autotools can create one,
@@ -1082,16 +1106,16 @@ class ClangdIndexer:
     def _has_root_makefile(self) -> bool:
         """Check if the project root has a Makefile or GNUmakefile."""
         return any(
-            (self.project_root / name).exists()
+            (self.build_root / name).exists()
             for name in ("Makefile", "GNUmakefile", "makefile")
         )
 
     def _is_autotools_project(self) -> bool:
         """Check if the project uses autotools (configure.ac / autogen.sh)."""
         return (
-            (self.project_root / "configure.ac").exists()
-            or (self.project_root / "configure.in").exists()
-            or (self.project_root / "autogen.sh").exists()
+            (self.build_root / "configure.ac").exists()
+            or (self.build_root / "configure.in").exists()
+            or (self.build_root / "autogen.sh").exists()
         )
 
     def _bear_make(self) -> Optional[Path]:
@@ -1105,7 +1129,7 @@ class ClangdIndexer:
         A ``make clean`` is run first so that incremental builds do not cause
         bear to miss already-compiled translation units.
         """
-        make_overrides = self._indexing_make_overrides(self.project_root)
+        make_overrides = self._indexing_make_overrides(self.build_root)
 
         # Clean first so bear can observe all compiler invocations
         self._run_build_command(["make", "clean"])
@@ -1127,12 +1151,12 @@ class ClangdIndexer:
         well_known = ["ports/unix", "src", "lib"]
         candidates = []
         for rel in well_known:
-            subdir = self.project_root / rel
+            subdir = self.build_root / rel
             if (subdir / "Makefile").exists() or (subdir / "GNUmakefile").exists():
                 candidates.append(subdir)
         # Also scan depth-1 subdirectories for any Makefile not already found.
         try:
-            for entry in sorted(self.project_root.iterdir()):
+            for entry in sorted(self.build_root.iterdir()):
                 if not entry.is_dir() or entry.name.startswith("."):
                     continue
                 if entry in candidates:
@@ -1142,10 +1166,6 @@ class ClangdIndexer:
         except OSError:
             pass
 
-        # Initialize git submodules if needed (some subdirectory builds need them).
-        if candidates and (self.project_root / ".gitmodules").exists():
-            self._run_build_command(["git", "submodule", "update", "--init"])
-
         best: Optional[Path] = None
         for subdir in candidates:
             logger.info(
@@ -1154,7 +1174,7 @@ class ClangdIndexer:
             )
             self._run_build_command(["make", "-C", str(subdir), "clean"])
             make_overrides = self._indexing_make_overrides(subdir)
-            label = f"{subdir.relative_to(self.project_root)}-parallel"
+            label = f"{subdir.relative_to(self.build_root)}-parallel"
             generated = self._bear_capture(
                 ["make", "-k", "-C", str(subdir), "-j", *make_overrides], label
             )
@@ -1162,7 +1182,7 @@ class ClangdIndexer:
             if generated and self._is_preferred_compdb(generated):
                 return generated
 
-            label = f"{subdir.relative_to(self.project_root)}-serial"
+            label = f"{subdir.relative_to(self.build_root)}-serial"
             generated = self._bear_capture(
                 ["make", "-k", "-C", str(subdir), *make_overrides], label
             )
@@ -1229,7 +1249,92 @@ class ClangdIndexer:
     def _state_compdb_candidates(self) -> tuple:
         """Compilation databases CodeNib keeps in its own state directory."""
 
-        return (self.bear_compdb_path, self.output_dir / "compile_commands.json")
+        return (
+            self.bear_compdb_path,
+            self.cmake_build_dir / "compile_commands.json",
+            self.output_dir / "compile_commands.json",
+        )
+
+    @property
+    def build_state_dir(self) -> Path:
+        """Per-repository build state kept beside this indexer's output."""
+
+        return self.output_dir / BUILD_STATE_DIRNAME
+
+    @property
+    def build_copy_dir(self) -> Path:
+        """The checkout copy that Make/Autotools builds run in."""
+
+        return self.build_state_dir / "source"
+
+    @property
+    def cmake_build_dir(self) -> Path:
+        """The out-of-source CMake binary directory."""
+
+        return self.build_state_dir / "cmake"
+
+    def _compdb_lost_its_build_copy(self, compdb: Path) -> bool:
+        """A reused bear database needs the copy holding generated headers."""
+
+        try:
+            is_bear_database = compdb.resolve() == self.bear_compdb_path.resolve()
+        except OSError:
+            return False
+        if is_bear_database and not self.build_copy_dir.is_dir():
+            logger.info(
+                "Build copy %s is missing; regenerating the compilation database",
+                self.build_copy_dir,
+            )
+            return True
+        return False
+
+    @contextmanager
+    def _building_in_copy(self):
+        """Run the enclosed build steps in a fresh copy of the checkout."""
+
+        # A fresh copy every time: reusing a built copy would let make skip
+        # up-to-date objects, whose compile commands bear then never sees.
+        copy_source_tree(
+            self.project_root, self.build_copy_dir, exclude=(self.output_dir,)
+        )
+        # Submodules are built as the checkout has them. CodeNib never runs
+        # git commands that would initialize them in the user's repository.
+        self._uninitialized_submodules()
+        previous = (self.build_root, self._build_env)
+        self.build_root = self.build_copy_dir
+        self._build_env = isolated_build_environment(self.build_copy_dir)
+        try:
+            yield self.build_copy_dir
+        finally:
+            self.build_root, self._build_env = previous
+
+    def _uninitialized_submodules(self) -> List[str]:
+        """List .gitmodules paths that are empty in the checkout, with a warning.
+
+        Reads .gitmodules only. The build proceeds without these sources.
+        """
+
+        gitmodules = self.project_root / ".gitmodules"
+        try:
+            text = gitmodules.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return []
+        missing = []
+        for match in re.finditer(r"(?m)^\s*path\s*=\s*(.+?)\s*$", text):
+            path = self.project_root / match.group(1)
+            try:
+                populated = path.is_dir() and any(path.iterdir())
+            except OSError:
+                populated = False
+            if not populated:
+                missing.append(match.group(1))
+        if missing:
+            logger.warning(
+                "Submodules not initialized in the checkout; building without "
+                "them (run `git submodule update --init` to include them): %s",
+                ", ".join(missing),
+            )
+        return missing
 
     @property
     def bear_compdb_path(self) -> Path:
@@ -1246,33 +1351,67 @@ class ClangdIndexer:
         """
 
         flag = "-o" if _bear_major_version() == 2 else "--output"
-        return ["bear", flag, str(self.bear_compdb_path), "--", *make_command]
+        return ["bear", flag, str(self._bear_output_path), "--", *make_command]
+
+    @property
+    def _bear_output_path(self) -> Path:
+        if self.build_root == self.project_root:
+            return self.bear_compdb_path
+        # Raw output refers to the copy; bear_compdb_path gets the rewrite.
+        return self.build_state_dir / "compile_commands.bear.raw.json"
 
     def _bear_capture(self, make_command: List[str], label: str) -> Optional[Path]:
         """Run make under bear; snapshot the best database it produced.
 
-        Besides bear's own output, a checkout compilation database counts
-        only if this build wrote it (a project whose Makefile emits one).
-        Databases that predate the run are neither deleted nor reused here;
-        run_pipeline already compares them as discovered candidates.
+        Besides bear's own output, a compilation database in the build tree
+        counts only if this build wrote it (a project whose Makefile emits
+        one). Databases that predate the run are neither deleted nor reused
+        here; run_pipeline already compares them as discovered candidates.
+        When the build ran in the checkout copy, every candidate is rewritten
+        to point at the checkout before it is compared.
         """
 
-        checkout_paths = (
-            self.project_root / "compile_commands.json",
-            self.project_root / "build" / "compile_commands.json",
+        tree_paths = (
+            self.build_root / "compile_commands.json",
+            self.build_root / "build" / "compile_commands.json",
         )
-        before = {path: _file_signature(path) for path in checkout_paths}
-        try:
-            self.bear_compdb_path.unlink(missing_ok=True)
-        except OSError as exc:
-            logger.debug("Could not clear %s: %s", self.bear_compdb_path, exc)
+        before = {path: _file_signature(path) for path in tree_paths}
+        for stale in {self._bear_output_path, self.bear_compdb_path}:
+            try:
+                stale.unlink(missing_ok=True)
+            except OSError as exc:
+                logger.debug("Could not clear %s: %s", stale, exc)
         self._run_build_command(self._bear_command(make_command))
         written = [
             path
-            for path in checkout_paths
+            for path in tree_paths
             if _file_signature(path) not in (None, before[path])
         ]
-        return self._snapshot_best_compdb([self.bear_compdb_path, *written], label)
+        candidates = [self._bear_output_path, *written]
+        if self.build_root != self.project_root:
+            candidates = self._checkout_facing_compdbs(candidates)
+        return self._snapshot_best_compdb(candidates, label)
+
+    def _checkout_facing_compdbs(self, candidates: List[Path]) -> List[Path]:
+        """Rewrite databases produced in the build copy for the checkout."""
+
+        rewritten = []
+        for index, path in enumerate(candidates):
+            if not self._is_valid_compdb(path):
+                continue
+            target = (
+                self.bear_compdb_path
+                if path == self._bear_output_path
+                else self.build_state_dir / f"compile_commands.tree-{index}.json"
+            )
+            rewrite_compile_database(
+                path,
+                target,
+                copy_root=self.build_root,
+                checkout_root=self.project_root,
+            )
+            rewritten.append(target)
+        return rewritten
 
     def _snapshot_best_compdb(self, candidates, label: str) -> Optional[Path]:
         valid = [Path(path) for path in candidates if self._is_valid_compdb(Path(path))]
@@ -1351,14 +1490,9 @@ class ClangdIndexer:
         return preferred
 
     def _bootstrap_autotools(self) -> None:
-        autogen = self.project_root / "autogen.sh"
-        configure = self.project_root / "configure"
-        configure_ac = self.project_root / "configure.ac"
-
-        gitmodules = self.project_root / ".gitmodules"
-        if gitmodules.exists():
-            logger.info("Initializing git submodules")
-            self._run_build_command(["git", "submodule", "update", "--init"])
+        autogen = self.build_root / "autogen.sh"
+        configure = self.build_root / "configure"
+        configure_ac = self.build_root / "configure.ac"
 
         if autogen.exists():
             logger.info("Running autogen.sh")
@@ -1378,9 +1512,9 @@ class ClangdIndexer:
     def _detect_configure_flags(self) -> List[str]:
         """Detect useful configure flags by inspecting configure.ac / configure."""
         flags = []
-        configure_ac = self.project_root / "configure.ac"
+        configure_ac = self.build_root / "configure.ac"
         if not configure_ac.exists():
-            configure_ac = self.project_root / "configure.in"
+            configure_ac = self.build_root / "configure.in"
         if not configure_ac.exists():
             return flags
 
@@ -1408,7 +1542,8 @@ class ClangdIndexer:
             subprocess.run(
                 cmd,
                 check=True,
-                cwd=self.project_root,
+                cwd=self.build_root,
+                env=self._build_env,
                 capture_output=True,
                 text=True,
                 timeout=timeout_sec,

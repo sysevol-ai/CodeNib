@@ -130,6 +130,8 @@ def test_next_run_reuses_the_state_database(project, tmp_path, monkeypatch):
     state = tmp_path / "state"
     _write_compdb(state / BEAR_COMPDB_FILENAME, _sources(project))
     indexer = ClangdIndexer(project, output_dir=state)
+    # The build copy that generated it (and holds its generated headers).
+    indexer.build_copy_dir.mkdir(parents=True)
     monkeypatch.setattr(
         indexer,
         "_auto_generate_compdb",
