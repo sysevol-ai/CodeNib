@@ -11,26 +11,29 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 ## [Unreleased]
 
-### Fixed
+### Added
 
-- The Wiki collection under the demo home now continues the dark stage above
-  it: the same edges at every width, the same two-line heading, and quieter
-  cards whose maps use each area's colour from the full map. On wide screens
-  it had kept the old full-width gutter. The server keeps each card's map after
-  the first visit, so the cards no longer sit blank while their maps compute.
-- On wide screens the demo home now stops at codenib.ai's width, centred, with
-  the header on the same edges, instead of stretching across the window. Its
-  headings use codenib.ai's two-line form. On both sites a wide example gives
-  the call path more room and the source a larger face, so short code no
-  longer leaves half the pane empty.
-- A refused Wiki submission now says why: the key was not accepted, has no
-  credit, is a management key, or OpenRouter could not be reached. A refused
-  key no longer uses up the one try per minute, other waits count down on the
-  form, and "Check saved attempt" appears only when the server may have
-  accepted the run. The server logs each refusal's reason, never the key.
-- A hosted server whose `PATH` lacks Node.js now reports that the Python
-  indexer cannot run, instead of starting it and recording a bare "index
-  failed". Failed indexing logs the indexer's exit status.
+- The most important detail pages draw their longest recorded call path, labelled
+  as one selected path. No model chooses the arrows.
+
+- `codenib guard check` compares the working tree with a commit and lists the
+  tests that reach the changed definitions within three calls, each with its
+  call path and call lines. The graph is built from the commit's tracked files
+  and cached per commit. `--json` and `--exit-code` serve scripts and CI.
+  Existing tests that the change itself rewrote come first, with a command that
+  runs them as they were at the base commit, since an edited test that passes
+  says little about the behaviour it protected.
+- `codenib guard install` adds SessionStart and Stop hooks for Claude Code and
+  Codex. Before the agent finishes, the hook hands back the tests its change
+  reaches; it reports each change once, returns before any graph work when the
+  turn changed nothing, and never fails the agent's turn.
+- Notes anchored to code: `codenib guard note add|list|confirm` keeps Markdown
+  notes in `.codenib/notes/`. The guard shows notes on changed code and flags
+  notes whose code changed.
+- Constructor edges for the guard's Python call graph: `C(...)` reaches C's own
+  or inherited `__init__` and `__new__`, including through aliases.
+- The packaged Wiki UI includes real guard cases at `/guard`. A deployment can
+  open on them with `home: "guard"` in its runtime configuration.
 
 ### Changed
 
@@ -78,34 +81,92 @@ All notable user-facing changes are recorded here. CodeNib follows
   recorded call, chosen from the call graph rather than from what a search
   retrieved. The semantic architecture sits behind "How the parts fit together",
   and a page's callers and calls behind a disclosure.
-
-### Added
-
-- The most important detail pages draw their longest recorded call path, labelled
-  as one selected path. No model chooses the arrows.
-
-- `codenib guard check` compares the working tree with a commit and lists the
-  tests that reach the changed definitions within three calls, each with its
-  call path and call lines. The graph is built from the commit's tracked files
-  and cached per commit. `--json` and `--exit-code` serve scripts and CI.
-  Existing tests that the change itself rewrote come first, with a command that
-  runs them as they were at the base commit, since an edited test that passes
-  says little about the behaviour it protected.
-- `codenib guard install` adds SessionStart and Stop hooks for Claude Code and
-  Codex. Before the agent finishes, the hook hands back the tests its change
-  reaches; it reports each change once and never fails the agent's turn.
-- Notes anchored to code: `codenib guard note add|list|confirm` keeps Markdown
-  notes in `.codenib/notes/`. The guard shows notes on changed code and flags
-  notes whose code changed.
-- Constructor edges for the guard's Python call graph: `C(...)` reaches C's own
-  or inherited `__init__` and `__new__`, including through aliases.
-- The packaged Wiki UI includes real guard cases at `/guard`. A deployment can
-  open on them with `home: "guard"` in its runtime configuration.
-
-### Changed
-
 - The opt-in first-party funnel collector accepts `install_command_copy`,
   `guard_case_view` and an opt-in, once-per-user `guard_first_run` event.
+- Graph builds spend less time outside the language indexers, and the stored
+  graph is unchanged. On CodeNib's own source, a Python build reads pyrefly's
+  report in 2.8 s instead of 14.0 s and converts it in 12.2 s instead of
+  28.7 s. For every SCIP language the occurrence index, and the Python, Go,
+  Rust and TypeScript graph decoders, read the parsed index instead of scanning
+  `index.decoded` again; protobuf's C encoder now writes that file. `graph.pkl`
+  stayed byte-identical on the five repositories measured, and a pyrefly
+  build's `lsp_index.pkl` shrinks (78.5 MB to 60.8 MB on CodeNib's source).
+- Turning a clangd index into a graph takes less than half as long, 2.6 s
+  instead of 6.6 s on redis, with a byte-identical `graph.pkl`.
+- The MCP server starts in a median 4.24 s instead of 7.69 s on a 1,000-file
+  Python repository. The regex index is built by the first regex search.
+- Rust graphs use rust-analyzer from the `nightly-2026-11-05` toolchain, which
+  `codenib toolchain install` installs; indexing tokio took 27.8 s instead of
+  33.2 s. Library items keep their names. Items in test, bench, example and
+  binary targets are named differently, and a definition's range no longer
+  starts at its doc comments and attributes. Rebuild a Rust graph with
+  `codenib index --rebuild` to pick these up.
+- For a Make or Autotools C/C++ project, CodeNib builds the compile database in
+  a copy of the checkout kept in its repository state (236 MB for redis);
+  CMake builds in the state directory. Uninitialized git submodules are no
+  longer fetched: their code stays out of the graph until you run
+  `git submodule update --init` yourself.
+- A failed JavaScript/TypeScript dependency install is recorded in CodeNib's
+  repository state and skipped for 24 hours while `package.json`, the lockfile,
+  the command and the Node and package-manager versions stay the same. Before,
+  it ran again on every build (about 45 s on preact). Set
+  `CODENIB_RETRY_FAILED_INSTALL=1` to retry sooner.
+- `dependency_subgraph` keeps its response under 36 KB, so MCP hosts with a
+  50,000-character tool-result limit receive it whole. The queried symbol's
+  direct callers and callees are kept first, and `response_projection` reports
+  the node and edge counts before and after.
+
+### Fixed
+
+- The first `codenib index` of a Make or Autotools C/C++ project no longer
+  throws its graph away with `symbol_graph stale` and exit 1. Generating the
+  compile database in the checkout added files that changed the source
+  fingerprint, and it ran `make clean`, `autoreconf -fi` and
+  `git submodule update --init` in the user's repository. CodeNib also stopped
+  writing bear's `compile_commands.json` into the checkout and deleting an
+  existing `compile_commands.json` or the editor's `.cache/clangd/index`.
+- Indexing a JavaScript or TypeScript project no longer writes into the
+  checkout. A project without a `tsconfig.json` or `jsconfig.json` gained a
+  `tsconfig.json`, an install without a lockfile created `package-lock.json`, a
+  fallback install could rewrite a tracked lockfile, and every successful
+  install left `.codenib_install_cache` in the project root. The first
+  `codenib index` then reported `symbol_graph stale` and exited 1. If the
+  installed dependencies shipped a `.d.ts` file, scip-typescript's inferred
+  config left JavaScript out and the build failed with "no files got indexed".
+  Such a project is now indexed through a config kept with the index, installs
+  never write a lockfile, and the install cache lives in CodeNib's repository
+  state. In a workspace without a root config, scip-typescript still writes a
+  `tsconfig.json` into each member package that has none.
+- C/C++ graphs keep the real path of a file whose path contains a space, `+`,
+  `#`, `%` or a non-ASCII character. clangd percent-encodes such paths, and
+  CodeNib stored `c%2B%2B/helper.cpp` for `c++/helper.cpp`, so those nodes
+  matched no source file. The native clangd fact query decodes them the same
+  way.
+- Incremental graph patches decode percent-escaped file URIs from the language
+  server, so edits to files whose paths contain spaces or non-ASCII characters
+  are patched.
+- On Windows, BM25 artifact verification no longer fails on files with CRLF
+  line endings or a changed creation time, the incremental LSP client reads its
+  language server's pipes, and the agent's Grep and Glob tools return
+  `/`-separated paths with a working ripgrep timeout.
+- The Wiki collection under the demo home now continues the dark stage above
+  it: the same edges at every width, the same two-line heading, and quieter
+  cards whose maps use each area's colour from the full map. On wide screens
+  it had kept the old full-width gutter. The server keeps each card's map after
+  the first visit, so the cards no longer sit blank while their maps compute.
+- On wide screens the demo home now stops at codenib.ai's width, centred, with
+  the header on the same edges, instead of stretching across the window. Its
+  headings use codenib.ai's two-line form. On both sites a wide example gives
+  the call path more room and the source a larger face, so short code no
+  longer leaves half the pane empty.
+- A refused Wiki submission now says why: the key was not accepted, has no
+  credit, is a management key, or OpenRouter could not be reached. A refused
+  key no longer uses up the one try per minute, other waits count down on the
+  form, and "Check saved attempt" appears only when the server may have
+  accepted the run. The server logs each refusal's reason, never the key.
+- A hosted server whose `PATH` lacks Node.js now reports that the Python
+  indexer cannot run, instead of starting it and recording a bare "index
+  failed". Failed indexing logs the indexer's exit status.
 
 ## [0.2.5] - 2026-11-04
 
