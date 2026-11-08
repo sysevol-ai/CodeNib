@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import bisect
 import json
+import logging
 import os
 import re
 import sys
@@ -50,6 +51,8 @@ _DEFINITION = 1
 _READ = 8
 _SIMPLE_NAME = re.compile(r"[A-Za-z0-9_$+\-]+")
 _DEF_KEYWORD = re.compile(rb"(?:async\s+)?(?:def|class)\s+")
+logger = logging.getLogger(__name__)
+
 _PREDICATES = frozenset(
     {
         "src.FileLines.1",
@@ -189,89 +192,217 @@ def _definition(file: str, kind: str, body: dict, span: dict) -> _Definition:
     )
 
 
+# A Glean report has one JSON file per module; parsing them dominated the
+# conversion (16 s of 24 s for 1,033 files). Large reports are parsed by worker
+# interpreters started as ``python -m codenib.scip_interface._glean_worker``.
+# Unlike multiprocessing they never import the caller's ``__main__`` (an
+# unguarded script would run again in every worker) and never fork a server's
+# threads. A worker that fails leaves its files to be parsed in-process.
+_PARALLEL_MIN_FILES = 64
+_MAX_GLEAN_WORKERS = 8
+_WORKERS_ENV = "CODENIB_GLEAN_WORKERS"
+
+
+def _glean_file_records(path: str) -> list[tuple]:
+    """Extract, in report order, the facts the converter reads from one file.
+
+    Each record is ``(kind, file, *payload)``. Names are already renamed for a
+    non-importable module, so merging the records of every file in name order
+    rebuilds exactly what a single sequential pass reads. Runs in a worker.
+    """
+
+    with open(path, "rb") as handle:
+        blocks = json.load(handle)
+    rename = _unknown_module_rename(blocks)
+    records: list[tuple] = []
+    definitions: list[_Definition] = []
+    for block in blocks:
+        predicate = block.get("predicate")
+        if predicate not in _PREDICATES:
+            continue
+        for fact in block.get("facts") or ():
+            key = fact["key"]
+            file = _key(key["file"])
+            if predicate == "src.FileLines.1":
+                records.append(("file", file))
+            elif predicate == "python.DefinitionLocation.4":
+                ((kind, body),) = key["definition"].items()
+                definition = _definition(file, kind, body, key["span"])
+                definitions.append(definition)
+                records.append(("definition", file, definition))
+            elif predicate == "python.DeclarationLocation.4":
+                ((kind, body),) = key["declaration"].items()
+                body = _key(body)
+                if kind == "imp":
+                    records.append(
+                        (
+                            "alias",
+                            file,
+                            rename(_key(body["as_name"])),
+                            _key(body["from_name"]),
+                        )
+                    )
+                elif kind in {"cls", "func"}:
+                    records.append(
+                        (
+                            "declaration",
+                            file,
+                            rename(_key(body["name"])),
+                            key["span"]["start"],
+                        )
+                    )
+            elif predicate == "python.FileCall.4":
+                labels = [
+                    (_key(argument["label"]), argument["span"]["start"])
+                    for argument in key.get("call_args") or ()
+                    if argument.get("label")
+                ]
+                if labels:
+                    first = min(
+                        argument["span"]["start"] for argument in key["call_args"]
+                    )
+                    records.append(
+                        ("call", file, (key["callee_span"]["start"], first, labels))
+                    )
+            else:
+                rows = []
+                for xref in key["xrefs"]:
+                    source = xref["source"]
+                    target = xref["target"]
+                    target_file = target.get("file")
+                    target_file = _key(target_file) if target_file else None
+                    name = _key(target["name"])
+                    rows.append(
+                        (
+                            source["start"],
+                            source["length"],
+                            (
+                                target_file,
+                                rename(name) if target_file == file else name,
+                            ),
+                        )
+                    )
+                records.append(("xrefs", file, rows))
+    if rename is not _same:
+        for definition in definitions:
+            definition.qname = rename(definition.qname)
+            if definition.container:
+                definition.container = rename(definition.container)
+    return records
+
+
+def _glean_workers(file_count: int) -> int:
+    configured = os.environ.get(_WORKERS_ENV, "").strip()
+    if configured:
+        return max(1, int(configured))
+    if file_count < _PARALLEL_MIN_FILES:
+        return 1
+    try:
+        available = len(os.sched_getaffinity(0))
+    except (AttributeError, OSError):  # not on Linux
+        available = os.cpu_count() or 1
+    return max(1, min(available, _MAX_GLEAN_WORKERS))
+
+
+def _map_glean_files(paths: list[str], workers: int) -> Iterable[list[tuple]]:
+    """The records of each file, in the order of *paths*."""
+
+    if workers <= 1 or len(paths) < 2:
+        yield from map(_glean_file_records, paths)
+        return
+    import pickle
+    import subprocess
+    import tempfile
+
+    size = -(-len(paths) // workers)
+    chunks = [paths[i : i + size] for i in range(0, len(paths), size)]
+    env = {**os.environ, "PYTHONPATH": os.pathsep.join(p for p in sys.path if p)}
+    with tempfile.TemporaryDirectory(prefix="codenib-glean-") as scratch:
+        jobs = []
+        for number, chunk in enumerate(chunks):
+            out = os.path.join(scratch, f"{number}.pickle")
+            try:
+                process = subprocess.Popen(
+                    [sys.executable, "-m", "codenib.scip_interface._glean_worker", out],
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
+                    env=env,
+                )
+            except OSError as exc:
+                logger.warning("Glean worker did not start: %s", exc)
+                process = None
+            jobs.append((chunk, out, process))
+        for chunk, _, process in jobs:
+            if process is None or process.stdin is None:
+                continue
+            try:
+                process.stdin.write(json.dumps(chunk).encode("utf-8"))
+                process.stdin.close()
+            except OSError:  # the worker exited before reading its files
+                pass
+        for chunk, out, process in jobs:
+            if process is None:
+                yield from map(_glean_file_records, chunk)
+                continue
+            error = process.stderr.read() if process.stderr else b""
+            if process.wait() == 0 and os.path.exists(out):
+                with open(out, "rb") as handle:
+                    # Written by our own worker for this call, never by a user.
+                    results = pickle.load(handle)  # noqa: S301
+                if len(results) == len(chunk):
+                    yield from results
+                    continue
+            logger.warning(
+                "Glean worker failed (%s); parsing its %d files in-process",
+                error.decode("utf-8", "replace").strip()[-300:] or process.returncode,
+                len(chunk),
+            )
+            yield from map(_glean_file_records, chunk)
+
+
 def read_glean_report(
     directory: str | Path,
     *,
     path_allowed: Optional[Callable[[str], bool]] = None,
+    workers: Optional[int] = None,
 ) -> GleanReport:
-    """Read the predicates the converter needs from every report file."""
+    """Read the predicates the converter needs from every report file.
 
+    Files are parsed in worker processes when there are many of them (see
+    ``CODENIB_GLEAN_WORKERS``); the result does not depend on the worker count.
+    """
+
+    paths = [
+        entry.path
+        for entry in sorted(os.scandir(directory), key=lambda item: item.name)
+        if entry.name.endswith(".json")
+    ]
+    if workers is None:
+        workers = _glean_workers(len(paths))
     report = GleanReport()
     allowed: dict[str, bool] = {}
-    for entry in sorted(os.scandir(directory), key=lambda item: item.name):
-        if not entry.name.endswith(".json"):
-            continue
-        with open(entry.path, "rb") as handle:
-            blocks = json.load(handle)
-        rename = _unknown_module_rename(blocks)
-        first_definition = len(report.definitions)
-        for block in blocks:
-            predicate = block.get("predicate")
-            if predicate not in _PREDICATES:
-                continue
-            for fact in block.get("facts") or ():
-                key = fact["key"]
-                file = _key(key["file"])
-                if path_allowed is not None:
-                    keep = allowed.get(file)
-                    if keep is None:
-                        keep = allowed[file] = bool(path_allowed(file))
-                    if not keep:
-                        continue
-                if predicate == "src.FileLines.1":
-                    report.files.add(file)
-                elif predicate == "python.DefinitionLocation.4":
-                    ((kind, body),) = key["definition"].items()
-                    report.definitions.append(
-                        _definition(file, kind, body, key["span"])
-                    )
-                elif predicate == "python.DeclarationLocation.4":
-                    ((kind, body),) = key["declaration"].items()
-                    body = _key(body)
-                    if kind == "imp":
-                        report.aliases[rename(_key(body["as_name"]))] = _key(
-                            body["from_name"]
-                        )
-                    elif kind in {"cls", "func"}:
-                        report.declaration_starts[
-                            (file, rename(_key(body["name"])))
-                        ].append(key["span"]["start"])
-                elif predicate == "python.FileCall.4":
-                    labels = [
-                        (_key(argument["label"]), argument["span"]["start"])
-                        for argument in key.get("call_args") or ()
-                        if argument.get("label")
-                    ]
-                    if labels:
-                        first = min(
-                            argument["span"]["start"] for argument in key["call_args"]
-                        )
-                        report.calls[file].append(
-                            (key["callee_span"]["start"], first, labels)
-                        )
-                else:
-                    rows = report.xrefs[file]
-                    for xref in key["xrefs"]:
-                        source = xref["source"]
-                        target = xref["target"]
-                        target_file = target.get("file")
-                        target_file = _key(target_file) if target_file else None
-                        name = _key(target["name"])
-                        rows.append(
-                            (
-                                source["start"],
-                                source["length"],
-                                (
-                                    target_file,
-                                    rename(name) if target_file == file else name,
-                                ),
-                            )
-                        )
-        if rename is not _same:
-            for definition in report.definitions[first_definition:]:
-                definition.qname = rename(definition.qname)
-                if definition.container:
-                    definition.container = rename(definition.container)
+    for records in _map_glean_files(paths, workers):
+        for record in records:
+            kind, file = record[0], record[1]
+            if path_allowed is not None:
+                keep = allowed.get(file)
+                if keep is None:
+                    keep = allowed[file] = bool(path_allowed(file))
+                if not keep:
+                    continue
+            if kind == "file":
+                report.files.add(file)
+            elif kind == "definition":
+                report.definitions.append(record[2])
+            elif kind == "alias":
+                report.aliases[record[2]] = record[3]
+            elif kind == "declaration":
+                report.declaration_starts[(file, record[2])].append(record[3])
+            elif kind == "call":
+                report.calls[file].append(record[2])
+            else:
+                report.xrefs[file].extend(record[2])
     return report
 
 

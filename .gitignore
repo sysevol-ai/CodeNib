@@ -63,6 +63,7 @@ web/*.tsbuildinfo
 !docs/assets/contextbench_development_summary.json
 !docs/assets/arb_smoke.json
 !docs/assets/arb_full.json
+!test/scip/fixtures/pyrefly_glean_small/*.json
 .env.local
 web_before
 qa_config.local.yaml
