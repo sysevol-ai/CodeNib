@@ -183,4 +183,3 @@ def test_bm25_artifact_fingerprints_crlf_content(tmp_path):
     fingerprints = bm25_artifact_file_fingerprints(root)
     assert fingerprints["documents.json"]["size"] == len(docs)
     assert fingerprints["bm25_metadata.json"]["size"] == len(meta)
-

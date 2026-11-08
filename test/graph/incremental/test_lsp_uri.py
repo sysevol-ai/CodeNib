@@ -82,3 +82,43 @@ def test_uri_to_relpath_non_file_and_empty():
     assert uri_to_relpath("", "/workspace/repo") is None
     assert decode_uri_to_relpath("", Path("/workspace/repo")) is None
     assert live_uri_to_relpath("", Path("/workspace/repo")) is None
+
+
+def test_uri_to_relpath_keeps_a_symlinked_directory_outside_the_root(tmp_path):
+    root = tmp_path / "repo"
+    outside = tmp_path / "shared"
+    outside.mkdir()
+    (outside / "module.py").write_text("VALUE = 1\n", encoding="utf-8")
+    root.mkdir()
+    try:
+        (root / "linked").symlink_to(outside, target_is_directory=True)
+    except OSError:
+        pytest.skip("symlinks are unavailable")
+
+    uri = (root / "linked" / "module.py").as_uri()
+
+    assert uri_to_relpath(uri, str(root)) == "linked/module.py"
+
+
+def test_uri_to_relpath_matches_a_symlinked_root(tmp_path):
+    real = tmp_path / "real"
+    (real / "pkg").mkdir(parents=True)
+    (real / "pkg" / "module.py").write_text("VALUE = 1\n", encoding="utf-8")
+    alias = tmp_path / "alias"
+    try:
+        alias.symlink_to(real, target_is_directory=True)
+    except OSError:
+        pytest.skip("symlinks are unavailable")
+
+    uri = (real / "pkg" / "module.py").as_uri()
+
+    assert uri_to_relpath(uri, str(alias)) == "pkg/module.py"
+
+
+def test_uri_to_relpath_normalizes_parent_segments(tmp_path):
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "module.py").write_text("VALUE = 1\n", encoding="utf-8")
+
+    uri = f"{tmp_path.as_uri()}/other/../pkg/module.py"
+
+    assert uri_to_relpath(uri, str(tmp_path)) == "pkg/module.py"
