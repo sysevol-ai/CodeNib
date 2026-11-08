@@ -10,7 +10,7 @@ import os
 import pickle
 import re
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import (
     TYPE_CHECKING,
@@ -80,6 +80,30 @@ class SCIPLocation:
     start_character: int
     end_line: int
     end_character: int
+
+
+def _fast_setstate(cls: type) -> None:
+    """Give a frozen slots dataclass a ``__setstate__`` without ``fields()``.
+
+    The generic one that ``dataclass`` installs calls ``fields()`` for every
+    object. An occurrence index holds hundreds of thousands of occurrences, and
+    unpickling it took most of MCP server start-up on a 1,000-file Python
+    graph. The pickled state, the field values in declaration order, is the
+    same, so files written before or after this change load either way.
+    """
+
+    names = tuple(field.name for field in fields(cls))
+    assign = object.__setattr__
+
+    def __setstate__(self: object, state: Sequence[object]) -> None:
+        for name, value in zip(names, state):
+            assign(self, name, value)
+
+    cls.__setstate__ = __setstate__  # type: ignore[attr-defined]
+
+
+_fast_setstate(SCIPOccurrence)
+_fast_setstate(SCIPLocation)
 
 
 class SCIPOccurrenceIndex:

@@ -66,6 +66,37 @@ _VIEW_DEPENDENCIES = {
 }
 
 
+class _LazyRegexIndex:
+    """The regex index of a loaded symbol graph, built on first use.
+
+    Only ``search_regex`` reads it, and building it took about a third of server
+    start-up on a 1,000-file Python graph. The view counts as loaded as soon as
+    the graph is; the index is built once, under a lock, by the first search.
+    """
+
+    def __init__(self, graph: "CodeGraph") -> None:
+        self._graph = graph
+        self._index: Optional["RegexNodeIndex"] = None
+        self._lock = RLock()
+
+    @property
+    def built(self) -> bool:
+        return self._index is not None
+
+    def _built_index(self) -> "RegexNodeIndex":
+        with self._lock:
+            if self._index is None:
+                from ..index.regex_idx import RegexNodeIndex
+
+                self._index = RegexNodeIndex(self._graph)
+                logger.info("Built RegexNodeIndex (%d nodes)", len(self._index.nodes))
+            return self._index
+
+    def __getattr__(self, name: str) -> Any:
+        # Reached only for attributes this wrapper lacks: the index's own.
+        return getattr(self._built_index(), name)
+
+
 class IndexedQueryError(RuntimeError):
     """An indexed-query rejection with explicit, client-safe recovery text.
 
@@ -315,7 +346,7 @@ class ServerContext:
     manifest: RepoManifest
     symbol_graph: Optional[CodeGraph] = None
     bm25: Optional[BM25CodeIndexer] = None
-    regex_index: Optional[RegexNodeIndex] = None
+    regex_index: Optional[RegexNodeIndex | _LazyRegexIndex] = None
     zoekt: Optional[ZoektSearcher] = None
     vector: Optional[CodeVectorStore] = None
     lsp_provider: Optional[Any] = field(default=None, repr=False)
@@ -1159,17 +1190,13 @@ class ServerContext:
             logger.warning("Failed to load BM25 index: %s", exc)
 
     def _load_regex_index(self) -> None:
-        """Regex index piggybacks on symbol_graph; no separate manifest entry."""
+        """Regex index piggybacks on symbol_graph; no separate manifest entry.
+
+        The index itself is built by the first regex search (``_LazyRegexIndex``).
+        """
         if self.symbol_graph is None:
             return
-        try:
-            from ..index.regex_idx import RegexNodeIndex
-
-            self.regex_index = RegexNodeIndex(self.symbol_graph)
-            logger.info("Built RegexNodeIndex (%d nodes)", len(self.regex_index.nodes))
-        except Exception as exc:
-            self.errors["regex_index"] = str(exc)
-            logger.warning("Failed to build RegexNodeIndex: %s", exc)
+        self.regex_index = _LazyRegexIndex(self.symbol_graph)
 
     def _load_zoekt(self) -> None:
         """Spawn a ``zoekt-webserver`` against the indexed shard directory.
