@@ -39,6 +39,24 @@ from .scip_decode_view import (
 )
 from .scip_indexer_base import extract_scip_blocks
 
+# rust-analyzer starts each moniker's descriptors with the Cargo target since
+# 2026-10 (rust-lang/rust-analyzer f074879df): "lib/", "proc-macro/" or
+# "custom-build/", of which a package has one each, or "bin/", "example/",
+# "test/" or "bench/" followed by the target name. Dropping the first three
+# keeps library names as they were; named targets stay distinct, which they
+# were not before. "proc-macro" and "custom-build" cannot be module names; a
+# root module named "lib" (possible only in a non-library target) read from an
+# older rust-analyzer's index loses its prefix too.
+_SINGLE_TARGET_PREFIXES = ("lib/", "proc-macro/", "custom-build/")
+
+
+def _drop_single_target(descriptors):
+    """Drop a leading single-target descriptor (see _SINGLE_TARGET_PREFIXES)."""
+    for prefix in _SINGLE_TARGET_PREFIXES:
+        if descriptors.startswith(prefix):
+            return descriptors[len(prefix) :]
+    return descriptors
+
 
 class SCIPRustGraphDecoder:
     """
@@ -426,6 +444,10 @@ class SCIPRustGraphDecoder:
           -> nu-cli/Options
         - rust-analyzer cargo nu-cli 0.93.1 Options#area().
           -> nu-cli/Options#area
+        - rust-analyzer cargo nu-cli 0.93.1 lib/commands/main().
+          -> nu-cli/commands/main
+        - rust-analyzer cargo nu-cli 0.93.1 bin/nu/main().
+          -> nu-cli/bin/nu/main
 
         Args:
             symbol: Original symbol name from SCIP
@@ -446,7 +468,7 @@ class SCIPRustGraphDecoder:
         # Extract crate name for scoping
         crate_prefix = parts[2] if parts[1] == "cargo" else None
 
-        symbol_part = parts[4].rstrip(".")
+        symbol_part = _drop_single_target(parts[4]).rstrip(".")
 
         # Clean up trailing markers
         unified = symbol_part.rstrip("#/()")

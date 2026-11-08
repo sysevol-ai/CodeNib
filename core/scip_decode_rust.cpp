@@ -12,6 +12,7 @@
 #include <fstream>
 #include <re2/re2.h>
 #include <sstream>
+#include <string_view>
 #include <system_error>
 
 namespace codenib::core {
@@ -496,6 +497,21 @@ void SCIPRustDecoder::load_metadata() {
                        std::move(crates));
 }
 
+// Mirrors scip_decode_rust._drop_single_target: rust-analyzer starts each
+// moniker's descriptors with the Cargo target since 2026-10 ("lib/",
+// "proc-macro/", "custom-build/", or "bin/" etc. followed by the target name).
+// Dropping the single-target prefixes keeps library names as they were.
+static std::string drop_single_target(const std::string &descriptors) {
+  static const char *const prefixes[] = {"lib/", "proc-macro/",
+                                         "custom-build/"};
+  for (const char *prefix : prefixes) {
+    const std::string_view view(prefix);
+    if (descriptors.compare(0, view.size(), view) == 0)
+      return descriptors.substr(view.size());
+  }
+  return descriptors;
+}
+
 std::string SCIPRustDecoder::unify_symbol_name(const std::string &symbol) {
   // Split into at most 5 parts — the symbol_path may contain spaces inside
   // generic angle brackets, so we keep parts[4] intact.
@@ -505,7 +521,7 @@ std::string SCIPRustDecoder::unify_symbol_name(const std::string &symbol) {
   std::string crate_prefix;
   if (parts[1] == "cargo")
     crate_prefix = parts[2];
-  std::string symbol_part = rstrip_chars(parts[4], ".");
+  std::string symbol_part = rstrip_chars(drop_single_target(parts[4]), ".");
   std::string unified = rstrip_chars(symbol_part, "#/()");
   if (!crate_prefix.empty())
     unified = crate_prefix + "/" + unified;
