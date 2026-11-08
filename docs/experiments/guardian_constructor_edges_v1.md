@@ -10,9 +10,11 @@ Adding approximate constructor-reference edges lets the static guardian flag
 a broken test in 35 of 68 historical agent regressions (51%) within three
 calls, up from 32 (47%). On the 35 clean patches the median remains 3 flagged
 tests and the 90th percentile remains 365, although four individual flag sets
-grow. This meets the original gain/cost rule; **product promotion remains on
-hold until constructor resolution is validated against Python's method
-resolution order (MRO)**.
+grow. This meets the original gain/cost rule. **The change guard
+([#984](https://github.com/sysevol-ai/CodeNib/pull/984)) now adds these edges to
+its in-memory Python call graph with the same depth-first lookup**, so the
+lookup limit below applies to it. Persisted graphs are unchanged, and the
+lookup has not been validated against Python's method resolution order (MRO).
 
 The archived protocol and summary retain their original recommendation to add
 the edges. Review found that the archived depth-first lookup can select a
@@ -73,8 +75,9 @@ Against the decision rule:
 The archived rule's outcome is to add constructor edges to the graph. It is a
 decision under this experiment's approximate resolver, not validation of
 runtime constructor identity. No previously caught case was lost, since the
-edges only add paths. A corrected resolver needs separate validation before
-product promotion, without replacing this frozen run.
+edges only add paths. The guard adopted the resolver as measured here; a
+resolver that follows C3 MRO needs its own validation, without replacing this
+frozen run.
 
 ## Which cases it caught
 
@@ -105,11 +108,12 @@ tests. They grew on 17 of the 68 cases, by a median of 225 tests among those
 
 ## What this means
 
-- **Validate resolution before adding product edges.** The experiment adds
+- **Validate the resolution the guard now uses.** The experiment adds
   about 10% more reference edges. At the primary depth, the control median
   and 90th percentile are unchanged, but four of 35 controls flag more tests.
-  Validate a resolver against C3 MRO and ambiguous or unsupported constructor
-  cases before promoting it to graph construction.
+  The guard's lookup is still the depth-first approximation; validate a
+  resolver against C3 MRO and ambiguous or unsupported constructor cases
+  before adding the edges to persisted graphs.
 - **Static impact still misses these regressions.** The remaining misses are
   framework calls by name and operators. The next step is the coverage check
   in [#975](https://github.com/sysevol-ai/CodeNib/issues/975).
