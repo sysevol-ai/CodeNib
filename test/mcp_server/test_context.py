@@ -1397,7 +1397,44 @@ def test_regex_index_built_when_graph_available(manifest_dir: Path) -> None:
 
     assert ctx.symbol_graph is mock_graph
     assert ctx.regex_index is not None
+    # The view is available at once, but the index waits for its first use.
+    assert "regex_index" in ctx.loaded_views
+    assert ctx.regex_index.built is False
     assert len(ctx.regex_index.nodes) == 1
+    assert ctx.regex_index.built is True
+
+
+def test_lazy_regex_index_is_built_once_under_concurrent_searches() -> None:
+    import threading
+    import time
+
+    from codenib.mcp.context import _LazyRegexIndex
+
+    built = []
+
+    class SlowIndex:
+        def __init__(self, graph):
+            built.append(graph)
+            time.sleep(0.05)  # widen the window in which a second build could start
+            self.nodes = ["n"]
+
+        def search(self, pattern):
+            return [pattern]
+
+    graph = object()
+    lazy = _LazyRegexIndex(graph)
+    results = []
+    with patch("codenib.index.regex_idx.RegexNodeIndex", SlowIndex):
+        threads = [
+            threading.Thread(target=lambda: results.append(lazy.search("x")))
+            for _ in range(8)
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+    assert built == [graph]
+    assert results == [["x"]] * 8
 
 
 # ------------------------------------------------------------------

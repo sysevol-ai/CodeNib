@@ -222,3 +222,35 @@ def test_protobuf_positions_preserve_text_queries_and_serialized_rows(
     assert pickle.loads((tmp_path / "text.pkl").read_bytes()) == pickle.loads(
         (tmp_path / "proto.pkl").read_bytes()
     )
+
+
+def test_occurrences_unpickle_without_dataclass_fields(monkeypatch):
+    import dataclasses
+    import pickle
+
+    from codenib.scip_interface.lsp_occurrence_index import SCIPLocation, SCIPOccurrence
+
+    occurrence = SCIPOccurrence("a.py", 1, 2, 1, 5, "sym", 1)
+    location = SCIPLocation("a.py", 1, 2, 1, 5)
+    data = pickle.dumps([occurrence, location])
+    # Start-up loads hundreds of thousands of occurrences; the generic setstate
+    # called fields() for each one.
+    monkeypatch.setattr(
+        dataclasses, "fields", lambda *_: (_ for _ in ()).throw(AssertionError)
+    )
+    assert pickle.loads(data) == [occurrence, location]
+
+
+def test_occurrences_pickled_with_the_generic_state_still_load():
+    import dataclasses
+    import pickle
+
+    from codenib.scip_interface.lsp_occurrence_index import SCIPOccurrence
+
+    # The state that dataclasses' own __getstate__ writes, as older files hold.
+    occurrence = SCIPOccurrence("a.py", 3, 0, 4, 1, "sym", 0)
+    state = [getattr(occurrence, f.name) for f in dataclasses.fields(SCIPOccurrence)]
+    assert state == occurrence.__getstate__()
+    restored = SCIPOccurrence.__new__(SCIPOccurrence)
+    restored.__setstate__(state)
+    assert restored == occurrence and pickle.loads(pickle.dumps(restored)) == occurrence
