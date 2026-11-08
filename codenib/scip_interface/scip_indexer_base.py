@@ -14,7 +14,7 @@ import re
 import subprocess
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import TYPE_CHECKING, List, Optional, Union
+from typing import TYPE_CHECKING, Callable, List, Optional, Union
 
 from ..log_utils import get_logger
 from ..paths import temp_state_dir
@@ -701,10 +701,23 @@ class SCIPIndexerBase(ABC):
         if not self._target_dir and not self.exclude_patterns:
             return graph
 
+        # Thousands of symbols share each file path, and every check
+        # re-normalizes all exclude patterns: remember each answer for this pass.
+        answers: dict[tuple[str, bool], bool] = {}
+
+        def path_allowed(path: str, allow_target_ancestor: bool = False) -> bool:
+            key = (path, allow_target_ancestor)
+            answer = answers.get(key)
+            if answer is None:
+                answer = answers[key] = self._path_allowed(
+                    path, allow_target_ancestor=allow_target_ancestor
+                )
+            return answer
+
         keep = [
             vertex.index
             for vertex in graph.graph.vs
-            if self._keep_vertex(vertex.attributes())
+            if self._keep_vertex(vertex.attributes(), path_allowed)
         ]
         if len(keep) == graph.graph.vcount():
             return graph
@@ -723,16 +736,21 @@ class SCIPIndexerBase(ABC):
         graph._invalidate_edge_index()
         return graph
 
-    def _keep_vertex(self, attrs: dict) -> bool:
+    def _keep_vertex(
+        self,
+        attrs: dict,
+        path_allowed: Optional[Callable[..., bool]] = None,
+    ) -> bool:
+        allowed = path_allowed or self._path_allowed
         node_type = attrs.get("type")
         name = attrs.get("name")
         if node_type == "root" or name == ROOT_NODE:
             return True
         if node_type in {NODE_TYPE_DIRECTORY, NODE_TYPE_FILE}:
-            return self._path_allowed(str(name), allow_target_ancestor=True)
+            return allowed(str(name), allow_target_ancestor=True)
         if is_symbol_node(node_type):
             path = definition_path(attrs) or attrs.get("file")
-            return bool(path and self._path_allowed(str(path)))
+            return bool(path and allowed(str(path)))
         return True
 
     def _path_allowed(self, path: str, *, allow_target_ancestor: bool = False) -> bool:
