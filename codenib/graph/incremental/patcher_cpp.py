@@ -277,14 +277,18 @@ class PatcherCpp(PatcherBase):
             return None
 
         from codenib.ls_index.clangd_indexer import ClangdIndexer
+        from codenib.ls_index.index_quality import (
+            prepare_compilation_database_for_indexing,
+        )
 
+        indexer = ClangdIndexer(project_root=str(self.project_root))
         comp_db = None
         for candidate in [
             Path(self.project_root) / "compile_commands.json",
             Path(self.project_root) / "build" / "compile_commands.json",
             # bear writes into CodeNib state, not the checkout, so an earlier
             # auto-generation below is found here rather than at the root.
-            ClangdIndexer(project_root=str(self.project_root)).bear_compdb_path,
+            indexer.bear_compdb_path,
         ]:
             # Skip empty/trivial files (bare "[]" is ~3 bytes)
             if candidate.exists() and candidate.stat().st_size > 4:
@@ -304,13 +308,19 @@ class PatcherCpp(PatcherBase):
                 "No compile_commands.json — calling ClangdIndexer's "
                 "auto-generate (cmake / bear -- make) to produce one"
             )
-            indexer = ClangdIndexer(project_root=str(self.project_root))
             generated = indexer._auto_generate_compdb()
             if generated is None or not indexer._is_valid_compdb(generated):
                 logger.warning("Auto-generate compile_commands failed")
                 return None
             comp_db = generated
             logger.info(f"Auto-generated compile_commands at {comp_db}")
+        if comp_db.name != "compile_commands.json":
+            # clangd reads only <dir>/compile_commands.json from
+            # --compile-commands-dir; CodeNib's own databases carry other
+            # names, so hand clangd a prepared copy under that name in state.
+            comp_db, _ = prepare_compilation_database_for_indexing(
+                comp_db, indexer.output_dir / "compile_commands.json"
+            )
 
         candidates = [
             Path(self.project_root) / ".cache" / "clangd" / "index",
@@ -334,7 +344,6 @@ class PatcherCpp(PatcherBase):
             logger.info(
                 f"[patcher_cpp DEBUG] before ClangdIndexer: {cache_path} has {n_before} .idx"
             )
-            indexer = ClangdIndexer(project_root=str(self.project_root))
             success = indexer.generate_index(compdb_path=str(comp_db))
             n_after = len(list(cache_path.glob("*.idx"))) if cache_path.exists() else 0
             logger.info(

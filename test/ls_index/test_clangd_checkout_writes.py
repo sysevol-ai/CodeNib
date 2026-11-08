@@ -262,5 +262,38 @@ def test_incremental_patcher_finds_the_state_database(project, tmp_path, monkeyp
 
     patcher = patcher_cpp.PatcherCpp(str(project), CodeGraph(str(project)))
     assert patcher._reindex_changed_files(["src/unit_0.c"]) is None
-    assert used == [str(bear_db)]
+    # clangd reads <dir>/compile_commands.json only, so the patcher hands it
+    # a prepared copy of the state database under that name.
+    prepared = bear_db.parent / "compile_commands.json"
+    assert used == [str(prepared)]
+    assert json.loads(prepared.read_text()) == json.loads(bear_db.read_text())
     assert not (project / "compile_commands.json").exists()
+
+
+def test_incremental_patcher_feeds_clangd_a_generated_database(
+    project, tmp_path, monkeypatch
+):
+    from codenib.graph.code_graph import CodeGraph
+    from codenib.graph.incremental import patcher_cpp
+
+    monkeypatch.setenv("CODENIB_TEMP_DIR", str(tmp_path / "state-root"))
+    state = ClangdIndexer(project).output_dir
+    snapshot = state / "compile_commands.root-parallel.json"
+
+    def auto_generate(self):
+        _write_compdb(snapshot, _sources(project))
+        return snapshot
+
+    used = []
+    monkeypatch.setattr(patcher_cpp.shutil, "which", lambda _name: "/usr/bin/clangd")
+    monkeypatch.setattr(ClangdIndexer, "_auto_generate_compdb", auto_generate)
+    monkeypatch.setattr(
+        ClangdIndexer,
+        "generate_index",
+        lambda self, compdb_path=None, **_kwargs: used.append(compdb_path) or False,
+    )
+
+    patcher = patcher_cpp.PatcherCpp(str(project), CodeGraph(str(project)))
+    assert patcher._reindex_changed_files(["src/unit_0.c"]) is None
+    assert used == [str(state / "compile_commands.json")]
+    assert compilation_database_entry_count(state / "compile_commands.json") == 10
