@@ -13,6 +13,15 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 ### Changed
 
+- Generating a Wiki for your own repository now uses the new Wiki's map and
+  workspace. The form page draws the repository's folders from its source check.
+  While the Wiki is written, chapters appear on the map once planned, the one
+  being written turns, and each fills in when it passes its source checks, ready
+  to open. The reader lists every step with what the server reported, folds into
+  one line once a chapter is open, and stops all motion when progress stalls.
+- Generating a Wiki no longer has a 50,000 code-chunk limit. Source is found with
+  grep and Jev, not a chunk index, so only the download, size and file-count
+  limits apply.
 - The codenib.ai homepage no longer repeats one layout. The example fills the
   page with its questions above it, the repository form is a short narrow band,
   and the agent setup is one wide terminal that replays a recorded session line

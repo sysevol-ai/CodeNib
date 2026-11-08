@@ -4,20 +4,22 @@
 import Header from "@/components/Header";
 import RepositoryEntry from "@/components/RepositoryEntry";
 import { AppLink } from "@/lib/router";
+import "@/components/WikiRun.css";
 
 export default function AddRepo() {
   return (
-    <div className="landing">
+    <>
       <Header />
-      <main className="hero">
-        <AppLink href="/wikis">← Ready Wikis</AppLink>
+      <main className="repository-route own-add">
         <h1>Start with a GitHub URL</h1>
-        <p className="hero-sub">
-          Generate a source-linked Repo Wiki from a public repository. Review
-          the hosted limits before connecting your OpenRouter account.
+        <p>
+          Generate a source-linked Repo Wiki from a public repository. Its size
+          and languages are checked, and its folders drawn as a map, before you
+          connect your OpenRouter account.
         </p>
         <RepositoryEntry />
+        <AppLink className="own-back" href="/wikis">← Ready Wikis</AppLink>
       </main>
-    </div>
+    </>
   );
 }

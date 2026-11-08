@@ -76,20 +76,34 @@ prepared examples. Saved architecture contracts render directly, without image
 generation, source re-download or another model call. These source-only Wikis
 still do not have the compiler-indexed dependency maps of prepared examples.
 
-Submitting immediately shows that the account and repository are being checked.
-The generation page shows actual stages, the current chapter, completed
-chapters and reported spending. Chapters become readable as they are saved.
-Activity lives inside the reading area and becomes compact once a chapter is
-available; detailed timing and recent events expand on demand. Stream receipt
-distinguishes waiting for a model from receiving its response. Only counts leave
-the provider adapter: draft prose and model reasoning are never published.
+While a Wiki is written, its map is the progress. The form page already
+draws the repository's folders from the source check, sized by how many code
+files each holds. After you start, the saved Wiki opens in the same workspace
+as a prepared one: the page list, the map and the reader. The folders stay on
+the map while the snapshot is read; once the chapters are planned they take
+the folders' place as open rings in their own colours. The chapter being written
+has an arc turning round its ring, and each chapter fills in when it passes
+its source checks, so it can be opened at once. While the Overview is written,
+a light passes over every chapter, because it covers them all. When the run
+finishes, the references recorded in the code index draw in between chapters.
+The page list uses the same marks.
+
+The reader shows the run as a list of steps with the facts the server reported:
+when each step started, how many code files were read, what the code index
+produced (or why there is none), how long each chapter took, and which chapter
+is being written. Once a chapter is open, the run folds into one line above it
+and expands on demand. The folder counts come from file names when the snapshot
+is read; no file contents are shown. Stream receipt distinguishes waiting for a
+model from receiving its response. Only counts leave the provider adapter: draft
+prose and model reasoning are never published.
 Elapsed-step, last-progress and server-connection times remain separate.
 After 45 seconds without progress it explains the wait; after 180 seconds
-(or a server-reported stall) it stops the activity animation and reports missing
-progress without claiming the worker has stopped. A failed status request has
-a separate reconnecting state. Successful polling is not worker progress.
-The animation respects reduced-motion preferences. Step times come from actual
-stage events, not cost updates, and no completion estimate is invented.
+(or a server-reported stall) every turning mark stops and the page reports
+missing progress without claiming the worker has stopped. A failed status
+request has a separate reconnecting state. Successful polling is not worker
+progress. Reduced-motion preferences keep the marks still, with state shown by
+the rings alone. Step times come from actual stage events, not cost updates,
+and no completion estimate is invented.
 Reloading or closing the tab does not cancel the server run.
 A stop request takes effect at the next safe boundary; a provider request
 already in flight may finish and incur a charge. Resuming requires the owner
@@ -113,9 +127,10 @@ graph projections; it never downloads source, indexes code or calls a model.
 The result page explains that My Wikis and Community are separate and shows a
 publication invitation once generation completes. Unlisted cards in My Wikis
 also point to this action. The owner can choose **Remove from Community** while
-preserving the read link, or **Generate a new version** from the result header.
+preserving the read link, or **Generate a new version** from the page list.
 Publication and browsing never start model calls. Older results are not listed
-automatically. Generation details collapse once the Wiki is ready. The owner browser stores only
+automatically. Once the Wiki is ready, how it was made folds into one line above
+the chapter. The owner browser stores only
 recent attempt IDs and a separate recovery token; the share link does not
 contain that token. Clearing browser storage loses resume/stop access, but
 the saved read link still works. There is no account recovery in this version.
@@ -163,7 +178,9 @@ no saved-attempt allocation until GitHub confirms a public repository and
 immutable commit. Nonexistent and private repositories consume no slots. There is
 no generic storage/job backend. Limits are 20 MiB compressed,
 40 MiB of retained files and 4,000 files (including skipped files), with at most
-8,000 archive entries including directories and 50,000 analyzed code sections.
+8,000 archive entries including directories. There is no separate limit on how
+much code is analyzed: CodeNib parses definitions only to name the outline's
+symbols, and finds source with grep and Jev rather than a chunk index.
 Files larger than 4 MiB are skipped
 without decompression; the saved Wiki lists their paths and sizes so readers
 can see what was excluded. Remaining source files continue through generation.
@@ -176,8 +193,8 @@ The landing entry and generation form show these limits before submission.
 constants and language registry used for generation. The generation form first
 calls `GET /api/visitor-wikis/check?repository=owner/repo`, without an inference
 key or owner token. This checks an actual immutable default-branch archive
-through the generation source preparation path, including skipped files,
-supported languages and analyzed code sections. It neither runs the indexer
+through the generation source preparation path, including skipped files
+and supported languages. It neither runs the indexer
 nor creates a saved attempt or calls a model. Rejections identify the failed
 limit and offer local generation; the key input and Generate Wiki button stay
 disabled until a check succeeds. Checks share the two source slots with

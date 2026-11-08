@@ -274,7 +274,7 @@ try {
       .waitFor();
     await page.getByText("Saved in My Wikis.", { exact: false }).waitFor();
     assert.equal(
-      await page.locator(".wiki-progress").getAttribute("open"),
+      await page.locator(".run-strip").getAttribute("open"),
       null,
     );
     await page

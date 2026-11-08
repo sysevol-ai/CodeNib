@@ -32,7 +32,6 @@ export default function WikiRepositoryRules({ limits }: { limits?: WikiGeneratio
             <li>Retained files: up to {mebibytes(policy.max_source_bytes)} in total.</li>
             <li>Up to {policy.max_files.toLocaleString()} files, including skipped files; {policy.max_archive_entries.toLocaleString()} archive entries including directories.</li>
             <li>Files larger than {mebibytes(policy.max_file_bytes)} are skipped and listed in the result.</li>
-            <li>Source analysis: up to {policy.max_chunks.toLocaleString()} code sections.</li>
           </ul>
           <p>Wiki source languages: {policy.source_languages.join(", ")}. System Map and CodeGraph currently cover {policy.graph_languages.join(", ")} source only; indexing can time out or find no relationships between chapters.</p>
         </>

@@ -1,9 +1,10 @@
 // SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
 import type { WikiAreaLink } from "@/lib/api";
+import type { WikiPageState } from "@/lib/visitorWiki";
 import { labelLines, neighborhood, type WikiGraph, type WikiGraphEdge, type WikiGraphNode } from "@/lib/wikiGraph";
 import "./WikiGraphPane.css";
 
@@ -132,6 +133,14 @@ export default function WikiGraphPane({
   embedded = false,
   header,
   idle,
+  states,
+  arrived,
+  describe,
+  readonly = false,
+  live = false,
+  still = false,
+  surveying = false,
+  legend,
 }: {
   graph: WikiGraph;
   activeId: string;
@@ -148,6 +157,22 @@ export default function WikiGraphPane({
   header?: ReactNode;
   /** What the status line says when nothing is under the pointer. */
   idle?: { title: string; detail: string };
+  /** A Wiki being written: each page is planned, being written, ready or withheld. */
+  states?: Record<string, WikiPageState>;
+  /** Pages that became ready while this map was open; each blooms once. */
+  arrived?: ReadonlySet<string>;
+  /** What the status line says about a node under the pointer. */
+  describe?: (node: WikiGraphNode) => { title: string; detail: string } | null;
+  /** A picture of the source: nothing to open, so nodes are not links. */
+  readonly?: boolean;
+  /** Nodes fade in as they first appear, and references draw in once. */
+  live?: boolean;
+  /** The run has gone quiet: running marks stop moving. */
+  still?: boolean;
+  /** A page that is not a node (the Overview) is being written about all of them. */
+  surveying?: boolean;
+  /** Replaces the line-style legend. */
+  legend?: ReactNode;
 }) {
   const paneRef = useRef<HTMLElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -226,12 +251,13 @@ export default function WikiGraphPane({
   const labels = useMemo(() => {
     if (!view || !points.size) return [];
     return placeLabels(graph.nodes, points, view, center, size.width, (node) => {
-      if (node.id === hoverNode || node.id === activeId) return 4;
+      // The chapter being written keeps its name, so the reader can follow it.
+      if (node.id === hoverNode || node.id === activeId || states?.[node.id] === "running") return 4;
       if (node.kind === "area") return 3;
       if (near.has(node.id)) return 2;
       return view.k >= 1.7 ? 1 : 0;
     });
-  }, [graph, points, view, center, size.width, hoverNode, activeId, near]);
+  }, [graph, points, view, center, size.width, hoverNode, activeId, near, states]);
 
   const status = useMemo(() => {
     if (hoverEdge?.link) {
@@ -245,15 +271,15 @@ export default function WikiGraphPane({
       };
     }
     const node = hoverNode ? byId.get(hoverNode) : null;
-    if (node) return { title: node.title, detail: "Click to read this page" };
+    if (node) return describe?.(node) ?? { title: node.title, detail: "Click to read this page" };
     return idle ?? null;
-  }, [hoverEdge, hoverNode, byId, idle]);
+  }, [hoverEdge, hoverNode, byId, idle, describe]);
 
   return (
     <section
       className={`wiki-graph${graph.edges.filter((edge) => edge.kind === "references").length > 30 ? " is-dense" : ""}${
         embedded ? " is-embedded" : ""
-      }`}
+      }${live ? " is-live" : ""}${readonly ? " is-readonly" : ""}${still ? " is-still" : ""}${surveying ? " is-surveying" : ""}`}
       ref={paneRef}
       aria-label="Map of this Wiki"
     >
@@ -299,7 +325,7 @@ export default function WikiGraphPane({
               const pa = points.get(edge.source);
               const pb = points.get(edge.target);
               if (!a || !b || !pa || !pb) return null;
-              const hot = edge === hoverEdge || edge.source === activeId || edge.target === activeId;
+              const hot = edge === hoverEdge || (!readonly && (edge.source === activeId || edge.target === activeId));
               const isReference = edge.kind === "references";
               const d = edgePath(pa, pb, a.radius, b.radius, isReference);
               return (
@@ -309,6 +335,7 @@ export default function WikiGraphPane({
                     className="wg-edge-line"
                     strokeWidth={isReference ? referenceWidth(edge.link) : 1}
                     markerEnd={isReference ? `url(#wg-arrow${hot ? "-hot" : ""})` : undefined}
+                    pathLength={live && isReference ? 1 : undefined}
                   />
                   {isReference && (
                     <path
@@ -324,26 +351,31 @@ export default function WikiGraphPane({
                 </g>
               );
             })}
-            {graph.nodes.map((node) => {
-              const active = node.id === activeId;
+            {graph.nodes.map((node, index) => {
+              const active = !readonly && node.id === activeId;
               const point = points.get(node.id);
               if (!point) return null;
+              const state = states?.[node.id];
+              const style = { "--node": node.color, "--i": index } as CSSProperties;
               return (
                 <g
                   key={node.id}
-                  className={`wg-node is-${node.kind}${active ? " is-active" : ""}${near.has(node.id) ? " is-near" : ""}`}
+                  className={`wg-node is-${node.kind}${active ? " is-active" : ""}${near.has(node.id) ? " is-near" : ""}${
+                    state ? ` is-${state}` : ""
+                  }${arrived?.has(node.id) ? " is-arrived" : ""}`}
+                  style={style}
                   transform={`translate(${point.x} ${point.y})`}
-                  role="link"
-                  tabIndex={0}
-                  aria-label={node.title}
+                  role={readonly ? undefined : "link"}
+                  tabIndex={readonly ? undefined : 0}
+                  aria-label={readonly ? undefined : node.title}
                   aria-current={active ? "page" : undefined}
                   onPointerEnter={() => setHoverNode(node.id)}
                   onPointerLeave={() => setHoverNode(null)}
                   onClick={() => {
-                    if (!drag.current?.moved) onPick(node.id);
+                    if (!readonly && !drag.current?.moved) onPick(node.id);
                   }}
                   onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
+                    if (!readonly && (event.key === "Enter" || event.key === " ")) {
                       event.preventDefault();
                       onPick(node.id);
                     }
@@ -351,6 +383,12 @@ export default function WikiGraphPane({
                 >
                   {/* A hit area larger than the mark. */}
                   <circle r={Math.max(node.radius + 6, 12)} className="wg-node-hit" />
+                  {state === "running" && (
+                    <>
+                      <circle r={node.radius + 11} className="wg-node-halo" />
+                      <circle r={node.radius + 5} className="wg-node-orbit" pathLength={100} />
+                    </>
+                  )}
                   {active && <circle r={node.radius + 5} className="wg-node-ring" />}
                   <circle r={node.radius} fill={node.color} className="wg-node-mark" />
                 </g>
@@ -367,7 +405,9 @@ export default function WikiGraphPane({
                   textAnchor={label.anchor}
                   fontSize={11.5 / view.k}
                   strokeWidth={4 / view.k}
-                  className={`wg-label${near.has(label.id) ? " is-near" : ""}${label.id === activeId ? " is-active" : ""}`}
+                  className={`wg-label${near.has(label.id) ? " is-near" : ""}${label.id === activeId && !readonly ? " is-active" : ""}${
+                    states?.[label.id] ? ` is-${states[label.id]}` : ""
+                  }`}
                 >
                   {label.lines.map((line, index) => (
                     <tspan key={index} x={x} dy={index ? LABEL_LINE_PX / view.k : 0}>
@@ -403,6 +443,7 @@ export default function WikiGraphPane({
             <span>{embedded ? "Click a page to read it" : "Drag to pan · Scroll to zoom · Click a page to read it"}</span>
           </p>
         )}
+        {legend ?? (
         <dl className="wiki-graph-legend">
           {hasReferences && (
             <div>
@@ -415,6 +456,7 @@ export default function WikiGraphPane({
             <dd>Page outline</dd>
           </div>
         </dl>
+        )}
         {note && (
           <p className="wiki-graph-note">
             {note}{" "}

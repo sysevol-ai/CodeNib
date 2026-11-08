@@ -9,6 +9,27 @@ import type {
 } from "./api";
 import { apiBase, isStaticRuntime } from "./runtime";
 
+/** Code files by folder, counted when the snapshot is read (no file contents). */
+export interface SourceOutline {
+  files: number;
+  /** The folder the outline opened because it holds most of the code; "" is the root. */
+  root: string;
+  folders: Array<{ path: string; files: number; direct?: boolean }>;
+  more: { folders: number; files: number };
+}
+
+/** What the hosted code index produced for this snapshot. */
+export interface CodeIndexSummary {
+  available: boolean;
+  reason?: string | null;
+  note?: string;
+  files?: number;
+  nodes?: number;
+  edges?: number;
+}
+
+export type WikiPageState = "running" | "pending" | "ready" | "needs_review";
+
 export interface SavedWiki {
   id: string;
   repository: string;
@@ -17,7 +38,7 @@ export interface SavedWiki {
   stage: string;
   active_page: string;
   pages: WikiPageRef[];
-  page_states: Record<string, "running" | "pending" | "ready" | "needs_review">;
+  page_states: Record<string, WikiPageState>;
   skipped_files?: Array<{ path: string; size_bytes: number }>;
   message: string;
   created_at: number;
@@ -36,6 +57,8 @@ export interface SavedWiki {
   request_active?: boolean;
   response_chars?: number;
   request_started_at?: number;
+  source_tree?: SourceOutline;
+  code_index?: CodeIndexSummary;
 }
 
 export interface SavedWikiGraphs {
@@ -171,7 +194,6 @@ export interface WikiGenerationLimits {
   max_file_bytes: number;
   max_files: number;
   max_archive_entries: number;
-  max_chunks: number;
   source_languages: string[];
   graph_languages: string[];
 }
@@ -183,6 +205,7 @@ export interface WikiRepositoryCheck {
   commit?: string;
   languages?: string[];
   source_files?: number;
+  source_tree?: SourceOutline;
   skipped_files?: Array<{ path: string; size_bytes: number }>;
 }
 

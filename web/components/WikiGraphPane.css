@@ -311,9 +311,210 @@
   border-color: var(--border-strong);
 }
 
+/* --- A Wiki being written: the map is its progress --- */
+/* Planned: an open ring in the chapter's colour. */
+.wg-node.is-pending .wg-node-mark,
+.wg-node.is-running .wg-node-mark {
+  fill: var(--wg-bg);
+  stroke: var(--node);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+.wg-node.is-pending .wg-node-mark {
+  stroke-opacity: 0.55;
+}
+.wg-node.is-pending:hover .wg-node-mark {
+  stroke-opacity: 1;
+}
+/* Being written: an arc travels round the ring, and a halo breathes out. */
+.wg-node-orbit {
+  fill: none;
+  stroke: var(--node);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 24 76;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: wg-orbit 1.8s linear infinite;
+}
+.wg-node-halo {
+  fill: var(--node);
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: wg-halo 2.6s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+  pointer-events: none;
+}
+/* The Overview covers every chapter: a light passes over them in turn. */
+.wiki-graph.is-surveying .wg-node.is-area .wg-node-mark {
+  animation: wg-survey 3.2s ease-in-out infinite;
+  animation-delay: calc(var(--i, 0) * 260ms);
+}
+.wiki-graph.is-surveying.is-still .wg-node.is-area .wg-node-mark {
+  animation: none;
+}
+@keyframes wg-survey {
+  0%,
+  100% {
+    stroke-opacity: 0.45;
+    stroke-width: 1.5;
+  }
+  18% {
+    stroke-opacity: 1;
+    stroke-width: 2.5;
+  }
+  40% {
+    stroke-opacity: 0.45;
+    stroke-width: 1.5;
+  }
+}
+/* A quiet or unreachable server: the arc holds still rather than imply progress. */
+.wiki-graph.is-still .wg-node-orbit {
+  animation: none;
+}
+.wiki-graph.is-still .wg-node-halo {
+  display: none;
+}
+/* Withheld: it did not pass its source checks. */
+.wg-node.is-needs_review .wg-node-mark {
+  fill: var(--wg-bg);
+  stroke: var(--wg-muted);
+  stroke-width: 1.5;
+  stroke-dasharray: 2 2.5;
+  vector-effect: non-scaling-stroke;
+}
+.wg-label.is-pending,
+.wg-label.is-needs_review {
+  fill: var(--wg-muted);
+}
+.wg-label.is-running {
+  fill: var(--wg-text);
+  font-weight: 650;
+}
+/* Ready while the map was open: the colour fills the ring from its centre. */
+.wg-node.is-arrived .wg-node-mark {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: wg-bloom 0.9s cubic-bezier(0.16, 1, 0.3, 1);
+}
+/* A picture of the source has nothing to open. */
+.wiki-graph.is-readonly svg,
+.wiki-graph.is-readonly .wg-node {
+  cursor: default;
+}
+.wiki-graph.is-live .wg-node,
+.wiki-graph.is-live .wg-label {
+  animation: wg-appear 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: calc(min(var(--i, 0), 14) * 40ms);
+}
+.wiki-graph.is-live .wg-edge.is-contains .wg-edge-line {
+  animation: wg-appear 0.9s ease-out both;
+}
+.wiki-graph.is-live .wg-edge.is-references .wg-edge-line {
+  stroke-dasharray: 1 1;
+  stroke-dashoffset: 1;
+  animation: wg-draw 1.4s cubic-bezier(0.65, 0, 0.35, 1) 0.2s forwards;
+}
+@keyframes wg-orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes wg-halo {
+  0% {
+    opacity: 0.2;
+    transform: scale(0.45);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.25);
+  }
+}
+@keyframes wg-bloom {
+  0% {
+    transform: scale(0.35);
+    filter: brightness(1.6);
+  }
+  100% {
+    transform: scale(1);
+    filter: none;
+  }
+}
+@keyframes wg-appear {
+  from {
+    opacity: 0.12;
+  }
+}
+@keyframes wg-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* The state legend under a map being written. */
+.wg-states {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.wg-states li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.wg-states i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--wg-soft);
+}
+.wg-states .is-pending {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px rgba(232, 234, 237, 0.55);
+}
+.wg-states .is-running {
+  background: transparent;
+  box-shadow:
+    inset 0 0 0 1.5px var(--wg-soft),
+    0 0 0 3px rgba(232, 234, 237, 0.12);
+}
+.wg-states .is-folder {
+  background: #6f757b;
+}
+.wg-states .is-reference {
+  width: 18px;
+  height: 0;
+  border-radius: 0;
+  background: none;
+  border-top: 2px solid var(--wg-call);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .wg-edge-line,
   .wg-node-mark {
     transition: none;
+  }
+  /* State stays readable from the ring alone; nothing travels or pulses. */
+  .wg-node-orbit {
+    animation: none;
+    stroke-dasharray: none;
+    opacity: 0.6;
+  }
+  .wg-node-halo {
+    display: none;
+  }
+  .wg-node.is-arrived .wg-node-mark,
+  .wiki-graph.is-surveying .wg-node.is-area .wg-node-mark,
+  .wiki-graph.is-live .wg-node,
+  .wiki-graph.is-live .wg-label,
+  .wiki-graph.is-live .wg-edge-line {
+    animation: none;
+  }
+  .wiki-graph.is-live .wg-edge.is-references .wg-edge-line {
+    stroke-dasharray: none;
+    stroke-dashoffset: 0;
   }
 }

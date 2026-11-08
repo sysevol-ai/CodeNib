@@ -65,6 +65,7 @@ def test_check_uses_real_source_and_reports_skips_without_leaving_a_checkout(
     assert result["commit"] == COMMIT
     assert result["source_files"] == 1
     assert result["languages"] == ["python"]
+    assert result["source_tree"]["files"] == 1
     assert result["skipped_files"] == [
         {"path": "large.py", "size_bytes": visitor_source.MAX_FILE_BYTES + 1}
     ]
@@ -77,7 +78,6 @@ def test_check_uses_real_source_and_reports_skips_without_leaving_a_checkout(
     [
         ("MAX_FILES", 0, "file hosted limit"),
         ("MAX_SOURCE_BYTES", 1, "Retained files"),
-        ("MAX_CHUNKS", 0, "code-section hosted limit"),
     ],
 )
 def test_source_check_rejects_the_same_analysis_limits_as_generation(

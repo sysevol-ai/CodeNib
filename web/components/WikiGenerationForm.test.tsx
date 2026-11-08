@@ -19,6 +19,13 @@ describe("WikiGenerationForm", () => {
     expect(html).toContain("Complete Wikis have been generated with this model.");
   });
 
+  it("offers the budget as three choices with $2 chosen", () => {
+    const html = renderToStaticMarkup(<WikiGenerationForm attempt={attempt} onStarted={() => {}} />);
+    expect(html).toContain("<legend>Budget for this run</legend>");
+    expect(html.match(/type="radio"/g)).toHaveLength(3);
+    expect(html).toMatch(/<input[^>]*checked=""[^>]*value="2"|<input[^>]*value="2"[^>]*checked=""/);
+  });
+
   it("offers no model choice when resuming a run", () => {
     const html = renderToStaticMarkup(
       <WikiGenerationForm attempt={attempt as never} onStarted={() => {}} resume />,
