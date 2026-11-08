@@ -661,10 +661,9 @@ def _is_fd_readable(fd: int, timeout_s: float) -> bool:
                 handle, None, 0, None, ctypes.byref(avail), None
             )
             if not res:
-                err = ctypes.windll.kernel32.GetLastError()
-                # 109: ERROR_BROKEN_PIPE (EOF). POSIX select marks EOF as readable.
-                if err == 109:
-                    return True
+                # ERROR_BROKEN_PIPE (109) is EOF, which POSIX select reports as
+                # readable; any other failure means this is not a pipe, so let
+                # the blocking read decide.
                 return True
             if avail.value > 0:
                 return True
@@ -674,6 +673,22 @@ def _is_fd_readable(fd: int, timeout_s: float) -> bool:
             time.sleep(min(remaining, 0.005))
     except (OSError, ValueError):
         return True
+
+
+def _rg_display_path(path: str) -> str:
+    """A ripgrep path relative to the search root, with ``/`` separators.
+
+    Only the path is rewritten: matched lines keep their backslashes, and on
+    POSIX a backslash is a legal file name character.
+    """
+
+    if path.startswith("./"):
+        path = path[2:]
+    if os.sep == "\\":
+        if path.startswith(".\\"):
+            path = path[2:]
+        path = path.replace("\\", "/")
+    return path
 
 
 def _grep_ripgrep(
@@ -824,32 +839,21 @@ def _grep_ripgrep(
             path_field, separator, match = row.partition("\0")
             line_number, line_separator, content = match.partition(":")
             if separator and line_separator and line_number.isdigit():
-                if path_field.startswith(("./", ".\\")):
-                    path_field = path_field[2:]
-                path_field = path_field.replace("\\", "/")
+                path_field = _rg_display_path(path_field)
                 normalized_rows.append(f"{path_field}:{line_number}: {content}")
             else:  # Defensive fallback for an unexpected rg output shape.
                 normalized_rows.append(row.replace("\0", ":", 1))
         rows = normalized_rows
     elif output_mode == "files_with_matches":
-        normalized_rows = []
-        for row in rows:
-            if row.startswith(("./", ".\\")):
-                row = row[2:]
-            normalized_rows.append(row.replace("\\", "/"))
-        rows = normalized_rows
+        rows = [_rg_display_path(row) for row in rows]
     else:  # count
         normalized_rows = []
         for row in rows:
-            path_field, sep, count = row.rpartition(":")
-            if sep and count.isdigit():
-                if path_field.startswith(("./", ".\\")):
-                    path_field = path_field[2:]
-                normalized_rows.append(f"{path_field.replace('\\', '/')}:{count}")
+            path_field, separator, count = row.rpartition(":")
+            if separator and count.isdigit():
+                normalized_rows.append(f"{_rg_display_path(path_field)}:{count}")
             else:
-                if row.startswith(("./", ".\\")):
-                    row = row[2:]
-                normalized_rows.append(row.replace("\\", "/"))
+                normalized_rows.append(_rg_display_path(row))
         rows = normalized_rows
 
     if root.is_file():
@@ -857,13 +861,6 @@ def _grep_ripgrep(
         replacement = f"{root.as_posix()}:"
         rows = [
             replacement + row[len(prefix) :] if row.startswith(prefix) else row
-            for row in rows
-        ]
-    else:
-        rows = [
-            row[2:].replace("\\", "/")
-            if row.startswith(("./", ".\\"))
-            else row.replace("\\", "/")
             for row in rows
         ]
 

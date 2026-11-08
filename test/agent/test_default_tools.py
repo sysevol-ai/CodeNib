@@ -249,6 +249,37 @@ class TestGrep:
 
         assert set(result.splitlines()) == {"src/example.txt", ".github/example.txt"}
 
+    @pytest.mark.parametrize("backend", ["ripgrep", "python"])
+    def test_backslashes_in_matched_lines_are_kept(
+        self, tmp_path, monkeypatch, backend
+    ):
+        if backend == "ripgrep" and shutil.which("rg") is None:
+            pytest.skip("ripgrep is unavailable")
+        if backend == "python":
+            monkeypatch.setattr(
+                "codenib.agent.tools.defaults.shutil.which", lambda _command: None
+            )
+        (tmp_path / "src").mkdir()
+        line = 'PATTERN = re.compile(r"\\d+\\.\\w")  # C:\\temp'
+        (tmp_path / "src" / "regex.py").write_text(line + "\n", encoding="utf-8")
+
+        result = _grep("PATTERN", path=str(tmp_path))
+
+        assert result.splitlines() == [f"src/regex.py:1: {line}"]
+
+    @pytest.mark.skipif(os.sep != "/", reason="POSIX file names may hold '\\'")
+    @pytest.mark.parametrize("output_mode", ["files_with_matches", "count"])
+    def test_ripgrep_keeps_a_backslash_in_a_posix_file_name(
+        self, tmp_path, output_mode
+    ):
+        if shutil.which("rg") is None:
+            pytest.skip("ripgrep is unavailable")
+        (tmp_path / "a\\b.txt").write_text("needle\n", encoding="utf-8")
+
+        result = _grep("needle", path=str(tmp_path), output_mode=output_mode)
+
+        assert result.splitlines()[0].startswith("a\\b.txt")
+
     def test_type_filter(self, sample_dir):
         """type='py' restricts to Python files by extension."""
         result = _grep("foo", path=str(sample_dir), type="py")
@@ -344,7 +375,8 @@ class TestGrep:
         if sys.platform == "win32":
             slow_rg = tmp_path / "slow-rg.bat"
             slow_rg.write_text(
-                f'@"{sys.executable}" -c "import time; time.sleep(2)"\n',
+                # A batch file needs literal double quotes, not repr().
+                f'@"{sys.executable}" -c "import time; time.sleep(2)"\n',  # noqa: B907
                 encoding="utf-8",
             )
         else:
@@ -368,7 +400,7 @@ class TestGrep:
         if sys.platform == "win32":
             noisy_rg = tmp_path / "noisy-rg.bat"
             noisy_rg.write_text(
-                f'@"{sys.executable}" -c "{script}"\n',
+                f'@"{sys.executable}" -c "{script}"\n',  # noqa: B907
                 encoding="utf-8",
             )
         else:
