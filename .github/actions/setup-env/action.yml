@@ -21,7 +21,7 @@ inputs:
   rust-toolchain:
     description: "Rust toolchain used by rust-analyzer SCIP/LSP tests"
     required: false
-    default: "nightly-2026-02-22"
+    default: "nightly-2026-11-05"
   install-clangd:
     description: "Install clangd"
     required: false

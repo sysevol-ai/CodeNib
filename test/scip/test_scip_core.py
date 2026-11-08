@@ -535,6 +535,59 @@ def test_core_ruby_synthetic_parity(tmp_path):
     _assert_graph_parity(serial_graph, core_graph, "ruby-synthetic")
 
 
+def test_core_rust_target_moniker_parity(tmp_path):
+    """Both decoders drop rust-analyzer's single Cargo-target descriptors."""
+
+    from codenib.scip_interface.scip_decode_core import SCIPDecoderCore
+    from codenib.scip_interface.scip_decode_rust import SCIPRustGraphDecoder
+    from codenib.scip_interface.scip_indexer_base import index_text
+    from codenib.scip_interface.scip_pb2 import Index
+
+    index = Index()
+    rows = {
+        "src/lib.rs": [
+            ("lib/shapes/Thing#", [2, 11, 16], [2, 0, 5, 1], 1),
+            ("lib/shapes/impl#[Thing]area().", [6, 7, 11], [6, 4, 8, 5], 1),
+        ],
+        "src/main.rs": [
+            ("bin/demo/main().", [0, 3, 7], [0, 0, 3, 1], 1),
+            ("lib/shapes/Thing#", [1, 4, 9], [], 0),
+        ],
+        "tests/integration.rs": [
+            ("test/integration/helper().", [0, 3, 9], [0, 0, 2, 1], 1),
+        ],
+        "build.rs": [("custom-build/main().", [0, 3, 7], [0, 0, 1, 1], 1)],
+    }
+    for path, occurrences in rows.items():
+        document = index.documents.add(relative_path=path)
+        for descriptor, rng, enclosing, roles in occurrences:
+            occurrence = document.occurrences.add(
+                symbol=f"rust-analyzer cargo demo 0.1.0 {descriptor}",
+                symbol_roles=roles,
+            )
+            occurrence.range.extend(rng)
+            occurrence.enclosing_range.extend(enclosing)
+    decoded = tmp_path / "index.decoded"
+    decoded.write_text(index_text(index), encoding="utf-8")
+
+    serial_graph = SCIPRustGraphDecoder(
+        str(decoded), project_root=str(tmp_path)
+    ).decode()
+    core_graph = SCIPDecoderCore(
+        str(decoded), project_root=str(tmp_path), language="rust"
+    ).decode()
+
+    _assert_graph_parity(serial_graph, core_graph, "rust-target-monikers")
+    for name in (
+        "demo/shapes/Thing",
+        "demo/shapes/impl#[Thing]area",
+        "demo/bin/demo/main",
+        "demo/test/integration/helper",
+        "demo/main",
+    ):
+        assert name in serial_graph.name_to_vertex
+
+
 def test_core_go_structural_collision_parity(tmp_path):
     index = _write_go_structural_collision_project(tmp_path)
 
