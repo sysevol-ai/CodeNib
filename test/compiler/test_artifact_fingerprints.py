@@ -170,3 +170,17 @@ def test_bm25_artifact_fingerprint_preserves_stop_over_close_failure(
 
     assert raised.value is stopped
     assert raised.value.__cause__ is close_failure
+
+
+def test_bm25_artifact_fingerprints_crlf_content(tmp_path):
+    root = tmp_path / "bm25"
+    root.mkdir()
+    docs = b'[{"content":"alpha"}]\r\n[{"content":"beta"}]\r\n'
+    meta = b'{"max_k":10}\r\n'
+    (root / "documents.json").write_bytes(docs)
+    (root / "bm25_metadata.json").write_bytes(meta)
+
+    fingerprints = bm25_artifact_file_fingerprints(root)
+    assert fingerprints["documents.json"]["size"] == len(docs)
+    assert fingerprints["bm25_metadata.json"]["size"] == len(meta)
+

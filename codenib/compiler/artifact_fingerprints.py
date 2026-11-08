@@ -26,7 +26,12 @@ def regular_file_fingerprint(path: str | Path) -> dict[str, Any]:
     before_path = path.lstat()
     if not stat.S_ISREG(before_path.st_mode):
         raise ValueError(f"invalid artifact file: {path}")
-    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_BINARY", 0)
+    )
     descriptor = os.open(path, flags)
     digest = hashlib.sha256()
     size = 0
@@ -63,7 +68,7 @@ def _file_identity(metadata: os.stat_result) -> tuple[int, ...]:
         metadata.st_mode,
         metadata.st_size,
         metadata.st_mtime_ns,
-        metadata.st_ctime_ns,
+        *(() if os.name == "nt" else (metadata.st_ctime_ns,)),
         metadata.st_nlink,
         getattr(metadata, "st_file_attributes", 0),
     )
@@ -99,7 +104,7 @@ def _file_fingerprint(
             )
         ):
             raise ValueError(f"invalid BM25 artifact file: {path}")
-        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_BINARY", 0)
         flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
         descriptor = os.open(path, flags)
         opened = os.fstat(descriptor)
