@@ -13,6 +13,11 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 ### Fixed
 
+- The Wiki collection under the demo home now continues the dark stage above
+  it: the same edges at every width, the same two-line heading, and quieter
+  cards whose maps use each area's colour from the full map. On wide screens
+  it had kept the old full-width gutter. The server keeps each card's map after
+  the first visit, so the cards no longer sit blank while their maps compute.
 - On wide screens the demo home now stops at codenib.ai's width, centred, with
   the header on the same edges, instead of stretching across the window. Its
   headings use codenib.ai's two-line form. On both sites a wide example gives

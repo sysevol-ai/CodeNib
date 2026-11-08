@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { fetchWikiAreaMap, type WikiAreaMap } from "@/lib/api";
 import { thumbLayout } from "@/lib/posterLayout";
+import { AREA_COLORS, NEUTRAL_COLOR } from "@/lib/wikiGraph";
 import { loadSavedWikiGraphs } from "@/lib/visitorWiki";
 
 const maps = new Map<string, Promise<WikiAreaMap>>();
@@ -72,6 +73,8 @@ export default function MapThumb({ repoId, wikiId }: { repoId: string; wikiId?: 
   }, [repoId, wikiId]);
 
   const layout = map ? thumbLayout(map.areas, map.links, W, H) : null;
+  // Each area keeps the colour it has on the full map, in outline order.
+  const colors = new Map(map?.areas.map((area, index) => [area.id, AREA_COLORS[index] ?? NEUTRAL_COLOR]));
   const empty = failed || (map != null && (!layout || layout.dots.length === 0));
 
   return (
@@ -85,7 +88,7 @@ export default function MapThumb({ repoId, wikiId }: { repoId: string; wikiId?: 
             </g>
           ))}
           {layout.dots.map((dot) => (
-            <circle key={dot.id} className="map-thumb-dot" cx={dot.x} cy={dot.y} r={dot.r} />
+            <circle key={dot.id} className="map-thumb-dot" cx={dot.x} cy={dot.y} r={dot.r} fill={colors.get(dot.id) ?? NEUTRAL_COLOR} />
           ))}
         </svg>
       )}

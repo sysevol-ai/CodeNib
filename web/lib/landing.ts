@@ -23,6 +23,15 @@ export function primaryLanguage(r: Pick<RepoInfo, "language">): string {
   return LANGUAGE_NAMES[first] || (first ? first[0].toUpperCase() + first.slice(1) : "Code");
 }
 
+/** A card summary without the emoji READMEs decorate their taglines with;
+ *  the cards' own marks carry the language and the counts. */
+export function plainSummary(text: string): string {
+  return text
+    .replace(/(?:\p{Emoji_Presentation}\uFE0F?|\p{Extended_Pictographic}\uFE0F)(?:\u200D(?:\p{Emoji_Presentation}|\p{Extended_Pictographic})\uFE0F?)*\s*/gu, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
 /** Group repositories by main language, largest group first. */
 export function groupByLanguage(repos: RepoInfo[]): { language: string; repos: RepoInfo[] }[] {
   const groups = new Map<string, RepoInfo[]>();
