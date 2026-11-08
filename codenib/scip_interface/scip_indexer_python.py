@@ -32,7 +32,7 @@ from .pyrefly_provider import (
     SCIP_PYTHON_PROVIDER,
     select_python_graph_provider,
 )
-from .scip_indexer_base import SCIPIndexerBase
+from .scip_indexer_base import SCIPIndexerBase, index_text
 
 logger = get_logger("scip_python_indexer")
 
@@ -805,8 +805,6 @@ class SCIPPythonIndexer(SCIPIndexerBase):
         point is the final atomic replace, before the shared consumer seals it.
         """
 
-        from google.protobuf.text_format import MessageToString
-
         from .lsp_occurrence_index import SCIPOccurrenceIndex
         from .python_identity import normalize_python_index
 
@@ -855,7 +853,7 @@ class SCIPPythonIndexer(SCIPIndexerBase):
                     self.project_root,
                     path_allowed=self._path_allowed,
                 )
-            encoded = MessageToString(index, as_utf8=True).encode("utf-8")
+            encoded = index_text(index).encode("utf-8")
             normalized_fingerprint = {
                 "size": len(encoded),
                 "sha256": hashlib.sha256(encoded).hexdigest(),
@@ -914,14 +912,14 @@ class SCIPPythonIndexer(SCIPIndexerBase):
         and text escaping. Nothing is cached across calls or source versions.
         """
         from google.protobuf.message import DecodeError
-        from google.protobuf.text_format import MessageToString, Parse
+        from google.protobuf.text_format import Parse
 
         from .scip_pb2 import Index
 
         if self.index_file.is_file() and not self.index_file.is_symlink():
             try:
                 index = Index.FromString(self.index_file.read_bytes())
-                if MessageToString(index, as_utf8=True).encode("utf-8") == decoded:
+                if index_text(index).encode("utf-8") == decoded:
                     return index
                 del index
             except (OSError, DecodeError, ValueError):

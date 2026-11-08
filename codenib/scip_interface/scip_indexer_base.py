@@ -136,6 +136,23 @@ def extract_scip_blocks(text: str, keyword: str) -> List[str]:
     return blocks
 
 
+def index_text(index) -> str:
+    """Return ``index`` in protobuf TextFormat with UTF-8 strings.
+
+    This is the ``index.decoded`` format. The upb backend's C encoder behind
+    ``str()`` writes the same text as ``MessageToString(index, as_utf8=True)``
+    several times faster; other backends' ``str()`` escape non-ASCII bytes, so
+    they keep ``MessageToString``.
+    """
+    from google.protobuf.internal import api_implementation
+
+    if api_implementation.Type() == "upb":
+        return str(index)
+    from google.protobuf.text_format import MessageToString
+
+    return MessageToString(index, as_utf8=True)
+
+
 def _bytes_fingerprint(payload: bytes) -> dict[str, object]:
     """``regular_file_fingerprint``'s shape for bytes already in memory."""
 
@@ -338,7 +355,6 @@ class SCIPIndexerBase(ABC):
 
         try:
             from google.protobuf.message import DecodeError
-            from google.protobuf.text_format import MessageToString
 
             from .scip_pb2 import Index
         except ImportError:
@@ -353,10 +369,7 @@ class SCIPIndexerBase(ABC):
                     raise DecodeError("SCIP index is empty")
                 index = Index()
                 index.ParseFromString(payload)
-                self.decoded_file.write_text(
-                    MessageToString(index, as_utf8=True),
-                    encoding="utf-8",
-                )
+                self.decoded_file.write_text(index_text(index), encoding="utf-8")
                 from ..compiler.artifact_fingerprints import regular_file_fingerprint
 
                 self._decoded_from = {
