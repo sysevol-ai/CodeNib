@@ -58,12 +58,15 @@ class CppCodeChunker(BaseCodeChunker):
         include_type_level = self.chunk_depth < 2 or not self.l2_level_exclusive
         include_methods = self.chunk_depth >= 2 or include_l2_in_file_skeleton
 
-        for node in self._find_nodes_by_type(root_node, "function_definition"):
+        found = self._find_nodes_by_types(
+            root_node, ("function_definition", "class_specifier")
+        )
+        for node in found["function_definition"]:
             name = self._extract_function_name(node)
             if name:
                 definitions.append((node, name, "function"))
 
-        for node in self._find_nodes_by_type(root_node, "class_specifier"):
+        for node in found["class_specifier"]:
             name = self._extract_class_name(node)
             if name:
                 if include_type_level:
