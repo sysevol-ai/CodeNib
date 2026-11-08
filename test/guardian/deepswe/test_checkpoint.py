@@ -30,7 +30,7 @@ def test_solver_prompt_requires_one_foreground_checkpoint_call() -> None:
 
 def _git(repo, *args):
     return subprocess.run(
-        ["git", *args],
+        ["git", "-c", "core.hooksPath=", *args],
         cwd=repo,
         check=True,
         capture_output=True,
@@ -169,17 +169,29 @@ def test_guardian_checkpoint_times_out_on_stale_report(tmp_path):
     assert '"commit": "old"' in result.stderr
 
 
-def test_guardian_checkpoint_starts_guardian_before_waiting(tmp_path):
-    repo, baseline = _init_repo(tmp_path)
-    baseline_file = tmp_path / "base_commit"
-    baseline_file.write_text(baseline + "\n", encoding="utf-8")
-    marker = tmp_path / "started"
+def _make_starter(tmp_path, marker):
+    if sys.platform == "win32":
+        starter = tmp_path / "guardian_start.py"
+        starter.write_text(
+            f"from pathlib import Path\nPath({str(marker)!r}).write_text('started', encoding='utf-8')\n",
+            encoding="utf-8",
+        )
+        return f'"{sys.executable}" "{starter}"'
     starter = tmp_path / "guardian-start"
     starter.write_text(
         f"#!/bin/sh\nprintf started > {marker}\n",
         encoding="utf-8",
     )
     starter.chmod(0o755)
+    return str(starter)
+
+
+def test_guardian_checkpoint_starts_guardian_before_waiting(tmp_path):
+    repo, baseline = _init_repo(tmp_path)
+    baseline_file = tmp_path / "base_commit"
+    baseline_file.write_text(baseline + "\n", encoding="utf-8")
+    marker = tmp_path / "started"
+    start_cmd = _make_starter(tmp_path, marker)
 
     (repo / "mod.py").write_text("x = 2\n", encoding="utf-8")
     _git(repo, "add", "mod.py")
@@ -210,7 +222,7 @@ def test_guardian_checkpoint_starts_guardian_before_waiting(tmp_path):
             str(
                 _write_script(
                     tmp_path,
-                    start_command=str(starter),
+                    start_command=start_cmd,
                     baseline_file=str(baseline_file),
                 )
             ),
@@ -283,12 +295,7 @@ def test_guardian_checkpoint_rejects_unchanged_baseline_without_waiting(tmp_path
     baseline_file = tmp_path / "base_commit"
     baseline_file.write_text(baseline + "\n", encoding="utf-8")
     marker = tmp_path / "started"
-    starter = tmp_path / "guardian-start"
-    starter.write_text(
-        f"#!/bin/sh\nprintf started > {marker}\n",
-        encoding="utf-8",
-    )
-    starter.chmod(0o755)
+    start_cmd = _make_starter(tmp_path, marker)
 
     result = subprocess.run(
         [
@@ -296,7 +303,7 @@ def test_guardian_checkpoint_rejects_unchanged_baseline_without_waiting(tmp_path
             str(
                 _write_script(
                     tmp_path,
-                    start_command=str(starter),
+                    start_command=start_cmd,
                     baseline_file=str(baseline_file),
                 )
             ),

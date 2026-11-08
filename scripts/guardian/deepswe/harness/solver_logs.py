@@ -24,6 +24,11 @@ def _replace_bytes(path: Path, content: bytes) -> None:
 
     temporary = path.with_name(f".{path.name}.guardian-tmp")
     temporary.write_bytes(content)
+    if path.exists():
+        try:
+            path.chmod(0o666)
+        except OSError:
+            pass
     temporary.replace(path)
 
 
