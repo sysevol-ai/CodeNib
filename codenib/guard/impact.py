@@ -24,7 +24,17 @@ import re
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
+from typing import (
+    Dict,
+    Iterable,
+    Iterator,
+    List,
+    Mapping,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+)
 
 from ..graph.constructor_edges import constructor_edges, short_name
 from ..types import (
@@ -50,6 +60,47 @@ def symbol_id(name: str) -> str:
     )
 
 
+def _base_hunks(
+    diff: str,
+) -> Iterator[Tuple[str, str, int, int]]:
+    """Walk a ``git diff --unified=0``.
+
+    Yields ``("added", path, 0, 0)`` for a file that did not exist at the base,
+    ``("file", path, 0, 0)`` for a base file, and ``("hunk", path, start,
+    count)`` for each of its hunks in base line numbers.
+    """
+
+    old: Optional[str] = None
+    current: Optional[str] = None
+    for line in diff.splitlines():
+        if line.startswith("--- "):
+            source = line[4:].split("\t", 1)[0]
+            old = (
+                None
+                if source == "/dev/null"
+                else source[2:]
+                if source.startswith("a/")
+                else source
+            )
+            continue
+        if line.startswith("+++ "):
+            target = line[4:].split("\t", 1)[0]
+            target = target[2:] if target.startswith("b/") else target
+            if old is None:
+                if target != "/dev/null":
+                    yield "added", target, 0, 0
+                current = None
+            else:
+                current = old
+                yield "file", current, 0, 0
+            continue
+        match = _HUNK.match(line)
+        if match and current is not None:
+            start = int(match.group(1))
+            count = 1 if match.group(2) is None else int(match.group(2))
+            yield "hunk", current, start, count
+
+
 def base_changed_lines(diff: str) -> Tuple[Dict[str, Set[int]], List[str]]:
     """Base-side changed lines of a ``git diff --unified=0``, and new files.
 
@@ -60,37 +111,30 @@ def base_changed_lines(diff: str) -> Tuple[Dict[str, Set[int]], List[str]]:
 
     changed: Dict[str, Set[int]] = {}
     added: List[str] = []
-    old: Optional[str] = None
-    current: Optional[str] = None
-    for line in diff.splitlines():
-        if line.startswith("--- "):
-            source = line[4:].split("\t", 1)[0]
-            old = (
-                None
-                if source == "/dev/null"
-                else source[2:] if source.startswith("a/") else source
-            )
-            continue
-        if line.startswith("+++ "):
-            target = line[4:].split("\t", 1)[0]
-            target = target[2:] if target.startswith("b/") else target
-            if old is None:
-                if target != "/dev/null":
-                    added.append(target)
-                current = None
-            else:
-                current = old
-                changed.setdefault(current, set())
-            continue
-        match = _HUNK.match(line)
-        if match and current is not None:
-            start = int(match.group(1))
-            count = 1 if match.group(2) is None else int(match.group(2))
-            if count == 0:
-                changed[current].add(max(start, 1))
-            else:
-                changed[current].update(range(start, start + count))
+    for kind, path, start, count in _base_hunks(diff):
+        if kind == "added":
+            added.append(path)
+        elif kind == "file":
+            changed.setdefault(path, set())
+        elif count == 0:
+            changed[path].add(max(start, 1))
+        else:
+            changed[path].update(range(start, start + count))
     return changed, added
+
+
+def base_rewritten_lines(diff: str) -> Dict[str, Set[int]]:
+    """Base lines that a ``git diff --unified=0`` changes or deletes.
+
+    Unlike :func:`base_changed_lines`, a pure insertion counts for no line: a
+    new test added after an existing one leaves the existing one unedited.
+    """
+
+    rewritten: Dict[str, Set[int]] = {}
+    for kind, path, start, count in _base_hunks(diff):
+        if kind == "hunk" and count:
+            rewritten.setdefault(path, set()).update(range(start, start + count))
+    return rewritten
 
 
 @dataclass(frozen=True)
@@ -128,6 +172,8 @@ class Impact:
     direct_callers: Dict[str, List[str]] = field(default_factory=dict)
     unmapped_files: List[str] = field(default_factory=list)
     new_files: List[str] = field(default_factory=list)
+    # pytest ids of tests at risk whose own base lines the change rewrote
+    edited_tests: List[str] = field(default_factory=list)
 
 
 def pytest_id(name: str) -> str:
@@ -228,6 +274,7 @@ class ImpactGraph:
         *,
         depth: int = DEFAULT_DEPTH,
         new_files: Sequence[str] = (),
+        rewritten_lines: Optional[Mapping[str, Iterable[int]]] = None,
     ) -> Impact:
         result = Impact(
             depth=depth, total_tests=len(self.tests), new_files=list(new_files)
@@ -284,9 +331,30 @@ class ImpactGraph:
                     path=tuple(path),
                 )
             )
-        # Tests that reach the change through calls come first; tests that were
-        # themselves edited (depth 0) last, since whoever edited them has
-        # usually just run them. A real session filled the suggested command
-        # with the agent's own new tests and left out the ones that call in.
-        result.tests.sort(key=lambda t: (t.depth == 0, t.depth, t.test_id))
+        # An existing test whose own lines the change rewrote now checks the new
+        # behaviour; passing it says little about the behaviour it protected.
+        # In a recorded session an agent changed a default message, rewrote the
+        # eight assertions that expected the old one, and passed its own run.
+        rewritten = {p: set(lines) for p, lines in (rewritten_lines or {}).items()}
+        edited: Set[str] = set()
+        for test in self.tests & set(level):
+            lines = rewritten.get(self.files[test])
+            start, end = self.starts[test], self.ends[test]
+            if (
+                level[test] == 0
+                and lines
+                and start is not None
+                and end is not None
+                and any(start + 1 <= line <= end + 1 for line in lines)
+            ):
+                edited.add(pytest_id(self.names[test]))
+        result.edited_tests = sorted(edited)
+        # Edited existing tests come first, then tests that reach the change
+        # through calls. Other tests at depth 0 (in an edited file, or with only
+        # code added after them) come last: a real session filled the suggested
+        # command with the agent's own new tests and left out the ones that
+        # call in.
+        result.tests.sort(
+            key=lambda t: (t.test_id not in edited, t.depth == 0, t.depth, t.test_id)
+        )
         return result

@@ -12,7 +12,13 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from .impact import DEFAULT_DEPTH, Impact, ImpactGraph, base_changed_lines
+from .impact import (
+    DEFAULT_DEPTH,
+    Impact,
+    ImpactGraph,
+    base_changed_lines,
+    base_rewritten_lines,
+)
 from .notes import AnchorStatus, Note, anchor_states, load_notes
 from .snapshot import (
     SnapshotError,
@@ -53,6 +59,7 @@ class GuardReport:
         """Identify what the report tells the agent, independent of order."""
 
         parts = sorted(f"test {t.test_id}" for t in self.impact.tests)
+        parts += sorted(f"edited {t}" for t in self.impact.edited_tests)
         parts += sorted(
             f"note {n.path} {' '.join(sorted(symbols))}"
             for n, symbols in self.notes_on_change
@@ -65,9 +72,35 @@ class GuardReport:
         return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
 
     def pytest_command(self, limit: int = COMMAND_TESTS) -> str:
-        ids = [t.test_id for t in self.impact.tests[:limit]]
+        """Run the tests at risk that the change did not edit."""
+
+        edited = set(self.impact.edited_tests)
+        ids = [t.test_id for t in self.impact.tests if t.test_id not in edited][:limit]
         return (
             "python -m pytest " + " ".join(shlex.quote(i) for i in ids) if ids else ""
+        )
+
+    def original_tests_command(self, limit: int = COMMAND_TESTS) -> str:
+        """Run the edited tests as they were at the base commit, then restore them.
+
+        The edits are saved as a patch, the test files are checked out from the
+        base commit, and the patch is applied again whether or not the tests
+        pass. ``git stash`` is avoided: with nothing to stash, its ``pop`` would
+        restore an unrelated older stash.
+        """
+
+        ids = self.impact.edited_tests[:limit]
+        if not ids:
+            return ""
+        files = " ".join(
+            shlex.quote(f) for f in sorted({i.split("::", 1)[0] for i in ids})
+        )
+        tests = " ".join(shlex.quote(i) for i in ids)
+        base = self.base_commit
+        return (
+            f'p=$(mktemp) && git diff {base} -- {files} > "$p" && '
+            f"git checkout {base} -- {files} && python -m pytest {tests}; "
+            f'git apply "$p" && rm -f "$p"'
         )
 
     def to_dict(self) -> Dict[str, object]:
@@ -86,6 +119,8 @@ class GuardReport:
             "depth": self.impact.depth,
             "changed": [asdict(c) for c in self.impact.changed],
             "tests_at_risk": [asdict(t) for t in self.impact.tests],
+            "edited_tests_at_risk": self.impact.edited_tests,
+            "original_tests_command": self.original_tests_command(),
             "total_tests": self.impact.total_tests,
             "direct_callers": self.impact.direct_callers,
             "new_files": self.impact.new_files,
@@ -168,7 +203,12 @@ def run_guard(
     diff, untracked = working_tree_diff(repo, commit)
     changed, added = base_changed_lines(diff)
     graph = ImpactGraph(snapshot.load_graph(), snapshot.source)
-    impact = graph.impact(changed, depth=depth, new_files=sorted({*added, *untracked}))
+    impact = graph.impact(
+        changed,
+        depth=depth,
+        new_files=sorted({*added, *untracked}),
+        rewritten_lines=base_rewritten_lines(diff),
+    )
     report = GuardReport(
         repository=str(repo),
         base=base,
@@ -228,13 +268,23 @@ def render_text(report: GuardReport, *, shown: int = SHOWN_TESTS) -> str:
             f"Tests at risk: {len(impact.tests)} of {impact.total_tests:,}, "
             f"within {impact.depth} calls of the change"
         )
-        for test in impact.tests[:shown]:
+        edited = set(impact.edited_tests)
+        if edited:
+            lines.append(
+                f"Edited by this change ({len(edited)}): these tests now check the "
+                "changed behaviour. Run them as they were at the base commit:"
+            )
+            lines.extend(f"  {test_id}" for test_id in impact.edited_tests[:shown])
+            if len(edited) > shown:
+                lines.append(f"  ... and {len(edited) - shown} more (--json lists all)")
+            lines.append(f"  {report.original_tests_command()}")
+            lines.append("Other tests at risk:")
+        others = [t for t in impact.tests if t.test_id not in edited]
+        for test in others[:shown]:
             lines.append(f"  {test.test_id}")
             lines.append(f"      {describe_path(test)}")
-        if len(impact.tests) > shown:
-            lines.append(
-                f"  ... and {len(impact.tests) - shown} more (--json lists all)"
-            )
+        if len(others) > shown:
+            lines.append(f"  ... and {len(others) - shown} more (--json lists all)")
         command = report.pytest_command()
         if command:
             lines.append("Run them:")
@@ -267,16 +317,44 @@ def render_for_agent(report: GuardReport, *, shown: int = SHOWN_TESTS) -> str:
         "CodeNib guard compared this session's changes with the code graph of "
         f"commit {report.base_commit[:12]}."
     ]
-    if impact.tests:
+    edited = impact.edited_tests
+    others = [t for t in impact.tests if t.test_id not in set(edited)]
+    if edited:
+        lines.append(
+            f"{len(impact.tests)} tests reach the changed code within "
+            f"{impact.depth} calls. {len(edited)} of them existed at commit "
+            f"{report.base_commit[:12]} and were edited by this change. An edited "
+            "test checks the changed behaviour rather than the behaviour it "
+            "protected, so its passing shows little. Run their original versions:"
+        )
+        lines.extend(f"- {test_id}" for test_id in edited[:shown])
+        if len(edited) > shown:
+            lines.append(f"- and {len(edited) - shown} more")
+        lines.append(
+            "Command that runs the original versions and then restores the edits: "
+            f"{report.original_tests_command()}"
+        )
+        lines.append(
+            "If one fails, the change alters behaviour that the test protected; "
+            "keep that only if the task asks for it."
+        )
+        if others:
+            lines.append(
+                f"The other {len(others)} test{'s' if len(others) != 1 else ''}, "
+                "each with the call path from the test to the change:"
+            )
+    elif others:
         lines.append(
             f"{len(impact.tests)} tests reach the changed code within {impact.depth} "
             "calls. Each line shows the call path from the test to the change:"
         )
-        for test in impact.tests[:shown]:
+    if others:
+        for test in others[:shown]:
             lines.append(f"- {test.test_id}: {describe_path(test)}")
-        if len(impact.tests) > shown:
-            lines.append(f"- and {len(impact.tests) - shown} more")
+        if len(others) > shown:
+            lines.append(f"- and {len(others) - shown} more")
         lines.append(f"Command that runs them: {report.pytest_command()}")
+    if impact.tests:
         lines.append(
             "If the project does not use pytest, the same tests can be run with "
             "its own test runner. A failure that the change caused needs a fix "

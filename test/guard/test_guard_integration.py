@@ -7,14 +7,17 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
+import subprocess
+import sys
 import textwrap
 
 import pytest
 
 from codenib.guard import hooks
 from codenib.guard.notes import add_note
-from codenib.guard.report import render_text, run_guard
+from codenib.guard.report import render_for_agent, render_text, run_guard
 
 pytestmark = [
     pytest.mark.integration,
@@ -26,7 +29,8 @@ pytestmark = [
 
 FILES = {
     "shop/__init__.py": "",
-    "shop/pricing.py": textwrap.dedent("""\
+    "shop/pricing.py": textwrap.dedent(
+        """\
         def round_cents(value):
             return round(value, 2)
 
@@ -37,15 +41,19 @@ FILES = {
 
             def total(self):
                 return round_cents(sum(price for _, price in self.items))
-        """),
-    "shop/checkout.py": textwrap.dedent("""\
+        """
+    ),
+    "shop/checkout.py": textwrap.dedent(
+        """\
         from shop.pricing import Cart
 
 
         def checkout(items):
             return {"total": Cart(items).total()}
-        """),
-    "tests/test_shop.py": textwrap.dedent("""\
+        """
+    ),
+    "tests/test_shop.py": textwrap.dedent(
+        """\
         from shop.checkout import checkout
         from shop.pricing import Cart, round_cents
 
@@ -63,7 +71,8 @@ FILES = {
 
         def test_round():
             assert round_cents(1.234) == 1.23
-        """),
+        """
+    ),
 }
 
 
@@ -110,3 +119,41 @@ def test_guard_reports_constructor_change_and_hook_reports_once(
     context = json.loads(out)["hookSpecificOutput"]["additionalContext"]
     assert "tests/test_shop.py::test_items_copied" in context
     assert hooks.stop("claude", payload)[0] == ""  # the same change is reported once
+
+
+def test_guard_flags_an_edited_test_and_runs_its_original(
+    git_repo, tmp_path, monkeypatch, write_files
+):
+    monkeypatch.setenv("CODENIB_HOME", str(tmp_path / "home"))
+    git_repo.commit(FILES, "init")
+    edited_tests = FILES["tests/test_shop.py"].replace("== 1.23", "== 1.2")
+    edited_tests += "\n\ndef test_round_half():\n    assert round_cents(0.25) == 0.2\n"
+    write_files(
+        git_repo.root,
+        {
+            "shop/pricing.py": FILES["shop/pricing.py"].replace(
+                "round(value, 2)", "round(value, 1)"
+            ),
+            "tests/test_shop.py": edited_tests,
+        },
+    )
+
+    report = run_guard(git_repo.root)
+    # test_round's assertion was rewritten; the test added after it was not an edit.
+    assert report.impact.edited_tests == ["tests/test_shop.py::test_round"]
+    assert report.impact.tests[0].test_id == "tests/test_shop.py::test_round"
+    assert "were edited by this change" in render_for_agent(report)
+
+    env = {
+        **os.environ,
+        "PATH": os.path.dirname(sys.executable) + os.pathsep + os.environ["PATH"],
+    }
+    done = subprocess.run(
+        ["bash", "-c", report.original_tests_command()],
+        cwd=git_repo.root,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    assert "1 failed" in done.stdout, done.stdout + done.stderr
+    assert (git_repo.root / "tests/test_shop.py").read_text() == edited_tests
