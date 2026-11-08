@@ -13,6 +13,10 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 ### Changed
 
+- The writing model list now offers Claude Opus 5.5 and Claude Haiku 5.5 (in
+  place of Haiku 4.5), and newer GPT, Gemini, Grok and Mistral models. Claude
+  Sonnet 5.5 no longer sends parameters that model rejects, which kept its runs
+  from starting. Recorded prices match OpenRouter's current catalog.
 - Generating a Wiki for your own repository now uses the new Wiki's map and
   workspace. The form page draws the repository's folders from its source check.
   While the Wiki is written, chapters appear on the map once planned, the one

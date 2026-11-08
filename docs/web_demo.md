@@ -54,8 +54,10 @@ server uses the existing AgentWiki outline, chapter planning, writing and
 source-checking pipeline. Source selection uses model-planned grep and Jev
 through OpenRouter, without BM25, embeddings, GPU setup or executing the
 submitted repository. The default branch is pinned to an immutable commit.
-The form selects **DeepSeek V4.1 Flash** by default and also offers Claude
-Sonnet 4.6. That selection controls writing and source-search planning; Jev
+The form selects **DeepSeek V4.1 Flash** by default. It also offers the current
+Claude models (Opus 5.5, Sonnet 5.5 and Haiku 5.5), Claude Sonnet 4.6 and other
+providers' models; only DeepSeek V4.1 Flash and Claude Sonnet 4.6 have completed
+full Wikis through CodeNib so far, and the form says which. That selection controls writing and source-search planning; Jev
 still ranks evidence. OpenRouter routes Flash toward higher-throughput
 providers, whose availability and speed can vary. New runs create a focused
 Overview and a few core chapters (at most five, without nested chapters).
