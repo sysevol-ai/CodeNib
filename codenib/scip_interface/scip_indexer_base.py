@@ -26,6 +26,7 @@ from .scip_filter import definition_path, normalize_scip_path, scip_path_is_allo
 if TYPE_CHECKING:
     from ..graph.code_graph import CodeGraph
     from .lsp_occurrence_index import SCIPOccurrenceIndex
+    from .scip_pb2 import Index
 
 logger = get_logger("scip_indexer_base")
 
@@ -235,8 +236,13 @@ class SCIPIndexerBase(ABC):
             )
         return normalized
 
-    def _make_decoder(self, index_file: str, project_root: Union[str, Path]):
+    def _make_decoder(
+        self, index_file: str, project_root: Union[str, Path], scip_index=None
+    ):
         """Instantiate the decoder selected by ``self.decoder_backend``.
+
+        ``scip_index`` is the parsed index ``index_file`` was written from; a
+        serial decoder that accepts it reads it instead of the file.
 
         Returns an object with ``decode() -> CodeGraph`` and ``save_graph(path)``.
         """
@@ -248,7 +254,14 @@ class SCIPIndexerBase(ABC):
                 project_root=str(project_root) if project_root else None,
                 language=self.language,
             )
-        return self._get_decoder_class()(index_file, project_root=project_root)
+        decoder_class = self._get_decoder_class()
+        if scip_index is not None and getattr(
+            decoder_class, "accepts_scip_index", False
+        ):
+            return decoder_class(
+                index_file, project_root=project_root, scip_index=scip_index
+            )
+        return decoder_class(index_file, project_root=project_root)
 
     @abstractmethod
     def _check_indexer_available(self) -> bool:
@@ -369,13 +382,18 @@ class SCIPIndexerBase(ABC):
                     raise DecodeError("SCIP index is empty")
                 index = Index()
                 index.ParseFromString(payload)
-                self.decoded_file.write_text(index_text(index), encoding="utf-8")
+                text = index_text(index)
+                self.decoded_file.write_text(text, encoding="utf-8")
                 from ..compiler.artifact_fingerprints import regular_file_fingerprint
+                from .scip_decode_view import text_blocks_match
 
                 self._decoded_from = {
                     "scip": _bytes_fingerprint(payload),
                     "decoded": regular_file_fingerprint(self.decoded_file),
+                    # Whether graph decoders may read the index for the text.
+                    "blocks_match": text_blocks_match(index, text),
                 }
+                del text
             duration = section.duration
 
             logger.info(f"Successfully decoded SCIP index to {self.decoded_file}")
@@ -385,18 +403,16 @@ class SCIPIndexerBase(ABC):
             logger.error(f"Error decoding SCIP index: {e}")
             return False
 
-    def _occurrences_from_binary_index(
+    def _decoded_scip_index(
         self,
-    ) -> tuple[Optional[SCIPOccurrenceIndex], Optional[dict[str, object]]]:
-        """Occurrences read from the binary index this run decoded.
+    ) -> tuple[Optional[Index], Optional[dict[str, object]]]:
+        """The binary index this run decoded, and the fingerprint of its text.
 
-        Parsing ``index.scip`` takes a fraction of a second; scanning its
-        decoded text for the same occurrences took 8 to 17 s on a 1,000-file
-        Python repository, with an identical result. The occurrences are bound
-        to the decoded text written from the same bytes: the returned
-        fingerprint is checked by ``_process_decoded_index`` before and after
-        its consumers. Returns ``(None, None)``, and the caller scans the text,
-        when this run did not decode the index or the binary changed since.
+        ``index.decoded`` was written from these bytes, so the parsed index
+        stands for it. Its consumers are bound to that text by the returned
+        fingerprint, which ``_process_decoded_index`` checks before and after
+        them. Returns ``(None, None)``, and the caller reads the text, when
+        this run did not decode the index or the binary changed since.
         """
 
         source = self._decoded_from
@@ -408,13 +424,42 @@ class SCIPIndexerBase(ABC):
             return None, None
         if _bytes_fingerprint(payload) != source["scip"]:
             return None, None
-        from .lsp_occurrence_index import SCIPOccurrenceIndex
         from .scip_pb2 import Index
 
-        with self.profiler.section("process_index.occurrences_from_binary_index"):
+        with self.profiler.section("process_index.parse_binary_index"):
             index = Index()
             index.ParseFromString(payload)
-            del payload
+        return index, dict(source["decoded"])
+
+    def _graph_scip_index(self, index: Optional[Index]) -> Optional[Index]:
+        """``index`` when a graph decoder may read it instead of the text."""
+
+        source = self._decoded_from
+        if index is None or source is None or not source.get("blocks_match"):
+            return None
+        return index
+
+    def _occurrences_from_binary_index(
+        self,
+        index: Optional[Index] = None,
+        fingerprint: Optional[dict[str, object]] = None,
+    ) -> tuple[Optional[SCIPOccurrenceIndex], Optional[dict[str, object]]]:
+        """Occurrences read from the binary index this run decoded.
+
+        Parsing ``index.scip`` takes a fraction of a second; scanning its
+        decoded text for the same occurrences took 8 to 17 s on a 1,000-file
+        Python repository, with an identical result. ``index`` and
+        ``fingerprint`` come from ``_decoded_scip_index``, which is called when
+        they are not given. Returns ``(None, None)`` when there is no index.
+        """
+
+        if index is None:
+            index, fingerprint = self._decoded_scip_index()
+        if index is None:
+            return None, None
+        from .lsp_occurrence_index import SCIPOccurrenceIndex
+
+        with self.profiler.section("process_index.occurrences_from_binary_index"):
             occurrences = SCIPOccurrenceIndex.from_scip_index(
                 index,
                 path_filter=(
@@ -423,7 +468,7 @@ class SCIPIndexerBase(ABC):
                     else None
                 ),
             )
-        return occurrences, dict(source["decoded"])
+        return occurrences, fingerprint
 
     def process_index(
         self, output_file: Optional[str] = None
@@ -431,13 +476,25 @@ class SCIPIndexerBase(ABC):
         """
         Process the decoded SCIP index into a more usable format.
 
+        The graph and the occurrences are read from the binary index that this
+        run decoded when there is one; see ``_decoded_scip_index``.
+
         Args:
             output_file: Path to write the processed data to
 
         Returns:
             CodeGraph: Processed graph object
         """
-        return self._process_decoded_index(output_file)
+        index, fingerprint = self._decoded_scip_index()
+        occurrence_index, fingerprint = self._occurrences_from_binary_index(
+            index, fingerprint
+        )
+        return self._process_decoded_index(
+            output_file,
+            occurrence_index=occurrence_index,
+            decoded_fingerprint=fingerprint,
+            scip_index=self._graph_scip_index(index),
+        )
 
     def _process_decoded_index(
         self,
@@ -445,10 +502,12 @@ class SCIPIndexerBase(ABC):
         *,
         occurrence_index: Optional[SCIPOccurrenceIndex] = None,
         decoded_fingerprint: Optional[dict[str, object]] = None,
+        scip_index: Optional[Index] = None,
     ) -> Union[CodeGraph, None]:
         """Consume one decoded artifact and optional producer-built positions.
 
-        Prepared positions require its exact byte fingerprint. Verify that
+        Prepared positions, and ``scip_index``, the parsed index the artifact
+        was written from, require its exact byte fingerprint. Verify that
         fingerprint before either consumer and after both, even when the
         caller does not request receipts. No graph is saved on a mismatch.
         """
@@ -461,6 +520,8 @@ class SCIPIndexerBase(ABC):
         try:
             if (occurrence_index is None) != (decoded_fingerprint is None):
                 raise ValueError("prepared positions require a decoded fingerprint")
+            if scip_index is not None and decoded_fingerprint is None:
+                raise ValueError("a parsed index requires a decoded fingerprint")
             verify_input = (
                 self._capture_artifact_receipts or decoded_fingerprint is not None
             )
@@ -481,7 +542,9 @@ class SCIPIndexerBase(ABC):
             )
             with self.profiler.section("process_index.decode") as section:
                 decoder = self._make_decoder(
-                    str(self.decoded_file), project_root=self.project_root
+                    str(self.decoded_file),
+                    project_root=self.project_root,
+                    scip_index=scip_index,
                 )
                 graph: CodeGraph = decoder.decode()
             duration = section.duration

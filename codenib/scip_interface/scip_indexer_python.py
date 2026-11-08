@@ -807,6 +807,7 @@ class SCIPPythonIndexer(SCIPIndexerBase):
 
         from .lsp_occurrence_index import SCIPOccurrenceIndex
         from .python_identity import normalize_python_index
+        from .scip_decode_view import text_blocks_match
 
         self.decoded_input_receipt = None
         self.graph_output_receipt = None
@@ -822,16 +823,21 @@ class SCIPPythonIndexer(SCIPIndexerBase):
                     "status": "skipped",
                     "reason": "pyrefly provides physical identities",
                 }
-            # Read occurrences from the binary index this run decoded instead of
-            # scanning the decoded text again; the text still feeds the graph
-            # decoder and the native fact query unchanged.
-            occurrence_index, fingerprint = self._occurrences_from_binary_index()
+            # Read occurrences and the graph from the binary index this run
+            # decoded instead of scanning the decoded text again; the text
+            # still feeds the native fact query unchanged.
+            index, fingerprint = self._decoded_scip_index()
+            occurrence_index, fingerprint = self._occurrences_from_binary_index(
+                index, fingerprint
+            )
             return self._process_decoded_index(
                 output_file,
                 occurrence_index=occurrence_index,
                 decoded_fingerprint=fingerprint,
+                scip_index=self._graph_scip_index(index),
             )
         temporary = None
+        graph_index = None
         try:
             from ..compiler.artifact_fingerprints import regular_file_fingerprint
 
@@ -853,7 +859,11 @@ class SCIPPythonIndexer(SCIPIndexerBase):
                     self.project_root,
                     path_allowed=self._path_allowed,
                 )
-            encoded = index_text(index).encode("utf-8")
+            text = index_text(index)
+            # The graph decoder reads the normalized index when it may.
+            graph_index = index if text_blocks_match(index, text) else None
+            encoded = text.encode("utf-8")
+            del text
             normalized_fingerprint = {
                 "size": len(encoded),
                 "sha256": hashlib.sha256(encoded).hexdigest(),
@@ -902,6 +912,7 @@ class SCIPPythonIndexer(SCIPIndexerBase):
             output_file,
             occurrence_index=occurrence_index,
             decoded_fingerprint=normalized_fingerprint,
+            scip_index=graph_index,
         )
 
     def _read_identity_index(self, decoded: bytes):

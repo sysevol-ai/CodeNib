@@ -31,7 +31,13 @@ from ..types import (
     NODE_TYPE_METHOD,
     ROOT_NODE,
 )
-from .scip_indexer_base import extract_scip_blocks, extract_symbol
+from .scip_decode_view import (
+    document_path,
+    document_path_from_text,
+    occurrence_view,
+    occurrence_view_from_text,
+)
+from .scip_indexer_base import extract_scip_blocks
 
 
 class SCIPGoGraphDecoder:
@@ -46,8 +52,13 @@ class SCIPGoGraphDecoder:
     - References between symbols
     """
 
-    def __init__(self, index_file_path, project_root=None):
+    # Takes the parsed index that the decoded file was written from.
+    accepts_scip_index = True
+
+    def __init__(self, index_file_path, project_root=None, *, scip_index=None):
         self.index_file_path = index_file_path
+        # The parsed Index the decoded file was written from, read instead of it.
+        self.scip_index = scip_index
         self.project_root = Path(project_root) if project_root else None
         self.code_graph = CodeGraph(project_root)
         self.indexed_directories = set()
@@ -59,6 +70,14 @@ class SCIPGoGraphDecoder:
 
     def decode(self):
         """Decode the SCIP index and build the CodeGraph."""
+        if self.scip_index is not None:
+            self.logger.info("Starting SCIP Go decode from the parsed index")
+            self.code_graph.add_root_node(ROOT_NODE)
+            with self.code_graph.batch_edges():
+                for document in self.scip_index.documents:
+                    self._process_document_message(document)
+            return self.code_graph
+
         self.logger.info(f"Starting SCIP Go decode from {self.index_file_path}")
         try:
             with open(self.index_file_path, "r") as f:
@@ -85,16 +104,29 @@ class SCIPGoGraphDecoder:
 
     def _process_document(self, document_text):
         """Process a single document block from the SCIP index."""
-        # Extract file path
-        file_match = re.search(r'relative_path:\s*"([^"]+)"', document_text)
-        if not file_match:
+        file_path = document_path_from_text(document_text)
+        if not self._add_document(file_path):
             return
 
-        file_path = file_match.group(1)
+        # Process occurrences
+        # Brace-balanced: see extract_scip_blocks docstring (regex truncates
+        # on symbols containing literal "{" / "}").
+        for occurrence in extract_scip_blocks(document_text, "occurrences"):
+            self._process_occurrence(occurrence, file_path)
 
+    def _process_document_message(self, document):
+        """Process one document of the parsed index as its decoded text."""
+        file_path = document_path(document)
+        if not self._add_document(file_path):
+            return
+        for occurrence in document.occurrences:
+            self._process_occurrence_view(occurrence_view(occurrence), file_path)
+
+    def _add_document(self, file_path):
+        """Add a Go document's directories and file node; False to skip it."""
         # Only process Go files
-        if not file_path.endswith(".go"):
-            return
+        if not file_path or not file_path.endswith(".go"):
+            return False
 
         # Add directory hierarchy
         dir_path = Path(file_path).parent
@@ -119,13 +151,7 @@ class SCIPGoGraphDecoder:
         # Load module path once (for third-party filtering)
         if self.internal_module is None:
             self.internal_module = self._load_internal_module()
-
-        # Process occurrences
-        # Brace-balanced: see extract_scip_blocks docstring (regex truncates
-        # on symbols containing literal "{" / "}").
-        occurrences = extract_scip_blocks(document_text, "occurrences")
-        for occurrence in occurrences:
-            self._process_occurrence(occurrence, file_path)
+        return True
 
     def _load_internal_module(self):
         """Parse go.mod to extract the module path for filtering third-party symbols."""
@@ -151,15 +177,21 @@ class SCIPGoGraphDecoder:
 
     def _process_occurrence(self, occurrence_text, file_path):
         """Process a single occurrence from the SCIP index."""
-        # Extract ranges
-        ranges = re.findall(r"range:\s*(\d+)", occurrence_text)
+        self._process_occurrence_view(
+            occurrence_view_from_text(occurrence_text), file_path
+        )
+
+    def _process_occurrence_view(self, view, file_path):
+        """Process the values read from one occurrence (see ``OccurrenceView``)."""
+        # "range:" values, enclosing_range included
+        ranges = view.ranges
         if len(ranges) < 3:
             return
 
         line = int(ranges[0])
 
-        # Extract symbol (unescape-aware; see extract_symbol docstring).
-        symbol = extract_symbol(occurrence_text)
+        # Unescaped symbol (see extract_symbol docstring).
+        symbol = view.symbol
         if not symbol:
             return
 
@@ -188,12 +220,11 @@ class SCIPGoGraphDecoder:
         if not descriptor_clean or descriptor_clean == "/":
             return
 
-        # Extract symbol_roles
-        symbol_roles_match = re.search(r"symbol_roles:\s*(\d+)", occurrence_text)
-        symbol_roles = int(symbol_roles_match.group(1)) if symbol_roles_match else 0
+        # TextFormat omits a zero symbol_roles
+        symbol_roles = view.symbol_roles or 0
 
-        # Extract enclosing range if available (scip-go currently does NOT emit this)
-        enclosing_ranges = re.findall(r"enclosing_range:\s*(\d+)", occurrence_text)
+        # Enclosing range if available (scip-go currently does NOT emit this)
+        enclosing_ranges = view.enclosing_ranges
 
         # Process the symbol
         self._process_symbol(symbol, file_path, line, symbol_roles, enclosing_ranges)
@@ -346,9 +377,9 @@ class SCIPGoGraphDecoder:
         """Set unified_name attribute on a vertex if it exists."""
         if symbol_key in self.code_graph.name_to_vertex:
             vertex_id = self.code_graph.name_to_vertex[symbol_key]
-            self.code_graph.graph.vs[vertex_id]["unified_name"] = (
-                self._get_unified_name(symbol_key, file_path, symbol_type)
-            )
+            self.code_graph.graph.vs[vertex_id][
+                "unified_name"
+            ] = self._get_unified_name(symbol_key, file_path, symbol_type)
 
     def _process_symbol(self, symbol, file_path, line, symbol_roles, enclosing_ranges):
         """Process a symbol occurrence and add it to the graph."""
@@ -420,9 +451,9 @@ class SCIPGoGraphDecoder:
             if symbol_key in self.code_graph.name_to_vertex:
                 vid = self.code_graph.name_to_vertex[symbol_key]
                 if not self.code_graph.graph.vs[vid].attributes().get("unified_name"):
-                    self.code_graph.graph.vs[vid]["unified_name"] = (
-                        self._get_unified_name(symbol_key, file_path, symbol_type)
-                    )
+                    self.code_graph.graph.vs[vid][
+                        "unified_name"
+                    ] = self._get_unified_name(symbol_key, file_path, symbol_type)
 
     def save_graph(self, output_path):
         """Save the code graph to a file."""

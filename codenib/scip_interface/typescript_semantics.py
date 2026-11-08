@@ -9,20 +9,25 @@ from __future__ import annotations
 import re
 import threading
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Iterable, Optional, Sequence
 
 from ..types import EDGE_TYPE_IMPORT, NODE_TYPE_FILE
-from .scip_indexer_base import extract_scip_blocks, extract_symbol
+from .scip_decode_view import (
+    OccurrenceView,
+    SymbolView,
+    document_path_from_text,
+    occurrence_view_from_text,
+    symbol_view_from_text,
+)
+from .scip_indexer_base import extract_scip_blocks
 
 if TYPE_CHECKING:
     from ..graph.code_graph import CodeGraph
 
+# A document as the import-edge pass reads it: its path and occurrences.
+DocumentViews = tuple[Optional[str], Sequence[OccurrenceView]]
 
-_KIND_FIELD_RE = re.compile(r"(?:^|\n)\s*kind:\s*([A-Za-z][A-Za-z0-9_]*)")
-_DOCUMENTATION_RE = re.compile(r'(?:^|\n)\s*documentation:\s*"((?:\\.|[^"\\])*)"')
 _TS_SIGNATURE_RE = re.compile(r"^```(?:ts|typescript)\\n(class|interface|enum|type)\s")
-_ROLES_RE = re.compile(r"symbol_roles:\s*(\d+)")
-_RANGE_RE = re.compile(r"(?:^|\n)\s*range:\s*(\d+)")
 _STATIC_MODULE_PARSERS = threading.local()
 
 
@@ -43,18 +48,14 @@ def normalize_scip_symbol_kind(value: str | None) -> str | None:
     return normalized
 
 
-def _kind_from_symbol_information(block: str) -> tuple[str | None, int]:
-    explicit = _KIND_FIELD_RE.search(block)
-    if explicit:
-        normalized = normalize_scip_symbol_kind(explicit.group(1))
+def _kind_from_symbol_information(view: SymbolView) -> tuple[str | None, int]:
+    if view.kind:
+        normalized = normalize_scip_symbol_kind(view.kind)
         if normalized is not None:
             return normalized, 2
 
-    first_documentation = _DOCUMENTATION_RE.search(block)
     signature = (
-        _TS_SIGNATURE_RE.search(first_documentation.group(1))
-        if first_documentation
-        else None
+        _TS_SIGNATURE_RE.search(view.documentation) if view.documentation else None
     )
     if signature:
         value = signature.group(1)
@@ -70,10 +71,19 @@ def extract_typescript_symbol_kinds(decoded_content: str) -> dict[str, str]:
     shape; arbitrary documentation prose is never classified.
     """
 
+    return typescript_symbol_kinds(
+        symbol_view_from_text(block)
+        for block in extract_scip_blocks(decoded_content, "symbols")
+    )
+
+
+def typescript_symbol_kinds(symbols: Iterable[SymbolView]) -> dict[str, str]:
+    """``extract_typescript_symbol_kinds`` over symbol views, in index order."""
+
     ranked: dict[str, tuple[str, int]] = {}
-    for block in extract_scip_blocks(decoded_content, "symbols"):
-        symbol = extract_symbol(block)
-        kind, priority = _kind_from_symbol_information(block)
+    for view in symbols:
+        symbol = view.symbol
+        kind, priority = _kind_from_symbol_information(view)
         if not symbol or not kind:
             continue
         previous = ranked.get(symbol)
@@ -104,16 +114,18 @@ def _typescript_symbol_target(
     return (parts[2], parts[3]), normalized
 
 
-def _typescript_project_packages(decoded_content: str) -> set[tuple[str, str]]:
+def _typescript_project_packages(
+    documents: Sequence[DocumentViews],
+) -> set[tuple[str, str]]:
     """Collect package identities backed by definitions in this SCIP index."""
 
     packages: set[tuple[str, str]] = set()
-    for document in extract_scip_blocks(decoded_content, "documents"):
-        for occurrence in extract_scip_blocks(document, "occurrences"):
-            roles_match = _ROLES_RE.search(occurrence)
-            if not roles_match or not (int(roles_match.group(1)) & 1):
+    for _path, occurrences in documents:
+        for occurrence in occurrences:
+            roles = occurrence.symbol_roles
+            if roles is None or not (roles & 1):
                 continue
-            target = _typescript_symbol_target(extract_symbol(occurrence) or "")
+            target = _typescript_symbol_target(occurrence.symbol or "")
             if target is None:
                 continue
             package, _path = target
@@ -237,8 +249,30 @@ def enrich_typescript_import_edges(
     identity. Ordinary reference edges remain untouched.
     """
 
+    documents = [
+        (
+            document_path_from_text(document),
+            [
+                occurrence_view_from_text(occurrence)
+                for occurrence in extract_scip_blocks(document, "occurrences")
+            ],
+        )
+        for document in extract_scip_blocks(decoded_content, "documents")
+    ]
+    return enrich_typescript_import_edges_from_views(
+        code_graph, documents, project_root
+    )
+
+
+def enrich_typescript_import_edges_from_views(
+    code_graph: "CodeGraph",
+    documents: Sequence[DocumentViews],
+    project_root: str | Path | None,
+) -> int:
+    """``enrich_typescript_import_edges`` over document views, in index order."""
+
     root = Path(project_root) if project_root is not None else None
-    project_packages = _typescript_project_packages(decoded_content)
+    project_packages = _typescript_project_packages(documents)
     added = 0
     # A large decoded workspace already carries tens of thousands of reference
     # edges. Adding import edges to igraph one at a time rebuilds its adjacency
@@ -246,11 +280,10 @@ def enrich_typescript_import_edges(
     # a native igraph crash). Buffer the complete enrichment pass and publish
     # it with one add_edges call.
     with code_graph.batch_edges():
-        for document in extract_scip_blocks(decoded_content, "documents"):
-            path_match = re.search(r'relative_path:\s*"([^"]+)"', document)
-            if not path_match:
+        for document_path, occurrences in documents:
+            if not document_path:
                 continue
-            source_file = Path(path_match.group(1)).as_posix()
+            source_file = Path(document_path).as_posix()
             if source_file not in code_graph.name_to_vertex:
                 continue
             module_anchors = []
@@ -264,12 +297,11 @@ def enrich_typescript_import_edges(
                     )
                 except (OSError, RuntimeError, TypeError, ValueError):
                     pass
-            for occurrence in extract_scip_blocks(document, "occurrences"):
-                values = [int(value) for value in _RANGE_RE.findall(occurrence)]
+            for occurrence in occurrences:
+                values = occurrence.line_ranges
                 if len(values) < 3:
                     continue
-                roles_match = _ROLES_RE.search(occurrence)
-                roles = int(roles_match.group(1)) if roles_match else 0
+                roles = occurrence.symbol_roles or 0
                 if roles & 1:
                     continue
                 point = (values[0], values[1])
@@ -283,8 +315,7 @@ def enrich_typescript_import_edges(
                 )
                 if not (roles & 2) and statement_line is None:
                     continue
-                symbol = extract_symbol(occurrence)
-                target = _typescript_symbol_target(symbol or "")
+                target = _typescript_symbol_target(occurrence.symbol or "")
                 if target is None:
                     continue
                 target_package, target_file = target
