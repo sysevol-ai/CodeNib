@@ -444,10 +444,10 @@ def _grep_python(
     def _rel(file_path: Path) -> str:
         if root.is_dir():
             try:
-                return str(file_path.relative_to(root))
+                return file_path.relative_to(root).as_posix()
             except ValueError:
-                return str(file_path)
-        return str(file_path)
+                return file_path.as_posix()
+        return file_path.as_posix()
 
     def _scan(file_path: Path) -> bool:
         """Record matches for *file_path*; return True if the head cap was hit."""
@@ -634,6 +634,63 @@ def _grep_python_isolated(
     return text
 
 
+def _is_fd_readable(fd: int, timeout_s: float) -> bool:
+    """Return whether ``fd`` has data ready to read within ``timeout_s``.
+
+    Uses ``select.select`` on POSIX platforms. On Windows, uses
+    ``PeekNamedPipe`` to inspect anonymous subprocess pipes without Winsock
+    socket-only restrictions.
+    """
+    if timeout_s <= 0:
+        timeout_s = 0.0
+
+    if sys.platform != "win32":
+        ready, _, _ = select.select((fd,), (), (), timeout_s)
+        return bool(ready)
+
+    try:
+        import ctypes
+        import ctypes.wintypes as wt
+        import msvcrt
+
+        handle = msvcrt.get_osfhandle(fd)
+        avail = wt.DWORD()
+        deadline = time.monotonic() + timeout_s
+        while True:
+            res = ctypes.windll.kernel32.PeekNamedPipe(
+                handle, None, 0, None, ctypes.byref(avail), None
+            )
+            if not res:
+                # ERROR_BROKEN_PIPE (109) is EOF, which POSIX select reports as
+                # readable; any other failure means this is not a pipe, so let
+                # the blocking read decide.
+                return True
+            if avail.value > 0:
+                return True
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return False
+            time.sleep(min(remaining, 0.005))
+    except (OSError, ValueError):
+        return True
+
+
+def _rg_display_path(path: str) -> str:
+    """A ripgrep path relative to the search root, with ``/`` separators.
+
+    Only the path is rewritten: matched lines keep their backslashes, and on
+    POSIX a backslash is a legal file name character.
+    """
+
+    if path.startswith("./"):
+        path = path[2:]
+    if os.sep == "\\":
+        if path.startswith(".\\"):
+            path = path[2:]
+        path = path.replace("\\", "/")
+    return path
+
+
 def _grep_ripgrep(
     rg_path: str,
     pattern: str,
@@ -725,8 +782,7 @@ def _grep_ripgrep(
         if remaining <= 0:
             timed_out = True
             break
-        ready, _, _ = select.select((proc.stdout.fileno(),), (), (), remaining)
-        if not ready:
+        if not _is_fd_readable(proc.stdout.fileno(), remaining):
             timed_out = True
             break
         chunk = os.read(proc.stdout.fileno(), 64 * 1024)
@@ -783,19 +839,30 @@ def _grep_ripgrep(
             path_field, separator, match = row.partition("\0")
             line_number, line_separator, content = match.partition(":")
             if separator and line_separator and line_number.isdigit():
+                path_field = _rg_display_path(path_field)
                 normalized_rows.append(f"{path_field}:{line_number}: {content}")
             else:  # Defensive fallback for an unexpected rg output shape.
                 normalized_rows.append(row.replace("\0", ":", 1))
         rows = normalized_rows
+    elif output_mode == "files_with_matches":
+        rows = [_rg_display_path(row) for row in rows]
+    else:  # count
+        normalized_rows = []
+        for row in rows:
+            path_field, separator, count = row.rpartition(":")
+            if separator and count.isdigit():
+                normalized_rows.append(f"{_rg_display_path(path_field)}:{count}")
+            else:
+                normalized_rows.append(_rg_display_path(row))
+        rows = normalized_rows
+
     if root.is_file():
         prefix = f"{root.name}:"
-        replacement = f"{root}:"
+        replacement = f"{root.as_posix()}:"
         rows = [
             replacement + row[len(prefix) :] if row.startswith(prefix) else row
             for row in rows
         ]
-    else:
-        rows = [row[2:] if row.startswith("./") else row for row in rows]
 
     if not rows:
         return "No matches found."
@@ -1040,7 +1107,7 @@ def _glob(pattern: str, path: str = ".") -> str:
                 rel = found.relative_to(root_path)
             except ValueError:
                 rel = found
-            matches.append(str(rel))
+            matches.append(rel.as_posix())
             if len(matches) >= _GLOB_MAX_RESULTS:
                 capped = True
                 break
