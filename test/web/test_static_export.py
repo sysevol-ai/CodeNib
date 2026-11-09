@@ -1172,8 +1172,13 @@ def test_publishability_rejects_json_escaped_windows_path(tmp_path: Path) -> Non
         )
 
 
+@pytest.mark.parametrize(
+    # The Pages workflow hands the story model key to the Action under this name.
+    "variable",
+    ["OPENAI_API_KEY", "OPENROUTER_API_KEY", "CODENIB_ACTION_WIKI_KEY"],
+)
 def test_static_export_rejects_a_configured_secret(
-    export_setup, monkeypatch: pytest.MonkeyPatch
+    export_setup, monkeypatch: pytest.MonkeyPatch, variable: str
 ) -> None:
     secret = "provider-secret-value"
 
@@ -1190,7 +1195,7 @@ def test_static_export_rejects_a_configured_secret(
             export_setup.manifest_path,
             export_setup.output,
             frontend_dir=export_setup.frontend,
-            environ={"OPENAI_API_KEY": secret},
+            environ={variable: secret},
         )
     assert not export_setup.output.exists()
 
@@ -2168,6 +2173,9 @@ def test_each_page_gets_a_readable_document_canonical_link_and_sitemap(
     assert "<loc>https://owner.github.io/demo/demo/page/architecture/</loc>" in sitemap
     # A project site's robots.txt would sit below the host root, unread.
     assert not (setup.output / "robots.txt").exists()
+    # The README badge from `codenib pages badge` is served by the site itself.
+    badge = (setup.output / "wiki-badge.svg").read_text()
+    assert badge.startswith("<svg") and "CodeNib" in badge and "<script" not in badge
     manifest = json.loads((setup.output / STATIC_EXPORT_MANIFEST).read_text())
     assert {
         "demo/index.html",
@@ -2242,3 +2250,65 @@ def test_a_repository_named_like_a_frontend_entry_keeps_the_app_fallback(
 
     assert (setup.output / "demo" / "keep.txt").read_text() == "frontend file\n"
     assert not (setup.output / "demo" / "index.html").exists()
+
+
+def test_a_partial_export_leaves_out_unready_pages(cached_export_setup):
+    setup = cached_export_setup
+
+    result = export_cached_wiki(
+        setup.config_path,
+        "demo",
+        setup.output,
+        frontend_dir=setup.frontend,
+        only_pages={"overview"},
+    )
+
+    root = setup.output / "data/repos/demo"
+    assert result.page_count == 1
+    assert not (root / "pages/architecture.json").exists()
+    tree = json.loads((root / "wiki.json").read_text())["pages"]
+    assert [node["id"] for node in tree] == ["overview"]
+    manifest = json.loads(result.manifest_path.read_text())
+    assert manifest["omitted_pages"] == ["architecture"]
+
+
+def test_pruning_lifts_children_and_unlinking_keeps_the_words():
+    tree = [
+        {"id": "overview", "children": []},
+        {
+            "id": "core",
+            "children": [{"id": "auth", "children": [{"id": "tokens"}]}],
+        },
+    ]
+
+    assert static_module._prune_unready(tree, {"overview", "auth", "tokens"}) == [
+        {"id": "overview", "children": []},
+        {"id": "auth", "children": [{"id": "tokens", "children": []}]},
+    ]
+    markdown = "See [core](?p=core#flow), [auth](?p=auth) and `[x](?p=core)`."
+    assert static_module._unlink_pages(markdown, {"core"}) == (
+        "See core, [auth](?p=auth) and `x`."
+    )
+
+
+def test_a_partial_export_must_include_the_overview(cached_export_setup):
+    with pytest.raises(ValueError, match="must include the Overview"):
+        export_cached_wiki(
+            cached_export_setup.config_path,
+            "demo",
+            cached_export_setup.output,
+            frontend_dir=cached_export_setup.frontend,
+            only_pages={"architecture"},
+        )
+    assert not cached_export_setup.output.exists()
+
+
+def test_only_a_cached_wiki_can_be_exported_in_part(export_setup):
+    with pytest.raises(ValueError, match="only a cached static export"):
+        export_static_wiki(
+            export_setup.repo,
+            export_setup.manifest_path,
+            export_setup.output,
+            frontend_dir=export_setup.frontend,
+            only_pages={"overview"},
+        )

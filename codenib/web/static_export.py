@@ -54,6 +54,7 @@ from .card_summary import card_summary
 from .config import RepoEntry
 from .launcher import find_frontend_dir
 from .local import prepare_local_wiki
+from .pages_setup import BADGE_NAME, WIKI_BADGE_SVG
 from .prerender import (
     can_prerender,
     outline_pages,
@@ -725,6 +726,32 @@ def _mounted_frontend_index(payload: bytes, *, base_path: str) -> bytes:
     return index_text.encode("utf-8")
 
 
+def _prune_unready(
+    nodes: Sequence[Mapping[str, Any]], ready: set[str]
+) -> list[dict[str, Any]]:
+    """Drop unready pages from an outline; their children take their place."""
+
+    kept: list[dict[str, Any]] = []
+    for node in nodes:
+        if not isinstance(node, Mapping):
+            continue
+        children = _prune_unready(node.get("children") or [], ready)
+        if str(node.get("id") or "") in ready:
+            kept.append({**node, "children": children})
+        else:
+            kept.extend(children)
+    return kept
+
+
+def _unlink_pages(markdown: str, omitted: set[str]) -> str:
+    """Keep the words of links to pages left out of this export."""
+
+    def unlink(match: re.Match[str]) -> str:
+        return match.group(1) if unquote(match.group(2)) in omitted else match.group(0)
+
+    return re.sub(r"\[([^\]\n]+)\]\(\?p=([^)#\s]+)(?:#[^)\s]*)?\)", unlink, markdown)
+
+
 def normalize_site_url(site_url: str | None, base_path: str) -> str | None:
     """The public URL of the export root, or None when it is not known.
 
@@ -1234,6 +1261,7 @@ def export_static_wiki(
     trial_api_base: str | None = None,
     export_format: str = "static",
     site_url: str | None = None,
+    only_pages: Iterable[str] | None = None,
 ) -> StaticExportResult:
     """Publish a source-bound Wiki with no model calls.
 
@@ -1243,7 +1271,10 @@ def export_static_wiki(
     publication retains its atomic replacement and source validation boundary.
     OKF requires cached pages and skips the frontend and web-only graph assets.
     Each page also gets its own readable document; ``site_url``, the public
-    URL of the export root, adds canonical links and a sitemap.
+    URL of the export root, adds canonical links and a sitemap. With
+    ``only_pages``, a cached static export publishes just those pages, such as
+    the ones that passed an audit, and leaves the rest of the outline out; the
+    Overview must be among them.
     """
 
     if export_format not in {"static", "okf"}:
@@ -1315,6 +1346,9 @@ def export_static_wiki(
     base_path = normalize_base_path(base_path)
     if site_url is not None and export_format == "okf":
         raise ValueError("OKF export does not accept a site URL")
+    selected_pages = None if only_pages is None else {str(page) for page in only_pages}
+    if selected_pages is not None and (export_format == "okf" or wiki_store is None):
+        raise ValueError("only a cached static export can publish a subset of pages")
     site_root = normalize_site_url(site_url, base_path)
     frontend = _prebuilt_frontend(frontend_dir) if export_format == "static" else None
     from ..wiki.okf import OKF_EXPORT_MANIFEST, render_okf_bundle
@@ -1416,6 +1450,12 @@ def export_static_wiki(
                 raise ValueError(
                     "Wiki outline is unavailable; precompute it before export"
                 )
+            omitted: set[str] = set()
+            if selected_pages is not None:
+                if "overview" not in selected_pages:
+                    raise ValueError("a partial Wiki export must include the Overview")
+                omitted = set(_page_ids(tree)) - selected_pages
+                tree = _prune_unready(tree, selected_pages)
             page_ids = _page_ids(tree)
             pages = []
             graphs: dict[str, dict[str, Any]] = {}
@@ -1434,6 +1474,10 @@ def export_static_wiki(
                 normalized = _normalize_page(
                     builder, page, verify_citations=cached_wiki is not None
                 )
+                if omitted and normalized.get("markdown"):
+                    normalized["markdown"] = _unlink_pages(
+                        str(normalized["markdown"]), omitted
+                    )
                 if export_format == "okf":
                     pages.append(normalized)
                     continue
@@ -1596,12 +1640,15 @@ def export_static_wiki(
                     f"{repo_root}/page-boundaries/{component}.json",
                     boundaries[page_id],
                 )
+            # The README badge `codenib pages badge` prints is served from here.
+            _write_bytes(stage, BADGE_NAME, WIKI_BADGE_SVG.encode("utf-8"))
             # A repository id naming a frontend entry keeps the app fallback.
             if repo_component not in frontend_names | {
                 "data",
                 "404.html",
                 "robots.txt",
                 "sitemap.xml",
+                BADGE_NAME,
                 manifest_name,
             }:
                 for relative, payload in sorted(prerendered.documents(shell).items()):
@@ -1654,6 +1701,8 @@ def export_static_wiki(
             "base_path": base_path,
             "files": _file_inventory(staged_payload_ownership, manifest_name),
         }
+        if omitted:
+            export_manifest["omitted_pages"] = sorted(omitted)
         if export_format == "okf":
             export_manifest["format"] = "okf"
             export_manifest["okf_version"] = "0.2"
@@ -1735,6 +1784,7 @@ def export_cached_wiki(
     trial_api_base: str | None = None,
     export_format: str = "static",
     site_url: str | None = None,
+    only_pages: Iterable[str] | None = None,
 ) -> StaticExportResult:
     """Publish one configured repository from a quiescent Wiki snapshot.
 
@@ -1779,6 +1829,7 @@ def export_cached_wiki(
             trial_api_base=trial_api_base,
             export_format=export_format,
             site_url=site_url,
+            only_pages=only_pages,
         )
 
 

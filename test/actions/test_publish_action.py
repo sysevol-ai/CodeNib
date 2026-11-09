@@ -10,6 +10,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -73,6 +74,8 @@ def _run_resolve_step(
             "INPUT_REVISION": "",
             "INPUT_SITE_OUTPUT": "",
             "INPUT_UPLOAD_CONTEXT": "true",
+            "INPUT_WIKI": action["inputs"]["wiki"]["default"],
+            "INPUT_WIKI_GRAPH": action["inputs"]["wiki-graph"]["default"],
             "RUNNER_OS": "Linux",
             "RUNNER_TEMP": str(tmp_path),
         }
@@ -363,3 +366,77 @@ def test_hosted_publish_smoke_is_narrow_and_sha_pinned() -> None:
     assert publish["with"]["upload-context"] == "false"
     assert publish["with"]["repository-path"] == "${{ steps.fixture.outputs.path }}"
     _assert_external_actions_are_sha_pinned(workflow)
+
+
+@pytest.mark.parametrize(
+    ("overrides", "extras"),
+    [
+        ({"INPUT_WIKI": "story"}, "agent,graph"),
+        ({"INPUT_WIKI": "story", "INPUT_WIKI_GRAPH": "false"}, "agent"),
+        ({"INPUT_WIKI": "story", "INPUT_PRESET": "semantic"}, "semantic,agent,graph"),
+    ],
+)
+def test_story_wiki_installs_the_model_client_and_graph(
+    tmp_path: Path, overrides: dict[str, str], extras: str
+) -> None:
+    result, output = _run_resolve_step(tmp_path, **overrides)
+
+    assert result.returncode == 0, result.stderr
+    assert f"extras={extras}\n" in output
+
+
+def test_story_wiki_rejects_unknown_modes_and_keeps_its_own_cache(
+    tmp_path: Path,
+) -> None:
+    result, _output = _run_resolve_step(tmp_path, INPUT_WIKI="essay")
+    assert result.returncode == 2
+    assert "wiki must be index or story" in result.stderr
+
+    (tmp_path / "index").mkdir()
+    (tmp_path / "story").mkdir()
+    _index, index_output = _run_resolve_step(tmp_path / "index")
+    _story, story_output = _run_resolve_step(tmp_path / "story", INPUT_WIKI="story")
+
+    def prefix(output: str) -> str:
+        return next(
+            line for line in output.splitlines() if line.startswith("cache_prefix=")
+        )
+
+    # Story state carries Wiki pages; an index-only run never restores it.
+    assert prefix(index_output) != prefix(story_output)
+
+
+def test_story_wiki_runs_before_the_state_is_saved() -> None:
+    action = _load(ACTION_PATH)
+    steps = _steps(action)
+    names = [step.get("name") for step in steps]
+
+    graph = names.index("Index the code graph for the Wiki")
+    write = names.index("Write the model-written Wiki")
+    assert (
+        names.index("Publish repository context")
+        < graph
+        < write
+        < names.index("Save incremental repository state")
+    )
+    assert steps[graph]["continue-on-error"] == "true"
+    script = steps[write]["run"]
+    assert "codenib pages build" in script and '"${command[@]}"' in script
+    # A Wiki that fails its checks leaves the index-derived site published.
+    assert "status -eq 3" in script and "::warning" in script
+    assert "WIKI_KEY_ENV" in steps[write]["env"]
+    assert not any("wiki_api_key" in str(value) for value in steps[write]["env"])
+
+
+def test_reusable_workflow_passes_the_wiki_key_only_for_story_pages() -> None:
+    workflow = _load(WORKFLOW_PATH)
+    build = workflow["jobs"]["build"]
+    publish = next(step for step in build["steps"] if step.get("id") == "publish")
+
+    assert "secrets.wiki_api_key" in publish["env"]["CODENIB_ACTION_WIKI_KEY"]
+    assert "inputs.wiki == 'story'" in publish["env"]["CODENIB_ACTION_WIKI_KEY"]
+    assert "CODENIB_ACTION_WIKI_KEY" in publish["with"]["wiki-api-key-env"]
+    assert publish["with"]["wiki"] == "${{ inputs.wiki }}"
+    assert workflow["on"]["workflow_call"]["inputs"]["wiki"]["default"] == "index"
+    assert "wiki_api_key" in workflow["on"]["workflow_call"]["secrets"]
+    assert "inputs.wiki == 'story'" in build["timeout-minutes"]
