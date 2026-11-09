@@ -45,11 +45,10 @@ SPDX-License-Identifier: Apache-2.0
   index recorded between areas. The page cites a file and line range for each claim.
 </sub></p>
 
-New in **0.2.5**: saved repository Wikis and portable OKF export, Pyrefly-backed
-Python graphs, static entry-path navigation and call-path rule checks.
-[Read the release notes](https://docs.codenib.ai/releases/0.2.5/). The map
-workspace and call-path pages shown here are on `main` and the hosted demo, and
-are not yet in a PyPI release.
+New in **0.2.6**: Wikis open as a map of their pages and lead with the main path
+through the code, faster graph builds, and first C/C++ and JavaScript/TypeScript
+builds that leave the checkout alone.
+[Read the release notes](https://docs.codenib.ai/releases/0.2.6/).
 
 ## A Wiki you can follow down to the source
 
@@ -136,7 +135,7 @@ uses its own model. Language toolchain and project prerequisites vary.
 [Setup and troubleshooting](https://docs.codenib.ai/codegraph/)
 · [Source exclusions](https://docs.codenib.ai/codegraph/#select-the-repository-source-surface)
 · [All MCP tools](https://docs.codenib.ai/mcp/)
-· [Change guard](https://docs.codenib.ai/guard/) (on `main`: lists the tests a change reaches before your agent finishes)
+· [Change guard](https://docs.codenib.ai/guard/) (preview, Python: lists the tests a change reaches before your agent finishes)
 
 ## How it compares
 

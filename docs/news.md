@@ -11,6 +11,17 @@ the complete version history, see
 [GitHub Releases](https://github.com/sysevol-ai/CodeNib/releases) and the
 [changelog](https://github.com/sysevol-ai/CodeNib/blob/main/CHANGELOG.md).
 
+## Upcoming — Wikis as maps and first builds that publish
+
+The 0.2.6 candidate opens Wikis as a map of their pages, leads with the main
+path through the code and checks how each page reads before publishing it.
+Graph builds get faster, and the first C/C++ and JavaScript/TypeScript builds
+no longer touch the checkout or get discarded as stale. `codenib guard` ships
+as a Python-only preview. Production publication is pending; installation
+guides continue to select the verified 0.2.5 package.
+
+[Read the 0.2.6 candidate notes](releases/0.2.6.md)
+
 ## 2026-11-04 — repository Wikis and static path navigation
 
 CodeNib 0.2.5 adds saved visitor Wikis, source-checked OKF export, Pyrefly-backed
