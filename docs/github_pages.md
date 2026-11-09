@@ -48,12 +48,80 @@ named from the repository and commit. The workflow caches the repository view
 for later builds. The static Wiki serves precomputed
 pages, citations, and navigation without executing a query engine in the
 browser; the BM25 artifact remains reusable through local or MCP serving.
-These are index-derived pages. Model-written story pages require a separate,
-explicit generation step before cached-story export.
+These are index-derived pages. For model-written pages, set `wiki: story`
+(next section).
 
 The v0.2.5 workflow and composite Action use `fast` by default. The example
 selects it explicitly; repositories still pinned to v0.2.3 must set `fast`
 to avoid that version's semantic default and embedding download.
+
+## Publish a Model-Written Wiki
+
+With `wiki: story`, the workflow writes the same Wiki the CodeNib Wiki app
+shows: a map of the code's parts, an Overview that follows the main path
+through the code, and pages that pass the readability and source checks. The
+model runs on your key; visitors never call it. Write the caller workflow and
+the remaining steps from the repository:
+
+```bash
+python -m pip install "codenib[agent]"
+codenib pages init
+```
+
+This writes `.github/workflows/codenib-wiki.yml`:
+
+```yaml
+jobs:
+  publish:
+    uses: sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@<version>
+    with:
+      preset: fast
+      wiki: story
+      model: openrouter/deepseek/deepseek-v4.1-flash
+      full-rebuild: ${{ inputs.full-rebuild || false }}
+    secrets:
+      wiki_api_key: ${{ secrets.OPENROUTER_API_KEY }}
+```
+
+Then choose **GitHub Actions** under **Settings > Pages**, and add your
+OpenRouter key as the Actions secret `OPENROUTER_API_KEY`. Put a spending
+limit on that key. `--model` and `--secret` choose another LiteLLM model and
+secret name, `--wiki index` writes the model-free workflow above, and `--ref`
+pins a full commit SHA instead of the release tag. Pages are planned through
+structured output within a bounded budget. For an OpenRouter model that the
+hosted Wiki lists, `codenib pages build` turns reasoning off as the hosted Wiki
+does; Claude 5.x models cannot turn thinking off and can spend that budget
+thinking. Check another model first with
+`codenib doctor --probe-model --model <model> --api-key-env OPENROUTER_API_KEY`;
+a model that fails its structured probe writes no publishable page.
+
+Each run indexes the checkout and, unless `graph: false`, builds the code
+graph that the map and call paths come from. A language whose toolchain is
+missing is left out of the graph. The model then writes the pages, and
+`codenib pages build` exports the ones that pass their checks, as the hosted
+Wiki does. A page that fails is left out and written again on the next
+commit. If the Overview fails, or fewer than 80% of the pages pass
+(`--min-ready`), nothing is published: the run deploys the index-derived
+pages instead and shows a warning.
+
+The first run writes every page. After it, the Wiki's outline and pages are
+kept in the Actions cache. On the next push, a page whose source files are
+all unchanged is kept, and only the others are written again. The outline is
+kept too, so new parts of the code appear only after a full rebuild. Run the
+workflow by hand with **full-rebuild** to rewrite every page; an upgrade of
+CodeNib or of its Wiki prompts also starts from scratch.
+
+On a 32-file Python package, the default model wrote a 20-page Wiki in about
+five minutes for $0.09, and 19 pages passed. After a commit that changed one
+file, the next build kept 18 pages, rewrote 2, and took 43 seconds for under
+$0.01. Larger repositories take longer and cost more.
+
+`codenib pages badge` prints a README badge, served by the published site,
+that links to the Wiki.
+
+The key reaches only the step that writes pages, and only for `wiki: story`.
+The workflow skips pull requests from forks, and publication fails if any
+output contains the key.
 
 ## Optionally Publish Semantic Views
 
@@ -107,6 +175,18 @@ The Pages artifact is a serverless inspection surface. It contains generated
 pages, source slices used by citations, page-level dependency data when
 available, and `codenib-static.json`. It does not contain an API endpoint,
 credential, interactive Ask backend, or unrestricted source-reading service.
+
+Each Wiki page is also written as its own HTML document, so a search engine
+can index it: the Overview at `<repo>/` and every other page at
+`<repo>/page/<page-id>/`. Each document has the page's title, a description
+from its opening paragraph, the article as plain HTML and links to the other
+pages. The Wiki app replaces it when its script starts. The workflow passes
+the Pages URL, so each document also gets a canonical link and the site gets a
+`sitemap.xml`. A site served from its host root, such as a custom domain or
+`owner.github.io`, also gets a `robots.txt`. A project site
+(`owner.github.io/repo`) cannot serve the host's `robots.txt`, so submit its
+`sitemap.xml` in Google Search Console instead. `codenib export` and
+`codenib publish` accept the same URL as `--site-url`.
 
 The separate context artifact contains:
 

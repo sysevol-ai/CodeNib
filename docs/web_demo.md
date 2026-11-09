@@ -518,7 +518,7 @@ node scripts/render-share-cards.mjs http://127.0.0.1:3000 <data_dir>/share_cards
 ```
 
 The ingress sends only link-preview agents, and never `/api/*`, to the tags
-page. People and search engines keep the app. With Caddy:
+page. People keep the app. With Caddy:
 
 ```caddyfile
 @linkpreview {
@@ -527,6 +527,37 @@ page. People and search engines keep the app. With Caddy:
 }
 rewrite @linkpreview /api/share-page?path={http.request.uri.path}&{http.request.uri.query}
 ```
+
+### Search engines
+
+Without help, a search engine sees one empty page for every route. The backend
+answers search crawlers from `/api/crawl-page?path=<route>` with the readable
+text of a Wiki page: its own title, description and canonical link, the
+article, and links to the repository's other pages. It reads only pages that
+are already cached, so a crawl never starts generation or a model call. A page
+that has not been generated yet answers 404. `/api/sitemap.xml` lists the
+home page, every prepared repository's Overview, and each cached page;
+`/api/robots.txt` points to it. Canonical page addresses are
+`/<repo>/` for the Overview and `/<repo>/page/<page-id>/` for other pages; the
+app opens both.
+
+The page is the same text that people read in the app, without its scripts.
+Route only search crawlers to it, and keep static files on the app:
+
+```caddyfile
+@searchcrawler {
+    not path /api/* /assets/*
+    not path_regexp \.[A-Za-z0-9]+$
+    header_regexp User-Agent "(?i)(googlebot|bingbot|duckduckbot|applebot|yandex|baiduspider|slurp|petalbot|seznambot|qwantbot)"
+}
+rewrite @searchcrawler /api/crawl-page?path={http.request.uri.path}&{http.request.uri.query}
+rewrite /robots.txt /api/robots.txt
+rewrite /sitemap.xml /api/sitemap.xml
+```
+
+After deploying, check that `curl -A Googlebot https://demo.codenib.ai/psf__requests/`
+returns the Overview's title, and that `/robots.txt` and `/sitemap.xml` are
+served as text and XML rather than as the app.
 
 ### What the loading states mean
 
