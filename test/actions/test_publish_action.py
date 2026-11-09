@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import subprocess
@@ -139,14 +140,8 @@ def test_publish_action_builds_frontend_before_source_install() -> None:
     assert names.index("Build static frontend") < names.index("Install CodeNib")
     resolve = next(step for step in _steps(action) if step.get("id") == "inputs")
     assert "web/dist" in resolve["run"]
-    setup_node = next(
-        step for step in _steps(action) if step.get("name") == "Set up Node.js"
-    )
-    dependency_path = setup_node["with"]["cache-dependency-path"]
-    assert dependency_path == (
-        "${{ steps.inputs.outputs.source_path }}/web/package-lock.json"
-    )
-    assert ".." not in dependency_path
+    # npm ci in the frontend build reads the restored npm cache.
+    assert names.index("Cache npm downloads") < names.index("Build static frontend")
 
 
 def test_publish_action_keeps_untrusted_inputs_out_of_shell_source() -> None:
@@ -185,6 +180,42 @@ def test_publish_action_resolves_valid_inputs(tmp_path: Path) -> None:
     assert "extras=\n" in output
     assert f"source_path={ROOT}" in output
     assert f"source_commit={source_commit}" in output
+
+
+def test_publish_action_keys_the_npm_cache_where_a_remote_action_runs(
+    tmp_path: Path,
+) -> None:
+    # Used remotely, the action runs from the runner's _actions directory,
+    # outside GITHUB_WORKSPACE, where setup-node cannot hash a lockfile for its
+    # npm cache and fails the run; the resolve step keys that cache instead.
+    action = _load(ACTION_PATH)
+    steps = _steps(action)
+    node = next(step for step in steps if "setup-node" in str(step.get("uses")))
+    assert not {"cache", "cache-dependency-path"} & set(node.get("with") or {})
+    assert "hashFiles(" not in ACTION_PATH.read_text(encoding="utf-8")
+    npm = next(step for step in steps if step.get("name") == "Cache npm downloads")
+    assert npm["with"] == {
+        "path": "~/.npm",
+        "key": "${{ steps.inputs.outputs.npm_cache_key }}",
+    }
+
+    remote = tmp_path / "_actions" / "sysevol-ai" / "CodeNib" / ("b" * 40)
+    for relative in (
+        ".github/actions/publish/action.yml",
+        "pyproject.toml",
+        "web/package-lock.json",
+    ):
+        target = remote / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes((ROOT / relative).read_bytes())
+    result, output = _run_resolve_step(
+        tmp_path, GITHUB_ACTION_PATH=str(remote / ".github" / "actions" / "publish")
+    )
+    lock = hashlib.sha256((ROOT / "web" / "package-lock.json").read_bytes())
+
+    assert result.returncode == 0, result.stderr
+    assert f"source_path={remote.resolve()}\n" in output
+    assert f"npm_cache_key=codenib-npm-Linux-{lock.hexdigest()}\n" in output
 
 
 def test_publish_action_defaults_semantic_to_local_huggingface(
