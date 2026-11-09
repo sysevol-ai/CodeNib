@@ -218,9 +218,11 @@ pages, source slices used by citations, page-level dependency data when
 available, and `codenib-static.json`. It does not contain an API endpoint,
 credential, interactive Ask backend, or unrestricted source-reading service.
 
-Each Wiki page is also written as its own HTML document, so a search engine
-can index it: the Overview at `<repo>/` and every other page at
-`<repo>/page/<page-id>/`. Each document has the page's title, a description
+The Wiki is the site: the Pages URL opens the Overview, and every other page
+has its own address at `page/<page-id>/`. Each page is also written as its
+own HTML document there, so a search engine can index it. Addresses from
+earlier releases, under `<repo>/`, still open the same page. Each document has
+the page's title, a description
 from its opening paragraph, the article as plain HTML and links to the other
 pages. The Wiki app replaces it when its script starts. The workflow passes
 the Pages URL, so each document also gets a canonical link and the site gets a

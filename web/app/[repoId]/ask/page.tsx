@@ -20,7 +20,7 @@ import {
 } from "@/lib/api";
 import { codeRefs } from "@/lib/citations";
 import { relatedWikiPages } from "@/lib/relatedWiki";
-import { AppLink } from "@/lib/router";
+import { AppLink, wikiRoute } from "@/lib/router";
 
 // DeepWiki clamps the question to ~200 chars before "Show full text".
 const Q_TRUNCATE = 200;
@@ -194,7 +194,7 @@ function AskAnswer({ repoId, query }: { repoId: string; query: string }) {
       <Header
         center={
           <nav className="breadcrumb" aria-label="Breadcrumb">
-            <AppLink href={`/${encodeURIComponent(repoId)}`} className="mono">
+            <AppLink href={wikiRoute(repoId)} className="mono">
               {repoName}
             </AppLink>
             <span className="crumb-sep">/</span>
@@ -206,7 +206,7 @@ function AskAnswer({ repoId, query }: { repoId: string; query: string }) {
       {/* DeepWiki-style codemap: hierarchical explanation (left) + code (right). */}
       <div className={`ask-codemap ${turns.length === 0 ? "empty" : ""}`}>
         <section className="ask-explain">
-          <AppLink className="ask-back" href={`/${encodeURIComponent(repoId)}`}>
+          <AppLink className="ask-back" href={wikiRoute(repoId)}>
             ← Back to wiki
           </AppLink>
 
@@ -277,7 +277,7 @@ function AskAnswer({ repoId, query }: { repoId: string; query: string }) {
                         {relatedByTurn[i].map((related) => (
                           <AppLink
                             className="ask-related-link"
-                            href={`/${encodeURIComponent(repoId)}?p=${encodeURIComponent(related.id)}`}
+                            href={`${wikiRoute(repoId)}?p=${encodeURIComponent(related.id)}`}
                             key={related.id}
                             title={related.breadcrumb}
                           >

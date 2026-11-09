@@ -30,7 +30,7 @@ import { ghFileUrl } from "@/lib/github";
 import AskBar from "@/components/AskBar";
 import RelatedVisuals from "@/components/RelatedVisuals";
 import { generatedByHref } from "@/lib/experience";
-import { AppLink, wikiPageLocation } from "@/lib/router";
+import { AppLink, wikiPageFromLocation, wikiPageLocation, wikiRoute } from "@/lib/router";
 import { isStaticRuntime, mediaAssetUrl } from "@/lib/runtime";
 import { trialBase } from "@/lib/openrouterTrial";
 import {
@@ -468,6 +468,16 @@ export default function WikiPageView({
   const [repo, setRepo] = useState<RepoInfo | null>(null);
   const [pages, setPages] = useState<WikiPageRef[]>([]);
   const [activeId, setActiveId] = useState<string>(initialPageId);
+  // Picking a page only replaces the address. A navigation the Wiki did not
+  // make, such as the CodeNib mark or the browser's Back button, names the
+  // page to show in the address it leaves.
+  useEffect(() => {
+    function follow() {
+      setActiveId(wikiPageFromLocation(window.location.pathname, window.location.search));
+    }
+    window.addEventListener("popstate", follow);
+    return () => window.removeEventListener("popstate", follow);
+  }, []);
   const [loadedPage, setPage] = useState<WikiPage | null>(null);
   const [pageLoadSeconds, setPageLoadSeconds] = useState(0);
   const [boundary, setBoundary] = useState<PageBoundary | null>(null);
@@ -1400,7 +1410,7 @@ export default function WikiPageView({
                       ? "This page is unavailable in this preview. Choose another section or use CodeNib in your agent."
                       : "Couldn't load this page. Pick another section or retry after fixing the backend."}
                   </p>
-                  {staticRuntime && <AppLink href={`/${encodeURIComponent(repoId)}`}>Back to overview</AppLink>}
+                  {staticRuntime && <AppLink href={wikiRoute(repoId)}>Back to overview</AppLink>}
                   {!staticRuntime && <p className="page-load-error-detail mono">{pageError}</p>}
                 </div>
               ) : (

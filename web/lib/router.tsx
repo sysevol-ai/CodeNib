@@ -4,7 +4,7 @@ import {
   type AnchorHTMLAttributes,
   type MouseEvent,
 } from "react";
-import { stripBasePath, withBasePath } from "./runtime";
+import { homeRepository, stripBasePath, withBasePath } from "./runtime";
 
 export interface BrowserLocation {
   pathname: string;
@@ -76,6 +76,24 @@ export function wikiPageLocation(pathname: string, pageId: string, pathForm: boo
     return pageId === "overview" ? root : `${root}page/${id}/`;
   }
   return `${pathname}?p=${id}`;
+}
+
+/** The Wiki page an address names: ?p=, then /page/<id>/, else the Overview. */
+export function wikiPageFromLocation(pathname: string, search: string): string {
+  const query = new URLSearchParams(search).get("p");
+  if (query) return query;
+  const page = /\/page\/([^/]+)\/?$/.exec(pathname);
+  if (!page) return "overview";
+  try {
+    return decodeURIComponent(page[1]);
+  } catch {
+    return page[1];
+  }
+}
+
+/** A repository's Wiki address: the site root when the site publishes it. */
+export function wikiRoute(repoId: string): string {
+  return repoId === homeRepository() ? "/" : `/${encodeURIComponent(repoId)}`;
 }
 
 export function routeSegments(pathname: string): string[] {

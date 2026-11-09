@@ -61,7 +61,6 @@ from .prerender import (
     page_body,
     page_description,
     page_document,
-    page_route,
     robots,
     sitemap,
 )
@@ -790,7 +789,6 @@ def normalize_site_url(site_url: str | None, base_path: str) -> str | None:
 class _PrerenderedWiki:
     """One readable document per page, written beside the exported data."""
 
-    repo_id: str
     repository: str
     commit: str
     base_path: str
@@ -801,7 +799,6 @@ class _PrerenderedWiki:
     def build(
         cls,
         *,
-        repo_id: str,
         repository: str,
         commit: str,
         base_path: str,
@@ -813,7 +810,6 @@ class _PrerenderedWiki:
         ordered = [page_id for page_id, _title in outline_pages(tree)]
         ordered += [page_id for page_id in by_id if page_id not in ordered]
         return cls(
-            repo_id=repo_id,
             repository=repository,
             commit=commit,
             base_path=base_path,
@@ -829,16 +825,28 @@ class _PrerenderedWiki:
             ),
         )
 
+    @staticmethod
+    def route(page_id: str) -> str:
+        """A page's path below the mount: the Wiki is the site itself.
+
+        The export holds one repository, so the Overview is the site root
+        and every other page sits at ``page/<id>/``.
+        """
+
+        if page_id == "overview":
+            return ""
+        return f"page/{quote(page_id, safe='')}/"
+
     def href(self, page_id: str) -> str | None:
         if not any(page_id == known for known, _title, _markdown in self.pages):
             return None
         mount = "" if self.base_path == "/" else self.base_path
-        return f"{mount}/{page_route(self.repo_id, page_id)}"
+        return f"{mount}/{self.route(page_id)}"
 
     def url(self, page_id: str) -> str | None:
         if self.site_root is None:
             return None
-        return f"{self.site_root}/{page_route(self.repo_id, page_id)}"
+        return f"{self.site_root}/{self.route(page_id)}"
 
     def _document(self, shell: bytes, page_id: str, title: str, markdown: str) -> bytes:
         label = f"{self.repository} Wiki"
@@ -875,13 +883,16 @@ class _PrerenderedWiki:
         return shell
 
     def documents(self, shell: bytes) -> dict[str, bytes]:
+        """Documents for every page but the Overview, which is the root."""
+
         # A shell without a title or an empty root keeps the app fallback.
         if not can_prerender(shell.decode("utf-8")):
             return {}
         return {
-            page_route(self.repo_id, page_id)
+            self.route(page_id)
             + "index.html": self._document(shell, page_id, title, markdown)
             for page_id, title, markdown in self.pages
+            if page_id != "overview"
         }
 
     def sitemap(self) -> bytes | None:
@@ -1594,7 +1605,6 @@ def export_static_wiki(
                 {"trial_api_base": trial_api_base} if trial_api_base else {}
             )
             prerendered = _PrerenderedWiki.build(
-                repo_id=repo_id,
                 repository=bundle.entry.repo or repo_id,
                 commit=bundle.manifest.commit or "",
                 base_path=base_path,
@@ -1651,15 +1661,8 @@ def export_static_wiki(
                 )
             # The README badge `codenib pages badge` prints is served from here.
             _write_bytes(stage, BADGE_NAME, WIKI_BADGE_SVG.encode("utf-8"))
-            # A repository id naming a frontend entry keeps the app fallback.
-            if repo_component not in frontend_names | {
-                "data",
-                "404.html",
-                "robots.txt",
-                "sitemap.xml",
-                BADGE_NAME,
-                manifest_name,
-            }:
+            # A frontend entry named "page" keeps the app fallback.
+            if "page" not in frontend_names:
                 for relative, payload in sorted(prerendered.documents(shell).items()):
                     _write_bytes(stage, relative, payload)
             site_map = prerendered.sitemap()

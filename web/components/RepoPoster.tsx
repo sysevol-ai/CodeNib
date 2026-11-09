@@ -23,7 +23,7 @@ import {
   TAG_W,
   type PosterEdge,
 } from "@/lib/posterLayout";
-import { AppLink } from "@/lib/router";
+import { AppLink, wikiRoute } from "@/lib/router";
 import { isStaticRuntime } from "@/lib/runtime";
 import { excerptRows, GAP } from "@/lib/sourceExcerpt";
 import { displaySymbol } from "@/lib/symbols";
@@ -807,7 +807,7 @@ export default function RepoPoster({
                 Open the {repo?.repo || repoId} Wiki →
               </a>
             ) : (
-              <AppLink className="poster-link" href={`/${encodeURIComponent(repoId)}`}>
+              <AppLink className="poster-link" href={wikiRoute(repoId)}>
                 Open the {repo?.repo || repoId} Wiki →
               </AppLink>
             )}

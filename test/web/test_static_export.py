@@ -2150,9 +2150,10 @@ def test_each_page_gets_a_readable_document_canonical_link_and_sitemap(
         site_url="https://owner.github.io/demo/",
     )
 
-    overview = (setup.output / "demo" / "index.html").read_text()
-    page = (setup.output / "demo" / "page" / "architecture" / "index.html").read_text()
-    root = (setup.output / "index.html").read_text()
+    # The export holds one repository: its Wiki is the site, the Overview at
+    # the root and every other page at page/<id>/.
+    overview = (setup.output / "index.html").read_text()
+    page = (setup.output / "page" / "architecture" / "index.html").read_text()
 
     assert "<title>owner/demo Wiki</title>" in overview
     assert "<title>Architecture · owner/demo Wiki</title>" in page
@@ -2162,17 +2163,18 @@ def test_each_page_gets_a_readable_document_canonical_link_and_sitemap(
     )
     assert "<p>The runtime is source linked.</p>" in overview
     assert (
-        '<link rel="canonical" href="https://owner.github.io/demo/demo/page/'
+        '<link rel="canonical" href="https://owner.github.io/demo/page/'
         'architecture/">' in page
     )
     # Pages link to each other by path, under the mount, so crawlers find all.
-    assert '<a href="/demo/demo/page/architecture/">Architecture</a>' in overview
+    assert '<a href="/demo/page/architecture/">Architecture</a>' in overview
+    assert '<a href="/demo/">Overview</a>' in page
     assert "src='/demo/assets/app.js'" in page
-    # The site root reads as the Overview and names it as canonical.
-    assert '<link rel="canonical" href="https://owner.github.io/demo/demo/">' in root
+    assert '<link rel="canonical" href="https://owner.github.io/demo/">' in overview
+    assert not (setup.output / "demo").exists()
     sitemap = (setup.output / "sitemap.xml").read_text()
-    assert "<loc>https://owner.github.io/demo/demo/</loc>" in sitemap
-    assert "<loc>https://owner.github.io/demo/demo/page/architecture/</loc>" in sitemap
+    assert "<loc>https://owner.github.io/demo/</loc>" in sitemap
+    assert "<loc>https://owner.github.io/demo/page/architecture/</loc>" in sitemap
     # A project site's robots.txt would sit below the host root, unread.
     assert not (setup.output / "robots.txt").exists()
     # The README badge from `codenib pages badge` is served by the site itself.
@@ -2180,8 +2182,8 @@ def test_each_page_gets_a_readable_document_canonical_link_and_sitemap(
     assert badge.startswith("<svg") and "CodeNib" in badge and "<script" not in badge
     manifest = json.loads((setup.output / STATIC_EXPORT_MANIFEST).read_text())
     assert {
-        "demo/index.html",
-        "demo/page/architecture/index.html",
+        "index.html",
+        "page/architecture/index.html",
         "sitemap.xml",
     } <= {entry["path"] for entry in manifest["files"]}
 
@@ -2210,7 +2212,7 @@ def test_without_a_site_url_pages_still_get_documents(export_setup, tmp_path):
         frontend_dir=_titled_frontend(tmp_path),
     )
 
-    page = (setup.output / "demo" / "page" / "architecture" / "index.html").read_text()
+    page = (setup.output / "page" / "architecture" / "index.html").read_text()
     assert "<h1>Architecture</h1>" in page and "canonical" not in page
     assert not (setup.output / "sitemap.xml").exists()
 
