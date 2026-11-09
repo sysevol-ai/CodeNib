@@ -40,6 +40,8 @@ _PRESET_VIEWS = {
     "full": ("bm25", "vector", "symbol_graph", "zoekt"),
 }
 _PRESET_CHOICES = ("auto", *_PRESET_VIEWS)
+_DEFAULT_PAGES_MODEL = "openrouter/deepseek/deepseek-v4.1-flash"
+_DEFAULT_PAGES_SECRET = "OPENROUTER_API_KEY"
 _REMOTE_EMBEDDING_DEFAULTS = {
     "openai": ("text-embedding-3-small", 1536),
 }
@@ -1422,6 +1424,181 @@ def _run_artifact_mcp_config(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_pages_init(args: argparse.Namespace) -> int:
+    from .web.pages_setup import (
+        WORKFLOW_PATH,
+        badge_markdown,
+        default_branch,
+        github_repository,
+        pages_url,
+        workflow_text,
+    )
+
+    repo_path = resolve_repo_path(args.repo)
+    story = args.wiki == "story"
+    ref = args.ref or f"v{package_version()}"
+    try:
+        text = workflow_text(
+            ref=ref,
+            branch=args.branch or default_branch(repo_path),
+            story=story,
+            model=args.model,
+            secret=args.secret,
+        )
+    except ValueError as exc:
+        raise CLIError(str(exc)) from exc
+    destination = repo_path / WORKFLOW_PATH
+    if destination.exists() and not args.force:
+        raise CLIError(f"{WORKFLOW_PATH} already exists; pass --force to replace it")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(text, encoding="utf-8")
+    repository = github_repository(repo_path)
+    site = args.site_url or (pages_url(repository) if repository else None)
+    print(f"Wrote {WORKFLOW_PATH} (CodeNib {ref}, {args.wiki} Wiki).")
+    print("Next:")
+    print("  1. Commit and push the workflow.")
+    print("  2. In Settings > Pages, choose GitHub Actions as the source.")
+    if story:
+        print(
+            f"  3. Add your OpenRouter key as the Actions secret {args.secret} "
+            "(Settings > Secrets and variables > Actions). Set a spending limit "
+            "on the key; each push rewrites only the pages whose files changed."
+        )
+    print(f"  {4 if story else 3}. Add the badge to your README:")
+    if site:
+        print(f"     {badge_markdown(site)}")
+    else:
+        print("     codenib pages badge --site-url https://<your Pages address>/")
+    if not args.ref:
+        print(
+            f"Pinned to the tag {ref}. For a reviewed, immutable pin, pass "
+            "--ref <full commit SHA>."
+        )
+    return 0
+
+
+def _run_pages_badge(args: argparse.Namespace) -> int:
+    from .web.pages_setup import badge_markdown, github_repository, pages_url
+
+    site = args.site_url
+    if not site:
+        repository = github_repository(resolve_repo_path(args.repo))
+        if repository is None:
+            raise CLIError(
+                "this checkout has no GitHub origin; pass --site-url with the "
+                "published Wiki's address"
+            )
+        site = pages_url(repository)
+    print(badge_markdown(site))
+    return 0
+
+
+def _pages_model_options(model: str, options: dict[str, object]) -> dict[str, object]:
+    """Send an OpenRouter model the reasoning setting the hosted Wiki sends it.
+
+    Pages are planned through structured output within a bounded token budget.
+    A listed model that accepts it runs with reasoning off, as the hosted Wiki
+    runs it; left on, the plan can be spent thinking and arrive empty. An
+    explicit ``extra_body.reasoning`` option wins.
+    """
+
+    from .llm.options import merge_model_options
+    from .wiki.visitor_models import wiki_model
+
+    if not model.startswith("openrouter/"):
+        return options
+    listed = wiki_model(model.removeprefix("openrouter/"))
+    extra_body = options.get("extra_body")
+    if listed is None or not listed.reasoning:
+        return options
+    if isinstance(extra_body, dict) and "reasoning" in extra_body:
+        return options
+    return merge_model_options(
+        {"extra_body": {"reasoning": {"enabled": False}}}, options
+    )
+
+
+def _run_pages_build(args: argparse.Namespace) -> int:
+    """Write the model-written Wiki for an indexed checkout and export it."""
+
+    from .compiler.manifest import RepoManifest
+    from .web.local import prepare_local_wiki
+    from .web.static_export import export_cached_wiki
+    from .wiki.carry_forward import SNAPSHOT_NAME, carry_forward, save_snapshot
+
+    _require_modules(("litellm",), extra="agent", feature="model-written Wiki pages")
+    repo_path = resolve_repo_path(args.repo)
+    manifest_path = resolve_manifest_path(str(repo_path))
+    model_options = _pages_model_options(args.model, _model_options_for_args(args))
+    model_backend = _model_backend_for_args(args, options=model_options)
+    if model_backend is None:
+        raise CLIError("--model is required to write Wiki pages")
+    commit = RepoManifest.load(str(manifest_path)).commit or ""
+    try:
+        local = prepare_local_wiki(
+            repo_path,
+            manifest_path,
+            frontend_port=0,
+            agent_wiki=True,
+            repository_slug=args.repository,
+            model=model_backend.model,
+            api_base=model_backend.api_base,
+            api_key_env=model_backend.auth_source,
+            model_options=model_options,
+        )
+    except ValueError as exc:
+        raise CLIError(str(exc)) from exc
+    parts = _local_agent_wiki(local)
+    builder = parts[2]
+    snapshot = local.data_dir / SNAPSHOT_NAME
+    if args.full:
+        print("Wiki: rewriting every page (--full).")
+    else:
+        carried = carry_forward(builder, snapshot, repo_path, commit)
+        if carried.outline_reused:
+            print(
+                f"Wiki: kept {len(carried.reused)} unchanged page(s) from "
+                f"{carried.previous_commit[:12]}; rewriting "
+                f"{len(carried.rewritten)}."
+            )
+        else:
+            print(f"Wiki: writing every page ({carried.reason}).")
+    report = _audit_local_wiki(local, parts)
+    _print_wiki_audit(report)
+    details = [item for item in report.get("details") or [] if isinstance(item, dict)]
+    ready = {str(item.get("id")) for item in details if item.get("ready")}
+    expected = int(report.get("expected_pages") or 0)
+    # Like the hosted Wiki, publish the pages that passed; the rest are
+    # written again on the next commit. The Overview must be among them.
+    enough = bool(expected) and len(ready) >= args.min_ready * expected
+    if not (report.get("passed") or ("overview" in ready and enough)):
+        print(
+            f"The Wiki did not pass its checks ({len(ready)}/{expected} pages "
+            f"ready), so it was not published; {args.site_output} was left as "
+            "it was."
+        )
+        return 3
+    saved = save_snapshot(builder, snapshot, commit)
+    try:
+        result = export_cached_wiki(
+            local.config_path,
+            local.repo_id,
+            Path(args.site_output),
+            frontend_dir=args.frontend_dir,
+            base_path=args.base_path,
+            site_url=args.site_url,
+            only_pages=None if report.get("passed") else ready,
+        )
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise CLIError(str(exc)) from exc
+    print(f"Static Wiki: {result.output_dir}")
+    print(f"Pages:       {result.page_count} of {expected} ({saved} kept for later)")
+    left_out = sorted(str(item.get("id")) for item in details if not item.get("ready"))
+    if left_out:
+        print(f"Left out:    {', '.join(left_out)} (written again on the next commit)")
+    return 0
+
+
 def _run_publish(args: argparse.Namespace) -> int:
     repo_path = resolve_repo_path(args.repo)
     site_output = (
@@ -1534,15 +1711,14 @@ def _model_options_for_args(
         raise CLIError(str(exc)) from exc
 
 
-def _audit_local_wiki(local) -> dict[str, object]:
-    """Load the prepared local runtime and audit its current generated pages."""
+def _local_agent_wiki(local):
+    """Load the prepared local runtime; return its bundle, model and builder."""
 
     from .llm.litellm_chat import LiteLLMChat
     from .web.config import load_config
     from .web.native_authority import authorize_local_manifest_vector
     from .web.repo_registry import RepoRegistry
     from .wiki.agent_wiki import AgentWiki
-    from .wiki.quality import audit_wiki
     from .wiki.sqlite_store import SQLiteWikiStore
 
     config = load_config(str(local.config_path))
@@ -1584,6 +1760,15 @@ def _audit_local_wiki(local) -> dict[str, object]:
         # The audit judges what readers get, so it runs the served reader review.
         story_review=True,
     )
+    return bundle, model, builder
+
+
+def _audit_local_wiki(local, builder_parts=None) -> dict[str, object]:
+    """Audit the prepared local Wiki, generating every page it still lacks."""
+
+    from .wiki.quality import audit_wiki
+
+    bundle, model, builder = builder_parts or _local_agent_wiki(local)
     report = audit_wiki(builder)
     return {
         "repository": bundle.entry.repo,
@@ -3826,6 +4011,81 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     publish_parser.set_defaults(handler=_run_publish)
+
+    pages_parser = subparsers.add_parser(
+        "pages",
+        help="publish a repository's Wiki on GitHub Pages",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    pages_commands = pages_parser.add_subparsers(dest="pages_command", required=True)
+    pages_init = pages_commands.add_parser(
+        "init",
+        help="write a GitHub Actions workflow that publishes this Wiki",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    pages_init.add_argument("repo", nargs="?", default=".")
+    pages_init.add_argument(
+        "--wiki",
+        choices=("story", "index"),
+        default="story",
+        help="model-written pages (story) or index-derived pages without a model",
+    )
+    pages_init.add_argument("--model", default=_DEFAULT_PAGES_MODEL)
+    pages_init.add_argument(
+        "--secret",
+        default=_DEFAULT_PAGES_SECRET,
+        help="Actions secret holding the model key",
+    )
+    pages_init.add_argument(
+        "--ref",
+        help="CodeNib tag or commit the workflow pins; defaults to this version",
+    )
+    pages_init.add_argument("--branch", help="branch whose pushes publish")
+    pages_init.add_argument("--site-url", help="published address, for the badge")
+    pages_init.add_argument("--force", action="store_true")
+    pages_init.set_defaults(handler=_run_pages_init)
+
+    pages_badge = pages_commands.add_parser(
+        "badge", help="print a README badge that links to the published Wiki"
+    )
+    pages_badge.add_argument("repo", nargs="?", default=".")
+    pages_badge.add_argument("--site-url", help="published address of the Wiki")
+    pages_badge.set_defaults(handler=_run_pages_badge)
+
+    pages_build = pages_commands.add_parser(
+        "build",
+        help=(
+            "write model-written pages for an indexed checkout, keeping pages "
+            "whose files did not change, and export them for static hosting"
+        ),
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    pages_build.add_argument("repo", nargs="?", default=".")
+    pages_build.add_argument("--site-output", required=True)
+    pages_build.add_argument("--base-path", default="/")
+    pages_build.add_argument("--site-url")
+    pages_build.add_argument("--frontend-dir")
+    pages_build.add_argument(
+        "--repository", help="owner/name shown in the Wiki and its links"
+    )
+    pages_build.add_argument("--full", action="store_true", help="rewrite every page")
+    pages_build.add_argument(
+        "--min-ready",
+        type=float,
+        default=0.8,
+        help=(
+            "publish when the Overview and at least this share of pages pass "
+            "their checks; the others are left out"
+        ),
+    )
+    pages_build.add_argument("--model", required=True)
+    pages_build.add_argument("--model-provider")
+    pages_build.add_argument("--api-base")
+    pages_build.add_argument("--api-key-env")
+    pages_build.add_argument(
+        "--model-option", action="append", default=[], metavar="KEY=VALUE"
+    )
+    pages_build.set_defaults(handler=_run_pages_build)
 
     auth_parser = subparsers.add_parser(
         "auth", help="connect your OpenRouter account locally"

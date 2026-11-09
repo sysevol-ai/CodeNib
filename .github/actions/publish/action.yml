@@ -41,6 +41,23 @@ inputs:
       Public URL of the site root, such as https://owner.github.io/repo; adds
       canonical links and sitemap.xml to the per-page documents.
     default: ""
+  wiki:
+    description: >-
+      index for pages derived from the index alone, or story for model-written
+      pages that keep unchanged pages from the previous commit.
+    default: index
+  wiki-model:
+    description: LiteLLM model that writes story pages.
+    default: openrouter/deepseek/deepseek-v4.1-flash
+  wiki-api-key-env:
+    description: Name of an environment variable containing the story model key.
+    default: ""
+  wiki-full-rebuild:
+    description: Rewrite every story page instead of keeping unchanged ones.
+    default: "false"
+  wiki-graph:
+    description: Build the code graph that story pages draw maps and call paths from.
+    default: "true"
   site-output:
     description: Static site output directory; defaults under RUNNER_TEMP.
     default: ""
@@ -108,6 +125,8 @@ runs:
         INPUT_REPOSITORY_PATH: ${{ inputs.repository-path }}
         INPUT_REVISION: ${{ inputs.revision }}
         INPUT_SITE_OUTPUT: ${{ inputs.site-output }}
+        INPUT_WIKI: ${{ inputs.wiki }}
+        INPUT_WIKI_GRAPH: ${{ inputs.wiki-graph }}
         INPUT_RETENTION_DAYS: ${{ inputs.retention-days }}
         INPUT_UPLOAD_CONTEXT: ${{ inputs.upload-context }}
       run: |
@@ -175,6 +194,20 @@ runs:
             fi
             ;;
         esac
+        case "$INPUT_WIKI" in
+          index) ;;
+          story)
+            # Story pages need the model client, and the graph for maps.
+            extras="${extras:+$extras,}agent"
+            if [[ "$INPUT_WIKI_GRAPH" == "true" ]]; then
+              extras="$extras,graph"
+            fi
+            ;;
+          *)
+            echo "wiki must be index or story" >&2
+            exit 2
+            ;;
+        esac
 
         site_path="${INPUT_SITE_OUTPUT:-$RUNNER_TEMP/codenib-site}"
         context_path="${INPUT_CONTEXT_OUTPUT:-$RUNNER_TEMP/codenib-context}"
@@ -203,7 +236,7 @@ runs:
           printf '%s\0' "$revision" "$source_hash" "$INPUT_PYTHON_VERSION"
           printf '%s\0' "$INPUT_PRESET" "$embedding_provider"
           printf '%s\0' "$INPUT_EMBEDDING_MODEL" "$INPUT_EMBEDDING_DIMENSION"
-          printf '%s\0' "$INPUT_EMBEDDING_ENDPOINT"
+          printf '%s\0' "$INPUT_EMBEDDING_ENDPOINT" "$INPUT_WIKI"
         } | sha256sum | cut -d' ' -f1)"
         cache_prefix="codenib-${RUNNER_OS}-${repository_key}-${identity}"
         cache_key="${cache_prefix}-${source_commit}"
@@ -342,6 +375,59 @@ runs:
           command+=(--embedding-api-key-env "$CODENIB_ACTION_EMBEDDING_KEY_ENV")
         fi
         "${command[@]}"
+
+    - name: Index the code graph for the Wiki
+      if: ${{ inputs.wiki == 'story' && inputs.wiki-graph == 'true' }}
+      # Story pages still publish without maps when a toolchain is missing.
+      continue-on-error: true
+      shell: bash
+      env:
+        INPUT_REPOSITORY_PATH: ${{ inputs.repository-path }}
+      run: |
+        set -euo pipefail
+        codenib toolchain install "$INPUT_REPOSITORY_PATH" --scope graph
+        codenib index "$INPUT_REPOSITORY_PATH" --preset graph
+
+    - name: Write the model-written Wiki
+      if: ${{ inputs.wiki == 'story' }}
+      shell: bash
+      env:
+        FRONTEND_OUTPUT: ${{ steps.inputs.outputs.frontend_path }}
+        INPUT_BASE_PATH: ${{ inputs.base-path }}
+        INPUT_REPOSITORY_PATH: ${{ inputs.repository-path }}
+        INPUT_SITE_URL: ${{ inputs.site-url }}
+        REPOSITORY: ${{ steps.inputs.outputs.repository }}
+        SITE_OUTPUT: ${{ steps.inputs.outputs.site_path }}
+        WIKI_FULL_REBUILD: ${{ inputs.wiki-full-rebuild }}
+        WIKI_KEY_ENV: ${{ inputs.wiki-api-key-env }}
+        WIKI_MODEL: ${{ inputs.wiki-model }}
+      run: |
+        set -euo pipefail
+        command=(
+          codenib pages build "$INPUT_REPOSITORY_PATH"
+          --site-output "$SITE_OUTPUT"
+          --base-path "$INPUT_BASE_PATH"
+          --frontend-dir "$FRONTEND_OUTPUT"
+          --repository "$REPOSITORY"
+          --model "$WIKI_MODEL"
+        )
+        if [[ -n "$INPUT_SITE_URL" ]]; then
+          command+=(--site-url "$INPUT_SITE_URL")
+        fi
+        if [[ -n "$WIKI_KEY_ENV" ]]; then
+          command+=(--api-key-env "$WIKI_KEY_ENV")
+        fi
+        if [[ "$WIKI_FULL_REBUILD" == "true" ]]; then
+          command+=(--full)
+        fi
+        status=0
+        "${command[@]}" || status=$?
+        if [[ $status -eq 3 ]]; then
+          # The index-derived Wiki already in the site output stays published.
+          echo "::warning title=CodeNib Wiki::The model-written Wiki did not pass its checks, so the index-derived Wiki was published instead."
+        elif [[ $status -ne 0 ]]; then
+          exit "$status"
+        fi
 
     - name: Save incremental repository state
       if: ${{ inputs.cache == 'true' && steps.restore.outputs.cache-hit != 'true' }}

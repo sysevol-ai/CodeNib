@@ -35,9 +35,28 @@ on:
         description: Portable context artifact retention.
         type: number
         default: 14
+      wiki:
+        description: index for index-derived pages; story for model-written pages.
+        type: string
+        default: index
+      model:
+        description: LiteLLM model that writes story pages.
+        type: string
+        default: openrouter/deepseek/deepseek-v4.1-flash
+      full-rebuild:
+        description: Rewrite every story page instead of keeping unchanged ones.
+        type: boolean
+        default: false
+      graph:
+        description: Build the code graph that story pages draw maps from.
+        type: boolean
+        default: true
     secrets:
       embedding_api_key:
         description: Optional BYO embedding credential.
+        required: false
+      wiki_api_key:
+        description: Model key for story pages, such as an OpenRouter key.
         required: false
     outputs:
       page-url:
@@ -58,7 +77,7 @@ jobs:
       (github.event_name != 'pull_request' ||
       github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: ${{ inputs.wiki == 'story' && 120 || 30 }}
     permissions:
       contents: read
       pages: write
@@ -93,9 +112,18 @@ jobs:
             ${{ inputs.preset == 'semantic' &&
             inputs.embedding-provider == 'openai' &&
             secrets.embedding_api_key || '' }}
+          CODENIB_ACTION_WIKI_KEY: >-
+            ${{ inputs.wiki == 'story' && secrets.wiki_api_key || '' }}
         with:
           base-path: ${{ steps.pages.outputs.base_path }}
           site-url: ${{ steps.pages.outputs.base_url }}
+          wiki: ${{ inputs.wiki }}
+          wiki-model: ${{ inputs.model }}
+          wiki-api-key-env: >-
+            ${{ inputs.wiki == 'story' && secrets.wiki_api_key &&
+            'CODENIB_ACTION_WIKI_KEY' || '' }}
+          wiki-full-rebuild: ${{ inputs.full-rebuild }}
+          wiki-graph: ${{ inputs.graph }}
           embedding-api-key-env: >-
             ${{ inputs.preset == 'semantic' &&
             inputs.embedding-provider == 'openai' &&
