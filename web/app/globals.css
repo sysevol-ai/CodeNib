@@ -5811,6 +5811,12 @@ a.codepanel-name:hover {
   margin: 0;
   padding: 16px 14px 6px;
 }
+/* An Overview without a traced path shows the architecture as a figure in
+   the bordered story-map card; it needs the card's inner margin. */
+.wiki-story-map-frame .arch {
+  margin: 0;
+  padding: 20px 20px 4px;
+}
 .wiki-disclosure .arch-title {
   font-size: 17px;
 }
