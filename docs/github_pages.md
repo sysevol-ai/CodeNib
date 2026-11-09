@@ -57,18 +57,59 @@ to avoid that version's semantic default and embedding download.
 
 ## Publish a Model-Written Wiki
 
-With `wiki: story`, the workflow writes the same Wiki the CodeNib Wiki app
-shows: a map of the code's parts, an Overview that follows the main path
-through the code, and pages that pass the readability and source checks. The
-model runs on your key; visitors never call it. Write the caller workflow and
-the remaining steps from the repository:
+A model-written Wiki is the one the CodeNib Wiki app shows: a map of the
+code's parts, an Overview that follows the main path through the code, and
+pages that pass the readability and source checks. The model runs on your key;
+visitors never call it.
+
+The quickest setup is the
+[CodeNib Wiki action](https://github.com/marketplace/actions/codenib-wiki)
+from GitHub Marketplace. Add it as `.github/workflows/codenib-wiki.yml`:
+
+```yaml
+name: CodeNib Wiki
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  wiki:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.wiki.outputs.page-url }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: sysevol-ai/wiki-action@v1
+        id: wiki
+        with:
+          api-key: ${{ secrets.OPENROUTER_API_KEY }}
+```
+
+Then choose **GitHub Actions** under **Settings > Pages**, and add your
+OpenRouter key, with a spending limit on it, as the Actions secret
+`OPENROUTER_API_KEY`. The action also takes `model`, `full-rebuild` and
+`graph`; without a key, set `wiki: index`. Each release of the action
+installs one pinned CodeNib commit, and `@v1` follows the latest 1.x release.
+Pin a full commit SHA of `sysevol-ai/wiki-action` to review each upgrade.
+
+To choose the CodeNib version yourself, call the reusable workflow instead.
+Write it, and the remaining steps, from the repository:
 
 ```bash
 python -m pip install "codenib[agent]"
 codenib pages init
 ```
 
-This writes `.github/workflows/codenib-wiki.yml`:
+This writes `.github/workflows/codenib-wiki.yml` with `wiki: story`:
 
 ```yaml
 jobs:
@@ -108,8 +149,9 @@ The first run writes every page. After it, the Wiki's outline and pages are
 kept in the Actions cache. On the next push, a page whose source files are
 all unchanged is kept, and only the others are written again. The outline is
 kept too, so new parts of the code appear only after a full rebuild. Run the
-workflow by hand with **full-rebuild** to rewrite every page; an upgrade of
-CodeNib or of its Wiki prompts also starts from scratch.
+workflow by hand with **full-rebuild**, or give the action
+`full-rebuild: true`, to rewrite every page; an upgrade of CodeNib or of its
+Wiki prompts also starts from scratch.
 
 On a 32-file Python package, the default model wrote a 20-page Wiki in about
 five minutes for $0.09, and 19 pages passed. After a commit that changed one
