@@ -759,7 +759,9 @@ def test_source_outline_opens_the_folder_that_holds_most_code():
 
 
 def test_source_outline_names_single_folder_chains_and_sums_the_rest():
-    paths = [f"src/app/m{i}.ts" for i in range(4)] + [f"tests/t{i}.py" for i in range(4)]
+    paths = [f"src/app/m{i}.ts" for i in range(4)] + [
+        f"tests/t{i}.py" for i in range(4)
+    ]
     paths += [f"pkg{i}/x.py" for i in range(3)] + ["setup.py"]
     outline = visitor_source.source_outline(paths, PY, limit=3)
     assert outline["root"] == ""

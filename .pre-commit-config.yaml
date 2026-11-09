@@ -15,6 +15,8 @@ repos:
         args: [--fix=lf]
       - id: end-of-file-fixer
         name: (Common) Remove extra EOF newlines
+        # Recorded pyrefly Glean output, kept byte for byte as pyrefly wrote it.
+        exclude: ^test/scip/fixtures/pyrefly_glean_small/
       - id: check-merge-conflict
         name: (Common) Check for merge conflicts
       - id: requirements-txt-fixer

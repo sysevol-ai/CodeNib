@@ -21,11 +21,7 @@ from ..storage import SQLiteWikiStore
 from ..wiki.store import WikiGenerationBusyError
 from ..wiki.visitor_models import WIKI_MODELS, wiki_model_catalog
 from ..wiki.visitor_source import generation_limits
-from ..wiki.visitor_wiki import (
-    VisitorWikiError,
-    VisitorWikiRateLimited,
-    VisitorWikis,
-)
+from ..wiki.visitor_wiki import VisitorWikiError, VisitorWikiRateLimited, VisitorWikis
 from .config import load_config
 
 logger = get_logger(__name__)

@@ -81,9 +81,7 @@ def _esc(text: str) -> str:
 
 
 def _source_link(record: dict, file: str, line: int, text: str) -> str:
-    return (
-        f'<a href="{html.escape(_source_url(record, file, line))}">{_esc(text)}</a>'
-    )
+    return f'<a href="{html.escape(_source_url(record, file, line))}">{_esc(text)}</a>'
 
 
 def _answer_paragraphs(record: dict) -> list[str]:
