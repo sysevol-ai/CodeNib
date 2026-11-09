@@ -53,8 +53,9 @@ SPDX-License-Identifier: Apache-2.0
 </sub></p>
 
 New in **0.2.6**: Wikis open as a map of their pages and lead with the main path
-through the code, faster graph builds, and first C/C++ and JavaScript/TypeScript
-builds that leave the checkout alone.
+through the code, one GitHub Action publishes yours to GitHub Pages, plugins
+connect Claude Code, Grok Build and DeepSeek Harness, graph builds get faster,
+and first C/C++ and JavaScript/TypeScript builds leave the checkout alone.
 [Read the release notes](https://docs.codenib.ai/releases/0.2.6/).
 
 ## A Wiki you can follow down to the source

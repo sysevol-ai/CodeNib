@@ -11,50 +11,25 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 ## [Unreleased]
 
-### Changed
-
-- Visitor Wikis on a hosted server build their code maps with pyrefly, like
-  every other Python graph, instead of always using scip-python. scip-python
-  is used only when the pinned pyrefly release is missing or
-  `CODENIB_PYTHON_GRAPH_PROVIDER=scip-python` pins it. On sympy and matplotlib,
-  scip-python's output fails identity recovery and builds no graph.
-- Wiki pages read as technical documents. Body text sits a step back from the
-  headings, the opening claim and the code names, which carry a light fill.
-  Sources trail each paragraph in small grey type. The section bridge sentences
-  are set in roman instead of italics, and the reader column holds about 75
-  characters a line.
-- A page ends with one "Read next" list in the map's colours. It replaces the
-  "Related pages" list and the "Go deeper" buttons, which repeated the same
-  pages, and the "Subsystem map" graph.
-- The Dependency Map shows the structure view only. The Graph and Modules views
-  are removed: at repository scale both drew tangles. Their relationship list
-  shows both names in full.
-- Community Wikis use the same page ending as the featured ones. The "Chapter
-  CodeGraph" section is gone, and an Overview's architecture reads as a
-  numbered path with the other roles listed after it, without layer tags or a
-  "View source" link on every role.
-
-### Fixed
-
-- The Grok Build and DeepSeek Harness install commands in the guides now run:
-  `grok plugin install "sysevol-ai/CodeNib#plugins/codenib"` and
-  `dsh plugin --profile web add …`. The earlier ones named an option Grok does
-  not have and left out one `dsh` requires.
-- The Claude Code, Grok Build and DeepSeek Harness plugins no longer fail to
-  start when a CodeNib older than 0.2.5 is on the path. They run a current
-  one through `uvx`, or say which upgrade is needed.
-- C++ symbol names no longer show clang's template spelling, such as
-  `formatter<type-parameter-0-0, typename enable_if<…>::type>`. Parameters read
-  `T`, `U`; long argument lists fold to `<…>`. Call rows, call paths and the
-  structure view name a symbol by its owner and member.
-- Emoji copied from a README no longer appear in Wiki prose.
-- The Overview no longer scrolls sideways on a phone when a call path names a
-  long symbol.
-
-## [0.2.6] - 2026-11-08
+## [0.2.6] - 2026-11-12
 
 ### Added
 
+- Publish the model-written Wiki to GitHub Pages from GitHub Actions. The
+  [CodeNib Wiki action](https://github.com/marketplace/actions/codenib-wiki)
+  on GitHub Marketplace builds it on your OpenRouter key and deploys it in one
+  step. `codenib pages init` writes a workflow that calls the reusable
+  `codenib-pages.yml`, pinned to a release tag or `--ref`. `codenib pages
+  build` writes and audits the pages and exports the ones that pass, as the
+  hosted Wiki does. It publishes only when the Overview and at least 80% of the
+  pages pass (`--min-ready`); otherwise the run fails and the Wiki from the
+  last successful run stays published. After the first run, a page whose source
+  files are unchanged is kept, so a push pays only for the pages whose code
+  changed; `--full` or the workflow's `full-rebuild` input rewrites every page.
+- `codenib pages build` writes four pages at a time (`--workers`, 1 to 8) and
+  prints a line as each page finishes, with its result and the time left. When
+  a language has no graph provider on the runner, the action builds the graph
+  for the other languages and names the ones left out.
 - Preview: `codenib threads` prepares what a coding agent needs from a GitHub
   issue or pull request in one read, with no model: status, the ask, code
   locations resolved to symbols with their source, failing CI lines, linked
@@ -68,6 +43,24 @@ All notable user-facing changes are recorded here. CodeNib follows
   and open pull requests on the same symbols.
 - `codenib threads mcp` serves thread context and tickets as a separate MCP
   server, and `codenib.threads` exposes the same as a Python API.
+- `codenib pages badge` prints a README badge, served by every static export as
+  `wiki-badge.svg`, that links to the published Wiki.
+- Each page of a published Wiki is its own HTML document, with the page's
+  title, description and readable text, so search engines can index it.
+  `--site-url` on `codenib export` and `codenib publish`, which the Pages
+  workflow passes, adds canonical links, `sitemap.xml` and, when the site is
+  served from the host root, `robots.txt`. A hosted Wiki answers search
+  crawlers with the same markup for cached pages through `/api/crawl-page`,
+  `/api/sitemap.xml` and `/api/robots.txt`; a crawl never starts generation.
+- A Claude Code plugin. After
+  `claude plugin marketplace add sysevol-ai/CodeNib` and
+  `claude plugin install codenib@codenib`, Claude Code starts CodeNib's MCP
+  server in the Git checkout it opens and builds the search index first. The
+  plugin adds `explain`, `impact`, `setup` and `wiki` skills. Grok Build loads
+  the same plugin (`grok plugin install "sysevol-ai/CodeNib#plugins/codenib"`),
+  and `plugins/dsh` adds the MCP server to DeepSeek Harness on macOS and
+  Linux. The plugins run the installed `codenib` when it is 0.2.5 or newer,
+  and otherwise a current one through `uvx`.
 - The most important detail pages draw their longest recorded call path, labelled
   as one selected path. No model chooses the arrows.
 - Preview, for Python projects: `codenib guard check` compares the working tree
@@ -91,6 +84,13 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 ### Changed
 
+- **Breaking:** a Wiki published to GitHub Pages is always written by a model.
+  The reusable `codenib-pages.yml` workflow and the publish action no longer
+  publish pages derived from the index alone. A workflow that sets
+  `wiki: index` stops with a message that says to remove the input and add a
+  model key, a run without a key stops before indexing, and
+  `codenib pages init` no longer takes `--wiki`. Local `codenib wiki` and
+  `codenib export` still build pages from the index without a key.
 - The writing model list now offers Claude Opus 5.5 and Claude Haiku 5.5 (in
   place of Haiku 4.5), and newer GPT, Gemini, Grok and Mistral models. Claude
   Sonnet 5.5 no longer sends parameters that model rejects, which kept its runs
@@ -108,13 +108,21 @@ All notable user-facing changes are recorded here. CodeNib follows
   page with its questions above it, the repository form is a short narrow band,
   and the agent setup is one wide terminal that replays a recorded session line
   by line while drawing its caller graph, with every node linked to its source.
-  The ContextBench result and its diagram move up from the blog card into their
-  own band, and languages run on a strip of icons that says what CodeNib can do
+  The ContextBench result moves up from the blog card into its own band: two
+  numbers, one sentence and a link. Languages run on a strip of icons that says what CodeNib can do
   with each. Hosted limits fold away under the repository form; the OpenRouter
   cost stays visible.
 - The blog now matches the homepage: same dark colors, with every figure
   recolored, so moving between them no longer flips from black to white.
 - Map labels now wrap onto two lines instead of cutting off long page names.
+- Beside the map, a Wiki's Overview is titled with its repository, such as
+  `psf/requests`, and one line gives the index's counts of areas, symbols,
+  files and recorded references.
+- Catalog cards on `/browse` and the demo home draw each repository in the
+  shape of its own Wiki map. The demo home no longer repeats the homepage's
+  example and repository chips, so the catalog starts on the first screen.
+- codenib.ai, the blog and the demo share one header, logotype and primary
+  button.
 - On a wide screen a Wiki now opens as a workspace: the page list, a map of the
   Wiki and the reader, side by side. Pages are nodes, and the heavy lines are
   references the code index recorded between areas; click one to read an example
@@ -129,14 +137,45 @@ All notable user-facing changes are recorded here. CodeNib follows
   pages regenerate the next time they are opened, or when a prewarm runs.
 - The page list opens on the Overview and at most five pages, ranked from the
   recorded call graph. Detail pages wait behind their parent and lower-ranked
-  areas behind "More topics"; none are removed, and a parent page links to its
-  detail pages under "Go deeper".
+  areas behind "More topics"; none are removed, and a parent page lists its
+  detail pages first under "Read next".
 - The Overview leads with the main path through the code, one sentence per
   recorded call, chosen from the call graph rather than from what a search
   retrieved. The semantic architecture sits behind "How the parts fit together",
   and a page's callers and calls behind a disclosure.
+- Wiki pages read as technical documents. Body text sits a step back from the
+  headings, the opening claim and the code names, which carry a light fill.
+  Sources trail each paragraph in small grey type. The section bridge sentences
+  are set in roman instead of italics, and the reader column holds about 75
+  characters a line.
+- A page ends with one "Read next" list in the map's colours: its detail
+  pages, then related pages. It replaces the separate related-page list and
+  the "Subsystem map" graph.
+- The Dependency Map shows the structure view only. The Graph and Modules views
+  are removed: at repository scale both drew tangles. Their relationship list
+  shows both names in full.
+- Community Wikis use the same page ending as the featured ones. The "Chapter
+  CodeGraph" section is gone, and an Overview's architecture reads as a
+  numbered path with the other roles listed after it, without layer tags or a
+  "View source" link on every role.
 - The opt-in first-party funnel collector accepts `install_command_copy`,
   `guard_case_view` and an opt-in, once-per-user `guard_first_run` event.
+  A page view may carry an arrival class (`search`, `social`, `github`,
+  `other`) that the browser derives from the referrer's host; the referrer
+  itself is never sent. On the landing page, a visit from a published Wiki
+  carries that Wiki's public repository name.
+- A published Wiki serves its Overview at the site root and each page at
+  `page/<id>/`. Addresses from earlier exports, `<repo>/` and `?p=<page>`,
+  open the same page.
+- A published Wiki's "Generated by CodeNib" link opens
+  `https://codenib.ai/?ref=wiki&repo=<owner/name>` with `rel="noopener"`
+  instead of `noreferrer`, so codenib.ai can count the visits each published
+  Wiki sends.
+- Visitor Wikis on a hosted server build their code maps with pyrefly, like
+  every other Python graph, instead of always using scip-python. scip-python
+  is used only when the pinned pyrefly release is missing or
+  `CODENIB_PYTHON_GRAPH_PROVIDER=scip-python` pins it. On sympy and matplotlib,
+  scip-python's output fails identity recovery and builds no graph.
 - Graph builds spend less time outside the language indexers, and the stored
   graph is unchanged. On CodeNib's own source, a Python build reads pyrefly's
   report in 2.8 s instead of 14.0 s and converts it in 12.2 s instead of
@@ -221,6 +260,22 @@ All notable user-facing changes are recorded here. CodeNib follows
 - A hosted server whose `PATH` lacks Node.js now reports that the Python
   indexer cannot run, instead of starting it and recording a bare "index
   failed". Failed indexing logs the indexer's exit status.
+- `codenib publish` links a Wiki's sources to the `owner/name` repository it
+  was given. Before, the links used the directory name and returned 404.
+- In the dark theme, the source preview opened from a Wiki page keeps a dark
+  background; it showed light text on a pale block.
+- Map labels are whole in Safari, where the outline behind a label cut into
+  its letters, and the highlighted code line in the homepage example lines up
+  again.
+- A published Wiki opens on its repository's Overview instead of CodeNib's
+  landing page. Its CodeNib mark opens the Overview, and Browse is hidden.
+- C++ symbol names no longer show clang's template spelling, such as
+  `formatter<type-parameter-0-0, typename enable_if<…>::type>`. Parameters read
+  `T`, `U`; long argument lists fold to `<…>`. Call rows, call paths and the
+  structure view name a symbol by its owner and member.
+- Emoji copied from a README no longer appear in Wiki prose.
+- The Overview no longer scrolls sideways on a phone when a call path names a
+  long symbol.
 
 ## [0.2.5] - 2026-11-04
 
