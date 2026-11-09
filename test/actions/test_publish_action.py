@@ -18,7 +18,22 @@ ROOT = Path(__file__).resolve().parents[2]
 ACTION_PATH = ROOT / ".github" / "actions" / "publish" / "action.yml"
 WORKFLOW_PATH = ROOT / ".github" / "workflows" / "codenib-pages.yml"
 SMOKE_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "codenib-publish-smoke.yml"
-MARKETPLACE_ACTION_PATH = ROOT / "marketplace" / "wiki-action" / "action.yml"
+# sysevol-ai/wiki-action, the Marketplace action, calls this action at a
+# pinned commit with these inputs and publishes its `site-path` output.
+# Renaming any of them would break that action's next release.
+WIKI_ACTION_INPUTS = frozenset(
+    {
+        "repository-path",
+        "base-path",
+        "site-url",
+        "wiki",
+        "wiki-model",
+        "wiki-api-key-env",
+        "wiki-full-rebuild",
+        "wiki-graph",
+        "upload-context",
+    }
+)
 PINNED_ACTION_RE = re.compile(r"^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)+@[0-9a-f]{40}$")
 
 
@@ -474,18 +489,8 @@ def test_reusable_workflow_passes_the_wiki_key_only_for_story_pages() -> None:
     assert "inputs.wiki == 'story'" in build["timeout-minutes"]
 
 
-def test_marketplace_action_fits_its_listing_and_the_publish_action() -> None:
-    wrapper = _load(MARKETPLACE_ACTION_PATH)
-    inputs = _load(ACTION_PATH)["inputs"]
+def test_publish_action_keeps_what_the_marketplace_action_uses() -> None:
+    action = _load(ACTION_PATH)
 
-    # Marketplace refuses to list an action whose description is this long.
-    assert 0 < len(wrapper["description"]) < 125
-    assert wrapper["name"] and wrapper["branding"]["icon"]
-    assert wrapper["branding"]["color"]
-    steps = _steps(wrapper)
-    publish = next(step for step in steps if step.get("id") == "publish")
-    assert publish["uses"].startswith("sysevol-ai/CodeNib/.github/actions/publish@")
-    assert set(publish["with"]) <= set(inputs)
-    _assert_external_actions_are_sha_pinned(
-        {"runs": {"steps": [step for step in steps if step is not publish]}}
-    )
+    assert WIKI_ACTION_INPUTS <= set(action["inputs"])
+    assert "site-path" in action["outputs"]
