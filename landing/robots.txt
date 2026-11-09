@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: 2026 CodeNib Contributors
+# SPDX-License-Identifier: Apache-2.0
+
+User-agent: *
+Allow: /
+
+Sitemap: https://codenib.ai/sitemap.xml

@@ -1,10 +1,16 @@
 // SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { installExperienceEvents, recordExperience } from "./experience.js";
+import {
+  classifyArrival, installExperienceEvents, recordExperience, withoutArrivalParameters,
+} from "./experience.js";
+// Read a published Wiki's attribution once, then keep the address clean.
+const arrival = classifyArrival(location.search, document.referrer, location.hostname);
+const cleanHref = withoutArrivalParameters(location.href);
+if (cleanHref !== location.href) history.replaceState(history.state, "", cleanHref);
 // A host may opt in after proxying this first-party endpoint to CodeNib.
 const endpoint = document.querySelector('meta[name="codenib-experience-endpoint"]')?.content;
-if (endpoint) installExperienceEvents(endpoint, "landing");
+if (endpoint) installExperienceEvents(endpoint, "landing", arrival);
 const explorer = document.querySelector("codenib-explorer");
 const taskButtons = document.querySelectorAll("[data-example-task]");
 taskButtons.forEach(button => {

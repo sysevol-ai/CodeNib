@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+SPDX-FileCopyrightText: 2026 CodeNib Contributors
+SPDX-License-Identifier: Apache-2.0
+
+One entry per page's canonical URL; test/test_landing_sitemap.py keeps this
+list in step with landing/**/index.html.
+-->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://codenib.ai/</loc></url>
+  <url><loc>https://codenib.ai/blogs/</loc></url>
+  <url><loc>https://codenib.ai/blogs/agent-ready-codegraph/</loc></url>
+  <url><loc>https://codenib.ai/blogs/contextbench-500-tasks/</loc></url>
+  <url><loc>https://codenib.ai/blogs/jev-model-grep-reranking/</loc></url>
+  <url><loc>https://codenib.ai/blogs/local-code-intelligence-dgx-spark/</loc></url>
+</urlset>
