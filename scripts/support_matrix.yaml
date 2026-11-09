@@ -17,6 +17,9 @@
 evidence_levels: [Tested, Runnable, Pinned, Measured]
 
 layers:
+  QA:
+    name: Answer quality
+    scored: Released questions answered against reference answers using an LLM judge
   L1:
     name: Localization
     scored: The method's final ranked files, symbols, code blocks, or line regions
@@ -188,6 +191,30 @@ benchmarks:
       - codenib/eval/benchmarks/contextbench.py
       - codenib/eval/benchmarks/contextbench_runner.py
       - codenib/eval/benchmarks/_contextbench_evaluate.py
+
+  - id: swe_qa_pro
+    name: SWE-QA-Pro
+    column: SWE-QA-Pro
+    url: https://github.com/TIGER-AI-Lab/SWE-QA-Pro
+    layer: QA
+    origin: External
+    task: Answer repository-level code questions with source exploration
+    ground_truth: Released reference answers
+    granularity: Question and answer
+    languages: Python repositories
+    size: 260 questions across 26 repositories
+    pins: Evaluator `93ac6a4f`, dataset `596892da`
+    scorer: Official evaluator; five 1–10 dimensions
+    setup: Pinned release, source checkouts, CodeNib indexes and provider keys
+    entry:
+      - module: codenib.eval.benchmarks.swe_qa_pro
+        run: true
+    level: Runnable
+    level_note: CodeNib answers with official scoring
+    page: evaluation/swe_qa_pro.md
+    in_grid: false
+    modules:
+      - codenib/eval/benchmarks/swe_qa_pro.py
 
   - id: contextbench_pass1
     name: ContextBench Pass@1
