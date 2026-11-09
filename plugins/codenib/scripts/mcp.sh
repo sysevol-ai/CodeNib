@@ -2,7 +2,9 @@
 # SPDX-FileCopyrightText: 2026 CodeNib Contributors
 # SPDX-License-Identifier: Apache-2.0
 #
-# Start CodeNib's MCP server for the project Claude Code opened.
+# Start CodeNib's MCP server for the project the agent opened. Claude Code
+# passes the project directory; a host that does not set it starts the server
+# in the project, so the working directory stands in.
 #
 # The search index is built or refreshed first. CodeNib keeps it under
 # ~/.codenib, never in the checkout. The code graph is prepared on first use.
@@ -10,6 +12,9 @@
 set -euo pipefail
 
 project="${1:-${CLAUDE_PROJECT_DIR:-$PWD}}"
+if [[ ! -d "$project" ]]; then
+  project="$PWD"
+fi
 
 if command -v codenib >/dev/null 2>&1; then
   codenib=(codenib)
@@ -17,7 +22,7 @@ elif command -v uvx >/dev/null 2>&1; then
   codenib=(uvx --quiet --from "codenib[graph,mcp]" codenib)
 else
   echo "CodeNib is not installed. Run /codenib:setup, or install it with" \
-    "python -m pip install 'codenib[graph,mcp]', then reconnect in /mcp." >&2
+    "python -m pip install 'codenib[graph,mcp]', then restart the MCP server." >&2
   exit 1
 fi
 

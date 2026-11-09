@@ -49,7 +49,9 @@ def test_the_mcp_server_runs_the_bundled_launcher_for_the_project():
     assert servers == {
         "codenib": {
             "command": "${CLAUDE_PLUGIN_ROOT}/scripts/mcp.sh",
-            "args": ["${CLAUDE_PROJECT_DIR}"],
+            # Grok Build reads this file too but may not set the project
+            # variable; it starts the server in the project, so "." stands in.
+            "args": ["${CLAUDE_PROJECT_DIR:-.}"],
         }
     }
     assert LAUNCHER.stat().st_mode & stat.S_IXUSR
@@ -115,10 +117,16 @@ def checkout(tmp_path):
     return repo
 
 
-def _run(project: Path, tools: Path) -> subprocess.CompletedProcess:
+def _run(
+    project: Path | str, tools: Path, cwd: Path | None = None
+) -> subprocess.CompletedProcess:
     env = {"PATH": f"{tools}:/usr/bin:/bin", "HOME": str(tools)}
     return subprocess.run(
-        [str(LAUNCHER), str(project)], env=env, capture_output=True, text=True
+        [str(LAUNCHER), str(project)],
+        env=env,
+        capture_output=True,
+        text=True,
+        cwd=cwd,
     )
 
 
@@ -165,3 +173,16 @@ def test_launcher_explains_what_is_missing(checkout, tmp_path):
     outside = _run(tmp_path / "empty", tools)
     assert outside.returncode == 1 and "not inside one" in outside.stderr
     assert not log.exists()
+
+
+def test_launcher_uses_the_working_directory_without_a_project(checkout, tmp_path):
+    # A host that leaves the variable unexpanded passes its literal text.
+    tools, log = tmp_path / "tools", tmp_path / "calls.log"
+    tools.mkdir()
+    _fake_tool(tools, "codenib", log)
+
+    result = _run("${CLAUDE_PROJECT_DIR}", tools, cwd=checkout / "pkg")
+
+    assert result.returncode == 0, result.stderr
+    root = os.path.realpath(checkout)
+    assert log.read_text().splitlines()[0] == f"codenib index {root} --preset fast"

@@ -4,16 +4,20 @@ SPDX-FileCopyrightText: 2026 CodeNib Contributors
 SPDX-License-Identifier: Apache-2.0
 -->
 
-# CodeNib for Claude Code
+# CodeNib for Claude Code and Grok Build
 
 Ask about your repository and get answers tied to the exact lines. The plugin
-connects Claude Code to CodeNib, which ranks source for a question and follows
+connects Claude Code or Grok Build to CodeNib, which ranks source for a question and follows
 the calls and references that compiler-grade indexers recorded between files.
 
 ```bash
 claude plugin marketplace add sysevol-ai/CodeNib
 claude plugin install codenib@codenib
 ```
+
+Grok Build reads the same plugin; load it with `--plugin-dir` or the
+`[plugins]` table in `~/.grok/config.toml`, as the
+[CodeGraph guide](https://docs.codenib.ai/codegraph/#grok-build-plugin) shows.
 
 CodeNib itself is a Python package (3.10 or later). Install it once, or let
 the plugin run it through `uvx` if you have uv:
@@ -46,6 +50,15 @@ ahead of time. Outside a Git checkout, the server does not start.
 
 The server and its index run locally and call no model. `/codenib:wiki` calls a
 model only when you choose model-written pages and give it a key.
+
+## Network and data
+
+The MCP server reads the checkout and writes CodeNib's index under
+`~/.codenib`. It calls no model and needs no key. If `codenib` is not
+installed, the plugin runs it through `uvx`, which downloads the `codenib`
+package from PyPI. `/codenib:setup` installs CodeNib and language indexers only
+when you run it. `/codenib:wiki` sends source to a model provider only when you
+choose model-written pages and give it a key. The plugin has no hooks.
 
 The server is started by a Bash script, so on Windows it needs Git Bash or WSL.
 See the [CodeGraph guide](https://docs.codenib.ai/codegraph/) for the tools,

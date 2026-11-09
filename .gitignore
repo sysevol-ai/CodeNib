@@ -48,6 +48,7 @@ web/*.tsbuildinfo
 !.claude-plugin/marketplace.json
 !plugins/*/.claude-plugin/plugin.json
 !plugins/*/.mcp.json
+!plugins/dsh/package.json
 !web/package.json
 !web/tsconfig.json
 !web/package-lock.json
