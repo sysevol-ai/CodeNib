@@ -85,7 +85,7 @@ can check every arrow against the source.
 | Read one now | Open a [ready Wiki](https://demo.codenib.ai/browse) for requests, scikit-learn, sympy, fmt, redis, caddy, gin, hugo and more. No account or API key. |
 | Map a public GitHub repository | Paste its URL on [demo.codenib.ai](https://demo.codenib.ai), or replace `github.com` with `demo.codenib.ai` in the URL. A new Wiki uses your OpenRouter account, with a $0.25–$5 spending limit you set before it starts. |
 | Map your own checkout | Run the Wiki locally, as below. |
-| Share it | Publish the Wiki, with its source citations, to [GitHub Pages](https://docs.codenib.ai/github_pages/). |
+| Share it | Publish the Wiki, with its source citations, to GitHub Pages: add the [CodeNib Wiki action](https://github.com/marketplace/actions/codenib-wiki) to a workflow. [Pages guide](https://docs.codenib.ai/github_pages/) |
 
 To build a Wiki with the map on your machine:
 
