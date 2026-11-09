@@ -2,7 +2,7 @@
   "mcpServers": {
     "codenib": {
       "command": "${CLAUDE_PLUGIN_ROOT}/scripts/mcp.sh",
-      "args": ["${CLAUDE_PROJECT_DIR}"]
+      "args": ["${CLAUDE_PROJECT_DIR:-.}"]
     }
   }
 }
