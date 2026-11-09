@@ -132,6 +132,15 @@ This builds local search and a typed symbol graph, then connects installed
 agent clients. CodeNib needs no model, API key, or GPU of its own; your agent
 uses its own model. Language toolchain and project prerequisites vary.
 
+In Claude Code you can install the plugin instead. It connects every Git
+checkout you open and adds `/codenib:explain`, `/codenib:impact`,
+`/codenib:setup` and `/codenib:wiki`:
+
+```bash
+claude plugin marketplace add sysevol-ai/CodeNib
+claude plugin install codenib@codenib
+```
+
 [Setup and troubleshooting](https://docs.codenib.ai/codegraph/)
 · [Source exclusions](https://docs.codenib.ai/codegraph/#select-the-repository-source-surface)
 · [All MCP tools](https://docs.codenib.ai/mcp/)
