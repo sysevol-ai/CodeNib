@@ -62,6 +62,22 @@ export function AppLink({
   return <a {...props} href={withBasePath(href)} target={target} onClick={follow} />;
 }
 
+/**
+ * The address of another page of the Wiki the reader has open. A Wiki read
+ * at /<repo>/page/<id>/, or any static export, moves by path so that every
+ * address matches a prerendered document; the hosted Wiki keeps `?p=`.
+ */
+export function wikiPageLocation(pathname: string, pageId: string, pathForm: boolean): string {
+  const id = encodeURIComponent(pageId);
+  const page = /^(.*\/)page\/[^/]+\/?$/.exec(pathname);
+  if (page) return pageId === "overview" ? page[1] : `${page[1]}page/${id}/`;
+  if (pathForm) {
+    const root = pathname.endsWith("/") ? pathname : `${pathname}/`;
+    return pageId === "overview" ? root : `${root}page/${id}/`;
+  }
+  return `${pathname}?p=${id}`;
+}
+
 export function routeSegments(pathname: string): string[] {
   return pathname
     .split("/")

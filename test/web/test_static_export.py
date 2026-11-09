@@ -2112,3 +2112,133 @@ def test_cached_export_reads_unanchored_citations_without_inventing_a_span(
     assert "trusted-source" in citation["content"]
     assert "stale unverified" not in citation["content"]
     assert _tree_bytes(setup.data) == before
+
+
+def _titled_frontend(root: Path) -> Path:
+    """A frontend shaped like the real build: a title and an empty root."""
+
+    frontend = _frontend(root / "titled")
+    (frontend / "index.html").write_text(
+        "<!doctype html><html><head><base href='/'>"
+        '<meta name="description" content="Site blurb">'
+        "<title>CodeNib Wiki</title>"
+        "<script src='./runtime-config.js'></script></head>"
+        '<body><div id="root"></div>'
+        "<script type='module' src='./assets/app.js'></script></body></html>",
+        encoding="utf-8",
+    )
+    return frontend
+
+
+def test_each_page_gets_a_readable_document_canonical_link_and_sitemap(
+    export_setup, tmp_path
+) -> None:
+    setup = export_setup
+    export_static_wiki(
+        setup.repo,
+        setup.manifest_path,
+        setup.output,
+        frontend_dir=_titled_frontend(tmp_path),
+        base_path="/demo",
+        site_url="https://owner.github.io/demo/",
+    )
+
+    overview = (setup.output / "demo" / "index.html").read_text()
+    page = (setup.output / "demo" / "page" / "architecture" / "index.html").read_text()
+    root = (setup.output / "index.html").read_text()
+
+    assert "<title>owner/demo Wiki</title>" in overview
+    assert "<title>Architecture · owner/demo Wiki</title>" in page
+    assert "Site blurb" not in page
+    assert '<meta name="description" content="The runtime is source linked.">' in (
+        overview
+    )
+    assert "<p>The runtime is source linked.</p>" in overview
+    assert (
+        '<link rel="canonical" href="https://owner.github.io/demo/demo/page/'
+        'architecture/">' in page
+    )
+    # Pages link to each other by path, under the mount, so crawlers find all.
+    assert '<a href="/demo/demo/page/architecture/">Architecture</a>' in overview
+    assert "src='/demo/assets/app.js'" in page
+    # The site root reads as the Overview and names it as canonical.
+    assert '<link rel="canonical" href="https://owner.github.io/demo/demo/">' in root
+    sitemap = (setup.output / "sitemap.xml").read_text()
+    assert "<loc>https://owner.github.io/demo/demo/</loc>" in sitemap
+    assert "<loc>https://owner.github.io/demo/demo/page/architecture/</loc>" in sitemap
+    # A project site's robots.txt would sit below the host root, unread.
+    assert not (setup.output / "robots.txt").exists()
+    manifest = json.loads((setup.output / STATIC_EXPORT_MANIFEST).read_text())
+    assert {
+        "demo/index.html",
+        "demo/page/architecture/index.html",
+        "sitemap.xml",
+    } <= {entry["path"] for entry in manifest["files"]}
+
+
+def test_a_root_site_also_publishes_robots_txt(export_setup, tmp_path) -> None:
+    setup = export_setup
+    export_static_wiki(
+        setup.repo,
+        setup.manifest_path,
+        setup.output,
+        frontend_dir=_titled_frontend(tmp_path),
+        site_url="https://docs.example.org",
+    )
+
+    assert (setup.output / "robots.txt").read_text().splitlines()[-1] == (
+        "Sitemap: https://docs.example.org/sitemap.xml"
+    )
+
+
+def test_without_a_site_url_pages_still_get_documents(export_setup, tmp_path):
+    setup = export_setup
+    export_static_wiki(
+        setup.repo,
+        setup.manifest_path,
+        setup.output,
+        frontend_dir=_titled_frontend(tmp_path),
+    )
+
+    page = (setup.output / "demo" / "page" / "architecture" / "index.html").read_text()
+    assert "<h1>Architecture</h1>" in page and "canonical" not in page
+    assert not (setup.output / "sitemap.xml").exists()
+
+
+@pytest.mark.parametrize(
+    "site_url",
+    [
+        "https://owner.github.io/other",
+        "ftp://owner.github.io/demo",
+        "http://owner.github.io/demo",
+        "https://user:pw@owner.github.io/demo",
+        "https://owner.github.io/demo?x=1",
+    ],
+)
+def test_site_url_must_name_the_same_mount(export_setup, tmp_path, site_url):
+    setup = export_setup
+    with pytest.raises(ValueError, match="site URL"):
+        export_static_wiki(
+            setup.repo,
+            setup.manifest_path,
+            setup.output,
+            frontend_dir=_titled_frontend(tmp_path),
+            base_path="/demo",
+            site_url=site_url,
+        )
+    assert not setup.output.exists()
+
+
+def test_a_repository_named_like_a_frontend_entry_keeps_the_app_fallback(
+    export_setup, tmp_path, monkeypatch
+) -> None:
+    setup = export_setup
+    frontend = _titled_frontend(tmp_path)
+    (frontend / "demo").mkdir()
+    (frontend / "demo" / "keep.txt").write_text("frontend file\n")
+    export_static_wiki(
+        setup.repo, setup.manifest_path, setup.output, frontend_dir=frontend
+    )
+
+    assert (setup.output / "demo" / "keep.txt").read_text() == "frontend file\n"
+    assert not (setup.output / "demo" / "index.html").exists()

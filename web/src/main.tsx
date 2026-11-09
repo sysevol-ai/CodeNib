@@ -73,6 +73,14 @@ function App() {
   }
 
   const repoId = segments[0];
+  // /<repo>/page/<id>/ names a page by path so that a static host can serve
+  // each page its own readable document. An in-page ?p= link still wins.
+  if (segments.length === 3 && segments[1] === "page") {
+    const pageId = new URLSearchParams(location.search).get("p") || segments[2];
+    return (
+      <WikiPageView key={`${repoId}:${pageId}`} repoId={repoId} initialPageId={pageId} />
+    );
+  }
   // Legacy Wiki ids retain /ask. GitHub owner/repo aliases include repos
   // named "ask"; GitHub owner names cannot contain the legacy '__' separator.
   if (segments[1] === "ask" && (repoId.includes("__") || segments.length !== 2)) {

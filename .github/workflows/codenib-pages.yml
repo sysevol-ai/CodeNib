@@ -95,6 +95,7 @@ jobs:
             secrets.embedding_api_key || '' }}
         with:
           base-path: ${{ steps.pages.outputs.base_path }}
+          site-url: ${{ steps.pages.outputs.base_url }}
           embedding-api-key-env: >-
             ${{ inputs.preset == 'semantic' &&
             inputs.embedding-provider == 'openai' &&

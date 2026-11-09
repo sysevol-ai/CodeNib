@@ -1069,9 +1069,15 @@ def _run_export(args: argparse.Namespace) -> int:
             raise CLIError(
                 "OKF export requires --wiki-config, --wiki-repo and --output"
             )
-        if args.frontend_dir or args.base_path != "/" or args.trial_api_base:
+        if (
+            args.frontend_dir
+            or args.base_path != "/"
+            or args.trial_api_base
+            or args.site_url
+        ):
             raise CLIError(
-                "OKF export does not accept frontend, base-path or browser-trial options"
+                "OKF export does not accept frontend, base-path, site-url or "
+                "browser-trial options"
             )
     elif args.agent_dir:
         raise CLIError("--agent-dir requires --format okf")
@@ -1083,9 +1089,11 @@ def _run_export(args: argparse.Namespace) -> int:
         if not agent_dir.is_dir() or agent_dir == output or output in agent_dir.parents:
             raise CLIError("agent directory must exist outside the OKF bundle")
 
-    trial_options = (
+    export_options = (
         {"trial_api_base": args.trial_api_base} if args.trial_api_base else {}
     )
+    if args.site_url:
+        export_options["site_url"] = args.site_url
     try:
         if args.wiki_config or args.wiki_repo:
             if not args.wiki_config or not args.wiki_repo or not args.output:
@@ -1101,7 +1109,7 @@ def _run_export(args: argparse.Namespace) -> int:
                 frontend_dir=args.frontend_dir,
                 base_path=args.base_path,
                 export_format=args.format,
-                **trial_options,
+                **export_options,
             )
         else:
             if args.trial_api_base:
@@ -1122,7 +1130,7 @@ def _run_export(args: argparse.Namespace) -> int:
                 output_dir,
                 frontend_dir=args.frontend_dir,
                 base_path=args.base_path,
-                **trial_options,
+                **export_options,
             )
     except (OSError, RuntimeError, ValueError) as exc:
         raise CLIError(str(exc)) from exc
@@ -1472,6 +1480,7 @@ def _run_publish(args: argparse.Namespace) -> int:
             frontend_dir=args.frontend_dir,
             base_path=args.base_path,
             environ=publication_environment,
+            site_url=args.site_url,
         )
         context = stage_context_artifact(
             repo_path,
@@ -3659,6 +3668,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="URL path where the static site will be mounted",
     )
     export_parser.add_argument(
+        "--site-url",
+        help=(
+            "public URL of the export root, such as https://owner.github.io/repo; "
+            "adds canonical links and sitemap.xml to the per-page documents"
+        ),
+    )
+    export_parser.add_argument(
         "--trial-api-base",
         help=(
             "opt a cached Wiki export into browser-owned OpenRouter queries "
@@ -3801,6 +3817,13 @@ def build_parser() -> argparse.ArgumentParser:
     publish_parser.add_argument(
         "--frontend-dir",
         help="path to a prebuilt CodeNib frontend or web source checkout",
+    )
+    publish_parser.add_argument(
+        "--site-url",
+        help=(
+            "public URL of the site root, such as https://owner.github.io/repo; "
+            "adds canonical links and sitemap.xml"
+        ),
     )
     publish_parser.set_defaults(handler=_run_publish)
 
