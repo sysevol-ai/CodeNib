@@ -13,6 +13,11 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 ### Changed
 
+- Visitor Wikis on a hosted server build their code maps with pyrefly, like
+  every other Python graph, instead of always using scip-python. scip-python
+  is used only when the pinned pyrefly release is missing or
+  `CODENIB_PYTHON_GRAPH_PROVIDER=scip-python` pins it. On sympy and matplotlib,
+  scip-python's output fails identity recovery and builds no graph.
 - Wiki pages read as technical documents. Body text sits a step back from the
   headings, the opening claim and the code names, which carry a light fill.
   Sources trail each paragraph in small grey type. The section bridge sentences
