@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  homeRepository,
   mediaAssetUrl,
   normalizeRuntimeBasePath,
+  openHomeRepository,
   restoreStaticRoute,
   staticDataUrl,
   stripBasePath,
@@ -84,5 +86,44 @@ describe("runtime base paths", () => {
     restoreStaticRoute();
 
     expect(replaceState).toHaveBeenCalledWith(null, "", route);
+  });
+});
+
+describe("published Wiki home", () => {
+  it("opens a static export on the repository it publishes", () => {
+    staticWindow({
+      __CODENIB_RUNTIME__: { mode: "static", basePath: "/", homeRepository: "orcaloca" },
+    });
+    expect(homeRepository()).toBe("orcaloca");
+  });
+
+  it("keeps the landing page outside a static export or without a repository", () => {
+    staticWindow();
+    expect(homeRepository()).toBeNull();
+    staticWindow({ __CODENIB_RUNTIME__: { mode: "api", homeRepository: "orcaloca" } });
+    expect(homeRepository()).toBeNull();
+    staticWindow({ __CODENIB_RUNTIME__: { mode: "static", homeRepository: " " } });
+    expect(homeRepository()).toBeNull();
+  });
+
+  it("sends the root address to the Wiki before the first render", () => {
+    const runtime = { mode: "static", basePath: "/project", homeRepository: "orcaloca" };
+    const root = { pathname: "/project/", search: "?p=search-loop", hash: "#retry" };
+    const replaceState = staticWindow({ __CODENIB_RUNTIME__: runtime, location: root });
+    openHomeRepository();
+    expect(replaceState).toHaveBeenCalledWith(
+      null,
+      "",
+      "/project/orcaloca/?p=search-loop#retry",
+    );
+
+    for (const location of [
+      { pathname: "/project/orcaloca/page/search-loop/", search: "", hash: "" },
+      { pathname: "/project/", search: "?repo=other", hash: "" },
+    ]) {
+      const untouched = staticWindow({ __CODENIB_RUNTIME__: runtime, location });
+      openHomeRepository();
+      expect(untouched).not.toHaveBeenCalled();
+    }
   });
 });

@@ -1010,13 +1010,20 @@ def _copy_frontend(
     return shell, frozenset(top_level)
 
 
-def _runtime_config(base_path: str, trial_api_base: str | None = None) -> bytes:
+def _runtime_config(
+    base_path: str,
+    trial_api_base: str | None = None,
+    home_repository: str | None = None,
+) -> bytes:
     data_base = f"{base_path.rstrip('/')}/data" if base_path != "/" else "/data"
     config = {
         "mode": "static",
         "basePath": base_path,
         "dataBase": data_base,
     }
+    if home_repository:
+        # The export holds one repository; its root opens that Wiki.
+        config["homeRepository"] = home_repository
     if trial_api_base:
         config["trialApiBase"] = trial_api_base
     encoded = json.dumps(
@@ -1603,7 +1610,9 @@ def export_static_wiki(
                 **frontend_options,
             )
             _write_bytes(
-                stage, "runtime-config.js", _runtime_config(base_path, trial_api_base)
+                stage,
+                "runtime-config.js",
+                _runtime_config(base_path, trial_api_base, home_repository=repo_id),
             )
             _write_bytes(
                 stage,

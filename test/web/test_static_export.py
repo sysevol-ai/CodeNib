@@ -424,6 +424,8 @@ def test_static_export_is_deterministic_and_publishable(
     runtime = (setup.output / "runtime-config.js").read_text()
     assert '"basePath":"/demo"' in runtime
     assert '"mode":"static"' in runtime
+    # The export holds one repository and opens on its Wiki.
+    assert '"homeRepository":"demo"' in runtime
     index = (setup.output / "index.html").read_text()
     assert "<base" not in index
     assert "src='/demo/runtime-config.js'" in index
