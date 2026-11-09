@@ -27,7 +27,7 @@ import RepoPoster from "@/components/RepoPoster";
 import { ghFileUrl } from "@/lib/github";
 import AskBar from "@/components/AskBar";
 import RelatedVisuals from "@/components/RelatedVisuals";
-import { AppLink } from "@/lib/router";
+import { AppLink, wikiPageLocation } from "@/lib/router";
 import { isStaticRuntime, mediaAssetUrl } from "@/lib/runtime";
 import { trialBase } from "@/lib/openrouterTrial";
 import {
@@ -773,7 +773,7 @@ export default function WikiPageView({
   function pick(id: string) {
     setActiveId(id);
     setTocOpen(false);
-    const url = `${window.location.pathname}?p=${encodeURIComponent(id)}`;
+    const url = wikiPageLocation(window.location.pathname, id, staticRuntime);
     window.history.replaceState(null, "", url);
     window.scrollTo({ top: 0 });
   }

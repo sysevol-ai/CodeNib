@@ -36,6 +36,11 @@ inputs:
   base-path:
     description: URL path where the static Wiki is mounted.
     default: "/"
+  site-url:
+    description: >-
+      Public URL of the site root, such as https://owner.github.io/repo; adds
+      canonical links and sitemap.xml to the per-page documents.
+    default: ""
   site-output:
     description: Static site output directory; defaults under RUNNER_TEMP.
     default: ""
@@ -303,6 +308,7 @@ runs:
         FRONTEND_OUTPUT: ${{ steps.inputs.outputs.frontend_path }}
         INPUT_BASE_PATH: ${{ inputs.base-path }}
         INPUT_REPOSITORY_PATH: ${{ inputs.repository-path }}
+        INPUT_SITE_URL: ${{ inputs.site-url }}
         PRESET: ${{ inputs.preset }}
         REPOSITORY: ${{ steps.inputs.outputs.repository }}
         SITE_OUTPUT: ${{ steps.inputs.outputs.site_path }}
@@ -317,6 +323,9 @@ runs:
           --base-path "$INPUT_BASE_PATH"
           --frontend-dir "$FRONTEND_OUTPUT"
         )
+        if [[ -n "$INPUT_SITE_URL" ]]; then
+          command+=(--site-url "$INPUT_SITE_URL")
+        fi
         if [[ -n "$EMBEDDING_PROVIDER" ]]; then
           command+=(--embedding-provider "$EMBEDDING_PROVIDER")
         fi

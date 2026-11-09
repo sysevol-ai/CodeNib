@@ -6954,3 +6954,17 @@ a.codepanel-name:hover {
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
+
+/* Readable page a static export writes for each Wiki page. The app replaces
+   it when its script starts; until then, and for crawlers, it is the page. */
+.prerendered-wiki {
+  max-width: 72ch;
+  margin: 0 auto;
+  padding: 32px 20px 64px;
+  font-family: var(--font-sans, system-ui, sans-serif);
+  line-height: 1.6;
+  color: var(--text, inherit);
+}
+.prerendered-wiki pre { overflow-x: auto; padding: 12px; background: var(--surface-2, #f4f4f5); }
+.prerendered-wiki nav ul { padding-left: 1.2em; }
+.prerendered-wiki-repo, .prerendered-wiki-source { color: var(--muted, #666); font-size: 0.9em; }

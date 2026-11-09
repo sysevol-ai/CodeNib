@@ -108,6 +108,18 @@ pages, source slices used by citations, page-level dependency data when
 available, and `codenib-static.json`. It does not contain an API endpoint,
 credential, interactive Ask backend, or unrestricted source-reading service.
 
+Each Wiki page is also written as its own HTML document, so a search engine
+can index it: the Overview at `<repo>/` and every other page at
+`<repo>/page/<page-id>/`. Each document has the page's title, a description
+from its opening paragraph, the article as plain HTML and links to the other
+pages. The Wiki app replaces it when its script starts. The workflow passes
+the Pages URL, so each document also gets a canonical link and the site gets a
+`sitemap.xml`. A site served from its host root, such as a custom domain or
+`owner.github.io`, also gets a `robots.txt`. A project site
+(`owner.github.io/repo`) cannot serve the host's `robots.txt`, so submit its
+`sitemap.xml` in Google Search Console instead. `codenib export` and
+`codenib publish` accept the same URL as `--site-url`.
+
 The separate context artifact contains:
 
 - `codenib-context.json`, with repository, commit, schema, capabilities, and
