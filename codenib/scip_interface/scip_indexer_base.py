@@ -296,6 +296,11 @@ class SCIPIndexerBase(ABC):
         """
         pass
 
+    def _index_environment(self) -> Optional[dict]:
+        """Environment for the indexer process; None inherits CodeNib's."""
+
+        return None
+
     def generate_index(self, **kwargs) -> bool:
         """
         Generate SCIP index for the project.
@@ -317,17 +322,7 @@ class SCIPIndexerBase(ABC):
         # Run the command
         with self.profiler.section("generate_index") as section:
             try:
-                # For Rust projects, override the repository toolchain so SCIP
-                # generation uses CodeNib's selected rust-analyzer version.
-                env = None
-                if self.language == "rust":
-                    import os
-
-                    from .rust_analyzer import rust_toolchain
-
-                    env = os.environ.copy()
-                    env["RUSTUP_TOOLCHAIN"] = rust_toolchain()
-
+                env = self._index_environment()
                 subprocess.run(
                     cmd,
                     check=True,

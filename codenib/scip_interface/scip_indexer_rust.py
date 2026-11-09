@@ -7,13 +7,18 @@
 """
 SCIP indexer for Rust projects using rust-analyzer.
 """
+import os
 import subprocess
 from pathlib import Path
 from typing import List, Optional, Union
 
 from ..log_utils import get_logger
 from ..profiler import Profiler
-from .rust_analyzer import rust_analyzer_command, rust_toolchain
+from .rust_analyzer import (
+    redirect_cargo_lockfile,
+    rust_analyzer_command,
+    rust_toolchain,
+)
 from .scip_indexer_base import SCIPIndexerBase
 
 logger = get_logger("scip_rust_indexer")
@@ -86,8 +91,6 @@ class SCIPRustIndexer(SCIPIndexerBase):
         Returns:
             bool: True if rust-analyzer is available, False otherwise
         """
-        import os
-
         env = os.environ.copy()
         env["RUSTUP_TOOLCHAIN"] = rust_toolchain()
         try:
@@ -142,6 +145,18 @@ class SCIPRustIndexer(SCIPIndexerBase):
             cmd.append("--exclude-vendored-libraries")
 
         return cmd
+
+    def _index_environment(self) -> dict:
+        """Pin rust-analyzer's toolchain and keep cargo's lockfile in state.
+
+        The repository's own toolchain file is overridden so SCIP generation
+        uses CodeNib's selected rust-analyzer version.
+        """
+
+        env = os.environ.copy()
+        env["RUSTUP_TOOLCHAIN"] = rust_toolchain()
+        redirect_cargo_lockfile(env, self.project_root, "scip")
+        return env
 
     def _get_decoder_class(self):
         """

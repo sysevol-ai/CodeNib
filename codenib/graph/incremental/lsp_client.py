@@ -29,7 +29,7 @@ from urllib.request import url2pathname
 
 from ...languages import lsp_command_for_language, normalize_graph_language
 from ...log_utils import get_logger
-from ...scip_interface.rust_analyzer import rust_toolchain
+from ...scip_interface.rust_analyzer import redirect_cargo_lockfile, rust_toolchain
 from ...toolchains import activate_managed_toolchain, resolve_command
 
 logger = get_logger(__name__)
@@ -221,6 +221,8 @@ def _lsp_process_env(
     # CodeNib-selected toolchain instead.
     if language == "rust":
         env["RUSTUP_TOOLCHAIN"] = rust_toolchain()
+        if project_root is not None:
+            redirect_cargo_lockfile(env, project_root, "lsp")
 
     if language == "ruby":
         env.pop("GEM_PATH", None)
