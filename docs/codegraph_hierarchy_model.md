@@ -125,22 +125,11 @@ lowest common ancestor, and whether the edge crosses files.
 
 ## Web presentation
 
-The Dependency Map has two current views:
+The Dependency Map renders the projected hierarchy as an expandable
+directory/file/symbol tree. Relationships are rolled up to the nearest visible
+ancestors and listed below the tree, each with its reference count; expanding
+a container reveals finer-grained endpoints. Edge anchors remain available when
+relationships are aggregated.
 
-- **Structure** is the default. It renders the projected hierarchy as an
-  expandable directory/file/symbol tree. Relationships are rolled up to the
-  nearest visible ancestors, and expanding a container reveals finer-grained
-  endpoints. Edge anchors remain available when relationships are aggregated.
-- **Graph** renders a Cytoscape file overview. Files start as collapsed pills
-  grouped by directory. Clicking a file expands its symbol and scope
-  containers; clicking a concrete symbol or an exact edge opens the
-  corresponding source.
-
-The explorer also exposes focus-symbol, direction, and one-hop/two-hop
-controls. Its graph view applies semantic zoom: concrete symbol labels are
-reduced at low zoom and restored at closer zoom, while file and scope labels
-remain visible. `Fit` restores the full graph to the viewport.
-
-Wiki pages use the same hierarchy payload. When it is present, their embedded
-map renders the expandable Structure view; older payloads fall back to a flat
-system map.
+The map also exposes focus-symbol, direction, and one-hop/two-hop controls.
+A row's focus button re-roots the map on that symbol.

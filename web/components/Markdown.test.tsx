@@ -134,3 +134,37 @@ describe("Markdown section flows", () => {
     expect(html).not.toContain('class="call-chain"');
   });
 });
+
+describe("Markdown reading hierarchy", () => {
+  it("sets an all-emphasis bridging sentence as plain text, keeping its sources", () => {
+    const html = renderToStaticMarkup(
+      <Markdown>
+        {"## Retrieval\n\n*With memory built, the method retrieves context.* [E1](#evidence-E1)\n\nA *named* term stays italic."}
+      </Markdown>,
+    );
+    expect(html).toContain('<p class="md-bridge">With memory built, the method retrieves context.');
+    expect(html).not.toContain("<em>With memory built");
+    expect(html).toContain("<em>named</em>");
+  });
+
+  it("drops emoji from prose but not from code", () => {
+    const html = renderToStaticMarkup(
+      <Markdown>{"AMA-Bench is an 🧠 AMA-Bench ✨ tool. Keep `🧠` in code."}</Markdown>,
+    );
+    expect(html).toContain("AMA-Bench is an AMA-Bench tool.");
+    expect(html).toContain("<code>🧠</code>");
+  });
+
+  it("cleans clang template spelling in code and shortens interaction rows", () => {
+    const html = renderToStaticMarkup(
+      <Markdown>
+        {"Uses `basic_format_args<type-parameter-0-0>`.\n\n**Interactions**\n" +
+          "- `fmt.formatter<type-parameter-0-0, typename enable_if<a>::type>.parse()` → `fmt.detail.parse_arg_id()`"}
+      </Markdown>,
+    ).replaceAll("<wbr/>", "");
+    expect(html).toContain("basic_format_args&lt;T&gt;");
+    expect(html).toContain("formatter&lt;…&gt;.parse()");
+    expect(html).toContain("detail.parse_arg_id()");
+    expect(html).not.toContain("type-parameter");
+  });
+});

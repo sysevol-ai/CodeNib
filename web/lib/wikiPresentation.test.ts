@@ -5,8 +5,8 @@ import {
   extractJourney,
   isBareHandoff,
   stageRoles,
-  stageSentence,
   partitionWikiMediaSlots,
+  splitPageLinks,
   splitWikiMarkdown,
   wikiRetryNotice,
 } from "./wikiPresentation";
@@ -208,19 +208,6 @@ describe("stageRoles", () => {
   });
 });
 
-describe("stageSentence", () => {
-  const stage = (symbol: string, text: string) => ({ index: 1, symbol, text, evidence: [] });
-  it("drops a leading repeat of the stage symbol", () => {
-    expect(stageSentence(stage("get()", "`get()` forwards its URL. [E8](#evidence-E8)"))).toBe(
-      "Forwards its URL. [E8](#evidence-E8)",
-    );
-    expect(stageSentence(stage("Runtime.spawn_blocking", "`Runtime.spawn_blocking()` hands off."))).toBe(
-      "Hands off.",
-    );
-    expect(stageSentence(stage("get()", "`request()` is next."))).toBe("`request()` is next.");
-  });
-});
-
 describe("isBareHandoff", () => {
   it("recognizes a stage with only its call site", () => {
     expect(isBareHandoff("Hands off to `request()`. [R9](#evidence-R9)")).toBe(true);
@@ -300,5 +287,42 @@ describe("partitionWikiMediaSlots with call paths", () => {
     } as unknown as WikiMediaSlot;
     expect(partitionWikiMediaSlots([callPath]).bridge).toEqual([callPath]);
     expect(partitionWikiMediaSlots([slot("plain", "aside", false)]).bridge).toEqual([]);
+  });
+});
+
+describe("splitPageLinks", () => {
+  it("lifts link-only sections out and keeps everything else", () => {
+    const markdown = [
+      "# Parsing",
+      "",
+      "Intro.",
+      "",
+      "## Field contract",
+      "",
+      "- [Not a link-only list](?p=a) with prose after it",
+      "",
+      "## Explore the system",
+      "",
+      "- [Core Engine](?p=core-engine)",
+      "- [Chrono](?p=chrono%20time)",
+      "",
+      "## Related pages",
+      "",
+      "- [Core Engine](?p=core-engine)",
+      "- [Specs](?p=format-specs)",
+    ].join("\n");
+    const { body, links } = splitPageLinks(markdown);
+    expect(body).toBe(
+      ["# Parsing", "", "Intro.", "", "## Field contract", "", "- [Not a link-only list](?p=a) with prose after it", ""].join("\n").trimEnd(),
+    );
+    expect(links).toEqual([
+      { id: "core-engine", title: "Core Engine" },
+      { id: "chrono time", title: "Chrono" },
+      { id: "format-specs", title: "Specs" },
+    ]);
+  });
+
+  it("leaves a page without link sections untouched", () => {
+    expect(splitPageLinks("# A\n\n## B\n\nText.")).toEqual({ body: "# A\n\n## B\n\nText.", links: [] });
   });
 });

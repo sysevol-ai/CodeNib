@@ -26,7 +26,7 @@ import {
 import { AppLink } from "@/lib/router";
 import { isStaticRuntime } from "@/lib/runtime";
 import { excerptRows, GAP } from "@/lib/sourceExcerpt";
-import { splitSymbolLabel } from "@/lib/symbols";
+import { displaySymbol } from "@/lib/symbols";
 import { journeyAreas, traceFrame, traceSteps, type TraceFrame } from "@/lib/traceTimeline";
 import type { Journey } from "@/lib/wikiPresentation";
 
@@ -117,8 +117,8 @@ function EdgeCallout({
     };
   }, [repoId, anchor?.file, anchor?.line, repo?.base_commit]);
 
-  const from = link ? splitSymbolLabel(link.example.source).symbol : "";
-  const to = link ? splitSymbolLabel(link.example.target).symbol : "";
+  const from = link ? displaySymbol(link.example.source, { short: true }) : "";
+  const to = link ? displaySymbol(link.example.target, { short: true }) : "";
   const url =
     anchor?.file && repo
       ? ghFileUrl(repo.repo, repo.source_url, repo.base_commit, anchor.file, anchor.line)
@@ -739,7 +739,13 @@ export default function RepoPoster({
         <div className="poster-trace">
           <div className="poster-trace-head">
             <span className="poster-trace-label">Traced call path</span>
-            <span className="poster-trace-title">{leadNodes(journey!.title)}</span>
+            <span className="poster-trace-title">
+              {leadNodes(
+                journey!.title.replace(/`([^`]+)`/g, (_match, symbol: string) =>
+                  `\`${displaySymbol(symbol, { short: true })}\``,
+                ),
+              )}
+            </span>
             <button
               type="button"
               className="poster-play poster-no-export"
@@ -774,7 +780,7 @@ export default function RepoPoster({
                   title={stage.page ? `Open ${stage.page.title}` : undefined}
                 >
                   <span className="poster-step-no">{index + 1}</span>
-                  <code>{breakableCode(stage.symbol)}</code>
+                  <code title={stage.symbol}>{breakableCode(displaySymbol(stage.symbol, { short: true }))}</code>
                 </button>
               </li>
             ))}

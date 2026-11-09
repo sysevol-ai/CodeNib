@@ -25,11 +25,16 @@ export function primaryLanguage(r: Pick<RepoInfo, "language">): string {
 
 /** A card summary without the emoji READMEs decorate their taglines with;
  *  the cards' own marks carry the language and the counts. */
+const EMOJI =
+  /(?:\p{Emoji_Presentation}\uFE0F?|\p{Extended_Pictographic}\uFE0F)(?:\u200D(?:\p{Emoji_Presentation}|\p{Extended_Pictographic})\uFE0F?)*\s*/gu;
+
+/** Text without emoji. A README's decoration is not part of a technical summary. */
+export function stripEmoji(text: string): string {
+  return text.replace(EMOJI, "");
+}
+
 export function plainSummary(text: string): string {
-  return text
-    .replace(/(?:\p{Emoji_Presentation}\uFE0F?|\p{Extended_Pictographic}\uFE0F)(?:\u200D(?:\p{Emoji_Presentation}|\p{Extended_Pictographic})\uFE0F?)*\s*/gu, "")
-    .replace(/\s{2,}/g, " ")
-    .trim();
+  return stripEmoji(text).replace(/\s{2,}/g, " ").trim();
 }
 
 /** Group repositories by main language, largest group first. */

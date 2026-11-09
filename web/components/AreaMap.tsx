@@ -6,7 +6,7 @@ import { useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { repoRelative, type WikiAreaLink, type WikiAreaMap } from "@/lib/api";
 import { layoutAreas } from "@/lib/areaLayout";
-import { splitSymbolLabel } from "@/lib/symbols";
+import { displaySymbol } from "@/lib/symbols";
 
 interface Box {
   x: number;
@@ -18,8 +18,8 @@ interface Box {
 const pairKey = (link: { source: string; target: string }) => `${link.source}>${link.target}`;
 
 function Example({ link, titles }: { link: WikiAreaLink; titles: Map<string, string> }) {
-  const from = splitSymbolLabel(link.example.source).symbol;
-  const to = splitSymbolLabel(link.example.target).symbol;
+  const from = displaySymbol(link.example.source, { short: true });
+  const to = displaySymbol(link.example.target, { short: true });
   const anchor = link.example.anchor;
   const file = anchor ? repoRelative(anchor.file) ?? anchor.file : "";
   return (

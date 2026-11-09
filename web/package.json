@@ -15,9 +15,6 @@
     "test:visual-evidence": "node visual_evidence_verify.mjs"
   },
   "dependencies": {
-    "cytoscape": "^3.33.4",
-    "cytoscape-dagre": "^2.5.0",
-    "cytoscape-fcose": "^2.2.0",
     "dagre": "^0.8.5",
     "highlight.js": "^11.11.1",
     "html-to-image": "1.11.13",

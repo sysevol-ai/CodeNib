@@ -11,6 +11,34 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 ## [Unreleased]
 
+### Changed
+
+- Wiki pages read as technical documents. Body text sits a step back from the
+  headings, the opening claim and the code names, which carry a light fill.
+  Sources trail each paragraph in small grey type. The section bridge sentences
+  are set in roman instead of italics, and the reader column holds about 75
+  characters a line.
+- A page ends with one "Read next" list in the map's colours. It replaces the
+  "Related pages" list and the "Go deeper" buttons, which repeated the same
+  pages, and the "Subsystem map" graph.
+- The Dependency Map shows the structure view only. The Graph and Modules views
+  are removed: at repository scale both drew tangles. Their relationship list
+  shows both names in full.
+- Community Wikis use the same page ending as the featured ones. The "Chapter
+  CodeGraph" section is gone, and an Overview's architecture reads as a
+  numbered path with the other roles listed after it, without layer tags or a
+  "View source" link on every role.
+
+### Fixed
+
+- C++ symbol names no longer show clang's template spelling, such as
+  `formatter<type-parameter-0-0, typename enable_if<…>::type>`. Parameters read
+  `T`, `U`; long argument lists fold to `<…>`. Call rows, call paths and the
+  structure view name a symbol by its owner and member.
+- Emoji copied from a README no longer appear in Wiki prose.
+- The Overview no longer scrolls sideways on a phone when a call path names a
+  long symbol.
+
 ## [0.2.6] - 2026-11-08
 
 ### Added

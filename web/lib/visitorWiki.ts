@@ -336,7 +336,7 @@ export const wikiStages: Record<string, string> = {
   downloading: "Downloading the repository",
   analyzing: "Analyzing source files",
   indexing: "Indexing code relationships",
-  saving_graphs: "Saving System Map and CodeGraph",
+  saving_graphs: "Saving the map",
   outline: "Planning the Wiki chapters",
   retrieving: "Finding relevant source",
   planning_page: "Drafting and checking this chapter",

@@ -261,7 +261,7 @@ try {
     await page
       .getByRole("heading", { name: "From request to durable result" })
       .waitFor();
-    assert.equal(await page.locator(".wiki-system-path-step").count(), 4);
+    assert.equal(await page.locator(".arch-step").count(), 4);
     assert.equal(
       await page
         .getByRole("button", { name: "Publish to Community", exact: true })
@@ -277,10 +277,7 @@ try {
       await page.locator(".run-strip").getAttribute("open"),
       null,
     );
-    await page
-      .getByRole("button", { name: "View source", exact: false })
-      .first()
-      .click();
+    await page.locator(".arch-step .arch-source").first().click();
     await page
       .getByRole("link", { name: "Open pinned source on GitHub" })
       .waitFor();

@@ -296,10 +296,8 @@ pre {
 .toc-link,
 .mode-tab,
 .relevant-file,
-.codemap-chip,
 .codemap-controls button,
 .codegraph-fit,
-.callsite-focus,
 .askbar-send,
 .askbar-inner,
 .onthispage-list a {
@@ -830,18 +828,27 @@ pre {
   box-shadow: none;
 }
 .main-path {
-  margin: 28px 0;
+  margin: 40px 0 28px;
 }
 .main-path-head {
-  margin-bottom: 14px;
+  margin-bottom: 16px;
 }
 .main-path-title {
   margin: 0;
-  font-size: var(--fs-h3, 20px);
+  color: var(--text-primary);
+  font-size: 22px;
+  font-weight: var(--fw-strong);
+  line-height: 1.3;
+  letter-spacing: -0.012em;
+  text-wrap: balance;
+}
+.main-path-title code {
+  font-size: 0.9em;
+  overflow-wrap: anywhere;
 }
 .main-path-note {
-  margin: 4px 0 0;
-  color: var(--muted);
+  margin: 6px 0 0;
+  color: var(--text-muted);
   font-size: var(--fs-caption);
 }
 .main-path-steps {
@@ -859,11 +866,11 @@ pre {
 .main-path-step:not(:last-child)::before {
   content: "";
   position: absolute;
-  left: 13px;
-  top: 28px;
-  bottom: 0;
-  width: 2px;
-  background: var(--accent-soft);
+  left: 13.5px;
+  top: 32px;
+  bottom: 4px;
+  width: 1px;
+  background: var(--border-strong);
 }
 .main-path-index {
   display: flex;
@@ -872,10 +879,11 @@ pre {
   width: 28px;
   height: 28px;
   border-radius: var(--radius-pill);
-  background: var(--accent);
-  color: #fff;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
   font-size: var(--fs-caption);
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 .main-path-body {
   min-width: 0;
@@ -888,6 +896,7 @@ pre {
   gap: 8px;
 }
 .main-path-symbol {
+  color: var(--text-primary);
   font-weight: 600;
   overflow-wrap: anywhere;
 }
@@ -905,6 +914,9 @@ pre {
 }
 .main-path-text > * {
   margin: 4px 0 0;
+}
+.main-path-text .markdown {
+  font-size: var(--fs-small);
 }
 .call-path {
   margin: 0;
@@ -1246,10 +1258,16 @@ pre {
 }
 
 /* --------------------------- markdown content -------------------------- */
+/* A Wiki page reads as a technical document. Prose sits one step back in the
+   secondary grey; headings, the page's opening claim, bold terms and code are
+   what stand forward, so a scan down the page lands on the points. */
 .markdown {
   font-size: var(--fs-body);
   line-height: 1.7;
-  color: var(--text);
+  color: var(--text-secondary);
+}
+.markdown :is(h1, h2, h3, h4, strong, b) {
+  color: var(--text-primary);
 }
 /* Anchor jumps (the "On this page" rail) must clear the sticky header and,
    for near-bottom sections, the fixed Ask bar. */
@@ -1260,29 +1278,41 @@ pre {
   scroll-margin-bottom: var(--askbar-h);
 }
 .markdown h1 {
-  font-size: var(--fs-h1);
-  line-height: var(--lh-tight);
+  font-size: clamp(28px, 2.5vw, 34px);
+  line-height: 1.15;
   font-weight: var(--fw-strong);
-  letter-spacing: var(--tracking-display);
-  margin: 0 0 16px;
+  letter-spacing: -0.022em;
+  text-wrap: balance;
+  margin: 0 0 14px;
+}
+/* The sentence under the title is the page's claim. */
+.markdown h1 + p {
+  color: var(--text-primary);
+  font-size: 18px;
+  line-height: 1.6;
 }
 .markdown h2 {
-  font-size: var(--fs-h2);
-  line-height: var(--lh-heading);
+  font-size: 22px;
+  line-height: 1.3;
   font-weight: var(--fw-strong);
-  letter-spacing: var(--tracking-heading);
-  margin: 48px 0 12px;
+  letter-spacing: -0.012em;
+  text-wrap: balance;
+  margin: 44px 0 10px;
 }
 .markdown h3 {
-  font-size: var(--fs-h3);
-  line-height: var(--lh-heading);
+  font-size: 17px;
+  line-height: 1.4;
   font-weight: var(--fw-strong);
-  letter-spacing: var(--tracking-heading);
-  margin: 32px 0 8px;
+  letter-spacing: -0.005em;
+  margin: 30px 0 6px;
 }
 .markdown p,
 .markdown li {
   line-height: 1.7;
+}
+.markdown ::selection {
+  background: color-mix(in srgb, var(--accent) 32%, transparent);
+  color: var(--text-primary);
 }
 .markdown ul {
   padding-left: 22px;
@@ -1313,12 +1343,16 @@ pre {
   letter-spacing: 0;
   text-transform: none;
 }
+/* Code names are the nouns of a technical page: a faint fill sets them apart
+   from the grey prose without turning each one into a control. */
 .markdown :not(pre) > code {
-  background: none;
-  border-radius: 0;
-  padding: 0;
-  font-size: 0.875em;
-  color: var(--text);
+  background: color-mix(in srgb, var(--text-primary) 7%, transparent);
+  border-radius: var(--radius-sm);
+  padding: 0.1em 0.36em;
+  font-size: 0.86em;
+  color: var(--text-primary);
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
   /* Break long identifiers only at the <wbr> points the renderer inserts
      after "." and "_", never in the middle of a name. */
   overflow-wrap: break-word;
@@ -1326,12 +1360,10 @@ pre {
 }
 /* Inline citation chip: a cited symbol/file in prose; click scrolls the code pane. */
 .cite-chip {
-  /* A symbol is part of the sentence, not a control sitting in it. Border and
-     fill made every mention read as a chip and the prose read as a form; the
-     affordance now appears on hover instead. */
+  /* A symbol is part of the sentence, not a control sitting in it: the button
+     carries no border or padding of its own, only its code's tinted fill. */
   display: inline;
   border: 0;
-  border-bottom: 1px solid transparent;
   background: none;
   border-radius: 0;
   padding: 0;
@@ -1344,15 +1376,33 @@ pre {
   text-align: inherit;
   overflow-wrap: break-word;
 }
-.cite-chip:hover {
-  border-bottom-color: color-mix(in srgb, var(--accent) 55%, transparent);
+.cite-chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
 }
+/* A cited name opens its source: the same fill, tinted with the accent. */
 .cite-chip > code {
+  background: color-mix(in srgb, var(--accent) 13%, transparent);
+  border-radius: var(--radius-sm);
+  padding: 0.1em 0.36em;
+  font-size: 0.86em;
+  color: var(--accent-ink);
+  font-family: var(--font-mono);
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  transition: background-color 0.15s;
+}
+.cite-chip:hover > code,
+.cite-chip:focus-visible > code {
+  background: color-mix(in srgb, var(--accent) 26%, transparent);
+}
+.markdown :is(h1, h2, h3) :is(code, .cite-chip > code) {
   background: none;
   padding: 0;
-  font-size: 0.875em;
-  color: var(--accent);
-  font-family: var(--font-mono);
+  font-size: 0.9em;
+  color: inherit;
+  overflow-wrap: anywhere;
 }
 .cite-chip-loc {
   font-size: 0.75em;
@@ -2062,12 +2112,7 @@ pre {
 .codemap-unavailable-copy {
   align-self: center;
 }
-.codemap-unavailable-kicker {
-  color: var(--accent);
-  font-size: var(--fs-caption);
-  font-weight: var(--fw-strong);
-  text-transform: none;
-}
+
 .codemap-unavailable h2 {
   margin: 5px 0 10px;
   font-size: var(--fs-h2);
@@ -2247,40 +2292,6 @@ pre {
   background: #2a1b12;
   color: #fdba74;
 }
-.codemap-nodes {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 14px;
-}
-.codemap-chip {
-  padding: 4px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--surface);
-  color: var(--text);
-  font-size: var(--fs-caption);
-  font-family: var(--font-mono);
-  cursor: pointer;
-  max-width: 100%;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-}
-.codemap-chip:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-.codemap-chip.is-derived {
-  border-style: dashed;
-  opacity: 0.64;
-}
-.codemap-chip.root {
-  background: var(--accent);
-  color: #fff;
-  border-color: var(--accent);
-  border-style: solid;
-  opacity: 1;
-}
 
 /* High-level wiki system map: component cards first, code snippets on demand. */
 .system-map {
@@ -2288,140 +2299,7 @@ pre {
   background: var(--bg-surface);
   padding: 16px;
 }
-.system-map-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 10px;
-}
-.system-map-kicker {
-  color: var(--text-secondary);
-  font-size: var(--fs-caption);
-  font-weight: var(--fw-strong);
-  letter-spacing: 0;
-  text-transform: none;
-}
-.system-map-title {
-  margin-top: 2px;
-  color: var(--text);
-  font-size: var(--fs-body);
-  font-weight: var(--fw-strong);
-  line-height: 1.35;
-}
-.system-map-stats {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 6px;
-}
-.system-map-stats span {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  background: var(--bg-muted);
-  color: var(--text-secondary);
-  font-size: var(--fs-micro);
-  font-weight: var(--fw-strong);
-  padding: 4px 8px;
-  white-space: nowrap;
-}
-.system-flow-strip {
-  display: flex;
-  align-items: stretch;
-  gap: 0;
-  overflow-x: auto;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--bg-muted);
-  margin-bottom: 12px;
-}
-.system-flow-step {
-  position: relative;
-  display: grid;
-  align-content: center;
-  gap: 2px;
-  min-width: 150px;
-  flex: 1 0 150px;
-  padding: 10px 28px 10px 12px;
-  border-right: 1px solid var(--border);
-}
-.system-flow-step:last-child {
-  border-right: 0;
-}
-.system-flow-step span {
-  color: var(--text-muted);
-  font-size: var(--fs-caption);
-  font-weight: var(--fw-strong);
-  text-transform: none;
-}
-.system-flow-step b {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text);
-  font-size: var(--fs-caption);
-  line-height: 1.25;
-}
-.system-flow-step i {
-  position: absolute;
-  right: 9px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--text-muted);
-  font-style: normal;
-  font-weight: var(--fw-strong);
-}
-.system-stage-board {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  gap: 14px;
-  align-items: start;
-  padding: 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--bg-muted);
-}
-.system-stage {
-  position: relative;
-  min-width: 0;
-}
-.system-stage:not(:last-child)::after {
-  content: "->";
-  position: absolute;
-  top: 9px;
-  right: -13px;
-  color: var(--text-muted);
-  font-size: var(--fs-caption);
-  font-weight: var(--fw-strong);
-}
-.system-stage-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 8px;
-  color: var(--text-secondary);
-  font-size: var(--fs-caption);
-  font-weight: var(--fw-strong);
-  text-transform: none;
-}
-.system-stage-head b {
-  display: inline-grid;
-  min-width: 20px;
-  height: 20px;
-  place-items: center;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  background: var(--bg-surface);
-  color: var(--text-secondary);
-  font-size: var(--fs-micro);
-}
-.system-stage-body {
-  display: grid;
-  gap: 9px;
-}
+
 .system-node-card {
   min-width: 0;
   border: 1px solid var(--border);
@@ -2433,12 +2311,7 @@ pre {
 .system-node-card.root {
   border-color: var(--accent-border);
 }
-.system-node-head {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
-  gap: 8px;
-}
+
 .system-node-card h3 {
   margin: 0;
   color: var(--text);
@@ -2460,29 +2333,7 @@ pre {
   padding: 3px 6px;
   white-space: nowrap;
 }
-.system-source-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  margin-top: 8px;
-}
-.system-source-row span {
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--bg-muted);
-  color: var(--text-secondary);
-  font-size: var(--fs-micro);
-  padding: 3px 6px;
-}
-.system-symbols {
-  display: grid;
-  gap: 6px;
-  margin-top: 10px;
-}
+
 .system-symbol {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
@@ -2524,10 +2375,7 @@ pre {
   font-size: var(--fs-caption);
   line-height: 1.25;
 }
-.system-map-quiet .system-map-title {
-  color: var(--text-muted);
-  font-weight: var(--fw-strong);
-}
+
 .system-symbol em {
   grid-area: loc;
   min-width: 0;
@@ -2538,189 +2386,18 @@ pre {
   font-size: var(--fs-micro);
   font-style: normal;
 }
-.system-more {
-  color: var(--text-secondary);
-  font-size: var(--fs-micro);
-  padding-left: 2px;
-}
-.system-links {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-  gap: 8px;
-  margin-top: 14px;
-  padding-top: 14px;
-  border-top: 1px solid var(--border);
-}
-.system-link {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  max-width: 100%;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--bg-surface);
-  color: var(--text-secondary);
-  cursor: pointer;
-  font-family: inherit;
-  font-size: var(--fs-micro);
-  padding: 7px 9px;
-  text-align: left;
-}
-.system-link:disabled {
-  cursor: default;
-  opacity: 0.72;
-}
-.system-link:not(:disabled):hover {
-  border-color: var(--border-2);
-  background: var(--bg-muted);
-}
-.system-link-main {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  overflow: hidden;
-}
-.system-link-main span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.system-link b {
-  color: var(--accent);
-  font-weight: var(--fw-strong);
-}
-.system-link em {
-  color: var(--text-muted);
-  font-style: normal;
-  white-space: nowrap;
-}
 
 @media (max-width: 760px) {
-  .system-map-head {
-    display: grid;
-  }
-  .system-map-stats {
-    justify-content: flex-start;
-  }
-  .system-stage-board {
-    grid-template-columns: 1fr;
-  }
-  .system-stage:not(:last-child)::after {
-    content: none;
-  }
-  .system-node-head {
-    grid-template-columns: 1fr;
-  }
+  
+  
+  
+  
+  
   .system-node-flow {
     width: max-content;
   }
 }
 
-/* Interactive dependency graph (explicit tree-depth layout). */
-.codegraph {
-  margin: 0;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  overflow: hidden;
-  background: var(--bg-surface);
-}
-.subsystem-map .codegraph {
-  border: 0;
-  border-top: 1px solid var(--border);
-  border-radius: 0;
-}
-.codegraph-stage {
-  position: relative;
-}
-.codegraph-canvas {
-  position: relative;
-  overflow: hidden;
-  width: 100%;
-  height: 360px;
-  background: var(--bg-muted);
-}
-.codegraph[data-mode="files"] .codegraph-canvas {
-  height: 300px;
-}
-.codegraph[data-mode="symbols"] .codegraph-canvas {
-  height: 300px;
-}
-.codegraph-drilldown {
-  border-top: 1px solid var(--border);
-  background: var(--bg-surface);
-  padding: 10px 14px 12px;
-}
-.codegraph-drilldown-head {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  align-items: start;
-  gap: 10px;
-}
-.codegraph-drilldown-title {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-}
-.codegraph-drilldown-title b {
-  font-size: var(--fs-caption);
-  line-height: 1.25;
-  color: var(--text);
-}
-.codegraph-drilldown-title span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text-secondary);
-  font-size: var(--fs-micro);
-}
-.codegraph-drilldown-metrics {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 5px;
-  max-width: 280px;
-}
-.codegraph-drilldown-metrics span,
-.codegraph-symbol-more {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  background: var(--bg-muted);
-  color: var(--text-secondary);
-  font-size: var(--fs-micro);
-  font-weight: var(--fw-regular);
-  line-height: 1.2;
-  padding: 3px 8px;
-  white-space: nowrap;
-}
-.codegraph-drilldown-close {
-  width: 26px;
-  height: 26px;
-  display: inline-grid;
-  place-items: center;
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  font-size: 18px;
-  line-height: 1;
-}
-.codegraph-drilldown-close:hover {
-  border-color: var(--border);
-  background: var(--bg-muted);
-  color: var(--text);
-}
-.codegraph-symbol-list {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 9px;
-}
 .codegraph-symbol-chip {
   display: inline-grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
@@ -2744,89 +2421,6 @@ pre {
 .codegraph-symbol-chip.root {
   border-color: var(--accent-border);
   background: var(--accent-soft);
-}
-.codegraph-symbol-kind {
-  color: var(--text-secondary);
-  font-size: var(--fs-caption);
-  line-height: 1;
-  text-transform: none;
-}
-.codegraph-symbol-name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--fs-caption);
-  font-weight: var(--fw-strong);
-  line-height: 1.2;
-}
-.codegraph-symbol-line {
-  color: var(--text-muted);
-  font-size: var(--fs-micro);
-  line-height: 1;
-}
-.codegraph-legend {
-  flex: 1;
-  min-width: 210px;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px 10px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-  color: var(--text-secondary);
-  font-size: var(--fs-micro);
-  line-height: 1.2;
-}
-.codegraph-legend-title {
-  color: var(--text);
-  font-weight: var(--fw-strong);
-}
-.codegraph-legend-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  white-space: nowrap;
-}
-.codegraph-legend-line {
-  position: relative;
-  display: inline-block;
-  width: 26px;
-  height: 10px;
-  flex: 0 0 26px;
-}
-.codegraph-legend-line::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 3px;
-  top: 50%;
-  border-top: 2px solid var(--text-secondary);
-  transform: translateY(-50%);
-}
-.codegraph-legend-line.exact::after,
-.codegraph-legend-line.aggregate::after {
-  content: "";
-  position: absolute;
-  right: 0;
-  top: 50%;
-  width: 0;
-  height: 0;
-  border-top: 4px solid transparent;
-  border-bottom: 4px solid transparent;
-  border-left: 6px solid var(--text-secondary);
-  transform: translateY(-50%);
-}
-.codegraph-legend-line.aggregate::before {
-  border-top-style: dashed;
-  opacity: 0.72;
-}
-.codegraph-legend-line.weight::before {
-  right: 0;
-  border-top-width: 4px;
-  opacity: 0.85;
 }
 
 /* CodeGraph launch button in the breadcrumb (next to the repo name). */
@@ -2919,14 +2513,6 @@ pre {
   min-width: 0;
   overflow: auto;
   padding: 12px 16px 16px;
-}
-/* Let the graph fill the tall modal instead of the inline 540px. */
-.graph-modal-body .codegraph-canvas {
-  height: min(74vh, 800px);
-}
-.graph-modal-body .codegraph[data-mode="files"] .codegraph-canvas,
-.graph-modal-body .codegraph[data-mode="symbols"] .codegraph-canvas {
-  height: min(74vh, 800px);
 }
 
 /* Source definition opened from an evidence-linked symbol in Wiki prose. */
@@ -3051,89 +2637,17 @@ pre {
     min-height: 66px;
   }
 }
-.codegraph-loading {
-  display: grid;
-  place-items: center;
-  color: var(--muted);
-  font-size: var(--fs-caption);
-}
+
 .legend-key {
   color: var(--text);
   font-weight: var(--fw-strong);
 }
-.codegraph-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px 12px;
-  flex-wrap: wrap;
-  min-height: 44px;
-  padding: 8px 14px;
-  border-top: 1px solid var(--border);
-  background: var(--bg-surface);
-  font-size: var(--fs-caption);
-  color: var(--text);
-}
-/* transient hover/edge info — can be a long path, so truncate */
-.cg-info {
-  flex: 1;
-  min-width: 140px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+
 .codegraph-spacer {
   flex: 1;
   min-width: 24px;
 }
-.codegraph-bar b {
-  font-weight: var(--fw-strong);
-}
-/* LLM-written dependency phrase shown on edge hover, next to the ref count. */
-.cg-edgelabel {
-  font-style: italic;
-  color: var(--accent, var(--text-secondary));
-}
-/* Floating tooltip that appears at the cursor when hovering a graph edge. */
-.cg-edge-tip {
-  position: fixed;
-  z-index: 50;
-  max-width: 260px;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--bg-surface);
-  box-shadow: var(--shadow-pop);
-  font-size: var(--fs-caption);
-  color: var(--text);
-  pointer-events: none;
-}
-.cg-edge-tip-head {
-  font-weight: var(--fw-strong);
-  word-break: break-word;
-}
-.cg-edge-tip-sub {
-  margin-top: 1px;
-  color: var(--muted);
-  font-size: var(--fs-micro);
-}
-.cg-edge-tip-label {
-  margin-top: 4px;
-  font-style: italic;
-  color: var(--accent, var(--text-secondary));
-}
-.cg-edge-tip-label.muted {
-  color: var(--muted);
-  font-style: normal;
-}
-.codegraph-kind {
-  margin-left: 8px;
-  padding: 1px 7px;
-  border-radius: var(--radius-md);
-  background: var(--bg-muted);
-  border: 1px solid var(--border);
-  color: var(--muted);
-  font-size: var(--fs-micro);
-}
+
 .codegraph-fit {
   padding: 4px 12px;
   border: 1px solid var(--border);
@@ -3148,200 +2662,37 @@ pre {
   border-color: var(--border-2);
   color: var(--text);
 }
-/* Wiki variant: no layout toggle — a static label that this map reads top-down
-   by dependency. */
-.codegraph-depnote {
-  flex-shrink: 0;
-  font-size: var(--fs-caption);
-  color: var(--muted);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 4px 12px;
-  white-space: nowrap;
-}
+
 @media (max-width: 760px) {
-  .codegraph-canvas {
-    height: 300px;
-  }
-  .codegraph[data-mode="files"] .codegraph-canvas {
-    height: 280px;
-  }
-  .codegraph[data-mode="symbols"] .codegraph-canvas {
-    height: 300px;
-  }
-  .codegraph-bar {
-    gap: 7px;
-    padding: 8px 10px;
-  }
-  .cg-info {
-    flex-basis: 100%;
-  }
-  .codegraph-depnote {
-    display: none;
-  }
-  .codegraph-drilldown {
-    padding: 10px;
-  }
-  .codegraph-drilldown-head {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-  .codegraph-drilldown-metrics {
-    grid-column: 1 / -1;
-    justify-content: flex-start;
-    max-width: none;
-  }
+  
+  
+  
+  
+  
+  
+  
+  
+  
   .codegraph-symbol-chip {
     max-width: 100%;
   }
-  .codegraph-legend {
-    min-width: 0;
-    flex-basis: 100%;
-    gap: 6px 8px;
-  }
-  .codegraph-legend-item {
-    white-space: normal;
-  }
-}
-
-/* Call-site peek: the exact reference line behind a clicked edge. */
-.callsite-peek {
-  margin: 12px 0 2px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  overflow: hidden;
-  background: var(--bg-surface);
-  scroll-margin-top: calc(var(--top-h) + 12px);
-  scroll-margin-bottom: 112px;
-}
-/* Long definitions/files scroll inside the peek instead of being clipped. */
-.callsite-peek .hl-code {
-  max-height: 340px;
-  overflow: auto;
-}
-.callsite-head {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
-  gap: 14px;
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-surface);
-  font-size: var(--fs-caption);
-}
-.callsite-heading {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-}
-.callsite-eyebrow {
-  color: var(--text-secondary);
-  font-size: var(--fs-caption);
-  font-weight: var(--fw-strong);
-}
-.callsite-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  flex-wrap: wrap;
-  max-width: 320px;
-}
-.callsite-title {
-  color: var(--text);
-  font-size: var(--fs-caption);
-  overflow-wrap: anywhere;
-}
-.callsite-dot {
-  color: var(--text-muted);
-}
-.callsite-loc {
-  color: var(--text-secondary);
-  font-weight: var(--fw-regular);
-  overflow-wrap: anywhere;
-}
-/* LLM-written one-line summary of how the source symbol uses the target. */
-.callsite-edgelabel {
-  display: block;
-  margin-top: 2px;
-  font-size: 0.875em;
-  font-style: italic;
-  color: var(--accent, var(--text-secondary));
-  overflow-wrap: anywhere;
-}
-.callsite-edgelabel.muted {
-  color: var(--muted);
-  font-style: normal;
-}
-.callsite-pager {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--muted);
-}
-.callsite-pager button {
-  padding: 2px 8px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--bg-surface);
-  color: var(--text-secondary);
-  cursor: pointer;
-  font-size: var(--fs-micro);
-  font-family: inherit;
-}
-.callsite-pager button.on {
-  background: var(--indigo-soft);
-  color: var(--indigo-text);
-  border-color: var(--indigo-border);
-}
-.callsite-kindtag {
-  padding: 2px 7px;
-  border-radius: var(--radius-pill);
-  background: var(--bg-muted);
-  border: 1px solid var(--border);
-  color: var(--text-secondary);
-  font-size: var(--fs-micro);
-  white-space: nowrap;
-}
-.callsite-focus,
-.callsite-open {
-  display: inline-flex;
-  align-items: center;
-  padding: 4px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--bg-surface);
-  color: var(--text-secondary);
-  cursor: pointer;
-  font-size: var(--fs-caption);
-  font-family: inherit;
-  line-height: 1.2;
-  text-decoration: none;
-}
-.callsite-focus:hover,
-.callsite-open:hover {
-  border-color: var(--border-2);
-  background: var(--bg-muted);
-  color: var(--text);
-  text-decoration: none;
+  
+  
 }
 
 /* Wiki page provenance and source-evidence ledger. */
+/* How the page was made: one quiet line at the foot, then its sources. */
 .page-provenance {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 8px 14px;
-  margin: 2px 0 16px;
-  padding: 9px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--bg-muted);
-  color: var(--text-secondary);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 14px;
+  margin: 32px 0 10px;
+  color: var(--text-muted);
   font-size: var(--fs-caption);
 }
 .provenance-state {
-  color: var(--text);
-  font-weight: var(--fw-strong);
+  color: var(--text-secondary);
 }
 /* The check result is a status mark beside its own words. */
 .page-provenance.source-checked .provenance-state::before,
@@ -3376,9 +2727,26 @@ pre {
 .evidence-ledger > summary {
   cursor: pointer;
   padding: 10px 2px;
-  color: var(--text-secondary);
+  color: var(--text-muted);
   font-size: var(--fs-caption);
-  font-weight: var(--fw-strong);
+}
+.evidence-ledger > summary:hover {
+  color: var(--text-primary);
+}
+button.evidence-row {
+  width: 100%;
+  grid-template-columns: minmax(120px, 0.8fr) minmax(180px, 1.2fr);
+  border-inline: 0;
+  border-top: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--fs-micro);
+  text-align: left;
+  cursor: pointer;
+}
+button.evidence-row:hover {
+  color: var(--text);
+  background: var(--bg-muted);
 }
 .evidence-list {
   border-top: 1px solid var(--border);
@@ -3428,105 +2796,6 @@ a.evidence-row:hover {
 }
 .evidence-row.relation {
   grid-template-columns: 34px minmax(220px, 1fr) minmax(150px, 0.8fr);
-}
-
-/* Wiki page rendered as a view over the graph: its symbols' subsystem map. */
-.subsystem-map {
-  margin: 6px 0 24px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--bg-surface);
-  padding: 0;
-  overflow: hidden;
-}
-.subsystem-map > summary {
-  cursor: pointer;
-  color: var(--text);
-  padding: 14px 16px;
-  list-style: none;
-  border-bottom: 1px solid var(--border);
-}
-.subsystem-map > summary::-webkit-details-marker {
-  display: none;
-}
-.subsystem-map > summary::before {
-  content: "";
-}
-.subsystem-map[open] > summary::before {
-  content: "";
-}
-.subsystem-summary {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-.subsystem-summary::after {
-  content: "Hide";
-  margin-left: auto;
-  color: var(--text-muted);
-  font-size: var(--fs-caption);
-  font-weight: var(--fw-regular);
-}
-.subsystem-map:not([open]) > .subsystem-summary::after {
-  content: "Show";
-}
-.subsystem-title {
-  font-size: var(--fs-small);
-  font-weight: var(--fw-strong);
-  color: var(--text);
-}
-.subsystem-count,
-.subsystem-index {
-  display: inline-flex;
-  align-items: center;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  background: var(--bg-muted);
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: var(--fw-regular);
-  padding: 2px 8px;
-}
-.subsystem-loading {
-  min-height: 180px;
-  display: grid;
-  place-items: center;
-  border-top: 1px solid var(--border);
-  color: var(--text-secondary);
-  font-size: var(--fs-caption);
-}
-.callsite-close {
-  width: 28px;
-  height: 28px;
-  display: inline-grid;
-  place-items: center;
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--muted);
-  font-size: 18px;
-  line-height: 1;
-  cursor: pointer;
-  padding: 0;
-}
-.callsite-close:hover {
-  color: var(--text);
-  background: var(--bg-muted);
-  border-color: var(--border);
-}
-.callsite-msg {
-  padding: 14px;
-  margin: 0;
-}
-@media (max-width: 760px) {
-  .callsite-head {
-    grid-template-columns: 1fr;
-  }
-  .callsite-actions {
-    justify-content: flex-start;
-    max-width: none;
-  }
 }
 
 /* ===== Ask "codemap": hierarchical explanation (left) + code pane (right) ===== */
@@ -4018,27 +3287,7 @@ a.evidence-row:hover {
   border-bottom: 1px solid #dadce0;
   background: #f8f9fa;
 }
-.wiki-system-architecture {
-  border-bottom: 1px solid #dadce0;
-  padding: 30px;
-  color: #1f1f1f;
-  background: #f8f9fa;
-}
-.wiki-system-architecture-head {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 24px;
-  margin-bottom: 24px;
-}
-.wiki-system-architecture-head h3 {
-  margin: 0;
-  color: #1f1f1f;
-  font-family: inherit;
-  font-size: clamp(22px, 2.4vw, 30px);
-  font-weight: var(--fw-strong);
-  line-height: 1.12;
-}
+
 .wiki-system-architecture-summary {
   flex: 0 0 auto;
   padding-bottom: 3px;
@@ -4047,109 +3296,11 @@ a.evidence-row:hover {
   letter-spacing: 0;
   text-transform: none;
 }
-.wiki-system-architecture-body {
-  display: grid;
-  grid-template-columns: minmax(0, 1.55fr) minmax(230px, 0.75fr);
-  gap: 34px;
-  padding-top: 24px;
-  border-top: 1px solid #9aa0a6;
-}
-.wiki-system-section-label {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 13px;
-  color: #5f6368;
-  font-size: var(--fs-caption);
-  font-weight: var(--fw-strong);
-  letter-spacing: 0;
-  text-transform: none;
-}
-.wiki-system-path {
-  display: grid;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
+
 .wiki-system-path-step {
   min-width: 0;
 }
-.wiki-system-role {
-  display: grid;
-  grid-template-columns: 48px minmax(0, 1fr);
-  gap: 18px;
-  min-width: 0;
-  padding: 19px 21px 19px 17px;
-  border: 1px solid #dadce0;
-  border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.88);
-  box-shadow: none;
-}
-.wiki-system-role-index {
-  padding-top: 2px;
-  color: #0b57d0;
-  font-family: inherit;
-  font-size: 28px;
-  font-style: italic;
-  line-height: 1;
-}
-.wiki-system-role-copy {
-  display: grid;
-  min-width: 0;
-  gap: 5px;
-}
-.wiki-system-role-layer {
-  color: #5f6368;
-  font-size: var(--fs-caption);
-  font-weight: var(--fw-strong);
-  letter-spacing: 0;
-  text-transform: none;
-}
-.wiki-system-role h4,
-.wiki-system-support-card h4,
-.wiki-system-boundary h4 {
-  margin: 0;
-  color: #1f1f1f;
-  font-family: inherit;
-  font-size: var(--fs-h4);
-  font-weight: var(--fw-strong);
-  line-height: 1.2;
-}
-.wiki-system-role p,
-.wiki-system-support-card p,
-.wiki-system-boundary p {
-  margin: 0;
-  color: #5f6368;
-  font-size: var(--fs-caption);
-  line-height: 1.55;
-}
-.wiki-system-connection {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 48px;
-  color: #5f6368;
-  font-size: var(--fs-caption);
-  font-weight: var(--fw-strong);
-  letter-spacing: 0;
-  text-transform: none;
-}
-.wiki-system-connection > span:not(.wiki-system-connection-line) {
-  position: relative;
-  z-index: 1;
-  padding: 4px 9px;
-  background: #f8f9fa;
-}
-.wiki-system-connection-line {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 32px;
-  width: 1px;
-  background: #9aa0a6;
-}
+
 .wiki-system-connection-arrow {
   position: absolute !important;
   bottom: -1px;
@@ -4160,62 +3311,7 @@ a.evidence-row:hover {
   line-height: 1;
   background: transparent !important;
 }
-.wiki-system-context {
-  display: grid;
-  align-content: start;
-  gap: 28px;
-  padding-left: 28px;
-  border-left: 1px solid #dadce0;
-}
-.wiki-system-supporting,
-.wiki-system-boundaries {
-  display: grid;
-  gap: 10px;
-}
-.wiki-system-supporting .wiki-system-section-label,
-.wiki-system-boundaries .wiki-system-section-label {
-  margin-bottom: 3px;
-}
-.wiki-system-support-card {
-  display: grid;
-  gap: 6px;
-  padding: 15px 0;
-  border-bottom: 1px solid #dadce0;
-}
-.wiki-system-support-card:first-of-type {
-  padding-top: 8px;
-}
-.wiki-system-support-card small,
-.wiki-system-boundary small {
-  color: #0b57d0;
-  font-size: var(--fs-micro);
-  font-weight: var(--fw-strong);
-  letter-spacing: 0.02em;
-  line-height: 1.4;
-}
-.wiki-system-boundary {
-  display: grid;
-  grid-template-columns: 10px minmax(0, 1fr);
-  gap: 12px;
-  padding: 14px;
-  border: 1px dashed #9aa0a6;
-  border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.32);
-}
-.wiki-system-boundary > div {
-  display: grid;
-  gap: 7px;
-}
-.wiki-system-boundary-mark {
-  width: 4px;
-  min-height: 100%;
-  border-radius: var(--radius-pill);
-  background: repeating-linear-gradient(
-    to bottom,
-    #c26715 0 5px,
-    transparent 5px 9px
-  );
-}
+
 .wiki-story-path {
   display: grid;
   margin: 0;
@@ -4543,46 +3639,21 @@ a.wiki-media-citation:hover {
     margin-top: 0;
     padding: 0;
   }
-  .wiki-system-architecture {
-    padding: 22px 18px 20px;
-  }
-  .wiki-system-architecture-head {
-    display: block;
-    margin-bottom: 18px;
-  }
+  
+  
   .wiki-system-architecture-summary {
     display: block;
     margin-top: 8px;
   }
-  .wiki-system-architecture-body {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 28px;
-    padding-top: 20px;
-  }
-  .wiki-system-role {
-    grid-template-columns: 38px minmax(0, 1fr);
-    gap: 12px;
-    padding: 17px 16px 17px 13px;
-  }
-  .wiki-system-role-index {
-    font-size: 20px;
-  }
-  .wiki-system-role h4 {
-    font-size: var(--fs-h4);
-  }
-  .wiki-system-connection-line {
-    left: 24px;
-  }
+  
+  
+  
+  
+  
   .wiki-system-connection-arrow {
     left: 13px;
   }
-  .wiki-system-context {
-    gap: 24px;
-    padding-top: 23px;
-    padding-left: 0;
-    border-top: 1px solid #dadce0;
-    border-left: 0;
-  }
+  
   .wiki-story-path {
     padding: 0 18px;
   }
@@ -5032,12 +4103,12 @@ a.codepanel-name:hover {
 }
 /* Relationships are a different kind of thing from the tree, so they carry the
    accent while the tree stays on neutral surfaces. */
+/* The recorded relationships at the current depth, as a ruled list: both
+   names in full, the reference count at the end of the row. */
 .hier-links {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
-  gap: 6px;
+  grid-template-columns: minmax(0, 1fr);
   margin-top: 14px;
-  padding-top: 12px;
   border-top: 1px solid var(--border-subtle);
 }
 .hier-link {
@@ -5045,10 +4116,11 @@ a.codepanel-name:hover {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 6px 9px;
-  border: 1px solid var(--accent-border);
-  border-radius: var(--radius-md);
-  background: var(--accent-soft);
+  padding: 7px 2px;
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  border-radius: 0;
+  background: none;
   cursor: pointer;
   font: inherit;
   color: inherit;
@@ -5056,12 +4128,9 @@ a.codepanel-name:hover {
 }
 .hier-link:disabled {
   cursor: default;
-  border-color: var(--border-subtle);
-  background: var(--bg-surface);
-  opacity: 0.7;
 }
 .hier-link:not(:disabled):hover {
-  border-color: var(--accent);
+  background: var(--bg-muted);
 }
 .hier-link-main {
   display: flex;
@@ -5072,46 +4141,19 @@ a.codepanel-name:hover {
   font-family: var(--font-mono);
 }
 .hier-link-main span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
   color: var(--text-primary);
 }
 .hier-link-main b {
   flex: 0 0 auto;
-  color: var(--accent);
-  font-weight: var(--fw-strong);
+  color: var(--text-muted);
+  font-weight: var(--fw-regular);
 }
 .hier-link em {
   flex: 0 0 auto;
   font-style: normal;
   font-size: var(--fs-micro);
   color: var(--text-secondary);
-}
-
-/* Graph / Structure switch inside the Dependency Map */
-.codemap-views {
-  display: inline-flex;
-  gap: 4px;
-  margin: 8px 0 4px;
-  padding: 3px;
-  border: 1px solid var(--border-2);
-  border-radius: var(--radius-md);
-}
-.codemap-views button {
-  padding: 4px 12px;
-  border: 0;
-  border-radius: var(--radius-md);
-  background: none;
-  cursor: pointer;
-  font: inherit;
-  font-size: var(--fs-caption);
-  color: var(--muted);
-}
-.codemap-views button.is-active {
-  background: var(--hover, rgba(127, 127, 127, 0.12));
-  color: inherit;
-  font-weight: var(--fw-strong);
 }
 
 /* A citation reads as the source it stands for, not as an internal handle. */
@@ -5123,9 +4165,9 @@ a.codepanel-name:hover {
   margin: 0 0 0 4px;
   cursor: pointer;
   font: inherit;
-  font-size: 0.875em;
+  font-size: var(--fs-micro);
   font-family: var(--font-mono);
-  color: var(--text-secondary);
+  color: var(--text-muted);
   text-decoration: none;
   white-space: nowrap;
 }
@@ -5141,9 +4183,6 @@ a.codepanel-name:hover {
   .graph-modal-body .hier-head {
     align-items: flex-start;
     flex-wrap: wrap;
-  }
-  .graph-modal-body .hier-links {
-    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -5257,26 +4296,28 @@ a.codepanel-name:hover {
   margin-left: 6px;
   white-space: normal;
 }
+/* A paragraph's sources trail it as a footnote would: small, grey, no box. */
 .cite-group-toggle {
   display: inline-flex;
   align-items: baseline;
   gap: 3px;
-  padding: 1px 6px;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-pill);
-  background: var(--bg-surface);
+  padding: 0;
+  border: 0;
+  background: none;
   color: var(--text-muted);
   font-family: var(--font-mono);
   font-size: var(--fs-micro);
   line-height: 1.5;
   cursor: pointer;
-  vertical-align: 1px;
-  transition: color 0.15s, border-color 0.15s;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 3px;
+  transition: color 0.15s, text-decoration-color 0.15s;
 }
 .cite-group-toggle:hover,
 .cite-group.open .cite-group-toggle {
   color: var(--accent);
-  border-color: var(--accent-border);
+  text-decoration-color: currentColor;
 }
 .cite-group-more {
   color: var(--text-muted);
@@ -5290,42 +4331,39 @@ a.codepanel-name:hover {
 }
 .cite-group .cite-src {
   margin: 0 6px 0 0;
-  font-size: var(--fs-caption);
-  color: var(--text-secondary);
+  font-size: var(--fs-micro);
+  color: var(--text-muted);
 }
 .cite-group .cite-src:hover {
   color: var(--accent);
 }
 
 /* "**Interactions**" label followed by relation rows rendered from graph edges. */
+/* "**Interactions**" and the recorded calls under it: data, so it reads as a
+   ruled list rather than as prose or as a stack of boxes. */
 .markdown p:has(> strong:only-child) {
-  margin: 14px 0 4px;
+  margin: 20px 0 2px;
   font-size: var(--fs-caption);
-  letter-spacing: 0;
-  text-transform: none;
-  color: var(--text-muted, var(--muted));
+  color: var(--text-muted);
 }
 .markdown p:has(> strong:only-child) > strong {
+  color: var(--text-muted);
   font-weight: var(--fw-strong);
 }
 .markdown p:has(> strong:only-child) + ul {
   list-style: none;
   padding-left: 0;
-  margin: 0 0 14px;
-  display: grid;
-  gap: 4px;
+  margin: 0 0 18px;
 }
 .markdown p:has(> strong:only-child) + ul > li {
   display: block;
-  padding: 6px 10px;
-  border: 1px solid var(--border-subtle, var(--border));
-  border-radius: var(--radius-md);
-  background: var(--bg-surface, var(--surface));
-  font-size: 0.875em;
-  line-height: 1.5;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: var(--fs-small);
+  line-height: 1.55;
 }
-.markdown p:has(> strong:only-child) + ul > li code {
-  font-size: 0.875em;
+.markdown p:has(> strong:only-child) + ul > li:first-child {
+  border-top: 1px solid var(--border-subtle);
 }
 
 /* Overview journey: numbered stages down a rail. */
@@ -5790,146 +4828,12 @@ a.codepanel-name:hover {
   background: var(--bg-surface, var(--surface));
   box-shadow: none;
 }
-.wiki-system-architecture {
-  padding: 16px 18px 18px;
-  border-bottom: 1px solid var(--border-subtle, var(--border));
-  color: var(--text-primary, var(--text));
-  background: var(--bg-surface, var(--surface));
-}
-.wiki-system-architecture-head {
-  margin-bottom: 12px;
-}
-.wiki-system-architecture-head h3,
-.wiki-system-role h4,
-.wiki-system-support-card h4,
-.wiki-system-boundary h4,
+
 .wiki-story-path-copy strong {
   font-family: inherit;
   color: var(--text-primary, var(--text));
 }
-.wiki-system-architecture-head h3 {
-  font-size: 1.15em;
-  font-weight: var(--fw-strong);
-  line-height: 1.3;
-}
-/* Main path on top; supporting roles and boundaries share one row below it.
-   A 200px side column under a long main path left half the card empty and
-   wrapped every card to three words a line. */
-.wiki-system-architecture-body {
-  grid-template-columns: minmax(0, 1fr);
-  gap: 20px;
-  padding-top: 14px;
-  border-top: 1px solid var(--border-subtle, var(--border));
-}
-.wiki-system-section-label {
-  color: var(--text-muted, var(--muted));
-  font-size: var(--fs-caption);
-  font-weight: var(--fw-strong);
-  letter-spacing: 0;
-}
-/* The role's layer rides on the heading's line as a plain tag, not as a
-   label stacked above it. */
-.wiki-system-role-title {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 2px 8px;
-}
-.wiki-system-role-layer {
-  color: var(--text-muted, var(--muted));
-  font-size: var(--fs-micro);
-  font-weight: var(--fw-regular);
-  letter-spacing: 0;
-}
-.wiki-system-role {
-  grid-template-columns: 26px minmax(0, 1fr);
-  gap: 10px;
-  padding: 12px 12px 12px 14px;
-  border: 0;
-  border-left: 1px solid var(--border-strong);
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-  transition: opacity 120ms ease, background-color 120ms ease;
-}
-.wiki-system-role-index {
-  display: inline-grid;
-  place-items: center;
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border-radius: 50%;
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-family: inherit;
-  font-size: 12px;
-  font-style: normal;
-  font-weight: var(--fw-strong);
-  font-variant-numeric: tabular-nums;
-}
-.wiki-system-role h4,
-.wiki-system-support-card h4,
-.wiki-system-boundary h4 {
-  font-size: 0.875em;
-  font-weight: var(--fw-strong);
-  line-height: 1.3;
-}
-.wiki-system-role p,
-.wiki-system-support-card p,
-.wiki-system-boundary p {
-  color: var(--text-secondary, var(--muted));
-  font-size: 0.875em;
-  line-height: 1.5;
-}
-.wiki-system-connection {
-  min-height: 34px;
-  justify-content: flex-start;
-  padding-left: 40px;
-  color: var(--text-secondary, var(--muted));
-  font-size: 0.75em;
-  font-weight: var(--fw-regular);
-  letter-spacing: 0;
-  text-transform: none;
-}
-.wiki-system-connection > span:not(.wiki-system-connection-line) {
-  padding: 2px 0;
-  background: transparent;
-}
-.wiki-system-connection-line {
-  left: 22px;
-  background: color-mix(in srgb, var(--accent) 40%, var(--border));
-}
-.wiki-system-context {
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 24px;
-  padding: 16px 0 0;
-  border-left: 0;
-  border-top: 1px solid var(--border-subtle, var(--border));
-}
-.wiki-system-support-card {
-  padding: 10px 0;
-  border-bottom: 1px solid var(--border-subtle, var(--border));
-  transition: opacity 120ms ease;
-}
-.wiki-system-support-card small,
-.wiki-system-boundary small {
-  color: var(--accent);
-  font-size: 0.75em;
-  font-weight: var(--fw-regular);
-  letter-spacing: 0;
-}
-.wiki-system-boundary {
-  grid-template-columns: minmax(0, 1fr);
-  gap: 10px;
-  padding: 10px 0;
-  border: 0;
-  border-bottom: 1px solid var(--border-subtle, var(--border));
-  border-radius: 0;
-  background: transparent;
-}
-.wiki-system-boundary-mark {
-  display: none;
-}
+
 .wiki-story-map-frame .wiki-media-asset {
   border-bottom: 1px solid var(--border-subtle, var(--border));
   background: var(--bg-surface, var(--surface));
@@ -5937,149 +4841,6 @@ a.codepanel-name:hover {
 .wiki-story-map-footer {
   color: var(--text-muted, var(--muted));
   background: var(--bg-surface, var(--surface));
-}
-.wiki-system-role.is-dim,
-.wiki-system-support-card.is-dim,
-.wiki-system-trace-step.is-dim {
-  opacity: 0.4;
-}
-.wiki-system-role.is-lit {
-  background: var(--accent-soft);
-}
-
-/* Functions the traced path passes through, shown on their role. */
-.wiki-system-role-stages {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 6px;
-  margin-top: 4px;
-}
-.wiki-system-stage-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  max-width: 100%;
-}
-.wiki-system-stage-chip code {
-  font-size: 0.75em;
-  padding: 1px 6px;
-  border-radius: var(--radius-md);
-  background: var(--accent-soft);
-  border: 1px solid var(--accent-border);
-  overflow-wrap: anywhere;
-}
-.wiki-system-stage-number {
-  display: inline-grid;
-  place-items: center;
-  flex: 0 0 auto;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: var(--accent);
-  color: var(--accent-contrast, #fff);
-  font-size: var(--fs-micro);
-  font-weight: var(--fw-strong);
-  font-variant-numeric: tabular-nums;
-}
-
-/* The traced call path, inside the card below the roles. */
-.wiki-system-trace {
-  margin-top: 16px;
-  padding-top: 14px;
-  border-top: 1px solid var(--border-subtle, var(--border));
-}
-.wiki-system-trace-title {
-  margin: 0 0 8px;
-  font-size: 0.875em;
-  font-weight: var(--fw-strong);
-}
-.wiki-system-trace-title code {
-  font-size: 0.875em;
-}
-.wiki-system-trace-steps {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-.wiki-system-trace-step {
-  position: relative;
-  display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
-  gap: 10px;
-  padding: 0 0 10px;
-  transition: opacity 120ms ease;
-}
-.wiki-system-trace-step:not(:last-child)::after {
-  content: "";
-  position: absolute;
-  left: 8.5px;
-  top: 22px;
-  bottom: 2px;
-  width: 1px;
-  background: color-mix(in srgb, var(--accent) 40%, var(--border));
-}
-.wiki-system-trace-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px 8px;
-}
-.wiki-system-trace-symbol {
-  font-size: 0.875em;
-  font-weight: var(--fw-strong);
-}
-.wiki-system-trace-role {
-  font-size: 0.75em;
-  font-weight: var(--fw-strong);
-  padding: 1px 7px;
-  border-radius: var(--radius-pill);
-  background: var(--bg-subtle, var(--surface));
-  color: var(--text-secondary, var(--muted));
-}
-.wiki-system-trace-page {
-  padding: 0;
-  border: 0;
-  background: none;
-  font-size: 0.75em;
-  color: var(--accent);
-  cursor: pointer;
-}
-.wiki-system-trace-page:hover {
-  text-decoration: underline;
-}
-.wiki-system-trace-text .markdown p {
-  margin: 2px 0 0;
-  font-size: 0.875em;
-  line-height: 1.5;
-  color: var(--text-secondary, var(--muted));
-}
-@media (max-width: 720px) {
-  .wiki-system-architecture {
-    padding: 14px 14px 16px;
-  }
-  .wiki-system-architecture-body {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-/* Roles follow each other down the connectors; only the traced functions
-   carry numbers, so the card has one numbering, not two. */
-.wiki-system-role {
-  grid-template-columns: minmax(0, 1fr);
-  padding-left: 13px;
-}
-.wiki-system-role-index {
-  display: none;
-}
-.wiki-system-connection {
-  padding-left: 26px;
-}
-.wiki-system-connection-line {
-  left: 14px;
-}
-.wiki-system-role p code,
-.wiki-system-support-card p code,
-.wiki-system-boundary p code {
-  font-size: 0.875em;
 }
 
 /* --- Landing: say what is different, prove it with one recorded call --- */
@@ -6263,9 +5024,7 @@ a.codepanel-name:hover {
 .wiki-catalog-skeleton span:first-child { width: 60%; }
 .wiki-catalog-skeleton span:last-child { width: 40%; }
 .library-publish-hint { display: block; margin-top: 12px; font-size: var(--fs-caption); color: var(--accent); }
-.wiki-system-evidence { border: 0; background: transparent; padding: 5px 0; font-size: var(--fs-micro); color: var(--accent); cursor: pointer; text-align: left; }
-.saved-wiki .wiki-system-architecture { margin: 28px 0; }
-.saved-wiki .wiki-system-architecture h3 { margin-top: 0; }
+
 @media (max-width: 720px) {
   .browse-intro > .btn-outline { position: static; margin-top: 12px; }
   .browse-tabs a { font-size: var(--fs-caption); padding: 8px 10px; }
@@ -6285,10 +5044,6 @@ a.codepanel-name:hover {
   .browse-tabs a { padding: 8px; font-size: var(--fs-caption); white-space: nowrap; flex: 1; text-align: center; }
 }
 
-.saved-wiki-maps { margin: 28px 0; padding-top: 20px; border-top: 1px solid var(--border); }
-.saved-wiki-map-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
-.saved-wiki-map-heading h2 { margin: 0; font-size: var(--fs-h4); }
-.saved-wiki-codegraph { margin-top: 18px; min-width: 0; }
 .wiki-visual-unavailable { border: 1px dashed var(--border-2); border-radius: var(--radius-md); padding: 10px 14px; font-size: var(--fs-caption); }
 
 /* First visit: the example remains usable while the catalog connects. */
@@ -6935,16 +5690,6 @@ a.codepanel-name:hover {
   font-size: 0.92em;
 }
 
-/* Supporting roles and boundaries keep their natural heights side by side;
-   stretching the shorter column spread its cards apart. */
-.wiki-system-context {
-  align-items: start;
-}
-.wiki-system-supporting,
-.wiki-system-boundaries {
-  align-content: start;
-}
-
 /* Read by assistive technology, never drawn. */
 .sr-only {
   position: absolute;
@@ -6953,4 +5698,237 @@ a.codepanel-name:hover {
   overflow: hidden;
   clip: rect(0 0 0 0);
   white-space: nowrap;
+}
+
+/* --- Reader: what to read next ---------------------------------------- */
+/* One list of the pages after this one. The dot is the page's colour on the
+   map, so the list and the map name pages the same way. */
+.wiki-read-next {
+  margin: 56px 0 0;
+  padding-top: 22px;
+  border-top: 1px solid var(--border-subtle);
+}
+.wiki-read-next h2 {
+  margin: 0 0 6px;
+  color: var(--text-primary);
+  font-size: 17px;
+  font-weight: var(--fw-strong);
+  letter-spacing: -0.005em;
+}
+.wiki-read-next ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  column-gap: 28px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.wiki-read-next button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 0;
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--fs-small);
+  line-height: 1.4;
+  text-align: left;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.wiki-read-next button:hover,
+.wiki-read-next button:focus-visible {
+  color: var(--text-primary);
+}
+.wiki-read-next button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.wiki-read-next-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--area);
+}
+.wiki-read-next-title {
+  flex: 1;
+  min-width: 0;
+}
+.wiki-read-next-arrow {
+  flex: none;
+  color: var(--area);
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: opacity 0.18s, transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.wiki-read-next button:hover .wiki-read-next-arrow,
+.wiki-read-next button:focus-visible .wiki-read-next-arrow {
+  opacity: 1;
+  transform: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .wiki-read-next-arrow {
+    transition: none;
+  }
+}
+
+/* --- Reader: how the parts fit together ---------------------------------- */
+/* The architecture plan as part of the document: a numbered path on a thin
+   rail, then the other roles and boundaries as a definition list. */
+.arch {
+  margin: 40px 0 12px;
+}
+.arch-title {
+  margin: 0 0 18px;
+  color: var(--text-primary);
+  font-size: 22px;
+  font-weight: var(--fw-strong);
+  line-height: 1.3;
+  letter-spacing: -0.012em;
+  text-wrap: balance;
+}
+.wiki-disclosure .arch {
+  margin: 0;
+  padding: 16px 14px 6px;
+}
+.wiki-disclosure .arch-title {
+  font-size: 17px;
+}
+.arch code {
+  padding: 0.05em 0.3em;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--text-primary) 7%, transparent);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+}
+.arch-path {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.arch-step {
+  position: relative;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 14px;
+  padding-bottom: 20px;
+}
+.arch-step:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  top: 32px;
+  bottom: 4px;
+  left: 13.5px;
+  width: 1px;
+  background: var(--border-strong);
+}
+.arch-index {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.arch-body {
+  min-width: 0;
+  padding-top: 3px;
+}
+.arch-role {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--fs-body);
+  font-weight: var(--fw-strong);
+  line-height: 1.4;
+}
+.arch-body > p {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+  font-size: var(--fs-small);
+  line-height: 1.6;
+}
+.arch-body > p.arch-handoff {
+  margin-top: 10px;
+  color: var(--text-muted);
+  font-size: var(--fs-caption);
+}
+.arch-stages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.arch-source {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  transition: color 0.15s, text-decoration-color 0.15s;
+}
+.arch-source:hover,
+.arch-source:focus-visible {
+  color: var(--accent);
+  text-decoration-color: currentColor;
+}
+.arch-source:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+.arch-context {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 8px 32px;
+  margin-top: 6px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border-subtle);
+}
+.arch-group-title {
+  margin: 0 0 4px;
+  color: var(--text-primary);
+  font-size: var(--fs-small);
+  font-weight: var(--fw-strong);
+}
+.arch-group dl {
+  margin: 0;
+}
+.arch-item {
+  padding: 9px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.arch-item:last-child {
+  border-bottom: 0;
+}
+.arch-item dt {
+  color: var(--text-primary);
+  font-size: var(--fs-small);
+  font-weight: var(--fw-strong);
+  line-height: 1.4;
+}
+.arch-item dd {
+  margin: 3px 0 0;
+  color: var(--text-secondary);
+  font-size: var(--fs-caption);
+  line-height: 1.55;
+}
+.arch-item-link {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-muted);
 }
