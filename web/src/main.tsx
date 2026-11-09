@@ -1,10 +1,16 @@
-import { lazy, StrictMode, Suspense } from "react";
+import { lazy, StrictMode, Suspense, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 
 import "@/app/globals.css";
 import { githubPathInput } from "@/lib/githubPreview";
-import { routeSegments, useBrowserLocation } from "@/lib/router";
-import { assetUrl, guardHome, restoreStaticRoute } from "@/lib/runtime";
+import { navigate, routeSegments, useBrowserLocation } from "@/lib/router";
+import {
+  assetUrl,
+  guardHome,
+  homeRepository,
+  openHomeRepository,
+  restoreStaticRoute,
+} from "@/lib/runtime";
 import { startExperienceEvents } from "@/lib/experience";
 
 const AskPage = lazy(() => import("@/app/[repoId]/ask/page"));
@@ -26,12 +32,25 @@ function RouteLoading() {
   );
 }
 
+// A published Wiki has no landing page. openHomeRepository() sends its root
+// address to the Wiki before the first render; this covers a later in-app
+// visit to the root, once App listens for navigation.
+function OpenHomeRepository({ repoId }: { repoId: string }) {
+  useEffect(() => {
+    const { search, hash } = window.location;
+    navigate(`/${encodeURIComponent(repoId)}/${search}${hash}`, true);
+  }, [repoId]);
+  return <RouteLoading />;
+}
+
 function App() {
   const location = useBrowserLocation();
   const segments = routeSegments(location.pathname);
   if (segments.length === 0) {
     const repo = new URLSearchParams(location.search).get("repo");
     if (repo) return <RepositoryRoute key={repo} input={repo} />;
+    const home = homeRepository();
+    if (home) return <OpenHomeRepository repoId={home} />;
     // The hosted demo opens on real guard cases (runtime `home: "guard"`);
     // a local Wiki keeps its home. Both pages also have their own routes.
     return guardHome() ? <GuardCasesPage /> : <Landing />;
@@ -103,6 +122,7 @@ function App() {
 }
 
 restoreStaticRoute();
+openHomeRepository();
 startExperienceEvents();
 
 const root = document.getElementById("root");

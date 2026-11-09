@@ -9,6 +9,8 @@ declare global {
       experienceEvents?: boolean;
       // The hosted demo opens on the guard cases; a local Wiki keeps its home.
       home?: "wiki" | "guard";
+      // A static export publishes one repository and opens on its Wiki.
+      homeRepository?: string;
     };
   }
 }
@@ -34,6 +36,30 @@ export function apiBase(): string {
 
 export function guardHome(): boolean {
   return typeof window !== "undefined" && window.__CODENIB_RUNTIME__?.home === "guard";
+}
+
+/** The repository a static export opens on, instead of the landing page. */
+export function homeRepository(): string | null {
+  if (!isStaticRuntime()) return null;
+  const value = window.__CODENIB_RUNTIME__?.homeRepository;
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+/**
+ * Send a published Wiki's root address to its repository's Wiki before the
+ * first render, keeping any ?p= page and #heading. Call after
+ * restoreStaticRoute().
+ */
+export function openHomeRepository(): void {
+  const home = homeRepository();
+  if (!home || stripBasePath(window.location.pathname) !== "/") return;
+  const { search, hash } = window.location;
+  if (new URLSearchParams(search).has("repo")) return;
+  window.history.replaceState(
+    null,
+    "",
+    `${withBasePath(`/${encodeURIComponent(home)}/`)}${search}${hash}`,
+  );
 }
 
 export function isStaticRuntime(): boolean {
