@@ -1,0 +1,15 @@
+{
+  "name": "codenib",
+  "description": "CodeNib plugins for Claude Code",
+  "owner": {
+    "name": "CodeNib Contributors",
+    "url": "https://codenib.ai"
+  },
+  "plugins": [
+    {
+      "name": "codenib",
+      "source": "./plugins/codenib",
+      "description": "Source-linked answers about your repository: ranked search, compiler-indexed references, and a Wiki whose every claim links to the exact lines."
+    }
+  ]
+}

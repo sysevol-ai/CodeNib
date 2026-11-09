@@ -45,6 +45,9 @@ web/out/
 web/next-env.d.ts
 web/*.tsbuildinfo
 # *.json is ignored globally above; keep the frontend config tracked.
+!.claude-plugin/marketplace.json
+!plugins/*/.claude-plugin/plugin.json
+!plugins/*/.mcp.json
 !web/package.json
 !web/tsconfig.json
 !web/package-lock.json
