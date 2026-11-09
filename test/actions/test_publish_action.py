@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[2]
 ACTION_PATH = ROOT / ".github" / "actions" / "publish" / "action.yml"
 WORKFLOW_PATH = ROOT / ".github" / "workflows" / "codenib-pages.yml"
 SMOKE_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "codenib-publish-smoke.yml"
+MARKETPLACE_ACTION_PATH = ROOT / "marketplace" / "wiki-action" / "action.yml"
 PINNED_ACTION_RE = re.compile(r"^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)+@[0-9a-f]{40}$")
 
 
@@ -440,3 +441,20 @@ def test_reusable_workflow_passes_the_wiki_key_only_for_story_pages() -> None:
     assert workflow["on"]["workflow_call"]["inputs"]["wiki"]["default"] == "index"
     assert "wiki_api_key" in workflow["on"]["workflow_call"]["secrets"]
     assert "inputs.wiki == 'story'" in build["timeout-minutes"]
+
+
+def test_marketplace_action_fits_its_listing_and_the_publish_action() -> None:
+    wrapper = _load(MARKETPLACE_ACTION_PATH)
+    inputs = _load(ACTION_PATH)["inputs"]
+
+    # Marketplace refuses to list an action whose description is this long.
+    assert 0 < len(wrapper["description"]) < 125
+    assert wrapper["name"] and wrapper["branding"]["icon"]
+    assert wrapper["branding"]["color"]
+    steps = _steps(wrapper)
+    publish = next(step for step in steps if step.get("id") == "publish")
+    assert publish["uses"].startswith("sysevol-ai/CodeNib/.github/actions/publish@")
+    assert set(publish["with"]) <= set(inputs)
+    _assert_external_actions_are_sha_pinned(
+        {"runs": {"steps": [step for step in steps if step is not publish]}}
+    )

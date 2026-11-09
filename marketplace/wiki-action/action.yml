@@ -4,11 +4,12 @@
 
 # Source of the GitHub Marketplace action. Marketplace lists only an action
 # whose action.yml sits at the root of its own repository, so this directory
-# is copied, unchanged, into that repository; see README.md.
+# is copied into sysevol-ai/wiki-action with the CodeNib commit pinned; see
+# README.md. Marketplace rejects a description of 125 characters or more.
 name: CodeNib Wiki
 description: >-
-  Publish a source-linked Wiki of this repository on GitHub Pages: a map of its
-  parts, and pages whose every claim links to the exact lines.
+  Publish a source-linked Wiki of your repository on GitHub Pages, with every
+  claim linked to the exact lines.
 author: CodeNib Contributors
 branding:
   icon: book-open
