@@ -61,7 +61,7 @@ def test_rejects_user_content_without_echoing_it(collector, caplog, payload):
 
 def test_collector_bounds_payload_and_log_volume(collector, monkeypatch, caplog):
     assert (
-        collector.post("/api/experience-events", content=b"x" * 257).status_code == 413
+        collector.post("/api/experience-events", content=b"x" * 513).status_code == 413
     )
     monkeypatch.setattr(experience, "monotonic", lambda: 100)
     for _ in range(120):
@@ -73,7 +73,7 @@ def test_collector_bounds_payload_and_log_volume(collector, monkeypatch, caplog)
 
 
 def test_collector_stops_reading_oversized_stream(collector, caplog):
-    chunks = iter([b"x" * 200, b"x" * 100])
+    chunks = iter([b"x" * 400, b"x" * 200])
 
     async def receive():
         chunk = next(chunks, None)
@@ -101,3 +101,70 @@ def test_cli_surface_carries_only_the_guard_first_run(collector, caplog):
     assert messages == [
         "experience_event event=guard_first_run surface=cli visit=" + "b" * 32
     ]
+
+
+def _messages(caplog):
+    return [r.message for r in caplog.records if r.name == experience.logger.name]
+
+
+def test_page_view_carries_one_arrival_class(collector, caplog):
+    view = dict(event="page_view", surface="wiki", visit="c" * 32, arrival="search")
+    assert collector.post("/api/experience-events", json=view).status_code == 204
+    landing = dict(
+        event="page_view",
+        surface="landing",
+        visit="d" * 32,
+        arrival="wiki_link",
+        wiki="psf/requests",
+    )
+    assert collector.post("/api/experience-events", json=landing).status_code == 204
+    assert _messages(caplog) == [
+        "experience_event event=page_view surface=wiki visit="
+        + "c" * 32
+        + " arrival=search",
+        "experience_event event=page_view surface=landing visit="
+        + "d" * 32
+        + " arrival=wiki_link wiki=psf/requests",
+    ]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        # Only a page view says how the tab arrived.
+        {**EVENT, "arrival": "search"},
+        # Only the landing page names the Wiki that sent the visit.
+        dict(
+            event="page_view",
+            surface="wiki",
+            visit="e" * 32,
+            arrival="wiki_link",
+            wiki="psf/requests",
+        ),
+        dict(event="page_view", surface="landing", visit="e" * 32, arrival="wiki_link"),
+        dict(event="page_view", surface="landing", visit="e" * 32, wiki="psf/requests"),
+        dict(
+            event="page_view",
+            surface="landing",
+            visit="e" * 32,
+            arrival="search",
+            wiki="psf/requests",
+        ),
+        dict(event="page_view", surface="landing", visit="e" * 32, arrival="email"),
+        *(
+            dict(
+                event="page_view",
+                surface="landing",
+                visit="e" * 32,
+                arrival="wiki_link",
+                wiki=name,
+            )
+            for name in ("..", "owner/..", "a/b/c", "https://x.test/", "a b", "")
+        ),
+    ],
+)
+def test_rejects_arrivals_outside_their_contract(collector, caplog, payload):
+    response = collector.post("/api/experience-events", json=payload)
+    assert response.status_code == 422
+    assert not response.content
+    assert not _messages(caplog)
