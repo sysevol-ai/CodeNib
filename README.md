@@ -11,7 +11,7 @@ SPDX-License-Identifier: Apache-2.0
   <p>
     Read a Wiki of how a repository works, follow its call paths on a map,
     and open the source behind every explanation.<br>
-    Then give Claude Code or Codex the same index.
+    Then give your coding agent the same index.
   </p>
   <p>
     <a href="https://demo.codenib.ai"><strong>Browse a Wiki</strong></a>
@@ -31,6 +31,13 @@ SPDX-License-Identifier: Apache-2.0
     <a href="https://arxiv.org/abs/2607.25431"><img src="https://img.shields.io/badge/arXiv-2607.25431-b31b1b.svg" alt="arXiv paper"></a>
     <a href="https://huggingface.co/papers/2607.25431"><img src="https://img.shields.io/badge/Hugging_Face-%231_Paper_of_the_Day-FFD21E.svg?logo=huggingface&amp;logoColor=black" alt="Hugging Face: #1 Paper of the Day"></a>
     <a href="https://github.com/sysevol-ai/CodeNib/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="Apache 2.0 license"></a>
+  </p>
+  <p>
+    <a href="https://docs.codenib.ai/codegraph/#claude-code-plugin"><img src="https://img.shields.io/badge/Claude_Code-plugin-D97757?logo=claude&amp;logoColor=white" alt="Claude Code plugin"></a>
+    <a href="#use-it-with-your-coding-agent"><img src="https://img.shields.io/badge/Codex-MCP-10A37F" alt="Codex over MCP"></a>
+    <a href="https://docs.codenib.ai/codegraph/#grok-build-plugin"><img src="https://img.shields.io/badge/Grok_Build-plugin-000000" alt="Grok Build plugin"></a>
+    <a href="https://docs.codenib.ai/codegraph/#deepseek-harness-bundle"><img src="https://img.shields.io/badge/DeepSeek_Harness-plugin-4D6BFE?logo=deepseek&amp;logoColor=white" alt="DeepSeek Harness plugin"></a>
+    <a href="https://github.com/marketplace/actions/codenib-wiki"><img src="https://img.shields.io/badge/GitHub_Marketplace-Wiki_action-2088FF?logo=githubactions&amp;logoColor=white" alt="CodeNib Wiki action on GitHub Marketplace"></a>
   </p>
 </div>
 
@@ -140,6 +147,15 @@ checkout you open and adds `/codenib:explain`, `/codenib:impact`,
 claude plugin marketplace add sysevol-ai/CodeNib
 claude plugin install codenib@codenib
 ```
+
+Grok Build reads the same plugin, and DeepSeek Harness installs it as a bundle:
+
+```bash
+dsh plugin add "git+https://github.com/sysevol-ai/CodeNib.git#main&path:/plugins/dsh"
+```
+
+[Grok Build setup](https://docs.codenib.ai/codegraph/#grok-build-plugin)
+· [DeepSeek Harness setup](https://docs.codenib.ai/codegraph/#deepseek-harness-bundle)
 
 [Setup and troubleshooting](https://docs.codenib.ai/codegraph/)
 · [Source exclusions](https://docs.codenib.ai/codegraph/#select-the-repository-source-surface)
