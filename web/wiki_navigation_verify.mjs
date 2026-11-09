@@ -99,9 +99,9 @@ try {
   assert.deepEqual(steps, ["get()", "Session.request()", "send()"], "steps follow the recorded path");
   assert.match(await page.locator(".call-path-caption").innerText(), /selected/i,
     "the figure says it is one selected path");
-  const deeper = await page.locator(".wiki-go-deeper button").allInnerTexts();
+  const deeper = await page.locator(".wiki-read-next button").allInnerTexts();
   assert.deepEqual(deeper, ["Redirects", "Session state"], "a parent links to its detail pages");
-  await page.locator(".wiki-go-deeper button").first().click();
+  await page.locator(".wiki-read-next button").first().click();
   await page.waitForURL(/p=redirects/);
 
   await open("sessions");

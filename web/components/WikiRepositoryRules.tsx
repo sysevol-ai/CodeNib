@@ -33,7 +33,7 @@ export default function WikiRepositoryRules({ limits }: { limits?: WikiGeneratio
             <li>Up to {policy.max_files.toLocaleString()} files, including skipped files; {policy.max_archive_entries.toLocaleString()} archive entries including directories.</li>
             <li>Files larger than {mebibytes(policy.max_file_bytes)} are skipped and listed in the result.</li>
           </ul>
-          <p>Wiki source languages: {policy.source_languages.join(", ")}. System Map and CodeGraph currently cover {policy.graph_languages.join(", ")} source only; indexing can time out or find no relationships between chapters.</p>
+          <p>Wiki source languages: {policy.source_languages.join(", ")}. The map's recorded references cover {policy.graph_languages.join(", ")} source only; indexing can time out or find no references between chapters.</p>
         </>
       ) : (
         <p>The live service checks size and supported source languages before you connect OpenRouter. Large repositories may require a local run.</p>

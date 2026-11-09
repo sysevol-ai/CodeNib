@@ -242,14 +242,49 @@ export function stageRoles(
   });
 }
 
-/** A stage sentence without the symbol its heading already shows:
- *  "`get()` forwards its URL" under a `get()` heading reads "Forwards its URL". */
-export function stageSentence(stage: JourneyStage): string {
-  const bare = stage.symbol.replace(/\(\)$/, "");
-  const lead = new RegExp(
-    "^`(?:" + [stage.symbol, bare].map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|") + ")(?:\\(\\))?`\\s+",
-  );
-  const text = stage.text.replace(lead, "");
-  // Each stage reads as its own sentence under the symbol heading.
-  return /^[a-z]/.test(text) ? text.charAt(0).toUpperCase() + text.slice(1) : text;
+export interface PageLink {
+  id: string;
+  title: string;
+}
+
+const PAGE_LINK_ITEM = /^[-*]\s+\[([^\]]+)\]\(\?p=([^)\s]+)\)\s*$/;
+
+/**
+ * Take the link-only sections ("Related pages", "Explore the system") out of a
+ * page. Each is a level-two heading over nothing but `- [Title](?p=id)` items;
+ * the reader shows them once, as its own list after the text, instead of a
+ * bullet list followed by a second list of the same pages.
+ */
+export function splitPageLinks(markdown: string): { body: string; links: PageLink[] } {
+  const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
+  const keep: string[] = [];
+  const links: PageLink[] = [];
+  let index = 0;
+  while (index < lines.length) {
+    const line = lines[index];
+    if (!/^##(?!#)\s+/.test(line)) {
+      keep.push(line);
+      index += 1;
+      continue;
+    }
+    let end = index + 1;
+    while (end < lines.length && !/^#{1,2}(?!#)\s+/.test(lines[end])) end += 1;
+    const items = lines.slice(index + 1, end).filter((item) => item.trim());
+    const matches = items.map((item) => PAGE_LINK_ITEM.exec(item.trim()));
+    if (items.length > 0 && matches.every(Boolean)) {
+      for (const match of matches as RegExpExecArray[]) {
+        let id = match[2];
+        try {
+          id = decodeURIComponent(id);
+        } catch {
+          // Keep the raw id; the page lookup reports it as missing.
+        }
+        if (!links.some((link) => link.id === id)) links.push({ id, title: match[1] });
+      }
+    } else {
+      keep.push(...lines.slice(index, end));
+    }
+    index = end;
+  }
+  return { body: keep.join("\n").trimEnd(), links };
 }

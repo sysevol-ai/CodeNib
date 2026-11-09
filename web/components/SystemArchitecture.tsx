@@ -1,30 +1,10 @@
 // SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import type { Citation, WikiMediaSlot } from "@/lib/api";
-import {
-  stageRoles,
-  stageSentence,
-  type Journey,
-} from "@/lib/wikiPresentation";
-
-function architectureLayerLabel(layer: string | undefined): string {
-  switch (layer) {
-    case "external":
-      return "Outside the system";
-    case "interface":
-      return "Interface";
-    case "coordination":
-      return "Coordination";
-    case "execution":
-      return "Execution";
-    case "data":
-      return "Data & artifacts";
-    default:
-      return "System role";
-  }
-}
+import { displaySymbol } from "@/lib/symbols";
+import { stageRoles, type Journey } from "@/lib/wikiPresentation";
 
 /** Render a heading string with its `code` spans. */
 function inlineCode(text: string): ReactNode[] {
@@ -44,10 +24,17 @@ export interface ArchitectureJourney {
   citations?: Citation[];
   renderText: (markdown: string) => ReactNode;
   onPick?: (pageId: string) => void;
-  /** False when the page already shows the path elsewhere (the poster). */
-  showPath?: boolean;
 }
 
+/**
+ * How the parts of a system fit together, read as a numbered path with the
+ * other roles and boundaries listed after it. The plan names each role, what
+ * it does and what it hands to the next; a role's name opens its source.
+ *
+ * It used to be a card of cards, each tagged with a layer ("Execution",
+ * "Data & artifacts") and followed by its own "View source" link. Those tags
+ * were the model's classification, not anything the reader asked about.
+ */
 export default function SystemArchitecture({
   slot,
   trace,
@@ -57,7 +44,6 @@ export default function SystemArchitecture({
   trace?: ArchitectureJourney;
   onEvidence?: (ids: string[]) => void;
 }) {
-  const [activeRole, setActiveRole] = useState<string | null>(null);
   const contract = slot.render_contract;
   if (
     contract?.adapter !== "architecture" ||
@@ -73,7 +59,7 @@ export default function SystemArchitecture({
   const supportingNodes = contract.data.nodes.filter(
     (node) => !primaryIds.has(node.id),
   );
-  const primaryConnections = contract.data.primary_path
+  const handoffs = contract.data.primary_path
     .slice(0, -1)
     .map((source, index) =>
       contract.data.edges.find(
@@ -86,223 +72,123 @@ export default function SystemArchitecture({
   const roles = trace
     ? stageRoles(stages, contract.data.nodes, trace.citations)
     : [];
-  const stagesOf = (roleId: string) =>
-    stages.filter((_stage, index) => roles[index] === roleId);
-  const lit = (roleId: string | null) =>
-    activeRole == null ? "" : roleId === activeRole ? "is-lit" : "is-dim";
 
-  const supportingConnection = (nodeId: string) => {
+  const sourceButton = (content: ReactNode, evidence: string[], title: string) =>
+    onEvidence && evidence.length > 0 ? (
+      <button
+        type="button"
+        className="arch-source"
+        title={title}
+        onClick={() => onEvidence(evidence)}
+      >
+        {content}
+      </button>
+    ) : (
+      content
+    );
+
+  /** The traced functions that run inside a role, when the path says so. */
+  const roleStages = (roleId: string) => {
+    const own = stages.filter((_stage, index) => roles[index] === roleId);
+    if (!own.length) return null;
+    return (
+      <p className="arch-stages" aria-label="Traced functions in this role">
+        {own.map((stage) => (
+          <code key={stage.index} title={stage.symbol}>
+            {displaySymbol(stage.symbol, { short: true })}
+          </code>
+        ))}
+      </p>
+    );
+  };
+
+  const peerOf = (nodeId: string) => {
     const edge = contract.data.edges.find(
       (candidate) => candidate.source === nodeId || candidate.target === nodeId,
     );
-    if (!edge) return null;
-    const peerId = edge.source === nodeId ? edge.target : edge.source;
-    const peer = nodes.get(peerId);
-    if (!peer) return null;
-    return `${edge.label} ${edge.source === nodeId ? "→" : "←"} ${peer.label}`;
-  };
-
-  const roleStages = (roleId: string) => {
-    const own = stagesOf(roleId);
-    if (!own.length) return null;
-    return (
-      <div
-        className="wiki-system-role-stages"
-        aria-label="Traced functions in this role"
-      >
-        {own.map((stage) => (
-          <span className="wiki-system-stage-chip" key={stage.index}>
-            <span className="wiki-system-stage-number">{stage.index}</span>
-            <code>{stage.symbol}</code>
-          </span>
-        ))}
-      </div>
-    );
+    const peer = edge && nodes.get(edge.source === nodeId ? edge.target : edge.source);
+    if (!edge || !peer) return null;
+    return { edge, peer, outgoing: edge.source === nodeId };
   };
 
   return (
-    <section
-      className="wiki-system-architecture"
-      aria-label={slot.title}
-      onMouseLeave={() => setActiveRole(null)}
-    >
-      <header className="wiki-system-architecture-head">
-        <h3>{slot.title}</h3>
-      </header>
-      <div className="wiki-system-architecture-body">
-        <div className="wiki-system-primary">
-          <div className="wiki-system-section-label">
-            <span>Main path</span>
-          </div>
-          <ol className="wiki-system-path">
-            {primaryNodes.map((node, index) => {
-              const connection = primaryConnections[index];
-              return (
-                <li className="wiki-system-path-step" key={node.id}>
-                  <article
-                    className={`wiki-system-role layer-${node.layer ?? "system"} ${lit(node.id)}`}
-                    onMouseEnter={() => setActiveRole(node.id)}
-                  >
-                    <span className="wiki-system-role-index" aria-hidden="true">
-                      {index + 1}
-                    </span>
-                    <div className="wiki-system-role-copy">
-                      <div className="wiki-system-role-title">
-                        <h4>{node.label}</h4>
-                        <span className="wiki-system-role-layer">
-                          {architectureLayerLabel(node.layer)}
-                        </span>
-                      </div>
-                      <p>{inlineCode(node.detail)}</p>
-                      {roleStages(node.id)}
-                      {onEvidence && (
-                        <button
-                          type="button"
-                          className="wiki-system-evidence"
-                          onClick={() => onEvidence(node.evidence)}
-                        >
-                          View source ↗
-                        </button>
-                      )}
-                    </div>
-                  </article>
-                  {connection && (
-                    <div className="wiki-system-connection">
-                      <span
-                        className="wiki-system-connection-line"
-                        aria-hidden="true"
-                      />
-                      <span>{inlineCode(connection.label)}</span>
-                      {onEvidence && (
-                        <button
-                          type="button"
-                          className="wiki-system-evidence"
-                          aria-label={`Source for ${connection.label}`}
-                          onClick={() => onEvidence(connection.evidence)}
-                        >
-                          ↗
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </li>
-              );
-            })}
-          </ol>
-        </div>
-        <aside className="wiki-system-context">
-          {supportingNodes.length > 0 && (
-            <div className="wiki-system-supporting">
-              <div className="wiki-system-section-label">
-                <span>Supporting roles</span>
+    <section className="arch" aria-label={slot.title}>
+      <h2 className="arch-title">{slot.title}</h2>
+      <ol className="arch-path">
+        {primaryNodes.map((node, index) => {
+          const handoff = handoffs[index];
+          return (
+            <li className="arch-step" key={node.id}>
+              <span className="arch-index" aria-hidden="true">
+                {index + 1}
+              </span>
+              <div className="arch-body">
+                <h3 className="arch-role">
+                  {sourceButton(node.label, node.evidence, "Open the source for this role")}
+                </h3>
+                <p>{inlineCode(node.detail)}</p>
+                {roleStages(node.id)}
+                {handoff && (
+                  <p className="arch-handoff">
+                    {sourceButton(
+                      inlineCode(handoff.label),
+                      handoff.evidence,
+                      "Open the source for this handoff",
+                    )}
+                  </p>
+                )}
               </div>
-              {supportingNodes.map((node) => (
-                <article
-                  className={`wiki-system-support-card ${lit(node.id)}`}
-                  key={node.id}
-                  onMouseEnter={() => setActiveRole(node.id)}
-                >
-                  <div className="wiki-system-role-title">
-                    <h4>{node.label}</h4>
-                    <span className="wiki-system-role-layer">
-                      {architectureLayerLabel(node.layer)}
-                    </span>
-                  </div>
-                  <p>{inlineCode(node.detail)}</p>
-                  {roleStages(node.id)}
-                  {onEvidence && (
-                    <button
-                      type="button"
-                      className="wiki-system-evidence"
-                      onClick={() => onEvidence(node.evidence)}
-                    >
-                      View source ↗
-                    </button>
-                  )}
-                  {supportingConnection(node.id) && (
-                    <small>{inlineCode(supportingConnection(node.id)!)}</small>
-                  )}
-                </article>
-              ))}
+            </li>
+          );
+        })}
+      </ol>
+      {(supportingNodes.length > 0 || contract.data.boundaries.length > 0) && (
+        <div className="arch-context">
+          {supportingNodes.length > 0 && (
+            <div className="arch-group">
+              <h3 className="arch-group-title">Also involved</h3>
+              <dl>
+                {supportingNodes.map((node) => {
+                  const link = peerOf(node.id);
+                  return (
+                    <div className="arch-item" key={node.id}>
+                      <dt>{sourceButton(node.label, node.evidence, "Open the source for this role")}</dt>
+                      <dd>
+                        {inlineCode(node.detail)}
+                        {link && (
+                          <span className="arch-item-link">
+                            {link.outgoing ? "Hands to " : "Takes from "}
+                            {link.peer.label}: {inlineCode(link.edge.label)}
+                          </span>
+                        )}
+                      </dd>
+                    </div>
+                  );
+                })}
+              </dl>
             </div>
           )}
           {contract.data.boundaries.length > 0 && (
-            <div className="wiki-system-boundaries">
-              <div className="wiki-system-section-label">
-                <span>Boundaries</span>
-              </div>
-              {contract.data.boundaries.map((boundary) => (
-                <article className="wiki-system-boundary" key={boundary.id}>
-                  <span
-                    className="wiki-system-boundary-mark"
-                    aria-hidden="true"
-                  />
-                  <div>
-                    <h4>{boundary.label}</h4>
-                    {boundary.detail && <p>{inlineCode(boundary.detail)}</p>}
-                    <small>
-                      {boundary.members
-                        .map((member) => nodes.get(member)?.label)
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </small>
+            <div className="arch-group">
+              <h3 className="arch-group-title">Boundaries</h3>
+              <dl>
+                {contract.data.boundaries.map((boundary) => (
+                  <div className="arch-item" key={boundary.id}>
+                    <dt>{boundary.label}</dt>
+                    <dd>
+                      {boundary.detail && inlineCode(boundary.detail)}
+                      <span className="arch-item-link">
+                        {boundary.members
+                          .map((member) => nodes.get(member)?.label)
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </span>
+                    </dd>
                   </div>
-                </article>
-              ))}
+                ))}
+              </dl>
             </div>
           )}
-        </aside>
-      </div>
-      {trace && trace.showPath !== false && stages.length > 0 && (
-        <div className="wiki-system-trace">
-          <div className="wiki-system-section-label">
-            <span>Traced call path, recorded in the index</span>
-          </div>
-          <h4 className="wiki-system-trace-title">
-            {inlineCode(trace.journey.title)}
-          </h4>
-          <ol className="wiki-system-trace-steps">
-            {stages.map((stage, index) => {
-              const role = roles[index] ? nodes.get(roles[index]!) : undefined;
-              return (
-                <li
-                  key={stage.index}
-                  className={`wiki-system-trace-step ${role ? lit(role.id) : activeRole ? "is-dim" : ""}`}
-                  onMouseEnter={() => setActiveRole(role?.id ?? null)}
-                >
-                  <span className="wiki-system-stage-number">
-                    {stage.index}
-                  </span>
-                  <div className="wiki-system-trace-copy">
-                    <div className="wiki-system-trace-head">
-                      <code className="wiki-system-trace-symbol">
-                        {stage.symbol}
-                      </code>
-                      {role && (
-                        <span
-                          className={`wiki-system-trace-role layer-${role.layer ?? "system"}`}
-                        >
-                          {role.label}
-                        </span>
-                      )}
-                      {stage.page && trace.onPick && (
-                        <button
-                          type="button"
-                          className="wiki-system-trace-page"
-                          onClick={() => trace.onPick?.(stage.page!.id)}
-                        >
-                          {stage.page.title} →
-                        </button>
-                      )}
-                    </div>
-                    <div className="wiki-system-trace-text">
-                      {trace.renderText(stageSentence(stage))}
-                    </div>
-                  </div>
-                </li>
-              );
-            })}
-          </ol>
         </div>
       )}
     </section>

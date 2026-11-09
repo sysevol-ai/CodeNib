@@ -2,8 +2,34 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-import type { EdgeClickInfo, GraphNodeInfo } from "@/components/CodeGraph";
-import type { CallSite, CodemapHierarchyNode, CodemapResponse } from "@/lib/api";
+import type { CallSite, CodemapHierarchyNode, CodemapResponse, SourceSlice } from "@/lib/api";
+import { displaySymbol } from "@/lib/symbols";
+
+export interface EdgeClickInfo {
+  anchors: CallSite[];
+  anchorCount: number;
+  srcLabel: string;
+  tgtLabel: string;
+  srcFile?: string;
+  tgtFile?: string;
+  // 1-based definition spans of the two endpoints, so an on-demand edge label
+  // can fetch both symbols' code. Absent for aggregate (collapsed) edges.
+  srcLine?: number | null;
+  srcEnd?: number | null;
+  tgtLine?: number | null;
+  tgtEnd?: number | null;
+}
+
+export interface GraphNodeInfo {
+  label: string; // full unified_name (for refocus)
+  short: string;
+  file: string | null;
+  line: number | null;
+  endLine: number | null; // 1-based end of the definition, so the peek shows just this symbol
+  kind: string;
+  external: boolean; // defined outside this repo — no source to open
+  source?: SourceSlice | null; // embedded by static Wiki exports
+}
 
 type CMNode = CodemapResponse["nodes"][number];
 
@@ -220,7 +246,9 @@ export default function HierarchyMap({
                 <span className="hier-chevron" aria-hidden="true">
                   {isOpen ? "-" : "+"}
                 </span>
-                <span className="hier-symbol-name">{node.label}</span>
+                <span className="hier-symbol-name" title={node.label}>
+                  {displaySymbol(node.label, { short: true })}
+                </span>
                 {node.line != null && (
                   <span className="hier-symbol-line mono">:{node.line}</span>
                 )}
@@ -275,7 +303,7 @@ export default function HierarchyMap({
           disabled={!nodeActionAvailable}
           onClick={() => sourceInfo && nodeAction?.(sourceInfo)}
         >
-          <span className="hier-symbol-name">{node.label}</span>
+          <span className="hier-symbol-name">{displaySymbol(node.label, { short: true })}</span>
           {node.line != null && (
             <span className="hier-symbol-line mono">:{node.line}</span>
           )}
@@ -353,9 +381,9 @@ export default function HierarchyMap({
                 }
               >
                 <span className="hier-link-main">
-                  <span>{link.srcLabel}</span>
-                  <b>-&gt;</b>
-                  <span>{link.tgtLabel}</span>
+                  <span>{displaySymbol(link.srcLabel, { short: true })}</span>
+                  <b aria-label="to">→</b>
+                  <span>{displaySymbol(link.tgtLabel, { short: true })}</span>
                 </span>
                 <em>{link.weight} refs</em>
               </button>

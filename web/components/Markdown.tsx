@@ -18,6 +18,8 @@ import { matchCitation, lineLabel } from "@/lib/citations";
 import { callPaths, parseFlowchart } from "@/lib/flowchart";
 import CallChain from "./CallChain";
 import { breakableCode } from "@/lib/breakable";
+import { stripEmoji } from "@/lib/landing";
+import { cleanTemplateArguments, displaySymbol, tidyInteractionRows } from "@/lib/symbols";
 import {
   repoRelative,
   type Citation,
@@ -130,6 +132,28 @@ function groupTrailingCitations(
   );
 }
 
+/** Emoji copied from a README are decoration, not part of the explanation. */
+function withoutEmoji(children: ReactNode): ReactNode {
+  return Children.map(children, (child) => (typeof child === "string" ? stripEmoji(child) : child));
+}
+
+/**
+ * A section's bridging sentence arrives as a paragraph that is all emphasis
+ * (`*Once the parser…* [E3]`). Set in italics, every section opened in the
+ * same slanted voice; it reads better as the plain first line it is.
+ */
+function bridgeSentence(children: ReactNode): ReactNode[] | null {
+  const items = Children.toArray(children);
+  const first = items.findIndex((item) => !(typeof item === "string" && !item.trim()));
+  const lead = items[first];
+  if (!isValidElement<{ children?: ReactNode }>(lead) || lead.type !== "em") return null;
+  const rest = items.slice(first + 1);
+  if (!rest.every((item) => isCitationElement(item) || (typeof item === "string" && !item.trim()))) {
+    return null;
+  }
+  return [...Children.toArray(lead.props.children), ...rest];
+}
+
 type ChildElement = ReactElement<{ children?: ReactNode }>;
 
 function childElements(children: ReactNode): ChildElement[] {
@@ -195,11 +219,14 @@ function ResponsiveTable({ children }: { children: ReactNode }) {
 /** Inline `code` span that names a cited symbol/file: click to jump the code pane. */
 function CiteChip({
   text,
+  label = text,
   c,
   showLoc,
   onClick,
 }: {
   text: string;
+  /** What the reader sees; `text` stays the name the citation matched. */
+  label?: string;
   c: Citation;
   /** Only symbol matches carry a meaningful range; a file has many symbols. */
   showLoc: boolean;
@@ -220,7 +247,7 @@ function CiteChip({
           : `Jump to ${text} in the code panel`
       }
     >
-      <code>{breakableCode(text)}</code>
+      <code>{breakableCode(label)}</code>
       {loc && <span className="cite-chip-loc">:{loc}</span>}
     </button>
   );
@@ -368,10 +395,15 @@ export default function Markdown({
             return <ResponsiveTable>{children}</ResponsiveTable>;
           },
           p({ children }) {
-            return <p>{groupTrailingCitations(children, citationFileOf)}</p>;
+            const bridge = bridgeSentence(children);
+            return (
+              <p className={bridge ? "md-bridge" : undefined}>
+                {groupTrailingCitations(withoutEmoji(bridge ?? children), citationFileOf)}
+              </p>
+            );
           },
           li({ children }) {
-            return <li>{groupTrailingCitations(children, citationFileOf)}</li>;
+            return <li>{groupTrailingCitations(withoutEmoji(children), citationFileOf)}</li>;
           },
           pre({ children }) {
             const codeEl = (Array.isArray(children) ? children[0] : children) as
@@ -391,15 +423,17 @@ export default function Markdown({
                     relations={relations}
                     renderSymbol={(label) => {
                       const m = citations && onCite ? matchCitation(label, citations) : null;
+                      const shown = displaySymbol(label, { short: true });
                       return m != null && onCite ? (
                         <CiteChip
                           text={label}
+                          label={shown}
                           c={citations![m.index]}
                           showLoc={false}
                           onClick={() => onCite(m.index)}
                         />
                       ) : (
-                        <code>{label}</code>
+                        <code title={shown !== label ? label : undefined}>{shown}</code>
                       );
                     }}
                   />
@@ -447,6 +481,7 @@ export default function Markdown({
                 return (
                   <CiteChip
                     text={text}
+                    label={cleanTemplateArguments(text)}
                     c={citations[m.index]}
                     showLoc={m.kind === "symbol"}
                     onClick={() => onCite(m.index)}
@@ -456,13 +491,13 @@ export default function Markdown({
             }
             return (
               <code className={className}>
-                {inline ? breakableCode(text) : children}
+                {inline ? breakableCode(cleanTemplateArguments(text)) : children}
               </code>
             );
           },
         }}
       >
-        {children}
+        {tidyInteractionRows(children)}
       </ReactMarkdown>
     </div>
   );
