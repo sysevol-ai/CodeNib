@@ -17,6 +17,9 @@
 evidence_levels: [Tested, Runnable, Pinned, Measured]
 
 layers:
+  QA:
+    name: Answer quality
+    scored: Released questions answered against reference answers using an LLM judge
   L1:
     name: Localization
     scored: The method's final ranked files, symbols, code blocks, or line regions
@@ -163,6 +166,30 @@ benchmarks:
       - codenib/eval/benchmarks/_arb_evaluate.py
       - codenib/eval/benchmarks/_arb_methods.py
       - codenib/eval/benchmarks/agent_retrieval_bench_tools.py
+
+  - id: swe_qa
+    name: SWE-QA
+    column: SWE-QA
+    url: https://github.com/peng-weihan/SWE-QA-Bench
+    layer: QA
+    origin: External
+    task: Answer repository-level code questions
+    ground_truth: Released reference answers
+    granularity: Question and answer
+    languages: Python repositories
+    size: 720 questions across 15 repositories at the pinned release
+    pins: Dataset, agent and judge `c13deac7`
+    scorer: Original upstream judge prompt/parser; CodeNib provider transport
+    setup: Pinned upstream, repository checkouts, CodeNib indexes and API credentials
+    entry:
+      - module: codenib.eval.benchmarks.swe_qa
+        run: true
+    level: Runnable
+    level_note: CodeNib answers with upstream judging
+    page: evaluation/swe_qa.md
+    in_grid: false
+    modules:
+      - codenib/eval/benchmarks/swe_qa.py
 
   - id: contextbench
     name: ContextBench
