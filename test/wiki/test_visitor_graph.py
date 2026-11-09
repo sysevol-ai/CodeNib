@@ -11,6 +11,11 @@ from types import SimpleNamespace
 import pytest
 
 from codenib.graph.code_graph import CodeGraph
+from codenib.scip_interface import pyrefly_glean, pyrefly_provider
+from codenib.scip_interface.pyrefly_provider import (
+    PYTHON_GRAPH_PROVIDER_ENV,
+    PythonGraphProvider,
+)
 from codenib.scip_interface.scip_indexer_python import SCIPPythonIndexer
 from codenib.source_fingerprint import capture_repository_source
 from codenib.types import EDGE_TYPE_REFERENCE, NODE_TYPE_FUNCTION
@@ -42,7 +47,15 @@ def graph_fixture():
     return graph
 
 
-def test_indexer_only_receives_source_and_empty_environment(tmp_path, monkeypatch):
+@pytest.fixture
+def scip_python(monkeypatch):
+    """Pin the scip-python route, as ``CODENIB_PYTHON_GRAPH_PROVIDER`` does."""
+    monkeypatch.setenv(PYTHON_GRAPH_PROVIDER_ENV, "scip-python")
+
+
+def test_indexer_only_receives_source_and_empty_environment(
+    tmp_path, monkeypatch, scip_python
+):
     (tmp_path / "caller.py").write_text("def caller():\n    return callee()\n")
     (tmp_path / "pyrightconfig.json").write_text('{"extends":"/private/settings"}')
     (tmp_path / "pyproject.toml").write_text('[build-system]\nbuild-backend="evil"\n')
@@ -87,7 +100,9 @@ def graph_bundle(source):
     )
 
 
-def test_packages_below_the_root_reach_the_indexer(tmp_path, monkeypatch, caplog):
+def test_packages_below_the_root_reach_the_indexer(
+    tmp_path, monkeypatch, caplog, scip_python
+):
     (tmp_path / "src" / "pkg").mkdir(parents=True)
     (tmp_path / "src" / "pkg" / "caller.py").write_text("def caller():\n    return 1\n")
     seen = {}
@@ -124,7 +139,7 @@ def test_packages_below_the_root_reach_the_indexer(tmp_path, monkeypatch, caplog
     visitor_graph.resolve_command("scip-python") is None,
     reason="scip-python is not installed",
 )
-def test_real_indexer_builds_a_graph_for_a_src_layout(tmp_path):
+def test_real_indexer_builds_a_graph_for_a_src_layout(tmp_path, scip_python):
     package = tmp_path / "src" / "pkg"
     package.mkdir(parents=True)
     (package / "__init__.py").write_text("")
@@ -137,6 +152,121 @@ def test_real_indexer_builds_a_graph_for_a_src_layout(tmp_path):
         visitor_graph.build_visitor_graph(bundle, lambda: None, lambda *_: None)
     coverage = bundle.graph_coverage
     assert coverage["available"], coverage
+    assert coverage["files"] == 3 and coverage["edges"] >= 1
+
+
+def pyrefly_selected(monkeypatch, executable="/fixture/pyrefly"):
+    monkeypatch.setattr(
+        visitor_graph,
+        "select_python_graph_provider",
+        lambda: PythonGraphProvider("pyrefly", executable=executable),
+    )
+
+
+@pytest.mark.parametrize("status", [0, 1])
+def test_pyrefly_indexes_only_captured_source_without_worker_processes(
+    tmp_path, monkeypatch, status
+):
+    """Type errors exit 1 with a complete report; both statuses build a graph."""
+    (tmp_path / "src" / "pkg").mkdir(parents=True)
+    (tmp_path / "src" / "pkg" / "caller.py").write_text("def caller():\n    return 1\n")
+    (tmp_path / "pyrefly.toml").write_text('project-includes = ["/private/**"]\n')
+    (tmp_path / "pyproject.toml").write_text('[build-system]\nbuild-backend="evil"\n')
+    pyrefly_selected(monkeypatch)
+    seen = {}
+
+    def run(command, root, check):
+        seen["command"] = command
+        seen["files"] = sorted(p.relative_to(root).as_posix() for p in root.rglob("*"))
+        config = Path(command[command.index("--config") + 1])
+        seen["config"] = config.read_text()
+        seen["config_outside_root"] = root not in config.parents
+        Path(command[command.index("--report-glean") + 1]).mkdir()
+        return status
+
+    def read_report(directory, *, path_allowed=None, workers=None):
+        seen["workers"] = workers
+        return pyrefly_glean.GleanReport()
+
+    def convert(glean_dir, project_root, **kwargs):
+        seen["project_version"] = kwargs["project_version"]
+        return SimpleNamespace(SerializeToString=lambda: b"fixture"), {}
+
+    monkeypatch.setattr(visitor_graph, "_run_index", run)
+    monkeypatch.setattr(pyrefly_glean, "read_glean_report", read_report)
+    monkeypatch.setattr(pyrefly_glean, "glean_to_scip_index", convert)
+    monkeypatch.setattr(pyrefly_provider, "pyrefly_version", lambda _: "1.4.0")
+    monkeypatch.setattr(SCIPPythonIndexer, "decode_index", lambda _: True)
+    monkeypatch.setattr(SCIPPythonIndexer, "process_index", lambda _: graph_fixture())
+    with capture_repository_source(tmp_path) as source:
+        bundle = graph_bundle(source)
+        visitor_graph.build_visitor_graph(bundle, lambda: None, lambda *_: None)
+    coverage = bundle.graph_coverage
+    assert coverage["available"] and coverage["backend"] == "pyrefly", coverage
+    assert seen["command"][:2] == ["/fixture/pyrefly", "check"]
+    assert "--python-interpreter-path" in seen["command"]
+    # Only captured Python source; the repository's own configs stay out.
+    assert seen["files"] == ["src", "src/pkg", "src/pkg/caller.py"]
+    assert seen["config_outside_root"] and "/private/" not in seen["config"]
+    assert "/src/**/*.py" not in seen["config"] and "/**/*.py" in seen["config"]
+    assert seen["workers"] == 1
+    assert seen["project_version"] == "c" * 40
+
+
+def test_pyrefly_failure_reports_the_status_only(tmp_path, monkeypatch, caplog):
+    (tmp_path / "caller.py").write_text("def caller():\n    return 1\n")
+    pyrefly_selected(monkeypatch)
+    monkeypatch.setattr(visitor_graph, "_run_index", lambda *args: 2)
+    caplog.set_level(logging.WARNING, logger=visitor_graph.logger.name)
+    visitor_graph.logger.addHandler(caplog.handler)
+    try:
+        with capture_repository_source(tmp_path) as source:
+            bundle = graph_bundle(source)
+            visitor_graph.build_visitor_graph(bundle, lambda: None, lambda *_: None)
+    finally:
+        visitor_graph.logger.removeHandler(caplog.handler)
+    assert bundle.graph_coverage["reason"] == "index_failed"
+    assert (
+        "Visitor Wiki code indexing failed (indexer exited with status 2)"
+        in caplog.text
+    )
+
+
+def test_pinned_pyrefly_that_cannot_run_is_reported(tmp_path, monkeypatch):
+    (tmp_path / "caller.py").write_text("def caller():\n    return 1\n")
+    monkeypatch.setattr(
+        visitor_graph,
+        "select_python_graph_provider",
+        lambda: PythonGraphProvider("pyrefly", configured=True, note="missing"),
+    )
+    started = []
+    monkeypatch.setattr(visitor_graph, "_run_index", lambda *args: started.append(1))
+    with capture_repository_source(tmp_path) as source:
+        bundle = graph_bundle(source)
+        visitor_graph.build_visitor_graph(bundle, lambda: None, lambda *_: None)
+    assert not started
+    assert bundle.graph_coverage["reason"] == "tool_unavailable"
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(
+    not pyrefly_provider.select_python_graph_provider().executable,
+    reason="the pinned pyrefly release is not installed",
+)
+def test_real_pyrefly_builds_a_graph_for_a_src_layout(tmp_path, monkeypatch):
+    monkeypatch.setenv(PYTHON_GRAPH_PROVIDER_ENV, "pyrefly")
+    package = tmp_path / "src" / "pkg"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text("")
+    (package / "callee.py").write_text("def callee():\n    return 1\n")
+    (package / "caller.py").write_text(
+        "from .callee import callee\n\n\ndef caller():\n    return callee()\n"
+    )
+    with capture_repository_source(tmp_path) as source:
+        bundle = graph_bundle(source)
+        visitor_graph.build_visitor_graph(bundle, lambda: None, lambda *_: None)
+    coverage = bundle.graph_coverage
+    assert coverage["available"] and coverage["backend"] == "pyrefly", coverage
     assert coverage["files"] == 3 and coverage["edges"] >= 1
 
 
@@ -185,7 +315,7 @@ def node_script(directory: Path, interpreter: str) -> str:
 
 
 def test_missing_node_is_reported_without_starting_the_indexer(
-    tmp_path, monkeypatch, caplog
+    tmp_path, monkeypatch, caplog, scip_python
 ):
     """A service PATH without node made every hosted index fail with status 127."""
     (tmp_path / "source").mkdir()

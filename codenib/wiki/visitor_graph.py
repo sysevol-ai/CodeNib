@@ -7,6 +7,10 @@ Only captured Python source enters the indexer scratch directory. No project
 configuration, environment, dependency installation, or repository code runs.
 Compiler artifacts are temporary files; only bounded reader views survive as
 Wiki outputs. This does not provide a retained index or a graph database.
+
+The provider is the one every other Python graph uses: pyrefly when its
+pinned release is installed, scip-python when it is not or when
+``CODENIB_PYTHON_GRAPH_PROVIDER=scip-python`` pins it.
 """
 
 from __future__ import annotations
@@ -20,14 +24,19 @@ import time
 from pathlib import Path
 
 from ..log_utils import get_logger
+from ..scip_interface.pyrefly_provider import (
+    PYREFLY_PROVIDER,
+    SCIP_PYTHON_PROVIDER,
+    select_python_graph_provider,
+)
 from ..toolchains import managed_path, resolve_command
 
 _INDEX_SECONDS = 60
 _MAX_INDEX_BYTES = 16 * 1024 * 1024
 logger = get_logger(__name__)
 _COVERAGE_NOTE = (
-    "Python source relationships from SCIP. External packages, dynamic calls "
-    "and kernels embedded in strings are not resolved."
+    "Python source relationships from static analysis. External packages, "
+    "dynamic calls and kernels embedded in strings are not resolved."
 )
 
 
@@ -105,27 +114,81 @@ def _run_index(command, directory, check) -> int:
                 process.wait()
 
 
-def build_visitor_graph(bundle, check, progress):
-    """Attach an actual compiler graph or a credential-free coverage reason."""
-    reader = bundle.source_reader
-    paths = sorted(p for p in reader.file_paths if Path(p).suffix in {".py", ".pyi"})
-    coverage = {
-        "available": False,
-        "backend": "scip-python",
-        "languages": ["python"] if paths else [],
-        "note": _COVERAGE_NOTE,
-        "reason": "unsupported_language",
-    }
-    bundle.graph_coverage = coverage
-    if not paths:
-        coverage["note"] = "Hosted code graphs currently cover Python source only."
-        return
+def _index_with_pyrefly(executable, root, scratch, indexer, project_version, check):
+    """Write ``indexer.index_file`` from a pyrefly Glean report.
+
+    pyrefly checks a private config naming the captured files, against a
+    standard-library-only interpreter. The report is read in this process:
+    worker processes would inherit the server's environment.
+    """
+    from ..scip_interface.pyrefly_glean import glean_to_scip_index, read_glean_report
+    from ..scip_interface.pyrefly_provider import (
+        pyrefly_command,
+        pyrefly_version,
+        write_pyrefly_config,
+    )
+    from ..scip_interface.scip_indexer_python import _stdlib_only_python_shims
+
+    config = write_pyrefly_config(scratch / "pyrefly.toml", root)
+    glean = scratch / "glean"
+    with _stdlib_only_python_shims(scratch) as shims:
+        interpreter = str(Path(shims) / "python3") if shims else None
+        command = pyrefly_command(executable, config, glean, interpreter=interpreter)
+        status = _run_index(command, root, check)
+    # Type errors exit 1 with a complete report.
+    if status not in (0, 1) or not glean.is_dir():
+        raise _IndexUnusable(f"indexer exited with status {status}")
+    check()
+    index, _stats = glean_to_scip_index(
+        glean,
+        root,
+        project_name="visitor-wiki",
+        project_version=project_version,
+        tool_version=pyrefly_version(executable),
+        report=read_glean_report(glean, workers=1),
+    )
+    data = index.SerializeToString()
+    if not 0 < len(data) <= _MAX_INDEX_BYTES:
+        raise _IndexUnusable("index size limit")
+    indexer.index_file.parent.mkdir(parents=True, exist_ok=True)
+    indexer.index_file.write_bytes(data)
+
+
+def _index_with_scip_python(tool, root, indexer, project_version, check):
+    """Write ``indexer.index_file`` with scip-python."""
+    # Pyright matches an include glob such as "**/*.py" against root-level
+    # files only, so a src/ or package layout indexed nothing. The scratch
+    # root holds only captured Python source.
+    (root / "pyrightconfig.json").write_text('{"include":["."],"exclude":[]}\n')
+    indexer._direct_indexer_path = tool
+    command = indexer._build_index_command(project_name="visitor-wiki")
+    command.extend(["--project-version", project_version])
+    status = _run_index(command, root, check)
+    if status != 0:
+        # The status alone is logged; indexer output can quote source.
+        raise _IndexUnusable(f"indexer exited with status {status}")
+    check()
+    if not 0 < indexer.index_file.stat().st_size <= _MAX_INDEX_BYTES:
+        raise _IndexUnusable("index size limit")
+
+
+def _indexer_tool(coverage):
+    """Return ``(provider, executable)``, or ``None`` with ``coverage`` updated."""
+    provider = select_python_graph_provider()
+    if provider.name == PYREFLY_PROVIDER:
+        if provider.executable:
+            return PYREFLY_PROVIDER, provider.executable
+        # Pinned to pyrefly, which cannot run here.
+        coverage.update(
+            reason="tool_unavailable", note="The Python indexer is unavailable."
+        )
+        return None
     tool = resolve_command("scip-python")
     if not tool:
         coverage.update(
             reason="tool_unavailable", note="The Python indexer is unavailable."
         )
-        return
+        return None
     missing = _missing_interpreter(tool, _index_path())
     if missing:
         # Say so instead of starting a process that can only fail.
@@ -137,7 +200,30 @@ def build_visitor_graph(bundle, check, progress):
             reason="tool_unavailable",
             note=f"The Python indexer needs {missing}, which this server cannot find.",
         )
+        return None
+    return SCIP_PYTHON_PROVIDER, tool
+
+
+def build_visitor_graph(bundle, check, progress):
+    """Attach an actual compiler graph or a credential-free coverage reason."""
+    reader = bundle.source_reader
+    paths = sorted(p for p in reader.file_paths if Path(p).suffix in {".py", ".pyi"})
+    coverage = {
+        "available": False,
+        "backend": None,
+        "languages": ["python"] if paths else [],
+        "note": _COVERAGE_NOTE,
+        "reason": "unsupported_language",
+    }
+    bundle.graph_coverage = coverage
+    if not paths:
+        coverage["note"] = "Hosted code graphs currently cover Python source only."
         return
+    chosen = _indexer_tool(coverage)
+    if chosen is None:
+        return
+    backend, tool = chosen
+    coverage["backend"] = backend
     progress("indexing", "")
     try:
         from ..scip_interface.scip_indexer_python import SCIPPythonIndexer
@@ -154,23 +240,14 @@ def build_visitor_graph(bundle, check, progress):
                     target.write_bytes(
                         reader.read_prefix(path, max_bytes=4 * 1024 * 1024)
                     )
-            # Pyright matches an include glob such as "**/*.py" against
-            # root-level files only, so a src/ or package layout indexed
-            # nothing. The scratch root holds only captured Python source.
-            (root / "pyrightconfig.json").write_text('{"include":["."],"exclude":[]}\n')
             indexer = SCIPPythonIndexer(
                 root, scratch / "index", decoder_backend="serial"
             )
-            indexer._direct_indexer_path = tool
-            command = indexer._build_index_command(project_name="visitor-wiki")
-            command.extend(["--project-version", bundle.entry.base_commit])
-            status = _run_index(command, root, check)
-            if status != 0:
-                # The status alone is logged; indexer output can quote source.
-                raise _IndexUnusable(f"indexer exited with status {status}")
-            check()
-            if not 0 < indexer.index_file.stat().st_size <= _MAX_INDEX_BYTES:
-                raise _IndexUnusable("index size limit")
+            version = bundle.entry.base_commit
+            if backend == PYREFLY_PROVIDER:
+                _index_with_pyrefly(tool, root, scratch, indexer, version, check)
+            else:
+                _index_with_scip_python(tool, root, indexer, version, check)
             if not indexer.decode_index():
                 raise _IndexUnusable("invalid index")
             graph = indexer.process_index()
