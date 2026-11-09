@@ -74,12 +74,12 @@ export default function Header({
   center?: ReactNode;
   actions?: ReactNode;
 }) {
-  // A published Wiki holds one repository: the brand opens its Overview and
-  // there is no list of Wikis to browse.
+  // A published Wiki holds one repository at the site root: the brand opens
+  // its Overview and there is no list of Wikis to browse.
   const home = homeRepository();
   return (
     <header className="site-header">
-      <AppLink href={home ? `/${encodeURIComponent(home)}/` : "/"} className="brand">
+      <AppLink href="/" className="brand">
         <img className="brand-mark" src={assetUrl("/codenib-icon.svg")} alt="" /> CodeNib
       </AppLink>
       {center}

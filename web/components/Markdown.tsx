@@ -12,7 +12,7 @@ import {
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeSlug from "rehype-slug";
-import { AppLink } from "@/lib/router";
+import { AppLink, wikiRoute } from "@/lib/router";
 import { isStaticRuntime } from "@/lib/runtime";
 import { matchCitation, lineLabel } from "@/lib/citations";
 import { callPaths, parseFlowchart } from "@/lib/flowchart";
@@ -343,7 +343,7 @@ export default function Markdown({
               } catch {
                 // Keep the raw id; the page lookup will report it as missing.
               }
-              const target = `${pageBasePath || `/${encodeURIComponent(repoId!)}`}?p=${encodeURIComponent(pageId)}`;
+              const target = `${pageBasePath || wikiRoute(repoId!)}?p=${encodeURIComponent(pageId)}`;
               return (
                 <AppLink
                   href={target}

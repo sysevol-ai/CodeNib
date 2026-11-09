@@ -3,7 +3,7 @@ import {
   homeRepository,
   mediaAssetUrl,
   normalizeRuntimeBasePath,
-  openHomeRepository,
+  moveLegacyWikiRoute,
   restoreStaticRoute,
   staticDataUrl,
   stripBasePath,
@@ -106,23 +106,32 @@ describe("published Wiki home", () => {
     expect(homeRepository()).toBeNull();
   });
 
-  it("sends the root address to the Wiki before the first render", () => {
+  it("moves an earlier export's /<repo>/ addresses to the site root", () => {
     const runtime = { mode: "static", basePath: "/project", homeRepository: "orcaloca" };
-    const root = { pathname: "/project/", search: "?p=search-loop", hash: "#retry" };
-    const replaceState = staticWindow({ __CODENIB_RUNTIME__: runtime, location: root });
-    openHomeRepository();
-    expect(replaceState).toHaveBeenCalledWith(
-      null,
-      "",
-      "/project/orcaloca/?p=search-loop#retry",
-    );
-
-    for (const location of [
-      { pathname: "/project/orcaloca/page/search-loop/", search: "", hash: "" },
-      { pathname: "/project/", search: "?repo=other", hash: "" },
+    for (const [pathname, search, hash, expected] of [
+      ["/project/orcaloca/", "?p=search-loop", "#retry", "/project/?p=search-loop#retry"],
+      ["/project/orcaloca", "", "", "/project/"],
+      ["/project/orcaloca/page/search-loop/", "", "#retry", "/project/page/search-loop/#retry"],
     ]) {
-      const untouched = staticWindow({ __CODENIB_RUNTIME__: runtime, location });
-      openHomeRepository();
+      const replaceState = staticWindow({
+        __CODENIB_RUNTIME__: runtime,
+        location: { pathname, search, hash },
+      });
+      moveLegacyWikiRoute();
+      expect(replaceState).toHaveBeenCalledWith(null, "", expected);
+    }
+
+    for (const pathname of [
+      "/project/",
+      "/project/page/search-loop/",
+      "/project/orcaloca/ask",
+      "/project/other/",
+    ]) {
+      const untouched = staticWindow({
+        __CODENIB_RUNTIME__: runtime,
+        location: { pathname, search: "", hash: "" },
+      });
+      moveLegacyWikiRoute();
       expect(untouched).not.toHaveBeenCalled();
     }
   });

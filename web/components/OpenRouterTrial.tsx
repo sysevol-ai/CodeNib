@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState } from "react";
 import AgentSetup from "./AgentSetup";
 import { fetchRepos } from "@/lib/api";
-import { AppLink } from "@/lib/router";
+import { AppLink, wikiRoute } from "@/lib/router";
 import { assetUrl } from "@/lib/runtime";
 import {
   loadTrialContext,
@@ -251,7 +251,7 @@ export default function OpenRouterTrial({
       className="agent-setup openrouter-trial"
       aria-labelledby="trial-title"
     >
-      <AppLink href={`/${encodeURIComponent(repoId)}`}>
+      <AppLink href={wikiRoute(repoId)}>
         ← Browse the Wiki
       </AppLink>
       <p className="preview-label">Public repository trial</p>
