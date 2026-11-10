@@ -5524,7 +5524,7 @@ a.codepanel-name:hover {
   position: relative;
   display: grid;
   place-items: center;
-  height: 104px;
+  height: 132px;
   margin: -16px -18px 14px;
   overflow: hidden;
   border-bottom: 1px solid #2a2b2f;
@@ -5538,7 +5538,10 @@ a.codepanel-name:hover {
 }
 .map-thumb-line {
   fill: none;
-  stroke: rgba(232, 234, 237, 0.28);
+  stroke: rgba(232, 234, 237, 0.13);
+}
+.map-thumb-line.is-strong {
+  stroke: rgba(232, 234, 237, 0.36);
 }
 .map-thumb-flow {
   fill: none;
