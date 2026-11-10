@@ -37,6 +37,13 @@ document.querySelectorAll('a[href="#example-source"]').forEach(link => {
     selected.focus({ preventScroll: true });
   });
 });
+// The language strip moves for more than five seconds, so it needs a stop.
+document.querySelector(".lang-toggle")?.addEventListener("click", event => {
+  const paused = event.currentTarget.getAttribute("aria-pressed") !== "true";
+  event.currentTarget.setAttribute("aria-pressed", String(paused));
+  event.currentTarget.textContent = paused ? "Play" : "Pause";
+  document.querySelector(".lang-marquee")?.classList.toggle("is-paused", paused);
+});
 document.querySelector(".repo-entry")?.addEventListener("submit", () => recordExperience("repository_submit"));
 document.querySelectorAll('a[href="#get-started"]').forEach(link => {
   link.addEventListener("click", () => recordExperience("agent_setup_open"));
