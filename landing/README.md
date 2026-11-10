@@ -179,9 +179,8 @@ without any model call:
 python scripts/render_agent_replay.py --write landing/index.html
 ```
 
-The whole transcript and graph are in the page, and the page rests on the finished
-session. `assets/demos/agent-replay.js` replays it only when the reader presses
-Replay or a step, and does nothing for reduced motion. At phone
+The whole transcript and graph are in the page; `assets/demos/agent-replay.js` only
+hides what it has not reached yet, and does nothing for reduced motion. At phone
 width the graph is hidden because the transcript lists each hop.
 
 The README and docs still use the rendered video. With the Web dev dependencies,

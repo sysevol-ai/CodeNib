@@ -205,7 +205,7 @@ html:not(.js) .example-tasks { display: none; }
 .replay-chapters button[aria-pressed="true"] { border-color: var(--line-strong); color: var(--ink); }
 .replay-toggle { border-color: var(--line) !important; }
 html:not(.js) .replay-controls { display: none; }
-.replay-body { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 6fr); height: 420px; }
+.replay-body { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 6fr); height: 488px; }
 .replay-log { overflow-y: auto; padding: 20px clamp(20px, 2.2vw, 32px); border-right: 1px solid var(--line); color: var(--ink-2); font: 13px/1.65 "Geist Mono", ui-monospace, monospace; scrollbar-color: var(--line-strong) transparent; scrollbar-width: thin; }
 .replay-log:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .line { overflow-wrap: anywhere; }
@@ -235,7 +235,7 @@ html:not(.js) .replay-controls { display: none; }
 .replay-graph a:hover text { fill: var(--accent); }
 .replay-graph a:focus-visible { outline: none; }
 .replay-graph a:focus-visible circle { stroke: #fff; }
-/* Armed when the reader starts a replay; until then the finished session shows. */
+/* Armed by agent-replay.js, so the full session shows without it. */
 .is-armed .line:not(.is-on) { display: none; }
 .is-armed .g-item { opacity: .1; transition: opacity .35s ease-out; }
 .is-armed .g-item.is-on { opacity: 1; }
@@ -464,7 +464,7 @@ codenib codegraph init /path/to/your/repo</code></pre>
       <div class="replay" data-replay>
         <div class="replay-bar">
           <span>Requests · Claude Code + CodeNib</span>
-          <div class="replay-controls"><div class="replay-chapters" role="group" aria-label="Jump to a step"><button type="button" data-seek="0" aria-pressed="false">Connect</button><button type="button" data-seek="1" aria-pressed="false">Ask</button><button type="button" data-seek="2" aria-pressed="true">Trace</button></div><button class="replay-toggle" type="button">Replay</button></div>
+          <div class="replay-controls"><div class="replay-chapters" role="group" aria-label="Jump to a step"><button type="button" data-seek="0" aria-pressed="true">Connect</button><button type="button" data-seek="1" aria-pressed="false">Ask</button><button type="button" data-seek="2" aria-pressed="false">Trace</button></div><button class="replay-toggle" type="button">Pause</button></div>
         </div>
         <div class="replay-body">
           <div class="replay-log" tabindex="0" role="region" aria-label="Recorded command-line output">

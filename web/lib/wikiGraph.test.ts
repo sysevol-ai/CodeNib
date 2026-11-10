@@ -4,7 +4,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { WikiAreaMap, WikiPageRef } from "@/lib/api";
-import { AREA_COLORS, buildWikiGraph, labelLines, minorReferences, NEUTRAL_COLOR, neighborhood } from "@/lib/wikiGraph";
+import { AREA_COLORS, buildWikiGraph, labelLines, NEUTRAL_COLOR, neighborhood } from "@/lib/wikiGraph";
 
 const page = (id: string, children: WikiPageRef[] = []): WikiPageRef => ({
   id,
@@ -101,34 +101,5 @@ describe("labelLines", () => {
   it("leaves one unbreakable word whole", () => {
     const word = "x".repeat(40);
     expect(labelLines(word)).toEqual([word]);
-  });
-});
-
-describe("minorReferences", () => {
-  const ids = ["a", "b", "c", "d", "e", "f", "g"];
-  const many = ids.map((id) => page(id));
-  const weighted = (source: string, target: string, weight: number) => ({ ...link(source, target), weight });
-  const dense: WikiAreaMap = {
-    available: true,
-    areas: ids.map((id) => ({ id, title: id, symbols: 10, files: 1 })),
-    links: ids.flatMap((source, i) => ids.filter((target) => target !== source).map((target, j) => weighted(source, target, 1 + ((i * 7 + j * 3) % 11)))),
-  };
-
-  it("leaves a map with few references alone", () => {
-    expect(minorReferences(buildWikiGraph(pages, map)).size).toBe(0);
-  });
-
-  it("keeps each area's heaviest references and marks the rest", () => {
-    const graph = buildWikiGraph(many, dense);
-    const minor = minorReferences(graph);
-    const references = graph.edges.filter((edge) => edge.kind === "references");
-    expect(references.length).toBe(42);
-    expect(minor.size).toBeGreaterThan(0);
-    expect(minor.size).toBeLessThan(references.length);
-    for (const id of ids) {
-      const mine = references.filter((edge) => edge.source === id || edge.target === id);
-      const heaviest = mine.sort((x, y) => (y.link?.weight ?? 0) - (x.link?.weight ?? 0) || x.id.localeCompare(y.id))[0];
-      expect(minor.has(heaviest.id)).toBe(false);
-    }
   });
 });
