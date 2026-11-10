@@ -42,7 +42,7 @@ model call; the user's agent still uses its own model.
 
 Sections share one content edge but not one layout: a split hero, a full-width
 example on a darker well, a narrow repository form, a full-width terminal, the
-ContextBench band one step brighter than the page, and a language list. Keep that
+ContextBench band one step brighter than the page, and a language strip. Keep that
 variation when adding a section. Left-column content follows its text directly;
 do not push it down with `margin-top: auto` or `justify-content: space-between`.
 
@@ -57,9 +57,10 @@ date, and keep the ranking out of the hero: it was not earned by the Wiki.
 The ContextBench band is two numbers, one sentence and a link; the article has the
 diagram and the method.
 
-The language list between the `CODENIB_LANGUAGE_STRIP` markers is generated from
+The language strip between the `CODENIB_LANGUAGE_STRIP` markers is generated from
 the language registry, with icons from `assets/languages/` (see its `LICENSE.txt`).
-It shows every language at once and does not move. A new language needs an icon and a hover color in
+It moves for more than five seconds, so keep its pause control, and keep it static
+for reduced motion. A new language needs an icon and a hover color in
 `scripts/language_capability_matrix.py`. To refresh it:
 
 ```bash
@@ -179,9 +180,8 @@ without any model call:
 python scripts/render_agent_replay.py --write landing/index.html
 ```
 
-The whole transcript and graph are in the page, and the page rests on the finished
-session. `assets/demos/agent-replay.js` replays it only when the reader presses
-Replay or a step, and does nothing for reduced motion. At phone
+The whole transcript and graph are in the page; `assets/demos/agent-replay.js` only
+hides what it has not reached yet, and does nothing for reduced motion. At phone
 width the graph is hidden because the transcript lists each hop.
 
 The README and docs still use the rendered video. With the Web dev dependencies,

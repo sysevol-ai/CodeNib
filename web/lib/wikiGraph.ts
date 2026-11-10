@@ -203,30 +203,6 @@ export function neighborhood(graph: WikiGraph, id: string | null): Set<string> {
   return near;
 }
 
-/**
- * In a map with many references, the ones to draw faintly: those that are not
- * among the heaviest few at either end. Nothing is hidden; a faint line still
- * answers to the pointer.
- */
-export function minorReferences(graph: WikiGraph, keep = 3, denseAbove = 30): Set<string> {
-  const references = graph.edges.filter((edge) => edge.kind === "references");
-  const minor = new Set<string>();
-  if (references.length <= denseAbove) return minor;
-  const byNode = new Map<string, WikiGraphEdge[]>();
-  for (const edge of references) {
-    for (const end of [edge.source, edge.target]) byNode.set(end, [...(byNode.get(end) ?? []), edge]);
-  }
-  const major = new Set<string>();
-  for (const edges of byNode.values()) {
-    edges
-      .sort((a, b) => (b.link?.weight ?? 0) - (a.link?.weight ?? 0) || a.id.localeCompare(b.id))
-      .slice(0, keep)
-      .forEach((edge) => major.add(edge.id));
-  }
-  for (const edge of references) if (!major.has(edge.id)) minor.add(edge.id);
-  return minor;
-}
-
 const LABEL_ONE_LINE_CHARS = 28;
 
 /**

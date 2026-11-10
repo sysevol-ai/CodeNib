@@ -100,11 +100,6 @@
 .wg-edge.is-references .wg-edge-line {
   stroke: var(--wg-call);
 }
-/* A crowded map keeps each area's heaviest references at strength and draws
-   the rest as a trace, without an arrowhead, until one is pointed at. */
-.wg-edge.is-minor .wg-edge-line {
-  stroke: rgba(232, 234, 237, 0.06);
-}
 .wg-edge.is-hot .wg-edge-line {
   stroke: var(--wg-hot);
 }
@@ -146,20 +141,25 @@
   stroke-width: 1.5;
   vector-effect: non-scaling-stroke;
 }
-.wg-label {
+.wg-label,
+.wg-label-halo {
   fill: var(--wg-soft);
   font-family: var(--font-geist-sans, "Geist"), system-ui, sans-serif;
   font-weight: 500;
   letter-spacing: -0.005em;
-  paint-order: stroke;
+  pointer-events: none;
+}
+/* Drawn under all the labels, in the map's own colour, to lift them off the lines. */
+.wg-label-halo {
+  fill: var(--wg-bg);
   stroke: var(--wg-bg);
   stroke-linejoin: round;
-  pointer-events: none;
 }
 .wg-label.is-near {
   fill: var(--wg-text);
 }
-.wg-label.is-active {
+.wg-label.is-active,
+.wg-label-halo.is-active {
   font-weight: 650;
 }
 
@@ -397,6 +397,9 @@
   fill: var(--wg-text);
   font-weight: 650;
 }
+.wg-label-halo.is-running {
+  font-weight: 650;
+}
 /* Ready while the map was open: the colour fills the ring from its centre. */
 .wg-node.is-arrived .wg-node-mark {
   transform-box: fill-box;
@@ -409,7 +412,8 @@
   cursor: default;
 }
 .wiki-graph.is-live .wg-node,
-.wiki-graph.is-live .wg-label {
+.wiki-graph.is-live .wg-label,
+.wiki-graph.is-live .wg-label-halo {
   animation: wg-appear 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
   animation-delay: calc(min(var(--i, 0), 14) * 40ms);
 }
@@ -516,6 +520,7 @@
   .wiki-graph.is-surveying .wg-node.is-area .wg-node-mark,
   .wiki-graph.is-live .wg-node,
   .wiki-graph.is-live .wg-label,
+  .wiki-graph.is-live .wg-label-halo,
   .wiki-graph.is-live .wg-edge-line {
     animation: none;
   }
