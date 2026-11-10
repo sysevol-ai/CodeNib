@@ -100,6 +100,11 @@
 .wg-edge.is-references .wg-edge-line {
   stroke: var(--wg-call);
 }
+/* A crowded map keeps each area's heaviest references at strength and draws
+   the rest as a trace, without an arrowhead, until one is pointed at. */
+.wg-edge.is-minor .wg-edge-line {
+  stroke: rgba(232, 234, 237, 0.06);
+}
 .wg-edge.is-hot .wg-edge-line {
   stroke: var(--wg-hot);
 }
