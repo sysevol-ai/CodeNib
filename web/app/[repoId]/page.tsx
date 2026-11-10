@@ -40,6 +40,8 @@ import {
   splitPageLinks,
   splitWikiMarkdown,
   wikiRetryNotice,
+  repositoryFacts,
+  titleOverviewLead,
 } from "@/lib/wikiPresentation";
 import {
   fetchCommits,
@@ -911,6 +913,11 @@ export default function WikiPageView({
     areaMap.reason !== "outline_pending" &&
     areaMap.areas.filter((area) => area.symbols > 0).length >= 2;
   const posterJourney = activeId === "overview" ? lifted.journey : null;
+  // Beside the map the Overview is titled with the repository and carries the
+  // index's counts, as the poster does when the map is hidden.
+  const overviewTitled = workspace && activeId === "overview";
+  const overviewFacts =
+    overviewTitled && areaMap?.available ? repositoryFacts(areaMap, repo?.file_count) : null;
   const renderStageText = (markdown: string) => (
     <Markdown
       citations={page?.citations}
@@ -1120,6 +1127,7 @@ export default function WikiPageView({
               lead={posterLead(wikiMarkdown.lead)}
               onPick={pick}
               onOpenGraph={hasGraph ? () => openGraph() : undefined}
+              titleAs="h1"
             />
           )}
           <div className="wiki-content" ref={contentRef}>
@@ -1135,8 +1143,18 @@ export default function WikiPageView({
                       repoId={repoId}
                       onPageLink={pick}
                     >
-                      {wikiMarkdown.lead}
+                      {overviewTitled ? titleOverviewLead(wikiMarkdown.lead, repo?.repo) : wikiMarkdown.lead}
                     </Markdown>
+                  )}
+                  {overviewFacts && (
+                    <dl className="wiki-repo-facts">
+                      {overviewFacts.map((fact) => (
+                        <div key={fact.label}>
+                          <dt>{fact.label}</dt>
+                          <dd>{fact.value.toLocaleString("en-US")}</dd>
+                        </div>
+                      ))}
+                    </dl>
                   )}
                   {activeId === "overview" && !showPoster && !workspace && (
                     areaMap?.available ? (

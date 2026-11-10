@@ -288,3 +288,30 @@ export function splitPageLinks(markdown: string): { body: string; links: PageLin
   }
   return { body: keep.join("\n").trimEnd(), links };
 }
+
+/**
+ * The Overview's lead with the repository as its title. Beside the map the
+ * page would otherwise open on the word "Overview" and never name what it is
+ * an overview of. A lead that does not start with a title is left alone.
+ */
+export function titleOverviewLead(lead: string, repository: string | undefined): string {
+  const name = repository?.trim();
+  if (!name) return lead;
+  return lead.replace(/^(\s*)#(?!#)\s+.*$/m, (line, indent: string, offset: number) =>
+    lead.slice(0, offset).trim() ? line : `${indent}# ${name}`,
+  );
+}
+
+/** What the index holds for a repository, as the counts shown under its title. */
+export function repositoryFacts(
+  map: { areas: { symbols: number; files: number }[]; links: { weight: number }[] },
+  fileCount?: number,
+): { label: string; value: number }[] {
+  const areas = map.areas.filter((area) => area.symbols > 0);
+  return [
+    { label: "areas", value: areas.length },
+    { label: "symbols", value: areas.reduce((sum, area) => sum + area.symbols, 0) },
+    { label: "files", value: fileCount || areas.reduce((sum, area) => sum + area.files, 0) },
+    { label: "recorded references", value: map.links.reduce((sum, link) => sum + link.weight, 0) },
+  ];
+}
