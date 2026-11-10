@@ -68,7 +68,8 @@ async function scenario(mode, width = 1280) {
   });
   try {
     await page.goto(`${base}/acceptance`, { waitUntil: mode === "late" ? "domcontentloaded" : "networkidle" });
-    await page.getByRole("heading", { name: "Overview", exact: true }).waitFor();
+    // Beside the map (1200px and wider) the Overview is titled with the repository.
+    await page.getByRole("heading", { name: width >= 1200 ? repo.repo : "Overview", exact: true }).waitFor();
     assert.equal(await page.locator(".page-load-error").count(), 0);
     if (mode === "late") {
       const response = page.waitForResponse(url => url.url().endsWith("/visual-evidence"));
