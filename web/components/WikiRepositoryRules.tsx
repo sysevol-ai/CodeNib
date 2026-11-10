@@ -8,7 +8,15 @@ import { isStaticRuntime } from "@/lib/runtime";
 export const mebibytes = (bytes: number) => `${Number((bytes / (1024 * 1024)).toFixed(2))} MiB`;
 
 /** Read the same limits that the server enforces; no repository is downloaded. */
-export default function WikiRepositoryRules({ limits }: { limits?: WikiGenerationLimits }) {
+export default function WikiRepositoryRules({
+  limits,
+  summaryLine = true,
+}: {
+  limits?: WikiGenerationLimits;
+  /** The limits as a line above the disclosure. Off where the reader has not
+   *  yet chosen to generate anything; the disclosure still lists them. */
+  summaryLine?: boolean;
+}) {
   const [loaded, setLoaded] = useState<WikiGenerationLimits | undefined>(limits);
   useEffect(() => {
     if (limits || isStaticRuntime()) return;
@@ -21,7 +29,7 @@ export default function WikiRepositoryRules({ limits }: { limits?: WikiGeneratio
   const policy = limits ?? loaded;
   return (
     <div className="wiki-repository-rules">
-      {policy && <p>Hosted limits: {mebibytes(policy.max_archive_bytes)} download, {mebibytes(policy.max_source_bytes)} retained files, {policy.max_files.toLocaleString()} files. Files over {mebibytes(policy.max_file_bytes)} are skipped.</p>}
+      {policy && summaryLine && <p>Hosted limits: {mebibytes(policy.max_archive_bytes)} download, {mebibytes(policy.max_source_bytes)} retained files, {policy.max_files.toLocaleString()} files. Files over {mebibytes(policy.max_file_bytes)} are skipped.</p>}
       <details>
       <summary>Which repositories can generate a Wiki?</summary>
       <p>Public GitHub repositories only. We read a snapshot of the default branch.</p>
