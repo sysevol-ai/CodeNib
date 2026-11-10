@@ -130,7 +130,7 @@ def _landing_sprite(names: list[str]) -> str:
 
 
 def render_landing_strip() -> str:
-    """Return the homepage's scrolling language strip, sorted from the registry."""
+    """Return the homepage's language list, sorted from the registry."""
 
     rows = _language_capability_rows()
     with_graph = [row for row in rows if row.graph_backend]
@@ -148,12 +148,7 @@ def render_landing_strip() -> str:
         "that updates as files change to plain code search.</p>",
         "</div>",
         _landing_sprite([row.display_name for row in rows]),
-        '<div class="lang-marquee" role="region" aria-labelledby="languages-title">',
-        '  <div class="lang-track">',
-        f'    <ul class="lang-list">{items}</ul>',
-        f'    <ul class="lang-list" aria-hidden="true">{items}</ul>',
-        "  </div>",
-        "</div>",
+        f'<ul class="lang-list" aria-labelledby="languages-title">{items}</ul>',
     ]
     return "\n".join(f"      {line}" for line in lines)
 

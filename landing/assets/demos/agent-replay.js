@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-// Plays the recorded agent session already in the page. The whole transcript and
-// graph stay visible without JavaScript and for readers who ask for less motion,
-// so this only hides what it has not reached yet.
+// Replays the recorded agent session already in the page. The page rests on the
+// finished session: the answer and the whole graph. Nothing moves until the
+// reader presses Replay or a step, and nothing is hidden before that.
 const root = document.querySelector("[data-replay]");
 
 if (root && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
@@ -12,7 +12,7 @@ if (root && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
   const log = root.querySelector(".replay-log");
   const toggle = root.querySelector(".replay-toggle");
   const seekers = [...root.querySelectorAll("[data-seek]")];
-  let next = 0;
+  let next = lines.length;
   let timer = 0;
   let playing = false;
 
@@ -62,13 +62,20 @@ if (root && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
 
   const rewindTo = index => {
     clearTimeout(timer);
+    root.classList.add("is-armed");
     [...lines, ...items].forEach(item => item.classList.remove("is-on", "is-last", "is-instant"));
     lines.slice(0, index).forEach(line => show(line, true));
     next = index;
     if (index === 0) markChapter("0");
   };
 
-  root.classList.add("is-armed");
+  // The resting frame ends on the answer, as the replay does.
+  const rest = () => {
+    if (next >= lines.length && !playing) log.scrollTop = log.scrollHeight;
+  };
+  rest();
+  // Web fonts change the transcript's height after the first layout.
+  document.fonts?.ready.then(rest);
   toggle.addEventListener("click", () => {
     if (playing) {
       pause();
@@ -84,12 +91,4 @@ if (root && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
       play();
     });
   });
-
-  // Starts once, when the reader reaches it; pressing a control starts it sooner.
-  const watcher = new IntersectionObserver(entries => {
-    if (!entries.some(entry => entry.isIntersecting)) return;
-    watcher.disconnect();
-    if (!playing && next === 0) play();
-  }, { threshold: 0.35 });
-  watcher.observe(root);
 }

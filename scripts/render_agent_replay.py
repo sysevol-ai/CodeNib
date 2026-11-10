@@ -251,7 +251,7 @@ def render_replay(record: dict | None = None) -> str:
     graph = record["dependency_result"]
     chapters = "".join(
         f'<button type="button" data-seek="{index}" '
-        f'aria-pressed="{"true" if index == 0 else "false"}">{name}</button>'
+        f'aria-pressed="{"true" if index == len(CHAPTERS) - 1 else "false"}">{name}</button>'
         for index, name in enumerate(CHAPTERS)
     )
     transcript = "\n".join(f"{INDENT}      {line}" for line in _transcript(record))
@@ -264,7 +264,7 @@ def render_replay(record: dict | None = None) -> str:
             f'{INDENT}    <div class="replay-controls">'
             f'<div class="replay-chapters" role="group" aria-label="Jump to a step">'
             f"{chapters}</div>"
-            f'<button class="replay-toggle" type="button">Pause</button></div>',
+            f'<button class="replay-toggle" type="button">Replay</button></div>',
             f"{INDENT}  </div>",
             f'{INDENT}  <div class="replay-body">',
             f'{INDENT}    <div class="replay-log" tabindex="0" role="region" '
