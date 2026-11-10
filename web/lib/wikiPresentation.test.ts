@@ -9,6 +9,8 @@ import {
   splitPageLinks,
   splitWikiMarkdown,
   wikiRetryNotice,
+  repositoryFacts,
+  titleOverviewLead,
 } from "./wikiPresentation";
 
 function slot(
@@ -324,5 +326,38 @@ describe("splitPageLinks", () => {
 
   it("leaves a page without link sections untouched", () => {
     expect(splitPageLinks("# A\n\n## B\n\nText.")).toEqual({ body: "# A\n\n## B\n\nText.", links: [] });
+  });
+});
+
+describe("titleOverviewLead", () => {
+  it("titles the Overview with the repository", () => {
+    expect(titleOverviewLead("# Overview\n\nA useful thesis.", "psf/requests")).toBe(
+      "# psf/requests\n\nA useful thesis.",
+    );
+  });
+
+  it("leaves a lead with no opening title, or no repository, alone", () => {
+    expect(titleOverviewLead("A thesis.\n\n# Later", "psf/requests")).toBe("A thesis.\n\n# Later");
+    expect(titleOverviewLead("# Overview\n\nA thesis.", undefined)).toBe("# Overview\n\nA thesis.");
+  });
+});
+
+describe("repositoryFacts", () => {
+  it("counts indexed areas, their symbols and files, and the weight of every link", () => {
+    const map = {
+      areas: [
+        { symbols: 215, files: 5 },
+        { symbols: 69, files: 2 },
+        { symbols: 0, files: 3 },
+      ],
+      links: [{ weight: 40 }, { weight: 2 }],
+    };
+    expect(repositoryFacts(map)).toEqual([
+      { label: "areas", value: 2 },
+      { label: "symbols", value: 284 },
+      { label: "files", value: 7 },
+      { label: "recorded references", value: 42 },
+    ]);
+    expect(repositoryFacts(map, 22)[2]).toEqual({ label: "files", value: 22 });
   });
 });

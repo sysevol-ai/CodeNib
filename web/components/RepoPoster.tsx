@@ -211,6 +211,7 @@ export default function RepoPoster({
   sourceRepoId,
   wikiHref,
   at,
+  titleAs: Title = "h2",
 }: {
   repoId: string;
   repo: RepoInfo | null;
@@ -235,6 +236,8 @@ export default function RepoPoster({
   /** Milliseconds into the traced path. Draws that frame and turns the
    *  poster's own playback off, so a video renderer can seek it. */
   at?: number;
+  /** "h1" where the poster opens a page and nothing above it names the page. */
+  titleAs?: "h1" | "h2";
 }) {
   // "card": the static 1200x630 link-preview image; no motion, no controls.
   const card = variant === "card";
@@ -470,11 +473,11 @@ export default function RepoPoster({
       aria-label={`System map of ${repo?.repo || repoId}`}
     >
       <header className="poster-head">
-        <h2 className="poster-title">
+        <Title className="poster-title">
           <span className="poster-owner">{owner}</span>
           <wbr />
           {name}
-        </h2>
+        </Title>
         {lead && !hero && <p className="poster-lead">{leadNodes(lead)}</p>}
         <dl className="poster-stats">
           <div><dt>areas</dt><dd>{number.format(totals.areas)}</dd></div>

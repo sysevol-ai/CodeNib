@@ -1314,6 +1314,32 @@ pre {
   font-size: 18px;
   line-height: 1.6;
 }
+/* The index's counts under the Overview's claim: one line of facts, the
+   numbers in mono, as on the poster. */
+.wiki-repo-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+  margin: 14px 0 0;
+  font-size: var(--fs-caption);
+}
+.wiki-repo-facts > div {
+  display: flex;
+  flex-direction: row-reverse;
+  justify-content: flex-end;
+  align-items: baseline;
+  gap: 5px;
+}
+.wiki-repo-facts dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+.wiki-repo-facts dt {
+  color: var(--text-muted);
+}
 .markdown h2 {
   font-size: 22px;
   line-height: 1.3;
