@@ -5,113 +5,12 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperti
 
 import type { WikiAreaLink } from "@/lib/api";
 import type { WikiPageState } from "@/lib/visitorWiki";
-import { labelLines, neighborhood, type WikiGraph, type WikiGraphEdge, type WikiGraphNode } from "@/lib/wikiGraph";
+import { minorReferences, neighborhood, type WikiGraph, type WikiGraphEdge, type WikiGraphNode } from "@/lib/wikiGraph";
+import { edgePath, edgeSegments, LABEL_LINE_PX, placeLabels, type Point, type View } from "@/lib/wikiGraphLabels";
 import "./WikiGraphPane.css";
 
-interface View {
-  x: number;
-  y: number;
-  k: number;
-}
-
-interface Point {
-  x: number;
-  y: number;
-}
-
-interface PlacedLabel {
-  id: string;
-  lines: string[];
-  anchor: "start" | "middle" | "end";
-  dx: number;
-  dy: number;
-}
-
-// Geist at the label size averages about this wide per character.
-const LABEL_CHAR_PX = 6.1;
-const LABEL_HEIGHT_PX = 15;
-const LABEL_LINE_PX = 14;
-const LABEL_MARGIN_PX = 8;
 // Room for the repository name above an embedded map.
 const HEADER_PX = 44;
-
-/**
- * Labels hold their on-screen size at any zoom. Each sits on the side facing
- * away from the map's centre, and a label that would land on an earlier one is
- * left out; more important pages are placed first.
- */
-function placeLabels(
-  nodes: WikiGraphNode[],
-  points: Map<string, Point>,
-  view: View,
-  center: Point,
-  paneWidth: number,
-  priority: (node: WikiGraphNode) => number,
-): PlacedLabel[] {
-  const taken: { left: number; right: number; top: number; bottom: number }[] = [];
-  const placed: PlacedLabel[] = [];
-  // Labels also keep off the large marks, so a name never hides a node.
-  const marks = nodes
-    .filter((node) => node.kind === "area")
-    .map((node) => {
-      const point = points.get(node.id)!;
-      const sx = point.x * view.k + view.x;
-      const sy = point.y * view.k + view.y;
-      const r = node.radius * view.k;
-      return { id: node.id, left: sx - r, right: sx + r, top: sy - r, bottom: sy + r };
-    });
-  const ordered = nodes
-    .filter((node) => priority(node) > 0)
-    .sort((a, b) => priority(b) - priority(a) || b.radius - a.radius);
-  for (const node of ordered) {
-    const point = points.get(node.id)!;
-    const lines = labelLines(node.title);
-    const extra = (lines.length - 1) * LABEL_LINE_PX;
-    const width = Math.max(...lines.map((line) => line.length)) * LABEL_CHAR_PX;
-    const sx = point.x * view.k + view.x;
-    const sy = point.y * view.k + view.y;
-    const radius = node.radius * view.k;
-    const away = point.x - center.x;
-    const beside = Math.abs(away) > 40;
-    let anchor: PlacedLabel["anchor"] = !beside ? "middle" : away > 0 ? "start" : "end";
-    let dx = !beside ? 0 : away > 0 ? radius + 7 : -(radius + 7);
-    const dy = beside ? 4 - extra / 2 : point.y < center.y ? -(radius + 8) - extra : radius + 15;
-    // Near an edge of the pane, the label moves to the node's inner side.
-    if (anchor === "end" && sx + dx - width < LABEL_MARGIN_PX) {
-      anchor = "start";
-      dx = radius + 7;
-    } else if (anchor === "start" && sx + dx + width > paneWidth - LABEL_MARGIN_PX) {
-      anchor = "end";
-      dx = -(radius + 7);
-    }
-    const left = sx + dx - (anchor === "middle" ? width / 2 : anchor === "end" ? width : 0);
-    const box = { left, right: left + width, top: sy + dy - 11, bottom: sy + dy - 11 + LABEL_HEIGHT_PX + extra };
-    const hits = (other: typeof box) =>
-      box.left < other.right && box.right > other.left && box.top < other.bottom && box.bottom > other.top;
-    const clash = taken.some(hits) || marks.some((mark) => mark.id !== node.id && hits(mark));
-    const outside = box.left < 0 || box.right > paneWidth;
-    if ((clash || outside) && priority(node) < 4) continue;
-    taken.push(box);
-    placed.push({ id: node.id, lines, anchor, dx, dy });
-  }
-  return placed;
-}
-
-/** A curved path between two nodes, so two-way references stay two visible lines. */
-function edgePath(a: Point, b: Point, ar: number, br: number, curved: boolean): string {
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  const length = Math.max(Math.hypot(dx, dy), 1);
-  const ux = dx / length;
-  const uy = dy / length;
-  const x1 = a.x + ux * ar;
-  const y1 = a.y + uy * ar;
-  const x2 = b.x - ux * (br + (curved ? 3 : 0));
-  const y2 = b.y - uy * (br + (curved ? 3 : 0));
-  if (!curved) return `M${x1} ${y1}L${x2} ${y2}`;
-  const bend = Math.min(length * 0.12, 34);
-  return `M${x1} ${y1}Q${(x1 + x2) / 2 - uy * bend} ${(y1 + y2) / 2 + ux * bend} ${x2} ${y2}`;
-}
 
 const referenceWidth = (link?: WikiAreaLink) => 0.8 + Math.log10(Math.max(link?.weight ?? 1, 1)) * 0.9;
 
@@ -185,6 +84,7 @@ export default function WikiGraphPane({
 
   const byId = useMemo(() => new Map(graph.nodes.map((node) => [node.id, node])), [graph]);
   const near = useMemo(() => neighborhood(graph, activeId), [graph, activeId]);
+  const minor = useMemo(() => minorReferences(graph), [graph]);
 
   // The layout is stretched to the pane's shape, so the map fills it at any
   // width; nodes stay round because only their positions are stretched.
@@ -248,16 +148,38 @@ export default function WikiGraphPane({
     return () => svg.removeEventListener("wheel", onWheel);
   }, [embedded]);
 
+  // Every drawn line as straight pieces, so a label can avoid sitting on one.
+  const lines = useMemo(
+    () =>
+      graph.edges.flatMap((edge) => {
+        const a = byId.get(edge.source);
+        const b = byId.get(edge.target);
+        const pa = points.get(edge.source);
+        const pb = points.get(edge.target);
+        if (!a || !b || !pa || !pb) return [];
+        return edgeSegments(pa, pb, a.radius, b.radius, edge.kind === "references");
+      }),
+    [graph, byId, points],
+  );
+
   const labels = useMemo(() => {
     if (!view || !points.size) return [];
-    return placeLabels(graph.nodes, points, view, center, size.width, (node) => {
-      // The chapter being written keeps its name, so the reader can follow it.
-      if (node.id === hoverNode || node.id === activeId || states?.[node.id] === "running") return 4;
-      if (node.kind === "area") return 3;
-      if (near.has(node.id)) return 2;
-      return view.k >= 1.7 ? 1 : 0;
-    });
-  }, [graph, points, view, center, size.width, hoverNode, activeId, near, states]);
+    return placeLabels(
+      graph.nodes,
+      points,
+      view,
+      center,
+      size.width,
+      (node) => {
+        // The chapter being written keeps its name, so the reader can follow it.
+        if (node.id === hoverNode || node.id === activeId || states?.[node.id] === "running") return 4;
+        if (node.kind === "area") return 3;
+        if (near.has(node.id)) return 2;
+        return view.k >= 1.7 ? 1 : 0;
+      },
+      lines,
+    );
+  }, [graph, points, view, center, size.width, hoverNode, activeId, near, states, lines]);
 
   const status = useMemo(() => {
     if (hoverEdge?.link) {
@@ -328,13 +250,14 @@ export default function WikiGraphPane({
               const hot = edge === hoverEdge || (!readonly && (edge.source === activeId || edge.target === activeId));
               const isReference = edge.kind === "references";
               const d = edgePath(pa, pb, a.radius, b.radius, isReference);
+              const faint = !hot && minor.has(edge.id);
               return (
-                <g key={edge.id} className={`wg-edge is-${edge.kind}${hot ? " is-hot" : ""}`}>
+                <g key={edge.id} className={`wg-edge is-${edge.kind}${hot ? " is-hot" : ""}${faint ? " is-minor" : ""}`}>
                   <path
                     d={d}
                     className="wg-edge-line"
                     strokeWidth={isReference ? referenceWidth(edge.link) : 1}
-                    markerEnd={isReference ? `url(#wg-arrow${hot ? "-hot" : ""})` : undefined}
+                    markerEnd={isReference && !faint ? `url(#wg-arrow${hot ? "-hot" : ""})` : undefined}
                     pathLength={live && isReference ? 1 : undefined}
                   />
                   {isReference && (
@@ -404,7 +327,7 @@ export default function WikiGraphPane({
                   y={point.y + label.dy / view.k}
                   textAnchor={label.anchor}
                   fontSize={11.5 / view.k}
-                  strokeWidth={4 / view.k}
+                  strokeWidth={6 / view.k}
                   className={`wg-label${near.has(label.id) ? " is-near" : ""}${label.id === activeId && !readonly ? " is-active" : ""}${
                     states?.[label.id] ? ` is-${states[label.id]}` : ""
                   }`}
@@ -453,7 +376,7 @@ export default function WikiGraphPane({
           )}
           <div>
             <dt className="is-contains" aria-hidden="true" />
-            <dd>Page outline</dd>
+            <dd>Pages in an area</dd>
           </div>
         </dl>
         )}
