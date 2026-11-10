@@ -24,3 +24,18 @@ it("explains the enforced limits, excluded files and separate graph coverage", (
   expect(html).toContain("does not guarantee completion");
   expect(html).not.toMatch(/chunk|code section/i);
 });
+
+it("keeps the limits inside the disclosure when the summary line is off", () => {
+  const limits = {
+    max_archive_bytes: 20 * 1024 * 1024,
+    max_source_bytes: 40 * 1024 * 1024,
+    max_file_bytes: 4 * 1024 * 1024,
+    max_files: 4000,
+    max_archive_entries: 8000,
+    source_languages: ["python"],
+    graph_languages: ["python"],
+  };
+  const html = renderToStaticMarkup(<WikiRepositoryRules limits={limits} summaryLine={false} />);
+  expect(html).not.toContain("Hosted limits:");
+  expect(html).toContain("Download archive: up to 20 MiB");
+});

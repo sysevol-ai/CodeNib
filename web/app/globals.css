@@ -5295,48 +5295,6 @@ a.codepanel-name:hover {
 .home-example-intro h2 {
   margin: 0;
 }
-.home-ready {
-  display: grid;
-  gap: 10px;
-}
-.home-ready-label {
-  color: var(--h-muted);
-  font-size: var(--fs-caption);
-  font-weight: var(--fw-strong);
-  letter-spacing: 0;
-  text-transform: none;
-}
-.home-ready-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-.home-ready-chip {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 7px;
-  padding: 6px 12px;
-  border: 1px solid var(--h-line);
-  border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.03);
-  color: var(--h-text);
-  font-size: var(--fs-caption);
-  font-weight: var(--fw-strong);
-  transition: border-color 0.2s ease, background 0.2s ease;
-}
-.home-ready-chip span {
-  color: var(--h-muted);
-  font-family: var(--font-mono);
-  font-size: var(--fs-micro);
-}
-.home-ready-chip:hover {
-  border-color: var(--h-line-strong);
-  background: rgba(255, 255, 255, 0.07);
-  text-decoration: none;
-}
-.home-ready-chip.is-more {
-  color: var(--h-accent);
-}
 .home-stage + .landing-catalog .landing-catalog-heading,
 .home-stage + .wiki-continue .landing-catalog-heading {
   border-top: 0;

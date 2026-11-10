@@ -77,7 +77,7 @@ export default function RepositoryEntry({
             "Ready Wikis open instantly. A new Wiki uses your OpenRouter account; you review the cost limit before starting."}
         </p>
       </form>
-      <WikiRepositoryRules />
+      <WikiRepositoryRules summaryLine={false} />
       <div className="repository-examples">
         <span className="small muted">
           {repos.length ? "Ready Wikis:" : "Try a repository:"}

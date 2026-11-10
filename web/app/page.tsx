@@ -344,24 +344,6 @@ export default function Landing({ browse = false }: { browse?: boolean }) {
                   them. Follow any line down to the source.
                 </p>
               </div>
-              {repos.length > 0 && (
-                <div className="home-ready">
-                  <span className="home-ready-label">Ready to read, no setup</span>
-                  <div className="home-ready-list">
-                    {repos.slice(0, 9).map((repo) => (
-                      <AppLink key={repo.id} className="home-ready-chip" href={`/${encodeURIComponent(repo.id)}`}>
-                        {repo.repo.split("/").pop()}
-                        <span>{primaryLanguage(repo)}</span>
-                      </AppLink>
-                    ))}
-                    {repos.length > 9 && (
-                      <AppLink className="home-ready-chip is-more" href="/browse">
-                        +{repos.length - 9} more
-                      </AppLink>
-                    )}
-                  </div>
-                </div>
-              )}
               <div className="home-entry">
                 <RepositoryEntry repos={repos} />
                 <p className="home-url-tip">
@@ -372,18 +354,6 @@ export default function Landing({ browse = false }: { browse?: boolean }) {
               </div>
             </div>
             <HomeMap repos={repos} />
-          </section>
-          <section className="home-example" aria-label="Try a real example">
-            <div className="home-example-intro">
-              <h2>
-                Ask one question. <span className="dim">Land on the exact lines.</span>
-              </h2>
-              <p className="home-sub">
-                Each step is a call the index recorded. Click one to read the source
-                it points at. No account or API key needed.
-              </p>
-            </div>
-            <FirstVisitExplorer />
           </section>
         </div>
       ) : (
