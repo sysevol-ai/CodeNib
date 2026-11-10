@@ -127,11 +127,32 @@ pre,
   background: var(--bg);
 }
 
+/* The header keeps codenib.ai's frame, so the logo and links stay where they
+   were when a reader moves between the homepage and the blog. */
+.site-header .wrap {
+  width: min(100%, 1600px);
+  padding-inline: clamp(18px, 4vw, 64px);
+}
+
 .nav {
   height: 64px;
   display: flex;
   align-items: center;
-  gap: 26px;
+  gap: 28px;
+}
+
+.nav-github {
+  display: flex;
+}
+
+.nav-github svg {
+  width: 20px;
+  height: 20px;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .brand {
@@ -167,11 +188,11 @@ pre,
   gap: 8px;
   border: 1px solid transparent;
   border-radius: var(--r-ui);
-  padding: 9px 17px;
+  padding: 9px 18px;
   background: var(--button);
   color: var(--button-ink);
   font-size: 14.5px;
-  font-weight: 570;
+  font-weight: 560;
   line-height: 1.4;
   white-space: nowrap;
   transition: background 150ms ease, border-color 150ms ease;
@@ -494,7 +515,7 @@ pre,
   margin: 25px 0;
   border: 1px solid #2a2b2f;
   border-radius: var(--r-ui);
-  background: #0c0d0f;
+  background: #0e0f11;
   color: #e2e8f0;
   padding: 22px 24px;
   font-size: 14px;
@@ -916,7 +937,7 @@ pre,
   }
 
   .nav {
-    gap: 13px;
+    gap: 12px;
   }
 
   .brand img {
@@ -927,10 +948,6 @@ pre,
   .nav-docs,
   .nav-github {
     display: none;
-  }
-
-  .nav .btn {
-    padding-inline: 12px;
   }
 
   .index-hero {

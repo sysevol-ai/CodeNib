@@ -42,6 +42,11 @@
   --accent-border: #a8c7fa;
   --accent-ink: #041e49;      /* text on --accent-soft, 14:1 */
   --accent-contrast: #ffffff;
+  /* The filled primary button. It is neutral, like codenib.ai's, so blue stays
+     for links and for what is selected. */
+  --action: #1f1f1f;
+  --action-hover: #000000;
+  --action-ink: #ffffff;
   --focus-ring: 0 0 0 3px rgba(11, 87, 208, 0.15);
 
   /* Folded into the accent family: one accent, no extra hues. */
@@ -116,6 +121,10 @@
   --accent-border: rgba(138, 180, 248, 0.4);
   --accent-ink: #d3e3fd;
   --accent-contrast: #062e6f;  /* 6.1:1 on --accent */
+  --action: #e8eaed;
+  --action-hover: #ffffff;
+  --action-ink: #121315;       /* 15.4:1 on --action */
+  color-scheme: dark;
   --focus-ring: 0 0 0 3px rgba(138, 180, 248, 0.3);
   --code-bg: #17181b;
   --code-line-active: rgba(138, 180, 248, 0.16);
@@ -233,21 +242,35 @@ pre {
   border-bottom: 1px solid var(--border);
   /* Sticky chrome can pass over prose and source while the page scrolls. It
      must be fully opaque or comments remain visible through its labels. */
-  background: var(--bg-surface);
+  background: var(--bg-page);
   backdrop-filter: none;
+}
+/* The brand is the same logotype, at the same size, as codenib.ai's header. */
+[data-theme="dark"] .site-header {
+  border-bottom-color: rgba(232, 234, 237, 0.09);
 }
 .site-header .brand {
   display: flex;
   align-items: center;
-  gap: 9px;
-  font-weight: var(--fw-strong);
-  font-size: var(--fs-h4);
-  letter-spacing: 0;
+  flex-shrink: 0;
   color: var(--text);
 }
-.site-header .brand .brand-mark {
-  height: 21px;
+.site-header .brand .brand-logo {
+  display: block;
+  height: 32px;
   width: auto;
+}
+.site-header .brand .brand-logo.for-dark,
+[data-theme="dark"] .site-header .brand .brand-logo.for-light {
+  display: none;
+}
+[data-theme="dark"] .site-header .brand .brand-logo.for-dark {
+  display: block;
+}
+@media (max-width: 540px) {
+  .site-header .brand .brand-logo {
+    height: 28px;
+  }
 }
 .site-header .header-right {
   margin-left: auto;
@@ -262,8 +285,8 @@ pre {
   color: var(--muted);
 }
 .site-header .header-link {
-  font-size: var(--fs-caption);
-  font-weight: var(--fw-strong);
+  font-size: 14.5px;
+  font-weight: var(--fw-regular);
   color: var(--text-secondary);
   transition: color 0.15s;
 }
@@ -1632,8 +1655,8 @@ pre {
   border-color: var(--accent);
 }
 .composer button {
-  background: var(--accent);
-  color: var(--accent-contrast);
+  background: var(--action);
+  color: var(--action-ink);
   border: none;
   border-radius: var(--radius-lg);
   padding: 0 22px;
@@ -2260,8 +2283,8 @@ pre {
   padding: 8px 18px;
   border: none;
   border-radius: var(--radius-md);
-  background: var(--accent);
-  color: #fff;
+  background: var(--action);
+  color: var(--action-ink);
   cursor: pointer;
   font-size: var(--fs-small);
 }
@@ -4861,7 +4884,8 @@ a.codepanel-name:hover {
 }
 .preview-actions { margin: 20px auto 14px; }
 .preview-actions a { font-size: var(--fs-small); }
-.preview-actions .btn-primary { background: var(--accent); color: var(--accent-contrast); border-color: var(--accent); font-weight: var(--fw-strong); }
+.preview-actions .btn-primary { background: var(--action); color: var(--action-ink); border-color: var(--action); font-weight: 560; }
+.preview-actions .btn-primary:hover { background: var(--action-hover); border-color: var(--action-hover); color: var(--action-ink); }
 .preview-label { color: var(--muted); font-size: var(--fs-caption); }
 .preview-footer { padding: 28px 20px; font-size: var(--fs-caption); color: var(--muted); }
 .wiki-preview-footer { border-top: 1px solid var(--border); }
@@ -4985,8 +5009,9 @@ a.codepanel-name:hover {
 .repository-entry label { display: block; font-size: var(--fs-caption); font-weight: var(--fw-strong); margin-bottom: 8px; }
 .repository-entry-row { display: flex; gap: 8px; }
 .repository-entry-row input { flex: 1; min-width: 0; padding: 14px 16px; border: 1px solid var(--border-strong); border-radius: var(--radius-md); background: var(--bg-surface); color: var(--text-primary); font: inherit; }
-.repository-entry-row button { flex-shrink: 0; border-radius: var(--radius-md); padding: 12px 20px; font: inherit; font-weight: var(--fw-strong); cursor: pointer; border: 1px solid var(--accent-border); }
-.repository-entry-row .btn-primary { background: var(--accent); color: var(--accent-contrast); }
+.repository-entry-row button { flex-shrink: 0; border-radius: var(--radius-md); padding: 12px 24px; font: inherit; font-size: 15.5px; font-weight: 560; cursor: pointer; border: 1px solid var(--accent-border); }
+.repository-entry-row .btn-primary { background: var(--action); color: var(--action-ink); border-color: var(--action); }
+.repository-entry-row .btn-primary:hover { background: var(--action-hover); border-color: var(--action-hover); color: var(--action-ink); }
 .repository-entry-row input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .repository-entry p { margin: 10px 0; line-height: 1.6; }
 .repository-examples { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
@@ -5201,14 +5226,17 @@ a.codepanel-name:hover {
 .home-entry .repository-entry-row input::placeholder {
   color: var(--h-muted);
 }
+/* The home stage is dark in both themes, so its primary button is the
+   near-white one codenib.ai uses; blue stays for links and the trace. */
 .home-entry .repository-entry-row .btn-primary {
-  border-color: var(--h-accent);
-  background: var(--h-accent);
-  color: #062e6f;
+  border-color: #e8eaed;
+  background: #e8eaed;
+  color: #121315;
 }
 .home-entry .repository-entry-row .btn-primary:hover {
-  border-color: #aecbfa;
-  background: #aecbfa;
+  border-color: #ffffff;
+  background: #ffffff;
+  color: #121315;
 }
 .home-entry .wiki-repository-rules {
   color: var(--h-muted);
@@ -5952,3 +5980,19 @@ a.codepanel-name:hover {
   margin-top: 4px;
   color: var(--text-muted);
 }
+
+/* The home catalog's own error line: quiet text with the same outline button
+   the saved-Wiki pages use, in place of an unstyled native button. */
+.browse-error { color: var(--text-secondary); font-size: var(--fs-small); }
+.browse-error .btn-ghost {
+  margin-left: 8px;
+  padding: 7px 12px;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--fs-caption);
+  background: transparent;
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+.browse-error .btn-ghost:hover { color: var(--text-primary); border-color: var(--text-muted); }
