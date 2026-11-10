@@ -25,9 +25,14 @@ button:focus-visible, a:focus-visible, .source-scroll:focus-visible { outline: 3
 .step { color: var(--text-secondary, #64748b); font-size: 11px; }
 .node-title { font-size: 12px; font-weight: 650; }
 .node code { font-size: 10.5px; letter-spacing: -.02em; overflow-wrap: anywhere; color: var(--text-secondary, #475569); }
-.node:hover, .node[aria-pressed="true"], .node.connected { border-color: var(--accent, #2563eb); background: var(--accent-soft, #eff6ff); }
+.node:hover { border-color: var(--explore-step-line, #94a3b8); }
+.node[aria-pressed="true"] { border-color: var(--accent, #2563eb); background: var(--accent-soft, #eff6ff); }
+/* A selected call is the arrow; its two ends only step forward, so one thing is in the accent. */
+.node.connected { border-color: var(--explore-step-line, #94a3b8); }
+.node.connected .step, .node.connected code { color: var(--text-primary, #0f172a); }
 .edge { padding: 0; min-height: 44px; background: transparent; border: 0; color: var(--text-secondary, #64748b); font-size: 22px; }
-.edge:hover, .edge[aria-pressed="true"] { color: var(--accent, #2563eb); background: var(--accent-soft, #eff6ff); border-radius: 4px; }
+.edge:hover, .edge[aria-pressed="true"] { color: var(--accent, #2563eb); }
+.edge[aria-pressed="true"] span { font-weight: 700; }
 .answer { display: flex; gap: 9px; margin: 0 24px; font-size: 13px; color: var(--text-secondary, #475569); }
 .answer-marker { color: var(--accent, #2563eb); font-size: 20px; }
 .answer code { font-size: 12px; color: var(--text-primary, #0f172a); }
@@ -37,14 +42,15 @@ button:focus-visible, a:focus-visible, .source-scroll:focus-visible { outline: 3
 a { color: var(--accent, #2563eb); text-decoration: none; }
 a:hover { text-decoration: underline; }
 .source-link { color: #93c5fd; white-space: nowrap; }
-.source-scroll { --code-lh: 1.65; flex: 1 1 266px; min-height: 266px; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; font-family: ui-monospace, monospace; font-size: var(--code-size, 12px); line-height: var(--code-lh); }
+/* Whole pixels: Safari snaps each row to one, and the band must land on the same rows. */
+.source-scroll { --code-lh: 20px; flex: 1 1 266px; min-height: 266px; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; font-family: ui-monospace, monospace; font-size: var(--code-size, 12px); line-height: var(--code-lh); }
 .source-code { position: relative; display: flex; min-width: max-content; }
 pre { position: relative; margin: 0; padding: 12px 14px 12px 0; font: inherit; tab-size: 4; }
 .line-numbers { position: relative; flex: 0 0 40px; padding: 12px 10px 12px 0; color: #94a3b8; text-align: right; user-select: none; }
 .code-line { display: block; }
 .code-line.selected { color: #dbeafe; }
 .code-line.gap { color: #64748b; letter-spacing: .1em; }
-.line-highlight { position: absolute; inset-inline: 0; top: calc(12px + var(--selected-row) * var(--code-lh) * 1em); height: calc(var(--code-lh) * 1em); background: var(--explore-code-line, #1e3a5f); box-shadow: inset 3px 0 var(--explore-code-mark, #60a5fa); }
+.line-highlight { position: absolute; inset-inline: 0; top: calc(12px + var(--selected-row) * var(--code-lh)); height: var(--code-lh); background: var(--explore-code-line, #1e3a5f); box-shadow: inset 3px 0 var(--explore-code-mark, #60a5fa); }
 .hljs-keyword { color: #ff9da4; }
 .hljs-string { color: #a5d6ff; }
 .hljs-comment { color: #9caec4; }
@@ -98,7 +104,7 @@ footer { display: flex; justify-content: space-between; gap: 12px; padding: 16px
 @container explorer (min-width: 1180px) {
   article { grid-template-columns: minmax(340px, 36%) minmax(0, 1fr); }
   /* The pane grows with the excerpt, so the larger face never hides its last lines. */
-  .source-scroll { --code-size: 13.5px; --code-lh: 1.7; flex: 1 1 auto; }
+  .source-scroll { --code-size: 13.5px; --code-lh: 23px; flex: 1 1 auto; }
 }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }
 `;
