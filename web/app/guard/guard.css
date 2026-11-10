@@ -37,8 +37,8 @@
 .guard-links { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; font-size: var(--fs-small) !important; }
 .guard-links a { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
 .guard-links a.guard-install {
-  padding: 10px 18px; border-radius: var(--radius-md); background: var(--accent); color: var(--accent-contrast);
-  text-decoration: none; font-weight: var(--fw-strong);
+  padding: 10px 18px; border-radius: var(--radius-md); background: var(--action); color: var(--action-ink);
+  text-decoration: none; font-weight: 560;
 }
 .guard-links a.guard-install:hover { filter: brightness(0.92); }
 

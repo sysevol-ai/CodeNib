@@ -80,7 +80,8 @@ export default function Header({
   return (
     <header className="site-header">
       <AppLink href="/" className="brand">
-        <img className="brand-mark" src={assetUrl("/codenib-icon.svg")} alt="" /> CodeNib
+        <img className="brand-logo for-light" src={assetUrl("/codenib-logo.svg")} alt="CodeNib" width={101} height={32} />
+        <img className="brand-logo for-dark" src={assetUrl("/codenib-logo-dark.svg")} alt="CodeNib" width={101} height={32} />
       </AppLink>
       {center}
       <div className="header-right">
