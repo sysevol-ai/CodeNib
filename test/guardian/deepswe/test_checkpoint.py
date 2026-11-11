@@ -173,10 +173,11 @@ def _make_starter(tmp_path, marker):
     if sys.platform == "win32":
         starter = tmp_path / "guardian_start.py"
         starter.write_text(
-            f"from pathlib import Path\nPath({str(marker)!r}).write_text('started', encoding='utf-8')\n",
+            "from pathlib import Path\n"
+            f"Path({str(marker)!r}).write_text('started', encoding='utf-8')\n",
             encoding="utf-8",
         )
-        return f'"{sys.executable}" "{starter}"'
+        return '"{}" "{}"'.format(sys.executable, starter)
     starter = tmp_path / "guardian-start"
     starter.write_text(
         f"#!/bin/sh\nprintf started > {marker}\n",
