@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Callable, Mapping
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from time import perf_counter
 from typing import Any, Iterable, List
@@ -1447,16 +1448,34 @@ def _audit_wiki_page(builder: Any, page_id: str) -> tuple[dict[str, Any], bool]:
     return {**detail, "ready": not failures, "failures": failures}, True
 
 
+# A page whose generation lock wait timed out was not written; another page
+# held a shared lock (evidence retrieval) for too long. Try it again.
+_BUSY_ERROR_PREFIX = "WikiGenerationBusyError"
+_BUSY_RETRIES = 2
+
+
+def _write_wiki_page(builder: Any, page_id: str) -> tuple[dict[str, Any], bool, float]:
+    started = perf_counter()
+    for _attempt in range(_BUSY_RETRIES + 1):
+        detail, generated = _audit_wiki_page(builder, page_id)
+        if not str(detail.get("error") or "").startswith(_BUSY_ERROR_PREFIX):
+            break
+    return detail, generated, perf_counter() - started
+
+
 def audit_wiki(
     builder: Any,
     *,
     progress: Callable[[dict[str, Any]], None] | None = None,
+    workers: int = 1,
 ) -> dict[str, Any]:
     """Generate and audit every page in the builder's current page tree.
 
     ``progress`` receives one ``outline`` event once the page tree is known,
     then one ``page`` event as each page is written and checked, so a caller
-    can show how far a long run has got.
+    can show how far a long run has got. With ``workers`` above one, pages are
+    written concurrently; the builder serializes what pages share, and the
+    report keeps the page tree's order.
     """
 
     started = perf_counter()
@@ -1471,28 +1490,48 @@ def audit_wiki(
                 "seconds": perf_counter() - started,
             }
         )
-    details = []
-    generated_pages = 0
+    results: list[tuple[dict[str, Any], bool]] = [({}, False)] * len(page_ids)
     writing = perf_counter()
-    for index, page_id in enumerate(page_ids, start=1):
-        page_started = perf_counter()
-        detail, generated = _audit_wiki_page(builder, page_id)
-        generated_pages += generated
-        details.append(detail)
+    done = 0
+
+    def finish(index: int, written: tuple[dict[str, Any], bool, float]) -> None:
+        nonlocal done
+        detail, generated, seconds = written
+        results[index] = (detail, generated)
+        done += 1
         if progress is not None:
+            page_id = page_ids[index]
             progress(
                 {
                     "event": "page",
-                    "done": index,
+                    "done": done,
                     "total": len(page_ids),
                     "id": page_id,
                     "title": titles.get(page_id) or page_id,
                     "ready": bool(detail.get("ready")),
                     "failures": list(detail.get("failures") or []),
-                    "seconds": perf_counter() - page_started,
+                    "seconds": seconds,
                     "elapsed": perf_counter() - writing,
                 }
             )
+
+    pool_size = min(max(1, int(workers)), len(page_ids))
+    if pool_size <= 1:
+        for index, page_id in enumerate(page_ids):
+            finish(index, _write_wiki_page(builder, page_id))
+    else:
+        with ThreadPoolExecutor(
+            max_workers=pool_size, thread_name_prefix="codenib-wiki-page"
+        ) as executor:
+            futures = {
+                executor.submit(_write_wiki_page, builder, page_id): index
+                for index, page_id in enumerate(page_ids)
+            }
+            # Progress is reported from this thread, as each page finishes.
+            for future in as_completed(futures):
+                finish(futures[future], future.result())
+    details = [detail for detail, _generated in results]
+    generated_pages = sum(generated for _detail, generated in results)
 
     expected_pages = len(page_ids)
     ready_pages = sum(bool(item.get("ready")) for item in details)

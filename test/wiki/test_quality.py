@@ -1393,6 +1393,66 @@ def test_wiki_audit_reports_progress_for_the_outline_and_each_page():
     assert events[2]["elapsed"] >= events[2]["seconds"] >= 0
 
 
+def test_wiki_audit_writes_pages_concurrently_and_keeps_the_tree_order():
+    import threading
+    import time
+
+    ready = _page(repeated_prose=False)
+    ids = [f"p{index}" for index in range(6)]
+    state = {"active": 0, "peak": 0}
+    guard = threading.Lock()
+
+    class Builder:
+        def page_tree(self):
+            return [{"id": page_id, "title": page_id.upper()} for page_id in ids]
+
+        def page(self, page_id):
+            with guard:
+                state["active"] += 1
+                state["peak"] = max(state["peak"], state["active"])
+            # Later pages finish first, so completion order differs.
+            time.sleep(0.02 * (len(ids) - ids.index(page_id)))
+            with guard:
+                state["active"] -= 1
+            return {**ready, "id": page_id, "title": page_id.upper()}
+
+    events = []
+    report = audit_wiki(Builder(), progress=events.append, workers=3)
+
+    assert state["peak"] > 1
+    assert [detail["id"] for detail in report["details"]] == ids
+    assert report["generated_pages"] == report["expected_pages"] == 6
+    pages = [event for event in events if event["event"] == "page"]
+    assert [event["done"] for event in pages] == [1, 2, 3, 4, 5, 6]
+    assert sorted(event["id"] for event in pages) == ids
+    assert [event["id"] for event in pages] != ids
+
+
+def test_wiki_audit_retries_a_page_whose_generation_lock_timed_out():
+    from codenib.wiki.store import WikiGenerationBusyError
+
+    ready = _page(repeated_prose=False)
+    ready["id"] = "overview"
+    calls = []
+
+    class Builder:
+        def page_tree(self):
+            return [{"id": "overview", "title": "Overview"}]
+
+        def page(self, page_id):
+            calls.append(page_id)
+            if len(calls) == 1:
+                raise WikiGenerationBusyError("Wiki generation lock wait timed out")
+            return ready
+
+    events = []
+    report = audit_wiki(Builder(), progress=events.append, workers=2)
+
+    assert calls == ["overview", "overview"]
+    assert report["generated_pages"] == 1
+    assert [event["event"] for event in events] == ["outline", "page"]
+
+
 def test_wiki_audit_reports_missing_and_failed_pages_without_stopping():
     class Builder:
         def page_tree(self):

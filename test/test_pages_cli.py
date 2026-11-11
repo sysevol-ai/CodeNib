@@ -176,8 +176,9 @@ def build(tmp_path, monkeypatch):
     monkeypatch.setattr("codenib.web.static_export.export_cached_wiki", export)
     calls["report"] = {"passed": True, "expected_pages": 2, "ready_pages": 2}
 
-    def audit(_local, _parts, progress=None):
+    def audit(_local, _parts, progress=None, workers=1):
         calls["progress"] = progress
+        calls["workers"] = workers
         return calls["report"]
 
     monkeypatch.setattr(cli, "_audit_local_wiki", audit)
@@ -226,6 +227,47 @@ def test_build_publishes_nothing_when_the_wiki_fails_its_checks(build, capsys):
 
     assert calls["exported"] is None and calls["saved"] is None
     assert "was left as it was" in capsys.readouterr().out
+
+
+def test_build_writes_four_pages_at_a_time_unless_told_otherwise(build):
+    calls, argv = build
+
+    assert cli.run(argv) == 0
+    assert calls["workers"] == 4
+    assert cli.run([*argv, "--workers", "1"]) == 0
+    assert calls["workers"] == 1
+
+
+@pytest.mark.parametrize("workers", ["0", "9", "two"])
+def test_build_rejects_a_worker_count_outside_one_to_eight(build, workers):
+    _calls, argv = build
+
+    with pytest.raises(SystemExit) as exc:
+        cli.run([*argv, "--workers", workers])
+    assert exc.value.code == 2
+
+
+def test_the_time_left_shares_the_remaining_pages_among_the_workers(capsys):
+    show = cli._pages_progress_printer("m", workers=4)
+
+    show({"event": "outline", "total": 35, "seconds": 44})
+    # The first page of four in flight finished after 22 s: 34 pages are
+    # left at about 22 s each, four at a time, so about 3 minutes.
+    show(
+        {
+            "event": "page",
+            "done": 1,
+            "total": 35,
+            "id": "a",
+            "title": "A",
+            "ready": True,
+            "failures": [],
+            "seconds": 22,
+            "elapsed": 22,
+        }
+    )
+
+    assert capsys.readouterr().out.splitlines()[1].endswith("about 3 min left")
 
 
 def test_full_build_skips_the_earlier_wiki(build):
