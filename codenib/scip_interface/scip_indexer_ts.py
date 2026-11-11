@@ -14,7 +14,6 @@ import os
 import re
 import shutil
 import subprocess
-import sys
 import time
 from pathlib import Path
 from typing import List, Optional, Union
@@ -36,6 +35,12 @@ _LOCKFILE_NAMES = (
     "bun.lock",
     "bun.lockb",
 )
+
+
+def _resolve_executable(name: str) -> str:
+    """Resolve ``name`` through PATH (PATHEXT-aware on Windows), else keep it."""
+
+    return shutil.which(name) or name
 
 
 def _anchor_tsconfig_pattern(base_dir: Path, pattern: str) -> str:
@@ -102,7 +107,7 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
         Returns:
             bool: True if scip-typescript is available, False otherwise
         """
-        executable = shutil.which("scip-typescript") or "scip-typescript"
+        executable = _resolve_executable("scip-typescript")
         try:
             result = subprocess.run(
                 [executable, "--version"],
@@ -219,12 +224,11 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
             logger.info("pnpm needed but not installed; installing via npm...")
             try:
                 subprocess.run(
-                    ["npm", "install", "-g", "pnpm"],
+                    [_resolve_executable("npm"), "install", "-g", "pnpm"],
                     check=True,
                     capture_output=True,
                     text=True,
                     timeout=120,
-                    shell=sys.platform == "win32",
                 )
                 logger.info("pnpm installed successfully")
             except Exception as e:
@@ -311,11 +315,10 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
         for tool in dict.fromkeys(["node", cmd[0]]):
             try:
                 result = subprocess.run(
-                    [tool, "--version"],
+                    [_resolve_executable(tool), "--version"],
                     capture_output=True,
                     text=True,
                     timeout=10,
-                    shell=sys.platform == "win32",
                 )
                 versions[tool] = result.stdout.strip() or None
             except (OSError, subprocess.SubprocessError):
@@ -391,13 +394,12 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
         logger.info("Installing TypeScript dependencies: %s", " ".join(cmd))
         try:
             subprocess.run(
-                cmd,
+                [_resolve_executable(cmd[0]), *cmd[1:]],
                 check=True,
                 cwd=self.project_root,
                 capture_output=True,
                 text=True,
                 timeout=timeout_sec,
-                shell=sys.platform == "win32",
             )
             # Cache: write lockfile hash so next call can skip if unchanged
             sentinel = self._install_sentinel
@@ -432,13 +434,12 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
             logger.info("Retrying without frozen lockfile: %s", " ".join(fallback_cmd))
             try:
                 subprocess.run(
-                    fallback_cmd,
+                    [_resolve_executable(fallback_cmd[0]), *fallback_cmd[1:]],
                     check=True,
                     cwd=self.project_root,
                     capture_output=True,
                     text=True,
                     timeout=timeout_sec,
-                    shell=sys.platform == "win32",
                 )
                 return True
             except Exception as e2:

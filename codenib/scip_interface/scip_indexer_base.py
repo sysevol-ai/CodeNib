@@ -327,10 +327,8 @@ class SCIPIndexerBase(ABC):
                 env = self._index_environment()
 
                 exec_cmd = list(cmd)
-                if exec_cmd and not Path(exec_cmd[0]).is_file():
-                    resolved_bin = shutil.which(exec_cmd[0])
-                    if resolved_bin:
-                        exec_cmd[0] = resolved_bin
+                if exec_cmd:
+                    exec_cmd[0] = shutil.which(exec_cmd[0]) or exec_cmd[0]
 
                 subprocess.run(
                     exec_cmd,
