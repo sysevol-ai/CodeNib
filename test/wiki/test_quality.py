@@ -1361,6 +1361,38 @@ def test_wiki_audit_generates_nested_pages_and_requires_generated_mode():
     assert report["details"][1]["failures"] == ["generation:degraded"]
 
 
+def test_wiki_audit_reports_progress_for_the_outline_and_each_page():
+    ready = _page(repeated_prose=False)
+    ready["id"] = "overview"
+
+    class Builder:
+        def page_tree(self):
+            return [
+                {
+                    "id": "overview",
+                    "title": "Overview",
+                    "children": [{"id": "runtime", "title": "Runtime"}],
+                }
+            ]
+
+        def page(self, page_id):
+            return {"overview": ready}.get(page_id)
+
+    events = []
+    audit_wiki(Builder(), progress=events.append)
+
+    assert [event["event"] for event in events] == ["outline", "page", "page"]
+    assert events[0]["total"] == 2
+    assert [(e["done"], e["id"], e["title"]) for e in events[1:]] == [
+        (1, "overview", "Overview"),
+        (2, "runtime", "Runtime"),
+    ]
+    assert events[1]["ready"] is True
+    assert events[2]["ready"] is False
+    assert events[2]["failures"] == ["generation:missing"]
+    assert events[2]["elapsed"] >= events[2]["seconds"] >= 0
+
+
 def test_wiki_audit_reports_missing_and_failed_pages_without_stopping():
     class Builder:
         def page_tree(self):

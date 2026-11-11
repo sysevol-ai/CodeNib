@@ -8,8 +8,9 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
+from time import perf_counter
 from typing import Any, Iterable, List
 
 from .evidence import (
@@ -1393,47 +1394,105 @@ def _readiness_failures(detail: dict[str, Any]) -> list[str]:
     return failures
 
 
-def audit_wiki(builder: Any) -> dict[str, Any]:
-    """Generate and audit every page in the builder's current page tree."""
+def _wiki_page_titles(tree: Iterable[dict[str, Any]]) -> dict[str, str]:
+    """Map each page id in a Wiki page tree to its planned title."""
 
-    page_ids = _wiki_page_ids(builder.page_tree())
-    details = []
-    generated_pages = 0
-    for page_id in page_ids:
-        try:
-            page = builder.page(page_id)
-        except Exception as exc:  # noqa: BLE001 - report all page failures
-            details.append(
-                {
-                    "id": page_id,
-                    "title": page_id,
-                    "ready": False,
-                    "failures": ["generation:error"],
-                    "error": f"{type(exc).__name__}: {exc}",
-                }
-            )
-            continue
-        if not isinstance(page, dict):
-            details.append(
-                {
-                    "id": page_id,
-                    "title": page_id,
-                    "ready": False,
-                    "failures": ["generation:missing"],
-                    "error": "page builder returned no page",
-                }
-            )
-            continue
-        generated_pages += 1
-        detail = audit_page(page)
-        failures = _readiness_failures(detail)
-        details.append(
+    titles: dict[str, str] = {}
+
+    def visit(items: Iterable[dict[str, Any]]) -> None:
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            page_id = str(item.get("id") or "").strip()
+            title = str(item.get("title") or "").strip()
+            if page_id and title:
+                titles.setdefault(page_id, title)
+            children = item.get("children") or []
+            if isinstance(children, list):
+                visit(children)
+
+    visit(tree)
+    return titles
+
+
+def _audit_wiki_page(builder: Any, page_id: str) -> tuple[dict[str, Any], bool]:
+    """Generate and audit one page; return its detail and whether it exists."""
+
+    try:
+        page = builder.page(page_id)
+    except Exception as exc:  # noqa: BLE001 - report all page failures
+        return (
             {
-                **detail,
-                "ready": not failures,
-                "failures": failures,
+                "id": page_id,
+                "title": page_id,
+                "ready": False,
+                "failures": ["generation:error"],
+                "error": f"{type(exc).__name__}: {exc}",
+            },
+            False,
+        )
+    if not isinstance(page, dict):
+        return (
+            {
+                "id": page_id,
+                "title": page_id,
+                "ready": False,
+                "failures": ["generation:missing"],
+                "error": "page builder returned no page",
+            },
+            False,
+        )
+    detail = audit_page(page)
+    failures = _readiness_failures(detail)
+    return {**detail, "ready": not failures, "failures": failures}, True
+
+
+def audit_wiki(
+    builder: Any,
+    *,
+    progress: Callable[[dict[str, Any]], None] | None = None,
+) -> dict[str, Any]:
+    """Generate and audit every page in the builder's current page tree.
+
+    ``progress`` receives one ``outline`` event once the page tree is known,
+    then one ``page`` event as each page is written and checked, so a caller
+    can show how far a long run has got.
+    """
+
+    started = perf_counter()
+    tree = builder.page_tree()
+    page_ids = _wiki_page_ids(tree)
+    titles = _wiki_page_titles(tree)
+    if progress is not None:
+        progress(
+            {
+                "event": "outline",
+                "total": len(page_ids),
+                "seconds": perf_counter() - started,
             }
         )
+    details = []
+    generated_pages = 0
+    writing = perf_counter()
+    for index, page_id in enumerate(page_ids, start=1):
+        page_started = perf_counter()
+        detail, generated = _audit_wiki_page(builder, page_id)
+        generated_pages += generated
+        details.append(detail)
+        if progress is not None:
+            progress(
+                {
+                    "event": "page",
+                    "done": index,
+                    "total": len(page_ids),
+                    "id": page_id,
+                    "title": titles.get(page_id) or page_id,
+                    "ready": bool(detail.get("ready")),
+                    "failures": list(detail.get("failures") or []),
+                    "seconds": perf_counter() - page_started,
+                    "elapsed": perf_counter() - writing,
+                }
+            )
 
     expected_pages = len(page_ids)
     ready_pages = sum(bool(item.get("ready")) for item in details)

@@ -1560,8 +1560,10 @@ def _run_pages_build(args: argparse.Namespace) -> int:
             )
         else:
             print(f"Wiki: writing every page ({carried.reason}).")
-    report = _audit_local_wiki(local, parts)
-    _print_wiki_audit(report)
+    report = _audit_local_wiki(
+        local, parts, progress=_pages_progress_printer(model_backend.model)
+    )
+    _print_wiki_audit(report, verdict=False)
     details = [item for item in report.get("details") or [] if isinstance(item, dict)]
     ready = {str(item.get("id")) for item in details if item.get("ready")}
     expected = int(report.get("expected_pages") or 0)
@@ -1589,7 +1591,8 @@ def _run_pages_build(args: argparse.Namespace) -> int:
     except (OSError, RuntimeError, ValueError) as exc:
         raise CLIError(str(exc)) from exc
     print(f"Static Wiki: {result.output_dir}")
-    print(f"Pages:       {result.page_count} of {expected} ({saved} kept for later)")
+    print(f"Published:   {result.page_count} of {expected} pages")
+    print(f"Saved:       {saved} page(s), reused while their code is unchanged")
     left_out = sorted(str(item.get("id")) for item in details if not item.get("ready"))
     if left_out:
         print(f"Left out:    {', '.join(left_out)} (written again on the next commit)")
@@ -1762,13 +1765,13 @@ def _local_agent_wiki(local):
     return bundle, model, builder
 
 
-def _audit_local_wiki(local, builder_parts=None) -> dict[str, object]:
+def _audit_local_wiki(local, builder_parts=None, progress=None) -> dict[str, object]:
     """Audit the prepared local Wiki, generating every page it still lacks."""
 
     from .wiki.quality import audit_wiki
 
     bundle, model, builder = builder_parts or _local_agent_wiki(local)
-    report = audit_wiki(builder)
+    report = audit_wiki(builder, progress=progress)
     return {
         "repository": bundle.entry.repo,
         "commit": bundle.entry.base_commit,
@@ -1777,7 +1780,50 @@ def _audit_local_wiki(local, builder_parts=None) -> dict[str, object]:
     }
 
 
-def _print_wiki_audit(report: dict[str, object], *, as_json: bool = False) -> None:
+def _short_duration(seconds: float) -> str:
+    whole = max(0, round(seconds))
+    if whole < 60:
+        return f"{whole} s"
+    minutes, rest = divmod(whole, 60)
+    return f"{minutes} min {rest} s" if rest else f"{minutes} min"
+
+
+def _pages_progress_printer(model: str):
+    """Print one flushed line per Wiki page, with an estimate of the time left."""
+
+    def show(event: dict[str, object]) -> None:
+        total = int(event.get("total") or 0)
+        if event.get("event") == "outline":
+            print(
+                f"Outline:     {total} pages, planned in "
+                f"{_short_duration(float(event.get('seconds') or 0))}; "
+                f"writing them with {model}.",
+                flush=True,
+            )
+            return
+        done = int(event.get("done") or 0)
+        status = "ready" if event.get("ready") else "left out"
+        line = (
+            f"  [{done:>{len(str(total))}}/{total}] {status:<8} "
+            f"{_short_duration(float(event.get('seconds') or 0)):>9}  "
+            f"{event.get('title') or event.get('id')}"
+        )
+        failures = [str(item) for item in event.get("failures") or []]
+        if not event.get("ready") and failures:
+            line += f" ({', '.join(failures)})"
+        if done and done < total:
+            left = float(event.get("elapsed") or 0) / done * (total - done)
+            if left >= 60:
+                left = round(left / 60) * 60
+            line += f"; about {_short_duration(left)} left"
+        print(line, flush=True)
+
+    return show
+
+
+def _print_wiki_audit(
+    report: dict[str, object], *, as_json: bool = False, verdict: bool = True
+) -> None:
     if as_json:
         print(json.dumps(report, indent=2, sort_keys=True))
         return
@@ -1797,7 +1843,8 @@ def _print_wiki_audit(report: dict[str, object], *, as_json: bool = False) -> No
         error = str(detail.get("error") or "").strip()
         suffix = f": {error}" if error else ""
         print(f"  FAIL {detail.get('id')}: {failures}{suffix}")
-    print("Result: PASS" if report.get("passed") else "Result: FAIL")
+    if verdict:
+        print("Result: PASS" if report.get("passed") else "Result: FAIL")
 
 
 def _manifest_embedding_route(

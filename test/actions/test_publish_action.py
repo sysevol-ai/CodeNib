@@ -500,6 +500,86 @@ def test_story_wiki_runs_before_the_state_is_saved() -> None:
     assert "::warning" not in script
     assert "WIKI_KEY_ENV" in steps[write]["env"]
     assert not any("wiki_api_key" in str(value) for value in steps[write]["env"])
+    # Each page's progress line reaches the log as it is written.
+    assert steps[write]["env"]["PYTHONUNBUFFERED"] == "1"
+
+
+_FAKE_CODENIB = """#!/usr/bin/env bash
+echo "$*" >> "$CALLS"
+case "$1" in
+  toolchain)
+    echo "  [MISSING] Java graph scip-java: not found"
+    exit "${TOOLCHAIN_STATUS:-0}"
+    ;;
+  index)
+    echo "  symbol_graph   fresh (0.87s)${GRAPH_NOTE:-}"
+    exit "${INDEX_STATUS:-0}"
+    ;;
+esac
+"""
+
+
+def _run_graph_step(tmp_path: Path, **env: str) -> subprocess.CompletedProcess:
+    action = _load(ACTION_PATH)
+    step = next(
+        step
+        for step in _steps(action)
+        if step.get("name") == "Index the code graph for the Wiki"
+    )
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    fake = bin_dir / "codenib"
+    fake.write_text(_FAKE_CODENIB, encoding="utf-8")
+    fake.chmod(0o755)
+    return subprocess.run(
+        ["bash", "-c", step["run"]],
+        env={
+            **os.environ,
+            "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+            "CALLS": str(tmp_path / "calls"),
+            "RUNNER_TEMP": str(tmp_path),
+            "INPUT_REPOSITORY_PATH": ".",
+            **env,
+        },
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+
+def test_a_missing_graph_provider_leaves_only_its_language_out(
+    tmp_path: Path,
+) -> None:
+    # One small Java file without scip-java used to skip the whole graph:
+    # the failed toolchain install stopped the step before indexing.
+    result = _run_graph_step(
+        tmp_path,
+        TOOLCHAIN_STATUS="1",
+        GRAPH_NOTE=" [partial: python; unavailable: java]",
+    )
+
+    assert result.returncode == 0, result.stderr
+    calls = (tmp_path / "calls").read_text(encoding="utf-8").splitlines()
+    assert calls == ["toolchain install . --scope graph", "index . --preset graph"]
+    assert (
+        "::warning title=CodeNib Wiki::No graph provider for java on this runner"
+        in result.stdout
+    )
+
+
+def test_the_graph_step_warns_only_when_a_language_is_left_out(
+    tmp_path: Path,
+) -> None:
+    result = _run_graph_step(tmp_path)
+
+    assert result.returncode == 0, result.stderr
+    assert "::warning" not in result.stdout
+
+
+def test_the_graph_step_reports_a_failed_index(tmp_path: Path) -> None:
+    result = _run_graph_step(tmp_path, INDEX_STATUS="2")
+
+    assert result.returncode == 2
 
 
 def test_reusable_workflow_passes_the_wiki_key_only_for_story_pages() -> None:

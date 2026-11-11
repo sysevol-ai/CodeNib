@@ -1802,7 +1802,7 @@ def test_wiki_audit_injects_local_native_authority_resolver(
     monkeypatch.setitem(
         sys.modules,
         "codenib.wiki.quality",
-        SimpleNamespace(audit_wiki=lambda _builder: {"passed": True}),
+        SimpleNamespace(audit_wiki=lambda _builder, **_kwargs: {"passed": True}),
     )
     local = SimpleNamespace(
         config_path=tmp_path / "config.yaml",

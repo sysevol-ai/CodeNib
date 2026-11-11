@@ -400,15 +400,27 @@ runs:
 
     - name: Index the code graph for the Wiki
       if: ${{ inputs.wiki == 'story' && inputs.wiki-graph == 'true' }}
-      # Story pages still publish without maps when a toolchain is missing.
+      # Story pages still publish without maps when the graph cannot be built.
       continue-on-error: true
       shell: bash
       env:
         INPUT_REPOSITORY_PATH: ${{ inputs.repository-path }}
+        PYTHONUNBUFFERED: "1"
       run: |
-        set -euo pipefail
-        codenib toolchain install "$INPUT_REPOSITORY_PATH" --scope graph
-        codenib index "$INPUT_REPOSITORY_PATH" --preset graph
+        set -uo pipefail
+        # A provider this runner cannot install, such as scip-java, leaves only
+        # its own language out: the index still builds the others' graph.
+        codenib toolchain install "$INPUT_REPOSITORY_PATH" --scope graph ||
+          echo "Some graph providers are missing; indexing the other languages."
+        log="$RUNNER_TEMP/codenib-graph-index.log"
+        status=0
+        codenib index "$INPUT_REPOSITORY_PATH" --preset graph 2>&1 | tee "$log" ||
+          status=$?
+        missing="$(sed -n 's/.*\[partial: [^;]*; unavailable: \([^]]*\)\].*/\1/p' "$log" | head -n 1)"
+        if [[ -n "$missing" ]]; then
+          echo "::warning title=CodeNib Wiki::No graph provider for ${missing} on this runner, so the Wiki's maps and call paths leave it out."
+        fi
+        exit "$status"
 
     - name: Write the model-written Wiki
       if: ${{ inputs.wiki == 'story' }}
@@ -423,6 +435,8 @@ runs:
         WIKI_FULL_REBUILD: ${{ inputs.wiki-full-rebuild }}
         WIKI_KEY_ENV: ${{ inputs.wiki-api-key-env }}
         WIKI_MODEL: ${{ inputs.wiki-model }}
+        # Show each page as it is written instead of all at the end.
+        PYTHONUNBUFFERED: "1"
       run: |
         set -euo pipefail
         command=(
