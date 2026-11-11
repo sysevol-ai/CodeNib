@@ -68,9 +68,12 @@ jobs:
         id: publish
         uses: ./.github/actions/publish
         env:
+          # Only this check may build pages from the index alone.
+          CODENIB_ACTION_INDEX_WIKI_CHECK: "1"
           CODENIB_ACTION_TEST_TOKEN: never-publish-this-value
         with:
           base-path: /publish-smoke
+          wiki: index
           cache: "false"
           repository-path: ${{ steps.fixture.outputs.path }}
           upload-context: "false"

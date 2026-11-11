@@ -26,6 +26,7 @@ To publish it on GitHub Pages:
 2. Run `codenib pages init` in the repository root. It writes
    `.github/workflows/codenib-wiki.yml` and prints the steps left in the
    repository's settings (the Pages source and the model key secret) and a
-   README badge. Pass `--wiki index` for pages that need no model.
+   README badge. A published Wiki is always written by a model, so the key
+   secret is required.
 3. Show the user the workflow and the printed steps. Do not commit or push
    unless they ask.

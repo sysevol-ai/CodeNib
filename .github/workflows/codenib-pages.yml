@@ -36,9 +36,9 @@ on:
         type: number
         default: 14
       wiki:
-        description: index for index-derived pages; story for model-written pages.
+        description: story, the only published kind; it needs the wiki_api_key secret.
         type: string
-        default: index
+        default: story
       model:
         description: LiteLLM model that writes story pages.
         type: string
@@ -56,7 +56,7 @@ on:
         description: Optional BYO embedding credential.
         required: false
       wiki_api_key:
-        description: Model key for story pages, such as an OpenRouter key.
+        description: Model key that writes the Wiki, such as an OpenRouter key.
         required: false
     outputs:
       page-url:
