@@ -583,27 +583,6 @@ button.run-step-title:hover {
   overflow: auto;
   font-size: var(--fs-caption);
 }
-.saved-wiki-sources {
-  margin-top: 24px;
-  font-size: var(--fs-caption);
-}
-.saved-wiki-sources summary {
-  color: var(--text-secondary);
-  cursor: pointer;
-}
-.saved-wiki-sources button {
-  display: block;
-  padding: 6px 0;
-  color: var(--accent);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  text-align: left;
-  background: none;
-  border: 0;
-  cursor: pointer;
-  overflow-wrap: anywhere;
-}
-
 /* --- Starting a Wiki: the snapshot's map, then the form --- */
 .own-start {
   display: grid;

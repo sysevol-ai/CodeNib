@@ -88,6 +88,8 @@ def prepare(*_args):
 @pytest.fixture(autouse=True)
 def local_index_only(monkeypatch):
     """Source preparation tests must not start an installed compiler tool."""
+    # No Python indexer: pin scip-python and find none.
+    monkeypatch.setenv("CODENIB_PYTHON_GRAPH_PROVIDER", "scip-python")
     monkeypatch.setattr(visitor_graph, "resolve_command", lambda _: None)
 
 
@@ -710,6 +712,8 @@ def test_skipping_large_members_preserves_archive_bounds(tmp_path, monkeypatch, 
 def test_real_source_preparation_enumerates_symbols_without_bm25_or_embeddings(
     tmp_path, monkeypatch
 ):
+    # No Python indexer: pin scip-python and find none.
+    monkeypatch.setenv("CODENIB_PYTHON_GRAPH_PROVIDER", "scip-python")
     monkeypatch.setattr(visitor_graph, "resolve_command", lambda _: None)
     monkeypatch.setattr(
         visitor_source,
@@ -759,7 +763,9 @@ def test_source_outline_opens_the_folder_that_holds_most_code():
 
 
 def test_source_outline_names_single_folder_chains_and_sums_the_rest():
-    paths = [f"src/app/m{i}.ts" for i in range(4)] + [f"tests/t{i}.py" for i in range(4)]
+    paths = [f"src/app/m{i}.ts" for i in range(4)] + [
+        f"tests/t{i}.py" for i in range(4)
+    ]
     paths += [f"pkg{i}/x.py" for i in range(3)] + ["setup.py"]
     outline = visitor_source.source_outline(paths, PY, limit=3)
     assert outline["root"] == ""

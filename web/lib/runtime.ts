@@ -9,6 +9,8 @@ declare global {
       experienceEvents?: boolean;
       // The hosted demo opens on the guard cases; a local Wiki keeps its home.
       home?: "wiki" | "guard";
+      // A static export publishes one repository's Wiki at the site root.
+      homeRepository?: string;
     };
   }
 }
@@ -34,6 +36,38 @@ export function apiBase(): string {
 
 export function guardHome(): boolean {
   return typeof window !== "undefined" && window.__CODENIB_RUNTIME__?.home === "guard";
+}
+
+/** The repository whose Wiki a static export serves at the site root. */
+export function homeRepository(): string | null {
+  if (!isStaticRuntime()) return null;
+  const value = window.__CODENIB_RUNTIME__?.homeRepository;
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+/**
+ * A published Wiki is served at the site root, its pages at /page/<id>/.
+ * Earlier exports served it at /<repo>/ and /<repo>/page/<id>/; move such an
+ * address to the root before the first render, keeping its query and
+ * fragment. Call after restoreStaticRoute().
+ */
+export function moveLegacyWikiRoute(): void {
+  const home = homeRepository();
+  if (!home) return;
+  const segments = stripBasePath(window.location.pathname).split("/").filter(Boolean);
+  let first = segments[0] ?? "";
+  try {
+    first = decodeURIComponent(first);
+  } catch {
+    return;
+  }
+  if (first !== home) return;
+  let target: string;
+  if (segments.length === 1) target = "/";
+  else if (segments.length === 3 && segments[1] === "page") target = `/page/${segments[2]}/`;
+  else return;
+  const { search, hash } = window.location;
+  window.history.replaceState(null, "", `${withBasePath(target)}${search}${hash}`);
 }
 
 export function isStaticRuntime(): boolean {

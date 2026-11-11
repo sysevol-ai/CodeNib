@@ -16,6 +16,11 @@ Installed as a hook, it runs each time Claude Code or Codex is about to finish.
 If the change reaches tests, the agent gets the list and the command that runs
 them, and keeps working.
 
+!!! note "Preview"
+    The guard is a preview in CodeNib 0.2.6 and supports Python only. It lists
+    tests a change can reach; it has not been shown to reduce the regressions
+    agents introduce. See [How well it works](#how-well-it-works).
+
 ## How it decides what is at risk
 
 - **Changed code.** Each changed line maps to the innermost function or method
@@ -38,9 +43,9 @@ second for a small project to a few minutes for one the size of Django.
 
 ## Add it to your agent
 
-The guard is on CodeNib's main branch and ships in the next release. Until
-then, install CodeNib from source; building it needs Python 3.10 or newer,
-Git and Node.js 20 or newer:
+The guard ships in CodeNib 0.2.6. Until 0.2.6 is available from PyPI, install
+CodeNib from source; building it needs Python 3.10 or newer, Git and Node.js 20
+or newer:
 
 ```bash
 git clone https://github.com/sysevol-ai/CodeNib && cd CodeNib
@@ -105,6 +110,16 @@ that broke nothing, it listed a median of 3 tests. Selecting every test file
 that imports a changed module listed a broken test for 22, at a median of 81
 tests. The method and data are in
 [pull request #976](https://github.com/sysevol-ai/CodeNib/pull/976).
+
+A list is only useful if the agent acts on it. In an A/B run on 24 Django tasks
+chosen because earlier agents broke hidden tests on them, Claude Code with the
+guard, with no hook and with a hook naming the full test suite each left one
+hidden regression, on the same task. That cohort gave the guard almost nothing
+to catch, so it shows no difference either way. In that one case the guard
+listed all eight broken tests, but the agent had rewritten them to expect its
+new behaviour; such edited tests now come first in the list. The setup and
+results are in
+[pull request #1010](https://github.com/sysevol-ai/CodeNib/pull/1010).
 
 Most misses go through calls that a code graph cannot see: framework code that
 calls methods by name, operators such as `==` and `[]`, and tests that start the

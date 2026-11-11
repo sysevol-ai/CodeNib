@@ -272,7 +272,11 @@ def visitor_source(
             extensions = extension_to_language_map("chunker")
             paths = list(binding.borrow_reader().file_paths)
             languages = sorted(
-                {extensions[Path(p).suffix] for p in paths if Path(p).suffix in extensions}
+                {
+                    extensions[Path(p).suffix]
+                    for p in paths
+                    if Path(p).suffix in extensions
+                }
             )
             if not languages:
                 raise WikiRunStopped(

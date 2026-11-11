@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: 2026 CodeNib Contributors
+# SPDX-License-Identifier: Apache-2.0
+#
+# Connects DeepSeek Harness to CodeNib's MCP server for the checkout dsh runs
+# in. The search index is built or refreshed first; CodeNib keeps it under
+# ~/.codenib, never in the checkout, and prepares the code graph on first use.
+# Only the MCP protocol may reach stdout, so everything else goes to stderr.
+# The same steps as plugins/codenib/scripts/mcp.sh, the Claude Code launcher.
+- insert:
+    - id: codenib
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: codenib
+        transport: stdio
+        command: sh
+        args:
+          - -c
+          - |
+            set -eu
+            if ! root="$(git rev-parse --show-toplevel 2>/dev/null)"; then
+              echo "CodeNib serves Git checkouts; start dsh inside one." >&2
+              exit 1
+            fi
+            if command -v codenib >/dev/null 2>&1; then
+              set -- codenib
+            elif command -v uvx >/dev/null 2>&1; then
+              set -- uvx --quiet --from "codenib[graph,mcp]" codenib
+            else
+              echo "CodeNib is not installed: python -m pip install 'codenib[graph,mcp]'" >&2
+              exit 1
+            fi
+            "$@" index "$root" --preset fast >&2
+            exec "$@" mcp "$root" --defer-graph --tool-surface explore

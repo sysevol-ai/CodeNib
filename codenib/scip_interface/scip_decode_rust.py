@@ -569,9 +569,9 @@ class SCIPRustGraphDecoder:
                 )
                 if unified_symbol in self.code_graph.name_to_vertex:
                     vertex_id = self.code_graph.name_to_vertex[unified_symbol]
-                    self.code_graph.graph.vs[vertex_id][
-                        "unified_name"
-                    ] = self._get_unified_name(unified_symbol, file_path, symbol_type)
+                    self.code_graph.graph.vs[vertex_id]["unified_name"] = (
+                        self._get_unified_name(unified_symbol, file_path, symbol_type)
+                    )
 
                 self.code_graph.add_containment_edge(unified_symbol)
 
@@ -592,9 +592,9 @@ class SCIPRustGraphDecoder:
                 )
                 if unified_symbol in self.code_graph.name_to_vertex:
                     vertex_id = self.code_graph.name_to_vertex[unified_symbol]
-                    self.code_graph.graph.vs[vertex_id][
-                        "unified_name"
-                    ] = self._get_unified_name(unified_symbol, file_path, symbol_type)
+                    self.code_graph.graph.vs[vertex_id]["unified_name"] = (
+                        self._get_unified_name(unified_symbol, file_path, symbol_type)
+                    )
 
                 self.code_graph.add_containment_edge(unified_symbol)
             else:
@@ -604,9 +604,9 @@ class SCIPRustGraphDecoder:
                 )
                 if unified_symbol in self.code_graph.name_to_vertex:
                     vertex_id = self.code_graph.name_to_vertex[unified_symbol]
-                    self.code_graph.graph.vs[vertex_id][
-                        "unified_name"
-                    ] = self._get_unified_name(unified_symbol, file_path, symbol_type)
+                    self.code_graph.graph.vs[vertex_id]["unified_name"] = (
+                        self._get_unified_name(unified_symbol, file_path, symbol_type)
+                    )
 
                 self.code_graph._add_edge(
                     self.code_graph.current_scope, unified_symbol, EDGE_TYPE_CONTAIN
@@ -620,9 +620,9 @@ class SCIPRustGraphDecoder:
             if unified_symbol in self.code_graph.name_to_vertex:
                 vid = self.code_graph.name_to_vertex[unified_symbol]
                 if not self.code_graph.graph.vs[vid].attributes().get("unified_name"):
-                    self.code_graph.graph.vs[vid][
-                        "unified_name"
-                    ] = self._get_unified_name(unified_symbol, file_path, symbol_type)
+                    self.code_graph.graph.vs[vid]["unified_name"] = (
+                        self._get_unified_name(unified_symbol, file_path, symbol_type)
+                    )
 
     def save_graph(self, output_path):
         """

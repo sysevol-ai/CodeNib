@@ -18,23 +18,30 @@ import SystemArchitecture, { type ArchitectureJourney } from "@/components/Syste
 import PageBoundaryCard from "@/components/PageBoundary";
 import CallPathFigure from "@/components/CallPathFigure";
 import MainPath from "@/components/MainPath";
+import ReadNext from "@/components/ReadNext";
 import WikiToc from "@/components/WikiToc";
 import WikiGraphPane from "@/components/WikiGraphPane";
 import { buildWikiGraph } from "@/lib/wikiGraph";
 import { childPages } from "@/lib/wikiNav";
+import { displaySymbol } from "@/lib/symbols";
 import AreaMap from "@/components/AreaMap";
 import RepoPoster from "@/components/RepoPoster";
 import { ghFileUrl } from "@/lib/github";
 import AskBar from "@/components/AskBar";
 import RelatedVisuals from "@/components/RelatedVisuals";
-import { AppLink } from "@/lib/router";
+import { generatedByHref } from "@/lib/experience";
+import { AppLink, wikiPageFromLocation, wikiPageLocation, wikiRoute } from "@/lib/router";
 import { isStaticRuntime, mediaAssetUrl } from "@/lib/runtime";
 import { trialBase } from "@/lib/openrouterTrial";
 import {
+  type PageLink,
   extractJourney,
   partitionWikiMediaSlots,
+  splitPageLinks,
   splitWikiMarkdown,
   wikiRetryNotice,
+  repositoryFacts,
+  titleOverviewLead,
 } from "@/lib/wikiPresentation";
 import {
   fetchCommits,
@@ -42,13 +49,11 @@ import {
   fetchWikiAreaMap,
   fetchWikiBoundary,
   fetchWikiVisualEvidence,
-  fetchWikiGraph,
   fetchWikiPage,
   fetchWikiTree,
   isSourceCheckedWikiPage,
   repoRelative,
   shouldWithholdWikiPage,
-  type CodemapResponse,
   type PageBoundary,
   type WikiAreaLink,
   type WikiAreaMap,
@@ -63,7 +68,6 @@ import {
 
 const CodePanel = lazy(() => import("@/components/CodePanel"));
 const Codemap = lazy(() => import("@/components/Codemap"));
-const GraphView = lazy(() => import("@/components/GraphView"));
 const LEADING_VISUAL_WAIT_MS = 5000;
 
 interface Heading {
@@ -466,9 +470,18 @@ export default function WikiPageView({
   const [repo, setRepo] = useState<RepoInfo | null>(null);
   const [pages, setPages] = useState<WikiPageRef[]>([]);
   const [activeId, setActiveId] = useState<string>(initialPageId);
+  // Picking a page only replaces the address. A navigation the Wiki did not
+  // make, such as the CodeNib mark or the browser's Back button, names the
+  // page to show in the address it leaves.
+  useEffect(() => {
+    function follow() {
+      setActiveId(wikiPageFromLocation(window.location.pathname, window.location.search));
+    }
+    window.addEventListener("popstate", follow);
+    return () => window.removeEventListener("popstate", follow);
+  }, []);
   const [loadedPage, setPage] = useState<WikiPage | null>(null);
   const [pageLoadSeconds, setPageLoadSeconds] = useState(0);
-  const [pageGraph, setPageGraph] = useState<CodemapResponse | null>(null);
   const [boundary, setBoundary] = useState<PageBoundary | null>(null);
   const [boundaryReadyFor, setBoundaryReadyFor] = useState<string | null>(null);
   const [areaMap, setAreaMap] = useState<WikiAreaMap | null>(null);
@@ -483,11 +496,8 @@ export default function WikiPageView({
   const [areaMapError, setAreaMapError] = useState(false);
   const [areaMapAttempt, setAreaMapAttempt] = useState(0);
   const areaMapDeadline = useRef({ repoId, attempt: -1, expiresAt: 0 });
-  const [pageGraphOpen, setPageGraphOpen] = useState(false);
-  const [pageGraphLoading, setPageGraphLoading] = useState(false);
-  const [pageGraphError, setPageGraphError] = useState(false);
-  // The graph explorer opens as a full-screen modal, optionally seeded on a
-  // symbol when launched via "Focus here" from a wiki subsystem map.
+  // The dependency map opens as a full-screen modal, optionally seeded on a
+  // symbol picked from the page's callers and calls.
   const [graphSeed, setGraphSeed] = useState<string | undefined>(undefined);
   const [graphOpen, setGraphOpen] = useState(false);
   const [sourceCitation, setSourceCitation] = useState<Citation | null>(null);
@@ -566,10 +576,6 @@ export default function WikiPageView({
     let cancelled = false;
     setPage(null);
     setPageError(null);
-    setPageGraph(null);
-    setPageGraphOpen(false);
-    setPageGraphLoading(false);
-    setPageGraphError(false);
     setSourceCitation(null);
     fetchWikiPage(repoId, activeId)
       .then((p) => !cancelled && setPage(p))
@@ -650,26 +656,6 @@ export default function WikiPageView({
         );
       });
   }, [repoId, activeId, page, pages]);
-
-  useEffect(() => {
-    if (!pageGraphOpen || pageGraph) return;
-    let cancelled = false;
-    setPageGraphLoading(true);
-    setPageGraphError(false);
-    fetchWikiGraph(repoId, activeId)
-      .then((graph) => {
-        if (!cancelled) setPageGraph(graph);
-      })
-      .catch(() => {
-        if (!cancelled) setPageGraphError(true);
-      })
-      .finally(() => {
-        if (!cancelled) setPageGraphLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [repoId, activeId, pageGraphOpen, pageGraph]);
 
   // Include the outline prerequisite in the visual deadline. Once prose is
   // released without its map, late responses must not insert one above it.
@@ -773,7 +759,7 @@ export default function WikiPageView({
   function pick(id: string) {
     setActiveId(id);
     setTocOpen(false);
-    const url = `${window.location.pathname}?p=${encodeURIComponent(id)}`;
+    const url = wikiPageLocation(window.location.pathname, id, staticRuntime);
     window.history.replaceState(null, "", url);
     window.scrollTo({ top: 0 });
   }
@@ -881,7 +867,6 @@ export default function WikiPageView({
     !!repo?.capabilities?.browser_retrieval &&
     !!trialBase(window.__CODENIB_RUNTIME__?.trialApiBase);
   const canAsk = !!repo?.capabilities?.chat || browserTrial;
-  const hasPageGraph = hasGraph || !!repo?.capabilities?.wiki_graph;
   const generationMode = page?.generation?.mode ?? "offline";
   // "Source checked" is the strict claim: source identifiers resolve and the
   // complete page passes its planned coverage checks. Generation mode is an
@@ -928,6 +913,11 @@ export default function WikiPageView({
     areaMap.reason !== "outline_pending" &&
     areaMap.areas.filter((area) => area.symbols > 0).length >= 2;
   const posterJourney = activeId === "overview" ? lifted.journey : null;
+  // Beside the map the Overview is titled with the repository and carries the
+  // index's counts, as the poster does when the map is hidden.
+  const overviewTitled = workspace && activeId === "overview";
+  const overviewFacts =
+    overviewTitled && areaMap?.available ? repositoryFacts(areaMap, repo?.file_count) : null;
   const renderStageText = (markdown: string) => (
     <Markdown
       citations={page?.citations}
@@ -944,7 +934,6 @@ export default function WikiPageView({
         journey: lifted.journey,
         citations: page?.citations,
         onPick: pick,
-        showPath: false,
         renderText: renderStageText,
       }
     : undefined;
@@ -957,7 +946,16 @@ export default function WikiPageView({
     ? bridgeSlots.filter((slot) => slot.render_contract?.adapter === "architecture")
     : [];
   const figureSlots = bridgeSlots.filter((slot) => !architectureSlots.includes(slot));
-  const deeperPages = childPages(pages, activeId);
+  // "Related pages" and "Explore the system" are lists of links; the reader
+  // shows them once after the text, with the detail pages below this one.
+  const pageLinks = splitPageLinks(lifted.rest);
+  const readNext: PageLink[] = [];
+  for (const link of [
+    ...childPages(pages, activeId).map((item) => ({ id: item.id, title: item.title })),
+    ...pageLinks.links,
+  ]) {
+    if (link.id !== activeId && !readNext.some((item) => item.id === link.id)) readNext.push(link);
+  }
   const openGraph = (seed?: string) => {
     setGraphSeed(seed);
     setGraphOpen(true);
@@ -1129,6 +1127,7 @@ export default function WikiPageView({
               lead={posterLead(wikiMarkdown.lead)}
               onPick={pick}
               onOpenGraph={hasGraph ? () => openGraph() : undefined}
+              titleAs="h1"
             />
           )}
           <div className="wiki-content" ref={contentRef}>
@@ -1144,8 +1143,18 @@ export default function WikiPageView({
                       repoId={repoId}
                       onPageLink={pick}
                     >
-                      {wikiMarkdown.lead}
+                      {overviewTitled ? titleOverviewLead(wikiMarkdown.lead, repo?.repo) : wikiMarkdown.lead}
                     </Markdown>
+                  )}
+                  {overviewFacts && (
+                    <dl className="wiki-repo-facts">
+                      {overviewFacts.map((fact) => (
+                        <div key={fact.label}>
+                          <dt>{fact.label}</dt>
+                          <dd>{fact.value.toLocaleString("en-US")}</dd>
+                        </div>
+                      ))}
+                    </dl>
                   )}
                   {activeId === "overview" && !showPoster && !workspace && (
                     areaMap?.available ? (
@@ -1206,7 +1215,7 @@ export default function WikiPageView({
                       />
                     </details>
                   )}
-                  {lifted.rest && (
+                  {pageLinks.body && (
                     <Markdown
                       citations={page.citations}
                       relations={page.evidence?.relations}
@@ -1216,7 +1225,7 @@ export default function WikiPageView({
                       repoId={repoId}
                       onPageLink={pick}
                     >
-                      {lifted.rest}
+                      {pageLinks.body}
                     </Markdown>
                   )}
                   {wikiMedia.body.length > 0 && (
@@ -1236,19 +1245,13 @@ export default function WikiPageView({
                 </div>
               )}
               {/* A withheld page must not strand a reader above its detail pages. */}
-              {page && deeperPages.length > 0 && (
-                <nav className="wiki-go-deeper" aria-label="Go deeper">
-                  <h2>Go deeper</h2>
-                  <ul>
-                    {deeperPages.map((item) => (
-                      <li key={item.id}>
-                        <button type="button" onClick={() => pick(item.id)}>
-                          {item.title}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </nav>
+              {page && (
+                <ReadNext
+                  title={activeId === "overview" ? "Chapters" : "Read next"}
+                  links={readNext}
+                  colors={workspace ? wikiGraph.colors : undefined}
+                  onPick={pick}
+                />
               )}
               {page && (
                 <div
@@ -1300,56 +1303,6 @@ export default function WikiPageView({
                   )}
                 </div>
               )}
-              {hasPageGraph && activeId !== "overview" && (
-                <details
-                  className="subsystem-map"
-                  open={pageGraphOpen}
-                  onToggle={(event) =>
-                    setPageGraphOpen(event.currentTarget.open)
-                  }
-                >
-                  <summary className="subsystem-summary">
-                    <span className="subsystem-title">Subsystem map</span>
-                    <span className="subsystem-count">
-                      {pageGraph?.available && pageGraph.nodes.length > 0
-                        ? `${pageGraph.nodes.length} symbols`
-                        : pageGraph
-                          ? "Unavailable"
-                          : "Indexed graph"}
-                    </span>
-                    {repo?.commit_short && (
-                      <span className="subsystem-index mono">Last indexed {repo.commit_short}</span>
-                    )}
-                  </summary>
-                  {pageGraphOpen &&
-                    (pageGraphLoading ? (
-                      <div className="subsystem-loading">Loading subsystem map…</div>
-                    ) : pageGraphError ||
-                      !pageGraph?.available ||
-                      pageGraph.nodes.length === 0 ? (
-                      <div className="subsystem-loading">
-                        {pageGraph?.note ||
-                          "No source-linked graph is available for this page."}
-                      </div>
-                    ) : (
-                      <Suspense
-                        fallback={
-                          <div className="subsystem-loading">Loading graph view…</div>
-                        }
-                      >
-                        <GraphView
-                          repoId={repoId}
-                          data={pageGraph}
-                          variant="wiki"
-                          onFocus={hasGraph ? (label) => openGraph(label) : undefined}
-                          repoFullName={repo?.repo}
-                          sourceUrl={repo?.source_url}
-                          commit={repo?.base_commit}
-                        />
-                      </Suspense>
-                    ))}
-                </details>
-              )}
               {page?.evidence && page.evidence.items.length > 0 ? (
                 <details className="evidence-ledger">
                   <summary>
@@ -1375,7 +1328,7 @@ export default function WikiPageView({
                           rel={url ? "noreferrer" : undefined}
                         >
                           <span className="evidence-id mono">{item.id}</span>
-                          <span className="evidence-symbol mono">{item.symbol}</span>
+                          <span className="evidence-symbol mono">{displaySymbol(item.symbol)}</span>
                           <span className="evidence-location mono">
                             {item.file}
                             {item.start_line ? `:${item.start_line}` : ""}
@@ -1394,7 +1347,7 @@ export default function WikiPageView({
                       >
                         <span className="evidence-id mono">{item.id}</span>
                         <span className="evidence-symbol mono">
-                          {item.source} → {item.target}
+                          {displaySymbol(item.source)} → {displaySymbol(item.target)}
                         </span>
                         <span className="evidence-location mono">
                           {item.anchors[0] ?? "static reference"}
@@ -1475,7 +1428,7 @@ export default function WikiPageView({
                       ? "This page is unavailable in this preview. Choose another section or use CodeNib in your agent."
                       : "Couldn't load this page. Pick another section or retry after fixing the backend."}
                   </p>
-                  {staticRuntime && <AppLink href={`/${encodeURIComponent(repoId)}`}>Back to overview</AppLink>}
+                  {staticRuntime && <AppLink href={wikiRoute(repoId)}>Back to overview</AppLink>}
                   {!staticRuntime && <p className="page-load-error-detail mono">{pageError}</p>}
                 </div>
               ) : (
@@ -1591,7 +1544,7 @@ export default function WikiPageView({
               <div>
                 <span className="source-modal-kicker">Indexed definition</span>
                 <div className="source-modal-title mono">
-                  {sourceCitation.node_name ||
+                  {(sourceCitation.node_name && displaySymbol(sourceCitation.node_name)) ||
                     repoRelative(sourceCitation.file)}
                 </div>
                 <div className="source-modal-location mono">
@@ -1642,7 +1595,7 @@ export default function WikiPageView({
           <AppLink href={`/${encodeURIComponent(repoId)}/ask`}>
             {browserTrial ? "Find code with OpenRouter →" : "Ask in your agent →"}
           </AppLink>
-          <a href="https://codenib.ai/" target="_blank" rel="noreferrer">Generated by CodeNib</a>
+          <a href={generatedByHref(repo?.repo)} target="_blank" rel="noopener">Generated by CodeNib</a>
         </footer>
       )}
     </div>

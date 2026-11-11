@@ -1,0 +1,22 @@
+{
+  "name": "dsh-plugin-codenib",
+  "version": "0.1.0",
+  "description": "CodeNib for DeepSeek Harness: ranked, source-linked search and compiler-indexed calls and references for the checkout you open, over MCP.",
+  "keywords": ["dsh-plugin", "deepseek-harness", "codenib", "mcp", "code-search", "code-graph"],
+  "homepage": "https://docs.codenib.ai/codegraph/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sysevol-ai/CodeNib.git",
+    "directory": "plugins/dsh"
+  },
+  "bugs": "https://github.com/sysevol-ai/CodeNib/issues",
+  "license": "Apache-2.0",
+  "author": "CodeNib Contributors",
+  "files": ["cordis.patch.yml", "README.md"],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml",
+      "platforms": ["darwin", "linux"]
+    }
+  }
+}

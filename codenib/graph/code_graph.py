@@ -586,6 +586,7 @@ class CodeGraph:
                 column(vs, vertex_attributes, "file", vcount),
                 column(vs, vertex_attributes, "start_line", vcount),
                 column(vs, vertex_attributes, "end_line", vcount),
+                strict=True,
             )
         ):
             if f and s is not None and e is not None:
@@ -597,6 +598,7 @@ class CodeGraph:
             zip(
                 column(es, edge_attributes, "anchor_file", ecount),
                 column(es, edge_attributes, "anchor_line", ecount),
+                strict=True,
             )
         ):
             if f and line is not None:

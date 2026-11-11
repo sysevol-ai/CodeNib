@@ -4,18 +4,36 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import subprocess
 from pathlib import Path
 from typing import Any
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 ACTION_PATH = ROOT / ".github" / "actions" / "publish" / "action.yml"
 WORKFLOW_PATH = ROOT / ".github" / "workflows" / "codenib-pages.yml"
 SMOKE_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "codenib-publish-smoke.yml"
+# sysevol-ai/wiki-action, the Marketplace action, calls this action at a
+# pinned commit with these inputs and publishes its `site-path` output.
+# Renaming any of them would break that action's next release.
+WIKI_ACTION_INPUTS = frozenset(
+    {
+        "repository-path",
+        "base-path",
+        "site-url",
+        "wiki",
+        "wiki-model",
+        "wiki-api-key-env",
+        "wiki-full-rebuild",
+        "wiki-graph",
+        "upload-context",
+    }
+)
 PINNED_ACTION_RE = re.compile(r"^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)+@[0-9a-f]{40}$")
 
 
@@ -73,6 +91,8 @@ def _run_resolve_step(
             "INPUT_REVISION": "",
             "INPUT_SITE_OUTPUT": "",
             "INPUT_UPLOAD_CONTEXT": "true",
+            "INPUT_WIKI": action["inputs"]["wiki"]["default"],
+            "INPUT_WIKI_GRAPH": action["inputs"]["wiki-graph"]["default"],
             "RUNNER_OS": "Linux",
             "RUNNER_TEMP": str(tmp_path),
         }
@@ -135,14 +155,8 @@ def test_publish_action_builds_frontend_before_source_install() -> None:
     assert names.index("Build static frontend") < names.index("Install CodeNib")
     resolve = next(step for step in _steps(action) if step.get("id") == "inputs")
     assert "web/dist" in resolve["run"]
-    setup_node = next(
-        step for step in _steps(action) if step.get("name") == "Set up Node.js"
-    )
-    dependency_path = setup_node["with"]["cache-dependency-path"]
-    assert dependency_path == (
-        "${{ steps.inputs.outputs.source_path }}/web/package-lock.json"
-    )
-    assert ".." not in dependency_path
+    # npm ci in the frontend build reads the restored npm cache.
+    assert names.index("Cache npm downloads") < names.index("Build static frontend")
 
 
 def test_publish_action_keeps_untrusted_inputs_out_of_shell_source() -> None:
@@ -181,6 +195,42 @@ def test_publish_action_resolves_valid_inputs(tmp_path: Path) -> None:
     assert "extras=\n" in output
     assert f"source_path={ROOT}" in output
     assert f"source_commit={source_commit}" in output
+
+
+def test_publish_action_keys_the_npm_cache_where_a_remote_action_runs(
+    tmp_path: Path,
+) -> None:
+    # Used remotely, the action runs from the runner's _actions directory,
+    # outside GITHUB_WORKSPACE, where setup-node cannot hash a lockfile for its
+    # npm cache and fails the run; the resolve step keys that cache instead.
+    action = _load(ACTION_PATH)
+    steps = _steps(action)
+    node = next(step for step in steps if "setup-node" in str(step.get("uses")))
+    assert not {"cache", "cache-dependency-path"} & set(node.get("with") or {})
+    assert "hashFiles(" not in ACTION_PATH.read_text(encoding="utf-8")
+    npm = next(step for step in steps if step.get("name") == "Cache npm downloads")
+    assert npm["with"] == {
+        "path": "~/.npm",
+        "key": "${{ steps.inputs.outputs.npm_cache_key }}",
+    }
+
+    remote = tmp_path / "_actions" / "sysevol-ai" / "CodeNib" / ("b" * 40)
+    for relative in (
+        ".github/actions/publish/action.yml",
+        "pyproject.toml",
+        "web/package-lock.json",
+    ):
+        target = remote / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes((ROOT / relative).read_bytes())
+    result, output = _run_resolve_step(
+        tmp_path, GITHUB_ACTION_PATH=str(remote / ".github" / "actions" / "publish")
+    )
+    lock = hashlib.sha256((ROOT / "web" / "package-lock.json").read_bytes())
+
+    assert result.returncode == 0, result.stderr
+    assert f"source_path={remote.resolve()}\n" in output
+    assert f"npm_cache_key=codenib-npm-Linux-{lock.hexdigest()}\n" in output
 
 
 def test_publish_action_defaults_semantic_to_local_huggingface(
@@ -363,3 +413,84 @@ def test_hosted_publish_smoke_is_narrow_and_sha_pinned() -> None:
     assert publish["with"]["upload-context"] == "false"
     assert publish["with"]["repository-path"] == "${{ steps.fixture.outputs.path }}"
     _assert_external_actions_are_sha_pinned(workflow)
+
+
+@pytest.mark.parametrize(
+    ("overrides", "extras"),
+    [
+        ({"INPUT_WIKI": "story"}, "agent,graph"),
+        ({"INPUT_WIKI": "story", "INPUT_WIKI_GRAPH": "false"}, "agent"),
+        ({"INPUT_WIKI": "story", "INPUT_PRESET": "semantic"}, "semantic,agent,graph"),
+    ],
+)
+def test_story_wiki_installs_the_model_client_and_graph(
+    tmp_path: Path, overrides: dict[str, str], extras: str
+) -> None:
+    result, output = _run_resolve_step(tmp_path, **overrides)
+
+    assert result.returncode == 0, result.stderr
+    assert f"extras={extras}\n" in output
+
+
+def test_story_wiki_rejects_unknown_modes_and_keeps_its_own_cache(
+    tmp_path: Path,
+) -> None:
+    result, _output = _run_resolve_step(tmp_path, INPUT_WIKI="essay")
+    assert result.returncode == 2
+    assert "wiki must be index or story" in result.stderr
+
+    (tmp_path / "index").mkdir()
+    (tmp_path / "story").mkdir()
+    _index, index_output = _run_resolve_step(tmp_path / "index")
+    _story, story_output = _run_resolve_step(tmp_path / "story", INPUT_WIKI="story")
+
+    def prefix(output: str) -> str:
+        return next(
+            line for line in output.splitlines() if line.startswith("cache_prefix=")
+        )
+
+    # Story state carries Wiki pages; an index-only run never restores it.
+    assert prefix(index_output) != prefix(story_output)
+
+
+def test_story_wiki_runs_before_the_state_is_saved() -> None:
+    action = _load(ACTION_PATH)
+    steps = _steps(action)
+    names = [step.get("name") for step in steps]
+
+    graph = names.index("Index the code graph for the Wiki")
+    write = names.index("Write the model-written Wiki")
+    assert (
+        names.index("Publish repository context")
+        < graph
+        < write
+        < names.index("Save incremental repository state")
+    )
+    assert steps[graph]["continue-on-error"] == "true"
+    script = steps[write]["run"]
+    assert "codenib pages build" in script and '"${command[@]}"' in script
+    # A Wiki that fails its checks leaves the index-derived site published.
+    assert "status -eq 3" in script and "::warning" in script
+    assert "WIKI_KEY_ENV" in steps[write]["env"]
+    assert not any("wiki_api_key" in str(value) for value in steps[write]["env"])
+
+
+def test_reusable_workflow_passes_the_wiki_key_only_for_story_pages() -> None:
+    workflow = _load(WORKFLOW_PATH)
+    build = workflow["jobs"]["build"]
+    publish = next(step for step in build["steps"] if step.get("id") == "publish")
+
+    assert "secrets.wiki_api_key" in publish["env"]["CODENIB_ACTION_WIKI_KEY"]
+    assert "inputs.wiki == 'story'" in publish["env"]["CODENIB_ACTION_WIKI_KEY"]
+    assert "CODENIB_ACTION_WIKI_KEY" in publish["with"]["wiki-api-key-env"]
+    assert publish["with"]["wiki"] == "${{ inputs.wiki }}"
+    assert workflow["on"]["workflow_call"]["inputs"]["wiki"]["default"] == "index"
+    assert "wiki_api_key" in workflow["on"]["workflow_call"]["secrets"]
+    assert "inputs.wiki == 'story'" in build["timeout-minutes"]
+
+
+def test_publish_action_keeps_what_the_marketplace_action_uses() -> None:
+    action = _load(ACTION_PATH)
+
+    assert WIKI_ACTION_INPUTS <= set(action["inputs"])
+    assert "site-path" in action["outputs"]

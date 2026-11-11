@@ -11,18 +11,52 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 ## [Unreleased]
 
+### Changed
+
+- Visitor Wikis on a hosted server build their code maps with pyrefly, like
+  every other Python graph, instead of always using scip-python. scip-python
+  is used only when the pinned pyrefly release is missing or
+  `CODENIB_PYTHON_GRAPH_PROVIDER=scip-python` pins it. On sympy and matplotlib,
+  scip-python's output fails identity recovery and builds no graph.
+- Wiki pages read as technical documents. Body text sits a step back from the
+  headings, the opening claim and the code names, which carry a light fill.
+  Sources trail each paragraph in small grey type. The section bridge sentences
+  are set in roman instead of italics, and the reader column holds about 75
+  characters a line.
+- A page ends with one "Read next" list in the map's colours. It replaces the
+  "Related pages" list and the "Go deeper" buttons, which repeated the same
+  pages, and the "Subsystem map" graph.
+- The Dependency Map shows the structure view only. The Graph and Modules views
+  are removed: at repository scale both drew tangles. Their relationship list
+  shows both names in full.
+- Community Wikis use the same page ending as the featured ones. The "Chapter
+  CodeGraph" section is gone, and an Overview's architecture reads as a
+  numbered path with the other roles listed after it, without layer tags or a
+  "View source" link on every role.
+
+### Fixed
+
+- C++ symbol names no longer show clang's template spelling, such as
+  `formatter<type-parameter-0-0, typename enable_if<…>::type>`. Parameters read
+  `T`, `U`; long argument lists fold to `<…>`. Call rows, call paths and the
+  structure view name a symbol by its owner and member.
+- Emoji copied from a README no longer appear in Wiki prose.
+- The Overview no longer scrolls sideways on a phone when a call path names a
+  long symbol.
+
+## [0.2.6] - 2026-11-08
+
 ### Added
 
 - The most important detail pages draw their longest recorded call path, labelled
   as one selected path. No model chooses the arrows.
-
-- `codenib guard check` compares the working tree with a commit and lists the
-  tests that reach the changed definitions within three calls, each with its
-  call path and call lines. The graph is built from the commit's tracked files
-  and cached per commit. `--json` and `--exit-code` serve scripts and CI.
-  Existing tests that the change itself rewrote come first, with a command that
-  runs them as they were at the base commit, since an edited test that passes
-  says little about the behaviour it protected.
+- Preview, for Python projects: `codenib guard check` compares the working tree
+  with a commit and lists the tests that reach the changed definitions within
+  three calls, each with its call path and call lines. The graph is built from
+  the commit's tracked files and cached per commit. `--json` and `--exit-code`
+  serve scripts and CI. Existing tests that the change itself rewrote come
+  first, with a command that runs them as they were at the base commit, since
+  an edited test that passes says little about the behaviour it protected.
 - `codenib guard install` adds SessionStart and Stop hooks for Claude Code and
   Codex. Before the agent finishes, the hook hands back the tests its change
   reaches; it reports each change once, returns before any graph work when the

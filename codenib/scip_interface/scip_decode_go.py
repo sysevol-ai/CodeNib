@@ -377,9 +377,9 @@ class SCIPGoGraphDecoder:
         """Set unified_name attribute on a vertex if it exists."""
         if symbol_key in self.code_graph.name_to_vertex:
             vertex_id = self.code_graph.name_to_vertex[symbol_key]
-            self.code_graph.graph.vs[vertex_id][
-                "unified_name"
-            ] = self._get_unified_name(symbol_key, file_path, symbol_type)
+            self.code_graph.graph.vs[vertex_id]["unified_name"] = (
+                self._get_unified_name(symbol_key, file_path, symbol_type)
+            )
 
     def _process_symbol(self, symbol, file_path, line, symbol_roles, enclosing_ranges):
         """Process a symbol occurrence and add it to the graph."""
@@ -451,9 +451,9 @@ class SCIPGoGraphDecoder:
             if symbol_key in self.code_graph.name_to_vertex:
                 vid = self.code_graph.name_to_vertex[symbol_key]
                 if not self.code_graph.graph.vs[vid].attributes().get("unified_name"):
-                    self.code_graph.graph.vs[vid][
-                        "unified_name"
-                    ] = self._get_unified_name(symbol_key, file_path, symbol_type)
+                    self.code_graph.graph.vs[vid]["unified_name"] = (
+                        self._get_unified_name(symbol_key, file_path, symbol_type)
+                    )
 
     def save_graph(self, output_path):
         """Save the code graph to a file."""

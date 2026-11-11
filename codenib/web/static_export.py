@@ -13,7 +13,7 @@ import re
 from dataclasses import dataclass
 from html import escape
 from pathlib import Path, PurePosixPath
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Callable, Iterable, Mapping, Sequence
 from urllib.parse import quote, unquote, urlsplit
 
 from .._atomic_directory import (
@@ -54,6 +54,16 @@ from .card_summary import card_summary
 from .config import RepoEntry
 from .launcher import find_frontend_dir
 from .local import prepare_local_wiki
+from .pages_setup import BADGE_NAME, WIKI_BADGE_SVG
+from .prerender import (
+    can_prerender,
+    outline_pages,
+    page_body,
+    page_description,
+    page_document,
+    robots,
+    sitemap,
+)
 
 STATIC_EXPORT_SCHEMA_VERSION = "1.0"
 STATIC_EXPORT_MANIFEST = "codenib-static.json"
@@ -715,15 +725,205 @@ def _mounted_frontend_index(payload: bytes, *, base_path: str) -> bytes:
     return index_text.encode("utf-8")
 
 
+def _prune_unready(
+    nodes: Sequence[Mapping[str, Any]], ready: set[str]
+) -> list[dict[str, Any]]:
+    """Drop unready pages from an outline; their children take their place."""
+
+    kept: list[dict[str, Any]] = []
+    for node in nodes:
+        if not isinstance(node, Mapping):
+            continue
+        children = _prune_unready(node.get("children") or [], ready)
+        if str(node.get("id") or "") in ready:
+            kept.append({**node, "children": children})
+        else:
+            kept.extend(children)
+    return kept
+
+
+def _unlink_pages(markdown: str, omitted: set[str]) -> str:
+    """Keep the words of links to pages left out of this export."""
+
+    def unlink(match: re.Match[str]) -> str:
+        return match.group(1) if unquote(match.group(2)) in omitted else match.group(0)
+
+    return re.sub(r"\[([^\]\n]+)\]\(\?p=([^)#\s]+)(?:#[^)\s]*)?\)", unlink, markdown)
+
+
+def normalize_site_url(site_url: str | None, base_path: str) -> str | None:
+    """The public URL of the export root, or None when it is not known.
+
+    Canonical links and the sitemap need absolute URLs. The URL's path must
+    be the export's base path, so both describe the same mount.
+    """
+
+    if site_url is None:
+        return None
+    parsed = urlsplit(site_url.strip())
+    host = parsed.hostname or ""
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not re.fullmatch(r"[A-Za-z0-9.-]+", host)
+        or parsed.username
+        or parsed.password
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise ValueError(
+            "site URL must be an http(s) URL without credentials, query or fragment"
+        )
+    if parsed.scheme == "http" and host not in {"localhost", "127.0.0.1"}:
+        raise ValueError("site URL must use https outside local acceptance")
+    if normalize_base_path(parsed.path or "/") != base_path:
+        raise ValueError(
+            f"site URL path {parsed.path or '/'!r} does not match base path "
+            f"{base_path!r}"
+        )
+    port = f":{parsed.port}" if parsed.port else ""
+    mount = "" if base_path == "/" else base_path
+    return f"{parsed.scheme}://{host.lower()}{port}{mount}"
+
+
+@dataclass(frozen=True)
+class _PrerenderedWiki:
+    """One readable document per page, written beside the exported data."""
+
+    repository: str
+    commit: str
+    base_path: str
+    site_root: str | None
+    pages: tuple[tuple[str, str, str], ...]  # (id, title, markdown)
+
+    @classmethod
+    def build(
+        cls,
+        *,
+        repository: str,
+        commit: str,
+        base_path: str,
+        site_root: str | None,
+        tree: Sequence[Mapping[str, Any]],
+        pages: Sequence[Mapping[str, Any]],
+    ) -> "_PrerenderedWiki":
+        by_id = {str(page.get("id") or ""): page for page in pages}
+        ordered = [page_id for page_id, _title in outline_pages(tree)]
+        ordered += [page_id for page_id in by_id if page_id not in ordered]
+        return cls(
+            repository=repository,
+            commit=commit,
+            base_path=base_path,
+            site_root=site_root,
+            pages=tuple(
+                (
+                    page_id,
+                    str(by_id[page_id].get("title") or page_id),
+                    str(by_id[page_id].get("markdown") or ""),
+                )
+                for page_id in ordered
+                if page_id in by_id
+            ),
+        )
+
+    @staticmethod
+    def route(page_id: str) -> str:
+        """A page's path below the mount: the Wiki is the site itself.
+
+        The export holds one repository, so the Overview is the site root
+        and every other page sits at ``page/<id>/``.
+        """
+
+        if page_id == "overview":
+            return ""
+        return f"page/{quote(page_id, safe='')}/"
+
+    def href(self, page_id: str) -> str | None:
+        if not any(page_id == known for known, _title, _markdown in self.pages):
+            return None
+        mount = "" if self.base_path == "/" else self.base_path
+        return f"{mount}/{self.route(page_id)}"
+
+    def url(self, page_id: str) -> str | None:
+        if self.site_root is None:
+            return None
+        return f"{self.site_root}/{self.route(page_id)}"
+
+    def _document(self, shell: bytes, page_id: str, title: str, markdown: str) -> bytes:
+        label = f"{self.repository} Wiki"
+        body = page_body(
+            repository=self.repository,
+            title=title,
+            markdown=markdown,
+            pages=[(known, name) for known, name, _markdown in self.pages],
+            page_href=self.href,
+            current=page_id,
+            source=(
+                f"Generated by CodeNib from {self.repository}"
+                + (f" at {self.commit[:12]}" if self.commit else "")
+            ),
+        )
+        heading = label if page_id == "overview" else f"{title} · {label}"
+        return page_document(
+            shell.decode("utf-8"),
+            title=heading,
+            description=page_description(markdown, f"{title} in the {label}."),
+            canonical=self.url(page_id),
+            body=body,
+            site_name=label,
+        ).encode("utf-8")
+
+    def root(self, shell: bytes) -> bytes:
+        """The site root reads as the Overview and names it as canonical."""
+
+        if not can_prerender(shell.decode("utf-8")):
+            return shell
+        for page_id, title, markdown in self.pages:
+            if page_id == "overview":
+                return self._document(shell, page_id, title, markdown)
+        return shell
+
+    def documents(self, shell: bytes) -> dict[str, bytes]:
+        """Documents for every page but the Overview, which is the root."""
+
+        # A shell without a title or an empty root keeps the app fallback.
+        if not can_prerender(shell.decode("utf-8")):
+            return {}
+        return {
+            self.route(page_id)
+            + "index.html": self._document(shell, page_id, title, markdown)
+            for page_id, title, markdown in self.pages
+            if page_id != "overview"
+        }
+
+    def sitemap(self) -> bytes | None:
+        if self.site_root is None:
+            return None
+        return sitemap(
+            url
+            for page_id, _title, _markdown in self.pages
+            for url in [self.url(page_id)]
+            if url
+        )
+
+
 def _copy_frontend(
     source: Path,
     stage: OwnedDirectoryStage,
     *,
     base_path: str,
     trial_api_base: str | None = None,
-) -> None:
+    root_document: Callable[[bytes], bytes] | None = None,
+) -> tuple[bytes, frozenset[str]]:
+    """Copy the frontend; return its mounted shell and top-level entry names.
+
+    ``root_document`` may replace the site's own ``index.html`` with a
+    prerendered document built from that same mounted shell.
+    """
+
     file_count = 0
     byte_count = 0
+    shell = b""
+    top_level: set[str] = set()
 
     def entry_policy(path: str, kind: str, mode: int, size: int) -> None:
         nonlocal file_count, byte_count
@@ -755,7 +955,9 @@ def _copy_frontend(
             raise ValueError(
                 "rebuild the frontend before enabling the OpenRouter trial"
             )
+        nonlocal shell
         for record in reader.file_records():
+            top_level.add(record.path.split("/", 1)[0])
             if record.path in {"runtime-config.js", "404.html"}:
                 continue
             if record.path == STATIC_EXPORT_MANIFEST or record.path.startswith("data/"):
@@ -796,9 +998,10 @@ def _copy_frontend(
                         raise ValueError(
                             "OpenRouter trial requires an HTML head element"
                         )
+                shell = mounted
                 stage.write_file(
                     record.path,
-                    (mounted,),
+                    (root_document(mounted) if root_document else mounted,),
                     mode=mode,
                     max_bytes=_MAX_FRONTEND_INDEX_BYTES,
                 )
@@ -815,15 +1018,23 @@ def _copy_frontend(
                 )
 
     reopen_authenticated_directory(source, ownership, copy)
+    return shell, frozenset(top_level)
 
 
-def _runtime_config(base_path: str, trial_api_base: str | None = None) -> bytes:
+def _runtime_config(
+    base_path: str,
+    trial_api_base: str | None = None,
+    home_repository: str | None = None,
+) -> bytes:
     data_base = f"{base_path.rstrip('/')}/data" if base_path != "/" else "/data"
     config = {
         "mode": "static",
         "basePath": base_path,
         "dataBase": data_base,
     }
+    if home_repository:
+        # The export holds one repository; its root opens that Wiki.
+        config["homeRepository"] = home_repository
     if trial_api_base:
         config["trialApiBase"] = trial_api_base
     encoded = json.dumps(
@@ -1067,6 +1278,8 @@ def export_static_wiki(
     wiki_entry: RepoEntry | None = None,
     trial_api_base: str | None = None,
     export_format: str = "static",
+    site_url: str | None = None,
+    only_pages: Iterable[str] | None = None,
 ) -> StaticExportResult:
     """Publish a source-bound Wiki with no model calls.
 
@@ -1075,6 +1288,11 @@ def export_static_wiki(
     The caller owns the store snapshot for this call. Existing directory
     publication retains its atomic replacement and source validation boundary.
     OKF requires cached pages and skips the frontend and web-only graph assets.
+    Each page also gets its own readable document; ``site_url``, the public
+    URL of the export root, adds canonical links and a sitemap. With
+    ``only_pages``, a cached static export publishes just those pages, such as
+    the ones that passed an audit, and leaves the rest of the outline out; the
+    Overview must be among them.
     """
 
     if export_format not in {"static", "okf"}:
@@ -1144,6 +1362,12 @@ def export_static_wiki(
         output_dir,
     )
     base_path = normalize_base_path(base_path)
+    if site_url is not None and export_format == "okf":
+        raise ValueError("OKF export does not accept a site URL")
+    selected_pages = None if only_pages is None else {str(page) for page in only_pages}
+    if selected_pages is not None and (export_format == "okf" or wiki_store is None):
+        raise ValueError("only a cached static export can publish a subset of pages")
+    site_root = normalize_site_url(site_url, base_path)
     frontend = _prebuilt_frontend(frontend_dir) if export_format == "static" else None
     from ..wiki.okf import OKF_EXPORT_MANIFEST, render_okf_bundle
 
@@ -1244,6 +1468,12 @@ def export_static_wiki(
                 raise ValueError(
                     "Wiki outline is unavailable; precompute it before export"
                 )
+            omitted: set[str] = set()
+            if selected_pages is not None:
+                if "overview" not in selected_pages:
+                    raise ValueError("a partial Wiki export must include the Overview")
+                omitted = set(_page_ids(tree)) - selected_pages
+                tree = _prune_unready(tree, selected_pages)
             page_ids = _page_ids(tree)
             pages = []
             graphs: dict[str, dict[str, Any]] = {}
@@ -1262,6 +1492,10 @@ def export_static_wiki(
                 normalized = _normalize_page(
                     builder, page, verify_citations=cached_wiki is not None
                 )
+                if omitted and normalized.get("markdown"):
+                    normalized["markdown"] = _unlink_pages(
+                        str(normalized["markdown"]), omitted
+                    )
                 if export_format == "okf":
                     pages.append(normalized)
                     continue
@@ -1370,9 +1604,25 @@ def export_static_wiki(
             frontend_options = (
                 {"trial_api_base": trial_api_base} if trial_api_base else {}
             )
-            _copy_frontend(frontend, stage, base_path=base_path, **frontend_options)
+            prerendered = _PrerenderedWiki.build(
+                repository=bundle.entry.repo or repo_id,
+                commit=bundle.manifest.commit or "",
+                base_path=base_path,
+                site_root=site_root,
+                tree=tree,
+                pages=pages,
+            )
+            shell, frontend_names = _copy_frontend(
+                frontend,
+                stage,
+                base_path=base_path,
+                root_document=prerendered.root,
+                **frontend_options,
+            )
             _write_bytes(
-                stage, "runtime-config.js", _runtime_config(base_path, trial_api_base)
+                stage,
+                "runtime-config.js",
+                _runtime_config(base_path, trial_api_base, home_repository=repo_id),
             )
             _write_bytes(
                 stage,
@@ -1409,6 +1659,20 @@ def export_static_wiki(
                     f"{repo_root}/page-boundaries/{component}.json",
                     boundaries[page_id],
                 )
+            # The README badge `codenib pages badge` prints is served from here.
+            _write_bytes(stage, BADGE_NAME, WIKI_BADGE_SVG.encode("utf-8"))
+            # A frontend entry named "page" keeps the app fallback.
+            if "page" not in frontend_names:
+                for relative, payload in sorted(prerendered.documents(shell).items()):
+                    _write_bytes(stage, relative, payload)
+            site_map = prerendered.sitemap()
+            if site_map is not None:
+                _write_bytes(stage, "sitemap.xml", site_map)
+                if base_path == "/":
+                    # Crawlers read robots.txt only at the host root.
+                    _write_bytes(
+                        stage, "robots.txt", robots(f"{site_root}/sitemap.xml")
+                    )
 
         source_manifest = bundle.manifest
         staged_payload_ownership = stage.capture_ownership()
@@ -1449,6 +1713,8 @@ def export_static_wiki(
             "base_path": base_path,
             "files": _file_inventory(staged_payload_ownership, manifest_name),
         }
+        if omitted:
+            export_manifest["omitted_pages"] = sorted(omitted)
         if export_format == "okf":
             export_manifest["format"] = "okf"
             export_manifest["okf_version"] = "0.2"
@@ -1529,6 +1795,8 @@ def export_cached_wiki(
     base_path: str = "/",
     trial_api_base: str | None = None,
     export_format: str = "static",
+    site_url: str | None = None,
+    only_pages: Iterable[str] | None = None,
 ) -> StaticExportResult:
     """Publish one configured repository from a quiescent Wiki snapshot.
 
@@ -1572,6 +1840,8 @@ def export_cached_wiki(
             wiki_entry=entry,
             trial_api_base=trial_api_base,
             export_format=export_format,
+            site_url=site_url,
+            only_pages=only_pages,
         )
 
 

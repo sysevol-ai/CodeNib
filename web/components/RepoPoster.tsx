@@ -23,10 +23,10 @@ import {
   TAG_W,
   type PosterEdge,
 } from "@/lib/posterLayout";
-import { AppLink } from "@/lib/router";
+import { AppLink, wikiRoute } from "@/lib/router";
 import { isStaticRuntime } from "@/lib/runtime";
 import { excerptRows, GAP } from "@/lib/sourceExcerpt";
-import { splitSymbolLabel } from "@/lib/symbols";
+import { displaySymbol } from "@/lib/symbols";
 import { journeyAreas, traceFrame, traceSteps, type TraceFrame } from "@/lib/traceTimeline";
 import type { Journey } from "@/lib/wikiPresentation";
 
@@ -117,8 +117,8 @@ function EdgeCallout({
     };
   }, [repoId, anchor?.file, anchor?.line, repo?.base_commit]);
 
-  const from = link ? splitSymbolLabel(link.example.source).symbol : "";
-  const to = link ? splitSymbolLabel(link.example.target).symbol : "";
+  const from = link ? displaySymbol(link.example.source, { short: true }) : "";
+  const to = link ? displaySymbol(link.example.target, { short: true }) : "";
   const url =
     anchor?.file && repo
       ? ghFileUrl(repo.repo, repo.source_url, repo.base_commit, anchor.file, anchor.line)
@@ -211,6 +211,7 @@ export default function RepoPoster({
   sourceRepoId,
   wikiHref,
   at,
+  titleAs: Title = "h2",
 }: {
   repoId: string;
   repo: RepoInfo | null;
@@ -235,6 +236,8 @@ export default function RepoPoster({
   /** Milliseconds into the traced path. Draws that frame and turns the
    *  poster's own playback off, so a video renderer can seek it. */
   at?: number;
+  /** "h1" where the poster opens a page and nothing above it names the page. */
+  titleAs?: "h1" | "h2";
 }) {
   // "card": the static 1200x630 link-preview image; no motion, no controls.
   const card = variant === "card";
@@ -470,11 +473,11 @@ export default function RepoPoster({
       aria-label={`System map of ${repo?.repo || repoId}`}
     >
       <header className="poster-head">
-        <h2 className="poster-title">
+        <Title className="poster-title">
           <span className="poster-owner">{owner}</span>
           <wbr />
           {name}
-        </h2>
+        </Title>
         {lead && !hero && <p className="poster-lead">{leadNodes(lead)}</p>}
         <dl className="poster-stats">
           <div><dt>areas</dt><dd>{number.format(totals.areas)}</dd></div>
@@ -739,7 +742,13 @@ export default function RepoPoster({
         <div className="poster-trace">
           <div className="poster-trace-head">
             <span className="poster-trace-label">Traced call path</span>
-            <span className="poster-trace-title">{leadNodes(journey!.title)}</span>
+            <span className="poster-trace-title">
+              {leadNodes(
+                journey!.title.replace(/`([^`]+)`/g, (_match, symbol: string) =>
+                  `\`${displaySymbol(symbol, { short: true })}\``,
+                ),
+              )}
+            </span>
             <button
               type="button"
               className="poster-play poster-no-export"
@@ -774,7 +783,7 @@ export default function RepoPoster({
                   title={stage.page ? `Open ${stage.page.title}` : undefined}
                 >
                   <span className="poster-step-no">{index + 1}</span>
-                  <code>{breakableCode(stage.symbol)}</code>
+                  <code title={stage.symbol}>{breakableCode(displaySymbol(stage.symbol, { short: true }))}</code>
                 </button>
               </li>
             ))}
@@ -801,7 +810,7 @@ export default function RepoPoster({
                 Open the {repo?.repo || repoId} Wiki →
               </a>
             ) : (
-              <AppLink className="poster-link" href={`/${encodeURIComponent(repoId)}`}>
+              <AppLink className="poster-link" href={wikiRoute(repoId)}>
                 Open the {repo?.repo || repoId} Wiki →
               </AppLink>
             )}

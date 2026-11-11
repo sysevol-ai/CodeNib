@@ -96,7 +96,8 @@ def _fast_setstate(cls: type) -> None:
     assign = object.__setattr__
 
     def __setstate__(self: object, state: Sequence[object]) -> None:
-        for name, value in zip(names, state):
+        # A shorter state leaves the remaining fields unset, as before.
+        for name, value in zip(names, state, strict=False):
             assign(self, name, value)
 
     cls.__setstate__ = __setstate__  # type: ignore[attr-defined]

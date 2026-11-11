@@ -5,7 +5,7 @@
 "use client";
 
 import { useState } from "react";
-import { AppLink } from "@/lib/router";
+import { AppLink, wikiRoute } from "@/lib/router";
 
 export const AGENT_SETUP_URL = "https://docs.codenib.ai/codegraph/";
 
@@ -15,7 +15,7 @@ export default function AgentSetup({ repoId, query = "" }: { repoId: string; que
   const question = query.trim().slice(0, 8000);
   return (
     <section className="agent-setup" aria-labelledby="agent-setup-title">
-      <AppLink href={`/${encodeURIComponent(repoId)}`}>← Browse the Wiki</AppLink>
+      <AppLink href={wikiRoute(repoId)}>← Browse the Wiki</AppLink>
       <p className="preview-label">Precomputed Wiki</p>
       <h1 id="agent-setup-title">Ask on your own repository</h1>
       <p>

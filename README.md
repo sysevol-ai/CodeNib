@@ -11,7 +11,7 @@ SPDX-License-Identifier: Apache-2.0
   <p>
     Read a Wiki of how a repository works, follow its call paths on a map,
     and open the source behind every explanation.<br>
-    Then give Claude Code or Codex the same index.
+    Then give your coding agent the same index.
   </p>
   <p>
     <a href="https://demo.codenib.ai"><strong>Browse a Wiki</strong></a>
@@ -32,6 +32,13 @@ SPDX-License-Identifier: Apache-2.0
     <a href="https://huggingface.co/papers/2607.25431"><img src="https://img.shields.io/badge/Hugging_Face-%231_Paper_of_the_Day-FFD21E.svg?logo=huggingface&amp;logoColor=black" alt="Hugging Face: #1 Paper of the Day"></a>
     <a href="https://github.com/sysevol-ai/CodeNib/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="Apache 2.0 license"></a>
   </p>
+  <p>
+    <a href="https://docs.codenib.ai/codegraph/#claude-code-plugin"><img src="https://img.shields.io/badge/Claude_Code-plugin-D97757?logo=claude&amp;logoColor=white" alt="Claude Code plugin"></a>
+    <a href="#use-it-with-your-coding-agent"><img src="https://img.shields.io/badge/Codex-MCP-10A37F" alt="Codex over MCP"></a>
+    <a href="https://docs.codenib.ai/codegraph/#grok-build-plugin"><img src="https://img.shields.io/badge/Grok_Build-plugin-000000" alt="Grok Build plugin"></a>
+    <a href="https://docs.codenib.ai/codegraph/#deepseek-harness-bundle"><img src="https://img.shields.io/badge/DeepSeek_Harness-plugin-4D6BFE?logo=deepseek&amp;logoColor=white" alt="DeepSeek Harness plugin"></a>
+    <a href="https://github.com/marketplace/actions/codenib-wiki"><img src="https://img.shields.io/badge/GitHub_Marketplace-Wiki_action-2088FF?logo=githubactions&amp;logoColor=white" alt="CodeNib Wiki action on GitHub Marketplace"></a>
+  </p>
 </div>
 
 <p align="center">
@@ -45,11 +52,10 @@ SPDX-License-Identifier: Apache-2.0
   index recorded between areas. The page cites a file and line range for each claim.
 </sub></p>
 
-New in **0.2.5**: saved repository Wikis and portable OKF export, Pyrefly-backed
-Python graphs, static entry-path navigation and call-path rule checks.
-[Read the release notes](https://docs.codenib.ai/releases/0.2.5/). The map
-workspace and call-path pages shown here are on `main` and the hosted demo, and
-are not yet in a PyPI release.
+New in **0.2.6**: Wikis open as a map of their pages and lead with the main path
+through the code, faster graph builds, and first C/C++ and JavaScript/TypeScript
+builds that leave the checkout alone.
+[Read the release notes](https://docs.codenib.ai/releases/0.2.6/).
 
 ## A Wiki you can follow down to the source
 
@@ -86,7 +92,7 @@ can check every arrow against the source.
 | Read one now | Open a [ready Wiki](https://demo.codenib.ai/browse) for requests, scikit-learn, sympy, fmt, redis, caddy, gin, hugo and more. No account or API key. |
 | Map a public GitHub repository | Paste its URL on [demo.codenib.ai](https://demo.codenib.ai), or replace `github.com` with `demo.codenib.ai` in the URL. A new Wiki uses your OpenRouter account, with a $0.25–$5 spending limit you set before it starts. |
 | Map your own checkout | Run the Wiki locally, as below. |
-| Share it | Publish the Wiki, with its source citations, to [GitHub Pages](https://docs.codenib.ai/github_pages/). |
+| Share it | Publish the Wiki, with its source citations, to GitHub Pages: add the [CodeNib Wiki action](https://github.com/marketplace/actions/codenib-wiki) to a workflow. [Pages guide](https://docs.codenib.ai/github_pages/) |
 
 To build a Wiki with the map on your machine:
 
@@ -133,10 +139,28 @@ This builds local search and a typed symbol graph, then connects installed
 agent clients. CodeNib needs no model, API key, or GPU of its own; your agent
 uses its own model. Language toolchain and project prerequisites vary.
 
+In Claude Code you can install the plugin instead. It connects every Git
+checkout you open and adds `/codenib:explain`, `/codenib:impact`,
+`/codenib:setup` and `/codenib:wiki`:
+
+```bash
+claude plugin marketplace add sysevol-ai/CodeNib
+claude plugin install codenib@codenib
+```
+
+Grok Build reads the same plugin, and DeepSeek Harness installs it as a bundle:
+
+```bash
+dsh plugin add "git+https://github.com/sysevol-ai/CodeNib.git#main&path:/plugins/dsh"
+```
+
+[Grok Build setup](https://docs.codenib.ai/codegraph/#grok-build-plugin)
+· [DeepSeek Harness setup](https://docs.codenib.ai/codegraph/#deepseek-harness-bundle)
+
 [Setup and troubleshooting](https://docs.codenib.ai/codegraph/)
 · [Source exclusions](https://docs.codenib.ai/codegraph/#select-the-repository-source-surface)
 · [All MCP tools](https://docs.codenib.ai/mcp/)
-· [Change guard](https://docs.codenib.ai/guard/) (on `main`: lists the tests a change reaches before your agent finishes)
+· [Change guard](https://docs.codenib.ai/guard/) (preview, Python: lists the tests a change reaches before your agent finishes)
 
 ## How it compares
 

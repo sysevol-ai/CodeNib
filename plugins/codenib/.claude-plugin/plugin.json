@@ -1,0 +1,14 @@
+{
+  "name": "codenib",
+  "displayName": "CodeNib",
+  "version": "0.1.1",
+  "description": "Source-linked answers about your repository: ranked search, compiler-indexed calls and references, and a Wiki whose every claim links to the exact lines.",
+  "author": {
+    "name": "CodeNib Contributors",
+    "url": "https://codenib.ai"
+  },
+  "homepage": "https://docs.codenib.ai/codegraph/",
+  "repository": "https://github.com/sysevol-ai/CodeNib",
+  "license": "Apache-2.0",
+  "keywords": ["code-search", "code-graph", "mcp", "repository-context", "wiki"]
+}

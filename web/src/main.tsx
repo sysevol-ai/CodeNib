@@ -4,7 +4,13 @@ import { createRoot } from "react-dom/client";
 import "@/app/globals.css";
 import { githubPathInput } from "@/lib/githubPreview";
 import { routeSegments, useBrowserLocation } from "@/lib/router";
-import { assetUrl, guardHome, restoreStaticRoute } from "@/lib/runtime";
+import {
+  assetUrl,
+  guardHome,
+  homeRepository,
+  moveLegacyWikiRoute,
+  restoreStaticRoute,
+} from "@/lib/runtime";
 import { startExperienceEvents } from "@/lib/experience";
 
 const AskPage = lazy(() => import("@/app/[repoId]/ask/page"));
@@ -29,6 +35,13 @@ function RouteLoading() {
 function App() {
   const location = useBrowserLocation();
   const segments = routeSegments(location.pathname);
+  // A published Wiki is the site: the Overview at the root, every other page
+  // at /page/<id>/, so each address matches a prerendered document.
+  const home = homeRepository();
+  if (home && (segments.length === 0 || (segments.length === 2 && segments[0] === "page"))) {
+    const pageId = new URLSearchParams(location.search).get("p") || segments[1] || "overview";
+    return <WikiPageView key={`${home}:${pageId}`} repoId={home} initialPageId={pageId} />;
+  }
   if (segments.length === 0) {
     const repo = new URLSearchParams(location.search).get("repo");
     if (repo) return <RepositoryRoute key={repo} input={repo} />;
@@ -73,6 +86,14 @@ function App() {
   }
 
   const repoId = segments[0];
+  // /<repo>/page/<id>/ names a page by path so that a static host can serve
+  // each page its own readable document. An in-page ?p= link still wins.
+  if (segments.length === 3 && segments[1] === "page") {
+    const pageId = new URLSearchParams(location.search).get("p") || segments[2];
+    return (
+      <WikiPageView key={`${repoId}:${pageId}`} repoId={repoId} initialPageId={pageId} />
+    );
+  }
   // Legacy Wiki ids retain /ask. GitHub owner/repo aliases include repos
   // named "ask"; GitHub owner names cannot contain the legacy '__' separator.
   if (segments[1] === "ask" && (repoId.includes("__") || segments.length !== 2)) {
@@ -95,6 +116,7 @@ function App() {
 }
 
 restoreStaticRoute();
+moveLegacyWikiRoute();
 startExperienceEvents();
 
 const root = document.getElementById("root");

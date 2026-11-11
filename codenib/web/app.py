@@ -22,14 +22,16 @@ import asyncio
 import hashlib
 import json
 import os
+import re
 import threading
 import weakref
 from collections.abc import Mapping
 from contextlib import asynccontextmanager, contextmanager
 from functools import partial
+from html import escape
 from pathlib import Path, PurePosixPath
 from time import perf_counter
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
@@ -63,6 +65,16 @@ from .experience import router as experience_router
 from .index_status import build_repo_index_status
 from .native_authority import authorize_local_manifest_vector
 from .ports import argparse_tcp_port
+from .prerender import (
+    attr,
+    outline_pages,
+    page_body,
+    page_description,
+    page_route,
+    robots,
+    sitemap,
+    standalone_document,
+)
 from .repo_registry import RepoRegistry
 from .repository_files import bound_source_slice, safe_repo_relative_path
 from .request_limits import RequestBodyLimitMiddleware
@@ -75,6 +87,7 @@ from .schemas import (
     RepoInfo,
     agent_result_to_response,
 )
+from .share import SITE_DESCRIPTION, SITE_TITLE, _repo_for, public_origin
 from .share import router as share_router
 from .source_definition import attach_definition
 from .visitor_wikis import router as visitor_wiki_router
@@ -1076,6 +1089,162 @@ async def wiki_page(
                 },
             }
         return redact_media_evidence_packs(page)
+
+
+# Search crawlers -----------------------------------------------------------
+#
+# The ingress sends known search-engine crawlers (never people) to
+# /api/crawl-page with the route they asked for, and /robots.txt and
+# /sitemap.xml to the two routes below. Each answer is the readable text of a
+# page that is already cached: a crawl never starts generation or a model call.
+
+_CRAWL_PAGES_PER_REPO = 500
+_CRAWL_HEADERS = {"Cache-Control": "public, max-age=600"}
+
+
+def _cached_reader(builder):
+    """Cache-only page and outline readers; a deterministic builder is cheap."""
+
+    tree = getattr(builder, "cached_page_tree", None)
+    page = getattr(builder, "cached_page", None)
+    if callable(tree) and callable(page):
+        return tree, page
+    return builder.page_tree, builder.page
+
+
+def _crawl_target(path: str, p: str, registry) -> tuple[str, str] | None:
+    """The (repo id, page id) a crawled route names, or None for no page."""
+
+    parts = [part for part in path.strip("/").split("/") if part]
+    if len(parts) == 3 and parts[1] == "page":
+        found = _repo_for(parts[0], registry)
+        return (found[0], parts[2]) if found else None
+    # /<id>, or an /<owner>/<repo> alias; never a sub-route such as /<id>/ask.
+    if len(parts) == 1 or (
+        len(parts) == 2 and "__" not in parts[0] and parts[1] != "ask"
+    ):
+        found = _repo_for(path, registry)
+        if found is not None:
+            return found[0], p or "overview"
+    return None
+
+
+def _crawl_repo_pages(repo_id: str) -> tuple[str, list[tuple[str, str, str]]]:
+    """A repository's name and its cached (id, title, markdown) pages."""
+
+    with _pinned_bundle(repo_id) as bundle:
+        builder = _wiki(repo_id, bundle)
+        read_tree, read_page = _cached_reader(builder)
+        pages = []
+        for page_id, title in outline_pages(read_tree() or [])[:_CRAWL_PAGES_PER_REPO]:
+            page = read_page(page_id)
+            if isinstance(page, dict) and str(page.get("markdown") or "").strip():
+                pages.append(
+                    (page_id, str(page.get("title") or title), str(page["markdown"]))
+                )
+        return getattr(bundle.entry, "repo", "") or repo_id, pages
+
+
+def _crawl_home(registry) -> str:
+    origin = public_origin()
+    items = []
+    for info in registry.list_infos() if registry else []:
+        name = getattr(info, "repo", "") or info.id
+        summary = getattr(info, "summary", "") or getattr(info, "description", "")
+        href = f"/{page_route(info.id, 'overview')}"
+        items.append(
+            f"<li><a href={attr(href)}>{escape(name)}</a>"
+            + (f" — {escape(summary)}" if summary else "")
+            + "</li>"
+        )
+    body = (
+        '<main class="prerendered-wiki">\n'
+        f"<h1>{escape(SITE_TITLE)}</h1>\n<p>{escape(SITE_DESCRIPTION)}</p>\n"
+        f"<ul>{''.join(items)}</ul>\n</main>"
+    )
+    return standalone_document(
+        title=SITE_TITLE,
+        description=SITE_DESCRIPTION,
+        canonical=f"{origin}/",
+        body=body,
+    )
+
+
+@app.get("/api/crawl-page")
+async def crawl_page(path: str = "/", p: str = "") -> Response:
+    path = "/" + unquote(path).lstrip("/")[:512]
+    registry = getattr(app.state, "registry", None)
+    if path.strip("/") in {"", "wikis", "browse"}:
+        return Response(
+            _crawl_home(registry), media_type="text/html", headers=_CRAWL_HEADERS
+        )
+    if p and not re.fullmatch(r"[A-Za-z0-9_.-]{1,160}", p):
+        p = ""
+    target = _crawl_target(path, p, registry)
+    if target is None:
+        raise HTTPException(status_code=404, detail="No readable page here.")
+    repo_id, page_id = target
+    repository, pages = await asyncio.to_thread(_crawl_repo_pages, repo_id)
+    current = next((page for page in pages if page[0] == page_id), None)
+    if current is None:
+        # Not generated yet: nothing to read, so nothing to index.
+        raise HTTPException(status_code=404, detail="This page is not ready.")
+    _id, title, markdown = current
+    origin = public_origin()
+    label = f"{repository} Wiki"
+
+    def href(other: str) -> str | None:
+        if any(other == known for known, _title, _markdown in pages):
+            return f"/{page_route(repo_id, other)}"
+        return None
+
+    body = page_body(
+        repository=repository,
+        title=title,
+        markdown=markdown,
+        pages=[(known, name) for known, name, _markdown in pages],
+        page_href=href,
+        current=page_id,
+        source=f"Generated by CodeNib from {repository}",
+    )
+    document = standalone_document(
+        title=label if page_id == "overview" else f"{title} · {label}",
+        description=page_description(markdown, f"{title} in the {label}."),
+        canonical=f"{origin}/{page_route(repo_id, page_id)}",
+        body=body,
+        site_name=label,
+    )
+    return Response(document, media_type="text/html", headers=_CRAWL_HEADERS)
+
+
+@app.get("/api/robots.txt")
+def crawl_robots() -> Response:
+    return Response(
+        robots(f"{public_origin()}/sitemap.xml"),
+        media_type="text/plain",
+        headers=_CRAWL_HEADERS,
+    )
+
+
+@app.get("/api/sitemap.xml")
+async def crawl_sitemap() -> Response:
+    registry = getattr(app.state, "registry", None)
+    origin = public_origin()
+    urls = [f"{origin}/"]
+    for info in registry.list_infos() if registry else []:
+        try:
+            _repository, pages = await asyncio.to_thread(_crawl_repo_pages, info.id)
+        except HTTPException:
+            continue  # Unloaded meanwhile.
+        urls.extend(
+            f"{origin}/{page_route(info.id, page_id)}"
+            for page_id, _title, _markdown in pages
+        )
+    return Response(
+        sitemap(urls),
+        media_type="application/xml",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
 
 
 @app.get("/api/repos/{repo_id}/wiki-media/{page_id}/{filename:path}")

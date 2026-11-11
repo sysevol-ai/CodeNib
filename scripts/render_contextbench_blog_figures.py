@@ -34,9 +34,9 @@ import logging
 import math
 from pathlib import Path
 
+from blog_figure_theme import dark_figure
 from fontTools import subset
 from fontTools.ttLib import TTFont
-from blog_figure_theme import dark_figure
 from fontTools.varLib import instancer
 
 ROOT = Path(__file__).resolve().parents[1]

@@ -28,7 +28,7 @@ const work: Record<string, { description: string; next: string }> = {
   },
   indexing: {
     description:
-      "Building a source index for the System Map and CodeGraph. No model request is needed for this step.",
+      "Building a source index for the map. No model request is needed for this step.",
     next: "Plan the Wiki using the source and indexed relationships.",
   },
   saving_graphs: {

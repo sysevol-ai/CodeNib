@@ -35,12 +35,10 @@ is an operator/local runtime: browsing an uncached page can generate prose,
 and Ask uses its configured provider account. Serving a static preview does
 not change that intentional local behavior.
 
-!!! note "Interactive graph"
-    Earlier versions of this demo embedded **Mermaid** diagrams. The wiki now
-    leads with an **interactive Cytoscape graph**, and the page strips any
-    LLM-generated Mermaid before rendering with `stripGeneratedDiagrams()`.
-    Diagrams are no longer the graph surface — the live, clickable Cytoscape
-    graph is.
+!!! note "Maps come from the index"
+    The wiki draws its map of areas and its call paths from the code index,
+    and the page strips any LLM-generated Mermaid before rendering with
+    `stripGeneratedDiagrams()`. No model draws a diagram.
 
 ## Generate and save a Wiki from a GitHub URL
 
@@ -248,12 +246,14 @@ for other repositories.
 - A CodeNib source checkout with development dependencies (`make dev`).
 - Node.js `^20.19.0` or `>=22.12.0` for frontend source development,
   matching the checked-in Vite toolchain. Install deps once with
-  `make web-deps`. A server that generates visitor Wikis also needs `node`
-  on the backend's own `PATH`: the Python indexer behind their code maps,
-  scip-python, is a Node.js program. A systemd service does not inherit your
-  shell's `PATH`, so set it in the unit when Node lives in a user directory.
-  Without it the Wiki text is still generated, without code maps, and the
-  saved Wiki says why.
+  `make web-deps`. A server that generates visitor Wikis builds their code
+  maps with pyrefly, which the `graph` extra installs. Without the pinned
+  pyrefly release, or with `CODENIB_PYTHON_GRAPH_PROVIDER=scip-python`, it
+  uses scip-python, a Node.js program: then `node` must be on the backend's
+  own `PATH`. A systemd service does not inherit your shell's `PATH`, so set
+  it in the unit when Node lives in a user directory. Without an indexer the
+  Wiki text is still generated, without code maps, and the saved Wiki says
+  why.
 - An LLM provider reachable through LiteLLM, for Ask answers and generated
   wiki pages:
   - `OPENAI_API_KEY` for the default `gpt-4o` (a non-thinking model; set
@@ -520,7 +520,7 @@ node scripts/render-share-cards.mjs http://127.0.0.1:3000 <data_dir>/share_cards
 ```
 
 The ingress sends only link-preview agents, and never `/api/*`, to the tags
-page. People and search engines keep the app. With Caddy:
+page. People keep the app. With Caddy:
 
 ```caddyfile
 @linkpreview {
@@ -529,6 +529,37 @@ page. People and search engines keep the app. With Caddy:
 }
 rewrite @linkpreview /api/share-page?path={http.request.uri.path}&{http.request.uri.query}
 ```
+
+### Search engines
+
+Without help, a search engine sees one empty page for every route. The backend
+answers search crawlers from `/api/crawl-page?path=<route>` with the readable
+text of a Wiki page: its own title, description and canonical link, the
+article, and links to the repository's other pages. It reads only pages that
+are already cached, so a crawl never starts generation or a model call. A page
+that has not been generated yet answers 404. `/api/sitemap.xml` lists the
+home page, every prepared repository's Overview, and each cached page;
+`/api/robots.txt` points to it. Canonical page addresses are
+`/<repo>/` for the Overview and `/<repo>/page/<page-id>/` for other pages; the
+app opens both.
+
+The page is the same text that people read in the app, without its scripts.
+Route only search crawlers to it, and keep static files on the app:
+
+```caddyfile
+@searchcrawler {
+    not path /api/* /assets/*
+    not path_regexp \.[A-Za-z0-9]+$
+    header_regexp User-Agent "(?i)(googlebot|bingbot|duckduckbot|applebot|yandex|baiduspider|slurp|petalbot|seznambot|qwantbot)"
+}
+rewrite @searchcrawler /api/crawl-page?path={http.request.uri.path}&{http.request.uri.query}
+rewrite /robots.txt /api/robots.txt
+rewrite /sitemap.xml /api/sitemap.xml
+```
+
+After deploying, check that `curl -A Googlebot https://demo.codenib.ai/psf__requests/`
+returns the Overview's title, and that `/robots.txt` and `/sitemap.xml` are
+served as text and XML rather than as the app.
 
 ### What the loading states mean
 
@@ -706,27 +737,27 @@ different address.
 
 ## The Wiki page
 
-Each wiki page (`web/app/[repoId]/page.tsx`) is a three-rail layout: a section
-tree on the left, the narrative in the middle, and an "On this page" outline on
-the right. The middle column leads with the graph, then the prose:
+A Wiki page reads as a technical document: the title and the page's opening
+claim first, then sections of source-linked prose, then a list of what to read
+next. Each paragraph's sources trail it in small type, and code names carry a
+light fill so a scan down the page lands on them.
 
-- **Subsystem map.** When the page's symbols resolve in the symbol graph, the
-  page renders a `GraphView` in `variant="wiki"` mode inside a
-  `<details className="subsystem-map">` block whose summary row reads
-  *"Subsystem map · N symbols · Last indexed \<sha\>"*. This is built by
-  `build_page_subgraph()` in `codenib/web/codemap.py`: it resolves each citation
-  to a graph node, takes the page's cited symbols as **seeds** (highlighted as
-  roots), and returns those nodes plus the direct reference edges between them.
-  It deliberately does **not** expand a one-hop neighbourhood: the only
-  non-cited symbols admitted are up to two **bridge** symbols, each of which
-  must touch at least two cited symbols (ranked by call-site evidence), keeping
-  the map grounded in the page's evidence. Edges retain the exact call-site
-  count and carry up to 12 source-linked **anchor** samples.
-- **Relevant source files.** A `<details>` list of the distinct repo-relative
-  files cited on the page, each linking to the exact GitHub blob at the indexed
-  commit.
-- **Source-grounded prose.** The narrative markdown, rendered after generated
-  Mermaid is stripped (see below). Headings drive scroll-spy in the right rail.
+On a wide window (`web/app/[repoId]/page.tsx`) the page sits in a workspace:
+the page list on the left, the map of the repository's areas in the middle, and
+the page on the right. Below that width, the page list is a drawer and the
+Overview carries the map itself.
+
+- **Source-grounded prose.** The narrative Markdown, rendered after generated
+  Mermaid is stripped (see below). Recorded calls appear as an "Interactions"
+  list under their section, each with its call site.
+- **Callers and calls.** On a page whose symbols resolve in the symbol graph, a
+  closed disclosure lists the indexed callers into the page and the calls out
+  of it, each with its call line.
+- **Read next.** The detail pages below this one, then the generator's related
+  pages, listed once with each page's colour from the map.
+- **Provenance and sources.** One line says how the page was made, and a
+  disclosure lists every cited symbol with a link to the exact GitHub blob at
+  the indexed commit.
 
 The **Refresh this wiki** button re-fetches the page tree and active page from
 the backend. It does not clear the in-memory or on-disk generation cache, run a
@@ -740,109 +771,55 @@ healthy content.
 
 The page calls `stripGeneratedDiagrams()` on the markdown before rendering. It
 removes any LLM-generated ` ```mermaid ` fence (and a preceding heading left
-empty by the removal). The interactive Cytoscape graph replaces the static
+empty by the removal). The map and the indexed call paths replace the static
 diagram entirely. The `<Mermaid>` component still loads lazily in
 `web/components/Markdown.tsx` for any stray fence, but wiki pages no longer
 emit one.
 
 ### The full-screen Dependency Map
 
-The wiki header shows a **Dependency Map** button. Clicking it opens a
-full-screen modal (`graph-modal`, Esc to close) hosting `Codemap`
-(`web/components/Codemap.tsx`), the standalone explorer. Repositories without
-the `codemap` capability get setup commands for the optional graph profile
-instead of an empty canvas. When the capability is present, the same component
-is reachable *seeded on a symbol* via **"Focus here"** in the wiki subsystem
-map's node peek — that re-roots the explorer on the chosen symbol.
+The **Dependency Map** shows the code around one symbol as a structure:
+directory, then file, then symbol, with the recorded relationships between the
+open containers listed below it. Use it to see what a symbol sits next to and
+what it references, then focus on a neighbour to move outward.
+
+The wiki header's **Dependency Map** button opens it in a full-screen modal
+(`graph-modal`, Esc to close) hosting `Codemap` (`web/components/Codemap.tsx`).
+Repositories without the `codemap` capability get setup commands for the
+optional graph profile instead. A caller row in a page's "Callers and calls"
+list opens the map focused on that symbol.
 
 `Codemap` calls `GET /api/repos/{id}/codemap`, backed by `build_codemap()` in
 `codenib/web/codemap.py`:
 
 - **Focus symbol.** A free-text symbol box re-roots the map; blank picks the
   repo's busiest symbol (`_default_seed()` = highest reference out-degree
-  function/method/class).
+  function/method/class). Each row's **focus** button does the same.
 - **Direction.** A dropdown chooses `both` (callers + callees), `callees`
   (what it calls), or `callers` (what calls it).
 - BFS walks reference edges out from the root (`depth` clamped to 1–4,
-  `max_nodes` clamped to 2–120; the explorer defaults to depth 1 and requests
-  28 nodes, or 40 at depth 2).
-- A row of chips below the graph lists every node; clicking a chip re-roots on
-  it.
+  `max_nodes` clamped to 2–120; the map requests 28 nodes at depth 1 and 40 at
+  depth 2).
+- Every relationship is a recorded reference with its complete call-site count.
+  CodeNib serializes at most 12 source anchors per edge; anchor lines are
+  1-based (converted from the 0-based tree-sitter/LSP origin in `codemap.py`).
 
-The modal is the **full-screen** surface; the wiki `subsystem-map` is the
-**inline** one. Both render the same `GraphView` component — the difference is
-`variant` (`"explore"` vs `"wiki"`) and which payload feeds it.
+C++ names are shown the way a reader writes them: clang's spelling of template
+parameters (`type-parameter-0-0`) reads `T`, and long template argument lists
+fold to `<…>`. Rows name a symbol by its owner and member, with the full name
+on hover.
 
-## The interactive graph (Cytoscape)
+??? note "Fields the codemap response also carries"
+    `_score()` / `_enrich()` in `codenib/web/codemap.py` annotate the induced
+    reference subgraph (≤120 nodes), best-effort:
 
-`GraphView` (`web/components/GraphView.tsx`) wraps `CodeGraph`
-(`web/components/CodeGraph.tsx`), a Cytoscape view loaded dynamically (~3 MB of
-Cytoscape + layout code) so the narrative paints first. It is a single
-**top-down dependency view** — there is no Flow/Clusters toggle anymore.
-
-### Click an edge → exact source
-
-Every edge is a real reference (call/use) relation. CodeNib retains the exact
-number of distinct LSP/SCIP **call sites** while serializing at most 12 source
-anchors per edge. Clicking an edge opens a **source peek** (`SourcePeek` in
-`GraphView.tsx`) at one of those precise lines; the pager states both the total
-and displayed sample when an edge is truncated. Anchor lines are exposed
-1-based (converted from the 0-based tree-sitter/LSP origin in `codemap.py`).
-Hovering an edge shows the complete call-site count.
-
-### Click a node → definition
-
-Clicking a node opens its **definition** in the same source peek (with a
-*"Focus here"* shortcut that re-roots the explorer) and puts the node into
-persistent focus: the node and its neighbourhood pop via an accent border while
-unrelated *edges* fade — nodes are never greyed out, so every label stays
-legible. Esc or a background click clears focus. External symbols (defined
-outside the repo, no openable source) render dashed/italic and the peek says so
-instead of fetching source.
-
-### Top-down dependency layout
-
-Layout is computed by `computeFilesPositions()` (`web/lib/filesLayout.ts`), a
-pure, unit-tested function where **position encodes meaning** on both axes:
-
-- **Vertical = dependency depth.** A file-level dependency graph is layered by
-  longest path (cycle-safe bounded relaxation): callers / entry points sit at
-  the top, their dependencies flow downward, and files that touch nothing else
-  sink to a dedicated bottom band so they don't crowd the entry row.
-- **Per-file boxes.** Each file becomes a compound box (titled with its
-  basename); its symbols stack top→bottom **by source line** inside it. Boxes
-  are packed into balanced lanes within each band, spaced by each node's
-  *measured* width/height so wide or wrapped labels never overlap.
-- **Fallback.** When there are no cross-file edges, it falls back to
-  size-packed columns (largest files first, shortest-column-first packing).
-
-### Importance, community, and hub collapsing
-
-Node and edge encodings come from `_score()` / `_enrich()` in
-`codenib/web/codemap.py`, computed on the induced reference subgraph
-(≤120 nodes), best-effort (never 500s the map):
-
-- **Importance (PageRank).** Directed PageRank (damping 0.85) over the
-  reference subgraph, exposed as a rank-percentile in [0, 1]. It drives node
-  size: bigger node = more referenced / more "core" (the UI legend reads
-  *"bigger = more referenced"*).
-- **Community (Leiden).** Modularity-based Leiden clustering on the undirected
-  projection (igraph 0.11.9 has no directed Leiden), gated so tiny or loose
-  graphs (< 12 nodes, or modularity < 0.2) collapse to one cluster. Exposed as
-  each node's `community`.
-- **Reference count & entry score.** `ref_count` = in-degree (how many symbols
-  reference this one); `entry_score` = out/(in+out) in [0, 1], high for
-  drivers / entry points.
-- **Colour = kind.** Node border colour is fixed per symbol kind (function,
-  method, class, interface, struct, …) since position already encodes
-  file + line. Roots render filled blue.
-- **Edge width = call-site count.** `weight` is the complete number of distinct
-  call sites even when `anchors` is sampled; a heavily-used call reads thicker.
-- **Hub collapsing.** A node with more than `hub_cap` (8) outgoing edges keeps
-  only the edges to its highest-importance targets; the rest are folded away
-  and counted in `hidden_callees`, surfaced in the UI as a **"+N"** badge on the
-  node label. Nodes left fully disconnected by that fold (and not a root) are
-  dropped, so dense, high-fan-out maps don't become hairballs.
+    - `importance`: directed PageRank (damping 0.85) as a rank-percentile in
+      [0, 1].
+    - `community`: Leiden clustering on the undirected projection, collapsed
+      to one cluster for graphs under 12 nodes or with modularity under 0.2.
+    - `ref_count` (in-degree) and `entry_score` (out/(in+out)).
+    - `hidden_callees`: a node with more than 8 outgoing edges keeps only the
+      edges to its most important targets and counts the rest here.
 
 ## Per-commit graph snapshots
 

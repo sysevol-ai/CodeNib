@@ -5,7 +5,7 @@
 import { useState } from "react";
 
 import { repoRelative, type BoundaryRow, type PageBoundary as Boundary } from "@/lib/api";
-import { splitSymbolLabel } from "@/lib/symbols";
+import { displaySymbol } from "@/lib/symbols";
 import { breakableCode } from "@/lib/breakable";
 
 function Site({ row }: { row: BoundaryRow }) {
@@ -48,8 +48,8 @@ function Side({
       ) : (
         <ul className="boundary-rows">
           {shown.map((row) => {
-            const far = splitSymbolLabel(row.symbol).symbol;
-            const near = splitSymbolLabel(row.page_symbol).symbol;
+            const far = displaySymbol(row.symbol, { short: true });
+            const near = displaySymbol(row.page_symbol, { short: true });
             return (
               <li key={`${row.symbol}->${row.page_symbol}`} className="boundary-row">
                 <button
@@ -57,7 +57,7 @@ function Side({
                   className="boundary-symbol"
                   onClick={onFocus ? () => onFocus(row.symbol) : undefined}
                   disabled={!onFocus}
-                  title={onFocus ? `Open ${far} in the dependency map` : row.symbol}
+                  title={onFocus ? `Open ${displaySymbol(row.symbol)} in the dependency map` : displaySymbol(row.symbol)}
                 >
                   <code>{breakableCode(far)}</code>
                 </button>

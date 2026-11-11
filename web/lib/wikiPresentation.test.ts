@@ -5,10 +5,12 @@ import {
   extractJourney,
   isBareHandoff,
   stageRoles,
-  stageSentence,
   partitionWikiMediaSlots,
+  splitPageLinks,
   splitWikiMarkdown,
   wikiRetryNotice,
+  repositoryFacts,
+  titleOverviewLead,
 } from "./wikiPresentation";
 
 function slot(
@@ -208,19 +210,6 @@ describe("stageRoles", () => {
   });
 });
 
-describe("stageSentence", () => {
-  const stage = (symbol: string, text: string) => ({ index: 1, symbol, text, evidence: [] });
-  it("drops a leading repeat of the stage symbol", () => {
-    expect(stageSentence(stage("get()", "`get()` forwards its URL. [E8](#evidence-E8)"))).toBe(
-      "Forwards its URL. [E8](#evidence-E8)",
-    );
-    expect(stageSentence(stage("Runtime.spawn_blocking", "`Runtime.spawn_blocking()` hands off."))).toBe(
-      "Hands off.",
-    );
-    expect(stageSentence(stage("get()", "`request()` is next."))).toBe("`request()` is next.");
-  });
-});
-
 describe("isBareHandoff", () => {
   it("recognizes a stage with only its call site", () => {
     expect(isBareHandoff("Hands off to `request()`. [R9](#evidence-R9)")).toBe(true);
@@ -300,5 +289,75 @@ describe("partitionWikiMediaSlots with call paths", () => {
     } as unknown as WikiMediaSlot;
     expect(partitionWikiMediaSlots([callPath]).bridge).toEqual([callPath]);
     expect(partitionWikiMediaSlots([slot("plain", "aside", false)]).bridge).toEqual([]);
+  });
+});
+
+describe("splitPageLinks", () => {
+  it("lifts link-only sections out and keeps everything else", () => {
+    const markdown = [
+      "# Parsing",
+      "",
+      "Intro.",
+      "",
+      "## Field contract",
+      "",
+      "- [Not a link-only list](?p=a) with prose after it",
+      "",
+      "## Explore the system",
+      "",
+      "- [Core Engine](?p=core-engine)",
+      "- [Chrono](?p=chrono%20time)",
+      "",
+      "## Related pages",
+      "",
+      "- [Core Engine](?p=core-engine)",
+      "- [Specs](?p=format-specs)",
+    ].join("\n");
+    const { body, links } = splitPageLinks(markdown);
+    expect(body).toBe(
+      ["# Parsing", "", "Intro.", "", "## Field contract", "", "- [Not a link-only list](?p=a) with prose after it", ""].join("\n").trimEnd(),
+    );
+    expect(links).toEqual([
+      { id: "core-engine", title: "Core Engine" },
+      { id: "chrono time", title: "Chrono" },
+      { id: "format-specs", title: "Specs" },
+    ]);
+  });
+
+  it("leaves a page without link sections untouched", () => {
+    expect(splitPageLinks("# A\n\n## B\n\nText.")).toEqual({ body: "# A\n\n## B\n\nText.", links: [] });
+  });
+});
+
+describe("titleOverviewLead", () => {
+  it("titles the Overview with the repository", () => {
+    expect(titleOverviewLead("# Overview\n\nA useful thesis.", "psf/requests")).toBe(
+      "# psf/requests\n\nA useful thesis.",
+    );
+  });
+
+  it("leaves a lead with no opening title, or no repository, alone", () => {
+    expect(titleOverviewLead("A thesis.\n\n# Later", "psf/requests")).toBe("A thesis.\n\n# Later");
+    expect(titleOverviewLead("# Overview\n\nA thesis.", undefined)).toBe("# Overview\n\nA thesis.");
+  });
+});
+
+describe("repositoryFacts", () => {
+  it("counts indexed areas, their symbols and files, and the weight of every link", () => {
+    const map = {
+      areas: [
+        { symbols: 215, files: 5 },
+        { symbols: 69, files: 2 },
+        { symbols: 0, files: 3 },
+      ],
+      links: [{ weight: 40 }, { weight: 2 }],
+    };
+    expect(repositoryFacts(map)).toEqual([
+      { label: "areas", value: 2 },
+      { label: "symbols", value: 284 },
+      { label: "files", value: 7 },
+      { label: "recorded references", value: 42 },
+    ]);
+    expect(repositoryFacts(map, 22)[2]).toEqual({ label: "files", value: 22 });
   });
 });

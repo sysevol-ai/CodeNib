@@ -4,7 +4,7 @@ import {
   type AnchorHTMLAttributes,
   type MouseEvent,
 } from "react";
-import { stripBasePath, withBasePath } from "./runtime";
+import { homeRepository, stripBasePath, withBasePath } from "./runtime";
 
 export interface BrowserLocation {
   pathname: string;
@@ -60,6 +60,40 @@ export function AppLink({
   }
 
   return <a {...props} href={withBasePath(href)} target={target} onClick={follow} />;
+}
+
+/**
+ * The address of another page of the Wiki the reader has open. A Wiki read
+ * at /<repo>/page/<id>/, or any static export, moves by path so that every
+ * address matches a prerendered document; the hosted Wiki keeps `?p=`.
+ */
+export function wikiPageLocation(pathname: string, pageId: string, pathForm: boolean): string {
+  const id = encodeURIComponent(pageId);
+  const page = /^(.*\/)page\/[^/]+\/?$/.exec(pathname);
+  if (page) return pageId === "overview" ? page[1] : `${page[1]}page/${id}/`;
+  if (pathForm) {
+    const root = pathname.endsWith("/") ? pathname : `${pathname}/`;
+    return pageId === "overview" ? root : `${root}page/${id}/`;
+  }
+  return `${pathname}?p=${id}`;
+}
+
+/** The Wiki page an address names: ?p=, then /page/<id>/, else the Overview. */
+export function wikiPageFromLocation(pathname: string, search: string): string {
+  const query = new URLSearchParams(search).get("p");
+  if (query) return query;
+  const page = /\/page\/([^/]+)\/?$/.exec(pathname);
+  if (!page) return "overview";
+  try {
+    return decodeURIComponent(page[1]);
+  } catch {
+    return page[1];
+  }
+}
+
+/** A repository's Wiki address: the site root when the site publishes it. */
+export function wikiRoute(repoId: string): string {
+  return repoId === homeRepository() ? "/" : `/${encodeURIComponent(repoId)}`;
 }
 
 export function routeSegments(pathname: string): string[] {

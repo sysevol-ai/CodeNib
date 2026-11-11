@@ -34,19 +34,16 @@ try {
     if (await launch.count()) {
       await launch.first().click();
       await page
-        .waitForSelector(
-          ".graph-modal .codegraph-canvas, .graph-modal .codemap-unavailable",
-          { timeout: 30000 }
-        )
+        .waitForSelector(".graph-modal .hier-map, .graph-modal .codemap-unavailable", {
+          timeout: 30000,
+        })
         .catch(() => {});
-      report.hasGraphCanvas =
-        (await page.locator(".graph-modal .codegraph-canvas").count()) > 0;
+      report.hasStructure = (await page.locator(".graph-modal .hier-map").count()) > 0;
       report.graphUnavailable =
         (await page.locator(".graph-modal .codemap-unavailable").count()) > 0;
       report.codemapMeta = (await page.locator(".codemap-meta").first().textContent().catch(() => null)) || null;
       report.graphCoverage =
         (await page.locator(".codemap-coverage").first().textContent().catch(() => null)) || null;
-      report.chipCount = await page.locator(".codemap-chip").count();
     } else {
       report.codemapLaunch = "absent";
     }
@@ -56,57 +53,6 @@ try {
 
   await page.waitForTimeout(1500); // let layout settle
 
-  if (process.env.CLICK_EDGE && mode === "codemap") {
-    // Drive a real cytoscape edge tap via the test seam, then peek the call site.
-    const clicked = await page.evaluate(() => {
-      const el = document.querySelector(".codegraph-canvas");
-      const cy = el && el.__cy;
-      if (!cy) return "no-cy";
-      const anchored = cy.edges().filter((e) => e.data("hasAnchor") === 1);
-      // Prefer the edge with the most call sites so the multi-site pager shows.
-      let edge = anchored[0] || cy.edges()[0];
-      anchored.forEach((e) => {
-        if ((e.data("anchors") || []).length > (edge.data("anchors") || []).length) edge = e;
-      });
-      if (!edge) return "no-edge";
-      edge.emit("tap");
-      return `${edge.data("srcShort")} -> ${edge.data("tgtShort")} (${(edge.data("anchors") || []).length} sites)`;
-    });
-    report.clickedEdge = clicked;
-    await page.waitForSelector(".callsite-peek .hl-code, .callsite-peek .callsite-msg", { timeout: 12000 }).catch(() => {});
-    await page.waitForTimeout(700);
-    report.peekLoc = (await page.locator(".callsite-loc").first().textContent().catch(() => null)) || null;
-    report.hasBand = (await page.locator(".callsite-peek .hl-band").count()) > 0;
-  }
-
-  if (process.env.CLICK_NODE && mode === "codemap") {
-    // Tap a node → its definition source peek.
-    const clicked = await page.evaluate(() => {
-      const el = document.querySelector(".codegraph-canvas");
-      const cy = el && el.__cy;
-      if (!cy) return "no-cy";
-      const node = cy.nodes().filter((n) => n.data("root") !== 1)[0] || cy.nodes()[0];
-      if (!node) return "no-node";
-      node.emit("tap");
-      return node.data("short");
-    });
-    report.clickedNode = clicked;
-    await page.waitForSelector(".callsite-peek .hl-code, .callsite-peek .callsite-msg", { timeout: 12000 }).catch(() => {});
-    await page.waitForTimeout(700);
-    report.peekLoc = (await page.locator(".callsite-loc").first().textContent().catch(() => null)) || null;
-    report.hasFocusBtn = (await page.locator(".callsite-focus").count()) > 0;
-  }
-
-  if (process.env.CLICK && mode === "codemap") {
-    // Click the Nth symbol chip to verify the refocus path (shared with node clicks).
-    const chips = page.locator(".codemap-chip");
-    const idx = Math.min(+process.env.CLICK, (await chips.count()) - 1);
-    report.clickedChip = await chips.nth(idx).textContent().catch(() => null);
-    await chips.nth(idx).click();
-    await page.waitForSelector(".codegraph-canvas", { timeout: 15000 }).catch(() => {});
-    await page.waitForTimeout(2000);
-    report.metaAfterClick = (await page.locator(".codemap-meta").first().textContent().catch(() => null)) || null;
-  }
   report.horizontalScroll = await page.evaluate(
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth
   );

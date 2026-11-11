@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  homeRepository,
   mediaAssetUrl,
   normalizeRuntimeBasePath,
+  moveLegacyWikiRoute,
   restoreStaticRoute,
   staticDataUrl,
   stripBasePath,
@@ -84,5 +86,53 @@ describe("runtime base paths", () => {
     restoreStaticRoute();
 
     expect(replaceState).toHaveBeenCalledWith(null, "", route);
+  });
+});
+
+describe("published Wiki home", () => {
+  it("opens a static export on the repository it publishes", () => {
+    staticWindow({
+      __CODENIB_RUNTIME__: { mode: "static", basePath: "/", homeRepository: "orcaloca" },
+    });
+    expect(homeRepository()).toBe("orcaloca");
+  });
+
+  it("keeps the landing page outside a static export or without a repository", () => {
+    staticWindow();
+    expect(homeRepository()).toBeNull();
+    staticWindow({ __CODENIB_RUNTIME__: { mode: "api", homeRepository: "orcaloca" } });
+    expect(homeRepository()).toBeNull();
+    staticWindow({ __CODENIB_RUNTIME__: { mode: "static", homeRepository: " " } });
+    expect(homeRepository()).toBeNull();
+  });
+
+  it("moves an earlier export's /<repo>/ addresses to the site root", () => {
+    const runtime = { mode: "static", basePath: "/project", homeRepository: "orcaloca" };
+    for (const [pathname, search, hash, expected] of [
+      ["/project/orcaloca/", "?p=search-loop", "#retry", "/project/?p=search-loop#retry"],
+      ["/project/orcaloca", "", "", "/project/"],
+      ["/project/orcaloca/page/search-loop/", "", "#retry", "/project/page/search-loop/#retry"],
+    ]) {
+      const replaceState = staticWindow({
+        __CODENIB_RUNTIME__: runtime,
+        location: { pathname, search, hash },
+      });
+      moveLegacyWikiRoute();
+      expect(replaceState).toHaveBeenCalledWith(null, "", expected);
+    }
+
+    for (const pathname of [
+      "/project/",
+      "/project/page/search-loop/",
+      "/project/orcaloca/ask",
+      "/project/other/",
+    ]) {
+      const untouched = staticWindow({
+        __CODENIB_RUNTIME__: runtime,
+        location: { pathname, search: "", hash: "" },
+      });
+      moveLegacyWikiRoute();
+      expect(untouched).not.toHaveBeenCalled();
+    }
   });
 });

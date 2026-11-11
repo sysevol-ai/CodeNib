@@ -4,13 +4,21 @@
 
 import type { ReactNode } from "react";
 
+import { displaySymbol } from "@/lib/symbols";
 import { isBareHandoff, type Journey } from "@/lib/wikiPresentation";
 
-/** Draw a title's `code` spans as code rather than as literal backticks. */
+/** Draw a title's `code` spans as code, each symbol by its owner and member:
+ *  "From `printf()` to `dragonbox.shorter_interval_case()`". */
 function titleWithCode(title: string): ReactNode[] {
-  return title
-    .split(/`([^`]+)`/)
-    .map((part, index) => (index % 2 ? <code key={index}>{part}</code> : part));
+  return title.split(/`([^`]+)`/).map((part, index) =>
+    index % 2 ? (
+      <code key={index} title={part}>
+        {displaySymbol(part, { short: true })}
+      </code>
+    ) : (
+      part
+    ),
+  );
 }
 
 /** The main path through the code, one step per recorded call.
@@ -45,7 +53,9 @@ export default function MainPath({
             </span>
             <div className="main-path-body">
               <div className="main-path-symbol-row">
-                <code className="main-path-symbol">{stage.symbol}</code>
+                <code className="main-path-symbol" title={stage.symbol}>
+                  {displaySymbol(stage.symbol, { short: true })}
+                </code>
                 {stage.page && (
                   <button
                     type="button"

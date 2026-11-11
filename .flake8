@@ -27,6 +27,10 @@ max-complexity = 12
 
 # The deterministic SVG renderer contains literal XML attribute quoting and
 # intentionally long markup lines; these two Bugbear style checks do not map
-# cleanly to generated XML templates.
+# cleanly to generated XML templates. The site's figure and replay renderers
+# write HTML/SVG attributes the same way.
 per-file-ignores =
     codenib/wiki/media_generation.py:B907,B950
+    scripts/blog_figure_theme.py:B907
+    scripts/render_agent_replay.py:B907
+    test/test_blog_figure_theme.py:B907

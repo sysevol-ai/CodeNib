@@ -394,29 +394,36 @@ export default function WikiGraphPane({
                 </g>
               );
             })}
-            {labels.map((label) => {
-              const point = points.get(label.id)!;
-              const x = point.x + label.dx / view.k;
-              return (
-                <text
-                  key={label.id}
-                  x={x}
-                  y={point.y + label.dy / view.k}
-                  textAnchor={label.anchor}
-                  fontSize={11.5 / view.k}
-                  strokeWidth={4 / view.k}
-                  className={`wg-label${near.has(label.id) ? " is-near" : ""}${label.id === activeId && !readonly ? " is-active" : ""}${
-                    states?.[label.id] ? ` is-${states[label.id]}` : ""
-                  }`}
-                >
-                  {label.lines.map((line, index) => (
-                    <tspan key={index} x={x} dy={index ? LABEL_LINE_PX / view.k : 0}>
-                      {line}
-                    </tspan>
-                  ))}
-                </text>
-              );
-            })}
+            {/* The halo is its own layer under every label. Safari paints a stroked
+                glyph over the one before it, so a halo on the label itself eats
+                the letters. */}
+            {(["halo", "text"] as const).map((layer) =>
+              labels.map((label) => {
+                const point = points.get(label.id)!;
+                const x = point.x + label.dx / view.k;
+                const state = `${label.id === activeId && !readonly ? " is-active" : ""}${
+                  states?.[label.id] ? ` is-${states[label.id]}` : ""
+                }`;
+                return (
+                  <text
+                    key={`${layer}:${label.id}`}
+                    x={x}
+                    y={point.y + label.dy / view.k}
+                    textAnchor={label.anchor}
+                    fontSize={11.5 / view.k}
+                    strokeWidth={layer === "halo" ? 4 / view.k : undefined}
+                    aria-hidden={layer === "halo" ? true : undefined}
+                    className={layer === "halo" ? `wg-label-halo${state}` : `wg-label${near.has(label.id) ? " is-near" : ""}${state}`}
+                  >
+                    {label.lines.map((line, index) => (
+                      <tspan key={index} x={x} dy={index ? LABEL_LINE_PX / view.k : 0}>
+                        {line}
+                      </tspan>
+                    ))}
+                  </text>
+                );
+              }),
+            )}
           </g>
         )}
       </svg>

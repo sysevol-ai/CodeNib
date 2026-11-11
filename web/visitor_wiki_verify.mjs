@@ -395,7 +395,7 @@ try {
       .waitFor();
     await page.getByText("Sources for this chapter").click();
     await page
-      .getByRole("button", { name: "src/main.py:1–2", exact: true })
+      .getByRole("button", { name: /src\/main\.py:1–2$/ })
       .click();
     assert.ok(
       (

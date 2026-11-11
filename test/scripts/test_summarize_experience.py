@@ -52,3 +52,36 @@ def test_install_copy_after_source_inspection_and_cli_first_runs(capsys):
     assert "cli: 1 observed tab visits" in cli and "guard_first_run: 1" in cli
     assert "install_command_copy: 2" in landing
     assert "source_inspection -> install_command_copy: 1/1" in landing
+
+
+def test_arrivals_and_the_wikis_that_sent_them(capsys):
+    def page_view(visit, detail="", surface="landing"):
+        return (
+            f"experience_event event=page_view surface={surface} "
+            f"visit={visit * 32}{detail}"
+        )
+
+    summarize(
+        [
+            page_view("a", " arrival=wiki_link wiki=psf/requests"),
+            page_view("a", " arrival=search"),  # A tab keeps its first arrival.
+            page_view("b", " arrival=wiki_link wiki=psf/requests"),
+            page_view("c", " arrival=wiki_link wiki=tokio"),
+            page_view("d", " arrival=search"),
+            page_view("e"),
+            page_view("f", " arrival=wiki_link wiki=bad/name/extra"),  # Ignored.
+            page_view("a", " arrival=social", "wiki"),
+        ]
+    )
+
+    landing, wiki = capsys.readouterr().out.split("wiki:")
+    assert "landing: 6 observed tab visits" in landing
+    assert (
+        "arrivals: search=1 social=0 github=0 wiki_link=3 other=0 direct_or_unknown=2"
+        in landing
+    )
+    assert landing.index("wiki_link psf/requests: 2") < landing.index(
+        "wiki_link tokio: 1"
+    )
+    assert "bad/name" not in landing
+    assert "arrivals: search=0 social=1" in wiki

@@ -4,8 +4,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { fetchWikiAreaMap, type WikiAreaMap } from "@/lib/api";
-import { thumbLayout } from "@/lib/posterLayout";
-import { AREA_COLORS, NEUTRAL_COLOR } from "@/lib/wikiGraph";
+import { THUMB_HEIGHT as H, THUMB_WIDTH as W, mapThumb } from "@/lib/mapThumb";
 import { loadSavedWikiGraphs } from "@/lib/visitorWiki";
 
 const maps = new Map<string, Promise<WikiAreaMap>>();
@@ -25,12 +24,9 @@ function loadMap(repoId?: string, wikiId?: string): Promise<WikiAreaMap> {
   return pending;
 }
 
-const W = 320;
-const H = 104;
-
 /** A catalog card's picture: the repository's areas as dots sized by
- *  symbols and its recorded references as lines, from the same index as the
- *  Overview poster. Loaded when the card scrolls into view. */
+ *  symbols and its recorded references as lines, in the shape the Wiki's
+ *  own map has. Loaded when the card scrolls into view. */
 export default function MapThumb({ repoId, wikiId }: { repoId: string; wikiId?: never } | { repoId?: never; wikiId: string }) {
   const ref = useRef<HTMLDivElement | null>(null);
   const [map, setMap] = useState<WikiAreaMap | null>(null);
@@ -72,9 +68,7 @@ export default function MapThumb({ repoId, wikiId }: { repoId: string; wikiId?: 
     };
   }, [repoId, wikiId]);
 
-  const layout = map ? thumbLayout(map.areas, map.links, W, H) : null;
-  // Each area keeps the colour it has on the full map, in outline order.
-  const colors = new Map(map?.areas.map((area, index) => [area.id, AREA_COLORS[index] ?? NEUTRAL_COLOR]));
+  const layout = map ? mapThumb(map) : null;
   const empty = failed || (map != null && (!layout || layout.dots.length === 0));
 
   return (
@@ -83,12 +77,12 @@ export default function MapThumb({ repoId, wikiId }: { repoId: string; wikiId?: 
         <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet">
           {layout.lines.map((line) => (
             <g key={line.key}>
-              <path className="map-thumb-line" d={line.d} strokeWidth={line.width} />
+              <path className={`map-thumb-line${line.strong ? " is-strong" : ""}`} d={line.d} strokeWidth={line.width} />
               <path className="map-thumb-flow" d={line.d} strokeWidth={Math.max(1, line.width * 0.8)} />
             </g>
           ))}
           {layout.dots.map((dot) => (
-            <circle key={dot.id} className="map-thumb-dot" cx={dot.x} cy={dot.y} r={dot.r} fill={colors.get(dot.id) ?? NEUTRAL_COLOR} />
+            <circle key={dot.id} className="map-thumb-dot" cx={dot.x} cy={dot.y} r={dot.r} fill={dot.color} />
           ))}
         </svg>
       )}

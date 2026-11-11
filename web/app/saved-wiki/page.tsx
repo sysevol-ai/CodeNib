@@ -6,14 +6,15 @@ import { recordExperience } from "@/lib/experience";
 import Header from "@/components/Header";
 import Markdown from "@/components/Markdown";
 import SystemArchitecture from "@/components/SystemArchitecture";
-import SavedWikiMaps from "@/components/SavedWikiMaps";
+import AreaMap from "@/components/AreaMap";
+import ReadNext from "@/components/ReadNext";
 import RepoPoster from "@/components/RepoPoster";
 import WikiGenerationForm from "@/components/WikiGenerationForm";
 import WikiGraphPane from "@/components/WikiGraphPane";
 import WikiRunLog from "@/components/WikiRunLog";
 import WikiStateLegend from "@/components/WikiStateLegend";
 import WikiToc from "@/components/WikiToc";
-import { extractJourney, splitWikiMarkdown } from "@/lib/wikiPresentation";
+import { extractJourney, splitPageLinks, splitWikiMarkdown } from "@/lib/wikiPresentation";
 import {
   shouldWithholdWikiPage,
   isSourceCheckedWikiPage,
@@ -25,6 +26,7 @@ import { AppLink } from "@/lib/router";
 import { withBasePath } from "@/lib/runtime";
 import { buildSourceGraph, describeSourceNode, SOURCE_HUB } from "@/lib/sourceMap";
 import { buildWikiGraph, NEUTRAL_COLOR, type WikiGraphNode } from "@/lib/wikiGraph";
+import { displaySymbol } from "@/lib/symbols";
 import { wikiActivity } from "@/lib/wikiActivity";
 import { clock, PAGE_STAGES, runStarted, runTitle } from "@/lib/wikiRun";
 import { useWikiWorkspace } from "@/lib/workspace";
@@ -230,7 +232,9 @@ export default function SavedWikiPage({ id }: { id: string }) {
           slot.render_contract.provenance === "architecture-plan",
       )
     : undefined;
-  const prose = splitWikiMarkdown(page?.markdown || "");
+  // The "Related pages" list is shown once, after the text, as links.
+  const linked = splitPageLinks(page?.markdown || "");
+  const prose = splitWikiMarkdown(linked.body);
   const showPoster =
     !workspace &&
     active === "overview" &&
@@ -679,7 +683,7 @@ export default function SavedWikiPage({ id }: { id: string }) {
                         allowRemoteImages={false}
                         pageBasePath={`/wiki/${id}`}
                       >
-                        {showPoster ? prose.body : architecture ? prose.lead : page.markdown}
+                        {showPoster ? prose.body : architecture ? prose.lead : linked.body}
                       </Markdown>
                     )}
                     {architecture && (
@@ -711,31 +715,54 @@ export default function SavedWikiPage({ id }: { id: string }) {
                         </Markdown>
                       </>
                     )}
-                    <div className="page-provenance source-checked">
-                      <span>Evidence-linked Wiki chapter</span>
-                      <span>{page.citations.length} source references</span>
-                    </div>
                     {active === "overview" && !architecture && (
                       <p className="wiki-visual-unavailable" role="status">
                         The architecture diagram could not be validated. This chapter's source-checked text is
                         available; the diagram is missing.
                       </p>
                     )}
-                    <SavedWikiMaps
-                      hideSystemMap={showPoster || workspace}
-                      id={id}
-                      pageId={active}
-                      repository={wiki.repository}
-                      complete={!running}
+                    {/* Below the workspace width there is no map beside the
+                        text, so the Overview carries the system map itself. */}
+                    {active === "overview" &&
+                      !showPoster &&
+                      !workspace &&
+                      overviewMaps?.coverage.available &&
+                      overviewMaps.system_map.available &&
+                      overviewMaps.system_map.areas.length > 0 && (
+                        <AreaMap
+                          map={overviewMaps.system_map}
+                          commit={overviewMaps.commit.slice(0, 8)}
+                          onPick={pick}
+                        />
+                      )}
+                    <ReadNext
+                      title={active === "overview" ? "Chapters" : "Read next"}
+                      links={linked.links.filter((link) => link.id !== active)}
+                      colors={workspace ? chapterGraph.colors : undefined}
                       onPick={pick}
                     />
-                    <details className="saved-wiki-sources">
-                      <summary>Sources for this chapter</summary>
-                      {page.citations.map((item, index) => (
-                        <button key={index} type="button" onClick={() => cite(index)}>
-                          {item.file}:{item.start_line}–{item.end_line}
-                        </button>
-                      ))}
+                    <p className={`page-provenance ${isSourceCheckedWikiPage(page) ? "source-checked" : "needs-review"}`}>
+                      <span className="provenance-state">
+                        {isSourceCheckedWikiPage(page)
+                          ? "Written by a model, every claim linked to source"
+                          : "Written by a model, not yet checked against source"}
+                      </span>
+                      <span className="provenance-detail">
+                        {page.citations.length} source {page.citations.length === 1 ? "reference" : "references"}
+                      </span>
+                    </p>
+                    <details className="evidence-ledger">
+                      <summary>Sources for this chapter ({page.citations.length})</summary>
+                      <div className="evidence-list">
+                        {page.citations.map((item, index) => (
+                          <button key={index} type="button" className="evidence-row" onClick={() => cite(index)}>
+                            <span className="evidence-symbol mono">{item.node_name ? displaySymbol(item.node_name) : item.file}</span>
+                            <span className="evidence-location mono">
+                              {item.file}:{item.start_line}–{item.end_line}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
                     </details>
                   </>
                 )}

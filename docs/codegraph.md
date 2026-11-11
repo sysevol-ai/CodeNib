@@ -84,6 +84,71 @@ it, run `codenib codegraph uninstall .` before initializing again. The tool
 selection does not change which indexes are prepared; the smaller list does not establish lower task
 cost or better answers.
 
+## Claude Code plugin
+
+In Claude Code, the CodeNib plugin replaces the per-repository registration:
+
+```bash
+claude plugin marketplace add sysevol-ai/CodeNib
+claude plugin install codenib@codenib
+```
+
+It needs the `codenib` command (`uv tool install "codenib[graph,mcp]"` or
+`pipx install "codenib[graph,mcp]"`); with uv installed and no `codenib` on the
+path, it runs CodeNib through `uvx`. In each Git checkout you open, the
+plugin's MCP server builds or refreshes the search index and then starts with
+`--defer-graph --tool-surface explore`, as described in the next section.
+Indexes stay under `~/.codenib`. Outside a Git checkout the server does not
+start. The server is started by a Bash script, so Windows needs Git Bash or
+WSL.
+
+The plugin also adds four skills:
+
+| Skill | Use |
+| --- | --- |
+| `/codenib:explain` | Explains how code works, where it lives or what calls it, citing `path:line` |
+| `/codenib:impact` | Lists and runs the tests a change can reach (the [change guard](guard.md), Python only) |
+| `/codenib:setup` | Installs CodeNib and the language providers, and builds the index and graph |
+| `/codenib:wiki` | Opens the local Wiki, or sets up publishing it on GitHub Pages |
+
+Claude may use `explain` and `impact` by itself; `setup` and `wiki` run only
+when you invoke them. A repository already registered with
+`codenib codegraph init . --agent claude` keeps that server too. To avoid
+duplicate tools, remove it with `codenib codegraph uninstall .`.
+
+## Grok Build plugin
+
+Grok Build reads the same plugin, skills and MCP server included. The server
+starts in the project Grok opens. Load it from a clone; the `[plugins]` table in
+`~/.grok/config.toml` keeps it loaded in every session:
+
+```bash
+git clone --depth 1 https://github.com/sysevol-ai/CodeNib ~/.grok/codenib
+grok --plugin-dir ~/.grok/codenib/plugins/codenib
+```
+
+```toml
+[plugins]
+paths = ["~/.grok/codenib/plugins/codenib"]
+```
+
+It needs the `codenib` command, or uv, as in Claude Code.
+
+## DeepSeek Harness bundle
+
+In [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness), a
+bundle adds the same MCP server:
+
+```bash
+dsh plugin add "git+https://github.com/sysevol-ai/CodeNib.git#main&path:/plugins/dsh"
+```
+
+Replace `main` with a commit to pin what runs. Start `dsh` inside a Git
+checkout: the server indexes that checkout, then starts as above. The bundle
+starts the server with `sh`, so it loads on macOS and Linux and Windows hosts
+skip it. It adds no skills; the server's own instructions tell the model when
+to use `explore_context`.
+
 ## Prepare the graph when needed
 
 Start with retrieval before graph preparation:

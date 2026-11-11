@@ -8,7 +8,15 @@ import { isStaticRuntime } from "@/lib/runtime";
 export const mebibytes = (bytes: number) => `${Number((bytes / (1024 * 1024)).toFixed(2))} MiB`;
 
 /** Read the same limits that the server enforces; no repository is downloaded. */
-export default function WikiRepositoryRules({ limits }: { limits?: WikiGenerationLimits }) {
+export default function WikiRepositoryRules({
+  limits,
+  summaryLine = true,
+}: {
+  limits?: WikiGenerationLimits;
+  /** The limits as a line above the disclosure. Off where the reader has not
+   *  yet chosen to generate anything; the disclosure still lists them. */
+  summaryLine?: boolean;
+}) {
   const [loaded, setLoaded] = useState<WikiGenerationLimits | undefined>(limits);
   useEffect(() => {
     if (limits || isStaticRuntime()) return;
@@ -21,7 +29,7 @@ export default function WikiRepositoryRules({ limits }: { limits?: WikiGeneratio
   const policy = limits ?? loaded;
   return (
     <div className="wiki-repository-rules">
-      {policy && <p>Hosted limits: {mebibytes(policy.max_archive_bytes)} download, {mebibytes(policy.max_source_bytes)} retained files, {policy.max_files.toLocaleString()} files. Files over {mebibytes(policy.max_file_bytes)} are skipped.</p>}
+      {policy && summaryLine && <p>Hosted limits: {mebibytes(policy.max_archive_bytes)} download, {mebibytes(policy.max_source_bytes)} retained files, {policy.max_files.toLocaleString()} files. Files over {mebibytes(policy.max_file_bytes)} are skipped.</p>}
       <details>
       <summary>Which repositories can generate a Wiki?</summary>
       <p>Public GitHub repositories only. We read a snapshot of the default branch.</p>
@@ -33,7 +41,7 @@ export default function WikiRepositoryRules({ limits }: { limits?: WikiGeneratio
             <li>Up to {policy.max_files.toLocaleString()} files, including skipped files; {policy.max_archive_entries.toLocaleString()} archive entries including directories.</li>
             <li>Files larger than {mebibytes(policy.max_file_bytes)} are skipped and listed in the result.</li>
           </ul>
-          <p>Wiki source languages: {policy.source_languages.join(", ")}. System Map and CodeGraph currently cover {policy.graph_languages.join(", ")} source only; indexing can time out or find no relationships between chapters.</p>
+          <p>Wiki source languages: {policy.source_languages.join(", ")}. The map's recorded references cover {policy.graph_languages.join(", ")} source only; indexing can time out or find no references between chapters.</p>
         </>
       ) : (
         <p>The live service checks size and supported source languages before you connect OpenRouter. Large repositories may require a local run.</p>
