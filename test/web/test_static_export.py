@@ -2316,3 +2316,33 @@ def test_only_a_cached_wiki_can_be_exported_in_part(export_setup):
             frontend_dir=export_setup.frontend,
             only_pages={"overview"},
         )
+
+
+def test_static_export_names_the_stated_repository(
+    export_setup, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    setup = export_setup
+    local = SimpleNamespace(
+        repo_id="demo",
+        data_dir=setup.manifest_path.parent / "wiki",
+        config_path=setup.manifest_path.parent / "wiki" / "config.yaml",
+    )
+    slugs: list[str] = []
+
+    def prepare_static(_repo, _manifest, **kwargs):
+        slugs.append(kwargs["repository_slug"])
+        return local
+
+    monkeypatch.setattr("codenib.web.static_export.prepare_local_wiki", prepare_static)
+
+    export_static_wiki(
+        setup.repo,
+        setup.manifest_path,
+        setup.output,
+        frontend_dir=setup.frontend,
+        repository="owner/demo-project",
+    )
+
+    # The reader links source files to github.com/<repository>. The directory
+    # name alone produced links that all returned 404.
+    assert slugs == ["owner/demo-project"]

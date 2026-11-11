@@ -77,6 +77,14 @@ _README_SECTION_TITLES = {
 }
 
 
+# A line that is nothing but links, or a reference definition. A wrapped
+# sentence can also start with "[": "[Harbor](...)'s task format so they" is
+# prose, and dropping it cut the paragraph down to its next line.
+_LINK_ONLY_LINE = re.compile(
+    r"^\[[^\]]*\]:\s" r"|^(?:\[[^\]]*\](?:\([^)]*\)|\[[^\]]*\])?[\s|·•,/-]*)+$"
+)
+
+
 def _plain_text(line: str) -> str:
     line = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", line)
     # Reference-style links: [text][ref] and the collapsed [ref][] form.
@@ -140,7 +148,7 @@ def readme_summary(text: str, limit: int = 160) -> str:
             flush_paragraph()
             in_skipped_block = True
             continue
-        if line.startswith(("![", "[![")) or line.startswith("["):
+        if line.startswith(("![", "[![")) or _LINK_ONLY_LINE.match(line):
             flush_paragraph()
             in_skipped_block = True
             continue

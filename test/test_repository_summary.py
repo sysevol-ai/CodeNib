@@ -103,3 +103,18 @@ def test_readme_summary_skips_wrapped_list_item_continuations():
     summary = readme_summary(prose, limit=600)
     assert summary.startswith("A runtime for writing reliable")
     assert "concurrency model" not in summary
+
+
+def test_readme_summary_keeps_a_wrapped_line_that_opens_with_a_link():
+    text = (
+        "# Adapters\n\n"
+        "[Docs](https://example.com/docs) | [Blog](https://example.com/blog)\n\n"
+        "The project converts external benchmarks into\n"
+        "[Harbor](https://example.com/harbor)'s task format so they can be run and\n"
+        "shared through one harness. It was split out of the main\n"
+        "[`harbor`](https://example.com/harbor) monorepo.\n\n"
+        "[docs]: https://example.com/docs\n"
+    )
+    summary = readme_summary(text, limit=600)
+    assert summary.startswith("The project converts external benchmarks into Harbor's")
+    assert summary.endswith("harbor monorepo.")
