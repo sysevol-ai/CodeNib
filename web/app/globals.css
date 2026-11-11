@@ -1794,6 +1794,16 @@ pre {
 [data-theme="dark"] .hl-code .hljs {
   color: #c9d1d9;
 }
+/* github.css paints an interpolated expression near-black; keep it readable. */
+[data-theme="dark"] .hl-code .hljs-subst {
+  color: #c9d1d9;
+}
+/* One opaque tint for the cited fragment. The translucent token stacked on
+   the fragment and again on its code, which washed the whole block out. */
+[data-theme="dark"] .frag.active,
+[data-theme="dark"] .frag.active .hl-code {
+  background: color-mix(in srgb, var(--accent) 9%, #0d1117);
+}
 [data-theme="dark"] .hl-code .hljs-doctag,
 [data-theme="dark"] .hl-code .hljs-keyword,
 [data-theme="dark"] .hl-code .hljs-meta .hljs-keyword,
@@ -3849,7 +3859,9 @@ a.codepanel-name:hover {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
-  background: #fff;
+  /* The page colour, not white: the dark theme's translucent selection sat on
+     a white pane and turned the cited code pale blue under light text. */
+  background: var(--bg-page);
 }
 .frag {
   border-bottom: 1px solid var(--border);
