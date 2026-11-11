@@ -1561,7 +1561,10 @@ def _run_pages_build(args: argparse.Namespace) -> int:
         else:
             print(f"Wiki: writing every page ({carried.reason}).")
     report = _audit_local_wiki(
-        local, parts, progress=_pages_progress_printer(model_backend.model)
+        local,
+        parts,
+        progress=_pages_progress_printer(model_backend.model, workers=args.workers),
+        workers=args.workers,
     )
     _print_wiki_audit(report, verdict=False)
     details = [item for item in report.get("details") or [] if isinstance(item, dict)]
@@ -1765,19 +1768,34 @@ def _local_agent_wiki(local):
     return bundle, model, builder
 
 
-def _audit_local_wiki(local, builder_parts=None, progress=None) -> dict[str, object]:
+def _audit_local_wiki(
+    local, builder_parts=None, progress=None, workers: int = 1
+) -> dict[str, object]:
     """Audit the prepared local Wiki, generating every page it still lacks."""
 
     from .wiki.quality import audit_wiki
 
     bundle, model, builder = builder_parts or _local_agent_wiki(local)
-    report = audit_wiki(builder, progress=progress)
+    report = audit_wiki(builder, progress=progress, workers=workers)
     return {
         "repository": bundle.entry.repo,
         "commit": bundle.entry.base_commit,
         "model": model,
         **report,
     }
+
+
+_DEFAULT_PAGES_WORKERS = 4
+
+
+def _pages_workers(value: str) -> int:
+    try:
+        workers = int(value)
+    except ValueError:
+        workers = 0
+    if not 1 <= workers <= 8:
+        raise argparse.ArgumentTypeError("--workers must be a whole number from 1 to 8")
+    return workers
 
 
 def _short_duration(seconds: float) -> str:
@@ -1788,8 +1806,15 @@ def _short_duration(seconds: float) -> str:
     return f"{minutes} min {rest} s" if rest else f"{minutes} min"
 
 
-def _pages_progress_printer(model: str):
-    """Print one flushed line per Wiki page, with an estimate of the time left."""
+def _pages_progress_printer(model: str, workers: int = 1):
+    """Print one flushed line per Wiki page, with an estimate of the time left.
+
+    The estimate is the mean time a page has taken times the pages left,
+    shared among the workers. Elapsed time over pages done would overstate it
+    while the first pages written concurrently are still in flight.
+    """
+
+    written = {"pages": 0, "seconds": 0.0}
 
     def show(event: dict[str, object]) -> None:
         total = int(event.get("total") or 0)
@@ -1802,17 +1827,21 @@ def _pages_progress_printer(model: str):
             )
             return
         done = int(event.get("done") or 0)
+        seconds = float(event.get("seconds") or 0)
+        written["pages"] += 1
+        written["seconds"] += seconds
         status = "ready" if event.get("ready") else "left out"
         line = (
             f"  [{done:>{len(str(total))}}/{total}] {status:<8} "
-            f"{_short_duration(float(event.get('seconds') or 0)):>9}  "
+            f"{_short_duration(seconds):>9}  "
             f"{event.get('title') or event.get('id')}"
         )
         failures = [str(item) for item in event.get("failures") or []]
         if not event.get("ready") and failures:
             line += f" ({', '.join(failures)})"
-        if done and done < total:
-            left = float(event.get("elapsed") or 0) / done * (total - done)
+        if done < total:
+            mean = written["seconds"] / written["pages"]
+            left = mean * (total - done) / max(1, min(workers, total - done))
             if left >= 60:
                 left = round(left / 60) * 60
             line += f"; about {_short_duration(left)} left"
@@ -4109,6 +4138,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--repository", help="owner/name shown in the Wiki and its links"
     )
     pages_build.add_argument("--full", action="store_true", help="rewrite every page")
+    pages_build.add_argument(
+        "--workers",
+        type=_pages_workers,
+        default=_DEFAULT_PAGES_WORKERS,
+        help=(
+            "pages written at the same time (1-8, default "
+            f"{_DEFAULT_PAGES_WORKERS}); each one is a separate model request"
+        ),
+    )
     pages_build.add_argument(
         "--min-ready",
         type=float,
