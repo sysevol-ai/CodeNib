@@ -1280,6 +1280,7 @@ def export_static_wiki(
     export_format: str = "static",
     site_url: str | None = None,
     only_pages: Iterable[str] | None = None,
+    repository: str | None = None,
 ) -> StaticExportResult:
     """Publish a source-bound Wiki with no model calls.
 
@@ -1292,7 +1293,9 @@ def export_static_wiki(
     URL of the export root, adds canonical links and a sitemap. With
     ``only_pages``, a cached static export publishes just those pages, such as
     the ones that passed an audit, and leaves the rest of the outline out; the
-    Overview must be among them.
+    Overview must be among them. ``repository`` is the caller's stated
+    ``owner/name``; the deterministic builder shows it and links source files
+    to it. Without it only the directory name is known, and no link is made.
     """
 
     if export_format not in {"static", "okf"}:
@@ -1382,7 +1385,7 @@ def export_static_wiki(
             repo_path,
             manifest_path,
             frontend_port=0,
-            repository_slug=repo_path.name or "repository",
+            repository_slug=repository or repo_path.name or "repository",
             agent_wiki=False,
         )
         repo_id = local.repo_id

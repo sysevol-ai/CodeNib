@@ -1649,6 +1649,7 @@ def _run_publish(args: argparse.Namespace) -> int:
         context_output=context_output,
     )
     publication_environment = _publication_environment(args.embedding_api_key_env)
+    repository = args.repository or os.environ.get("GITHUB_REPOSITORY")
     try:
         site = export_static_wiki(
             repo_path,
@@ -1658,12 +1659,13 @@ def _run_publish(args: argparse.Namespace) -> int:
             base_path=args.base_path,
             environ=publication_environment,
             site_url=args.site_url,
+            repository=repository,
         )
         context = stage_context_artifact(
             repo_path,
             manifest_path,
             context_output,
-            repository=args.repository or os.environ.get("GITHUB_REPOSITORY"),
+            repository=repository,
             views=selected_views,
             environ=publication_environment,
             validate_checkout=False,

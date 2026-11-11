@@ -11,6 +11,9 @@ export function ghFileUrl(
   end?: number | null
 ): string | null {
   if (!repo) return null;
+  // A published Wiki may know only the directory name; "github.com/<name>"
+  // is not a repository, so make no link rather than a broken one.
+  if (!sourceUrl && !/^[^/\s]+\/[^/\s]+$/.test(repo)) return null;
   const lines = start ? `#L${start}${end && end !== start ? `-L${end}` : ""}` : "";
   const root = (sourceUrl || `https://github.com/${repo}`).replace(/\/+$/, "");
   return `${root}/blob/${commit || "HEAD"}/${file}${lines}`;
