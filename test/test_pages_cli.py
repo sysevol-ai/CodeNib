@@ -54,22 +54,21 @@ def test_init_writes_a_story_workflow_and_prints_the_remaining_steps(tmp_path, c
     )
 
 
-def test_init_refuses_to_overwrite_and_index_mode_needs_no_key(tmp_path, capsys):
+def test_init_refuses_to_overwrite_and_always_asks_for_a_key(tmp_path, capsys):
     root = _repo(tmp_path, origin=None)
     assert cli.run(["pages", "init", str(root), "--ref", "v1.0.0"]) == 0
     assert cli.run(["pages", "init", str(root), "--ref", "v1.0.0"]) == 2
     assert "already exists" in capsys.readouterr().err
 
-    assert (
-        cli.run(
-            ["pages", "init", str(root), "--wiki", "index", "--force", "--ref", "v1"]
-        )
-        == 0
-    )
+    assert cli.run(["pages", "init", str(root), "--force", "--ref", "v1"]) == 0
     data = yaml.safe_load((root / pages_setup.WORKFLOW_PATH).read_text())
-    assert "secrets" not in data["jobs"]["publish"]
-    assert "wiki" not in data["jobs"]["publish"]["with"]
+    assert data["jobs"]["publish"]["with"]["wiki"] == "story"
+    assert "wiki_api_key" in data["jobs"]["publish"]["secrets"]
     assert "codenib pages badge --site-url" in capsys.readouterr().out
+
+    # Pages derived from the index alone are no longer published.
+    with pytest.raises(SystemExit):
+        cli.run(["pages", "init", str(root), "--wiki", "index", "--force"])
 
 
 @pytest.mark.parametrize(

@@ -98,7 +98,6 @@ def workflow_text(
     *,
     ref: str,
     branch: str,
-    story: bool,
     model: str = DEFAULT_WIKI_MODEL,
     secret: str = DEFAULT_WIKI_SECRET,
 ) -> str:
@@ -121,16 +120,11 @@ def workflow_text(
         "  push:",
         f"    branches: [{branch}]",
         "  workflow_dispatch:",
-    ]
-    if story:
-        lines += [
-            "    inputs:",
-            "      full-rebuild:",
-            "        description: Rewrite every page instead of keeping unchanged ones",
-            "        type: boolean",
-            "        default: false",
-        ]
-    lines += [
+        "    inputs:",
+        "      full-rebuild:",
+        "        description: Rewrite every page instead of keeping unchanged ones",
+        "        type: boolean",
+        "        default: false",
         "",
         "permissions:",
         "  contents: read",
@@ -142,15 +136,12 @@ def workflow_text(
         f"    uses: sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@{ref}",
         "    with:",
         "      preset: fast",
+        "      wiki: story",
+        f"      model: {model}",
+        "      full-rebuild: ${{ inputs.full-rebuild || false }}",
+        "    secrets:",
+        f"      wiki_api_key: ${{{{ secrets.{secret} }}}}",
     ]
-    if story:
-        lines += [
-            "      wiki: story",
-            f"      model: {model}",
-            "      full-rebuild: ${{ inputs.full-rebuild || false }}",
-            "    secrets:",
-            f"      wiki_api_key: ${{{{ secrets.{secret} }}}}",
-        ]
     return "\n".join(lines) + "\n"
 
 

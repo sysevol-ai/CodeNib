@@ -1435,13 +1435,11 @@ def _run_pages_init(args: argparse.Namespace) -> int:
     )
 
     repo_path = resolve_repo_path(args.repo)
-    story = args.wiki == "story"
     ref = args.ref or f"v{package_version()}"
     try:
         text = workflow_text(
             ref=ref,
             branch=args.branch or default_branch(repo_path),
-            story=story,
             model=args.model,
             secret=args.secret,
         )
@@ -1454,17 +1452,16 @@ def _run_pages_init(args: argparse.Namespace) -> int:
     destination.write_text(text, encoding="utf-8")
     repository = github_repository(repo_path)
     site = args.site_url or (pages_url(repository) if repository else None)
-    print(f"Wrote {WORKFLOW_PATH} (CodeNib {ref}, {args.wiki} Wiki).")
+    print(f"Wrote {WORKFLOW_PATH} (CodeNib {ref}).")
     print("Next:")
     print("  1. Commit and push the workflow.")
     print("  2. In Settings > Pages, choose GitHub Actions as the source.")
-    if story:
-        print(
-            f"  3. Add your OpenRouter key as the Actions secret {args.secret} "
-            "(Settings > Secrets and variables > Actions). Set a spending limit "
-            "on the key; each push rewrites only the pages whose files changed."
-        )
-    print(f"  {4 if story else 3}. Add the badge to your README:")
+    print(
+        f"  3. Add your OpenRouter key as the Actions secret {args.secret} "
+        "(Settings > Secrets and variables > Actions). Set a spending limit "
+        "on the key; each push rewrites only the pages whose files changed."
+    )
+    print("  4. Add the badge to your README:")
     if site:
         print(f"     {badge_markdown(site)}")
     else:
@@ -4026,12 +4023,6 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     pages_init.add_argument("repo", nargs="?", default=".")
-    pages_init.add_argument(
-        "--wiki",
-        choices=("story", "index"),
-        default="story",
-        help="model-written pages (story) or index-derived pages without a model",
-    )
     pages_init.add_argument("--model", default=_DEFAULT_PAGES_MODEL)
     pages_init.add_argument(
         "--secret",

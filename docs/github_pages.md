@@ -6,61 +6,20 @@ SPDX-License-Identifier: Apache-2.0
 
 # Publish With GitHub Pages
 
-CodeNib can build repository context in GitHub Actions, deploy a source-linked
-static Wiki to GitHub Pages, and retain the matching context views as one
-downloadable artifact. Start with the `fast` preset: it builds deterministic
-pages and a BM25 artifact without a model download, GPU, or API key. Visitors
-browse static files; their visits do not trigger indexing or model calls.
+CodeNib can write a Wiki of your repository in GitHub Actions and deploy it to
+GitHub Pages: a map of the code's parts, an Overview, and pages whose claims
+link to the exact lines. A model writes the pages on your key, once per
+commit. Visitors browse static files; their visits do not trigger indexing or
+model calls. Each run also keeps the matching search views as one
+downloadable context artifact.
 
-## Publish a Static Preview
+A published Wiki is always written by a model, so every setup below needs a
+model key. Earlier releases could also publish pages derived from the index
+alone, with `wiki: index` and no key. That mode was removed: its pages were a
+directory listing, not a Wiki. A workflow that still sets `wiki: index` stops
+with a message; remove the input and add a key.
 
-Create a caller workflow in the repository that should receive a Wiki:
-
-```yaml
-name: CodeNib Pages
-
-on:
-  push:
-    branches: [main]
-  workflow_dispatch:
-
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-jobs:
-  publish:
-    uses: sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@49a83746e1fa76bd81299f172bbb16d7084c24d3 # v0.2.5
-    with:
-      preset: fast
-```
-
-The commit pin resolves to v0.2.5 and keeps the compiler, frontend, Action,
-and artifact schema on one reviewed version. When upgrading, update both
-the commit SHA and its version comment. In the repository's **Settings > Pages**, select
-**GitHub Actions** as the source.
-
-The workflow checks out the caller's exact commit, builds or reuses the
-`fast` preset view, exports the Wiki at the Pages-provided mount path, and
-deploys it through the `github-pages` environment. It also uploads an artifact
-named from the repository and commit. The workflow caches the repository view
-for later builds. The static Wiki serves precomputed
-pages, citations, and navigation without executing a query engine in the
-browser; the BM25 artifact remains reusable through local or MCP serving.
-These are index-derived pages. For model-written pages, set `wiki: story`
-(next section).
-
-The v0.2.5 workflow and composite Action use `fast` by default. The example
-selects it explicitly; repositories still pinned to v0.2.3 must set `fast`
-to avoid that version's semantic default and embedding download.
-
-## Publish a Model-Written Wiki
-
-A model-written Wiki is the one the CodeNib Wiki app shows: a map of the
-code's parts, an Overview that follows the main path through the code, and
-pages that pass the readability and source checks. The model runs on your key;
-visitors never call it.
+## Publish the Wiki
 
 The quickest setup is the
 [CodeNib Wiki action](https://github.com/marketplace/actions/codenib-wiki)
@@ -97,7 +56,8 @@ jobs:
 Then choose **GitHub Actions** under **Settings > Pages**, and add your
 OpenRouter key, with a spending limit on it, as the Actions secret
 `OPENROUTER_API_KEY`. The action also takes `model`, `full-rebuild` and
-`graph`; without a key, set `wiki: index`. Each release of the action
+`graph`. Without a key the run stops before it indexes anything and says how
+to add one. Each release of the action
 installs one pinned CodeNib commit, and `@v1` follows the latest 1.x release.
 Pin a full commit SHA of `sysevol-ai/wiki-action` to review each upgrade.
 
@@ -109,7 +69,7 @@ python -m pip install "codenib[agent]"
 codenib pages init
 ```
 
-This writes `.github/workflows/codenib-wiki.yml` with `wiki: story`:
+This writes `.github/workflows/codenib-wiki.yml`:
 
 ```yaml
 jobs:
@@ -127,8 +87,9 @@ jobs:
 Then choose **GitHub Actions** under **Settings > Pages**, and add your
 OpenRouter key as the Actions secret `OPENROUTER_API_KEY`. Put a spending
 limit on that key. `--model` and `--secret` choose another LiteLLM model and
-secret name, `--wiki index` writes the model-free workflow above, and `--ref`
-pins a full commit SHA instead of the release tag. Pages are planned through
+secret name, and `--ref` pins a full commit SHA instead of the release tag.
+In the reusable workflow, `preset: fast` builds the BM25 search view without
+an embedding model or GPU. Pages are planned through
 structured output within a bounded budget. For an OpenRouter model that the
 hosted Wiki lists, `codenib pages build` turns reasoning off as the hosted Wiki
 does; Claude 5.x models cannot turn thinking off and can spend that budget
@@ -142,8 +103,9 @@ missing is left out of the graph. The model then writes the pages, and
 `codenib pages build` exports the ones that pass their checks, as the hosted
 Wiki does. A page that fails is left out and written again on the next
 commit. If the Overview fails, or fewer than 80% of the pages pass
-(`--min-ready`), nothing is published: the run deploys the index-derived
-pages instead and shows a warning.
+(`--min-ready`), the run fails and nothing is deployed. The Wiki published by
+the last successful run stays as it is; a first run that fails leaves no
+site. Run the workflow again, or with **full-rebuild**.
 
 The first run writes every page. After it, the Wiki's outline and pages are
 kept in the Actions cache. On the next push, a page whose source files are
@@ -161,8 +123,7 @@ $0.01. Larger repositories take longer and cost more.
 `codenib pages badge` prints a README badge, served by the published site,
 that links to the Wiki.
 
-The key reaches only the step that writes pages, and only for `wiki: story`.
-The workflow skips pull requests from forks, and publication fails if any
+The key reaches only the step that writes pages. The workflow skips pull requests from forks, and publication fails if any
 output contains the key.
 
 ## Optionally Publish Semantic Views
@@ -175,6 +136,9 @@ jobs:
     uses: sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@49a83746e1fa76bd81299f172bbb16d7084c24d3 # v0.2.5
     with:
       preset: semantic
+      wiki: story
+    secrets:
+      wiki_api_key: ${{ secrets.OPENROUTER_API_KEY }}
 ```
 
 This builds BM25 and dense-vector views and downloads a local embedding model.
@@ -194,11 +158,13 @@ jobs:
     uses: sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@49a83746e1fa76bd81299f172bbb16d7084c24d3 # v0.2.5
     with:
       preset: semantic
+      wiki: story
       embedding-provider: openai
       embedding-model: text-embedding-3-small
       embedding-dimension: "1536"
       embedding-endpoint: https://embeddings.example.com/v1
     secrets:
+      wiki_api_key: ${{ secrets.OPENROUTER_API_KEY }}
       embedding_api_key: ${{ secrets.CODENIB_EMBEDDING_API_KEY }}
 ```
 
@@ -250,9 +216,9 @@ Pages artifacts.
 ## Publish an Existing Story Wiki
 
 Cached-story export is included in CodeNib 0.2.5 with a prebuilt frontend.
-It needs no Node.js installation or CodeNib source checkout. The reusable Pages
-workflow builds an index-derived preview; exporting existing story pages is a
-separate operator command.
+It needs no Node.js installation or CodeNib source checkout. The Pages workflow
+above writes the pages in Actions; exporting pages you have already generated
+is a separate operator command.
 
 An operator can generate story pages once, then publish them as static files.
 Visitors browse the recorded prose, source excerpts, page relationships and
@@ -307,8 +273,9 @@ versions used to select the cached outline and pages, even when older page
 payloads have no separate prompt-version field. Source citations contain eligible excerpts;
 the export does not infer an authenticated GitHub origin from local Git config.
 
-The regular `codenib export /path/to/repository` route still builds deterministic
-index-derived pages. It does not export generated story prose automatically.
+On your own machine, `codenib export /path/to/repository` still builds pages
+from the index alone, as a local preview. It does not export generated story
+prose, and the Pages workflow does not publish its output.
 
 ### Export an OKF Bundle
 

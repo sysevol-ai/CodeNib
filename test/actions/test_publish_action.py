@@ -92,6 +92,7 @@ def _run_resolve_step(
             "INPUT_SITE_OUTPUT": "",
             "INPUT_UPLOAD_CONTEXT": "true",
             "INPUT_WIKI": action["inputs"]["wiki"]["default"],
+            "INPUT_WIKI_KEY_ENV": "CODENIB_ACTION_WIKI_KEY",
             "INPUT_WIKI_GRAPH": action["inputs"]["wiki-graph"]["default"],
             "RUNNER_OS": "Linux",
             "RUNNER_TEMP": str(tmp_path),
@@ -192,7 +193,7 @@ def test_publish_action_resolves_valid_inputs(tmp_path: Path) -> None:
     assert f"site_path={tmp_path / 'codenib-site'}" in output
     assert f"context_path={tmp_path / 'codenib-context'}" in output
     assert "embedding_provider=\n" in output
-    assert "extras=\n" in output
+    assert "extras=agent,graph\n" in output
     assert f"source_path={ROOT}" in output
     assert f"source_commit={source_commit}" in output
 
@@ -240,7 +241,7 @@ def test_publish_action_defaults_semantic_to_local_huggingface(
 
     assert result.returncode == 0, result.stderr
     assert "embedding_provider=huggingface\n" in output
-    assert "extras=semantic\n" in output
+    assert "extras=semantic,agent,graph\n" in output
 
 
 def test_publish_action_selects_remote_extra_for_openai(tmp_path: Path) -> None:
@@ -252,7 +253,7 @@ def test_publish_action_selects_remote_extra_for_openai(tmp_path: Path) -> None:
 
     assert result.returncode == 0, result.stderr
     assert "embedding_provider=openai\n" in output
-    assert "extras=semantic-remote\n" in output
+    assert "extras=semantic-remote,agent,graph\n" in output
 
 
 def test_publish_action_rejects_retired_github_models(tmp_path: Path) -> None:
@@ -437,11 +438,13 @@ def test_story_wiki_rejects_unknown_modes_and_keeps_its_own_cache(
 ) -> None:
     result, _output = _run_resolve_step(tmp_path, INPUT_WIKI="essay")
     assert result.returncode == 2
-    assert "wiki must be index or story" in result.stderr
+    assert "wiki must be story" in result.stderr
 
     (tmp_path / "index").mkdir()
     (tmp_path / "story").mkdir()
-    _index, index_output = _run_resolve_step(tmp_path / "index")
+    _index, index_output = _run_resolve_step(
+        tmp_path / "index", INPUT_WIKI="index", CODENIB_ACTION_INDEX_WIKI_CHECK="1"
+    )
     _story, story_output = _run_resolve_step(tmp_path / "story", INPUT_WIKI="story")
 
     def prefix(output: str) -> str:
@@ -451,6 +454,29 @@ def test_story_wiki_rejects_unknown_modes_and_keeps_its_own_cache(
 
     # Story state carries Wiki pages; an index-only run never restores it.
     assert prefix(index_output) != prefix(story_output)
+
+
+def test_published_wikis_are_model_written(tmp_path: Path) -> None:
+    action = _load(ACTION_PATH)
+    assert action["inputs"]["wiki"]["default"] == "story"
+
+    # Pages derived from the index alone are built only by CodeNib's own check.
+    removed, _output = _run_resolve_step(tmp_path, INPUT_WIKI="index")
+    assert removed.returncode == 2
+    assert "wiki: index was removed" in removed.stderr
+
+    no_key, _output = _run_resolve_step(tmp_path, INPUT_WIKI_KEY_ENV="")
+    assert no_key.returncode == 2
+    assert "No model key" in no_key.stderr
+
+    smoke = _load(SMOKE_WORKFLOW_PATH)
+    publish = next(
+        step
+        for step in smoke["jobs"]["no-model"]["steps"]
+        if step.get("name") == "Exercise local publish Action"
+    )
+    assert publish["with"]["wiki"] == "index"
+    assert publish["env"]["CODENIB_ACTION_INDEX_WIKI_CHECK"] == "1"
 
 
 def test_story_wiki_runs_before_the_state_is_saved() -> None:
@@ -469,8 +495,9 @@ def test_story_wiki_runs_before_the_state_is_saved() -> None:
     assert steps[graph]["continue-on-error"] == "true"
     script = steps[write]["run"]
     assert "codenib pages build" in script and '"${command[@]}"' in script
-    # A Wiki that fails its checks leaves the index-derived site published.
-    assert "status -eq 3" in script and "::warning" in script
+    # A Wiki that fails its checks stops the run; the last deployment stays.
+    assert "status -eq 3" in script and "::error" in script and "exit 1" in script
+    assert "::warning" not in script
     assert "WIKI_KEY_ENV" in steps[write]["env"]
     assert not any("wiki_api_key" in str(value) for value in steps[write]["env"])
 
@@ -484,7 +511,7 @@ def test_reusable_workflow_passes_the_wiki_key_only_for_story_pages() -> None:
     assert "inputs.wiki == 'story'" in publish["env"]["CODENIB_ACTION_WIKI_KEY"]
     assert "CODENIB_ACTION_WIKI_KEY" in publish["with"]["wiki-api-key-env"]
     assert publish["with"]["wiki"] == "${{ inputs.wiki }}"
-    assert workflow["on"]["workflow_call"]["inputs"]["wiki"]["default"] == "index"
+    assert workflow["on"]["workflow_call"]["inputs"]["wiki"]["default"] == "story"
     assert "wiki_api_key" in workflow["on"]["workflow_call"]["secrets"]
     assert "inputs.wiki == 'story'" in build["timeout-minutes"]
 

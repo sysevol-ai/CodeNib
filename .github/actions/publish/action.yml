@@ -43,9 +43,9 @@ inputs:
     default: ""
   wiki:
     description: >-
-      index for pages derived from the index alone, or story for model-written
-      pages that keep unchanged pages from the previous commit.
-    default: index
+      story, the only published kind: model-written pages that keep unchanged
+      pages from the previous commit. It needs wiki-api-key-env.
+    default: story
   wiki-model:
     description: LiteLLM model that writes story pages.
     default: openrouter/deepseek/deepseek-v4.1-flash
@@ -126,6 +126,7 @@ runs:
         INPUT_REVISION: ${{ inputs.revision }}
         INPUT_SITE_OUTPUT: ${{ inputs.site-output }}
         INPUT_WIKI: ${{ inputs.wiki }}
+        INPUT_WIKI_KEY_ENV: ${{ inputs.wiki-api-key-env }}
         INPUT_WIKI_GRAPH: ${{ inputs.wiki-graph }}
         INPUT_RETENTION_DAYS: ${{ inputs.retention-days }}
         INPUT_UPLOAD_CONTEXT: ${{ inputs.upload-context }}
@@ -195,8 +196,20 @@ runs:
             ;;
         esac
         case "$INPUT_WIKI" in
-          index) ;;
+          index)
+            # Pages derived from the index alone are no longer published.
+            # CodeNib's own checks still build them to test this action
+            # without a model.
+            if [[ "${CODENIB_ACTION_INDEX_WIKI_CHECK:-}" != "1" ]]; then
+              echo "::error title=CodeNib Wiki::wiki: index was removed. A published Wiki is written by a model: remove the wiki input and pass a model key (Settings > Secrets and variables > Actions)." >&2
+              exit 2
+            fi
+            ;;
           story)
+            if [[ -z "$INPUT_WIKI_KEY_ENV" ]]; then
+              echo "::error title=CodeNib Wiki::No model key. A published Wiki is written by a model: add your key as an Actions secret (Settings > Secrets and variables > Actions) and pass it to this workflow." >&2
+              exit 2
+            fi
             # Story pages need the model client, and the graph for maps.
             extras="${extras:+$extras,}agent"
             if [[ "$INPUT_WIKI_GRAPH" == "true" ]]; then
@@ -204,7 +217,7 @@ runs:
             fi
             ;;
           *)
-            echo "wiki must be index or story" >&2
+            echo "wiki must be story" >&2
             exit 2
             ;;
         esac
@@ -432,8 +445,9 @@ runs:
         status=0
         "${command[@]}" || status=$?
         if [[ $status -eq 3 ]]; then
-          # The index-derived Wiki already in the site output stays published.
-          echo "::warning title=CodeNib Wiki::The model-written Wiki did not pass its checks, so the index-derived Wiki was published instead."
+          # Stop here, so nothing is deployed and the last published Wiki stays.
+          echo "::error title=CodeNib Wiki::The Wiki did not pass its checks, so nothing was published. The last published Wiki stays as it is; run the workflow again, or with full-rebuild."
+          exit 1
         elif [[ $status -ne 0 ]]; then
           exit "$status"
         fi
