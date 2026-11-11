@@ -29,7 +29,8 @@ pytestmark = [
 
 FILES = {
     "shop/__init__.py": "",
-    "shop/pricing.py": textwrap.dedent("""\
+    "shop/pricing.py": textwrap.dedent(
+        """\
         def round_cents(value):
             return round(value, 2)
 
@@ -40,15 +41,19 @@ FILES = {
 
             def total(self):
                 return round_cents(sum(price for _, price in self.items))
-        """),
-    "shop/checkout.py": textwrap.dedent("""\
+        """
+    ),
+    "shop/checkout.py": textwrap.dedent(
+        """\
         from shop.pricing import Cart
 
 
         def checkout(items):
             return {"total": Cart(items).total()}
-        """),
-    "tests/test_shop.py": textwrap.dedent("""\
+        """
+    ),
+    "tests/test_shop.py": textwrap.dedent(
+        """\
         from shop.checkout import checkout
         from shop.pricing import Cart, round_cents
 
@@ -66,7 +71,8 @@ FILES = {
 
         def test_round():
             assert round_cents(1.234) == 1.23
-        """),
+        """
+    ),
 }
 
 

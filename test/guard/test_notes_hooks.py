@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 import textwrap
 from types import SimpleNamespace
 
@@ -131,6 +132,30 @@ def test_codex_install_writes_project_hooks(tmp_path):
     assert set(data["hooks"]) == {"SessionStart", "Stop"}
     assert hooks.uninstall(tmp_path, "codex") == path
     assert json.loads(path.read_text()) == {}
+
+
+def test_hook_command_prefers_the_script_beside_the_interpreter(tmp_path, monkeypatch):
+    bin_dir = tmp_path / "my env" / "bin"
+    bin_dir.mkdir(parents=True)
+    interpreter = bin_dir / "python"
+    interpreter.write_text("")
+    for platform, name in (("win32", "codenib.exe"), ("linux", "codenib")):
+        monkeypatch.setattr(hooks.sys, "platform", platform)
+        script = bin_dir / name
+        script.write_text("")
+        script.chmod(0o755)
+        command = hooks.hook_command("claude", "stop", str(interpreter))
+        assert command == (
+            f"{shlex.quote(str(script))} guard hook --agent claude --event stop"
+        )
+        script.unlink()
+
+
+def test_hook_command_keeps_an_explicit_python_as_given(monkeypatch):
+    for platform in ("win32", "linux"):
+        monkeypatch.setattr(hooks.sys, "platform", platform)
+        command = hooks.hook_command("codex", "stop", "C:/py dir/python.exe")
+        assert command.startswith("'C:/py dir/python.exe' -m codenib guard hook")
 
 
 def test_output_shapes_for_each_agent():
