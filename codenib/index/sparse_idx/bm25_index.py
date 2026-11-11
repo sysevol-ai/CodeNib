@@ -966,7 +966,7 @@ class BM25CodeIndexer:
             if filter_test
             else self.retriever.invoke(query)
         )
-        logger.info(f"BM25 retrieval returned {len(results)} results")
+        logger.debug(f"BM25 retrieval returned {len(results)} results")
 
         # Convert results to NodeInfo objects and apply filtering
         processed_results = []

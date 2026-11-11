@@ -175,9 +175,12 @@ def build(tmp_path, monkeypatch):
 
     monkeypatch.setattr("codenib.web.static_export.export_cached_wiki", export)
     calls["report"] = {"passed": True, "expected_pages": 2, "ready_pages": 2}
-    monkeypatch.setattr(
-        cli, "_audit_local_wiki", lambda _local, _parts: calls["report"]
-    )
+
+    def audit(_local, _parts, progress=None):
+        calls["progress"] = progress
+        return calls["report"]
+
+    monkeypatch.setattr(cli, "_audit_local_wiki", audit)
     monkeypatch.setenv("WIKI_KEY", "sk-test")
     argv = [
         "pages",
@@ -280,6 +283,60 @@ def test_build_publishes_the_pages_that_passed(build, capsys):
     assert options["only_pages"] == {"overview", "a", "b", "c"}
     out = capsys.readouterr().out
     assert "Left out:    d (written again on the next commit)" in out
+    # A partly published Wiki is not reported as a failure.
+    assert "Published:   2 of 5 pages" in out
+    assert "Result:" not in out
+    assert callable(calls["progress"])
+
+
+def test_build_prints_each_page_as_it_is_written(capsys):
+    show = cli._pages_progress_printer("openrouter/x/y")
+
+    show({"event": "outline", "total": 3, "seconds": 78.2})
+    show(
+        {
+            "event": "page",
+            "done": 1,
+            "total": 3,
+            "id": "overview",
+            "title": "Overview",
+            "ready": True,
+            "failures": [],
+            "seconds": 17.4,
+            "elapsed": 17.4,
+        }
+    )
+    show(
+        {
+            "event": "page",
+            "done": 3,
+            "total": 3,
+            "id": "runtime",
+            "title": "Runtime",
+            "ready": False,
+            "failures": ["generation:degraded"],
+            "seconds": 65,
+            "elapsed": 120,
+        }
+    )
+
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[0] == (
+        "Outline:     3 pages, planned in 1 min 18 s; writing them with openrouter/x/y."
+    )
+    assert lines[1].split() == [
+        "[1/3]",
+        "ready",
+        "17",
+        "s",
+        "Overview;",
+        "about",
+        "35",
+        "s",
+        "left",
+    ]
+    assert "left out" in lines[2] and "1 min 5 s" in lines[2]
+    assert lines[2].endswith("Runtime (generation:degraded)")
 
 
 @pytest.mark.parametrize(
