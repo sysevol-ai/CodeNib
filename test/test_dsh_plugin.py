@@ -138,3 +138,16 @@ def test_it_passes_over_a_codenib_too_old_to_serve_it(checkout, tmp_path):
     _fake_tool(tools, "uvx", log)
     assert _run(checkout, tools).returncode == 0
     assert all(line.startswith("uvx ") for line in log.read_text().splitlines())
+
+
+def test_the_documented_install_names_a_profile():
+    # `dsh plugin` refuses to run without --profile <name>.
+    for page in ("README.md", "docs/codegraph.md", "plugins/dsh/README.md"):
+        commands = [
+            line
+            for line in (ROOT / page).read_text().splitlines()
+            if line.startswith("dsh plugin ")
+        ]
+        assert commands, page
+        for command in commands:
+            assert command.startswith("dsh plugin --profile "), (page, command)

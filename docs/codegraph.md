@@ -140,9 +140,10 @@ In [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness), a
 bundle adds the same MCP server:
 
 ```bash
-dsh plugin add "git+https://github.com/sysevol-ai/CodeNib.git#main&path:/plugins/dsh"
+dsh plugin --profile web add "git+https://github.com/sysevol-ai/CodeNib.git#main&path:/plugins/dsh"
 ```
 
+`web` is the profile the bundle joins; name the profile you start `dsh` with.
 Replace `main` with a commit to pin what runs. Start `dsh` inside a Git
 checkout: the server indexes that checkout, then starts as above. The bundle
 starts the server with `sh`, so it loads on macOS and Linux and Windows hosts

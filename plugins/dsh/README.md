@@ -12,9 +12,10 @@ to CodeNib, which ranks source for a question and follows the calls and
 references that compiler-grade indexers recorded between files.
 
 ```bash
-dsh plugin add "git+https://github.com/sysevol-ai/CodeNib.git#main&path:/plugins/dsh"
+dsh plugin --profile web add "git+https://github.com/sysevol-ai/CodeNib.git#main&path:/plugins/dsh"
 ```
 
+`web` is the profile the bundle joins; name the profile you start `dsh` with.
 Replace `main` with a commit to pin what runs. CodeNib itself is a Python
 package (3.10 or later). Install it once, or let the bundle run it through
 `uvx` if you have uv:
