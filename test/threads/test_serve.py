@@ -305,39 +305,3 @@ def test_open_pulls_on_the_same_code_are_named(store, checkout):
         lines[1].startswith("- #22 (draft open PR by cy") and "also edits" in lines[1]
     )
     assert len(lines) == 2  # unrelated #23 and the linked #9 are not repeated
-
-
-def test_superagent_prepare_script_writes_context_and_never_fails(store, checkout):
-    import os
-    import sys
-    from pathlib import Path
-
-    script = Path(__file__).parents[2] / "plugins/dsh/superagent-thread-context.sh"
-    env = {
-        **os.environ,
-        "PYTHONPATH": str(Path(__file__).parents[2]),
-        "CODENIB": f"{sys.executable} -m codenib",
-        "CODENIB_THREADS_FLAGS": f"--offline --store {store.dir.parents[1]}",
-        "DSH_SUPERAGENT_DIR": str(checkout),
-        "DSH_SUPERAGENT_GITHUB_REPOSITORY": REPO,
-        "DSH_SUPERAGENT_GITHUB_NUMBER": "7",
-    }
-    done = subprocess.run(["sh", str(script)], env=env, capture_output=True, text=True)
-    assert done.returncode == 0, done.stderr
-    context = (checkout / "THREAD_CONTEXT.md").read_text()
-    assert "# Thread context: acme/widget#7" in context
-    assert "`parse_config()`" in context
-    status = subprocess.run(
-        ["git", "-C", str(checkout), "status", "--porcelain"],
-        capture_output=True, text=True,
-    )  # fmt: skip
-    assert status.stdout == ""  # excluded from the worker's commits
-
-    # A Ticket that did not start on GitHub, or a thread that cannot be served,
-    # must not fail the prepare command.
-    for change in ({"DSH_SUPERAGENT_GITHUB_NUMBER": ""},
-                   {"DSH_SUPERAGENT_GITHUB_NUMBER": "4040"}):  # fmt: skip
-        done = subprocess.run(
-            ["sh", str(script)], env={**env, **change}, capture_output=True, text=True
-        )
-        assert done.returncode == 0 and "skipped" in done.stderr

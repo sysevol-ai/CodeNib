@@ -114,31 +114,6 @@ Run it again to refresh. In `astral-sh/ruff`, 30 of the 59 most recently
 updated open pull requests changed a symbol that another of them also changed
 (November 2026).
 
-### With dsh-superagent
-
-[dsh-superagent](https://github.com/deepseek-ai/dsh-superagent) runs a prepare
-command once before a worker starts on a Ticket. End that command with the
-script from this repository, after the Ticket directory holds a checkout:
-
-```bash
-sh /path/to/CodeNib/plugins/dsh/superagent-thread-context.sh
-```
-
-It reads the Ticket's issue or pull request from the variables dsh-superagent
-provides, writes `THREAD_CONTEXT.md` into the Ticket directory, and keeps the
-file out of the worker's commits. It never fails the Ticket: without a GitHub
-thread, or when GitHub cannot be reached, it explains and exits cleanly. Tell
-workers to read the file first, for example in the repository's `AGENTS.md`.
-
-dsh-superagent removes token variables from the prepare command's
-environment. The script then uses the `gh` that dsh-superagent already signs
-in.
-
-This step has been run the way dsh-superagent's source runs a prepare command
-(its variables, a clean environment, the parent directory as working
-directory, its check of the Ticket directory afterwards), not inside a running
-dsh-superagent.
-
 ### When an agent comes back
 
 Each context ends with a cursor, the id of the newest event it saw. Pass it
