@@ -99,14 +99,14 @@ def resolve_checkout_manifest(repo_path: str | Path) -> Path:
     return manifest_path
 
 
-def select_checkout_manifest(
+def load_checkout_manifest(
     repo_path: str | Path,
     *,
     integration_name: str,
     manifest_path: str | Path | None = None,
     manifest_resolver: ManifestResolver | None = None,
-) -> Path:
-    """Select and validate the manifest bound to an external-policy request."""
+) -> tuple[Path, RepoManifest]:
+    """Select, load and validate the manifest for an external-policy request."""
 
     repo = lexical_repository_path(repo_path)
     if manifest_path is not None and manifest_resolver is not None:
@@ -131,11 +131,29 @@ def select_checkout_manifest(
                 f"{repo} != {manifest_repo}"
             )
     _validate_source_identity(repo, manifest, integration_name=integration_name)
+    return selected, manifest
+
+
+def select_checkout_manifest(
+    repo_path: str | Path,
+    *,
+    integration_name: str,
+    manifest_path: str | Path | None = None,
+    manifest_resolver: ManifestResolver | None = None,
+) -> Path:
+    """Select and validate the manifest bound to an external-policy request."""
+    selected, _manifest = load_checkout_manifest(
+        repo_path,
+        integration_name=integration_name,
+        manifest_path=manifest_path,
+        manifest_resolver=manifest_resolver,
+    )
     return selected
 
 
 __all__ = [
     "ManifestResolver",
+    "load_checkout_manifest",
     "resolve_checkout_manifest",
     "select_checkout_manifest",
 ]
