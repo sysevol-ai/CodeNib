@@ -21,10 +21,15 @@
               echo "CodeNib serves Git checkouts; start dsh inside one." >&2
               exit 1
             fi
-            if command -v codenib >/dev/null 2>&1; then
+            # CodeNib before 0.2.5 does not know the options passed below.
+            if command -v codenib >/dev/null 2>&1 &&
+              codenib mcp --help 2>/dev/null | grep -q -- '--defer-graph'; then
               set -- codenib
             elif command -v uvx >/dev/null 2>&1; then
-              set -- uvx --quiet --from "codenib[graph,mcp]" codenib
+              set -- uvx --quiet --from "codenib[graph,mcp]>=0.2.5" codenib
+            elif command -v codenib >/dev/null 2>&1; then
+              echo "The installed CodeNib is older than 0.2.5: python -m pip install -U 'codenib[graph,mcp]'" >&2
+              exit 1
             else
               echo "CodeNib is not installed: python -m pip install 'codenib[graph,mcp]'" >&2
               exit 1

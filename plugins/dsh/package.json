@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-codenib",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "CodeNib for DeepSeek Harness: ranked, source-linked search and compiler-indexed calls and references for the checkout you open, over MCP.",
   "keywords": ["dsh-plugin", "deepseek-harness", "codenib", "mcp", "code-search", "code-graph"],
   "homepage": "https://docs.codenib.ai/codegraph/",

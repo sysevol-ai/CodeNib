@@ -36,6 +36,9 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 ### Fixed
 
+- The Claude Code, Grok Build and DeepSeek Harness plugins no longer fail to
+  start when a CodeNib older than 0.2.5 is on the path. They run a current
+  one through `uvx`, or say which upgrade is needed.
 - C++ symbol names no longer show clang's template spelling, such as
   `formatter<type-parameter-0-0, typename enable_if<…>::type>`. Parameters read
   `T`, `U`; long argument lists fold to `<…>`. Call rows, call paths and the
