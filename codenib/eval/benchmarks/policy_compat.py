@@ -228,16 +228,53 @@ class GitRevision:
         return {"commit": self.commit, "dirty": self.dirty}
 
 
-def inspect_git_revision(checkout: str | Path) -> GitRevision:
-    """Return HEAD and non-ignored working-tree dirtiness for a checkout."""
+def inspect_git_revision(
+    checkout: str | Path, *, include_untracked: bool = True
+) -> GitRevision:
+    """Return HEAD and dirtiness, optionally checking only released tracked files."""
 
     root = Path(checkout).expanduser().resolve()
     try:
         commit = _git_output(root, "rev-parse", "HEAD")
-        status = _git_output(root, "status", "--porcelain")
+        status = _git_output(
+            root,
+            "status",
+            "--porcelain",
+            *([] if include_untracked else ["--untracked-files=no"]),
+        )
     except (OSError, subprocess.SubprocessError):
         return GitRevision(commit=None, dirty=None)
     return GitRevision(commit=commit or None, dirty=bool(status))
+
+
+def prepare_batch_output(path, *, identity, resume=False, instance_ids=None):
+    """Bind resumed paid work to selected inputs and settings, before model calls.
+
+    One invocation owns each output. Atomic receipt/checkpoint replacement is the
+    publication point; an interrupted writer's temporary file can be replaced by
+    the next invocation. This does not coordinate concurrent writers.
+    """
+    path = Path(path)
+    receipt = path.with_name(path.name + ".run.json")
+    expected = {"identity_sha256": _canonical_sha256(identity)}
+    if receipt.exists() or path.exists():
+        if not resume:
+            raise ValueError("output already exists; use --resume or a new output")
+        if not receipt.exists() or json.loads(receipt.read_text()) != expected:
+            raise ValueError(
+                "resume inputs or configuration differ from the original run"
+            )
+    else:
+        write_json_atomic(receipt, expected)
+    if resume and instance_ids is not None and path.exists():
+        raw = path.read_text()
+        rows = [json.loads(line) for line in raw.splitlines() if line.strip()]
+        ids = [row["instance_id"] for row in rows]
+        if len(ids) != len(set(ids)) or set(ids) - set(instance_ids):
+            raise ValueError("duplicate or unselected checkpoint records")
+        if raw and not raw.endswith("\n"):
+            with path.open("a") as stream:
+                stream.write("\n")
 
 
 def _git_output(root: Path, *args: str) -> str:

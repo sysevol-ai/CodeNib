@@ -217,6 +217,7 @@ nav:
           - SWE-Explore: evaluation/swe_explore.md
           - Agent Retrieval Bench: evaluation/agent_retrieval_bench.md
           - ContextBench: evaluation/contextbench.md
+          - SWE-QA-Pro: evaluation/swe_qa_pro.md
       - Reproduced Agents: agent_integrations.md
       - Results:
           - Model-planned grep and Jev: evaluation/grep_jev.md
