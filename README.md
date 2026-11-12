@@ -151,6 +151,7 @@ claude plugin install codenib@codenib
 Grok Build reads the same plugin, and DeepSeek Harness installs it as a bundle:
 
 ```bash
+grok plugin install "sysevol-ai/CodeNib#plugins/codenib"
 dsh plugin --profile web add "git+https://github.com/sysevol-ai/CodeNib.git#main&path:/plugins/dsh"
 ```
 

@@ -119,18 +119,14 @@ duplicate tools, remove it with `codenib codegraph uninstall .`.
 ## Grok Build plugin
 
 Grok Build reads the same plugin, skills and MCP server included. The server
-starts in the project Grok opens. Load it from a clone; the `[plugins]` table in
-`~/.grok/config.toml` keeps it loaded in every session:
+starts in the project Grok opens. Install it from this repository:
 
 ```bash
-git clone --depth 1 https://github.com/sysevol-ai/CodeNib ~/.grok/codenib
-grok --plugin-dir ~/.grok/codenib/plugins/codenib
+grok plugin install "sysevol-ai/CodeNib#plugins/codenib"
+grok mcp doctor        # run inside a Git checkout; codenib should be healthy
 ```
 
-```toml
-[plugins]
-paths = ["~/.grok/codenib/plugins/codenib"]
-```
+`grok plugin update codenib` moves it to the current version.
 
 It needs the `codenib` command, or uv, as in Claude Code.
 

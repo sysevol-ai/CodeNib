@@ -36,6 +36,10 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 ### Fixed
 
+- The Grok Build and DeepSeek Harness install commands in the guides now run:
+  `grok plugin install "sysevol-ai/CodeNib#plugins/codenib"` and
+  `dsh plugin --profile web add …`. The earlier ones named an option Grok does
+  not have and left out one `dsh` requires.
 - The Claude Code, Grok Build and DeepSeek Harness plugins no longer fail to
   start when a CodeNib older than 0.2.5 is on the path. They run a current
   one through `uvx`, or say which upgrade is needed.
