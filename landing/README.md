@@ -201,15 +201,37 @@ The site uses real directory indexes for nested routes:
 - each article lives at `landing/blogs/<slug>/index.html`.
 
 Nested pages should reference shared assets from `/assets/...` so the same URL
-works at every route depth. The local Caddy configuration falls back to the
-homepage for unknown paths, so a `200` response alone does not prove that a
-new route or asset exists. Check the page title and asset content type as part
-of deployment verification:
+works at every route depth.
+
+Unknown paths get `landing/404.html` with a `404` status. That needs the web
+server to serve it; in the local Caddy configuration the landing site's block is:
+
+```
+handle {
+	try_files {path} {path}/index.html
+	file_server
+}
+handle_errors {
+	@missing expression {err.status_code} == 404
+	handle @missing {
+		rewrite * /404.html
+		file_server {
+			status 404
+		}
+	}
+}
+```
+
+A server still configured to fall back to the homepage answers `200` for every
+path, so a `200` alone does not prove that a new route or asset exists. Check
+the page title, the asset content type and the missing-page status as part of
+deployment verification:
 
 ```bash
 curl -s https://codenib.ai/blogs/ | grep '<title>CodeNib Blog'
 curl -sI https://codenib.ai/assets/blogs/fact-query-index-fact-batch.png \
   | grep -i 'content-type: image/png'
+curl -s -o /dev/null -w '%{http_code}\n' https://codenib.ai/no-such-page  # 404
 ```
 
 ## Publishing an article

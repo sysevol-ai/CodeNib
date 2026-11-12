@@ -5995,3 +5995,17 @@ a.codepanel-name:hover {
   cursor: pointer;
 }
 .browse-error .btn-ghost:hover { color: var(--text-primary); border-color: var(--text-muted); }
+
+/* A repository address with nothing behind it: one statement and two ways on. */
+.wiki-missing { min-height: 100vh; background: var(--bg-page); }
+.wiki-missing-body { max-width: 1600px; margin: 0 auto; padding: clamp(56px, 9vw, 120px) clamp(18px, 4vw, 60px); }
+.wiki-missing-body h1 { max-width: 24ch; color: var(--text-primary); font-size: clamp(2.2rem, 4.4vw, 3.4rem); font-weight: 570; letter-spacing: -0.04em; line-height: 1.05; }
+.wiki-missing-body h1 span { display: block; color: var(--text-muted); }
+.wiki-missing-body p { max-width: 54ch; margin-top: 22px; color: var(--text-secondary); font-size: 17px; line-height: 1.6; }
+.wiki-missing-body code { color: var(--text-primary); font-family: var(--font-geist-mono, ui-monospace), monospace; font-size: 0.92em; overflow-wrap: anywhere; }
+.wiki-missing-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 34px; }
+.wiki-missing-actions a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 20px; border: 1px solid transparent; border-radius: var(--radius-md, 8px); font-size: 15px; font-weight: 560; text-decoration: none; }
+.wiki-missing-actions .btn-primary { background: var(--action); color: var(--action-ink); border-color: var(--action); }
+.wiki-missing-actions .btn-primary:hover { background: var(--action-hover); border-color: var(--action-hover); }
+.wiki-missing-actions .btn-ghost { border-color: var(--border-strong); color: var(--text-primary); background: transparent; }
+.wiki-missing-actions .btn-ghost:hover { border-color: var(--text-muted); }
