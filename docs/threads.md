@@ -73,6 +73,34 @@ agent at the file. This does not depend on the agent choosing to call a tool:
 codenib threads context "$ISSUE_NUMBER" --sync --output THREAD_CONTEXT.md
 ```
 
+### Work many threads at once
+
+A ticket is one piece of work that starts from an issue or pull request. It
+follows that thread and the threads linked to it, and it remembers what it has
+already read, so nobody has to keep a cursor.
+
+```bash
+codenib threads open 812 --dir ../work/812   # start: writes THREAD_CONTEXT.md there
+codenib threads poll                         # fetch what changed, for all tickets
+codenib threads inbox 812                    # what ticket 812 has not read yet
+codenib threads board                        # all tickets at a glance
+codenib threads close 812
+```
+
+- **One inbox per ticket.** `inbox` returns what any followed thread gained
+  since the ticket last read, and marks it read. A thread that became linked
+  since then, such as a new pull request for the issue, joins the ticket.
+- **One thread, many tickets.** When two tickets follow the same thread, it is
+  fetched and stored once, and each ticket reads it from its own position.
+- **A poll costs what changed.** `poll` asks GitHub once which threads changed
+  and fetches only those some ticket follows. With 24 tickets following 71
+  threads of `astral-sh/ruff`, fetching everything took 278 requests, and a
+  poll with nothing new took 13.
+- **The board** lists each ticket with its unread count, the other tickets
+  whose threads name the same symbol, and open pull requests on its files.
+
+An edited comment is stored, but an inbox does not deliver it again.
+
 ### See who else is changing the same code
 
 Index the open pull requests of the repository, and each context then names
@@ -179,6 +207,11 @@ reading the whole thread each time (103 issues, a median of 6 returns each).
 | `codenib threads sync --open-pulls [N]` | Index what open pull requests change |
 | `codenib threads show N` | Print the context |
 | `codenib threads context N` | Write the context to a file |
+| `codenib threads open N` | Start a ticket and write its first context |
+| `codenib threads inbox N` | Print what a ticket has not read; `--peek` leaves it unread |
+| `codenib threads poll` | Fetch what changed on the threads tickets follow |
+| `codenib threads board` | List tickets, unread counts and shared code |
+| `codenib threads close N` | Stop following a ticket's threads |
 | `codenib threads events ID...` | Print raw events by id |
 
 | Option | Meaning | Default |

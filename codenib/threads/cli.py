@@ -182,6 +182,163 @@ def _run_events(args: argparse.Namespace) -> int:
     return 0
 
 
+def _book(args: argparse.Namespace, checkout: Path | None):
+    from .tickets import TicketBook
+
+    return TicketBook(_store(args, checkout))
+
+
+def _ticket(book, number: int):
+    ticket = book.get(number)
+    if ticket is None:
+        raise _error(
+            f"no ticket for #{number}; start one with `codenib threads open {number}`"
+        )
+    return ticket
+
+
+def _write(args: argparse.Namespace, text: str, directory: str) -> None:
+    if args.output or directory:
+        target = Path(args.output or Path(directory) / "THREAD_CONTEXT.md").expanduser()
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text, encoding="utf-8")
+        print(f"Wrote {target}", file=sys.stderr)
+    else:
+        sys.stdout.write(text)
+
+
+def _run_open(args: argparse.Namespace) -> int:
+    from .in_flight import read_index
+    from .tickets import open_ticket
+
+    checkout = _checkout(args.checkout or args.dir)
+    book = _book(args, checkout)
+    if not args.offline and (args.sync or not book.store.has(args.number)):
+        _sync(
+            book.store,
+            [args.number, *args.follow],
+            refresh_linked=args.sync,
+            quiet=True,
+        )
+    opened = open_ticket(
+        book,
+        args.number,
+        directory=str(Path(args.dir).expanduser().resolve()) if args.dir else "",
+        follow=args.follow,
+        budget=args.budget,
+        code_budget=args.code_budget,
+        checkout=None if args.no_anchors else checkout,
+        rev=args.rev,
+        open_pulls=read_index(book.store),
+    )
+    if opened is None:
+        raise _error(f"{book.store.repo}#{args.number} is not in the store")
+    ticket, packet = opened
+    _write(args, packet.text, ticket.directory)
+    follows = ", ".join(f"#{n}" for n in ticket.threads)
+    print(f"Ticket #{ticket.number} follows {follows}", file=sys.stderr)
+    return 0
+
+
+def _run_inbox(args: argparse.Namespace) -> int:
+    from .tickets import read_inbox
+
+    checkout = _checkout(args.checkout)
+    book = _book(args, checkout)
+    ticket = _ticket(book, args.number)
+    if args.sync:
+        _sync(book.store, ticket.threads, refresh_linked=False, quiet=True)
+    if checkout is None and ticket.directory:
+        checkout = _checkout(ticket.directory)
+    packet = read_inbox(
+        book,
+        ticket,
+        budget=args.budget,
+        code_budget=args.code_budget,
+        checkout=None if args.no_anchors else checkout,
+        rev=args.rev,
+        advance=not args.peek,
+    )
+    if packet is None:
+        print(f"Nothing new for ticket #{ticket.number}.", file=sys.stderr)
+        return 0
+    _write(args, packet.text, "")
+    return 0
+
+
+def _run_poll(args: argparse.Namespace) -> int:
+    from .github_source import GitHubClient, resolve_token
+    from .poll import poll
+
+    book = _book(args, _checkout(args.checkout))
+    if not book.all():
+        raise _error("no tickets; start one with `codenib threads open N`")
+    try:
+        result = poll(GitHubClient(resolve_token()), book)
+    except RuntimeError as exc:
+        raise _error(str(exc)) from exc
+    if args.json:
+        print(json.dumps(result.__dict__, indent=2))
+        return 0
+    print(
+        f"{len(result.refetched)} threads fetched in {result.requests} requests; "
+        f"{sum(result.new_events.values())} new events"
+    )
+    for number in result.tickets_with_news:
+        print(f"  ticket #{number} has news: codenib threads inbox {number}")
+    return 0
+
+
+def _run_board(args: argparse.Namespace) -> int:
+    from .in_flight import read_index
+    from .tickets import board
+
+    book = _book(args, _checkout(args.checkout))
+    rows = board(book, read_index(book.store))
+    if args.json:
+        print(
+            json.dumps(
+                [
+                    {
+                        "number": r.ticket.number,
+                        "title": r.title,
+                        "state": r.state,
+                        "unread": r.unread,
+                        "follows": r.ticket.threads,
+                        "shares_code_with": r.shares_code_with,
+                        "open_pulls_on_same_files": r.open_pulls,
+                    }
+                    for r in rows
+                ],
+                indent=2,
+            )
+        )
+        return 0
+    if not rows:
+        print("No tickets.")
+        return 0
+    for row in rows:
+        unread = f"{row.unread} unread" if row.unread else "up to date"
+        print(
+            f"#{row.ticket.number} [{row.state}, {unread}, follows "
+            f"{len(row.ticket.threads)} threads] {row.title}"
+        )
+        for other, symbols in sorted(row.shares_code_with.items()):
+            names = ", ".join(f"`{s}`" for s in dict.fromkeys(symbols))
+            print(f"    same code as ticket #{other}: {names}")
+        if row.open_pulls:
+            pulls = ", ".join(f"#{n}" for n in row.open_pulls[:8])
+            print(f"    open pull requests on its files: {pulls}")
+    return 0
+
+
+def _run_close(args: argparse.Namespace) -> int:
+    book = _book(args, _checkout(args.checkout))
+    removed = book.remove(args.number)
+    print(f"Ticket #{args.number} " + ("closed." if removed else "did not exist."))
+    return 0
+
+
 def _common(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--repo", help="owner/name; default: the origin remote")
     parser.add_argument(
@@ -261,6 +418,54 @@ def add_threads_parser(subparsers, formatter) -> None:
     _serving(context)
     context.add_argument("--output", default="THREAD_CONTEXT.md")
     context.set_defaults(handler=_run_context)
+
+    opened = commands.add_parser(
+        "open",
+        help="start a ticket on a thread and write its first context",
+        formatter_class=formatter,
+    )
+    _serving(opened)
+    opened.add_argument("--dir", help="the ticket's work directory")
+    opened.add_argument(
+        "--follow", type=int, nargs="*", default=[], help="other threads to follow"
+    )
+    opened.add_argument("--output", help="file to write (default: stdout, or --dir)")
+    opened.set_defaults(handler=_run_open)
+
+    inbox = commands.add_parser(
+        "inbox",
+        help="print what a ticket's threads gained since it last read",
+        formatter_class=formatter,
+    )
+    _serving(inbox)
+    inbox.add_argument("--peek", action="store_true", help="do not mark as read")
+    inbox.add_argument("--output", help="file to write (default: stdout)")
+    inbox.set_defaults(handler=_run_inbox)
+
+    polling = commands.add_parser(
+        "poll",
+        help="fetch what changed on the threads tickets follow",
+        formatter_class=formatter,
+    )
+    polling.add_argument("--json", action="store_true")
+    _common(polling)
+    polling.set_defaults(handler=_run_poll)
+
+    boards = commands.add_parser(
+        "board",
+        help="list tickets, their unread events, and tickets on the same code",
+        formatter_class=formatter,
+    )
+    boards.add_argument("--json", action="store_true")
+    _common(boards)
+    boards.set_defaults(handler=_run_board)
+
+    closing = commands.add_parser(
+        "close", help="stop following a ticket's threads", formatter_class=formatter
+    )
+    closing.add_argument("number", type=int)
+    _common(closing)
+    closing.set_defaults(handler=_run_close)
 
     events = commands.add_parser(
         "events", help="print raw events by id", formatter_class=formatter

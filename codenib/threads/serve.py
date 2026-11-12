@@ -119,8 +119,13 @@ def load_bundle(
     *,
     at: str | None = None,
     exclude: set[int] | None = None,
+    subscribed: list[int] | None = None,
 ) -> Bundle | None:
-    """The stored thread and its stored linked threads, optionally as of ``at``."""
+    """The stored thread and its stored linked threads, optionally as of ``at``.
+
+    ``subscribed`` adds threads that are followed without a link from the root,
+    and keeps earlier ones when newer links would push them out.
+    """
 
     header = store.header(number)
     if header is None:
@@ -136,13 +141,17 @@ def load_bundle(
     if root is None:
         return None
     bundle = Bundle(root)
-    for ref in linked_numbers(root.header, root.events):
+    refs = linked_numbers(root.header, root.events)
+    refs += [n for n in subscribed or [] if n not in refs and n != number]
+    for ref in refs:
         if exclude and ref in exclude:
             continue
         linked_header = store.header(ref)
         if linked_header is None:
             continue
-        relation = header.links.get(str(ref), "mentions")
+        relation = header.links.get(str(ref), "subscribed")
+        if relation == "subscribed" and ref in linked_numbers(root.header, root.events):
+            relation = "mentions"
         if linked_header.links.get(str(number)) == "closes":
             relation = "closed-by"
         linked = view(linked_header, relation)
@@ -390,6 +399,7 @@ _RELATION_LABEL = {
     "closed-by": "pull request for this issue",
     "closes": "issue this pull request closes",
     "mentions": "mentioned",
+    "subscribed": "followed",
 }
 
 
