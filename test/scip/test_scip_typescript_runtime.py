@@ -8,6 +8,7 @@ import hashlib
 import json
 import logging
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -135,8 +136,8 @@ def test_read_only_pipeline_uses_external_config_for_jsconfig(tmp_path, monkeypa
     config = observed["config"]
     assert isinstance(config, dict)
     assert config["extends"] == str((project / "jsconfig.json").resolve())
-    assert f"{project.resolve()}/**/*.js" in config["include"]
     root = project.resolve().as_posix()
+    assert f"{root}/**/*.js" in config["include"]
     assert config["exclude"] == [f"{root}/custom/**", f"{root}/dist/**"]
     assert not (project / "tsconfig.json").exists()
     assert not (tmp_path / "index" / ".tsconfig.scip.readonly.json").exists()
@@ -394,10 +395,12 @@ def test_read_only_wrapper_preserves_inherited_excludes(tmp_path, monkeypatch):
         tmp_path, monkeypatch, project, exclude_patterns=["dist/**"]
     )
 
+    root = project.resolve().as_posix()
+    configs_root = configs.resolve().as_posix()
     assert observed["config"]["exclude"] == [
-        f"{project}/generated/**",
-        f"{configs}/private/**",
-        f"{project}/dist/**",
+        f"{root}/generated/**",
+        f"{configs_root}/private/**",
+        f"{root}/dist/**",
     ]
     assert _checkout_snapshot(project) == before
 
@@ -431,8 +434,11 @@ class _FakeNpm:
         self.installs: list[list[str]] = []
 
     def __call__(self, cmd, **kwargs):
+        # argv[0] is resolved through shutil.which, so compare the tool name.
+        tool = cmd[0].replace("\\", "/").rsplit("/", 1)[-1].split(".")[0]
+        cmd = [tool, *cmd[1:]]
         if cmd[1:] == ["--version"]:
-            version = self.npm_version if cmd[0] == "npm" else "v22.22.2"
+            version = self.npm_version if tool == "npm" else "v22.22.2"
             return subprocess.CompletedProcess(cmd, 0, stdout=f"{version}\n")
         self.installs.append(list(cmd))
         if self.fail:
@@ -637,7 +643,7 @@ def test_index_without_root_config_uses_the_external_config(tmp_path, monkeypatc
     assert observed["infer_tsconfig"] is False
     assert str(observed["patched_tsconfig"]).startswith(str(tmp_path / "index"))
     assert observed["config"]["compilerOptions"] == {"allowJs": True}
-    assert f"{project.resolve()}/**/*.js" in observed["config"]["include"]
+    assert f"{project.resolve().as_posix()}/**/*.js" in observed["config"]["include"]
     assert sorted(p.name for p in project.iterdir()) == ["package.json", "src"]
     assert not (tmp_path / "index" / ".tsconfig.scip.readonly.json").exists()
     command = indexer._build_index_command(
@@ -684,3 +690,94 @@ def test_generate_index_does_not_infer_beside_an_external_config(tmp_path, monke
     assert seen["infer_tsconfig"] is False
     assert indexer.generate_index()
     assert seen["infer_tsconfig"] is True
+
+
+def _recording_run(calls):
+    def fake(argv, **kwargs):
+        calls.append((list(argv), kwargs))
+        return subprocess.CompletedProcess(argv, 0, stdout="1.0\n", stderr="")
+
+    return fake
+
+
+@pytest.mark.parametrize("platform", ["win32", "linux"])
+@pytest.mark.parametrize("resolved", [True, False])
+def test_node_commands_resolve_with_which_and_never_use_a_shell(
+    tmp_path, monkeypatch, platform, resolved
+):
+    project = tmp_path / "repo"
+    project.mkdir()
+    (project / "package.json").write_text('{"name": "demo"}\n')
+    (project / "pnpm-lock.yaml").write_text("lockfileVersion: 9\n")
+    indexer = SCIPTypeScriptIndexer(project, output_dir=tmp_path / "index")
+    full = {
+        "npm": "C:/node/npm.cmd",
+        "pnpm": "C:/node/pnpm.cmd",
+        "scip-typescript": "C:/node/scip-typescript.cmd",
+        "node": "C:/node/node.exe",
+    }
+    # The first pnpm lookup must miss so the global npm install runs; every
+    # other lookup returns a path (or None) depending on the case.
+    pnpm_lookups = []
+
+    def which(name):
+        if name == "pnpm":
+            pnpm_lookups.append(name)
+            if len(pnpm_lookups) == 1:
+                return None
+        return full[name] if resolved else None
+
+    monkeypatch.setattr(ts_indexer.shutil, "which", which)
+    monkeypatch.setattr(sys, "platform", platform)
+    calls = []
+    monkeypatch.setattr(ts_indexer.subprocess, "run", _recording_run(calls))
+
+    indexer._check_indexer_available()
+    indexer._install_dependencies()
+    indexer._run_install(["pnpm", "install"], ["pnpm", "install", "--x"], 5)
+    indexer._install_inputs(["pnpm", "install"], None)
+
+    assert calls
+    for argv, kwargs in calls:
+        assert kwargs.get("shell") is not True
+        name = Path(argv[0]).name
+        bare = name.split(".")[0]
+        assert bare in full
+        if resolved:
+            assert argv[0] == full[bare]
+        else:
+            assert argv[0] == bare
+    assert any(argv[1:3] == ["install", "-g"] for argv, _ in calls)
+
+
+@pytest.mark.parametrize("platform", ["win32", "linux"])
+@pytest.mark.parametrize("resolved", [True, False])
+def test_generate_index_resolves_the_indexer_with_which(
+    tmp_path, monkeypatch, platform, resolved
+):
+    project = tmp_path / "repo"
+    project.mkdir()
+    indexer = SCIPTypeScriptIndexer(project, output_dir=tmp_path / "index")
+    monkeypatch.setattr(indexer, "_check_indexer_available", lambda: True)
+    monkeypatch.setattr(
+        indexer, "_build_index_command", lambda **_kw: ["scip-typescript", "index"]
+    )
+    monkeypatch.setattr(
+        "codenib.scip_interface.scip_indexer_base.shutil.which",
+        lambda name: "C:/node/scip-typescript.cmd" if resolved else None,
+    )
+    monkeypatch.setattr(sys, "platform", platform)
+    calls = []
+    monkeypatch.setattr(
+        "codenib.scip_interface.scip_indexer_base.subprocess.run",
+        _recording_run(calls),
+    )
+
+    assert indexer.generate_index() is True
+
+    argv, kwargs = calls[0]
+    assert kwargs.get("shell") is not True
+    assert argv == [
+        "C:/node/scip-typescript.cmd" if resolved else "scip-typescript",
+        "index",
+    ]

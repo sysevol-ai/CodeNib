@@ -37,6 +37,34 @@ _LOCKFILE_NAMES = (
 )
 
 
+def _resolve_executable(name: str) -> str:
+    """Resolve ``name`` through PATH (PATHEXT-aware on Windows), else keep it."""
+
+    return shutil.which(name) or name
+
+
+def _anchor_tsconfig_pattern(base_dir: Path, pattern: str) -> str:
+    cleaned = str(pattern).strip()
+    if not cleaned:
+        return ""
+    normalized = cleaned.replace("\\", "/")
+    parts = normalized.split("/")
+    glob_index = next(
+        (i for i, part in enumerate(parts) if any(c in part for c in "*?[]{}")),
+        len(parts),
+    )
+    dir_part = "/".join(parts[:glob_index])
+    glob_part = "/".join(parts[glob_index:])
+    resolved_dir = (
+        (base_dir / dir_part).resolve().as_posix()
+        if dir_part
+        else base_dir.resolve().as_posix()
+    )
+    if glob_part:
+        return f"{resolved_dir}/{glob_part}"
+    return resolved_dir
+
+
 class SCIPTypeScriptIndexer(SCIPIndexerBase):
     """
     SCIP indexer for TypeScript and JavaScript projects.
@@ -79,9 +107,10 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
         Returns:
             bool: True if scip-typescript is available, False otherwise
         """
+        executable = _resolve_executable("scip-typescript")
         try:
             result = subprocess.run(
-                ["scip-typescript", "--version"],
+                [executable, "--version"],
                 check=True,
                 capture_output=True,
                 text=True,
@@ -195,7 +224,7 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
             logger.info("pnpm needed but not installed; installing via npm...")
             try:
                 subprocess.run(
-                    ["npm", "install", "-g", "pnpm"],
+                    [_resolve_executable("npm"), "install", "-g", "pnpm"],
                     check=True,
                     capture_output=True,
                     text=True,
@@ -286,7 +315,7 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
         for tool in dict.fromkeys(["node", cmd[0]]):
             try:
                 result = subprocess.run(
-                    [tool, "--version"],
+                    [_resolve_executable(tool), "--version"],
                     capture_output=True,
                     text=True,
                     timeout=10,
@@ -365,7 +394,7 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
         logger.info("Installing TypeScript dependencies: %s", " ".join(cmd))
         try:
             subprocess.run(
-                cmd,
+                [_resolve_executable(cmd[0]), *cmd[1:]],
                 check=True,
                 cwd=self.project_root,
                 capture_output=True,
@@ -405,7 +434,7 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
             logger.info("Retrying without frozen lockfile: %s", " ".join(fallback_cmd))
             try:
                 subprocess.run(
-                    fallback_cmd,
+                    [_resolve_executable(fallback_cmd[0]), *fallback_cmd[1:]],
                     check=True,
                     cwd=self.project_root,
                     capture_output=True,
@@ -569,6 +598,7 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
             ),
             None,
         )
+        project_root = self.project_root.resolve().as_posix().rstrip("/")
         payload: dict[str, object] = {
             "compilerOptions": {"allowJs": True},
             # A config's implicit include is relative to the config file, not
@@ -578,17 +608,16 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
             # ``**/*`` include accepts once allowJs is on (``*.ts``, ``*.mts``
             # and ``*.cts`` also match their ``.d.*`` declaration forms).
             "include": [
-                f"{self.project_root.resolve()}/**/*.js",
-                f"{self.project_root.resolve()}/**/*.jsx",
-                f"{self.project_root.resolve()}/**/*.mjs",
-                f"{self.project_root.resolve()}/**/*.cjs",
-                f"{self.project_root.resolve()}/**/*.ts",
-                f"{self.project_root.resolve()}/**/*.tsx",
-                f"{self.project_root.resolve()}/**/*.mts",
-                f"{self.project_root.resolve()}/**/*.cts",
+                f"{project_root}/**/*.js",
+                f"{project_root}/**/*.jsx",
+                f"{project_root}/**/*.mjs",
+                f"{project_root}/**/*.cjs",
+                f"{project_root}/**/*.ts",
+                f"{project_root}/**/*.tsx",
+                f"{project_root}/**/*.mts",
+                f"{project_root}/**/*.cts",
             ],
         }
-        project_root = self.project_root.resolve().as_posix().rstrip("/")
         anchored_excludes = []
         for raw_pattern in self.exclude_patterns:
             pattern = str(raw_pattern).strip()
@@ -710,7 +739,8 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
             ):
                 return None
             surface["exclude"] = [
-                str((config_path.parent / pattern).resolve()) for pattern in excludes
+                _anchor_tsconfig_pattern(config_path.parent, pattern)
+                for pattern in excludes
             ]
         return surface
 
