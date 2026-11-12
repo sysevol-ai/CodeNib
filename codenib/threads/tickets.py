@@ -18,12 +18,15 @@ import os
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from .anchor import is_source_path
+from .anchor import CodeAnchor, is_source_path
+from .in_flight import match_in_flight
 from .log_store import ThreadStore
 from .serve import (
     DEFAULT_BUDGET,
     DEFAULT_CODE_BUDGET,
+    Bundle,
     Packet,
+    ThreadView,
     build_packet,
     load_bundle,
 )
@@ -36,8 +39,11 @@ class Ticket:
     cursor: str = ""
     directory: str = ""
     opened_at: str = ""
-    # (path, symbol) pairs the ticket's threads point at, for the board.
-    anchors: list[list[str]] = field(default_factory=list)
+    # How far the ticket has read each followed thread's log. A position, not
+    # a time, so that an edit of an old comment still counts as unread.
+    positions: dict[str, int] = field(default_factory=dict)
+    # [path, symbol, first line, last line] the ticket's threads point at.
+    anchors: list[list] = field(default_factory=list)
 
     def to_json(self) -> dict:
         return asdict(self)
@@ -95,14 +101,34 @@ class TicketBook:
         return followers
 
 
-def _anchor_pairs(packet: Packet) -> list[list[str]]:
+def _anchor_pairs(packet: Packet) -> list[list]:
     pairs = []
     for anchor in packet.anchors:
         if is_source_path(anchor.path):
-            pair = [anchor.path, anchor.symbol]
-            if pair not in pairs:
+            pair = [anchor.path, anchor.symbol, anchor.start_line, anchor.end_line]
+            if pair[:2] not in [p[:2] for p in pairs]:
                 pairs.append(pair)
     return pairs
+
+
+def _positions(store: ThreadStore, threads: list[int]) -> dict[str, int]:
+    return {str(number): store.log_length(number) for number in threads}
+
+
+def _news(book: "TicketBook", ticket: Ticket, bundle: Bundle) -> Bundle | None:
+    """The part of ``bundle`` the ticket has not read, or ``None`` if none."""
+
+    def unread(view: ThreadView) -> ThreadView:
+        position = ticket.positions.get(str(view.number), 0)
+        fresh = book.store.addresses_from(view.number, position)
+        events = [e for e in view.events if e.address in fresh]
+        return ThreadView(view.header, events, view.relation)
+
+    root = unread(bundle.root)
+    linked = [unread(view) for view in bundle.linked]
+    if not root.events and not any(view.events for view in linked):
+        return None
+    return Bundle(root, linked)
 
 
 def open_ticket(
@@ -145,6 +171,7 @@ def open_ticket(
         cursor=packet.head,
         directory=directory or (existing.directory if existing else ""),
         opened_at=root.events[-1].at if root.events else "",
+        positions=_positions(book.store, [view.number for view in bundle.views]),
         anchors=_anchor_pairs(packet),
     )
     book.put(ticket)
@@ -152,16 +179,11 @@ def open_ticket(
 
 
 def pending(book: TicketBook, ticket: Ticket) -> int:
-    """How many events the ticket's threads gained since its cursor."""
+    """How many events of the ticket's threads it has not read."""
 
     bundle = load_bundle(book.store, ticket.number, subscribed=ticket.threads)
-    if bundle is None:
-        return 0
-    events = sorted(((e.at, e.address) for view in bundle.views for e in view.events))
-    for index, (_, address) in enumerate(events):
-        if address == ticket.cursor:
-            return len(events) - index - 1
-    return len(events)
+    news = _news(book, ticket, bundle) if bundle else None
+    return sum(len(view.events) for view in news.views) if news else 0
 
 
 def read_inbox(
@@ -176,32 +198,29 @@ def read_inbox(
 ) -> Packet | None:
     """What the ticket's threads gained since it last read, or ``None``.
 
-    Threads that became linked since then join the ticket. With ``advance`` the
-    cursor moves, so the same events are not delivered twice.
+    This covers new events, edits of events it had read, and threads that
+    became linked since then, which join the ticket. With ``advance`` the read
+    positions move, so nothing is delivered twice.
     """
 
     bundle = load_bundle(book.store, ticket.number, subscribed=ticket.threads)
-    if bundle is None or bundle.head() == ticket.cursor:
+    news = _news(book, ticket, bundle) if bundle else None
+    if bundle is None or news is None:
         return None
-    try:
-        packet = build_packet(
-            bundle,
-            budget=budget,
-            code_budget=code_budget,
-            since=ticket.cursor,
-            checkout=checkout,
-            rev=rev,
-        )
-    except KeyError:
-        # The cursor's event is gone (a thread left the bundle): start over.
-        packet = build_packet(
-            bundle, budget=budget, code_budget=code_budget, checkout=checkout, rev=rev
-        )
+    packet = build_packet(
+        bundle,
+        budget=budget,
+        code_budget=code_budget,
+        checkout=checkout,
+        rev=rev,
+        news=news,
+    )
     if advance:
         ticket.threads = [view.number for view in bundle.views]
         ticket.cursor = packet.head
+        ticket.positions = _positions(book.store, ticket.threads)
         for pair in _anchor_pairs(packet):
-            if pair not in ticket.anchors:
+            if pair[:2] not in [p[:2] for p in ticket.anchors]:
                 ticket.anchors.append(pair)
         book.put(ticket)
     return packet
@@ -213,19 +232,17 @@ class BoardRow:
     title: str
     state: str
     unread: int
-    shares_code_with: dict[int, list[str]]  # other ticket -> shared symbols/files
-    open_pulls: list[int]
+    shares_code_with: dict[int, list[str]]  # other ticket -> shared symbols
+    open_pulls: dict[int, list[str]]  # open pull request -> symbols it changes
 
 
 def board(book: TicketBook, open_pulls: list | None = None) -> list[BoardRow]:
     """Every ticket with its unread count and the tickets working the same code."""
 
-    from .serve import ThreadView
-
     tickets = book.all()
     owners: dict[tuple[str, str], list[int]] = {}
     for ticket in tickets:
-        for path, symbol in ticket.anchors:
+        for path, symbol, *_ in ticket.anchors:
             owners.setdefault((path, symbol), []).append(ticket.number)
     rows = []
     for ticket in tickets:
@@ -233,7 +250,7 @@ def board(book: TicketBook, open_pulls: list | None = None) -> list[BoardRow]:
         if header is None:
             continue
         shared: dict[int, list[str]] = {}
-        for path, symbol in ticket.anchors:
+        for path, symbol, *_ in ticket.anchors:
             # Two tickets meet when they name the same symbol. Naming the same
             # file is too weak to report: large files are shared by everything.
             if not symbol:
@@ -241,14 +258,19 @@ def board(book: TicketBook, open_pulls: list | None = None) -> list[BoardRow]:
             for other in owners.get((path, symbol), []):
                 if other != ticket.number:
                     shared.setdefault(other, []).append(symbol)
-        pulls: list[int] = []
+        pulls: dict[int, list[str]] = {}
         if open_pulls:
-            paths = {path for path, _ in ticket.anchors}
-            pulls = [
-                pull.number
-                for pull in open_pulls
-                if pull.number not in ticket.threads and paths & set(pull.files)
+            # Only a pull request that changes lines of a named symbol is
+            # listed. Sharing a file is not: one wide refactoring would then
+            # show up against every ticket.
+            located = [
+                CodeAnchor(path, symbol, int(span[0]), int(span[1]))
+                for path, symbol, *span in ticket.anchors
+                if symbol and len(span) == 2 and span[0]
             ]
+            for match in match_in_flight(located, open_pulls, set(ticket.threads)):
+                if match.symbols:
+                    pulls[match.pull.number] = match.symbols
         state = ThreadView(header, book.store.events(ticket.number)).state()
         rows.append(
             BoardRow(ticket, header.title, state, pending(book, ticket), shared, pulls)

@@ -197,6 +197,13 @@ def _ticket(book, number: int):
     return ticket
 
 
+def _emit(args: argparse.Namespace, packet, directory: str) -> None:
+    if getattr(args, "json", False):
+        print(json.dumps(packet.to_json(), indent=2))
+    else:
+        _write(args, packet.text, directory)
+
+
 def _write(args: argparse.Namespace, text: str, directory: str) -> None:
     if args.output or directory:
         target = Path(args.output or Path(directory) / "THREAD_CONTEXT.md").expanduser()
@@ -234,7 +241,7 @@ def _run_open(args: argparse.Namespace) -> int:
     if opened is None:
         raise _error(f"{book.store.repo}#{args.number} is not in the store")
     ticket, packet = opened
-    _write(args, packet.text, ticket.directory)
+    _emit(args, packet, ticket.directory)
     follows = ", ".join(f"#{n}" for n in ticket.threads)
     print(f"Ticket #{ticket.number} follows {follows}", file=sys.stderr)
     return 0
@@ -262,7 +269,7 @@ def _run_inbox(args: argparse.Namespace) -> int:
     if packet is None:
         print(f"Nothing new for ticket #{ticket.number}.", file=sys.stderr)
         return 0
-    _write(args, packet.text, "")
+    _emit(args, packet, "")
     return 0
 
 
@@ -306,7 +313,7 @@ def _run_board(args: argparse.Namespace) -> int:
                         "unread": r.unread,
                         "follows": r.ticket.threads,
                         "shares_code_with": r.shares_code_with,
-                        "open_pulls_on_same_files": r.open_pulls,
+                        "open_pulls_on_same_symbols": r.open_pulls,
                     }
                     for r in rows
                 ],
@@ -326,9 +333,18 @@ def _run_board(args: argparse.Namespace) -> int:
         for other, symbols in sorted(row.shares_code_with.items()):
             names = ", ".join(f"`{s}`" for s in dict.fromkeys(symbols))
             print(f"    same code as ticket #{other}: {names}")
-        if row.open_pulls:
-            pulls = ", ".join(f"#{n}" for n in row.open_pulls[:8])
-            print(f"    open pull requests on its files: {pulls}")
+        for number, symbols in sorted(row.open_pulls.items())[:8]:
+            names = ", ".join(f"`{s}`" for s in symbols[:3])
+            print(f"    open pull request #{number} changes {names}")
+    return 0
+
+
+def _run_mcp(args: argparse.Namespace) -> int:
+    from .mcp_server import build_server
+
+    checkout = _checkout(args.checkout)
+    root = Path(args.store).expanduser() if args.store else None
+    build_server(_repo_name(args, checkout), root, checkout).run(transport="stdio")
     return 0
 
 
@@ -430,6 +446,7 @@ def add_threads_parser(subparsers, formatter) -> None:
         "--follow", type=int, nargs="*", default=[], help="other threads to follow"
     )
     opened.add_argument("--output", help="file to write (default: stdout, or --dir)")
+    opened.add_argument("--json", action="store_true")
     opened.set_defaults(handler=_run_open)
 
     inbox = commands.add_parser(
@@ -440,6 +457,7 @@ def add_threads_parser(subparsers, formatter) -> None:
     _serving(inbox)
     inbox.add_argument("--peek", action="store_true", help="do not mark as read")
     inbox.add_argument("--output", help="file to write (default: stdout)")
+    inbox.add_argument("--json", action="store_true")
     inbox.set_defaults(handler=_run_inbox)
 
     polling = commands.add_parser(
@@ -466,6 +484,14 @@ def add_threads_parser(subparsers, formatter) -> None:
     closing.add_argument("number", type=int)
     _common(closing)
     closing.set_defaults(handler=_run_close)
+
+    mcp = commands.add_parser(
+        "mcp",
+        help="serve thread context and tickets over the Model Context Protocol",
+        formatter_class=formatter,
+    )
+    _common(mcp)
+    mcp.set_defaults(handler=_run_mcp)
 
     events = commands.add_parser(
         "events", help="print raw events by id", formatter_class=formatter

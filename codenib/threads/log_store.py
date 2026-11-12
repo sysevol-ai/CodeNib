@@ -86,6 +86,20 @@ class ThreadStore:
                     events.append(ThreadEvent.from_json(json.loads(line)))
         return events
 
+    def log_length(self, number: int) -> int:
+        """How many records the log holds; a position a reader can come back to."""
+
+        return len(self._read(number))
+
+    def addresses_from(self, number: int, position: int) -> set[str]:
+        """Addresses of records appended at or after ``position``.
+
+        This includes an edit of an older event, which keeps the event's
+        address and time but is a new record in the log.
+        """
+
+        return {event.address for event in self._read(number)[position:]}
+
     def events(self, number: int) -> list[ThreadEvent]:
         """Current events in time order; a superseded edit is dropped."""
 

@@ -71,8 +71,26 @@ def clean_body(body: str) -> str:
     return _BLANKS_RE.sub("\n\n", "\n".join(lines)).strip()
 
 
+def _template(line: str) -> str:
+    """A line with numbers, paths and quoted text blanked, to spot repetition."""
+
+    line = re.sub(r"[A-Za-z]:[\\/]\S+|(?:[\w.@+-]+/)+[\w.@+-]+", "<path>", line)
+    line = re.sub(r"\b[0-9a-f]{7,40}\b", "<hex>", line)
+    line = re.sub(r"\d+", "<n>", line)
+    words = line.split()
+    # Long lines that differ only after a shared opening are one template.
+    return " ".join(words[:4])
+
+
 def failing_lines(log: str, *, context: int = 2, cap: int = 40) -> str:
-    """The lines of a CI log around errors, newest last."""
+    """The lines of a CI log around errors, with repetition folded.
+
+    A tool that reports the same kind of error hundreds of times would fill
+    the whole excerpt with one message. Lines that share a template are shown
+    twice and then counted, so that different errors, and the summary a tool
+    prints at the end, all fit. When still too long, the start and the end of
+    the excerpt are kept.
+    """
 
     lines = [_ANSI_RE.sub("", _LOG_TIMESTAMP_RE.sub("", ln)) for ln in log.splitlines()]
     keep: set[int] = set()
@@ -81,7 +99,37 @@ def failing_lines(log: str, *, context: int = 2, cap: int = 40) -> str:
             keep.update(
                 range(max(0, index - context), min(len(lines), index + context + 1))
             )
-    return "\n".join(lines[i][:300] for i in sorted(keep)[-cap:])
+    seen: dict[str, int] = {}
+    out: list[str] = []
+    folded: dict[str, int] = {}
+    for index in sorted(keep):
+        line = lines[index][:300]
+        if not line.strip():
+            continue
+        template = _template(line)
+        seen[template] = seen.get(template, 0) + 1
+        if seen[template] <= 2:
+            out.append(line)
+        else:
+            if template not in folded:
+                out.append(f"\x00{template}")  # placeholder for the count
+            folded[template] = seen[template] - 2
+    out = [
+        (
+            f"[... {folded[item[1:]]} more lines like the two above ...]"
+            if item.startswith("\x00")
+            else item
+        )
+        for item in out
+    ]
+    if len(out) > cap:
+        head = cap // 2
+        out = (
+            out[:head]
+            + [f"[... {len(out) - cap} lines omitted ...]"]
+            + out[-(cap - head) :]
+        )
+    return "\n".join(out)
 
 
 def elide(text: str, max_chars: int) -> str:

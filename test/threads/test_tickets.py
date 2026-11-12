@@ -198,3 +198,31 @@ def test_poll_probes_an_idle_open_pull_request_instead_of_fetching_it(book, chec
     failing.conclusion = "failure"
     result = poll(failing, book, now=lambda: "2026-01-12T00:00:00Z")
     assert result.refetched == [9] and result.tickets_with_news == [4]
+
+
+def test_an_edited_comment_is_delivered_again(book, checkout):
+    book.store.append(1, [_event(1, "comment", 10, "2026-01-02T00:00:00Z",
+                                 "Use a lock.")])  # fmt: skip
+    open_ticket(book, 1, checkout=checkout)
+    assert read_inbox(book, book.get(1)) is None
+    # Same address and time, new text: GitHub reports an edit this way.
+    book.store.append(1, [_event(1, "comment", 10, "2026-01-02T00:00:00Z",
+                                 "Do not use a lock; copy the dict.")])  # fmt: skip
+    update = read_inbox(book, book.get(1))
+    assert "Do not use a lock; copy the dict." in update.text
+    assert "Use a lock." not in update.text
+    assert read_inbox(book, book.get(1)) is None
+
+
+def test_board_names_open_pull_requests_by_symbol_not_by_file(book, checkout):
+    from codenib.threads.in_flight import OpenPull
+
+    open_ticket(book, 1, checkout=checkout)
+    pulls = [
+        OpenPull(21, "Cache config", "bo", "2026-01-04T00:00:00Z",
+                 files={"src/config.py": [[2, 2]]}),
+        OpenPull(22, "Rewrite everything", "cy", "2026-01-05T00:00:00Z",
+                 files={"src/config.py": [[40, 90]]}),
+    ]  # fmt: skip
+    row = board(book, pulls)[0]
+    assert row.open_pulls == {21: ["parse_config()"]}  # the wide rewrite is not listed

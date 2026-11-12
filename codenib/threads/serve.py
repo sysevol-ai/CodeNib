@@ -28,6 +28,10 @@ DEFAULT_CODE_BUDGET = 1500
 MAX_LINKED_THREADS = 8
 _MAX_ANCHORS = 14
 _MAX_IN_FLIGHT = 5
+_REVIEW_CODE_LINES = 3
+_CI_LINES = 40
+_LINKED_PRIORITY = 5.5  # items at or above this come from linked threads
+_CORE_CEILING = 3  # own posts stay whole up to this multiple of the budget
 _STATE_EVENTS = {"closed": "closed", "reopened": "open", "merged": "merged"}
 
 
@@ -89,12 +93,11 @@ class ThreadView:
         checks = [e for e in self.events if e.kind == "check"]
         if not checks:
             return []
+        # GitHub already reports only the latest run of each job. Two runs
+        # with one name are different jobs (a matrix, or two apps), so they
+        # are all kept: collapsing by name can hide the one that failed.
         last_sha = checks[-1].meta.get("sha")
-        latest: dict[str, ThreadEvent] = {}
-        for event in checks:
-            if event.meta.get("sha") == last_sha:
-                latest[event.meta.get("name", "")] = event
-        return list(latest.values())
+        return [event for event in checks if event.meta.get("sha") == last_sha]
 
 
 @dataclass
@@ -316,7 +319,11 @@ def _event_items(
 
 
 def _review_items(
-    view: ThreadView, dedup: _Dedup, priority: float, body_chars: int = 500
+    view: ThreadView,
+    dedup: _Dedup,
+    priority: float,
+    body_chars: int = 500,
+    section: str = "Review comments",
 ) -> list[_Item]:
     items = []
     comments = [e for e in view.events if e.kind == "review_comment" and not e.is_bot]
@@ -327,12 +334,21 @@ def _review_items(
         where = event.meta.get("path", "")
         if event.meta.get("line"):
             where += f":{event.meta['line']}"
+        # A review comment is about the lines it sits on; without them the
+        # reader has to open the diff. The hunk ends at the commented line.
+        hunk = [
+            line[:160]
+            for line in (event.meta.get("hunk") or "").splitlines()
+            if not line.startswith("@@")
+        ][-_REVIEW_CODE_LINES:]
+        code = "".join(f"\n    | {line}" for line in hunk)
         items.append(
             _Item(
-                "Review comments",
+                section,
                 priority + rank * 0.001,
                 (view.number, event.at),
-                f"[{short(event.address)}] {where} {event.actor}: {elide(body, body_chars)}",
+                f"[{short(event.address)}] {where} {event.actor}:{code}\n"
+                f"{elide(body, body_chars)}",
             )
         )
     return items
@@ -351,48 +367,91 @@ def _failure_signature(lines: str) -> set[str]:
 
 
 def _ci_items(view: ThreadView, priority: float) -> list[_Item]:
-    """Failing checks of the latest commit; jobs that fail alike are shown once."""
+    """The checks of the latest commit: a count, then each distinct failure.
 
+    Jobs that fail alike are shown once. A failed job whose log was not fetched
+    is named with its id, and never stands in for one whose log is here.
+    """
+
+    checks = view.latest_checks()
+    failed = [c for c in checks if c.meta.get("conclusion") in FAILED_CONCLUSIONS]
+    if not failed:
+        return []
+    sha = str(failed[0].meta.get("sha", ""))[:8]
+    running = [
+        c
+        for c in checks
+        if c.meta.get("conclusion") in ("queued", "in_progress", "pending", "?")
+    ]
+    passing = len(checks) - len(failed) - len(running)
     groups: list[dict] = []
-    for event in view.latest_checks():
-        if event.meta.get("conclusion") not in FAILED_CONCLUSIONS:
+    without_log: list[ThreadEvent] = []
+    for event in failed:
+        lines = failing_lines(event.meta.get("log", ""), cap=_CI_LINES)
+        if not lines:
+            without_log.append(event)
             continue
-        lines = failing_lines(event.meta.get("log", ""), cap=25)
-        if not lines and event.meta.get("log_missing"):
-            lines = "(log no longer available)"
         signature = _failure_signature(lines)
         match = next(
             (
                 g
                 for g in groups
-                if signature
-                and len(signature & g["signature"])
+                if len(signature & g["signature"])
                 >= 0.6 * min(len(signature), len(g["signature"]))
             ),
             None,
         )
         if match:
             match["same"].append(event.meta.get("name", "?"))
-            continue
-        groups.append(
-            {"event": event, "lines": lines, "signature": signature, "same": []}
+        else:
+            groups.append(
+                {"event": event, "lines": lines, "signature": signature, "same": []}
+            )
+    summary = (
+        f"Checks at {sha}: {len(failed)} failing, {passing} passing"
+        + (f", {len(running)} running" if running else "")
+        + "."
+    )
+    if without_log:
+        named = ", ".join(
+            f"{e.meta.get('name')} [{short(e.address)}]" for e in without_log[:8]
         )
-    items = []
+        summary += f" Failed, log not stored: {named}."
+    items = [_Item("Failing CI", priority, (view.number, ""), summary)]
     for group in groups:
         event = group["event"]
-        sha = str(event.meta.get("sha", ""))[:8]
-        head = f"[{short(event.address)}] {event.meta.get('name')} failed at {sha}"
+        head = f"[{short(event.address)}] {event.meta.get('name')} failed"
         if group["same"]:
             head += f" (same failure in: {', '.join(group['same'])})"
         items.append(
             _Item(
                 "Failing CI",
-                priority,
+                priority + 0.01,
                 (view.number, event.at),
-                f"{head}\n{elide(group['lines'], 1800)}".rstrip(),
+                f"{head}\n{elide(group['lines'], 2600)}".rstrip(),
             )
         )
     return items
+
+
+def _changes_item(view: ThreadView) -> _Item | None:
+    """What a pull request changes, so that nobody has to ask for its diff."""
+
+    diffs = [e for e in view.events if e.kind == "diff"]
+    if not view.header.is_pr or not diffs:
+        return None
+    meta = diffs[-1].meta
+    files = meta.get("files", [])
+    listed = "\n".join(f"- {path}" for path in files[:25])
+    more = f"\n- and {len(files) - 25} more" if len(files) > 25 else ""
+    return _Item(
+        "Changes in this pull request",
+        1.5,
+        (0,),
+        f"[{short(diffs[-1].address)}] +{meta.get('additions', 0)}/"
+        f"-{meta.get('deletions', 0)} in {len(files)} files at "
+        f"{str(meta.get('sha', ''))[:8]}:\n{listed}{more}",
+    )
 
 
 _RELATION_LABEL = {
@@ -435,6 +494,7 @@ def _linked_header(view: ThreadView) -> str:
 
 _SECTION_ORDER = [
     "Ask",
+    "Changes in this pull request",
     "Code locations",
     "Code",
     "Also in progress on this code",
@@ -570,6 +630,9 @@ def _thread_items(bundle: Bundle, full: Bundle, delta: bool, caps: bool) -> list
                     f"{elide(body, cap(3200))}",
                 )
             )
+    changes = None if delta else _changes_item(root)
+    if changes:
+        items.append(changes)
     items += _ci_items(root, 2.5)
     for view in bundle.linked:
         if view.events:
@@ -596,7 +659,9 @@ def _thread_items(bundle: Bundle, full: Bundle, delta: bool, caps: bool) -> list
             skip_opened=False,
             body_chars=cap(700),
         )
-        items += _review_items(view, dedup, 7.0, cap(500))
+        items += _review_items(
+            view, dedup, 7.0, cap(500), section="Linked thread content"
+        )
     return items
 
 
@@ -614,18 +679,34 @@ def _coverage(bundle: Bundle, kept: list[_Item], omitted: dict[str, int]) -> str
     ]
     people = sum(1 for e in written if not e.is_bot)
     bots = len(written) - people
-    spoken = ("Ask", "Discussion", "Review comments", "Linked thread content")
-    shortened = sum(1 for i in kept if i.section in spoken and _ELIDED in i.text)
-    dropped = sum(omitted.get(section, 0) for section in spoken)
+    own = ("Ask", "Discussion", "Review comments")
+    linked = ("Linked thread content",)
+
+    def cut(sections: tuple[str, ...]) -> tuple[int, int]:
+        short_ = sum(1 for i in kept if i.section in sections and _ELIDED in i.text)
+        return short_, sum(omitted.get(section, 0) for section in sections)
+
+    own_short, own_dropped = cut(own)
+    linked_short, linked_dropped = cut(linked)
     left_out = f"left out: bot comments ({bots}), quoted replies, passing CI"
-    if not shortened and not dropped:
+    if not (own_short or own_dropped or linked_short or linked_dropped):
         return (
             f"Coverage: complete. Everything people wrote in these threads "
-            f"({people} posts) is below in full; {left_out}."
+            f"({people} posts) is below in full; {left_out}. Reading "
+            f"#{bundle.root.number} again with gh returns nothing more."
+        )
+    if not (own_short or own_dropped):
+        return (
+            f"Coverage: this thread complete, linked threads partial. Everything "
+            f"people wrote in #{bundle.root.number} is below in full; of the "
+            f"linked threads' posts, {linked_short} are shortened and "
+            f"{linked_dropped} omitted; {left_out}. Reading "
+            f"#{bundle.root.number} again with gh returns nothing more."
         )
     return (
-        f"Coverage: partial. Of {people} posts by people, {shortened} are "
-        f"shortened and {dropped} omitted; {left_out}."
+        f"Coverage: partial. Of {people} posts by people, "
+        f"{own_short + linked_short} are shortened and "
+        f"{own_dropped + linked_dropped} omitted; {left_out}."
     )
 
 
@@ -638,6 +719,7 @@ def build_packet(
     checkout: Path | None = None,
     rev: str = "HEAD",
     open_pulls: list | None = None,
+    news: Bundle | None = None,
 ) -> Packet:
     """Project a bundle into ``budget`` tokens, or only what followed ``since``.
 
@@ -647,8 +729,12 @@ def build_packet(
     """
 
     full = bundle
-    delta = since is not None
-    if delta:
+    delta = since is not None or news is not None
+    if news is not None:
+        # The caller already knows which events are new, such as a ticket that
+        # tracks its position in each log.
+        bundle = news
+    elif delta:
         restricted = _since(bundle, since or "")
         if restricted is None:
             raise KeyError(f"no event {since!r} in this thread or its linked threads")
@@ -687,7 +773,8 @@ def build_packet(
 
     kind = "PR" if root.header.is_pr else "issue"
     if delta:
-        title = f"# Thread update: {repo}#{root.number} since {short(since or '')}"
+        after = f"since {short(since)}" if since else "since last read"
+        title = f"# Thread update: {repo}#{root.number} {after}"
         changed = sum(len(v.events) for v in bundle.views)
         status = f"Status now: {_status_line(full.root)} · {changed} new events"
     else:
@@ -708,13 +795,30 @@ def build_packet(
     code_tokens = sum(item.tokens for item in code_items)
     limit = budget + code_tokens
 
-    # First try to carry everything people wrote, unshortened. Only when that
-    # does not fit are long posts cut to their head and tail.
+    # The thread's own content comes first and whole: an agent that sees its
+    # own thread cut reads all of it again, which costs more than the cut
+    # saved. It may grow to a multiple of the budget before long posts are
+    # shortened. Linked threads then fill what is left of the budget.
+    ceiling = max(budget, budget * _CORE_CEILING) - fixed
     for caps in (False, True):
         items = anchor_items + _thread_items(bundle, full, delta, caps)
-        kept, omitted = _fit(items, max(0, budget - fixed))
+        core = [i for i in items if i.priority < _LINKED_PRIORITY]
+        kept, omitted = _fit(core, max(0, ceiling))
         if not omitted:
             break
+    used = sum(item.tokens for item in kept)
+    for caps in (False, True):
+        items = _thread_items(bundle, full, delta, caps)
+        extras = [i for i in items if i.priority >= _LINKED_PRIORITY]
+        more, left_out = _fit(extras, max(0, budget - fixed - used))
+        if not left_out:
+            break
+    kept += more
+    for section, count in left_out.items():
+        omitted[section] = omitted.get(section, 0) + count
+    # Headings and the omission note are not items. The hard limit is the
+    # ceiling, so they never push the thread's own posts out.
+    limit = max(budget, budget * _CORE_CEILING) + code_tokens
     kept += code_items
 
     def render() -> str:

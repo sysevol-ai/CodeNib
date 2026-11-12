@@ -31,20 +31,23 @@ One Markdown document, built by code alone:
   commit. These are computed from GitHub's own events.
 - **Coverage.** One line that says whether everything people wrote is included
   in full, or how many posts were shortened or left out. An agent can then
-  tell whether it still has to read the thread.
+  tell whether it still has to read the thread. The thread's own posts are
+  kept whole before anything from linked threads.
+- **What a pull request changes.** Its files and size, so nobody asks for the
+  diff to find out.
 - **The ask.** The title and body of the issue or pull request.
 - **Code locations.** Paths, stack frames, review positions and symbol names
   from the thread, resolved to files, symbols and line ranges at a commit, with
   the source of the symbols that matter most.
-- **Failing CI.** The lines around each error. Jobs that fail the same way
-  appear once.
+- **Failing CI.** How many checks fail and pass, then the lines around each
+  error. Jobs that fail the same way appear once.
 - **Also in progress on this code.** Open pull requests, outside this thread,
   that change the same symbols or source files. An agent working one thread
   cannot otherwise see that someone else is changing the same function.
 - **Linked threads.** Each linked issue or pull request with its state, what
   it changed and how it was reviewed, followed by what people wrote there.
-- **Discussion and review comments**, newest kept first when the budget is
-  tight.
+- **Discussion and review comments**, each review comment with the lines it
+  was made on, newest kept first when the budget is tight.
 
 Bot comments, quoted replies and passing checks are left out, and a paragraph
 that one thread repeats from another appears once. Every part carries the id of
@@ -97,9 +100,11 @@ codenib threads close 812
   threads of `astral-sh/ruff`, fetching everything took 278 requests, and a
   poll with nothing new took 13.
 - **The board** lists each ticket with its unread count, the other tickets
-  whose threads name the same symbol, and open pull requests on its files.
+  whose threads name the same symbol, and open pull requests that change
+  those symbols.
 
-An edited comment is stored, but an inbox does not deliver it again.
+A comment edited after a ticket read it comes back in the inbox with its new
+text.
 
 ### See who else is changing the same code
 
@@ -123,6 +128,41 @@ change, new check results.
 ```bash
 codenib threads show 812 --sync --since '#812/comment/2990023933'
 ```
+
+### From an agent, over MCP
+
+`codenib threads mcp` serves the same context to any agent that speaks the
+Model Context Protocol. It is a separate server from CodeNib's code search, so
+adding it does not change which code tools the agent sees.
+
+```json
+{ "command": "codenib", "args": ["threads", "mcp"] }
+```
+
+| Tool | Returns |
+|---|---|
+| `thread_context` | The context of one thread, or what followed a cursor |
+| `ticket_open` | The first context of a ticket; remembers what was read |
+| `ticket_inbox` | What the ticket's threads gained since it last read |
+| `tickets_board` | All tickets, unread counts and shared code |
+| `thread_events` | Raw events by id, including a failed check's log |
+
+Writing the context into a file before the agent starts does not depend on the
+agent choosing to call a tool, so prefer it for the first context and use the
+tools for what comes later.
+
+### From Python
+
+```python
+from pathlib import Path
+from codenib.threads import ThreadStore, TicketBook, open_ticket, read_inbox
+
+book = TicketBook(ThreadStore("acme/widget"))
+ticket, context = open_ticket(book, 812, checkout=Path("."))
+news = read_inbox(book, ticket)        # None when nothing is new
+```
+
+`show`, `open`, `inbox` and `board` also print JSON with `--json`.
 
 ### Check a citation
 
@@ -187,11 +227,12 @@ reading the whole thread each time (103 issues, a median of 6 returns each).
 | `codenib threads poll` | Fetch what changed on the threads tickets follow |
 | `codenib threads board` | List tickets, unread counts and shared code |
 | `codenib threads close N` | Stop following a ticket's threads |
+| `codenib threads mcp` | Serve context and tickets over MCP |
 | `codenib threads events ID...` | Print raw events by id |
 
 | Option | Meaning | Default |
 |---|---|---|
-| `--budget` | Token limit for everything except source | 3000 |
+| `--budget` | Target size in tokens, source excluded. A thread's own posts stay whole up to three times this before they are shortened; linked threads are cut first | 3000 |
 | `--code-budget` | Extra tokens for the source of referenced symbols | 1500 |
 | `--since ID` | Return only what followed this event | |
 | `--rev` | Commit that code locations are resolved against | `HEAD` |

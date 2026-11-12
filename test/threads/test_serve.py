@@ -132,7 +132,7 @@ def test_packet_is_filtered_deduplicated_anchored_and_cited(store, checkout):
     assert "src/config.py:1-2 `parse_config()`" in text  # resolved to the symbol
     assert "#9 (pull request for this issue)" in text and "CI: 1 failing (unit)" in text
     assert "AssertionError" not in text.split("## Failing CI")[0]
-    assert "[#9/review_comment/60] src/config.py:2 rev: Use a guard here." in text
+    assert "[#9/review_comment/60] src/config.py:2 rev:\nUse a guard here." in text
     assert packet.head == event_address(REPO, 7, "comment", 4)
     assert "Coverage: complete." in text and "bot comments (1)" in text
     code = text.split("## Code\n")[1]
@@ -145,15 +145,20 @@ def test_packet_is_filtered_deduplicated_anchored_and_cited(store, checkout):
     assert without_code.tokens <= 2000 < 2000 + 1500 >= packet.tokens
 
 
-def test_budget_keeps_status_and_ask_first(store, checkout):
+def test_budget_cuts_linked_threads_before_the_thread_itself(store, checkout):
     packet = build_packet(
         load_bundle(store, 7), budget=260, code_budget=0, checkout=checkout
     )
-    assert packet.tokens <= 260
-    assert "Coverage: partial." in packet.text
-    assert "Crash on empty config" in packet.text
-    assert packet.omitted  # something had to go, and the packet says so
-    assert "Omitted for budget:" in packet.text
+    text = packet.text
+    # The budget is a target: the thread's own posts stay whole up to three
+    # times it, and linked threads give way first.
+    assert packet.tokens <= 3 * 260
+    assert "We decided to return an empty dict." in text and "Any update" in text
+    assert "Coverage: this thread complete, linked threads partial." in text
+    assert "Omitted for budget:" in text and "Linked thread content" in packet.omitted
+
+    tiny = build_packet(load_bundle(store, 7), budget=70, code_budget=0)
+    assert "Coverage: partial." in tiny.text and tiny.tokens <= 3 * 70
 
 
 def test_delta_returns_only_what_followed_the_cursor(store, checkout):
@@ -247,8 +252,43 @@ def test_jobs_failing_alike_are_shown_once(store):
     )  # fmt: skip
     text = build_packet(load_bundle(store, 9)).text
     assert text.count("--- FAIL: TestGuard") == 1
-    assert "linux failed at abc12345 (same failure in: windows)" in text
-    assert "unit failed at abc12345" in text  # a different failure stays separate
+    assert "Checks at abc12345: 3 failing, 0 passing." in text
+    assert "linux failed (same failure in: windows)" in text
+    assert "] unit failed\n" in text  # a different failure stays separate
+
+
+def test_a_failed_job_without_a_log_never_stands_in_for_one_with_a_log(store):
+    store.append(
+        9,
+        [
+            _event(9, "check", 53, "2026-01-03T01:00:03Z", bot=True, name="required",
+                   conclusion="failure", sha="abc12345", log="", log_missing=True),
+        ],
+    )  # fmt: skip
+    text = build_packet(load_bundle(store, 9)).text
+    assert "Failed, log not stored: required [#9/check/53]." in text
+    assert "AssertionError: expected {}" in text  # the stored log is still shown
+    assert "log no longer available" not in text
+
+
+def test_pull_request_context_lists_its_own_changes_and_commented_code(store):
+    store.append(
+        9,
+        [
+            _event(9, "diff", "abc12345", "2026-01-03T00:30:00Z", bot=True,
+                   sha="abc12345", files=["src/config.py", "tests/test_config.py"],
+                   additions=12, deletions=3),
+            _event(9, "review_comment", 61, "2026-01-04T01:00:00Z", "Name this.",
+                   actor="rev", path="src/config.py", line=2,
+                   hunk="@@ -1,2 +1,3 @@\n def parse_config(path):\n+    data = {}"),
+        ],
+    )  # fmt: skip
+    text = build_packet(load_bundle(store, 9)).text
+    changes = text.split("## Changes in this pull request\n")[1].split("\n##")[0]
+    assert "+12/-3 in 2 files at abc12345:" in changes
+    assert "- src/config.py\n- tests/test_config.py" in changes
+    assert "src/config.py:2 rev:\n    |  def parse_config(path):\n" in text
+    assert "    | +    data = {}\nName this." in text
 
 
 def test_client_waits_out_a_rate_limit(monkeypatch):
@@ -305,3 +345,33 @@ def test_open_pulls_on_the_same_code_are_named(store, checkout):
         lines[1].startswith("- #22 (draft open PR by cy") and "also edits" in lines[1]
     )
     assert len(lines) == 2  # unrelated #23 and the linked #9 are not repeated
+
+
+def test_repeated_log_errors_are_folded_so_the_summary_fits():
+    log = "\n".join(
+        [
+            f"##[error]  #{n}: pkg/a{n}.go:{n}:3: a.F calls net.Dial"
+            for n in range(1, 301)
+        ]
+        + ["Vulnerability #1: GO-2026-0001", "error: 1 vulnerability found"]
+    )
+    kept = failing_lines(log, context=0, cap=20)
+    assert kept.count("calls net.Dial") == 2
+    assert "[... 298 more lines like the two above ...]" in kept
+    assert "error: 1 vulnerability found" in kept
+    assert kept.count("\n") < 20
+
+
+def test_jobs_sharing_a_name_are_all_checked(store):
+    store.append(
+        9,
+        [
+            _event(9, "check", 70, "2026-01-03T02:00:00Z", bot=True, name="test",
+                   conclusion="failure", sha="def45678", log="error: matrix leg a"),
+            _event(9, "check", 71, "2026-01-03T02:00:01Z", bot=True, name="test",
+                   conclusion="success", sha="def45678"),
+        ],
+    )  # fmt: skip
+    text = build_packet(load_bundle(store, 9)).text
+    assert "Checks at def45678: 1 failing, 1 passing." in text
+    assert "error: matrix leg a" in text
