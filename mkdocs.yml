@@ -216,6 +216,7 @@ nav:
       - Benchmark Guides:
           - SWE-Explore: evaluation/swe_explore.md
           - Agent Retrieval Bench: evaluation/agent_retrieval_bench.md
+          - SWE-QA: evaluation/swe_qa.md
           - ContextBench: evaluation/contextbench.md
       - Reproduced Agents: agent_integrations.md
       - Results:

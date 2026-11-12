@@ -22,6 +22,7 @@ from codenib.eval.benchmarks.policy_compat import (
     audit_policy_provenance,
     build_policy_provenance,
     inspect_case_eligibility,
+    inspect_git_revision,
     inspect_policy_run_preflight,
     load_policy_results,
     policy_result_path,
@@ -77,6 +78,18 @@ def _init_repo(path: Path) -> str:
         capture_output=True,
         text=True,
     ).stdout.strip()
+
+
+def test_revision_check_can_ignore_generated_untracked_files(tmp_path):
+    repo = tmp_path / "repo"
+    head = _init_repo(repo)
+    (repo / "__pycache__").mkdir()
+    (repo / "__pycache__/generated.pyc").write_bytes(b"cache")
+    assert inspect_git_revision(repo).dirty is True
+    revision = inspect_git_revision(repo, include_untracked=False)
+    assert revision.commit == head and revision.dirty is False
+    (repo / "source.py").write_text("CHANGED = True\n")
+    assert inspect_git_revision(repo, include_untracked=False).dirty is True
 
 
 def test_repository_files_uses_the_complete_tracked_surface(tmp_path: Path) -> None:

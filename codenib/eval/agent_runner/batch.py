@@ -79,8 +79,13 @@ async def run_baseline_batch(
     metrics_k: Sequence[int],
     result_path: str | Path | None = None,
     resume: bool = False,
+    entry_builder: Callable[..., Dict[str, Any]] = build_baseline_result_entry,
 ) -> BaselineBatchSummary:
-    """Run a sync or async baseline runner over tasks and write JSONL records."""
+    """Run tasks and retain results; an optional builder supplies non-location output.
+
+    Builders return success and metrics (None when scoring is separate), plus
+    an instance_id for resume. The default location result contract is unchanged.
+    """
 
     done = baseline_done_ids(result_path) if result_path and resume else set()
     aggregate = _empty_aggregate(metrics_k)
@@ -98,7 +103,7 @@ async def run_baseline_batch(
                 raw_result = runner(task)
                 if inspect.isawaitable(raw_result):
                     raw_result = await raw_result
-                entry = build_baseline_result_entry(
+                entry = entry_builder(
                     task=task,
                     agent_name=agent_name,
                     model=model,
@@ -106,7 +111,7 @@ async def run_baseline_batch(
                     metrics_k=metrics_k,
                 )
             except Exception as exc:  # noqa: BLE001 - record and continue
-                entry = build_baseline_result_entry(
+                entry = entry_builder(
                     task=task,
                     agent_name=agent_name,
                     model=model,
