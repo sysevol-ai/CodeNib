@@ -99,10 +99,13 @@ def test_every_codenib_command_the_plugin_mentions_exists():
             assert sub in tree[command], f"codenib {command} {sub}"
 
 
-def _fake_tool(directory: Path, name: str, log: Path) -> None:
+def _fake_tool(directory: Path, name: str, log: Path, current: bool = True) -> None:
+    """A stand-in CLI that logs its calls; ``current`` decides what its help lists."""
+    option = "--defer-graph" if current else "--tool-surface"
     script = directory / name
     script.write_text(
         "#!/usr/bin/env bash\n"
+        f'if [[ "$*" == *"mcp --help" ]]; then echo "usage: [{option}]"; exit 0; fi\n'
         f'echo "{name} $*" >> {shlex.quote(str(log))}\n'
         'echo "chatter that must not reach the protocol stream"\n'
     )
@@ -157,8 +160,22 @@ def test_launcher_falls_back_to_uvx(checkout, tmp_path):
     assert (
         log.read_text()
         .splitlines()[0]
-        .startswith("uvx --quiet --from codenib[graph,mcp] codenib index ")
+        .startswith("uvx --quiet --from codenib[graph,mcp]>=0.2.5 codenib index ")
     )
+
+
+def test_launcher_passes_over_a_codenib_too_old_to_serve_it(checkout, tmp_path):
+    tools, log = tmp_path / "tools", tmp_path / "calls.log"
+    tools.mkdir()
+    _fake_tool(tools, "codenib", log, current=False)
+
+    stuck = _run(checkout, tools)
+    assert stuck.returncode == 1 and "older than 0.2.5" in stuck.stderr
+    assert not log.exists()
+
+    _fake_tool(tools, "uvx", log)
+    assert _run(checkout, tools).returncode == 0
+    assert all(line.startswith("uvx ") for line in log.read_text().splitlines())
 
 
 def test_launcher_explains_what_is_missing(checkout, tmp_path):

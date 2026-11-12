@@ -65,10 +65,13 @@ def test_it_runs_the_same_commands_as_the_claude_code_launcher():
         assert step in launcher and step in _script(), step
 
 
-def _fake_tool(directory: Path, name: str, log: Path) -> None:
+def _fake_tool(directory: Path, name: str, log: Path, current: bool = True) -> None:
+    """A stand-in CLI that logs its calls; ``current`` decides what its help lists."""
+    option = "--defer-graph" if current else "--tool-surface"
     script = directory / name
     script.write_text(
         "#!/usr/bin/env bash\n"
+        f'if [[ "$*" == *"mcp --help" ]]; then echo "usage: [{option}]"; exit 0; fi\n'
         f'echo "{name} $*" >> {shlex.quote(str(log))}\n'
         'echo "chatter that must not reach the protocol stream"\n'
     )
@@ -112,7 +115,7 @@ def test_it_falls_back_to_uvx_and_explains_what_is_missing(checkout, tmp_path):
     _fake_tool(tools, "uvx", log)
     assert _run(checkout, tools).returncode == 0
     assert log.read_text().startswith(
-        "uvx --quiet --from codenib[graph,mcp] codenib index "
+        "uvx --quiet --from codenib[graph,mcp]>=0.2.5 codenib index "
     )
 
     empty = tmp_path / "empty"
@@ -121,3 +124,17 @@ def test_it_falls_back_to_uvx_and_explains_what_is_missing(checkout, tmp_path):
     assert missing.returncode == 1 and "pip install" in missing.stderr
     outside = _run(empty, tools)
     assert outside.returncode == 1 and "Git checkout" in outside.stderr
+
+
+def test_it_passes_over_a_codenib_too_old_to_serve_it(checkout, tmp_path):
+    tools, log = tmp_path / "tools", tmp_path / "calls.log"
+    tools.mkdir()
+    _fake_tool(tools, "codenib", log, current=False)
+
+    stuck = _run(checkout, tools)
+    assert stuck.returncode == 1 and "older than 0.2.5" in stuck.stderr
+    assert not log.exists()
+
+    _fake_tool(tools, "uvx", log)
+    assert _run(checkout, tools).returncode == 0
+    assert all(line.startswith("uvx ") for line in log.read_text().splitlines())

@@ -16,10 +16,21 @@ if [[ ! -d "$project" ]]; then
   project="$PWD"
 fi
 
-if command -v codenib >/dev/null 2>&1; then
+# CodeNib before 0.2.5 does not know the options passed below. An older one on
+# the PATH is passed over for uvx, or named so the user can upgrade it.
+serves_this_plugin() {
+  "$@" mcp --help 2>/dev/null | grep -q -- '--defer-graph'
+}
+
+if command -v codenib >/dev/null 2>&1 && serves_this_plugin codenib; then
   codenib=(codenib)
 elif command -v uvx >/dev/null 2>&1; then
-  codenib=(uvx --quiet --from "codenib[graph,mcp]" codenib)
+  codenib=(uvx --quiet --from "codenib[graph,mcp]>=0.2.5" codenib)
+elif command -v codenib >/dev/null 2>&1; then
+  echo "The installed CodeNib is older than 0.2.5, which this plugin needs." \
+    "Upgrade it with python -m pip install -U 'codenib[graph,mcp]', then" \
+    "restart the MCP server." >&2
+  exit 1
 else
   echo "CodeNib is not installed. Run /codenib:setup, or install it with" \
     "python -m pip install 'codenib[graph,mcp]', then restart the MCP server." >&2

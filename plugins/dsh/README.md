@@ -23,6 +23,9 @@ package (3.10 or later). Install it once, or let the bundle run it through
 uv tool install "codenib[graph,mcp]"     # or: pipx install "codenib[graph,mcp]"
 ```
 
+The bundle needs CodeNib 0.2.5 or later. It passes over an older `codenib` on
+your path and uses `uvx`; without uv, it tells you to upgrade.
+
 ## What it adds
 
 The bundle adds one MCP server, `codenib`. Its `explore_context` tool returns

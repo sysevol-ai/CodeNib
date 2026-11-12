@@ -26,6 +26,9 @@ the plugin run it through `uvx` if you have uv:
 uv tool install "codenib[graph,mcp]"     # or: pipx install "codenib[graph,mcp]"
 ```
 
+The plugin needs CodeNib 0.2.5 or later. It passes over an older `codenib` on
+your path and uses `uvx`; without uv, it tells you to upgrade.
+
 ## What it adds
 
 | Component | What it does |
