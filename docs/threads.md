@@ -102,8 +102,14 @@ file out of the worker's commits. It never fails the Ticket: without a GitHub
 thread, or when GitHub cannot be reached, it explains and exits cleanly. Tell
 workers to read the file first, for example in the repository's `AGENTS.md`.
 
-This step has been tested against the variables dsh-superagent documents, not
-inside a running dsh-superagent.
+dsh-superagent removes token variables from the prepare command's
+environment. The script then uses the `gh` that dsh-superagent already signs
+in.
+
+This step has been run the way dsh-superagent's source runs a prepare command
+(its variables, a clean environment, the parent directory as working
+directory, its check of the Ticket directory afterwards), not inside a running
+dsh-superagent.
 
 ### When an agent comes back
 
