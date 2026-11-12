@@ -73,6 +73,7 @@ collection, joins, or custom runs rather than as scored benchmarks.
 | [SWE-bench Lite](datasets.md#swe-bench-lite) | L1 Localization | Real issues; find the code the golden patch changed | Python | `SwebenchDataset` | [Runnable](../agent_integrations.md#fixed-swe-bench-lite-coverage); dataset revision and a 50-case selection are pinned for paired policy runs |
 | [Loc-Bench v1](datasets.md#loc-bench-v1) | L1 Localization | Real issues, including features, performance, and security; find the code the golden patch changed | Python | `LocbenchDataset` | Runnable |
 | [SWE-Explore](swe_explore.md) | L1 Localization | Rank the source regions an issue needs | Seven languages in the fixed 20-case set | `codenib-swe-explore-benchmark` | [Pinned](swe_explore.md); scorer agrees with the official evaluator |
+| [CORE-Bench](core_bench.md) | L1 Localization | Rank released code chunks within each query's eligible snapshot | Mixed; released Level-2 and Level-3 corpora | `python -m codenib.eval.benchmarks.core_bench` | Runnable; CodeNib retrieval with official metrics |
 | [Agent Retrieval Bench](agent_retrieval_bench.md) | L1 Localization | Four static tasks; code→test, comment→context, trace→code, edit→ripple | Mixed; multi-language repositories | `codenib-arb` | [Measured](agent_retrieval_bench.md#results); six methods on all 345 samples |
 | [ContextBench](contextbench.md) | L2 Agent context | Real issues; an agent explores, and everything it reads is scored | C, C++, Go, Java, JavaScript, Python, Rust, TypeScript | `codenib-contextbench` | [Measured](contextbench-results.md); 500 canonical tasks with a research route; leaderboard review pending |
 | [ContextBench Pass@1](#l3-resolution) | L3 Resolution | The same tasks; a solver writes a patch, and native tests judge it | C, C++, Go, Java, JavaScript, Python, Rust, TypeScript | `scripts/benchmark_context_solver.py`, `scripts/contextbench_verified.py` | [Measured](contextbench-results.md); 388/500 resolved with a research route; leaderboard review pending |
@@ -93,16 +94,16 @@ Numbered notes follow each table.
 #### CodeNib methods
 
 <!-- BEGIN CODENIB_SUPPORT_MATRIX:grid:L1:CodeNib -->
-| Method | Base | Synthesis | SWE-bench Lite | Loc-Bench | SWE-Explore | ARB |
-| --- | --- | --- | --- | --- | --- | --- |
-| A · BM25 | [Runnable](grep_jev.md#what-was-measured)<sup>1</sup> | Runnable<sup>2</sup> | Runnable | Runnable | [Runnable](swe_explore.md#localization-summary)<sup>3</sup> | [Measured](agent_retrieval_bench.md#results)<sup>4</sup> |
-| A · Dense | [Runnable](grep_jev.md#what-was-measured)<sup>5</sup> | Runnable | Runnable | Runnable | Runnable | [Measured](agent_retrieval_bench.md#results)<sup>6</sup> |
-| A · Hybrid (RRF) | [Runnable](grep_jev.md#what-was-measured)<sup>7</sup> | — | Runnable | Runnable | Runnable | [Measured](agent_retrieval_bench.md#results)<sup>8</sup> |
-| A · Graph expansion | Runnable | — | Runnable | Runnable | Runnable | [Measured](agent_retrieval_bench.md#results)<sup>9</sup> |
-| A · Retrieve → rerank | [Measured](grep_jev.md#what-was-measured)<sup>10</sup> | — | Runnable | Runnable | Runnable | [Runnable](agent_retrieval_bench.md#retrieval-methods)<sup>11</sup> |
-| A · Planner `auto` | Runnable | — | Runnable | Runnable | Runnable | — |
-| B · Model-planned grep → Jev | [Measured](grep_jev.md) | — | — | — | — | — |
-| C · CodeNib agent | Runnable | Runnable | Runnable | Runnable | — | — |
+| Method | Base | Synthesis | SWE-bench Lite | Loc-Bench | SWE-Explore | CORE | ARB |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| A · BM25 | [Runnable](grep_jev.md#what-was-measured)<sup>1</sup> | Runnable<sup>2</sup> | Runnable | Runnable | [Runnable](swe_explore.md#localization-summary)<sup>3</sup> | Runnable | [Measured](agent_retrieval_bench.md#results)<sup>4</sup> |
+| A · Dense | [Runnable](grep_jev.md#what-was-measured)<sup>5</sup> | Runnable | Runnable | Runnable | Runnable | Runnable | [Measured](agent_retrieval_bench.md#results)<sup>6</sup> |
+| A · Hybrid (RRF) | [Runnable](grep_jev.md#what-was-measured)<sup>7</sup> | — | Runnable | Runnable | Runnable | Runnable | [Measured](agent_retrieval_bench.md#results)<sup>8</sup> |
+| A · Graph expansion | Runnable | — | Runnable | Runnable | Runnable | — | [Measured](agent_retrieval_bench.md#results)<sup>9</sup> |
+| A · Retrieve → rerank | [Measured](grep_jev.md#what-was-measured)<sup>10</sup> | — | Runnable | Runnable | Runnable | — | [Runnable](agent_retrieval_bench.md#retrieval-methods)<sup>11</sup> |
+| A · Planner `auto` | Runnable | — | Runnable | Runnable | Runnable | — | — |
+| B · Model-planned grep → Jev | [Measured](grep_jev.md) | — | — | — | — | — | — |
+| C · CodeNib agent | Runnable | Runnable | Runnable | Runnable | — | — | — |
 
 1. **BM25 × Base.** Scored only as the first stage of BM25 → Jev.
 2. **BM25 × Synthesis.** BM25 and Dense run through `examples/eval_synthesized_queries.py` on rows exported to JSON, scored on file and symbol names only.

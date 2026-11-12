@@ -214,6 +214,7 @@ nav:
       - Datasets: evaluation/datasets.md
       - Harnesses and Metrics: evaluation/harnesses.md
       - Benchmark Guides:
+          - CORE-Bench: evaluation/core_bench.md
           - SWE-Explore: evaluation/swe_explore.md
           - Agent Retrieval Bench: evaluation/agent_retrieval_bench.md
           - ContextBench: evaluation/contextbench.md
