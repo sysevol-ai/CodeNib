@@ -132,8 +132,13 @@ def load_note(repo: Path, path: Path) -> Note:
     meta = yaml.safe_load(match.group(1)) or {}
     if not isinstance(meta, dict):
         raise NoteError(f"{path}: front matter must be a mapping")
+    items = meta.get("anchors")
+    if items is None:
+        items = []
+    if not isinstance(items, list):
+        raise NoteError(f"{path}: anchors must be a list")
     anchors = []
-    for item in meta.get("anchors") or []:
+    for item in items:
         if not isinstance(item, dict) or "symbol" not in item:
             raise NoteError(f"{path}: each anchor needs a symbol")
         anchors.append(Anchor(str(item["symbol"]), str(item.get("sha256") or "")))
