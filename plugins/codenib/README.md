@@ -4,18 +4,26 @@ SPDX-FileCopyrightText: 2026 CodeNib Contributors
 SPDX-License-Identifier: Apache-2.0
 -->
 
-# CodeNib for Claude Code and Grok Build
+# CodeNib for Claude Code, Codex and Grok Build
 
 Ask about your repository and get answers tied to the exact lines. The plugin
-connects Claude Code or Grok Build to CodeNib, which ranks source for a question and follows
-the calls and references that compiler-grade indexers recorded between files.
+connects Claude Code, Codex or Grok Build to CodeNib, which ranks source for a
+question and follows the calls and references that compiler-grade indexers
+recorded between files.
 
 ```bash
 claude plugin marketplace add sysevol-ai/CodeNib
 claude plugin install codenib@codenib
 ```
 
-Grok Build reads the same plugin:
+Codex installs the same plugin:
+
+```bash
+codex plugin marketplace add sysevol-ai/CodeNib --sparse .claude-plugin --sparse plugins/codenib
+codex plugin add codenib@codenib
+```
+
+Grok Build reads it too:
 
 ```bash
 grok plugin install "sysevol-ai/CodeNib#plugins/codenib"
@@ -42,8 +50,9 @@ your path and uses `uvx`; without uv, it tells you to upgrade.
 | `/codenib:setup` | Installs CodeNib and the language providers, and builds the search index and code graph |
 | `/codenib:wiki` | Opens the repository's Wiki locally, or sets up publishing it on GitHub Pages |
 
-Claude uses `explain`, `impact` and `thread` on its own when a question fits;
-`setup` and `wiki` run only when you ask.
+The agent uses `explain`, `impact` and `thread` on its own when a question
+fits; `setup` and `wiki` run only when you ask. In Codex the skills are named
+`codenib:explain` and so on.
 
 ## Read an issue or pull request in one step
 

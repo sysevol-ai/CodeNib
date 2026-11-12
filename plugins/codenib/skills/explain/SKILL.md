@@ -19,4 +19,5 @@ Answer from the code, citing the file and lines behind each claim.
 For a known file, error string or identifier, your own search is faster; use
 CodeNib when the question spans files or needs references.
 
-If the tool is not available, tell the user to run `/codenib:setup`.
+If the tool is not available, tell the user to run CodeNib's `setup` skill
+(`/codenib:setup` in Claude Code).

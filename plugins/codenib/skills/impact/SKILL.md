@@ -16,4 +16,5 @@ Find the tests a change can reach, run them, and report what you ran.
    dynamic dispatch or code outside the index.
 
 This check is a preview and supports Python only. If `codenib` is missing,
-tell the user to run `/codenib:setup`.
+tell the user to run CodeNib's `setup` skill
+(`/codenib:setup` in Claude Code).
