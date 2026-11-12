@@ -12,13 +12,22 @@ def guardian_message_script(*, inbox: str, repo: str) -> str:
 
     return r"""#!/usr/bin/env python3
 import argparse
-import fcntl
 import json
 import os
 import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+
+try:
+    import fcntl
+except ImportError:
+    fcntl = None
+
+try:
+    import msvcrt
+except ImportError:
+    msvcrt = None
 
 INBOX = %r
 REPO = %r
@@ -35,7 +44,7 @@ def main():
         raise SystemExit("message scope exceeds its limit")
     try:
         head = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
+            ["git", "-c", "core.hooksPath=", "rev-parse", "HEAD"],
             cwd=REPO,
             capture_output=True,
             text=True,
@@ -46,28 +55,38 @@ def main():
     path = Path(INBOX)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a+", encoding="utf-8") as handle:
-        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
-        handle.seek(0)
-        sequence = 1
-        for line in handle:
-            try:
-                sequence = max(sequence, int(json.loads(line).get("sequence", 0)) + 1)
-            except Exception:
-                pass
-        value = {
-            "id": "msg_%%08d" %% sequence,
-            "sequence": sequence,
-            "sender": "solver:filesystem",
-            "content": content,
-            "observed_head": head,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "scope": args.scope,
-        }
-        handle.seek(0, os.SEEK_END)
-        handle.write(json.dumps(value, sort_keys=True) + "\n")
-        handle.flush()
-        os.fsync(handle.fileno())
-        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        if fcntl is not None:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        elif msvcrt is not None:
+            os.lseek(handle.fileno(), 0, os.SEEK_SET)
+            msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+        try:
+            handle.seek(0)
+            sequence = 1
+            for line in handle:
+                try:
+                    sequence = max(sequence, int(json.loads(line).get("sequence", 0)) + 1)
+                except Exception:
+                    pass
+            value = {
+                "id": "msg_%%08d" %% sequence,
+                "sequence": sequence,
+                "sender": "solver:filesystem",
+                "content": content,
+                "observed_head": head,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "scope": args.scope,
+            }
+            handle.seek(0, os.SEEK_END)
+            handle.write(json.dumps(value, sort_keys=True) + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        finally:
+            if fcntl is not None:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            elif msvcrt is not None:
+                os.lseek(handle.fileno(), 0, os.SEEK_SET)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
     print(json.dumps(value, sort_keys=True))
 
 

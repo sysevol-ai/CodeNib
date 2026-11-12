@@ -7,6 +7,8 @@
 from __future__ import annotations
 
 import json
+import stat
+import sys
 from pathlib import Path
 
 CodexTurnLog = tuple[int, bytes]
@@ -24,6 +26,11 @@ def _replace_bytes(path: Path, content: bytes) -> None:
 
     temporary = path.with_name(f".{path.name}.guardian-tmp")
     temporary.write_bytes(content)
+    if sys.platform == "win32":
+        try:
+            path.chmod(stat.S_IWRITE)
+        except OSError:
+            pass
     temporary.replace(path)
 
 

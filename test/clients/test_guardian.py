@@ -141,7 +141,7 @@ class ScriptedExecutor:
 
 def _git(path: Path, *args: str) -> str:
     return subprocess.run(
-        ("git", *args),
+        ("git", "-c", "core.hooksPath=", *args),
         cwd=path,
         check=True,
         capture_output=True,
