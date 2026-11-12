@@ -203,3 +203,12 @@ def test_launcher_uses_the_working_directory_without_a_project(checkout, tmp_pat
     assert result.returncode == 0, result.stderr
     root = os.path.realpath(checkout)
     assert log.read_text().splitlines()[0] == f"codenib index {root} --preset fast"
+
+
+def test_the_documented_grok_install_uses_a_command_grok_has():
+    # Grok Build has no --plugin-dir option; `grok plugin install` takes
+    # a GitHub shorthand with a #subdir.
+    for page in ("docs/codegraph.md", "plugins/codenib/README.md"):
+        text = (ROOT / page).read_text(encoding="utf-8")
+        assert "--plugin-dir" not in text, page
+        assert 'grok plugin install "sysevol-ai/CodeNib#plugins/codenib"' in text, page

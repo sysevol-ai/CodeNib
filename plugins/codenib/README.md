@@ -15,9 +15,11 @@ claude plugin marketplace add sysevol-ai/CodeNib
 claude plugin install codenib@codenib
 ```
 
-Grok Build reads the same plugin; load it with `--plugin-dir` or the
-`[plugins]` table in `~/.grok/config.toml`, as the
-[CodeGraph guide](https://docs.codenib.ai/codegraph/#grok-build-plugin) shows.
+Grok Build reads the same plugin:
+
+```bash
+grok plugin install "sysevol-ai/CodeNib#plugins/codenib"
+```
 
 CodeNib itself is a Python package (3.10 or later). Install it once, or let
 the plugin run it through `uvx` if you have uv:
