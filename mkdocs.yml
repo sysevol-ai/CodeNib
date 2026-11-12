@@ -170,6 +170,7 @@ nav:
       - get-started/index.md
       - Quickstart: quickstart.md
       - Change guard: guard.md
+      - Thread context: threads.md
       - Agent-ready CodeGraph: codegraph.md
       - Compare repository tools: comparison.md
       - Web UI: web_demo.md
