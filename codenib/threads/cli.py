@@ -344,7 +344,13 @@ def _run_mcp(args: argparse.Namespace) -> int:
 
     checkout = _checkout(args.checkout)
     root = Path(args.store).expanduser() if args.store else None
-    build_server(_repo_name(args, checkout), root, checkout).run(transport="stdio")
+    try:
+        server = build_server(_repo_name(args, checkout), root, checkout)
+    except ImportError as exc:
+        raise _error(
+            "the MCP server needs the mcp package: pip install 'codenib[mcp]'"
+        ) from exc
+    server.run(transport="stdio")
     return 0
 
 

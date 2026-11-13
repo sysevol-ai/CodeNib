@@ -173,8 +173,8 @@ codenib threads events '#812/comment/2990023933'
 ## How well it works
 
 With the same Codex agent, the prepared context led to the same answers as
-reading threads with `gh`, for about a quarter fewer input tokens. The saving
-grows with the size of the thread.
+reading threads with `gh`, for about a fifth to a quarter fewer input tokens.
+The saving grows with the size of the thread.
 
 The agent was asked which files and symbols have to change, and its answer was
 compared with what the merged pull request changed. Three ways of getting
@@ -184,17 +184,18 @@ thread event is pasted into the prompt unprocessed; or the prompt carries the
 
 | Task | Tasks | Files found: `gh` / pasted / CodeNib | Input tokens against `gh` | Against pasted |
 |---|---|---|---|---|
-| Take over a pull request after review or a failed check | 76 | 0.74 / 0.75 / 0.74 | −23% | −34% |
-| The same, threads over 20,000 tokens | 22 | 0.63 / 0.65 / 0.65 | −36% | −54% |
-| Take over an issue before any fix exists | 47 | 0.82 / 0.85 / 0.86 | −24% | +4% |
+| Take over a pull request after review or a failed check | 76 | 0.74 / 0.75 / 0.75 | −21% | −32% |
+| The same, threads over 20,000 tokens | 22 | 0.63 / 0.65 / 0.63 | −34% | −52% |
+| Take over an issue before any fix exists | 47 | 0.82 / 0.85 / 0.85 | −25% | +2% |
 
 On short threads, pasting everything costs as little as the prepared context.
 The prepared context pulls ahead once reviews, linked pull requests and CI
-logs make the thread long.
+logs make the thread long. It does not make answers better; it makes the same
+answers cheaper.
 
 For an agent that returns to a thread, a first context followed by updates
-took a median of 3,010 tokens over the life of an issue, against 27,799 for
-reading the whole thread each time (103 issues, a median of 6 returns each).
+took a median of 2,897 tokens over the life of an issue, against 21,103 for
+reading the whole thread each time (151 issues, a median of 6 returns each).
 
 ??? note "Scope and method"
     - Repositories: `astral-sh/ruff`, `caddyserver/caddy` and
@@ -203,13 +204,15 @@ reading the whole thread each time (103 issues, a median of 6 returns each).
       the repository at that point with no history, so no arm can read the fix.
       A read-only replica of `gh` limited to the cut-off is available in every
       arm.
-    - Each task ran once per arm. Intervals are 95% paired bootstrap over
-      tasks. Pull requests: −29% to −16% against `gh`, −42% to −25% against
-      pasted. Issues: −32% to −15% against `gh`, −5% to +14% against pasted.
-    - A blind grader compared each plan for an issue with the merged fix and
-      found the same approach in 0.64, 0.68 and 0.64 of the 47 tasks.
+    - The `gh` and pasted arms ran once per task and the CodeNib arm twice;
+      its two runs differed by 6% in total input tokens on pull requests and 1%
+      on issues. Intervals are 95% paired bootstrap over tasks. Pull requests:
+      −27% to −14% against `gh`, −40% to −23% against pasted. Issues: −31% to
+      −19% against `gh`, −4% to +9% against pasted.
     - Pasted context keeps the last 200 lines of each failed job log and stops
       at 60,000 tokens.
+    - In the pull request tasks no arm could see the pull request's own diff
+      as of the cut-off.
     - The answer does not show that an agent then writes a better fix. It shows
       that the agent reaches the same understanding of where to work for less.
     - Reproduce with `scripts/benchmark_threads_context.py`.
@@ -248,5 +251,8 @@ Thread logs are stored as files under `~/.codenib/threads/<owner>/<repo>/`.
 Nothing is written into your checkout. A log is append-only: syncing twice
 changes nothing, and an edited comment is kept beside the original.
 
-Thread text is treated as data. Nothing in a comment is executed or followed,
-and CodeNib only reads from GitHub.
+Thread text is treated as data. CodeNib executes and follows nothing in a
+comment, and only reads from GitHub. The text still reaches your agent, as it
+would if the agent read the thread itself, so anyone who can comment on a
+thread can address your agent. Give the agent no more permissions than you
+would when it reads GitHub directly.
