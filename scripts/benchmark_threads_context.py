@@ -270,7 +270,12 @@ def dump_text(bundle: Bundle) -> str:
 
 
 def materialize(
-    out: Path, task: dict, clone: Path, bundle: Bundle, budget: int
+    out: Path,
+    task: dict,
+    clone: Path,
+    bundle: Bundle,
+    budget: int,
+    code_budget: int = 1500,
 ) -> dict:
     """Write the snapshot, the gh replica and both prepared contexts of a task."""
 
@@ -297,7 +302,13 @@ def materialize(
     (bin_dir / "gh").write_text(GH_REPLICA)
     (bin_dir / "gh").chmod(0o755)
     started = time.time()
-    packet = build_packet(bundle, budget=budget, checkout=clone, rev=task["base"])
+    packet = build_packet(
+        bundle,
+        budget=budget,
+        code_budget=code_budget,
+        checkout=clone,
+        rev=task["base"],
+    )
     task["serve_seconds"] = round(time.time() - started, 2)
     dump = dump_text(bundle)
     (task_dir / "context.codenib.md").write_text(packet.text)
@@ -385,7 +396,9 @@ def build_pr_tasks(args: argparse.Namespace) -> int:
             bundle = load_bundle(store, number, at=task["cutoff"])
             if bundle is None:
                 continue
-            tasks.append(materialize(out, task, clone, bundle, args.budget))
+            tasks.append(
+                materialize(out, task, clone, bundle, args.budget, args.code_budget)
+            )
     (out / "tasks.json").write_text(json.dumps(tasks, indent=2))
     print(f"{len(tasks)} tasks", file=sys.stderr)
     return 0
@@ -433,7 +446,9 @@ def build_tasks(args: argparse.Namespace) -> int:
                 "gt_files": gt_files,
                 "gt_symbols": gt_symbols,
             }
-            tasks.append(materialize(out, task, clone, bundle, args.budget))
+            tasks.append(
+                materialize(out, task, clone, bundle, args.budget, args.code_budget)
+            )
     (out / "tasks.json").write_text(json.dumps(tasks, indent=2))
     print(f"{len(tasks)} tasks", file=sys.stderr)
     return 0
@@ -451,6 +466,119 @@ def parse_answer(text: str) -> dict:
         if isinstance(value, dict) and "files" in value:
             return value
     return {}
+
+
+_GH_CALL_RE = re.compile(r"(^|[\s'\"/;&|])gh\s")
+
+
+def codex_command(task_dir: Path, env: dict, args: argparse.Namespace) -> list[str]:
+    command = [
+        "codex", "exec", "--json", "--sandbox", "read-only",
+        "-c", f"model_reasoning_effort={args.effort}",
+        "-c", f"shell_environment_policy.set.PATH={env['PATH']}",
+        "-C", str(task_dir / "repo"),
+    ]  # fmt: skip
+    return command + (["-m", args.model] if args.model else [])
+
+
+def codex_parse(stdout: str):
+    usage = {"input_tokens": 0, "cached_input_tokens": 0, "output_tokens": 0}
+    commands, gh_calls, gh_chars, last_message = [], 0, 0, ""
+    for line in stdout.splitlines():
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if event.get("type") == "turn.completed":
+            for key in usage:
+                usage[key] += event.get("usage", {}).get(key, 0)
+        item = event.get("item") or {}
+        if event.get("type") == "item.completed":
+            if item.get("type") == "command_execution":
+                commands.append(item.get("command", ""))
+                if _GH_CALL_RE.search(item.get("command", "")):
+                    gh_calls += 1
+                    gh_chars += len(item.get("aggregated_output", ""))
+            elif item.get("type") == "agent_message":
+                last_message = item.get("text", "")
+    return usage, commands, gh_calls, gh_chars, last_message, None
+
+
+# Claude Code runs Bash inside its sandbox with no allowed network domain, and
+# refuses to start if the sandbox cannot be set up. A command that needs the
+# network is denied, so the agent cannot reach GitHub and read the fix.
+CLAUDE_SETTINGS = {
+    "sandbox": {
+        "enabled": True,
+        "failIfUnavailable": True,
+        "allowUnsandboxedCommands": False,
+        "autoAllowBashIfSandboxed": True,
+        "excludedCommands": [],
+        "network": {"allowedDomains": []},
+    }
+}
+
+
+def claude_command(task_dir: Path, env: dict, args: argparse.Namespace) -> list[str]:
+    return [
+        "claude", "-p", "--bare", "--output-format", "stream-json", "--verbose",
+        "--model", args.model or "claude-opus-5-5", "--effort", args.effort,
+        "--tools", "Bash,Read,Grep,Glob", "--permission-mode", "dontAsk",
+        "--strict-mcp-config", "--no-session-persistence",
+        "--max-budget-usd", str(args.max_budget_usd),
+        "--settings", json.dumps(CLAUDE_SETTINGS),
+    ]  # fmt: skip
+
+
+def claude_parse(stdout: str):
+    """Usage in the same shape as Codex: all input tokens, and the cached part."""
+
+    usage = {"input_tokens": 0, "cached_input_tokens": 0, "output_tokens": 0}
+    calls: dict[str, str] = {}
+    commands, gh_calls, gh_chars, last_message, cost = [], 0, 0, "", None
+    for line in stdout.splitlines():
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        message = event.get("message")
+        content = (message.get("content") or []) if isinstance(message, dict) else []
+        if isinstance(content, str):
+            content = []
+        if event.get("type") == "assistant":
+            for block in content:
+                if block.get("type") == "tool_use":
+                    spec = block.get("input") or {}
+                    text = spec.get("command") or json.dumps(spec)
+                    commands.append(text)
+                    calls[block.get("id", "")] = text
+                elif block.get("type") == "text":
+                    last_message = block.get("text", "")
+        elif event.get("type") == "user":
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "tool_result":
+                    if _GH_CALL_RE.search(calls.get(block.get("tool_use_id", ""), "")):
+                        gh_calls += 1
+                        gh_chars += len(str(block.get("content", "")))
+        elif event.get("type") == "result":
+            spent = event.get("usage") or {}
+            cached = spent.get("cache_read_input_tokens", 0)
+            usage = {
+                "input_tokens": spent.get("input_tokens", 0)
+                + spent.get("cache_creation_input_tokens", 0)
+                + cached,
+                "cached_input_tokens": cached,
+                "output_tokens": spent.get("output_tokens", 0),
+            }
+            cost = event.get("total_cost_usd")
+            last_message = event.get("result") or last_message
+    return usage, commands, gh_calls, gh_chars, last_message, cost
+
+
+AGENTS = {
+    "codex": {"command": codex_command, "parse": codex_parse},
+    "claude": {"command": claude_command, "parse": claude_parse},
+}
 
 
 def run_one(
@@ -477,49 +605,28 @@ def run_one(
     env["PATH"] = f"{task_dir / 'bin'}:{env['PATH']}"
     for name in ("GH_TOKEN", "GITHUB_TOKEN"):
         env.pop(name, None)
-    command = [
-        "codex", "exec", "--json", "--sandbox", "read-only",
-        "-c", f"model_reasoning_effort={args.effort}",
-        "-c", f"shell_environment_policy.set.PATH={env['PATH']}",
-        "-C", str(task_dir / "repo"),
-    ]  # fmt: skip
-    if args.model:
-        command += ["-m", args.model]
+    command = AGENTS[args.agent]["command"](task_dir, env, args)
     started = time.time()
     try:
         proc = subprocess.run(
             command, input=prompt, capture_output=True, text=True,
-            env=env, timeout=args.timeout,
+            env=env, timeout=args.timeout, cwd=task_dir / "repo",
         )  # fmt: skip
         stdout, timed_out = proc.stdout, False
     except subprocess.TimeoutExpired as exc:
         stdout = (exc.stdout or b"").decode("utf-8", "replace")
         timed_out = True
-    usage = {"input_tokens": 0, "cached_input_tokens": 0, "output_tokens": 0}
-    commands, gh_calls, gh_chars, last_message = [], 0, 0, ""
-    for line in stdout.splitlines():
-        try:
-            event = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if event.get("type") == "turn.completed":
-            for key in usage:
-                usage[key] += event.get("usage", {}).get(key, 0)
-        item = event.get("item") or {}
-        if event.get("type") == "item.completed":
-            if item.get("type") == "command_execution":
-                commands.append(item.get("command", ""))
-                if re.search(r"(^|[\s'\"/;&|])gh\s", item.get("command", "")):
-                    gh_calls += 1
-                    gh_chars += len(item.get("aggregated_output", ""))
-            elif item.get("type") == "agent_message":
-                last_message = item.get("text", "")
+    usage, commands, gh_calls, gh_chars, last_message, cost = AGENTS[args.agent][
+        "parse"
+    ](stdout)
     result = {
         "task": task["id"],
         "arm": arm,
         "seconds": round(time.time() - started, 1),
         "timed_out": timed_out,
+        "agent": args.agent,
         "usage": usage,
+        "cost_usd": cost,
         "commands": len(commands),
         "gh_calls": gh_calls,
         "gh_output_tokens_est": gh_chars // 4,
@@ -588,6 +695,7 @@ def score_run(task: dict, result: dict) -> dict:
             if (result.get("judge") or {}).get("approach") is None
             else (result["judge"]["approach"] == 2)
         ),
+        "cost_usd": result.get("cost_usd"),
         "input_tokens": usage["input_tokens"],
         "uncached_input": usage["input_tokens"] - usage["cached_input_tokens"],
         "output_tokens": usage["output_tokens"],
@@ -599,8 +707,8 @@ def score_run(task: dict, result: dict) -> dict:
 
 NUMERIC = (
     "file_recall", "file_precision", "file_hit", "top1", "symbol_recall",
-    "approach_same", "input_tokens", "uncached_input", "output_tokens",
-    "commands", "gh_calls", "seconds",
+    "approach_same", "cost_usd", "input_tokens", "uncached_input",
+    "output_tokens", "commands", "gh_calls", "seconds",
 )  # fmt: skip
 STRATA = (
     ("under 5k", 0, 5_000),
@@ -674,6 +782,7 @@ def report(tasks: dict, rows: dict, arms: list[str], title: str) -> None:
         ("input_tokens", "input tokens, all tasks", "sum", "{:,.0f}"),
         ("uncached_input", "uncached input, all tasks", "sum", "{:,.0f}"),
         ("output_tokens", "output tokens, all tasks", "sum", "{:,.0f}"),
+        ("cost_usd", "reported cost, all tasks (USD)", "sum", "{:.2f}"),
         ("commands", "commands per task", "median", "{:.1f}"),
         ("gh_calls", "thread reads per task", "mean", "{:.1f}"),
         ("seconds", "seconds per task", "median", "{:.0f}"),
@@ -911,6 +1020,7 @@ def main() -> int:
     tasks.add_argument("--clones", required=True, help="directory of <name>.git clones")
     tasks.add_argument("--out", required=True)
     tasks.add_argument("--budget", type=int, default=3000)
+    tasks.add_argument("--code-budget", type=int, default=1500)
     tasks.add_argument("--max-files", type=int, default=6)
     tasks.add_argument(
         "--scenario",
@@ -924,6 +1034,14 @@ def main() -> int:
     runner.add_argument("--arms", nargs="+", default=list(ARMS), choices=ARMS)
     runner.add_argument("--only", nargs="*")
     runner.add_argument("--limit", type=int, default=0)
+    runner.add_argument(
+        "--agent",
+        choices=sorted(AGENTS),
+        default="codex",
+        help="codex: Codex CLI in its read-only sandbox; claude: Claude Code "
+        "headless with sandboxed Bash and no network",
+    )
+    runner.add_argument("--max-budget-usd", type=float, default=3.0)
     runner.add_argument("--reps", type=int, default=1)
     runner.add_argument("--workers", type=int, default=3)
     runner.add_argument("--timeout", type=int, default=1200)

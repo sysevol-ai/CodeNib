@@ -102,3 +102,54 @@ def test_cli_ticket_round_trip_with_json(root, tmp_path):
     )
     assert run("inbox", "7", "--no-anchors") == ""
     assert "closed" in run("close", "7")
+
+
+def test_mcp_command_answers_over_stdio(root):
+    """Start `codenib threads mcp` as an agent would and speak MCP to it."""
+
+    import os
+    import queue
+    import threading
+
+    pytest.importorskip("mcp")
+    server = subprocess.Popen(
+        [sys.executable, "-m", "codenib", "threads", "mcp", "--repo", REPO,
+         "--store", str(root)],
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+        text=True, cwd=root,
+        env={**os.environ, "PYTHONPATH": str(Path(__file__).parents[2])},
+    )  # fmt: skip
+    replies: queue.Queue = queue.Queue()
+    threading.Thread(
+        target=lambda: [replies.put(line) for line in server.stdout], daemon=True
+    ).start()
+
+    def send(payload):
+        server.stdin.write(json.dumps({"jsonrpc": "2.0", **payload}) + "\n")
+        server.stdin.flush()
+
+    def answer(ident):
+        while True:
+            message = json.loads(replies.get(timeout=60))
+            if message.get("id") == ident:
+                return message["result"]
+
+    try:
+        send({"id": 1, "method": "initialize", "params": {
+            "protocolVersion": "2025-06-18", "capabilities": {},
+            "clientInfo": {"name": "test", "version": "0"}}})  # fmt: skip
+        assert answer(1)["serverInfo"]["name"] == "codenib-threads"
+        send({"method": "notifications/initialized"})
+        send({"id": 2, "method": "tools/list"})
+        names = {tool["name"] for tool in answer(2)["tools"]}
+        assert {"thread_context", "ticket_inbox", "thread_events"} <= names
+        send({"id": 3, "method": "tools/call", "params": {
+            "name": "thread_context", "arguments": {"number": 7}}})  # fmt: skip
+        text = answer(3)["content"][0]["text"]
+        assert "# Thread context: acme/widget#7" in text and "It crashes." in text
+        send({"id": 4, "method": "tools/call", "params": {
+            "name": "ticket_inbox", "arguments": {"number": 7}}})  # fmt: skip
+        assert answer(4)["isError"] is True  # no ticket yet: a tool error, not a crash
+    finally:
+        server.kill()
+        server.wait(timeout=10)

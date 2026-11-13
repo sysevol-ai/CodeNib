@@ -790,6 +790,14 @@ def build_packet(
         f"with `codenib threads events <id>`, or later changes with "
         f"`codenib threads show {root.number} --since {short(head)}`."
     )
+    if not delta:
+        # Agents given a prepared context explore the code less than agents
+        # that read the thread themselves. Say where the context ends.
+        footer = (
+            "\nThis covers the threads, not the code. The locations above are "
+            "only the ones the threads name; the change may reach further, so "
+            "explore the code as you would without this context." + footer
+        )
     coverage_room = 45
     fixed = count_tokens(title + status + footer) + coverage_room
     code_tokens = sum(item.tokens for item in code_items)

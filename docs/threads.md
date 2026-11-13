@@ -172,9 +172,10 @@ codenib threads events '#812/comment/2990023933'
 
 ## How well it works
 
-With the same Codex agent, the prepared context led to the same answers as
-reading threads with `gh`, for about a fifth to a quarter fewer input tokens.
-The saving grows with the size of the thread.
+With two coding agents, the prepared context cut the input tokens of a task
+by a fifth to a half against letting the agent read threads with `gh`. With
+Codex the agent then found the same files. With Claude Code it found slightly
+fewer, a gap too small to tell from chance at this sample size.
 
 The agent was asked which files and symbols have to change, and its answer was
 compared with what the merged pull request changed. Three ways of getting
@@ -182,16 +183,27 @@ thread context were compared: the agent reads threads itself with `gh`; every
 thread event is pasted into the prompt unprocessed; or the prompt carries the
 `codenib threads` context.
 
-| Task | Tasks | Files found: `gh` / pasted / CodeNib | Input tokens against `gh` | Against pasted |
+| Agent and task | Tasks | Files found: `gh` / pasted / CodeNib | Input tokens against `gh` | Against pasted |
 |---|---|---|---|---|
-| Take over a pull request after review or a failed check | 76 | 0.74 / 0.75 / 0.75 | −21% | −32% |
-| The same, threads over 20,000 tokens | 22 | 0.63 / 0.65 / 0.63 | −34% | −52% |
-| Take over an issue before any fix exists | 47 | 0.82 / 0.85 / 0.85 | −25% | +2% |
+| Codex, take over a pull request after review or a failed check | 76 | 0.74 / 0.75 / 0.75 | −21% | −32% |
+| Codex, the same, threads over 20,000 tokens | 22 | 0.63 / 0.65 / 0.63 | −34% | −52% |
+| Codex, take over an issue before any fix exists | 47 | 0.82 / 0.85 / 0.85 | −25% | +2% |
+| Claude Code, take over a pull request | 76 | 0.83 / 0.78 / 0.80 | −45% | −69% |
+| Claude Code, the same, threads over 20,000 tokens | 22 | 0.70 / 0.60 / 0.61 | −63% | −84% |
 
-On short threads, pasting everything costs as little as the prepared context.
-The prepared context pulls ahead once reviews, linked pull requests and CI
-logs make the thread long. It does not make answers better; it makes the same
-answers cheaper.
+What to take from this:
+
+- **It saves tokens, more so on long threads.** On short threads, pasting
+  everything costs as little.
+- **It does not make answers better.** With Codex they are the same.
+- **With Claude Code, an agent that reads the threads itself explores more
+  code, and found a few more of the files** (0.83 against 0.80). The same
+  happens when the whole thread is pasted (0.78), so it comes from handing
+  context over, not from what the prepared context leaves out. If finding
+  every file matters more to you than cost, let the agent read for itself.
+
+For Claude Code the reported cost of the 76 tasks was $8.37 with the prepared
+context, $11.34 reading with `gh`, and $17.49 with everything pasted.
 
 For an agent that returns to a thread, a first context followed by updates
 took a median of 2,897 tokens over the life of an issue, against 21,103 for
@@ -203,19 +215,26 @@ reading the whole thread each time (151 issues, a median of 6 returns each).
     - Each task shows the thread as it stood at a cut-off, and a snapshot of
       the repository at that point with no history, so no arm can read the fix.
       A read-only replica of `gh` limited to the cut-off is available in every
-      arm.
-    - The `gh` and pasted arms ran once per task and the CodeNib arm twice;
-      its two runs differed by 6% in total input tokens on pull requests and 1%
-      on issues. Intervals are 95% paired bootstrap over tasks. Pull requests:
-      −27% to −14% against `gh`, −40% to −23% against pasted. Issues: −31% to
-      −19% against `gh`, −4% to +9% against pasted.
+      arm. Both agents ran with no network access.
+    - Codex: its `gh` and pasted arms ran once per task and the CodeNib arm
+      twice; the two runs differed by 6% in total input tokens on pull
+      requests and 1% on issues. Claude Code (Claude Opus 5.5, medium effort):
+      every arm ran once.
+    - Intervals are 95% paired bootstrap over tasks. Codex pull requests: −27%
+      to −14% against `gh`, −40% to −23% against pasted. Codex issues: −31% to
+      −19% and −4% to +9%. Claude Code: −57% to −30% and −78% to −59%; files
+      found −0.03 against `gh` (−0.07 to +0.02).
+    - The Codex figures predate one line the context now ends with, which
+      tells the agent that it covers the threads and not the code. With
+      Claude Code that line moved files found from 0.79 to 0.80.
     - Pasted context keeps the last 200 lines of each failed job log and stops
       at 60,000 tokens.
     - In the pull request tasks no arm could see the pull request's own diff
       as of the cut-off.
     - The answer does not show that an agent then writes a better fix. It shows
-      that the agent reaches the same understanding of where to work for less.
-    - Reproduce with `scripts/benchmark_threads_context.py`.
+      where the agent would work, and what reaching that cost.
+    - Reproduce with `scripts/benchmark_threads_context.py`; `--agent` selects
+      Codex or Claude Code.
 
 ## Reference
 
