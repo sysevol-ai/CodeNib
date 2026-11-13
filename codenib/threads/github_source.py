@@ -50,6 +50,21 @@ def resolve_token() -> str | None:
     return proc.stdout.strip() or None
 
 
+def default_api_url() -> str:
+    """The REST API root: ``GITHUB_API_URL`` (GitHub Enterprise), else github.com."""
+
+    return (os.environ.get("GITHUB_API_URL") or _API).rstrip("/")
+
+
+def connect(api_url: str | None = None) -> "GitHubClient":
+    """A client for ``api_url`` with the token the environment provides."""
+
+    url = (api_url or default_api_url()).rstrip("/")
+    if not url.startswith("https://") and not url.startswith("http://127.0.0.1"):
+        raise ValueError("the GitHub API URL must use https")
+    return GitHubClient(resolve_token(), url)
+
+
 class _DropAuthOnRedirect(urllib.request.HTTPRedirectHandler):
     """Follow a redirect without forwarding the bearer token to the new host."""
 
@@ -104,7 +119,7 @@ class GitHubClient:
         raise AssertionError("unreachable")
 
     def _url(self, path: str) -> str:
-        return path if path.startswith("https://") else f"{self._api}/{path}"
+        return path if path.startswith(self._api + "/") else f"{self._api}/{path}"
 
     def get(self, path: str) -> Any:
         try:
@@ -135,6 +150,8 @@ class GitHubClient:
             out.extend(page.get(key, []) if key else page)
             match = _NEXT_RE.search(link)
             url = match.group(1) if match else None
+            if url and not url.startswith(self._api + "/"):
+                url = None  # never send the token to a host a response names
         return out
 
     def text(self, path: str) -> str | None:
@@ -428,4 +445,10 @@ def _pull_events(
     return events
 
 
-__all__ = ["GitHubClient", "fetch_thread", "resolve_token"]
+__all__ = [
+    "GitHubClient",
+    "connect",
+    "default_api_url",
+    "fetch_thread",
+    "resolve_token",
+]

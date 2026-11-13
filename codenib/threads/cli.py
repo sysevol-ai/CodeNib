@@ -22,7 +22,13 @@ def _error(message: str):
     return CLIError(message)
 
 
-def _checkout(value: str | None) -> Path | None:
+def _checkout(value: str | None, *, required: bool = True) -> Path | None:
+    """The clone to resolve code against; ``None`` when there is none.
+
+    A path the user named with --checkout must be a repository. The current
+    directory, or a ticket's work directory, is used only if it is one.
+    """
+
     path = Path(value or ".").expanduser().resolve()
     proc = subprocess.run(
         ["git", "-C", str(path), "rev-parse", "--git-dir"],
@@ -30,7 +36,7 @@ def _checkout(value: str | None) -> Path | None:
         text=True,
     )
     if proc.returncode != 0:
-        if value:
+        if value and required:
             raise _error(f"{path} is not a git repository")
         return None
     return path
@@ -51,6 +57,15 @@ def _repo_name(args: argparse.Namespace, checkout: Path | None) -> str:
     raise _error("pass --repo owner/name, or run inside a clone of a GitHub repository")
 
 
+def _client(args: argparse.Namespace):
+    from .github_source import connect
+
+    try:
+        return connect(getattr(args, "api_url", None))
+    except ValueError as exc:
+        raise _error(str(exc)) from exc
+
+
 def _store(args: argparse.Namespace, checkout: Path | None):
     from .log_store import ThreadStore
 
@@ -61,11 +76,12 @@ def _store(args: argparse.Namespace, checkout: Path | None):
         raise _error(str(exc)) from exc
 
 
-def _sync(store, numbers: list[int], *, refresh_linked: bool, quiet: bool) -> None:
-    from .github_source import GitHubClient, resolve_token
+def _sync(
+    args, store, numbers: list[int], *, refresh_linked: bool, quiet: bool
+) -> None:
     from .sync import sync_thread
 
-    client = GitHubClient(resolve_token())
+    client = _client(args)
     for number in numbers:
         try:
             written = sync_thread(
@@ -89,12 +105,11 @@ def _sync(store, numbers: list[int], *, refresh_linked: bool, quiet: bool) -> No
             )
 
 
-def _sync_open_pulls(store, limit: int, quiet: bool) -> None:
-    from .github_source import GitHubClient, resolve_token
+def _sync_open_pulls(args, store, limit: int, quiet: bool) -> None:
     from .in_flight import fetch_open_pulls, write_index
 
     try:
-        pulls = fetch_open_pulls(GitHubClient(resolve_token()), store.repo, limit)
+        pulls = fetch_open_pulls(_client(args), store.repo, limit)
     except RuntimeError as exc:
         raise _error(str(exc)) from exc
     write_index(store, pulls)
@@ -106,9 +121,15 @@ def _run_sync(args: argparse.Namespace) -> int:
     if not args.numbers and not args.open_pulls:
         raise _error("name a thread number, or pass --open-pulls")
     store = _store(args, _checkout(args.checkout))
-    _sync(store, args.numbers, refresh_linked=args.refresh_linked, quiet=args.quiet)
+    _sync(
+        args,
+        store,
+        args.numbers,
+        refresh_linked=args.refresh_linked,
+        quiet=args.quiet,
+    )
     if args.open_pulls:
-        _sync_open_pulls(store, args.open_pulls, args.quiet)
+        _sync_open_pulls(args, store, args.open_pulls, args.quiet)
     return 0
 
 
@@ -119,7 +140,7 @@ def _packet(args: argparse.Namespace):
     checkout = _checkout(args.checkout)
     store = _store(args, checkout)
     if not args.offline and (args.sync or not store.has(args.number)):
-        _sync(store, [args.number], refresh_linked=args.sync, quiet=True)
+        _sync(args, store, [args.number], refresh_linked=args.sync, quiet=True)
     bundle = load_bundle(store, args.number, at=args.at)
     if bundle is None:
         raise _error(
@@ -218,10 +239,14 @@ def _run_open(args: argparse.Namespace) -> int:
     from .in_flight import read_index
     from .tickets import open_ticket
 
-    checkout = _checkout(args.checkout or args.dir)
+    if args.checkout:
+        checkout = _checkout(args.checkout)
+    else:
+        checkout = _checkout(args.dir, required=False) or _checkout(None)
     book = _book(args, checkout)
     if not args.offline and (args.sync or not book.store.has(args.number)):
         _sync(
+            args,
             book.store,
             [args.number, *args.follow],
             refresh_linked=args.sync,
@@ -254,9 +279,9 @@ def _run_inbox(args: argparse.Namespace) -> int:
     book = _book(args, checkout)
     ticket = _ticket(book, args.number)
     if args.sync:
-        _sync(book.store, ticket.threads, refresh_linked=False, quiet=True)
+        _sync(args, book.store, ticket.threads, refresh_linked=False, quiet=True)
     if checkout is None and ticket.directory:
-        checkout = _checkout(ticket.directory)
+        checkout = _checkout(ticket.directory, required=False)
     packet = read_inbox(
         book,
         ticket,
@@ -274,14 +299,13 @@ def _run_inbox(args: argparse.Namespace) -> int:
 
 
 def _run_poll(args: argparse.Namespace) -> int:
-    from .github_source import GitHubClient, resolve_token
     from .poll import poll
 
     book = _book(args, _checkout(args.checkout))
     if not book.all():
         raise _error("no tickets; start one with `codenib threads open N`")
     try:
-        result = poll(GitHubClient(resolve_token()), book)
+        result = poll(_client(args), book)
     except RuntimeError as exc:
         raise _error(str(exc)) from exc
     if args.json:
@@ -345,7 +369,9 @@ def _run_mcp(args: argparse.Namespace) -> int:
     checkout = _checkout(args.checkout)
     root = Path(args.store).expanduser() if args.store else None
     try:
-        server = build_server(_repo_name(args, checkout), root, checkout)
+        server = build_server(
+            _repo_name(args, checkout), root, checkout, api_url=args.api_url
+        )
     except ImportError as exc:
         raise _error(
             "the MCP server needs the mcp package: pip install 'codenib[mcp]'"
@@ -368,6 +394,11 @@ def _common(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--store", help="thread store directory (default: CodeNib home)"
+    )
+    parser.add_argument(
+        "--api-url",
+        help="GitHub REST API root, for GitHub Enterprise "
+        "(default: $GITHUB_API_URL, else https://api.github.com)",
     )
 
 

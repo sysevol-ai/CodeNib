@@ -30,13 +30,19 @@ _Number = Annotated[int, Field(ge=1, description="Issue or pull request number")
 _Budget = Annotated[int, Field(ge=200, le=20000, description="Target size in tokens")]
 
 
-def build_server(repo: str, store_root: Path | None, checkout: Path | None):
+def build_server(
+    repo: str,
+    store_root: Path | None,
+    checkout: Path | None,
+    *,
+    api_url: str | None = None,
+):
     """An MCP server bound to one repository, its thread store and a checkout."""
 
     from mcp.server import MCPServer
 
     from .._version import __version__
-    from .github_source import GitHubClient, resolve_token
+    from .github_source import connect
     from .in_flight import read_index
     from .serve import build_packet, load_bundle, short
     from .sync import sync_thread
@@ -50,7 +56,7 @@ def build_server(repo: str, store_root: Path | None, checkout: Path | None):
 
     def ensure(number: int, refresh: bool) -> None:
         if refresh or not store.has(number):
-            sync_thread(GitHubClient(resolve_token()), store, number)
+            sync_thread(connect(api_url), store, number)
         if not store.has(number):
             raise ValueError(f"{repo}#{number} was not found")
 
@@ -118,7 +124,7 @@ def build_server(repo: str, store_root: Path | None, checkout: Path | None):
         if ticket is None:
             raise ValueError(f"no ticket for #{number}; call ticket_open first")
         if refresh:
-            client = GitHubClient(resolve_token())
+            client = connect(api_url)
             for thread in ticket.threads:
                 sync_thread(client, store, thread, linked=thread == number)
         packet = read_inbox(

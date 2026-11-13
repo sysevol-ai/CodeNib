@@ -246,6 +246,7 @@ reading the whole thread each time (151 issues, a median of 6 returns each).
 | `--repo` | `owner/name` | the `origin` remote |
 | `--checkout` | Clone used to resolve code locations | `.` |
 | `--store` | Where thread logs are kept | CodeNib home |
+| `--api-url` | GitHub REST API root, for GitHub Enterprise; pass `--repo` too | `$GITHUB_API_URL`, else github.com |
 
 Thread logs are stored as files under `~/.codenib/threads/<owner>/<repo>/`.
 Nothing is written into your checkout. A log is append-only: syncing twice
