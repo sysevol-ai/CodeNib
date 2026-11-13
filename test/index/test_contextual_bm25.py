@@ -351,6 +351,7 @@ def test_configuration_and_model_changes_alter_compatibility():
         replace(contextualizer.config, max_prefix_chars=90),
         replace(contextualizer.config, max_output_tokens=45),
         replace(contextualizer.config, prompt="A different, versioned source prompt."),
+        replace(contextualizer.config, temperature=None),
     ):
         assert FileContextualizer(chat, config).artifact_identity() != original
     chat.cache_identity = "different-model-revision"
@@ -475,6 +476,67 @@ def test_existing_chat_adapter_receives_bounds_and_retains_failed_usage(
     assert contextualizer.usage_tracker.totals().prompt_tokens == 11
     assert contextualizer.usage_tracker.totals().completion_tokens == 8
     assert "fixture-secret" not in json.dumps(contextualizer.artifact_identity())
+
+
+def test_temperature_can_be_omitted_for_provider_compatibility(repository, monkeypatch):
+    from codenib.llm import litellm_chat, usage
+
+    root, *_ = repository
+    calls = []
+
+    def completion(_self, options):
+        calls.append(options)
+        return SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(content="Short source explanation.")
+                )
+            ],
+            usage=SimpleNamespace(
+                prompt_tokens=11, completion_tokens=8, total_tokens=19
+            ),
+        )
+
+    monkeypatch.setattr(litellm_chat.LiteLLMChat, "_completion_with_retry", completion)
+    monkeypatch.setattr(usage, "_safe_completion_cost", lambda *_args: None)
+    chat = litellm_chat.LiteLLMChat(model="fixture/model", temperature=0.0)
+    contextualizer = FileContextualizer(chat, ContextualizationConfig(temperature=None))
+    chunks = CodeChunker(language="python").chunk_repository(str(root))
+    with capture_repository_source(root) as source:
+        contextualizer.contextualize(chunks, source)
+    assert calls and all("temperature" not in options for options in calls)
+    assert contextualizer.artifact_identity()["temperature"] is None
+
+
+@pytest.mark.parametrize("value", [-1, True, "0", float("inf"), float("nan")])
+def test_invalid_temperature_is_rejected(value):
+    with pytest.raises(ValueError, match="temperature"):
+        ContextualizationConfig(temperature=value)
+
+
+def test_inline_fence_description_is_valid_search_metadata(repository, tmp_path):
+    root, _, _, target = repository
+    prefix = "Extracts JSON and unwraps a fenced ```json block if present."
+    builder = BM25IndexBuilder(
+        contextualizer=FileContextualizer(RecordingChat(target=target, response=prefix))
+    )
+    output = tmp_path / "contextual"
+    builder.build("repo", repo_path=str(root), output_dir=str(output))
+    documents = json.loads((output / "documents.json").read_text())
+    receipts = [
+        d["metadata"]["contextualization"]
+        for d in documents
+        if "contextualization" in d["metadata"]
+    ]
+    assert receipts and all(r["prefix"] == prefix for r in receipts)
+
+
+@pytest.mark.parametrize(
+    "prefix", ["A description.\n```json\n{}\n```", "~~~python\npass\n~~~"]
+)
+def test_actual_fenced_blocks_remain_invalid(prefix):
+    with pytest.raises(ValueError, match="prefix"):
+        ContextualizationConfig().validate_prefix(prefix)
 
 
 @pytest.mark.parametrize(

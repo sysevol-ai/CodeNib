@@ -8,15 +8,19 @@ extension, or removal at that review.
 The prototype adds short explanations to BM25 ranking text while preserving
 ordinary source excerpts and source locations. It uses the existing builder,
 source-binding, tokenizer, file artifacts, and compiler compatibility checks.
-There are no retrieval-quality results yet. Dense integration and an
-architecture research contribution remain open milestones.
+In a [ten-question CodeNib development pilot](contextual_retrieval_pilot.md),
+generated context found the expected file in the top five on 4/10 questions,
+versus 3/10 with ordinary BM25 and 4/10 with deterministic context. Ordinary
+and generated context both covered 9/10 under the same source-token budget.
+Dense integration and an architecture research contribution remain open.
 
 ## Current scope and boundaries
 
 `FileContextualizer` accepts a `LiteLLMChat`-compatible client. Model selection,
 credentials, endpoint and execution options stay with that client. A frozen
 `ContextualizationConfig` controls the input character budget, output token
-request, prefix character limit and versioned prompt. Generation runs only at
+request, prefix character limit, temperature and versioned prompt. Use
+`temperature=None` when a provider requires omitting that option. Generation runs only at
 index time; the search path does not invoke the contextualizer.
 
 The initial `file-prefix-and-target-v1` policy includes a complete function or
@@ -83,14 +87,14 @@ builds so their response usage remains attributable.
 
 ## Completion gates
 
-- M0: scoped design draft, source/compatibility decisions and baseline checks.
-- M1: local contextual-BM25 path with deterministic contract tests. Broader
-  verification, review and a real-provider smoke remain gates before promotion.
-- M2: dense encoding using the same generated representations and unchanged
-  canonical returned chunks.
-- M3: development comparison against current and deterministic-context baselines,
-  with failures, usage and source/token budgets retained.
-- M4: frozen comparison and a support/narrowing/stop decision.
+- M0 completed: scoped design, source/compatibility decisions and baseline checks.
+- M1 completed locally: contextual BM25 with contract tests and real-provider
+  replay; broader supported-environment verification and review remain open.
+- M2 deferred: dense encoding using the same representations and unchanged
+  canonical returned chunks, subject to evidence of workload benefit.
+- M3 completed: development comparison against current and deterministic-context
+  baselines, with failures, usage and source/token budgets retained.
+- M4 open: held-out comparison and a support/narrowing/stop decision.
 
 Mocked generation tests establish plumbing and invariants, not better retrieval.
 The current macOS environment also exposes existing descriptor-path limitations
@@ -108,14 +112,15 @@ tests in the parallel integration tier. Live provider/model checks belong to
 
 ## Verification status: November 13, 2026
 
-The focused feature/chunker/sparse/manifest/compiler run passes 237 cases,
-including 65 new feature cases, with two platform skips. The existing serial
-graph-backed BM25 suite passes all four cases. These checks use recording chat
-fakes and real local indexes; they do not establish live-provider behavior or
-retrieval-quality improvement.
+The focused feature/harness/chunker/sparse/manifest/compiler run passes 261
+cases, including 76 feature and 13 pilot-harness cases, with two platform
+skips. The existing serial graph-backed BM25 suite passes all four cases.
+Contract tests use recording chat fakes and real local indexes. The separate
+paid pilot records 1,415 real responses replayed through the production builder;
+its small file-level result does not establish function or answer correctness.
 
 ```bash
-pytest test/index/test_contextual_bm25.py test/chunker/test_repo_chunking_config.py test/index/sparse_idx test/compiler/test_manifest.py test/compiler/test_artifact_fingerprints.py test/compiler/test_index_compiler.py::TestBM25IndexBuilder -m "not slow and not integration and not integration_serial and not integration_serial_consumer" -q --tb=short
+pytest test/index/test_contextual_bm25.py test/scripts/test_benchmark_contextual_retrieval.py test/chunker/test_repo_chunking_config.py test/index/sparse_idx test/compiler/test_manifest.py test/compiler/test_artifact_fingerprints.py test/compiler/test_index_compiler.py::TestBM25IndexBuilder -m "not slow and not integration and not integration_serial and not integration_serial_consumer" -q --tb=short
 pytest test/index/sparse_idx/test_bm25_index.py -q --tb=short
 mkdocs build --strict
 python scripts/check_public_docs.py
@@ -134,4 +139,5 @@ and two skips on both this implementation and untouched upstream commit
 The full unit attempt stops at the same existing publish-action path-resolution
 failure found in the control. Existing vector/Zoekt descriptor-path limitations
 account for many broader macOS failures. Full supported-environment/Linux
-verification and a selected real-model pilot remain open gates.
+verification remains open. The real-model development pilot is complete;
+held-out retrieval and downstream validation remain open.

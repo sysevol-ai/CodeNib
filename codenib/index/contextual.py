@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
+import re
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable, Protocol
@@ -54,6 +56,7 @@ class ContextualizationConfig:
     max_prefix_chars: int = 1_024
     max_output_tokens: int = 128
     prompt: str = DEFAULT_CONTEXT_PROMPT
+    temperature: float | None = 0.0
 
     def __post_init__(self) -> None:
         for name in ("max_input_chars", "max_prefix_chars", "max_output_tokens"):
@@ -64,6 +67,26 @@ class ContextualizationConfig:
             raise ValueError("contextualization prompt must be non-empty text")
         if len(self.prompt) >= self.max_input_chars:
             raise ValueError("contextualization input limit must leave room for source")
+        if self.temperature is not None and (
+            isinstance(self.temperature, bool)
+            or not isinstance(self.temperature, (int, float))
+            or not math.isfinite(self.temperature)
+            or self.temperature < 0
+        ):
+            raise ValueError(
+                "contextualization temperature must be nonnegative finite or None"
+            )
+
+    def validate_prefix(self, prefix: object) -> str:
+        """Allow inline syntax descriptions, while rejecting fenced code blocks."""
+        if not isinstance(prefix, str) or not prefix.strip():
+            raise ValueError("contextualization returned an empty prefix")
+        prefix = prefix.strip()
+        if len(prefix) > self.max_prefix_chars or re.search(
+            r"(?m)^[ \t]*(?:`{3,}|~{3,})", prefix
+        ):
+            raise ValueError("contextualization returned an invalid prefix")
+        return prefix
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,7 +138,7 @@ class FileContextualizer:
             "max_input_chars": self.config.max_input_chars,
             "max_prefix_chars": self.config.max_prefix_chars,
             "max_output_tokens": self.config.max_output_tokens,
-            "temperature": 0.0,
+            "temperature": self.config.temperature,
         }
 
     def contextualize(
@@ -163,20 +186,12 @@ class FileContextualizer:
                 prefix = self.chat.complete(
                     messages,
                     max_tokens=self.config.max_output_tokens,
-                    temperature=0.0,
+                    temperature=self.config.temperature,
                     usage_tracker=tracker,
                 )
                 if check_cancelled is not None:
                     check_cancelled()
-                if not isinstance(prefix, str) or not prefix.strip():
-                    raise ValueError(
-                        "contextualizer returned an empty or non-text prefix"
-                    )
-                prefix = prefix.strip()
-                if len(prefix) > self.config.max_prefix_chars or "```" in prefix:
-                    raise ValueError(
-                        "contextualizer returned an oversized or fenced prefix"
-                    )
+                prefix = self.config.validate_prefix(prefix)
                 results[key] = ContextualizedChunk(
                     prefix=prefix,
                     receipt={
