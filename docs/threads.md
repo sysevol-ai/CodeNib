@@ -55,8 +55,18 @@ the event it came from, such as `#812/comment/2990023933`.
 
 ## Use it
 
-Thread context needs CodeNib, Git, and a GitHub token in `GH_TOKEN`, or an
-installed and signed-in `gh`. Run it inside a clone of the repository:
+Thread context ships in CodeNib 0.2.6. Until 0.2.6 is available from PyPI,
+install CodeNib from source; building it needs Python 3.10 or newer, Git and
+Node.js 20 or newer:
+
+```bash
+git clone https://github.com/sysevol-ai/CodeNib && cd CodeNib
+(cd web && npm ci && npm run build)
+python -m pip install ".[mcp]"
+```
+
+It also needs Git, and a GitHub token in `GH_TOKEN` or an installed and
+signed-in `gh`. Run it inside a clone of the repository:
 
 ```bash
 codenib threads show 812                  # print the context of issue or PR 812

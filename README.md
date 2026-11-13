@@ -55,7 +55,9 @@ SPDX-License-Identifier: Apache-2.0
 New in **0.2.6**: Wikis open as a map of their pages and lead with the main path
 through the code, one GitHub Action publishes yours to GitHub Pages, plugins
 connect Claude Code, Grok Build and DeepSeek Harness, graph builds get faster,
-and first C/C++ and JavaScript/TypeScript builds leave the checkout alone.
+and first C/C++ and JavaScript/TypeScript builds leave the checkout alone. Two
+previews serve coding agents: the tests a change can reach, and the context of
+a GitHub issue or pull request in one read.
 [Read the release notes](https://docs.codenib.ai/releases/0.2.6/).
 
 ## A Wiki you can follow down to the source
@@ -163,6 +165,7 @@ dsh plugin --profile web add "git+https://github.com/sysevol-ai/CodeNib.git#main
 · [Source exclusions](https://docs.codenib.ai/codegraph/#select-the-repository-source-surface)
 · [All MCP tools](https://docs.codenib.ai/mcp/)
 · [Change guard](https://docs.codenib.ai/guard/) (preview, Python: lists the tests a change reaches before your agent finishes)
+· [Thread context](https://docs.codenib.ai/threads/) (preview: a GitHub issue or pull request, its reviews, failing checks and linked threads in one read)
 
 ## How it compares
 

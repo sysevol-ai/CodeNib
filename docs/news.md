@@ -19,8 +19,9 @@ GitHub Marketplace action publishes that Wiki to GitHub Pages, rewriting only
 the pages whose code changed, and plugins connect CodeNib to Claude Code, Grok
 Build and DeepSeek Harness. Graph builds get faster, and the first C/C++ and
 JavaScript/TypeScript builds no longer touch the checkout or get discarded as
-stale. `codenib guard` ships as a Python-only preview. Production publication
-is pending; installation guides continue to select the verified 0.2.5 package.
+stale. Two previews serve coding agents: `codenib guard` lists the tests a
+Python change can reach, and `codenib threads` prepares the context of a GitHub
+issue or pull request in one read. Production publication is pending; installation guides continue to select the verified 0.2.5 package.
 
 [Read the 0.2.6 candidate notes](releases/0.2.6.md)
 

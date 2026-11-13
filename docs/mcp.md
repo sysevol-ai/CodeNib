@@ -123,6 +123,10 @@ With `--tool-surface explore`, the server lists and accepts only
 Each stdio connection has its own runtime state, so reconnecting starts a fresh
 exploration ledger.
 
+Context from GitHub issues and pull requests is a separate server,
+`codenib threads mcp`, so adding it does not change this tool list. See
+[Thread context](threads.md#from-an-agent-over-mcp).
+
 ### Retrieval Routes
 
 The default `--retrieval-route indexed` serves the views in the repository's
