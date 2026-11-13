@@ -4456,6 +4456,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     add_guard_parser(subparsers, argparse.ArgumentDefaultsHelpFormatter)
 
+    from .threads.cli import add_threads_parser
+
+    add_threads_parser(subparsers, argparse.ArgumentDefaultsHelpFormatter)
+
     toolchain_parser = subparsers.add_parser(
         "toolchain",
         help="inspect or install repository language providers",

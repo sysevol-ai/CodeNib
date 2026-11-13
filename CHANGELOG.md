@@ -55,6 +55,19 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 ### Added
 
+- Preview: `codenib threads` prepares what a coding agent needs from a GitHub
+  issue or pull request in one read, with no model: status, the ask, code
+  locations resolved to symbols with their source, failing CI lines, linked
+  threads, discussion and review comments, inside a token budget, each part
+  citing its event. `show` prints it, `context` writes it to a file before an
+  agent starts, and `--since` returns only what followed an earlier context.
+- Tickets for working many threads at once: `codenib threads open` starts one
+  on an issue or pull request, `inbox` returns what its followed threads
+  gained since it last read, `poll` fetches only followed threads that
+  changed, and `board` lists tickets with their unread count and the tickets
+  and open pull requests on the same symbols.
+- `codenib threads mcp` serves thread context and tickets as a separate MCP
+  server, and `codenib.threads` exposes the same as a Python API.
 - The most important detail pages draw their longest recorded call path, labelled
   as one selected path. No model chooses the arrows.
 - Preview, for Python projects: `codenib guard check` compares the working tree
