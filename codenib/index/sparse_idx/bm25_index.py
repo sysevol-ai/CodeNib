@@ -387,7 +387,19 @@ class BM25Retriever:
     def __init__(self, documents: List[Document], *, k: int) -> None:
         self.documents = list(documents)
         self.k = k
-        tokenized = [document.page_content.split() for document in self.documents]
+        tokenized = []
+        for document in self.documents:
+            text = document.page_content
+            context = document.metadata.get("contextualization")
+            if context is not None:
+                if not isinstance(context, Mapping) or not isinstance(
+                    context.get("index_prefix"), str
+                ):
+                    raise ValueError("BM25 contextualization metadata is invalid")
+                # Generated words affect ranking only. Other consumers inspect
+                # page_content for identifier occurrences or source evidence.
+                text = context["index_prefix"] + " " + text
+            tokenized.append(text.split())
         self._index = BM25Okapi(tokenized) if tokenized else None
 
     @classmethod
