@@ -3,10 +3,14 @@ import type { CodeActivityItem, CodeActivityOverlay } from "./api";
 import {
   activityDate,
   activityHref,
+  activityMarks,
   activityReach,
   activitySources,
   activityTitle,
   codeSpans,
+  isOpenMark,
+  markRadius,
+  markSummary,
   pageActivity,
   reachText,
 } from "./codeActivity";
@@ -115,5 +119,36 @@ describe("activity text", () => {
     expect(activityHref(item())).toBe("https://github.com/astral-sh/ruff/pull/27125");
     expect(activityHref(item({ url: "javascript:alert(1)" }))).toBeUndefined();
     expect(activityHref(item({ url: "https://evil.example/pull/1" }))).toBeUndefined();
+  });
+});
+
+describe("activityMarks", () => {
+  it("marks open items always and merged changes only where several reach symbols", () => {
+    const marks = activityMarks(
+      overlay({
+        quiet: { changes: [item(), item({ number: 2, strength: "file" })] },
+        moving: { changes: [item(), item({ number: 2 })] },
+        asked: { issues: [item({ number: 3, strength: "file" })] },
+      }),
+    );
+    expect(Object.keys(marks).sort()).toEqual(["asked", "moving"]);
+    expect(marks.moving).toEqual({ issues: 0, pulls: 0, changes: 2 });
+    expect(isOpenMark(marks.asked)).toBe(true);
+    expect(isOpenMark(marks.moving)).toBe(false);
+    expect(activityMarks(null)).toEqual({});
+  });
+
+  it("sizes marks to the node, so a small page stays visible under its mark", () => {
+    expect(markRadius(4.5)).toBe(2.2);
+    expect(markRadius(6)).toBeCloseTo(2.7);
+    expect(markRadius(19)).toBe(3.2);
+  });
+
+  it("summarizes a mark in words", () => {
+    expect(markSummary({ issues: 2, pulls: 1, changes: 3 })).toBe(
+      "2 open issues, 1 open pull request and 3 recent changes on its code",
+    );
+    expect(markSummary({ issues: 0, pulls: 0, changes: 1 })).toBe("1 recent change on its code");
+    expect(markSummary({ issues: 0, pulls: 0, changes: 0 })).toBe("");
   });
 });

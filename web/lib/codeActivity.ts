@@ -130,3 +130,62 @@ export function activityHref(item: CodeActivityItem): string | undefined {
     ? item.url
     : undefined;
 }
+
+// --- Marks on the Wiki map ---------------------------------------------------
+
+/** A page is marked for merged changes only when this many reach its symbols. */
+export const MIN_CHANGES_TO_MARK = 2;
+
+export interface ActivityMark {
+  issues: number;
+  pulls: number;
+  /** Merged changes that reach a symbol the page cites. */
+  changes: number;
+}
+
+/**
+ * Pages worth marking on the map. Any open issue or pull request is marked;
+ * merged changes are marked only where several reach the page's symbols, so
+ * the map shows where the code is moving rather than every page.
+ */
+export function activityMarks(
+  overlay: CodeActivityOverlay | null | undefined,
+): Record<string, ActivityMark> {
+  const marks: Record<string, ActivityMark> = {};
+  for (const [pageId, page] of Object.entries(overlay?.pages ?? {})) {
+    const count = (items: CodeActivityItem[] | undefined, symbolOnly = false) =>
+      (items ?? []).filter((item) => item && (!symbolOnly || item.strength === "symbol")).length;
+    const mark = {
+      issues: count(page?.issues),
+      pulls: count(page?.pulls),
+      changes: count(page?.changes, true),
+    };
+    if (mark.issues || mark.pulls || mark.changes >= MIN_CHANGES_TO_MARK) marks[pageId] = mark;
+  }
+  return marks;
+}
+
+export function isOpenMark(mark: ActivityMark): boolean {
+  return mark.issues + mark.pulls > 0;
+}
+
+/**
+ * The mark's radius in map units, from the node it sits on. A mark sized by
+ * activity covered small page nodes; how much activity is in the status line.
+ */
+export function markRadius(nodeRadius: number): number {
+  return Math.min(3.2, Math.max(2.2, nodeRadius * 0.45));
+}
+
+/** "2 open issues, 1 open pull request and 3 recent changes on its code". */
+export function markSummary(mark: ActivityMark): string {
+  const parts = [
+    mark.issues ? `${mark.issues} open ${mark.issues === 1 ? "issue" : "issues"}` : "",
+    mark.pulls ? `${mark.pulls} open ${mark.pulls === 1 ? "pull request" : "pull requests"}` : "",
+    mark.changes ? `${mark.changes} recent ${mark.changes === 1 ? "change" : "changes"}` : "",
+  ].filter(Boolean);
+  if (!parts.length) return "";
+  const text =
+    parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}` : parts[0];
+  return `${text} on its code`;
+}

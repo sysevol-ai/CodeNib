@@ -16,6 +16,7 @@ import Header from "@/components/Header";
 import Markdown from "@/components/Markdown";
 import SystemArchitecture, { type ArchitectureJourney } from "@/components/SystemArchitecture";
 import CodeActivity from "@/components/CodeActivity";
+import { activityMarks } from "@/lib/codeActivity";
 import PageBoundaryCard from "@/components/PageBoundary";
 import CallPathFigure from "@/components/CallPathFigure";
 import MainPath from "@/components/MainPath";
@@ -699,6 +700,8 @@ export default function WikiPageView({
     };
   }, [repoId, tocLoading, areaMapAttempt]);
 
+  const activityMarksByPage = useMemo(() => activityMarks(codeActivity), [codeActivity]);
+
   // Activity on the cited code renders below the prose, so its arrival never
   // moves what the reader is looking at. One overlay serves every page.
   useEffect(() => {
@@ -1130,6 +1133,7 @@ export default function WikiPageView({
             onOpenReference={openRecordedReference}
             onHide={() => setMapPreference(true)}
             onResizeReader={resizeReader}
+            activity={activityMarksByPage}
           />
         )}
 

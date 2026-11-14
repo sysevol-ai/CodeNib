@@ -134,6 +134,23 @@
 .wg-node:hover .wg-node-mark {
   opacity: 1;
 }
+/* Activity on a page's code: a solid dot for open issues or pull requests, a
+   ring where several recent changes reach its symbols. Near-white, so it
+   reads against every area colour. */
+.wg-node-activity {
+  pointer-events: none;
+  vector-effect: non-scaling-stroke;
+}
+.wg-node-activity.is-open {
+  fill: var(--wg-text);
+  stroke: var(--wg-bg);
+  stroke-width: 1.5;
+}
+.wg-node-activity.is-changed {
+  fill: var(--wg-bg);
+  stroke: var(--wg-text);
+  stroke-width: 1.5;
+}
 .wg-node-ring,
 .wg-node:focus-visible .wg-node-hit {
   fill: none;
@@ -243,6 +260,16 @@
   width: 18px;
   height: 0;
   border-top: 2px solid var(--wg-call);
+}
+.wiki-graph-legend dt.is-activity-open,
+.wiki-graph-legend dt.is-activity-changed {
+  width: 8px;
+  height: 8px;
+  border: 1.5px solid var(--wg-text);
+  border-radius: 50%;
+}
+.wiki-graph-legend dt.is-activity-open {
+  background: var(--wg-text);
 }
 .wiki-graph-legend dt.is-contains {
   border-top: 1px solid rgba(232, 234, 237, 0.26);

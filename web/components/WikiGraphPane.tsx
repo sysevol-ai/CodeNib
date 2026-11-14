@@ -4,6 +4,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
 import type { WikiAreaLink } from "@/lib/api";
+import { type ActivityMark, isOpenMark, markRadius, markSummary } from "@/lib/codeActivity";
 import type { WikiPageState } from "@/lib/visitorWiki";
 import { labelLines, neighborhood, type WikiGraph, type WikiGraphEdge, type WikiGraphNode } from "@/lib/wikiGraph";
 import "./WikiGraphPane.css";
@@ -141,6 +142,7 @@ export default function WikiGraphPane({
   still = false,
   surveying = false,
   legend,
+  activity,
 }: {
   graph: WikiGraph;
   activeId: string;
@@ -173,6 +175,8 @@ export default function WikiGraphPane({
   surveying?: boolean;
   /** Replaces the line-style legend. */
   legend?: ReactNode;
+  /** Pages with open issues, open pull requests or several recent changes on their code. */
+  activity?: Record<string, ActivityMark>;
 }) {
   const paneRef = useRef<HTMLElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -259,6 +263,14 @@ export default function WikiGraphPane({
     });
   }, [graph, points, view, center, size.width, hoverNode, activeId, near, states]);
 
+  const activityLegend = useMemo(() => {
+    const marks = Object.entries(activity ?? {}).filter(([id]) => byId.has(id));
+    return {
+      open: marks.some(([, mark]) => isOpenMark(mark)),
+      changed: marks.some(([, mark]) => !isOpenMark(mark)),
+    };
+  }, [activity, byId]);
+
   const status = useMemo(() => {
     if (hoverEdge?.link) {
       const { link } = hoverEdge;
@@ -271,9 +283,17 @@ export default function WikiGraphPane({
       };
     }
     const node = hoverNode ? byId.get(hoverNode) : null;
-    if (node) return describe?.(node) ?? { title: node.title, detail: "Click to read this page" };
+    if (node) {
+      const summary = activity?.[node.id] ? markSummary(activity[node.id]) : "";
+      return (
+        describe?.(node) ?? {
+          title: node.title,
+          detail: summary ? `${summary} · Click to read this page` : "Click to read this page",
+        }
+      );
+    }
     return idle ?? null;
-  }, [hoverEdge, hoverNode, byId, idle, describe]);
+  }, [hoverEdge, hoverNode, byId, idle, describe, activity]);
 
   return (
     <section
@@ -356,6 +376,7 @@ export default function WikiGraphPane({
               const point = points.get(node.id);
               if (!point) return null;
               const state = states?.[node.id];
+              const mark = activity?.[node.id];
               const style = { "--node": node.color, "--i": index } as CSSProperties;
               return (
                 <g
@@ -367,7 +388,9 @@ export default function WikiGraphPane({
                   transform={`translate(${point.x} ${point.y})`}
                   role={readonly ? undefined : "link"}
                   tabIndex={readonly ? undefined : 0}
-                  aria-label={readonly ? undefined : node.title}
+                  aria-label={
+                    readonly ? undefined : mark ? `${node.title}, ${markSummary(mark)}` : node.title
+                  }
                   aria-current={active ? "page" : undefined}
                   onPointerEnter={() => setHoverNode(node.id)}
                   onPointerLeave={() => setHoverNode(null)}
@@ -391,6 +414,14 @@ export default function WikiGraphPane({
                   )}
                   {active && <circle r={node.radius + 5} className="wg-node-ring" />}
                   <circle r={node.radius} fill={node.color} className="wg-node-mark" />
+                  {mark && (
+                    <circle
+                      cx={node.radius * 0.72}
+                      cy={-node.radius * 0.72}
+                      r={markRadius(node.radius)}
+                      className={`wg-node-activity ${isOpenMark(mark) ? "is-open" : "is-changed"}`}
+                    />
+                  )}
                 </g>
               );
             })}
@@ -462,6 +493,18 @@ export default function WikiGraphPane({
             <dt className="is-contains" aria-hidden="true" />
             <dd>Page outline</dd>
           </div>
+          {activityLegend.open && (
+            <div>
+              <dt className="is-activity-open" aria-hidden="true" />
+              <dd>Open issues or pull requests on its code</dd>
+            </div>
+          )}
+          {activityLegend.changed && (
+            <div>
+              <dt className="is-activity-changed" aria-hidden="true" />
+              <dd>Several recent changes to its code</dd>
+            </div>
+          )}
         </dl>
         )}
         {note && (

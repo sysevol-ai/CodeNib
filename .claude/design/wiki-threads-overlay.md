@@ -3,7 +3,7 @@
 Design memo for joining `codenib threads` with the published Wiki. Records the
 thesis, the join, the delivery path, the risks, and what has been measured.
 
-## Status — join, hot-file discount and page panel implemented (2026-11-14)
+## Status — join, hot-file discount, page panel and map marks implemented (2026-11-14)
 
 - `codenib/threads/wiki_overlay.py` joins Wiki page citations with stored
   threads, indexed open pull requests and recent first-parent commits, and
@@ -22,8 +22,14 @@ thesis, the join, the delivery path, the risks, and what has been measured.
 - Tests: `test/threads/test_wiki_overlay.py`,
   `test/web/test_threads_overlay_route.py`, `web/lib/codeActivity.test.ts`;
   `web/reading_layout_verify.mjs` answers the new route with 404.
-- Not built yet: map markers, the Wiki Action input, writing `threads.json` in
-  the static export, and the link from `THREAD_CONTEXT.md` back to the page.
+- The Wiki map marks pages: a solid near-white dot for any open issue or pull
+  request on the page's code, a ring where at least `MIN_CHANGES_TO_MARK` (2)
+  merged changes reach its symbols. Hovering names the counts; the accessible
+  name carries them; the legend lists only the marks present. On the ruff
+  demo, 11 of 41 pages get a ring (14 pages have exactly one symbol-level
+  change and are left unmarked, which would otherwise mark 26).
+- Not built yet: the Wiki Action input, writing `threads.json` in the static
+  export, and the link from `THREAD_CONTEXT.md` back to the page.
 
 ## Thesis
 
@@ -204,8 +210,8 @@ then `codenib threads overlay --wiki <pages dir> --checkout <ruff> --rev
 ## Next steps
 
 1. Measure issue coverage on one repository with a published Wiki.
-2. Map markers; publish the ruff overlay on the demo (`wiki_overlay.json` in
-   the demo host's thread store).
+2. Publish the ruff overlay on the demo (`wiki_overlay.json` in the demo
+   host's thread store).
 3. `threads: true` in the Wiki Action, off for private repositories, with the
    scheduled refresh.
 4. Wiki page links in `THREAD_CONTEXT.md`.
