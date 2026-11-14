@@ -3,16 +3,27 @@
 Design memo for joining `codenib threads` with the published Wiki. Records the
 thesis, the join, the delivery path, the risks, and what has been measured.
 
-## Status — join and CLI implemented (2026-11-14)
+## Status — join, hot-file discount and page panel implemented (2026-11-14)
 
 - `codenib/threads/wiki_overlay.py` joins Wiki page citations with stored
   threads, indexed open pull requests and recent first-parent commits, and
-  writes a per-page overlay. No model, no code graph.
-- `codenib threads overlay --wiki <repo dir> --output threads.json` runs it on a
-  published Wiki directory (`wiki.json` + `pages/`) or a directory of page JSON.
-- Tests: `test/threads/test_wiki_overlay.py`.
-- Not built yet: the frontend panel and map markers, the Wiki Action input,
-  and the link from `THREAD_CONTEXT.md` back to the Wiki page.
+  writes a per-page overlay. No model, no code graph. Hot files are discounted
+  (see Noise control).
+- `codenib threads overlay --wiki <repo dir>` runs it on a published Wiki
+  directory (`wiki.json` + `pages/`) or a directory of page JSON. Without
+  `--output` it writes `wiki_overlay.json` into the repository's thread store.
+- The Web app serves that file at `/api/repos/{id}/threads` (404 when absent,
+  for another repository, or another overlay version); a static export reads
+  `data/repos/<id>/threads.json`. The export does not write that file yet.
+- `web/components/CodeActivity.tsx` renders "Activity on this code" below a
+  page's prose and above "Read next": open issues, open pull requests and
+  recent changes, newest first, symbol matches listed and file matches folded.
+  It renders nothing without an overlay or without items for the page.
+- Tests: `test/threads/test_wiki_overlay.py`,
+  `test/web/test_threads_overlay_route.py`, `web/lib/codeActivity.test.ts`;
+  `web/reading_layout_verify.mjs` answers the new route with 404.
+- Not built yet: map markers, the Wiki Action input, writing `threads.json` in
+  the static export, and the link from `THREAD_CONTEXT.md` back to the page.
 
 ## Thesis
 
@@ -193,7 +204,8 @@ then `codenib threads overlay --wiki <pages dir> --checkout <ruff> --rev
 ## Next steps
 
 1. Measure issue coverage on one repository with a published Wiki.
-2. Frontend panel and map markers on the ruff demo page.
+2. Map markers; publish the ruff overlay on the demo (`wiki_overlay.json` in
+   the demo host's thread store).
 3. `threads: true` in the Wiki Action, off for private repositories, with the
    scheduled refresh.
 4. Wiki page links in `THREAD_CONTEXT.md`.

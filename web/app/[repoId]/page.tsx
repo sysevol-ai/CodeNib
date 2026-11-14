@@ -15,6 +15,7 @@ import AskIcon from "@/components/AskIcon";
 import Header from "@/components/Header";
 import Markdown from "@/components/Markdown";
 import SystemArchitecture, { type ArchitectureJourney } from "@/components/SystemArchitecture";
+import CodeActivity from "@/components/CodeActivity";
 import PageBoundaryCard from "@/components/PageBoundary";
 import CallPathFigure from "@/components/CallPathFigure";
 import MainPath from "@/components/MainPath";
@@ -47,6 +48,7 @@ import {
   fetchCommits,
   fetchRepos,
   fetchWikiAreaMap,
+  fetchCodeActivity,
   fetchWikiBoundary,
   fetchWikiVisualEvidence,
   fetchWikiPage,
@@ -54,6 +56,7 @@ import {
   isSourceCheckedWikiPage,
   repoRelative,
   shouldWithholdWikiPage,
+  type CodeActivityOverlay,
   type PageBoundary,
   type WikiAreaLink,
   type WikiAreaMap,
@@ -483,6 +486,7 @@ export default function WikiPageView({
   const [loadedPage, setPage] = useState<WikiPage | null>(null);
   const [pageLoadSeconds, setPageLoadSeconds] = useState(0);
   const [boundary, setBoundary] = useState<PageBoundary | null>(null);
+  const [codeActivity, setCodeActivity] = useState<CodeActivityOverlay | null>(null);
   const [boundaryReadyFor, setBoundaryReadyFor] = useState<string | null>(null);
   const [areaMap, setAreaMap] = useState<WikiAreaMap | null>(null);
   const [wideEnough, setWideEnough] = useState(
@@ -694,6 +698,19 @@ export default function WikiPageView({
       controller.abort();
     };
   }, [repoId, tocLoading, areaMapAttempt]);
+
+  // Activity on the cited code renders below the prose, so its arrival never
+  // moves what the reader is looking at. One overlay serves every page.
+  useEffect(() => {
+    setCodeActivity(null);
+    let cancelled = false;
+    void fetchCodeActivity(repoId).then((overlay) => {
+      if (!cancelled) setCodeActivity(overlay);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [repoId]);
 
   // The graph card is deterministic and cheap; load it with the page rather
   // than behind a toggle so the reader meets the code's shape first.
@@ -1243,6 +1260,9 @@ export default function WikiPageView({
                     </details>
                   )}
                 </div>
+              )}
+              {page && page.id === activeId && !withheldByQualityGuard && (
+                <CodeActivity overlay={codeActivity} pageId={activeId} />
               )}
               {/* A withheld page must not strand a reader above its detail pages. */}
               {page && (

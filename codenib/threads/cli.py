@@ -406,11 +406,15 @@ def _run_overlay(args: argparse.Namespace) -> int:
     if args.output == "-":
         sys.stdout.write(text)
     else:
-        Path(args.output).write_text(text, encoding="utf-8")
+        from .wiki_overlay import OVERLAY_FILE
+
+        output = Path(args.output) if args.output else store.dir / OVERLAY_FILE
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(text, encoding="utf-8")
         summary = overlay["summary"]
         print(
             f"{summary['pages_with_items']} of {summary['pages']} pages have items; "
-            f"wrote {args.output}",
+            f"wrote {output}",
             file=sys.stderr,
         )
     return 0
@@ -578,7 +582,11 @@ def add_threads_parser(subparsers, formatter) -> None:
         help="a published Wiki's repository directory (wiki.json and pages/), "
         "or a directory of page JSON files",
     )
-    overlay.add_argument("--output", default="threads.json", help="'-' for stdout")
+    overlay.add_argument(
+        "--output",
+        help="file to write, '-' for stdout (default: the thread store, "
+        "where the CodeNib Web app serves it from)",
+    )
     overlay.add_argument("--rev", default="HEAD", help="commit the Wiki describes")
     overlay.add_argument(
         "--history",

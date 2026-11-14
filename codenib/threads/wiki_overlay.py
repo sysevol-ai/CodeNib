@@ -41,6 +41,8 @@ from .anchor import AnchorResolver, CodeAnchor, is_source_path
 from .touched import touched_between
 
 OVERLAY_VERSION = 1
+# Where the overlay lives in a repository's thread store, for the Web app.
+OVERLAY_FILE = "wiki_overlay.json"
 MAX_PER_PAGE = 8
 # An item that reaches more pages than this only at file level is too wide to
 # say anything about any one of them.
