@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import codecs
 import json
 import textwrap
 from types import SimpleNamespace
@@ -85,6 +86,16 @@ def test_hash_ignores_indentation_and_blank_lines(tmp_path, write_files):
     assert definition_hash(tmp_path, "a.py:missing") is None
     with pytest.raises(NoteError):
         definition_hash(tmp_path, "a.py")
+
+
+def test_hash_ignores_a_byte_order_mark(tmp_path, write_files):
+    write_files(tmp_path, {"pkg/loader.py": SOURCE})
+    note = add_note(tmp_path, "Parse splits on whitespace.", ["pkg/loader.py:parse"])
+    path = tmp_path / "pkg" / "loader.py"
+    path.write_bytes(codecs.BOM_UTF8 + path.read_bytes())
+    (loaded,), _ = load_notes(tmp_path)
+    assert anchor_states(tmp_path, loaded)[0].state == "current"
+    assert definition_hash(tmp_path, "pkg/loader.py:parse") == note.anchors[0].sha256
 
 
 def test_confirm_records_the_current_code(tmp_path, write_files):
