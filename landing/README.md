@@ -57,6 +57,12 @@ date, and keep the ranking out of the hero: it was not earned by the Wiki.
 The ContextBench band is two numbers, one sentence and a link; the article has the
 diagram and the method.
 
+The thread context section sits between the agent terminal and the ContextBench
+band. Its panel quotes real `codenib threads` output for one public pull request;
+when refreshing it, copy lines from the command's output and mark cuts with `[…]`.
+Its figures come from `docs/threads.md`. Keep the "Preview" label and the sentence
+that it does not make answers better while that page says so.
+
 The language strip between the `CODENIB_LANGUAGE_STRIP` markers is generated from
 the language registry, with icons from `assets/languages/` (see its `LICENSE.txt`).
 It moves for more than five seconds, so keep its pause control, and keep it static
@@ -198,6 +204,8 @@ The site uses real directory indexes for nested routes:
   BM25 and model-planned grep candidates;
 - `/blogs/local-code-intelligence-dgx-spark/` is the reproducible local
   deployment reference;
+- `/blogs/thread-context-for-coding-agents/` walks through `codenib threads`
+  on a real pull request;
 - each article lives at `landing/blogs/<slug>/index.html`.
 
 Nested pages should reference shared assets from `/assets/...` so the same URL
@@ -240,7 +248,9 @@ subset in each figure, give wide figures a narrow `<picture>` variant for
 phones, and render the sharing PNG from the same SVG with
 `node scripts/render_svg_png.mjs <in.svg> <out.png>`.
 `scripts/render_contextbench_blog_figures.py` does this for the ContextBench
-article.
+article, and `scripts/render_threads_blog_figure.py` for the thread context
+article; the same PNG is the README's figure at
+`assets/readme/thread-context.png`.
 
 Serve `landing/` locally and check the index link, article title, images,
 internal anchors, tables, and desktop/mobile layout. Run `mkdocs build --strict`

@@ -102,17 +102,18 @@ Indexes stay under `~/.codenib`. Outside a Git checkout the server does not
 start. The server is started by a Bash script, so Windows needs Git Bash or
 WSL.
 
-The plugin also adds four skills:
+The plugin also adds five skills:
 
 | Skill | Use |
 | --- | --- |
 | `/codenib:explain` | Explains how code works, where it lives or what calls it, citing `path:line` |
 | `/codenib:impact` | Lists and runs the tests a change can reach (the [change guard](guard.md), Python only) |
+| `/codenib:thread` | Reads a GitHub issue or pull request in one step, with its linked threads and failing checks ([thread context](threads.md), preview) |
 | `/codenib:setup` | Installs CodeNib and the language providers, and builds the index and graph |
 | `/codenib:wiki` | Opens the local Wiki, or sets up publishing it on GitHub Pages |
 
-Claude may use `explain` and `impact` by itself; `setup` and `wiki` run only
-when you invoke them. A repository already registered with
+Claude may use `explain`, `impact` and `thread` by itself; `setup` and `wiki`
+run only when you invoke them. A repository already registered with
 `codenib codegraph init . --agent claude` keeps that server too. To avoid
 duplicate tools, remove it with `codenib codegraph uninstall .`.
 
@@ -144,7 +145,8 @@ Replace `main` with a commit to pin what runs. Start `dsh` inside a Git
 checkout: the server indexes that checkout, then starts as above. The bundle
 starts the server with `sh`, so it loads on macOS and Linux and Windows hosts
 skip it. It adds no skills; the server's own instructions tell the model when
-to use `explore_context`.
+to use `explore_context`. For an issue or pull request, write its
+[thread context](threads.md) to a file before you start `dsh`.
 
 ## Prepare the graph when needed
 

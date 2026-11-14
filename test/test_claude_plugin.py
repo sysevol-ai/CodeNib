@@ -64,13 +64,15 @@ def test_skills_describe_when_to_use_them_and_side_effects_need_the_user():
         for path in PLUGIN.glob("skills/*/SKILL.md")
     }
 
-    assert set(skills) == {"explain", "impact", "setup", "wiki"}
+    assert set(skills) == {"explain", "impact", "setup", "thread", "wiki"}
     for name, front in skills.items():
         assert len(front["description"]) > 40, name
     # Installing software or starting servers happens only when asked.
     assert skills["setup"].get("disable-model-invocation") is True
     assert skills["wiki"].get("disable-model-invocation") is True
     assert "disable-model-invocation" not in skills["explain"]
+    # Reading a thread changes nothing, so the agent may do it unasked.
+    assert "disable-model-invocation" not in skills["thread"]
 
 
 def _subcommands(parser) -> dict:
