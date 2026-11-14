@@ -38,11 +38,27 @@ your path and uses `uvx`; without uv, it tells you to upgrade.
 | `plugin:codenib:codenib` MCP server | `explore_context`: ranked, verified source windows for a question, plus recorded references once the code graph is ready |
 | `/codenib:explain` | Answers how code works, where it lives, or what calls it, citing `path:line` for each claim |
 | `/codenib:impact` | Lists the tests a change can reach, with call paths, and runs them (preview, Python only) |
+| `/codenib:thread` | Reads a GitHub issue or pull request in one step: discussion, review comments, failing checks, linked threads and the code they point at (preview, CodeNib 0.2.6) |
 | `/codenib:setup` | Installs CodeNib and the language providers, and builds the search index and code graph |
 | `/codenib:wiki` | Opens the repository's Wiki locally, or sets up publishing it on GitHub Pages |
 
-Claude uses `explain` and `impact` on its own when a question fits; `setup` and
-`wiki` run only when you ask.
+Claude uses `explain`, `impact` and `thread` on its own when a question fits;
+`setup` and `wiki` run only when you ask.
+
+## Read an issue or pull request in one step
+
+An agent that reads a GitHub thread itself spends a tool call on each piece:
+the issue, its comments, the linked pull request, the reviews, the checks, a
+log. `/codenib:thread 812` runs `codenib threads show 812`, which prepares all
+of it once, with no model, inside a token budget. When the agent returns to
+the thread, it gets only what changed.
+
+On 76 pull requests taken over after a review or a failed check, the prepared
+context cut Claude Code's input tokens by 45% against reading with `gh`. It
+found slightly fewer of the files to change (0.80 against 0.83), a gap too
+small to tell from chance at that size. See
+[Thread context](https://docs.codenib.ai/threads/) for the method and the
+commands for following many threads at once.
 
 ## What happens when it starts
 
@@ -63,7 +79,11 @@ The MCP server reads the checkout and writes CodeNib's index under
 installed, the plugin runs it through `uvx`, which downloads the `codenib`
 package from PyPI. `/codenib:setup` installs CodeNib and language indexers only
 when you run it. `/codenib:wiki` sends source to a model provider only when you
-choose model-written pages and give it a key. The plugin has no hooks.
+choose model-written pages and give it a key. `/codenib:thread` reads the
+issue or pull request from GitHub with your `GH_TOKEN` or signed-in `gh`, and
+keeps what it read under `~/.codenib/threads`. What people wrote in the thread
+reaches the agent, as it would if the agent read GitHub itself. The plugin has
+no hooks.
 
 The server is started by a Bash script, so on Windows it needs Git Bash or WSL.
 See the [CodeGraph guide](https://docs.codenib.ai/codegraph/) for the tools,
