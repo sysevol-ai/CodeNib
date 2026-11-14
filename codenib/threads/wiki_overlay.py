@@ -18,8 +18,10 @@ model is called and no code graph is needed. Matches are graded:
   in the cited file;
 - ``file``: the item reaches a cited file elsewhere.
 
-File-level matches of an item that reaches many pages are dropped, so one wide
-refactoring does not appear on every page.
+A file-level match says little when the file is hot, touched by a large share
+of recent commits, or when the item reaches many pages by file alone. Both are
+dropped, so one wide refactoring, or a file that every change edits, does not
+fill every page.
 
 Titles in the overlay are thread text written by anyone who can comment.
 Whatever renders the overlay must treat them as text, never as markup.
@@ -43,6 +45,11 @@ MAX_PER_PAGE = 8
 # An item that reaches more pages than this only at file level is too wide to
 # say anything about any one of them.
 WIDE_FILE_PAGES = 4
+# A file touched by more than this share of recent commits (and by more than
+# the floor) is hot: touching it says little about any page that cites it.
+HOT_FILE_SHARE = 0.03
+HOT_FILE_FLOOR = 5
+HEAT_WINDOW = 300
 _PR_NUMBER_RE = re.compile(r"\(#(\d+)\)\s*$")
 # Wiki citations may name a symbol by its chunk id, ``path/to/file.rs:name()``.
 _PATH_PREFIX_RE = re.compile(r"^[^:\s]+\.\w+:(?!:)")
@@ -219,11 +226,18 @@ class PageItem:
 
 
 class _Collector:
-    """Gathers per-page items and drops the file-level hits of wide items."""
+    """Gathers per-page items and drops file-level hits that carry little.
 
-    def __init__(self, index: PageIndex) -> None:
+    A file-level hit is dropped when the file is hot (most changes touch it,
+    so touching it says little about the page) or when the item reaches too
+    many pages by file alone.
+    """
+
+    def __init__(self, index: PageIndex, hot: Iterable[str] = ()) -> None:
         self.index = index
+        self.hot = set(hot)
         self.hits: list[tuple[str, PageItem]] = []
+        self.hot_dropped = 0
 
     def add(self, template: PageItem, reaches: list[tuple[str, list, list]]) -> None:
         """``reaches`` lists ``(path, ranges, names)`` the item touches."""
@@ -233,6 +247,9 @@ class _Collector:
             for page_id, (strength, labels) in self.index.match(
                 path, ranges, names
             ).items():
+                if strength == "file" and path in self.hot:
+                    self.hot_dropped += 1
+                    continue
                 item = per_page.get(page_id)
                 if item is None:
                     item = per_page[page_id] = PageItem(
@@ -362,6 +379,48 @@ def add_open_pulls(collector: _Collector, pulls: Iterable[Any]) -> set[int]:
     return numbers
 
 
+def file_heat(checkout: Path, rev: str, window: int) -> tuple[dict[str, int], int]:
+    """How many of the last ``window`` first-parent commits touched each file.
+
+    Also returns how many commits were read, which is fewer than ``window`` in
+    a young or shallow repository.
+    """
+
+    proc = subprocess.run(
+        [
+            "git", "-C", str(checkout), "log", "--first-parent",
+            "--diff-merges=first-parent", f"-n{int(window)}", "--format=%x00",
+            "--name-only", rev, "--",
+        ],  # fmt: skip
+        capture_output=True,
+        text=True,
+        errors="replace",
+    )
+    heat: dict[str, int] = {}
+    commits = 0
+    for path in proc.stdout.splitlines():
+        if path == "\x00":
+            commits += 1
+        elif path:
+            heat[path] = heat.get(path, 0) + 1
+    return heat, commits
+
+
+def hot_files(
+    heat: Mapping[str, int],
+    window: int,
+    *,
+    share: float | None = None,
+    floor: int | None = None,
+) -> set[str]:
+    """Files touched by more than ``share`` of ``window`` commits, and ``floor``."""
+
+    share = HOT_FILE_SHARE if share is None else share
+    floor = HOT_FILE_FLOOR if floor is None else floor
+    limit = max(floor, share * window)
+    return {path for path, count in heat.items() if count > limit}
+
+
 def recent_commits(checkout: Path, rev: str, limit: int) -> list[dict[str, str]]:
     """The last ``limit`` first-parent commits up to ``rev``, newest first."""
 
@@ -445,13 +504,20 @@ def build_overlay(
     store=None,
     open_pulls: Iterable[Any] = (),
     history: int = 200,
+    heat_window: int = HEAT_WINDOW,
     include_closed: bool = False,
     now: str | None = None,
 ) -> dict[str, Any]:
-    """The overlay for one Wiki: per page, its issues, pull requests and changes."""
+    """The overlay for one Wiki: per page, its issues, pull requests and changes.
+
+    ``heat_window`` is how many recent commits decide which files are hot;
+    0 keeps every file-level match.
+    """
 
     index = PageIndex(pages)
-    collector = _Collector(index)
+    heat, read = file_heat(checkout, rev, heat_window) if heat_window else ({}, 0)
+    hot = hot_files(heat, read)
+    collector = _Collector(index, hot & index.files())
     indexed = add_open_pulls(collector, open_pulls)
     threads = 0
     if store is not None:
@@ -488,6 +554,8 @@ def build_overlay(
             "threads_placed": threads,
             "open_pulls_indexed": len(indexed),
             "changes_placed": changes,
+            "hot_files": sorted(hot & index.files(), key=lambda f: -heat[f]),
+            "hot_file_matches_dropped": collector.hot_dropped,
         },
     }
 
@@ -498,5 +566,7 @@ __all__ = [
     "PageItem",
     "WikiPage",
     "build_overlay",
+    "file_heat",
+    "hot_files",
     "load_wiki_pages",
 ]

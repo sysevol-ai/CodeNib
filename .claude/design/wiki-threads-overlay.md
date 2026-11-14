@@ -53,6 +53,10 @@ Noise control:
 
 - Only product source counts (`is_source_path`): tests, fixtures, snapshots
   and docs are shared by unrelated changes.
+- A file is hot when more than `HOT_FILE_SHARE` (3%) of the last
+  `HEAT_WINDOW` (300) first-parent commits touched it, and more than
+  `HOT_FILE_FLOOR` (5). File-level matches on a hot cited file are dropped;
+  symbol-level matches on it stay. `--heat-window 0` turns this off.
 - An item that reaches more than `WIDE_FILE_PAGES` (4) pages only at file level
   is dropped from those pages; its symbol-level hits stay.
 - A thread is placed by what its own posts say; linked threads are not
@@ -148,9 +152,23 @@ Window 2026-07-20 to 2026-08-04, 300 pull requests; the run takes 26 s.
   8 → 122, no limit → 127.
 - File-level matches are often still on topic ("Insert a space after the
   colon in Ruff suppression comments" on *Noqa Suppression*), but hot files
-  carry little: every rule stabilization touches
-  `crates/ruff_linter/src/preview.rs`, which several pages cite. A per-file
-  popularity discount is the next noise control to try.
+  carry little: `ty_python_semantic/src/types.rs` was touched by 23 of the 300
+  commits and `types/infer/builder.rs`, cited by 6 pages, by 20.
+- The hot-file discount, same window (rows: share of the 300 commits above
+  which a cited file is hot):
+
+  | Hot above | Hot cited files | Placed | File matches | Symbol matches | Pages |
+  |---|---|---|---|---|---|
+  | off | 0 | 107 | 187 | 63 | 35 |
+  | 5% | 2 | 115 | 200 | 63 | 35 |
+  | **3% (default)** | 12 | 75 | 119 | 63 | 35 |
+  | 2% | 20 | 62 | 86 | 63 | 34 |
+
+  At 3% file matches fall by 36% while every symbol match and every page
+  stays. At 5% more are placed than with no discount: dropping a hot file
+  brings some items back under the wide-item limit. A sample of the remaining
+  file matches was on topic (e.g. "Fix double visit / missing elif visit" on
+  *AST Visitors and Helpers*).
 - Symbol matches are few because a page cites a handful of symbols per file;
   most changes to a cited file change something else in it. The panel should
   lead with symbol matches and show file matches collapsed.
@@ -175,8 +193,7 @@ then `codenib threads overlay --wiki <pages dir> --checkout <ruff> --rev
 ## Next steps
 
 1. Measure issue coverage on one repository with a published Wiki.
-2. Discount file-level matches on files that most changes touch.
-3. Frontend panel and map markers on the ruff demo page.
-4. `threads: true` in the Wiki Action, off for private repositories, with the
+2. Frontend panel and map markers on the ruff demo page.
+3. `threads: true` in the Wiki Action, off for private repositories, with the
    scheduled refresh.
-5. Wiki page links in `THREAD_CONTEXT.md`.
+4. Wiki page links in `THREAD_CONTEXT.md`.

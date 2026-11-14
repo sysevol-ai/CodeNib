@@ -399,6 +399,7 @@ def _run_overlay(args: argparse.Namespace) -> int:
         store=None if args.no_threads else store,
         open_pulls=[] if args.no_threads else read_index(store),
         history=args.history,
+        heat_window=args.heat_window,
         include_closed=args.include_closed,
     )
     text = json.dumps(overlay, indent=2, ensure_ascii=False) + "\n"
@@ -585,6 +586,14 @@ def add_threads_parser(subparsers, formatter) -> None:
         default=200,
         metavar="N",
         help="also place the last N first-parent commits (0 to skip)",
+    )
+    overlay.add_argument(
+        "--heat-window",
+        type=int,
+        default=300,
+        metavar="N",
+        help="recent commits that decide which files are too hot for file-level "
+        "matches (0 keeps every match)",
     )
     overlay.add_argument(
         "--include-closed", action="store_true", help="also place closed threads"

@@ -240,3 +240,25 @@ def test_overlay_command_writes_the_overlay(pages, checkout, tmp_path, capsys):
     )  # fmt: skip
     assert status != 0
     assert "no Wiki pages" in capsys.readouterr().err
+
+
+def test_file_level_matches_on_a_hot_file_are_dropped(pages, checkout):
+    config = checkout / "src" / "config.py"
+    for n in range(6):
+        config.write_text(config.read_text() + f"# note {n}\n")
+        _git(checkout, "commit", "-qam", f"Note {n}")
+    pulls = [
+        OpenPull(21, "Atomic save", "bo", "2026-01-04T00:00:00Z",
+                 files={"src/config.py": [[6, 6]]}),
+    ]  # fmt: skip
+    overlay = _overlay(pages, checkout, open_pulls=pulls)
+
+    # Seven of eight commits touched config.py: reaching it says little about
+    # a page, but changing the symbol a page cites still does.
+    assert overlay["summary"]["hot_files"] == ["src/config.py"]
+    assert overlay["pages"]["saving"]["pulls"][0]["strength"] == "symbol"
+    assert "loading" not in overlay["pages"]
+    assert overlay["summary"]["hot_file_matches_dropped"] == 1
+
+    kept = _overlay(pages, checkout, open_pulls=pulls, heat_window=0)
+    assert kept["pages"]["loading"]["pulls"][0]["strength"] == "file"
