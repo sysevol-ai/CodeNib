@@ -19,6 +19,13 @@ alone, with `wiki: index` and no key. That mode was removed: its pages were a
 directory listing, not a Wiki. A workflow that still sets `wiki: index` stops
 with a message; remove the input and add a key.
 
+Both setups below deploy the Wiki as the repository's whole Pages site. A
+repository has one Pages site, so the Wiki replaces a site already deployed
+there, and switching the Pages source to **GitHub Actions** stops serving a
+site from a branch such as `gh-pages`. To keep an existing site, publish from a
+repository without one, or [build without deployment](#build-without-deployment)
+and host the output elsewhere.
+
 ## Publish the Wiki
 
 The quickest setup is the
