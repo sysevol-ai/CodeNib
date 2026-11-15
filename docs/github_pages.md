@@ -231,7 +231,7 @@ WAL, SHM or rollback journal. The command reads a private immutable snapshot;
 it does not change the database, configuration or registry:
 
 ```bash
-python -m pip install "codenib==0.2.5"
+python -m pip install "codenib==0.2.6"
 codenib export --wiki-config /path/to/qa_config.yaml \
   --wiki-repo psf__requests --output /path/to/site \
   --base-path /requests
@@ -285,7 +285,7 @@ In the environment that owns your existing, complete cached Wiki, install the
 published package and use the same quiescent-database requirements above:
 
 ```bash
-python -m pip install --upgrade "codenib==0.2.5"
+python -m pip install --upgrade "codenib==0.2.6"
 codenib export --format okf --wiki-config /path/to/qa_config.yaml \
   --wiki-repo psf__requests --output /path/to/requests-wiki
 ```

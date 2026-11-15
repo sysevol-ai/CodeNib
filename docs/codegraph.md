@@ -19,10 +19,10 @@ whether graph navigation helps your own workflow.
 
 ## One-command setup
 
-Install CodeNib 0.2.5 with the graph runtime and official MCP SDK:
+Install CodeNib 0.2.6 with the graph runtime and official MCP SDK:
 
 ```bash
-python -m pip install "codenib[graph,mcp]==0.2.5"
+python -m pip install "codenib[graph,mcp]==0.2.6"
 codenib codegraph init /absolute/path/to/repository
 ```
 
