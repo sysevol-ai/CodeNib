@@ -234,3 +234,62 @@
     overflow-wrap: anywhere;
   }
 }
+
+/* A small table as a list on a phone: one block per row, each value beside
+   its column's name, so nothing has to be scrolled sideways. */
+@media (max-width: 620px) {
+  .data-table.stacks {
+    overflow-x: visible;
+  }
+
+  .data-table.stacks table {
+    min-width: 0;
+  }
+
+  .data-table.stacks thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .data-table.stacks :is(table, tbody, tr, th, td) {
+    display: block;
+  }
+
+  .data-table.stacks tr {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .data-table.stacks tr:last-child {
+    border-bottom: 0;
+  }
+
+  .data-table.stacks :is(tbody th, td) {
+    padding: 0;
+    border: 0;
+    white-space: normal;
+  }
+
+  .data-table.stacks tbody th {
+    margin-bottom: 8px;
+    font-size: 15px;
+  }
+
+  .data-table.stacks td {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 3px 0;
+    text-align: right;
+  }
+
+  .data-table.stacks td::before {
+    content: attr(data-label);
+    color: var(--ink-3);
+    font-family: "Geist", ui-sans-serif, system-ui, sans-serif;
+    text-align: left;
+  }
+}

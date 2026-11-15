@@ -206,14 +206,14 @@ Checks at 0b3db48f: 2 failing, 22 passing.
       <div class="article-body continued">
         <h2 id="results">Same answers, fewer tokens</h2>
         <p>Each task showed an agent a thread and the repository as they stood at a cut-off, and asked which files have to change. The answer was compared with what the merged pull request changed. Files found are listed for <code>gh</code>, pasted and the prepared context, in that order; token columns compare the prepared context with each of the other two.</p>
-        <div class="data-table compact" role="region" tabindex="0" aria-label="Files found and input tokens by agent and task">
+        <div class="data-table compact stacks" role="region" tabindex="0" aria-label="Files found and input tokens by agent and task">
           <table>
             <caption class="sr-only">Files found and input tokens with the prepared context, by agent and task</caption>
             <thead><tr><th scope="col">Takeover</th><th scope="col">Tasks</th><th scope="col">Files found</th><th scope="col">Tokens vs gh</th><th scope="col">vs pasted</th></tr></thead>
             <tbody>
-              <tr><th scope="row">Codex, pull request<small>gpt-6.1-sol</small></th><td>76</td><td>0.74 / 0.75 / 0.75</td><td>−21%</td><td>−32%</td></tr>
-              <tr><th scope="row">Codex, issue<small>gpt-6.1-sol</small></th><td>47</td><td>0.82 / 0.85 / 0.85</td><td>−25%</td><td>+2%</td></tr>
-              <tr><th scope="row">Claude Code, pull request<small>Claude Opus 5.5</small></th><td>76</td><td>0.83 / 0.78 / 0.80</td><td>−45%</td><td>−69%</td></tr>
+              <tr><th scope="row">Codex, pull request<small>gpt-6.1-sol</small></th><td data-label="Tasks">76</td><td data-label="Files found">0.74 / 0.75 / 0.75</td><td data-label="Tokens vs gh">−21%</td><td data-label="Tokens vs pasted">−32%</td></tr>
+              <tr><th scope="row">Codex, issue<small>gpt-6.1-sol</small></th><td data-label="Tasks">47</td><td data-label="Files found">0.82 / 0.85 / 0.85</td><td data-label="Tokens vs gh">−25%</td><td data-label="Tokens vs pasted">+2%</td></tr>
+              <tr><th scope="row">Claude Code, pull request<small>Claude Opus 5.5</small></th><td data-label="Tasks">76</td><td data-label="Files found">0.83 / 0.78 / 0.80</td><td data-label="Tokens vs gh">−45%</td><td data-label="Tokens vs pasted">−69%</td></tr>
             </tbody>
           </table>
         </div>
