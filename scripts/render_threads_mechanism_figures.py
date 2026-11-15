@@ -40,7 +40,6 @@ from render_contextbench_blog_figures import (
     LINE_STRONG,
     OUT,
     ROOT,
-    SUBTLE,
     TEAL,
     TEAL_DARK,
     TEAL_LINE,
@@ -48,19 +47,19 @@ from render_contextbench_blog_figures import (
     Figure,
 )
 
-MARGIN = 24
-PANEL = 592
-GAP = 32
-PAD = 24
-INNER = PANEL - 2 * PAD
-WIDE = 2 * MARGIN + 2 * PANEL + GAP
-NARROW = 2 * MARGIN + PANEL
-TOP = 88  # from the top of a panel to its content
+# One surface: two columns divided by a hairline, notes under a rule. Nothing
+# is boxed inside a box.
+MARGIN = 32
+INNER = 560  # width of a column
+GAP = 80  # between the columns; the divider runs down its middle
+WIDE = 2 * MARGIN + 2 * INNER + GAP
+NARROW = 2 * MARGIN + INNER
+TOP = 78  # from the top of a column to its content
 
 STYLES = {
     "head": {"size": 28, "weight": 650, "spacing": -0.01},
-    "phase": {"size": 13.5, "weight": 650, "spacing": 0.08, "fill": INK_2},
-    "phase-r": {"size": 13.5, "weight": 650, "spacing": 0.08, "fill": TEAL_DARK},
+    "phase": {"size": 16.5, "weight": 600},
+    "phase-r": {"size": 16.5, "weight": 600, "fill": TEAL_DARK},
     "note": {"size": 15.5, "fill": INK_2},
     "label": {"size": 16.5, "weight": 600},
     "desc": {"size": 15, "fill": INK_2},
@@ -84,6 +83,11 @@ def dashed(fig: Figure, x, y, w, h, stroke=LINE_STRONG):
         sw=1.5,
         dash="4 4",
     )
+
+
+def rule(fig: Figure, x: float, y: float, width: float) -> None:
+    """A horizontal hairline."""
+    fig.path(f"M {x:.1f} {y:.1f} H {x + width:.1f}", stroke=LINE, sw=1.5)
 
 
 def agent(fig: Figure, cx: float, cy: float, letter: str) -> None:
@@ -113,13 +117,13 @@ def _age_mark(fig: Figure, cx: float, cy: float, newest: bool) -> None:
 def _posts(fig: Figure, x: float, y: float, packed: bool) -> None:
     # Legend, on the line of the panel label.
     right = x + INNER
-    fig.text(right, y - 52, "newest", "dim", "end")
+    fig.text(right, y - 48, "newest", "dim", "end")
     right -= fig.measure("newest", "dim") + 12
-    _age_mark(fig, right, y - 57, True)
+    _age_mark(fig, right, y - 53, True)
     right -= 22
-    fig.text(right, y - 52, "oldest", "dim", "end")
+    fig.text(right, y - 48, "oldest", "dim", "end")
     right -= fig.measure("oldest", "dim") + 12
-    _age_mark(fig, right, y - 57, False)
+    _age_mark(fig, right, y - 53, False)
     for name, posts, cut in THREADS:
         fig.text(x, y + 16, name, "label")
         if packed:
@@ -159,14 +163,14 @@ BUDGET = {
     ),
     "panels": [
         (
-            "WHAT THE STORE HOLDS",
+            "What the store holds",
             "phase",
             "One bar per post, as long as the post.",
             lambda fig, x, y: _posts(fig, x, y, False),
             378,
         ),
         (
-            "WHAT THE CONTEXT KEEPS",
+            "What the context keeps",
             "phase-r",
             "A budget of 3,000 tokens by default.",
             lambda fig, x, y: _posts(fig, x, y, True),
@@ -220,11 +224,10 @@ def _raw_log(fig: Figure, x: float, y: float) -> None:
 def _folded_log(fig: Figure, x: float, y: float) -> None:
     fig.text(x, y + 16, "Lines are compared with paths and numbers blanked:", "desc")
     fig.text(x, y + 42, "error: <path>:<n>: unused import", "code-kept")
-    top = y + 62
-    fig.rect(x, top, INNER, 136, rx=8, fill=SUBTLE, stroke=LINE)
+    rule(fig, x, y + 62, INNER)
     for i, (line, style) in enumerate(FOLDED_LOG):
-        fig.text(x + 16, top + 28 + i * 23, line, style)
-    fig.text(x, top + 162, "The two lines before an error stay, as context.", "dim")
+        fig.text(x, y + 90 + i * 23, line, style)
+    fig.text(x, y + 222, "The two lines before an error stay, as context.", "dim")
 
 
 LOGS = {
@@ -241,14 +244,14 @@ LOGS = {
     ),
     "panels": [
         (
-            "THE LOG, AS THE JOB WROTE IT",
+            "The log, as the job wrote it",
             "phase",
             "One problem in 300 files prints 300 lines.",
             _raw_log,
             238,
         ),
         (
-            "WHAT THE CONTEXT KEEPS",
+            "What the context keeps",
             "phase-r",
             "Lines around an error. A repeat is shown twice, then counted.",
             _folded_log,
@@ -295,23 +298,23 @@ def _mentions(fig: Figure, x: float, y: float) -> None:
 
 
 def _resolved(fig: Figure, x: float, y: float) -> None:
-    fig.rect(x, y, INNER, 204, rx=8, fill=SUBTLE, stroke=LINE)
-    fig.text(x + 16, y + 27, "pkg/io.py at commit 3f2a91c", "num")
-    fig.rect(x + 16, y + 40, INNER - 32, 150, rx=6, fill="#ffffff", stroke=LINE)
-    fig.text(x + 30, y + 63, "class Reader", "code")
-    fig.text(x + INNER - 30, y + 63, "lines 120-260", "code-dim", "end")
-    fig.rect(x + 30, y + 74, INNER - 60, 104, rx=6, fill=TEAL_SOFT, stroke=TEAL_LINE)
-    fig.text(x + 44, y + 97, "def read(self)", "code-kept")
-    fig.text(x + INNER - 44, y + 97, "lines 190-229", "code-kept", "end")
-    fig.rect(x + 44, y + 111, 4, 20, rx=2, fill=TEAL)
-    fig.text(x + 58, y + 126, "line 212, where the stack frame points", "desc")
-    fig.rect(x + 44, y + 141, 4, 20, rx=2, fill=INK_3)
+    """A file as nested ranges: indentation guides, the resolved range tinted."""
+    fig.text(x, y + 16, "pkg/io.py at commit 3f2a91c", "num")
+    fig.text(x, y + 46, "class Reader", "code")
+    fig.text(x + INNER, y + 46, "lines 120-260", "code-dim", "end")
+    fig.path(f"M {x + 6:.1f} {y + 58:.1f} V {y + 174:.1f}", stroke=LINE_STRONG, sw=1.5)
+    fig.rect(x + 22, y + 60, INNER - 22, 112, rx=6, fill=TEAL_SOFT)
+    fig.text(x + 36, y + 85, "def read(self)", "code-kept")
+    fig.text(x + INNER - 14, y + 85, "lines 190-229", "code-kept", "end")
+    fig.path(f"M {x + 42:.1f} {y + 98:.1f} V {y + 158:.1f}", stroke=TEAL_LINE, sw=1.5)
+    fig.text(x + 58, y + 118, "line 212, where the stack frame points", "desc")
     fig.text(
-        x + 58, y + 156, "lines 205-214, changed by open pull request #790", "other"
+        x + 58, y + 148, "lines 205-214, changed by open pull request #790", "other"
     )
+    rule(fig, x, y + 196, INNER)
     fig.text(
         x,
-        y + 232,
+        y + 228,
         "- pkg/io.py:190-229 `Reader.read()` (frame; #812/comment/1041)",
         "code-kept",
     )
@@ -332,14 +335,14 @@ ANCHORS = {
     ),
     "panels": [
         (
-            "HOW A THREAD POINTS AT CODE",
+            "How a thread points at code",
             "phase",
             "Strongest evidence first. That is the order of the list.",
             _mentions,
             250,
         ),
         (
-            "RESOLVED AT ONE COMMIT OF YOUR CLONE",
+            "Resolved at one commit of your clone",
             "phase-r",
             "A line maps to the innermost function or type around it.",
             _resolved,
@@ -397,11 +400,12 @@ CELL = {"o": LINE_STRONG, "n": ACCENT}
 def _log(fig: Figure, x: float, y: float) -> None:
     for i, (address, remark) in enumerate(EVENTS):
         top = y + i * 34
-        fig.rect(x, top, INNER, 28, rx=5, fill=SUBTLE, stroke=LINE)
-        fig.text(x + 12, top + 19, str(i), "num")
-        fig.text(x + 40, top + 19, address, "code")
+        if i:
+            rule(fig, x, top - 3, INNER)
+        fig.text(x + 12, top + 19, str(i), "num", "end")
+        fig.text(x + 30, top + 19, address, "code")
         if remark:
-            fig.text(x + INNER - 12, top + 19, remark, "dim", "end")
+            fig.text(x + INNER, top + 19, remark, "dim", "end")
 
 
 def _readers(fig: Figure, x: float, y: float) -> None:
@@ -443,14 +447,14 @@ EVENT_LOG = {
     ),
     "panels": [
         (
-            "WHAT IS STORED: THE EVENTS, IN ORDER",
+            "What is stored: the events, in order",
             "phase",
             "Records are only added. An edit is one more record.",
             _log,
             208,
         ),
         (
-            "WHAT EACH AGENT IS SENT",
+            "What each agent is sent",
             "phase-r",
             "An agent keeps a position in the list. Nothing is copied.",
             _readers,
@@ -479,51 +483,48 @@ SPECS = [BUDGET, LOGS, ANCHORS, EVENT_LOG]
 # Layout shared by the four figures
 
 
-def _panel(fig: Figure, x: float, y: float, height: float, panel) -> None:
+def _column(fig: Figure, x: float, y: float, panel) -> None:
     label, style, note, draw, _ = panel
-    fig.rect(x, y, PANEL, height, rx=10, fill="#ffffff", stroke=LINE)
-    fig.text(x + PAD, y + 36, label, style)
-    fig.text(x + PAD, y + 62, note, "note")
-    draw(fig, x + PAD, y + TOP)
+    fig.text(x, y + 30, label, style)
+    fig.text(x, y + 54, note, "note")
+    draw(fig, x, y + TOP)
 
 
-def _band(fig: Figure, x: float, y: float, width: float, lines) -> float:
-    """A full-width box of wrapped lines under the panels; returns its height."""
-    rows = []
+def _notes(fig: Figure, x: float, y: float, width: float, lines) -> float:
+    """Wrapped lines under the columns; returns the height they take."""
+    height = 8
     for text, style in lines:
-        wrapped = fig.wrap(text, style, width - 2 * PAD)
-        rows += [(line, style, i == 0) for i, line in enumerate(wrapped)]
-    height = 14
-    placed = []
-    for line, style, first in rows:
-        height += 30 if first else 22
-        placed.append((line, style, height))
-    height += 20
-    fig.rect(x, y, width, height, rx=10, fill=SUBTLE, stroke=LINE)
-    for line, style, offset in placed:
-        fig.text(x + PAD, y + offset, line, style)
+        for i, line in enumerate(fig.wrap(text, style, width)):
+            height += 22 if i else 30
+            fig.text(x, y + height, line, style)
     return height
 
 
 def render(spec: dict, narrow: bool) -> str:
     width = NARROW if narrow else WIDE
     fig = Figure(width, 2000, STYLES)
-    y = 52
+    y = 58
     for line in fig.wrap(spec["title"], "head", width - 2 * MARGIN):
         fig.text(MARGIN, y, line, "head")
         y += 34
-    y -= 6
-    height = TOP + max(panel[4] for panel in spec["panels"]) + 18
+    y -= 10
+    rule(fig, 0, y, width)
+    height = TOP + max(panel[4] for panel in spec["panels"]) + 22
     for i, panel in enumerate(spec["panels"]):
         if narrow:
-            _panel(fig, MARGIN, y, TOP + panel[4] + 18, panel)
-            y += TOP + panel[4] + 18 + 20
+            if i:
+                rule(fig, 0, y, width)
+            _column(fig, MARGIN, y, panel)
+            y += TOP + panel[4] + 22
         else:
-            _panel(fig, MARGIN + i * (PANEL + GAP), y, height, panel)
+            _column(fig, MARGIN + i * (INNER + GAP), y, panel)
     if not narrow:
-        y += height + 20
-    y += _band(fig, MARGIN, y, width - 2 * MARGIN, spec["band"])
-    fig.height = int(y + MARGIN)
+        middle = MARGIN + INNER + GAP / 2
+        fig.path(f"M {middle:.1f} {y:.1f} V {y + height:.1f}", stroke=LINE, sw=1.5)
+        y += height
+    rule(fig, 0, y, width)
+    y += _notes(fig, MARGIN, y, width - 2 * MARGIN, spec["band"])
+    fig.height = int(y + 30)
     return fig.svg(spec["title"], spec["desc"])
 
 
