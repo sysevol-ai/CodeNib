@@ -269,11 +269,32 @@ h1 .dim, h2 .dim { display: block; color: var(--ink-3); }
 .threads-copy .section-sub code { font-size: 0.92em; color: var(--ink); }
 .threads-copy .proof-stats { margin-top: 28px; }
 .threads-scope { margin-top: 16px; max-width: 58ch; color: var(--ink-2); font-size: 15.5px; }
-.thread-doc { overflow: hidden; border: 1px solid var(--line); border-radius: var(--r-box); background: var(--well); }
+.thread-doc { grid-column: 1 / -1; margin-top: var(--column-gap); overflow: hidden; border: 1px solid var(--line); border-radius: var(--r-box); background: var(--well); }
 .thread-doc-bar { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 20px; padding: 8px 16px; border-bottom: 1px solid var(--line); background: var(--subtle); color: var(--ink-2); font-size: 12.5px; }
 .thread-doc pre { padding: 16px; color: var(--ink-2); font-size: 13px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
 .thread-doc pre b { color: var(--ink); font-weight: 600; }
 .thread-doc pre i { color: var(--ink-3); font-style: normal; }
+/* The thread board: three agents sharing one store. Blue is a record an agent has not been sent. */
+.thread-sim { overflow: hidden; border: 1px solid var(--line); border-radius: var(--r-box); background: var(--well); }
+.sim-bar { display: flex; align-items: center; gap: 4px 16px; padding: 8px 16px; border-bottom: 1px solid var(--line); background: var(--subtle); color: var(--ink-2); font-size: 12.5px; }
+.sim-bar code, .sim-status, .sim-title code { font-family: "Geist Mono", ui-monospace, monospace; }
+.sim-status { margin-left: auto; color: var(--ink-3); text-align: right; }
+.sim-toggle { padding: 2px 0; border: 0; background: none; color: var(--ink-2); font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.sim-toggle:hover { color: var(--ink); }
+.sim-rows { list-style: none; }
+.sim-row { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 0 12px; align-items: center; padding: 16px; }
+.sim-row + .sim-row { border-top: 1px solid var(--line); }
+.sim-agent { display: grid; width: 22px; height: 22px; place-items: center; border-radius: 50%; background: #44484f; color: var(--ink); font-size: 12px; font-weight: 700; }
+.sim-title { color: var(--ink); font-size: 15px; }
+.sim-title code { margin-right: 6px; color: var(--ink-2); font-size: 13.5px; }
+.sim-count { color: var(--ink-3); font-size: 13.5px; font-variant-numeric: tabular-nums; transition: color 0.4s ease; }
+.sim-count.is-unread { color: var(--accent); }
+.sim-track { display: flex; grid-column: 2 / -1; gap: 2px; height: 6px; margin-top: 10px; }
+.sim-track i { width: 22px; border-radius: 1px; background: var(--line-strong); transition: background-color 0.6s cubic-bezier(0.16, 1, 0.3, 1); }
+.sim-track i.is-new { background: var(--accent); }
+.sim-note { grid-column: 2 / -1; min-height: 1.5em; margin-top: 8px; color: var(--ink-2); font-size: 13.5px; line-height: 1.5; }
+.sim-note code { font-family: "Geist Mono", ui-monospace, monospace; font-size: 0.94em; color: var(--ink); }
+.sim-say { min-height: 4.2em; padding: 12px 16px; border-top: 1px solid var(--line); color: var(--ink); font-size: 14.5px; line-height: 1.5; }
 
 /* The result in two numbers, one step brighter than the page. The article has the diagram. */
 .proof-band { padding-block: var(--section); border-block: 1px solid var(--line); background: var(--subtle); }
@@ -341,6 +362,10 @@ body > footer { border-top: 1px solid var(--line); }
   .example-tasks { grid-template-columns: minmax(0, 1fr); margin-top: 24px; }
   .terminal-setup { grid-template-columns: minmax(0, 1fr); row-gap: 14px; }
   .threads-row { grid-template-columns: minmax(0, 1fr); row-gap: 28px; }
+  .thread-doc { margin-top: 0; }
+  .sim-bar { flex-wrap: wrap; }
+  .sim-status { order: 3; flex-basis: 100%; margin-left: 0; text-align: left; }
+  .sim-toggle { margin-left: auto; }
   .replay-body { grid-template-columns: minmax(0, 1fr); height: auto; }
   .replay-log { height: 420px; border-right: 0; }
   .replay-graph { border-top: 1px solid var(--line); }
@@ -557,6 +582,34 @@ codenib codegraph init /path/to/your/repo</code></pre>
         </div>
         <p class="threads-scope">On 76 pull requests taken over after a review or a failed check, against the agent reading the thread with <code>gh</code>. The agents found the files to change about as often either way. <a class="text-link" href="/blogs/thread-context-for-coding-agents/">Read how it works →</a></p>
       </div>
+      <figure class="thread-sim" data-thread-sim aria-labelledby="thread-sim-caption">
+        <div class="sim-bar"><code>codenib threads board</code><span class="sim-status">poll · nothing changed</span><button class="sim-toggle" type="button" hidden>Pause</button></div>
+        <ol class="sim-rows">
+          <li class="sim-row">
+            <span class="sim-agent" aria-label="Agent A">A</span>
+            <p class="sim-title"><code>#812</code>Fix a short read in Reader.read()</p>
+            <span class="sim-count">up to date</span>
+            <span class="sim-track" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></span>
+            <p class="sim-note">Also in progress on <code>Reader.read()</code>: #815</p>
+          </li>
+          <li class="sim-row">
+            <span class="sim-agent" aria-label="Agent B">B</span>
+            <p class="sim-title"><code>#815</code>Cache reads in Reader</p>
+            <span class="sim-count">up to date</span>
+            <span class="sim-track" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+            <p class="sim-note">Also in progress on <code>Reader.read()</code>: #812</p>
+          </li>
+          <li class="sim-row">
+            <span class="sim-agent" aria-label="Agent C">C</span>
+            <p class="sim-title"><code>#807</code>Document the retry policy</p>
+            <span class="sim-count">up to date</span>
+            <span class="sim-track" aria-hidden="true"><i></i><i></i></span>
+            <p class="sim-note"></p>
+          </li>
+        </ol>
+        <p class="sim-say">Three agents, each on its own pull request, share one store. Each is sent only the records it has not read, and two that touch the same function are told about each other.</p>
+        <figcaption class="preview-caption" id="thread-sim-caption">A sketch with made-up pull requests. Each mark is one stored record; blue is one its agent has not been sent yet.</figcaption>
+      </figure>
       <figure class="thread-doc" aria-labelledby="thread-doc-caption">
         <div class="thread-doc-bar"><code>THREAD_CONTEXT.md</code><a class="text-link" href="https://github.com/caddyserver/caddy/pull/8024">caddyserver/caddy#8024</a></div>
         <pre><code><b># Thread context: caddyserver/caddy#8024 (PR)</b>
@@ -662,6 +715,7 @@ Cursor: #8285/referenced/35217640406. <i>[…]</i></code></pre>
 <script type="module" src="assets/explore/landing-entry.js"></script>
 <script type="module" src="assets/hero-map/hero-map.js"></script>
 <script type="module" src="assets/demos/agent-replay.js"></script>
+<script type="module" src="assets/demos/thread-sim.js"></script>
 
 <footer>
   <div class="wrap foot">
