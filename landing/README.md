@@ -248,9 +248,18 @@ subset in each figure, give wide figures a narrow `<picture>` variant for
 phones, and render the sharing PNG from the same SVG with
 `node scripts/render_svg_png.mjs <in.svg> <out.png>`.
 `scripts/render_contextbench_blog_figures.py` does this for the ContextBench
-article, and `scripts/render_threads_blog_figure.py` for the thread context
-article; the same PNG is the README's figure at
-`assets/readme/thread-context.png`.
+article. `scripts/render_threads_blog_figure.py` and
+`scripts/render_threads_mechanism_figures.py` do it for the thread context
+article, whose lead figure is also the README's at
+`assets/readme/thread-context.png`. `scripts/render_blog_pipeline_figures.py`
+draws the pipeline figures of the DGX Spark, CodeGraph architecture and Jev
+articles.
+
+Draw a figure as one surface: stages or columns side by side, divided by a
+hairline or joined by an arrow, with notes under a rule. Do not put a box
+inside a box or a label line above the title. Keep one meaning per colour
+within an article, and say what the colours mean where the first figure
+appears.
 
 Serve `landing/` locally and check the index link, article title, images,
 internal anchors, tables, and desktop/mobile layout. Run `mkdocs build --strict`
