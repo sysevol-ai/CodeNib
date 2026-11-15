@@ -1,36 +1,30 @@
-/* CodeNib docs: warm editorial styling adapted from stable-learning. */
+/* CodeNib docs: the type and, in the dark scheme, the palette of codenib.ai. */
 
 @font-face {
-  font-family: "Inter Variable";
-  src: url("../fonts/inter-latin-wght-normal.woff2") format("woff2-variations");
+  font-family: "Geist";
+  src: url("../fonts/Geist-Variable.woff2") format("woff2");
   font-style: normal;
   font-weight: 100 900;
   font-display: swap;
 }
 
 @font-face {
-  font-family: "Newsreader Variable";
-  src: url("../fonts/newsreader-latin-wght-normal.woff2") format("woff2-variations");
+  font-family: "Geist Mono";
+  src: url("../fonts/GeistMono-Variable.woff2") format("woff2");
   font-style: normal;
-  font-weight: 200 800;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Newsreader Variable";
-  src: url("../fonts/newsreader-latin-wght-italic.woff2") format("woff2-variations");
-  font-style: italic;
-  font-weight: 200 800;
+  font-weight: 100 900;
   font-display: swap;
 }
 
 :root {
-  --codenib-serif: "Newsreader Variable", Iowan Old Style, Palatino Linotype,
-    Book Antiqua, Georgia, serif;
-  --codenib-sans: "Inter Variable", Inter, ui-sans-serif, system-ui, sans-serif;
+  /* One family for headings and text, as on the site. The second name is kept
+     so rules that set headings apart still have their own handle. */
+  --codenib-sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Roboto, sans-serif;
+  --codenib-serif: var(--codenib-sans);
   --md-text-font-family: var(--codenib-sans);
-  --md-code-font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo,
-    monospace;
+  --md-code-font-family: "Geist Mono", ui-monospace, SFMono-Regular, Menlo,
+    Consolas, monospace;
   --md-primary-fg-color: #176b64;
   --md-primary-fg-color--light: #2f8c83;
   --md-primary-fg-color--dark: #0d4a44;
@@ -373,8 +367,8 @@ body {
 .md-typeset {
   color: var(--codenib-ink);
   font-family: var(--codenib-serif);
-  font-size: 0.89rem;
-  line-height: 1.72;
+  font-size: 0.84rem;
+  line-height: 1.7;
 }
 
 .md-typeset h1,
@@ -385,8 +379,8 @@ body {
 .md-typeset h6 {
   color: var(--codenib-ink);
   font-family: var(--codenib-serif);
-  font-weight: 560;
-  letter-spacing: -0.018em;
+  font-weight: 600;
+  letter-spacing: -0.028em;
 }
 
 .md-typeset h1 {

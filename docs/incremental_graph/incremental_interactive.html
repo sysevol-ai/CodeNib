@@ -26,26 +26,26 @@ SPDX-License-Identifier: Apache-2.0
 </script>
 <style>
 @font-face {
-  font-family: "Inter Variable";
-  src: url("../assets/fonts/inter-latin-wght-normal.woff2") format("woff2-variations");
+  font-family: "Geist";
+  src: url("../assets/fonts/Geist-Variable.woff2") format("woff2");
   font-style: normal;
   font-weight: 100 900;
   font-display: swap;
 }
 
 @font-face {
-  font-family: "Newsreader Variable";
-  src: url("../assets/fonts/newsreader-latin-wght-normal.woff2") format("woff2-variations");
+  font-family: "Geist Mono";
+  src: url("../assets/fonts/GeistMono-Variable.woff2") format("woff2");
   font-style: normal;
-  font-weight: 200 800;
+  font-weight: 100 900;
   font-display: swap;
 }
 
 :root {
   color-scheme: light;
-  --demo-sans: "Inter Variable", Inter, ui-sans-serif, system-ui, sans-serif;
-  --demo-serif: "Newsreader Variable", Iowan Old Style, Georgia, serif;
-  --demo-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  --demo-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --demo-serif: var(--demo-sans);
+  --demo-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --demo-bg: #f9f6ef;
   --demo-surface: #fffdf8;
   --demo-surface-strong: #ffffff;
