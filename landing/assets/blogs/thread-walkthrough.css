@@ -321,18 +321,11 @@
 }
 
 /* The document, set as the file it is. */
-.walk-doc {
+.walk-ln {
+  display: block;
   font-family: "Geist Mono", ui-monospace, monospace;
   font-size: 13px;
   line-height: 1.7;
-}
-
-.walk-doc .walk-empty {
-  font-family: "Geist", ui-sans-serif, system-ui, sans-serif;
-}
-
-.walk-ln {
-  display: block;
   margin-inline: -8px;
   padding-inline: 8px;
   border-radius: 4px;
