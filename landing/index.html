@@ -394,7 +394,10 @@ body > footer { border-top: 1px solid var(--line); }
   html { scroll-behavior: auto; }
   .replay-controls, .lang-toggle { display: none; }
   .lang-track { width: auto; animation: none; }
-  .lang-list { flex-wrap: wrap; justify-content: center; }
+  /* Without motion the languages are a grid, in even columns from the left. */
+  .lang-track { display: block; }
+  .lang-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); }
+  .lang-item { padding: 18px 8px; }
   .lang-list[aria-hidden="true"] { display: none; }
   .lang-marquee { -webkit-mask-image: none; mask-image: none; }
 }
