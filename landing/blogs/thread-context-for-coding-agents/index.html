@@ -147,8 +147,9 @@ Checks at 0b3db48f: 2 failing, 22 passing.
 [... 1 more lines like the two above ...]</code></pre>
         <p>This pull request changes two files in Caddy's file server. The lint error is in <code>reverseproxy.go</code>, and the Windows job stopped while downloading a module. Neither failure is about the change, and the agent can see that without opening a log.</p>
 
-        <h2 id="code">3. Say where in the code, and on what evidence</h2>
-        <p>People in a thread point at code in four ways: a stack frame, a review comment on a line, a file path, a name in backticks. The context finds these with regular expressions and resolves them against one commit of your clone, read through Git, so an edited working tree does not change the answer. A line is mapped to the innermost function or type that contains it.</p>
+        <h2 id="code">3. Turn mentions of code into places in the code</h2>
+        <p>A thread talks about code in words. Someone pastes a stack trace, a reviewer comments on a line, someone writes a path or a function name in backticks. An agent reading that has to find each one in the repository before it can start, with a search and a file read for each. The context does that lookup ahead of time and lists the result: a file, a line range, and the function or type those lines belong to.</p>
+        <p>The lookup uses no model. Regular expressions find the mentions. Each is resolved against one commit of your clone, read through Git, so the same thread gives the same locations whatever is edited in the working tree. A line is mapped to the innermost function or type that contains it: a line number alone tells an agent little, and the function around it is something it can open.</p>
       </div>
 
       <figure class="hero-figure responsive-figure in-article">
@@ -161,11 +162,11 @@ Checks at 0b3db48f: 2 failing, 22 passing.
       </figure>
 
       <div class="article-body continued before-figure">
-        <p>These four are not equally reliable, and the list is ordered by that: stack frames first, then review positions, paths, bare names, and last the files a diff touches. A bare name is looked up first in the files the thread already mentions. A name defined in more than three places is ambiguous and is dropped. Each location names the event that pointed at it.</p>
+        <p>Mentions are not equally trustworthy, so each location says what it rests on. A stack frame names a file and a line and is almost always right. A bare name could be many things. The list is ordered by that: stack frames first, then review positions, paths, bare names, and last the files a diff touches. A bare name is looked up first in the files the thread already mentions, and one defined in more than three places is dropped as a guess. Each entry ends with its kind of evidence and the event that pointed at it:</p>
         <pre><code>## Code locations
 […]
 - modules/caddyhttp/fileserver/browse.go:85-229 `FileServer.serveBrowse()` (path; #8023/comment/6594174437)</code></pre>
-        <p>Once locations are line ranges, a second question becomes cheap. <code>codenib threads sync --open-pulls</code> records which lines each open pull request changes. When one of those ranges falls inside a function the thread points at, someone else is changing that function now:</p>
+        <p>Line ranges also answer a question the thread never raises: is someone else changing this code right now? <code>codenib threads sync --open-pulls</code> records which lines each open pull request changes. When one of those ranges falls inside a function the thread points at, the context says so:</p>
         <pre><code>## Also in progress on this code
 - #7777 (open PR by Jualhosting, updated 2026-10-26) fileserver: Improve 404 error detail and context — changes `FileServer.serveBrowse()`; also edits modules/caddyhttp/fileserver/staticfiles.go</code></pre>
         <p>An agent working one thread has no way to see this for itself, and it is common. In <code>astral-sh/ruff</code>, 30 of the 59 most recently updated open pull requests changed a symbol that another of them also changed.</p>
