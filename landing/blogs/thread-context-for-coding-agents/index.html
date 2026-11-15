@@ -105,9 +105,9 @@ SPDX-License-Identifier: Apache-2.0
         <p>The obvious way to meet a token budget is to shorten long posts. For the agent's own thread this backfires: an agent that sees an omission mark in the pull request it was asked to fix reads the pull request again with <code>gh</code>, and has then paid for both.</p>
       </div>
 
-      <figure class="hero-figure responsive-figure in-article">
+      <figure class="hero-figure responsive-figure in-article phone-drawn">
         <picture>
-          <source media="(max-width: 900px)" srcset="/assets/blogs/thread-budget-narrow.svg" width="624" height="1102">
+          <source media="(max-width: 900px)" srcset="/assets/blogs/thread-budget-narrow.svg" width="464" height="1124">
           <img src="/assets/blogs/thread-budget.svg" width="1264" height="580" loading="lazy" alt="Left: three threads in the store, the one the agent works on and two linked to it, each a list of posts of different lengths. Right: the prepared context keeps every post of the agent&#x27;s own thread whole, and leaves out the oldest posts of the linked threads. Its second line says which case applies. Own posts are shortened only past three times the budget.">
         </picture>
         <figcaption>A sketch with made-up threads. The real line for a Caddy pull request follows.</figcaption>
@@ -116,7 +116,7 @@ SPDX-License-Identifier: Apache-2.0
 
       <div class="article-body continued before-figure">
         <p>So the budget is not applied evenly, and the second line of the document tells the agent which case it is in. This is <a href="https://github.com/caddyserver/caddy/pull/8024">caddyserver/caddy#8024</a> on November 14, 2026, with <code>[…]</code> where we left text out and the line wrapped to fit:</p>
-        <pre><code>Coverage: this thread complete, linked threads partial.
+        <pre class="wraps"><code>Coverage: this thread complete, linked threads partial.
 Everything people wrote in #8024 is below in full; […]
 Reading #8024 again with gh returns nothing more.</code></pre>
         <p>The last sentence is written to be acted on. A post omitted from a linked thread can be fetched by its id, and the thread itself needs no second read.</p>
@@ -125,9 +125,9 @@ Reading #8024 again with gh returns nothing more.</code></pre>
         <p>A linter that finds one problem in 300 files prints 300 lines, and a build matrix fails the same way on six platforms. Keeping the last 200 lines of each failed log, as our pasted prompts did, fills the prompt with one message.</p>
       </div>
 
-      <figure class="hero-figure responsive-figure in-article">
+      <figure class="hero-figure responsive-figure in-article phone-drawn">
         <picture>
-          <source media="(max-width: 900px)" srcset="/assets/blogs/thread-logs-narrow.svg" width="624" height="852">
+          <source media="(max-width: 900px)" srcset="/assets/blogs/thread-logs-narrow.svg" width="464" height="896">
           <img src="/assets/blogs/thread-logs.svg" width="1264" height="470" loading="lazy" alt="Left: a job log with four set-up lines and 300 error lines that differ only in the file, the line number and the name. Right: the context keeps the lines around an error, compares them with paths and numbers blanked, shows a repeated line twice and counts the rest: 298 more lines like the two above. Jobs whose failing lines mostly match are printed once with the names of the jobs that share the failure, and are never merged by name.">
         </picture>
         <figcaption>A sketch with a made-up log, folded by the rules the context uses.</figcaption>
@@ -136,7 +136,7 @@ Reading #8024 again with gh returns nothing more.</code></pre>
 
       <div class="article-body continued before-figure">
         <p>Jobs are folded the same way as lines, by what failed and never by name: a matrix runs several jobs under one name, and merging by name could hide the one that failed. This is the Caddy pull request from above:</p>
-        <pre><code>## Failing CI
+        <pre class="wraps"><code>## Failing CI
 Checks at 0b3db48f: 2 failing, 22 passing.
 [#8024/check/127120839152] lint (linux) failed
 […]
@@ -153,9 +153,9 @@ Checks at 0b3db48f: 2 failing, 22 passing.
         <p>The lookup uses no model. Regular expressions find the mentions. Each is resolved against one commit of your clone, read through Git, so the same thread gives the same locations whatever is edited in the working tree. A line is mapped to the innermost function or type that contains it: a line number alone tells an agent little, and the function around it is something it can open.</p>
       </div>
 
-      <figure class="hero-figure responsive-figure in-article">
+      <figure class="hero-figure responsive-figure in-article phone-drawn">
         <picture>
-          <source media="(max-width: 900px)" srcset="/assets/blogs/thread-anchors-narrow.svg" width="624" height="928">
+          <source media="(max-width: 900px)" srcset="/assets/blogs/thread-anchors-narrow.svg" width="464" height="928">
           <img src="/assets/blogs/thread-anchors.svg" width="1264" height="512" loading="lazy" alt="Left: the five ways a thread points at code, strongest evidence first: a stack frame, a review comment on a line, a file path, a name in backticks, and a file a diff touches. Right: the mention is resolved at one commit of the clone. Line 212 of pkg/io.py lies in the method read, lines 190 to 229, inside the class Reader, and the context lists that range with the evidence and the event it came from. An open pull request that changes lines 205 to 214 falls in the same range, so the context lists it as also in progress.">
         </picture>
         <figcaption>A sketch with made-up code. The real locations for the Caddy pull request follow below.</figcaption>
@@ -164,11 +164,11 @@ Checks at 0b3db48f: 2 failing, 22 passing.
 
       <div class="article-body continued before-figure">
         <p>Mentions are not equally trustworthy, so the list runs from stack frames, which are almost always right, down to bare names, which could be many things. A bare name is looked up first in the files the thread already mentions, and one defined in more than three places is dropped as a guess. Each entry ends with its kind of evidence and the event that pointed at it:</p>
-        <pre><code>## Code locations
+        <pre class="wraps"><code>## Code locations
 […]
 - modules/caddyhttp/fileserver/browse.go:85-229 `FileServer.serveBrowse()` (path; #8023/comment/6594174437)</code></pre>
         <p>Line ranges also answer a question the thread never raises: is someone else changing this code right now? <code>codenib threads sync --open-pulls</code> records which lines each open pull request changes. When one of those ranges falls inside a function the thread points at, the context says so:</p>
-        <pre><code>## Also in progress on this code
+        <pre class="wraps"><code>## Also in progress on this code
 - #7777 (open PR by Jualhosting, updated 2026-10-26) fileserver: Improve 404 error detail and context — changes `FileServer.serveBrowse()`; also edits modules/caddyhttp/fileserver/staticfiles.go</code></pre>
         <p>An agent working one thread has no way to see this for itself, and it is common. In <code>astral-sh/ruff</code>, 30 of the 59 most recently updated open pull requests changed a symbol that another of them also changed.</p>
         <p class="scope-note">In this preview the locations come only from what the thread says. They do not use CodeNib's code graph, so the context does not know what calls a function.</p>
@@ -178,9 +178,9 @@ Checks at 0b3db48f: 2 failing, 22 passing.
         <p>The reason is the second visit. An agent that comes back the next day needs to know what changed. A stored document cannot answer that: you hand over the whole document again, or you compare two texts and guess. With a list the answer is a position, everything after the last record the agent saw. Three things follow.</p>
       </div>
 
-      <figure class="hero-figure responsive-figure in-article">
+      <figure class="hero-figure responsive-figure in-article phone-drawn">
         <picture>
-          <source media="(max-width: 900px)" srcset="/assets/blogs/thread-events-narrow.svg" width="624" height="790">
+          <source media="(max-width: 900px)" srcset="/assets/blogs/thread-events-narrow.svg" width="464" height="902">
           <img src="/assets/blogs/thread-events.svg" width="1264" height="438" loading="lazy" alt="Left: a thread stored as a list of six events in order, each with a fixed address; an edited comment is appended as a new record under its old address. Right: agents keep a position in that list. Agent A&#x27;s first read is sent the four records that exist and ends with a cursor. When it comes back with --since it is sent only the edit and the check that came after. Agent B opens a ticket on the same stored thread and is sent all six; when it polls again nothing is new and nothing is sent. Measured: over the life of an issue, a first context and updates took a median of 2,897 tokens against 21,103 for rereading, on 151 issues; with 24 tickets following 71 threads of astral-sh/ruff, fetching everything took 278 requests and a poll with nothing new took 13.">
         </picture>
         <figcaption>The list and the agents are a sketch. The figures in the bottom box are measured.</figcaption>

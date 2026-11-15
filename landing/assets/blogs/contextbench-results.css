@@ -218,3 +218,19 @@
 .article-body .data-table + p {
   margin-top: 26px;
 }
+
+/* A phone drawing is made at phone size; on a tablet it is shown at that size
+   and not stretched across the column. */
+@media (max-width: 900px) {
+  .responsive-figure.phone-drawn img {
+    max-width: 464px;
+  }
+}
+
+/* Quoted output is prose-like: on a phone it wraps where a command would scroll. */
+@media (max-width: 620px) {
+  .article-body pre.wraps {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+}
