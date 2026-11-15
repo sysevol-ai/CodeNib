@@ -173,9 +173,10 @@ codenib threads events '#812/comment/2990023933'
 ## How well it works
 
 With two coding agents, the prepared context cut the input tokens of a task
-by a fifth to a half against letting the agent read threads with `gh`. With
-Codex the agent then found the same files. With Claude Code it found slightly
-fewer, a gap too small to tell from chance at this sample size.
+by a fifth to a half against letting the agent read threads with `gh`, and
+the agents found the files to change about as often. With Codex the result is
+the same. With Claude Code the gap is too small to tell from chance at this
+sample size.
 
 The agent was asked which files and symbols have to change, and its answer was
 compared with what the merged pull request changed. Three ways of getting
@@ -195,9 +196,9 @@ What to take from this:
 
 - **It saves tokens, more so on long threads.** On short threads, pasting
   everything costs as little.
-- **It does not make answers better.** With Codex they are the same.
-- **With Claude Code, an agent that reads the threads itself explores more
-  code, and found a few more of the files** (0.83 against 0.80). The same
+- **Answers hold.** With Codex the files found are the same.
+- **With Claude Code the answers are close, 0.80 against 0.83.** An agent that
+  reads the threads itself explores more code. The same
   happens when the whole thread is pasted (0.78), so it comes from handing
   context over, not from what the prepared context leaves out. If finding
   every file matters more to you than cost, let the agent read for itself.

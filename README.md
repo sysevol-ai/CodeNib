@@ -217,10 +217,10 @@ agent whether it still has to read the thread itself.
 
 On 76 pull requests taken over after a review or a failed check, the prepared
 context cut input tokens by 21% with Codex and by 45% with Claude Code,
-against letting the agent read the thread with `gh`. It saves tokens; it does
-not make answers better. Codex found the same files to change either way, and
-Claude Code found slightly fewer (0.80 against 0.83), a gap too small to tell
-from chance on 76 tasks.
+against letting the agent read the thread with `gh`. The answers held: the
+agents found the files to change about as often either way (Codex 0.75 against
+0.74, Claude Code 0.80 against 0.83, a gap too small to tell from chance on 76
+tasks).
 
 [Thread context guide](https://docs.codenib.ai/threads/)
 · [How it decides what to include](https://codenib.ai/blogs/thread-context-for-coding-agents/)

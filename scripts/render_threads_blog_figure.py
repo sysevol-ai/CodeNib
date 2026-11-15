@@ -86,7 +86,7 @@ STATS_SCOPE = "76 pull request takeovers, against the agent reading with gh"
 RETURNS = ("2,897 against 21,103", "tokens over the life of an issue")
 RETURNS_SCOPE = "updates against rereading; 151 issues, a median of 6 returns"
 FOOT = (
-    "It saves tokens; it does not make answers better. Files found: Codex 0.75 "
+    "Answer quality holds. Files found, prepared context against gh: Codex 0.75 "
     "against 0.74, Claude Code 0.80 against 0.83."
 )
 

@@ -80,7 +80,7 @@ SPDX-License-Identifier: Apache-2.0
       </header>
 
       <div class="article-body article-lead">
-        <p>A coding agent asked to take over a pull request starts by reading the thread: the description, the comments, the reviews, the checks, a log. With <code>gh</code> that is one tool call per piece, and every call sends the whole conversation so far back to the model. <code>codenib threads</code>, a preview in CodeNib 0.2.6, reads the thread once, by code, before the agent starts. On <strong>76 pull request takeovers</strong> that cut input tokens by <strong>21% with Codex</strong> and <strong>45% with Claude Code</strong>. The agents found about the same files to change either way.</p>
+        <p>A coding agent asked to take over a pull request starts by reading the thread: the description, the comments, the reviews, the checks, a log. With <code>gh</code> that is one tool call per piece, and every call sends the whole conversation so far back to the model. <code>codenib threads</code>, a preview in CodeNib 0.2.6, reads the thread once, by code, before the agent starts. On <strong>76 pull request takeovers</strong> that cut input tokens by <strong>21% with Codex</strong> and <strong>45% with Claude Code</strong>. The agents found the files to change about as often either way.</p>
         <p>Fetching ahead of the agent is the easy part. This post is about the harder part, deciding what goes into the document. On pull requests, fetching ahead without choosing costs more than it saves.</p>
       </div>
 
@@ -141,7 +141,7 @@ Checks at 0b3db48f: 2 failing, 22 passing.
         <p>Coming back is cheap. The document ends with a cursor, the address of the newest event it saw, and <code>--since &lt;cursor&gt;</code> returns only what came after it. Across 151 issues with a median of six returns each, a first context followed by updates took a median of <strong>2,897 tokens</strong> over the life of the issue, against <strong>21,103</strong> for reading the thread again each time.</p>
         <p>Many agents can share one store. A <strong>ticket</strong> is a piece of work that remembers its position in each log it follows. Two tickets on one thread store it once, and a comment edited after a ticket read it comes back as unread. A poll asks GitHub once which threads changed and fetches only those. With 24 tickets following 71 threads of <code>astral-sh/ruff</code>, fetching everything took 278 requests, and a poll with nothing new took 13.</p>
 
-        <h2 id="limits">What it does not do</h2>
+        <h2 id="results">Same answers, fewer tokens</h2>
         <p>Each task showed an agent a thread and the repository as they stood at a cut-off, and asked which files have to change. The answer was compared with what the merged pull request changed. Files found are listed for <code>gh</code>, pasted and the prepared context, in that order; token columns compare the prepared context with each of the other two.</p>
         <div class="data-table compact" role="region" tabindex="0" aria-label="Files found and input tokens by agent and task">
           <table>
@@ -154,7 +154,7 @@ Checks at 0b3db48f: 2 failing, 22 passing.
             </tbody>
           </table>
         </div>
-        <p>It does not make answers better. With Codex the files found are the same. With Claude Code, the agent that read the thread itself found slightly more of them, 0.83 against 0.80. On 76 tasks that gap is too small to tell from chance, but pasting the whole thread shows it too (0.78). It comes from handing context over, not from what the context leaves out: an agent given the thread up front reads less code. The document therefore ends by telling the agent that it covers the threads and not the code. If finding every file matters more to you than cost, let the agent read for itself.</p>
+        <p>The answers hold while the cost falls. With Codex the files found are the same. With Claude Code they are close, 0.80 against 0.83, a gap too small to tell from chance on 76 tasks. Pasting the whole thread shows the same small gap (0.78), so it comes from handing context over and not from what the context leaves out: an agent given the thread up front reads a little less code. The document therefore ends by telling the agent that it covers the threads and not the code.</p>
         <p>The saving grows with the thread: on the 22 pull requests whose threads ran over 20,000 tokens, input tokens fell 34% with Codex and 63% with Claude Code.</p>
         <p class="scope-note">Pull request tasks come from <code>astral-sh/ruff</code>, <code>caddyserver/caddy</code> and <code>pydantic/pydantic</code>; issue tasks from the first two. Claude Code ran Claude Opus 5.5 at medium effort. The result shows where an agent would work and what reaching that cost, not whether it then writes a better fix. Intervals, method and the script to reproduce it are in the <a href="https://docs.codenib.ai/threads/#how-well-it-works">thread context guide</a>.</p>
 
