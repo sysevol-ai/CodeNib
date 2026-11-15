@@ -70,21 +70,23 @@
 }
 
 [data-md-color-scheme="slate"] {
+  /* The dark scheme uses the greys and the blue of codenib.ai, so moving
+     between the site and these docs keeps one background and one accent. */
   color-scheme: dark;
-  --codenib-bg: #171512;
-  --codenib-surface: #1d1a16;
-  --codenib-soft: #211e19;
-  --codenib-line: #37332b;
-  --codenib-line-strong: #575247;
-  --codenib-ink: #f3efe7;
-  --codenib-ink-soft: #ddd7cb;
-  --codenib-muted: #b8b1a3;
-  --codenib-accent: #58c1b6;
-  --codenib-accent-soft: #14332f;
-  --codenib-code-bg: #211e19;
+  --codenib-bg: #121315;
+  --codenib-surface: #1a1b1e;
+  --codenib-soft: #17181b;
+  --codenib-line: #2a2c30;
+  --codenib-line-strong: #44484f;
+  --codenib-ink: #e8eaed;
+  --codenib-ink-soft: #c9ccd1;
+  --codenib-muted: #9aa0a6;
+  --codenib-accent: #8ab4f8;
+  --codenib-accent-soft: #1c2636;
+  --codenib-code-bg: #17181b;
   --codenib-shadow: 0 10px 34px rgba(0, 0, 0, 0.24);
 
-  --md-hue: 32;
+  --md-hue: 225;
   --md-primary-fg-color: var(--codenib-accent);
   --md-accent-fg-color: var(--codenib-accent);
   --md-default-bg-color: var(--codenib-bg);
@@ -95,7 +97,7 @@
   --md-typeset-color: var(--codenib-ink);
   --md-typeset-a-color: var(--codenib-accent);
   --md-code-bg-color: var(--codenib-code-bg);
-  --md-code-fg-color: #e8e1d5;
+  --md-code-fg-color: #e8eaed;
   --md-admonition-bg-color: var(--codenib-surface);
   --md-footer-bg-color: var(--codenib-bg);
   --md-footer-bg-color--dark: var(--codenib-bg);

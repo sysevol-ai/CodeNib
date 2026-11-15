@@ -294,7 +294,6 @@ def scaled(base: dict[str, dict], s: float) -> dict[str, dict]:
 
 
 DIAGRAM_STYLES = {
-    "kicker": {"size": 15, "weight": 650, "spacing": 0.08, "fill": ACCENT},
     "head": {"size": 34, "weight": 650, "spacing": -0.01},
     "status": {"size": 15, "weight": 600, "fill": ACCENT_DARK},
     "phase": {"size": 14, "weight": 650, "spacing": 0.08, "fill": ACCENT},
@@ -531,9 +530,8 @@ def down_arrow(fig, x, y0, y1, label, color, marker, s, side="right"):
 def search_handoff_wide() -> str:
     fig = Figure(1600, 840, DIAGRAM_STYLES)
     left, right = 56, 1544
-    fig.text(left, 60, "CODENIB · CONTEXTBENCH · AGENT SYSTEMS", "kicker")
-    fig.text(left, 106, HEADLINE, "head")
-    status_pill(fig, right, 52)
+    fig.text(left, 92, HEADLINE, "head")
+    status_pill(fig, right, 78)
 
     issue_w, gap = 176, 40
     card_w = (right - left - issue_w - gap - 2 * gap) / 3
@@ -623,8 +621,7 @@ def search_handoff_narrow() -> str:
     W, left = 640, 28
     inner = W - 2 * left
     fig = Figure(W, 100, styles)
-    y = 62
-    fig.text(left, y, "CODENIB · CONTEXTBENCH · AGENT SYSTEMS", "kicker")
+    y = 16
     head_lines = fig.wrap(HEADLINE, "head", inner)
     fig.lines(left, y + 56, head_lines, "head", 48)
     y += 56 + 48 * (len(head_lines) - 1) + 44
@@ -687,7 +684,6 @@ def search_handoff_narrow() -> str:
 # Task-source chart
 
 CHART_STYLES = {
-    "kicker": {"size": 15, "weight": 650, "spacing": 0.08, "fill": ACCENT},
     "head": {"size": 30, "weight": 650, "spacing": -0.01},
     "legend": {"size": 16, "fill": INK_2},
     "col": {"size": 15, "weight": 600, "fill": INK_2},
@@ -738,8 +734,7 @@ def legend_swatches(fig, x, y, items):
 def task_sources_wide() -> str:
     fig = Figure(1600, 700, CHART_STYLES)
     left, right = 56, 1544
-    fig.text(left, 60, "NATIVE PASS@1 BY TASK SOURCE", "kicker")
-    fig.text(left, 102, CHART_HEAD, "head")
+    fig.text(left, 88, CHART_HEAD, "head")
     legend_swatches(
         fig,
         left,
@@ -804,8 +799,7 @@ def task_sources_narrow() -> str:
     W, left = 640, 28
     inner = W - 2 * left
     fig = Figure(W, 100, styles)
-    y = 62
-    fig.text(left, y, "NATIVE PASS@1 BY TASK SOURCE", "kicker")
+    y = 16
     head = fig.wrap(CHART_HEAD, "head", inner)
     fig.lines(left, y + 54, head, "head", 44)
     y += 54 + 44 * (len(head) - 1) + 52
