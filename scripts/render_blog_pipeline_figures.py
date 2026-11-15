@@ -374,7 +374,89 @@ def routes() -> str:
     return fig.svg(ROUTES_TITLE, ROUTES_DESC)
 
 
+# --------------------------------------------------------------------------- #
+# Accuracy by route
+
+ACCURACY_TITLE = "Code-block Recall@5 on four retrieval routes"
+ACCURACY_DESC = (
+    "Dot plot of code-block Recall@5 on 100 CodeNib Base issues, by retrieval "
+    "route: with no reranker, with Qwen3-Reranker-4B, with Jev 1.13, and the "
+    "candidate coverage that no reranker can exceed. BM25 top 100: 28.78%, "
+    "58.30%, 59.35%, coverage 63.78%. Dense, CodeRankEmbed with FAISS: "
+    "39.75%, 63.40%, 63.05%, coverage 71.98%. Hybrid, BM25 with dense "
+    "through RRF: 32.02%, 65.03%, 67.92%, coverage 75.28%. Model-planned "
+    "grep, 17.47 chunks on average: 58.62%, 68.07%, 71.40%, coverage 75.83%."
+)
+QWEN = "#eb6834"
+# (route, how, no reranker, Qwen3-Reranker-4B, Jev 1.13, candidate coverage)
+ACCURACY = [
+    ("BM25", "top 100", 28.78, 58.30, 59.35, 63.78),
+    ("Dense", "CodeRankEmbed + FAISS", 39.75, 63.40, 63.05, 71.98),
+    ("Hybrid", "BM25 + dense, RRF", 32.02, 65.03, 67.92, 75.28),
+    ("Model-planned grep", "17.47 chunks on average", 58.62, 68.07, 71.40, 75.83),
+]
+
+
+def _ring(fig: Figure, x: float, y: float) -> None:
+    fig.circle(x, y, 9, INK_3)
+    fig.circle(x, y, 6, "#ffffff")
+
+
+def _diamond(fig: Figure, x: float, y: float) -> None:
+    fig.path(f"M {x:.1f} {y - 11:.1f} l 10 11 l -10 11 l -10 -11 z", fill="#2563eb")
+
+
+def accuracy() -> str:
+    fig = Figure(1600, 700, STYLES)
+    fig.text(64, 78, ACCURACY_TITLE, "head")
+    rule(fig, 0, 118, 1600)
+
+    # Legend.
+    x = 64
+    _ring(fig, x + 9, 160)
+    fig.text(x + 28, 166, "No reranker", "text")
+    x += 28 + fig.measure("No reranker", "text") + 36
+    fig.circle(x + 9, 160, 8, QWEN)
+    fig.text(x + 28, 166, "Qwen3-Reranker-4B", "text")
+    x += 28 + fig.measure("Qwen3-Reranker-4B", "text") + 36
+    _diamond(fig, x + 10, 160)
+    fig.text(x + 30, 166, "Jev 1.13", "text")
+    x += 30 + fig.measure("Jev 1.13", "text") + 36
+    fig.path(f"M {x + 2:.1f} 146 V 174", stroke=INK_2, sw=3)
+    fig.text(x + 18, 166, "Candidate coverage, the ceiling for reranking", "text")
+
+    def at(percent: float) -> float:
+        return 400 + (percent - 20) * 19
+
+    for tick in range(20, 81, 10):
+        fig.path(f"M {at(tick):.1f} 204 V 600", stroke=LINE, sw=1.5)
+        fig.text(at(tick), 628, f"{tick}%", "mono-dim", "middle")
+    for i, (route, how, plain, qwen, jev, coverage) in enumerate(ACCURACY):
+        y = 256 + i * 96
+        fig.text(64, y - 2, route, "col")
+        fig.text(64, y + 24, how, "text")
+        fig.path(f"M {at(plain):.1f} {y} H {at(jev):.1f}", stroke=INK_3, sw=2)
+        fig.path(f"M {at(coverage):.1f} {y - 20} V {y + 20}", stroke=INK_2, sw=3)
+        fig.text(at(coverage), y - 30, f"{coverage:.2f}", "mono", "middle")
+        _ring(fig, at(plain), y)
+        fig.text(at(plain), y + 34, f"{plain:.2f}", "mono-dim", "middle")
+        fig.circle(at(qwen), y, 8, QWEN)
+        fig.text(at(qwen), y + 34, f"{qwen:.2f}", "mono-dim", "middle")
+        _diamond(fig, at(jev), y)
+        fig.text(at(jev), y - 20, f"{jev:.2f}", "mono", "middle", fill=ACCENT_DARK)
+    rule(fig, 0, 648, 1600)
+    fig.text(
+        64,
+        680,
+        "100 CodeNib Base issues, labels aligned to base_commit. Each route keeps "
+        "at most 100 candidates; coverage counts targets anywhere in the pool.",
+        "foot",
+    )
+    return fig.svg(ACCURACY_TITLE, ACCURACY_DESC)
+
+
 FIGURES = {
+    "jev-accuracy-by-route.svg": accuracy,
     "local-code-intelligence-dgx-spark.svg": spark,
     "fact-query-index-fact-batch.svg": facts,
     "jev-retrieval-routes.svg": routes,
