@@ -1,0 +1,280 @@
+/*
+ * SPDX-FileCopyrightText: 2026 CodeNib Contributors
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/* The step-through walkthrough in the thread context article. */
+.walk {
+  width: min(100%, 1240px);
+  margin: 0 auto 48px;
+  padding-inline: 32px;
+}
+
+.walk-frame {
+  padding: 22px 24px 24px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-box);
+  background: var(--surface);
+}
+
+.walk-fallback {
+  color: var(--ink-2);
+  font-size: 15px;
+}
+
+.walk-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.walk-btn {
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-ui);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 560;
+  cursor: pointer;
+}
+
+.walk-btn:hover:not(:disabled) {
+  border-color: var(--ink-3);
+}
+
+.walk-btn:disabled {
+  color: var(--ink-3);
+  border-color: var(--line);
+  cursor: default;
+}
+
+.walk-play {
+  min-width: 78px;
+  border-color: var(--button);
+  background: var(--button);
+  color: var(--button-ink);
+}
+
+.walk-count {
+  margin-left: auto;
+  color: var(--ink-3);
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 13px;
+}
+
+.walk-say {
+  min-height: 84px;
+  margin: 16px 0 18px;
+  color: var(--ink);
+  font-size: 17px;
+  line-height: 1.55;
+}
+
+.walk-tag {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--accent);
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 12.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.walk-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+  gap: 16px;
+}
+
+.walk-panel {
+  min-width: 0;
+  padding: 16px 18px 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-box);
+  background: var(--bg);
+}
+
+.walk-panel:last-child {
+  grid-column: 1 / -1;
+}
+
+.walk-label {
+  color: var(--ink-2);
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.walk-note {
+  margin: 4px 0 14px;
+  color: var(--ink-3);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.walk-body {
+  display: grid;
+  gap: 6px;
+  min-height: 276px;
+  align-content: start;
+}
+
+.walk-panel:last-child .walk-body {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  min-height: 118px;
+}
+
+.walk-empty {
+  color: var(--ink-3);
+  font-size: 14px;
+}
+
+.walk-record,
+.walk-line,
+.walk-reader {
+  border: 1px solid var(--line);
+  border-radius: var(--r-ui);
+  background: var(--subtle);
+  transition: border-color 0.4s ease, background-color 0.4s ease;
+}
+
+.walk-record {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 6px 10px;
+  font-size: 13.5px;
+}
+
+.walk-record code,
+.walk-line code,
+.walk-reader code {
+  color: var(--ink);
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.walk-pos {
+  width: 1ch;
+  color: var(--ink-3);
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 13px;
+}
+
+.walk-what {
+  margin-left: auto;
+  color: var(--ink-3);
+  font-size: 13px;
+  text-align: right;
+}
+
+.walk-cursor {
+  padding-left: 12px;
+  border-left: 2px solid var(--accent);
+  color: var(--accent-dark);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.walk-line {
+  display: grid;
+  gap: 2px;
+  padding: 7px 10px;
+}
+
+.walk-key {
+  color: var(--ink-3);
+  font-size: 12.5px;
+}
+
+.walk-line > span:not(.walk-key) {
+  color: var(--ink);
+  font-size: 13.5px;
+}
+
+.walk-reader {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+}
+
+.walk-reader strong {
+  color: var(--ink);
+  font-size: 14.5px;
+  font-weight: 600;
+}
+
+.walk-reader p {
+  color: var(--ink-2);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+/* Green: what the last step added. Blue: what the last read sent. */
+.is-fresh {
+  border-color: rgba(129, 201, 149, 0.55);
+  background: rgba(129, 201, 149, 0.08);
+}
+
+.is-sent {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+
+.walk-caption {
+  max-width: 820px;
+  margin: 14px auto 0;
+  color: var(--ink-2);
+  font-size: 13px;
+  text-align: center;
+}
+
+@media (max-width: 820px) {
+  .walk {
+    padding-inline: 20px;
+  }
+
+  .walk-frame {
+    padding: 16px 14px 16px;
+  }
+
+  .walk-grid,
+  .walk-panel:last-child .walk-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .walk-body {
+    min-height: 0;
+  }
+
+  .walk-say {
+    min-height: 132px;
+    font-size: 16px;
+  }
+
+  .walk-record {
+    flex-wrap: wrap;
+  }
+
+  .walk-what {
+    margin-left: 0;
+    flex-basis: 100%;
+    padding-left: calc(1ch + 10px);
+    text-align: left;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .walk-record,
+  .walk-line,
+  .walk-reader {
+    transition: none;
+  }
+}
