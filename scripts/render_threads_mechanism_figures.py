@@ -57,7 +57,6 @@ NARROW = 2 * MARGIN + INNER
 TOP = 78  # from the top of a column to its content
 
 STYLES = {
-    "head": {"size": 28, "weight": 650, "spacing": -0.01},
     "phase": {"size": 16.5, "weight": 600},
     "phase-r": {"size": 16.5, "weight": 600, "fill": TEAL_DARK},
     "note": {"size": 15.5, "fill": INK_2},
@@ -503,12 +502,8 @@ def _notes(fig: Figure, x: float, y: float, width: float, lines) -> float:
 def render(spec: dict, narrow: bool) -> str:
     width = NARROW if narrow else WIDE
     fig = Figure(width, 2000, STYLES)
-    y = 58
-    for line in fig.wrap(spec["title"], "head", width - 2 * MARGIN):
-        fig.text(MARGIN, y, line, "head")
-        y += 34
-    y -= 10
-    rule(fig, 0, y, width)
+    # No title in the drawing: the section heading above the figure names it.
+    y = 4
     height = TOP + max(panel[4] for panel in spec["panels"]) + 22
     for i, panel in enumerate(spec["panels"]):
         if narrow:

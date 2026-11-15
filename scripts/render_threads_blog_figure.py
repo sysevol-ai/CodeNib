@@ -94,20 +94,20 @@ FOOT = (
 
 STYLES = {
     "head": {"size": 34, "weight": 650, "spacing": -0.01},
-    "phase": {"size": 18, "weight": 600},
-    "phase-r": {"size": 18, "weight": 600, "fill": TEAL_DARK},
-    "note": {"size": 16, "fill": INK_2},
-    "piece": {"size": 17, "weight": 560},
-    "num": {"size": 14, "family": "mono", "fill": INK_2},
-    "file": {"size": 15, "weight": 500, "family": "mono", "fill": TEAL_DARK},
-    "part": {"size": 16, "weight": 620},
-    "desc": {"size": 15, "fill": INK_2},
-    "mono": {"size": 15, "weight": 500, "family": "mono", "fill": TEAL_DARK},
+    "phase": {"size": 21, "weight": 600},
+    "phase-r": {"size": 21, "weight": 600, "fill": TEAL_DARK},
+    "note": {"size": 19, "fill": INK_2},
+    "piece": {"size": 20, "weight": 560},
+    "num": {"size": 16, "family": "mono", "fill": INK_2},
+    "file": {"size": 17, "weight": 500, "family": "mono", "fill": TEAL_DARK},
+    "part": {"size": 19, "weight": 620},
+    "desc": {"size": 17.5, "fill": INK_2},
+    "mono": {"size": 17.5, "weight": 500, "family": "mono", "fill": TEAL_DARK},
     "stat": {"size": 44, "weight": 620, "spacing": -0.03, "fill": ACCENT_DARK},
     "stat-r": {"size": 44, "weight": 620, "spacing": -0.03, "fill": TEAL_DARK},
-    "stat-label": {"size": 17, "weight": 560},
-    "scope": {"size": 15, "fill": INK_2},
-    "foot": {"size": 15, "fill": INK_2},
+    "stat-label": {"size": 20, "weight": 560},
+    "scope": {"size": 17, "fill": INK_2},
+    "foot": {"size": 17, "fill": INK_2},
 }
 
 
@@ -116,7 +116,7 @@ def _calls(fig: Figure, x: float, y: float, bar_x: float, step: float, new: floa
     for i, piece in enumerate(PIECES):
         top = y + i * 50
         fig.text(x, top + 23, f"{i + 1}", "num")
-        fig.text(x + 26, top + 23, piece, "piece")
+        fig.text(x + 30, top + 24, piece, "piece")
         carried = 34 + i * step
         fig.rect(bar_x, top + 6, carried, 22, rx=3, fill=LINE_STRONG)
         fig.rect(bar_x + carried + 3, top + 6, new, 22, rx=3, fill=ACCENT)
@@ -153,29 +153,29 @@ def wide() -> str:
     fig.text(
         824, 206, "One document in a token budget, built by code. No model.", "note"
     )
-    fig.text(824, 256, "THREAD_CONTEXT.md", "file")
+    fig.text(824, 254, "THREAD_CONTEXT.md", "file")
     for i, (part, desc) in enumerate(PARTS):
-        x = 824 if i < 5 else 1180
-        y = 298 + (i % 5) * 46
+        x = 824 if i < 5 else 1206
+        y = 300 + (i % 5) * 52
         fig.text(x, y, part, "part")
-        fig.text(x, y + 20, desc, "desc")
-    fig.text(824, 566, "When the agent comes back:", "note")
+        fig.text(x, y + 23, desc, "desc")
+    fig.text(824, 582, "When the agent comes back:", "note")
     offset = fig.measure("When the agent comes back: ", "note")
-    fig.text(824 + offset, 566, "--since <cursor>", "mono")
-    offset += fig.measure("--since <cursor> ", "mono")
-    fig.text(824 + offset, 566, "returns only what changed.", "note")
+    fig.text(824 + offset, 582, "--since <cursor>", "mono")
+    offset += fig.measure("--since <cursor> ", "mono") + 6
+    fig.text(824 + offset, 582, "returns only what changed.", "note")
     rule(fig, 0, 620, 1600)
 
     # Measured, from docs/threads.md.
     for i, (value, label) in enumerate(STATS):
         x = 64 + i * 290
         fig.text(x, 696, value, "stat")
-        fig.text(x, 728, label, "stat-label")
-    fig.text(64, 754, STATS_SCOPE, "scope")
+        fig.text(x, 730, label, "stat-label")
+    fig.text(64, 758, STATS_SCOPE, "scope")
     fig.text(824, 696, RETURNS[0], "stat-r")
-    fig.text(824, 728, RETURNS[1], "stat-label")
-    fig.text(824, 754, RETURNS_SCOPE, "scope")
-    fig.text(64, 802, FOOT, "foot")
+    fig.text(824, 730, RETURNS[1], "stat-label")
+    fig.text(824, 758, RETURNS_SCOPE, "scope")
+    fig.text(64, 806, FOOT, "foot")
     return fig.svg(TITLE, DESC)
 
 
@@ -193,23 +193,23 @@ def narrow() -> str:
     top = y - 10
     rule(fig, 0, top, 640)
     fig.text(24, top + 38, "The agent reads the thread itself", "phase")
-    fig.text(24, top + 64, "One tool call per piece.", "note")
-    fig.text(24, top + 86, "Each call carries what came before.", "note")
-    _calls(fig, 24, top + 106, 256, 44, 36)
+    fig.text(24, top + 66, "One tool call per piece.", "note")
+    fig.text(24, top + 90, "Each call carries what came before.", "note")
+    _calls(fig, 24, top + 106, 292, 40, 34)
 
     top += 452
     rule(fig, 0, top, 640)
     fig.text(24, top + 38, "codenib threads prepares it once", "phase-r")
-    fig.text(24, top + 64, "One document in a token budget,", "note")
-    fig.text(24, top + 86, "built by code. No model.", "note")
+    fig.text(24, top + 66, "One document in a token budget,", "note")
+    fig.text(24, top + 90, "built by code. No model.", "note")
     fig.text(24, top + 128, "THREAD_CONTEXT.md", "file")
     for i, (part, desc) in enumerate(PARTS):
         row = top + 162 + i * 32
         fig.text(24, row, part, "part")
-        fig.text(178, row, desc, "desc")
+        fig.text(196, row, desc, "desc")
     fig.text(24, top + 498, "When the agent comes back:", "note")
     fig.text(24, top + 522, "--since <cursor>", "mono")
-    offset = fig.measure("--since <cursor> ", "mono")
+    offset = fig.measure("--since <cursor> ", "mono") + 6
     fig.text(24 + offset, top + 522, "returns only what changed.", "note")
 
     top += 548
