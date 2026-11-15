@@ -185,3 +185,14 @@
     font-size: 11px;
   }
 }
+
+/* A body block that continues after a figure does not open with a lead paragraph. */
+.article-body.continued > p:first-child {
+  color: inherit;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.article-body.continued > pre:first-child {
+  margin-top: 0;
+}

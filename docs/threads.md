@@ -182,7 +182,8 @@ The agent was asked which files and symbols have to change, and its answer was
 compared with what the merged pull request changed. Three ways of getting
 thread context were compared: the agent reads threads itself with `gh`; every
 thread event is pasted into the prompt unprocessed; or the prompt carries the
-`codenib threads` context.
+`codenib threads` context. Codex ran gpt-6.1-sol and Claude Code ran Claude
+Opus 5.5, both at medium effort.
 
 | Agent and task | Tasks | Files found: `gh` / pasted / CodeNib | Input tokens against `gh` | Against pasted |
 |---|---|---|---|---|
@@ -217,10 +218,10 @@ reading the whole thread each time (151 issues, a median of 6 returns each).
       the repository at that point with no history, so no arm can read the fix.
       A read-only replica of `gh` limited to the cut-off is available in every
       arm. Both agents ran with no network access.
-    - Codex: its `gh` and pasted arms ran once per task and the CodeNib arm
-      twice; the two runs differed by 6% in total input tokens on pull
-      requests and 1% on issues. Claude Code (Claude Opus 5.5, medium effort):
-      every arm ran once.
+    - Codex (gpt-6.1-sol, medium effort): its `gh` and pasted arms ran once
+      per task and the CodeNib arm twice; the two runs differed by 6% in total
+      input tokens on pull requests and 1% on issues. Claude Code (Claude Opus
+      5.5, medium effort): every arm ran once.
     - Intervals are 95% paired bootstrap over tasks. Codex pull requests: −27%
       to −14% against `gh`, −40% to −23% against pasted. Codex issues: −31% to
       −19% and −4% to +9%. Claude Code: −57% to −30% and −78% to −59%; files

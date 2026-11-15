@@ -49,7 +49,8 @@ DESC = (
     "locations, failing CI, other open pull requests on the same code, linked "
     "threads and discussion, ending in a cursor, so a later read returns only "
     "what changed. On 76 pull request takeovers, input tokens against reading "
-    "with gh fell 21% with Codex and 45% with Claude Code. Over the life of an "
+    "with gh fell 21% with Codex (gpt-6.1-sol) and 45% with Claude Code "
+    "(Claude Opus 5.5). Over the life of an "
     "issue, a first context and updates took a median of 2,897 tokens against "
     "21,103 for rereading the thread, on 151 issues."
 )
@@ -79,10 +80,12 @@ PARTS = [
 ]
 
 STATS = [
-    ("−21%", "input tokens with Codex"),
-    ("−45%", "input tokens with Claude Code"),
+    ("−21%", "Codex · gpt-6.1-sol"),
+    ("−45%", "Claude Code · Claude Opus 5.5"),
 ]
-STATS_SCOPE = "76 pull request takeovers, against the agent reading with gh"
+STATS_SCOPE = (
+    "input tokens on 76 pull request takeovers, against the agent reading with gh"
+)
 RETURNS = ("2,897 against 21,103", "tokens over the life of an issue")
 RETURNS_SCOPE = "updates against rereading; 151 issues, a median of 6 returns"
 FOOT = (
