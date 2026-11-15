@@ -1,148 +1,44 @@
-<!--
-SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
-SPDX-License-Identifier: Apache-2.0
--->
-<svg data-theme="dark" xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title description">
-  <title id="title">CodeGraph architecture: native query paths and semantic contracts</title>
-  <desc id="description">Analyzer artifacts pass through provider-specific normalization governed by shared semantic contracts. Capability-scoped native queries, provider-neutral facts, and the complete CodeGraph are distinct representations.</desc>
-  <defs>
-    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
-      <path d="M32 0H0V32" fill="none" stroke="#303338" stroke-width="1" opacity=".42"/>
-    </pattern>
-    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="strokeWidth">
-      <path d="M1 1l7 4-7 4" fill="none" stroke="#5f93ee" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-    </marker>
-    <marker id="arrow-muted" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="strokeWidth">
-      <path d="M1 1l7 4-7 4" fill="none" stroke="#8d939b" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-    </marker>
-  </defs>
-
-  <rect width="1200" height="630" rx="28" fill="#212327"/>
-  <rect width="1200" height="630" rx="28" fill="url(#grid)"/>
-
-  <g font-family="Geist, Inter, ui-sans-serif, system-ui, sans-serif">
-    <g transform="translate(48 36)">
-      <rect width="36" height="36" rx="10" fill="#5f93ee"/>
-      <path d="m14 11-5 7 5 7m8-14 5 7-5 7" fill="none" stroke="#1a1b1e" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
-      <text x="50" y="15" fill="#e8eaed" font-size="15" font-weight="650">CodeNib</text>
-      <text x="50" y="32" fill="#9aa0a6" font-family="Geist Mono, ui-monospace, monospace" font-size="10.5" font-weight="620" letter-spacing="1.15">CODEGRAPH ARCHITECTURE</text>
-    </g>
-
-    <text x="48" y="116" fill="#e8eaed" font-size="34" font-weight="660" letter-spacing="-1.15">CodeGraph paths and materialization boundaries.</text>
-    <text x="48" y="147" fill="#bdc1c6" font-size="16.5">Provider-specific representations stay behind explicit capability and identity gates.</text>
-
-    <!-- Provider artifacts -->
-    <g transform="translate(48 206)">
-      <rect width="212" height="276" rx="17" fill="#1a1b1e" stroke="#44484f" stroke-width="1.2"/>
-      <text x="20" y="30" fill="#9aa0a6" font-family="Geist Mono, ui-monospace, monospace" font-size="10.5" font-weight="680" letter-spacing="1.15">PROVIDER ARTIFACTS</text>
-
-      <g transform="translate(18 50)">
-        <rect width="176" height="74" rx="12" fill="#212327" stroke="#303338"/>
-        <circle cx="21" cy="24" r="5" fill="#5f93ee"/>
-        <text x="35" y="28" fill="#e8eaed" font-size="14" font-weight="640">SCIP</text>
-        <text x="18" y="53" fill="#9aa0a6" font-family="Geist Mono, ui-monospace, monospace" font-size="11.5">index.decoded</text>
-      </g>
-
-      <g transform="translate(18 136)">
-        <rect width="176" height="74" rx="12" fill="#212327" stroke="#303338"/>
-        <circle cx="21" cy="24" r="5" fill="#5f93ee"/>
-        <text x="35" y="28" fill="#e8eaed" font-size="14" font-weight="640">clangd</text>
-        <text x="18" y="53" fill="#9aa0a6" font-family="Geist Mono, ui-monospace, monospace" font-size="11.5">*.idx shards</text>
-      </g>
-
-      <text x="20" y="245" fill="#9aa0a6" font-size="11.5">Existing analyzer output</text>
-      <text x="20" y="262" fill="#9aa0a6" font-size="11.5">Analyzer generation excluded</text>
-    </g>
-
-    <path d="M271 344h43" fill="none" stroke="#5f93ee" stroke-width="2" marker-end="url(#arrow)"/>
-    <text x="292" y="329" text-anchor="middle" fill="#9aa0a6" font-family="Geist Mono, ui-monospace, monospace" font-size="10">ADAPT</text>
-
-    <!-- Shared semantic contract -->
-    <g transform="translate(326 188)">
-      <rect width="248" height="314" rx="18" fill="#1a1b1e" stroke="#4a6a9c" stroke-width="1.4"/>
-      <rect x="14" y="14" width="220" height="53" rx="11" fill="#0c0d0f"/>
-      <text x="29" y="36" fill="#c2c8ce" font-family="Geist Mono, ui-monospace, monospace" font-size="10.5" font-weight="650" letter-spacing=".9">SHARED CONTRACT</text>
-      <text x="29" y="55" fill="#fff" font-size="15" font-weight="640">Provider facts</text>
-
-      <g transform="translate(18 87)" font-family="Geist Mono, ui-monospace, monospace" font-size="11.5">
-        <g fill="#212327" stroke="#303338">
-          <rect width="212" height="37" rx="8"/>
-          <rect y="45" width="212" height="37" rx="8"/>
-          <rect y="90" width="212" height="37" rx="8"/>
-          <rect y="135" width="212" height="37" rx="8"/>
-        </g>
-        <g fill="#bdc1c6">
-          <text x="13" y="23">definitions + references</text>
-          <text x="13" y="68">occurrences + ranges</text>
-          <text x="13" y="113">adjacency + order</text>
-          <text x="13" y="158">roles + diagnostics</text>
-        </g>
-      </g>
-
-      <g transform="translate(18 270)">
-        <rect width="212" height="28" rx="14" fill="#1c2636" stroke="#38557f"/>
-        <circle cx="16" cy="14" r="3.5" fill="#2fae5e"/>
-        <text x="28" y="18" fill="#aecbfa" font-size="10.5" font-weight="620">paths · ranges · roles</text>
-      </g>
-    </g>
-
-    <!-- Fan-out -->
-    <path d="M585 246h40" fill="none" stroke="#5f93ee" stroke-width="2" marker-end="url(#arrow)"/>
-    <path d="M585 344h22c10 0 18 8 18 18v25" fill="none" stroke="#5f93ee" stroke-width="2" marker-end="url(#arrow)"/>
-    <path d="M585 445h22c10 0 18 8 18 18v61" fill="none" stroke="#8d939b" stroke-width="1.8" stroke-dasharray="5 5" marker-end="url(#arrow-muted)"/>
-
-    <!-- FactQueryIndex -->
-    <g transform="translate(637 174)">
-      <rect width="515" height="150" rx="17" fill="#1a1b1e" stroke="#4a6a9c" stroke-width="1.35"/>
-      <rect x="18" y="18" width="36" height="36" rx="10" fill="#263a5c"/>
-      <path d="M28 37h16M28 30h10M28 44h12" fill="none" stroke="#5f93ee" stroke-width="1.8" stroke-linecap="round"/>
-      <text x="67" y="31" fill="#8ab4f8" font-family="Geist Mono, ui-monospace, monospace" font-size="10.5" font-weight="680" letter-spacing="1">NATIVE QUERY PATH</text>
-      <text x="67" y="51" fill="#e8eaed" font-size="17" font-weight="650">FactQueryIndex + adapter</text>
-      <text x="18" y="82" fill="#bdc1c6" font-size="12">Integer postings; capabilities are provider-gated</text>
-
-      <g transform="translate(18 99)" font-family="Geist Mono, ui-monospace, monospace" font-size="10.5">
-        <rect width="92" height="29" rx="8" fill="#1c2636" stroke="#38557f"/>
-        <rect x="100" width="108" height="29" rx="8" fill="#1c2636" stroke="#38557f"/>
-        <rect x="216" width="100" height="29" rx="8" fill="#1c2636" stroke="#38557f"/>
-        <text x="46" y="19" text-anchor="middle" fill="#8ab4f8">symbols</text>
-        <text x="154" y="19" text-anchor="middle" fill="#8ab4f8">opt. positions</text>
-        <text x="266" y="19" text-anchor="middle" fill="#8ab4f8">route adapter</text>
-        <rect x="324" width="155" height="29" rx="14.5" fill="#16272a" stroke="#1f5e56"/>
-        <circle cx="339" cy="14.5" r="3.5" fill="#2fae5e"/>
-        <text x="350" y="19" fill="#7fdca0">fmt v3 · 0 graphs</text>
-      </g>
-    </g>
-
-    <!-- FactBatch -->
-    <g transform="translate(637 342)">
-      <rect width="515" height="150" rx="17" fill="#1a1b1e" stroke="#3b6f68" stroke-width="1.35"/>
-      <rect x="18" y="18" width="36" height="36" rx="10" fill="#16272a"/>
-      <path d="M28 28h16v17H28zM31 24h10v4H31m0 7h10m-10 5h7" fill="none" stroke="#1d9c8f" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-      <text x="67" y="31" fill="#5fd4c4" font-family="Geist Mono, ui-monospace, monospace" font-size="10.5" font-weight="680" letter-spacing="1">PROVIDER-NEUTRAL MODEL</text>
-      <text x="67" y="51" fill="#e8eaed" font-size="17" font-weight="650">FactBatch v1 · one file</text>
-      <text x="18" y="82" fill="#bdc1c6" font-size="12">Validated per-file facts with no database lifecycle</text>
-
-      <g transform="translate(18 99)" font-family="Geist Mono, ui-monospace, monospace" font-size="10.5">
-        <rect width="104" height="29" rx="8" fill="#16272a" stroke="#1f5e56"/>
-        <rect x="112" width="106" height="29" rx="8" fill="#16272a" stroke="#1f5e56"/>
-        <rect x="226" width="82" height="29" rx="8" fill="#16272a" stroke="#1f5e56"/>
-        <text x="52" y="19" text-anchor="middle" fill="#5fd4c4">source digest</text>
-        <text x="165" y="19" text-anchor="middle" fill="#5fd4c4">profile digest</text>
-        <text x="267" y="19" text-anchor="middle" fill="#5fd4c4">provenance</text>
-        <rect x="316" width="163" height="29" rx="14.5" fill="#16272a" stroke="#1f5e56"/>
-        <circle cx="331" cy="14.5" r="3.5" fill="#2fae5e"/>
-        <text x="342" y="19" fill="#7fdca0" font-size="10">native buffer · no DB</text>
-      </g>
-    </g>
-
-    <!-- Complete graph fallback -->
-    <g transform="translate(637 510)">
-      <rect width="515" height="62" rx="14" fill="#1a1b1e" stroke="#44484f" stroke-width="1.2"/>
-      <text x="18" y="25" fill="#9aa0a6" font-family="Geist Mono, ui-monospace, monospace" font-size="10.5" font-weight="680" letter-spacing=".9">COMPATIBILITY AUTHORITY</text>
-      <text x="18" y="45" fill="#e8eaed" font-size="14" font-weight="640">Complete CodeGraph / igraph</text>
-      <text x="496" y="45" text-anchor="end" fill="#9aa0a6" font-size="11.5">direct selection · request fallback</text>
-    </g>
-
-    <text x="48" y="604" fill="#9aa0a6" font-family="Geist Mono, ui-monospace, monospace" font-size="10.5">EXISTING ARTIFACTS · PROVIDER-SPECIFIC RECEIPTS · IDENTITY FAILURES FAIL CLOSED · EXTERNAL ANALYZER GENERATION EXCLUDED</text>
-  </g>
+<svg data-theme="dark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630" role="img" aria-labelledby="t d">
+<title id="t">CodeGraph paths and materialization boundaries</title>
+<desc id="d">Existing analyzer output from SCIP (index.decoded) and clangd (idx shards) is adapted into provider facts, the shared contract: definitions and references, occurrences and ranges, adjacency and order, roles and diagnostics, as paths, ranges and roles. Three paths sit behind it. The native query path is FactQueryIndex with an adapter: integer postings, provider-gated capabilities, symbols, optional positions and a route adapter, format v3, no graphs. The provider-neutral model is FactBatch v1 in one file: validated per-file facts with no database lifecycle, with source digest, profile digest and provenance in a native buffer. The compatibility authority is the complete CodeGraph on igraph, by direct selection or request fallback. Identity failures fail closed, and external analyzer generation is excluded.</desc>
+<defs><marker id="arrow-gray" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#80868b"/></marker><marker id="arrow-blue" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5f93ee"/></marker><marker id="arrow-sky" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#2aa8e0"/></marker><marker id="arrow-teal" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1d9c8f"/></marker><marker id="arrow-ink" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#e8eaed"/></marker><style>@font-face{font-family:'Geist';font-weight:100 900;src:url(data:font/woff2;base64,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) format('woff2');}@font-face{font-family:'Geist Mono';font-weight:100 900;src:url(data:font/woff2;base64,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) format('woff2');}.head{font-family:Geist, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;font-size:34px;font-weight:650;fill:#e8eaed;letter-spacing:-0.01em;}.head-dim{font-family:Geist, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;font-size:34px;font-weight:650;fill:#9aa0a6;letter-spacing:-0.01em;}.sub{font-family:Geist, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;font-size:18px;font-weight:400;fill:#bdc1c6;}.col{font-family:Geist, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;font-size:20px;font-weight:600;fill:#e8eaed;}.col-b{font-family:Geist, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;font-size:20px;font-weight:600;fill:#8ab4f8;}.col-t{font-family:Geist, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;font-size:20px;font-weight:600;fill:#5fd4c4;}.strong{font-family:Geist, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;font-size:17.5px;font-weight:600;fill:#e8eaed;}.text{font-family:Geist, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;font-size:16.5px;font-weight:400;fill:#bdc1c6;}.mono{font-family:'Geist Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;font-size:15px;font-weight:500;fill:#e8eaed;}.mono-t{font-family:'Geist Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;font-size:15px;font-weight:500;fill:#5fd4c4;}.mono-dim{font-family:'Geist Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;font-size:14.5px;font-weight:400;fill:#9aa0a6;}.foot{font-family:Geist, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;font-size:16px;font-weight:400;fill:#bdc1c6;}.foot-b{font-family:Geist, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;font-size:17px;font-weight:600;fill:#e8eaed;}</style></defs>
+<rect width="1200" height="630" fill="#1a1b1e"/>
+<text x="56.0" y="72.0" class="head">CodeGraph paths and materialization boundaries.</text>
+<text x="56.0" y="104.0" class="sub">Provider-specific representations stay behind explicit capability and identity gates.</text>
+<path d="M 0.0 132.0 H 1200.0" fill="none" stroke="#303338" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="56.0" y="178.0" class="col">Provider artifacts</text>
+<text x="56.0" y="224.0" class="strong">SCIP</text>
+<text x="56.0" y="247.0" class="mono-dim">index.decoded</text>
+<text x="56.0" y="290.0" class="strong">clangd</text>
+<text x="56.0" y="313.0" class="mono-dim">*.idx shards</text>
+<text x="56.0" y="364.0" class="text">Existing analyzer output.</text>
+<text x="56.0" y="388.0" class="text">Analyzer generation excluded.</text>
+<text x="323.0" y="160.0" class="mono-dim" text-anchor="middle">adapt</text>
+<path d="M 302.0 172.0 H 346.0" fill="none" stroke="#80868b" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow-gray)"/>
+<text x="368.0" y="178.0" class="col">Provider facts</text>
+<text x="368.0" y="204.0" class="text">The shared contract</text>
+<text x="368.0" y="250.0" class="mono">definitions + references</text>
+<text x="368.0" y="280.0" class="mono">occurrences + ranges</text>
+<text x="368.0" y="310.0" class="mono">adjacency + order</text>
+<text x="368.0" y="340.0" class="mono">roles + diagnostics</text>
+<text x="368.0" y="388.0" class="mono-t">paths · ranges · roles</text>
+<path d="M 640.0 172.0 H 684.0" fill="none" stroke="#5f93ee" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow-blue)"/>
+<text x="706.0" y="178.0" class="col-b">FactQueryIndex + adapter</text>
+<text x="706.0" y="204.0" class="text">Native query path. Integer postings; capabilities are</text>
+<text x="706.0" y="228.0" class="text">provider-gated.</text>
+<text x="706.0" y="252.0" class="mono">symbols · opt. positions · route adapter</text>
+<text x="706.0" y="274.0" class="mono-dim">fmt v3 · 0 graphs</text>
+<path d="M 706.0 296.0 H 1200.0" fill="none" stroke="#303338" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 640.0 332.0 H 684.0" fill="none" stroke="#1d9c8f" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow-teal)"/>
+<text x="706.0" y="338.0" class="col-t">FactBatch v1 · one file</text>
+<text x="706.0" y="364.0" class="text">Provider-neutral model. Validated per-file facts with no</text>
+<text x="706.0" y="388.0" class="text">database lifecycle.</text>
+<text x="706.0" y="412.0" class="mono">source digest · profile digest · provenance</text>
+<text x="706.0" y="434.0" class="mono-dim">native buffer · no DB</text>
+<path d="M 706.0 456.0 H 1200.0" fill="none" stroke="#303338" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 640.0 492.0 H 684.0" fill="none" stroke="#80868b" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="5 5" marker-end="url(#arrow-gray)"/>
+<text x="706.0" y="498.0" class="col">Complete CodeGraph / igraph</text>
+<text x="706.0" y="524.0" class="text">Compatibility authority. Direct selection · request fallback.</text>
+<path d="M 0.0 552.0 H 1200.0" fill="none" stroke="#303338" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="56.0" y="592.0" class="foot">Existing artifacts · provider-specific receipts · identity failures fail closed · external analyzer generation excluded</text>
 </svg>

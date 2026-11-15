@@ -34,7 +34,7 @@ from render_contextbench_blog_figures import (
     LINE_STRONG,
     OUT,
     ROOT,
-    SUBTLE,
+    TEAL,
     TEAL_DARK,
     Figure,
     scaled,
@@ -49,7 +49,8 @@ DESC = (
     "locations, failing CI, other open pull requests on the same code, linked "
     "threads and discussion, ending in a cursor, so a later read returns only "
     "what changed. On 76 pull request takeovers, input tokens against reading "
-    "with gh fell 21% with Codex and 45% with Claude Code. Over the life of an "
+    "with gh fell 21% with Codex (gpt-6.1-sol) and 45% with Claude Code "
+    "(Claude Opus 5.5). Over the life of an "
     "issue, a first context and updates took a median of 2,897 tokens against "
     "21,103 for rereading the thread, on 151 issues."
 )
@@ -79,34 +80,35 @@ PARTS = [
 ]
 
 STATS = [
-    ("−21%", "input tokens with Codex"),
-    ("−45%", "input tokens with Claude Code"),
+    ("−21%", "Codex · gpt-6.1-sol"),
+    ("−45%", "Claude Code · Claude Opus 5.5"),
 ]
-STATS_SCOPE = "76 pull request takeovers, against the agent reading with gh"
+STATS_SCOPE = (
+    "input tokens on 76 pull request takeovers, against the agent reading with gh"
+)
 RETURNS = ("2,897 against 21,103", "tokens over the life of an issue")
 RETURNS_SCOPE = "updates against rereading; 151 issues, a median of 6 returns"
 FOOT = (
-    "It saves tokens; it does not make answers better. Files found: Codex 0.75 "
+    "Answer quality holds. Files found, prepared context against gh: Codex 0.75 "
     "against 0.74, Claude Code 0.80 against 0.83."
 )
 
 STYLES = {
-    "kicker": {"size": 15, "weight": 650, "spacing": 0.08, "fill": ACCENT},
     "head": {"size": 34, "weight": 650, "spacing": -0.01},
-    "phase": {"size": 14, "weight": 650, "spacing": 0.08, "fill": INK_2},
-    "phase-r": {"size": 14, "weight": 650, "spacing": 0.08, "fill": TEAL_DARK},
-    "note": {"size": 16, "fill": INK_2},
-    "piece": {"size": 17, "weight": 560},
-    "num": {"size": 14, "family": "mono", "fill": INK_2},
-    "file": {"size": 15, "weight": 500, "family": "mono", "fill": INK_2},
-    "part": {"size": 16, "weight": 620},
-    "desc": {"size": 15, "fill": INK_2},
-    "mono": {"size": 15, "weight": 500, "family": "mono", "fill": TEAL_DARK},
+    "phase": {"size": 21, "weight": 600},
+    "phase-r": {"size": 21, "weight": 600, "fill": TEAL_DARK},
+    "note": {"size": 19, "fill": INK_2},
+    "piece": {"size": 20, "weight": 560},
+    "num": {"size": 16, "family": "mono", "fill": INK_2},
+    "file": {"size": 17, "weight": 500, "family": "mono", "fill": TEAL_DARK},
+    "part": {"size": 19, "weight": 620},
+    "desc": {"size": 17.5, "fill": INK_2},
+    "mono": {"size": 17.5, "weight": 500, "family": "mono", "fill": TEAL_DARK},
     "stat": {"size": 44, "weight": 620, "spacing": -0.03, "fill": ACCENT_DARK},
     "stat-r": {"size": 44, "weight": 620, "spacing": -0.03, "fill": TEAL_DARK},
-    "stat-label": {"size": 17, "weight": 560},
-    "scope": {"size": 15, "fill": INK_2},
-    "foot": {"size": 15, "fill": INK_2},
+    "stat-label": {"size": 20, "weight": 560},
+    "scope": {"size": 17, "fill": INK_2},
+    "foot": {"size": 17, "fill": INK_2},
 }
 
 
@@ -115,7 +117,7 @@ def _calls(fig: Figure, x: float, y: float, bar_x: float, step: float, new: floa
     for i, piece in enumerate(PIECES):
         top = y + i * 50
         fig.text(x, top + 23, f"{i + 1}", "num")
-        fig.text(x + 26, top + 23, piece, "piece")
+        fig.text(x + 30, top + 24, piece, "piece")
         carried = 34 + i * step
         fig.rect(bar_x, top + 6, carried, 22, rx=3, fill=LINE_STRONG)
         fig.rect(bar_x + carried + 3, top + 6, new, 22, rx=3, fill=ACCENT)
@@ -127,49 +129,54 @@ def _calls(fig: Figure, x: float, y: float, bar_x: float, step: float, new: floa
     fig.text(x + 64 + width, legend, "the new piece", "desc")
 
 
+def rule(fig: Figure, x: float, y: float, width: float) -> None:
+    """A horizontal hairline."""
+    fig.path(f"M {x:.1f} {y:.1f} H {x + width:.1f}", stroke=LINE, sw=1.5)
+
+
 def wide() -> str:
+    # One surface, like the mechanism figures: two columns divided by a
+    # hairline and the measured figures under a rule.
     fig = Figure(1600, 840, STYLES)
-    fig.text(64, 74, "CODENIB THREADS · PREVIEW", "kicker")
-    fig.text(64, 122, TITLE, "head")
+    fig.text(64, 92, TITLE, "head")
+    rule(fig, 0, 130, 1600)
 
     # Left: the agent reads the thread itself.
-    fig.rect(64, 160, 688, 448, rx=10, fill="#ffffff", stroke=LINE)
-    fig.text(92, 200, "THE AGENT READS THE THREAD ITSELF", "phase")
+    fig.text(64, 178, "The agent reads the thread itself", "phase")
     fig.text(
-        92, 228, "One tool call per piece. Each call carries what came before.", "note"
+        64, 206, "One tool call per piece. Each call carries what came before.", "note"
     )
-    _calls(fig, 92, 252, 356, 56, 46)
+    _calls(fig, 64, 236, 328, 56, 46)
+    fig.path("M 776 130 V 620", stroke=LINE, sw=1.5)
 
     # Right: one prepared context.
-    fig.rect(800, 160, 736, 448, rx=10, fill="#ffffff", stroke=LINE)
-    fig.text(828, 200, "CODENIB THREADS PREPARES IT ONCE", "phase-r")
+    fig.text(824, 178, "codenib threads prepares it once", "phase-r")
     fig.text(
-        828, 228, "One document in a token budget, built by code. No model.", "note"
+        824, 206, "One document in a token budget, built by code. No model.", "note"
     )
-    fig.rect(828, 248, 680, 282, rx=8, fill=SUBTLE, stroke=LINE)
-    fig.text(848, 278, "THREAD_CONTEXT.md", "file")
+    fig.text(824, 254, "THREAD_CONTEXT.md", "file")
     for i, (part, desc) in enumerate(PARTS):
-        x = 848 if i < 5 else 1172
-        y = 314 + (i % 5) * 44
+        x = 824 if i < 5 else 1206
+        y = 300 + (i % 5) * 52
         fig.text(x, y, part, "part")
-        fig.text(x, y + 20, desc, "desc")
-    fig.text(828, 566, "When the agent comes back:", "note")
+        fig.text(x, y + 23, desc, "desc")
+    fig.text(824, 582, "When the agent comes back:", "note")
     offset = fig.measure("When the agent comes back: ", "note")
-    fig.text(828 + offset, 566, "--since <cursor>", "mono")
-    offset += fig.measure("--since <cursor> ", "mono")
-    fig.text(828 + offset, 566, "returns only what changed.", "note")
+    fig.text(824 + offset, 582, "--since <cursor>", "mono")
+    offset += fig.measure("--since <cursor> ", "mono") + 6
+    fig.text(824 + offset, 582, "returns only what changed.", "note")
+    rule(fig, 0, 620, 1600)
 
     # Measured, from docs/threads.md.
     for i, (value, label) in enumerate(STATS):
         x = 64 + i * 290
-        fig.text(x, 690, value, "stat")
-        fig.text(x, 722, label, "stat-label")
-    fig.text(64, 748, STATS_SCOPE, "scope")
-    fig.path("M 760 652 L 760 752", stroke=LINE, sw=1.5)
-    fig.text(800, 690, RETURNS[0], "stat-r")
-    fig.text(800, 722, RETURNS[1], "stat-label")
-    fig.text(800, 748, RETURNS_SCOPE, "scope")
-    fig.text(64, 800, FOOT, "foot")
+        fig.text(x, 696, value, "stat")
+        fig.text(x, 730, label, "stat-label")
+    fig.text(64, 758, STATS_SCOPE, "scope")
+    fig.text(824, 696, RETURNS[0], "stat-r")
+    fig.text(824, 730, RETURNS[1], "stat-label")
+    fig.text(824, 758, RETURNS_SCOPE, "scope")
+    fig.text(64, 806, FOOT, "foot")
     return fig.svg(TITLE, DESC)
 
 
@@ -179,36 +186,36 @@ def narrow() -> str:
     styles["stat"] = {**STYLES["stat"], "size": 38}
     styles["stat-r"] = {**STYLES["stat-r"], "size": 38}
     fig = Figure(640, 1400, styles)
-    fig.text(24, 50, "CODENIB THREADS · PREVIEW", "kicker")
-    y = 92
+    y = 58
     for line in fig.wrap(TITLE, "head", 592):
         fig.text(24, y, line, "head")
         y += 34
 
-    top = y + 4
-    fig.rect(24, top, 592, 452, rx=10, fill="#ffffff", stroke=LINE)
-    fig.text(44, top + 38, "THE AGENT READS THE THREAD ITSELF", "phase")
-    fig.text(44, top + 66, "One tool call per piece.", "note")
-    fig.text(44, top + 88, "Each call carries what came before.", "note")
-    _calls(fig, 44, top + 108, 276, 44, 36)
+    top = y - 10
+    rule(fig, 0, top, 640)
+    fig.text(24, top + 38, "The agent reads the thread itself", "phase")
+    fig.text(24, top + 66, "One tool call per piece.", "note")
+    fig.text(24, top + 90, "Each call carries what came before.", "note")
+    _calls(fig, 24, top + 106, 292, 40, 34)
 
-    top += 476
-    fig.rect(24, top, 592, 566, rx=10, fill="#ffffff", stroke=LINE)
-    fig.text(44, top + 38, "CODENIB THREADS PREPARES IT ONCE", "phase-r")
-    fig.text(44, top + 66, "One document in a token budget,", "note")
-    fig.text(44, top + 88, "built by code. No model.", "note")
-    fig.rect(44, top + 108, 552, 388, rx=8, fill=SUBTLE, stroke=LINE)
-    fig.text(62, top + 138, "THREAD_CONTEXT.md", "file")
+    top += 452
+    rule(fig, 0, top, 640)
+    fig.text(24, top + 38, "codenib threads prepares it once", "phase-r")
+    fig.text(24, top + 66, "One document in a token budget,", "note")
+    fig.text(24, top + 90, "built by code. No model.", "note")
+    fig.text(24, top + 128, "THREAD_CONTEXT.md", "file")
     for i, (part, desc) in enumerate(PARTS):
-        row = top + 172 + i * 32
-        fig.text(62, row, part, "part")
-        fig.text(216, row, desc, "desc")
-    fig.text(44, top + 524, "When the agent comes back:", "note")
-    fig.text(44, top + 548, "--since <cursor>", "mono")
-    offset = fig.measure("--since <cursor> ", "mono")
-    fig.text(44 + offset, top + 548, "returns only what changed.", "note")
+        row = top + 162 + i * 32
+        fig.text(24, row, part, "part")
+        fig.text(196, row, desc, "desc")
+    fig.text(24, top + 498, "When the agent comes back:", "note")
+    fig.text(24, top + 522, "--since <cursor>", "mono")
+    offset = fig.measure("--since <cursor> ", "mono") + 6
+    fig.text(24 + offset, top + 522, "returns only what changed.", "note")
 
-    y = top + 566 + 58
+    top += 548
+    rule(fig, 0, top, 640)
+    y = top + 58
     for value, label in STATS:
         fig.text(24, y, value, "stat")
         fig.text(160, y - 6, label, "stat-label")
@@ -228,11 +235,42 @@ def narrow() -> str:
     for line in fig.wrap(FOOT, "foot", 592):
         fig.text(24, y, line, "foot")
         y += 22
-    fig.height = int(y + 10)
+    fig.height = int(y + 14)
     return fig.svg(TITLE, DESC)
 
 
-FIGURES = {"thread-context.svg": wide, "thread-context-narrow.svg": narrow}
+def card() -> str:
+    """The picture on the blog index card: the mechanism alone, set large.
+
+    The index shows it at about half its drawn width, where the full figure's
+    labels cannot be read.
+    """
+    styles = {
+        "piece": {"size": 30, "weight": 560},
+        "num": {"size": 24, "family": "mono", "fill": INK_2},
+        "once": {"size": 30, "weight": 600, "fill": TEAL_DARK},
+        "desc": {"size": 24, "fill": INK_2},
+    }
+    fig = Figure(820, 600, styles)
+    for i, piece in enumerate(PIECES):
+        top = 34 + i * 64
+        fig.text(40, top + 32, f"{i + 1}", "num")
+        fig.text(82, top + 32, piece, "piece")
+        carried = 30 + i * 46
+        fig.rect(440, top + 6, carried, 34, rx=4, fill=LINE_STRONG)
+        fig.rect(440 + carried + 4, top + 6, 44, 34, rx=4, fill=ACCENT)
+    rule(fig, 0, 432, 820)
+    fig.text(40, 492, "Prepared once", "once")
+    fig.rect(440, 464, 150, 34, rx=4, fill=TEAL)
+    fig.text(40, 552, "One read, in a token budget, with no model.", "desc")
+    return fig.svg(TITLE, DESC)
+
+
+FIGURES = {
+    "thread-context.svg": wide,
+    "thread-context-narrow.svg": narrow,
+    "thread-context-card.svg": card,
+}
 
 
 def main() -> None:

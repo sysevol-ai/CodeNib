@@ -47,6 +47,11 @@
   padding: 0;
 }
 
+::selection {
+  background: rgba(138, 180, 248, 0.32);
+  color: var(--ink);
+}
+
 html {
   overflow-x: clip;
   scroll-behavior: smooth;
@@ -317,6 +322,83 @@ pre,
 
 .featured-post:hover .read-more span {
   transform: translateX(3px);
+}
+
+/* Earlier posts: one row each, no picture. */
+.section-label-next {
+  margin-top: 64px;
+}
+
+.post-list {
+  border-top: 1px solid var(--line);
+}
+
+.posts .post-list article + article {
+  margin-top: 0;
+}
+
+.post-row {
+  display: block;
+  padding: 30px 0 32px;
+  border-bottom: 1px solid var(--line);
+}
+
+.post-row .post-copy {
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr) 32px;
+  gap: 8px 36px;
+  align-items: start;
+  padding: 0;
+}
+
+.post-row .post-meta {
+  flex-direction: column;
+  grid-row: 1 / span 2;
+  align-items: flex-start;
+  gap: 5px;
+  padding-top: 7px;
+}
+
+.post-row h3 {
+  grid-column: 2;
+  color: var(--ink);
+  font-size: clamp(1.3rem, 2vw, 1.6rem);
+  font-weight: 570;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  text-wrap: balance;
+  transition: color 150ms ease;
+}
+
+.post-row .summary {
+  grid-column: 2;
+  max-width: 68ch;
+  color: var(--ink-2);
+  font-size: 16px;
+}
+
+.post-row .read-more {
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: end;
+  margin-top: 4px;
+  color: var(--ink-3);
+  font-size: 18px;
+}
+
+.post-row:hover h3,
+.post-row:hover .read-more {
+  color: var(--accent);
+}
+
+.post-row:hover .read-more span {
+  transform: translateX(3px);
+}
+
+.post-row:focus-visible,
+.featured-post:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
 }
 
 .post-art {
@@ -916,6 +998,29 @@ pre,
 @media (max-width: 820px) {
   .featured-post {
     grid-template-columns: 1fr;
+  }
+
+  .post-row .post-copy {
+    grid-template-columns: minmax(0, 1fr) 24px;
+    gap: 8px 16px;
+  }
+
+  .post-row .post-meta {
+    flex-direction: row;
+    grid-column: 1 / -1;
+    grid-row: auto;
+    padding-top: 0;
+    gap: 4px 12px;
+  }
+
+  .post-row h3,
+  .post-row .summary {
+    grid-column: 1;
+  }
+
+  .post-row .read-more {
+    grid-column: 2;
+    grid-row: 2;
   }
 
   .post-art {

@@ -55,8 +55,8 @@ the thread, it gets only what changed.
 
 On 76 pull requests taken over after a review or a failed check, the prepared
 context cut Claude Code's input tokens by 45% against reading with `gh`. It
-found slightly fewer of the files to change (0.80 against 0.83), a gap too
-small to tell from chance at that size. See
+found the files to change about as often (0.80 against 0.83, a gap too small
+to tell from chance at that size). See
 [Thread context](https://docs.codenib.ai/threads/) for the method and the
 commands for following many threads at once.
 
