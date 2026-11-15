@@ -204,8 +204,8 @@ The site uses real directory indexes for nested routes:
   BM25 and model-planned grep candidates;
 - `/blogs/local-code-intelligence-dgx-spark/` is the reproducible local
   deployment reference;
-- `/blogs/thread-context-for-coding-agents/` walks through `codenib threads`
-  on a real pull request;
+- `/blogs/thread-context-for-coding-agents/` explains how `codenib threads`
+  chooses what an agent reads;
 - each article lives at `landing/blogs/<slug>/index.html`.
 
 Nested pages should reference shared assets from `/assets/...` so the same URL

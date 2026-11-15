@@ -223,7 +223,7 @@ Claude Code found slightly fewer (0.80 against 0.83), a gap too small to tell
 from chance on 76 tasks.
 
 [Thread context guide](https://docs.codenib.ai/threads/)
-· [A worked example](https://codenib.ai/blogs/thread-context-for-coding-agents/)
+· [How it decides what to include](https://codenib.ai/blogs/thread-context-for-coding-agents/)
 · In Claude Code and Grok Build, the plugin adds it as `/codenib:thread`.
 
 ## How it compares
