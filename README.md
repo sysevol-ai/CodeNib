@@ -189,6 +189,14 @@ codenib threads inbox 812       # later: only what is new
 codenib threads board           # all tickets, and other work on the same code
 ```
 
+With several agents on one repository, each ticket is sent only the records it
+has not read, and tickets whose work reaches the same function are told about
+each other:
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/sysevol-ai/CodeNib/main/assets/readme/thread-board.gif" width="772" alt="A board of three tickets, replayed. A review comment and a failed check arrive on pull request 812, and only Agent A has two unread records; when it comes back it is sent those two, not the thread again. A push to pull request 815 then changes Reader.read(), the function 812 is about, and both tickets report the other as also in progress on that function. Agent B is sent its one new record. The next poll finds nothing new, and nothing is sent. The pull requests are made up.">
+</p>
+
 This is the top of what it wrote for
 [caddyserver/caddy#8024](https://github.com/caddyserver/caddy/pull/8024) on
 November 14, 2026, a pull request with 145 events across three threads:

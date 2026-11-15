@@ -196,3 +196,11 @@
 .article-body.continued > pre:first-child {
   margin-top: 0;
 }
+
+/* An in-article diagram is shown near its own size on a wide screen; the link
+   to the full drawing is for the stacked version a narrow screen gets. */
+@media (min-width: 901px) {
+  .hero-figure.in-article .diagram-open {
+    display: none;
+  }
+}
