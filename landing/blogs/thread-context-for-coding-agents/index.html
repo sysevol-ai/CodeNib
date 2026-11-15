@@ -115,7 +115,7 @@ SPDX-License-Identifier: Apache-2.0
       </figure>
 
       <div class="article-body continued before-figure">
-        <p>So the budget is not applied evenly. Posts in the thread itself stay whole until they pass three times the budget. The issues and pull requests it links to are cut first, oldest posts first. The second line of the document then tells the agent which case it is in. This is <a href="https://github.com/caddyserver/caddy/pull/8024">caddyserver/caddy#8024</a> on November 14, 2026, with <code>[…]</code> where we left text out and the line wrapped to fit:</p>
+        <p>So the budget is not applied evenly, and the second line of the document tells the agent which case it is in. This is <a href="https://github.com/caddyserver/caddy/pull/8024">caddyserver/caddy#8024</a> on November 14, 2026, with <code>[…]</code> where we left text out and the line wrapped to fit:</p>
         <pre><code>Coverage: this thread complete, linked threads partial.
 Everything people wrote in #8024 is below in full; […]
 Reading #8024 again with gh returns nothing more.</code></pre>
@@ -135,7 +135,7 @@ Reading #8024 again with gh returns nothing more.</code></pre>
       </figure>
 
       <div class="article-body continued before-figure">
-        <p>The context keeps only the lines around an error. It then compares them with numbers, paths and hashes blanked out: lines that begin alike are shown twice and counted after that. Jobs are compared the same way: when most of the failing lines of two jobs match, the failure is printed once with the names of the jobs that share it. Jobs are never merged by name, because a matrix runs several jobs under one name and merging could hide the one that failed.</p>
+        <p>Jobs are folded the same way as lines, by what failed and never by name: a matrix runs several jobs under one name, and merging by name could hide the one that failed. This is the Caddy pull request from above:</p>
         <pre><code>## Failing CI
 Checks at 0b3db48f: 2 failing, 22 passing.
 [#8024/check/127120839152] lint (linux) failed
@@ -163,7 +163,7 @@ Checks at 0b3db48f: 2 failing, 22 passing.
       </figure>
 
       <div class="article-body continued before-figure">
-        <p>Mentions are not equally trustworthy, so each location says what it rests on. A stack frame names a file and a line and is almost always right. A bare name could be many things. The list is ordered by that: stack frames first, then review positions, paths, bare names, and last the files a diff touches. A bare name is looked up first in the files the thread already mentions, and one defined in more than three places is dropped as a guess. Each entry ends with its kind of evidence and the event that pointed at it:</p>
+        <p>Mentions are not equally trustworthy, so the list runs from stack frames, which are almost always right, down to bare names, which could be many things. A bare name is looked up first in the files the thread already mentions, and one defined in more than three places is dropped as a guess. Each entry ends with its kind of evidence and the event that pointed at it:</p>
         <pre><code>## Code locations
 […]
 - modules/caddyhttp/fileserver/browse.go:85-229 `FileServer.serveBrowse()` (path; #8023/comment/6594174437)</code></pre>
@@ -193,7 +193,7 @@ Checks at 0b3db48f: 2 failing, 22 passing.
         <p>Many agents can share one store. A <strong>ticket</strong> is a piece of work that remembers its position in each list it follows. Two tickets on one thread store it once, and a comment edited after a ticket read it comes back as unread. A poll asks GitHub once which threads changed and fetches only those. With 24 tickets following 71 threads of <code>astral-sh/ruff</code>, fetching everything took 278 requests, and a poll with nothing new took 13.</p>
 
         <h2 id="together">The four on one pull request</h2>
-        <p>The four techniques act on the same thread at once. Below is a made-up pull request, from its first record to a second agent joining. Each step shows the record that was added, what the document says after it, and what a reader is sent.</p>
+        <p>The four techniques act on the same thread at once. Below is a made-up pull request, from its first record to a second agent joining. Each step shows the record that was added, what the document says after it, and what an agent is sent.</p>
       </div>
 
       <div class="walk">
