@@ -25,26 +25,28 @@
   --md-text-font-family: var(--codenib-sans);
   --md-code-font-family: "Geist Mono", ui-monospace, SFMono-Regular, Menlo,
     Consolas, monospace;
-  --md-primary-fg-color: #176b64;
-  --md-primary-fg-color--light: #2f8c83;
-  --md-primary-fg-color--dark: #0d4a44;
-  --md-accent-fg-color: #176b64;
+  --md-primary-fg-color: #1a56c4;
+  --md-primary-fg-color--light: #4a7fd8;
+  --md-primary-fg-color--dark: #123f92;
+  --md-accent-fg-color: #1a56c4;
 }
 
 [data-md-color-scheme="default"] {
+  /* The light scheme is the dark one turned over: the same neutral greys and
+     the same blue, darkened to read on white. */
   color-scheme: light;
-  --codenib-bg: #f9f6ef;
-  --codenib-surface: #fffdf8;
-  --codenib-soft: #f1ece1;
-  --codenib-line: #ddd4c5;
-  --codenib-line-strong: #c9c0b0;
-  --codenib-ink: #1d1913;
-  --codenib-ink-soft: #453f36;
-  --codenib-muted: #6d6860;
-  --codenib-accent: #176b64;
-  --codenib-accent-soft: #d9e9e6;
-  --codenib-code-bg: #f1ece1;
-  --codenib-shadow: 0 10px 34px rgba(32, 28, 20, 0.055);
+  --codenib-bg: #fbfbfc;
+  --codenib-surface: #ffffff;
+  --codenib-soft: #f1f3f4;
+  --codenib-line: #dadce0;
+  --codenib-line-strong: #bdc1c6;
+  --codenib-ink: #1a1b1e;
+  --codenib-ink-soft: #3c4043;
+  --codenib-muted: #5f6368;
+  --codenib-accent: #1a56c4;
+  --codenib-accent-soft: #e3ecfb;
+  --codenib-code-bg: #f1f3f4;
+  --codenib-shadow: 0 10px 34px rgba(26, 27, 30, 0.05);
 
   --md-default-bg-color: var(--codenib-bg);
   --md-default-fg-color: var(--codenib-ink);
@@ -54,7 +56,7 @@
   --md-typeset-color: var(--codenib-ink);
   --md-typeset-a-color: var(--codenib-accent);
   --md-code-bg-color: var(--codenib-code-bg);
-  --md-code-fg-color: #353027;
+  --md-code-fg-color: #1f2328;
   --md-admonition-bg-color: var(--codenib-surface);
   --md-footer-bg-color: var(--codenib-bg);
   --md-footer-bg-color--dark: var(--codenib-bg);
