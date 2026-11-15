@@ -56,7 +56,7 @@
     },
     {
       kind: "read", reader: "B", command: "codenib threads open 812",
-      say: "A second agent opens a ticket on the same thread. Nothing is copied: it reads the same records and keeps its own position.",
+      say: "Agent B opens a ticket on the same thread. Nothing is copied: it reads the same records and keeps its own position.",
       technique: 4,
     },
   ];
@@ -73,7 +73,7 @@
     ["ci", "Failing CI"],
     ["review", "Review comments"],
   ];
-  const READERS = { A: "Agent A", B: "Ticket B" };
+  const READERS = { A: "Agent A", B: "Agent B" };
 
   const el = (tag, cls, text) => {
     const node = document.createElement(tag);
@@ -102,9 +102,12 @@
     return body;
   };
   const storeBody = panel("Stored records", "Only ever added to. The position is the number on the left.");
-  const docBody = panel("THREAD_CONTEXT.md", "Built from the records each time a reader asks.");
-  const readBody = panel("Readers", "Each keeps a position. Blue is what the last read sent.");
-  root.append(bar, say, grid);
+  const docBody = panel("THREAD_CONTEXT.md", "Built from the records each time an agent asks.");
+  docBody.parentNode.classList.add("is-doc");
+  const readBody = panel("Agents", "Each keeps a position. Blue is what the last read sent.");
+  const head = el("div", "walk-head");
+  head.append(bar, say);
+  root.append(head, grid);
 
   let at = 0; // number of steps applied
   let timer = null;
@@ -148,7 +151,9 @@
       storeBody.append(row);
       for (const [key, reader] of Object.entries(readers)) {
         if (reader.position === index + 1) {
-          storeBody.append(el("div", "walk-cursor", `${READERS[key]} has read up to here`));
+          const mark = el("div", "walk-cursor");
+          mark.append(el("span", "walk-agent", key), document.createTextNode(`${READERS[key]} has read up to here`));
+          storeBody.append(mark);
         }
       }
     });
@@ -161,7 +166,7 @@
     for (const [key, title] of SECTIONS) {
       if (!(key in doc)) continue;
       const line = el("div", "walk-line");
-      if (changed.has(key)) line.classList.add("is-fresh");
+      if (changed.has(key)) line.classList.add("is-kept");
       line.append(el("span", "walk-key", title), el("code", null, doc[key]));
       docBody.append(line);
     }
@@ -170,11 +175,13 @@
     docBody.append(cursor);
 
     readBody.textContent = "";
-    if (!Object.keys(readers).length) readBody.append(el("p", "walk-empty", "No one has read the thread yet."));
+    if (!Object.keys(readers).length) readBody.append(el("p", "walk-empty", "No agent has read the thread yet."));
     for (const [key, reader] of Object.entries(readers)) {
       const card = el("div", "walk-reader");
       if (reader.fresh) card.classList.add("is-sent");
-      card.append(el("strong", null, READERS[key]), el("code", null, reader.command));
+      const name = el("strong");
+      name.append(el("span", "walk-agent", key), document.createTextNode(READERS[key]));
+      card.append(name, el("code", null, reader.command));
       const sent = reader.reads.reduce((sum, read) => sum + read.sent, 0);
       const reread = reader.reads.reduce((sum, read) => sum + read.all, 0);
       const latest = reader.reads[reader.reads.length - 1];

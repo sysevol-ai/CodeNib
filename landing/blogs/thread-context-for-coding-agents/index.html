@@ -99,7 +99,7 @@ SPDX-License-Identifier: Apache-2.0
         <p>We gave agents the same thread in three ways: the agent reads it with <code>gh</code>, every event is pasted into the prompt unprocessed, or the prompt carries the prepared context.</p>
         <p>On issues, pasting everything cost the same as the prepared context, within 2%, and both took about a quarter fewer input tokens than <code>gh</code>. Nothing in the pasted prompt was selected or shortened, so that saving is only the tool calls that no longer happen.</p>
         <p>On pull requests, pasting everything was the most expensive of the three. With Claude Code the 76 tasks cost $17.49 pasted, $11.34 with <code>gh</code> and $8.37 with the prepared context. Check logs, bot comments and review comments, unprocessed, cost more than the calls they replace.</p>
-        <p>So preparing a thread means removing the calls and then choosing. The choosing is done by code, with no model: the same thread always gives the same document, and every line in it traces to the event it came from. Four techniques carry most of it.</p>
+        <p>So preparing a thread means removing the calls and then choosing. The choosing is done by code, with no model: the same thread always gives the same document, and every line in it traces to the event it came from. Four techniques carry most of it. In the diagrams below, teal is what the document keeps, blue is what an agent is sent, and a dashed outline is what was left out.</p>
 
         <h2 id="whole">1. Never cut the thread the agent is working on</h2>
         <p>The obvious way to meet a token budget is to shorten long posts. For the agent's own thread this backfires: an agent that sees an omission mark in the pull request it was asked to fix reads the pull request again with <code>gh</code>, and has then paid for both.</p>
@@ -181,9 +181,9 @@ Checks at 0b3db48f: 2 failing, 22 passing.
       <figure class="hero-figure responsive-figure in-article">
         <picture>
           <source media="(max-width: 900px)" srcset="/assets/blogs/thread-events-narrow.svg" width="640" height="1004">
-          <img src="/assets/blogs/thread-events.svg" width="1264" height="592" loading="lazy" alt="Left: a thread stored as a list of six events in order, each with a fixed address; an edited comment is appended as a new record under its old address. Right: readers keep a position in that log. A first context covers the four events that exist and ends with a cursor. A later read with --since returns only the edit and the check that came after. Two tickets on the same thread keep their own positions: one has nothing unread, the other four events. Measured: over the life of an issue, a first context and updates took a median of 2,897 tokens against 21,103 for rereading, on 151 issues; with 24 tickets following 71 threads of astral-sh/ruff, fetching everything took 278 requests and a poll with nothing new took 13.">
+          <img src="/assets/blogs/thread-events.svg" width="1264" height="592" loading="lazy" alt="Left: a thread stored as a list of six events in order, each with a fixed address; an edited comment is appended as a new record under its old address. Right: agents keep a position in that list. Agent A&#x27;s first read is sent the four records that exist and ends with a cursor. When it comes back with --since it is sent only the edit and the check that came after. Agent B opens a ticket on the same stored thread and is sent all six; when it polls again nothing is new and nothing is sent. Measured: over the life of an issue, a first context and updates took a median of 2,897 tokens against 21,103 for rereading, on 151 issues; with 24 tickets following 71 threads of astral-sh/ruff, fetching everything took 278 requests and a poll with nothing new took 13.">
         </picture>
-        <figcaption>The list and the readers are a sketch. The figures in the bottom box are measured.</figcaption>
+        <figcaption>The list and the agents are a sketch. The figures in the bottom box are measured.</figcaption>
         <a class="diagram-open" href="/assets/blogs/thread-events.svg">Open the full-size diagram <span aria-hidden="true">↗</span></a>
       </figure>
 
@@ -200,7 +200,7 @@ Checks at 0b3db48f: 2 failing, 22 passing.
         <div class="walk-frame" data-thread-walk>
           <p class="walk-fallback">This walkthrough needs JavaScript. The four diagrams above show the same steps.</p>
         </div>
-        <p class="walk-caption">Green marks what the last step added, blue what the last read sent to an agent. The pull request and its records are made up; the rules are the ones <code>codenib threads</code> applies.</p>
+        <p class="walk-caption">Teal marks what the last step changed in the document, blue what the last read sent to an agent. The pull request and its records are made up; the rules are the ones <code>codenib threads</code> applies.</p>
       </div>
 
       <div class="article-body continued">

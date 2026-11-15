@@ -10,6 +10,10 @@ Writes a wide and a narrow SVG for each to ``landing/assets/blogs/``:
 - ``thread-anchors``: a mention in the thread becomes a function in the code.
 - ``thread-events``: one stored log, read from many positions.
 
+The figures share one vocabulary with the article's walkthrough: teal is
+what the document keeps, blue is what an agent is sent, a dashed outline is
+what was left out, and an agent is a round badge with its letter.
+
 The threads, logs and code in the figures are made-up examples that follow
 the rules in ``codenib/threads/``; the figures in the bottom band of
 ``thread-events`` are measured and copied from ``docs/threads.md``.
@@ -68,6 +72,8 @@ STYLES = {
     "code": {"size": 14, "weight": 500, "family": "mono"},
     "code-dim": {"size": 14, "family": "mono", "fill": INK_3},
     "code-kept": {"size": 14, "weight": 500, "family": "mono", "fill": TEAL_DARK},
+    "other": {"size": 15, "weight": 600},
+    "badge": {"size": 13, "weight": 700},
     "code-new": {"size": 14, "weight": 500, "family": "mono", "fill": ACCENT_DARK},
 }
 
@@ -79,6 +85,12 @@ def dashed(fig: Figure, x, y, w, h, stroke=LINE_STRONG):
         sw=1.5,
         dash="4 4",
     )
+
+
+def agent(fig: Figure, cx: float, cy: float, letter: str) -> None:
+    """An agent: a round badge with its letter, the same in every figure."""
+    fig.circle(cx, cy, 11, LINE_STRONG)
+    fig.text(cx, cy + 4.5, letter, "badge", "middle")
 
 
 # --------------------------------------------------------------------------- #
@@ -109,7 +121,7 @@ def _posts(fig: Figure, x: float, y: float, packed: bool) -> None:
     fig.text(right, y - 52, "oldest", "dim", "end")
     right -= fig.measure("oldest", "dim") + 12
     _age_mark(fig, right, y - 57, False)
-    for index, (name, posts, cut) in enumerate(THREADS):
+    for name, posts, cut in THREADS:
         fig.text(x, y + 16, name, "label")
         if packed:
             status = (
@@ -129,7 +141,7 @@ def _posts(fig: Figure, x: float, y: float, packed: bool) -> None:
                 dashed(fig, x + 22, y, width, 14)
                 fig.text(x + width + 34, y + 12, "left out, fetch by id", "dim")
             else:
-                fill = TEAL if packed and index == 0 else LINE_STRONG
+                fill = TEAL if packed else LINE_STRONG
                 fig.rect(x + 22, y, width, 14, rx=3, fill=fill)
             y += 22
         y += 16
@@ -296,12 +308,14 @@ def _resolved(fig: Figure, x: float, y: float) -> None:
     fig.text(x + INNER - 44, y + 97, "lines 190-229", "code-kept", "end")
     fig.rect(x + 44, y + 111, 4, 20, rx=2, fill=TEAL)
     fig.text(x + 58, y + 126, "line 212, where the stack frame points", "desc")
-    fig.rect(x + 44, y + 141, 4, 20, rx=2, fill=ACCENT)
-    fig.text(x + 58, y + 156, "lines 205-214, changed by open pull request #790", "new")
+    fig.rect(x + 44, y + 141, 4, 20, rx=2, fill=INK_3)
+    fig.text(
+        x + 58, y + 156, "lines 205-214, changed by open pull request #790", "other"
+    )
     fig.text(
         x,
         y + 232,
-        "- pkg/io.py:190-229 `Reader.read()` (frame; #812/comment/1042)",
+        "- pkg/io.py:190-229 `Reader.read()` (frame; #812/comment/1041)",
         "code-kept",
     )
 
@@ -342,11 +356,11 @@ ANCHORS = {
             "can be found by overlap:",
             "desc",
         ),
-        ("## Also in progress on this code", "code-new"),
+        ("## Also in progress on this code", "code-kept"),
         (
             "- #790 (open PR by alice, updated 2026-11-02) Cache reads — changes "
             "`Reader.read()`",
-            "code-new",
+            "code-kept",
         ),
         (
             "A bare name is looked up first in files the thread names. One defined "
@@ -364,18 +378,24 @@ EVENTS = [
     ("#812/opened/812", ""),
     ("#812/comment/1041", ""),
     ("#812/comment/1042", ""),
-    ("#812/review/2207", ""),
+    ("#812/review_comment/2207", ""),
     ("#812/comment/1041", "edited: same address, new record"),
     ("#812/check/3310", ""),
 ]
 # (reader, state of each log position, what the reader gets, style)
 READERS = [
-    ("First context", "kkkk..", "ends with a cursor, #812/review/2207", "desc"),
-    ("Later, with --since <cursor>", "oooonn", "only the edit and the check", "new"),
-    ("Ticket A, at position 6", "oooooo", "nothing unread", "desc"),
-    ("Ticket B, at position 2", "oonnnn", "4 unread, same stored thread", "new"),
+    ("A", "first read", "nnnn..", "sent 4 records, ends with a cursor", "new"),
+    (
+        "A",
+        "back, with --since <cursor>",
+        "oooonn",
+        "sent 2: the edit and the check",
+        "new",
+    ),
+    ("B", "opens a ticket", "nnnnnn", "sent all 6, from the same stored thread", "new"),
+    ("B", "polls again", "oooooo", "nothing new, nothing sent", "desc"),
 ]
-CELL = {"k": TEAL, "o": LINE_STRONG, "n": ACCENT}
+CELL = {"o": LINE_STRONG, "n": ACCENT}
 
 
 def _log(fig: Figure, x: float, y: float) -> None:
@@ -383,26 +403,27 @@ def _log(fig: Figure, x: float, y: float) -> None:
         top = y + i * 34
         fig.rect(x, top, INNER, 28, rx=5, fill=SUBTLE, stroke=LINE)
         fig.text(x + 12, top + 19, str(i), "num")
-        fig.text(x + 40, top + 19, address, "code-new" if remark else "code")
+        fig.text(x + 40, top + 19, address, "code")
         if remark:
             fig.text(x + INNER - 12, top + 19, remark, "dim", "end")
 
 
 def _readers(fig: Figure, x: float, y: float) -> None:
-    for i, (reader, cells, gets, style) in enumerate(READERS):
+    for i, (who, does, cells, gets, style) in enumerate(READERS):
         top = y + i * 52
-        fig.text(x, top + 16, reader, "label")
+        agent(fig, x + 11, top + 11, who)
+        fig.text(x + 30, top + 16, f"Agent {who}, {does}", "label")
         for j, state in enumerate(cells):
-            cx = x + j * 30
+            cx = x + 30 + j * 30
             if state == ".":
                 dashed(fig, cx, top + 26, 24, 14)
             else:
                 fig.rect(cx, top + 26, 24, 14, rx=3, fill=CELL[state])
-        fig.text(x + 196, top + 38, gets, style)
+        fig.text(x + 226, top + 38, gets, style)
     fig.text(
         x,
         y + 228,
-        "Each square is one event of the log. Blue is what the reader receives.",
+        "A square is one record. Blue is sent to the agent, grey it has read.",
         "dim",
     )
 
@@ -414,15 +435,16 @@ EVENT_LOG = {
     "desc": (
         "Left: a thread stored as a list of six events in order, each with "
         "a fixed address; an edited comment is appended as a new record under "
-        "its old address. Right: readers keep a position in that log. A first "
-        "context covers the four events that exist and ends with a cursor. A "
-        "later read with --since returns only the edit and the check that "
-        "came after. Two tickets on the same thread keep their own positions: "
-        "one has nothing unread, the other four events. Measured: over the "
-        "life of an issue, a first context and updates took a median of 2,897 "
-        "tokens against 21,103 for rereading, on 151 issues; with 24 tickets "
-        "following 71 threads of astral-sh/ruff, fetching everything took 278 "
-        "requests and a poll with nothing new took 13."
+        "its old address. Right: agents keep a position in that list. Agent A's "
+        "first read is sent the four records that exist and ends with a "
+        "cursor. When it comes back with --since it is sent only the edit "
+        "and the check that came after. Agent B opens a ticket on the same "
+        "stored thread and is sent all six; when it polls again nothing is "
+        "new and nothing is sent. Measured: over the life of an issue, a "
+        "first context and updates took a median of 2,897 tokens against "
+        "21,103 for rereading, on 151 issues; with 24 tickets following 71 "
+        "threads of astral-sh/ruff, fetching everything took 278 requests "
+        "and a poll with nothing new took 13."
     ),
     "panels": [
         (
@@ -433,9 +455,9 @@ EVENT_LOG = {
             208,
         ),
         (
-            "WHAT EACH READER GETS",
+            "WHAT EACH AGENT IS SENT",
             "phase-r",
-            "A reader keeps a position in the log. Nothing is copied.",
+            "An agent keeps a position in the list. Nothing is copied.",
             _readers,
             236,
         ),
