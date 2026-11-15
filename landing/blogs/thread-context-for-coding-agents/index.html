@@ -7,10 +7,10 @@ SPDX-License-Identifier: Apache-2.0
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>A GitHub Thread Costs an Agent by the Call, Not by the Token — CodeNib</title>
+  <title>Preparing a GitHub Thread for a Coding Agent: Four Techniques, No Model — CodeNib</title>
   <meta name="description" content="How codenib threads prepares a GitHub issue or pull request for a coding agent without a model: what it keeps whole, how it folds failed logs, how it locates code, and what it measured on 76 pull request takeovers.">
   <meta name="author" content="CodeNib Team">
-  <meta property="og:title" content="A GitHub Thread Costs an Agent by the Call, Not by the Token">
+  <meta property="og:title" content="Preparing a GitHub Thread for a Coding Agent: Four Techniques, No Model">
   <meta property="og:description" content="An agent reading a thread with gh pays for every tool call. Preparing the thread once, by code, cut input tokens by 21% with Codex and 45% with Claude Code on 76 pull request takeovers.">
   <meta property="og:image" content="https://codenib.ai/assets/blogs/thread-context.png">
   <meta property="og:image:width" content="1600">
@@ -25,7 +25,7 @@ SPDX-License-Identifier: Apache-2.0
   <meta property="article:tag" content="GitHub issues">
   <meta property="article:tag" content="Pull requests">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="A GitHub Thread Costs an Agent by the Call, Not by the Token">
+  <meta name="twitter:title" content="Preparing a GitHub Thread for a Coding Agent: Four Techniques, No Model">
   <meta name="twitter:description" content="An agent reading a thread with gh pays for every tool call. Preparing the thread once, by code, cut input tokens by 21% with Codex and 45% with Claude Code on 76 pull request takeovers.">
   <meta name="twitter:image" content="https://codenib.ai/assets/blogs/thread-context.png">
   <meta name="twitter:image:alt" content="Left: an agent reading a GitHub thread itself makes one tool call for the issue, its comments, the linked pull request, the reviews, the checks and a failed log, and each call carries the conversation so far. Right: codenib threads prepares one document with status, coverage, the ask, code locations, failing CI, other open pull requests on the same code, linked threads and discussion, ending in a cursor, so a later read returns only what changed. On 76 pull request takeovers, input tokens against reading with gh fell 21% with Codex (gpt-6.1-sol) and 45% with Claude Code (Claude Opus 5.5). Over the life of an issue, a first context and updates took a median of 2,897 tokens against 21,103 for rereading the thread, on 151 issues.">
@@ -37,7 +37,7 @@ SPDX-License-Identifier: Apache-2.0
   {
     "@context": "https://schema.org",
     "@type": "BlogPosting",
-    "headline": "A GitHub Thread Costs an Agent by the Call, Not by the Token",
+    "headline": "Preparing a GitHub Thread for a Coding Agent: Four Techniques, No Model",
     "description": "An agent reading a thread with gh pays for every tool call. Preparing the thread once, by code, cut input tokens by 21% with Codex and 45% with Claude Code on 76 pull request takeovers.",
     "image": "https://codenib.ai/assets/blogs/thread-context.png",
     "datePublished": "2026-11-14T20:00:00Z",
@@ -75,8 +75,8 @@ SPDX-License-Identifier: Apache-2.0
           <time datetime="2026-11-14">November 14, 2026</time>
           <span>6 min read</span>
         </div>
-        <h1 id="article-title">A GitHub Thread Costs an Agent by the Call, Not by the Token</h1>
-        <p class="deck">How <code>codenib threads</code> prepares an issue or pull request for a coding agent without a model, and the four decisions the saving comes from.</p>
+        <h1 id="article-title">Preparing a GitHub Thread for a Coding Agent: Four Techniques, No Model</h1>
+        <p class="deck"><code>codenib threads</code> keeps the agent's own thread whole, folds failed logs, resolves mentions to places in the code, and stores events instead of documents. On 76 pull request takeovers that cut input tokens by 21% to 45%, and the agents found the files to change about as often.</p>
       </header>
 
       <div class="article-body article-lead">
@@ -98,7 +98,7 @@ SPDX-License-Identifier: Apache-2.0
         <p>We gave agents the same thread in three ways: the agent reads it with <code>gh</code>, every event is pasted into the prompt unprocessed, or the prompt carries the prepared context.</p>
         <p>On issues, pasting everything cost the same as the prepared context, within 2%, and both took about a quarter fewer input tokens than <code>gh</code>. Nothing in the pasted prompt was selected or shortened, so that saving is only the tool calls that no longer happen.</p>
         <p>On pull requests, pasting everything was the most expensive of the three. With Claude Code the 76 tasks cost $17.49 pasted, $11.34 with <code>gh</code> and $8.37 with the prepared context. Check logs, bot comments and review comments, unprocessed, cost more than the calls they replace.</p>
-        <p>So preparing a thread means removing the calls and then choosing. The choosing is done by code, with no model: the same thread always gives the same document, and every line in it traces to the event it came from. Four decisions carry most of it.</p>
+        <p>So preparing a thread means removing the calls and then choosing. The choosing is done by code, with no model: the same thread always gives the same document, and every line in it traces to the event it came from. Four techniques carry most of it.</p>
 
         <h2 id="whole">1. Never cut the thread the agent is working on</h2>
         <p>The obvious way to meet a token budget is to shorten long posts. For the agent's own thread this backfires: an agent that sees an omission mark in the pull request it was asked to fix reads the pull request again with <code>gh</code>, and has then paid for both.</p>

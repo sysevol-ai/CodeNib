@@ -137,7 +137,7 @@ def _posts(fig: Figure, x: float, y: float, packed: bool) -> None:
 
 BUDGET = {
     "slug": "thread-budget",
-    "kicker": "DECISION 1",
+    "kicker": "TECHNIQUE 1",
     "title": "The budget takes from linked threads first",
     "desc": (
         "Left: three threads in the store, the one the agent works on and two "
@@ -219,7 +219,7 @@ def _folded_log(fig: Figure, x: float, y: float) -> None:
 
 LOGS = {
     "slug": "thread-logs",
-    "kicker": "DECISION 2",
+    "kicker": "TECHNIQUE 2",
     "title": "A failed log, folded by the lines that repeat",
     "desc": (
         "Left: a job log with four set-up lines and 300 error lines that differ "
@@ -308,7 +308,7 @@ def _resolved(fig: Figure, x: float, y: float) -> None:
 
 ANCHORS = {
     "slug": "thread-anchors",
-    "kicker": "DECISION 3",
+    "kicker": "TECHNIQUE 3",
     "title": "From a mention in the thread to a function in the code",
     "desc": (
         "Left: the five ways a thread points at code, strongest evidence "
@@ -409,7 +409,7 @@ def _readers(fig: Figure, x: float, y: float) -> None:
 
 EVENT_LOG = {
     "slug": "thread-events",
-    "kicker": "DECISION 4",
+    "kicker": "TECHNIQUE 4",
     "title": "One list of events, read from many positions",
     "desc": (
         "Left: a thread stored as a list of six events in order, each with "
