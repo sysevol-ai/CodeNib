@@ -252,7 +252,21 @@
   next.addEventListener("click", () => go(at + 1));
   back.addEventListener("click", () => go(at - 1));
 
-  // Without motion, show the finished state; the reader can move back through it.
-  if (matchMedia("(prefers-reduced-motion: reduce)").matches) at = STEPS.length;
+  // Without motion, show the finished state; the reader can move back through
+  // it. Otherwise play once when the walkthrough scrolls into view, so it is
+  // never met as an empty frame, and leave it alone after the reader takes over.
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    at = STEPS.length;
+  } else {
+    const watcher = new IntersectionObserver(entries => {
+      if (!entries.some(entry => entry.isIntersecting)) return;
+      watcher.disconnect();
+      if (at === 0 && !timer) start();
+    }, { threshold: 0.5 });
+    watcher.observe(root);
+    for (const control of [play, back, next, ...ticks]) {
+      control.addEventListener("click", () => watcher.disconnect(), { once: true });
+    }
+  }
   render();
 })();

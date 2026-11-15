@@ -204,3 +204,17 @@
     display: none;
   }
 }
+
+/* The model an agent ran, under its name in a table row. */
+.data-table th small {
+  display: block;
+  margin-top: 3px;
+  color: var(--ink-3);
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.article-body .data-table + p {
+  margin-top: 26px;
+}
