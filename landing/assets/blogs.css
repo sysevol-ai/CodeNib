@@ -47,6 +47,11 @@
   padding: 0;
 }
 
+::selection {
+  background: rgba(138, 180, 248, 0.32);
+  color: var(--ink);
+}
+
 html {
   overflow-x: clip;
   scroll-behavior: smooth;

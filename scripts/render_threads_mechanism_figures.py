@@ -58,7 +58,6 @@ NARROW = 2 * MARGIN + PANEL
 TOP = 88  # from the top of a panel to its content
 
 STYLES = {
-    "kicker": {"size": 14, "weight": 650, "spacing": 0.08, "fill": ACCENT},
     "head": {"size": 28, "weight": 650, "spacing": -0.01},
     "phase": {"size": 13.5, "weight": 650, "spacing": 0.08, "fill": INK_2},
     "phase-r": {"size": 13.5, "weight": 650, "spacing": 0.08, "fill": TEAL_DARK},
@@ -149,7 +148,6 @@ def _posts(fig: Figure, x: float, y: float, packed: bool) -> None:
 
 BUDGET = {
     "slug": "thread-budget",
-    "kicker": "TECHNIQUE 1",
     "title": "The budget takes from linked threads first",
     "desc": (
         "Left: three threads in the store, the one the agent works on and two "
@@ -231,7 +229,6 @@ def _folded_log(fig: Figure, x: float, y: float) -> None:
 
 LOGS = {
     "slug": "thread-logs",
-    "kicker": "TECHNIQUE 2",
     "title": "A failed log, folded by the lines that repeat",
     "desc": (
         "Left: a job log with four set-up lines and 300 error lines that differ "
@@ -322,7 +319,6 @@ def _resolved(fig: Figure, x: float, y: float) -> None:
 
 ANCHORS = {
     "slug": "thread-anchors",
-    "kicker": "TECHNIQUE 3",
     "title": "From a mention in the thread to a function in the code",
     "desc": (
         "Left: the five ways a thread points at code, strongest evidence "
@@ -430,7 +426,6 @@ def _readers(fig: Figure, x: float, y: float) -> None:
 
 EVENT_LOG = {
     "slug": "thread-events",
-    "kicker": "TECHNIQUE 4",
     "title": "One list of events, read from many positions",
     "desc": (
         "Left: a thread stored as a list of six events in order, each with "
@@ -513,8 +508,7 @@ def _band(fig: Figure, x: float, y: float, width: float, lines) -> float:
 def render(spec: dict, narrow: bool) -> str:
     width = NARROW if narrow else WIDE
     fig = Figure(width, 2000, STYLES)
-    fig.text(MARGIN, 46, f"CODENIB THREADS · {spec['kicker']}", "kicker")
-    y = 84
+    y = 52
     for line in fig.wrap(spec["title"], "head", width - 2 * MARGIN):
         fig.text(MARGIN, y, line, "head")
         y += 34
