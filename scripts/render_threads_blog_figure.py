@@ -112,7 +112,7 @@ STYLES = {
 }
 
 
-def _calls(fig: Figure, x: float, y: float, bar_x: float, step: float, new: float):
+def _calls(fig: Figure, x, y, bar_x, step, new, stacked=False):
     """Six tool calls; each bar is what the call sends, growing with the last."""
     for i, piece in enumerate(PIECES):
         top = y + i * 50
@@ -125,8 +125,12 @@ def _calls(fig: Figure, x: float, y: float, bar_x: float, step: float, new: floa
     fig.rect(x, legend - 11, 12, 12, rx=2, fill=LINE_STRONG)
     fig.text(x + 20, legend, "the conversation so far, sent again", "desc")
     width = fig.measure("the conversation so far, sent again", "desc")
-    fig.rect(x + 44 + width, legend - 11, 12, 12, rx=2, fill=ACCENT)
-    fig.text(x + 64 + width, legend, "the new piece", "desc")
+    if stacked:  # the phone drawing has no room for both on one line
+        fig.rect(x, legend + 15, 12, 12, rx=2, fill=ACCENT)
+        fig.text(x + 20, legend + 26, "the new piece", "desc")
+    else:
+        fig.rect(x + 44 + width, legend - 11, 12, 12, rx=2, fill=ACCENT)
+        fig.text(x + 64 + width, legend, "the new piece", "desc")
 
 
 def rule(fig: Figure, x: float, y: float, width: float) -> None:
@@ -181,59 +185,64 @@ def wide() -> str:
 
 
 def narrow() -> str:
+    # Drawn 464 wide, near the size a phone shows it, so the type stays legible.
     styles = scaled(STYLES, 1.0)
     styles["head"] = {**STYLES["head"], "size": 27}
     styles["stat"] = {**STYLES["stat"], "size": 38}
-    styles["stat-r"] = {**STYLES["stat-r"], "size": 38}
-    fig = Figure(640, 1400, styles)
-    y = 58
-    for line in fig.wrap(TITLE, "head", 592):
-        fig.text(24, y, line, "head")
+    styles["stat-r"] = {**STYLES["stat-r"], "size": 36}
+    styles["stat-label"] = {**STYLES["stat-label"], "size": 18}
+    width, left = 464, 24
+    inner = width - 2 * left
+    fig = Figure(width, 1400, styles)
+    y = 56
+    for line in fig.wrap(TITLE, "head", inner):
+        fig.text(left, y, line, "head")
         y += 34
 
     top = y - 10
-    rule(fig, 0, top, 640)
-    fig.text(24, top + 38, "The agent reads the thread itself", "phase")
-    fig.text(24, top + 66, "One tool call per piece.", "note")
-    fig.text(24, top + 90, "Each call carries what came before.", "note")
-    _calls(fig, 24, top + 106, 292, 40, 34)
+    rule(fig, 0, top, width)
+    fig.text(left, top + 40, "The agent reads the thread itself", "phase")
+    fig.text(left, top + 68, "One tool call per piece.", "note")
+    fig.text(left, top + 92, "Each call carries what came before.", "note")
+    _calls(fig, left, top + 112, 282, 16, 30, stacked=True)
 
-    top += 452
-    rule(fig, 0, top, 640)
-    fig.text(24, top + 38, "codenib threads prepares it once", "phase-r")
-    fig.text(24, top + 66, "One document in a token budget,", "note")
-    fig.text(24, top + 90, "built by code. No model.", "note")
-    fig.text(24, top + 128, "THREAD_CONTEXT.md", "file")
+    top += 112 + len(PIECES) * 50 + 76
+    rule(fig, 0, top, width)
+    fig.text(left, top + 40, "codenib threads prepares it once", "phase-r")
+    fig.text(left, top + 68, "One document in a token budget,", "note")
+    fig.text(left, top + 92, "built by code. No model.", "note")
+    fig.text(left, top + 134, "THREAD_CONTEXT.md", "file")
     for i, (part, desc) in enumerate(PARTS):
-        row = top + 162 + i * 32
-        fig.text(24, row, part, "part")
-        fig.text(196, row, desc, "desc")
-    fig.text(24, top + 498, "When the agent comes back:", "note")
-    fig.text(24, top + 522, "--since <cursor>", "mono")
+        row = top + 174 + i * 50
+        fig.text(left, row, part, "part")
+        fig.text(left, row + 22, desc, "desc")
+    after = top + 174 + len(PARTS) * 50 + 10
+    fig.text(left, after, "When the agent comes back:", "note")
+    fig.text(left, after + 26, "--since <cursor>", "mono")
     offset = fig.measure("--since <cursor> ", "mono") + 6
-    fig.text(24 + offset, top + 522, "returns only what changed.", "note")
+    fig.text(left + offset, after + 26, "returns only what changed.", "note")
 
-    top += 548
-    rule(fig, 0, top, 640)
+    top = after + 54
+    rule(fig, 0, top, width)
     y = top + 58
     for value, label in STATS:
-        fig.text(24, y, value, "stat")
-        fig.text(160, y - 6, label, "stat-label")
+        fig.text(left, y, value, "stat")
+        fig.text(left + 126, y - 6, label, "stat-label")
         y += 54
     y -= 20
-    for line in fig.wrap(STATS_SCOPE, "scope", 592):
-        fig.text(24, y, line, "scope")
+    for line in fig.wrap(STATS_SCOPE, "scope", inner):
+        fig.text(left, y, line, "scope")
         y += 22
     y += 40
-    fig.text(24, y, RETURNS[0], "stat-r")
-    fig.text(24, y + 30, RETURNS[1], "stat-label")
+    fig.text(left, y, RETURNS[0], "stat-r")
+    fig.text(left, y + 30, RETURNS[1], "stat-label")
     y += 56
-    for line in fig.wrap(RETURNS_SCOPE, "scope", 592):
-        fig.text(24, y, line, "scope")
+    for line in fig.wrap(RETURNS_SCOPE, "scope", inner):
+        fig.text(left, y, line, "scope")
         y += 22
     y += 18
-    for line in fig.wrap(FOOT, "foot", 592):
-        fig.text(24, y, line, "foot")
+    for line in fig.wrap(FOOT, "foot", inner):
+        fig.text(left, y, line, "foot")
         y += 22
     fig.height = int(y + 14)
     return fig.svg(TITLE, DESC)

@@ -50,10 +50,12 @@ from render_contextbench_blog_figures import (
 # One surface: two columns divided by a hairline, notes under a rule. Nothing
 # is boxed inside a box.
 MARGIN = 32
-INNER = 560  # width of a column
+INNER = 560  # width of a column; render() narrows it for the phone drawing
+PHONE_INNER = 416  # drawn near the size a phone shows it, so its type stays legible
+PHONE_MARGIN = 24
 GAP = 80  # between the columns; the divider runs down its middle
 WIDE = 2 * MARGIN + 2 * INNER + GAP
-NARROW = 2 * MARGIN + INNER
+NARROW = 2 * PHONE_MARGIN + PHONE_INNER
 TOP = 78  # from the top of a column to its content
 
 STYLES = {
@@ -103,7 +105,10 @@ THREADS = [
     ("A linked issue", [0.8, 0.45, 0.6, 0.3], 2),
     ("A linked pull request", [0.5, 0.75, 0.4], 1),
 ]
-BAR = 380
+
+
+def phone() -> bool:
+    return INNER == PHONE_INNER
 
 
 def _age_mark(fig: Figure, cx: float, cy: float, newest: bool) -> None:
@@ -138,10 +143,11 @@ def _posts(fig: Figure, x: float, y: float, packed: bool) -> None:
         _age_mark(fig, x + 5, y + 7, False)
         _age_mark(fig, x + 5, last + 7, True)
         for i, size in enumerate(posts):
-            width = BAR * size
+            width = (INNER - 180) * size
             if packed and i < cut:
                 dashed(fig, x + 22, y, width, 14)
-                fig.text(x + width + 34, y + 12, "left out, fetch by id", "dim")
+                note = "left out" if phone() else "left out, fetch by id"
+                fig.text(x + width + 34, y + 12, note, "dim")
             else:
                 fill = TEAL if packed else LINE_STRONG
                 fig.rect(x + 22, y, width, 14, rx=3, fill=fill)
@@ -307,16 +313,19 @@ def _resolved(fig: Figure, x: float, y: float) -> None:
     fig.text(x + INNER - 14, y + 85, "lines 190-229", "code-kept", "end")
     fig.path(f"M {x + 42:.1f} {y + 98:.1f} V {y + 158:.1f}", stroke=TEAL_LINE, sw=1.5)
     fig.text(x + 58, y + 118, "line 212, where the stack frame points", "desc")
-    fig.text(
-        x + 58, y + 148, "lines 205-214, changed by open pull request #790", "other"
-    )
+    changed = "open PR #790" if phone() else "open pull request #790"
+    fig.text(x + 58, y + 148, f"lines 205-214, changed by {changed}", "other")
     rule(fig, x, y + 196, INNER)
-    fig.text(
-        x,
-        y + 228,
-        "- pkg/io.py:190-229 `Reader.read()` (frame; #812/comment/1041)",
-        "code-kept",
-    )
+    if phone():
+        fig.text(x, y + 224, "- pkg/io.py:190-229 `Reader.read()`", "code-kept")
+        fig.text(x, y + 246, "  (frame; #812/comment/1041)", "code-kept")
+    else:
+        fig.text(
+            x,
+            y + 228,
+            "- pkg/io.py:190-229 `Reader.read()` (frame; #812/comment/1041)",
+            "code-kept",
+        )
 
 
 ANCHORS = {
@@ -408,8 +417,9 @@ def _log(fig: Figure, x: float, y: float) -> None:
 
 
 def _readers(fig: Figure, x: float, y: float) -> None:
+    pitch = 70 if phone() else 52
     for i, (who, does, cells, gets, style) in enumerate(READERS):
-        top = y + i * 52
+        top = y + i * pitch
         agent(fig, x + 11, top + 11, who)
         fig.text(x + 30, top + 16, f"Agent {who}, {does}", "label")
         for j, state in enumerate(cells):
@@ -418,13 +428,13 @@ def _readers(fig: Figure, x: float, y: float) -> None:
                 dashed(fig, cx, top + 26, 24, 14)
             else:
                 fig.rect(cx, top + 26, 24, 14, rx=3, fill=CELL[state])
-        fig.text(x + 226, top + 38, gets, style)
-    fig.text(
-        x,
-        y + 228,
-        "A square is one record. Blue is sent to the agent, grey it has read.",
-        "dim",
-    )
+        if phone():
+            fig.text(x + 30, top + 60, gets, style)
+        else:
+            fig.text(x + 226, top + 38, gets, style)
+    legend = "A square is one record. Blue is sent to the agent, grey it has read."
+    for i, line in enumerate(fig.wrap(legend, "dim", INNER)):
+        fig.text(x, y + 4 * pitch + 20 + i * 20, line, "dim")
 
 
 EVENT_LOG = {
@@ -457,7 +467,7 @@ EVENT_LOG = {
             "phase-r",
             "An agent keeps a position in the list. Nothing is copied.",
             _readers,
-            236,
+            (236, 326),
         ),
     ],
     "band": [
@@ -482,11 +492,16 @@ SPECS = [BUDGET, LOGS, ANCHORS, EVENT_LOG]
 # Layout shared by the four figures
 
 
-def _column(fig: Figure, x: float, y: float, panel) -> None:
+def _column(fig: Figure, x: float, y: float, panel) -> float:
+    """Draw a column; returns the extra height a wrapped note took."""
     label, style, note, draw, _ = panel
     fig.text(x, y + 30, label, style)
-    fig.text(x, y + 54, note, "note")
-    draw(fig, x, y + TOP)
+    lines = fig.wrap(note, "note", INNER)
+    for i, line in enumerate(lines):
+        fig.text(x, y + 54 + i * 22, line, "note")
+    extra = 22 * (len(lines) - 1)
+    draw(fig, x, y + TOP + extra)
+    return extra
 
 
 def _notes(fig: Figure, x: float, y: float, width: float, lines) -> float:
@@ -500,25 +515,34 @@ def _notes(fig: Figure, x: float, y: float, width: float, lines) -> float:
 
 
 def render(spec: dict, narrow: bool) -> str:
+    global INNER
+    INNER = PHONE_INNER if narrow else 560
+    margin = PHONE_MARGIN if narrow else MARGIN
     width = NARROW if narrow else WIDE
     fig = Figure(width, 2000, STYLES)
+    # A column's height is one number, or (wide, phone) when the phone drawing
+    # stacks what the wide one sets side by side.
+    heights = [
+        panel[4][narrow] if isinstance(panel[4], tuple) else panel[4]
+        for panel in spec["panels"]
+    ]
     # No title in the drawing: the section heading above the figure names it.
     y = 4
-    height = TOP + max(panel[4] for panel in spec["panels"]) + 22
     for i, panel in enumerate(spec["panels"]):
         if narrow:
             if i:
                 rule(fig, 0, y, width)
-            _column(fig, MARGIN, y, panel)
-            y += TOP + panel[4] + 22
+            y += _column(fig, margin, y, panel)
+            y += TOP + heights[i] + 22
         else:
-            _column(fig, MARGIN + i * (INNER + GAP), y, panel)
+            _column(fig, margin + i * (INNER + GAP), y, panel)
     if not narrow:
-        middle = MARGIN + INNER + GAP / 2
+        height = TOP + max(heights) + 22
+        middle = margin + INNER + GAP / 2
         fig.path(f"M {middle:.1f} {y:.1f} V {y + height:.1f}", stroke=LINE, sw=1.5)
         y += height
     rule(fig, 0, y, width)
-    y += _notes(fig, MARGIN, y, width - 2 * MARGIN, spec["band"])
+    y += _notes(fig, margin, y, width - 2 * margin, spec["band"])
     fig.height = int(y + 30)
     return fig.svg(spec["title"], spec["desc"])
 
