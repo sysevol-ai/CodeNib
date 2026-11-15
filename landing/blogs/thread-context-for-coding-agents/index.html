@@ -85,9 +85,9 @@ SPDX-License-Identifier: Apache-2.0
         <p>Fetching ahead of the agent is the easy part. This post is about the harder part, deciding what goes into the document. On pull requests, fetching ahead without choosing costs more than it saves.</p>
       </div>
 
-      <figure class="hero-figure responsive-figure">
+      <figure class="hero-figure responsive-figure phone-drawn">
         <picture>
-          <source media="(max-width: 900px)" srcset="/assets/blogs/thread-context-narrow.svg" width="640" height="1500">
+          <source media="(max-width: 900px)" srcset="/assets/blogs/thread-context-narrow.svg" width="464" height="1768">
           <img src="/assets/blogs/thread-context.svg" width="1600" height="840" alt="Left: an agent reading a GitHub thread itself makes one tool call for the issue, its comments, the linked pull request, the reviews, the checks and a failed log, and each call carries the conversation so far. Right: codenib threads prepares one document with status, coverage, the ask, code locations, failing CI, other open pull requests on the same code, linked threads and discussion, ending in a cursor, so a later read returns only what changed. On 76 pull request takeovers, input tokens against reading with gh fell 21% with Codex (gpt-6.1-sol) and 45% with Claude Code (Claude Opus 5.5). Over the life of an issue, a first context and updates took a median of 2,897 tokens against 21,103 for rereading the thread, on 151 issues.">
         </picture>
         <figcaption>The bars on the left sketch the mechanism and are not measurements: every tool call sends the conversation so far again. The figures in the bottom row are measured.</figcaption>
