@@ -107,7 +107,7 @@ SPDX-License-Identifier: Apache-2.0
       <figure class="hero-figure responsive-figure in-article">
         <picture>
           <source media="(max-width: 900px)" srcset="/assets/blogs/thread-budget-narrow.svg" width="640" height="1282">
-          <img src="/assets/blogs/thread-budget.svg" width="1264" height="734" loading="lazy" alt="Left: three threads in the store, the one the agent works on and two linked to it, each a list of posts of different lengths. Right: the prepared context keeps every post of the agent&#x27;s own thread whole, and leaves out the oldest posts of the linked threads. Its second line says so: this thread complete, linked threads partial, reading it again with gh returns nothing more. Own posts are shortened only past three times the budget.">
+          <img src="/assets/blogs/thread-budget.svg" width="1264" height="734" loading="lazy" alt="Left: three threads in the store, the one the agent works on and two linked to it, each a list of posts of different lengths. Right: the prepared context keeps every post of the agent&#x27;s own thread whole, and leaves out the oldest posts of the linked threads. Its second line says which case applies. Own posts are shortened only past three times the budget.">
         </picture>
         <figcaption>A sketch with made-up threads. The real line for a Caddy pull request follows.</figcaption>
         <a class="diagram-open" href="/assets/blogs/thread-budget.svg">Open the full-size diagram <span aria-hidden="true">↗</span></a>
@@ -171,23 +171,24 @@ Checks at 0b3db48f: 2 failing, 22 passing.
         <p>An agent working one thread has no way to see this for itself, and it is common. In <code>astral-sh/ruff</code>, 30 of the 59 most recently updated open pull requests changed a symbol that another of them also changed.</p>
         <p class="scope-note">In this preview the locations come only from what the thread says. They do not use CodeNib's code graph, so the context does not know what calls a function.</p>
 
-        <h2 id="events">4. Keep events, not documents</h2>
-        <p>Underneath, a thread is stored as an append-only log of events. Each event has a fixed address such as <code>#8024/review_comment/4477879638</code>, and an edited comment is appended as a new record under the same address. The document is computed from the log each time. Three things follow.</p>
+        <h2 id="events">4. Store what happened, and build the document on demand</h2>
+        <p>The obvious thing to keep for each thread is the document handed to the agent. We keep something else: the list of things that happened on GitHub. Every comment, review, commit and check run is saved as its own record, in the order it arrived, under a fixed address such as <code>#8024/review_comment/4477879638</code>. Records are only ever added. An edited comment is added again under the same address, and the old record stays. The document itself is not stored. It is built from the list each time someone asks.</p>
+        <p>The reason is the second visit. An agent that comes back the next day needs to know what changed. A stored document cannot answer that: you hand over the whole document again, or you compare two texts and guess. With a list the answer is a position, everything after the last record the agent saw. Three things follow.</p>
       </div>
 
       <figure class="hero-figure responsive-figure in-article">
         <picture>
-          <source media="(max-width: 900px)" srcset="/assets/blogs/thread-events-narrow.svg" width="640" height="970">
-          <img src="/assets/blogs/thread-events.svg" width="1264" height="592" loading="lazy" alt="Left: a thread stored as an append-only log of six events, each with a fixed address; an edited comment is appended as a new record under its old address. Right: readers keep a position in that log. A first context covers the four events that exist and ends with a cursor. A later read with --since returns only the edit and the check that came after. Two tickets on the same thread keep their own positions: one has nothing unread, the other four events. Measured: over the life of an issue, a first context and updates took a median of 2,897 tokens against 21,103 for rereading, on 151 issues; with 24 tickets following 71 threads of astral-sh/ruff, fetching everything took 278 requests and a poll with nothing new took 13.">
+          <source media="(max-width: 900px)" srcset="/assets/blogs/thread-events-narrow.svg" width="640" height="1004">
+          <img src="/assets/blogs/thread-events.svg" width="1264" height="592" loading="lazy" alt="Left: a thread stored as a list of six events in order, each with a fixed address; an edited comment is appended as a new record under its old address. Right: readers keep a position in that log. A first context covers the four events that exist and ends with a cursor. A later read with --since returns only the edit and the check that came after. Two tickets on the same thread keep their own positions: one has nothing unread, the other four events. Measured: over the life of an issue, a first context and updates took a median of 2,897 tokens against 21,103 for rereading, on 151 issues; with 24 tickets following 71 threads of astral-sh/ruff, fetching everything took 278 requests and a poll with nothing new took 13.">
         </picture>
-        <figcaption>The log and the readers are a sketch. The figures in the bottom box are measured.</figcaption>
+        <figcaption>The list and the readers are a sketch. The figures in the bottom box are measured.</figcaption>
         <a class="diagram-open" href="/assets/blogs/thread-events.svg">Open the full-size diagram <span aria-hidden="true">↗</span></a>
       </figure>
 
       <div class="article-body continued">
         <p>Every line can be checked. The bracketed ids in the excerpts above are addresses, and <code>codenib threads events &lt;id&gt;</code> prints the raw event.</p>
-        <p>Coming back is cheap. The document ends with a cursor, the address of the newest event it saw, and <code>--since &lt;cursor&gt;</code> returns only what came after it. Across 151 issues with a median of six returns each, a first context followed by updates took a median of <strong>2,897 tokens</strong> over the life of the issue, against <strong>21,103</strong> for reading the thread again each time.</p>
-        <p>Many agents can share one store. A <strong>ticket</strong> is a piece of work that remembers its position in each log it follows. Two tickets on one thread store it once, and a comment edited after a ticket read it comes back as unread. A poll asks GitHub once which threads changed and fetches only those. With 24 tickets following 71 threads of <code>astral-sh/ruff</code>, fetching everything took 278 requests, and a poll with nothing new took 13.</p>
+        <p>Coming back is cheap. The document ends with a cursor, the address of the newest record it used, and <code>--since &lt;cursor&gt;</code> returns only what came after it. Across 151 issues with a median of six returns each, a first context followed by updates took a median of <strong>2,897 tokens</strong> over the life of the issue, against <strong>21,103</strong> for reading the thread again each time.</p>
+        <p>Many agents can share one store. A <strong>ticket</strong> is a piece of work that remembers its position in each list it follows. Two tickets on one thread store it once, and a comment edited after a ticket read it comes back as unread. A poll asks GitHub once which threads changed and fetches only those. With 24 tickets following 71 threads of <code>astral-sh/ruff</code>, fetching everything took 278 requests, and a poll with nothing new took 13.</p>
 
         <h2 id="results">Same answers, fewer tokens</h2>
         <p>Each task showed an agent a thread and the repository as they stood at a cut-off, and asked which files have to change. The answer was compared with what the merged pull request changed. Files found are listed for <code>gh</code>, pasted and the prepared context, in that order; token columns compare the prepared context with each of the other two.</p>

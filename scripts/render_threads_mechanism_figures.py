@@ -92,7 +92,23 @@ THREADS = [
 BAR = 380
 
 
+def _age_mark(fig: Figure, cx: float, cy: float, newest: bool) -> None:
+    """A filled dot for the newest post, a ring for the oldest."""
+    fig.circle(cx, cy, 5, INK_2)
+    if not newest:
+        fig.circle(cx, cy, 3, "#ffffff")
+
+
 def _posts(fig: Figure, x: float, y: float, packed: bool) -> None:
+    # Legend, on the line of the panel label.
+    right = x + INNER
+    fig.text(right, y - 52, "newest", "dim", "end")
+    right -= fig.measure("newest", "dim") + 12
+    _age_mark(fig, right, y - 57, True)
+    right -= 22
+    fig.text(right, y - 52, "oldest", "dim", "end")
+    right -= fig.measure("oldest", "dim") + 12
+    _age_mark(fig, right, y - 57, False)
     for index, (name, posts, cut) in enumerate(THREADS):
         fig.text(x, y + 16, name, "label")
         if packed:
@@ -101,18 +117,20 @@ def _posts(fig: Figure, x: float, y: float, packed: bool) -> None:
             )
             fig.text(x + INNER, y + 16, status, "kept" if not cut else "desc", "end")
         y += 30
+        last = y + (len(posts) - 1) * 22
+        fig.path(
+            f"M {x + 5:.1f} {y + 7:.1f} V {last + 7:.1f}", stroke=LINE_STRONG, sw=1.5
+        )
+        _age_mark(fig, x + 5, y + 7, False)
+        _age_mark(fig, x + 5, last + 7, True)
         for i, size in enumerate(posts):
             width = BAR * size
             if packed and i < cut:
-                dashed(fig, x, y, width, 14)
-                fig.text(x + width + 12, y + 12, "left out, fetch by id", "dim")
+                dashed(fig, x + 22, y, width, 14)
+                fig.text(x + width + 34, y + 12, "left out, fetch by id", "dim")
             else:
                 fill = TEAL if packed and index == 0 else LINE_STRONG
-                fig.rect(x, y, width, 14, rx=3, fill=fill)
-                if not packed and i in (0, len(posts) - 1):
-                    fig.text(
-                        x + width + 12, y + 12, "oldest" if i == 0 else "newest", "dim"
-                    )
+                fig.rect(x + 22, y, width, 14, rx=3, fill=fill)
             y += 22
         y += 16
 
@@ -133,7 +151,7 @@ BUDGET = {
         (
             "WHAT THE STORE HOLDS",
             "phase",
-            "One bar per post. Its length is the length of the post.",
+            "One bar per post, as long as the post.",
             lambda fig, x, y: _posts(fig, x, y, False),
             378,
         ),
@@ -392,9 +410,9 @@ def _readers(fig: Figure, x: float, y: float) -> None:
 EVENT_LOG = {
     "slug": "thread-events",
     "kicker": "DECISION 4",
-    "title": "One stored log, read from many positions",
+    "title": "One list of events, read from many positions",
     "desc": (
-        "Left: a thread stored as an append-only log of six events, each with "
+        "Left: a thread stored as a list of six events in order, each with "
         "a fixed address; an edited comment is appended as a new record under "
         "its old address. Right: readers keep a position in that log. A first "
         "context covers the four events that exist and ends with a cursor. A "
@@ -408,9 +426,9 @@ EVENT_LOG = {
     ),
     "panels": [
         (
-            "THE STORE: AN APPEND-ONLY LOG",
+            "WHAT IS STORED: THE EVENTS, IN ORDER",
             "phase",
-            "Every event has a fixed address. Edits are appended.",
+            "Records are only added. An edit is one more record.",
             _log,
             208,
         ),
