@@ -267,7 +267,6 @@ h1 .dim, h2 .dim { display: block; color: var(--ink-3); }
 .threads-copy pre { margin-top: 24px; overflow-x: auto; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--r-ui); background: var(--well); color: var(--ink); font-size: 14px; line-height: 1.8; }
 .threads-copy code { font-family: "Geist Mono", ui-monospace, monospace; }
 .threads-copy .section-sub code { font-size: 0.92em; color: var(--ink); }
-.threads-copy .proof-stats { margin-top: 28px; }
 .threads-scope { margin-top: 16px; max-width: 58ch; color: var(--ink-2); font-size: 15.5px; }
 /* The thread board: three agents sharing one store. Blue is a record an agent has not been sent. */
 .thread-sim { overflow: hidden; border: 1px solid var(--line); border-radius: var(--r-box); background: var(--well); }
@@ -293,12 +292,43 @@ h1 .dim, h2 .dim { display: block; color: var(--ink-3); }
 .sim-say { min-height: 4.4em; padding: 16px clamp(16px, 1.6vw, 24px); border-top: 1px solid var(--line); color: var(--ink); font-size: 14.5px; line-height: 1.5; }
 
 /* The result in two numbers, one step brighter than the page. The article has the diagram. */
-.proof-band { padding-block: var(--section); border-block: 1px solid var(--line); background: var(--subtle); }
-.proof-band .section-head { align-items: start; row-gap: 24px; }
-.proof-stats { display: flex; flex-wrap: wrap; gap: 12px clamp(28px, 4vw, 56px); }
-.proof-stats p { display: grid; gap: 6px; color: var(--ink-2); font-size: 14.5px; }
-.proof-stats strong { color: var(--ink); font-size: clamp(2rem, 3.2vw, 2.75rem); font-weight: 570; letter-spacing: -0.035em; line-height: 1; font-variant-numeric: tabular-nums; }
-.proof-band .section-sub { margin-top: 20px; font-size: 15.5px; }
+.proof-band { padding-block: var(--section-lg); border-block: 1px solid var(--line); background: var(--subtle); }
+.proof-band + section { border-top: 0; }
+/* Results are drawn by the page, in its own type, so they read as part of it.
+   One accent for what was measured; a row's position comes from --at, --lo, --hi. */
+.res-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: clamp(36px, 4.5vw, 64px); border-top: 1px solid var(--line); }
+.res-panel { display: flex; flex-direction: column; padding-top: clamp(24px, 2.6vw, 36px); }
+.res-panel:first-child { padding-right: var(--column-gap); border-right: 1px solid var(--line); }
+.res-panel:last-child { padding-left: var(--column-gap); }
+.res-panel h3 { max-width: 30ch; font-size: clamp(1.25rem, 1.7vw, 1.6rem); font-weight: 570; letter-spacing: -0.02em; line-height: 1.2; text-wrap: balance; }
+.res-lede { margin-top: 12px; max-width: 54ch; color: var(--ink-2); font-size: 15.5px; }
+.res-lede strong { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+.res-panel code { font-family: "Geist Mono", ui-monospace, monospace; font-size: 0.92em; color: var(--ink); }
+.res-rows { list-style: none; margin-top: clamp(24px, 2.6vw, 36px); }
+.res-grid { --res-name: 220px; }
+.res-rows li { display: grid; grid-template-columns: var(--res-name) minmax(0, 1fr); column-gap: 24px; align-items: center; }
+.res-name { color: var(--ink); font-size: 16px; font-weight: 560; line-height: 1.3; }
+.res-name span { display: block; color: var(--ink-3); font-size: 13.5px; font-weight: 400; font-variant-numeric: tabular-nums; }
+.res-plot { position: relative; }
+.res-plot strong { font-weight: 620; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+/* Bars: a share of the tasks, from zero. */
+.res-bars li + li { margin-top: 12px; }
+.res-bars .res-plot { height: 40px; }
+.res-bars b { display: flex; align-items: center; justify-content: flex-end; width: calc(var(--at) * 1%); height: 100%; padding-right: 12px; border-radius: 5px; background: var(--accent); }
+.res-bars strong { color: var(--accent-ink); font-size: 16px; }
+/* Intervals: the scale runs from -70% on the left to no change on the right. */
+.res-intervals { --span: 70; }
+.res-intervals li { border-top: 1px solid var(--line); }
+.res-intervals li:last-child { border-bottom: 1px solid var(--line); }
+.res-intervals .res-plot { height: 84px; border-right: 1px solid var(--ink-3); background: repeating-linear-gradient(to left, transparent 0 calc(20% / var(--span) * 100 - 1px), var(--line) calc(20% / var(--span) * 100 - 1px) calc(20% / var(--span) * 100)); }
+.res-intervals i { position: absolute; top: 50px; right: calc(var(--hi) / var(--span) * 100%); left: calc(100% - var(--lo) / var(--span) * 100%); height: 6px; border-radius: 3px; background: var(--accent); opacity: 0.4; }
+.res-intervals b { position: absolute; top: 42px; right: calc(var(--at) / var(--span) * 100% - 11px); width: 22px; height: 22px; border: 3px solid var(--subtle); border-radius: 50%; background: var(--accent); }
+.res-intervals strong { position: absolute; top: 12px; right: calc(var(--at) / var(--span) * 100%); transform: translateX(50%); color: var(--accent); font-size: 22px; line-height: 1; }
+.res-axis { display: grid; grid-template-columns: var(--res-name) minmax(0, 1fr); column-gap: 24px; margin-top: 8px; color: var(--ink-3); font-size: 13px; font-variant-numeric: tabular-nums; }
+.res-axis div { position: relative; grid-column: 2; height: 20px; }
+.res-axis span { position: absolute; right: calc(var(--at) / 70 * 100%); transform: translateX(50%); white-space: nowrap; }
+.res-axis span:last-child { transform: none; }
+.res-note { margin-top: auto; padding-top: clamp(20px, 2.2vw, 28px); max-width: 64ch; color: var(--ink-2); font-size: 14.5px; }
 
 /* Languages on a slow strip. Icons stay one color until pointed at, so the strip
    reads as a whole; dimmer entries can do less. */
@@ -351,6 +381,9 @@ body > footer { border-top: 1px solid var(--line); }
   #example-source, #requests-auth { scroll-margin-top: 140px; }
 }
 @media (max-width: 860px) {
+  .res-grid { grid-template-columns: minmax(0, 1fr); }
+  .res-panel:first-child { padding-right: 0; padding-bottom: 36px; border-right: 0; border-bottom: 1px solid var(--line); }
+  .res-panel:last-child { padding-left: 0; }
   .nav { gap: 16px; }
   .nav a.gh { display: none; }
   .stage-row { grid-template-columns: minmax(0, 1fr); row-gap: 32px; }
@@ -374,6 +407,13 @@ body > footer { border-top: 1px solid var(--line); }
   .replay-log { height: 460px; }
 }
 @media (max-width: 540px) {
+  .res-grid { --res-name: 0px; }
+  .res-rows li, .res-axis { column-gap: 0; }
+  .res-rows li { grid-template-columns: minmax(0, 1fr); }
+  .res-rows .res-name { padding-top: 12px; }
+  .res-bars .res-plot { margin-top: 6px; }
+  .res-intervals .res-plot { margin-inline: 22px; }
+  .res-axis div { margin-inline: 22px; }
   .wrap { padding-inline: 18px; }
   .stage-intro h1 { font-size: 34px; }
   .stage-sub { font-size: 16px; }
@@ -462,6 +502,60 @@ body > footer { border-top: 1px solid var(--line); }
       </div>
     </section>
   </div>
+
+  <section class="proof-band" id="results" aria-labelledby="proof-title">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="proof-title">Results, <span class="dim">measured on public tasks.</span></h2>
+        <p class="section-sub">Two evaluations, each with its tasks, its method and what it does not show written up in full.</p>
+      </div>
+      <div class="res-grid">
+        <article class="res-panel" aria-labelledby="res-threads-title">
+          <h3 id="res-threads-title">Thread context cuts an agent's input tokens by a fifth to a half</h3>
+          <p class="res-lede">Change in input tokens when the agent is handed the <code>codenib threads</code> context, against reading the thread itself with <code>gh</code>. Zero is no change.</p>
+          <ol class="res-rows res-intervals">
+            <li style="--at:21;--lo:27;--hi:14">
+              <p class="res-name">Codex <span>gpt-6.1-sol · 76 pull requests</span></p>
+              <div class="res-plot"><i></i><b></b><strong>−21%</strong></div>
+            </li>
+            <li style="--at:25;--lo:31;--hi:19">
+              <p class="res-name">Codex <span>gpt-6.1-sol · 47 issues</span></p>
+              <div class="res-plot"><i></i><b></b><strong>−25%</strong></div>
+            </li>
+            <li style="--at:45;--lo:57;--hi:30">
+              <p class="res-name">Claude Code <span>Claude Opus 5.5 · 76 pull requests</span></p>
+              <div class="res-plot"><i></i><b></b><strong>−45%</strong></div>
+            </li>
+          </ol>
+          <div class="res-axis" aria-hidden="true"><div><span style="--at:60">−60%</span><span style="--at:40">−40%</span><span style="--at:20">−20%</span><span style="--at:0">0</span></div></div>
+          <p class="res-note">Each dot is the change over all the tasks, and each line its 95% interval. The agents found the files to change about as often either way: 0.75 against 0.74 and 0.85 against 0.82 with Codex, 0.80 against 0.83 with Claude Code. <a class="text-link" href="https://docs.codenib.ai/threads/#how-well-it-works">Scope and method →</a></p>
+        </article>
+        <article class="res-panel" aria-labelledby="res-bench-title">
+          <h3 id="res-bench-title">#1 in line recall and Pass@1 on ContextBench's Agent systems leaderboard</h3>
+          <p class="res-lede">Tasks resolved on the first attempt, by the benchmark each task comes from. Over all 500 tasks: <strong>77.60%</strong> Pass@1 and <strong>77.90%</strong> line recall.</p>
+          <ol class="res-rows res-bars">
+            <li style="--at:87.36">
+              <p class="res-name">SWE-Bench-Verified <span>152 of 174</span></p>
+              <div class="res-plot"><b><strong>87.4%</strong></b></div>
+            </li>
+            <li style="--at:79.31">
+              <p class="res-name">SWE-PolyBench <span>92 of 116</span></p>
+              <div class="res-plot"><b><strong>79.3%</strong></b></div>
+            </li>
+            <li style="--at:70.51">
+              <p class="res-name">Multi-SWE-Bench <span>110 of 156</span></p>
+              <div class="res-plot"><b><strong>70.5%</strong></b></div>
+            </li>
+            <li style="--at:62.96">
+              <p class="res-name">SWE-Bench-Pro <span>34 of 54</span></p>
+              <div class="res-plot"><b><strong>63.0%</strong></b></div>
+            </li>
+          </ol>
+          <p class="res-note">Official leaderboard as of October 23, 2026 (UTC). This is our research agent, not the Wiki or the code graph: it searches with glob, grep and reads. <a class="text-link" href="/blogs/contextbench-500-tasks/">Read how it works →</a></p>
+        </article>
+      </div>
+    </div>
+  </section>
 
   <section id="your-repository" aria-labelledby="your-repository-title">
     <div class="wrap repo-inner">
@@ -574,11 +668,7 @@ codenib codegraph init /path/to/your/repo</code></pre>
         <h2 id="threads-title">Give your agent the whole thread, <span class="dim">in one read.</span></h2>
         <p class="section-sub">In preview: <code>codenib threads</code> reads a GitHub issue or pull request once and writes one document for your agent. The ask, the reviews, the failing checks, the linked threads and the code they point at, with no model. When the agent comes back, it gets only what changed.</p>
         <pre><code>codenib threads context 8024</code></pre>
-        <div class="proof-stats">
-          <p><strong>−21%</strong> Codex · gpt-6.1-sol</p>
-          <p><strong>−45%</strong> Claude Code · Claude Opus 5.5</p>
-        </div>
-        <p class="threads-scope">Input tokens on 76 pull requests taken over after a review or a failed check, against the agent reading the thread with <code>gh</code>. The agents found the files to change about as often either way. <a class="text-link" href="/blogs/thread-context-for-coding-agents/">Read how it works →</a></p>
+        <p class="threads-scope">On 76 pull requests taken over after a review or a failed check, it cut input tokens by 21% with Codex and 45% with Claude Code, and the agents found the files to change about as often. <a class="text-link" href="#results">See the results</a> · <a class="text-link" href="/blogs/thread-context-for-coding-agents/">Read how it works →</a></p>
       </div>
       <figure class="thread-sim" data-thread-sim aria-labelledby="thread-sim-caption">
         <div class="sim-bar"><code>codenib threads board</code><span class="sim-status">poll · nothing changed</span><button class="sim-toggle" type="button" hidden>Pause</button></div>
@@ -608,21 +698,6 @@ codenib codegraph init /path/to/your/repo</code></pre>
         <p class="sim-say">Three agents, each on its own pull request, share one store. Each is sent only the records it has not read, and two that touch the same function are told about each other.</p>
         <figcaption class="preview-caption" id="thread-sim-caption">A sketch with made-up pull requests. Each mark is one stored record; blue is one its agent has not been sent yet. <a class="text-link" href="/blogs/thread-context-for-coding-agents/#whole">See real output</a>.</figcaption>
       </figure>
-    </div>
-  </section>
-
-  <section class="proof-band" aria-labelledby="proof-title">
-    <div class="wrap">
-      <div class="section-head">
-        <h2 id="proof-title">#1 in line recall and Pass@1 <span class="dim">on ContextBench's Agent systems leaderboard.</span></h2>
-        <div>
-          <div class="proof-stats">
-            <p><strong>77.90%</strong> line recall</p>
-            <p><strong>77.60%</strong> Pass@1, 388 of 500 tasks</p>
-          </div>
-          <p class="section-sub">Official leaderboard as of October 23, 2026 (UTC). This is our research agent, not the Wiki or the code graph: it searches with glob, grep and reads. <a class="text-link" href="/blogs/contextbench-500-tasks/">Read how it works →</a></p>
-        </div>
-      </div>
     </div>
   </section>
 
