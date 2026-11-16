@@ -7,11 +7,13 @@
 """
 Base class for SCIP indexers across different languages.
 """
+
 from __future__ import annotations
 
 import hashlib
 import os
 import re
+import shutil
 import subprocess
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -323,8 +325,13 @@ class SCIPIndexerBase(ABC):
         with self.profiler.section("generate_index") as section:
             try:
                 env = self._index_environment()
+
+                exec_cmd = list(cmd)
+                if exec_cmd:
+                    exec_cmd[0] = shutil.which(exec_cmd[0]) or exec_cmd[0]
+
                 subprocess.run(
-                    cmd,
+                    exec_cmd,
                     check=True,
                     cwd=self.project_root,
                     capture_output=True,

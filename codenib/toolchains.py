@@ -583,8 +583,16 @@ def install_requirements(
     (root / "dotnet-tools").mkdir(exist_ok=True)
     (root / "gems").mkdir(exist_ok=True)
 
+    def _resolve_executable(cmd: Sequence[str]) -> Sequence[str]:
+        if not cmd:
+            return cmd
+        resolved = resolve_command(cmd[0], root=root)
+        if resolved is not None:
+            return (resolved, *cmd[1:])
+        return cmd
+
     for command in tuple(commands):
-        result = runner(command, check=False, env=env)
+        result = runner(_resolve_executable(command), check=False, env=env)
         if result.returncode == 0:
             continue
         if len(command) >= 3 and command[0:3] == ("dotnet", "tool", "update"):
@@ -592,7 +600,9 @@ def install_requirements(
             fallback[2] = "install"
             fallback_command = tuple(fallback)
             commands.append(fallback_command)
-            fallback_result = runner(fallback_command, check=False, env=env)
+            fallback_result = runner(
+                _resolve_executable(fallback_command), check=False, env=env
+            )
             if fallback_result.returncode == 0:
                 continue
         raise RuntimeError(
@@ -601,7 +611,9 @@ def install_requirements(
 
     if installs_rust_analyzer:
         resolved = runner(
-            ("rustup", "which", "--toolchain", RUST_TOOLCHAIN, "rust-analyzer"),
+            _resolve_executable(
+                ("rustup", "which", "--toolchain", RUST_TOOLCHAIN, "rust-analyzer")
+            ),
             check=False,
             capture_output=True,
             text=True,

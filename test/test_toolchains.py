@@ -4,7 +4,9 @@
 
 from __future__ import annotations
 
+import os
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -87,7 +89,7 @@ def test_activate_managed_toolchain_prepends_all_provider_bins(
 
     root = toolchains.activate_managed_toolchain(env, root=tmp_path / "tools")
 
-    path = env["PATH"].split(":")
+    path = env["PATH"].split(os.pathsep)
     assert root == tmp_path / "tools"
     assert path[0] == str(root)
     assert str(root / "node-tools" / "node_modules" / ".bin") in path
@@ -266,3 +268,40 @@ def test_external_provider_remains_an_explicit_manual_prerequisite(
     assert manual == [
         "clangd: install clangd from the operating system's LLVM packages"
     ]
+
+
+def test_install_requirements_resolves_runner_executables(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "tools"
+    requirement = toolchains.ToolRequirement(
+        language="python",
+        display_name="Python",
+        scope="graph",
+        executable="scip-python",
+        ready=False,
+    )
+    monkeypatch.setattr(
+        toolchains,
+        "resolve_command",
+        lambda command, **_kwargs: (
+            f"C:\\Program Files\\nodejs\\{command}.cmd" if command == "npm" else None
+        ),
+    )
+    executed: list[tuple[str, ...]] = []
+
+    def fake_runner(cmd, **_kwargs):
+        executed.append(tuple(cmd))
+        return subprocess.CompletedProcess(cmd, returncode=0)
+
+    commands, manual = toolchains.install_requirements(
+        [requirement],
+        root=root,
+        dry_run=False,
+        runner=fake_runner,
+    )
+
+    assert manual == []
+    assert executed[0][0] == "C:\\Program Files\\nodejs\\npm.cmd"
+    assert executed[0][1:] == commands[0][1:]
