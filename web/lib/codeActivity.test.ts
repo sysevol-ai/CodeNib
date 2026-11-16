@@ -138,6 +138,19 @@ describe("activityMarks", () => {
     expect(activityMarks(null)).toEqual({});
   });
 
+  it("leaves closed threads out of the open mark and the open labels", () => {
+    const pages = {
+      done: { issues: [item({ state: "closed" })] },
+      mixed: { pulls: [item({ state: "closed" }), item({ number: 2, state: "open" })] },
+    };
+    const marks = activityMarks(overlay(pages));
+    expect(marks.done).toBeUndefined();
+    expect(marks.mixed).toEqual({ issues: 0, pulls: 1, changes: 0 });
+    const [group] = pageActivity(overlay(pages), "done");
+    expect(group.label).toBe("Issues");
+    expect(activitySources([group])).toBe("Issues");
+  });
+
   it("sizes marks to the node, so a small page stays visible under its mark", () => {
     expect(markRadius(4.5)).toBe(2.2);
     expect(markRadius(6)).toBeCloseTo(2.7);

@@ -12,6 +12,8 @@ export interface ActivityGroup {
   direct: CodeActivityItem[];
   /** Items that only reach a file the page cites. */
   nearby: CodeActivityItem[];
+  /** Some issue or pull request here is closed, so the group is not "open". */
+  anyClosed: boolean;
 }
 
 const LABELS: Record<ActivityKind, string> = {
@@ -35,15 +37,27 @@ export function pageActivity(
     if (!items.length) continue;
     // The overlay ranks items to choose which fit; a reader scans by time.
     const newest = [...items].sort((a, b) => timeOf(b.at) - timeOf(a.at));
+    const anyClosed = kind !== "changes" && items.some((item) => !isOpenItem(item));
     groups.push({
       kind,
-      label: LABELS[kind],
+      label: (anyClosed && WITH_CLOSED[kind]) || LABELS[kind],
+      anyClosed,
       direct: newest.filter((item) => item.strength === "symbol"),
       nearby: newest.filter((item) => item.strength !== "symbol"),
     });
   }
   return groups;
 }
+
+/** An overlay made with --include-closed carries closed threads too. */
+export function isOpenItem(item: CodeActivityItem): boolean {
+  return item.state == null || item.state === "open";
+}
+
+const WITH_CLOSED: Partial<Record<ActivityKind, string>> = {
+  issues: "Issues",
+  pulls: "Pull requests",
+};
 
 function timeOf(at: string): number {
   const time = new Date(at).getTime();
@@ -58,7 +72,9 @@ const SOURCES: Record<ActivityKind, string> = {
 
 /** "Open issues and merged changes", naming only the kinds the page has. */
 export function activitySources(groups: ActivityGroup[]): string {
-  const names = groups.map((group) => SOURCES[group.kind]);
+  const names = groups.map((group) =>
+    group.anyClosed ? SOURCES[group.kind].replace(/^open /, "") : SOURCES[group.kind],
+  );
   const text =
     names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : names[0] ?? "";
   return text.charAt(0).toUpperCase() + text.slice(1);
@@ -155,9 +171,11 @@ export function activityMarks(
   for (const [pageId, page] of Object.entries(overlay?.pages ?? {})) {
     const count = (items: CodeActivityItem[] | undefined, symbolOnly = false) =>
       (items ?? []).filter((item) => item && (!symbolOnly || item.strength === "symbol")).length;
+    // The mark says "open", so closed threads do not count toward it.
+    const open = (items: CodeActivityItem[] | undefined) => count(items?.filter(isOpenItem));
     const mark = {
-      issues: count(page?.issues),
-      pulls: count(page?.pulls),
+      issues: open(page?.issues),
+      pulls: open(page?.pulls),
       changes: count(page?.changes, true),
     };
     if (mark.issues || mark.pulls || mark.changes >= MIN_CHANGES_TO_MARK) marks[pageId] = mark;

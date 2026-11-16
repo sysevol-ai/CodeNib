@@ -1017,7 +1017,11 @@ export function fetchCodeActivity(repoId: string): Promise<CodeActivityOverlay |
     : `${API_BASE}/api/repos/${encodeURIComponent(repoId)}/threads`;
   const request = fetch(url)
     .then(async (res) => {
-      if (!res.ok) return null;
+      if (!res.ok) {
+        // Only 404 says there is no overlay; another status may pass.
+        if (res.status !== 404) codeActivityRequests.delete(repoId);
+        return null;
+      }
       const overlay = (await res.json()) as CodeActivityOverlay;
       return overlay?.version === 1 && overlay.pages && typeof overlay.pages === "object"
         ? overlay
