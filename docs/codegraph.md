@@ -117,6 +117,31 @@ run only when you invoke them. A repository already registered with
 `codenib codegraph init . --agent claude` keeps that server too. To avoid
 duplicate tools, remove it with `codenib codegraph uninstall .`.
 
+## Codex plugin
+
+Codex installs the same plugin, skills and MCP server included:
+
+```bash
+codex plugin marketplace add sysevol-ai/CodeNib --sparse .claude-plugin --sparse plugins/codenib
+codex plugin add codenib@codenib
+```
+
+The two `--sparse` paths fetch only the plugin, not the whole repository.
+
+Codex expands no variables in a plugin's MCP command, so its manifest
+(`plugins/codenib/.codex-plugin/plugin.json`) starts the server with an
+inline `sh` script that takes the same steps as the Claude Code launcher. The
+server starts in the project Codex opens and indexes that checkout. A first
+start, which builds the index and may download CodeNib through `uvx`, can take
+longer than the 30 seconds Codex waits by default, so the manifest gives the
+server up to five minutes. It needs the `codenib` command, or uv, as in Claude
+Code, and a POSIX `sh`.
+
+`codex plugin marketplace upgrade codenib` fetches a newer version. A
+repository already registered with `codenib codegraph init . --agent codex`
+keeps that server too. To avoid duplicate tools, remove it with
+`codenib codegraph uninstall . --agent codex`.
+
 ## Grok Build plugin
 
 Grok Build reads the same plugin, skills and MCP server included. The server

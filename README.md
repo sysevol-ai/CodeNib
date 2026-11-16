@@ -36,7 +36,7 @@ SPDX-License-Identifier: Apache-2.0
   </p>
   <p>
     <a href="https://docs.codenib.ai/codegraph/#claude-code-plugin"><img src="https://img.shields.io/badge/Claude_Code-plugin-D97757?logo=claude&amp;logoColor=white" alt="Claude Code plugin"></a>
-    <a href="#use-it-with-your-coding-agent"><img src="https://img.shields.io/badge/Codex-MCP-10A37F" alt="Codex over MCP"></a>
+    <a href="https://docs.codenib.ai/codegraph/#codex-plugin"><img src="https://img.shields.io/badge/Codex-plugin-10A37F" alt="Codex plugin"></a>
     <a href="https://docs.codenib.ai/codegraph/#grok-build-plugin"><img src="https://img.shields.io/badge/Grok_Build-plugin-000000" alt="Grok Build plugin"></a>
     <a href="https://docs.codenib.ai/codegraph/#deepseek-harness-bundle"><img src="https://img.shields.io/badge/DeepSeek_Harness-plugin-4D6BFE?logo=deepseek&amp;logoColor=white" alt="DeepSeek Harness plugin"></a>
     <a href="https://github.com/marketplace/actions/codenib-wiki"><img src="https://img.shields.io/badge/GitHub_Marketplace-Wiki_action-2088FF?logo=githubactions&amp;logoColor=white" alt="CodeNib Wiki action on GitHub Marketplace"></a>
@@ -152,14 +152,18 @@ claude plugin marketplace add sysevol-ai/CodeNib
 claude plugin install codenib@codenib
 ```
 
-Grok Build reads the same plugin, and DeepSeek Harness installs it as a bundle:
+Codex and Grok Build install the same plugin, and DeepSeek Harness installs it
+as a bundle:
 
 ```bash
+codex plugin marketplace add sysevol-ai/CodeNib --sparse .claude-plugin --sparse plugins/codenib
+codex plugin add codenib@codenib
 grok plugin install "sysevol-ai/CodeNib#plugins/codenib"
 dsh plugin --profile web add "git+https://github.com/sysevol-ai/CodeNib.git#main&path:/plugins/dsh"
 ```
 
-[Grok Build setup](https://docs.codenib.ai/codegraph/#grok-build-plugin)
+[Codex setup](https://docs.codenib.ai/codegraph/#codex-plugin)
+· [Grok Build setup](https://docs.codenib.ai/codegraph/#grok-build-plugin)
 · [DeepSeek Harness setup](https://docs.codenib.ai/codegraph/#deepseek-harness-bundle)
 
 [Setup and troubleshooting](https://docs.codenib.ai/codegraph/)

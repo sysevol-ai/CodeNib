@@ -58,6 +58,33 @@ def test_the_mcp_server_runs_the_bundled_launcher_for_the_project():
     assert subprocess.run(["bash", "-n", str(LAUNCHER)]).returncode == 0
 
 
+def test_codex_reads_the_same_plugin_with_its_own_server_command():
+    codex = json.loads((PLUGIN / ".codex-plugin" / "plugin.json").read_text())
+    claude = json.loads((PLUGIN / ".claude-plugin" / "plugin.json").read_text())
+
+    shared = ("name", "version", "description", "author", "homepage")
+    shared += ("repository", "license", "keywords")
+    for field in shared:
+        assert codex[field] == claude[field], field
+    assert codex["skills"] == "./skills/"
+    for asset in ("composerIcon", "logo"):
+        assert (PLUGIN / codex["interface"][asset]).is_file(), asset
+
+    # Codex expands no variables in a plugin's MCP command and starts the
+    # server in the project, so it runs the dsh bundle's script inline.
+    (server,) = codex["mcpServers"].values()
+    assert server["command"] == "sh" and server["args"][0] == "-c"
+    (layer,) = yaml.safe_load(
+        (ROOT / "plugins" / "dsh" / "cordis.patch.yml").read_text()
+    )
+    dsh_script = layer["insert"][0]["config"]["args"][1]
+    assert server["args"][1] == dsh_script.replace(
+        "start dsh inside one", "open Codex inside one"
+    )
+    # A first start downloads CodeNib and indexes; Codex waits 30 s by default.
+    assert server["startup_timeout_sec"] >= 120
+
+
 def test_skills_describe_when_to_use_them_and_side_effects_need_the_user():
     skills = {
         path.parent.name: _frontmatter(path)
@@ -205,6 +232,18 @@ def test_launcher_uses_the_working_directory_without_a_project(checkout, tmp_pat
     assert result.returncode == 0, result.stderr
     root = os.path.realpath(checkout)
     assert log.read_text().splitlines()[0] == f"codenib index {root} --preset fast"
+
+
+def test_the_documented_codex_install_fetches_only_the_plugin():
+    # Without --sparse, Codex clones the whole repository (about a minute).
+    command = (
+        "codex plugin marketplace add sysevol-ai/CodeNib"
+        " --sparse .claude-plugin --sparse plugins/codenib"
+    )
+    for page in ("README.md", "docs/codegraph.md", "plugins/codenib/README.md"):
+        text = (ROOT / page).read_text(encoding="utf-8")
+        assert command in text, page
+        assert "codex plugin add codenib@codenib" in text, page
 
 
 def test_the_documented_grok_install_uses_a_command_grok_has():

@@ -33,4 +33,4 @@ only, and calls no model.
 Thread context is a preview in CodeNib 0.2.6. If `codenib threads` is not a
 command, the installed CodeNib is older; tell the user to upgrade it with
 `python -m pip install -U "codenib[graph,mcp]"`. If `codenib` is missing, tell
-the user to run `/codenib:setup`.
+the user to run CodeNib's `setup` skill (`/codenib:setup` in Claude Code).

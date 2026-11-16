@@ -11,6 +11,12 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 ## [Unreleased]
 
+### Added
+
+- Codex installs the CodeNib plugin with `codex plugin marketplace add` and
+  `codex plugin add codenib@codenib`: the five skills plus the MCP server,
+  which indexes and serves the checkout Codex opens.
+
 ## [0.2.6] - 2026-11-14
 
 ### Added
