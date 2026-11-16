@@ -43,7 +43,8 @@ TITLE = "One read of a GitHub thread instead of a tool call per piece"
 DESC = (
     "Left: an agent reading a thread itself makes one tool call for the issue, "
     "its comments, the linked pull request, the reviews, the checks and a "
-    "failed log, and each call carries the conversation so far. Right: codenib "
+    "failed log, and each call carries the conversation so far: with six "
+    "pieces of 1,000 tokens, 21,000 tokens are sent in all. Right: codenib "
     "threads prepares one document with status, coverage, the ask, code "
     "locations, failing CI, other open pull requests on the same code, linked "
     "threads and discussion, ending in a cursor, so a later read returns only "
@@ -111,15 +112,23 @@ STYLES = {
 }
 
 
-def _calls(fig: Figure, x, y, bar_x, step, new, stacked=False):
-    """Six tool calls; each bar is what the call sends, growing with the last."""
+# The example the bars draw: every piece of the thread is this many tokens.
+PIECE_TOKENS = 1000
+
+
+def _calls(fig: Figure, x, y, bar_x, unit, stacked=False):
+    """Six tool calls; each bar is what the call sends, with its token count."""
     for i, piece in enumerate(PIECES):
         top = y + i * 50
         fig.text(x, top + 23, f"{i + 1}", "num")
         fig.text(x + 30, top + 24, piece, "piece")
-        carried = 34 + i * step
-        fig.rect(bar_x, top + 6, carried, 22, rx=3, fill=LINE_STRONG)
-        fig.rect(bar_x + carried + 3, top + 6, new, 22, rx=3, fill=ACCENT)
+        carried = i * unit
+        if carried:
+            fig.rect(bar_x, top + 6, carried, 22, rx=3, fill=LINE_STRONG)
+        start = bar_x + carried + (3 if carried else 0)
+        fig.rect(start, top + 6, unit, 22, rx=3, fill=ACCENT)
+        fig.text(start + unit + 10, top + 23, f"{(i + 1) * PIECE_TOKENS:,}", "num")
+    sent = sum((i + 1) * PIECE_TOKENS for i in range(len(PIECES)))
     legend = y + len(PIECES) * 50 + 20
     fig.rect(x, legend - 11, 12, 12, rx=2, fill=LINE_STRONG)
     fig.text(x + 20, legend, "the conversation so far, sent again", "desc")
@@ -127,9 +136,16 @@ def _calls(fig: Figure, x, y, bar_x, step, new, stacked=False):
     if stacked:  # the phone drawing has no room for both on one line
         fig.rect(x, legend + 15, 12, 12, rx=2, fill=ACCENT)
         fig.text(x + 20, legend + 26, "the new piece", "desc")
+        legend += 26
     else:
         fig.rect(x + 44 + width, legend - 11, 12, 12, rx=2, fill=ACCENT)
         fig.text(x + 64 + width, legend, "the new piece", "desc")
+    fig.text(
+        x,
+        legend + 30,
+        f"Six pieces of {PIECE_TOKENS:,} tokens: {sent:,} sent over six calls.",
+        "desc",
+    )
 
 
 def rule(fig: Figure, x: float, y: float, width: float) -> None:
@@ -149,7 +165,7 @@ def wide() -> str:
     fig.text(
         64, 206, "One tool call per piece. Each call carries what came before.", "note"
     )
-    _calls(fig, 64, 236, 328, 56, 46)
+    _calls(fig, 64, 228, 328, 52)
     fig.path("M 776 130 V 620", stroke=LINE, sw=1.5)
 
     # Right: one prepared context.
@@ -203,9 +219,9 @@ def narrow() -> str:
     fig.text(left, top + 40, "The agent reads the thread itself", "phase")
     fig.text(left, top + 68, "One tool call per piece.", "note")
     fig.text(left, top + 92, "Each call carries what came before.", "note")
-    _calls(fig, left, top + 112, 282, 16, 30, stacked=True)
+    _calls(fig, left, top + 112, 282, 18, stacked=True)
 
-    top += 112 + len(PIECES) * 50 + 76
+    top += 112 + len(PIECES) * 50 + 106
     rule(fig, 0, top, width)
     fig.text(left, top + 40, "codenib threads prepares it once", "phase-r")
     fig.text(left, top + 68, "One document in a token budget,", "note")
