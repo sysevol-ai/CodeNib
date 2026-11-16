@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -55,3 +56,31 @@ def test_drawn_figure_is_readable_at_the_column_width(path: Path) -> None:
     # No surface of its own: the figure sits on the reader's page.
     assert not re.search(r'<rect width="\d+" height="\d+" fill=', svg)
     assert "@font-face" in svg
+
+
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_caller_path_shows_the_recorded_session(theme: str) -> None:
+    record = json.loads(
+        (ROOT / "landing/assets/demos/codegraph-claude.json").read_text("utf-8")
+    )
+    svg = (ROOT / f"assets/readme/caller-path-{theme}.svg").read_text("utf-8")
+    drawn = set(re.findall(r">([\w.]+\.py:\d+)<", svg))
+    result = record["dependency_result"]
+    deepest = max(node["depth"] for node in result["nodes"])
+    path = {
+        f"{Path(node['file']).name}:{node['line']}"
+        for node in result["nodes"]
+        if node["depth"] < deepest
+    }
+    root = next(a for a in record["source_anchors"] if a["symbol"] == result["root"])
+    path.add(f"{Path(root['file']).name}:{root['start_line']}")
+    assert drawn == path
+    for node in result["nodes"]:
+        if node["depth"] == deepest:
+            assert f"{node['name'].rpartition(':')[2]}<" in svg
+
+
+def test_readme_images_are_the_two_wiki_screenshots_and_drawn_figures() -> None:
+    used = set(re.findall(rf"{re.escape(RAW)}assets/readme/([\w.-]+)", README))
+    shipped = {path.name for path in (ROOT / "assets" / "readme").iterdir()}
+    assert used == shipped

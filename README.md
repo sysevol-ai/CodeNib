@@ -120,15 +120,19 @@ Build the same index for Claude Code or Codex. Your agent can then find
 definitions, follow callers and read the source in your own checkout.
 
 <p align="center">
-  <a href="https://codenib.ai/#get-started">
-    <img src="https://raw.githubusercontent.com/sysevol-ai/CodeNib/main/assets/readme/agent-replay-requests.png" alt="A recorded Claude Code session on Requests. Left: codenib codegraph init, the prompt, explore_context returning rebuild_auth() at sessions.py:282-300, and one dependency_subgraph call listing four hops, then the agent's answer. Right: the caller graph, with eight public entry points such as get() and post() reaching Session.request(), Session.send(), resolve_redirects() and rebuild_auth()" width="100%">
-  </a>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sysevol-ai/CodeNib/main/assets/readme/caller-path-dark.svg">
+    <img src="https://raw.githubusercontent.com/sysevol-ai/CodeNib/main/assets/readme/caller-path-light.svg" width="830" alt="The callers of rebuild_auth() in Requests, as one dependency_subgraph call returned them. Eight public entry points, api.request() and Session.get(), options(), head(), post(), put(), patch() and delete(), each reach Session.request() at sessions.py:500. From there one path leads through Session.send() at sessions.py:673 and resolve_redirects() at sessions.py:159 to rebuild_auth() at sessions.py:282.">
+  </picture>
 </p>
-<p align="center"><sub>
-  One recorded Claude Code session on Requests: 14.1 s, 3 turns, 2 CodeNib tools.
-  <a href="https://codenib.ai/#get-started">▶ Watch it replay</a> ·
-  <a href="https://docs.codenib.ai/codegraph/#recorded-agent-session">Pinned source, transcript and setup details</a>
-</sub></p>
+
+One recorded Claude Code session on Requests. Asked where Requests strips
+authentication on a redirect to another host, and which public methods reach
+that code, the agent found `rebuild_auth()` with `explore_context`. One
+`dependency_subgraph` call then returned the path above, each step with its
+file and line. The session took 14.1 s, 3 turns and 2 CodeNib tool calls.
+[▶ Watch it replay](https://codenib.ai/#get-started)
+· [Pinned source, transcript and setup details](https://docs.codenib.ai/codegraph/#recorded-agent-session)
 
 Requires Python 3.10+, Git, and Claude Code or Codex. Initialization accepts
 uncommitted edits and preserves the checkout.
@@ -183,16 +187,17 @@ no model. It is a preview in 0.2.6.
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sysevol-ai/CodeNib/main/assets/readme/thread-tokens-dark.svg">
-    <img src="https://raw.githubusercontent.com/sysevol-ai/CodeNib/main/assets/readme/thread-tokens-light.svg" width="830" alt="Input tokens on 76 pull request takeovers. With Codex on gpt-6.1-sol, the context prepared by codenib threads used 21% fewer input tokens than the agent reading the thread with gh. With Claude Code on Claude Opus 5.5 it used 45% fewer.">
+    <img src="https://raw.githubusercontent.com/sysevol-ai/CodeNib/main/assets/readme/thread-tokens-light.svg" width="830" alt="Change in input tokens when the agent is handed the thread context, against reading the thread itself with gh. Codex on 76 pull requests: 21% fewer, with a 95% interval of 27% to 14% fewer. Codex on 47 issues: 25% fewer, 31% to 19%. Claude Code on 76 pull requests: 45% fewer, 57% to 30%.">
   </picture>
 </p>
 
-Input tokens on 76 pull requests taken over after a review or a failed check.
-An agent that reads a thread itself makes one call per piece, and every call
-sends the conversation so far again; the prepared document is read once. The
-agents found the files to change about as often either way (Codex 0.75 against
-0.74, Claude Code 0.80 against 0.83, a gap too small to tell from chance on 76
-tasks).
+Each dot is the change in input tokens over all the tasks when the agent is
+handed the prepared context, against reading the thread itself with `gh`, and
+each line is its 95% interval. An agent that reads a thread itself makes one
+call per piece, and every call sends the conversation so far again; the
+prepared document is read once. The agents found the files to change about as
+often either way: 0.75 against 0.74 and 0.85 against 0.82 with Codex, 0.80
+against 0.83 with Claude Code.
 
 ```bash
 cd /path/to/your/repo
@@ -202,18 +207,9 @@ codenib threads inbox 812       # later: only what is new
 codenib threads board           # all tickets, and other work on the same code
 ```
 
-<details>
-<summary>Several agents on one repository</summary>
-<br>
-
-Each ticket is sent only the records it has not read, and tickets whose work
-reaches the same function are told about each other.
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/sysevol-ai/CodeNib/main/assets/readme/thread-board.gif" width="772" alt="A board of three tickets, replayed. A review comment and a failed check arrive on pull request 812, and only Agent A has two unread records; when it comes back it is sent those two, not the thread again. A push to pull request 815 then changes Reader.read(), the function 812 is about, and both tickets report the other as also in progress on that function. Agent B is sent its one new record. The next poll finds nothing new, and nothing is sent. The pull requests are made up.">
-</p>
-
-</details>
+When several agents work on one repository, each ticket is sent only the
+records it has not read, and tickets whose work reaches the same function are
+told about each other.
 
 [Thread context guide](https://docs.codenib.ai/threads/)
 · [How it decides what to include, with real output](https://codenib.ai/blogs/thread-context-for-coding-agents/)
