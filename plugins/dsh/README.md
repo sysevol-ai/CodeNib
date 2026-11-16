@@ -33,6 +33,23 @@ The bundle adds one MCP server, `codenib`. Its `explore_context` tool returns
 ranked, verified source windows for a question, plus recorded references once
 the code graph is ready; the model sees it as `mcp__codenib__explore_context`.
 
+## Hand it an issue or pull request
+
+When the work starts from a GitHub issue or pull request, write its context to
+a file before you start `dsh`, and tell the model to read it first:
+
+```bash
+codenib threads context 812     # writes THREAD_CONTEXT.md in the checkout
+```
+
+The file holds the ask, the discussion, review comments, failing checks with
+the lines around each error, linked threads and the code they point at, inside
+a token budget. It is built once, with no model, so the model does not spend a
+tool call on each piece. It needs CodeNib 0.2.6, and `GH_TOKEN` or a signed-in
+`gh`. Thread context is a preview; see
+[Thread context](https://docs.codenib.ai/threads/) for what it measured and
+for returning to a thread later.
+
 ## What happens when it starts
 
 Start `dsh` inside a Git checkout. The server first builds or refreshes

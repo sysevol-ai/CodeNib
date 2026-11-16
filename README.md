@@ -18,6 +18,8 @@ SPDX-License-Identifier: Apache-2.0
     &nbsp;&middot;&nbsp;
     <a href="#use-it-with-your-coding-agent">Use with your agent</a>
     &nbsp;&middot;&nbsp;
+    <a href="#hand-your-agent-the-whole-thread">Thread context</a>
+    &nbsp;&middot;&nbsp;
     <a href="https://docs.codenib.ai/">Docs</a>
     &nbsp;&middot;&nbsp;
     <a href="https://docs.codenib.ai/language_capabilities/">Languages</a>
@@ -34,7 +36,7 @@ SPDX-License-Identifier: Apache-2.0
   </p>
   <p>
     <a href="https://docs.codenib.ai/codegraph/#claude-code-plugin"><img src="https://img.shields.io/badge/Claude_Code-plugin-D97757?logo=claude&amp;logoColor=white" alt="Claude Code plugin"></a>
-    <a href="#use-it-with-your-coding-agent"><img src="https://img.shields.io/badge/Codex-MCP-10A37F" alt="Codex over MCP"></a>
+    <a href="https://docs.codenib.ai/codegraph/#codex-plugin"><img src="https://img.shields.io/badge/Codex-plugin-10A37F" alt="Codex plugin"></a>
     <a href="https://docs.codenib.ai/codegraph/#grok-build-plugin"><img src="https://img.shields.io/badge/Grok_Build-plugin-000000" alt="Grok Build plugin"></a>
     <a href="https://docs.codenib.ai/codegraph/#deepseek-harness-bundle"><img src="https://img.shields.io/badge/DeepSeek_Harness-plugin-4D6BFE?logo=deepseek&amp;logoColor=white" alt="DeepSeek Harness plugin"></a>
     <a href="https://github.com/marketplace/actions/codenib-wiki"><img src="https://img.shields.io/badge/GitHub_Marketplace-Wiki_action-2088FF?logo=githubactions&amp;logoColor=white" alt="CodeNib Wiki action on GitHub Marketplace"></a>
@@ -54,7 +56,9 @@ SPDX-License-Identifier: Apache-2.0
 
 New in **0.2.6**: Wikis open as a map of their pages and lead with the main path
 through the code, faster graph builds, and first C/C++ and JavaScript/TypeScript
-builds that leave the checkout alone.
+builds that leave the checkout alone. In preview,
+[`codenib threads`](#hand-your-agent-the-whole-thread) hands your agent a
+GitHub issue or pull request in one read.
 [Read the release notes](https://docs.codenib.ai/releases/0.2.6/).
 
 ## A Wiki you can follow down to the source
@@ -141,27 +145,98 @@ uses its own model. Language toolchain and project prerequisites vary.
 
 In Claude Code you can install the plugin instead. It connects every Git
 checkout you open and adds `/codenib:explain`, `/codenib:impact`,
-`/codenib:setup` and `/codenib:wiki`:
+`/codenib:thread`, `/codenib:setup` and `/codenib:wiki`:
 
 ```bash
 claude plugin marketplace add sysevol-ai/CodeNib
 claude plugin install codenib@codenib
 ```
 
-Grok Build reads the same plugin, and DeepSeek Harness installs it as a bundle:
+Codex and Grok Build install the same plugin, and DeepSeek Harness installs it
+as a bundle:
 
 ```bash
+codex plugin marketplace add sysevol-ai/CodeNib --sparse .claude-plugin --sparse plugins/codenib
+codex plugin add codenib@codenib
 grok plugin install "sysevol-ai/CodeNib#plugins/codenib"
 dsh plugin --profile web add "git+https://github.com/sysevol-ai/CodeNib.git#main&path:/plugins/dsh"
 ```
 
-[Grok Build setup](https://docs.codenib.ai/codegraph/#grok-build-plugin)
+[Codex setup](https://docs.codenib.ai/codegraph/#codex-plugin)
+· [Grok Build setup](https://docs.codenib.ai/codegraph/#grok-build-plugin)
 · [DeepSeek Harness setup](https://docs.codenib.ai/codegraph/#deepseek-harness-bundle)
 
 [Setup and troubleshooting](https://docs.codenib.ai/codegraph/)
 · [Source exclusions](https://docs.codenib.ai/codegraph/#select-the-repository-source-surface)
 · [All MCP tools](https://docs.codenib.ai/mcp/)
 · [Change guard](https://docs.codenib.ai/guard/) (preview, Python: lists the tests a change reaches before your agent finishes)
+
+## Hand your agent the whole thread
+
+`codenib threads` reads a GitHub issue or pull request once and gives your
+agent one document: the ask, what people decided, review comments, the failing
+checks, the linked threads, and the code they point at. It fits a token
+budget, and when the agent comes back it returns only what changed. It runs on
+your machine and calls no model. It is a preview in 0.2.6.
+
+<p align="center">
+  <a href="https://codenib.ai/blogs/thread-context-for-coding-agents/">
+    <img src="https://raw.githubusercontent.com/sysevol-ai/CodeNib/main/assets/readme/thread-context.png" alt="Left: an agent reading a GitHub thread itself makes six tool calls, for the issue, its comments, the linked pull request, the reviews, the checks and a log, and each call carries the conversation so far. Right: codenib threads prepares one context with status, coverage, the ask, code locations, failing CI, other open pull requests on the same code, linked threads and discussion, ending in a cursor; a later read returns only what changed. Below: input tokens against reading with gh on 76 pull request takeovers, minus 21 percent with Codex and minus 45 percent with Claude Code" width="100%">
+  </a>
+</p>
+
+```bash
+cd /path/to/your/repo
+codenib threads context 812     # write THREAD_CONTEXT.md before the agent starts
+codenib threads open 812        # or start a ticket that remembers what it read
+codenib threads inbox 812       # later: only what is new
+codenib threads board           # all tickets, and other work on the same code
+```
+
+With several agents on one repository, each ticket is sent only the records it
+has not read, and tickets whose work reaches the same function are told about
+each other:
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/sysevol-ai/CodeNib/main/assets/readme/thread-board.gif" width="772" alt="A board of three tickets, replayed. A review comment and a failed check arrive on pull request 812, and only Agent A has two unread records; when it comes back it is sent those two, not the thread again. A push to pull request 815 then changes Reader.read(), the function 812 is about, and both tickets report the other as also in progress on that function. Agent B is sent its one new record. The next poll finds nothing new, and nothing is sent. The pull requests are made up.">
+</p>
+
+This is the top of what it wrote for
+[caddyserver/caddy#8024](https://github.com/caddyserver/caddy/pull/8024) on
+November 14, 2026, a pull request with 145 events across three threads:
+
+```text
+# Thread context: caddyserver/caddy#8024 (PR)
+Status: open PR · opened 2026-09-15 by MangoGovo · CI: 2 failing (lint (linux), test (windows, 1.27)) · 145 events across 3 threads
+Coverage: this thread complete, linked threads partial. Everything people wrote in #8024 is below in full […]
+
+## Changes in this pull request
+[#8024/diff/0b3db48fbe8605ddda67e48735ef225694af4b1b] +52/-6 in 2 files at 0b3db48f:
+- modules/caddyhttp/fileserver/staticfiles.go
+- modules/caddyhttp/fileserver/staticfiles_test.go
+
+## Also in progress on this code
+- #7777 (open PR by Jualhosting, updated 2026-10-26) fileserver: Improve 404 error detail and context — changes `FileServer.serveBrowse()` […]
+
+## Failing CI
+Checks at 0b3db48f: 2 failing, 22 passing.
+[#8024/check/127120839152] lint (linux) failed
+##[error]modules/caddyhttp/reverseproxy/reverseproxy.go:658:24: use "Sec-Websocket-Key" instead of "Sec-WebSocket-Key" (canonicalheader)
+```
+
+Each part cites the event it came from, and the `Coverage` line tells the
+agent whether it still has to read the thread itself.
+
+On 76 pull requests taken over after a review or a failed check, the prepared
+context cut input tokens by 21% with Codex (gpt-6.1-sol) and by 45% with
+Claude Code (Claude Opus 5.5), against letting the agent read the thread with
+`gh`. The answers held: the agents found the files to change about as often
+either way (Codex 0.75 against 0.74, Claude Code 0.80 against 0.83, a gap too
+small to tell from chance on 76 tasks).
+
+[Thread context guide](https://docs.codenib.ai/threads/)
+· [How it decides what to include](https://codenib.ai/blogs/thread-context-for-coding-agents/)
+· In Claude Code and Grok Build, the plugin adds it as `/codenib:thread`.
 
 ## How it compares
 

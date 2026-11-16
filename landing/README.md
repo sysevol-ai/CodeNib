@@ -57,6 +57,12 @@ date, and keep the ranking out of the hero: it was not earned by the Wiki.
 The ContextBench band is two numbers, one sentence and a link; the article has the
 diagram and the method.
 
+The thread context section sits between the agent terminal and the ContextBench
+band. Its panel quotes real `codenib threads` output for one public pull request;
+when refreshing it, copy lines from the command's output and mark cuts with `[…]`.
+Its figures come from `docs/threads.md`. Keep the "Preview" label and the sentence
+that it does not make answers better while that page says so.
+
 The language strip between the `CODENIB_LANGUAGE_STRIP` markers is generated from
 the language registry, with icons from `assets/languages/` (see its `LICENSE.txt`).
 It moves for more than five seconds, so keep its pause control, and keep it static
@@ -198,18 +204,42 @@ The site uses real directory indexes for nested routes:
   BM25 and model-planned grep candidates;
 - `/blogs/local-code-intelligence-dgx-spark/` is the reproducible local
   deployment reference;
+- `/blogs/thread-context-for-coding-agents/` explains how `codenib threads`
+  chooses what an agent reads;
 - each article lives at `landing/blogs/<slug>/index.html`.
 
 Nested pages should reference shared assets from `/assets/...` so the same URL
-works at every route depth. The local Caddy configuration falls back to the
-homepage for unknown paths, so a `200` response alone does not prove that a
-new route or asset exists. Check the page title and asset content type as part
-of deployment verification:
+works at every route depth.
+
+Unknown paths get `landing/404.html` with a `404` status. That needs the web
+server to serve it; in the local Caddy configuration the landing site's block is:
+
+```
+handle {
+	try_files {path} {path}/index.html
+	file_server
+}
+handle_errors {
+	@missing expression {err.status_code} == 404
+	handle @missing {
+		rewrite * /404.html
+		file_server {
+			status 404
+		}
+	}
+}
+```
+
+A server still configured to fall back to the homepage answers `200` for every
+path, so a `200` alone does not prove that a new route or asset exists. Check
+the page title, the asset content type and the missing-page status as part of
+deployment verification:
 
 ```bash
 curl -s https://codenib.ai/blogs/ | grep '<title>CodeNib Blog'
 curl -sI https://codenib.ai/assets/blogs/fact-query-index-fact-batch.png \
   | grep -i 'content-type: image/png'
+curl -s -o /dev/null -w '%{http_code}\n' https://codenib.ai/no-such-page  # 404
 ```
 
 ## Publishing an article
@@ -240,7 +270,18 @@ subset in each figure, give wide figures a narrow `<picture>` variant for
 phones, and render the sharing PNG from the same SVG with
 `node scripts/render_svg_png.mjs <in.svg> <out.png>`.
 `scripts/render_contextbench_blog_figures.py` does this for the ContextBench
-article.
+article. `scripts/render_threads_blog_figure.py` and
+`scripts/render_threads_mechanism_figures.py` do it for the thread context
+article, whose lead figure is also the README's at
+`assets/readme/thread-context.png`. `scripts/render_blog_pipeline_figures.py`
+draws the pipeline figures of the DGX Spark, CodeGraph architecture and Jev
+articles.
+
+Draw a figure as one surface: stages or columns side by side, divided by a
+hairline or joined by an arrow, with notes under a rule. Do not put a box
+inside a box or a label line above the title. Keep one meaning per colour
+within an article, and say what the colours mean where the first figure
+appears.
 
 Serve `landing/` locally and check the index link, article title, images,
 internal anchors, tables, and desktop/mobile layout. Run `mkdocs build --strict`

@@ -11,47 +11,13 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 ## [Unreleased]
 
-### Changed
+### Added
 
-- Visitor Wikis on a hosted server build their code maps with pyrefly, like
-  every other Python graph, instead of always using scip-python. scip-python
-  is used only when the pinned pyrefly release is missing or
-  `CODENIB_PYTHON_GRAPH_PROVIDER=scip-python` pins it. On sympy and matplotlib,
-  scip-python's output fails identity recovery and builds no graph.
-- Wiki pages read as technical documents. Body text sits a step back from the
-  headings, the opening claim and the code names, which carry a light fill.
-  Sources trail each paragraph in small grey type. The section bridge sentences
-  are set in roman instead of italics, and the reader column holds about 75
-  characters a line.
-- A page ends with one "Read next" list in the map's colours. It replaces the
-  "Related pages" list and the "Go deeper" buttons, which repeated the same
-  pages, and the "Subsystem map" graph.
-- The Dependency Map shows the structure view only. The Graph and Modules views
-  are removed: at repository scale both drew tangles. Their relationship list
-  shows both names in full.
-- Community Wikis use the same page ending as the featured ones. The "Chapter
-  CodeGraph" section is gone, and an Overview's architecture reads as a
-  numbered path with the other roles listed after it, without layer tags or a
-  "View source" link on every role.
+- Codex installs the CodeNib plugin with `codex plugin marketplace add` and
+  `codex plugin add codenib@codenib`: the five skills plus the MCP server,
+  which indexes and serves the checkout Codex opens.
 
-### Fixed
-
-- The Grok Build and DeepSeek Harness install commands in the guides now run:
-  `grok plugin install "sysevol-ai/CodeNib#plugins/codenib"` and
-  `dsh plugin --profile web add …`. The earlier ones named an option Grok does
-  not have and left out one `dsh` requires.
-- The Claude Code, Grok Build and DeepSeek Harness plugins no longer fail to
-  start when a CodeNib older than 0.2.5 is on the path. They run a current
-  one through `uvx`, or say which upgrade is needed.
-- C++ symbol names no longer show clang's template spelling, such as
-  `formatter<type-parameter-0-0, typename enable_if<…>::type>`. Parameters read
-  `T`, `U`; long argument lists fold to `<…>`. Call rows, call paths and the
-  structure view name a symbol by its owner and member.
-- Emoji copied from a README no longer appear in Wiki prose.
-- The Overview no longer scrolls sideways on a phone when a call path names a
-  long symbol.
-
-## [0.2.6] - 2026-11-08
+## [0.2.6] - 2026-11-14
 
 ### Added
 
@@ -169,6 +135,26 @@ All notable user-facing changes are recorded here. CodeNib follows
   50,000-character tool-result limit receive it whole. The queried symbol's
   direct callers and callees are kept first, and `response_projection` reports
   the node and edge counts before and after.
+- Visitor Wikis on a hosted server build their code maps with pyrefly, like
+  every other Python graph, instead of always using scip-python. scip-python
+  is used only when the pinned pyrefly release is missing or
+  `CODENIB_PYTHON_GRAPH_PROVIDER=scip-python` pins it. On sympy and matplotlib,
+  scip-python's output fails identity recovery and builds no graph.
+- Wiki pages read as technical documents. Body text sits a step back from the
+  headings, the opening claim and the code names, which carry a light fill.
+  Sources trail each paragraph in small grey type. The section bridge sentences
+  are set in roman instead of italics, and the reader column holds about 75
+  characters a line.
+- A page ends with one "Read next" list in the map's colours. It replaces the
+  "Related pages" list and the "Go deeper" buttons, which repeated the same
+  pages, and the "Subsystem map" graph.
+- The Dependency Map shows the structure view only. The Graph and Modules views
+  are removed: at repository scale both drew tangles. Their relationship list
+  shows both names in full.
+- Community Wikis use the same page ending as the featured ones. The "Chapter
+  CodeGraph" section is gone, and an Overview's architecture reads as a
+  numbered path with the other roles listed after it, without layer tags or a
+  "View source" link on every role.
 
 ### Fixed
 
@@ -221,6 +207,20 @@ All notable user-facing changes are recorded here. CodeNib follows
 - A hosted server whose `PATH` lacks Node.js now reports that the Python
   indexer cannot run, instead of starting it and recording a bare "index
   failed". Failed indexing logs the indexer's exit status.
+- The Grok Build and DeepSeek Harness install commands in the guides now run:
+  `grok plugin install "sysevol-ai/CodeNib#plugins/codenib"` and
+  `dsh plugin --profile web add …`. The earlier ones named an option Grok does
+  not have and left out one `dsh` requires.
+- The Claude Code, Grok Build and DeepSeek Harness plugins no longer fail to
+  start when a CodeNib older than 0.2.5 is on the path. They run a current
+  one through `uvx`, or say which upgrade is needed.
+- C++ symbol names no longer show clang's template spelling, such as
+  `formatter<type-parameter-0-0, typename enable_if<…>::type>`. Parameters read
+  `T`, `U`; long argument lists fold to `<…>`. Call rows, call paths and the
+  structure view name a symbol by its owner and member.
+- Emoji copied from a README no longer appear in Wiki prose.
+- The Overview no longer scrolls sideways on a phone when a call path names a
+  long symbol.
 
 ## [0.2.5] - 2026-11-04
 

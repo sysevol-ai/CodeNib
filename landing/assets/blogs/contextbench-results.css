@@ -185,3 +185,111 @@
     font-size: 11px;
   }
 }
+
+/* A body block that continues after a figure does not open with a lead paragraph. */
+.article-body.continued > p:first-child {
+  color: inherit;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.article-body.continued > pre:first-child {
+  margin-top: 0;
+}
+
+/* An in-article diagram is shown near its own size on a wide screen; the link
+   to the full drawing is for the stacked version a narrow screen gets. */
+@media (min-width: 901px) {
+  .hero-figure.in-article .diagram-open {
+    display: none;
+  }
+}
+
+/* The model an agent ran, under its name in a table row. */
+.data-table th small {
+  display: block;
+  margin-top: 3px;
+  color: var(--ink-3);
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.article-body .data-table + p {
+  margin-top: 26px;
+}
+
+/* A phone drawing is made at phone size; on a tablet it is shown at that size
+   and not stretched across the column. */
+@media (max-width: 900px) {
+  .responsive-figure.phone-drawn img {
+    max-width: 464px;
+  }
+}
+
+/* Quoted output is prose-like: on a phone it wraps where a command would scroll. */
+@media (max-width: 620px) {
+  .article-body pre.wraps {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+}
+
+/* A small table as a list on a phone: one block per row, each value beside
+   its column's name, so nothing has to be scrolled sideways. */
+@media (max-width: 620px) {
+  .data-table.stacks {
+    overflow-x: visible;
+  }
+
+  .data-table.stacks table {
+    min-width: 0;
+  }
+
+  .data-table.stacks thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .data-table.stacks :is(table, tbody, tr, th, td) {
+    display: block;
+  }
+
+  .data-table.stacks tr {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .data-table.stacks tr:last-child {
+    border-bottom: 0;
+  }
+
+  .data-table.stacks :is(tbody th, td) {
+    padding: 0;
+    border: 0;
+    white-space: normal;
+  }
+
+  .data-table.stacks tbody th {
+    margin-bottom: 8px;
+    font-size: 15px;
+  }
+
+  .data-table.stacks td {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 3px 0;
+    text-align: right;
+  }
+
+  .data-table.stacks td::before {
+    content: attr(data-label);
+    color: var(--ink-3);
+    font-family: "Geist", ui-sans-serif, system-ui, sans-serif;
+    text-align: left;
+  }
+}

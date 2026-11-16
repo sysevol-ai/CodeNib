@@ -215,9 +215,12 @@ nav:
       - Datasets: evaluation/datasets.md
       - Harnesses and Metrics: evaluation/harnesses.md
       - Benchmark Guides:
+          - CORE-Bench: evaluation/core_bench.md
           - SWE-Explore: evaluation/swe_explore.md
           - Agent Retrieval Bench: evaluation/agent_retrieval_bench.md
+          - SWE-QA: evaluation/swe_qa.md
           - ContextBench: evaluation/contextbench.md
+          - SWE-QA-Pro: evaluation/swe_qa_pro.md
       - Reproduced Agents: agent_integrations.md
       - Results:
           - Model-planned grep and Jev: evaluation/grep_jev.md
@@ -240,7 +243,7 @@ nav:
           - Naming: branding.md
   - News:
       - news.md
-      - Release 0.2.6 candidate: releases/0.2.6.md
+      - Release 0.2.6: releases/0.2.6.md
       - Release 0.2.5: releases/0.2.5.md
       - Release 0.2.4: releases/0.2.4.md
       - Release 0.2.3: releases/0.2.3.md
