@@ -55,10 +55,12 @@ SPDX-License-Identifier: Apache-2.0
 </sub></p>
 
 New in **0.2.6**: Wikis open as a map of their pages and lead with the main path
-through the code, faster graph builds, and first C/C++ and JavaScript/TypeScript
-builds that leave the checkout alone. In preview,
-[`codenib threads`](#hand-your-agent-the-whole-thread) hands your agent a
-GitHub issue or pull request in one read.
+through the code, one GitHub Action publishes yours to GitHub Pages, plugins
+connect Claude Code, Grok Build and DeepSeek Harness, graph builds get faster,
+and first C/C++ and JavaScript/TypeScript builds leave the checkout alone. Two
+previews serve coding agents: `codenib guard` lists the tests a change can
+reach, and [`codenib threads`](#hand-your-agent-the-whole-thread) hands your
+agent a GitHub issue or pull request in one read.
 [Read the release notes](https://docs.codenib.ai/releases/0.2.6/).
 
 ## A Wiki you can follow down to the source

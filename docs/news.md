@@ -11,14 +11,17 @@ the complete version history, see
 [GitHub Releases](https://github.com/sysevol-ai/CodeNib/releases) and the
 [changelog](https://github.com/sysevol-ai/CodeNib/blob/main/CHANGELOG.md).
 
-## 2026-11-14 — Wikis as maps, first builds that publish, thread context
+## 2026-11-14 — Wikis as maps, published from one Action, thread context
 
 CodeNib 0.2.6 opens Wikis as a map of their pages, leads with the main
-path through the code and checks how each page reads before publishing it.
-Graph builds get faster, and the first C/C++ and JavaScript/TypeScript builds
-no longer touch the checkout or get discarded as stale. Two previews ship with it:
-`codenib guard` for Python projects, and `codenib threads`, which prepares a
-GitHub issue or pull request for a coding agent in one read.
+path through the code and checks how each page reads before publishing it. A
+GitHub Marketplace action publishes that Wiki to GitHub Pages, rewriting only
+the pages whose code changed, and plugins connect CodeNib to Claude Code, Grok
+Build and DeepSeek Harness. Graph builds get faster, and the first C/C++ and
+JavaScript/TypeScript builds no longer touch the checkout or get discarded as
+stale. Two previews serve coding agents: `codenib guard` lists the tests a
+Python change can reach, and `codenib threads` prepares a GitHub issue or
+pull request in one read.
 
 [Read the 0.2.6 release notes](releases/0.2.6.md)
 
