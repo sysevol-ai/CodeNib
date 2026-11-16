@@ -269,8 +269,11 @@ ones for the README.
 - Draw what was measured. The strongest figure is a result with real values:
   a few thick bars or one line, the number that matters written large beside
   its mark. Do not draw a chart-shaped sketch whose lengths are made up; it
-  looks like data and is not. Explain a mechanism in a sentence, or on the
-  site where it can move.
+  looks like data and is not.
+- Explain a mechanism with a worked example. Take one small concrete case
+  with real values (one pull request, three records, the two lines kept) and
+  draw what happens to it, with a caption that says what to notice. Abstract
+  boxes and arrows with no values in them explain nothing.
 - Large marks, few of them. Bars are at least 24 pixels thick, with room
   around them. Rows of thin bars, small squares or dots read as a
   spreadsheet. If the figure looks like a table, make it a table.
