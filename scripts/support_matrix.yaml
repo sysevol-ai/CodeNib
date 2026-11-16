@@ -137,6 +137,29 @@ benchmarks:
       - codenib/eval/benchmarks/swe_explore.py
       - codenib/eval/benchmarks/swe_explore_runner.py
 
+  - id: core_bench
+    name: CORE-Bench
+    column: CORE
+    url: https://github.com/zhangfw123/CORE-Bench-Eval
+    layer: L1
+    origin: External
+    task: Rank released code chunks within each query's eligible snapshot
+    ground_truth: Released positive query-document relevance labels
+    granularity: Chunk
+    languages: Mixed; released Level-2 and Level-3 corpora
+    size: Selected repository corpora and queries
+    pins: Evaluator `5d00cdca`, dataset `23da5d97`
+    scorer: Official collector's binary relevance metrics
+    setup: Local release files and pinned evaluator checkout
+    entry:
+      - module: codenib.eval.benchmarks.core_bench
+        run: true
+    level: Runnable
+    level_note: CodeNib retrieval with official metrics
+    page: evaluation/core_bench.md
+    modules:
+      - codenib/eval/benchmarks/core_bench.py
+
   - id: arb
     name: Agent Retrieval Bench
     column: ARB
@@ -246,6 +269,7 @@ methods:
     model: none
     surfaces: Python, MCP
     cells:
+      core_bench: {level: Runnable}
       codenib_base:
         level: Runnable
         note: Scored only as the first stage of BM25 → Jev.
@@ -282,6 +306,7 @@ methods:
     model: embedding model
     surfaces: Python, MCP
     cells:
+      core_bench: {level: Runnable}
       codenib_base:
         level: Runnable
         note: Scored only as the first stage of dense → Qwen3-Reranker-4B.
@@ -304,6 +329,7 @@ methods:
     model: embedding model
     surfaces: Python, MCP
     cells:
+      core_bench: {level: Runnable}
       codenib_base:
         level: Runnable
         note: Scored only as the first stage of hybrid → Jev and hybrid → Qwen3-Reranker-4B.
