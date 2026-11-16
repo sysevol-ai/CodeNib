@@ -256,6 +256,58 @@ reader. A page is not a record of how the work was done.
   After the first screen, the reader should know what the page is for and what
   to do next.
 
+## Figures and Images
+
+A figure on a public page (`README.md`, the docs site, `codenib.ai`) exists to
+make one point faster than a sentence can. These rules keep the figures of a
+page reading as one set. `test/test_readme_figures.py` checks the mechanical
+ones for the README.
+
+- One figure, one point. Write the point as a sentence first. If a figure
+  needs two sentences, draw two figures or cut one. Do not combine a
+  mechanism, a result and a caveat in one image.
+- Draw what was measured. The strongest figure is a result with real values:
+  a few thick bars or one line, the number that matters written large beside
+  its mark. Do not draw a chart-shaped sketch whose lengths are made up; it
+  looks like data and is not.
+- Explain a mechanism with a worked example. Take one small concrete case
+  with real values (one pull request, three records, the two lines kept) and
+  draw what happens to it, with a caption that says what to notice. Abstract
+  boxes and arrows with no values in them explain nothing.
+- Large marks, few of them. Bars are at least 24 pixels thick, with room
+  around them. Rows of thin bars, small squares or dots read as a
+  spreadsheet. If the figure looks like a table, make it a table.
+- At most one figure per section. A screenshot, a recording and a diagram of
+  the same feature compete; pick the one that carries the point and fold the
+  rest into `<details>` or link to them.
+- Titles and conclusions are page text, not pixels. A figure holds the marks,
+  the labels needed to read them, and the one number it exists to show. The
+  heading above it and the sentence below it say what was measured and on
+  what.
+- Label directly. Name each mark beside it. A legend is for three or more
+  series; axes and gridlines are for charts read against a scale.
+- Draw at the size it is shown. The README column is 830 pixels wide, so a
+  README figure is 830 wide and no text in it is smaller than 13 pixels. A
+  full-window screenshot shrunk to that width is unreadable; crop to the part
+  that makes the point, or draw it.
+- Two colours. A neutral grey for the baseline or the context, and one accent
+  for CodeNib or the thing in focus. In the README both come from GitHub's own
+  text colours for the theme (`THEMES` in `scripts/render_readme_figures.py`),
+  solid, never a pale tint. A third colour needs a meaning the figure states.
+- One visual language. Figures are drawn by the scripts in `scripts/`
+  (`render_readme_figures.py` for the README), in Geist, with flat marks,
+  hairlines, and no box inside a box. Do not add a figure made by hand in
+  another tool or exported from a plotting library's defaults.
+- Follow the reader's theme. A README figure has no background of its own and
+  ships as `NAME-light.svg` and `NAME-dark.svg` in a `<picture>` element. The
+  product screenshot at the top is the one image that keeps its own dark
+  surface.
+- No raw output as illustration. Logs, long command output and generated
+  files belong behind a link to the page that explains them, not in the
+  README or on the homepage.
+- Write the `alt` text as the point of the figure, in full sentences, so the
+  page still makes sense without the image.
+
 ## Testing Guidance
 
 - Dependency and optional-extra changes in `pyproject.toml` must update

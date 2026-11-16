@@ -11,7 +11,7 @@ the figures in the bottom band are copied from ``docs/threads.md``.
 
 Uses the drawing helpers of ``render_contextbench_blog_figures.py`` and needs
 the same fontTools with WOFF2 support. The wide SVG is also the article's
-sharing image and the README figure::
+sharing image::
 
     python scripts/render_threads_blog_figure.py
     node scripts/render_svg_png.mjs \\

@@ -272,8 +272,7 @@ phones, and render the sharing PNG from the same SVG with
 `scripts/render_contextbench_blog_figures.py` does this for the ContextBench
 article. `scripts/render_threads_blog_figure.py` and
 `scripts/render_threads_mechanism_figures.py` do it for the thread context
-article, whose lead figure is also the README's at
-`assets/readme/thread-context.png`. `scripts/render_blog_pipeline_figures.py`
+article. `scripts/render_blog_pipeline_figures.py`
 draws the pipeline figures of the DGX Spark, CodeGraph architecture and Jev
 articles.
 
@@ -281,7 +280,8 @@ Draw a figure as one surface: stages or columns side by side, divided by a
 hairline or joined by an arrow, with notes under a rule. Do not put a box
 inside a box or a label line above the title. Keep one meaning per colour
 within an article, and say what the colours mean where the first figure
-appears.
+appears. The rules every public figure follows, the README's included, are
+in [`AGENTS.md`](../AGENTS.md#figures-and-images).
 
 Serve `landing/` locally and check the index link, article title, images,
 internal anchors, tables, and desktop/mobile layout. Run `mkdocs build --strict`
