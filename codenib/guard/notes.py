@@ -110,7 +110,8 @@ def definition_hash(repo: Path, symbol: str) -> Optional[str]:
     if not qualname:
         raise NoteError(f"anchor {symbol!r} must look like path/to/file.py:Name.method")
     try:
-        source = (repo / path).read_text(encoding="utf-8")
+        # utf-8-sig drops a leading byte order mark, which ast.parse rejects.
+        source = (repo / path).read_text(encoding="utf-8-sig")
         tree = ast.parse(source)
     except (OSError, SyntaxError, ValueError):
         return None
