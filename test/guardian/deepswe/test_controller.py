@@ -24,7 +24,7 @@ from scripts.guardian.deepswe.harness.controller import GuardianHostController
 
 def _git(repo: Path, *args: str) -> str:
     return subprocess.run(
-        ("git", *args),
+        ("git", "-c", "core.hooksPath=", *args),
         cwd=repo,
         check=True,
         capture_output=True,

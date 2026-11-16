@@ -7,15 +7,25 @@
 from __future__ import annotations
 
 import argparse
-import fcntl
 import json
 import os
 import subprocess
 import sys
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Any
+
+try:
+    import fcntl
+except ImportError:
+    fcntl = None  # type: ignore[assignment]
+
+try:
+    import msvcrt
+except ImportError:
+    msvcrt = None  # type: ignore[assignment]
 
 MAX_MESSAGE_CHARS = 16_000
 MAX_SCOPE_ITEMS = 32
@@ -49,7 +59,7 @@ class GuardianMessage:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, raw: dict[str, object]) -> "GuardianMessage":
+    def from_dict(cls, raw: dict[str, object]) -> GuardianMessage:
         scope = raw.get("scope", [])
         return cls(
             id=str(raw["id"]),
@@ -62,13 +72,29 @@ class GuardianMessage:
         )
 
 
+def _lock_file(handle: Any, *, exclusive: bool) -> None:
+    if fcntl is not None:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
+    elif msvcrt is not None:
+        os.lseek(handle.fileno(), 0, os.SEEK_SET)
+        msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+
+
+def _unlock_file(handle: Any) -> None:
+    if fcntl is not None:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    elif msvcrt is not None:
+        os.lseek(handle.fileno(), 0, os.SEEK_SET)
+        msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+
+
 class MessageInbox:
     def __init__(self, path: str | Path, *, repo_path: str | Path) -> None:
         self.path = Path(path)
         self.repo_path = str(repo_path)
 
     @staticmethod
-    def _normalize_scope(scope: Optional[Iterable[str]]) -> list[str]:
+    def _normalize_scope(scope: Iterable[str] | None) -> list[str]:
         values = [str(item).strip() for item in (scope or []) if str(item).strip()]
         if len(values) > MAX_SCOPE_ITEMS:
             raise ValueError(f"scope accepts at most {MAX_SCOPE_ITEMS} entries")
@@ -83,7 +109,7 @@ class MessageInbox:
         content: str,
         *,
         sender: str,
-        scope: Optional[Iterable[str]] = None,
+        scope: Iterable[str] | None = None,
     ) -> GuardianMessage:
         normalized = str(content).strip()
         if not normalized:
@@ -96,30 +122,32 @@ class MessageInbox:
         normalized_scope = self._normalize_scope(scope)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.path.open("a+", encoding="utf-8") as handle:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
-            handle.seek(0)
-            sequence = 1
-            for line in handle:
-                try:
-                    sequence = max(
-                        sequence, int(json.loads(line).get("sequence", 0)) + 1
-                    )
-                except (TypeError, ValueError, json.JSONDecodeError):
-                    continue
-            message = GuardianMessage(
-                id=f"msg_{sequence:08d}",
-                sequence=sequence,
-                sender=sender,
-                content=normalized,
-                observed_head=_head(self.repo_path),
-                created_at=datetime.now(timezone.utc).isoformat(),
-                scope=normalized_scope,
-            )
-            handle.seek(0, os.SEEK_END)
-            handle.write(json.dumps(message.to_dict(), sort_keys=True) + "\n")
-            handle.flush()
-            os.fsync(handle.fileno())
-            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            _lock_file(handle, exclusive=True)
+            try:
+                handle.seek(0)
+                sequence = 1
+                for line in handle:
+                    try:
+                        sequence = max(
+                            sequence, int(json.loads(line).get("sequence", 0)) + 1
+                        )
+                    except (TypeError, ValueError, json.JSONDecodeError):
+                        continue
+                message = GuardianMessage(
+                    id=f"msg_{sequence:08d}",
+                    sequence=sequence,
+                    sender=sender,
+                    content=normalized,
+                    observed_head=_head(self.repo_path),
+                    created_at=datetime.now(timezone.utc).isoformat(),
+                    scope=normalized_scope,
+                )
+                handle.seek(0, os.SEEK_END)
+                handle.write(json.dumps(message.to_dict(), sort_keys=True) + "\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+            finally:
+                _unlock_file(handle)
         return message
 
     def read_recent(self, *, limit: int = 20) -> list[GuardianMessage]:
@@ -127,19 +155,21 @@ class MessageInbox:
             return []
         messages: list[GuardianMessage] = []
         with self.path.open(encoding="utf-8") as handle:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_SH)
-            for line in handle:
-                try:
-                    value = json.loads(line)
-                    if isinstance(value, dict):
-                        messages.append(GuardianMessage.from_dict(value))
-                except (KeyError, TypeError, ValueError, json.JSONDecodeError):
-                    continue
-            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            _lock_file(handle, exclusive=False)
+            try:
+                for line in handle:
+                    try:
+                        value = json.loads(line)
+                        if isinstance(value, dict):
+                            messages.append(GuardianMessage.from_dict(value))
+                    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+                        continue
+            finally:
+                _unlock_file(handle)
         return messages[-max(1, min(int(limit), 100)) :]
 
 
-def main(argv: Optional[list[str]] = None) -> None:
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--inbox", required=True)
     parser.add_argument("--repo", required=True)

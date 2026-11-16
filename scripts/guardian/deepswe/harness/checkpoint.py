@@ -19,6 +19,7 @@ import argparse
 import hashlib
 import json
 import os
+import shlex
 import subprocess
 import sys
 import time
@@ -133,8 +134,16 @@ def main() -> int:
     findings_path = guardian_dir / "findings.md"
 
     if args.start_command:
+        start_command = os.path.expanduser(args.start_command)
+        if '"' in start_command or "'" in start_command:
+            command = [
+                part.strip("\"'")
+                for part in shlex.split(start_command, posix=sys.platform != "win32")
+            ]
+        else:
+            command = [start_command]
         started = subprocess.run(
-            [os.path.expanduser(args.start_command)],
+            command,
             cwd=repo,
             capture_output=True,
             text=True,
