@@ -203,6 +203,22 @@ failed, skipped, and scored counts; check them before comparing aggregates.
 The paired driver `compare_agent_integrations.py` additionally keeps missing
 and failed cells in the requested denominator.
 
+### Repository question answering
+
+Repository QA runs the CodeNib agent over prepared source indexes. The `graph`
+policy combines BM25 search and static-reference navigation with read/grep/glob;
+`bm25`, `dense` and `hybrid` select their corresponding index views. Source
+paths in model messages and answer histories are repository-relative.
+
+Answer JSONL records retain the answer, history, token usage and source revision.
+Use `--resume` with the same selection, model and settings to continue generation
+or scoring. Generation skips every recorded task, including failures; scoring
+reuses successful scores. Keep each output with its `.run.json` identity receipt.
+
+Each output has one writer. Questions within a process run serially because the
+skill registry is process-global. `--live` enables model API calls; configure
+the selected provider's credentials before generation or scoring.
+
 ### Agent context
 
 | Command | What it runs | Benchmark |
