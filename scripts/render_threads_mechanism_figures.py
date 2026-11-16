@@ -100,11 +100,42 @@ def agent(fig: Figure, cx: float, cy: float, letter: str) -> None:
 # --------------------------------------------------------------------------- #
 # 1. The budget
 
+# A worked example. Each thread has its name, its name on a phone, and its
+# posts' lengths in tokens, oldest first.
+BUDGET_TOKENS = 3000
+FIXED_TOKENS = 150  # the status, coverage and cursor lines
 THREADS = [
-    ("The thread the agent works on", [0.55, 0.9, 0.35, 0.7, 0.5], 0),
-    ("A linked issue", [0.8, 0.45, 0.6, 0.3], 2),
-    ("A linked pull request", [0.5, 0.75, 0.4], 1),
+    (
+        "#812, the thread the agent works on",
+        "#812, the agent's",
+        [420, 760, 180, 510, 230],
+    ),
+    ("#790, a linked issue", "#790, linked", [640, 380, 300, 250]),
+    ("#801, a linked pull request", "#801, linked", [410, 520, 190]),
 ]
+
+
+def left_for_linked() -> int:
+    return BUDGET_TOKENS - FIXED_TOKENS - sum(THREADS[0][2])
+
+
+def kept_posts() -> list[set[int]]:
+    """Which posts the context keeps, by the rule in ``codenib.threads.serve``.
+
+    The agent's own thread is kept whole. Linked threads share what is left,
+    newest post first across the threads, and a post that does not fit is
+    passed over.
+    """
+    kept = [set(range(len(THREADS[0][2])))] + [set() for _ in THREADS[1:]]
+    left = left_for_linked()
+    depth = max(len(posts) for *_, posts in THREADS[1:])
+    for back in range(depth):
+        for index, (*_, posts) in enumerate(THREADS[1:], start=1):
+            at = len(posts) - 1 - back
+            if at >= 0 and posts[at] <= left:
+                kept[index].add(at)
+                left -= posts[at]
+    return kept
 
 
 def phone() -> bool:
@@ -128,13 +159,17 @@ def _posts(fig: Figure, x: float, y: float, packed: bool) -> None:
     fig.text(right, y - 48, "oldest", "dim", "end")
     right -= fig.measure("oldest", "dim") + 12
     _age_mark(fig, right, y - 53, False)
-    for name, posts, cut in THREADS:
-        fig.text(x, y + 16, name, "label")
+    longest = max(size for *_, posts in THREADS for size in posts)
+    for (name, short, posts), kept in zip(THREADS, kept_posts(), strict=True):
+        fig.text(x, y + 16, short if phone() else name, "label")
+        total = sum(posts)
         if packed:
-            status = (
-                "every post whole" if not cut else f"newest {len(posts) - cut} kept"
-            )
-            fig.text(x + INNER, y + 16, status, "kept" if not cut else "desc", "end")
+            got = sum(posts[i] for i in kept)
+            whole = len(kept) == len(posts)
+            status = f"all {total:,} kept" if whole else f"{got:,} of {total:,} kept"
+            fig.text(x + INNER, y + 16, status, "kept" if whole else "desc", "end")
+        else:
+            fig.text(x + INNER, y + 16, f"{total:,} tokens", "desc", "end")
         y += 30
         last = y + (len(posts) - 1) * 22
         fig.path(
@@ -143,14 +178,14 @@ def _posts(fig: Figure, x: float, y: float, packed: bool) -> None:
         _age_mark(fig, x + 5, y + 7, False)
         _age_mark(fig, x + 5, last + 7, True)
         for i, size in enumerate(posts):
-            width = (INNER - 180) * size
-            if packed and i < cut:
+            width = (INNER - 200) * size / longest
+            if packed and i not in kept:
                 dashed(fig, x + 22, y, width, 14)
-                note = "left out" if phone() else "left out, fetch by id"
-                fig.text(x + width + 34, y + 12, note, "dim")
+                fig.text(x + width + 34, y + 12, f"{size:,}  left out", "dim")
             else:
                 fill = TEAL if packed else LINE_STRONG
                 fig.rect(x + 22, y, width, 14, rx=3, fill=fill)
+                fig.text(x + width + 34, y + 12, f"{size:,}", "num")
             y += 22
         y += 16
 
@@ -159,33 +194,37 @@ BUDGET = {
     "slug": "thread-budget",
     "title": "The budget takes from linked threads first",
     "desc": (
-        "Left: three threads in the store, the one the agent works on and two "
-        "linked to it, each a list of posts of different lengths. Right: the "
-        "prepared context keeps every post of the agent's own thread whole, "
-        "and leaves out the oldest posts of the linked threads. Its second "
-        "line says which case applies. Own posts are shortened only "
-        "past three times the budget."
+        "A worked example with a budget of 3,000 tokens. Left: three threads "
+        "in the store with the length of each post in tokens: #812, the one "
+        "the agent works on, 2,100 tokens in five posts; a linked issue #790, "
+        "1,570 in four; a linked pull request #801, 1,120 in three. Right: "
+        "the context keeps all 2,100 tokens of #812. Status lines take 150, "
+        "which leaves 750 for the linked threads. Newest posts are taken "
+        "first: 250 and 300 from #790 and 190 from #801 fit, and the four "
+        "older posts are left out."
     ),
     "panels": [
         (
             "What the store holds",
             "phase",
-            "One bar per post, as long as the post.",
+            "One bar per post, with its length in tokens.",
             lambda fig, x, y: _posts(fig, x, y, False),
             378,
         ),
         (
             "What the context keeps",
             "phase-r",
-            "A budget of 3,000 tokens by default.",
+            "A budget of 3,000 tokens, the default.",
             lambda fig, x, y: _posts(fig, x, y, True),
             378,
         ),
     ],
     "band": [
         (
-            "The second line of the document says which of three cases applies: "
-            "complete, this thread complete and linked threads partial, or partial.",
+            "3,000, less 150 for the status lines and 2,100 for #812, leaves "
+            f"{left_for_linked():,} for the linked threads. Newest posts are "
+            "taken first, and one that does not fit is passed over: 250, 190 "
+            "and 300 fit, the next ones do not.",
             "desc",
         ),
         (
