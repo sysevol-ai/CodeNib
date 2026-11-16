@@ -256,6 +256,46 @@ reader. A page is not a record of how the work was done.
   After the first screen, the reader should know what the page is for and what
   to do next.
 
+## Figures and Images
+
+A figure on a public page (`README.md`, the docs site, `codenib.ai`) exists to
+make one point faster than a sentence can. These rules keep the figures of a
+page reading as one set. `test/test_readme_figures.py` checks the mechanical
+ones for the README.
+
+- One figure, one point. Write the point as a sentence first. If a figure
+  needs two sentences, draw two figures or cut one. Do not combine a
+  mechanism, a result and a caveat in one image.
+- At most one figure per section. A screenshot, a recording and a diagram of
+  the same feature compete; pick the one that carries the point and fold the
+  rest into `<details>` or link to them.
+- Titles, conclusions and results are page text, not pixels. A figure holds
+  the marks and the labels needed to read them, and a legend when a colour
+  carries meaning. The heading above it and the sentence below it say what it
+  shows and what was measured.
+- Draw at the size it is shown. The README column is 830 pixels wide, so a
+  README figure is 830 wide and no text in it is smaller than 13 pixels. A
+  full-window screenshot shrunk to that width is unreadable; crop to the part
+  that makes the point, or draw it.
+- One visual language. Diagrams are drawn by the scripts in `scripts/` on the
+  shared helpers (`render_readme_figures.py` for the README), in Geist, with
+  flat marks, hairlines, and no box inside a box. Do not add a figure made by
+  hand in another tool or exported from a plotting library's defaults.
+- Few colours with fixed meanings. Grey is context, blue is what an agent is
+  sent or the thing in focus, teal is what CodeNib produces or keeps. A new
+  colour needs a new meaning that the legend states.
+- Follow the reader's theme. A README figure has no background of its own and
+  ships as `NAME-light.svg` and `NAME-dark.svg` in a `<picture>` element. The
+  product screenshot at the top is the one image that keeps its own dark
+  surface.
+- Say what is a sketch. A diagram of a mechanism is not a measurement; the
+  text beside it says so and gives the measured number with its scope.
+- No raw output as illustration. Logs, long command output and generated
+  files belong behind a link to the page that explains them, not in the
+  README or on the homepage.
+- Write the `alt` text as the point of the figure, in full sentences, so the
+  page still makes sense without the image.
+
 ## Testing Guidance
 
 - Dependency and optional-extra changes in `pyproject.toml` must update

@@ -175,17 +175,26 @@ dsh plugin --profile web add "git+https://github.com/sysevol-ai/CodeNib.git#main
 
 ## Hand your agent the whole thread
 
-`codenib threads` reads a GitHub issue or pull request once and gives your
-agent one document: the ask, what people decided, review comments, the failing
-checks, the linked threads, and the code they point at. It fits a token
-budget, and when the agent comes back it returns only what changed. It runs on
-your machine and calls no model. It is a preview in 0.2.6.
+`codenib threads` reads a GitHub issue or pull request once and writes one
+document for your agent: the ask, the review comments, the failing checks, the
+linked threads, and the code they point at. It runs on your machine and calls
+no model. It is a preview in 0.2.6.
 
 <p align="center">
-  <a href="https://codenib.ai/blogs/thread-context-for-coding-agents/">
-    <img src="https://raw.githubusercontent.com/sysevol-ai/CodeNib/main/assets/readme/thread-context.png" alt="Left: an agent reading a GitHub thread itself makes six tool calls, for the issue, its comments, the linked pull request, the reviews, the checks and a log, and each call carries the conversation so far. Right: codenib threads prepares one context with status, coverage, the ask, code locations, failing CI, other open pull requests on the same code, linked threads and discussion, ending in a cursor; a later read returns only what changed. Below: input tokens against reading with gh on 76 pull request takeovers, minus 21 percent with Codex and minus 45 percent with Claude Code" width="100%">
-  </a>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sysevol-ai/CodeNib/main/assets/readme/thread-calls-dark.svg">
+    <img src="https://raw.githubusercontent.com/sysevol-ai/CodeNib/main/assets/readme/thread-calls-light.svg" width="830" alt="Top: an agent reading a thread itself makes six calls, for the issue, its comments, the linked pull request, the reviews, the checks and a failed log. Each call sends the conversation so far again, so the sixth call sends the most. Bottom: codenib threads writes the same six pieces into one document, THREAD_CONTEXT.md, which the agent reads once.">
+  </picture>
 </p>
+
+An agent that reads a thread itself makes one call per piece, and every call
+sends the conversation so far again. The bars sketch that; the measurement is
+this: on 76 pull requests taken over after a review or a failed check, the
+prepared document cut input tokens by **21%** with Codex (gpt-6.1-sol) and by
+**45%** with Claude Code (Claude Opus 5.5), against letting the agent read the
+thread with `gh`. The agents found the files to change about as often either
+way (Codex 0.75 against 0.74, Claude Code 0.80 against 0.83, a gap too small
+to tell from chance on 76 tasks).
 
 ```bash
 cd /path/to/your/repo
@@ -195,49 +204,21 @@ codenib threads inbox 812       # later: only what is new
 codenib threads board           # all tickets, and other work on the same code
 ```
 
-With several agents on one repository, each ticket is sent only the records it
-has not read, and tickets whose work reaches the same function are told about
-each other:
+<details>
+<summary>Several agents on one repository</summary>
+<br>
+
+Each ticket is sent only the records it has not read, and tickets whose work
+reaches the same function are told about each other.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/sysevol-ai/CodeNib/main/assets/readme/thread-board.gif" width="772" alt="A board of three tickets, replayed. A review comment and a failed check arrive on pull request 812, and only Agent A has two unread records; when it comes back it is sent those two, not the thread again. A push to pull request 815 then changes Reader.read(), the function 812 is about, and both tickets report the other as also in progress on that function. Agent B is sent its one new record. The next poll finds nothing new, and nothing is sent. The pull requests are made up.">
 </p>
 
-This is the top of what it wrote for
-[caddyserver/caddy#8024](https://github.com/caddyserver/caddy/pull/8024) on
-November 14, 2026, a pull request with 145 events across three threads:
-
-```text
-# Thread context: caddyserver/caddy#8024 (PR)
-Status: open PR · opened 2026-09-15 by MangoGovo · CI: 2 failing (lint (linux), test (windows, 1.27)) · 145 events across 3 threads
-Coverage: this thread complete, linked threads partial. Everything people wrote in #8024 is below in full […]
-
-## Changes in this pull request
-[#8024/diff/0b3db48fbe8605ddda67e48735ef225694af4b1b] +52/-6 in 2 files at 0b3db48f:
-- modules/caddyhttp/fileserver/staticfiles.go
-- modules/caddyhttp/fileserver/staticfiles_test.go
-
-## Also in progress on this code
-- #7777 (open PR by Jualhosting, updated 2026-10-26) fileserver: Improve 404 error detail and context — changes `FileServer.serveBrowse()` […]
-
-## Failing CI
-Checks at 0b3db48f: 2 failing, 22 passing.
-[#8024/check/127120839152] lint (linux) failed
-##[error]modules/caddyhttp/reverseproxy/reverseproxy.go:658:24: use "Sec-Websocket-Key" instead of "Sec-WebSocket-Key" (canonicalheader)
-```
-
-Each part cites the event it came from, and the `Coverage` line tells the
-agent whether it still has to read the thread itself.
-
-On 76 pull requests taken over after a review or a failed check, the prepared
-context cut input tokens by 21% with Codex (gpt-6.1-sol) and by 45% with
-Claude Code (Claude Opus 5.5), against letting the agent read the thread with
-`gh`. The answers held: the agents found the files to change about as often
-either way (Codex 0.75 against 0.74, Claude Code 0.80 against 0.83, a gap too
-small to tell from chance on 76 tasks).
+</details>
 
 [Thread context guide](https://docs.codenib.ai/threads/)
-· [How it decides what to include](https://codenib.ai/blogs/thread-context-for-coding-agents/)
+· [How it decides what to include, with real output](https://codenib.ai/blogs/thread-context-for-coding-agents/)
 · In Claude Code and Grok Build, the plugin adds it as `/codenib:thread`.
 
 ## How it compares
