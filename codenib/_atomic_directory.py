@@ -871,7 +871,7 @@ class PublicationDirectoryReader:
                 not (allow_empty_root and not roots)
                 and roots.get(marker_name) != "file"
             ):
-                raise RuntimeError(
+                raise DirectoryOwnershipMarkerMissing(
                     "directory ownership root is missing its required marker"
                 )
         if entry_policy is not None:
@@ -3727,6 +3727,10 @@ class DirectoryOrphan:
         return self.reopen(lambda reader: reader.capture_ownership())
 
 
+class DirectoryOwnershipMarkerMissing(RuntimeError):
+    """A captured directory lacks the root file that marks its owner."""
+
+
 class _PreviousOutputIdentityLost(RuntimeError):
     """The moved previous tree can no longer be trusted for rollback."""
 
@@ -5712,7 +5716,9 @@ def _scan_windows_owned_directory(
             check_cancelled=check_cancelled,
         )
     ):
-        raise RuntimeError("directory ownership root is missing its required marker")
+        raise DirectoryOwnershipMarkerMissing(
+            "directory ownership root is missing its required marker"
+        )
 
     hasher = hashlib.sha256()
     hasher.update(b"codenib.atomic-directory.v1\x00")
@@ -5839,7 +5845,9 @@ def _scan_windows_owned_directory(
             )
             entry_identities.append((relative, "file", file_identity))
         if entry.name == required_root_file and is_directory:
-            raise RuntimeError("directory ownership root marker is not a regular file")
+            raise DirectoryOwnershipMarkerMissing(
+                "directory ownership root marker is not a regular file"
+            )
         hasher.update(entry_hasher.digest())
     after = api.metadata(handle)
     if _ownership_version_identity(after) != _ownership_version_identity(before):
@@ -6717,7 +6725,9 @@ def _scan_owned_directory(
             check_cancelled=check_cancelled,
         )
     ):
-        raise RuntimeError("directory ownership root is missing its required marker")
+        raise DirectoryOwnershipMarkerMissing(
+            "directory ownership root is missing its required marker"
+        )
 
     hasher = hashlib.sha256()
     hasher.update(b"codenib.atomic-directory.v1\x00")
@@ -6853,7 +6863,9 @@ def _scan_owned_directory(
                 f"directory ownership scan refuses special content: {child_path}"
             )
         if raw_name == required_root_file and not stat.S_ISREG(metadata.st_mode):
-            raise RuntimeError("directory ownership root marker is not a regular file")
+            raise DirectoryOwnershipMarkerMissing(
+                "directory ownership root marker is not a regular file"
+            )
         hasher.update(entry_hasher.digest())
 
     after = os.fstat(descriptor)
@@ -11179,6 +11191,7 @@ def publish_staged_directory(
 __all__ = [
     "DirectoryEntryPolicy",
     "DirectoryOrphan",
+    "DirectoryOwnershipMarkerMissing",
     "PublicationAuthenticatedFile",
     "PublicationDirectoryReader",
     "PublicationFileSnapshot",

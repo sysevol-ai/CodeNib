@@ -17,6 +17,7 @@ from typing import Any, Callable, Iterable, Mapping, Sequence
 from urllib.parse import quote, unquote, urlsplit
 
 from .._atomic_directory import (
+    DirectoryOwnershipMarkerMissing,
     PublicationDirectoryReader,
     _annotate_secondary_error,
     capture_directory_ownership,
@@ -1583,10 +1584,15 @@ def export_static_wiki(
                 required_destination_file=manifest_name,
                 allow_empty_destination=True,
             )
-        except (OSError, RuntimeError) as exc:
+        except DirectoryOwnershipMarkerMissing as exc:
             raise ValueError(
                 "refusing to replace a non-empty directory that is not a CodeNib "
                 f"{export_format} export: {output_dir}"
+            ) from exc
+        except (OSError, RuntimeError) as exc:
+            raise ValueError(
+                f"cannot prepare the {export_format} export directory "
+                f"{output_dir}: {exc}"
             ) from exc
 
         if export_format == "okf":

@@ -2224,6 +2224,23 @@ def test_extract_archive_verifies_and_removes_single_root_prefix(
     )
 
 
+def test_extract_archive_reports_why_the_output_cannot_be_prepared(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from codenib.artifacts import archive as archive_module
+
+    def refuse(*_args, **_kwargs):
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(
+        archive_module, "OwnedDirectoryStage", SimpleNamespace(prepare=refuse)
+    )
+
+    with pytest.raises(ValueError, match="cannot prepare the context") as caught:
+        extract_context_artifact_archive(tmp_path / "a.zip", tmp_path / "extracted")
+    assert "Permission denied" in str(caught.value)
+
+
 def test_extract_archive_rejects_final_symlink_and_fifo(tmp_path: Path) -> None:
     _repo, artifact, _commit = _bm25_artifact(tmp_path)
     archive = tmp_path / "artifact.zip"

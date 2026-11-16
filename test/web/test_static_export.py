@@ -1561,6 +1561,38 @@ def test_static_export_does_not_replace_an_unrelated_directory(export_setup) -> 
     assert (export_setup.output / "keep.txt").read_text() == "keep"
 
 
+def test_static_export_does_not_replace_a_directory_marker(export_setup) -> None:
+    (export_setup.output / STATIC_EXPORT_MANIFEST).mkdir(parents=True)
+
+    with pytest.raises(ValueError, match="refusing to replace"):
+        export_static_wiki(
+            export_setup.repo,
+            export_setup.manifest_path,
+            export_setup.output,
+            frontend_dir=export_setup.frontend,
+        )
+
+
+def test_static_export_reports_why_the_output_cannot_be_prepared(
+    export_setup, monkeypatch
+) -> None:
+    def refuse(*_args, **_kwargs):
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(
+        static_module, "OwnedDirectoryStage", SimpleNamespace(prepare=refuse)
+    )
+
+    with pytest.raises(ValueError, match="cannot prepare the static export") as caught:
+        export_static_wiki(
+            export_setup.repo,
+            export_setup.manifest_path,
+            export_setup.output,
+            frontend_dir=export_setup.frontend,
+        )
+    assert "Permission denied" in str(caught.value)
+
+
 def test_static_export_rejects_index_root_overlap(export_setup) -> None:
     with pytest.raises(ValueError, match="outside the index root"):
         export_static_wiki(
