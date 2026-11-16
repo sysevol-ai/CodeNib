@@ -251,9 +251,11 @@ Markdown under `codenib/blogs/` is a repository research record. It is not
 automatically rendered or published to `codenib.ai`; the MkDocs workflow
 publishes the separate `docs.codenib.ai` site.
 
-To publish a blog post, add `landing/blogs/<slug>/index.html`, add its card to
-`landing/blogs/index.html` in newest-first order, refresh the homepage's
-featured article, and copy its public images into `landing/assets/blogs/`.
+To publish a blog post, add `landing/blogs/<slug>/index.html`, add its row to
+`landing/blogs/index.html` in newest-first order, and copy its public images
+into `landing/assets/blogs/`. A row is the title, two sentences on what the
+post found, and on the right the one number the post stands on with a line
+saying what was measured and on what. Take the number from the article.
 Follow the existing article template for the canonical URL, language,
 publication date, social metadata, and JSON-LD.
 Benchmark articles should explain the measured mechanism: what each role

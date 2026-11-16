@@ -34,7 +34,6 @@ from render_contextbench_blog_figures import (
     LINE_STRONG,
     OUT,
     ROOT,
-    TEAL,
     TEAL_DARK,
     Figure,
     scaled,
@@ -248,37 +247,9 @@ def narrow() -> str:
     return fig.svg(TITLE, DESC)
 
 
-def card() -> str:
-    """The picture on the blog index card: the mechanism alone, set large.
-
-    The index shows it at about half its drawn width, where the full figure's
-    labels cannot be read.
-    """
-    styles = {
-        "piece": {"size": 30, "weight": 560},
-        "num": {"size": 24, "family": "mono", "fill": INK_2},
-        "once": {"size": 30, "weight": 600, "fill": TEAL_DARK},
-        "desc": {"size": 24, "fill": INK_2},
-    }
-    fig = Figure(820, 600, styles)
-    for i, piece in enumerate(PIECES):
-        top = 34 + i * 64
-        fig.text(40, top + 32, f"{i + 1}", "num")
-        fig.text(82, top + 32, piece, "piece")
-        carried = 30 + i * 46
-        fig.rect(440, top + 6, carried, 34, rx=4, fill=LINE_STRONG)
-        fig.rect(440 + carried + 4, top + 6, 44, 34, rx=4, fill=ACCENT)
-    rule(fig, 0, 432, 820)
-    fig.text(40, 492, "Prepared once", "once")
-    fig.rect(440, 464, 150, 34, rx=4, fill=TEAL)
-    fig.text(40, 552, "One read, in a token budget, with no model.", "desc")
-    return fig.svg(TITLE, DESC)
-
-
 FIGURES = {
     "thread-context.svg": wide,
     "thread-context-narrow.svg": narrow,
-    "thread-context-card.svg": card,
 }
 
 
