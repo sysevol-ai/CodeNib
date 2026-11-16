@@ -10,7 +10,7 @@ For one local repository, use the packaged two-command path in the
 [Quickstart](quickstart.md):
 
 ```bash
-python -m pip install "codenib[semantic]==0.2.5"
+python -m pip install "codenib[semantic]==0.2.6"
 codenib wiki /path/to/repository
 ```
 
@@ -155,7 +155,7 @@ CodeNib 0.2.5 includes visitor generation and the matching frontend. In the
 same environment that runs the demo:
 
 ```bash
-python -m pip install "codenib[grep]==0.2.5"
+python -m pip install "codenib[grep]==0.2.6"
 export CODENIB_VISITOR_WIKI=1
 ```
 

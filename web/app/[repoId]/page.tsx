@@ -961,6 +961,28 @@ export default function WikiPageView({
     setGraphOpen(true);
   };
 
+  // An address with no repository behind it gets a plain answer and a way on,
+  // not the reader's chrome around a backend message.
+  if (error?.includes("(404)")) {
+    return (
+      <div className="wiki wiki-missing">
+        <Header />
+        <main className="wiki-missing-body">
+          <h1>
+            No Wiki at this address. <span>The catalog has the ones that exist.</span>
+          </h1>
+          <p>
+            <code>{repoId}</code> is not a repository mapped here. The link may be old, or the name mistyped.
+          </p>
+          <div className="wiki-missing-actions">
+            <AppLink className="btn-primary" href="/browse">Browse Wikis</AppLink>
+            <AppLink className="btn-ghost" href="/">Explore your own repository</AppLink>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="wiki wiki-reading">
       <Header

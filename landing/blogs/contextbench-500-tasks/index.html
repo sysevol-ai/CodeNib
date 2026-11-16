@@ -96,7 +96,7 @@ SPDX-License-Identifier: Apache-2.0
 
       <figure class="hero-figure responsive-figure">
         <picture>
-          <source media="(max-width: 900px)" srcset="/assets/blogs/contextbench-search-handoff-narrow.svg" width="640" height="2915">
+          <source media="(max-width: 900px)" srcset="/assets/blogs/contextbench-search-handoff-narrow.svg" width="640" height="2869">
           <img src="/assets/blogs/contextbench-search-handoff.svg" width="1600" height="840" alt="How CodeNib searches before repair on ContextBench: a first Haiku 5.5 search and a complementary Haiku scout each run their own glob, grep and read loop; the CodeNib coordinator passes navigation of locations only between them and unions the source both observed, reaching 77.07% line recall before repair. An Opus 5.5 repair window then resolves 388 of 500 tasks, and confirmed repair reads bring final line recall to 77.90%. On the official ContextBench Agent systems leaderboard as of October 23, 2026 (UTC), the complete agent ranks #1 in line recall and Pass@1.">
         </picture>
         <figcaption>Each window reads the source it needs. Between windows, the coordinator passes only locations, and it keeps the union of everything both search windows observed. That union is what the 77.07% line recall scores.</figcaption>
@@ -160,7 +160,7 @@ SPDX-License-Identifier: Apache-2.0
 
       <figure class="hero-figure responsive-figure in-article">
         <picture>
-          <source media="(max-width: 900px)" srcset="/assets/blogs/contextbench-task-sources-narrow.svg" width="640" height="1042">
+          <source media="(max-width: 900px)" srcset="/assets/blogs/contextbench-task-sources-narrow.svg" width="640" height="996">
           <img src="/assets/blogs/contextbench-task-sources.svg" width="1600" height="728" loading="lazy" alt="Native Pass@1 and model usage by task source, sorted by Pass@1: SWE-Bench-Verified 152 of 174 resolved, 87.36%, $0.39 model usage per task; SWE-PolyBench 92 of 116, 79.31%, $0.65; Multi-SWE-Bench 110 of 156, 70.51%, $0.79; SWE-Bench-Pro 34 of 54, 62.96%, $1.33. All 500 tasks: 77.60% and $0.68 per task. All unresolved attempts remain included.">
         </picture>
         <figcaption>The source with the lowest resolution rate also used the most model usage: SWE-Bench-Pro resolved 62.96% of attempts at $1.33 per task. The dashed lines mark all 500 tasks.</figcaption>

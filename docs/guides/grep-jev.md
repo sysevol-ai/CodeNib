@@ -21,7 +21,7 @@ provider-consent and interactive desktop-unlock acceptance are open.
 Install the optional runtime, then connect your repository:
 
 ```bash
-python -m pip install "codenib[grep,mcp,auth]==0.2.5"
+python -m pip install "codenib[grep,mcp,auth]==0.2.6"
 codenib init /path/to/your/repository
 ```
 

@@ -26,41 +26,41 @@ SPDX-License-Identifier: Apache-2.0
 </script>
 <style>
 @font-face {
-  font-family: "Inter Variable";
-  src: url("../assets/fonts/inter-latin-wght-normal.woff2") format("woff2-variations");
+  font-family: "Geist";
+  src: url("../assets/fonts/Geist-Variable.woff2") format("woff2");
   font-style: normal;
   font-weight: 100 900;
   font-display: swap;
 }
 
 @font-face {
-  font-family: "Newsreader Variable";
-  src: url("../assets/fonts/newsreader-latin-wght-normal.woff2") format("woff2-variations");
+  font-family: "Geist Mono";
+  src: url("../assets/fonts/GeistMono-Variable.woff2") format("woff2");
   font-style: normal;
-  font-weight: 200 800;
+  font-weight: 100 900;
   font-display: swap;
 }
 
 :root {
   color-scheme: light;
-  --demo-sans: "Inter Variable", Inter, ui-sans-serif, system-ui, sans-serif;
-  --demo-serif: "Newsreader Variable", Iowan Old Style, Georgia, serif;
-  --demo-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-  --demo-bg: #f9f6ef;
-  --demo-surface: #fffdf8;
+  --demo-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --demo-serif: var(--demo-sans);
+  --demo-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --demo-bg: #fbfbfc;
+  --demo-surface: #ffffff;
   --demo-surface-strong: #ffffff;
-  --demo-soft: #f1ece1;
-  --demo-soft-strong: #e9e2d6;
-  --demo-line: #ddd4c5;
-  --demo-line-strong: #c9c0b0;
-  --demo-ink: #1d1913;
-  --demo-ink-soft: #453f36;
-  --demo-muted: #6d6860;
-  --demo-neutral: #776f64;
-  --demo-accent: #176b64;
-  --demo-accent-strong: #0d4a44;
-  --demo-accent-soft: #d9e9e6;
-  --demo-on-accent: #fffdf8;
+  --demo-soft: #f1f3f4;
+  --demo-soft-strong: #e8eaed;
+  --demo-line: #dadce0;
+  --demo-line-strong: #bdc1c6;
+  --demo-ink: #1a1b1e;
+  --demo-ink-soft: #3c4043;
+  --demo-muted: #5f6368;
+  --demo-neutral: #70757a;
+  --demo-accent: #1a56c4;
+  --demo-accent-strong: #123f92;
+  --demo-accent-soft: #e3ecfb;
+  --demo-on-accent: #ffffff;
   --demo-added: #2f7d4d;
   --demo-added-soft: #e0eee5;
   --demo-added-node: #d3e8da;
@@ -88,21 +88,21 @@ SPDX-License-Identifier: Apache-2.0
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --demo-bg: #171512;
-  --demo-surface: #1d1a16;
-  --demo-surface-strong: #211e19;
-  --demo-soft: #211e19;
-  --demo-soft-strong: #2a261f;
-  --demo-line: #37332b;
-  --demo-line-strong: #575247;
-  --demo-ink: #f3efe7;
-  --demo-ink-soft: #ddd7cb;
-  --demo-muted: #b8b1a3;
-  --demo-neutral: #9c9487;
-  --demo-accent: #58c1b6;
-  --demo-accent-strong: #7bd2c8;
-  --demo-accent-soft: #14332f;
-  --demo-on-accent: #10211f;
+  --demo-bg: #121315;
+  --demo-surface: #1a1b1e;
+  --demo-surface-strong: #212327;
+  --demo-soft: #17181b;
+  --demo-soft-strong: #212327;
+  --demo-line: #2a2c30;
+  --demo-line-strong: #44484f;
+  --demo-ink: #e8eaed;
+  --demo-ink-soft: #c9ccd1;
+  --demo-muted: #9aa0a6;
+  --demo-neutral: #80868b;
+  --demo-accent: #8ab4f8;
+  --demo-accent-strong: #aecbfa;
+  --demo-accent-soft: #1c2636;
+  --demo-on-accent: #062e6f;
   --demo-added: #68c98b;
   --demo-added-soft: #193527;
   --demo-added-node: #204632;

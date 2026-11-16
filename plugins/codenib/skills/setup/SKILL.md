@@ -19,5 +19,6 @@ Set CodeNib up for this repository and report each step's result.
    `compile_commands.json`, report that rather than changing the project.
 3. Run `codenib doctor --require mcp --require graph` and report anything it
    marks as missing.
-4. Tell the user to run `/mcp`, choose `plugin:codenib:codenib` and reconnect
-   it, so the server picks up the new graph.
+4. Tell the user to restart CodeNib's MCP server so it picks up the new graph:
+   in Claude Code, run `/mcp`, choose `plugin:codenib:codenib` and reconnect
+   it; in Codex, start a new session.

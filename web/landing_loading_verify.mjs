@@ -25,7 +25,13 @@ try {
   if (server) {
     for (let attempt = 0; ; attempt++) {
       if (server.exitCode !== null) throw new Error("Homepage preview exited before becoming ready");
-      try { if ((await fetch(base)).ok) break; } catch { /* Preview is starting. */ }
+      try {
+        // Read the body: a response left unread stays paused, and Node's HTTP
+        // parser asserts when the preview server then closes the socket.
+        const response = await fetch(base);
+        await response.arrayBuffer();
+        if (response.ok) break;
+      } catch { /* Preview is starting. */ }
       if (attempt === 99) throw new Error("Homepage preview did not become ready");
       await delay(100);
     }

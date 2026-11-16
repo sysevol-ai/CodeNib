@@ -42,6 +42,12 @@ def verify_signature(payload, signature, key):
 '''
 
 
+def _codex_command() -> list[str]:
+    manifest = ROOT / "plugins" / "codenib" / ".codex-plugin" / "plugin.json"
+    (server,) = json.loads(manifest.read_text())["mcpServers"].values()
+    return [server["command"], *server["args"]]
+
+
 def _dsh_command() -> list[str]:
     (layer,) = yaml.safe_load(DSH_PATCH.read_text())
     config = layer["insert"][0]["config"]
@@ -127,11 +133,14 @@ class _Server:
         self.process.wait()
 
 
-@pytest.mark.parametrize("host", ["claude-code", "dsh"])
+@pytest.mark.parametrize("host", ["claude-code", "codex", "dsh"])
 def test_the_plugin_command_serves_source_for_a_question(host, checkout, user_env):
     if host == "claude-code":
         # Claude Code and Grok Build pass the project; they start it anywhere.
         command, cwd = [str(CLAUDE_LAUNCHER), str(checkout)], checkout.parent
+    elif host == "codex":
+        # Codex starts the server in the project it opened.
+        command, cwd = _codex_command(), checkout / "pkg"
     else:
         command, cwd = _dsh_command(), checkout / "pkg"
 

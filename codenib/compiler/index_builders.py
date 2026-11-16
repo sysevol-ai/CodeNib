@@ -24,9 +24,18 @@ import shutil
 import stat
 import subprocess
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Protocol, runtime_checkable
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Protocol,
+    runtime_checkable,
+)
 
 from ..index.embedding.model_policy import (
     DEFAULT_EMBEDDING_DIMENSION,
@@ -57,6 +66,9 @@ from ..source_fingerprint import (
 )
 from .resources import IndexState, IndexStatus
 from .verification import NullVerifier, UpdateVerifier, VerificationResult
+
+if TYPE_CHECKING:
+    from ..index.contextual import FileContextualizer
 
 logger = logging.getLogger(__name__)
 
@@ -287,6 +299,7 @@ class PreparedBm25Build:
     artifact_identity: Dict[str, Any]
     chunk_count: int
     source_file_count: int
+    build_metadata: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -300,9 +313,15 @@ class BM25IndexBuilder:
     source_selection: RepositorySourceSelection = field(
         default_factory=RepositorySourceSelection
     )
+    contextualizer: FileContextualizer | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         self.source_selection = _snapshot_source_selection(self.source_selection)
+        if self.contextualizer is not None:
+            from ..index.contextual import FileContextualizer
+
+            if type(self.contextualizer) is not FileContextualizer:
+                raise TypeError("BM25 contextualizer must be a FileContextualizer")
 
     def artifact_identity(self) -> Dict[str, Any]:
         source_selection = _snapshot_source_selection(self.source_selection)
@@ -315,7 +334,14 @@ class BM25IndexBuilder:
         identity = {
             # v10 indexes selected test files too, so old test-filtered views
             # rebuild even when the source bytes have not changed.
-            "builder_schema": 10,
+            "builder_schema": 10 if self.contextualizer is None else 11,
+            # Explicit None also prevents an ordinary builder from reusing a
+            # contextual generation through the compiler's subset comparison.
+            "contextualization": (
+                self.contextualizer.artifact_identity()
+                if self.contextualizer is not None
+                else None
+            ),
             "languages": list(self.languages),
             "max_k": self.max_k,
             "max_lines_per_chunk": self.max_lines_per_chunk,
@@ -339,6 +365,38 @@ class BM25IndexBuilder:
             kwargs.get("source_selection"),
         )
         artifact_identity = self._artifact_identity_for_selection(source_selection)
+
+        if self.contextualizer is not None:
+            from ..source_fingerprint import capture_repository_source
+
+            repository_root = Path(repo_path).resolve(strict=True)
+            output = Path(output_dir).resolve(strict=False)
+            if output == repository_root or output in repository_root.parents:
+                raise ValueError("BM25 contextual output cannot contain the repository")
+            with capture_repository_source(
+                repo_path,
+                exclude_roots=(output_dir,),
+                selection=source_selection,
+            ) as source:
+                identity = source.authenticated_identity_snapshot()
+                prepared = self._prepare_authenticated_repository_source(
+                    scope,
+                    repository_source=source,
+                    repository_root=str(identity.root),
+                    source_selection=source_selection,
+                    check_cancelled=None,
+                )
+                if (
+                    self._artifact_identity_for_selection(source_selection)
+                    != artifact_identity
+                ):
+                    raise RuntimeError("BM25 contextual build configuration changed")
+            return self._persist_prepared_chunks(
+                prepared,
+                output_dir=output_dir,
+                require_missing_output=False,
+                check_cancelled=None,
+            )
 
         from ..code_chunker import CodeChunker, RepoChunkingConfig
 
@@ -499,6 +557,7 @@ class BM25IndexBuilder:
     ) -> PreparedBm25Build:
         from ..code_chunker import CodeChunker, RepoChunkingConfig
 
+        artifact_identity = self._artifact_identity_for_selection(source_selection)
         primary = self.languages[0] if self.languages else "python"
         repo_config = RepoChunkingConfig(
             languages=self.languages,
@@ -525,13 +584,41 @@ class BM25IndexBuilder:
         )
         if check_cancelled is not None:
             check_cancelled()
-        return self._prepare_chunks(
+        prepared = self._prepare_chunks(
             scope,
             repo_path=repository_root,
             source_selection=source_selection,
-            artifact_identity=self._artifact_identity_for_selection(source_selection),
+            artifact_identity=artifact_identity,
             chunks=chunks,
             check_cancelled=check_cancelled,
+        )
+        if self.contextualizer is None:
+            return prepared
+        identity = prepared.artifact_identity["contextualization"]
+        contextualized = self.contextualizer.contextualize(
+            chunks,
+            repository_source,
+            check_cancelled=check_cancelled,
+        )
+        if self.contextualizer.artifact_identity() != identity:
+            raise RuntimeError("contextualizer identity changed during preparation")
+        if self._artifact_identity_for_selection(source_selection) != artifact_identity:
+            raise RuntimeError("BM25 contextual build configuration changed")
+        for document in prepared.indexer.documents:
+            if check_cancelled is not None:
+                check_cancelled()
+            metadata = document.metadata
+            context = contextualized.chunks.get(
+                (metadata["node_id"], metadata["start_line"], metadata["end_line"])
+            )
+            if context is not None:
+                metadata["contextualization"] = {
+                    **context.receipt,
+                    "index_prefix": prepared.indexer._apply_stemming(context.prefix),
+                }
+        return replace(
+            prepared,
+            build_metadata={"contextualization_usage": contextualized.usage},
         )
 
     def _build_chunks(
@@ -664,6 +751,7 @@ class BM25IndexBuilder:
             path=output_dir,
             metadata={
                 **prepared.artifact_identity,
+                **prepared.build_metadata,
                 "artifact_file_fingerprints": artifact_files,
                 "chunk_count": prepared.chunk_count,
                 "source_file_count": prepared.source_file_count,

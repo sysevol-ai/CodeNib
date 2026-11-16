@@ -55,18 +55,8 @@ the event it came from, such as `#812/comment/2990023933`.
 
 ## Use it
 
-Thread context ships in CodeNib 0.2.6. Until 0.2.6 is available from PyPI,
-install CodeNib from source; building it needs Python 3.10 or newer, Git and
-Node.js 20 or newer:
-
-```bash
-git clone https://github.com/sysevol-ai/CodeNib && cd CodeNib
-(cd web && npm ci && npm run build)
-python -m pip install ".[mcp]"
-```
-
-It also needs Git, and a GitHub token in `GH_TOKEN` or an installed and
-signed-in `gh`. Run it inside a clone of the repository:
+Thread context needs CodeNib, Git, and a GitHub token in `GH_TOKEN`, or an
+installed and signed-in `gh`. Run it inside a clone of the repository:
 
 ```bash
 codenib threads show 812                  # print the context of issue or PR 812
@@ -183,15 +173,17 @@ codenib threads events '#812/comment/2990023933'
 ## How well it works
 
 With two coding agents, the prepared context cut the input tokens of a task
-by a fifth to a half against letting the agent read threads with `gh`. With
-Codex the agent then found the same files. With Claude Code it found slightly
-fewer, a gap too small to tell from chance at this sample size.
+by a fifth to a half against letting the agent read threads with `gh`, and
+the agents found the files to change about as often. With Codex the result is
+the same. With Claude Code the gap is too small to tell from chance at this
+sample size.
 
 The agent was asked which files and symbols have to change, and its answer was
 compared with what the merged pull request changed. Three ways of getting
 thread context were compared: the agent reads threads itself with `gh`; every
 thread event is pasted into the prompt unprocessed; or the prompt carries the
-`codenib threads` context.
+`codenib threads` context. Codex ran gpt-6.1-sol and Claude Code ran Claude
+Opus 5.5, both at medium effort.
 
 | Agent and task | Tasks | Files found: `gh` / pasted / CodeNib | Input tokens against `gh` | Against pasted |
 |---|---|---|---|---|
@@ -205,9 +197,9 @@ What to take from this:
 
 - **It saves tokens, more so on long threads.** On short threads, pasting
   everything costs as little.
-- **It does not make answers better.** With Codex they are the same.
-- **With Claude Code, an agent that reads the threads itself explores more
-  code, and found a few more of the files** (0.83 against 0.80). The same
+- **Answers hold.** With Codex the files found are the same.
+- **With Claude Code the answers are close, 0.80 against 0.83.** An agent that
+  reads the threads itself explores more code. The same
   happens when the whole thread is pasted (0.78), so it comes from handing
   context over, not from what the prepared context leaves out. If finding
   every file matters more to you than cost, let the agent read for itself.
@@ -226,10 +218,10 @@ reading the whole thread each time (151 issues, a median of 6 returns each).
       the repository at that point with no history, so no arm can read the fix.
       A read-only replica of `gh` limited to the cut-off is available in every
       arm. Both agents ran with no network access.
-    - Codex: its `gh` and pasted arms ran once per task and the CodeNib arm
-      twice; the two runs differed by 6% in total input tokens on pull
-      requests and 1% on issues. Claude Code (Claude Opus 5.5, medium effort):
-      every arm ran once.
+    - Codex (gpt-6.1-sol, medium effort): its `gh` and pasted arms ran once
+      per task and the CodeNib arm twice; the two runs differed by 6% in total
+      input tokens on pull requests and 1% on issues. Claude Code (Claude Opus
+      5.5, medium effort): every arm ran once.
     - Intervals are 95% paired bootstrap over tasks. Codex pull requests: −27%
       to −14% against `gh`, −40% to −23% against pasted. Codex issues: −31% to
       −19% and −4% to +9%. Claude Code: −57% to −30% and −78% to −59%; files

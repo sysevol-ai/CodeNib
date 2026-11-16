@@ -19,6 +19,13 @@ alone, with `wiki: index` and no key. That mode was removed: its pages were a
 directory listing, not a Wiki. A workflow that still sets `wiki: index` stops
 with a message; remove the input and add a key.
 
+Both setups below deploy the Wiki as the repository's whole Pages site. A
+repository has one Pages site, so the Wiki replaces a site already deployed
+there, and switching the Pages source to **GitHub Actions** stops serving a
+site from a branch such as `gh-pages`. To keep an existing site, publish from a
+repository without one, or [build without deployment](#build-without-deployment)
+and host the output elsewhere.
+
 ## Publish the Wiki
 
 The quickest setup is the
@@ -231,7 +238,7 @@ WAL, SHM or rollback journal. The command reads a private immutable snapshot;
 it does not change the database, configuration or registry:
 
 ```bash
-python -m pip install "codenib==0.2.5"
+python -m pip install "codenib==0.2.6"
 codenib export --wiki-config /path/to/qa_config.yaml \
   --wiki-repo psf__requests --output /path/to/site \
   --base-path /requests
@@ -285,7 +292,7 @@ In the environment that owns your existing, complete cached Wiki, install the
 published package and use the same quiescent-database requirements above:
 
 ```bash
-python -m pip install --upgrade "codenib==0.2.5"
+python -m pip install --upgrade "codenib==0.2.6"
 codenib export --format okf --wiki-config /path/to/qa_config.yaml \
   --wiki-repo psf__requests --output /path/to/requests-wiki
 ```

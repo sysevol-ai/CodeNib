@@ -1,0 +1,249 @@
+<!doctype html>
+<!--
+SPDX-FileCopyrightText: 2026 CodeNib Contributors
+SPDX-License-Identifier: Apache-2.0
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Preparing a GitHub Thread for a Coding Agent: Four Techniques, No Model — CodeNib</title>
+  <meta name="description" content="How codenib threads prepares a GitHub issue or pull request for a coding agent without a model: what it keeps whole, how it folds failed logs, how it locates code, and what it measured on 76 pull request takeovers.">
+  <meta name="author" content="CodeNib Team">
+  <meta property="og:title" content="Preparing a GitHub Thread for a Coding Agent: Four Techniques, No Model">
+  <meta property="og:description" content="An agent reading a thread with gh pays for every tool call. Preparing the thread once, by code, cut input tokens by 21% with Codex and 45% with Claude Code on 76 pull request takeovers.">
+  <meta property="og:image" content="https://codenib.ai/assets/blogs/thread-context.png">
+  <meta property="og:image:width" content="1600">
+  <meta property="og:image:height" content="840">
+  <meta property="og:image:alt" content="Left: an agent reading a GitHub thread itself makes one tool call for the issue, its comments, the linked pull request, the reviews, the checks and a failed log, and each call carries the conversation so far. Right: codenib threads prepares one document with status, coverage, the ask, code locations, failing CI, other open pull requests on the same code, linked threads and discussion, ending in a cursor, so a later read returns only what changed. On 76 pull request takeovers, input tokens against reading with gh fell 21% with Codex (gpt-6.1-sol) and 45% with Claude Code (Claude Opus 5.5). Over the life of an issue, a first context and updates took a median of 2,897 tokens against 21,103 for rereading the thread, on 151 issues.">
+  <meta property="og:type" content="article">
+  <meta property="og:locale" content="en_US">
+  <meta property="og:url" content="https://codenib.ai/blogs/thread-context-for-coding-agents/">
+  <meta property="article:published_time" content="2026-11-14T20:00:00Z">
+  <meta property="article:modified_time" content="2026-11-14T20:00:00Z">
+  <meta property="article:section" content="Coding agents">
+  <meta property="article:tag" content="GitHub issues">
+  <meta property="article:tag" content="Pull requests">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Preparing a GitHub Thread for a Coding Agent: Four Techniques, No Model">
+  <meta name="twitter:description" content="An agent reading a thread with gh pays for every tool call. Preparing the thread once, by code, cut input tokens by 21% with Codex and 45% with Claude Code on 76 pull request takeovers.">
+  <meta name="twitter:image" content="https://codenib.ai/assets/blogs/thread-context.png">
+  <meta name="twitter:image:alt" content="Left: an agent reading a GitHub thread itself makes one tool call for the issue, its comments, the linked pull request, the reviews, the checks and a failed log, and each call carries the conversation so far. Right: codenib threads prepares one document with status, coverage, the ask, code locations, failing CI, other open pull requests on the same code, linked threads and discussion, ending in a cursor, so a later read returns only what changed. On 76 pull request takeovers, input tokens against reading with gh fell 21% with Codex (gpt-6.1-sol) and 45% with Claude Code (Claude Opus 5.5). Over the life of an issue, a first context and updates took a median of 2,897 tokens against 21,103 for rereading the thread, on 151 issues.">
+  <link rel="canonical" href="https://codenib.ai/blogs/thread-context-for-coding-agents/">
+  <link rel="icon" href="/assets/codenib-icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/assets/blogs.css">
+  <link rel="stylesheet" href="/assets/blogs/contextbench-results.css">
+  <link rel="stylesheet" href="/assets/blogs/thread-walkthrough.css">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BlogPosting",
+    "headline": "Preparing a GitHub Thread for a Coding Agent: Four Techniques, No Model",
+    "description": "An agent reading a thread with gh pays for every tool call. Preparing the thread once, by code, cut input tokens by 21% with Codex and 45% with Claude Code on 76 pull request takeovers.",
+    "image": "https://codenib.ai/assets/blogs/thread-context.png",
+    "datePublished": "2026-11-14T20:00:00Z",
+    "dateModified": "2026-11-14T20:00:00Z",
+    "inLanguage": "en",
+    "mainEntityOfPage": "https://codenib.ai/blogs/thread-context-for-coding-agents/",
+    "author": { "@type": "Organization", "name": "CodeNib Team", "url": "https://codenib.ai/" },
+    "publisher": {
+      "@type": "Organization", "name": "CodeNib", "url": "https://codenib.ai/",
+      "logo": { "@type": "ImageObject", "url": "https://codenib.ai/assets/codenib-icon.svg" }
+    }
+  }
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <header class="site-header">
+    <div class="wrap nav">
+      <a class="brand" href="/" aria-label="CodeNib home"><img src="/assets/codenib-logo-dark.svg" alt="CodeNib"></a>
+      <a class="nav-link" href="/blogs/" aria-current="page">Blog</a>
+      <a class="nav-link nav-docs" href="https://docs.codenib.ai/">Docs</a>
+      <a class="nav-link" href="https://demo.codenib.ai/">Demo</a>
+      <a class="nav-link nav-github" href="https://github.com/sysevol-ai/CodeNib" aria-label="Source on GitHub">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+      </a>
+    </div>
+  </header>
+
+  <main id="main-content">
+    <article aria-labelledby="article-title">
+      <header class="article-head wrap">
+        <a class="back" href="/blogs/"><span aria-hidden="true">←</span> All posts</a>
+        <div class="post-meta">
+          <span class="tag">Coding agents</span>
+          <time datetime="2026-11-14">November 14, 2026</time>
+          <span>6 min read</span>
+        </div>
+        <h1 id="article-title">Preparing a GitHub Thread for a Coding Agent: Four Techniques, No Model</h1>
+        <p class="deck"><code>codenib threads</code> keeps the agent's own thread whole, folds failed logs, resolves mentions to places in the code, and stores events instead of documents. On 76 pull request takeovers that cut input tokens by 21% to 45%, and the agents found the files to change about as often.</p>
+      </header>
+
+      <div class="article-body article-lead">
+        <p>A coding agent asked to take over a pull request starts by reading the thread: the description, the comments, the reviews, the checks, a log. With <code>gh</code> that is one tool call per piece, and every call sends the whole conversation so far back to the model. <code>codenib threads</code>, a preview in CodeNib 0.2.6, reads the thread once, by code, before the agent starts. On <strong>76 pull request takeovers</strong> that cut input tokens by <strong>21% with Codex</strong> (gpt-6.1-sol) and <strong>45% with Claude Code</strong> (Claude Opus 5.5). The agents found the files to change about as often either way.</p>
+        <p>Fetching ahead of the agent is the easy part. This post is about the harder part, deciding what goes into the document. On pull requests, fetching ahead without choosing costs more than it saves.</p>
+      </div>
+
+      <figure class="hero-figure responsive-figure phone-drawn">
+        <picture>
+          <source media="(max-width: 900px)" srcset="/assets/blogs/thread-context-narrow.svg" width="464" height="1768">
+          <img src="/assets/blogs/thread-context.svg" width="1600" height="840" alt="Left: an agent reading a GitHub thread itself makes one tool call for the issue, its comments, the linked pull request, the reviews, the checks and a failed log, and each call carries the conversation so far. Right: codenib threads prepares one document with status, coverage, the ask, code locations, failing CI, other open pull requests on the same code, linked threads and discussion, ending in a cursor, so a later read returns only what changed. On 76 pull request takeovers, input tokens against reading with gh fell 21% with Codex (gpt-6.1-sol) and 45% with Claude Code (Claude Opus 5.5). Over the life of an issue, a first context and updates took a median of 2,897 tokens against 21,103 for rereading the thread, on 151 issues.">
+        </picture>
+        <figcaption>The bars on the left sketch the mechanism and are not measurements: every tool call sends the conversation so far again. The figures in the bottom row are measured.</figcaption>
+        <a class="diagram-open" href="/assets/blogs/thread-context.svg">Open the full-size diagram <span aria-hidden="true">↗</span></a>
+      </figure>
+
+      <div class="article-body before-figure">
+        <h2 id="costs">Two costs that pull apart</h2>
+        <p>We gave agents the same thread in three ways: the agent reads it with <code>gh</code>, every event is pasted into the prompt unprocessed, or the prompt carries the prepared context.</p>
+        <p>On issues, pasting everything cost the same as the prepared context, within 2%, and both took about a quarter fewer input tokens than <code>gh</code>. Nothing in the pasted prompt was selected or shortened, so that saving is only the tool calls that no longer happen.</p>
+        <p>On pull requests, pasting everything was the most expensive of the three. With Claude Code the 76 tasks cost $17.49 pasted, $11.34 with <code>gh</code> and $8.37 with the prepared context. Check logs, bot comments and review comments, unprocessed, cost more than the calls they replace.</p>
+        <p>So preparing a thread means removing the calls and then choosing. The choosing is done by code, with no model: the same thread always gives the same document, and every line in it traces to the event it came from. Four techniques carry most of it. In the diagrams below, teal is what the document keeps, blue is what an agent is sent, and a dashed outline is what was left out.</p>
+
+        <h2 id="whole">1. Never cut the thread the agent is working on</h2>
+        <p>The obvious way to meet a token budget is to shorten long posts. For the agent's own thread this backfires: an agent that sees an omission mark in the pull request it was asked to fix reads the pull request again with <code>gh</code>, and has then paid for both.</p>
+      </div>
+
+      <figure class="hero-figure responsive-figure in-article phone-drawn">
+        <picture>
+          <source media="(max-width: 900px)" srcset="/assets/blogs/thread-budget-narrow.svg" width="464" height="1124">
+          <img src="/assets/blogs/thread-budget.svg" width="1264" height="580" loading="lazy" alt="Left: three threads in the store, the one the agent works on and two linked to it, each a list of posts of different lengths. Right: the prepared context keeps every post of the agent&#x27;s own thread whole, and leaves out the oldest posts of the linked threads. Its second line says which case applies. Own posts are shortened only past three times the budget.">
+        </picture>
+        <figcaption>A sketch with made-up threads. The real line for a Caddy pull request follows.</figcaption>
+        <a class="diagram-open" href="/assets/blogs/thread-budget.svg">Open the full-size diagram <span aria-hidden="true">↗</span></a>
+      </figure>
+
+      <div class="article-body continued before-figure">
+        <p>So the budget is not applied evenly, and the second line of the document tells the agent which case it is in. This is <a href="https://github.com/caddyserver/caddy/pull/8024">caddyserver/caddy#8024</a> on November 14, 2026, with <code>[…]</code> where we left text out and the line wrapped to fit:</p>
+        <pre class="wraps"><code>Coverage: this thread complete, linked threads partial.
+Everything people wrote in #8024 is below in full; […]
+Reading #8024 again with gh returns nothing more.</code></pre>
+        <p>The last sentence is written to be acted on. A post omitted from a linked thread can be fetched by its id, and the thread itself needs no second read.</p>
+
+        <h2 id="logs">2. A failed log is mostly one line, repeated</h2>
+        <p>A linter that finds one problem in 300 files prints 300 lines, and a build matrix fails the same way on six platforms. Keeping the last 200 lines of each failed log, as our pasted prompts did, fills the prompt with one message.</p>
+      </div>
+
+      <figure class="hero-figure responsive-figure in-article phone-drawn">
+        <picture>
+          <source media="(max-width: 900px)" srcset="/assets/blogs/thread-logs-narrow.svg" width="464" height="896">
+          <img src="/assets/blogs/thread-logs.svg" width="1264" height="470" loading="lazy" alt="Left: a job log with four set-up lines and 300 error lines that differ only in the file, the line number and the name. Right: the context keeps the lines around an error, compares them with paths and numbers blanked, shows a repeated line twice and counts the rest: 298 more lines like the two above. Jobs whose failing lines mostly match are printed once with the names of the jobs that share the failure, and are never merged by name.">
+        </picture>
+        <figcaption>A sketch with a made-up log, folded by the rules the context uses.</figcaption>
+        <a class="diagram-open" href="/assets/blogs/thread-logs.svg">Open the full-size diagram <span aria-hidden="true">↗</span></a>
+      </figure>
+
+      <div class="article-body continued before-figure">
+        <p>Jobs are folded the same way as lines, by what failed and never by name: a matrix runs several jobs under one name, and merging by name could hide the one that failed. This is the Caddy pull request from above:</p>
+        <pre class="wraps"><code>## Failing CI
+Checks at 0b3db48f: 2 failing, 22 passing.
+[#8024/check/127120839152] lint (linux) failed
+[…]
+##[error]modules/caddyhttp/reverseproxy/reverseproxy.go:658:24: use "Sec-Websocket-Key" instead of "Sec-WebSocket-Key" (canonicalheader)
+[…]
+[#8024/check/127120838129] test (windows, 1.27) failed
+[…]
+	github.com/klauspost/compress/zstd: github.com/klauspost/compress@v1.20.1: read "https://proxy.golang.org/github.com/klauspost/compress/@v/v1.20.1.zip": stream error: stream ID 1; INTERNAL_ERROR; received from peer
+[... 1 more lines like the two above ...]</code></pre>
+        <p>This pull request changes two files in Caddy's file server. The lint error is in <code>reverseproxy.go</code>, and the Windows job stopped while downloading a module. Neither failure is about the change, and the agent can see that without opening a log.</p>
+
+        <h2 id="code">3. Turn mentions of code into places in the code</h2>
+        <p>A thread talks about code in words. Someone pastes a stack trace, a reviewer comments on a line, someone writes a path or a function name in backticks. An agent reading that has to find each one in the repository before it can start, with a search and a file read for each. The context does that lookup ahead of time and lists the result: a file, a line range, and the function or type those lines belong to.</p>
+        <p>The lookup uses no model. Regular expressions find the mentions. Each is resolved against one commit of your clone, read through Git, so the same thread gives the same locations whatever is edited in the working tree. A line is mapped to the innermost function or type that contains it: a line number alone tells an agent little, and the function around it is something it can open.</p>
+      </div>
+
+      <figure class="hero-figure responsive-figure in-article phone-drawn">
+        <picture>
+          <source media="(max-width: 900px)" srcset="/assets/blogs/thread-anchors-narrow.svg" width="464" height="928">
+          <img src="/assets/blogs/thread-anchors.svg" width="1264" height="512" loading="lazy" alt="Left: the five ways a thread points at code, strongest evidence first: a stack frame, a review comment on a line, a file path, a name in backticks, and a file a diff touches. Right: the mention is resolved at one commit of the clone. Line 212 of pkg/io.py lies in the method read, lines 190 to 229, inside the class Reader, and the context lists that range with the evidence and the event it came from. An open pull request that changes lines 205 to 214 falls in the same range, so the context lists it as also in progress.">
+        </picture>
+        <figcaption>A sketch with made-up code. The real locations for the Caddy pull request follow below.</figcaption>
+        <a class="diagram-open" href="/assets/blogs/thread-anchors.svg">Open the full-size diagram <span aria-hidden="true">↗</span></a>
+      </figure>
+
+      <div class="article-body continued before-figure">
+        <p>Mentions are not equally trustworthy, so the list runs from stack frames, which are almost always right, down to bare names, which could be many things. A bare name is looked up first in the files the thread already mentions, and one defined in more than three places is dropped as a guess. Each entry ends with its kind of evidence and the event that pointed at it:</p>
+        <pre class="wraps"><code>## Code locations
+[…]
+- modules/caddyhttp/fileserver/browse.go:85-229 `FileServer.serveBrowse()` (path; #8023/comment/6594174437)</code></pre>
+        <p>Line ranges also answer a question the thread never raises: is someone else changing this code right now? <code>codenib threads sync --open-pulls</code> records which lines each open pull request changes. When one of those ranges falls inside a function the thread points at, the context says so:</p>
+        <pre class="wraps"><code>## Also in progress on this code
+- #7777 (open PR by Jualhosting, updated 2026-10-26) fileserver: Improve 404 error detail and context — changes `FileServer.serveBrowse()`; also edits modules/caddyhttp/fileserver/staticfiles.go</code></pre>
+        <p>An agent working one thread has no way to see this for itself, and it is common. In <code>astral-sh/ruff</code>, 30 of the 59 most recently updated open pull requests changed a symbol that another of them also changed.</p>
+        <p class="scope-note">In this preview the locations come only from what the thread says. They do not use CodeNib's code graph, so the context does not know what calls a function.</p>
+
+        <h2 id="events">4. Store what happened, and build the document on demand</h2>
+        <p>The obvious thing to keep for each thread is the document handed to the agent. We keep something else: the list of things that happened on GitHub. Every comment, review, commit and check run is saved as its own record, in the order it arrived, under a fixed address such as <code>#8024/review_comment/4477879638</code>. Records are only ever added. An edited comment is added again under the same address, and the old record stays. The document itself is not stored. It is built from the list each time someone asks.</p>
+        <p>The reason is the second visit. An agent that comes back the next day needs to know what changed. A stored document cannot answer that: you hand over the whole document again, or you compare two texts and guess. With a list the answer is a position, everything after the last record the agent saw. Three things follow.</p>
+      </div>
+
+      <figure class="hero-figure responsive-figure in-article phone-drawn">
+        <picture>
+          <source media="(max-width: 900px)" srcset="/assets/blogs/thread-events-narrow.svg" width="464" height="902">
+          <img src="/assets/blogs/thread-events.svg" width="1264" height="438" loading="lazy" alt="Left: a thread stored as a list of six events in order, each with a fixed address; an edited comment is appended as a new record under its old address. Right: agents keep a position in that list. Agent A&#x27;s first read is sent the four records that exist and ends with a cursor. When it comes back with --since it is sent only the edit and the check that came after. Agent B opens a ticket on the same stored thread and is sent all six; when it polls again nothing is new and nothing is sent. Measured: over the life of an issue, a first context and updates took a median of 2,897 tokens against 21,103 for rereading, on 151 issues; with 24 tickets following 71 threads of astral-sh/ruff, fetching everything took 278 requests and a poll with nothing new took 13.">
+        </picture>
+        <figcaption>The list and the agents are a sketch. The figures in the bottom box are measured.</figcaption>
+        <a class="diagram-open" href="/assets/blogs/thread-events.svg">Open the full-size diagram <span aria-hidden="true">↗</span></a>
+      </figure>
+
+      <div class="article-body continued before-figure">
+        <p>Every line can be checked. The bracketed ids in the excerpts above are addresses, and <code>codenib threads events &lt;id&gt;</code> prints the raw event.</p>
+        <p>Coming back is cheap. The document ends with a cursor, the address of the newest record it used, and <code>--since &lt;cursor&gt;</code> returns only what came after it. Across 151 issues with a median of six returns each, a first context followed by updates took a median of <strong>2,897 tokens</strong> over the life of the issue, against <strong>21,103</strong> for reading the thread again each time.</p>
+        <p>Many agents can share one store. A <strong>ticket</strong> is a piece of work that remembers its position in each list it follows. Two tickets on one thread store it once, and a comment edited after a ticket read it comes back as unread. A poll asks GitHub once which threads changed and fetches only those. With 24 tickets following 71 threads of <code>astral-sh/ruff</code>, fetching everything took 278 requests, and a poll with nothing new took 13.</p>
+
+        <h2 id="together">The four on one pull request</h2>
+        <p>The four techniques act on the same thread at once. Below is a made-up pull request, from its first record to a second agent joining. Each step shows the record that was added, what the document says after it, and what an agent is sent.</p>
+      </div>
+
+      <div class="walk">
+        <div class="walk-frame" data-thread-walk>
+          <p class="walk-fallback">This walkthrough needs JavaScript. The four diagrams above show the same steps.</p>
+        </div>
+        <p class="walk-caption">Teal marks what the last step changed in the document, blue what the last read sent to an agent. The pull request and its records are made up; the rules are the ones <code>codenib threads</code> applies.</p>
+      </div>
+
+      <div class="article-body continued">
+        <h2 id="results">Same answers, fewer tokens</h2>
+        <p>Each task showed an agent a thread and the repository as they stood at a cut-off, and asked which files have to change. The answer was compared with what the merged pull request changed. Files found are listed for <code>gh</code>, pasted and the prepared context, in that order; token columns compare the prepared context with each of the other two.</p>
+        <div class="data-table compact stacks" role="region" tabindex="0" aria-label="Files found and input tokens by agent and task">
+          <table>
+            <caption class="sr-only">Files found and input tokens with the prepared context, by agent and task</caption>
+            <thead><tr><th scope="col">Takeover</th><th scope="col">Tasks</th><th scope="col">Files found</th><th scope="col">Tokens vs gh</th><th scope="col">vs pasted</th></tr></thead>
+            <tbody>
+              <tr><th scope="row">Codex, pull request<small>gpt-6.1-sol</small></th><td data-label="Tasks">76</td><td data-label="Files found">0.74 / 0.75 / 0.75</td><td data-label="Tokens vs gh">−21%</td><td data-label="Tokens vs pasted">−32%</td></tr>
+              <tr><th scope="row">Codex, issue<small>gpt-6.1-sol</small></th><td data-label="Tasks">47</td><td data-label="Files found">0.82 / 0.85 / 0.85</td><td data-label="Tokens vs gh">−25%</td><td data-label="Tokens vs pasted">+2%</td></tr>
+              <tr><th scope="row">Claude Code, pull request<small>Claude Opus 5.5</small></th><td data-label="Tasks">76</td><td data-label="Files found">0.83 / 0.78 / 0.80</td><td data-label="Tokens vs gh">−45%</td><td data-label="Tokens vs pasted">−69%</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>The answers hold while the cost falls. With Codex the files found are the same. With Claude Code they are close, 0.80 against 0.83, a gap too small to tell from chance on 76 tasks. Pasting the whole thread shows the same small gap (0.78), so it comes from handing context over and not from what the context leaves out: an agent given the thread up front reads a little less code. The document therefore ends by telling the agent that it covers the threads and not the code.</p>
+        <p>The saving grows with the thread: on the 22 pull requests whose threads ran over 20,000 tokens, input tokens fell 34% with Codex and 63% with Claude Code.</p>
+        <p class="scope-note">Pull request tasks come from <code>astral-sh/ruff</code>, <code>caddyserver/caddy</code> and <code>pydantic/pydantic</code>; issue tasks from the first two. Codex ran gpt-6.1-sol and Claude Code ran Claude Opus 5.5, both at medium effort. The result shows where an agent would work and what reaching that cost, not whether it then writes a better fix. Intervals, method and the script to reproduce it are in the <a href="https://docs.codenib.ai/threads/#how-well-it-works">thread context guide</a>.</p>
+
+        <h2 id="try">Try it</h2>
+        <p>It needs CodeNib 0.2.6, Git, and either a GitHub token in <code>GH_TOKEN</code> or a signed-in <code>gh</code>. Run it inside a clone of the repository:</p>
+        <pre><code>python -m pip install -U codenib
+
+codenib threads context 812                        # write THREAD_CONTEXT.md before the agent starts
+codenib threads show 812 --sync --since '&lt;cursor&gt;'  # later: only what changed
+codenib threads open 812                           # or let a ticket remember what it read</code></pre>
+        <p>Writing the file before the agent starts does not depend on the agent choosing to call a tool. For later reads, the <a href="https://docs.codenib.ai/codegraph/#claude-code-plugin">CodeNib plugin</a> for Claude Code and Grok Build adds <code>/codenib:thread</code>, and <code>codenib threads mcp</code> serves the same to any agent that speaks MCP.</p>
+        <p>CodeNib executes and follows nothing in a comment, but the text still reaches your agent, so give the agent no more permissions than you would when it reads GitHub directly. Every command and option is in the <a href="https://docs.codenib.ai/threads/">thread context guide</a>.</p>
+      </div>
+    </article>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-row">
+      <a class="footer-brand" href="/" aria-label="CodeNib home"><img src="/assets/codenib-icon.svg" alt=""><span>codenib.ai</span></a>
+      <a href="/blogs/">Blog</a>
+      <a href="https://docs.codenib.ai/">Docs</a>
+      <a href="https://demo.codenib.ai/">Demo</a>
+      <a href="https://github.com/sysevol-ai/CodeNib">GitHub</a>
+      <span>© 2026 CodeNib</span>
+    </div>
+  </footer>
+  <script src="/assets/blogs/thread-walkthrough.js" defer></script>
+</body>
+</html>

@@ -17,6 +17,9 @@
 evidence_levels: [Tested, Runnable, Pinned, Measured]
 
 layers:
+  QA:
+    name: Answer quality
+    scored: Released questions answered against reference answers using an LLM judge
   L1:
     name: Localization
     scored: The method's final ranked files, symbols, code blocks, or line regions
@@ -137,6 +140,29 @@ benchmarks:
       - codenib/eval/benchmarks/swe_explore.py
       - codenib/eval/benchmarks/swe_explore_runner.py
 
+  - id: core_bench
+    name: CORE-Bench
+    column: CORE
+    url: https://github.com/zhangfw123/CORE-Bench-Eval
+    layer: L1
+    origin: External
+    task: Rank released code chunks within each query's eligible snapshot
+    ground_truth: Released positive query-document relevance labels
+    granularity: Chunk
+    languages: Mixed; released Level-2 and Level-3 corpora
+    size: Selected repository corpora and queries
+    pins: Evaluator `5d00cdca`, dataset `23da5d97`
+    scorer: Official collector's binary relevance metrics
+    setup: Local release files and pinned evaluator checkout
+    entry:
+      - module: codenib.eval.benchmarks.core_bench
+        run: true
+    level: Runnable
+    level_note: CodeNib retrieval with official metrics
+    page: evaluation/core_bench.md
+    modules:
+      - codenib/eval/benchmarks/core_bench.py
+
   - id: arb
     name: Agent Retrieval Bench
     column: ARB
@@ -164,6 +190,30 @@ benchmarks:
       - codenib/eval/benchmarks/_arb_methods.py
       - codenib/eval/benchmarks/agent_retrieval_bench_tools.py
 
+  - id: swe_qa
+    name: SWE-QA
+    column: SWE-QA
+    url: https://github.com/peng-weihan/SWE-QA-Bench
+    layer: QA
+    origin: External
+    task: Answer repository-level code questions
+    ground_truth: Released reference answers
+    granularity: Question and answer
+    languages: Python repositories
+    size: 720 questions across 15 repositories at the pinned release
+    pins: Dataset, agent and judge `c13deac7`
+    scorer: Original upstream judge prompt/parser; CodeNib provider transport
+    setup: Pinned upstream, repository checkouts, CodeNib indexes and API credentials
+    entry:
+      - module: codenib.eval.benchmarks.swe_qa
+        run: true
+    level: Runnable
+    level_note: CodeNib answers with upstream judging
+    page: evaluation/swe_qa.md
+    in_grid: false
+    modules:
+      - codenib/eval/benchmarks/swe_qa.py
+
   - id: contextbench
     name: ContextBench
     column: ContextBench
@@ -188,6 +238,30 @@ benchmarks:
       - codenib/eval/benchmarks/contextbench.py
       - codenib/eval/benchmarks/contextbench_runner.py
       - codenib/eval/benchmarks/_contextbench_evaluate.py
+
+  - id: swe_qa_pro
+    name: SWE-QA-Pro
+    column: SWE-QA-Pro
+    url: https://github.com/TIGER-AI-Lab/SWE-QA-Pro
+    layer: QA
+    origin: External
+    task: Answer repository-level code questions with source exploration
+    ground_truth: Released reference answers
+    granularity: Question and answer
+    languages: Python repositories
+    size: 260 questions across 26 repositories
+    pins: Evaluator `93ac6a4f`, dataset `596892da`
+    scorer: Official evaluator; five 1–10 dimensions
+    setup: Pinned release, source checkouts, CodeNib indexes and provider keys
+    entry:
+      - module: codenib.eval.benchmarks.swe_qa_pro
+        run: true
+    level: Runnable
+    level_note: CodeNib answers with official scoring
+    page: evaluation/swe_qa_pro.md
+    in_grid: false
+    modules:
+      - codenib/eval/benchmarks/swe_qa_pro.py
 
   - id: contextbench_pass1
     name: ContextBench Pass@1
@@ -246,6 +320,7 @@ methods:
     model: none
     surfaces: Python, MCP
     cells:
+      core_bench: {level: Runnable}
       codenib_base:
         level: Runnable
         note: Scored only as the first stage of BM25 → Jev.
@@ -282,6 +357,7 @@ methods:
     model: embedding model
     surfaces: Python, MCP
     cells:
+      core_bench: {level: Runnable}
       codenib_base:
         level: Runnable
         note: Scored only as the first stage of dense → Qwen3-Reranker-4B.
@@ -304,6 +380,7 @@ methods:
     model: embedding model
     surfaces: Python, MCP
     cells:
+      core_bench: {level: Runnable}
       codenib_base:
         level: Runnable
         note: Scored only as the first stage of hybrid → Jev and hybrid → Qwen3-Reranker-4B.
