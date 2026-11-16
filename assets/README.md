@@ -17,11 +17,10 @@ directory asks for. Render it again when the icon changes.
 `codenib_wiki.png` is the release Quickstart screenshot generated from the
 default static Wiki over a clean CodeNib checkout.
 
-`readme/` holds the screenshots on the repository README, downscaled to
-1760 px wide and reduced to a 256-color palette. The two `wiki-*` images come
-from the hosted demo at a 1440×900 viewport (2× scale).
-`agent-replay-requests.png` is the agent replay panel on codenib.ai, captured
-at 2× scale with reduced motion so the whole session shows. For the capture,
-the transcript pane is unclipped and the graph is centered vertically.
+`readme/` holds the images on the repository README. The two `wiki-*`
+screenshots come from the hosted demo at a 1440×900 viewport (2× scale),
+downscaled to 1760 px wide and reduced to a 256-color palette. The SVG figures
+are drawn by `scripts/render_readme_figures.py`, once for each GitHub theme;
+the rules they follow are in `AGENTS.md` under "Figures and Images".
 
 Update a canonical file, sync its mirrors, then run the check before committing.

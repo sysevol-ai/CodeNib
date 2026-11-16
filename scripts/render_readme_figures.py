@@ -21,6 +21,7 @@ needs the same fontTools with WOFF2 support::
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import re
 from pathlib import Path
@@ -50,51 +51,160 @@ THEMES = {
     },
 }
 
-# Input tokens of the prepared context against the agent reading with gh, on
-# the 76 pull request takeovers in docs/threads.md: (agent, model, change).
+# Change in input tokens with the prepared context against the agent reading
+# the thread with gh, and its 95% interval, from docs/threads.md:
+# (agent, model and tasks, change, low, high).
 TAKEOVERS = [
-    ("Codex", "gpt-6.1-sol", -21),
-    ("Claude Code", "Claude Opus 5.5", -45),
+    ("Codex", "gpt-6.1-sol · 76 pull requests", -21, -27, -14),
+    ("Codex", "gpt-6.1-sol · 47 issues", -25, -31, -19),
+    ("Claude Code", "Claude Opus 5.5 · 76 pull requests", -45, -57, -30),
 ]
+# The scale of that figure runs from this change to zero, with these ticks.
+SCALE_MIN = -70
+TICKS = (-60, -40, -20, 0)
+
+# The recorded Claude Code session the homepage replays.
+RECORD = ROOT / "landing" / "assets" / "demos" / "codegraph-claude.json"
 
 _BACKGROUND = re.compile(r'<rect width="\d+" height="\d+" fill="#[0-9a-fA-F]+"/>\n?')
 
 
+def _percent(value: int) -> str:
+    return f"−{-value}%" if value < 0 else f"{value}%" if value else "0"
+
+
 def thread_tokens(c: dict[str, str]) -> str:
-    """The same 76 takeovers: input tokens reading with gh, and prepared."""
+    """Change in input tokens with the prepared context, per agent and task."""
     styles = {
-        "agent": {"size": 17, "weight": 620, "fill": c["ink"]},
-        "model": {"size": 15, "fill": c["muted"]},
-        "row": {"size": 15, "fill": c["muted"]},
-        "row-on": {"size": 15, "weight": 560, "fill": c["ink"]},
-        "change": {"size": 24, "weight": 650, "spacing": -0.02, "fill": c["accent"]},
+        "agent": {"size": 16, "weight": 620, "fill": c["ink"]},
+        "tasks": {"size": 13, "fill": c["muted"]},
+        "change": {"size": 21, "weight": 650, "spacing": -0.02, "fill": c["accent"]},
+        "tick": {"size": 13, "fill": c["muted"]},
     }
-    bar_x, full, bar_h, group = 168, 500, 28, 142
-    fig = Figure(WIDTH, group * len(TAKEOVERS) - 22, styles)
-    for i, (agent, model, change) in enumerate(TAKEOVERS):
-        top = i * group
-        if i:
-            fig.path(f"M 0 {top - 22} H {WIDTH}", stroke=c["rule"], sw=1)
-        fig.text(0, top + 16, agent, "agent")
-        fig.text(fig.measure(agent, "agent") + 10, top + 16, model, "model")
-        y = top + 38
-        fig.text(0, y + 19, "reads with gh", "row")
-        fig.rect(bar_x, y, full, bar_h, rx=4, fill=c["base"])
-        y += bar_h + 10
-        width = full * (100 + change) / 100
-        fig.text(0, y + 19, "codenib threads", "row-on")
-        fig.rect(bar_x, y, width, bar_h, rx=4, fill=c["accent"])
-        fig.text(bar_x + width + 14, y + 23, f"\u2212{-change}%", "change")
+    x0, x1, row = 286, 800, 78
+    bottom = row * len(TAKEOVERS)
+    fig = Figure(WIDTH, bottom + 34, styles)
+
+    def at(value: float) -> float:
+        return x1 - (x1 - x0) * value / SCALE_MIN
+
+    for i, (agent, tasks, change, low, high) in enumerate(TAKEOVERS):
+        top = i * row
+        fig.path(f"M 0 {top + 0.5} H {WIDTH}", stroke=c["rule"], sw=1)
+        fig.text(0, top + 35, agent, "agent")
+        fig.text(0, top + 56, tasks, "tasks")
+        y = top + 52
+        fig.path(f"M {at(low):.1f} {y} H {at(high):.1f}", stroke=c["accent"], sw=3)
+        fig.circle(at(change), y, 8, c["accent"])
+        fig.text(at(change), top + 31, _percent(change), "change", anchor="middle")
+    fig.path(f"M 0 {bottom + 0.5} H {WIDTH}", stroke=c["rule"], sw=1)
+    # Zero is the agent reading the thread itself: the line each row is read
+    # against.
+    fig.path(f"M {x1} 0.5 V {bottom + 6}", stroke=c["base"], sw=1)
+    for tick in TICKS:
+        if tick:
+            fig.path(f"M {at(tick):.1f} {bottom} v 6", stroke=c["base"], sw=1)
+        fig.text(at(tick), bottom + 25, _percent(tick), "tick", anchor="middle")
+    fig.text(0, bottom + 25, "Change in input tokens", "tick")
     return fig.svg(
-        "Input tokens on 76 pull request takeovers",
-        "Two pairs of bars. With Codex on gpt-6.1-sol, the context prepared by "
-        "codenib threads used 21% fewer input tokens than the agent reading "
-        "the thread with gh. With Claude Code on Claude Opus 5.5 it used 45% "
-        "fewer.",
+        "Change in input tokens when the agent is handed the thread context",
+        "Three results, each a dot with its 95% interval on a scale from "
+        "−70% to 0, where 0 is the agent reading the thread with gh. "
+        + " ".join(
+            f"{agent}, {tasks.replace(' · ', ', ')}: {_percent(change)} "
+            f"({_percent(low)} to {_percent(high)})."
+            for agent, tasks, change, low, high in TAKEOVERS
+        ),
     )
 
 
-FIGURES = {"thread-tokens": thread_tokens}
+def _symbol(name: str) -> tuple[str, str]:
+    """Split ``src/requests/api.py:Session.get()`` into file stem and symbol."""
+    file, _, symbol = name.rpartition(":")
+    return Path(file).stem, symbol
+
+
+def _entry_label(name: str) -> str:
+    """A method keeps its class; a module function is named by its module."""
+    stem, symbol = _symbol(name)
+    return symbol if "." in symbol else f"{stem}.{symbol}"
+
+
+def _chain_label(name: str) -> str:
+    """``Class.method()`` when it is short, otherwise the method alone."""
+    symbol = _symbol(name)[1]
+    return symbol if len(symbol) <= 18 else symbol.rpartition(".")[2]
+
+
+def caller_path(c: dict[str, str]) -> str:
+    """What one dependency_subgraph call returned in the recorded session."""
+    record = json.loads(RECORD.read_text(encoding="utf-8"))
+    result = record["dependency_result"]
+    nodes = sorted(result["nodes"], key=lambda node: -node["depth"])
+    deepest = nodes[0]["depth"]
+    entries = [node for node in nodes if node["depth"] == deepest]
+    chain = [node for node in nodes if node["depth"] < deepest]
+    if [node["depth"] for node in chain] != list(range(deepest - 1, 0, -1)):
+        raise ValueError("the recorded callers are not one path")
+    anchor = next(a for a in record["source_anchors"] if a["symbol"] == result["root"])
+    chain.append(
+        {"name": result["root"], "file": anchor["file"], "line": anchor["start_line"]}
+    )
+
+    styles = {
+        "entry": {"family": "mono", "size": 13, "fill": c["muted"]},
+        "name": {"family": "mono", "size": 14, "weight": 500, "fill": c["ink"]},
+        "root": {"family": "mono", "size": 14, "weight": 680, "fill": c["ink"]},
+        "where": {"family": "mono", "size": 13, "fill": c["muted"]},
+    }
+    pitch, pad = 23, 10
+    # The entry points meet at ``join``, left of the first name on the path.
+    label_x, dot_x, join = 150, 163, 236
+    xs = [312, 464, 616, 766]
+    if len(chain) != len(xs):
+        raise ValueError("the figure is laid out for a path of four functions")
+    mid = pad + (len(entries) - 1) * pitch / 2
+    fig = Figure(WIDTH, int(2 * mid + 1), styles)
+
+    for i, node in enumerate(entries):
+        y = pad + i * pitch
+        fig.text(label_x, y + 4.5, _entry_label(node["name"]), "entry", anchor="end")
+        bend = (dot_x + join) / 2
+        fig.path(
+            f"M {dot_x} {y} C {bend} {y} {bend} {mid} {join} {mid}",
+            stroke=c["base"],
+            sw=1.25,
+        )
+        fig.circle(dot_x, y, 3, c["base"])
+    fig.path(f"M {join} {mid} H {xs[-1]}", stroke=c["muted"], sw=1.5)
+    for i, (x, node) in enumerate(zip(xs, chain, strict=True)):
+        last = i == len(chain) - 1
+        tip = x - (16 if last else 13)
+        fig.path(
+            f"M {tip - 6} {mid - 5} L {tip} {mid} L {tip - 6} {mid + 5}",
+            stroke=c["muted"],
+            sw=1.5,
+        )
+        fig.circle(x, mid, 8 if last else 5, c["accent"] if last else c["muted"])
+        style = "root" if last else "name"
+        fig.text(x, mid - 20, _chain_label(node["name"]), style, anchor="middle")
+        where = f"{Path(node['file']).name}:{node['line']}"
+        fig.text(x, mid + 31, where, "where", anchor="middle")
+    names = [_chain_label(node["name"]) for node in chain]
+    return fig.svg(
+        f"The callers of {names[-1]} in Requests, from one dependency_subgraph call",
+        f"{len(entries)} public entry points, "
+        + ", ".join(_entry_label(node["name"]) for node in entries)
+        + f", each reach {names[0]}. From there one path leads to {names[-1]}: "
+        + ", then ".join(
+            f"{name} at {Path(node['file']).name} line {node['line']}"
+            for name, node in zip(names, chain, strict=True)
+        )
+        + ".",
+    )
+
+
+FIGURES = {"thread-tokens": thread_tokens, "caller-path": caller_path}
 
 
 def on_page(svg: str) -> str:

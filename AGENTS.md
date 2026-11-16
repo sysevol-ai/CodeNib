@@ -267,15 +267,15 @@ ones for the README.
   needs two sentences, draw two figures or cut one. Do not combine a
   mechanism, a result and a caveat in one image.
 - Draw what was measured. The strongest figure is a result with real values:
-  a few thick bars or one line, the number that matters written large beside
-  its mark. Do not draw a chart-shaped sketch whose lengths are made up; it
+  a few thick bars, one line, or one dot per result with its interval, the
+  number that matters written large beside its mark. Do not draw a chart-shaped sketch whose lengths are made up; it
   looks like data and is not.
 - Explain a mechanism with a worked example. Take one small concrete case
   with real values (one pull request, three records, the two lines kept) and
   draw what happens to it, with a caption that says what to notice. Abstract
   boxes and arrows with no values in them explain nothing.
-- Large marks, few of them. Bars are at least 24 pixels thick, with room
-  around them. Rows of thin bars, small squares or dots read as a
+- Large marks, few of them. Bars are at least 24 pixels thick and a dot that
+  stands for a result is at least 14 across, with room around them. Rows of thin bars, small squares or dots read as a
   spreadsheet. If the figure looks like a table, make it a table.
 - At most one figure per section. A screenshot, a recording and a diagram of
   the same feature compete; pick the one that carries the point and fold the
