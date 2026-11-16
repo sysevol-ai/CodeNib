@@ -9,10 +9,11 @@ follows the reader's GitHub theme. The rules these figures follow are in
 ``AGENTS.md`` under "Figures and Images".
 
 A figure is drawn at the width GitHub shows it, so a font size here is the
-size the reader sees. It has no background of its own and sits on the page.
+size the reader sees. It has no background of its own, and its colours are
+GitHub's text colours for each theme, so it sits on the page.
 
-Uses the drawing helpers of ``render_contextbench_blog_figures.py`` and needs
-the same fontTools with WOFF2 support::
+Uses the ``Figure`` helper of ``render_contextbench_blog_figures.py`` and
+needs the same fontTools with WOFF2 support::
 
     python scripts/render_readme_figures.py
 """
@@ -24,92 +25,76 @@ import logging
 import re
 from pathlib import Path
 
-from blog_figure_theme import dark_figure
-from render_contextbench_blog_figures import (
-    ACCENT,
-    INK_2,
-    LINE,
-    LINE_STRONG,
-    ROOT,
-    TEAL_DARK,
-    Figure,
-)
+from render_contextbench_blog_figures import ROOT, Figure
 
 OUT = ROOT / "assets" / "readme"
 
 # The width of the README column on github.com.
 WIDTH = 830
 
-# The smallest text a figure may use, in pixels as shown.
-MIN_TEXT = 13
-
-STYLES = {
-    "group": {"size": 15, "weight": 600},
-    "group-r": {"size": 15, "weight": 600, "fill": TEAL_DARK},
-    "piece": {"size": 15},
-    "file": {"size": 14, "weight": 500, "family": "mono"},
-    "num": {"size": 13, "family": "mono", "fill": INK_2},
-    "legend": {"size": 13.5, "fill": INK_2},
+# GitHub's own text and border colours, so a figure reads as part of the page.
+THEMES = {
+    "light": {
+        "ink": "#1f2328",
+        "muted": "#59636e",
+        "base": "#afb8c1",
+        "rule": "#d1d9e0",
+        "accent": "#0969da",
+    },
+    "dark": {
+        "ink": "#f0f6fc",
+        "muted": "#9198a1",
+        "base": "#656c76",
+        "rule": "#3d444d",
+        "accent": "#4493f8",
+    },
 }
 
-# The pieces an agent fetches, in the order docs/threads.md lists them.
-PIECES = [
-    "The issue",
-    "Its comments",
-    "The linked pull request",
-    "The reviews",
-    "The checks",
-    "A failed log",
+# Input tokens of the prepared context against the agent reading with gh, on
+# the 76 pull request takeovers in docs/threads.md: (agent, model, change).
+TAKEOVERS = [
+    ("Codex", "gpt-6.1-sol", -21),
+    ("Claude Code", "Claude Opus 5.5", -45),
 ]
 
 _BACKGROUND = re.compile(r'<rect width="\d+" height="\d+" fill="#[0-9a-fA-F]+"/>\n?')
 
 
-def thread_calls() -> str:
-    """Six calls that each resend the conversation, against one read."""
-    fig = Figure(WIDTH, 338, STYLES)
-    x, bar_x, pitch, bar_h = 2, 236, 30, 14
-    new, gap = 50, 3
-
-    fig.text(x, 16, "The agent reads the thread itself", "group")
-    top = 34
-    for i, piece in enumerate(PIECES):
-        y = top + i * pitch
-        fig.text(x, y + 16, f"{i + 1}", "num")
-        fig.text(x + 24, y + 16, piece, "piece")
-        carried = 30 + i * 88
-        fig.rect(bar_x, y + 4, carried, bar_h, rx=2, fill=LINE_STRONG)
-        fig.rect(bar_x + carried + gap, y + 4, new, bar_h, rx=2, fill=ACCENT)
-
-    rule = top + len(PIECES) * pitch + 12
-    fig.path(f"M 0 {rule} H {WIDTH}", stroke=LINE, sw=1)
-
-    fig.text(x, rule + 30, "codenib threads prepares it once", "group-r")
-    y = rule + 44
-    fig.text(x, y + 16, "1", "num")
-    fig.text(x + 24, y + 16, "THREAD_CONTEXT.md", "file")
-    for i in range(len(PIECES)):
-        fig.rect(bar_x + i * (new + gap), y + 4, new, bar_h, rx=2, fill=ACCENT)
-
-    legend = y + 56
-    fig.rect(x, legend - 10, 10, 10, rx=2, fill=LINE_STRONG)
-    fig.text(x + 18, legend, "the conversation so far, sent again", "legend")
-    offset = fig.measure("the conversation so far, sent again", "legend") + 44
-    fig.rect(x + offset, legend - 10, 10, 10, rx=2, fill=ACCENT)
-    fig.text(x + offset + 18, legend, "a piece of the thread", "legend")
+def thread_tokens(c: dict[str, str]) -> str:
+    """The same 76 takeovers: input tokens reading with gh, and prepared."""
+    styles = {
+        "agent": {"size": 17, "weight": 620, "fill": c["ink"]},
+        "model": {"size": 15, "fill": c["muted"]},
+        "row": {"size": 15, "fill": c["muted"]},
+        "row-on": {"size": 15, "weight": 560, "fill": c["ink"]},
+        "change": {"size": 24, "weight": 650, "spacing": -0.02, "fill": c["accent"]},
+    }
+    bar_x, full, bar_h, group = 168, 500, 28, 142
+    fig = Figure(WIDTH, group * len(TAKEOVERS) - 22, styles)
+    for i, (agent, model, change) in enumerate(TAKEOVERS):
+        top = i * group
+        if i:
+            fig.path(f"M 0 {top - 22} H {WIDTH}", stroke=c["rule"], sw=1)
+        fig.text(0, top + 16, agent, "agent")
+        fig.text(fig.measure(agent, "agent") + 10, top + 16, model, "model")
+        y = top + 38
+        fig.text(0, y + 19, "reads with gh", "row")
+        fig.rect(bar_x, y, full, bar_h, rx=4, fill=c["base"])
+        y += bar_h + 10
+        width = full * (100 + change) / 100
+        fig.text(0, y + 19, "codenib threads", "row-on")
+        fig.rect(bar_x, y, width, bar_h, rx=4, fill=c["accent"])
+        fig.text(bar_x + width + 14, y + 23, f"\u2212{-change}%", "change")
     return fig.svg(
-        "One read of a GitHub thread instead of a tool call per piece",
-        "Top: an agent reading a thread itself makes six calls, for the issue, "
-        "its comments, the linked pull request, the reviews, the checks and a "
-        "failed log. Each call sends the conversation so far again, so the "
-        "sixth call sends the most. Bottom: codenib threads writes the same "
-        "six pieces into one document, THREAD_CONTEXT.md, which the agent "
-        "reads once. The bar lengths sketch the mechanism; they are not "
-        "measurements.",
+        "Input tokens on 76 pull request takeovers",
+        "Two pairs of bars. With Codex on gpt-6.1-sol, the context prepared by "
+        "codenib threads used 21% fewer input tokens than the agent reading "
+        "the thread with gh. With Claude Code on Claude Opus 5.5 it used 45% "
+        "fewer.",
     )
 
 
-FIGURES = {"thread-calls": thread_calls}
+FIGURES = {"thread-tokens": thread_tokens}
 
 
 def on_page(svg: str) -> str:
@@ -124,10 +109,9 @@ def main() -> None:
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
     for name, render in FIGURES.items():
-        light = render()
-        for theme, svg in (("light", light), ("dark", dark_figure(light))):
+        for theme, colors in THEMES.items():
             path = args.out / f"{name}-{theme}.svg"
-            path.write_text(on_page(svg), encoding="utf-8")
+            path.write_text(on_page(render(colors)), encoding="utf-8")
             shown = path.relative_to(ROOT) if path.is_relative_to(ROOT) else path
             print(f"{shown}  {path.stat().st_size // 1024} KiB")
 

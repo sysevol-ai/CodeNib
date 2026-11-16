@@ -266,30 +266,39 @@ ones for the README.
 - One figure, one point. Write the point as a sentence first. If a figure
   needs two sentences, draw two figures or cut one. Do not combine a
   mechanism, a result and a caveat in one image.
+- Draw what was measured. The strongest figure is a result with real values:
+  a few thick bars or one line, the number that matters written large beside
+  its mark. Do not draw a chart-shaped sketch whose lengths are made up; it
+  looks like data and is not. Explain a mechanism in a sentence, or on the
+  site where it can move.
+- Large marks, few of them. Bars are at least 24 pixels thick, with room
+  around them. Rows of thin bars, small squares or dots read as a
+  spreadsheet. If the figure looks like a table, make it a table.
 - At most one figure per section. A screenshot, a recording and a diagram of
   the same feature compete; pick the one that carries the point and fold the
   rest into `<details>` or link to them.
-- Titles, conclusions and results are page text, not pixels. A figure holds
-  the marks and the labels needed to read them, and a legend when a colour
-  carries meaning. The heading above it and the sentence below it say what it
-  shows and what was measured.
+- Titles and conclusions are page text, not pixels. A figure holds the marks,
+  the labels needed to read them, and the one number it exists to show. The
+  heading above it and the sentence below it say what was measured and on
+  what.
+- Label directly. Name each mark beside it. A legend is for three or more
+  series; axes and gridlines are for charts read against a scale.
 - Draw at the size it is shown. The README column is 830 pixels wide, so a
   README figure is 830 wide and no text in it is smaller than 13 pixels. A
   full-window screenshot shrunk to that width is unreadable; crop to the part
   that makes the point, or draw it.
-- One visual language. Diagrams are drawn by the scripts in `scripts/` on the
-  shared helpers (`render_readme_figures.py` for the README), in Geist, with
-  flat marks, hairlines, and no box inside a box. Do not add a figure made by
-  hand in another tool or exported from a plotting library's defaults.
-- Few colours with fixed meanings. Grey is context, blue is what an agent is
-  sent or the thing in focus, teal is what CodeNib produces or keeps. A new
-  colour needs a new meaning that the legend states.
+- Two colours. A neutral grey for the baseline or the context, and one accent
+  for CodeNib or the thing in focus. In the README both come from GitHub's own
+  text colours for the theme (`THEMES` in `scripts/render_readme_figures.py`),
+  solid, never a pale tint. A third colour needs a meaning the figure states.
+- One visual language. Figures are drawn by the scripts in `scripts/`
+  (`render_readme_figures.py` for the README), in Geist, with flat marks,
+  hairlines, and no box inside a box. Do not add a figure made by hand in
+  another tool or exported from a plotting library's defaults.
 - Follow the reader's theme. A README figure has no background of its own and
   ships as `NAME-light.svg` and `NAME-dark.svg` in a `<picture>` element. The
   product screenshot at the top is the one image that keeps its own dark
   surface.
-- Say what is a sketch. A diagram of a mechanism is not a measurement; the
-  text beside it says so and gives the measured number with its scope.
 - No raw output as illustration. Logs, long command output and generated
   files belong behind a link to the page that explains them, not in the
   README or on the homepage.

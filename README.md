@@ -182,19 +182,17 @@ no model. It is a preview in 0.2.6.
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sysevol-ai/CodeNib/main/assets/readme/thread-calls-dark.svg">
-    <img src="https://raw.githubusercontent.com/sysevol-ai/CodeNib/main/assets/readme/thread-calls-light.svg" width="830" alt="Top: an agent reading a thread itself makes six calls, for the issue, its comments, the linked pull request, the reviews, the checks and a failed log. Each call sends the conversation so far again, so the sixth call sends the most. Bottom: codenib threads writes the same six pieces into one document, THREAD_CONTEXT.md, which the agent reads once.">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sysevol-ai/CodeNib/main/assets/readme/thread-tokens-dark.svg">
+    <img src="https://raw.githubusercontent.com/sysevol-ai/CodeNib/main/assets/readme/thread-tokens-light.svg" width="830" alt="Input tokens on 76 pull request takeovers. With Codex on gpt-6.1-sol, the context prepared by codenib threads used 21% fewer input tokens than the agent reading the thread with gh. With Claude Code on Claude Opus 5.5 it used 45% fewer.">
   </picture>
 </p>
 
+Input tokens on 76 pull requests taken over after a review or a failed check.
 An agent that reads a thread itself makes one call per piece, and every call
-sends the conversation so far again. The bars sketch that; the measurement is
-this: on 76 pull requests taken over after a review or a failed check, the
-prepared document cut input tokens by **21%** with Codex (gpt-6.1-sol) and by
-**45%** with Claude Code (Claude Opus 5.5), against letting the agent read the
-thread with `gh`. The agents found the files to change about as often either
-way (Codex 0.75 against 0.74, Claude Code 0.80 against 0.83, a gap too small
-to tell from chance on 76 tasks).
+sends the conversation so far again; the prepared document is read once. The
+agents found the files to change about as often either way (Codex 0.75 against
+0.74, Claude Code 0.80 against 0.83, a gap too small to tell from chance on 76
+tasks).
 
 ```bash
 cd /path/to/your/repo
