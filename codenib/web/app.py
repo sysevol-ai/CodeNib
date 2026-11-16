@@ -1459,6 +1459,44 @@ async def wiki_area_map(repo_id: str) -> dict:
         )
 
 
+_MAX_THREADS_OVERLAY_BYTES = 8 * 1024 * 1024
+
+
+def _read_threads_overlay(repo: str) -> dict | None:
+    from ..threads.log_store import ThreadStore
+    from ..threads.wiki_overlay import OVERLAY_FILE, OVERLAY_VERSION
+
+    try:
+        path = ThreadStore(repo).dir / OVERLAY_FILE
+        if not path.is_file() or path.stat().st_size > _MAX_THREADS_OVERLAY_BYTES:
+            return None
+        overlay = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(overlay, dict) or overlay.get("version") != OVERLAY_VERSION:
+        return None
+    if overlay.get("repo") != repo or not isinstance(overlay.get("pages"), dict):
+        return None
+    return overlay
+
+
+@app.get("/api/repos/{repo_id}/threads")
+async def threads_overlay(repo_id: str) -> dict:
+    """Issues, pull requests and changes on the code each Wiki page cites.
+
+    Served from the overlay ``codenib threads overlay`` writes into the thread
+    store. A repository without one answers 404 and its pages show no panel.
+    """
+    with _pinned_bundle(repo_id) as bundle:
+        repo = getattr(getattr(bundle, "entry", None), "repo", None)
+        overlay = (
+            await _run_pinned_thread(_read_threads_overlay, repo) if repo else None
+        )
+    if overlay is None:
+        raise HTTPException(status_code=404, detail="No thread overlay for this repo")
+    return overlay
+
+
 @app.get("/api/repos/{repo_id}/wiki/{page_id}/boundary")
 async def wiki_page_boundary(repo_id: str, page_id: str) -> dict:
     """Callers into a page's cited symbols and the calls it makes outward.

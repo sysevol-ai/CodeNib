@@ -970,3 +970,68 @@ export async function fetchEdgeLabel(
   if (!res.ok) throw new Error(`Failed to load edge label (${res.status})`);
   return res.json();
 }
+
+// --- Activity on the code a Wiki page cites ---------------------------------
+// Written by `codenib threads overlay` from git and stored GitHub threads.
+// Titles are thread text from anyone who can comment: render as text only.
+
+export type CodeActivityStrength = "symbol" | "file";
+
+export interface CodeActivityItem {
+  number: number;
+  title: string;
+  strength: CodeActivityStrength;
+  symbols: string[];
+  files: string[];
+  at: string;
+  url?: string;
+  state?: string;
+  author?: string;
+  draft?: boolean;
+  commit?: string;
+  cites?: string[];
+}
+
+export interface CodeActivityPage {
+  issues?: CodeActivityItem[];
+  pulls?: CodeActivityItem[];
+  changes?: CodeActivityItem[];
+}
+
+export interface CodeActivityOverlay {
+  version: number;
+  repo: string;
+  rev: string;
+  generated_at: string;
+  pages: Record<string, CodeActivityPage>;
+}
+
+const codeActivityRequests = new Map<string, Promise<CodeActivityOverlay | null>>();
+
+/** The repository's overlay, or null when it has none or it cannot be read. */
+export function fetchCodeActivity(repoId: string): Promise<CodeActivityOverlay | null> {
+  const cached = codeActivityRequests.get(repoId);
+  if (cached) return cached;
+  const url = isStaticRuntime()
+    ? staticDataUrl("repos", repoId, "threads.json")
+    : `${API_BASE}/api/repos/${encodeURIComponent(repoId)}/threads`;
+  const request = fetch(url)
+    .then(async (res) => {
+      if (!res.ok) {
+        // Only 404 says there is no overlay; another status may pass.
+        if (res.status !== 404) codeActivityRequests.delete(repoId);
+        return null;
+      }
+      const overlay = (await res.json()) as CodeActivityOverlay;
+      return overlay?.version === 1 && overlay.pages && typeof overlay.pages === "object"
+        ? overlay
+        : null;
+    })
+    .catch(() => {
+      // A failed request may succeed on the next page; an absent overlay stays cached.
+      codeActivityRequests.delete(repoId);
+      return null;
+    });
+  codeActivityRequests.set(repoId, request);
+  return request;
+}

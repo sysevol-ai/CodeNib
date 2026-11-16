@@ -380,6 +380,46 @@ def _run_mcp(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_overlay(args: argparse.Namespace) -> int:
+    from .in_flight import read_index
+    from .wiki_overlay import build_overlay, load_wiki_pages
+
+    checkout = _checkout(args.checkout)
+    if checkout is None:
+        raise _error("run inside a clone of the repository, or pass --checkout")
+    pages = load_wiki_pages(Path(args.wiki).expanduser())
+    if not pages:
+        raise _error(f"no Wiki pages found in {args.wiki}")
+    store = _store(args, checkout)
+    overlay = build_overlay(
+        pages,
+        repo=store.repo,
+        checkout=checkout,
+        rev=args.rev,
+        store=None if args.no_threads else store,
+        open_pulls=[] if args.no_threads else read_index(store),
+        history=args.history,
+        heat_window=args.heat_window,
+        include_closed=args.include_closed,
+    )
+    text = json.dumps(overlay, indent=2, ensure_ascii=False) + "\n"
+    if args.output == "-":
+        sys.stdout.write(text)
+    else:
+        from .wiki_overlay import OVERLAY_FILE
+
+        output = Path(args.output) if args.output else store.dir / OVERLAY_FILE
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(text, encoding="utf-8")
+        summary = overlay["summary"]
+        print(
+            f"{summary['pages_with_items']} of {summary['pages']} pages have items; "
+            f"wrote {output}",
+            file=sys.stderr,
+        )
+    return 0
+
+
 def _run_close(args: argparse.Namespace) -> int:
     book = _book(args, _checkout(args.checkout))
     removed = book.remove(args.number)
@@ -529,6 +569,50 @@ def add_threads_parser(subparsers, formatter) -> None:
     )
     _common(mcp)
     mcp.set_defaults(handler=_run_mcp)
+
+    overlay = commands.add_parser(
+        "overlay",
+        help="place stored threads, open pull requests and recent changes "
+        "on the Wiki pages they concern",
+        formatter_class=formatter,
+    )
+    overlay.add_argument(
+        "--wiki",
+        required=True,
+        help="a published Wiki's repository directory (wiki.json and pages/), "
+        "or a directory of page JSON files",
+    )
+    overlay.add_argument(
+        "--output",
+        help="file to write, '-' for stdout (default: the thread store, "
+        "where the CodeNib Web app serves it from)",
+    )
+    overlay.add_argument("--rev", default="HEAD", help="commit the Wiki describes")
+    overlay.add_argument(
+        "--history",
+        type=int,
+        default=200,
+        metavar="N",
+        help="also place the last N first-parent commits (0 to skip)",
+    )
+    overlay.add_argument(
+        "--heat-window",
+        type=int,
+        default=300,
+        metavar="N",
+        help="recent commits that decide which files are too hot for file-level "
+        "matches (0 keeps every match)",
+    )
+    overlay.add_argument(
+        "--include-closed", action="store_true", help="also place closed threads"
+    )
+    overlay.add_argument(
+        "--no-threads",
+        action="store_true",
+        help="use git history only; read no stored threads",
+    )
+    _common(overlay)
+    overlay.set_defaults(handler=_run_overlay)
 
     events = commands.add_parser(
         "events", help="print raw events by id", formatter_class=formatter
