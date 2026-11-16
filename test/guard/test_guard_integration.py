@@ -122,7 +122,7 @@ def test_guard_reports_constructor_change_and_hook_reports_once(
 
 
 def test_guard_flags_an_edited_test_and_runs_its_original(
-    git_repo, tmp_path, monkeypatch, write_files
+    git_repo, tmp_path, monkeypatch, write_files, bash
 ):
     monkeypatch.setenv("CODENIB_HOME", str(tmp_path / "home"))
     git_repo.commit(FILES, "init")
@@ -149,7 +149,7 @@ def test_guard_flags_an_edited_test_and_runs_its_original(
         "PATH": os.path.dirname(sys.executable) + os.pathsep + os.environ["PATH"],
     }
     done = subprocess.run(
-        ["bash", "-c", report.original_tests_command()],
+        [bash, "-c", report.original_tests_command()],
         cwd=git_repo.root,
         env=env,
         capture_output=True,

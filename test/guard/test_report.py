@@ -54,7 +54,7 @@ def test_findings_digest_counts_edited_tests():
     assert _report(edited=True).findings_sha256 != _report(False).findings_sha256
 
 
-def test_original_tests_command_runs_base_tests_and_restores_edits(git_repo):
+def test_original_tests_command_runs_base_tests_and_restores_edits(git_repo, bash):
     base = git_repo.commit(
         {
             "shop.py": "VALUE = 1\n",
@@ -75,7 +75,7 @@ def test_original_tests_command_runs_base_tests_and_restores_edits(git_repo):
         "PATH": os.path.dirname(sys.executable) + os.pathsep + os.environ["PATH"],
     }
     done = subprocess.run(
-        ["bash", "-c", command],
+        [bash, "-c", command],
         cwd=git_repo.root,
         env=env,
         capture_output=True,
