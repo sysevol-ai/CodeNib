@@ -10,9 +10,12 @@ import os
 import subprocess
 import sys
 
+import pytest
+
+from codenib.guard import hooks, snapshot
 from codenib.guard.impact import Hop, Impact
 from codenib.guard.impact import TestAtRisk as AtRisk
-from codenib.guard.report import GuardReport, render_for_agent
+from codenib.guard.report import GuardReport, render_for_agent, working_tree_diff
 
 EDITED = "tests/test_shop.py::test_value"
 OTHER = "tests/test_other.py::test_total"
@@ -86,3 +89,40 @@ def test_original_tests_command_runs_base_tests_and_restores_edits(git_repo, bas
     # ...and the agent's edit is back afterwards.
     assert (git_repo.root / "tests/test_shop.py").read_text() == edited_test
     assert (git_repo.root / "shop.py").read_text() == "VALUE = 2\n"
+
+
+class _LocaleDecodingSubprocess:
+    """Stand in for ``subprocess`` on a host whose locale codepage is cp1252."""
+
+    def __getattr__(self, name):
+        return getattr(subprocess, name)
+
+    @staticmethod
+    def run(command, **options):
+        if not options.get("text") or options.get("encoding"):
+            return subprocess.run(command, **options)
+        completed = subprocess.run(command, **{**options, "text": False})
+        for stream in ("stdout", "stderr"):
+            setattr(completed, stream, getattr(completed, stream).decode("cp1252"))
+        return completed
+
+
+def test_working_tree_diff_decodes_git_output_as_utf8(git_repo, monkeypatch):
+    base = git_repo.commit({"a.py": "x = 1\n"})
+    (git_repo.root / "a.py").write_text("x = 1\n# \u00c1 \u00e9\n", encoding="utf-8")
+    monkeypatch.setattr(snapshot, "subprocess", _LocaleDecodingSubprocess())
+
+    diff, _ = working_tree_diff(git_repo.root, base)
+
+    assert "+# \u00c1 \u00e9" in diff
+
+
+@pytest.mark.skipif(
+    sys.platform != "win32", reason="only Windows decodes with a locale codepage"
+)
+def test_repo_root_decodes_git_output_as_utf8(tmp_path):
+    root = tmp_path / "r\u00e9po"
+    root.mkdir()
+    subprocess.run(["git", "-C", str(root), "init", "-q"], check=True)
+
+    assert hooks._repo_root(str(root)).name == "r\u00e9po"
