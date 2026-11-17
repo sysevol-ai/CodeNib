@@ -12,10 +12,11 @@ refresh clangd `.idx` data in a direct experimental workflow.
 
 > **0.2.2 production gate:** `IndexCompiler.update_repo()` reuses views whose
 > source and builder identities are still current, but atomically rebuilds
-> requested views affected by a source or policy change. It does not invoke
-> builder delta paths. This remains the recommended repository-maintenance
-> entry point until Git observations and delta inputs share the same pinned
-> source authority.
+> requested views affected by a source or policy change. By default it does
+> not invoke builder delta paths. The one exception is opt-in: a Python graph
+> can be patched by its builder, which reads what changed from the pinned
+> source and not from Git. See
+> [Rebuilding changed files with the builder](#rebuilding-changed-files-with-the-builder-python).
 
 There are two distinct surfaces:
 
@@ -23,7 +24,7 @@ There are two distinct surfaces:
    rebuild changed requested views under manifest admission control.
 2. **`LSIndexer.graph_patch()` and builder `incremental_update()` methods** —
    low-level experimental APIs. The rest of this page documents that layer;
-   the production compiler does not currently call it.
+   the production compiler does not call the language-server patcher.
 
 ## Compiler-Driven Updates (Recommended)
 
@@ -143,8 +144,28 @@ rebuild_changed_files(graph, repo, changed, symbol_table=index_dir / "pyrefly-sy
 - **When it refuses.** A graph built by another provider, or before the symbol
   table existed, raises `BuilderPatchUnavailable`; rebuild once.
 
-It is not called by the compiler. Like the language-server patcher, it is an
-API to measure and to wire in behind a verifier.
+The compiler uses it when you ask it to:
+
+```bash
+CODENIB_GRAPH_INCREMENTAL=builder codenib index . --preset graph --language python
+```
+
+With that setting, a stale Python graph is patched instead of rebuilt when all
+of these hold; otherwise the graph is rebuilt in full, as it always is without
+the setting:
+
+- the previous graph is complete, from the same builder and source selection,
+  and recorded which files it was built from;
+- the graph covers Python only and was built by pyrefly;
+- at most 200 files refer into the changed files when definitions were added
+  or removed.
+
+What changed is read from the previous build's recorded file contents and the
+source the compiler has just fingerprinted, not from Git. The patched
+generation updates the graph and the position index together and carries the
+same receipts as a full build, so the MCP server and the guard load it like
+any other. Its entry records `update_mode: incremental` and `patch: builder`,
+and `verified: false`: it is admitted by your setting, not by a comparison.
 
 ### How exact a patch is
 

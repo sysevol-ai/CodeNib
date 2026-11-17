@@ -102,6 +102,27 @@ def _index(repo: Path, **options):
     return manifest.indexes["symbol_graph"]
 
 
+def _surface(graph):
+    """Every attribute the query-surface hash covers, without the order."""
+
+    core = graph.graph
+    names = core.vs["name"]
+    vertices = sorted(
+        repr(sorted(vertex.attributes().items(), key=str)) for vertex in core.vs
+    )
+    edges = sorted(
+        repr(
+            (
+                names[edge.source],
+                names[edge.target],
+                sorted(edge.attributes().items(), key=str),
+            )
+        )
+        for edge in core.es
+    )
+    return vertices, edges
+
+
 @pytest.fixture
 def repo(tmp_path, monkeypatch):
     monkeypatch.setenv("CODENIB_HOME", str(tmp_path / "home"))
@@ -137,10 +158,35 @@ def test_stale_graph_is_patched_and_reads_like_a_fresh_build(repo, monkeypatch):
         index_type="symbol_graph", patched=patched, fresh=fresh
     )
     assert result.verified, result.details
-    assert patched_entry.metadata["query_surface_sha256"] == (
-        fresh_entry.metadata["query_surface_sha256"]
-    )
+    # The query-surface hash follows vertex order, which a patch changes.
+    # Order aside, everything it covers is the same.
+    assert _surface(patched) == _surface(fresh)
     assert sorted(positions.occurrences, key=repr) == sorted(
+        fresh.lsp_occurrence_index.occurrences, key=repr
+    )
+
+
+def test_one_patch_can_follow_another(repo, monkeypatch):
+    _index(repo)
+    monkeypatch.setenv(GRAPH_INCREMENTAL_ENV, "builder")
+    _commit(repo, EDITED, "edit")
+    assert _index(repo).metadata["update_mode"] == "incremental"
+
+    again = dict(EDITED)
+    again["shop/checkout.py"] = EDITED["shop/checkout.py"].replace(
+        "return round_cents(Cart(items).total())",
+        "cart = Cart(items)\n    return round_cents(cart.total())",
+    )
+    _commit(repo, again, "second edit")
+    second = _index(repo)
+    assert second.metadata["update_mode"] == "incremental"
+    assert second.metadata["patch_stats"]["files_rebuilt"] == 1
+    patched = load_authenticated_graph_artifact(second)
+
+    monkeypatch.delenv(GRAPH_INCREMENTAL_ENV)
+    fresh = load_authenticated_graph_artifact(_index(repo, rebuild=True))
+    assert _surface(patched) == _surface(fresh)
+    assert sorted(patched.lsp_occurrence_index.occurrences, key=repr) == sorted(
         fresh.lsp_occurrence_index.occurrences, key=repr
     )
 

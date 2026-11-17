@@ -14,10 +14,12 @@ is replaced.
 
 A change can also alter what an unchanged file refers to: a new
 ``Request.hooks`` takes over the references that went to the ``hooks`` it now
-shadows. When the changed files gain or lose a definition, the files that
-refer into them are rebuilt as well. What stays unseen is a file with no
-reference into the changed files whose references still resolve differently,
-such as an import that only now finds its target.
+shadows. The files that refer into the changed files are therefore rebuilt as
+well: always when they are few, and when the changed files gain or lose a
+definition otherwise. What stays unseen is a file with no reference into the
+changed files whose references still resolve differently, such as an import
+that only now finds its target, and a type that changes in a file many others
+refer to without any definition coming or going.
 """
 
 from __future__ import annotations
@@ -36,6 +38,11 @@ logger = get_logger(__name__)
 
 # Past this many referring files a rebuild of the project is the better tool.
 MAX_DEPENDENT_FILES = 200
+# Up to this many, the referring files are rebuilt whatever changed. A value
+# can change type without any definition coming or going, and an attribute
+# read through it in another file then resolves differently; a few files cost
+# little to rebuild.
+ALWAYS_REBUILT_DEPENDENTS = 20
 
 
 class BuilderPatchUnavailable(RuntimeError):
@@ -104,20 +111,43 @@ def _merged_occurrences(old, new, files: set[str]):
     bearers: dict[str, list[str]] = {}
     for symbol in sorted(after):
         bearers.setdefault(strip_position_markers(symbol), []).append(symbol)
-    vanished = before - after
+    # A symbol starts with the project's name and version, and the version is
+    # the commit: occurrences kept from the previous build take the new one.
+    was, now = _project_prefix(before), _project_prefix(after)
+
+    def renamed(symbol: str) -> str:
+        if was and now and was != now and symbol.startswith(was):
+            return now + symbol[len(was) :]
+        return symbol
+
+    vanished = {renamed(symbol) for symbol in before} - after
     kept = []
     for occurrence in old.occurrences:
         if occurrence.file_path in files:
             continue
-        if occurrence.symbol in vanished:
-            targets = bearers.get(strip_position_markers(occurrence.symbol))
-            if targets:
-                kept.extend(replace(occurrence, symbol=target) for target in targets)
-                continue
-        kept.append(occurrence)
+        symbol = renamed(occurrence.symbol)
+        targets = (
+            bearers.get(strip_position_markers(symbol)) if symbol in vanished else None
+        )
+        if targets:
+            kept.extend(replace(occurrence, symbol=target) for target in targets)
+        elif symbol != occurrence.symbol:
+            kept.append(replace(occurrence, symbol=symbol))
+        else:
+            kept.append(occurrence)
     return SCIPOccurrenceIndex(
         [*kept, *rebuilt], position_encoding=old.position_encoding
     )
+
+
+def _project_prefix(symbols: set[str]) -> str:
+    """``scheme manager name version `` of the project's own symbols."""
+
+    for symbol in sorted(symbols):
+        parts = symbol.split(" ", 4)
+        if len(parts) == 5 and parts[2] != "python-stdlib":
+            return " ".join(parts[:4]) + " "
+    return ""
 
 
 def _covered(graph: CodeGraph, paths: Iterable[str]) -> list[str]:
@@ -301,7 +331,10 @@ def rebuild_changed_files(
     pending = symbol_table.with_name(symbol_table.name + ".new")
     if pending.is_file():
         pending.replace(symbol_table)
-    if dependents and _definitions(graph, files) != defined_before:
+    if dependents and (
+        len(dependents) <= ALWAYS_REBUILT_DEPENDENTS
+        or _definitions(graph, files) != defined_before
+    ):
         if len(dependents) > MAX_DEPENDENT_FILES:
             # Reported, not hidden: the caller decides whether to rebuild.
             stats["dependents_skipped"] = len(dependents)
