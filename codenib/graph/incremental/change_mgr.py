@@ -165,6 +165,86 @@ def get_changed_line_ranges(
     return ranges
 
 
+def get_line_edits(
+    project_root: str,
+    file_path: str,
+    base_commit: str,
+    target_commit: str = "HEAD",
+) -> list[tuple[int, int, int]]:
+    """Each hunk as ``(old_begin, old_end, delta)`` in 0-based old lines.
+
+    ``[old_begin, old_end)`` are the old lines the hunk replaces; an
+    insertion has ``old_begin == old_end``, the index it is inserted before.
+    ``delta`` is how many lines the hunk adds (negative when it removes).
+    Unlike :func:`get_changed_line_ranges`, the positions carry no marker
+    quirk, so they can be summed into the offset of any later line.
+    """
+
+    try:
+        output = subprocess.check_output(
+            [
+                "git",
+                "diff",
+                "-U0",
+                _shorten_ref(base_commit),
+                _shorten_ref(target_commit),
+                "--",
+                file_path,
+            ],
+            cwd=project_root,
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+    except subprocess.CalledProcessError:
+        return []
+    edits: list[tuple[int, int, int]] = []
+    for match in re.finditer(r"@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@", output):
+        old_start = int(match.group(1))
+        old_count = int(match.group(2)) if match.group(2) else 1
+        new_count = int(match.group(4)) if match.group(4) else 1
+        # ``-k,0`` inserts after 1-based line k: before 0-based index k.
+        begin = old_start if old_count == 0 else old_start - 1
+        edits.append((begin, begin + old_count, new_count - old_count))
+    return edits
+
+
+def shift_of_range(
+    edits: list[tuple[int, int, int]], start: int, end: int
+) -> Optional[int]:
+    """Lines an untouched old range ``[start, end]`` moves by, or ``None``.
+
+    ``None`` means an edit falls inside the range, so it did not simply move.
+    """
+
+    shift = 0
+    for begin, stop, delta in edits:
+        if stop <= start and begin <= start:
+            shift += delta
+        elif begin > end:
+            continue
+        else:
+            return None
+    return shift
+
+
+def shift_of_line(edits: list[tuple[int, int, int]], line: int) -> Optional[int]:
+    """Like :func:`shift_of_range` for one line, but a line inside a hunk
+    that replaces lines one for one keeps its place in the hunk.
+
+    ``None`` only when the line was removed or its hunk changed length.
+    """
+
+    shift = 0
+    for begin, stop, delta in edits:
+        if stop <= line and begin <= line:
+            shift += delta
+        elif begin > line:
+            continue
+        elif delta:
+            return None
+    return shift
+
+
 def read_file_at_revision(
     project_root: str, revision: str, file_path: str
 ) -> bytes | None:

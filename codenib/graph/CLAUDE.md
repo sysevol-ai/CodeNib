@@ -38,3 +38,10 @@ from LSP edits.
   `patcher_base.py`, driven by `lsp_client.py` + `change_mgr.py`.
 - A new language needs a `patcher_<lang>.py` that subclasses the base; don't
   fork the dispatch logic in `graph_patcher.py`.
+- **A patch must state the facts of a fresh build.** The language server is a
+  different analyser from the one that built the graph, so keep every built
+  fact an edit did not touch and look up only edited lines. Move definitions
+  and anchors with `change_mgr.get_line_edits` (exact offsets), never with a
+  symbol's start-line delta or the hunk tuples of `get_changed_line_ranges`,
+  whose one-line marker for a pure insertion reads as a replacement. Check a
+  change with `FactProjectionVerifier` against a fresh build on real commits.

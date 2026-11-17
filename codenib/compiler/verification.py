@@ -9,7 +9,7 @@ equivalent to what a fresh rebuild would have produced. This module defines
 that check as a pluggable contract so the compiler can decide, per update,
 whether to keep the patched result or discard it and rebuild.
 
-Two implementations ship here:
+Three implementations ship here:
 
 ``NullVerifier``
     Cannot prove anything, and says so. Every result comes back
@@ -21,8 +21,12 @@ Two implementations ship here:
     risk deliberately -- it exists so that choice is a visible configuration
     value rather than a missing code path.
 
-The real exactness check (fact-projection equality plus serving replay) lives
-in the evaluation harness and is intended to drop in here as a third
+``FactProjectionVerifier``
+    Compares the facts a patched graph states with those of a fresh build.
+    This is the whole-graph half of the exactness check.
+
+The serving-replay half of the exactness check lives
+in the evaluation harness and is intended to drop in here as another
 implementation without changing any caller.
 """
 
@@ -128,4 +132,101 @@ class AlwaysAdmitVerifier:
             verified=True,
             checked=False,
             reason="admitted without verification by configuration",
+        )
+
+
+def graph_facts(graph: Any) -> tuple[Any, Any]:
+    """The facts a symbol graph states, as two multisets.
+
+    A vertex is its unified name, type, file, definition range and selection
+    line; a vertex with no source range is its unified name and type. An edge
+    is the unified names of its ends, its type and its anchor. Identity is the
+    unified name, not the vertex key: a patched graph and a fresh one may key
+    the same definition differently.
+    """
+
+    from collections import Counter
+
+    core = getattr(graph, "graph", graph)
+    vs = core.vs
+    attributes = vs.attributes()
+    names = vs["name"]
+    unified = (
+        [value or name for value, name in zip(vs["unified_name"], names, strict=True)]
+        if "unified_name" in attributes
+        else list(names)
+    )
+    selection = (
+        vs["selection_line"] if "selection_line" in attributes else [None] * len(names)
+    )
+    vertices: Counter = Counter()
+    for index, vertex in enumerate(vs):
+        if vertex["file"] and vertex["start_line"] is not None:
+            vertices[
+                (
+                    unified[index],
+                    vertex["type"],
+                    vertex["file"],
+                    vertex["start_line"],
+                    vertex["end_line"],
+                    selection[index],
+                )
+            ] += 1
+        else:
+            vertices[(unified[index], vertex["type"])] += 1
+    es = core.es
+    edge_attributes = es.attributes()
+    count = core.ecount()
+    files = es["anchor_file"] if "anchor_file" in edge_attributes else [None] * count
+    lines = es["anchor_line"] if "anchor_line" in edge_attributes else [None] * count
+    edges: Counter = Counter()
+    for (source, target), kind, file, line in zip(
+        core.get_edgelist(), es["type"], files, lines, strict=True
+    ):
+        edges[(unified[source], unified[target], kind, file, line)] += 1
+    return vertices, edges
+
+
+class FactProjectionVerifier:
+    """Admits a patched graph only when it states the facts of a fresh one.
+
+    This is the whole-graph half of the exactness check: vertex facts and
+    anchored-edge facts compared as multisets (see :func:`graph_facts`). It
+    needs the fresh graph, so it measures a patch rather than saving a build.
+    It does not replay definition and reference requests against the
+    persisted graph; a graph it admits has not passed that half.
+    """
+
+    name = "fact-projection"
+
+    def verify(
+        self,
+        *,
+        index_type: str,
+        patched: Any,
+        fresh: Optional[Any] = None,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> VerificationResult:
+        if fresh is None:
+            return VerificationResult(
+                verified=False,
+                checked=False,
+                reason="no fresh graph to compare with",
+            )
+        patched_vertices, patched_edges = graph_facts(patched)
+        fresh_vertices, fresh_edges = graph_facts(fresh)
+        details = {
+            "vertices": sum(fresh_vertices.values()),
+            "edges": sum(fresh_edges.values()),
+            "vertices_missing": sum((fresh_vertices - patched_vertices).values()),
+            "vertices_extra": sum((patched_vertices - fresh_vertices).values()),
+            "edges_missing": sum((fresh_edges - patched_edges).values()),
+            "edges_extra": sum((patched_edges - fresh_edges).values()),
+        }
+        differing = sum(value for key, value in details.items() if "_" in key)
+        return VerificationResult(
+            verified=differing == 0,
+            checked=True,
+            reason="" if differing == 0 else f"{differing} graph facts differ",
+            details=details,
         )
