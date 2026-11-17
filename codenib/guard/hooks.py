@@ -63,8 +63,17 @@ def hook_command(agent: str, event: str, python: Optional[str] = None) -> str:
     The ``codenib`` script next to the interpreter is preferred: agents run
     hooks from the repository, and ``python -m`` would put the repository first
     on the import path.
+
+    Codex on Windows runs the command through cmd, which only reads double
+    quotes, and a Windows path cannot contain one. Every other agent and
+    platform gets POSIX quoting (Git Bash on Windows).
     """
 
+    quote = (
+        (lambda arg: '"' + arg + '"')
+        if agent == "codex" and sys.platform == "win32"
+        else shlex.quote
+    )
     interpreter = Path(python or sys.executable)
     exe_names = ("codenib.exe", "codenib") if sys.platform == "win32" else ("codenib",)
     script = next(
@@ -77,10 +86,10 @@ def hook_command(agent: str, event: str, python: Optional[str] = None) -> str:
         None,
     )
     if script is not None:
-        program = shlex.quote(str(script))
+        program = quote(str(script))
     else:
         target = python or str(interpreter)
-        program = f"{shlex.quote(target)} -m codenib"
+        program = f"{quote(target)} -m codenib"
     return f"{program} guard hook --agent {agent} --event {event}"
 
 
