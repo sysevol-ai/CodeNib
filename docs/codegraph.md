@@ -547,6 +547,14 @@ provider boundary.
 - **Generated subtree should be omitted:** rerun `init` with one or more exact
   `--exclude-dir PATH` values. The values replace the persisted custom set;
   inspect them with `codegraph status` before serving the graph.
+- **Graph health warning during a build:** the graph built, but it is not
+  connected the way the source is. "Only N% of test functions refer to source"
+  means imports of the project's own packages did not resolve, usually because
+  the packages live in a directory the provider was not told about.
+  "Definitions appear more than once" means a directory was indexed twice,
+  for example through a symbolic link. Callers and impact results from such a
+  graph are incomplete; the figures are also stored with the graph as
+  `graph_health`.
 - **Configuration differs:** inspect the named server with `codex mcp get` or
   `claude mcp get`. CodeNib will not overwrite or remove drift implicitly.
 
