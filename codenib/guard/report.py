@@ -123,6 +123,12 @@ class GuardReport:
             "original_tests_command": self.original_tests_command(),
             "total_tests": self.impact.total_tests,
             "direct_callers": self.impact.direct_callers,
+            "callers": {
+                symbol: [asdict(hop) for hop in hops]
+                for symbol, hops in self.impact.callers.items()
+            },
+            "tests_reaching": self.impact.tests_reaching,
+            "tests_reaching_source": [asdict(t) for t in self.impact.source_tests],
             "new_files": self.impact.new_files,
             "unmapped_files": self.impact.unmapped_files,
             "notes_on_change": [

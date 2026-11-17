@@ -78,6 +78,67 @@ codenib guard check --json          # every test and path, for scripts
 `--exit-code` makes the command exit with status 1 when any test is at risk,
 for use in CI.
 
+## Comment on pull requests
+
+A reviewer reads the diff and cannot see what the diff leaves out. The impact
+action adds one comment to a pull request that says, for each definition the
+change edits:
+
+- **Callers outside the change.** Code that calls the edited definition and was
+  not edited itself, each linked to the line of the call. These are the places
+  a changed signature or return value can break.
+- **Tests that reach it.** How many tests reach the definition within three
+  calls, grouped by test file, with one call path per file and the command that
+  runs them. "None found" marks a definition the graph sees no test for.
+- **Rewritten tests.** Existing tests whose own lines the change rewrote.
+
+The comment is read from the code graph of the commit the pull request branched
+from. No model writes it and no key is needed. It is updated in place on every
+push, and a change that edits no source definition gets no comment.
+
+```yaml
+name: CodeNib impact
+on: pull_request
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  impact:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: sysevol-ai/CodeNib/.github/actions/impact@main
+```
+
+The first run on a base commit builds its graph, which takes from seconds to a
+few minutes; later runs on the same base reuse it and take seconds. A pull
+request from a fork runs with a read-only token, so its report appears in the
+job summary instead of a comment.
+
+To see the same comment locally:
+
+```bash
+codenib guard check --base main --markdown
+```
+
+??? note "Action inputs"
+    | Input | Default | Meaning |
+    |---|---|---|
+    | `repository-path` | `.` | Checkout of the pull request |
+    | `base` | the pull request's base | Revision to compare with |
+    | `comment` | `true` | `false` writes the job summary only |
+    | `token` | the workflow token | Token that writes the comment |
+    | `depth` | `3` | Calls between a test and the change |
+    | `python-version` | `3.12` | Python that builds the graph |
+    | `cache` | `true` | Keep the base commit's graph between runs |
+
+    Edits outside any definition, such as imports and module constants, are
+    not traced to callers.
+
 ## Notes that stay attached to code
 
 Some knowledge is not in the code: why a function is shaped the way it is, a fix

@@ -1,0 +1,214 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
+name: CodeNib impact comment
+description: >-
+  Comment on a pull request with the callers and tests its change reaches,
+  read from the code graph. No model and no key.
+
+inputs:
+  repository-path:
+    description: Checkout of the pull request; check it out with fetch-depth 0.
+    default: "."
+  base:
+    description: >-
+      Revision the change is compared with. The comparison starts where the
+      checkout and this revision last shared a commit.
+    default: ${{ github.event.pull_request.base.sha }}
+  pull-request:
+    description: Number of the pull request to comment on.
+    default: ${{ github.event.pull_request.number }}
+  comment:
+    description: >-
+      Post the report as one pull-request comment and keep it updated. With
+      false, the report goes to the job summary only.
+    default: "true"
+  token:
+    description: Token that writes the comment; needs pull-requests write.
+    default: ${{ github.token }}
+  depth:
+    description: Calls between a test and the change that still count.
+    default: "3"
+  python-version:
+    description: Python runtime that builds the graph.
+    default: "3.12"
+  cache:
+    description: Keep the base commit's graph between runs.
+    default: "true"
+
+outputs:
+  comment-path:
+    description: File holding the comment; empty when the change reaches nothing.
+    value: ${{ steps.check.outputs.comment_path }}
+  has-report:
+    description: Whether the change touches source the graph knows.
+    value: ${{ steps.check.outputs.has_report }}
+  base-commit:
+    description: Commit the change was compared with.
+    value: ${{ steps.inputs.outputs.base_commit }}
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve the comparison
+      id: inputs
+      shell: bash
+      env:
+        ACTION_REF: ${{ github.action_ref }}
+        INPUT_BASE: ${{ inputs.base }}
+        INPUT_CACHE: ${{ inputs.cache }}
+        INPUT_COMMENT: ${{ inputs.comment }}
+        INPUT_DEPTH: ${{ inputs.depth }}
+        INPUT_PULL_REQUEST: ${{ inputs.pull-request }}
+        INPUT_PYTHON_VERSION: ${{ inputs.python-version }}
+        INPUT_REPOSITORY_PATH: ${{ inputs.repository-path }}
+      run: |
+        set -euo pipefail
+
+        for name in INPUT_BASE INPUT_CACHE INPUT_COMMENT INPUT_DEPTH \
+          INPUT_PULL_REQUEST INPUT_PYTHON_VERSION INPUT_REPOSITORY_PATH; do
+          value="${!name}"
+          if [[ "$value" == *$'\n'* || "$value" == *$'\r'* ]]; then
+            echo "$name must not contain a line break" >&2
+            exit 2
+          fi
+        done
+        case "$INPUT_CACHE:$INPUT_COMMENT" in
+          true:true|true:false|false:true|false:false) ;;
+          *) echo "cache and comment must be true or false" >&2; exit 2 ;;
+        esac
+        if [[ ! "$INPUT_DEPTH" =~ ^[1-9]$ ]]; then
+          echo "depth must be an integer from 1 through 9" >&2
+          exit 2
+        fi
+        if [[ -n "$INPUT_PULL_REQUEST" && ! "$INPUT_PULL_REQUEST" =~ ^[0-9]+$ ]]; then
+          echo "pull-request must be a number" >&2
+          exit 2
+        fi
+        if [[ -z "$INPUT_BASE" || "$INPUT_BASE" == -* ]]; then
+          echo "::error title=CodeNib impact::No base revision. Run this action on pull_request events, or pass base." >&2
+          exit 2
+        fi
+
+        repo_path="$(realpath -e "$INPUT_REPOSITORY_PATH" 2>/dev/null || true)"
+        if [[ -z "$repo_path" || ! -d "$repo_path" ]]; then
+          echo "repository-path must resolve to a directory" >&2
+          exit 2
+        fi
+        base_commit="$(git -C "$repo_path" merge-base "$INPUT_BASE" HEAD 2>/dev/null || true)"
+        if [[ ! "$base_commit" =~ ^[0-9a-f]{40}$ ]]; then
+          echo "::error title=CodeNib impact::The checkout does not hold the base revision. Check out with fetch-depth: 0." >&2
+          exit 2
+        fi
+
+        source_path="$(realpath -e "$GITHUB_ACTION_PATH/../../..")"
+        source_hash="$({
+          sha256sum "$GITHUB_ACTION_PATH/action.yml"
+          sha256sum "$source_path/pyproject.toml"
+        } | sha256sum | cut -d' ' -f1)"
+        identity="$({
+          printf '%s\0' "${ACTION_REF:-source}" "$source_hash" "$INPUT_PYTHON_VERSION"
+        } | sha256sum | cut -d' ' -f1)"
+        repository_key="${GITHUB_REPOSITORY_ID:-$GITHUB_REPOSITORY}"
+
+        {
+          echo "base_commit=$base_commit"
+          echo "cache_key=codenib-impact-${RUNNER_OS}-${repository_key}-${identity}-${base_commit}"
+          echo "repo_path=$repo_path"
+          echo "source_path=$source_path"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Set up Python
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install CodeNib
+      shell: bash
+      env:
+        # The report needs the graph only, not the Wiki frontend.
+        CODENIB_BUILD_WITHOUT_FRONTEND: "1"
+        SOURCE_PATH: ${{ steps.inputs.outputs.source_path }}
+      run: |
+        set -euo pipefail
+        python -m pip install "$SOURCE_PATH[graph]"
+
+    - name: Restore the base commit's graph
+      if: ${{ inputs.cache == 'true' }}
+      uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+      with:
+        path: ~/.codenib/repositories
+        key: ${{ steps.inputs.outputs.cache_key }}
+
+    - name: Read what the change reaches
+      id: check
+      shell: bash
+      env:
+        BASE_COMMIT: ${{ steps.inputs.outputs.base_commit }}
+        DEPTH: ${{ inputs.depth }}
+        PYTHONUNBUFFERED: "1"
+        REPO_PATH: ${{ steps.inputs.outputs.repo_path }}
+      run: |
+        set -euo pipefail
+        comment_path="$RUNNER_TEMP/codenib-impact.md"
+        # Run outside the checkout so Python cannot import its files.
+        cd "$RUNNER_TEMP"
+        codenib guard check "$REPO_PATH" \
+          --base "$BASE_COMMIT" \
+          --depth "$DEPTH" \
+          --markdown \
+          --source-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+          > "$comment_path"
+        if [[ -s "$comment_path" ]]; then
+          has_report=true
+          cat "$comment_path" >> "$GITHUB_STEP_SUMMARY"
+        else
+          has_report=false
+          echo "CodeNib impact: this change touches no source definition in the graph." \
+            >> "$GITHUB_STEP_SUMMARY"
+        fi
+        {
+          echo "comment_path=$comment_path"
+          echo "has_report=$has_report"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Comment on the pull request
+      if: ${{ inputs.comment == 'true' && inputs.pull-request != '' }}
+      shell: bash
+      env:
+        COMMENT_PATH: ${{ steps.check.outputs.comment_path }}
+        GH_TOKEN: ${{ inputs.token }}
+        HAS_REPORT: ${{ steps.check.outputs.has_report }}
+        PULL_REQUEST: ${{ inputs.pull-request }}
+      run: |
+        set -uo pipefail
+        marker='<!-- codenib-impact -->'
+        # A pull request from a fork runs with a read-only token. The report
+        # is in the job summary either way, so a refused comment is a notice.
+        refused() {
+          echo "::notice title=CodeNib impact::The comment was not written ($1). The report is in the job summary."
+          exit 0
+        }
+        author="$(gh api user --jq .login 2>/dev/null || echo 'github-actions[bot]')"
+        existing="$(
+          gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PULL_REQUEST/comments" \
+            --jq ".[] | select(.user.login == \"$author\" and (.body | startswith(\"$marker\"))) | .id" \
+            2>/dev/null | head -n 1
+        )" || refused "comments could not be read"
+        if [[ "$HAS_REPORT" != "true" ]]; then
+          # Nothing to tell. An earlier comment would now describe code the
+          # pull request no longer changes, so it is replaced.
+          [[ -n "$existing" ]] || exit 0
+          printf '%s\n### CodeNib impact\n\nThis pull request no longer changes source the code graph knows.\n' \
+            "$marker" > "$COMMENT_PATH"
+        fi
+        if [[ -n "$existing" ]]; then
+          gh api --method PATCH \
+            "repos/$GITHUB_REPOSITORY/issues/comments/$existing" \
+            -F "body=@$COMMENT_PATH" --silent || refused "update refused"
+        else
+          gh api --method POST \
+            "repos/$GITHUB_REPOSITORY/issues/$PULL_REQUEST/comments" \
+            -F "body=@$COMMENT_PATH" --silent || refused "the token cannot write comments"
+        fi
