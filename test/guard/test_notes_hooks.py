@@ -217,6 +217,36 @@ def test_hook_errors_never_fail_the_turn(monkeypatch, capsys):
     assert capsys.readouterr().out == ""
 
 
+@pytest.mark.parametrize("stdin", ["null", "[]", "5", '"text"'])
+def test_hook_ignores_a_payload_that_is_not_an_object(stdin, monkeypatch, capsys):
+    monkeypatch.setattr(hooks, "_repo_root", lambda cwd: None)
+    assert hooks.run_hook("claude", "stop", stdin) == 0
+    assert capsys.readouterr().out == ""
+
+
+def test_hook_survives_a_missing_git(monkeypatch, capsys):
+    def boom(cwd):
+        raise FileNotFoundError(2, "The system cannot find the file specified")
+
+    monkeypatch.setattr(hooks, "_repo_root", boom)
+    assert hooks.run_hook("claude", "stop", "{}") == 0
+    assert capsys.readouterr().out == ""
+
+
+def test_hook_logs_an_unexpected_error_and_exits_zero(tmp_path, monkeypatch, capsys):
+    logged = []
+
+    def boom(agent, payload):
+        raise ImportError("No module named 'igraph'")
+
+    monkeypatch.setattr(hooks, "stop", boom)
+    monkeypatch.setattr(hooks, "_repo_root", lambda cwd: tmp_path)
+    monkeypatch.setattr(hooks, "_log", lambda repo, message: logged.append(message))
+    assert hooks.run_hook("claude", "stop", "{}") == 0
+    assert capsys.readouterr().out == ""
+    assert len(logged) == 1 and "No module named 'igraph'" in logged[0]
+
+
 def test_stop_skips_repositories_without_python(git_repo, tmp_path, monkeypatch):
     monkeypatch.setenv("CODENIB_HOME", str(tmp_path / "home"))
     git_repo.commit({"app.js": "console.log(1)\n"}, "init")
