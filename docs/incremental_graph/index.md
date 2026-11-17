@@ -146,6 +146,27 @@ rebuild_changed_files(graph, repo, changed, symbol_table=index_dir / "pyrefly-sy
 It is not called by the compiler. Like the language-server patcher, it is an
 API to measure and to wire in behind a verifier.
 
+### How exact a patch is
+
+Measured by building the graph at a commit's parent, patching to the commit,
+building fresh at the commit, and comparing every vertex and anchored edge.
+"Equal" means no fact differs. `scripts/profiling/check_patch_exactness.py`
+runs the comparison for one commit.
+
+| Language | Patch | Commits equal to a fresh build | Lowest edge F1 |
+|---|---|---|---|
+| Python | builder | 20 of 20 (requests, xarray, sphinx, django) | 1.0 |
+| Python | language server | 9 of 20 | 0.997 |
+| Go | language server | 1 of 3 (gin) | 0.981 |
+| JavaScript | language server | 0 of 3 (preact) | 0.78 |
+| Rust | language server | 0 of 4 (byteorder) | 0.73 |
+
+The language-server patcher is close on Python and Go and not on JavaScript
+and Rust, where definitions made by macros and re-exports are not what
+`documentSymbol` lists. Only Python has a builder patch. Until a patch is
+equal on the commits you care about, treat a patched graph as a fast
+approximation and rebuild before relying on it.
+
 ## How It Works
 
 Given a base commit (matching the current graph) and a target commit:
