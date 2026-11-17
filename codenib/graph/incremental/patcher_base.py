@@ -273,18 +273,136 @@ class PatcherBase(SubgraphMgr):
         return False
 
     def _filter_changed_files(self, changed_files: dict) -> dict:
-        """Apply ``_should_skip_path`` to every entry in ``changed_files``."""
+        """Keep only the changed files the graph's build covers.
+
+        A file that existed at the base commit and has no vertex in the graph
+        was outside the build's scope: a project can limit what its analyser
+        checks (``[tool.pyright] include = ["src/pkg"]`` leaves ``tests/``
+        out). Patching such a file in would add a subtree no fresh build
+        has. On one requests commit it added 1,177 vertices and 2,725 edges.
+
+        A new file has no vertex to go by, so ``_should_skip_path`` decides.
+        """
         skip = self._should_skip_path
+        graph = self.code_graph.graph
+        # An empty graph has covered nothing yet and so rules nothing out.
+        known = set(graph.vs["name"]) if graph.vcount() else None
+
+        def covered(path: str) -> bool:
+            return (known is None or path in known) and not skip(path)
+
         return {
-            "modified": [p for p in changed_files.get("modified", []) if not skip(p)],
+            "modified": [p for p in changed_files.get("modified", []) if covered(p)],
             "added": [p for p in changed_files.get("added", []) if not skip(p)],
-            "deleted": [p for p in changed_files.get("deleted", []) if not skip(p)],
+            "deleted": [p for p in changed_files.get("deleted", []) if covered(p)],
             "renamed": [
                 (o, n)
                 for o, n in changed_files.get("renamed", [])
-                if not skip(n) and not skip(o)
+                if covered(o) and not skip(n)
             ],
         }
+
+    def _shift_same_named_definitions(
+        self,
+        file_path: str,
+        old_symbols: dict[str, dict],
+        edits: list[tuple[int, int, int]],
+    ) -> int:
+        """Move the definitions that share a name with a tracked one.
+
+        Symbols are tracked by unified name, one vertex per name. Overloads
+        and redefinitions give several vertices one name; the others were
+        left at their old lines when code above them grew, and so were the
+        anchors of their references.
+
+        An untracked definition that the change only moved is shifted by the
+        lines added above it. One the change edited cannot be repaired from
+        here, so the patch is refused and the caller rebuilds.
+        """
+
+        g = self.code_graph
+        tracked = {old["vertex_name"] for old in old_symbols.values()}
+        vids = getattr(g, "file_to_vertices", {}).get(file_path, set())
+        untracked = []
+        for vid in vids:
+            attrs = g.graph.vs[vid].attributes()
+            if (
+                attrs.get("unified_name") in old_symbols
+                and attrs["name"] not in tracked
+                and node_has_definition(attrs)
+                and attrs.get("start_line") is not None
+            ):
+                untracked.append(vid)
+        if not untracked:
+            return 0
+        moved = 0
+        for vid in untracked:
+            vertex = g.graph.vs[vid]
+            start = vertex["start_line"]
+            end = vertex["end_line"] if vertex["end_line"] is not None else start
+            shift = change_mgr.shift_of_range(edits, start, end)
+            if shift is None:
+                raise IncrementalPatchRebuildRequired(
+                    f"{file_path}: {vertex['unified_name']} is defined more "
+                    "than once and one of its definitions changed"
+                )
+            moved += self._move_definition(vid, file_path, shift)
+        return moved
+
+    def _move_definition(self, vid: int, file_path: str, shift: int) -> int:
+        """Move one definition and its references ``shift`` lines; 1 if it moved."""
+
+        if not shift:
+            return 0
+        vertex = self.code_graph.graph.vs[vid]
+        start = vertex["start_line"]
+        end = vertex["end_line"] if vertex["end_line"] is not None else start
+        self.shift_outgoing_anchor_lines(
+            vertex_name=vertex["name"],
+            anchor_file=file_path,
+            old_start=start,
+            old_end=end,
+            shift=shift,
+        )
+        vertex["start_line"] = start + shift
+        vertex["end_line"] = end + shift
+        if "selection_line" in vertex.attributes() and (
+            vertex["selection_line"] is not None
+        ):
+            vertex["selection_line"] += shift
+        return 1
+
+    def _move_unlisted_code(
+        self,
+        file_path: str,
+        invisible: list[str],
+        old_symbols: dict[str, dict],
+        edits: list[tuple[int, int, int]],
+    ) -> int:
+        """Move what the language server does not list but the builder indexed.
+
+        The builder records module variables and the references made by a
+        module's top-level code. ``documentSymbol`` lists neither, so both
+        were left at their old lines whenever code above them grew.
+        """
+
+        g = self.code_graph
+        moved = 0
+        for uname in invisible:
+            vid = g.name_to_vertex.get(old_symbols[uname]["vertex_name"])
+            if vid is None:
+                continue
+            vertex = g.graph.vs[vid]
+            start = vertex["start_line"]
+            end = vertex["end_line"] if vertex["end_line"] is not None else start
+            shift = change_mgr.shift_of_range(edits, start, end)
+            if shift:
+                moved += self._move_definition(vid, file_path, shift)
+        # The file vertex is the source of top-level references.
+        self.rebase_outgoing_anchor_lines(
+            file_path, file_path, edits, keep_replaced=True
+        )
+        return moved
 
     def _validate_patch_contract(
         self,
@@ -344,6 +462,7 @@ class PatcherBase(SubgraphMgr):
 
         # Clear stale caches from previous patch_files calls
         self._semantic_tokens_cache.clear()
+        self._line_edits = {}
 
         nodes_before = self.code_graph.graph.vcount()
         edges_before = self.code_graph.graph.ecount()
@@ -602,6 +721,13 @@ class PatcherBase(SubgraphMgr):
                 hunks=hunks,
             )
 
+        self._line_edits[file_path] = change_mgr.get_line_edits(
+            str(self.project_root), file_path, base_commit, target_commit
+        )
+        file_stats["vertices_shifted"] += self._shift_same_named_definitions(
+            file_path, old_symbols, self._line_edits[file_path]
+        )
+
         if not old_symbols:
             # No old symbols (SCIP didn't index this file) — fall back to
             # full rebuild but still in two rounds so cross-file edges work.
@@ -611,6 +737,13 @@ class PatcherBase(SubgraphMgr):
 
         with self.profiler.section("classify_symbols"):
             classified = self._classify_symbols(old_symbols, new_symbols, hunks)
+
+        file_stats["vertices_shifted"] += self._move_unlisted_code(
+            file_path,
+            classified["invisible"],
+            old_symbols,
+            self._line_edits[file_path],
+        )
 
         # DELETED
         for uname in classified["deleted"]:
@@ -1045,7 +1178,32 @@ class PatcherBase(SubgraphMgr):
             if body_overlap_new:
                 overlapping_new.append((max(h_new_s, new_start), min(h_new_e, new_end)))
 
-        if all_preserving:
+        edits = self._line_edits.get(file_path)
+        surgical = all_preserving
+        if edits and overlapping_new:
+            # With the file's exact line edits, every anchor on an untouched
+            # line can be kept, whatever the hunks did to the body's length:
+            # it keeps what the graph's builder found and moves by the lines
+            # added above it. Anchors on edited lines go, for Round 2.
+            #
+            # Two things this replaces went wrong. Wiping a body that changed
+            # length made Round 2 re-derive every reference from the language
+            # server, a different analyser from the builder. And a pure
+            # insertion is marked as one line on the old side, so it read as
+            # a one-for-one replacement and nothing below it was moved.
+            self.rebase_outgoing_anchor_lines(old_vname, file_path, edits)
+            # A pure deletion marks the line before it on the new side; its
+            # anchors were kept above and Round 2 looks that line up again.
+            self.delete_outgoing_in_anchor_ranges(
+                vertex_name=old_vname,
+                anchor_file=file_path,
+                ranges=overlapping_new,
+            )
+            surgical = True
+            file_stats["vertices_affected_preserved"] = (
+                file_stats.get("vertices_affected_preserved", 0) + 1
+            )
+        elif all_preserving:
             # Fast path: surgical anchor cleanup + uniform shift.
             if overlapping_old:
                 self.delete_outgoing_in_anchor_ranges(
@@ -1094,7 +1252,7 @@ class PatcherBase(SubgraphMgr):
         self._update_selection_range(old_vname, new_vname, new)
 
         # Round 2 ranges in NEW coords. Slow path always does the full body.
-        if all_preserving:
+        if surgical:
             ranges_for_r2 = (
                 overlapping_new if overlapping_new else [(new_start, new_end)]
             )
