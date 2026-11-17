@@ -231,7 +231,7 @@ def _file_commands(files: List[str]) -> List[str]:
     if go:
         commands.append("go test " + " ".join(map(shlex.quote, go)))
     if any(name.endswith(".rs") for name in files):
-        commands.append("cargo test")
+        commands.append("cargo test --workspace")
     return commands
 
 

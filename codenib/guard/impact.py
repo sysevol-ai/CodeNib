@@ -262,6 +262,9 @@ class ImpactGraph:
         self._lines: Dict[str, List[str]] = {}
         self.conventions: Dict[int, Convention] = {}
         self.tests: Set[int] = set()
+        # Test files that stand for their tests, by path. A file vertex has
+        # no ``file`` or line range of its own.
+        self.file_tests: Dict[str, int] = {}
         for vertex, kind in enumerate(self.types):
             if kind in _DEFS and has_def[vertex] and self.files[vertex]:
                 convention = convention_for(self.files[vertex])
@@ -270,10 +273,13 @@ class ImpactGraph:
                     and convention.unit == FUNCTION
                     and is_test_definition(
                         convention,
-                        short_name(self.names[vertex]),
+                        # The unified name ends in the identifier in every
+                        # language; a Go or Rust key is ``pkg/Type#name``.
+                        short_name(self.ids[vertex]),
                         self.files[vertex],
                         self.starts[vertex],
                         self._source_lines,
+                        method=kind == NODE_TYPE_METHOD,
                     )
                 ):
                     self.tests.add(vertex)
@@ -288,6 +294,7 @@ class ImpactGraph:
                 ):
                     self.tests.add(vertex)
                     self.conventions[vertex] = convention
+                    self.file_tests[self.names[vertex]] = vertex
 
     def _source_lines(self, path: str) -> List[str]:
         if path not in self._lines:
@@ -398,11 +405,19 @@ class ImpactGraph:
         seeds: Set[int] = set()
         reported: Set[str] = set()
         owned: Dict[str, Set[int]] = defaultdict(set)
+        rewritten = {p: set(lines) for p, lines in (rewritten_lines or {}).items()}
         for path in sorted(changed_lines):
             if convention_for(path) is None:
                 continue
+            # A test file that is the unit is edited as a whole: any rewritten
+            # line may be an assertion. Lines only added leave it where its
+            # calls put it, with the path that explains it.
+            file_test = self.file_tests.get(path)
+            if file_test is not None and rewritten.get(path):
+                seeds.add(file_test)
             if path not in self.by_file:
-                result.unmapped_files.append(path)
+                if file_test is None:
+                    result.unmapped_files.append(path)
                 continue
             for line in sorted(changed_lines[path]):
                 found, unit = self.seeds(path, line)
@@ -454,9 +469,12 @@ class ImpactGraph:
         # behaviour; passing it says little about the behaviour it protected.
         # In a recorded session an agent changed a default message, rewrote the
         # eight assertions that expected the old one, and passed its own run.
-        rewritten = {p: set(lines) for p, lines in (rewritten_lines or {}).items()}
         edited: Set[str] = set()
         for test in self.tests & set(level):
+            if self.conventions[test].unit == FILE:
+                if level[test] == 0:
+                    edited.add(self._test_id(test))
+                continue
             lines = rewritten.get(self.files[test])
             start, end = self.starts[test], self.ends[test]
             if (

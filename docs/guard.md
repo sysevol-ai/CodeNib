@@ -177,8 +177,8 @@ language. What differs is what counts as a test and how to run it.
 | Language | A test is | Suggested command |
 |---|---|---|
 | Python | a function or method named `test*` in a test file | `python -m pytest <ids>` |
-| Go | `Test*`, `Benchmark*`, `Fuzz*` or `Example*` in a `_test.go` file | `go test ./dir -run '^(A\|B)$'` |
-| Rust | a function marked `#[test]` (also `tokio::test`, `rstest`) | `cargo test -- <names>` |
+| Go | `Test*`, `Benchmark*`, `Fuzz*` or `Example*` in a `_test.go` file | `go test ./dir -run '^(A\|B)$'`, with `-bench` for benchmarks |
+| Rust | a function marked `#[test]` (also `tokio::test`, `rstest`) | `cargo test --workspace -- <names>` |
 | JavaScript, TypeScript | a whole test file | none: the project picks its runner |
 
 The graph must be built for the language, which needs its provider installed

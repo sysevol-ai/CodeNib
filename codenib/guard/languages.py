@@ -26,6 +26,8 @@ FUNCTION = "function"
 FILE = "file"
 _GO_TEST = re.compile(r"(Test|Benchmark|Fuzz|Example)(_|[A-Z0-9]|$)")
 _RUST_TEST = re.compile(r"#\[\s*(?:\w+::)*(?:test|rstest|test_case|bench)\b")
+_RUST_FN = re.compile(r"\bfn\b")
+_RUST_HEADER = 32  # lines of attributes and doc comments read around one item
 
 
 @dataclass(frozen=True)
@@ -74,22 +76,51 @@ def is_test_definition(
     path: str,
     start_line: Optional[int],
     lines: Callable[[str], Sequence[str]],
+    *,
+    method: bool = False,
 ) -> bool:
     """Whether the function ``name`` defined in ``path`` is a test.
 
     ``start_line`` is 0-based; ``lines`` reads a file of the graph's source.
+    ``method`` says the definition belongs to a type.
     """
 
     if convention is PYTHON:
         return is_test_file(path) and name.startswith("test")
     if convention is GO:
-        return path.endswith("_test.go") and _GO_TEST.match(name) is not None
+        # ``go test`` runs functions; a method named ``TestX`` is not one.
+        return (
+            not method
+            and path.endswith("_test.go")
+            and _GO_TEST.match(name) is not None
+        )
     if convention is RUST and start_line is not None:
-        # ``#[test]`` sits on the definition's first lines or just above it.
-        text = lines(path)
-        window = text[max(0, start_line - 4) : start_line + 3]
-        return any(_RUST_TEST.search(line) for line in window)
+        return any(
+            _RUST_TEST.search(line) for line in _rust_header(lines(path), start_line)
+        )
     return False
+
+
+def _rust_header(text: Sequence[str], start_line: int) -> List[str]:
+    """The attribute and comment lines of the item that starts at ``start_line``.
+
+    A graph built with enclosing ranges starts an item at its first attribute
+    or doc comment; one built without them starts it at the ``fn`` line. So
+    the header is read both ways from ``start_line``: down to the ``fn`` line,
+    and up while the lines are still attributes or comments. Any other line
+    belongs to a neighbour, whose ``#[test]`` must not count for this item.
+    """
+
+    header: List[str] = []
+    for line in text[start_line : start_line + _RUST_HEADER]:
+        header.append(line)
+        if not line.lstrip().startswith("//") and _RUST_FN.search(line):
+            break
+    for line in reversed(text[max(0, start_line - _RUST_HEADER) : start_line]):
+        if not line.lstrip().startswith(("#[", "//")):
+            break
+        header.append(line)
+    return header
 
 
 def test_id(convention: Convention, symbol: str) -> str:
@@ -126,13 +157,35 @@ def test_commands(test_ids: Sequence[str], limit: int) -> List[str]:
             by_directory.setdefault(directory, []).append(name.split("::")[-1])
         commands.append(
             " && ".join(
-                f"go test ./{directory} -run "
-                + shlex.quote("^(" + "|".join(dict.fromkeys(names)) + ")$")
+                f"go test ./{directory} " + _go_selection(names)
                 for directory, names in by_directory.items()
             )
         )
     rust = by_language.get("rust")
     if rust:
         names = dict.fromkeys(identifier.split("::")[-1] for identifier in rust)
-        commands.append("cargo test -- " + " ".join(map(shlex.quote, names)))
+        # From a workspace root, cargo tests only the default members unless
+        # told otherwise, and a filter that matches nothing still succeeds.
+        commands.append(
+            "cargo test --workspace -- " + " ".join(map(shlex.quote, names))
+        )
     return commands
+
+
+def _go_selection(names: Sequence[str]) -> str:
+    """``go test`` flags that run ``names``: ``-run``, and ``-bench`` if needed.
+
+    ``-run`` selects tests, examples and fuzz tests. Benchmarks run only when
+    ``-bench`` selects them, so they get their own pattern, and a selection
+    of benchmarks alone passes a ``-run`` that matches no test.
+    """
+
+    def pattern(selected: Iterable[str]) -> str:
+        return shlex.quote("^(" + "|".join(dict.fromkeys(selected)) + ")$")
+
+    benchmarks = [name for name in names if name.startswith("Benchmark")]
+    tests = [name for name in names if not name.startswith("Benchmark")]
+    flags = "-run " + (pattern(tests) if tests else shlex.quote("^$"))
+    if benchmarks:
+        flags += " -bench " + pattern(benchmarks)
+    return flags
