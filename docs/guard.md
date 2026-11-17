@@ -28,6 +28,8 @@ them, and keeps working.
   line outside any class counts as a change to every definition in the file.
 - **Tests at risk.** A test is at risk when it reaches changed code in at most
   three calls. Calls include constructors: `Cart(...)` reaches `Cart.__init__`.
+  A call through a name that a module republishes, such as
+  `date_input = _main.date_input`, reaches the function it names.
 - **Why.** Each test comes with its path, such as
   `test_checkout_total (tests/test_checkout.py:6) -> checkout (shop/checkout.py:5) -> Cart.__init__`.
   The location after each name is the line where it makes the next call.

@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from codenib.scip_interface.pyrefly_provider import (
+    PYREFLY_CONFIG_REVISION,
     PYREFLY_EXECUTABLE_ENV,
     PYTHON_GRAPH_PROVIDER_ENV,
     select_python_graph_provider,
@@ -44,7 +45,7 @@ def test_pyrefly_is_the_default_when_its_pinned_release_is_installed(tmp_path, e
     assert provider.name == "pyrefly"
     assert provider.executable == executable
     assert not provider.configured
-    assert provider.identity == f"pyrefly {PYREFLY_VERSION}"
+    assert provider.identity == f"pyrefly {PYREFLY_VERSION} {PYREFLY_CONFIG_REVISION}"
 
 
 @pytest.mark.parametrize("installed", [None, "1.5.0"])
