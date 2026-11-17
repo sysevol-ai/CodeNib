@@ -43,6 +43,8 @@ MAX_DEPENDENT_FILES = 200
 # read through it in another file then resolves differently; a few files cost
 # little to rebuild.
 ALWAYS_REBUILT_DEPENDENTS = 20
+# What a full build asks pyrefly to check.
+_PYTHON_SOURCE_SUFFIXES = (".py", ".pyi")
 
 
 class BuilderPatchUnavailable(RuntimeError):
@@ -87,13 +89,17 @@ def _dependents(graph: CodeGraph, files: set[str]) -> set[str]:
     return found
 
 
-def _merged_occurrences(old, new, files: set[str]):
+def _merged_occurrences(old, new, files: set[str], *, was: str, now: str):
     """The occurrence index after ``files`` were rebuilt.
 
     Occurrences in ``files`` are replaced by the rebuilt ones. An occurrence
     elsewhere that names a same-named definition whose position, and so
     symbol, changed is pointed at whatever bears that name now, as the graph
     edge is.
+
+    ``was`` and ``now`` are the symbol prefixes of the previous build and of
+    this one, as their symbol tables record them. The changed files cannot
+    say what the previous one was: a file that is new had no symbols then.
     """
 
     from dataclasses import replace
@@ -111,12 +117,11 @@ def _merged_occurrences(old, new, files: set[str]):
     bearers: dict[str, list[str]] = {}
     for symbol in sorted(after):
         bearers.setdefault(strip_position_markers(symbol), []).append(symbol)
+
     # A symbol starts with the project's name and version, and the version is
     # the commit: occurrences kept from the previous build take the new one.
-    was, now = _project_prefix(before), _project_prefix(after)
-
     def renamed(symbol: str) -> str:
-        if was and now and was != now and symbol.startswith(was):
+        if was != now and symbol.startswith(was):
             return now + symbol[len(was) :]
         return symbol
 
@@ -140,14 +145,17 @@ def _merged_occurrences(old, new, files: set[str]):
     )
 
 
-def _project_prefix(symbols: set[str]) -> str:
-    """``scheme manager name version `` of the project's own symbols."""
+def _table_prefix(path: Path) -> str:
+    """The symbol prefix a symbol table records, or the patch is unavailable."""
 
-    for symbol in sorted(symbols):
-        parts = symbol.split(" ", 4)
-        if len(parts) == 5 and parts[2] != "python-stdlib":
-            return " ".join(parts[:4]) + " "
-    return ""
+    from ...scip_interface.pyrefly_glean import read_symbol_table
+
+    try:
+        return read_symbol_table(path)["prefix"]
+    except (OSError, EOFError, ValueError) as exc:
+        raise BuilderPatchUnavailable(
+            f"the graph's symbol table cannot be patched ({exc}); rebuild it once"
+        ) from exc
 
 
 def _covered(graph: CodeGraph, paths: Iterable[str]) -> list[str]:
@@ -192,11 +200,14 @@ def rebuild_changed_files(
     )
     # A new file is rebuilt if the builder's own scope takes it: pyrefly
     # applies the project's excludes and reports nothing for a file they drop.
-    present = [
-        *_covered(graph, changed_files.get("modified", [])),
-        *changed_files.get("added", []),
-        *(new for _, new in renamed),
+    # It must be Python source, though: pyrefly checks whatever file it is
+    # named, and a full build names only these.
+    new = [
+        path
+        for path in [*changed_files.get("added", []), *(new for _, new in renamed)]
+        if path.endswith(_PYTHON_SOURCE_SUFFIXES)
     ]
+    present = [*_covered(graph, changed_files.get("modified", [])), *new]
     present = [path for path in dict.fromkeys(present) if (root / path).is_file()]
     stats = {
         "files_rebuilt": 0,
@@ -206,6 +217,13 @@ def rebuild_changed_files(
     }
     if not present and not gone:
         return stats
+    if not present:
+        # Nothing is checked, so nothing says which prefix this commit's
+        # symbols take, and the symbol table would keep the removed files.
+        raise BuilderPatchUnavailable(
+            "the change only removes files; the builder has nothing to check"
+        )
+    was = now = _table_prefix(symbol_table)
 
     part: Optional[CodeGraph] = None
     with tempfile.TemporaryDirectory(prefix="codenib-builder-patch-") as scratch:
@@ -235,10 +253,8 @@ def rebuild_changed_files(
                 )
             stats["files_rebuilt"] = len(present)
             updated = Path(scratch) / SYMBOL_TABLE_NAME
-            if updated.is_file():
-                shutil.copyfile(
-                    updated, symbol_table.with_name(symbol_table.name + ".new")
-                )
+            now = _table_prefix(updated)
+            shutil.copyfile(updated, symbol_table.with_name(symbol_table.name + ".new"))
 
     # Everything below mutates the graph; nothing above did.
     files = set(present) | set(gone)
@@ -302,7 +318,11 @@ def rebuild_changed_files(
     positions = getattr(graph, "lsp_occurrence_index", None)
     if positions is not None:
         graph.lsp_occurrence_index = _merged_occurrences(
-            positions, getattr(part, "lsp_occurrence_index", None), files
+            positions,
+            getattr(part, "lsp_occurrence_index", None),
+            files,
+            was=was,
+            now=now,
         )
     if part is not None:
         graph.merge_from(part)

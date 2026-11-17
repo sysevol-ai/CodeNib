@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+import gzip
+import json
 import shutil
 import subprocess
 import textwrap
@@ -26,40 +28,34 @@ pytestmark = [
 
 BASE = {
     "shop/__init__.py": "",
-    "shop/pricing.py": textwrap.dedent(
-        """\
+    "shop/pricing.py": textwrap.dedent("""\
         class Cart:
             def __init__(self, items=None):
                 self.items = list(items or [])
 
             def total(self):
                 return sum(self.items)
-        """
-    ),
-    "shop/checkout.py": textwrap.dedent(
-        """\
+        """),
+    "shop/checkout.py": textwrap.dedent("""\
         from shop.pricing import Cart
 
 
         def checkout(items):
             return Cart(items).total()
-        """
-    ),
+        """),
 }
 EDITED = {
     "shop/pricing.py": BASE["shop/pricing.py"].replace(
         "class Cart:",
         "def round_cents(value):\n    return round(value, 2)\n\n\nclass Cart:",
     ),
-    "shop/checkout.py": textwrap.dedent(
-        """\
+    "shop/checkout.py": textwrap.dedent("""\
         from shop.pricing import Cart, round_cents
 
 
         def checkout(items):
             return round_cents(Cart(items).total())
-        """
-    ),
+        """),
 }
 
 
@@ -196,3 +192,141 @@ def test_without_the_setting_a_stale_graph_is_rebuilt(repo):
     _commit(repo, EDITED, "edit")
 
     assert _index(repo).metadata["update_mode"] == "full_rebuild"
+
+
+def _patched_and_fresh(repo, monkeypatch):
+    monkeypatch.setenv(GRAPH_INCREMENTAL_ENV, "builder")
+    entry = _index(repo)
+    patched = load_authenticated_graph_artifact(entry)
+    monkeypatch.delenv(GRAPH_INCREMENTAL_ENV)
+    fresh = load_authenticated_graph_artifact(_index(repo, rebuild=True))
+    return entry, patched, fresh
+
+
+def test_a_commit_that_only_adds_a_file_is_patched_exactly(repo, monkeypatch):
+    _index(repo)
+    added = {"shop/refund.py": textwrap.dedent("""\
+            from shop.pricing import Cart
+
+
+            def refund(items):
+                return -Cart(items).total()
+            """)}
+    _commit(repo, added, "add a file")
+
+    entry, patched, fresh = _patched_and_fresh(repo, monkeypatch)
+
+    assert entry.metadata["update_mode"] == "incremental"
+    assert _surface(patched) == _surface(fresh)
+    assert sorted(patched.lsp_occurrence_index.occurrences, key=repr) == sorted(
+        fresh.lsp_occurrence_index.occurrences, key=repr
+    )
+
+
+def test_files_that_are_not_python_are_not_handed_to_the_builder(repo, monkeypatch):
+    _index(repo)
+    other = {"docs/notes.md": "# Notes\n", "settings.toml": "[shop]\nopen = true\n"}
+    _commit(repo, {**EDITED, **other}, "edit, with notes")
+
+    entry, patched, fresh = _patched_and_fresh(repo, monkeypatch)
+
+    assert entry.metadata["update_mode"] == "incremental"
+    assert entry.metadata["patch_stats"]["files_rebuilt"] == 2
+    assert _surface(patched) == _surface(fresh)
+    assert sorted(patched.lsp_occurrence_index.occurrences, key=repr) == sorted(
+        fresh.lsp_occurrence_index.occurrences, key=repr
+    )
+
+
+@pytest.mark.parametrize("change", ["remove a file", "add notes"])
+def test_a_change_the_builder_checks_nothing_for_is_rebuilt(repo, monkeypatch, change):
+    # Every symbol carries the commit, and only a check brings it up to date.
+    _index(repo)
+    if change == "remove a file":
+        (repo / "shop/checkout.py").unlink()
+        _commit(repo, {}, change)
+    else:
+        _commit(repo, {"docs/notes.md": "# Notes\n"}, change)
+
+    monkeypatch.setenv(GRAPH_INCREMENTAL_ENV, "builder")
+    assert _index(repo).metadata["update_mode"] == "full_rebuild"
+
+
+def test_a_patch_that_fails_is_rebuilt(repo, monkeypatch):
+    from codenib.graph.incremental import builder_patch
+
+    def fail(*arguments, **options):
+        raise KeyError("Attribute does not exist")
+
+    _index(repo)
+    _commit(repo, EDITED, "edit")
+
+    monkeypatch.setattr(builder_patch, "rebuild_changed_files", fail)
+    monkeypatch.setenv(GRAPH_INCREMENTAL_ENV, "builder")
+    assert _index(repo).metadata["update_mode"] == "full_rebuild"
+
+
+def test_a_graph_that_differs_from_its_receipt_is_rebuilt(repo, monkeypatch):
+    from codenib.graph.code_graph import CodeGraph
+
+    first = _index(repo)
+    graph_path = Path(first.path) / "graph.pkl"
+    graph = CodeGraph.load_graph(str(graph_path))
+    graph.graph.delete_edges([0])
+    graph.save_graph(str(graph_path))
+    _commit(repo, EDITED, "edit")
+
+    monkeypatch.setenv(GRAPH_INCREMENTAL_ENV, "builder")
+    assert _index(repo).metadata["update_mode"] == "full_rebuild"
+
+
+def test_positions_that_differ_from_their_receipt_are_rebuilt(repo, monkeypatch):
+    from codenib.scip_interface.lsp_occurrence_index import SCIPOccurrenceIndex
+
+    first = _index(repo)
+    path = Path(first.path) / "lsp_index.pkl"
+    positions = SCIPOccurrenceIndex.load(str(path))
+    SCIPOccurrenceIndex(
+        positions.occurrences[1:], position_encoding=positions.position_encoding
+    ).save(str(path))
+    _commit(repo, EDITED, "edit")
+
+    monkeypatch.setenv(GRAPH_INCREMENTAL_ENV, "builder")
+    assert _index(repo).metadata["update_mode"] == "full_rebuild"
+
+
+def test_a_symbol_table_without_a_prefix_is_rebuilt(repo, monkeypatch):
+    from codenib.scip_interface.pyrefly_glean import SYMBOL_TABLE_NAME
+
+    first = _index(repo)
+    path = Path(first.path) / SYMBOL_TABLE_NAME
+    with gzip.open(path, "rt", encoding="utf-8") as handle:
+        table = json.load(handle)
+    # What a build wrote before the table recorded its prefix and files.
+    table["schema"] = 1
+    del table["prefix"], table["files"]
+    with gzip.open(path, "wt", encoding="utf-8") as handle:
+        json.dump(table, handle)
+    _commit(repo, EDITED, "edit")
+
+    monkeypatch.setenv(GRAPH_INCREMENTAL_ENV, "builder")
+    assert _index(repo).metadata["update_mode"] == "full_rebuild"
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        {"pyrightconfig.json": '{"exclude": ["shop/checkout.py"]}\n'},
+        {"pyproject.toml": '[tool.pyright]\nexclude = ["shop/checkout.py"]\n'},
+    ],
+    ids=["pyrightconfig", "pyproject"],
+)
+def test_a_changed_project_configuration_is_rebuilt(repo, monkeypatch, config):
+    _index(repo)
+    _commit(repo, config, "narrow the checked files")
+
+    entry, patched, fresh = _patched_and_fresh(repo, monkeypatch)
+
+    assert _surface(patched) == _surface(fresh)
+    assert "shop/checkout.py" not in set(fresh.graph.vs["name"])
+    assert entry.metadata["update_mode"] == "full_rebuild"

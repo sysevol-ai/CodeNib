@@ -2497,28 +2497,31 @@ class SymbolGraphBuilder:
         repo_path: str,
         output_dir: str,
         changed_files: Dict[str, Any],
+        previous_entry: Any,
         source_selection: Optional[RepositorySourceSelection] = None,
     ) -> Optional[IndexStatus]:
         """Rebuild the changed files with the graph's builder. None = rebuild all.
 
         ``changed_files`` comes from comparing authenticated source
-        inventories, not from Git. The generation written here carries the
-        same receipts as a full build, so every reader that accepts a built
-        graph accepts this one.
+        inventories, not from Git. ``previous_entry`` is the manifest entry of
+        the generation being patched: the graph and its positions are read
+        through that entry's receipts, so facts kept from them are facts a
+        reader of that generation would have accepted. The generation written
+        here carries the same receipts as a full build, so every reader that
+        accepts a built graph accepts this one.
 
         Only a Python graph built by pyrefly, which left a symbol table beside
         it, can be patched this way; anything else returns ``None``.
         """
 
-        from ..graph.code_graph import CodeGraph
         from ..graph.health import graph_health
         from ..graph.incremental.builder_patch import (
             BuilderPatchUnavailable,
             rebuild_changed_files,
         )
-        from ..scip_interface.lsp_occurrence_index import SCIPOccurrenceIndex
         from ..scip_interface.pyrefly_glean import SYMBOL_TABLE_NAME
         from ..scip_interface.pyrefly_provider import (
+            PROJECT_CONFIGURATION_FILES,
             PYREFLY_PROVIDER,
             select_python_graph_provider,
         )
@@ -2527,6 +2530,7 @@ class SymbolGraphBuilder:
             graph_output_artifact_fingerprint,
             regular_file_fingerprint,
         )
+        from .graph_artifact import load_authenticated_graph_generation
 
         selected = _source_selection_for_build(self.source_selection, source_selection)
         graph_languages = self.languages or [self.language]
@@ -2542,15 +2546,33 @@ class SymbolGraphBuilder:
             reason = "the graph builder is not pyrefly"
         elif not os.path.isfile(graph_path) or not os.path.isfile(symbol_table):
             reason = "no graph with a symbol table to patch"
+        elif PROJECT_CONFIGURATION_FILES.intersection(
+            path
+            for kind in ("modified", "added", "deleted")
+            for path in changed_files.get(kind, ())
+        ):
+            # These decide which files a build checks and the version every
+            # symbol carries; no file's own rebuild shows what they changed.
+            reason = "the project's configuration changed"
         if reason:
             logger.info("symbol_graph: full rebuild (%s)", reason)
             return None
 
         start = time.monotonic()
-        graph = CodeGraph.load_graph(graph_path)
-        occurrence_path = os.path.join(output_dir, "lsp_index.pkl")
-        if os.path.isfile(occurrence_path):
-            graph.lsp_occurrence_index = SCIPOccurrenceIndex.load(occurrence_path)
+        config = getattr(previous_entry, "config", None)
+        config = config if isinstance(config, dict) else {}
+        try:
+            if config.get("lsp_occurrence_artifact") is None:
+                # A full build publishes positions; a patch must keep them.
+                raise ValueError("the previous generation recorded no positions")
+            graph = load_authenticated_graph_generation(
+                output_dir,
+                config.get("graph_artifact"),
+                lsp_occurrence_receipt=config["lsp_occurrence_artifact"],
+            )
+        except (OSError, RuntimeError, TypeError, ValueError) as exc:
+            logger.info("symbol_graph: full rebuild (%s)", exc)
+            return None
         try:
             stats = rebuild_changed_files(
                 graph,
@@ -2564,10 +2586,19 @@ class SymbolGraphBuilder:
         except BuilderPatchUnavailable as exc:
             logger.info("symbol_graph: full rebuild (%s)", exc)
             return None
+        except Exception as exc:  # noqa: BLE001 - a full build can still succeed
+            # Nothing was written but the symbol table, which a build rewrites.
+            logger.warning("symbol_graph: full rebuild (patch failed: %r)", exc)
+            return None
         if stats.get("dependents_skipped"):
             # Files that refer into the change were too many to rebuild; the
             # graph may now differ from a fresh build, so build one.
             logger.info("symbol_graph: full rebuild (too many dependent files)")
+            return None
+        if not stats["files_rebuilt"]:
+            # The source changed but the builder checked nothing, so nothing
+            # brought the kept symbols to the version this commit gives them.
+            logger.info("symbol_graph: full rebuild (no changed file to check)")
             return None
 
         (

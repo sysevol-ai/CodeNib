@@ -437,6 +437,7 @@ class IndexCompiler:
                 repo_path,
                 output_dir,
                 changed_files=changed_files,
+                previous_entry=previous_entry,
                 last_commit=incremental_from,
                 previous_artifact_config=(
                     copy.deepcopy(previous_entry.config)
@@ -831,6 +832,7 @@ class IndexCompiler:
         source_selection: RepositorySourceSelection,
         expected_source_commit: str,
         changed_files: Optional[Dict[str, Any]] = None,
+        previous_entry: Any = None,
     ) -> BuildResult:
         """Build a single index, catching errors.
 
@@ -848,6 +850,7 @@ class IndexCompiler:
                     repo_path=repo_path,
                     output_dir=output_dir,
                     changed_files=changed_files,
+                    previous_entry=previous_entry,
                     source_selection=source_selection,
                 )
             if status is not None:

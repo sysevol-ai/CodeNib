@@ -1358,7 +1358,9 @@ def _binds_receiver(target, receiver: bytes) -> bool:
 # conversion of some files can resolve into the rest.
 
 SYMBOL_TABLE_NAME = "pyrefly-symbols.json.gz"
-_SYMBOL_TABLE_SCHEMA = 1
+# 2 added ``prefix`` and ``files``. A table without them cannot be brought to
+# a later conversion's prefix, so it is refused and its graph is rebuilt.
+_SYMBOL_TABLE_SCHEMA = 2
 
 
 def _symbol_table(converter: "_Converter") -> dict:
@@ -1529,6 +1531,11 @@ def read_symbol_table(path: str | Path) -> dict:
         table = json.load(handle)
     if not isinstance(table, dict) or table.get("schema") != _SYMBOL_TABLE_SCHEMA:
         raise ValueError("unsupported pyrefly symbol table")
+    prefix = table.get("prefix")
+    if not isinstance(prefix, str) or not prefix:
+        raise ValueError("pyrefly symbol table does not record its symbol prefix")
+    if not isinstance(table.get("files"), list):
+        raise ValueError("pyrefly symbol table does not record its files")
     return table
 
 

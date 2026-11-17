@@ -141,8 +141,11 @@ rebuild_changed_files(graph, repo, changed, symbol_table=index_dir / "pyrefly-sy
 - **What it cannot see.** A file with no reference into the changed files
   whose references still resolve differently, such as an import that only now
   finds its target.
-- **When it refuses.** A graph built by another provider, or before the symbol
-  table existed, raises `BuilderPatchUnavailable`; rebuild once.
+- **When it refuses.** A graph built by another provider, or whose symbol
+  table is missing or was written by an older version, raises
+  `BuilderPatchUnavailable`; rebuild once. So does a change that only removes
+  files: with nothing to check, the builder cannot bring the rest of the graph
+  up to the new commit.
 
 The compiler uses it when you ask it to:
 
@@ -156,7 +159,12 @@ the setting:
 
 - the previous graph is complete, from the same builder and source selection,
   and recorded which files it was built from;
+- the graph and position index on disk are the files that build recorded;
 - the graph covers Python only and was built by pyrefly;
+- the change includes at least one Python file the builder can check, and
+  leaves `pyproject.toml` and `pyrightconfig.json` at the project root as
+  they were, since those decide which files are checked and the version every
+  symbol carries;
 - at most 200 files refer into the changed files when definitions were added
   or removed.
 
