@@ -17,6 +17,7 @@ import re
 from pathlib import Path
 
 from ..graph.code_graph import CodeGraph
+from ..graph.identity import strip_position_markers
 from ..log_utils import get_logger, register_scip_logger
 from ..types import (
     EDGE_TYPE_CONTAIN,
@@ -127,8 +128,7 @@ class SCIPPythonGraphDecoder:
                 v["unified_name"] = name
             elif file_path and ":" in name:
                 symbol_part = name.split(":", 1)[1]
-                symbol_part = re.sub(r"\(_codenib_l\d+_c\d+\)", "()", symbol_part)
-                symbol_part = re.sub(r"@codenib-l\d+-c\d+", "", symbol_part)
+                symbol_part = strip_position_markers(symbol_part)
                 v["unified_name"] = f"{file_path}:{symbol_part}"
 
     def _process_document(self, document_text):
