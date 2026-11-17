@@ -14,6 +14,7 @@ Supports the subset of LSP needed for incremental graph updates:
 from __future__ import annotations
 
 import atexit
+import errno
 import io
 import json
 import os
@@ -88,6 +89,36 @@ def _is_stream_readable(stream: Any, timeout_s: float) -> bool:
             _real_time.sleep(min(remaining, 0.005))
     except (OSError, ValueError):
         return True
+
+
+def _set_pipe_blocking(fd: int, blocking: bool) -> bool:
+    """Set whether writes to pipe ``fd`` block, and return the previous mode.
+
+    Windows before Python 3.12 has no ``os.get_blocking`` or
+    ``os.set_blocking``. There the pipe's wait mode is set directly, which is
+    what ``os.set_blocking`` does on Windows from Python 3.12.
+    """
+    if hasattr(os, "set_blocking"):
+        previous = os.get_blocking(fd)
+        os.set_blocking(fd, blocking)
+        return previous
+
+    import ctypes
+    import ctypes.wintypes as wt
+    import msvcrt
+
+    pipe_nowait = 0x00000001
+    handle = msvcrt.get_osfhandle(fd)
+    state = wt.DWORD()
+    kernel32 = ctypes.windll.kernel32
+    if not kernel32.GetNamedPipeHandleStateW(
+        handle, ctypes.byref(state), None, None, None, None, 0
+    ):
+        raise ctypes.WinError()
+    mode = wt.DWORD(0 if blocking else pipe_nowait)
+    if not kernel32.SetNamedPipeHandleState(handle, ctypes.byref(mode), None, None):
+        raise ctypes.WinError()
+    return not (state.value & pipe_nowait)
 
 
 # ---------------------------------------------------------------------------
@@ -1105,8 +1136,7 @@ class LSPClient:
             self.process.stdin.write(data)
             return
 
-        blocking = os.get_blocking(fd)
-        os.set_blocking(fd, False)
+        blocking = _set_pipe_blocking(fd, False)
         try:
             remaining_data = memoryview(data)
             while remaining_data:
@@ -1122,11 +1152,18 @@ class LSPClient:
                     if sys.platform == "win32":
                         _real_time.sleep(min(remaining, 0.005))
                     continue
+                except OSError as exc:
+                    # Before Python 3.12 a full non-blocking pipe on Windows
+                    # fails with ENOSPC rather than BlockingIOError.
+                    if sys.platform != "win32" or exc.errno != errno.ENOSPC:
+                        raise
+                    _real_time.sleep(min(remaining, 0.005))
+                    continue
                 if written == 0:
                     raise BrokenPipeError("LSP shutdown pipe closed")
                 remaining_data = remaining_data[written:]
         finally:
-            os.set_blocking(fd, blocking)
+            _set_pipe_blocking(fd, blocking)
 
     def _read_message(self, timeout: float = 30) -> Optional[dict]:
         """Read one JSON-RPC message from the server's stdout."""

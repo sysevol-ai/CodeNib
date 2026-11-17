@@ -6,12 +6,14 @@
 
 from __future__ import annotations
 
+import errno
 import io
 import json
 import os
 import subprocess
 import sys
 import threading
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -248,7 +250,46 @@ def _short_shutdown(monkeypatch):
         monkeypatch.setattr(lsp_module, name, timeout, raising=False)
 
 
-def test_unread_full_stdin_pipe_cannot_block_shutdown(tmp_path, monkeypatch):
+class _OsWithoutBlockingControl:
+    """The client's ``os`` as on Windows before Python 3.12."""
+
+    def __init__(self, real):
+        self._real = real
+
+    def __getattr__(self, name):
+        if name in ("get_blocking", "set_blocking"):
+            raise AttributeError(name)
+        return getattr(self._real, name)
+
+
+_CLIENT_OS = pytest.mark.parametrize(
+    "client_os",
+    [
+        "real",
+        pytest.param(
+            "without_set_blocking",
+            marks=pytest.mark.skipif(
+                sys.platform != "win32", reason="the fallback is for Windows pipes"
+            ),
+        ),
+    ],
+)
+
+
+def _use_client_os(monkeypatch, client_os):
+    if client_os == "without_set_blocking":
+        monkeypatch.setattr(lsp_module, "os", _OsWithoutBlockingControl(os))
+
+
+@_CLIENT_OS
+def test_unread_full_stdin_pipe_cannot_block_shutdown(tmp_path, monkeypatch, client_os):
+    # Windows before Python 3.12 has no os.set_blocking; the client's helper
+    # stands in for it there.
+    set_blocking = getattr(os, "set_blocking", None) or getattr(
+        lsp_module, "_set_pipe_blocking", None
+    )
+    if set_blocking is None:
+        pytest.skip("filling the pipe needs a non-blocking write")
     process = subprocess.Popen(
         [
             sys.executable,
@@ -279,15 +320,20 @@ def test_unread_full_stdin_pipe_cannot_block_shutdown(tmp_path, monkeypatch):
         assert lsp_module._is_stream_readable(process.stdout, 2)
         assert process.stdout.readline().rstrip(b"\r\n") == b"ready"
         fd = process.stdin.fileno()
-        os.set_blocking(fd, False)
+        set_blocking(fd, False)
         try:
             while True:
                 os.write(fd, b"x" * 4096)
         except BlockingIOError:
             pass
+        except OSError as exc:
+            # A full non-blocking Windows pipe before Python 3.12.
+            if exc.errno != errno.ENOSPC:
+                raise
         finally:
-            os.set_blocking(fd, True)
+            set_blocking(fd, True)
         _short_shutdown(monkeypatch)
+        _use_client_os(monkeypatch, client_os)
         rescuer.start()
         client.shutdown()
         assert not watchdog, "the shutdown deadline did not bound its pipe write"
@@ -313,8 +359,9 @@ def test_unread_full_stdin_pipe_cannot_block_shutdown(tmp_path, monkeypatch):
                     pass  # Broken-pipe cleanup must not replace the assertion.
 
 
+@_CLIENT_OS
 def test_real_server_receives_shutdown_then_exit_and_releases_pipes(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, client_os
 ):
     output = tmp_path / "methods.json"
     server = """
@@ -349,6 +396,7 @@ while True:
     client.process = process
     client._initialize_result_received = True
     monkeypatch.setattr(lsp_module, "_SHUTDOWN_GRACE_SECONDS", 2.0, raising=False)
+    _use_client_os(monkeypatch, client_os)
     try:
         client.shutdown()
         assert process.returncode == 0
@@ -361,3 +409,38 @@ while True:
         if process.poll() is None:
             process.kill()
             process.wait(timeout=2)
+
+
+@_CLIENT_OS
+def test_shutdown_write_waits_for_a_slow_reader_to_drain_the_pipe(
+    tmp_path, monkeypatch, client_os
+):
+    payload = b"x" * (256 * 1024)  # larger than a pipe buffer on any platform
+    reader = (
+        "import sys, time; time.sleep(0.3); "
+        "print(len(sys.stdin.buffer.read()), flush=True)"
+    )
+    process = subprocess.Popen(
+        [sys.executable, "-c", reader],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    client = LSPClient(["unused"], str(tmp_path), "python")
+    client.process = process
+    client._shutdown_deadline = time.monotonic() + 20
+    _use_client_os(monkeypatch, client_os)
+    try:
+        client._send_shutdown_bytes(payload)
+        process.stdin.close()
+        assert process.stdout.read().strip() == str(len(payload)).encode()
+        assert process.wait(timeout=10) == 0
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=2)
+        for stream in (process.stdin, process.stdout, process.stderr):
+            try:
+                stream.close()
+            except OSError:
+                pass
