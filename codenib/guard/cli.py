@@ -41,6 +41,10 @@ def _run_check(args: argparse.Namespace) -> int:
         raise _error(str(exc)) from exc
     if args.json:
         print(json.dumps(report.to_dict(), indent=2))
+    elif args.markdown:
+        from .comment import render_comment
+
+        sys.stdout.write(render_comment(report, source_url=args.source_url))
     else:
         print(render_text(report))
     return 1 if args.exit_code and report.impact.tests else 0
@@ -190,8 +194,25 @@ def add_guard_parser(subparsers, formatter) -> None:
     check.add_argument(
         "--depth", type=int, default=3, help="calls between a test and the change"
     )
-    check.add_argument(
+    output = check.add_mutually_exclusive_group()
+    output.add_argument(
         "--json", action="store_true", help="print a machine-readable report"
+    )
+    output.add_argument(
+        "--markdown",
+        action="store_true",
+        help=(
+            "print the report as a pull-request comment for a reviewer; prints "
+            "nothing when the change touches no source definition"
+        ),
+    )
+    check.add_argument(
+        "--source-url",
+        default="",
+        help=(
+            "with --markdown, the repository's web address, such as "
+            "https://github.com/owner/name, so definitions link to their lines"
+        ),
     )
     check.add_argument(
         "--no-build",

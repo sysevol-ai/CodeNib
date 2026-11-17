@@ -176,6 +176,14 @@ class Impact:
     new_files: List[str] = field(default_factory=list)
     # pytest ids of tests at risk whose own base lines the change rewrote
     edited_tests: List[str] = field(default_factory=list)
+    # Per changed symbol: the definitions outside it that call it, each with
+    # the line of its call, and how many tests reach it within ``depth`` calls.
+    callers: Dict[str, List[Hop]] = field(default_factory=dict)
+    tests_reaching: Dict[str, int] = field(default_factory=dict)
+    # Tests that reach an edited definition outside test files. ``tests`` also
+    # holds the tests the change itself touches and everything near a
+    # module-level edit; a reviewer needs them apart.
+    source_tests: List[TestAtRisk] = field(default_factory=list)
 
 
 def pytest_id(name: str) -> str:
@@ -290,6 +298,51 @@ class ImpactGraph:
             call_line=call,
         )
 
+    def _walk(
+        self, seeds: Set[int], depth: int
+    ) -> Tuple[Dict[int, int], Dict[int, Optional[int]]]:
+        """Callers of ``seeds`` up to ``depth`` calls away.
+
+        Returns each reached definition's distance, and the definition it
+        calls on the way to a seed.
+        """
+
+        parent: Dict[int, Optional[int]] = {seed: None for seed in seeds}
+        level: Dict[int, int] = {seed: 0 for seed in seeds}
+        queue = deque(sorted(seeds))
+        while queue:
+            vertex = queue.popleft()
+            if level[vertex] >= depth:
+                continue
+            for caller in sorted(self.callers.get(vertex, ())):
+                if caller not in level:
+                    level[caller] = level[vertex] + 1
+                    parent[caller] = vertex
+                    queue.append(caller)
+        return level, parent
+
+    def _tests(
+        self, level: Mapping[int, int], parent: Mapping[int, Optional[int]]
+    ) -> List[TestAtRisk]:
+        """The reached tests, each with its path to the seed it was found by."""
+
+        found = []
+        for test in self.tests & set(level):
+            path: List[Hop] = []
+            vertex: Optional[int] = test
+            while vertex is not None:
+                path.append(self.hop(vertex, parent[vertex]))
+                vertex = parent[vertex]
+            found.append(
+                TestAtRisk(
+                    test_id=pytest_id(self.names[test]),
+                    symbol=symbol_id(self.names[test]),
+                    depth=level[test],
+                    path=tuple(path),
+                )
+            )
+        return found
+
     def impact(
         self,
         changed_lines: Mapping[str, Iterable[int]],
@@ -303,6 +356,7 @@ class ImpactGraph:
         )
         seeds: Set[int] = set()
         reported: Set[str] = set()
+        owned: Dict[str, Set[int]] = defaultdict(set)
         for path in sorted(changed_lines):
             if not path.endswith((".py", ".pyi")):
                 continue
@@ -314,21 +368,11 @@ class ImpactGraph:
                 seeds |= found
                 owner = self.innermost(path, line, _DEFS | {NODE_TYPE_CLASS})
                 symbol = path if owner is None else symbol_id(self.names[owner])
+                owned[symbol] |= found
                 if symbol not in reported:
                     reported.add(symbol)
                     result.changed.append(ChangedSymbol(symbol, path, line, unit))
-        parent: Dict[int, Optional[int]] = {seed: None for seed in seeds}
-        level: Dict[int, int] = {seed: 0 for seed in seeds}
-        queue = deque(sorted(seeds))
-        while queue:
-            vertex = queue.popleft()
-            if level[vertex] >= depth:
-                continue
-            for caller in sorted(self.callers.get(vertex, ())):
-                if caller not in level:
-                    level[caller] = level[vertex] + 1
-                    parent[caller] = vertex
-                    queue.append(caller)
+        level, parent = self._walk(seeds, depth)
         for change in result.changed:
             if change.unit != "function":
                 continue
@@ -339,20 +383,32 @@ class ImpactGraph:
                 result.direct_callers[change.symbol] = sorted(
                     symbol_id(self.names[c]) for c in self.callers.get(vertex, ())
                 )
-        for test in self.tests & set(level):
-            path: List[Hop] = []
-            vertex: Optional[int] = test
-            while vertex is not None:
-                path.append(self.hop(vertex, parent[vertex]))
-                vertex = parent[vertex]
-            result.tests.append(
-                TestAtRisk(
-                    test_id=pytest_id(self.names[test]),
-                    symbol=symbol_id(self.names[test]),
-                    depth=level[test],
-                    path=tuple(path),
-                )
+        for symbol, own in owned.items():
+            sites: Dict[int, int] = {}
+            for vertex in sorted(own):
+                for caller in self.callers.get(vertex, ()):
+                    if caller not in own:
+                        sites.setdefault(caller, vertex)
+            result.callers[symbol] = sorted(
+                (self.hop(caller, vertex) for caller, vertex in sites.items()),
+                key=lambda hop: (hop.file or "", hop.call_line or 0, hop.symbol),
             )
+            reached = set(self._walk(own, depth)[0]) - own
+            result.tests_reaching[symbol] = len(self.tests & reached)
+        result.tests = self._tests(level, parent)
+        # A line outside every definition seeds its whole file, which keeps the
+        # test list safe but would count every caller of the file as a caller
+        # of the change. Only edited definitions outside test files count here.
+        source = {
+            vertex
+            for change in result.changed
+            if change.unit != "file" and not is_test_file(change.file)
+            for vertex in owned[change.symbol]
+        }
+        result.source_tests = sorted(
+            self._tests(*self._walk(source, depth)),
+            key=lambda t: (t.depth, t.test_id),
+        )
         # An existing test whose own lines the change rewrote now checks the new
         # behaviour; passing it says little about the behaviour it protected.
         # In a recorded session an agent changed a default message, rewrote the
