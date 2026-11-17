@@ -25,7 +25,6 @@ metaclass constructors, and operators.
 from __future__ import annotations
 
 import ast
-import re
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
@@ -38,11 +37,11 @@ from ..types import (
     NODE_TYPE_FUNCTION,
     NODE_TYPE_METHOD,
 )
+from .identity import short_name  # noqa: F401 - imported from here by callers
 
 CONSTRUCTORS = ("__init__", "__new__")
 _DEFS = {NODE_TYPE_FUNCTION, NODE_TYPE_METHOD}
 _OWNERS = _DEFS | {NODE_TYPE_CLASS}
-_DISAMBIGUATOR = re.compile(r"\(_codenib_l\d+_c\d+\)|@codenib-l\d+-c\d+")
 
 
 @dataclass(frozen=True)
@@ -52,13 +51,6 @@ class ConstructorEdge:
     caller: int
     constructor: int
     line: int  # 1-based line of the call in the caller's file
-
-
-def short_name(name: str) -> str:
-    """Last identifier of a graph symbol name: ``a.py:C.m()`` -> ``m``."""
-
-    symbol = _DISAMBIGUATOR.sub("", name.split(":", 1)[-1])
-    return symbol.replace("()", "").split(".")[-1]
 
 
 def _last_name(expr: ast.AST) -> Optional[str]:
