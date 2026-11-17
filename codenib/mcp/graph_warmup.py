@@ -135,6 +135,16 @@ class GraphWarmup:
             self._thread.start()
             return self._state
 
+    def handles(self, source_fingerprint: str) -> bool:
+        """Whether a build is running or one already ran for this source."""
+
+        with self._condition:
+            return self._state == RUNNING or (
+                self._target is not None
+                and self._target.source_fingerprint == source_fingerprint
+                and self._state in (READY, FAILED)
+            )
+
     def _run(self, target: GraphTarget) -> None:
         logger.info("Preparing the symbol graph in the background")
         try:

@@ -546,8 +546,12 @@ def explore_context_impl(
     *,
     check_cancelled=None,
     graph_preparation: Mapping[str, Any] | None = None,
+    graph_lag: Any = None,
 ) -> dict[str, Any]:
     """Return ranked, routed, dependency-aware source context in one call.
+
+    ``graph_lag`` names the files the loaded graph is behind on when the
+    server answers from a graph built before the latest edits.
 
     ``graph_preparation`` is the server's status for a graph that was asked
     for but is not loaded yet. The call then answers from retrieval, with
@@ -576,6 +580,8 @@ def explore_context_impl(
 
     diagnostics: list[dict[str, str]] = []
     retrieval_query = normalized_query
+    if graph_lag is not None:
+        diagnostics.append(_diagnostic("graph_lags_source", graph_lag.message()))
     if graph_preparation is not None:
         diagnostics.append(_graph_preparation_diagnostic(graph_preparation))
         if getattr(ctx, "symbol_graph", None) is None and normalized_symbols:

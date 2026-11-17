@@ -698,6 +698,31 @@ class RepoManifest:
                 return False
         return True
 
+    def lagging_index_entry(self, index_type: str) -> IndexEntry | None:
+        """Return a view built for an earlier state of this same source.
+
+        The entry is not current, but it still describes one complete, known
+        source state under the manifest's source selection. Strict readers
+        ignore it. A reader that reports which files changed since may serve
+        it. Entries invalidated for any reason other than later source edits
+        are never returned.
+        """
+
+        entry = self.indexes.get(index_type)
+        selection_digest = self.source_selection_digest
+        if (
+            entry is None
+            or self.version != MANIFEST_VERSION
+            or self.index_is_current(index_type)
+            or "stale_reason" in entry.metadata
+            or not is_secure_source_fingerprint_v2(self.source_fingerprint)
+            or not is_secure_source_fingerprint_v2(entry.source_fingerprint)
+            or selection_digest is None
+            or entry.source_selection_digest != selection_digest
+        ):
+            return None
+        return entry
+
 
 # ---------------------------------------------------------------------------
 # ManifestIndexStateStore — bridges manifest → ResourceResolver

@@ -38,6 +38,7 @@ from ..repository_source_selection import DEFAULT_REPOSITORY_SOURCE_SELECTION
 if TYPE_CHECKING:
     from ..agent.runtime.grep_jev import GrepJevConfig
     from ..artifacts.runtime import ContextArtifactBinding
+    from ..compiler.source_inventory import SourceDelta
     from ..compiler.zoekt_artifact import ZoektShardSnapshot
     from ..graph.code_graph import CodeGraph
     from ..index.embedding.vector_store import CodeVectorStore
@@ -47,6 +48,7 @@ if TYPE_CHECKING:
     from ..native_index_authorization import NativeIndexAuthorization
     from ..source_fingerprint import RepositorySourceBinding, RepositorySourceReader
     from .explore_session import ExploreSessionRuntime
+    from .graph_lag import GraphSourceLag
 
 logger = logging.getLogger(__name__)
 
@@ -386,6 +388,11 @@ class ServerContext:
     )
     _local_manifest_path: Path | None = field(default=None, init=False, repr=False)
     _defer_graph: bool = field(default=False, init=False, repr=False)
+    # Set when ``symbol_graph`` was built before the latest source edits.
+    symbol_graph_lag: Optional[GraphSourceLag] = field(
+        default=None, init=False, repr=False
+    )
+    _allow_lagging_graph: bool = field(default=False, init=False, repr=False)
     _source_definition_provider: Any = field(default=None, init=False, repr=False)
 
     def _install_zoekt_snapshot(self, snapshot: ZoektShardSnapshot) -> None:
@@ -541,6 +548,7 @@ class ServerContext:
         artifact_reader: PublicationDirectoryReader | None = None,
         native_index_authorization: NativeIndexAuthorization | None = None,
         source_binding: RepositorySourceBinding | None = None,
+        allow_lagging_graph: bool = False,
         _context_owner: Callable[[ServerContext], None] | None = None,
     ) -> ServerContext:
         """Load a manifest and the selected runtime views.
@@ -549,6 +557,12 @@ class ServerContext:
         selections avoid importing or starting unrelated view runtimes. Each
         selected view is loaded independently; a failure in one does not block
         the others. Failed views are recorded in ``errors``.
+
+        ``allow_lagging_graph`` lets an interactive local connection serve a
+        symbol graph built before the latest source edits, together with the
+        list of files it is behind on (``symbol_graph_lag``). Every other
+        caller keeps the strict rule: a graph is loaded only for the exact
+        indexed source.
         """
         ctx: ServerContext | None = None
         try:
@@ -599,6 +613,9 @@ class ServerContext:
                 _native_index_authorization=native_index_authorization,
                 _artifact_binding=artifact_binding,
                 _source_binding=None,
+            )
+            ctx._allow_lagging_graph = bool(allow_lagging_graph) and not (
+                artifact_origin
             )
             if _context_owner is not None:
                 if not callable(_context_owner):
@@ -1103,16 +1120,74 @@ class ServerContext:
 
     def _load_symbol_graph(self) -> None:
         entry = self.manifest.indexes.get("symbol_graph")
-        if not entry or not self.manifest.index_is_current("symbol_graph"):
+        if not entry:
             return
+        delta = None
+        if not self.manifest.index_is_current("symbol_graph"):
+            delta = self._lagging_graph_delta(entry)
+            if delta is None:
+                return
         try:
             from ..compiler.graph_artifact import load_authenticated_graph_artifact
 
-            self.symbol_graph = load_authenticated_graph_artifact(entry)
+            graph = load_authenticated_graph_artifact(entry)
+            if delta is not None:
+                from .graph_lag import graph_source_lag
+
+                self.symbol_graph_lag = graph_source_lag(
+                    graph,
+                    base_commit=entry.commit,
+                    base_source_fingerprint=entry.source_fingerprint,
+                    delta=delta,
+                )
+                logger.info(
+                    "symbol_graph lags the source by %d file(s)",
+                    self.symbol_graph_lag.file_count,
+                )
+            self.symbol_graph = graph
             logger.info("Loaded symbol_graph from %s", entry.path)
         except Exception as exc:
             self.errors["symbol_graph"] = str(exc)
             logger.warning("Failed to load symbol_graph: %s", exc)
+
+    def _lagging_graph_delta(self, entry: Any) -> SourceDelta | None:
+        """Name what changed since a stale graph was built, or refuse it.
+
+        Only a complete graph whose build-time source inventory is still
+        receipted qualifies, and only against verified current source. Any
+        doubt returns ``None`` and the graph stays unloaded, as before.
+        """
+
+        source = self._source_binding
+        if (
+            not self._allow_lagging_graph
+            or source is None
+            or not source.usable
+            or self.manifest.lagging_index_entry("symbol_graph") is not entry
+            or entry.config.get("allow_partial_languages") is not False
+            or entry.config.get("allow_partial_index") is not False
+        ):
+            return None
+        from ..compiler.source_inventory import (
+            SOURCE_INVENTORY_METADATA_KEY,
+            load_source_inventory,
+            source_delta,
+        )
+
+        try:
+            indexed = load_source_inventory(
+                Path(entry.path).parent,
+                entry.metadata.get(SOURCE_INVENTORY_METADATA_KEY),
+                source_fingerprint=entry.source_fingerprint,
+            )
+            current = {
+                record.path: record.sha256
+                for record in source.authenticated_identity_snapshot().file_records
+            }
+        except (OSError, RuntimeError, ValueError) as exc:
+            logger.info("Stale symbol_graph not served: %s", exc)
+            return None
+        return source_delta(indexed, current)
 
     def _load_bm25(
         self,
