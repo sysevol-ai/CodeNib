@@ -73,6 +73,7 @@ to the `UpdateVerifier` contract (`codenib/compiler/verification.py`):
 |----------|----------|
 | `NullVerifier` (default) | Proves nothing and says so: `verified=False`, `checked=False`, reason `"no verifier configured"`. |
 | `AlwaysAdmitVerifier` | Admits without checking (`verified=True`, `checked=False`). An explicit opt-in for environments that have accepted the risk deliberately. |
+| `FactProjectionVerifier` | Compares the facts a patched graph states with those of a fresh build: vertices and anchored edges as multisets, identified by unified name. It needs the fresh graph, so it measures a patch rather than saving a build, and it does not replay requests against the persisted graph. |
 
 With the builder's default `require_verification=True`, an unadmitted patch is discarded and the graph is fully rebuilt — so out of the box the symbol-graph path behaves exactly like a full rebuild until a real verifier is configured. To accept unverified patches, construct `SymbolGraphBuilder` with `AlwaysAdmitVerifier()` (or `require_verification=False`) and register it in place of the default. Either way the outcome (`verified`, `verification_checked`, `verification_reason`) is written into the manifest entry's metadata, so admission is auditable on disk. A patch that touches no source files of the configured languages is admitted directly.
 
@@ -90,6 +91,60 @@ an added or deleted file, or a rename requests a full rebuild; a body-only edit
 may remain incremental in the direct experimental API. That API catches an
 explicit rebuild request and falls back to a full generation, so it cannot
 silently retain stale import edges.
+
+### What a patch keeps and what it looks up again
+
+A patch is exact only where it does not ask the language server. The graph was
+built by one analyser and the language server is another, so the patcher keeps
+every fact the build produced that an edit did not touch, and looks up only
+the edited lines:
+
+- **File scope.** A changed file with no vertex in the graph was outside the
+  build's scope, for example a `tests/` directory when the project limits its
+  analyser to `src/`. It is not patched in.
+- **Lines.** Definitions and reference anchors on untouched lines move by the
+  lines added above them, computed from the file's exact edits. This covers
+  what `documentSymbol` does not list: overloads that share a name, module
+  variables, and references made by a module's top-level code.
+- **Changed bodies.** In a function whose body changed, references on
+  untouched lines are kept; only the edited lines are looked up again.
+- **Refusal.** When two definitions share a name and the edit touches one that
+  is not tracked, the patcher asks for a full rebuild instead of guessing.
+
+What remains inexact is on the edited lines themselves: the two analysers can
+disagree on what an edited line defines or refers to.
+
+### Rebuilding changed files with the builder (Python)
+
+For Python there is a second way to patch that removes that disagreement: have
+the graph's own builder check the changed files, and replace their part of the
+graph. It does not start a language server.
+
+```python
+from codenib.graph.incremental.builder_patch import rebuild_changed_files
+from codenib.graph.incremental.change_mgr import detect_changed_files
+
+changed = detect_changed_files(repo, base_commit, "HEAD", extensions={".py"})
+rebuild_changed_files(graph, repo, changed, symbol_table=index_dir / "pyrefly-symbols.json.gz")
+```
+
+- **Why it is exact.** pyrefly reports a file the same whether it is checked
+  alone or with the whole project. References from the changed files resolve
+  through `pyrefly-symbols.json.gz`, the symbol table a full pyrefly build
+  writes beside the graph; without it the rest of the project would look like
+  an external library.
+- **What else it rebuilds.** When the changed files gain or lose a definition,
+  the files that refer into them are rebuilt too, because their references can
+  now resolve differently. Past 200 such files it reports
+  `dependents_skipped` and leaves them.
+- **What it cannot see.** A file with no reference into the changed files
+  whose references still resolve differently, such as an import that only now
+  finds its target.
+- **When it refuses.** A graph built by another provider, or before the symbol
+  table existed, raises `BuilderPatchUnavailable`; rebuild once.
+
+It is not called by the compiler. Like the language-server patcher, it is an
+API to measure and to wire in behind a verifier.
 
 ## How It Works
 

@@ -40,6 +40,7 @@ from .explore_bounds import (
     TEXT_RESPONSE_MEASURE,
 )
 from .explore_session import ExploreSessionLedger, ExploreSessionRuntime
+from .graph_lag import GraphSourceLag, annotate_graph_result
 from .graph_warmup import FAILED, READY, RUNNING, GraphTarget, GraphWarmup
 from .prompts import (
     CODENIB_EXPLORE_GUIDE,
@@ -101,6 +102,16 @@ _EXPLORE_GRAPH_WAIT_SECONDS = 5.0
 _warm_graph = False
 # A refresh after edits waits this long for a graph build of the old source.
 _REFRESH_WAIT_FOR_GRAPH_SECONDS = 30.0
+# A provider that blocks queries while it builds rebuilds its graph only once
+# the loaded one is more than this many source files behind.
+_LAGGING_GRAPH_MAX_FILES = 50
+_GRAPH_RESULT_TOOLS = (
+    dependency_subgraph_impl,
+    search_regex_impl,
+    lsp_definition_impl,
+    lsp_references_impl,
+    lsp_route_impl,
+)
 _SearchText = Annotated[str, Field(min_length=1)]
 _SearchQuery = Annotated[
     str,
@@ -236,6 +247,7 @@ def _indexed_tool_call_once(
                 or not ctx._defer_graph
                 or bool(args[1])
                 or _has_complete_graph(ctx)
+                or _graph_lag(ctx) is not None
             )
             args = (*args[:5], include_dependencies, *args[6:])
         extra: dict[str, Any] = {}
@@ -243,6 +255,9 @@ def _indexed_tool_call_once(
             ctx, pending = _prepare_explore_graph(ctx, args)
             if pending is not None:
                 extra["graph_preparation"] = pending
+            lag = _graph_lag(ctx)
+            if lag is not None and (bool(args[1]) or args[5]):
+                extra["graph_lag"] = lag
         else:
             ctx = _prepare_graph_for_call(function, ctx, args)
         from ..agent.source_definitions import SourceDefinitionUnavailable
@@ -252,7 +267,10 @@ def _indexed_tool_call_once(
                 result = function(ctx, *args, **extra)
             if getattr(ctx, "_source_definition_provider", None) is not None:
                 ctx.lsp_provider_selection = ctx._source_definition_provider.selection()
-            return result
+                if function is lsp_definition_impl:
+                    # Answered from live source, not from the older graph.
+                    return result
+            return _mark_graph_lag(function, ctx, result)
         except SourceDefinitionUnavailable as exc:
             # Only the admitted source worker may request this one graph retry.
             # Final original-source verification above runs before this catch;
@@ -270,7 +288,7 @@ def _indexed_tool_call_once(
                     ctx.lsp_provider.fallback_reason
                 )
             with ctx.indexed_query():
-                return function(ctx, *args)
+                return _mark_graph_lag(function, ctx, function(ctx, *args))
 
 
 def _refreshes_edited_source() -> bool:
@@ -351,13 +369,60 @@ def _refresh_edited_source() -> ServerContext:
 
 
 def _has_complete_graph(ctx: ServerContext) -> bool:
+    """Whether a complete graph of the current source is loaded."""
+
     entry = ctx.manifest.indexes.get("symbol_graph")
     return (
         ctx.symbol_graph is not None
+        and getattr(ctx, "symbol_graph_lag", None) is None
         and entry is not None
         and entry.config.get("allow_partial_languages") is False
         and entry.config.get("allow_partial_index") is False
     )
+
+
+def _graph_lag(ctx: Any) -> GraphSourceLag | None:
+    """The loaded graph's distance from the current source, if it has one."""
+
+    lag = getattr(ctx, "symbol_graph_lag", None)
+    if isinstance(lag, GraphSourceLag) and ctx.symbol_graph is not None:
+        return lag
+    return None
+
+
+def _serves_lagging_graph(ctx: ServerContext) -> bool:
+    """Answer from the older graph now, and catch up without blocking.
+
+    A graph that names the files it is behind on is more useful than a wait
+    of minutes. Where the provider can build beside live queries, the new
+    graph is prepared in the background and replaces this one when it is
+    published. Other providers must block queries while they build, so they
+    rebuild only once the graph is more than ``_LAGGING_GRAPH_MAX_FILES``
+    files behind.
+    """
+
+    lag = _graph_lag(ctx)
+    if lag is None:
+        return False
+    if _builds_in_background(ctx):
+        if lag.file_count and not _graph_warmup.handles(
+            ctx.manifest.source_fingerprint
+        ):
+            try:
+                _start_graph_warmup(ctx)
+            except IndexedQueryError as exc:
+                logger.warning("Graph preparation not started: %s", exc)
+        return True
+    return lag.file_count <= _LAGGING_GRAPH_MAX_FILES
+
+
+def _mark_graph_lag(function: Callable[..., Any], ctx: Any, result: Any) -> Any:
+    """Tell the caller which files a graph answer may be out of date for."""
+
+    lag = _graph_lag(ctx)
+    if lag is None or function not in _GRAPH_RESULT_TOOLS:
+        return result
+    return annotate_graph_result(result, lag)
 
 
 def _builds_in_background(ctx: ServerContext) -> bool:
@@ -417,6 +482,8 @@ def _prepare_explore_graph(
         return ctx, None
     if not (bool(args[1]) or args[5]) or _has_complete_graph(ctx):
         return ctx, None
+    if _serves_lagging_graph(ctx):
+        return ctx, None
     if not _builds_in_background(ctx):
         return _prepare_graph_for_call(explore_context_impl, ctx, args), None
     _start_graph_warmup(ctx)
@@ -446,14 +513,7 @@ def _prepare_graph_for_call(
     """
     if not isinstance(ctx, ServerContext) or not ctx._defer_graph:
         return ctx
-    graph_tools = (
-        dependency_subgraph_impl,
-        search_regex_impl,
-        lsp_definition_impl,
-        lsp_references_impl,
-        lsp_route_impl,
-    )
-    needs_graph = function in graph_tools or (
+    needs_graph = function in _GRAPH_RESULT_TOOLS or (
         function is explore_context_impl and (bool(args[1]) or args[5])
     )
     if not needs_graph or _has_complete_graph(ctx):
@@ -469,6 +529,8 @@ def _prepare_graph_for_call(
         and not _graph_warmup.running()
         and ctx.enable_source_definition_provider()
     ):
+        return ctx
+    if _serves_lagging_graph(ctx):
         return ctx
     # The call has already followed any published build, so a missing graph
     # here needs a new one, as the synchronous preparation always did.
@@ -1059,6 +1121,11 @@ def _manifest_response_for(ctx: ServerContext) -> dict[str, Any]:
         "graph_preparation": {
             "policy": "on-demand" if ctx._defer_graph else "prebuilt",
             "loaded": ctx.symbol_graph is not None,
+            **(
+                {"lag": _graph_lag(ctx).summary()}
+                if _graph_lag(ctx) is not None
+                else {}
+            ),
         },
         "explore_session": explore_session,
         "source_read": {
@@ -1292,6 +1359,7 @@ def init_server(
             artifact=artifact,
             artifact_binding=artifact_binding,
             source_binding=source_binding,
+            _defer_graph=defer_graph,
         )
         # A build belongs to the context it was started for.
         _warm_graph = defer_graph and warm_graph
@@ -1321,6 +1389,7 @@ def _init_server(
     artifact_binding: ContextArtifactBinding | None = None,
     source_binding: RepositorySourceBinding | None = None,
     _reload: bool = False,
+    _defer_graph: bool = False,
 ) -> None:
     """Load and publish under the caller's context lock; never build indexes."""
 
@@ -1501,6 +1570,17 @@ def _init_server(
                 artifact_binding=artifact_binding,
                 native_index_authorization=native_authorization,
                 source_binding=retained_source,
+                # Only an on-demand local connection may answer from a graph
+                # that is behind the source; it reports the files it lags on.
+                allow_lagging_graph=(
+                    resolved_manifest_path is not None
+                    and artifact is None
+                    and artifact_binding is None
+                    and (
+                        (_reload and _ctx is not None and _ctx._defer_graph)
+                        or _defer_graph
+                    )
+                ),
             )
             new_context.source_error = source_error
             portable_artifact = artifact is not None or artifact_binding is not None

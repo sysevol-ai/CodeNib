@@ -2232,17 +2232,23 @@ class SymbolGraphBuilder:
         python_report = result.index_generation_reports.get("python", {})
         actual_provider = python_report.get("backend")
         if actual_provider in {"pyrefly", "scip-python"}:
-            from ..scip_interface.pyrefly_provider import PythonGraphProvider
+            from ..scip_interface.pyrefly_provider import (
+                PYREFLY_PROVIDER,
+                PythonGraphProvider,
+                pyrefly_identity,
+            )
 
             # Selection is a build request; an automatic pyrefly failure may
             # have produced a scip-python graph. Publish the successful route,
             # so it cannot satisfy a later pyrefly cache identity check.
             version = python_report.get("provider_version")
-            artifact_identity["python_graph_provider"] = (
-                f"{actual_provider} {version}"
-                if version
-                else PythonGraphProvider(actual_provider).identity
-            )
+            if version and actual_provider == PYREFLY_PROVIDER:
+                published = pyrefly_identity(version)
+            elif version:
+                published = f"{actual_provider} {version}"
+            else:
+                published = PythonGraphProvider(actual_provider).identity
+            artifact_identity["python_graph_provider"] = published
         graph_output_receipt = result.graph_output_receipt
 
         graph = result.graph
@@ -2374,6 +2380,17 @@ class SymbolGraphBuilder:
             )
         graph_artifact = graph_artifact_receipt
 
+        from ..graph.health import graph_health
+
+        # The figures describe the graph and never decide the build: a graph
+        # they cannot be read from is published without them.
+        try:
+            health = graph_health(graph.graph)
+        except (AttributeError, KeyError, TypeError, ValueError):
+            health = None
+        for warning in (health or {}).get("warnings", ()):
+            logger.warning("Symbol graph: %s", warning)
+
         return IndexStatus(
             index_type="symbol_graph",
             state=IndexState.FRESH,
@@ -2393,6 +2410,7 @@ class SymbolGraphBuilder:
                 "graph_artifact": graph_artifact,
                 "lsp_occurrence_artifact": lsp_occurrence_artifact,
                 "query_surface_sha256": observed_query_surface,
+                **({"graph_health": health} if health is not None else {}),
                 "update_mode": "full_rebuild",
                 "partial_index": bool(compiler_partial_languages),
                 "failed_languages": result.failed_languages,

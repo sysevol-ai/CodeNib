@@ -199,6 +199,8 @@ class SubgraphMgr(ABC):
         self.symbol_selection_ranges: dict[str, tuple[int, int, int, int]] = {}
         # Cache semanticTokens per file (avoid duplicate LSP calls)
         self._semantic_tokens_cache: dict[str, list[dict] | None] = {}
+        # Per file: its hunks as exact line edits, for the patch in progress.
+        self._line_edits: dict[str, list[tuple[int, int, int]]] = {}
 
     # ═══════════════════════════════════════════════════════════
     # Abstract methods — language-specific
@@ -572,6 +574,58 @@ class SubgraphMgr(ABC):
         if moved:
             g._invalidate_edge_index()
         return moved
+
+    def rebase_outgoing_anchor_lines(
+        self,
+        vertex_name: str,
+        anchor_file: str,
+        edits: list[tuple[int, int, int]],
+        keep_replaced: bool = False,
+    ) -> tuple[int, int]:
+        """Move each outgoing anchor of ``vertex_name`` to its line after ``edits``.
+
+        ``edits`` are the file's hunks from ``change_mgr.get_line_edits``. An
+        anchor on a line no hunk touched moves by the lines added above it,
+        whatever the hunks did to the rest of the body. An anchor on an
+        edited line is deleted: what stands there now has to be looked up.
+
+        ``keep_replaced`` is for code nothing looks up again, such as a
+        module's top level: an anchor on a line replaced one for one stays
+        on that line rather than being lost.
+
+        Returns ``(moved, deleted)``.
+        """
+        from .change_mgr import shift_of_line, shift_of_range
+
+        g = self.code_graph
+        vid = g.name_to_vertex.get(vertex_name)
+        if vid is None or not edits:
+            return 0, 0
+        moved = 0
+        stale = []
+        for eid in g.graph.incident(vid, mode="out"):
+            edge = g.graph.es[eid]
+            if edge["type"] != EDGE_TYPE_REFERENCE:
+                continue
+            attrs = edge.attributes()
+            line = attrs.get("anchor_line")
+            if attrs.get("anchor_file") != anchor_file or line is None:
+                continue
+            shift = (
+                shift_of_line(edits, line)
+                if keep_replaced
+                else shift_of_range(edits, line, line)
+            )
+            if shift is None:
+                stale.append(eid)
+            elif shift:
+                edge["anchor_line"] = line + shift
+                moved += 1
+        if stale:
+            g.graph.delete_edges(stale)
+        if moved or stale:
+            g._invalidate_edge_index()
+        return moved, len(stale)
 
     def rename_vertex(self, old_name: str, new_name: str, new_attrs: dict = None):
         """Rename a vertex without deleting it. All edges preserved."""

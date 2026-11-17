@@ -10,7 +10,9 @@ any function maps to its class and the class's methods; a line outside any
 class maps to every definition in the file. The tests at risk are the test
 functions that reach that changed code in at most ``depth`` calls, following
 the graph's references plus the constructor edges of
-:mod:`codenib.graph.constructor_edges`. Each test keeps the path it was found
+:mod:`codenib.graph.constructor_edges`, the alias edges of
+:mod:`codenib.graph.alias_edges` and the override pairs of
+:mod:`codenib.graph.override_edges`. Each test keeps the path it was found
 by, so a report can say why the test is at risk.
 
 The method and its recall on real agent regressions are in
@@ -36,7 +38,9 @@ from typing import (
     Tuple,
 )
 
+from ..graph.alias_edges import alias_edges
 from ..graph.constructor_edges import constructor_edges, short_name
+from ..graph.override_edges import override_pairs
 from ..types import (
     NODE_TYPE_CLASS,
     NODE_TYPE_FILE,
@@ -222,6 +226,26 @@ class ImpactGraph:
         for edge in constructor_edges(graph, self.root):
             self.callers[edge.constructor].add(edge.caller)
             self.call_lines.setdefault((edge.caller, edge.constructor), edge.line)
+        # A use of ``pkg.name`` where ``name = obj.name`` is a use of ``obj.name``.
+        for alias in alias_edges(graph, self.root):
+            self.callers[alias.target].add(alias.user)
+            if alias.line is not None:
+                self.call_lines.setdefault((alias.user, alias.target), alias.line)
+        # A call of ``Base.method`` may run any override of it. The callers
+        # are those known before this step, so an override two levels down
+        # gets its ancestors' callers once, not each other's additions.
+        pairs = override_pairs(graph, self.root)
+        declared = {
+            overridden: set(self.callers.get(overridden, ())) for _, overridden in pairs
+        }
+        for override, overridden in pairs:
+            for caller in declared[overridden]:
+                if caller == override:
+                    continue
+                self.callers[override].add(caller)
+                line = self.call_lines.get((caller, overridden))
+                if line is not None:
+                    self.call_lines.setdefault((caller, override), line)
         self.by_file: Dict[str, List[int]] = defaultdict(list)
         for vertex, path in enumerate(self.files):
             if has_def[vertex] and path and self.starts[vertex] is not None:

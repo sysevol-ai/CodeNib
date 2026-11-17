@@ -12,6 +12,7 @@ predicates the converter reads. The expectations mirror
 """
 
 import json
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -26,7 +27,7 @@ from codenib.scip_interface.pyrefly_glean import (
     _receiver_writes,
     glean_to_scip_index,
 )
-from codenib.scip_interface.pyrefly_provider import write_pyrefly_config
+from codenib.scip_interface.pyrefly_provider import python_layout, write_pyrefly_config
 from codenib.scip_interface.python_identity import normalize_python_index
 from codenib.scip_interface.scip_decode_python import SCIPPythonGraphDecoder
 from codenib.types import EDGE_TYPE_CONTAIN, EDGE_TYPE_REFERENCE
@@ -331,6 +332,113 @@ def test_config_checks_every_source_with_src_layout_and_pyright_scope(tmp_path):
     assert not any(path.name == "pyrefly.toml" for path in root.rglob("*"))
 
 
+def _toml(path: Path) -> dict:
+    try:
+        import tomllib
+    except ModuleNotFoundError:  # pragma: no cover - Python 3.10
+        import tomli as tomllib
+
+    return tomllib.loads(path.read_text(encoding="utf-8"))
+
+
+def _tree(root: Path, files: dict) -> Path:
+    for path, text in files.items():
+        (root / path).parent.mkdir(parents=True, exist_ok=True)
+        (root / path).write_text(text)
+    return root
+
+
+def test_config_imports_from_a_nested_package_root(tmp_path):
+    # streamlit keeps its package in lib/streamlit and its tests in lib/tests.
+    # The tests import ``streamlit``, which resolves only from ``lib``.
+    root = _tree(
+        tmp_path / "repo",
+        {
+            "lib/shop/__init__.py": "",
+            "lib/shop/pricing/__init__.py": "",
+            "lib/tests/test_shop.py": "import shop\n",
+            "tools/__init__.py": "",
+            "node_modules/dep/shop/__init__.py": "",
+            ".tox/py/shop/__init__.py": "",
+        },
+    )
+
+    assert python_layout(root) == (["lib"], [])
+    config = _toml(write_pyrefly_config(tmp_path / "pyrefly.toml", root))
+    base = root.resolve().as_posix()
+    # ``lib`` comes first so lib/shop is named ``shop``, as its importers
+    # name it. Measured on streamlit: with ``lib`` after the checkout root,
+    # 18% of tests had an edge into the package; with it first, 91%.
+    assert config["search-path"] == [f"{base}/lib", base]
+
+
+def test_directory_of_packages_is_a_root_only_when_one_is_imported_bare(tmp_path):
+    root = _tree(
+        tmp_path / "repo",
+        {
+            # A namespace package: its modules are imported as ``shop.cart``.
+            # As a root it would rename them ``cart``, which nothing imports;
+            # on poetry that left no test with an edge into the package.
+            "src/shop/cart/__init__.py": "",
+            "src/shop/json/__init__.py": "",
+            "tests/test_cart.py": "import json\nfrom shop.cart import x\n",
+            # A fixture project nothing imports.
+            "tests/fixtures/sample/sample_pkg/__init__.py": "",
+        },
+    )
+
+    # ``import json`` names the standard library, not src/shop/json.
+    assert python_layout(root) == ([], [])
+    config = _toml(write_pyrefly_config(tmp_path / "pyrefly.toml", root))
+    base = root.resolve().as_posix()
+    assert config["search-path"] == [f"{base}/src", base]
+
+
+def test_nested_root_that_would_shadow_an_import_goes_last(tmp_path):
+    root = _tree(
+        tmp_path / "repo",
+        {
+            "tests/__init__.py": "",
+            "tests/test_all.py": "import shop_aws\nimport shop_gcp\n",
+            "plugins/aws/shop_aws/__init__.py": "",
+            "plugins/aws/tests/__init__.py": "",
+            "plugins/gcp/shop_gcp/__init__.py": "",
+        },
+    )
+
+    config = _toml(write_pyrefly_config(tmp_path / "pyrefly.toml", root))
+    base = root.resolve().as_posix()
+    # ``import tests`` resolved to the checkout's own package before; a root
+    # holding another ``tests`` must not take it over.
+    assert config["search-path"] == [
+        f"{base}/plugins/gcp",
+        base,
+        f"{base}/plugins/aws",
+    ]
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="needs directory symlinks")
+def test_config_checks_a_linked_package_once(tmp_path):
+    # mlflow links libs/skinny/mlflow to its mlflow package. Checked as a
+    # second tree, every definition gains a copy that nothing refers to.
+    root = tmp_path / "repo"
+    (root / "shop").mkdir(parents=True)
+    (root / "shop/__init__.py").write_text("")
+    (root / "libs/skinny").mkdir(parents=True)
+    (root / "libs/skinny/shop").symlink_to("../../shop", target_is_directory=True)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (root / "vendored").symlink_to(outside, target_is_directory=True)
+
+    roots, linked = python_layout(root)
+    assert roots == []
+    # A link that leaves the checkout is not a copy of anything in it.
+    assert linked == ["libs/skinny/shop"]
+    config = _toml(write_pyrefly_config(tmp_path / "pyrefly.toml", root))
+    base = root.resolve().as_posix()
+    assert f"{base}/libs/skinny/shop/**" in config["project-excludes"]
+
+
 @pytest.mark.parametrize("include", ["**/*.py", "src/*/api?.py", "pkg/**/*.pyi"])
 def test_pyright_include_globs_remain_globs(tmp_path, include):
     (tmp_path / "pyrightconfig.json").write_text(json.dumps({"include": [include]}))
@@ -437,3 +545,59 @@ def test_inherited_member_matches_python_c3_instead_of_breadth_first():
 def test_unproven_mro_does_not_choose_an_inherited_member(bases, aliases):
     converter = _hierarchy_converter(bases, ["Root.value", "A.value"], aliases)
     assert converter._inherited("Child", "value", 0) == []
+
+
+@pytest.mark.parametrize("case", ["properties", "local_bindings"])
+@pytest.mark.parametrize("alone", ["nested.py", "other.py"])
+def test_one_file_converted_alone_resolves_into_the_rest(tmp_path, case, alone):
+    # A report of one file holds only that file's definitions. Without the
+    # whole project's symbol table the converter takes the other file for an
+    # external library and its references vanish from the graph.
+    from codenib.scip_interface.pyrefly_glean import (
+        SYMBOL_TABLE_NAME,
+        read_symbol_table,
+    )
+
+    _sources(tmp_path, case)
+    table = tmp_path / SYMBOL_TABLE_NAME
+    whole, _ = glean_to_scip_index(
+        CAPTURES / case,
+        tmp_path,
+        project_name="fixture",
+        project_version="1",
+        symbol_table_out=table,
+    )
+    [expected] = [d for d in whole.documents if d.relative_path == alone]
+
+    updated = tmp_path / "updated.json.gz"
+    part, _ = glean_to_scip_index(
+        CAPTURES / case,
+        tmp_path,
+        project_name="fixture",
+        project_version="1",
+        path_allowed=lambda path: path == alone,
+        symbol_table=read_symbol_table(table),
+        symbol_table_out=updated,
+    )
+
+    [document] = part.documents
+    assert MessageToString(document) == MessageToString(expected)
+    # The table written by the partial conversion describes the same project.
+    rows = lambda path: sorted(  # noqa: E731
+        (row[1], row[2], row[11]) for row in read_symbol_table(path)["definitions"]
+    )
+    assert rows(updated) == rows(table)
+
+    unresolved, _ = glean_to_scip_index(
+        CAPTURES / case,
+        tmp_path,
+        project_name="fixture",
+        project_version="1",
+        path_allowed=lambda path: path == alone,
+    )
+    if any(
+        "other" in o.symbol or "nested" in o.symbol
+        for o in expected.occurrences
+        if not o.symbol_roles & 1 and alone.removesuffix(".py") not in o.symbol
+    ):
+        assert MessageToString(unresolved.documents[0]) != MessageToString(expected)

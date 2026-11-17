@@ -28,6 +28,10 @@ them, and keeps working.
   line outside any class counts as a change to every definition in the file.
 - **Tests at risk.** A test is at risk when it reaches changed code in at most
   three calls. Calls include constructors: `Cart(...)` reaches `Cart.__init__`.
+  A call through a name that a module republishes, such as
+  `date_input = _main.date_input`, reaches the function it names.
+  A call of a method through its base class reaches every override of that
+  method in a subclass.
 - **Why.** Each test comes with its path, such as
   `test_checkout_total (tests/test_checkout.py:6) -> checkout (shop/checkout.py:5) -> Cart.__init__`.
   The location after each name is the line where it makes the next call.
@@ -166,10 +170,11 @@ Kinds are `decision`, `gotcha`, `invariant`, `contract` and `note`.
 ## How well it works
 
 On 68 agent patches that pass SWE-bench Verified's tests but break other tests
-in the project's full suite, the guard listed a broken test for 35. On patches
-that broke nothing, it listed a median of 3 tests. Selecting every test file
+in the project's full suite, the guard listed a broken test for 38. On patches
+that broke nothing, it listed a median of 11 tests. Selecting every test file
 that imports a changed module listed a broken test for 22, at a median of 81
-tests. The method and data are in
+tests. Without calls through a base class the guard listed a broken test for
+35 at a median of 3. The method and data are in
 [pull request #976](https://github.com/sysevol-ai/CodeNib/pull/976).
 
 A list is only useful if the agent acts on it. In an A/B run on 24 Django tasks

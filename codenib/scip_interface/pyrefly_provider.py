@@ -20,7 +20,9 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterable, Mapping, Optional
@@ -32,6 +34,17 @@ PYREFLY_EXECUTABLE_ENV = "CODENIB_PYREFLY"
 SCIP_PYTHON_PROVIDER = "scip-python"
 PYREFLY_PROVIDER = "pyrefly"
 _PROVIDERS = (SCIP_PYTHON_PROVIDER, PYREFLY_PROVIDER)
+# How CodeNib configures pyrefly. It is part of a graph's identity, so a graph
+# built under an older configuration is rebuilt instead of reused.
+#   layout-2: import roots found from the checkout's imports; linked
+#   directories checked once.
+PYREFLY_CONFIG_REVISION = "layout-2"
+
+
+def pyrefly_identity(version: str) -> str:
+    """Provider, release and configuration, recorded with graph artifacts."""
+
+    return f"{PYREFLY_PROVIDER} {version} {PYREFLY_CONFIG_REVISION}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,7 +68,7 @@ class PythonGraphProvider:
         """Provider and release, recorded with graph artifacts."""
 
         if self.name == PYREFLY_PROVIDER:
-            return f"{PYREFLY_PROVIDER} {PYREFLY_VERSION}"
+            return pyrefly_identity(PYREFLY_VERSION)
         return f"{SCIP_PYTHON_PROVIDER} {SCIP_PYTHON_VERSION}"
 
 
@@ -155,12 +168,137 @@ def _toml_list(values: Iterable[str]) -> str:
     return "[" + ", ".join(json.dumps(value) for value in values) + "]"
 
 
+# Directories that never hold a project's own import roots.
+_SKIPPED_DIRECTORIES = frozenset(
+    {"node_modules", "__pycache__", "site-packages", "venv", "build", "dist"}
+)
+_MAX_IMPORT_ROOTS = 32
+_IMPORT = re.compile(rb"^[ \t]*(?:from|import)[ \t]+([A-Za-z_][A-Za-z0-9_]*)", re.M)
+_MAX_SCANNED_BYTES = 256 * 1024
+_INITS = ("__init__.py", "__init__.pyi")
+_STANDARD_LIBRARY = frozenset(getattr(sys, "stdlib_module_names", ()))
+
+
+def _importable_names(directory: Path, *, packages_only: bool) -> set[str]:
+    """Names an ``import`` can find directly in ``directory``.
+
+    A directory without ``__init__`` is importable too, as a namespace
+    package; ``packages_only`` leaves those out.
+    """
+
+    names: set[str] = set()
+    try:
+        entries = list(os.scandir(directory))
+    except OSError:
+        return names
+    for entry in entries:
+        if entry.name.startswith("."):
+            continue
+        if entry.is_dir():
+            if not packages_only or any(
+                os.path.isfile(os.path.join(entry.path, init)) for init in _INITS
+            ):
+                names.add(entry.name)
+        elif entry.name.endswith((".py", ".pyi")):
+            names.add(entry.name.rsplit(".", 1)[0])
+    return names
+
+
+def python_layout(project_root: Path) -> tuple[list[str], list[str]]:
+    """Find where a checkout's packages are imported from, and its linked copies.
+
+    Returns ``(import_roots, linked_directories)``, both relative to the root.
+
+    An import root is a directory that is not itself a package and holds one
+    that the checkout imports by its bare name: ``lib`` for
+    ``lib/streamlit/__init__.py`` when some file says ``import streamlit``.
+    Without the root on the search path every such import is unresolved and
+    its callers have no edge into the package.
+
+    The import is the evidence. A directory that merely holds packages may be
+    a namespace package (``src/poetry``, imported as ``poetry.console``) or a
+    test fixture; treating either as a root renames its modules to names
+    nothing imports. The checkout's own root and ``src`` are always roots and
+    are not returned.
+
+    A linked directory is a symbolic link to a directory inside the checkout,
+    such as ``libs/skinny/mlflow -> ../../mlflow``. Checked as its own tree it
+    repeats every definition under a second name that nothing refers to.
+    """
+
+    root = project_root.resolve()
+    candidates: list[Path] = []
+    linked: list[str] = []
+    imported: set[str] = set()
+    for directory, dirnames, filenames in os.walk(root, followlinks=False):
+        here = Path(directory)
+        kept = []
+        for name in sorted(dirnames):
+            path = here / name
+            if path.is_symlink():
+                try:
+                    inside = path.resolve().is_relative_to(root)
+                except OSError:
+                    inside = False
+                if inside:
+                    linked.append(path.relative_to(root).as_posix())
+            elif not name.startswith(".") and name not in _SKIPPED_DIRECTORIES:
+                kept.append(name)
+        dirnames[:] = kept
+        for name in filenames:
+            if name.endswith((".py", ".pyi")):
+                try:
+                    with open(here / name, "rb") as handle:
+                        text = handle.read(_MAX_SCANNED_BYTES)
+                except OSError:
+                    continue
+                imported.update(match.decode() for match in _IMPORT.findall(text))
+        parent = here.parent
+        if (
+            here != root
+            and parent != root
+            and any(init in filenames for init in _INITS)
+            and not any((parent / init).is_file() for init in _INITS)
+            and parent not in candidates
+        ):
+            candidates.append(parent)
+
+    own = [root / "src", root] if (root / "src").is_dir() else [root]
+    reachable = set().union(
+        *(_importable_names(entry, packages_only=False) for entry in own)
+    )
+    # ``import json`` is no evidence for a package that happens to be named
+    # ``json``, and a root holding one would capture that import.
+    imported -= _STANDARD_LIBRARY
+
+    def namespace_in_use(candidate: Path) -> bool:
+        """``src/poetry`` when the checkout imports ``poetry``."""
+
+        for entry in own:
+            if candidate.is_relative_to(entry):
+                parts = candidate.relative_to(entry).parts
+                if parts and all(part.isidentifier() for part in parts):
+                    return parts[0] in imported
+        return False
+
+    roots = [
+        candidate.relative_to(root).as_posix()
+        for candidate in candidates
+        if candidate not in own
+        and not namespace_in_use(candidate)
+        and (_importable_names(candidate, packages_only=True) & imported) - reachable
+    ]
+    roots.sort(key=lambda entry: (entry.count("/"), entry))
+    return roots[:_MAX_IMPORT_ROOTS], linked
+
+
 def write_pyrefly_config(
     path: Path,
     project_root: Path,
     *,
     exclude_patterns: Iterable[str] = (),
     target_dir: Optional[str] = None,
+    only_files: Optional[Iterable[str]] = None,
 ) -> Path:
     """Write a config that checks every Python source under the root.
 
@@ -195,9 +333,36 @@ def write_pyrefly_config(
             excludes.append(f"{root}/{entry}")
             if not any(character in entry for character in "*?["):
                 excludes.append(f"{root}/{entry}/**")
+    if only_files is not None:
+        # Check these files alone, under the same excludes and import roots.
+        # pyrefly reports a file the same whether it is checked alone or
+        # with the rest of the project, so the result can replace that
+        # file's part of a graph built from the whole project.
+        includes = [f"{root}/{entry.lstrip('/')}" for entry in only_files]
+    import_roots, linked = python_layout(project_root)
+    for entry in linked:
+        excludes.extend([f"{root}/{entry}", f"{root}/{entry}/**"])
     # Pyright also imports from ``src`` by default. It comes first so a
     # src-layout module is named ``pkg.mod``, as its importers name it.
-    search_path = [f"{root}/src", root] if (project_root / "src").is_dir() else [root]
+    own = [f"{root}/src", root] if (project_root / "src").is_dir() else [root]
+    # A module is named after the first root that holds it, so another root
+    # must also come first for ``lib/shop`` to be ``shop``, the name its
+    # importers use. It may only do so when no package of its own is already
+    # importable from an earlier root; then every import that resolved
+    # before keeps its target. A root that would shadow one goes last.
+    taken = set().union(
+        *(_importable_names(Path(entry), packages_only=False) for entry in own)
+    )
+    first: list[str] = []
+    last: list[str] = []
+    for entry in import_roots:
+        names = _importable_names(project_root / entry, packages_only=True)
+        if names & taken:
+            last.append(f"{root}/{entry}")
+        else:
+            first.append(f"{root}/{entry}")
+            taken |= names
+    search_path = [*first, *own, *last]
     path.write_text(
         "\n".join(
             [
@@ -286,7 +451,10 @@ __all__ = [
     "PYREFLY_EXECUTABLE_ENV",
     "PYREFLY_PROVIDER",
     "PYTHON_GRAPH_PROVIDER_ENV",
+    "PYREFLY_CONFIG_REVISION",
     "PythonGraphProvider",
+    "pyrefly_identity",
+    "python_layout",
     "SCIP_PYTHON_PROVIDER",
     "configured_python_graph_provider",
     "pyrefly_command",
