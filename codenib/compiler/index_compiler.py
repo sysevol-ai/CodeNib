@@ -507,6 +507,16 @@ class IndexCompiler:
                 "no view will be published as fresh"
             )
 
+        if not source_changed_during_build:
+            self._record_graph_source_inventory(
+                manifest,
+                repo_path=repo_path,
+                cache=cache,
+                source_selection=source_selection,
+                source_fingerprint=source.value,
+                commit=head_commit,
+            )
+
         all_views_at_head = bool(manifest.indexes) and all(
             self._entry_matches_source(
                 entry,
@@ -590,6 +600,70 @@ class IndexCompiler:
                 "an in-repository index cache must be excluded by the effective "
                 "repository source selection"
             )
+
+    def _record_graph_source_inventory(
+        self,
+        manifest: RepoManifest,
+        *,
+        repo_path: str,
+        cache: str,
+        source_selection: RepositorySourceSelection,
+        source_fingerprint: str,
+        commit: str,
+    ) -> None:
+        """Keep per-file digests of the source the current graph was built from.
+
+        A later reader can then load this graph after the source moves on and
+        name exactly the files it lags behind. The inventory is optional: any
+        failure leaves the entry without one, and readers stay strict.
+        """
+
+        from ..source_fingerprint import capture_repository_source
+        from .source_inventory import (
+            SOURCE_INVENTORY_METADATA_KEY,
+            load_source_inventory,
+            prune_source_inventories,
+            write_source_inventory,
+        )
+
+        entry = manifest.indexes.get("symbol_graph")
+        if entry is None:
+            return
+        receipt = entry.metadata.get(SOURCE_INVENTORY_METADATA_KEY)
+        if self._entry_matches_source(
+            entry,
+            commit=commit,
+            source_fingerprint=source_fingerprint,
+            source_selection_digest=source_selection.digest,
+        ):
+            try:
+                load_source_inventory(
+                    cache, receipt, source_fingerprint=source_fingerprint
+                )
+            except (OSError, ValueError):
+                receipt = None
+                entry.metadata.pop(SOURCE_INVENTORY_METADATA_KEY, None)
+                try:
+                    with capture_repository_source(
+                        repo_path,
+                        exclude_roots=(cache,),
+                        selection=source_selection,
+                    ) as binding:
+                        snapshot = binding.authenticated_identity_snapshot()
+                    if snapshot.fingerprint == source_fingerprint:
+                        receipt = write_source_inventory(
+                            cache,
+                            source_fingerprint=source_fingerprint,
+                            file_digests={
+                                record.path: record.sha256
+                                for record in snapshot.file_records
+                            },
+                        )
+                        entry.metadata[SOURCE_INVENTORY_METADATA_KEY] = receipt
+                except Exception as exc:  # noqa: BLE001 - inventory is optional
+                    logger.warning("symbol_graph: no source inventory (%s)", exc)
+        if isinstance(receipt, dict) and isinstance(receipt.get("sha256"), str):
+            prune_source_inventories(cache, [receipt["sha256"]])
 
     @staticmethod
     def _entry_matches_builder(entry: IndexEntry, builder: Any) -> bool:
