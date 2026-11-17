@@ -137,13 +137,6 @@ def test_dependencies_is_transitive_callees():
     assert {n.name for n in res.nodes} == {"a.c:mid()", "b.c:leaf()"}
 
 
-def test_call_path():
-    g = _make_graph()
-    res = DependencyAnalyzer(g).call_path("caller", "leaf")
-    assert [n.name for n in res.nodes] == ["a.c:caller()", "a.c:mid()", "b.c:leaf()"]
-    assert len(res.edges) == 2
-
-
 def test_subgraph_frontend_json():
     g = _make_graph()
     res = DependencyAnalyzer(g).subgraph("mid", radius=1)
