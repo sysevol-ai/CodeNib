@@ -80,6 +80,46 @@ def _dependents(graph: CodeGraph, files: set[str]) -> set[str]:
     return found
 
 
+def _merged_occurrences(old, new, files: set[str]):
+    """The occurrence index after ``files`` were rebuilt.
+
+    Occurrences in ``files`` are replaced by the rebuilt ones. An occurrence
+    elsewhere that names a same-named definition whose position, and so
+    symbol, changed is pointed at whatever bears that name now, as the graph
+    edge is.
+    """
+
+    from dataclasses import replace
+
+    from ...scip_interface.lsp_occurrence_index import SCIPOccurrenceIndex
+    from ..identity import strip_position_markers
+
+    rebuilt = (
+        [] if new is None else [o for o in new.occurrences if o.file_path in files]
+    )
+    before = {
+        o.symbol for o in old.occurrences if o.file_path in files and o.is_definition
+    }
+    after = {o.symbol for o in rebuilt if o.is_definition}
+    bearers: dict[str, list[str]] = {}
+    for symbol in sorted(after):
+        bearers.setdefault(strip_position_markers(symbol), []).append(symbol)
+    vanished = before - after
+    kept = []
+    for occurrence in old.occurrences:
+        if occurrence.file_path in files:
+            continue
+        if occurrence.symbol in vanished:
+            targets = bearers.get(strip_position_markers(occurrence.symbol))
+            if targets:
+                kept.extend(replace(occurrence, symbol=target) for target in targets)
+                continue
+        kept.append(occurrence)
+    return SCIPOccurrenceIndex(
+        [*kept, *rebuilt], position_encoding=old.position_encoding
+    )
+
+
 def _covered(graph: CodeGraph, paths: Iterable[str]) -> list[str]:
     """The paths the graph's build covered: those with a file vertex."""
 
@@ -157,6 +197,12 @@ def rebuild_changed_files(
                 raise BuilderPatchUnavailable(
                     "the graph builder could not check the changed files alone"
                 )
+            if getattr(graph, "lsp_occurrence_index", None) is not None and (
+                getattr(part, "lsp_occurrence_index", None) is None
+            ):
+                raise BuilderPatchUnavailable(
+                    "the rebuilt files came without the positions the graph serves"
+                )
             stats["files_rebuilt"] = len(present)
             updated = Path(scratch) / SYMBOL_TABLE_NAME
             if updated.is_file():
@@ -223,6 +269,11 @@ def rebuild_changed_files(
     graph.name_to_vertex = {name: index for index, name in enumerate(core.vs["name"])}
     graph._invalidate_edge_index()
     graph.build_range_indexes()
+    positions = getattr(graph, "lsp_occurrence_index", None)
+    if positions is not None:
+        graph.lsp_occurrence_index = _merged_occurrences(
+            positions, getattr(part, "lsp_occurrence_index", None), files
+        )
     if part is not None:
         graph.merge_from(part)
         if followers:

@@ -2490,6 +2490,152 @@ class SymbolGraphBuilder:
             )
         return status
 
+    def patch_changed_files(
+        self,
+        scope: str,
+        *,
+        repo_path: str,
+        output_dir: str,
+        changed_files: Dict[str, Any],
+        source_selection: Optional[RepositorySourceSelection] = None,
+    ) -> Optional[IndexStatus]:
+        """Rebuild the changed files with the graph's builder. None = rebuild all.
+
+        ``changed_files`` comes from comparing authenticated source
+        inventories, not from Git. The generation written here carries the
+        same receipts as a full build, so every reader that accepts a built
+        graph accepts this one.
+
+        Only a Python graph built by pyrefly, which left a symbol table beside
+        it, can be patched this way; anything else returns ``None``.
+        """
+
+        from ..graph.code_graph import CodeGraph
+        from ..graph.health import graph_health
+        from ..graph.incremental.builder_patch import (
+            BuilderPatchUnavailable,
+            rebuild_changed_files,
+        )
+        from ..scip_interface.lsp_occurrence_index import SCIPOccurrenceIndex
+        from ..scip_interface.pyrefly_glean import SYMBOL_TABLE_NAME
+        from ..scip_interface.pyrefly_provider import (
+            PYREFLY_PROVIDER,
+            select_python_graph_provider,
+        )
+        from ..scip_interface.query_surface import query_surface_sha256
+        from .artifact_fingerprints import (
+            graph_output_artifact_fingerprint,
+            regular_file_fingerprint,
+        )
+
+        selected = _source_selection_for_build(self.source_selection, source_selection)
+        graph_languages = self.languages or [self.language]
+        graph_path = os.path.join(output_dir, "graph.pkl")
+        symbol_table = os.path.join(output_dir, SYMBOL_TABLE_NAME)
+        provider = select_python_graph_provider()
+        reason = None
+        if self.source_coverage_fallback:
+            reason = "source coverage fallback requires a full build"
+        elif [str(language) for language in graph_languages] != ["python"]:
+            reason = "only a Python-only graph can be patched by its builder"
+        elif provider.name != PYREFLY_PROVIDER or not provider.ready:
+            reason = "the graph builder is not pyrefly"
+        elif not os.path.isfile(graph_path) or not os.path.isfile(symbol_table):
+            reason = "no graph with a symbol table to patch"
+        if reason:
+            logger.info("symbol_graph: full rebuild (%s)", reason)
+            return None
+
+        start = time.monotonic()
+        graph = CodeGraph.load_graph(graph_path)
+        occurrence_path = os.path.join(output_dir, "lsp_index.pkl")
+        if os.path.isfile(occurrence_path):
+            graph.lsp_occurrence_index = SCIPOccurrenceIndex.load(occurrence_path)
+        try:
+            stats = rebuild_changed_files(
+                graph,
+                repo_path,
+                changed_files,
+                symbol_table=symbol_table,
+                exclude_patterns=_selection_exclude_hints(
+                    self.exclude_patterns, selected
+                ),
+            )
+        except BuilderPatchUnavailable as exc:
+            logger.info("symbol_graph: full rebuild (%s)", exc)
+            return None
+        if stats.get("dependents_skipped"):
+            # Files that refer into the change were too many to rebuild; the
+            # graph may now differ from a fresh build, so build one.
+            logger.info("symbol_graph: full rebuild (too many dependent files)")
+            return None
+
+        (
+            source_selection_report,
+            lsp_occurrence_artifact,
+        ) = _constrain_and_save_selected_graph(graph, output_dir, selected)
+        # The decoded index on disk describes the previous whole-project run.
+        for stale in ("index.decoded", "index.scip"):
+            try:
+                os.unlink(os.path.join(output_dir, stale))
+            except OSError:
+                pass
+        receipt = {
+            "path": os.path.realpath(graph_path),
+            **regular_file_fingerprint(graph_path),
+            "query_surface_sha256": query_surface_sha256(graph),
+        }
+        graph_artifact = graph_output_artifact_fingerprint(output_dir, receipt=receipt)
+        query_surface = graph_artifact.pop("query_surface_sha256")
+        try:
+            health = graph_health(graph.graph)
+        except (AttributeError, KeyError, TypeError, ValueError):
+            health = None
+        for warning in (health or {}).get("warnings", ()):
+            logger.warning("Symbol graph: %s", warning)
+        return IndexStatus(
+            index_type="symbol_graph",
+            state=IndexState.FRESH,
+            last_built=time.time(),
+            age_seconds=0.0,
+            scope=scope,
+            path=output_dir,
+            metadata={
+                **self._artifact_identity_for_selection(selected),
+                "node_count": len(graph.graph.vs),
+                "edge_count": len(graph.graph.es),
+                "language": "python",
+                "available_languages": ["python"],
+                "compiler_available_languages": ["python"],
+                "index_generation_reports": {
+                    "python": {
+                        "backend": PYREFLY_PROVIDER,
+                        "status": "complete",
+                        "complete": True,
+                        "partial": False,
+                    }
+                },
+                "scip_decoded_artifacts": {},
+                "graph_artifact": graph_artifact,
+                "lsp_occurrence_artifact": lsp_occurrence_artifact,
+                "query_surface_sha256": query_surface,
+                **({"graph_health": health} if health is not None else {}),
+                "update_mode": "incremental",
+                "patch": "builder",
+                "patch_stats": stats,
+                "patch_seconds": round(time.monotonic() - start, 3),
+                "partial_index": False,
+                "failed_languages": {},
+                "partial": False,
+                "source_selection_report": source_selection_report,
+                # Equal to a fresh build on every commit measured, but that
+                # is a measurement: this generation was not compared.
+                "verified": False,
+                "verification_checked": False,
+                "verification_reason": "builder patch admitted by configuration",
+            },
+        )
+
     # -- incremental helpers ------------------------------------------------
 
     def _incremental_blocker(
