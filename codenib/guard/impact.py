@@ -20,6 +20,7 @@ The method and its recall on real agent regressions are in
 
 from __future__ import annotations
 
+import codecs
 import re
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
@@ -60,6 +61,20 @@ def symbol_id(name: str) -> str:
     )
 
 
+def _unquote_path(path: str) -> str:
+    """A diff header path with git's C-style quoting undone.
+
+    Git quotes a path holding a non-ASCII byte, a control character, ``"`` or
+    ``\\``, as ``parse_changed_lines`` in ``graph/path_checks.py`` also expects.
+    """
+
+    if path.startswith('"') and path.endswith('"'):
+        return codecs.escape_decode(path[1:-1].encode("utf-8"))[0].decode(
+            "utf-8", errors="surrogateescape"
+        )
+    return path
+
+
 def _base_hunks(
     diff: str,
 ) -> Iterator[Tuple[str, str, int, int]]:
@@ -74,7 +89,7 @@ def _base_hunks(
     current: Optional[str] = None
     for line in diff.splitlines():
         if line.startswith("--- "):
-            source = line[4:].split("\t", 1)[0]
+            source = _unquote_path(line[4:].split("\t", 1)[0])
             old = (
                 None
                 if source == "/dev/null"
@@ -82,7 +97,7 @@ def _base_hunks(
             )
             continue
         if line.startswith("+++ "):
-            target = line[4:].split("\t", 1)[0]
+            target = _unquote_path(line[4:].split("\t", 1)[0])
             target = target[2:] if target.startswith("b/") else target
             if old is None:
                 if target != "/dev/null":
