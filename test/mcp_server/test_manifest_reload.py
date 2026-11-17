@@ -1349,3 +1349,123 @@ def test_edit_refresh_uses_loaded_cache_and_retains_language_policy(
         assert not (repo_index_dir(repo) / "repo_manifest.json").exists()
     finally:
         server.get_context().close()
+
+
+def _bind_graph_inventory(repo, cache):
+    """Receipt the published graph's build-time source, as the compiler does."""
+    from codenib.compiler.source_inventory import (
+        SOURCE_INVENTORY_METADATA_KEY,
+        write_source_inventory,
+    )
+
+    manifest = RepoManifest.load(cache / "repo_manifest.json")
+    entry = manifest.indexes["symbol_graph"]
+    entry.metadata[SOURCE_INVENTORY_METADATA_KEY] = write_source_inventory(
+        cache,
+        source_fingerprint=entry.source_fingerprint,
+        file_digests={
+            path.name: hashlib.sha256(path.read_bytes()).hexdigest()
+            for path in repo.iterdir()
+            if path.is_file()
+        },
+    )
+    manifest.save(cache / "repo_manifest.json")
+    return entry
+
+
+def _republish_keeping_graph(repo, cache, graph_entry, symbol):
+    """Refresh retrieval for edited source; the graph entry stays, now stale."""
+
+    manifest = _publish(repo, cache, "sample.py", symbol)
+    graph_entry.status = "stale"
+    manifest.indexes["symbol_graph"] = graph_entry
+    manifest.derive_capabilities()
+    manifest.save(cache / "repo_manifest.json")
+    return manifest
+
+
+def test_deferred_connection_answers_from_the_older_graph_and_names_edits(
+    local_server, monkeypatch
+):
+    from codenib import codegraph_preparation
+
+    repo, cache, initial = local_server
+    _publish_test_graph(cache, initial)
+    graph_entry = _bind_graph_inventory(repo, cache)
+    builds = []
+    monkeypatch.setattr(
+        codegraph_preparation,
+        "prepare_graph",
+        lambda *_args, **options: builds.append(options["expected_source_fingerprint"]),
+    )
+    monkeypatch.setattr(
+        codegraph_preparation,
+        "refresh_retrieval",
+        lambda *_args, **_options: _republish_keeping_graph(
+            repo, cache, graph_entry, "updated"
+        ).source_fingerprint,
+    )
+    server.init_server(cache / "repo_manifest.json", defer_graph=True)
+    assert server.get_context().symbol_graph is not None
+    assert server.get_context().symbol_graph_lag is None
+
+    async def session():
+        (repo / "sample.py").write_text("def updated():\n    return 2\n")
+        (repo / "notes.txt").write_text("not source the graph describes\n")
+        response = await server.explore_context("updated", symbols=["original"])
+        current = server.get_context()
+        # The edit did not cost the connection its graph or a rebuild wait.
+        assert current.symbol_graph is not None
+        assert current.symbol_graph_lag.modified == ("sample.py",)
+        assert current.symbol_graph_lag.added == ()
+        assert response["plan"]["dependencies"]["enabled"] is True
+        lagging = [
+            item["detail"]
+            for item in response["diagnostics"]
+            if item["code"] == "graph_lags_source"
+        ]
+        assert len(lagging) == 1 and "sample.py" in lagging[0]
+        status = await server.get_manifest()
+        assert status["runtime"]["graph_preparation"]["lag"]["modified"] == [
+            "sample.py"
+        ]
+        references = await server.lsp_references(symbol="sample.py:original()")
+        # A list keeps its shape; rows inside an edited file are marked.
+        assert [row["file"] for row in references] == ["sample.py"]
+        assert references[0]["stale_source"] is True
+        subgraph = await server.dependency_subgraph(symbol="sample.py:original()")
+        assert subgraph["graph_lag"]["modified"] == ["sample.py"]
+        assert "sample.py" in subgraph["graph_lag"]["detail"]
+        # The newer graph is prepared beside the queries, once.
+        assert server._graph_warmup.wait(5) == "ready"
+        await server.explore_context("updated", symbols=["original"])
+        assert builds == [current.manifest.source_fingerprint]
+
+    asyncio.run(session())
+
+
+def test_prebuilt_connection_never_serves_a_graph_behind_its_source(local_server):
+    repo, cache, initial = local_server
+    _publish_test_graph(cache, initial)
+    graph_entry = _bind_graph_inventory(repo, cache)
+    (repo / "sample.py").write_text("def updated():\n    return 2\n")
+    _republish_keeping_graph(repo, cache, graph_entry, "updated")
+
+    server.init_server(cache / "repo_manifest.json")
+
+    strict = server.get_context()
+    assert strict.symbol_graph is None and strict.symbol_graph_lag is None
+
+
+def test_older_graph_without_a_source_inventory_stays_unloaded(local_server):
+    repo, cache, initial = local_server
+    _publish_test_graph(cache, initial)
+    graph_entry = RepoManifest.load(cache / "repo_manifest.json").indexes[
+        "symbol_graph"
+    ]
+    (repo / "sample.py").write_text("def updated():\n    return 2\n")
+    _republish_keeping_graph(repo, cache, graph_entry, "updated")
+
+    server.init_server(cache / "repo_manifest.json", defer_graph=True)
+
+    assert server.get_context().symbol_graph is None

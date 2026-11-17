@@ -348,7 +348,15 @@ codenib codegraph status /absolute/path/to/repository --json
 ```
 
 With `--defer-graph`, CodeNib re-indexes retrieval for edited
-source on the next query, as described above. Prebuilt registrations reject
+source on the next query, as described above. The relationship graph is not
+discarded after an edit: the connection keeps answering from the graph it has
+and names the files that changed since that graph was built. An exploration
+answer reports them in a `graph_lags_source` diagnostic, a subgraph carries a
+`graph_lag` entry, and a definition or reference row inside a changed file is
+marked `stale_source`. Confirm relationships that touch those files in source.
+A Python repository prepares the newer graph in the background and switches to
+it when it is ready; other languages rebuild once more than 50 source files
+have changed. Prebuilt registrations reject
 indexed queries after source changes: rerun
 `codenib codegraph init /absolute/path/to/repository`, then retry in the same
 agent connection. The server loads the published indexes after checking that
