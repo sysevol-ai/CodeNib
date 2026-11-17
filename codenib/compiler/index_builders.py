@@ -2374,6 +2374,17 @@ class SymbolGraphBuilder:
             )
         graph_artifact = graph_artifact_receipt
 
+        from ..graph.health import graph_health
+
+        # The figures describe the graph and never decide the build: a graph
+        # they cannot be read from is published without them.
+        try:
+            health = graph_health(graph.graph)
+        except (AttributeError, KeyError, TypeError, ValueError):
+            health = None
+        for warning in (health or {}).get("warnings", ()):
+            logger.warning("Symbol graph: %s", warning)
+
         return IndexStatus(
             index_type="symbol_graph",
             state=IndexState.FRESH,
@@ -2393,6 +2404,7 @@ class SymbolGraphBuilder:
                 "graph_artifact": graph_artifact,
                 "lsp_occurrence_artifact": lsp_occurrence_artifact,
                 "query_surface_sha256": observed_query_surface,
+                **({"graph_health": health} if health is not None else {}),
                 "update_mode": "full_rebuild",
                 "partial_index": bool(compiler_partial_languages),
                 "failed_languages": result.failed_languages,
