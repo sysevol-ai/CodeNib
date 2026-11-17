@@ -55,12 +55,7 @@ class PatcherRust(PatcherBase):
     def _without_test_modules(self, symbols, lines):
         kept = []
         for symbol in symbols or []:
-            start = symbol.get("range", {}).get("start", {}).get("line", 0)
-            # The attribute sits on the module's first lines or just above.
-            window = lines[max(0, start - 3) : start + 1]
-            if symbol.get("kind") == 2 and any(
-                _CFG_TEST.search(line) for line in window
-            ):
+            if symbol.get("kind") == 2 and self._is_test_only(symbol, lines):
                 continue
             children = symbol.get("children")
             if children:
@@ -70,6 +65,29 @@ class PatcherRust(PatcherBase):
                 }
             kept.append(symbol)
         return kept
+
+    @staticmethod
+    def _is_test_only(module, lines):
+        """Whether one of the module's own attributes is ``cfg(test)``.
+
+        Its attributes are the lines from the start of its range down to its
+        name, and the attribute and comment lines directly above the range.
+        Any other line above belongs to the item before it: a three-line
+        lookbehind took ``#[cfg(test)] mod tests {}`` for the attribute of
+        the module that followed.
+        """
+
+        start = module.get("range", {}).get("start", {}).get("line", 0)
+        name = module.get("selectionRange", {}).get("start", {}).get("line", start)
+        if any(_CFG_TEST.search(line) for line in lines[start : max(start, name) + 1]):
+            return True
+        for line in reversed(lines[:start]):
+            text = line.strip()
+            if not text.startswith(("#[", "//")):
+                return False
+            if _CFG_TEST.search(text):
+                return True
+        return False
 
     # ── Unified name construction ──────────────────────────
 
