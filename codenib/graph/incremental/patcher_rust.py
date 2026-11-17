@@ -11,6 +11,8 @@ import re
 from ...types import NODE_TYPE_FUNCTION, NODE_TYPE_METHOD
 from .patcher_base import PatcherBase
 
+_CFG_TEST = re.compile(r"#\[\s*cfg\s*\(\s*(?:all\s*\(\s*)?test\b")
+
 
 class PatcherRust(PatcherBase):
     """Rust incremental patcher. Matches SCIPRustGraphDecoder naming."""
@@ -29,6 +31,45 @@ class PatcherRust(PatcherBase):
             "interface",
             "property",
         }
+
+    def _graph_symbols(self, file_path, symbols):
+        """Drop modules compiled only for tests.
+
+        rust-analyzer lists the contents of ``#[cfg(test)] mod tests`` as
+        document symbols. The index the graph is built from leaves code under
+        ``cfg(test)`` out, so those functions are no vertices of a fresh
+        graph. Patching byteorder's lib.rs added 14 vertices and, through the
+        references to them, 673 edges.
+        """
+
+        try:
+            lines = (
+                (self.project_root / file_path)
+                .read_text(encoding="utf-8", errors="replace")
+                .splitlines()
+            )
+        except OSError:
+            return symbols
+        return self._without_test_modules(symbols, lines)
+
+    def _without_test_modules(self, symbols, lines):
+        kept = []
+        for symbol in symbols or []:
+            start = symbol.get("range", {}).get("start", {}).get("line", 0)
+            # The attribute sits on the module's first lines or just above.
+            window = lines[max(0, start - 3) : start + 1]
+            if symbol.get("kind") == 2 and any(
+                _CFG_TEST.search(line) for line in window
+            ):
+                continue
+            children = symbol.get("children")
+            if children:
+                symbol = {
+                    **symbol,
+                    "children": self._without_test_modules(children, lines),
+                }
+            kept.append(symbol)
+        return kept
 
     # ── Unified name construction ──────────────────────────
 

@@ -293,3 +293,82 @@ def test_fact_projection_compares_facts_not_vertex_keys(repo):
 
     unchecked = verifier.verify(index_type="symbol_graph", patched=patched)
     assert (unchecked.verified, unchecked.checked) == (False, False)
+
+
+def test_typescript_callbacks_are_not_graph_symbols(repo):
+    # The TypeScript server lists the function passed to describe()/it() as a
+    # symbol, with what is declared in it beneath. The builder defines none of
+    # that. Patching one preact test file added 251 vertices.
+    from codenib.graph.incremental.patcher_ts import PatcherTS
+
+    patcher = PatcherTS(str(repo), CodeGraph(str(repo)), lsp_client=object())
+    symbols = [
+        {"name": "helper", "kind": 12},
+        {
+            "name": "describe('render()') callback",
+            "kind": 12,
+            "children": [
+                {"name": "Tracked", "kind": 5},
+                {"name": "it('works') callback", "kind": 12},
+            ],
+        },
+        {"name": "<function>", "kind": 12},
+        {
+            "name": "Widget",
+            "kind": 5,
+            "children": [
+                {"name": "render", "kind": 6},
+                {"name": "items.map() callback", "kind": 12},
+            ],
+        },
+    ]
+
+    kept = patcher._graph_symbols("a.test.js", symbols)
+
+    assert [symbol["name"] for symbol in kept] == ["helper", "Widget"]
+    assert [child["name"] for child in kept[1]["children"]] == ["render"]
+    # Other languages keep what their server lists.
+    python = PatcherPython(str(repo), CodeGraph(str(repo)), lsp_client=object())
+    assert python._graph_symbols("a.py", symbols) == symbols
+
+
+def test_rust_test_only_modules_are_not_graph_symbols(repo):
+    # rust-analyzer lists what ``#[cfg(test)] mod tests`` holds. The index the
+    # graph is built from leaves code under cfg(test) out.
+    from codenib.graph.incremental.patcher_rust import PatcherRust
+
+    (repo / "src").mkdir()
+    (repo / "src/lib.rs").write_text(
+        "pub fn read() {}\n"
+        "\n"
+        '#[cfg(feature = "std")]\n'
+        "mod io {\n"
+        "    pub fn open() {}\n"
+        "}\n"
+        "\n"
+        "#[cfg(test)]\n"
+        "mod tests {\n"
+        "    fn calc_max() {}\n"
+        "}\n"
+    )
+
+    def symbol(name, kind, line, children=()):
+        return {
+            "name": name,
+            "kind": kind,
+            "range": {"start": {"line": line}, "end": {"line": line + 2}},
+            "children": list(children),
+        }
+
+    symbols = [
+        symbol("read", 12, 0),
+        symbol("io", 2, 3, [symbol("open", 12, 4)]),
+        symbol("tests", 2, 8, [symbol("calc_max", 12, 9)]),
+    ]
+    patcher = PatcherRust(str(repo), CodeGraph(str(repo)), lsp_client=object())
+
+    kept = patcher._graph_symbols("src/lib.rs", symbols)
+
+    # A feature-gated module is built; only the test-only one is dropped.
+    assert [entry["name"] for entry in kept] == ["read", "io"]
+    assert [entry["name"] for entry in kept[1]["children"]] == ["open"]
