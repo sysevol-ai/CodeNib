@@ -19,6 +19,7 @@ from urllib.parse import quote
 
 from ..utils import is_test_file
 from .impact import ChangedSymbol, Hop
+from .languages import convention_for
 from .report import NOT_SEEN, GuardReport
 
 MARKER = "<!-- codenib-impact -->"
@@ -205,15 +206,33 @@ def _tests_section(report: GuardReport) -> str:
         )
     if len(files) > SHOWN_TESTS:
         body.append(f"- and {_count(len(files) - SHOWN_TESTS, 'more file')}")
-    command = "python -m pytest " + " ".join(
-        shlex.quote(name) for name in files[:SHOWN_TESTS]
-    )
-    body += ["", "Run these files:", "", "```bash", command, "```"]
+    commands = _file_commands(files[:SHOWN_TESTS])
+    if commands:
+        body += ["", "Run these files:", "", "```bash", *commands, "```"]
     return _details(
         f"Tests that reach the changed code ({len(tests):,} in "
         f"{_count(len(files), 'file')})",
         body,
     )
+
+
+def _file_commands(files: List[str]) -> List[str]:
+    """Commands that run whole test files, one per language that has one."""
+
+    commands = []
+    python = [name for name in files if name.endswith((".py", ".pyi"))]
+    if python:
+        commands.append("python -m pytest " + " ".join(map(shlex.quote, python)))
+    go = dict.fromkeys(
+        "./" + name.rsplit("/", 1)[0] if "/" in name else "."
+        for name in files
+        if name.endswith(".go")
+    )
+    if go:
+        commands.append("go test " + " ".join(map(shlex.quote, go)))
+    if any(name.endswith(".rs") for name in files):
+        commands.append("cargo test")
+    return commands
 
 
 def _edited_section(report: GuardReport) -> str:
@@ -267,10 +286,10 @@ def _footer(report: GuardReport) -> str:
             f"The change also edits {_count(files, 'test file')}; tests it adds "
             "are not in the graph."
         )
-    new = [path for path in impact.new_files if path.endswith((".py", ".pyi"))]
+    new = [path for path in impact.new_files if convention_for(path) is not None]
     if new:
         parts.append(
-            f"{_count(len(new), 'new Python file')} "
+            f"{_count(len(new), 'new source file')} "
             f"{'is' if len(new) == 1 else 'are'} not in the graph yet."
         )
     module = _module_level(report)

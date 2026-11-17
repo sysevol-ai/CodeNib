@@ -42,7 +42,7 @@ from .snapshot import (
     cached_snapshot,
     failed_snapshot,
     guard_dir,
-    has_python,
+    guarded_languages,
     resolve_commit,
 )
 
@@ -324,8 +324,8 @@ def stop(agent: str, payload: Dict[str, object]) -> Tuple[str, str]:
     session = str(payload.get("session_id") or "unknown")
     entry = _update_session(repo, session)
     base = str(entry.get("base") or resolve_commit(repo))
-    if not has_python(repo, base):
-        return "", "skipped: no Python files"
+    if not guarded_languages(repo, base):
+        return "", "skipped: no supported source files"
     diff, untracked = working_tree_diff(repo, base)
     # An unchanged tree puts no test at risk. With notes, the guard still runs:
     # it reports notes whose code has changed since they were written.
@@ -368,8 +368,8 @@ def session_start(agent: str, payload: Dict[str, object]) -> str:
     session = str(payload.get("session_id") or "unknown")
     entry = _update_session(repo, session, base=commit)
     base = str(entry["base"])
-    if not has_python(repo, base):
-        return "skipped: no Python files"
+    if not guarded_languages(repo, base):
+        return "skipped: no supported source files"
     if cached_snapshot(repo, base) is None:
         build_in_background(repo, base, _log_path(repo))
         return f"session base {base[:12]}; building its graph"

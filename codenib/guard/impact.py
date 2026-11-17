@@ -49,6 +49,14 @@ from ..types import (
     NODE_TYPE_METHOD,
 )
 from ..utils import is_test_file
+from .languages import (
+    FILE,
+    FUNCTION,
+    Convention,
+    convention_for,
+    is_test_definition,
+    test_id,
+)
 
 DEFAULT_DEPTH = 3
 _DEFS = {NODE_TYPE_FUNCTION, NODE_TYPE_METHOD}
@@ -251,15 +259,47 @@ class ImpactGraph:
         for vertex, path in enumerate(self.files):
             if has_def[vertex] and path and self.starts[vertex] is not None:
                 self.by_file[path].append(vertex)
-        self.tests: Set[int] = {
-            vertex
-            for vertex, kind in enumerate(self.types)
-            if kind in _DEFS
-            and has_def[vertex]
-            and self.files[vertex]
-            and is_test_file(self.files[vertex])
-            and short_name(self.names[vertex]).startswith("test")
-        }
+        self._lines: Dict[str, List[str]] = {}
+        self.conventions: Dict[int, Convention] = {}
+        self.tests: Set[int] = set()
+        for vertex, kind in enumerate(self.types):
+            if kind in _DEFS and has_def[vertex] and self.files[vertex]:
+                convention = convention_for(self.files[vertex])
+                if (
+                    convention is not None
+                    and convention.unit == FUNCTION
+                    and is_test_definition(
+                        convention,
+                        short_name(self.names[vertex]),
+                        self.files[vertex],
+                        self.starts[vertex],
+                        self._source_lines,
+                    )
+                ):
+                    self.tests.add(vertex)
+                    self.conventions[vertex] = convention
+            elif kind == NODE_TYPE_FILE:
+                # Where tests are callbacks, the test file stands for them.
+                convention = convention_for(self.names[vertex])
+                if (
+                    convention is not None
+                    and convention.unit == FILE
+                    and is_test_file(self.names[vertex])
+                ):
+                    self.tests.add(vertex)
+                    self.conventions[vertex] = convention
+
+    def _source_lines(self, path: str) -> List[str]:
+        if path not in self._lines:
+            try:
+                text = (self.root / path).read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                text = ""
+            self._lines[path] = text.splitlines()
+        return self._lines[path]
+
+    def _test_id(self, vertex: int) -> str:
+        return test_id(self.conventions[vertex], symbol_id(self.ids[vertex]))
 
     def innermost(self, path: str, line: int, kinds: Set[str]) -> Optional[int]:
         best = None
@@ -336,7 +376,7 @@ class ImpactGraph:
                 vertex = parent[vertex]
             found.append(
                 TestAtRisk(
-                    test_id=pytest_id(self.ids[test]),
+                    test_id=self._test_id(test),
                     symbol=symbol_id(self.ids[test]),
                     depth=level[test],
                     path=tuple(path),
@@ -359,7 +399,7 @@ class ImpactGraph:
         reported: Set[str] = set()
         owned: Dict[str, Set[int]] = defaultdict(set)
         for path in sorted(changed_lines):
-            if not path.endswith((".py", ".pyi")):
+            if convention_for(path) is None:
                 continue
             if path not in self.by_file:
                 result.unmapped_files.append(path)
@@ -426,7 +466,7 @@ class ImpactGraph:
                 and end is not None
                 and any(start + 1 <= line <= end + 1 for line in lines)
             ):
-                edited.add(pytest_id(self.ids[test]))
+                edited.add(self._test_id(test))
         result.edited_tests = sorted(edited)
         # Edited existing tests come first, then tests that reach the change
         # through calls. Other tests at depth 0 (in an edited file, or with only
