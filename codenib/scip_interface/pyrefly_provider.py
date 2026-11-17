@@ -161,6 +161,7 @@ def write_pyrefly_config(
     *,
     exclude_patterns: Iterable[str] = (),
     target_dir: Optional[str] = None,
+    only_files: Optional[Iterable[str]] = None,
 ) -> Path:
     """Write a config that checks every Python source under the root.
 
@@ -195,6 +196,12 @@ def write_pyrefly_config(
             excludes.append(f"{root}/{entry}")
             if not any(character in entry for character in "*?["):
                 excludes.append(f"{root}/{entry}/**")
+    if only_files is not None:
+        # Check these files alone, under the same excludes and import roots.
+        # pyrefly reports a file the same whether it is checked alone or
+        # with the rest of the project, so the result can replace that
+        # file's part of a graph built from the whole project.
+        includes = [f"{root}/{entry.lstrip('/')}" for entry in only_files]
     # Pyright also imports from ``src`` by default. It comes first so a
     # src-layout module is named ``pkg.mod``, as its importers name it.
     search_path = [f"{root}/src", root] if (project_root / "src").is_dir() else [root]

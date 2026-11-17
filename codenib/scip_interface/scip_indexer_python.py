@@ -504,6 +504,9 @@ class SCIPPythonIndexer(SCIPIndexerBase):
         project_name: Optional[str] = None,
         target_dir: Optional[str] = None,
         allow_partial_index: bool = False,
+        only_files: Optional[List[str]] = None,
+        symbol_table: Optional[str] = None,
+        replaced_files: Optional[List[str]] = None,
         **kwargs,
     ) -> bool:
         """
@@ -531,14 +534,24 @@ class SCIPPythonIndexer(SCIPIndexerBase):
         pending.unlink(missing_ok=True)
         selection = self.graph_provider_selection
         fallback = None
+        if only_files is not None and self.graph_provider != PYREFLY_PROVIDER:
+            # Only pyrefly is known to report a file alone as it does with
+            # the whole project.
+            logger.error("only_files needs the pyrefly graph provider")
+            return False
         if self.graph_provider == PYREFLY_PROVIDER:
             if self._generate_pyrefly_index(
                 selection.executable,
                 note=selection.note,
                 project_name=project_name,
                 target_dir=target_dir,
+                only_files=only_files,
+                symbol_table=symbol_table,
+                replaced_files=replaced_files,
             ):
                 return True
+            if only_files is not None:
+                return False
             if selection.configured:
                 return False
             # pyrefly was chosen by default; scip-python can still build it.
@@ -651,6 +664,9 @@ class SCIPPythonIndexer(SCIPIndexerBase):
         note: str = "",
         project_name: Optional[str] = None,
         target_dir: Optional[str] = None,
+        only_files: Optional[List[str]] = None,
+        symbol_table: Optional[str] = None,
+        replaced_files: Optional[List[str]] = None,
     ) -> bool:
         """Build ``index.scip`` from a pyrefly Glean report.
 
@@ -683,6 +699,10 @@ class SCIPPythonIndexer(SCIPIndexerBase):
             self.project_root,
             exclude_patterns=self.exclude_patterns,
             target_dir=target_dir,
+            only_files=only_files,
+        )
+        self._pyrefly_symbols = (
+            None if only_files is None else (symbol_table, list(replaced_files or ()))
         )
         try:
             return self._run_pyrefly(
@@ -744,6 +764,9 @@ class SCIPPythonIndexer(SCIPIndexerBase):
             with self.profiler.section("generate_index.convert") as convert:
                 version_label = self._inferred_project_version() or "0"
                 try:
+                    from .pyrefly_glean import SYMBOL_TABLE_NAME, read_symbol_table
+
+                    partial = getattr(self, "_pyrefly_symbols", None)
                     index, stats = glean_to_scip_index(
                         glean_dir,
                         self.project_root,
@@ -751,6 +774,13 @@ class SCIPPythonIndexer(SCIPIndexerBase):
                         project_version=version_label,
                         tool_version=version,
                         path_allowed=self._path_allowed,
+                        symbol_table=(
+                            read_symbol_table(partial[0])
+                            if partial and partial[0]
+                            else None
+                        ),
+                        replaced_files=partial[1] if partial else (),
+                        symbol_table_out=self.output_dir / SYMBOL_TABLE_NAME,
                     )
                 except (
                     Exception
