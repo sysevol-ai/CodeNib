@@ -545,3 +545,59 @@ def test_inherited_member_matches_python_c3_instead_of_breadth_first():
 def test_unproven_mro_does_not_choose_an_inherited_member(bases, aliases):
     converter = _hierarchy_converter(bases, ["Root.value", "A.value"], aliases)
     assert converter._inherited("Child", "value", 0) == []
+
+
+@pytest.mark.parametrize("case", ["properties", "local_bindings"])
+@pytest.mark.parametrize("alone", ["nested.py", "other.py"])
+def test_one_file_converted_alone_resolves_into_the_rest(tmp_path, case, alone):
+    # A report of one file holds only that file's definitions. Without the
+    # whole project's symbol table the converter takes the other file for an
+    # external library and its references vanish from the graph.
+    from codenib.scip_interface.pyrefly_glean import (
+        SYMBOL_TABLE_NAME,
+        read_symbol_table,
+    )
+
+    _sources(tmp_path, case)
+    table = tmp_path / SYMBOL_TABLE_NAME
+    whole, _ = glean_to_scip_index(
+        CAPTURES / case,
+        tmp_path,
+        project_name="fixture",
+        project_version="1",
+        symbol_table_out=table,
+    )
+    [expected] = [d for d in whole.documents if d.relative_path == alone]
+
+    updated = tmp_path / "updated.json.gz"
+    part, _ = glean_to_scip_index(
+        CAPTURES / case,
+        tmp_path,
+        project_name="fixture",
+        project_version="1",
+        path_allowed=lambda path: path == alone,
+        symbol_table=read_symbol_table(table),
+        symbol_table_out=updated,
+    )
+
+    [document] = part.documents
+    assert MessageToString(document) == MessageToString(expected)
+    # The table written by the partial conversion describes the same project.
+    rows = lambda path: sorted(  # noqa: E731
+        (row[1], row[2], row[11]) for row in read_symbol_table(path)["definitions"]
+    )
+    assert rows(updated) == rows(table)
+
+    unresolved, _ = glean_to_scip_index(
+        CAPTURES / case,
+        tmp_path,
+        project_name="fixture",
+        project_version="1",
+        path_allowed=lambda path: path == alone,
+    )
+    if any(
+        "other" in o.symbol or "nested" in o.symbol
+        for o in expected.occurrences
+        if not o.symbol_roles & 1 and alone.removesuffix(".py") not in o.symbol
+    ):
+        assert MessageToString(unresolved.documents[0]) != MessageToString(expected)

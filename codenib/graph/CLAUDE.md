@@ -45,3 +45,8 @@ from LSP edits.
   symbol's start-line delta or the hunk tuples of `get_changed_line_ranges`,
   whose one-line marker for a pure insertion reads as a replacement. Check a
   change with `FactProjectionVerifier` against a fresh build on real commits.
+- **Python can be patched by its builder** (`builder_patch.py`): pyrefly
+  checks the changed files alone and their references resolve through the
+  symbol table the full build wrote (`pyrefly-symbols.json.gz`). Anything the
+  converter needs to resolve a reference into another file must be in that
+  table; a field missing from it shows up as edges missing from the patch.

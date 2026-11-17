@@ -114,6 +114,38 @@ the edited lines:
 What remains inexact is on the edited lines themselves: the two analysers can
 disagree on what an edited line defines or refers to.
 
+### Rebuilding changed files with the builder (Python)
+
+For Python there is a second way to patch that removes that disagreement: have
+the graph's own builder check the changed files, and replace their part of the
+graph. It does not start a language server.
+
+```python
+from codenib.graph.incremental.builder_patch import rebuild_changed_files
+from codenib.graph.incremental.change_mgr import detect_changed_files
+
+changed = detect_changed_files(repo, base_commit, "HEAD", extensions={".py"})
+rebuild_changed_files(graph, repo, changed, symbol_table=index_dir / "pyrefly-symbols.json.gz")
+```
+
+- **Why it is exact.** pyrefly reports a file the same whether it is checked
+  alone or with the whole project. References from the changed files resolve
+  through `pyrefly-symbols.json.gz`, the symbol table a full pyrefly build
+  writes beside the graph; without it the rest of the project would look like
+  an external library.
+- **What else it rebuilds.** When the changed files gain or lose a definition,
+  the files that refer into them are rebuilt too, because their references can
+  now resolve differently. Past 200 such files it reports
+  `dependents_skipped` and leaves them.
+- **What it cannot see.** A file with no reference into the changed files
+  whose references still resolve differently, such as an import that only now
+  finds its target.
+- **When it refuses.** A graph built by another provider, or before the symbol
+  table existed, raises `BuilderPatchUnavailable`; rebuild once.
+
+It is not called by the compiler. Like the language-server patcher, it is an
+API to measure and to wire in behind a verifier.
+
 ## How It Works
 
 Given a base commit (matching the current graph) and a target commit:
