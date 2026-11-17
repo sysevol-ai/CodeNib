@@ -162,10 +162,11 @@ def _comment(tmp_path: Path, *, existing: str, has_report: bool, refuse: str = "
     calls = tmp_path / "calls"
     gh = bin_dir / "gh"
     gh.write_text(
-        "#!/usr/bin/env bash\n"
-        'echo "$*" >> "$CALLS"\n'
-        'case "$*" in\n'
-        '  "api user"*) exit 1 ;;\n'
+        "#!/usr/bin/env bash\n" 'echo "$*" >> "$CALLS"\n' 'case "$*" in\n'
+        # The workflow token is refused here, and gh prints the refusal.
+        '  "api user"*) echo \'{"message":"Resource not accessible"}\'; exit 1 ;;\n'
+        # The refusal must not leak into the query that finds the comment.
+        '  *"--paginate"*"Resource not accessible"*) exit 1 ;;\n'
         '  *"--paginate"*) [[ "$REFUSE" == read ]] && exit 1; '
         'printf "%s" "$EXISTING"; exit 0 ;;\n'
         '  *) [[ "$REFUSE" == write ]] && exit 1; exit 0 ;;\n'

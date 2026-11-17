@@ -190,7 +190,10 @@ runs:
           echo "::notice title=CodeNib impact::The comment was not written ($1). The report is in the job summary."
           exit 0
         }
-        author="$(gh api user --jq .login 2>/dev/null || echo 'github-actions[bot]')"
+        # The workflow token cannot ask who it is, and gh prints the refusal
+        # on stdout; only a successful answer names the author.
+        author="$(gh api user --jq .login 2>/dev/null)" || author='github-actions[bot]'
+        [[ "$author" =~ ^[A-Za-z0-9-]+(\[bot\])?$ ]] || author='github-actions[bot]'
         existing="$(
           gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PULL_REQUEST/comments" \
             --jq ".[] | select(.user.login == \"$author\" and (.body | startswith(\"$marker\"))) | .id" \
