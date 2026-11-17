@@ -6,8 +6,8 @@ SPDX-License-Identifier: Apache-2.0
 
 # Issue-localization cost A/B, protocol v6
 
-Status: sealed on 2026-11-16 before any study session. Results are not in this
-document yet.
+Status: sealed on 2026-11-16 before any study session. Results are in
+[results v6](issue_localization_cost_results_v6.md).
 
 Rounds v1 to v5 asked whether CodeNib makes an agent's answers better, and found
 no demonstrated benefit. They recorded cost only on the side, and they charged
