@@ -729,7 +729,8 @@ class PatcherBase(SubgraphMgr):
         )
 
         if (
-            not old_symbols
+            self.mode == "symbol"
+            and not old_symbols
             and not new_symbols
             and file_path in self.code_graph.name_to_vertex
         ):
@@ -738,11 +739,14 @@ class PatcherBase(SubgraphMgr):
             # JavaScript test file, whose tests are callbacks. Keep the
             # references on untouched lines, moved with the edits, and look
             # up only the edited lines. Rebuilding the file here would drop
-            # them all and ask the language server for each again.
+            # them all and ask the language server for each again. Naive
+            # mode is the baseline that does exactly that, so it rebuilds.
             self.rebase_outgoing_anchor_lines(
                 file_path, file_path, self._line_edits[file_path]
             )
-            edited = [(new_start, new_end) for _, _, new_start, new_end in hunks]
+            # The lines the edits wrote. A hunk that only removes lines wrote
+            # none: its tuple in ``hunks`` names the untouched line above.
+            edited = change_mgr.new_line_ranges(self._line_edits[file_path])
             self.delete_outgoing_in_anchor_ranges(
                 vertex_name=file_path, anchor_file=file_path, ranges=edited
             )
