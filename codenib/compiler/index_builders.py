@@ -2232,17 +2232,23 @@ class SymbolGraphBuilder:
         python_report = result.index_generation_reports.get("python", {})
         actual_provider = python_report.get("backend")
         if actual_provider in {"pyrefly", "scip-python"}:
-            from ..scip_interface.pyrefly_provider import PythonGraphProvider
+            from ..scip_interface.pyrefly_provider import (
+                PYREFLY_PROVIDER,
+                PythonGraphProvider,
+                pyrefly_identity,
+            )
 
             # Selection is a build request; an automatic pyrefly failure may
             # have produced a scip-python graph. Publish the successful route,
             # so it cannot satisfy a later pyrefly cache identity check.
             version = python_report.get("provider_version")
-            artifact_identity["python_graph_provider"] = (
-                f"{actual_provider} {version}"
-                if version
-                else PythonGraphProvider(actual_provider).identity
-            )
+            if version and actual_provider == PYREFLY_PROVIDER:
+                published = pyrefly_identity(version)
+            elif version:
+                published = f"{actual_provider} {version}"
+            else:
+                published = PythonGraphProvider(actual_provider).identity
+            artifact_identity["python_graph_provider"] = published
         graph_output_receipt = result.graph_output_receipt
 
         graph = result.graph

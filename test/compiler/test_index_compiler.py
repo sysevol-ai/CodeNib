@@ -2158,7 +2158,7 @@ class TestSymbolGraphBuilder:
             output_dir=str(tmp_path / "graph"),
         )
         assert builder.artifact_identity()["python_graph_provider"] == (
-            f"pyrefly {PYREFLY_VERSION}"
+            pyrefly_provider.pyrefly_identity(PYREFLY_VERSION)
         )
         assert status.metadata["python_graph_provider"] == (
             f"scip-python {SCIP_PYTHON_VERSION}"
