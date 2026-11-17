@@ -150,7 +150,8 @@ API to measure and to wire in behind a verifier.
 
 Measured by building the graph at a commit's parent, patching to the commit,
 building fresh at the commit, and comparing every vertex and anchored edge.
-"Equal" means no fact differs.
+"Equal" means no fact differs. `scripts/profiling/check_patch_exactness.py`
+runs the comparison for one commit.
 
 | Language | Patch | Commits equal to a fresh build | Lowest edge F1 |
 |---|---|---|---|
