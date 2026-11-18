@@ -17,7 +17,7 @@ derived from a graph and its source and returned, not written into the graph.
 Base classes come from the reference edges that
 :func:`~codenib.graph.edge_kinds.reference_kinds` classifies as ``inherit``.
 Special methods (``__eq__``, ``__init__``) are left out: constructor edges
-cover construction, and operators are not calls the graph records.
+cover construction, and :mod:`codenib.graph.operator_edges` covers operators.
 
 On 68 agent patches that broke tests, treating callers this way caught a
 broken test for 38, up from 35, and raised the median number of tests flagged
@@ -28,7 +28,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from pathlib import Path
-from typing import Dict, List, Set, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 from ..types import NODE_TYPE_CLASS, NODE_TYPE_METHOD
 from .constructor_edges import short_name
@@ -73,14 +73,18 @@ def class_bases(graph, source_root: Path | str) -> Dict[int, Set[int]]:
     return bases
 
 
-def override_pairs(graph, source_root: Path | str) -> List[Tuple[int, int]]:
+def override_pairs(
+    graph, source_root: Path | str, bases: Optional[Dict[int, Set[int]]] = None
+) -> List[Tuple[int, int]]:
     """``(override, overridden)`` method vertices, one pair per ancestor.
 
     ``graph`` is the igraph graph of a :class:`~codenib.graph.code_graph.CodeGraph`
-    and ``source_root`` the checkout it was built from.
+    and ``source_root`` the checkout it was built from. ``bases`` is
+    :func:`class_bases` of the same graph, when the caller already has it.
     """
 
-    bases = class_bases(graph, source_root)
+    if bases is None:
+        bases = class_bases(graph, source_root)
     if not bases:
         return []
     names: List[str] = graph.vs["name"]

@@ -17,6 +17,14 @@ All notable user-facing changes are recorded here. CodeNib follows
   `codex plugin add codenib@codenib`: the five skills plus the MCP server,
   which indexes and serves the checkout Codex opens.
 
+### Changed
+
+- `codenib guard` reaches Python code that no call names: the special methods
+  an operator runs (`__eq__` for `==`) from code that uses the class, and the
+  methods a call on a value of unknown type may run (`node.as_sql()`), when at
+  most three methods share the name. On 68 agent regressions it now lists a
+  broken test for 42, up from 38.
+
 ## [0.2.6] - 2026-11-14
 
 ### Added
