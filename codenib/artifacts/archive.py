@@ -19,6 +19,7 @@ from typing import BinaryIO, Iterator
 
 from .. import _windows_fs_authority as _windows_fs
 from .._atomic_directory import (
+    DirectoryOwnershipMarkerMissing,
     PublicationDirectoryReader,
     _annotate_secondary_error,
     lexical_directory_path,
@@ -853,10 +854,14 @@ def extract_context_artifact_archive(
             required_destination_file=CONTEXT_ARTIFACT_MANIFEST,
             allow_empty_destination=True,
         )
-    except (OSError, RuntimeError) as exc:
+    except DirectoryOwnershipMarkerMissing as exc:
         raise ValueError(
             "refusing to replace a non-empty directory that is not a "
             f"CodeNib context artifact: {output}"
+        ) from exc
+    except (OSError, RuntimeError) as exc:
+        raise ValueError(
+            f"cannot prepare the context artifact directory {output}: {exc}"
         ) from exc
 
     published: list[VerifiedContextArtifact] = []
