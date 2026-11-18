@@ -8,8 +8,13 @@ from __future__ import annotations
 
 import codecs
 import json
+import os
 import shlex
+import shutil
+import subprocess
+import sys
 import textwrap
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -155,18 +160,48 @@ def test_hook_command_prefers_the_script_beside_the_interpreter(tmp_path, monkey
         script = bin_dir / name
         script.write_text("")
         script.chmod(0o755)
-        command = hooks.hook_command("claude", "stop", str(interpreter))
-        assert command == (
-            f"{shlex.quote(str(script))} guard hook --agent claude --event stop"
-        )
+        for agent in ("claude", "codex"):
+            command = hooks.hook_command(agent, "stop", str(interpreter))
+            # Codex on Windows runs hooks through cmd, which has no single quotes.
+            quoted = (
+                '"' + str(script) + '"'
+                if (agent, platform) == ("codex", "win32")
+                else shlex.quote(str(script))
+            )
+            assert command == f"{quoted} guard hook --agent {agent} --event stop"
         script.unlink()
 
 
 def test_hook_command_keeps_an_explicit_python_as_given(monkeypatch):
     for platform in ("win32", "linux"):
         monkeypatch.setattr(hooks.sys, "platform", platform)
-        command = hooks.hook_command("codex", "stop", "C:/py dir/python.exe")
-        assert command.startswith("'C:/py dir/python.exe' -m codenib guard hook")
+        for agent in ("claude", "codex"):
+            command = hooks.hook_command(agent, "stop", "C:/py dir/python.exe")
+            quoted = (
+                '"C:/py dir/python.exe"'
+                if (agent, platform) == ("codex", "win32")
+                else "'C:/py dir/python.exe'"
+            )
+            assert command.startswith(f"{quoted} -m codenib guard hook")
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="runs the command through cmd")
+@pytest.mark.parametrize("folder", ["with space", "R&D"])
+def test_codex_hook_command_runs_through_cmd(tmp_path, folder):
+    exe = tmp_path / folder / "codenib.exe"
+    exe.parent.mkdir()
+    shutil.copy(Path(os.environ["COMSPEC"]), exe)  # any exe that exits 0 will do
+    (exe.parent / "python.exe").write_text("")
+    command = hooks.hook_command("codex", "stop", str(exe.parent / "python.exe"))
+    # What Codex runs when hooks.json names no shell: COMSPEC /C "<command>"
+    done = subprocess.run(
+        'cmd.exe /C "' + command + '"',
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert done.returncode == 0, done.stderr
 
 
 def test_output_shapes_for_each_agent():
