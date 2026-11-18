@@ -44,7 +44,8 @@ def git(repo: Path, *arguments: str, binary: bool = False):
     completed = subprocess.run(
         ["git", "-C", str(repo), *arguments],
         capture_output=True,
-        text=not binary,
+        encoding=None if binary else "utf-8",
+        errors=None if binary else "surrogateescape",
         check=False,
     )
     if completed.returncode != 0:

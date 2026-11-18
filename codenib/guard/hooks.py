@@ -272,7 +272,8 @@ def _repo_root(cwd: str) -> Optional[Path]:
     completed = subprocess.run(
         ["git", "-C", cwd, "rev-parse", "--show-toplevel"],
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="surrogateescape",
         check=False,
     )
     return Path(completed.stdout.strip()) if completed.returncode == 0 else None
