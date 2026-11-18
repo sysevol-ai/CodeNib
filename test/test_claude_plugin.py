@@ -38,9 +38,10 @@ def test_marketplace_lists_the_plugin_under_its_own_name():
     assert entry["name"] == manifest["name"] == "codenib"
     assert (ROOT / entry["source"]).resolve() == PLUGIN
     assert re.fullmatch(r"\d+\.\d+\.\d+", manifest["version"])
-    assert (PLUGIN / ".claude-plugin" / "icon.png").read_bytes()[:8] == (
-        b"\x89PNG\r\n\x1a\n"
-    )
+    icon = (PLUGIN / ".claude-plugin" / "icon.png").read_bytes()
+    assert icon[:8] == b"\x89PNG\r\n\x1a\n"
+    # The Codex plugin catalog rejects an icon above 50 KB.
+    assert len(icon) <= 50 * 1024
 
 
 def test_the_mcp_server_runs_the_bundled_launcher_for_the_project():
