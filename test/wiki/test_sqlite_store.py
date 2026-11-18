@@ -16,6 +16,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from filelock import FileLock
@@ -264,6 +265,38 @@ def test_read_only_store_pins_the_captured_snapshot(tmp_path: Path) -> None:
 
         assert inspected.read(entry.entry_id) == entry
     assert writable.read(entry.entry_id).envelope["data"]["body"] == "after"
+
+
+def test_read_only_store_accepts_descriptor_ctime_that_differs_from_path(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    # On Windows, os.stat() can report creation time as st_ctime while
+    # os.fstat() reports the last change.
+    path = tmp_path / "wiki.sqlite3"
+    entry = SQLiteWikiStore(path).publish(
+        entry_id="page:repo-a:overview",
+        repository_id="repo-a",
+        envelope={"data": {"body": "persisted"}},
+    )
+
+    def change_time_fstat(descriptor):
+        metadata = os.fstat(descriptor)
+        return os.stat_result(
+            tuple(metadata),
+            {
+                "st_mtime_ns": metadata.st_mtime_ns,
+                "st_ctime_ns": metadata.st_ctime_ns + 1,
+            },
+        )
+
+    # Replace only this module's os binding; os is shared process-wide.
+    module_os = SimpleNamespace(**vars(os))
+    module_os.fstat = change_time_fstat
+    monkeypatch.setattr(sqlite_store_module, "os", module_os)
+
+    with SQLiteWikiStore._read_only_snapshot(path) as inspected:
+        assert inspected.read(entry.entry_id) == entry
 
 
 @pytest.mark.parametrize("mutation", ("source", "wal"))

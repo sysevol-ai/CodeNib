@@ -299,7 +299,10 @@ class SQLiteWikiStore:
                 )
                 with os.fdopen(os.open(store.path, open_flags), "rb") as source:
                     opened = store._fingerprint(os.fstat(source.fileno()))
-                    if opened != before:
+                    # On Windows, os.stat() can report creation time as st_ctime
+                    # while os.fstat() reports the last change, so ctime (the
+                    # last field) is compared only between results of one call.
+                    if opened[:-1] != before[:-1]:
                         raise WikiStoreError(
                             "Wiki database changed while capturing read-only snapshot"
                         )
@@ -312,7 +315,7 @@ class SQLiteWikiStore:
                     raise WikiStoreError(
                         "Wiki database changed while capturing read-only snapshot"
                     ) from exc
-                if copied_from != before or after != before:
+                if copied_from != opened or after != before:
                     raise WikiStoreError(
                         "Wiki database changed while capturing read-only snapshot"
                     )
