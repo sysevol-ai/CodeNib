@@ -204,7 +204,9 @@ that imports a changed module listed a broken test for 22, at a median of 81
 tests. The guard shows the ten tests nearest the change first; a broken test
 was among those ten for 18 of the 68. Without operators and calls of unknown
 type the guard listed a broken test for 38, at a median of 11. The method and
-data are in [pull request #976](https://github.com/sysevol-ai/CodeNib/pull/976).
+data are in pull requests
+[#976](https://github.com/sysevol-ai/CodeNib/pull/976) and
+[#1118](https://github.com/sysevol-ai/CodeNib/pull/1118).
 
 A list is only useful if the agent acts on it. In an A/B run on 24 Django tasks
 chosen because earlier agents broke hidden tests on them, Claude Code with the
