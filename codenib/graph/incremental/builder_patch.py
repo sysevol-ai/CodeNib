@@ -14,10 +14,12 @@ is replaced.
 
 A change can also alter what an unchanged file refers to: a new
 ``Request.hooks`` takes over the references that went to the ``hooks`` it now
-shadows. When the changed files gain or lose a definition, the files that
-refer into them are rebuilt as well. What stays unseen is a file with no
-reference into the changed files whose references still resolve differently,
-such as an import that only now finds its target.
+shadows. The files that refer into the changed files are therefore rebuilt as
+well: always when they are few, and when the changed files gain or lose a
+definition otherwise. What stays unseen is a file with no reference into the
+changed files whose references still resolve differently, such as an import
+that only now finds its target, and a type that changes in a file many others
+refer to without any definition coming or going.
 """
 
 from __future__ import annotations
@@ -36,6 +38,13 @@ logger = get_logger(__name__)
 
 # Past this many referring files a rebuild of the project is the better tool.
 MAX_DEPENDENT_FILES = 200
+# Up to this many, the referring files are rebuilt whatever changed. A value
+# can change type without any definition coming or going, and an attribute
+# read through it in another file then resolves differently; a few files cost
+# little to rebuild.
+ALWAYS_REBUILT_DEPENDENTS = 20
+# What a full build asks pyrefly to check.
+_PYTHON_SOURCE_SUFFIXES = (".py", ".pyi")
 
 
 class BuilderPatchUnavailable(RuntimeError):
@@ -80,6 +89,75 @@ def _dependents(graph: CodeGraph, files: set[str]) -> set[str]:
     return found
 
 
+def _merged_occurrences(old, new, files: set[str], *, was: str, now: str):
+    """The occurrence index after ``files`` were rebuilt.
+
+    Occurrences in ``files`` are replaced by the rebuilt ones. An occurrence
+    elsewhere that names a same-named definition whose position, and so
+    symbol, changed is pointed at whatever bears that name now, as the graph
+    edge is.
+
+    ``was`` and ``now`` are the symbol prefixes of the previous build and of
+    this one, as their symbol tables record them. The changed files cannot
+    say what the previous one was: a file that is new had no symbols then.
+    """
+
+    from dataclasses import replace
+
+    from ...scip_interface.lsp_occurrence_index import SCIPOccurrenceIndex
+    from ..identity import strip_position_markers
+
+    rebuilt = (
+        [] if new is None else [o for o in new.occurrences if o.file_path in files]
+    )
+    before = {
+        o.symbol for o in old.occurrences if o.file_path in files and o.is_definition
+    }
+    after = {o.symbol for o in rebuilt if o.is_definition}
+    bearers: dict[str, list[str]] = {}
+    for symbol in sorted(after):
+        bearers.setdefault(strip_position_markers(symbol), []).append(symbol)
+
+    # A symbol starts with the project's name and version, and the version is
+    # the commit: occurrences kept from the previous build take the new one.
+    def renamed(symbol: str) -> str:
+        if was != now and symbol.startswith(was):
+            return now + symbol[len(was) :]
+        return symbol
+
+    vanished = {renamed(symbol) for symbol in before} - after
+    kept = []
+    for occurrence in old.occurrences:
+        if occurrence.file_path in files:
+            continue
+        symbol = renamed(occurrence.symbol)
+        targets = (
+            bearers.get(strip_position_markers(symbol)) if symbol in vanished else None
+        )
+        if targets:
+            kept.extend(replace(occurrence, symbol=target) for target in targets)
+        elif symbol != occurrence.symbol:
+            kept.append(replace(occurrence, symbol=symbol))
+        else:
+            kept.append(occurrence)
+    return SCIPOccurrenceIndex(
+        [*kept, *rebuilt], position_encoding=old.position_encoding
+    )
+
+
+def _table_prefix(path: Path) -> str:
+    """The symbol prefix a symbol table records, or the patch is unavailable."""
+
+    from ...scip_interface.pyrefly_glean import read_symbol_table
+
+    try:
+        return read_symbol_table(path)["prefix"]
+    except (OSError, EOFError, ValueError) as exc:
+        raise BuilderPatchUnavailable(
+            f"the graph's symbol table cannot be patched ({exc}); rebuild it once"
+        ) from exc
+
+
 def _covered(graph: CodeGraph, paths: Iterable[str]) -> list[str]:
     """The paths the graph's build covered: those with a file vertex."""
 
@@ -122,11 +200,14 @@ def rebuild_changed_files(
     )
     # A new file is rebuilt if the builder's own scope takes it: pyrefly
     # applies the project's excludes and reports nothing for a file they drop.
-    present = [
-        *_covered(graph, changed_files.get("modified", [])),
-        *changed_files.get("added", []),
-        *(new for _, new in renamed),
+    # It must be Python source, though: pyrefly checks whatever file it is
+    # named, and a full build names only these.
+    new = [
+        path
+        for path in [*changed_files.get("added", []), *(new for _, new in renamed)]
+        if path.endswith(_PYTHON_SOURCE_SUFFIXES)
     ]
+    present = [*_covered(graph, changed_files.get("modified", [])), *new]
     present = [path for path in dict.fromkeys(present) if (root / path).is_file()]
     stats = {
         "files_rebuilt": 0,
@@ -136,6 +217,13 @@ def rebuild_changed_files(
     }
     if not present and not gone:
         return stats
+    if not present:
+        # Nothing is checked, so nothing says which prefix this commit's
+        # symbols take, and the symbol table would keep the removed files.
+        raise BuilderPatchUnavailable(
+            "the change only removes files; the builder has nothing to check"
+        )
+    was = now = _table_prefix(symbol_table)
 
     part: Optional[CodeGraph] = None
     with tempfile.TemporaryDirectory(prefix="codenib-builder-patch-") as scratch:
@@ -157,12 +245,16 @@ def rebuild_changed_files(
                 raise BuilderPatchUnavailable(
                     "the graph builder could not check the changed files alone"
                 )
+            if getattr(graph, "lsp_occurrence_index", None) is not None and (
+                getattr(part, "lsp_occurrence_index", None) is None
+            ):
+                raise BuilderPatchUnavailable(
+                    "the rebuilt files came without the positions the graph serves"
+                )
             stats["files_rebuilt"] = len(present)
             updated = Path(scratch) / SYMBOL_TABLE_NAME
-            if updated.is_file():
-                shutil.copyfile(
-                    updated, symbol_table.with_name(symbol_table.name + ".new")
-                )
+            now = _table_prefix(updated)
+            shutil.copyfile(updated, symbol_table.with_name(symbol_table.name + ".new"))
 
     # Everything below mutates the graph; nothing above did.
     files = set(present) | set(gone)
@@ -223,6 +315,15 @@ def rebuild_changed_files(
     graph.name_to_vertex = {name: index for index, name in enumerate(core.vs["name"])}
     graph._invalidate_edge_index()
     graph.build_range_indexes()
+    positions = getattr(graph, "lsp_occurrence_index", None)
+    if positions is not None:
+        graph.lsp_occurrence_index = _merged_occurrences(
+            positions,
+            getattr(part, "lsp_occurrence_index", None),
+            files,
+            was=was,
+            now=now,
+        )
     if part is not None:
         graph.merge_from(part)
         if followers:
@@ -250,7 +351,10 @@ def rebuild_changed_files(
     pending = symbol_table.with_name(symbol_table.name + ".new")
     if pending.is_file():
         pending.replace(symbol_table)
-    if dependents and _definitions(graph, files) != defined_before:
+    if dependents and (
+        len(dependents) <= ALWAYS_REBUILT_DEPENDENTS
+        or _definitions(graph, files) != defined_before
+    ):
         if len(dependents) > MAX_DEPENDENT_FILES:
             # Reported, not hidden: the caller decides whether to rebuild.
             stats["dependents_skipped"] = len(dependents)

@@ -386,6 +386,13 @@ def write_pyrefly_config(
     return path
 
 
+# Files at the project root that shape the whole build rather than one file's
+# part of it: the Pyright scope below, and the project version that
+# ``pyproject.toml`` gives every symbol. A graph cannot be brought up to a
+# change in one of them file by file.
+PROJECT_CONFIGURATION_FILES = frozenset({"pyrightconfig.json", "pyproject.toml"})
+
+
 def _pyright_scope(project_root: Path):
     """Return the project's Pyright ``include``/``exclude`` lists, if any."""
 
@@ -448,6 +455,7 @@ def pyrefly_command(
 
 
 __all__ = [
+    "PROJECT_CONFIGURATION_FILES",
     "PYREFLY_EXECUTABLE_ENV",
     "PYREFLY_PROVIDER",
     "PYTHON_GRAPH_PROVIDER_ENV",
