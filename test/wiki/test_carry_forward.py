@@ -229,3 +229,13 @@ def test_snapshot_records_the_prompt_versions(repo, tmp_path):
     assert data["prompt_versions"] == module._prompt_versions()
     assert set(data["pages"]) == {"overview"}
     assert not list(snapshot.parent.glob(".*tmp*"))
+
+
+def test_changed_files_keeps_non_ascii_names_unquoted(repo):
+    root, _, second = repo
+    (root / "src" / "café.py").write_text("# new\n")
+    _git(root, "add", "-A")
+    _git(root, "-c", "user.name=t", "-c", "user.email=t@x", "commit", "-qm", "three")
+    third = _git(root, "rev-parse", "HEAD")
+
+    assert changed_files(root, second, third) == {"src/café.py"}

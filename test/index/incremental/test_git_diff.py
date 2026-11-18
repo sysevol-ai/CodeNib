@@ -188,3 +188,49 @@ class TestDetectChanges:
         assert (
             "new_name.py" in modified_or_added
         ), f"New path should be in modified/added list, got={modified_or_added}"
+
+
+class TestNonAsciiPaths:
+    def test_quoted_names_are_matched_to_real_files(self, git_repo):
+        repo = Path(git_repo["repo_path"])
+        (repo / "café.py").write_text("x = 1\n")
+        (repo / "old_é.py").write_text("y = 1\n")
+        _run(["git", "add", "."], str(repo))
+        _run(["git", "commit", "-m", "non-ascii"], str(repo))
+        base = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=str(repo), capture_output=True, text=True
+        ).stdout.strip()
+
+        (repo / "café.py").write_text("x = 2\n")
+        (repo / "new_é.py").write_text("z = 1\n")
+        _run(["git", "mv", "old_é.py", "moved_é.py"], str(repo))
+        _run(["git", "add", "."], str(repo))
+        _run(["git", "commit", "-m", "change non-ascii"], str(repo))
+
+        changes = GitDiffDetector().detect_changes(str(repo), since_commit=base)
+
+        root = repo.resolve()
+        assert changes.modified == [str(root / "café.py"), str(root / "moved_é.py")]
+        assert changes.added == [str(root / "new_é.py")]
+        assert changes.deleted == [str(root / "old_é.py")]
+
+    def test_copy_records_keep_the_stream_aligned(self, git_repo):
+        repo = Path(git_repo["repo_path"])
+        _run(["git", "config", "diff.renames", "copies"], str(repo))
+        base = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=str(repo), capture_output=True, text=True
+        ).stdout.strip()
+
+        # Copies are only detected from a source changed in the same diff.
+        source = repo / "foo.py"
+        (repo / "copy.py").write_text(source.read_text())
+        source.write_text(source.read_text() + "\n\ndef bye():\n    return 'bye'\n")
+        (repo / "zz_later.py").write_text("z = 1\n")
+        _run(["git", "add", "."], str(repo))
+        _run(["git", "commit", "-m", "copy"], str(repo))
+
+        changes = GitDiffDetector().detect_changes(str(repo), since_commit=base)
+
+        root = repo.resolve()
+        assert str(root / "copy.py") in changes.modified
+        assert changes.added == [str(root / "zz_later.py")]

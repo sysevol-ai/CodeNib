@@ -7,6 +7,7 @@ import subprocess
 
 import pytest
 
+from codenib.threads.anchor import AnchorResolver
 from codenib.threads.events import ThreadEvent, ThreadHeader, event_address
 from codenib.threads.in_flight import OpenPull
 from codenib.threads.log_store import ThreadStore
@@ -14,6 +15,7 @@ from codenib.threads.wiki_overlay import (
     PageIndex,
     WikiPage,
     build_overlay,
+    file_heat,
     load_wiki_pages,
 )
 
@@ -262,3 +264,34 @@ def test_file_level_matches_on_a_hot_file_are_dropped(pages, checkout):
 
     kept = _overlay(pages, checkout, open_pulls=pulls, heat_window=0)
     assert kept["pages"]["loading"]["pulls"][0]["strength"] == "file"
+
+
+def test_file_heat_counts_a_path_git_would_otherwise_quote(tmp_path):
+    repo = tmp_path / "checkout"
+    repo.mkdir()
+    (repo / "caf\u00e9.py").write_text("a = 1\n", encoding="utf-8")
+    (repo / "plain.py").write_text("b = 1\n")
+    _git(repo, "init", "-q", "-b", "main")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "base")
+    (repo / "caf\u00e9.py").write_text("a = 2\n", encoding="utf-8")
+    _git(repo, "commit", "-qam", "Touch the accented file")
+
+    heat, read = file_heat(repo, "HEAD", 10)
+
+    assert read == 2
+    assert heat == {"caf\u00e9.py": 2, "plain.py": 1}
+
+
+def test_anchor_resolver_finds_a_path_git_would_otherwise_quote(tmp_path):
+    repo = tmp_path / "checkout"
+    (repo / "pkg").mkdir(parents=True)
+    (repo / "pkg" / "caf\u00e9.py").write_text("a = 1\n", encoding="utf-8")
+    _git(repo, "init", "-q", "-b", "main")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "base")
+
+    resolver = AnchorResolver(repo, "HEAD")
+
+    assert resolver.files() == ["pkg/caf\u00e9.py"]
+    assert resolver.resolve_path("caf\u00e9.py") == "pkg/caf\u00e9.py"
