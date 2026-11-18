@@ -39,7 +39,8 @@ from typing import (
 )
 
 from ..graph.alias_edges import alias_edges
-from ..graph.constructor_edges import constructor_edges, short_name
+from ..graph.constructor_edges import constructor_edges
+from ..graph.identity import short_name, symbol_id  # noqa: F401 - re-exported
 from ..graph.override_edges import override_pairs
 from ..types import (
     NODE_TYPE_CLASS,
@@ -51,17 +52,7 @@ from ..utils import is_test_file
 
 DEFAULT_DEPTH = 3
 _DEFS = {NODE_TYPE_FUNCTION, NODE_TYPE_METHOD}
-_DISAMBIGUATOR = re.compile(r"\(_codenib_l\d+_c\d+\)|@codenib-l\d+-c\d+")
 _HUNK = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
-
-
-def symbol_id(name: str) -> str:
-    """Stable ``path:Qualified.name`` for a graph symbol name."""
-
-    path, _, symbol = name.partition(":")
-    return (
-        f"{path}:{_DISAMBIGUATOR.sub('', symbol).replace('()', '')}" if symbol else path
-    )
 
 
 def _base_hunks(
@@ -200,6 +191,16 @@ class ImpactGraph:
         self.root = Path(source_root)
         vs = graph.vs
         self.names: List[str] = vs["name"]
+        # What a symbol is called in reports. The builder's key can name a
+        # file by its module (``pkg.py`` for ``pkg/__init__.py``, no ``src/``
+        # or ``lib/`` prefix); the unified name uses the real path, which is
+        # what a test runner and a note's anchor need.
+        unified = vs["unified_name"] if "unified_name" in vs.attributes() else None
+        self.ids: List[str] = (
+            [value or name for value, name in zip(unified, self.names, strict=True)]
+            if unified is not None
+            else self.names
+        )
         self.types: List[str] = vs["type"]
         self.files: List[Optional[str]] = vs["file"]
         self.starts: List[Optional[int]] = vs["start_line"]
@@ -291,7 +292,7 @@ class ImpactGraph:
             None if next_vertex is None else self.call_lines.get((vertex, next_vertex))
         )
         return Hop(
-            symbol=symbol_id(self.names[vertex]),
+            symbol=symbol_id(self.ids[vertex]),
             file=self.files[vertex]
             or (self.names[vertex] if self.types[vertex] == NODE_TYPE_FILE else None),
             line=None if start is None else start + 1,
@@ -335,8 +336,8 @@ class ImpactGraph:
                 vertex = parent[vertex]
             found.append(
                 TestAtRisk(
-                    test_id=pytest_id(self.names[test]),
-                    symbol=symbol_id(self.names[test]),
+                    test_id=pytest_id(self.ids[test]),
+                    symbol=symbol_id(self.ids[test]),
                     depth=level[test],
                     path=tuple(path),
                 )
@@ -367,7 +368,7 @@ class ImpactGraph:
                 found, unit = self.seeds(path, line)
                 seeds |= found
                 owner = self.innermost(path, line, _DEFS | {NODE_TYPE_CLASS})
-                symbol = path if owner is None else symbol_id(self.names[owner])
+                symbol = path if owner is None else symbol_id(self.ids[owner])
                 owned[symbol] |= found
                 if symbol not in reported:
                     reported.add(symbol)
@@ -377,11 +378,11 @@ class ImpactGraph:
             if change.unit != "function":
                 continue
             vertex = next(
-                (s for s in seeds if symbol_id(self.names[s]) == change.symbol), None
+                (s for s in seeds if symbol_id(self.ids[s]) == change.symbol), None
             )
             if vertex is not None:
                 result.direct_callers[change.symbol] = sorted(
-                    symbol_id(self.names[c]) for c in self.callers.get(vertex, ())
+                    symbol_id(self.ids[c]) for c in self.callers.get(vertex, ())
                 )
         for symbol, own in owned.items():
             sites: Dict[int, int] = {}
@@ -425,7 +426,7 @@ class ImpactGraph:
                 and end is not None
                 and any(start + 1 <= line <= end + 1 for line in lines)
             ):
-                edited.add(pytest_id(self.names[test]))
+                edited.add(pytest_id(self.ids[test]))
         result.edited_tests = sorted(edited)
         # Edited existing tests come first, then tests that reach the change
         # through calls. Other tests at depth 0 (in an edited file, or with only

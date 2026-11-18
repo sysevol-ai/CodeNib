@@ -19,9 +19,9 @@ import re
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from ..graph.identity import strip_position_markers
+
 _OMITTED_LINES = re.compile(r"\.\.\. (\d+) source lines omitted \.\.\.")
-# Graph names disambiguate same-named definitions with their position.
-_POSITION_SUFFIX = re.compile(r"\(_codenib_l\d+_c\d+\)")
 _TRUNCATED = "... source excerpt truncated ..."
 _MAX_NEIGHBORS = 12
 _MAX_ANCHOR_LABELS = 3
@@ -42,7 +42,8 @@ _GRAPH_PENDING_CODES = frozenset({"route_unavailable", "dependency_unavailable"}
 def _symbol_label(name: Any) -> str:
     """Drop the ``path.py:`` prefix from an indexed symbol name."""
 
-    text = _POSITION_SUFFIX.sub("", str(name or ""))
+    # Graph names tell same-named definitions apart by their position.
+    text = strip_position_markers(str(name or ""))
     prefix, separator, rest = text.partition(":")
     if (
         separator
