@@ -49,6 +49,14 @@ from ..types import (
     NODE_TYPE_METHOD,
 )
 from ..utils import is_test_file
+from .languages import (
+    FILE,
+    FUNCTION,
+    Convention,
+    convention_for,
+    is_test_definition,
+    test_id,
+)
 
 DEFAULT_DEPTH = 3
 _DEFS = {NODE_TYPE_FUNCTION, NODE_TYPE_METHOD}
@@ -251,15 +259,54 @@ class ImpactGraph:
         for vertex, path in enumerate(self.files):
             if has_def[vertex] and path and self.starts[vertex] is not None:
                 self.by_file[path].append(vertex)
-        self.tests: Set[int] = {
-            vertex
-            for vertex, kind in enumerate(self.types)
-            if kind in _DEFS
-            and has_def[vertex]
-            and self.files[vertex]
-            and is_test_file(self.files[vertex])
-            and short_name(self.names[vertex]).startswith("test")
-        }
+        self._lines: Dict[str, List[str]] = {}
+        self.conventions: Dict[int, Convention] = {}
+        self.tests: Set[int] = set()
+        # Test files that stand for their tests, by path. A file vertex has
+        # no ``file`` or line range of its own.
+        self.file_tests: Dict[str, int] = {}
+        for vertex, kind in enumerate(self.types):
+            if kind in _DEFS and has_def[vertex] and self.files[vertex]:
+                convention = convention_for(self.files[vertex])
+                if (
+                    convention is not None
+                    and convention.unit == FUNCTION
+                    and is_test_definition(
+                        convention,
+                        # The unified name ends in the identifier in every
+                        # language; a Go or Rust key is ``pkg/Type#name``.
+                        short_name(self.ids[vertex]),
+                        self.files[vertex],
+                        self.starts[vertex],
+                        self._source_lines,
+                        method=kind == NODE_TYPE_METHOD,
+                    )
+                ):
+                    self.tests.add(vertex)
+                    self.conventions[vertex] = convention
+            elif kind == NODE_TYPE_FILE:
+                # Where tests are callbacks, the test file stands for them.
+                convention = convention_for(self.names[vertex])
+                if (
+                    convention is not None
+                    and convention.unit == FILE
+                    and is_test_file(self.names[vertex])
+                ):
+                    self.tests.add(vertex)
+                    self.conventions[vertex] = convention
+                    self.file_tests[self.names[vertex]] = vertex
+
+    def _source_lines(self, path: str) -> List[str]:
+        if path not in self._lines:
+            try:
+                text = (self.root / path).read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                text = ""
+            self._lines[path] = text.splitlines()
+        return self._lines[path]
+
+    def _test_id(self, vertex: int) -> str:
+        return test_id(self.conventions[vertex], symbol_id(self.ids[vertex]))
 
     def innermost(self, path: str, line: int, kinds: Set[str]) -> Optional[int]:
         best = None
@@ -336,7 +383,7 @@ class ImpactGraph:
                 vertex = parent[vertex]
             found.append(
                 TestAtRisk(
-                    test_id=pytest_id(self.ids[test]),
+                    test_id=self._test_id(test),
                     symbol=symbol_id(self.ids[test]),
                     depth=level[test],
                     path=tuple(path),
@@ -358,11 +405,19 @@ class ImpactGraph:
         seeds: Set[int] = set()
         reported: Set[str] = set()
         owned: Dict[str, Set[int]] = defaultdict(set)
+        rewritten = {p: set(lines) for p, lines in (rewritten_lines or {}).items()}
         for path in sorted(changed_lines):
-            if not path.endswith((".py", ".pyi")):
+            if convention_for(path) is None:
                 continue
+            # A test file that is the unit is edited as a whole: any rewritten
+            # line may be an assertion. Lines only added leave it where its
+            # calls put it, with the path that explains it.
+            file_test = self.file_tests.get(path)
+            if file_test is not None and rewritten.get(path):
+                seeds.add(file_test)
             if path not in self.by_file:
-                result.unmapped_files.append(path)
+                if file_test is None:
+                    result.unmapped_files.append(path)
                 continue
             for line in sorted(changed_lines[path]):
                 found, unit = self.seeds(path, line)
@@ -414,9 +469,12 @@ class ImpactGraph:
         # behaviour; passing it says little about the behaviour it protected.
         # In a recorded session an agent changed a default message, rewrote the
         # eight assertions that expected the old one, and passed its own run.
-        rewritten = {p: set(lines) for p, lines in (rewritten_lines or {}).items()}
         edited: Set[str] = set()
         for test in self.tests & set(level):
+            if self.conventions[test].unit == FILE:
+                if level[test] == 0:
+                    edited.add(self._test_id(test))
+                continue
             lines = rewritten.get(self.files[test])
             start, end = self.starts[test], self.ends[test]
             if (
@@ -426,7 +484,7 @@ class ImpactGraph:
                 and end is not None
                 and any(start + 1 <= line <= end + 1 for line in lines)
             ):
-                edited.add(pytest_id(self.ids[test]))
+                edited.add(self._test_id(test))
         result.edited_tests = sorted(edited)
         # Edited existing tests come first, then tests that reach the change
         # through calls. Other tests at depth 0 (in an edited file, or with only
