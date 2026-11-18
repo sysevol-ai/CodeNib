@@ -36,6 +36,7 @@ import pytest
 from codenib.graph.code_graph import CodeGraph
 from codenib.graph.incremental.graph_patcher import GraphPatcher
 from codenib.graph.incremental.lsp_client import LSPClient
+from codenib.graph.incremental.patcher_base import IncrementalPatchRebuildRequired
 from codenib.ls_router import LSIndexer
 
 pytestmark = pytest.mark.integration_serial
@@ -1192,9 +1193,15 @@ class TestSWEBenchTypeScript:
         )
         assert len(changed["modified"]) >= 1
 
-        stats = patcher.patch_files(
-            changed, earlier_commit=earlier, later_commit=self.LATER[:12]
-        )
+        try:
+            stats = patcher.patch_files(
+                changed, earlier_commit=earlier, later_commit=self.LATER[:12]
+            )
+        except IncrementalPatchRebuildRequired as exc:
+            # These commits change an import, and the patcher keeps the
+            # file-to-file import layer exact by asking for a rebuild.
+            assert "imports changed" in str(exc)
+            return
         assert stats["files_modified"] >= 1
         assert stats["vertices_created"] > 0
 

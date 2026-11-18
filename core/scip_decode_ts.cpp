@@ -405,16 +405,14 @@ void SCIPTSDecoder::process_symbol(const std::string &symbol, int line,
     symbol_kind = kind_it->second;
   }
 
-  // Index file refs collapse to a file-level ref edge (no symbol node).
+  // An index file's top level mostly re-exports other modules; those mentions
+  // add no edge. A reference inside one of its definitions is a real use and
+  // is decoded like any other (mirrors scip_decode_ts.py).
   bool is_index_file =
       !file_path.empty() && file_path.find("/index.") != std::string::npos;
   bool is_simple_symbol = unified.find('#') == std::string::npos;
-  if (is_index_file && is_simple_symbol && !(symbol_roles & 1)) {
-    if (builder.current_scope() != file_path) {
-      builder.add_edge(builder.current_scope(), file_path, EDGE_TYPE_REFERENCE,
-                       /*anchor_file=*/file_path,
-                       /*anchor_line=*/line);
-    }
+  if (is_index_file && is_simple_symbol && !(symbol_roles & 1) &&
+      builder.current_scope() == file_path) {
     return;
   }
 
