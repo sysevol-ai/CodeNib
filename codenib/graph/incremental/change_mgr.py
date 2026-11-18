@@ -208,6 +208,23 @@ def get_line_edits(
     return edits
 
 
+def new_line_ranges(edits: list[tuple[int, int, int]]) -> list[tuple[int, int]]:
+    """The lines each hunk wrote, as inclusive 0-based ranges in the new file.
+
+    A hunk that only removes lines wrote none and gives no range, where
+    :func:`get_changed_line_ranges` names the untouched line above it.
+    """
+
+    ranges: list[tuple[int, int]] = []
+    shift = 0
+    for begin, stop, delta in edits:
+        written = stop - begin + delta
+        if written > 0:
+            ranges.append((begin + shift, begin + shift + written - 1))
+        shift += delta
+    return ranges
+
+
 def shift_of_range(
     edits: list[tuple[int, int, int]], start: int, end: int
 ) -> Optional[int]:

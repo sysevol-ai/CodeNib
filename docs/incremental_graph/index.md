@@ -109,6 +109,11 @@ the edited lines:
   variables, and references made by a module's top-level code.
 - **Changed bodies.** In a function whose body changed, references on
   untouched lines are kept; only the edited lines are looked up again.
+- **Only what the builder defines.** A language server lists more than a
+  builder indexes. The patcher leaves out a JavaScript or TypeScript callback
+  and what is declared inside it, and a Rust module under `#[cfg(test)]`. A
+  file the graph holds with no definition at all, such as a JavaScript test
+  file, keeps its references and has only its edited lines looked up.
 - **Refusal.** When two definitions share a name and the edit touches one that
   is not tracked, the patcher asks for a full rebuild instead of guessing.
 
@@ -187,13 +192,15 @@ runs the comparison for one commit.
 | Python | builder | 20 of 20 (requests, xarray, sphinx, django) | 1.0 |
 | Python | language server | 9 of 20 | 0.997 |
 | Go | language server | 1 of 3 (gin) | 0.981 |
-| JavaScript | language server | 0 of 3 (preact) | 0.78 |
-| Rust | language server | 0 of 4 (byteorder) | 0.73 |
+| JavaScript | language server | 1 of 7 (preact) | 0.992 |
+| Rust | language server | 0 of 4 (byteorder) | 0.969 |
 
-The language-server patcher is close on Python and Go and not on JavaScript
-and Rust, where definitions made by macros and re-exports are not what
-`documentSymbol` lists. Only Python has a builder patch. Until a patch is
-equal on the commits you care about, treat a patched graph as a fast
+The language-server patcher is close in every language and equal in few
+commits. Its largest errors came from creating what the builder does not
+define: the callbacks of a JavaScript test file, and Rust modules compiled
+only for tests. With those left out, what remains is on the edited lines and
+in definitions a macro generates. Only Python has a builder patch. Until a
+patch is equal on the commits you care about, treat a patched graph as a fast
 approximation and rebuild before relying on it.
 
 ## How It Works
