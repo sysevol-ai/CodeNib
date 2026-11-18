@@ -1,4 +1,5 @@
 ---
+name: setup
 description: Install CodeNib and prepare this repository's search index and code graph.
 disable-model-invocation: true
 ---

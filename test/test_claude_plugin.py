@@ -93,6 +93,8 @@ def test_skills_describe_when_to_use_them_and_side_effects_need_the_user():
 
     assert set(skills) == {"explain", "impact", "setup", "thread", "wiki"}
     for name, front in skills.items():
+        # The directory already names the skill; a different name would rename it.
+        assert front["name"] == name
         assert len(front["description"]) > 40, name
     # Installing software or starting servers happens only when asked.
     assert skills["setup"].get("disable-model-invocation") is True
@@ -100,6 +102,12 @@ def test_skills_describe_when_to_use_them_and_side_effects_need_the_user():
     assert "disable-model-invocation" not in skills["explain"]
     # Reading a thread changes nothing, so the agent may do it unasked.
     assert "disable-model-invocation" not in skills["thread"]
+
+
+def test_each_plugin_directory_carries_the_repository_license():
+    # A plugin is installed as a copy of its directory, without the root.
+    for plugin in (PLUGIN, ROOT / "plugins" / "dsh"):
+        assert (plugin / "LICENSE").read_bytes() == (ROOT / "LICENSE").read_bytes()
 
 
 def _subcommands(parser) -> dict:
