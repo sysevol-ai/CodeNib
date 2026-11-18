@@ -16,6 +16,22 @@ All notable user-facing changes are recorded here. CodeNib follows
 - Codex installs the CodeNib plugin with `codex plugin marketplace add` and
   `codex plugin add codenib@codenib`: the five skills plus the MCP server,
   which indexes and serves the checkout Codex opens.
+- Thread tickets can be worked by an agent that runs unattended.
+  `codenib threads inbox N --claim` hands over what is new under a lease and
+  marks nothing read until `codenib threads ack N <delivery>`, so a run that
+  fails gets the same news again once the lease ends. While a claim is open,
+  other workers are turned away with exit status 3. The MCP server adds
+  `ticket_claim` and `ticket_ack`, and `board` shows who holds each ticket.
+- Thread context names each post's author's role in the repository (owner,
+  member, collaborator, contributor, first-time contributor, or not a
+  contributor), so an agent can tell a maintainer's request from a
+  stranger's.
+
+### Fixed
+
+- `codenib threads inbox` could mark an event read without delivering it when
+  a poll appended it while the update was being built. It is now delivered on
+  the next read instead.
 
 ## [0.2.6] - 2026-11-14
 

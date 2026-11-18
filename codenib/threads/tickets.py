@@ -9,14 +9,25 @@ and to the threads linked to it, and it may follow others. Each ticket keeps a
 cursor, so asking for its inbox returns only what its threads gained since the
 last time, whichever of them it came from. One thread can feed many tickets;
 nothing is copied, each ticket only keeps its own cursor.
+
+An agent that runs unattended claims its inbox instead of reading it. A claim
+delivers the news under a lease and moves nothing; the agent acknowledges the
+delivery when its work is done. If it crashes first, the lease runs out and
+the next claim delivers the same news again. While a lease is held, no other
+worker can claim the ticket, so two runs never work the same news.
 """
 
 from __future__ import annotations
 
 import json
 import os
-from dataclasses import asdict, dataclass, field
+import secrets
+import socket
+from contextlib import contextmanager
+from dataclasses import asdict, dataclass, field, fields
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Callable, Iterator
 
 from .anchor import CodeAnchor, is_source_path
 from .in_flight import match_in_flight
@@ -44,13 +55,23 @@ class Ticket:
     positions: dict[str, int] = field(default_factory=dict)
     # [path, symbol, first line, last line] the ticket's threads point at.
     anchors: list[list] = field(default_factory=list)
+    # A delivery that a worker has claimed and not yet acknowledged: its id,
+    # the worker, when the lease ends, and the read state that acknowledging
+    # it commits (threads, positions, cursor, anchors). Empty when none.
+    lease: dict = field(default_factory=dict)
 
     def to_json(self) -> dict:
-        return asdict(self)
+        data = asdict(self)
+        # Without a claim the file looks as it did before claims existed, so
+        # an older CodeNib sharing the store can still read it.
+        if not data["lease"]:
+            del data["lease"]
+        return data
 
     @classmethod
     def from_json(cls, data: dict) -> "Ticket":
-        return cls(**data)
+        known = {f.name for f in fields(cls)}
+        return cls(**{k: v for k, v in data.items() if k in known})
 
 
 class TicketBook:
@@ -75,6 +96,20 @@ class TicketBook:
         tmp = path.with_name(path.name + f".tmp{os.getpid()}")
         tmp.write_text(json.dumps(ticket.to_json(), sort_keys=True), encoding="utf-8")
         tmp.replace(path)
+
+    @contextmanager
+    def locked(self, number: int) -> Iterator[None]:
+        """Hold the ticket while it is read, changed and written back.
+
+        The lock lasts milliseconds; what keeps a second worker away for the
+        length of a run is the lease stored in the ticket.
+        """
+
+        from filelock import FileLock
+
+        self.dir.mkdir(parents=True, exist_ok=True)
+        with FileLock(str(self.dir / f"{int(number)}.lock"), timeout=30):
+            yield
 
     def remove(self, number: int) -> bool:
         path = self._path(number)
@@ -149,6 +184,32 @@ def open_ticket(
     keeps the threads it follows.
     """
 
+    with book.locked(number):
+        return _open_ticket(
+            book,
+            number,
+            directory=directory,
+            follow=follow,
+            budget=budget,
+            code_budget=code_budget,
+            checkout=checkout,
+            rev=rev,
+            open_pulls=open_pulls,
+        )
+
+
+def _open_ticket(
+    book: TicketBook,
+    number: int,
+    *,
+    directory: str,
+    follow: list[int] | None,
+    budget: int,
+    code_budget: int,
+    checkout: Path | None,
+    rev: str,
+    open_pulls: list | None,
+) -> tuple[Ticket, Packet] | None:
     existing = book.get(number)
     followed = list(
         dict.fromkeys([*(existing.threads if existing else []), *(follow or [])])
@@ -186,23 +247,90 @@ def pending(book: TicketBook, ticket: Ticket) -> int:
     return sum(len(view.events) for view in news.views) if news else 0
 
 
-def read_inbox(
+DEFAULT_LEASE_SECONDS = 30 * 60
+
+
+class TicketBusy(RuntimeError):
+    """Another worker holds the ticket's lease."""
+
+    def __init__(self, number: int, worker: str, expires: str) -> None:
+        super().__init__(number, worker, expires)
+        self.number = number
+        self.worker = worker
+        self.expires = expires
+
+    def __str__(self) -> str:
+        return (
+            f"ticket #{self.number} is claimed by "
+            f"{self.worker or 'another worker'} until {self.expires}"
+        )
+
+
+class StaleDelivery(RuntimeError):
+    """The delivery being acknowledged is no longer the ticket's claim."""
+
+
+@dataclass
+class Delivery:
+    """News claimed under a lease. Acknowledge ``id`` when the work is done."""
+
+    id: str
+    worker: str
+    expires: str
+    packet: Packet
+
+    def to_json(self) -> dict:
+        return {
+            "delivery": self.id,
+            "worker": self.worker,
+            "expires": self.expires,
+            **self.packet.to_json(),
+        }
+
+
+def default_worker() -> str:
+    return f"{socket.gethostname()}:{os.getpid()}"
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _iso(moment: datetime) -> str:
+    return moment.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _expired(lease: dict, now: datetime) -> bool:
+    try:
+        ends = datetime.strptime(lease.get("expires", ""), "%Y-%m-%dT%H:%M:%SZ")
+    except ValueError:
+        return True
+    return ends.replace(tzinfo=timezone.utc) <= now
+
+
+def live_claim(ticket: Ticket, now: Callable[[], datetime] = _utcnow) -> dict:
+    """The ticket's open claim (id, worker, expires), or ``{}`` if none."""
+
+    lease = ticket.lease
+    if not lease or _expired(lease, now()):
+        return {}
+    return {key: lease.get(key, "") for key in ("id", "worker", "expires")}
+
+
+def _read(
     book: TicketBook,
     ticket: Ticket,
     *,
-    budget: int = DEFAULT_BUDGET,
-    code_budget: int = DEFAULT_CODE_BUDGET,
-    checkout: Path | None = None,
-    rev: str = "HEAD",
-    advance: bool = True,
-) -> Packet | None:
-    """What the ticket's threads gained since it last read, or ``None``.
+    budget: int,
+    code_budget: int,
+    checkout: Path | None,
+    rev: str,
+) -> tuple[Packet, dict] | None:
+    """The ticket's news and the read state that marking it read would set."""
 
-    This covers new events, edits of events it had read, and threads that
-    became linked since then, which join the ticket. With ``advance`` the read
-    positions move, so nothing is delivered twice.
-    """
-
+    # Positions are taken before the logs are read. An event appended while
+    # the news is built is then delivered again later, never skipped.
+    before = _positions(book.store, ticket.threads)
     bundle = load_bundle(book.store, ticket.number, subscribed=ticket.threads)
     news = _news(book, ticket, bundle) if bundle else None
     if bundle is None or news is None:
@@ -215,15 +343,166 @@ def read_inbox(
         rev=rev,
         news=news,
     )
-    if advance:
-        ticket.threads = [view.number for view in bundle.views]
-        ticket.cursor = packet.head
-        ticket.positions = _positions(book.store, ticket.threads)
-        for pair in _anchor_pairs(packet):
-            if pair[:2] not in [p[:2] for p in ticket.anchors]:
-                ticket.anchors.append(pair)
-        book.put(ticket)
+    threads = [view.number for view in bundle.views]
+    joined = [n for n in threads if str(n) not in before]
+    state = {
+        "threads": threads,
+        "positions": {**before, **_positions(book.store, joined)},
+        "cursor": packet.head,
+        "anchors": _anchor_pairs(packet),
+    }
+    return packet, state
+
+
+def _commit(ticket: Ticket, state: dict) -> None:
+    ticket.threads = list(state["threads"])
+    ticket.cursor = state["cursor"]
+    for thread, position in state["positions"].items():
+        ticket.positions[thread] = max(ticket.positions.get(thread, 0), position)
+    for pair in state["anchors"]:
+        if pair[:2] not in [p[:2] for p in ticket.anchors]:
+            ticket.anchors.append(pair)
+
+
+def read_inbox(
+    book: TicketBook,
+    ticket: Ticket,
+    *,
+    budget: int = DEFAULT_BUDGET,
+    code_budget: int = DEFAULT_CODE_BUDGET,
+    checkout: Path | None = None,
+    rev: str = "HEAD",
+    advance: bool = True,
+    now: Callable[[], datetime] = _utcnow,
+) -> Packet | None:
+    """What the ticket's threads gained since it last read, or ``None``.
+
+    This covers new events, edits of events it had read, and threads that
+    became linked since then, which join the ticket. With ``advance`` the read
+    positions move, so nothing is delivered twice; that is refused with
+    :class:`TicketBusy` while another worker's claim is open. A read without
+    ``advance`` is always allowed.
+    """
+
+    if not advance:
+        read = _read(
+            book,
+            ticket,
+            budget=budget,
+            code_budget=code_budget,
+            checkout=checkout,
+            rev=rev,
+        )
+        return read[0] if read else None
+    with book.locked(ticket.number):
+        current = book.get(ticket.number) or ticket
+        lease = current.lease
+        if lease and not _expired(lease, now()):
+            raise TicketBusy(current.number, lease.get("worker", ""), lease["expires"])
+        read = _read(
+            book,
+            current,
+            budget=budget,
+            code_budget=code_budget,
+            checkout=checkout,
+            rev=rev,
+        )
+        if read is None:
+            return None
+        packet, state = read
+        _commit(current, state)
+        current.lease = {}
+        book.put(current)
+    # Callers may keep using the ticket they passed in.
+    for name in (f.name for f in fields(Ticket)):
+        setattr(ticket, name, getattr(current, name))
     return packet
+
+
+def claim_inbox(
+    book: TicketBook,
+    number: int,
+    *,
+    worker: str = "",
+    lease_seconds: int = DEFAULT_LEASE_SECONDS,
+    budget: int = DEFAULT_BUDGET,
+    code_budget: int = DEFAULT_CODE_BUDGET,
+    checkout: Path | None = None,
+    rev: str = "HEAD",
+    now: Callable[[], datetime] = _utcnow,
+) -> Delivery | None:
+    """Claim the ticket's news for one run, or ``None`` when nothing is new.
+
+    Nothing is marked read until :func:`ack_inbox` is called with the
+    delivery's id. A worker that claims again under the same name, such as
+    a run that restarted, gets the news again with a new id. Any other
+    worker gets :class:`TicketBusy` until the lease ends.
+    """
+
+    if lease_seconds < 1:
+        raise ValueError("lease_seconds must be at least 1")
+    worker = worker or default_worker()
+    with book.locked(number):
+        ticket = book.get(number)
+        if ticket is None:
+            raise KeyError(number)
+        moment = now()
+        lease = ticket.lease
+        if lease and not _expired(lease, moment) and lease.get("worker") != worker:
+            raise TicketBusy(number, lease.get("worker", ""), lease["expires"])
+        read = _read(
+            book,
+            ticket,
+            budget=budget,
+            code_budget=code_budget,
+            checkout=checkout,
+            rev=rev,
+        )
+        if read is None:
+            if lease:
+                ticket.lease = {}
+                book.put(ticket)
+            return None
+        packet, state = read
+        delivery = Delivery(
+            id=secrets.token_hex(8),
+            worker=worker,
+            expires=_iso(moment + timedelta(seconds=lease_seconds)),
+            packet=packet,
+        )
+        ticket.lease = {
+            "id": delivery.id,
+            "worker": worker,
+            "expires": delivery.expires,
+            "state": state,
+        }
+        book.put(ticket)
+    return delivery
+
+
+def ack_inbox(book: TicketBook, number: int, delivery: str) -> Ticket:
+    """Mark a claimed delivery read and end its lease.
+
+    Only what that delivery contained is marked: events that arrived during
+    the run stay unread for the next claim. Acknowledging after the lease
+    ran out still works if no other worker has claimed the ticket since.
+    """
+
+    with book.locked(number):
+        ticket = book.get(number)
+        if ticket is None:
+            raise KeyError(number)
+        lease = ticket.lease
+        if not lease or lease.get("id") != delivery:
+            raise StaleDelivery(
+                f"delivery {delivery} is not the open claim on ticket #{number}; "
+                "it was acknowledged already, or the lease ran out and another "
+                "worker claimed the ticket"
+            )
+        _commit(ticket, lease["state"])
+        ticket.lease = {}
+        book.put(ticket)
+    return ticket
 
 
 @dataclass
@@ -279,10 +558,18 @@ def board(book: TicketBook, open_pulls: list | None = None) -> list[BoardRow]:
 
 
 __all__ = [
+    "DEFAULT_LEASE_SECONDS",
     "BoardRow",
+    "Delivery",
+    "StaleDelivery",
     "Ticket",
     "TicketBook",
+    "TicketBusy",
+    "ack_inbox",
     "board",
+    "claim_inbox",
+    "default_worker",
+    "live_claim",
     "open_ticket",
     "pending",
     "read_inbox",
