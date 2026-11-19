@@ -42,6 +42,7 @@ decision schema. Nothing is posted.
     benchmark_threads_agent.py refine --out O
     benchmark_threads_agent.py fetch  --out O --reference CLONE
     benchmark_threads_agent.py replay --out O --arm codenib [--limit N]
+    benchmark_threads_agent.py label  --out O
     benchmark_threads_agent.py score  --out O
 """
 
@@ -896,6 +897,86 @@ def judge(args: argparse.Namespace) -> int:
     return 0
 
 
+# --------------------------------------------------------------------- label
+
+LABEL_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "labels": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string"},
+                    "category": {
+                        "type": "string",
+                        "enum": ["bug", "test", "design", "idiom", "question"],
+                    },
+                    "needs_running": {"type": "boolean"},
+                },
+                "required": ["id", "category", "needs_running"],
+                "additionalProperties": False,
+            },
+        }
+    },
+    "required": ["labels"],
+    "additionalProperties": False,
+}
+
+LABEL_PROMPT = """\
+Label each pull request review comment below with one category:
+- bug: says the change is wrong or regresses behaviour (a case that fails, a \
+crash, wrong output, unsoundness)
+- test: asks for a test, or about where or how something is tested
+- design: where code should live, the shape of an API, or a different approach
+- idiom: use an existing helper or idiom, simplify, a performance nit, naming, \
+style, comments or docs wording
+- question: asks for an explanation and requests no change
+Also say needs_running: true only if the reviewer evidently found the point by \
+running code or an example, rather than by reading.
+
+{items}
+"""
+
+
+def label(args: argparse.Namespace) -> int:
+    """Label what kind of point each reviewer comment makes, 25 per request."""
+
+    out = Path(args.out)
+    selection = json.loads((out / "selection.json").read_text())
+    full = ThreadStore(selection["repo"], out / "store")
+    target = out / "point_labels.json"
+    labels = json.loads(target.read_text()) if target.exists() else {}
+    items = [
+        e
+        for n in selection["order"]
+        for e in review_comments(full, n)
+        if e.address not in labels
+    ]
+    for i in range(0, len(items), 25):
+        chunk = items[i : i + 25]
+        text = "\n\n".join(
+            f"## {e.address}\nFile: {e.meta.get('path') or '(review summary)'}\n"
+            f"{e.body[:1500]}"
+            for e in chunk
+        )
+        argv = [
+            "claude", "-p", "--model", args.model, "--output-format", "json",
+            "--json-schema", json.dumps(LABEL_SCHEMA), "--tools", "",
+            "--strict-mcp-config", "--no-session-persistence", "--restricted",
+        ]  # fmt: skip
+        proc = subprocess.run(
+            argv, input=LABEL_PROMPT.format(items=text), capture_output=True,
+            text=True, cwd=out, timeout=600,
+        )  # fmt: skip
+        found = json.loads(proc.stdout or "{}").get("structured_output") or {}
+        for item in found.get("labels", []):
+            labels[item["id"]] = item
+        target.write_text(json.dumps(labels, indent=1))
+    print(f"{len(labels)} points labelled", file=sys.stderr)
+    return 0
+
+
 # --------------------------------------------------------------------- score
 
 
@@ -1160,6 +1241,10 @@ def main() -> int:
     j.add_argument("--model", default="sonnet")
     j.add_argument("--workers", type=int, default=8)
     j.set_defaults(handler=judge)
+    lb = steps.add_parser("label")
+    lb.add_argument("--out", required=True)
+    lb.add_argument("--model", default="sonnet")
+    lb.set_defaults(handler=label)
     c = steps.add_parser("score")
     c.add_argument("--out", required=True)
     c.add_argument("--exclude-pilot", action="store_true")
