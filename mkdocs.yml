@@ -223,7 +223,7 @@ nav:
       - Reproduced Agents: agent_integrations.md
       - Results:
           - Model-planned grep and Jev: evaluation/grep_jev.md
-          - ContextBench Experiments: evaluation/contextbench-results.md
+          - ContextBench Results: evaluation/contextbench-results.md
       - Prepare Inputs:
           - SWE-bench Collection: collect_swebench.md
           - Synthesis Pipeline: synthesis_pipeline.md
