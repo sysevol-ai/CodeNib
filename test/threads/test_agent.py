@@ -375,7 +375,11 @@ def test_watch_starts_tickets_for_new_pulls_and_closes_them_once_done(github, tm
         event_address(REPO, 9, "merged", 1), 9, "merged", "ann",
         "2026-01-05T00:00:00Z",
     )  # fmt: skip
-    store.append(9, [merged])
+    closed = ThreadEvent(
+        event_address(REPO, 9, "closed", 2), 9, "closed", "ann",
+        "2026-01-05T00:00:01Z",
+    )  # fmt: skip
+    store.append(9, [merged, closed])
     report = run_pass(home, agent, checkout=tmp_path, now=Clock())
     # A merge asks nothing of the agent: it is read without a run.
     assert [r.outcome for r in report.runs] == ["skipped"]

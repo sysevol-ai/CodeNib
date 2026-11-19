@@ -724,6 +724,16 @@ def needs_agent(event, sent: set[str], skip_bot_posts: bool = True) -> bool:
     return event.kind in WAKE_KINDS
 
 
+def news_for_agent(events, sent: set[str], skip_bot_posts: bool = True) -> list:
+    """The events among ``events`` that are worth waking the agent for."""
+
+    wanted = [e for e in events if needs_agent(e, sent, skip_bot_posts)]
+    if any(e.kind == "merged" for e in events):
+        # GitHub records "closed" right after "merged"; the merge asks nothing.
+        wanted = [e for e in wanted if e.kind != "closed"]
+    return wanted
+
+
 def _mark(home: AgentHome, ticket: Ticket) -> str:
     """What the agent would be shown; a failed run is retried when it changes."""
 
@@ -853,7 +863,7 @@ def run_ticket(
             return TicketRun(number, why, "busy", error=str(exc))
     # News that asks nothing of anyone, such as labels, passing checks, bot
     # comments or the agent's own replies, is read without a run.
-    wanted = [e for e in unread if needs_agent(e, sent, skip_bot_posts)]
+    wanted = news_for_agent(unread, sent, skip_bot_posts)
     if delivery is not None and briefed and not timer and not wanted:
         ack_inbox(book, number, delivery.id)
         record = TicketRun(
@@ -1103,6 +1113,7 @@ __all__ = [
     "WatchRule",
     "check_decision",
     "needs_agent",
+    "news_for_agent",
     "write_pull_diff",
     "default_agent_worker",
     "run_pass",
