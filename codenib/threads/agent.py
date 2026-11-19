@@ -553,6 +553,7 @@ def run_prompt(
     own: list[str],
     thread: str,
     diff: str = "",
+    since: str = "",
 ) -> str:
     parts = [f"Why you are awake: {'; '.join(why)}."]
     parts.append("## Your notes on this thread\n" + (notes or "(none yet)"))
@@ -566,6 +567,8 @@ def run_prompt(
         )
     if diff:
         parts.append("## The pull request's diff\n" + diff)
+    if since:
+        parts.append("## New commits\n" + since)
     parts.append(thread.strip())
     parts.append(f"Decide what thread #{number} needs from you now.")
     return "\n\n".join(parts) + "\n"
@@ -757,6 +760,66 @@ def _why(home: AgentHome, ticket: Ticket, moment: datetime) -> list[str]:
     return why
 
 
+def _write_diff(files: list[dict], path: Path) -> str:
+    """Write GitHub's file list as one unified diff; returns its summary."""
+
+    parts, left_out, size = [], [], 0
+    for item in files:
+        name = item.get("filename") or "?"
+        before = item.get("previous_filename") or name
+        patch = item.get("patch")
+        chunk = f"diff --git a/{before} b/{name}\n"
+        if item.get("status") == "removed":
+            chunk += "deleted file\n"
+        if patch is None:
+            chunk += "(binary, or too large for GitHub to show)\n"
+        else:
+            chunk += f"--- a/{before}\n+++ b/{name}\n{patch}\n"
+        if size + len(chunk) > MAX_DIFF_CHARS:
+            left_out.append(name)
+            continue
+        parts.append(chunk)
+        size += len(chunk)
+    if left_out:
+        parts.append("# Left out, the diff is too long: " + ", ".join(left_out))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("".join(parts), encoding="utf-8")
+    added = sum(int(item.get("additions") or 0) for item in files)
+    removed = sum(int(item.get("deletions") or 0) for item in files)
+    noun = "file" if len(files) == 1 else "files"
+    return f"{len(files)} {noun}, +{added} −{removed}"
+
+
+def write_new_commits_diff(client, home: AgentHome, number: int, since: str) -> str:
+    """Save what a pull request's commits since ``since`` changed.
+
+    Returns the prompt's instruction to review them, or "" when the head has
+    not moved, the history was rewritten, or GitHub cannot compare the two.
+    """
+
+    header = home.store.header(number)
+    if client is None or header is None or not header.is_pr:
+        return ""
+    head = header.head_sha
+    if not since or not head or since == head:
+        return ""
+    compare = client.get(f"repos/{home.store.repo}/compare/{since}...{head}")
+    # "ahead": the new head builds on the old one. After a force push the
+    # comparison would mix old and new work, so the full diff has to do.
+    if not compare or compare.get("status") != "ahead" or not compare.get("files"):
+        return ""
+    path = home.dir / "diffs" / f"{int(number)}.since.diff"
+    summary = _write_diff(compare["files"], path)
+    return (
+        f"New commits arrived since your last run ({since[:8]}..{head[:8]}). "
+        f"What they change, and only that, is in {path} ({summary}). Review "
+        "them as you reviewed the first version: whether the new code does what "
+        "it claims, whether it settles the points you or the reviewers raised, "
+        "and what it misses. Reply only if you find something a reviewer would "
+        "want to know."
+    )
+
+
 def write_pull_diff(client, home: AgentHome, number: int) -> str:
     """Save an open pull request's diff where the agent can read it.
 
@@ -777,31 +840,7 @@ def write_pull_diff(client, home: AgentHome, number: int) -> str:
         files = client.pages(f"repos/{home.store.repo}/pulls/{number}/files")
         if not files:
             return ""
-        parts, left_out, size = [], [], 0
-        for item in files:
-            name = item.get("filename") or "?"
-            before = item.get("previous_filename") or name
-            patch = item.get("patch")
-            chunk = f"diff --git a/{before} b/{name}\n"
-            if item.get("status") == "removed":
-                chunk += "deleted file\n"
-            if patch is None:
-                chunk += "(binary, or too large for GitHub to show)\n"
-            else:
-                chunk += f"--- a/{before}\n+++ b/{name}\n{patch}\n"
-            if size + len(chunk) > MAX_DIFF_CHARS:
-                left_out.append(name)
-                continue
-            parts.append(chunk)
-            size += len(chunk)
-        if left_out:
-            parts.append("# Left out, the diff is too long: " + ", ".join(left_out))
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text("".join(parts), encoding="utf-8")
-        added = sum(int(item.get("additions") or 0) for item in files)
-        removed = sum(int(item.get("deletions") or 0) for item in files)
-        noun = "file" if len(files) == 1 else "files"
-        summary = f"{len(files)} {noun}, +{added} −{removed}"
+        summary = _write_diff(files, path)
         state.update(diff_sha=header.head_sha, diff_summary=summary)
         home.put_state(number, state)
     at = f" at {header.head_sha[:8]}" if header.head_sha else ""
@@ -829,6 +868,7 @@ def run_ticket(
     code_budget: int = DEFAULT_CODE_BUDGET,
     skip_bot_posts: bool = True,
     client=None,
+    review_new_commits: bool = True,
     now: Callable[[], datetime] = _utcnow,
 ) -> TicketRun:
     """One run of the agent on one ticket.
@@ -889,12 +929,18 @@ def run_ticket(
         # Woken by a timer with nothing new: the status line is enough.
         packet = build_packet(bundle, since=bundle.head(), budget=budget)
     own = [e.address for e in unread if _is_own(e, sent)]
-    diff = ""
+    diff = since = ""
+    header = store.header(number)
     if bundle.root.state() == "open":
         try:
             diff = write_pull_diff(client, home, number)
+            if review_new_commits and briefed:
+                since = write_new_commits_diff(
+                    client, home, number, state.get("reviewed_head", "")
+                )
         except RuntimeError:
-            diff = ""  # the run goes on with the thread's own file list
+            pass  # the run goes on with what the thread itself shows
+        state = home.state(number)  # the diff writer may have updated it
     system = system_prompt(store.repo, home.instructions())
     prompt = run_prompt(
         number=number,
@@ -904,8 +950,9 @@ def run_ticket(
         own=own,
         thread=packet.text,
         diff=diff,
+        since=since,
     )
-    result = runner(system, prompt, cwd, [home.dir / "diffs"] if diff else [])
+    result = runner(system, prompt, cwd, [home.dir / "diffs"] if diff or since else [])
     record = TicketRun(
         number,
         why,
@@ -971,6 +1018,8 @@ def run_ticket(
         last_error="",
         last_run=_iso(moment),
         last_outcome=decision["action"],
+        # The head this run saw; the next run is told what came after it.
+        reviewed_head=header.head_sha if header else "",
     )
     home.put_state(number, state)
     record.outcome = decision["action"]
@@ -1114,6 +1163,7 @@ __all__ = [
     "check_decision",
     "needs_agent",
     "news_for_agent",
+    "write_new_commits_diff",
     "write_pull_diff",
     "default_agent_worker",
     "run_pass",

@@ -24,6 +24,7 @@ from codenib.threads.agent import (
     _decision_from_output,
     check_decision,
     run_pass,
+    run_ticket,
 )
 from codenib.threads.events import ThreadEvent, ThreadHeader, event_address
 from codenib.threads.log_store import ThreadStore
@@ -208,6 +209,87 @@ def test_labels_and_passing_checks_wake_nobody_but_a_failing_check_does(home, tm
     )  # fmt: skip
     home.store.append(7, [failed])
     assert [r.outcome for r in _pass(home, agent, tmp_path).runs] == ["nothing"]
+
+
+class PullGitHub:
+    """Answers the two requests a pass makes for a pull request's diffs."""
+
+    def __init__(self):
+        self.status = "ahead"
+
+    def pages(self, path, key=None, max_pages=30):
+        return [{"filename": "src/a.py", "additions": 3, "deletions": 1,
+                 "patch": "@@ -1 +1,3 @@\n-x\n+y"}]  # fmt: skip
+
+    def get(self, path):
+        assert path == f"repos/{REPO}/compare/head111...head222"
+        return {"status": self.status, "files": [
+            {"filename": "src/a.py", "additions": 1, "deletions": 0,
+             "patch": "@@ -3 +3,2 @@\n+guard()"}]}  # fmt: skip
+
+
+def _pull(tmp_path):
+    store = ThreadStore(REPO, tmp_path / "store")
+    store.write_header(
+        ThreadHeader(REPO, 9, True, "Fix", "open", "ann", "2026-01-01T00:00:00Z",
+                     head_sha="head111")  # fmt: skip
+    )
+    opened = ThreadEvent(
+        event_address(REPO, 9, "opened", 9), 9, "opened", "ann",
+        "2026-01-01T00:00:00Z", False, "Fixes the crash.",
+    )  # fmt: skip
+    store.append(9, [opened])
+    book = TicketBook(store)
+    open_ticket(book, 9)
+    return AgentHome(book)
+
+
+def _push(home, sha, at):
+    header = home.store.header(9)
+    header.head_sha = sha
+    home.store.write_header(header)
+    commit = ThreadEvent(
+        event_address(REPO, 9, "commit", sha), 9, "commit", "ann", at, False, "",
+        {"sha": sha, "subject": "guard"},
+    )  # fmt: skip
+    home.store.append(9, [commit])
+
+
+def _run(home, agent, tmp_path, github):
+    return run_ticket(
+        home, home.book.get(9), agent, checkout=tmp_path, worker="w",
+        lease_seconds=600, client=github, now=Clock(),
+    )  # fmt: skip
+
+
+def test_new_commits_are_reviewed_on_their_own(tmp_path):
+    home = _pull(tmp_path)
+    github, agent = PullGitHub(), Agent(_decide("reply", "Missing a test."))
+    _run(home, agent, tmp_path, github)
+    assert "## New commits" not in agent.prompts[0]
+    assert home.state(9)["reviewed_head"] == "head111"
+
+    _push(home, "head222", "2026-01-02T00:00:00Z")
+    _run(home, agent, tmp_path, github)
+    since = home.dir / "diffs" / "9.since.diff"
+    assert "New commits arrived since your last run (head111..head222)" in (
+        agent.prompts[1]
+    )
+    assert f"only that, is in {since} (1 file, +1 −0)" in agent.prompts[1]
+    assert "+guard()" in since.read_text()
+    assert agent.read_dirs == [home.dir / "diffs"]
+    assert home.state(9)["reviewed_head"] == "head222"
+
+
+def test_a_rewritten_history_gets_only_the_full_diff(tmp_path):
+    home = _pull(tmp_path)
+    github, agent = PullGitHub(), Agent()
+    _run(home, agent, tmp_path, github)
+    github.status = "diverged"
+    _push(home, "head222", "2026-01-02T00:00:00Z")
+    _run(home, agent, tmp_path, github)
+    assert "## New commits" not in agent.prompts[1]
+    assert "The full diff at head222" in agent.prompts[1]
 
 
 def test_a_follow_up_wakes_it_without_news_and_shows_the_status(home, tmp_path):
