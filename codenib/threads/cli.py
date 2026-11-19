@@ -711,5 +711,9 @@ def add_threads_parser(subparsers, formatter) -> None:
     _common(events)
     events.set_defaults(handler=_run_events)
 
+    from .agent_cli import add_agent_parser
+
+    add_agent_parser(commands, formatter)
+
 
 __all__ = ["add_threads_parser"]

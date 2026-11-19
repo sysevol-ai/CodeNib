@@ -239,12 +239,22 @@ def _open_ticket(
     return ticket, packet
 
 
-def pending(book: TicketBook, ticket: Ticket) -> int:
-    """How many events of the ticket's threads it has not read."""
+def unread_events(book: TicketBook, ticket: Ticket) -> list:
+    """The events of the ticket's threads it has not read, oldest first."""
 
     bundle = load_bundle(book.store, ticket.number, subscribed=ticket.threads)
     news = _news(book, ticket, bundle) if bundle else None
-    return sum(len(view.events) for view in news.views) if news else 0
+    if news is None:
+        return []
+    return sorted(
+        (e for view in news.views for e in view.events), key=lambda e: (e.at, e.address)
+    )
+
+
+def pending(book: TicketBook, ticket: Ticket) -> int:
+    """How many events of the ticket's threads it has not read."""
+
+    return len(unread_events(book, ticket))
 
 
 DEFAULT_LEASE_SECONDS = 30 * 60
@@ -505,6 +515,22 @@ def ack_inbox(book: TicketBook, number: int, delivery: str) -> Ticket:
     return ticket
 
 
+def release_claim(book: TicketBook, number: int, delivery: str) -> bool:
+    """Give a claimed delivery back unread, so any worker can claim it now.
+
+    For a run that failed cleanly; a run that crashed gives it back when the
+    lease runs out. Returns ``False`` if the delivery is no longer the claim.
+    """
+
+    with book.locked(number):
+        ticket = book.get(number)
+        if ticket is None or ticket.lease.get("id") != delivery:
+            return False
+        ticket.lease = {}
+        book.put(ticket)
+    return True
+
+
 @dataclass
 class BoardRow:
     ticket: Ticket
@@ -573,4 +599,6 @@ __all__ = [
     "open_ticket",
     "pending",
     "read_inbox",
+    "release_claim",
+    "unread_events",
 ]
