@@ -20,7 +20,6 @@ if TYPE_CHECKING:  # pragma: no cover - imported only by static analyzers
         GraphRetrievePipeline,
         SparseSeededGraphRetrievePipeline,
     )
-    from .hybrid_retrieve_pipeline import HybridRetrievePipeline
     from .retrieval_planner import (
         GraphExpansionPlan,
         RetrievalBudget,
@@ -60,10 +59,6 @@ _EXPORTS = {
     "SparseSeededGraphRetrievePipeline": (
         "codenib.model.graph_retrieve_pipeline",
         "SparseSeededGraphRetrievePipeline",
-    ),
-    "HybridRetrievePipeline": (
-        "codenib.model.hybrid_retrieve_pipeline",
-        "HybridRetrievePipeline",
     ),
     "GraphExpansionPlan": (
         "codenib.model.retrieval_planner",
@@ -105,7 +100,6 @@ __all__ = [
     "GraphAugmentedRerankPipeline",
     "GraphExpansionPlan",
     "GraphRetrievePipeline",
-    "HybridRetrievePipeline",
     "RetrievalBudget",
     "RetrievalCapabilities",
     "RetrievalPathPlan",

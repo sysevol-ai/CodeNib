@@ -42,6 +42,16 @@ All notable user-facing changes are recorded here. CodeNib follows
   type has a method of that name (`append`, `info`). On 68 agent regressions
   it now lists a broken test for 42, up from 38.
 
+### Removed
+
+- Agent skills that nothing in CodeNib used any more: `hybrid_search`,
+  `llm_rerank`, `crossencoder_rerank`, `code_to_query` and `trace`, and
+  `codenib.model.HybridRetrievePipeline`. Ask, the evaluation harnesses and
+  the LSP studies keep the nine skills they use. Reranking stays available
+  through `RetrieveRerankPipeline`. The agent-compile sweep tooling
+  (`scripts/agent_compile/`, the feedback, Pareto and promotion reports), the
+  skill-agent examples and `scripts/retrieval_ablation/` are removed too.
+
 ## [0.2.6] - 2026-11-14
 
 ### Added
