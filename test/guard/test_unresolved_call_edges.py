@@ -125,3 +125,48 @@ def test_the_text_check_keeps_calls_split_across_lines(tmp_path):
     assert sorted(_attribute_calls(path, {"as_sql"})) == [(2, "as_sql"), (7, "as_sql")]
     # A file with no call of a wanted name is not parsed at all.
     assert _attribute_calls(path, {"render"}) == []
+
+
+def test_calls_the_checker_resolved_outside_the_project_are_not_guessed(
+    make_graph, tmp_path, write_files
+):
+    # The graph holds no built-in or standard-library methods, so these calls
+    # look unresolved, yet each runs a method outside the project.
+    write_files(
+        tmp_path,
+        {
+            "app/run.py": textwrap.dedent(
+                """\
+                import hashlib
+                import os.path
+                from models import Record
+
+
+                def run(rows, logger):
+                    rows.append(1)
+                    logger.info("ran")
+                    hashlib.sha256(b"")
+                    os.path.join("a")
+                    Record.create()
+                    Record.objects.render()
+                """
+            )
+        },
+    )
+    nodes = [
+        ("app/run.py", "file", None, None, None),
+        ("app/run.py:run()", "function", "app/run.py", 4, 11),
+    ] + [
+        (f"app/models.py:Record.{name}()", "method", "app/models.py", i, i)
+        for i, name in enumerate(("append", "info", "sha256", "join", "create"))
+    ]
+    nodes.append(("app/models.py:Record.render()", "method", "app/models.py", 9, 9))
+    graph = make_graph(nodes, [])
+
+    edges = unresolved_call_edges(graph, tmp_path)
+
+    # Only the call on an attribute of an imported class, which may be of any
+    # type, remains.
+    assert [(graph.vs[e.method]["name"], e.line) for e in edges] == [
+        ("app/models.py:Record.render()", 12)
+    ]

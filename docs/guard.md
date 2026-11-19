@@ -36,7 +36,9 @@ them, and keeps working.
   method in a subclass. Code that uses a class reaches the methods its
   operators run, such as `__eq__` for `==` and `__getitem__` for `[]`. A call
   such as `node.as_sql()` on a value of unknown type reaches each method of
-  that name, when the project defines at most three.
+  that name, when the project defines at most three. A name that a built-in
+  type or a common standard-library object also has, such as `rows.append()`
+  or `logger.info()`, is not guessed at, nor is a call on an imported name.
 - **Why.** Each test comes with its path, such as
   `test_checkout_total (tests/test_checkout.py:6) -> checkout (shop/checkout.py:5) -> Cart.__init__`.
   The location after each name is the line where it makes the next call.

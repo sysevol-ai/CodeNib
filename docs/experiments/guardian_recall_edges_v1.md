@@ -80,6 +80,19 @@ reach, and the guard shows ten of them.
 The product guard itself (`ImpactGraph.impact` on this branch, run through
 `product_check.py`) gives the same 42, 13 and 446.
 
+The shipped rule leaves out two kinds of call that the graph cannot tell from
+unresolved ones, because it holds no built-in or standard-library methods: a
+call on an imported name (`hashlib.sha256()`, `os.path.join()`), and a call
+whose name is a method of a built-in container, string or number, or of a
+standard-library file, path, logger, pattern or process (`rows.append()`,
+`logger.info()`). Without them, every `x.append(...)` in CodeNib's own code
+reached the three methods named `append` it defines, and a change to one of
+them listed 4,861 tests. With them, CodeNib's graph at 2c8a166f has 1,493
+unresolved-call edges instead of 10,213. On the 103 patches the result is
+unchanged: 42 caught, 18 among the first ten, a clean-patch median of 13 and a
+90th percentile of 446; 19 lists get shorter, the largest drop being 2,402 to
+1,948 tests.
+
 Building the guard's in-memory view takes longer: django 7.6 s to 10.0 s, sympy
 24.9 s to 31.0 s, xarray 2.0 s to 2.9 s. Base classes are found once for
 override and operator edges, and a file is parsed for unresolved calls only
@@ -138,7 +151,7 @@ Of the 26 cases still missed within three calls:
 ## Reproduce
 
 `guardian_recall_edges_v1.tar.gz` (SHA-256
-`5ff754ce9f2b1d7ebfcd2b30ebcd0bf2dc4805bfe3788a4281606357ba80caff`) holds the
+`0be7bc3e51f83b18d8665eb64119f6266885f6d40476417cede43abfc25e314c`) holds the
 scripts, every per-patch result, the build log and `summary.json`. `SOURCE`
 says how the graphs were built; graph files are not included. Building the 47
 graphs takes about 30 minutes with four in parallel, and each layer run 10 to

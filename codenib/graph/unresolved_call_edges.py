@@ -14,6 +14,15 @@ than ``max_targets`` places is too common to guess from, and is left alone.
 A caller that the graph already links to something of the same name made a
 call that was resolved, and gains nothing.
 
+The graph holds only the project's own code, so a call the checker resolved to
+a built-in or standard-library type looks unresolved too. Two kinds of call
+are therefore never guessed at: one on an imported name, such as
+``hashlib.sha256()`` or ``os.path.join()``, whose target the checker knows;
+and one whose name is a method of a built-in container, string or number, or
+of a standard-library file, path, logger, pattern or process, such as
+``rows.append()`` or ``logger.info()``, which far more often runs that method
+than a project method of the same name.
+
 Like constructor edges, the edges are derived from a graph and its source and
 returned, not written into the graph.
 """
@@ -21,9 +30,12 @@ returned, not written into the graph.
 from __future__ import annotations
 
 import ast
+import io
+import logging
 import re
+import subprocess
 import warnings
-from collections import defaultdict
+from collections import Counter, OrderedDict, defaultdict, deque
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
@@ -37,6 +49,38 @@ MAX_TARGETS = 3
 # ``.name`` then ``(``, with whitespace, line continuations or comments between.
 _GAP = rb"(?:\s|\\\r?\n|#[^\n]*\n)*"
 _CALL = re.compile(rb"\." + _GAP + rb"([A-Za-z_][A-Za-z0-9_]*)" + _GAP + rb"\(")
+# Values of these types are what untyped code passes around most, and the
+# graph holds none of their methods; a project method that shares a name with
+# one of their methods is not a target.
+_STANDARD_TYPES = (
+    list,
+    dict,
+    set,
+    frozenset,
+    tuple,
+    str,
+    bytes,
+    bytearray,
+    int,
+    float,
+    complex,
+    io.TextIOWrapper,
+    io.BufferedRandom,
+    io.BytesIO,
+    io.StringIO,
+    deque,
+    OrderedDict,
+    Counter,
+    defaultdict,
+    Path,
+    logging.Logger,
+    re.Pattern,
+    re.Match,
+    subprocess.Popen,
+)
+STANDARD_METHOD_NAMES = frozenset(
+    name for kind in _STANDARD_TYPES for name in dir(kind) if not name.startswith("_")
+)
 
 
 @dataclass(frozen=True)
@@ -73,13 +117,49 @@ def _attribute_calls(
             tree = ast.parse(source)
     except (SyntaxError, ValueError):
         return []
+    imported = _imported_names(tree)
     calls = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
             name = node.func.attr
-            if not (name.startswith("__") and name.endswith("__")):
+            if name.startswith("__") and name.endswith("__"):
+                continue
+            if not _on_imported_name(node.func.value, imported):
                 calls.append((node.lineno, name))
     return calls
+
+
+def _imported_names(tree: ast.AST) -> Dict[str, bool]:
+    """Names bound by an import anywhere in a file; ``True`` for a module.
+
+    ``import a.b`` binds the module ``a``; ``from a import b`` binds ``b``,
+    which may be a module, a class or a function.
+    """
+
+    names: Dict[str, bool] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                names[alias.asname or alias.name.partition(".")[0]] = True
+        elif isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                names.setdefault(alias.asname or alias.name, False)
+    return names
+
+
+def _on_imported_name(receiver: ast.expr, imported: Dict[str, bool]) -> bool:
+    """Whether ``receiver`` is an imported name or an attribute of a module.
+
+    ``re.match()``, ``Path.cwd()`` and ``os.path.join()`` qualify;
+    ``Model.objects.get()`` does not, since a class attribute may be of any
+    type.
+    """
+
+    if isinstance(receiver, ast.Name):
+        return receiver.id in imported
+    while isinstance(receiver, ast.Attribute):
+        receiver = receiver.value
+    return isinstance(receiver, ast.Name) and imported.get(receiver.id, False)
 
 
 def unresolved_call_edges(
@@ -123,7 +203,11 @@ def unresolved_call_edges(
             callee_names[source].add(short_name(names[target]))
 
     edges: Dict[Tuple[int, int], int] = {}
-    wanted = {name for name, found in methods.items() if len(found) <= max_targets}
+    wanted = {
+        name
+        for name, found in methods.items()
+        if len(found) <= max_targets and name not in STANDARD_METHOD_NAMES
+    }
     prefilter = all(name.isascii() for name in wanted)
     for path, defs in sorted(definitions.items()):
         calls = [
