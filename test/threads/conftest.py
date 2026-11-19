@@ -24,6 +24,9 @@ class FakeGitHub:
         self.extra_comments: list[dict] = []
         self.check_conclusion = "failure"
         self.updated: list[int] = []
+        # What a listing of open threads returns, and comments posted to it.
+        self.open_threads: list[dict] = []
+        self.posted: list[tuple[str, dict, str | None]] = []
 
     def routes(self, path: str, query: dict, base: str):
         user = {"login": "ann", "type": "User"}
@@ -94,6 +97,8 @@ class FakeGitHub:
                      "updated_at": "2026-01-04T00:00:00Z", "draft": False},
                     {"number": 11, "title": "Bump deps", "user": bot,
                      "updated_at": "2026-01-05T00:00:00Z"}]  # fmt: skip
+        if path == f"{prefix}/issues" and query.get("state") == ["open"]:
+            return self.open_threads
         if path == f"{prefix}/issues" and "since" in query:
             return [{"number": n} for n in self.updated]
         return None
@@ -154,6 +159,20 @@ def github(monkeypatch):
             self.send_response(200)
             for key, value in headers.items():
                 self.send_header(key, value)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_POST(self):  # noqa: N802
+            length = int(self.headers.get("Content-Length") or 0)
+            payload = json.loads(self.rfile.read(length) or b"{}")
+            path = urlsplit(self.path).path
+            fake.posted.append((path, payload, self.headers.get("Authorization")))
+            ident = 9000 + len(fake.posted)
+            body = json.dumps(
+                {"id": ident, "html_url": f"https://github.com/{REPO}#c{ident}"}
+            ).encode()
+            self.send_response(201)
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
