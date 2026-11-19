@@ -33,6 +33,15 @@ All notable user-facing changes are recorded here. CodeNib follows
   a poll appended it while the update was being built. It is now delivered on
   the next read instead.
 
+### Changed
+
+- `codenib guard` reaches Python code that no call names: the special methods
+  an operator runs (`__eq__` for `==`) from code that uses the class, and the
+  methods a call on a value of unknown type may run (`node.as_sql()`), when at
+  most three methods share the name and no built-in or common standard-library
+  type has a method of that name (`append`, `info`). On 68 agent regressions
+  it now lists a broken test for 42, up from 38.
+
 ## [0.2.6] - 2026-11-14
 
 ### Added

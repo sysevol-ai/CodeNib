@@ -11,7 +11,9 @@ class maps to every definition in the file. The tests at risk are the test
 functions that reach that changed code in at most ``depth`` calls, following
 the graph's references plus the constructor edges of
 :mod:`codenib.graph.constructor_edges`, the alias edges of
-:mod:`codenib.graph.alias_edges` and the override pairs of
+:mod:`codenib.graph.alias_edges`, the operator edges of
+:mod:`codenib.graph.operator_edges`, the unresolved-call edges of
+:mod:`codenib.graph.unresolved_call_edges` and the override pairs of
 :mod:`codenib.graph.override_edges`. Each test keeps the path it was found
 by, so a report can say why the test is at risk.
 
@@ -41,7 +43,9 @@ from typing import (
 from ..graph.alias_edges import alias_edges
 from ..graph.constructor_edges import constructor_edges
 from ..graph.identity import short_name, symbol_id  # noqa: F401 - re-exported
-from ..graph.override_edges import override_pairs
+from ..graph.operator_edges import operator_edges
+from ..graph.override_edges import class_bases, override_pairs
+from ..graph.unresolved_call_edges import unresolved_call_edges
 from ..types import (
     NODE_TYPE_CLASS,
     NODE_TYPE_FILE,
@@ -240,10 +244,20 @@ class ImpactGraph:
             self.callers[alias.target].add(alias.user)
             if alias.line is not None:
                 self.call_lines.setdefault((alias.user, alias.target), alias.line)
+        bases = class_bases(graph, self.root)
+        # Code that uses a class runs its operators: ``a == b`` runs ``__eq__``.
+        for op in operator_edges(graph, self.root, bases):
+            self.callers[op.method].add(op.user)
+            if op.line is not None:
+                self.call_lines.setdefault((op.user, op.method), op.line)
+        # ``node.as_sql()`` on an unknown receiver may run any ``as_sql``.
+        for call in unresolved_call_edges(graph, self.root):
+            self.callers[call.method].add(call.caller)
+            self.call_lines.setdefault((call.caller, call.method), call.line)
         # A call of ``Base.method`` may run any override of it. The callers
         # are those known before this step, so an override two levels down
         # gets its ancestors' callers once, not each other's additions.
-        pairs = override_pairs(graph, self.root)
+        pairs = override_pairs(graph, self.root, bases)
         declared = {
             overridden: set(self.callers.get(overridden, ())) for _, overridden in pairs
         }
