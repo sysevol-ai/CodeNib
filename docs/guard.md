@@ -39,6 +39,8 @@ them, and keeps working.
   that name, when the project defines at most three. A name that a built-in
   type or a common standard-library object also has, such as `rows.append()`
   or `logger.info()`, is not guessed at, nor is a call on an imported name.
+  Naming a command-line handler, `parser.set_defaults(handler=run_index)`, is
+  not a call: a test that only builds the parser does not reach the handler.
 - **Why.** Each test comes with its path, such as
   `test_checkout_total (tests/test_checkout.py:6) -> checkout (shop/checkout.py:5) -> Cart.__init__`.
   The location after each name is the line where it makes the next call.

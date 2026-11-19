@@ -32,6 +32,9 @@ All notable user-facing changes are recorded here. CodeNib follows
 - `codenib threads inbox` could mark an event read without delivering it when
   a poll appended it while the update was being built. It is now delivered on
   the next read instead.
+- The change guard no longer lists every test that builds a command-line
+  parser for a change in any command's handler. `set_defaults(handler=...)`
+  names the handler without running it, and is no longer followed as a call.
 
 ### Changed
 

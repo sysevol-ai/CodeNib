@@ -14,8 +14,10 @@ the graph's references plus the constructor edges of
 :mod:`codenib.graph.alias_edges`, the operator edges of
 :mod:`codenib.graph.operator_edges`, the unresolved-call edges of
 :mod:`codenib.graph.unresolved_call_edges` and the override pairs of
-:mod:`codenib.graph.override_edges`. Each test keeps the path it was found
-by, so a report can say why the test is at risk.
+:mod:`codenib.graph.override_edges`. A reference that only registers a
+command-line handler (:mod:`codenib.graph.registration_refs`) is not a call
+and is not followed. Each test keeps the path it was found by, so a report
+can say why the test is at risk.
 
 The method and its recall on real agent regressions are in
 ``docs/experiments/guardian_regression_check_v1.md`` and
@@ -45,6 +47,7 @@ from ..graph.constructor_edges import constructor_edges
 from ..graph.identity import short_name, symbol_id  # noqa: F401 - re-exported
 from ..graph.operator_edges import operator_edges
 from ..graph.override_edges import class_bases, override_pairs
+from ..graph.registration_refs import registration_references
 from ..graph.unresolved_call_edges import unresolved_call_edges
 from ..types import (
     NODE_TYPE_CLASS,
@@ -225,10 +228,12 @@ class ImpactGraph:
         self.call_lines: Dict[Tuple[int, int], int] = {}
         attributes = graph.es.attributes()
         anchors = graph.es["anchor_line"] if "anchor_line" in attributes else None
+        # ``parser.set_defaults(handler=f)`` names ``f`` without running it.
+        registrations = registration_references(graph, self.root)
         for index, ((source, target), kind) in enumerate(
             zip(graph.get_edgelist(), graph.es["type"], strict=True)
         ):
-            if kind == "reference":
+            if kind == "reference" and index not in registrations:
                 self.callers[target].add(source)
                 if anchors is not None and anchors[index] is not None:
                     self.call_lines.setdefault(
