@@ -216,9 +216,11 @@ def _date(at: str) -> str:
 
 def _status_line(view: ThreadView) -> str:
     kind = "PR" if view.header.is_pr else "issue"
+    opened = next((e for e in view.events if e.kind == "opened"), None)
+    author = _author(opened) if opened else view.header.author
     parts = [
         f"{view.state()} {kind}",
-        f"opened {_date(view.header.created_at)} by {view.header.author}",
+        f"opened {_date(view.header.created_at)} by {author}",
     ]
     labels = view.labels()
     if labels:
@@ -284,6 +286,24 @@ def _anchor_line(anchor: CodeAnchor) -> str:
     return f"- {anchor.location()}{name} ({anchor.basis}; {cites})"
 
 
+# The author's relation to the repository, in GitHub's terms. An agent that
+# works unattended can then tell a maintainer's request from a stranger's.
+_ROLES = {
+    "OWNER": "owner",
+    "MEMBER": "member",
+    "COLLABORATOR": "collaborator",
+    "CONTRIBUTOR": "contributor",
+    "FIRST_TIME_CONTRIBUTOR": "first-time contributor",
+    "FIRST_TIMER": "first-time contributor",
+    "NONE": "not a contributor",
+}
+
+
+def _author(event: ThreadEvent) -> str:
+    role = _ROLES.get(event.association)
+    return f"{event.actor} ({role})" if role else event.actor
+
+
 def _event_items(
     view: ThreadView,
     dedup: _Dedup,
@@ -306,7 +326,7 @@ def _event_items(
         if not body:
             continue
         state = f" [{event.meta['state']}]" if event.meta.get("state") else ""
-        head = f"[{short(event.address)}] {_date(event.at)} {event.actor}{state}:"
+        head = f"[{short(event.address)}] {_date(event.at)} {_author(event)}{state}:"
         items.append(
             _Item(
                 section,
@@ -347,7 +367,7 @@ def _review_items(
                 section,
                 priority + rank * 0.001,
                 (view.number, event.at),
-                f"[{short(event.address)}] {where} {event.actor}:{code}\n"
+                f"[{short(event.address)}] {where} {_author(event)}:{code}\n"
                 f"{elide(body, body_chars)}",
             )
         )

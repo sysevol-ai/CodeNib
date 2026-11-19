@@ -196,6 +196,11 @@ def _is_bot(user: dict | None) -> bool:
     )
 
 
+def _association(item: dict | None) -> str:
+    value = (item or {}).get("author_association") or ""
+    return value if isinstance(value, str) and value.isupper() else ""
+
+
 def _closing_refs(body: str) -> list[int]:
     pattern = r"(?i)\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s+#(\d+)"
     return [int(n) for n in re.findall(pattern, body or "")]
@@ -220,6 +225,7 @@ def _timeline(
                     item.get("created_at") or "",
                     _is_bot(item.get("user")),
                     item.get("body") or "",
+                    association=_association(item),
                 )
             )
         elif name == "reviewed":
@@ -233,6 +239,7 @@ def _timeline(
                     _is_bot(item.get("user")),
                     item.get("body") or "",
                     {"state": (item.get("state") or "").lower()},
+                    association=_association(item),
                 )
             )
         elif name == "committed":
@@ -346,6 +353,7 @@ def fetch_thread(
             _is_bot(issue.get("user")),
             issue.get("body") or "",
             {"title": header.title, "is_pr": is_pr},
+            association=_association(issue),
         )
     ]
     if is_pr:
@@ -387,6 +395,7 @@ def _pull_events(
                     "line": comment.get("line") or comment.get("original_line"),
                     "hunk": comment.get("diff_hunk") or "",
                 },
+                association=_association(comment),
             )
         )
     commits = client.pages(f"repos/{repo}/pulls/{number}/commits")
