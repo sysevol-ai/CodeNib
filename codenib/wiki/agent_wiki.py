@@ -2658,13 +2658,13 @@ def _fact_plan_markdown(
         if item is None or not (item.content or "").strip():
             return "", []
         focus_terms = _excerpt_focus_terms(section, str(spec.get("why") or ""))
-        window, marked = _excerpt_window(item.content, focus_terms)
+        window, _marked = _excerpt_window(item.content, focus_terms)
         if len(window) < 2:
             return "", []
-        language = _lang(item.file)
-        info = language
-        if marked:
-            info = f"{language or 'text'} hl={','.join(str(n) for n in marked)}"
+        # No ``hl=`` here: a line is marked only when the final caption names
+        # what it uses, which anchoring decides (``source_excerpt``). Marks by
+        # word overlap lit up comments and missed the lines the note was about.
+        info = _lang(item.file)
         why = re.sub(r"\s+", " ", str(spec.get("why") or "")).strip()
         caption = ""
         if why and _claim_has_local_support(why, [item]):
