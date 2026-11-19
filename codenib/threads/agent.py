@@ -39,6 +39,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, Iterator, Protocol
 
+from .events import FAILED_CONCLUSIONS
 from .in_flight import read_index
 from .outbox import AGENT_MARK, Message, Outbox
 from .serve import (
@@ -693,6 +694,36 @@ def _is_bot_post(event) -> bool:
     return event.is_bot and event.kind in ("comment", "review", "review_comment")
 
 
+# Events that can call for a response. Everything else, such as labels,
+# assignments, review requests, a merge or a passing check, is read without
+# waking the agent.
+WAKE_KINDS = frozenset(
+    {
+        "opened",
+        "comment",
+        "review",
+        "review_comment",
+        "commit",
+        "closed",
+        "reopened",
+        "ready_for_review",
+        "cross_reference",
+    }
+)
+
+
+def needs_agent(event, sent: set[str], skip_bot_posts: bool = True) -> bool:
+    """Whether this event, on its own, is worth waking the agent for."""
+
+    if _is_own(event, sent):
+        return False
+    if _is_bot_post(event):
+        return not skip_bot_posts
+    if event.kind == "check":
+        return event.meta.get("conclusion") in FAILED_CONCLUSIONS
+    return event.kind in WAKE_KINDS
+
+
 def _mark(home: AgentHome, ticket: Ticket) -> str:
     """What the agent would be shown; a failed run is retried when it changes."""
 
@@ -820,14 +851,13 @@ def run_ticket(
             )
         except TicketBusy as exc:
             return TicketRun(number, why, "busy", error=str(exc))
-    # News that is only the agent's own replies, or bots talking, needs no run.
-    quiet = [
-        e for e in unread if _is_own(e, sent) or (skip_bot_posts and _is_bot_post(e))
-    ]
-    if delivery is not None and briefed and not timer and len(quiet) == len(unread):
+    # News that asks nothing of anyone, such as labels, passing checks, bot
+    # comments or the agent's own replies, is read without a run.
+    wanted = [e for e in unread if needs_agent(e, sent, skip_bot_posts)]
+    if delivery is not None and briefed and not timer and not wanted:
         ack_inbox(book, number, delivery.id)
         record = TicketRun(
-            number, why, "skipped", error="only own replies or bot posts"
+            number, why, "skipped", error="nothing in the news asks for a response"
         )
         home.log_run({"at": _iso(moment), **asdict(record)})
         return record
@@ -1072,6 +1102,7 @@ __all__ = [
     "TicketRun",
     "WatchRule",
     "check_decision",
+    "needs_agent",
     "write_pull_diff",
     "default_agent_worker",
     "run_pass",

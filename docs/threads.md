@@ -166,9 +166,11 @@ that starts while one is running exits at once with status 3.
    opened is closed or merged, and it has read that, it stops following it.
 2. **Pick what needs a run.** A ticket needs one when it has unread news, when
    a follow-up the agent set for itself is due, or when the agent has never
-   read the thread in full. News that is only bot comments, or a reply of its
-   own coming back, is marked read without a run. A pass with nothing to do
-   calls no model.
+   read the thread in full. News that asks nothing of anyone is marked read
+   without a run: labels, assignments, a merge, passing checks, bot comments,
+   or a reply of its own coming back. A failing check, a new commit and
+   anything a person wrote do wake it. A pass with nothing to do calls no
+   model.
 3. **Run the agent.** It claims the news and runs Claude Code. The first run
    on a thread gets the whole context; later runs get only the news, the
    agent's own notes on the thread, and the last things it said there. For an

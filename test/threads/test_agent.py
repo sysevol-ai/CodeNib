@@ -190,6 +190,26 @@ def test_its_own_replies_and_bot_comments_wake_nobody(home, tmp_path):
     assert "- 2026-03-01, reply, posted" in agent.prompts[1]
 
 
+def test_labels_and_passing_checks_wake_nobody_but_a_failing_check_does(home, tmp_path):
+    agent = Agent()
+    _pass(home, agent, tmp_path)
+    labeled = _event("labeled", 9, "2026-01-02T00:00:00Z")
+    passed = ThreadEvent(
+        event_address(REPO, 7, "check", 10), 7, "check", "actions",
+        "2026-01-02T00:01:00Z", True, "", {"conclusion": "success"},
+    )  # fmt: skip
+    home.store.append(7, [labeled, passed])
+    assert [r.outcome for r in _pass(home, agent, tmp_path).runs] == ["skipped"]
+    assert len(agent.prompts) == 1
+
+    failed = ThreadEvent(
+        event_address(REPO, 7, "check", 11), 7, "check", "actions",
+        "2026-01-02T00:02:00Z", True, "", {"conclusion": "failure"},
+    )  # fmt: skip
+    home.store.append(7, [failed])
+    assert [r.outcome for r in _pass(home, agent, tmp_path).runs] == ["nothing"]
+
+
 def test_a_follow_up_wakes_it_without_news_and_shows_the_status(home, tmp_path):
     clock = Clock()
     agent = Agent(_decide("nothing", hours=2, note="see if CI passed"))
@@ -357,7 +377,8 @@ def test_watch_starts_tickets_for_new_pulls_and_closes_them_once_done(github, tm
     )  # fmt: skip
     store.append(9, [merged])
     report = run_pass(home, agent, checkout=tmp_path, now=Clock())
-    assert [r.outcome for r in report.runs] == ["nothing"]
+    # A merge asks nothing of the agent: it is read without a run.
+    assert [r.outcome for r in report.runs] == ["skipped"]
     assert report.closed == [9] and home.book.all() == []
 
 
