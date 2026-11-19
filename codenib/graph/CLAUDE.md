@@ -38,3 +38,19 @@ from LSP edits.
   `patcher_base.py`, driven by `lsp_client.py` + `change_mgr.py`.
 - A new language needs a `patcher_<lang>.py` that subclasses the base; don't
   fork the dispatch logic in `graph_patcher.py`.
+- **A patch must state the facts of a fresh build.** The language server is a
+  different analyser from the one that built the graph, so keep every built
+  fact an edit did not touch and look up only edited lines. Move definitions
+  and anchors with `change_mgr.get_line_edits` (exact offsets), never with a
+  symbol's start-line delta or the hunk tuples of `get_changed_line_ranges`,
+  whose one-line marker for a pure insertion reads as a replacement. Check a
+  change with `FactProjectionVerifier` against a fresh build on real commits.
+- **Python can be patched by its builder** (`builder_patch.py`): pyrefly
+  checks the changed files alone and their references resolve through the
+  symbol table the full build wrote (`pyrefly-symbols.json.gz`). Anything the
+  converter needs to resolve a reference into another file must be in that
+  table; a field missing from it shows up as edges missing from the patch.
+  The compiler calls it only under `CODENIB_GRAPH_INCREMENTAL=builder`, takes
+  the changed files from the source inventory (never from Git), and must
+  publish the graph and the position index as one generation with full
+  receipts.

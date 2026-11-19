@@ -2232,17 +2232,23 @@ class SymbolGraphBuilder:
         python_report = result.index_generation_reports.get("python", {})
         actual_provider = python_report.get("backend")
         if actual_provider in {"pyrefly", "scip-python"}:
-            from ..scip_interface.pyrefly_provider import PythonGraphProvider
+            from ..scip_interface.pyrefly_provider import (
+                PYREFLY_PROVIDER,
+                PythonGraphProvider,
+                pyrefly_identity,
+            )
 
             # Selection is a build request; an automatic pyrefly failure may
             # have produced a scip-python graph. Publish the successful route,
             # so it cannot satisfy a later pyrefly cache identity check.
             version = python_report.get("provider_version")
-            artifact_identity["python_graph_provider"] = (
-                f"{actual_provider} {version}"
-                if version
-                else PythonGraphProvider(actual_provider).identity
-            )
+            if version and actual_provider == PYREFLY_PROVIDER:
+                published = pyrefly_identity(version)
+            elif version:
+                published = f"{actual_provider} {version}"
+            else:
+                published = PythonGraphProvider(actual_provider).identity
+            artifact_identity["python_graph_provider"] = published
         graph_output_receipt = result.graph_output_receipt
 
         graph = result.graph
@@ -2374,6 +2380,17 @@ class SymbolGraphBuilder:
             )
         graph_artifact = graph_artifact_receipt
 
+        from ..graph.health import graph_health
+
+        # The figures describe the graph and never decide the build: a graph
+        # they cannot be read from is published without them.
+        try:
+            health = graph_health(graph.graph)
+        except (AttributeError, KeyError, TypeError, ValueError):
+            health = None
+        for warning in (health or {}).get("warnings", ()):
+            logger.warning("Symbol graph: %s", warning)
+
         return IndexStatus(
             index_type="symbol_graph",
             state=IndexState.FRESH,
@@ -2393,6 +2410,7 @@ class SymbolGraphBuilder:
                 "graph_artifact": graph_artifact,
                 "lsp_occurrence_artifact": lsp_occurrence_artifact,
                 "query_surface_sha256": observed_query_surface,
+                **({"graph_health": health} if health is not None else {}),
                 "update_mode": "full_rebuild",
                 "partial_index": bool(compiler_partial_languages),
                 "failed_languages": result.failed_languages,
@@ -2471,6 +2489,183 @@ class SymbolGraphBuilder:
                 scope, **{k: v for k, v in kwargs.items() if k != "last_commit"}
             )
         return status
+
+    def patch_changed_files(
+        self,
+        scope: str,
+        *,
+        repo_path: str,
+        output_dir: str,
+        changed_files: Dict[str, Any],
+        previous_entry: Any,
+        source_selection: Optional[RepositorySourceSelection] = None,
+    ) -> Optional[IndexStatus]:
+        """Rebuild the changed files with the graph's builder. None = rebuild all.
+
+        ``changed_files`` comes from comparing authenticated source
+        inventories, not from Git. ``previous_entry`` is the manifest entry of
+        the generation being patched: the graph and its positions are read
+        through that entry's receipts, so facts kept from them are facts a
+        reader of that generation would have accepted. The generation written
+        here carries the same receipts as a full build, so every reader that
+        accepts a built graph accepts this one.
+
+        Only a Python graph built by pyrefly, which left a symbol table beside
+        it, can be patched this way; anything else returns ``None``.
+        """
+
+        from ..graph.health import graph_health
+        from ..graph.incremental.builder_patch import (
+            BuilderPatchUnavailable,
+            rebuild_changed_files,
+        )
+        from ..scip_interface.pyrefly_glean import SYMBOL_TABLE_NAME
+        from ..scip_interface.pyrefly_provider import (
+            PROJECT_CONFIGURATION_FILES,
+            PYREFLY_PROVIDER,
+            select_python_graph_provider,
+        )
+        from ..scip_interface.query_surface import query_surface_sha256
+        from .artifact_fingerprints import (
+            graph_output_artifact_fingerprint,
+            regular_file_fingerprint,
+        )
+        from .graph_artifact import load_authenticated_graph_generation
+
+        selected = _source_selection_for_build(self.source_selection, source_selection)
+        graph_languages = self.languages or [self.language]
+        graph_path = os.path.join(output_dir, "graph.pkl")
+        symbol_table = os.path.join(output_dir, SYMBOL_TABLE_NAME)
+        provider = select_python_graph_provider()
+        reason = None
+        if self.source_coverage_fallback:
+            reason = "source coverage fallback requires a full build"
+        elif [str(language) for language in graph_languages] != ["python"]:
+            reason = "only a Python-only graph can be patched by its builder"
+        elif provider.name != PYREFLY_PROVIDER or not provider.ready:
+            reason = "the graph builder is not pyrefly"
+        elif not os.path.isfile(graph_path) or not os.path.isfile(symbol_table):
+            reason = "no graph with a symbol table to patch"
+        elif PROJECT_CONFIGURATION_FILES.intersection(
+            path
+            for kind in ("modified", "added", "deleted")
+            for path in changed_files.get(kind, ())
+        ):
+            # These decide which files a build checks and the version every
+            # symbol carries; no file's own rebuild shows what they changed.
+            reason = "the project's configuration changed"
+        if reason:
+            logger.info("symbol_graph: full rebuild (%s)", reason)
+            return None
+
+        start = time.monotonic()
+        config = getattr(previous_entry, "config", None)
+        config = config if isinstance(config, dict) else {}
+        try:
+            if config.get("lsp_occurrence_artifact") is None:
+                # A full build publishes positions; a patch must keep them.
+                raise ValueError("the previous generation recorded no positions")
+            graph = load_authenticated_graph_generation(
+                output_dir,
+                config.get("graph_artifact"),
+                lsp_occurrence_receipt=config["lsp_occurrence_artifact"],
+            )
+        except (OSError, RuntimeError, TypeError, ValueError) as exc:
+            logger.info("symbol_graph: full rebuild (%s)", exc)
+            return None
+        try:
+            stats = rebuild_changed_files(
+                graph,
+                repo_path,
+                changed_files,
+                symbol_table=symbol_table,
+                exclude_patterns=_selection_exclude_hints(
+                    self.exclude_patterns, selected
+                ),
+            )
+        except BuilderPatchUnavailable as exc:
+            logger.info("symbol_graph: full rebuild (%s)", exc)
+            return None
+        except Exception as exc:  # noqa: BLE001 - a full build can still succeed
+            # Nothing was written but the symbol table, which a build rewrites.
+            logger.warning("symbol_graph: full rebuild (patch failed: %r)", exc)
+            return None
+        if stats.get("dependents_skipped"):
+            # Files that refer into the change were too many to rebuild; the
+            # graph may now differ from a fresh build, so build one.
+            logger.info("symbol_graph: full rebuild (too many dependent files)")
+            return None
+        if not stats["files_rebuilt"]:
+            # The source changed but the builder checked nothing, so nothing
+            # brought the kept symbols to the version this commit gives them.
+            logger.info("symbol_graph: full rebuild (no changed file to check)")
+            return None
+
+        (
+            source_selection_report,
+            lsp_occurrence_artifact,
+        ) = _constrain_and_save_selected_graph(graph, output_dir, selected)
+        # The decoded index on disk describes the previous whole-project run.
+        for stale in ("index.decoded", "index.scip"):
+            try:
+                os.unlink(os.path.join(output_dir, stale))
+            except OSError:
+                pass
+        receipt = {
+            "path": os.path.realpath(graph_path),
+            **regular_file_fingerprint(graph_path),
+            "query_surface_sha256": query_surface_sha256(graph),
+        }
+        graph_artifact = graph_output_artifact_fingerprint(output_dir, receipt=receipt)
+        query_surface = graph_artifact.pop("query_surface_sha256")
+        try:
+            health = graph_health(graph.graph)
+        except (AttributeError, KeyError, TypeError, ValueError):
+            health = None
+        for warning in (health or {}).get("warnings", ()):
+            logger.warning("Symbol graph: %s", warning)
+        return IndexStatus(
+            index_type="symbol_graph",
+            state=IndexState.FRESH,
+            last_built=time.time(),
+            age_seconds=0.0,
+            scope=scope,
+            path=output_dir,
+            metadata={
+                **self._artifact_identity_for_selection(selected),
+                "node_count": len(graph.graph.vs),
+                "edge_count": len(graph.graph.es),
+                "language": "python",
+                "available_languages": ["python"],
+                "compiler_available_languages": ["python"],
+                "index_generation_reports": {
+                    "python": {
+                        "backend": PYREFLY_PROVIDER,
+                        "status": "complete",
+                        "complete": True,
+                        "partial": False,
+                    }
+                },
+                "scip_decoded_artifacts": {},
+                "graph_artifact": graph_artifact,
+                "lsp_occurrence_artifact": lsp_occurrence_artifact,
+                "query_surface_sha256": query_surface,
+                **({"graph_health": health} if health is not None else {}),
+                "update_mode": "incremental",
+                "patch": "builder",
+                "patch_stats": stats,
+                "patch_seconds": round(time.monotonic() - start, 3),
+                "partial_index": False,
+                "failed_languages": {},
+                "partial": False,
+                "source_selection_report": source_selection_report,
+                # Equal to a fresh build on every commit measured, but that
+                # is a measurement: this generation was not compared.
+                "verified": False,
+                "verification_checked": False,
+                "verification_reason": "builder patch admitted by configuration",
+            },
+        )
 
     # -- incremental helpers ------------------------------------------------
 

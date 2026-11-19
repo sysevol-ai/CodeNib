@@ -9,7 +9,6 @@ from ..graph.code_graph import CodeGraph
 from ..log_utils import get_logger, register_scip_logger
 from ..types import (
     EDGE_TYPE_CONTAIN,
-    EDGE_TYPE_REFERENCE,
     NODE_TYPE_CLASS,
     NODE_TYPE_FIELD,
     NODE_TYPE_FUNCTION,
@@ -514,21 +513,21 @@ class SCIPTypeScriptGraphDecoder:
         symbol_type = self._classify_symbol_type(unified_symbol, cleaned_symbol)
         symbol_kind = self._symbol_kinds.get(symbol)
 
-        # Handle index file exports
+        # An index file's top level mostly re-exports other modules; those
+        # mentions are not uses and add no edge. This used to apply to every
+        # reference anywhere in an index file, replacing each call made inside
+        # its functions with an edge to the file itself. preact keeps its core
+        # diff in src/diff/index.js, so the core's calls all vanished.
         is_index_file = file_path and "/index." in file_path
         is_simple_symbol = "#" not in unified_symbol
 
-        if is_index_file and is_simple_symbol:
-            if not (symbol_roles & 1):
-                if self.code_graph.current_scope != file_path:
-                    self.code_graph._add_edge(
-                        self.code_graph.current_scope,
-                        file_path,
-                        EDGE_TYPE_REFERENCE,
-                        anchor_file=self.code_graph.current_file,
-                        anchor_line=line,
-                    )
-                return
+        if (
+            is_index_file
+            and is_simple_symbol
+            and not (symbol_roles & 1)
+            and self.code_graph.current_scope == file_path
+        ):
+            return
 
         # Check if this is a definition using bitwise AND
         is_definition = symbol_roles & 1

@@ -29,10 +29,11 @@ from typing import Optional
 from filelock import FileLock
 
 from ..paths import repo_index_dir, repo_state_dir
+from .languages import CONVENTIONS, languages_in
 
 KEEP_SNAPSHOTS = 3
 FAILURE_TTL = 3600  # seconds before a failed build is tried again
-GUARD_LANGUAGES = ("python",)
+GUARD_LANGUAGES = tuple(convention.language for convention in CONVENTIONS)
 
 
 class SnapshotError(RuntimeError):
@@ -43,7 +44,8 @@ def git(repo: Path, *arguments: str, binary: bool = False):
     completed = subprocess.run(
         ["git", "-C", str(repo), *arguments],
         capture_output=True,
-        text=not binary,
+        encoding=None if binary else "utf-8",
+        errors=None if binary else "surrogateescape",
         check=False,
     )
     if completed.returncode != 0:
@@ -104,11 +106,11 @@ def cached_snapshot(repo: Path, commit: str) -> Optional[Snapshot]:
     return Snapshot(commit, root / ready["source"], ready.get("seconds"))
 
 
-def has_python(repo: Path, commit: str) -> bool:
-    """Whether ``commit`` tracks any Python file the guard can graph."""
+def guarded_languages(repo: Path, commit: str) -> list[str]:
+    """The languages of ``commit``'s tracked files that the guard can graph."""
 
     names = git(repo, "ls-tree", "-r", "--name-only", "-z", commit).split("\0")
-    return any(name.endswith((".py", ".pyi")) for name in names)
+    return languages_in(names)
 
 
 def failed_snapshot(repo: Path, commit: str) -> Optional[str]:
@@ -158,18 +160,21 @@ def build_snapshot(repo: Path, commit: str) -> Snapshot:
         source.mkdir(parents=True)
         started = time.monotonic()
         try:
-            if not has_python(repo, commit):
+            languages = guarded_languages(repo, commit)
+            if not languages:
                 raise SnapshotError(
-                    f"{commit[:12]} has no Python files; the guard supports "
-                    "Python repositories"
+                    f"{commit[:12]} has no source the guard supports "
+                    f"({', '.join(GUARD_LANGUAGES)})"
                 )
             _extract(repo, commit, source)
             with redirect_stdout(sys.stderr):
                 _, failed = index_repository(
                     source,
-                    languages=list(GUARD_LANGUAGES),
+                    languages=languages,
                     views=["symbol_graph"],
-                    allow_partial_graph_languages=False,
+                    # With several languages, one whose provider is not
+                    # installed is left out instead of failing the others.
+                    allow_partial_graph_languages=len(languages) > 1,
                 )
             if failed:
                 raise SnapshotError(

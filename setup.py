@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 from pathlib import Path
 
@@ -18,6 +19,10 @@ class BuildPy(_build_py):
 
     def run(self) -> None:
         super().run()
+        # A build that never serves the Wiki, such as the impact action in
+        # CI, may leave the frontend out. Releases never set this.
+        if os.environ.get("CODENIB_BUILD_WITHOUT_FRONTEND") == "1":
+            return
         source = Path(__file__).resolve().parent / "web" / "dist"
         if not (source / "index.html").is_file():
             raise RuntimeError(

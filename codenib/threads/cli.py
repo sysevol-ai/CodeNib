@@ -195,7 +195,10 @@ def _run_events(args: argparse.Namespace) -> int:
         print(json.dumps([e.to_json() for e in found], indent=2))
         return 0
     for event in found:
-        print(f"[{short(event.address)}] {event.at} {event.kind} by {event.actor}")
+        role = f" ({event.association.lower()})" if event.association else ""
+        print(
+            f"[{short(event.address)}] {event.at} {event.kind} by {event.actor}{role}"
+        )
         for part in (event.meta.get("hunk"), event.body, event.meta.get("log")):
             if part:
                 print(part)
@@ -272,9 +275,18 @@ def _run_open(args: argparse.Namespace) -> int:
     return 0
 
 
-def _run_inbox(args: argparse.Namespace) -> int:
-    from .tickets import read_inbox
+# Exit status of `inbox` when another worker holds the ticket's claim, so a
+# scheduled run can tell "busy" from an error (2) and from "nothing new" (0).
+BUSY_EXIT = 3
 
+
+def _run_inbox(args: argparse.Namespace) -> int:
+    from .tickets import TicketBusy, claim_inbox, read_inbox
+
+    if args.peek and args.claim:
+        raise _error("--peek and --claim do not go together")
+    if (args.worker or args.lease is not None) and not args.claim:
+        raise _error("--worker and --lease need --claim")
     checkout = _checkout(args.checkout)
     book = _book(args, checkout)
     ticket = _ticket(book, args.number)
@@ -282,19 +294,64 @@ def _run_inbox(args: argparse.Namespace) -> int:
         _sync(args, book.store, ticket.threads, refresh_linked=False, quiet=True)
     if checkout is None and ticket.directory:
         checkout = _checkout(ticket.directory, required=False)
-    packet = read_inbox(
-        book,
-        ticket,
-        budget=args.budget,
-        code_budget=args.code_budget,
-        checkout=None if args.no_anchors else checkout,
-        rev=args.rev,
-        advance=not args.peek,
-    )
+    serving = {
+        "budget": args.budget,
+        "code_budget": args.code_budget,
+        "checkout": None if args.no_anchors else checkout,
+        "rev": args.rev,
+    }
+    try:
+        if args.claim:
+            lease = args.lease if args.lease is not None else 30
+            if lease < 1:
+                raise _error("--lease must be at least 1 minute")
+            delivery = claim_inbox(
+                book,
+                ticket.number,
+                worker=args.worker or "",
+                lease_seconds=lease * 60,
+                **serving,
+            )
+        else:
+            packet = read_inbox(book, ticket, advance=not args.peek, **serving)
+    except TicketBusy as exc:
+        print(f"{exc}.", file=sys.stderr)
+        return BUSY_EXIT
+    if args.claim:
+        if delivery is None:
+            print(f"Nothing new for ticket #{ticket.number}.", file=sys.stderr)
+            return 0
+        if args.json:
+            print(json.dumps(delivery.to_json(), indent=2))
+        else:
+            _write(args, delivery.packet.text, "")
+        print(
+            f"Claimed delivery {delivery.id} for {delivery.worker} until "
+            f"{delivery.expires}. When the work is done: "
+            f"codenib threads ack {ticket.number} {delivery.id}",
+            file=sys.stderr,
+        )
+        return 0
     if packet is None:
         print(f"Nothing new for ticket #{ticket.number}.", file=sys.stderr)
         return 0
     _emit(args, packet, "")
+    return 0
+
+
+def _run_ack(args: argparse.Namespace) -> int:
+    from .serve import short
+    from .tickets import StaleDelivery, ack_inbox
+
+    book = _book(args, _checkout(args.checkout))
+    _ticket(book, args.number)
+    try:
+        ticket = ack_inbox(book, args.number, args.delivery)
+    except StaleDelivery as exc:
+        raise _error(str(exc)) from exc
+    print(
+        f"Ticket #{ticket.number} read up to {short(ticket.cursor)}.", file=sys.stderr
+    )
     return 0
 
 
@@ -322,7 +379,7 @@ def _run_poll(args: argparse.Namespace) -> int:
 
 def _run_board(args: argparse.Namespace) -> int:
     from .in_flight import read_index
-    from .tickets import board
+    from .tickets import board, live_claim
 
     book = _book(args, _checkout(args.checkout))
     rows = board(book, read_index(book.store))
@@ -338,6 +395,7 @@ def _run_board(args: argparse.Namespace) -> int:
                         "follows": r.ticket.threads,
                         "shares_code_with": r.shares_code_with,
                         "open_pulls_on_same_symbols": r.open_pulls,
+                        "claim": live_claim(r.ticket) or None,
                     }
                     for r in rows
                 ],
@@ -350,9 +408,13 @@ def _run_board(args: argparse.Namespace) -> int:
         return 0
     for row in rows:
         unread = f"{row.unread} unread" if row.unread else "up to date"
+        claim = live_claim(row.ticket)
+        claimed = (
+            f", claimed by {claim['worker']} until {claim['expires']}" if claim else ""
+        )
         print(
             f"#{row.ticket.number} [{row.state}, {unread}, follows "
-            f"{len(row.ticket.threads)} threads] {row.title}"
+            f"{len(row.ticket.threads)} threads{claimed}] {row.title}"
         )
         for other, symbols in sorted(row.shares_code_with.items()):
             names = ", ".join(f"`{s}`" for s in dict.fromkeys(symbols))
@@ -533,9 +595,36 @@ def add_threads_parser(subparsers, formatter) -> None:
     )
     _serving(inbox)
     inbox.add_argument("--peek", action="store_true", help="do not mark as read")
+    inbox.add_argument(
+        "--claim",
+        action="store_true",
+        help="deliver under a lease and mark nothing read until `ack`; while the "
+        f"lease lasts other workers get exit status {BUSY_EXIT}",
+    )
+    inbox.add_argument(
+        "--worker",
+        help="name of the claiming worker; the same name may claim again before "
+        "the lease ends (default: host and process id)",
+    )
+    inbox.add_argument(
+        "--lease",
+        type=int,
+        metavar="MINUTES",
+        help="how long the claim lasts (default: 30)",
+    )
     inbox.add_argument("--output", help="file to write (default: stdout)")
     inbox.add_argument("--json", action="store_true")
     inbox.set_defaults(handler=_run_inbox)
+
+    acking = commands.add_parser(
+        "ack",
+        help="mark a claimed delivery read once the work is done",
+        formatter_class=formatter,
+    )
+    acking.add_argument("number", type=int)
+    acking.add_argument("delivery", help="the id `inbox --claim` printed")
+    _common(acking)
+    acking.set_defaults(handler=_run_ack)
 
     polling = commands.add_parser(
         "poll",

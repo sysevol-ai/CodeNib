@@ -1,0 +1,471 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
+"""A patched graph has to be the graph a fresh build gives.
+
+Each test is one way it was not, found by comparing the two on real commits.
+"""
+
+from __future__ import annotations
+
+import subprocess
+
+import pytest
+
+from codenib.graph.code_graph import CodeGraph
+from codenib.graph.incremental import change_mgr
+from codenib.graph.incremental.patcher_base import IncrementalPatchRebuildRequired
+from codenib.graph.incremental.patcher_python import PatcherPython
+from codenib.types import EDGE_TYPE_REFERENCE
+
+
+def _git(root, *arguments):
+    subprocess.run(
+        ["git", "-C", str(root), *arguments], check=True, capture_output=True
+    )
+
+
+def _commit(root, files, message):
+    for path, text in files.items():
+        (root / path).parent.mkdir(parents=True, exist_ok=True)
+        (root / path).write_text(text)
+    _git(root, "add", "-A")
+    _git(
+        root,
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.com",
+        "commit",
+        "-q",
+        "-m",
+        message,
+    )
+
+
+def _lines(count, changes=None):
+    lines = [f"line{index}" for index in range(count)]
+    for index, text in (changes or {}).items():
+        lines[index] = text
+    return "\n".join(lines) + "\n"
+
+
+@pytest.fixture
+def repo(tmp_path):
+    _git(tmp_path, "init", "-q")
+    return tmp_path
+
+
+def test_line_edits_give_the_offset_of_every_later_line(repo):
+    _commit(repo, {"a.py": _lines(30)}, "base")
+    # Two lines inserted before index 5, line 10 replaced by three, 20 removed.
+    after = _lines(30).splitlines()
+    del after[20]
+    after[10:11] = ["x", "y", "z"]
+    after[5:5] = ["new", "new"]
+    _commit(repo, {"a.py": "\n".join(after) + "\n"}, "edit")
+
+    edits = change_mgr.get_line_edits(str(repo), "a.py", "HEAD~1", "HEAD")
+
+    assert edits == [(5, 5, 2), (10, 11, 2), (20, 21, -1)]
+    shift = change_mgr.shift_of_range
+    assert shift(edits, 0, 4) == 0
+    assert shift(edits, 5, 9) == 2  # the insertion goes before line 5
+    assert shift(edits, 11, 19) == 4
+    assert shift(edits, 21, 29) == 3
+    # A range holding an edit did not simply move.
+    assert shift(edits, 8, 12) is None
+    assert shift(edits, 3, 6) is None
+    assert shift(edits, 20, 20) is None
+
+
+def _graph(root, definitions, edges=()):
+    """``definitions``: (name, unified_name, start, end). File ``a.py`` only."""
+
+    graph = CodeGraph(str(root))
+    graph.add_file_node("a.py")
+    graph.add_file_node("b.py")
+    graph._add_vertex(
+        "b.py:target()",
+        {
+            "type": "function",
+            "file": "b.py",
+            "start_line": 0,
+            "end_line": 1,
+            "unified_name": "b.py:target()",
+        },
+    )
+    for name, unified, start, end in definitions:
+        graph._add_vertex(
+            name,
+            {
+                "type": "function",
+                "file": "a.py",
+                "start_line": start,
+                "end_line": end,
+                "selection_line": start,
+                "unified_name": unified,
+            },
+        )
+    for source, line in edges:
+        graph._add_edge(
+            source,
+            "b.py:target()",
+            EDGE_TYPE_REFERENCE,
+            anchor_file="a.py",
+            anchor_line=line,
+        )
+    graph.build_range_indexes()
+    return graph
+
+
+def _anchors(graph, name):
+    vertex = graph.name_to_vertex[name]
+    return sorted(
+        graph.graph.es[edge]["anchor_line"]
+        for edge in graph.graph.incident(vertex, mode="out")
+        if graph.graph.es[edge]["type"] == EDGE_TYPE_REFERENCE
+    )
+
+
+def test_file_outside_the_build_is_not_patched_in(repo):
+    # requests limits its analyser to src/requests, so tests/ has no vertex.
+    # Patching a changed test file in added 1,177 vertices no build has.
+    graph = _graph(repo, [("a.py:f()", "a.py:f()", 0, 3)])
+    patcher = PatcherPython(str(repo), graph, lsp_client=object())
+
+    kept = patcher._filter_changed_files(
+        {
+            "modified": ["a.py", "tests/test_a.py"],
+            "added": ["new.py"],
+            "deleted": ["b.py", "tests/old.py"],
+            "renamed": [("a.py", "c.py"), ("tests/x.py", "tests/y.py")],
+        }
+    )
+
+    assert kept == {
+        "modified": ["a.py"],
+        "added": ["new.py"],
+        "deleted": ["b.py"],
+        "renamed": [("a.py", "c.py")],
+    }
+
+
+def test_overloads_move_with_the_code_above_them(repo):
+    # Two definitions share one unified name, so only one is tracked. The
+    # other stayed at its old lines, with the anchors of its references.
+    graph = _graph(
+        repo,
+        [
+            ("a.py:read()#1", "a.py:read()", 10, 12),
+            ("a.py:read()#2", "a.py:read()", 14, 18),
+        ],
+        edges=[("a.py:read()#1", 11), ("a.py:read()#2", 16)],
+    )
+    patcher = PatcherPython(str(repo), graph, lsp_client=object())
+    patcher.build_indexes()
+    tracked = {
+        "a.py:read()": {
+            "vertex_name": "a.py:read()#2",
+            "start_line": 14,
+            "end_line": 18,
+        }
+    }
+
+    moved = patcher._shift_same_named_definitions("a.py", tracked, [(5, 5, 2)])
+
+    assert moved == 1
+    first = graph.graph.vs[graph.name_to_vertex["a.py:read()#1"]]
+    assert (first["start_line"], first["end_line"], first["selection_line"]) == (
+        12,
+        14,
+        12,
+    )
+    assert _anchors(graph, "a.py:read()#1") == [13]
+    # The tracked definition is left to the normal path.
+    assert _anchors(graph, "a.py:read()#2") == [16]
+
+
+def test_edited_overload_is_handed_back_for_a_rebuild(repo):
+    graph = _graph(
+        repo,
+        [
+            ("a.py:read()#1", "a.py:read()", 10, 12),
+            ("a.py:read()#2", "a.py:read()", 14, 18),
+        ],
+    )
+    patcher = PatcherPython(str(repo), graph, lsp_client=object())
+    patcher.build_indexes()
+    tracked = {
+        "a.py:read()": {
+            "vertex_name": "a.py:read()#2",
+            "start_line": 14,
+            "end_line": 18,
+        }
+    }
+
+    with pytest.raises(IncrementalPatchRebuildRequired, match="more than once"):
+        patcher._shift_same_named_definitions("a.py", tracked, [(11, 12, 0)])
+
+
+def test_untouched_references_of_a_changed_body_are_kept(repo):
+    # The body grew by two lines at its line 20. References on untouched
+    # lines keep what the builder found; only the edited line is dropped
+    # for the language server to look up again.
+    graph = _graph(
+        repo,
+        [("a.py:f()", "a.py:f()", 10, 30)],
+        edges=[("a.py:f()", 12), ("a.py:f()", 20), ("a.py:f()", 25)],
+    )
+    patcher = PatcherPython(str(repo), graph, lsp_client=object())
+    patcher.build_indexes()
+
+    moved, dropped = patcher.rebase_outgoing_anchor_lines(
+        "a.py:f()", "a.py", [(20, 21, 2)]
+    )
+
+    assert (moved, dropped) == (1, 1)
+    assert _anchors(graph, "a.py:f()") == [12, 27]
+
+
+def test_module_variables_and_top_level_references_move(repo):
+    # ``documentSymbol`` lists neither a module variable nor the references
+    # made by top-level code, so both stayed at their old lines.
+    graph = _graph(repo, [("a.py:LIMIT", "a.py:LIMIT", 12, 12)])
+    for line in (3, 8, 20, 25):
+        graph._add_edge(
+            "a.py",
+            "b.py:target()",
+            EDGE_TYPE_REFERENCE,
+            anchor_file="a.py",
+            anchor_line=line,
+        )
+    graph.build_range_indexes()
+    patcher = PatcherPython(str(repo), graph, lsp_client=object())
+    patcher.build_indexes()
+    old = {
+        "a.py:LIMIT": {"vertex_name": "a.py:LIMIT", "start_line": 12, "end_line": 12}
+    }
+    # Two lines inserted before 5; line 8 replaced by one line; line 20 by three.
+    edits = [(5, 5, 2), (8, 9, 0), (20, 21, 2)]
+
+    moved = patcher._move_unlisted_code("a.py", ["a.py:LIMIT"], old, edits)
+
+    assert moved == 1
+    variable = graph.graph.vs[graph.name_to_vertex["a.py:LIMIT"]]
+    assert (variable["start_line"], variable["selection_line"]) == (14, 14)
+    # Line 8 was replaced one for one, so its reference stays on that line;
+    # line 20 changed length, so what it referred to is no longer known.
+    assert _anchors(graph, "a.py") == [3, 10, 29]
+
+
+def test_shift_of_line_keeps_a_line_replaced_one_for_one():
+    edits = [(5, 5, 2), (8, 10, 0), (20, 21, 2), (30, 31, -1)]
+    shift = change_mgr.shift_of_line
+
+    assert [shift(edits, line) for line in (4, 5, 8, 9, 10, 19)] == [0, 2, 2, 2, 2, 2]
+    assert shift(edits, 20) is None  # replaced by three lines
+    assert shift(edits, 30) is None  # removed
+    assert shift(edits, 31) == 3
+
+
+def test_fact_projection_compares_facts_not_vertex_keys(repo):
+    from codenib.compiler.verification import FactProjectionVerifier
+
+    fresh = _graph(repo, [("a.py:f()", "a.py:f()", 10, 30)], edges=[("a.py:f()", 12)])
+    # The patcher keys a moved definition by name and line.
+    patched = _graph(
+        repo, [("a.py:f():10", "a.py:f()", 10, 30)], edges=[("a.py:f():10", 12)]
+    )
+    verifier = FactProjectionVerifier()
+
+    same = verifier.verify(index_type="symbol_graph", patched=patched, fresh=fresh)
+    assert (same.verified, same.checked) == (True, True)
+
+    stale = _graph(
+        repo, [("a.py:f():10", "a.py:f()", 10, 30)], edges=[("a.py:f():10", 14)]
+    )
+    differs = verifier.verify(index_type="symbol_graph", patched=stale, fresh=fresh)
+    assert (differs.verified, differs.checked) == (False, True)
+    assert differs.details["edges_missing"] == 1
+    assert differs.details["edges_extra"] == 1
+
+    unchecked = verifier.verify(index_type="symbol_graph", patched=patched)
+    assert (unchecked.verified, unchecked.checked) == (False, False)
+
+
+def test_typescript_callbacks_are_not_graph_symbols(repo):
+    # The TypeScript server lists the function passed to describe()/it() as a
+    # symbol, with what is declared in it beneath. The builder defines none of
+    # that. Patching one preact test file added 251 vertices.
+    from codenib.graph.incremental.patcher_ts import PatcherTS
+
+    patcher = PatcherTS(str(repo), CodeGraph(str(repo)), lsp_client=object())
+    symbols = [
+        {"name": "helper", "kind": 12},
+        {
+            "name": "describe('render()') callback",
+            "kind": 12,
+            "children": [
+                {"name": "Tracked", "kind": 5},
+                {"name": "it('works') callback", "kind": 12},
+            ],
+        },
+        {"name": "<function>", "kind": 12},
+        {
+            "name": "Widget",
+            "kind": 5,
+            "children": [
+                {"name": "render", "kind": 6},
+                {"name": "items.map() callback", "kind": 12},
+            ],
+        },
+    ]
+
+    kept = patcher._graph_symbols("a.test.js", symbols)
+
+    assert [symbol["name"] for symbol in kept] == ["helper", "Widget"]
+    assert [child["name"] for child in kept[1]["children"]] == ["render"]
+    # Other languages keep what their server lists.
+    python = PatcherPython(str(repo), CodeGraph(str(repo)), lsp_client=object())
+    assert python._graph_symbols("a.py", symbols) == symbols
+
+
+def test_rust_test_only_modules_are_not_graph_symbols(repo):
+    # rust-analyzer lists what ``#[cfg(test)] mod tests`` holds. The index the
+    # graph is built from leaves code under cfg(test) out.
+    from codenib.graph.incremental.patcher_rust import PatcherRust
+
+    (repo / "src").mkdir()
+    (repo / "src/lib.rs").write_text(
+        "pub fn read() {}\n"
+        "\n"
+        '#[cfg(feature = "std")]\n'
+        "mod io {\n"
+        "    pub fn open() {}\n"
+        "}\n"
+        "\n"
+        "#[cfg(test)]\n"
+        "mod tests {\n"
+        "    fn calc_max() {}\n"
+        "}\n"
+    )
+
+    def symbol(name, kind, line, children=()):
+        return {
+            "name": name,
+            "kind": kind,
+            "range": {"start": {"line": line}, "end": {"line": line + 2}},
+            "children": list(children),
+        }
+
+    symbols = [
+        symbol("read", 12, 0),
+        symbol("io", 2, 3, [symbol("open", 12, 4)]),
+        symbol("tests", 2, 8, [symbol("calc_max", 12, 9)]),
+    ]
+    patcher = PatcherRust(str(repo), CodeGraph(str(repo)), lsp_client=object())
+
+    kept = patcher._graph_symbols("src/lib.rs", symbols)
+
+    # A feature-gated module is built; only the test-only one is dropped.
+    assert [entry["name"] for entry in kept] == ["read", "io"]
+    assert [entry["name"] for entry in kept[1]["children"]] == ["open"]
+
+
+def test_cfg_test_binds_to_the_module_it_annotates(repo):
+    # A module that follows a short test-only one is not test-only: the
+    # attribute above ``mod tests`` is not its attribute.
+    from codenib.graph.incremental.patcher_rust import PatcherRust
+
+    (repo / "lib.rs").write_text(
+        "#[cfg(test)]\n"
+        "mod tests {}\n"
+        "pub mod production {\n"
+        "    pub fn run() {}\n"
+        "}\n"
+        "\n"
+        "/// Checked only under test.\n"
+        "#[cfg(test)]\n"
+        "#[allow(dead_code)]\n"
+        "mod checks {\n"
+        "    fn check() {}\n"
+        "}\n"
+    )
+
+    def symbol(name, kind, start, name_line, children=()):
+        return {
+            "name": name,
+            "kind": kind,
+            "range": {"start": {"line": start}, "end": {"line": name_line + 2}},
+            "selectionRange": {"start": {"line": name_line}},
+            "children": list(children),
+        }
+
+    patcher = PatcherRust(str(repo), CodeGraph(str(repo)), lsp_client=object())
+    # A server may start an item's range at its first attribute or at the
+    # item itself; the attribute is bound to its module either way.
+    for tests_start, checks_start in ((0, 6), (1, 9)):
+        symbols = [
+            symbol("tests", 2, tests_start, 1),
+            symbol("production", 2, 2, 2, [symbol("run", 12, 3, 3)]),
+            symbol("checks", 2, checks_start, 9, [symbol("check", 12, 10, 10)]),
+        ]
+
+        kept = patcher._graph_symbols("lib.rs", symbols)
+
+        assert [entry["name"] for entry in kept] == ["production"]
+        assert [entry["name"] for entry in kept[0]["children"]] == ["run"]
+
+
+class _NoSymbols:
+    """A language server for a file the graph keeps no definition of."""
+
+    def document_symbol(self, path):
+        return []
+
+
+def _symbol_free_file(repo, mode="symbol"):
+    """``a.py`` with no definition, one line of it deleted in the last commit."""
+
+    _commit(repo, {"a.py": "target()\nuntouched()\n# delete me\ntail()\n"}, "base")
+    _commit(repo, {"a.py": "target()\nuntouched()\ntail()\n"}, "delete a line")
+    graph = _graph(repo, [], edges=[("a.py", 0), ("a.py", 3)])
+    patcher = PatcherPython(str(repo), graph, lsp_client=_NoSymbols(), mode=mode)
+    patcher.build_indexes()
+    return graph, patcher
+
+
+def test_deleted_line_does_not_drop_the_reference_beside_it(repo):
+    # A hunk that only removes lines has no new line; the hunk tuple still
+    # names one, the line above the removal. The reference there was not
+    # edited and must stay what the builder found.
+    graph, patcher = _symbol_free_file(repo)
+    assert change_mgr.get_changed_line_ranges(str(repo), "a.py", "HEAD~1") == [
+        (2, 2, 0, 0)
+    ]
+
+    context = patcher._incremental_prepare_vertices("a.py", "HEAD~1")
+
+    assert _anchors(graph, "a.py") == [0, 2]
+    # Nothing was edited, so nothing is looked up again.
+    assert context["affected_vnames"] == []
+    assert context["affected_changed_ranges"] == []
+
+
+def test_new_line_ranges_leave_out_hunks_that_only_remove():
+    # Two lines inserted before 5, line 10 replaced by three, line 20 removed.
+    edits = [(5, 5, 2), (10, 11, 2), (20, 21, -1)]
+
+    assert change_mgr.new_line_ranges(edits) == [(5, 6), (12, 14)]
+
+
+def test_naive_mode_rebuilds_a_file_without_definitions(repo):
+    # Naive mode is the file-granularity baseline: it looks the whole file
+    # up again, so it cannot share the path that keeps untouched references.
+    graph, patcher = _symbol_free_file(repo, mode="naive")
+
+    context = patcher._incremental_prepare_vertices("a.py", "HEAD~1")
+
+    assert context.get("fallback_rebuild") is True

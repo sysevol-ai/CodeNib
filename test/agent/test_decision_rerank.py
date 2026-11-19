@@ -13,7 +13,6 @@ import pytest
 import requests
 
 from codenib.agent.rerank_agent import RerankAgent
-from codenib.agent.skills.llm_rerank.executor import create_executor
 from codenib.llm import OpenRouterDecisions
 from codenib.ops.rerank import RerankContext
 from codenib.types import NODE_TYPE_FUNCTION, NodeInfo
@@ -69,14 +68,19 @@ def _nodes(count=3):
     ]
 
 
-def test_skill_sorts_by_normalized_score_and_preserves_node_metadata(api):
+def test_decisions_sort_by_normalized_score_and_preserve_node_metadata(api):
     api.scores.update(node_0=0.3, node_1=2.4, node_2=1.5)
     nodes = _nodes()
     nodes[1].content += "#" * 5000
     context = RerankContext(decisions=OpenRouterDecisions())
 
-    ranked = create_executor(context)(
-        "find implementation", nodes, top_k=2, return_content=True
+    ranked = context.ensure_agent().rerank_nodes(
+        query="find implementation",
+        nodes=nodes,
+        top_k=2,
+        window_size=context.window_size,
+        window_step=context.window_step,
+        include_content=True,
     )
 
     assert [node.node_id for node in ranked] == [nodes[1].node_id, nodes[2].node_id]

@@ -70,7 +70,6 @@ def test_build_index_from_graph(code_graph, test_output_dir):
     """Test building BM25 index from CodeGraph."""
     # Print basic information about the graph
     print("\nGraph information:")
-    code_graph.print_graph_basic_info()
 
     # Create BM25 indexer with English stemming for method name matching
     indexer = BM25CodeIndexer(max_k=10, language="english")

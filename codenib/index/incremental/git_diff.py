@@ -145,38 +145,36 @@ class GitDiffDetector:
             return RepoChanges(old_commit=since_commit, new_commit=new_commit)
 
         result = subprocess.run(
-            ["git", "diff", "--name-status", since_commit, "HEAD"],
+            ["git", "diff", "--name-status", "-z", since_commit, "HEAD"],
             cwd=repo_path,
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="surrogateescape",
             check=True,
         )
 
         changes = RepoChanges(old_commit=since_commit, new_commit=new_commit)
         repo_root = Path(repo_path).resolve()
 
-        for line in result.stdout.splitlines():
-            line = line.strip()
-            if not line:
+        # With -z, records are "<status>\0<path>\0"; renames carry two paths:
+        # "R100\0<old>\0<new>\0". Paths are never C-quoted in this form.
+        fields = iter(result.stdout.split("\0"))
+        for status_code in fields:
+            if not status_code:
                 continue
 
-            parts = line.split("\t", maxsplit=1)
-            if len(parts) != 2:
-                continue
+            rel_path = next(fields, "")
 
-            status_code, rel_path = parts[0].strip(), parts[1].strip()
-
-            # Renames look like "R100\told_path\tnew_path" — git uses two tabs
-            # In that case parts[1] contains "old_path\tnew_path"; take new path
-            # and explicitly delete the old path to avoid ghost entries.
-            if status_code.startswith("R"):
-                subparts = rel_path.split("\t", maxsplit=1)
-                old_rel = subparts[0].strip()
-                rel_path = subparts[-1].strip()
-                old_abs = str((repo_root / old_rel).resolve())
-                if self._is_supported(old_abs):
-                    changes.deleted.append(old_abs)
-                status_code = "M"  # treat rename as modify of the destination
+            # Renames and copies carry the source and then the destination. For a
+            # rename, also delete the old path to avoid ghost entries.
+            if status_code[0] in "RC":
+                old_rel = rel_path
+                rel_path = next(fields, "")
+                if status_code[0] == "R":
+                    old_abs = str((repo_root / old_rel).resolve())
+                    if self._is_supported(old_abs):
+                        changes.deleted.append(old_abs)
+                status_code = "M"  # treat it as a modify of the destination
 
             abs_path = str((repo_root / rel_path).resolve())
 

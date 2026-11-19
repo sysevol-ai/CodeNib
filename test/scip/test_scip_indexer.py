@@ -92,7 +92,6 @@ def test_python_repo_indexing(httpie_cli_repo, test_output_dir, tmp_path_factory
     graph = repo_indexer.run_pipeline(project_name="HttpieCliRepo", skip_level="graph")
 
     if graph:
-        graph.print_graph_basic_info()
         assert graph is not None
 
         # Print some sample data from the output pickle
@@ -138,8 +137,6 @@ def test_samplemod_repo_indexing(samplemod_repo, test_output_dir, tmp_path_facto
     # Verify the test repo exists
     assert samplemod_repo.exists(), f"Sample module repo not found at {samplemod_repo}"
 
-    graph_image_file = str(test_output_dir / "samplemod_graph.jpg")
-
     # Create a new indexer for the cloned test repo
     # Use our improved LSIndexer that stores data in /tmp
     scip_output_dir = tmp_path_factory.mktemp("samplemod_repo_scip")
@@ -152,11 +149,7 @@ def test_samplemod_repo_indexing(samplemod_repo, test_output_dir, tmp_path_facto
     )
 
     if graph:
-        graph.print_graph_basic_info()
         assert graph is not None
-
-        # visualize the graph and save it to a file
-        graph.visualize_graph(graph_image_file)
 
         # Check that the output pickle was created
         output_file = repo_indexer.graph_file

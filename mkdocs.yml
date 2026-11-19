@@ -19,7 +19,6 @@ exclude_docs: |
   storage_backend_roadmap.md
   cognitive_debt_roadmap.md
   agent_runner_architecture_goal.md
-  agent_compile_design.md
   scip_multilanguage_roadmap.md
   upload_dataset_to_huggingface.md
   diagnose_query_leak.md
@@ -224,7 +223,7 @@ nav:
       - Reproduced Agents: agent_integrations.md
       - Results:
           - Model-planned grep and Jev: evaluation/grep_jev.md
-          - ContextBench Experiments: evaluation/contextbench-results.md
+          - ContextBench Results: evaluation/contextbench-results.md
       - Prepare Inputs:
           - SWE-bench Collection: collect_swebench.md
           - Synthesis Pipeline: synthesis_pipeline.md

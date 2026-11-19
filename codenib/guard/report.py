@@ -19,6 +19,7 @@ from .impact import (
     base_changed_lines,
     base_rewritten_lines,
 )
+from .languages import test_commands
 from .notes import AnchorStatus, Note, anchor_states, load_notes
 from .snapshot import (
     SnapshotError,
@@ -71,14 +72,17 @@ class GuardReport:
         )
         return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
 
-    def pytest_command(self, limit: int = COMMAND_TESTS) -> str:
-        """Run the tests at risk that the change did not edit."""
+    def test_commands(self, limit: int = COMMAND_TESTS) -> List[str]:
+        """Commands, one per language, for the tests the change did not edit."""
 
         edited = set(self.impact.edited_tests)
-        ids = [t.test_id for t in self.impact.tests if t.test_id not in edited][:limit]
-        return (
-            "python -m pytest " + " ".join(shlex.quote(i) for i in ids) if ids else ""
-        )
+        ids = [t.test_id for t in self.impact.tests if t.test_id not in edited]
+        return test_commands(ids, limit)
+
+    def pytest_command(self, limit: int = COMMAND_TESTS) -> str:
+        """The commands as one shell line; kept under its first name."""
+
+        return " && ".join(self.test_commands(limit))
 
     def original_tests_command(self, limit: int = COMMAND_TESTS) -> str:
         """Run the edited tests as they were at the base commit, then restore them.
@@ -89,7 +93,12 @@ class GuardReport:
         restore an unrelated older stash.
         """
 
-        ids = self.impact.edited_tests[:limit]
+        # Checking a test file out at the base commit is written for pytest.
+        ids = [
+            test
+            for test in self.impact.edited_tests
+            if test.split("::", 1)[0].endswith((".py", ".pyi"))
+        ][:limit]
         if not ids:
             return ""
         files = " ".join(
@@ -123,6 +132,12 @@ class GuardReport:
             "original_tests_command": self.original_tests_command(),
             "total_tests": self.impact.total_tests,
             "direct_callers": self.impact.direct_callers,
+            "callers": {
+                symbol: [asdict(hop) for hop in hops]
+                for symbol, hops in self.impact.callers.items()
+            },
+            "tests_reaching": self.impact.tests_reaching,
+            "tests_reaching_source": [asdict(t) for t in self.impact.source_tests],
             "new_files": self.impact.new_files,
             "unmapped_files": self.impact.unmapped_files,
             "notes_on_change": [
@@ -139,6 +154,7 @@ class GuardReport:
             ],
             "note_errors": self.note_errors,
             "pytest_command": self.pytest_command(),
+            "test_commands": self.test_commands(),
             "diff_sha256": self.diff_sha256,
             "limits": NOT_SEEN,
         }
@@ -256,7 +272,7 @@ def render_text(report: GuardReport, *, shown: int = SHOWN_TESTS) -> str:
     impact = report.impact
     lines = [f"CodeNib guard: changes since {report.base_commit[:12]} ({report.base})"]
     if not impact.changed:
-        lines.append("No changed Python definitions.")
+        lines.append("No changed definitions.")
     else:
         lines.append(f"Changed code ({len(impact.changed)}):")
         lines.extend(f"  {c.symbol}" for c in impact.changed)
@@ -277,7 +293,8 @@ def render_text(report: GuardReport, *, shown: int = SHOWN_TESTS) -> str:
             lines.extend(f"  {test_id}" for test_id in impact.edited_tests[:shown])
             if len(edited) > shown:
                 lines.append(f"  ... and {len(edited) - shown} more (--json lists all)")
-            lines.append(f"  {report.original_tests_command()}")
+            if report.original_tests_command():
+                lines.append(f"  {report.original_tests_command()}")
             lines.append("Other tests at risk:")
         others = [t for t in impact.tests if t.test_id not in edited]
         for test in others[:shown]:
@@ -330,10 +347,11 @@ def render_for_agent(report: GuardReport, *, shown: int = SHOWN_TESTS) -> str:
         lines.extend(f"- {test_id}" for test_id in edited[:shown])
         if len(edited) > shown:
             lines.append(f"- and {len(edited) - shown} more")
-        lines.append(
-            "Command that runs the original versions and then restores the edits: "
-            f"{report.original_tests_command()}"
-        )
+        if report.original_tests_command():
+            lines.append(
+                "Command that runs the original versions and then restores the "
+                f"edits: {report.original_tests_command()}"
+            )
         lines.append(
             "If one fails, the change alters behaviour that the test protected; "
             "keep that only if the task asks for it."
@@ -353,10 +371,11 @@ def render_for_agent(report: GuardReport, *, shown: int = SHOWN_TESTS) -> str:
             lines.append(f"- {test.test_id}: {describe_path(test)}")
         if len(others) > shown:
             lines.append(f"- and {len(others) - shown} more")
-        lines.append(f"Command that runs them: {report.pytest_command()}")
+        if report.pytest_command():
+            lines.append(f"Command that runs them: {report.pytest_command()}")
     if impact.tests:
         lines.append(
-            "If the project does not use pytest, the same tests can be run with "
+            "If the project uses another test runner, the same tests can be run with "
             "its own test runner. A failure that the change caused needs a fix "
             "before the work is done."
         )

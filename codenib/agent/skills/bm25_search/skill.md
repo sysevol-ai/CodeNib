@@ -20,7 +20,7 @@ scoring (TF-IDF family) over pre-chunked symbol nodes. Choose this skill when:
 
 Set `names_only=true` for the compact LocAgent-style entry point: it returns
 symbol NAME tags (name + file:line + kind, no code bodies), which you then
-navigate with `find_callers` / `find_callees` / `trace` and read on demand.
+navigate with `find_callers` / `find_callees` and read on demand.
 
 ## When NOT to Use
 
@@ -28,8 +28,6 @@ navigate with `find_callers` / `find_callees` / `trace` and read on demand.
   than exact tokens (e.g. "function that handles authentication"), use
   `embedding_search` instead.
 - **Raw text / regex over file contents**: Use the always-on `grep` tool.
-- **High-recall scenarios requiring both keyword and semantic coverage**: Use
-  `hybrid_search` to combine BM25 with embedding retrieval.
 
 ## Parameters
 

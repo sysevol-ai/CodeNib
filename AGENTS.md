@@ -420,7 +420,6 @@ before editing the listed area:
 | `codenib/code_chunking/` | `codenib/code_chunking/CLAUDE.md` |
 | `codenib/graph/` | `codenib/graph/CLAUDE.md` |
 | `codenib/dataset/` | `codenib/dataset/CLAUDE.md` |
-| `scripts/agent_compile/` | `scripts/agent_compile/CLAUDE.md` |
 | `test/` | `test/CLAUDE.md` |
 
 The project-wide Claude notes in `.claude/CLAUDE.md` are useful background, but

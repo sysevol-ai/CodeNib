@@ -34,13 +34,9 @@
 # an ablation by exporting CODENIB_COMPOSER_NO_GRAPH=1 before the run (process
 # -wide; run the config twice — with and without — to compare graph on/off).
 #
-# Run:
-#   python scripts/agent_compile/run_sweep.py \
-#       --config scripts/agent_compile/configs/design_space.yaml \
-#       --output-dir results/agent_compile/design_space
-#   python scripts/agent_compile/aggregate.py \
-#       --cells-dir results/agent_compile/design_space/cells \
-#       --output-dir results/agent_compile/design_space
+# The sweep runner that ran these arms has been removed. The file is kept
+# because scripts/build_synthesis_v2_plan.py reads its dataset settings to
+# rebuild the plan of the published multi-repo v2 synthesis dataset.
 
 sweep_id: design_space
 model: vertex_ai/claude-haiku-4-5

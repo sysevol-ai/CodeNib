@@ -12,10 +12,11 @@ refresh clangd `.idx` data in a direct experimental workflow.
 
 > **0.2.2 production gate:** `IndexCompiler.update_repo()` reuses views whose
 > source and builder identities are still current, but atomically rebuilds
-> requested views affected by a source or policy change. It does not invoke
-> builder delta paths. This remains the recommended repository-maintenance
-> entry point until Git observations and delta inputs share the same pinned
-> source authority.
+> requested views affected by a source or policy change. By default it does
+> not invoke builder delta paths. The one exception is opt-in: a Python graph
+> can be patched by its builder, which reads what changed from the pinned
+> source and not from Git. See
+> [Rebuilding changed files with the builder](#rebuilding-changed-files-with-the-builder-python).
 
 There are two distinct surfaces:
 
@@ -23,7 +24,7 @@ There are two distinct surfaces:
    rebuild changed requested views under manifest admission control.
 2. **`LSIndexer.graph_patch()` and builder `incremental_update()` methods** —
    low-level experimental APIs. The rest of this page documents that layer;
-   the production compiler does not currently call it.
+   the production compiler does not call the language-server patcher.
 
 ## Compiler-Driven Updates (Recommended)
 
@@ -73,6 +74,7 @@ to the `UpdateVerifier` contract (`codenib/compiler/verification.py`):
 |----------|----------|
 | `NullVerifier` (default) | Proves nothing and says so: `verified=False`, `checked=False`, reason `"no verifier configured"`. |
 | `AlwaysAdmitVerifier` | Admits without checking (`verified=True`, `checked=False`). An explicit opt-in for environments that have accepted the risk deliberately. |
+| `FactProjectionVerifier` | Compares the facts a patched graph states with those of a fresh build: vertices and anchored edges as multisets, identified by unified name. It needs the fresh graph, so it measures a patch rather than saving a build, and it does not replay requests against the persisted graph. |
 
 With the builder's default `require_verification=True`, an unadmitted patch is discarded and the graph is fully rebuilt — so out of the box the symbol-graph path behaves exactly like a full rebuild until a real verifier is configured. To accept unverified patches, construct `SymbolGraphBuilder` with `AlwaysAdmitVerifier()` (or `require_verification=False`) and register it in place of the default. Either way the outcome (`verified`, `verification_checked`, `verification_reason`) is written into the manifest entry's metadata, so admission is auditable on disk. A patch that touches no source files of the configured languages is admitted directly.
 
@@ -90,6 +92,116 @@ an added or deleted file, or a rename requests a full rebuild; a body-only edit
 may remain incremental in the direct experimental API. That API catches an
 explicit rebuild request and falls back to a full generation, so it cannot
 silently retain stale import edges.
+
+### What a patch keeps and what it looks up again
+
+A patch is exact only where it does not ask the language server. The graph was
+built by one analyser and the language server is another, so the patcher keeps
+every fact the build produced that an edit did not touch, and looks up only
+the edited lines:
+
+- **File scope.** A changed file with no vertex in the graph was outside the
+  build's scope, for example a `tests/` directory when the project limits its
+  analyser to `src/`. It is not patched in.
+- **Lines.** Definitions and reference anchors on untouched lines move by the
+  lines added above them, computed from the file's exact edits. This covers
+  what `documentSymbol` does not list: overloads that share a name, module
+  variables, and references made by a module's top-level code.
+- **Changed bodies.** In a function whose body changed, references on
+  untouched lines are kept; only the edited lines are looked up again.
+- **Only what the builder defines.** A language server lists more than a
+  builder indexes. The patcher leaves out a JavaScript or TypeScript callback
+  and what is declared inside it, and a Rust module under `#[cfg(test)]`. A
+  file the graph holds with no definition at all, such as a JavaScript test
+  file, keeps its references and has only its edited lines looked up.
+- **Refusal.** When two definitions share a name and the edit touches one that
+  is not tracked, the patcher asks for a full rebuild instead of guessing.
+
+What remains inexact is on the edited lines themselves: the two analysers can
+disagree on what an edited line defines or refers to.
+
+### Rebuilding changed files with the builder (Python)
+
+For Python there is a second way to patch that removes that disagreement: have
+the graph's own builder check the changed files, and replace their part of the
+graph. It does not start a language server.
+
+```python
+from codenib.graph.incremental.builder_patch import rebuild_changed_files
+from codenib.graph.incremental.change_mgr import detect_changed_files
+
+changed = detect_changed_files(repo, base_commit, "HEAD", extensions={".py"})
+rebuild_changed_files(graph, repo, changed, symbol_table=index_dir / "pyrefly-symbols.json.gz")
+```
+
+- **Why it is exact.** pyrefly reports a file the same whether it is checked
+  alone or with the whole project. References from the changed files resolve
+  through `pyrefly-symbols.json.gz`, the symbol table a full pyrefly build
+  writes beside the graph; without it the rest of the project would look like
+  an external library.
+- **What else it rebuilds.** When the changed files gain or lose a definition,
+  the files that refer into them are rebuilt too, because their references can
+  now resolve differently. Past 200 such files it reports
+  `dependents_skipped` and leaves them.
+- **What it cannot see.** A file with no reference into the changed files
+  whose references still resolve differently, such as an import that only now
+  finds its target.
+- **When it refuses.** A graph built by another provider, or whose symbol
+  table is missing or was written by an older version, raises
+  `BuilderPatchUnavailable`; rebuild once. So does a change that only removes
+  files: with nothing to check, the builder cannot bring the rest of the graph
+  up to the new commit.
+
+The compiler uses it when you ask it to:
+
+```bash
+CODENIB_GRAPH_INCREMENTAL=builder codenib index . --preset graph --language python
+```
+
+With that setting, a stale Python graph is patched instead of rebuilt when all
+of these hold; otherwise the graph is rebuilt in full, as it always is without
+the setting:
+
+- the previous graph is complete, from the same builder and source selection,
+  and recorded which files it was built from;
+- the graph and position index on disk are the files that build recorded;
+- the graph covers Python only and was built by pyrefly;
+- the change includes at least one Python file the builder can check, and
+  leaves `pyproject.toml` and `pyrightconfig.json` at the project root as
+  they were, since those decide which files are checked and the version every
+  symbol carries;
+- at most 200 files refer into the changed files when definitions were added
+  or removed.
+
+What changed is read from the previous build's recorded file contents and the
+source the compiler has just fingerprinted, not from Git. The patched
+generation updates the graph and the position index together and carries the
+same receipts as a full build, so the MCP server and the guard load it like
+any other. Its entry records `update_mode: incremental` and `patch: builder`,
+and `verified: false`: it is admitted by your setting, not by a comparison.
+
+### How exact a patch is
+
+Measured by building the graph at a commit's parent, patching to the commit,
+building fresh at the commit, and comparing every vertex and anchored edge.
+"Equal" means no fact differs. `scripts/profiling/check_patch_exactness.py`
+runs the comparison for one commit.
+
+| Language | Patch | Commits equal to a fresh build | Lowest edge F1 |
+|---|---|---|---|
+| Python | builder | 20 of 20 (requests, xarray, sphinx, django) | 1.0 |
+| Python | language server | 9 of 20 | 0.997 |
+| Go | language server | 1 of 3 (gin) | 0.981 |
+| JavaScript | language server | 1 of 7 (preact) | 0.992 |
+| Rust | language server | 0 of 4 (byteorder) | 0.969 |
+
+The language-server patcher is close in every language and equal in few
+commits. Its largest errors came from creating what the builder does not
+define: the callbacks of a JavaScript test file, and Rust modules compiled
+only for tests. With those left out, what remains is on the edited lines and
+in definitions a macro generates. Only Python has a builder patch. Until a
+patch is equal on the commits you care about, treat a patched graph as a fast
+approximation and rebuild before relying on it.
 
 ## How It Works
 

@@ -58,10 +58,6 @@ ranked = reranker.rerank_nodes(
 )
 ```
 
-The existing `llm_rerank` skill also accepts
-`RerankContext(decisions=OpenRouterDecisions())`. It retains the same candidate
-limit, output locations, and `return_content` behavior.
-
 For an existing retrieval pipeline, select the backend explicitly:
 
 ```python

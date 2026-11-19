@@ -103,8 +103,7 @@ their labels were generated and checked.
 `swebench_lite`. Ground truth is the files, functions, and code blocks that the
 golden patch changes. Harnesses build the annotation file the first time they
 need it, at `~/.codenib/swebench_lite_<split>_gt.json`; this clones every
-repository, so the first run is slow. `examples/skill_agent_eval.py` is the
-exception: pass it an existing file with `--eval-instances`.
+repository, so the first run is slow.
 
 The [paired policy cases](../agent_integrations.md#fixed-swe-bench-lite-coverage)
 pin the dataset revision and a seeded, repository-balanced 50-case selection.

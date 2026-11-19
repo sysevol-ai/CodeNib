@@ -16,6 +16,7 @@ import textwrap
 import pytest
 
 from codenib.guard import hooks
+from codenib.guard.comment import render_comment
 from codenib.guard.notes import add_note
 from codenib.guard.report import render_for_agent, render_text, run_guard
 
@@ -113,6 +114,17 @@ def test_guard_reports_constructor_change_and_hook_reports_once(
     assert [n.kind for n, _ in report.stale_notes] == ["invariant"]
     text = render_text(report)
     assert "test_round" not in text and "Run them:" in text
+
+    # The reviewer's comment: the caller the change left alone, by call line.
+    comment = render_comment(report, source_url="https://example.test/shop")
+    assert "changes **1 definition** in `shop/pricing.py`" in comment
+    assert "**1 caller** outside the change calls that code" in comment
+    assert (
+        f"[`checkout`](https://example.test/shop/blob/{report.base_commit}"
+        "/shop/checkout.py#L5)" in comment
+    )
+    assert "**2 of 3 tests** reach it within 3 calls" in comment
+    assert "Recorded notes about this code" in comment
 
     payload = {"session_id": "s", "cwd": str(git_repo.root), "stop_hook_active": False}
     out, _ = hooks.stop("claude", payload)

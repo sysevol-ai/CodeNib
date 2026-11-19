@@ -163,7 +163,7 @@ def test_relationships_list_direct_neighbors_by_direction() -> None:
     assert "Flask.preprocess_request() (src/flask/app.py)\n" in text
     assert (
         "  references: Request.blueprints() (src/flask/wrappers.py:97), "
-        "Scaffold.static_url_path (src/flask/sansio/scaffold.py:248)\n"
+        "Scaffold.static_url_path() (src/flask/sansio/scaffold.py:248)\n"
     ) in text
     assert (
         "  referenced by: Flask.full_dispatch_request() (src/flask/app.py:867)\n"

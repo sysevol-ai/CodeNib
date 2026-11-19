@@ -380,6 +380,8 @@ class _FakeWindowsApi:
         self.next_file_id = 10
         self.next_handle = 100
         self.open_by_id_calls: list[tuple[int, int, int, bool]] = []
+        self.by_id_handles: set[int] = set()
+        self.open_relative_calls: list[tuple[int, str, int]] = []
         self.rename_calls: list[tuple[int, int, str]] = []
         self.volume_root_id = self.add_directory()
         self.root_id = self.add_directory(self.volume_root_id, "authority")
@@ -434,7 +436,10 @@ class _FakeWindowsApi:
         is_directory: bool,
         allow_reparse: bool,
     ) -> int:
-        del desired_access, allow_reparse
+        del allow_reparse
+        self.open_relative_calls.append(
+            (self.handles[parent_handle], name, desired_access)
+        )
         parent = self.nodes[self.handles[parent_handle]]
         children = parent["children"]
         assert isinstance(children, dict)
@@ -455,6 +460,7 @@ class _FakeWindowsApi:
     def close(self, handle: int) -> None:
         self.handles.pop(handle, None)
         self.offsets.pop(handle, None)
+        self.by_id_handles.discard(handle)
 
     def metadata(self, handle: int) -> object:
         node = self.nodes[self.handles[handle]]
@@ -509,7 +515,9 @@ class _FakeWindowsApi:
         self.open_by_id_calls.append(
             (volume_hint, file_id, desired_access, is_directory)
         )
-        return self._new_handle(file_id)
+        handle = self._new_handle(file_id)
+        self.by_id_handles.add(handle)
+        return handle
 
     def read(self, handle: int, size: int) -> bytes:
         node = self.nodes[self.handles[handle]]
@@ -526,6 +534,9 @@ class _FakeWindowsApi:
         parent_handle: int,
         destination: str,
     ) -> None:
+        if source_handle in self.by_id_handles:
+            # NTFS: STATUS_INVALID_PARAMETER for a relative rename by FILE_ID.
+            raise OSError(errno.EINVAL, "FILE_ID HANDLE cannot be renamed")
         parent = self.nodes[self.handles[parent_handle]]
         children = parent["children"]
         assert isinstance(children, dict)
@@ -9588,7 +9599,7 @@ def test_publication_authority_has_no_proc_path_dependency() -> None:
     assert "/proc/self/fd" not in atomic_source
     assert "/proc/self/fd" not in windows_source
     assert "renameatx_np" in atomic_source
-    assert "SetFileInformationByHandle" in windows_source
+    assert "NtSetInformationFile" in windows_source
 
 
 def test_windows_handle_primitives_are_owned_by_neutral_module() -> None:
@@ -9605,9 +9616,9 @@ def test_windows_handle_primitives_are_owned_by_neutral_module() -> None:
     )
     assert "class _WindowsKernelApi" not in atomic_source
     assert "OpenFileById" not in atomic_source
-    assert "SetFileInformationByHandle" not in atomic_source
+    assert "NtSetInformationFile" not in atomic_source
     assert "OpenFileById" in windows_source
-    assert "SetFileInformationByHandle" in windows_source
+    assert "NtSetInformationFile" in windows_source
     assert "_atomic_directory" not in windows_source
 
 
@@ -10215,12 +10226,14 @@ def test_windows_authority_renames_source_handle_without_replace_or_share_delete
 
     assert ownership.inventory == (("payload.txt", "file"),)
     assert api.rename_calls
-    source_opens = [
-        call
-        for call in api.open_by_id_calls
-        if call[1] == stage and call[2] & atomic_module._WINDOWS_DELETE
-    ]
-    assert source_opens
+    root_children = api.nodes[api.root_id]["children"]
+    assert isinstance(root_children, dict)
+    assert root_children.get("published") == stage
+    assert "stage" not in root_children
+    assert any(
+        name == "stage" and access & atomic_module._WINDOWS_DELETE
+        for _parent, name, access in api.open_relative_calls
+    )
     implementation = inspect.getsource(atomic_module._WindowsKernelApi)
     assert "ReplaceIfExists = False" in implementation
     assert "FILE_SHARE_DELETE" not in implementation

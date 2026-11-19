@@ -388,22 +388,31 @@ def file_heat(checkout: Path, rev: str, window: int) -> tuple[dict[str, int], in
     a young or shallow repository.
     """
 
+    # ``-z`` keeps git from C-quoting a path that holds a non-ASCII byte, so the
+    # names match the real files. With it each name ends in NUL, and the
+    # ``%x01`` format line is followed by a NUL and a newline.
     proc = subprocess.run(
         [
             "git", "-C", str(checkout), "log", "--first-parent",
-            "--diff-merges=first-parent", f"-n{int(window)}", "--format=%x00",
-            "--name-only", rev, "--",
+            "--diff-merges=first-parent", f"-n{int(window)}", "--format=%x01",
+            "--name-only", "-z", rev, "--",
         ],  # fmt: skip
         capture_output=True,
-        text=True,
-        errors="replace",
+        encoding="utf-8",
+        errors="surrogateescape",
     )
     heat: dict[str, int] = {}
     commits = 0
-    for path in proc.stdout.splitlines():
-        if path == "\x00":
+    after_marker = False
+    for path in proc.stdout.split("\0"):
+        if path == "\x01":
             commits += 1
-        elif path:
+            after_marker = True
+            continue
+        if after_marker:
+            path = path.removeprefix("\n")
+            after_marker = False
+        if path:
             heat[path] = heat.get(path, 0) + 1
     return heat, commits
 

@@ -124,7 +124,7 @@ name is unavailable.
 """
 
 _GRAPH_NAVIGATION_TOOL_IDS = frozenset(
-    {"codenib_context", "find_callers", "find_callees", "trace", "lsp_route"}
+    {"codenib_context", "find_callers", "find_callees", "lsp_route"}
 )
 
 _LSP_ROUTE_TOOL_GUIDANCE = """\
@@ -2045,8 +2045,7 @@ def _build_contexts(
     building indexes that the runtime would never read (e.g. a vector
     index when every compile_table scenario maps to bm25-only).
 
-    Delegates to ``codenib.compiler.build_skill_contexts`` — the same
-    pre-compile entry point used by ``examples/skill_agent_eval.py``.
+    Delegates to ``codenib.compiler.build_skill_contexts``.
     """
     from ..compiler import build_skill_contexts
 

@@ -348,7 +348,15 @@ codenib codegraph status /absolute/path/to/repository --json
 ```
 
 With `--defer-graph`, CodeNib re-indexes retrieval for edited
-source on the next query, as described above. Prebuilt registrations reject
+source on the next query, as described above. The relationship graph is not
+discarded after an edit: the connection keeps answering from the graph it has
+and names the files that changed since that graph was built. An exploration
+answer reports them in a `graph_lags_source` diagnostic, a subgraph carries a
+`graph_lag` entry, and a definition or reference row inside a changed file is
+marked `stale_source`. Confirm relationships that touch those files in source.
+A Python repository prepares the newer graph in the background and switches to
+it when it is ready; other languages rebuild once more than 50 source files
+have changed. Prebuilt registrations reject
 indexed queries after source changes: rerun
 `codenib codegraph init /absolute/path/to/repository`, then retry in the same
 agent connection. The server loads the published indexes after checking that
@@ -539,6 +547,14 @@ provider boundary.
 - **Generated subtree should be omitted:** rerun `init` with one or more exact
   `--exclude-dir PATH` values. The values replace the persisted custom set;
   inspect them with `codegraph status` before serving the graph.
+- **Graph health warning during a build:** the graph built, but it is not
+  connected the way the source is. "Only N% of test functions refer to source"
+  means imports of the project's own packages did not resolve, usually because
+  the packages live in a directory the provider was not told about.
+  "Definitions appear more than once" means a directory was indexed twice,
+  for example through a symbolic link. Callers and impact results from such a
+  graph are incomplete; the figures are also stored with the graph as
+  `graph_health`.
 - **Configuration differs:** inspect the named server with `codex mcp get` or
   `claude mcp get`. CodeNib will not overwrite or remove drift implicitly.
 

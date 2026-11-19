@@ -37,6 +37,7 @@ Spans are UTF-8 byte offsets. The index uses UTF-8 code-unit columns
 from __future__ import annotations
 
 import bisect
+import gzip
 import json
 import logging
 import os
@@ -483,6 +484,8 @@ class _Converter:
         self.classes_by_file: dict[str, list[_Definition]] = defaultdict(list)
         self.functions_by_file: dict[str, list[_Definition]] = defaultdict(list)
         self.file_modules: dict[str, str] = {}
+        # Files of the project known from a symbol table but not converted.
+        self.project_files: set[str] = set()
         self.occurrences: dict[str, dict[tuple, tuple]] = defaultdict(dict)
         self.stats: Counter = Counter()
 
@@ -917,7 +920,13 @@ class _Converter:
         return []
 
     def external(self, file: Optional[str], qname: str) -> Optional[str]:
-        if not file or file.startswith("/") or file in self.report.files:
+        if (
+            not file
+            or file.startswith("/")
+            or file in self.report.files
+            # A project file that is not being converted is still no library.
+            or file in self.project_files
+        ):
             return None
         module = _module_of_path(file)
         if module is None:
@@ -1339,6 +1348,205 @@ def _binds_receiver(target, receiver: bytes) -> bool:
     return any(_binds_receiver(child, receiver) for child in target.named_children)
 
 
+# ── symbol table ─────────────────────────────────────────────────────
+#
+# A reference is resolved through the definitions of the whole project: the
+# symbol a qualified name stands for, import aliases, class bases. A report
+# of a few files holds only their own definitions, and the converter would
+# take every other project file for an external library. The symbol table
+# keeps what resolution needs from a whole-project conversion, so a later
+# conversion of some files can resolve into the rest.
+
+SYMBOL_TABLE_NAME = "pyrefly-symbols.json.gz"
+# 2 added ``prefix`` and ``files``. A table without them cannot be brought to
+# a later conversion's prefix, so it is refused and its graph is rebuilt.
+_SYMBOL_TABLE_SCHEMA = 2
+
+
+def _symbol_table(converter: "_Converter") -> dict:
+    """The converter's own definitions, as rows that survive a JSON round trip."""
+
+    # Everything resolution can find in the converted files, which includes
+    # the attributes found through ``self.x = ...`` beside the reported
+    # definitions.
+    seen: set[int] = set()
+    rows = []
+    for found in converter.registry.values():
+        for definition in found:
+            if (
+                id(definition) not in seen
+                and definition.file in converter.report.files
+                and definition.symbol
+                # A function's locals are named per conversion and used
+                # only inside their own file.
+                and not definition.symbol.startswith("local ")
+            ):
+                seen.add(id(definition))
+                rows.append(definition)
+    rows.sort(key=lambda d: (d.file, d.start, d.end, d.qname, d.symbol))
+    position = {id(definition): index for index, definition in enumerate(rows)}
+    return {
+        "schema": _SYMBOL_TABLE_SCHEMA,
+        "definitions": [
+            [
+                d.kind,
+                d.qname,
+                d.file,
+                d.start,
+                d.end,
+                d.container_kind,
+                d.container,
+                list(d.bases),
+                d.name_start,
+                d.name_end,
+                d.marker,
+                d.symbol,
+                position.get(id(d.parent), -1) if d.parent is not None else -1,
+                # Keyword arguments resolve through a callee's parameters and
+                # through whether a class is decorated.
+                list(d.params),
+                list(d.decorators),
+            ]
+            for d in rows
+        ],
+        "aliases": dict(converter.report.aliases),
+        # Symbols start with the project's name and version, and the version
+        # is the commit. A later conversion renames the table's symbols to
+        # its own prefix so one generation never mixes two.
+        "prefix": converter.prefix,
+        # Every converted file, including one that defines nothing the table
+        # lists: a reference into it must not be taken for a library's.
+        "files": sorted(converter.report.files),
+    }
+
+
+def _with_prefix(symbol: str, old: str, new: str) -> str:
+    if old and old != new and symbol.startswith(old):
+        return new + symbol[len(old) :]
+    return symbol
+
+
+def _table_modules(table: dict, files: set[str]) -> set[str]:
+    return {
+        row[1] for row in table["definitions"] if row[0] == "module" and row[2] in files
+    }
+
+
+def _kept_aliases(table: dict, replaced: set[str]) -> dict:
+    """Aliases of the table that do not belong to a replaced module."""
+
+    modules = _table_modules(table, replaced)
+    return {
+        name: target
+        for name, target in table["aliases"].items()
+        if not any(
+            name == module or name.startswith(module + ".") for module in modules
+        )
+    }
+
+
+def _resolve_into(converter: "_Converter", table: dict, replaced: set[str]) -> None:
+    """Let ``converter`` resolve into the table's files other than ``replaced``.
+
+    The table's definitions join the lookup tables only. They produce no
+    occurrence: their files are not being converted.
+    """
+
+    rows = [
+        _Definition(
+            kind=row[0],
+            qname=row[1],
+            file=row[2],
+            start=row[3],
+            end=row[4],
+            container_kind=row[5],
+            container=row[6],
+            bases=tuple(row[7]),
+            name_start=row[8],
+            name_end=row[9],
+            marker=row[10],
+            symbol=_with_prefix(row[11], table.get("prefix", ""), converter.prefix),
+            params=tuple(row[13]),
+            decorators=tuple(row[14]),
+        )
+        for row in table["definitions"]
+    ]
+    for definition, row in zip(rows, table["definitions"], strict=True):
+        if row[12] >= 0:
+            definition.parent = rows[row[12]]
+    converter.project_files.update(table.get("files", ()))
+    for definition in rows:
+        if definition.file in replaced or definition.file in converter.report.files:
+            continue
+        converter.project_files.add(definition.file)
+        converter.registry[definition.qname].append(definition)
+        if definition.kind == "module":
+            converter.module_files.setdefault(definition.qname, definition.file)
+            converter.file_modules.setdefault(definition.file, definition.qname)
+        if definition.container_kind == "cls":
+            converter.members[(definition.file, definition.name)].append(definition)
+        if definition.kind == "cls":
+            converter.classes_by_name[definition.name].append(definition)
+            converter.classes_by_file[definition.file].append(definition)
+        if definition.kind == "func":
+            converter.functions_by_file[definition.file].append(definition)
+        if definition.kind in {"cls", "func"}:
+            converter.by_symbol.setdefault(definition.symbol, definition)
+    for name, target in _kept_aliases(table, replaced).items():
+        converter.report.aliases.setdefault(name, target)
+
+
+def _merged_table(old: dict, new: dict, replaced: set[str]) -> dict:
+    """``old`` with the rows of ``replaced`` files swapped for ``new``'s."""
+
+    kept = [
+        index for index, row in enumerate(old["definitions"]) if row[2] not in replaced
+    ]
+    position = {index: place for place, index in enumerate(kept)}
+    definitions = []
+    for index in kept:
+        row = list(old["definitions"][index])
+        row[11] = _with_prefix(row[11], old.get("prefix", ""), new.get("prefix", ""))
+        row[12] = position.get(row[12], -1)
+        definitions.append(row)
+    offset = len(definitions)
+    for row in new["definitions"]:
+        row = list(row)
+        if row[12] >= 0:
+            row[12] += offset
+        definitions.append(row)
+    return {
+        "schema": _SYMBOL_TABLE_SCHEMA,
+        "definitions": definitions,
+        "aliases": {**_kept_aliases(old, replaced), **new["aliases"]},
+        "prefix": new.get("prefix", ""),
+        "files": sorted(
+            (set(old.get("files", ())) - replaced) | set(new.get("files", ()))
+        ),
+    }
+
+
+def read_symbol_table(path: str | Path) -> dict:
+    with gzip.open(path, "rt", encoding="utf-8") as handle:
+        table = json.load(handle)
+    if not isinstance(table, dict) or table.get("schema") != _SYMBOL_TABLE_SCHEMA:
+        raise ValueError("unsupported pyrefly symbol table")
+    prefix = table.get("prefix")
+    if not isinstance(prefix, str) or not prefix:
+        raise ValueError("pyrefly symbol table does not record its symbol prefix")
+    if not isinstance(table.get("files"), list):
+        raise ValueError("pyrefly symbol table does not record its files")
+    return table
+
+
+def write_symbol_table(path: str | Path, table: dict) -> None:
+    path = Path(path)
+    pending = path.with_name(path.name + ".tmp")
+    with gzip.open(pending, "wt", encoding="utf-8") as handle:
+        json.dump(table, handle, separators=(",", ":"))
+    os.replace(pending, path)
+
+
 def glean_to_scip_index(
     glean_dir: str | Path,
     project_root: str | Path,
@@ -1348,8 +1556,18 @@ def glean_to_scip_index(
     tool_version: str = "",
     path_allowed: Optional[Callable[[str], bool]] = None,
     report: Optional[GleanReport] = None,
+    symbol_table: Optional[dict] = None,
+    replaced_files: Iterable[str] = (),
+    symbol_table_out: Optional[str | Path] = None,
 ):
-    """Return ``(Index, stats)`` for a pyrefly Glean report directory."""
+    """Return ``(Index, stats)`` for a pyrefly Glean report directory.
+
+    A report of the whole project needs nothing more. A report of some files
+    passes the ``symbol_table`` of the whole-project conversion, so their
+    references resolve into the files not reported, and ``replaced_files``:
+    the reported files plus any that no longer exist. ``symbol_table_out``
+    receives the table for the next conversion.
+    """
 
     root = Path(project_root).resolve()
     if report is None:
@@ -1362,7 +1580,16 @@ def glean_to_scip_index(
         f"{sys.version_info.major}.{sys.version_info.minor}",
     )
     converter.prepare_definitions()
+    replaced = set(replaced_files) | set(report.files)
+    if symbol_table is not None:
+        _resolve_into(converter, symbol_table, replaced)
     converter.convert_receiver_attributes()
+    if symbol_table_out is not None:
+        own = _symbol_table(converter)
+        write_symbol_table(
+            symbol_table_out,
+            own if symbol_table is None else _merged_table(symbol_table, own, replaced),
+        )
     converter.convert_references()
     index = converter.index(root.as_uri(), tool_version)
     stats = dict(converter.stats)
@@ -1370,4 +1597,11 @@ def glean_to_scip_index(
     return index, stats
 
 
-__all__ = ["GleanReport", "glean_to_scip_index", "read_glean_report"]
+__all__ = [
+    "GleanReport",
+    "SYMBOL_TABLE_NAME",
+    "glean_to_scip_index",
+    "read_glean_report",
+    "read_symbol_table",
+    "write_symbol_table",
+]

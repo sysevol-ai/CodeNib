@@ -44,6 +44,12 @@ class ThreadEvent:
     # conclusion, the thread a cross-reference came from, a review comment's
     # path and diff hunk, a failed job's log.
     meta: dict[str, Any] = field(default_factory=dict)
+    # The author's relation to the repository as GitHub reported it when the
+    # event was first stored: OWNER, MEMBER, COLLABORATOR, CONTRIBUTOR,
+    # FIRST_TIME_CONTRIBUTOR, FIRST_TIMER or NONE. Empty when GitHub gave none.
+    # It is not part of the digest: it changes as people contribute, and a
+    # change is not an edit of what they wrote.
+    association: str = ""
 
     @property
     def digest(self) -> str:
@@ -63,6 +69,7 @@ class ThreadEvent:
             is_bot=bool(data.get("is_bot", False)),
             body=data.get("body", ""),
             meta=dict(data.get("meta") or {}),
+            association=str(data.get("association") or ""),
         )
 
 

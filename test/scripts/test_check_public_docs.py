@@ -86,7 +86,7 @@ def test_mkdocs_navigation_tabs_contract():
     evaluation = sections["Benchmarks"]
     assert evaluation[0] == "evaluation/index.md"
     assert {"Reproduced Agents": "agent_integrations.md"} in evaluation
-    assert {"ContextBench Experiments": "evaluation/contextbench-results.md"} in next(
+    assert {"ContextBench Results": "evaluation/contextbench-results.md"} in next(
         item["Results"]
         for item in evaluation
         if isinstance(item, dict) and "Results" in item

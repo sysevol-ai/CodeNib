@@ -160,37 +160,3 @@ def test_retrieve_rerank_pipeline_rejects_huggingface_options_for_openai(option)
 
     with pytest.raises(ValueError, match="require the huggingface provider"):
         pipeline._prepare_embedding_kwargs("openai", {option: value})
-
-
-def test_hybrid_pipeline_forwards_model_policy(monkeypatch, tmp_path):
-    from codenib.agent.skills.loader import SkillLoader
-    from codenib.model import hybrid_retrieve_pipeline as module
-
-    calls = []
-
-    def fake_build_skill_contexts(**kwargs):
-        calls.append(kwargs)
-        return {
-            "retrieve": SimpleNamespace(
-                bm25=object(),
-                vector_store=object(),
-            )
-        }
-
-    monkeypatch.setattr(module, "build_skill_contexts", fake_build_skill_contexts)
-    monkeypatch.setattr(SkillLoader, "load_all", lambda *args, **kwargs: [])
-    revision = "e" * 40
-    authorization = object()
-
-    module.HybridRetrievePipeline(
-        repo_path=str(tmp_path),
-        embedding_model="vendor/custom-model",
-        embedding_revision=revision,
-        trust_remote_code=True,
-        native_index_authorization=authorization,
-    )
-
-    [kwargs] = calls
-    assert kwargs["embedding_revision"] == revision
-    assert kwargs["trust_remote_code"] is True
-    assert kwargs["native_index_authorization"] is authorization

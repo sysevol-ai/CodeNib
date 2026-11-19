@@ -42,7 +42,7 @@ from .snapshot import (
     cached_snapshot,
     failed_snapshot,
     guard_dir,
-    has_python,
+    guarded_languages,
     resolve_commit,
 )
 
@@ -63,8 +63,17 @@ def hook_command(agent: str, event: str, python: Optional[str] = None) -> str:
     The ``codenib`` script next to the interpreter is preferred: agents run
     hooks from the repository, and ``python -m`` would put the repository first
     on the import path.
+
+    Codex on Windows runs the command through cmd, which only reads double
+    quotes, and a Windows path cannot contain one. Every other agent and
+    platform gets POSIX quoting (Git Bash on Windows).
     """
 
+    quote = (
+        (lambda arg: '"' + arg + '"')
+        if agent == "codex" and sys.platform == "win32"
+        else shlex.quote
+    )
     interpreter = Path(python or sys.executable)
     exe_names = ("codenib.exe", "codenib") if sys.platform == "win32" else ("codenib",)
     script = next(
@@ -77,10 +86,10 @@ def hook_command(agent: str, event: str, python: Optional[str] = None) -> str:
         None,
     )
     if script is not None:
-        program = shlex.quote(str(script))
+        program = quote(str(script))
     else:
         target = python or str(interpreter)
-        program = f"{shlex.quote(target)} -m codenib"
+        program = f"{quote(target)} -m codenib"
     return f"{program} guard hook --agent {agent} --event {event}"
 
 
@@ -272,7 +281,8 @@ def _repo_root(cwd: str) -> Optional[Path]:
     completed = subprocess.run(
         ["git", "-C", cwd, "rev-parse", "--show-toplevel"],
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="surrogateescape",
         check=False,
     )
     return Path(completed.stdout.strip()) if completed.returncode == 0 else None
@@ -324,8 +334,8 @@ def stop(agent: str, payload: Dict[str, object]) -> Tuple[str, str]:
     session = str(payload.get("session_id") or "unknown")
     entry = _update_session(repo, session)
     base = str(entry.get("base") or resolve_commit(repo))
-    if not has_python(repo, base):
-        return "", "skipped: no Python files"
+    if not guarded_languages(repo, base):
+        return "", "skipped: no supported source files"
     diff, untracked = working_tree_diff(repo, base)
     # An unchanged tree puts no test at risk. With notes, the guard still runs:
     # it reports notes whose code has changed since they were written.
@@ -368,8 +378,8 @@ def session_start(agent: str, payload: Dict[str, object]) -> str:
     session = str(payload.get("session_id") or "unknown")
     entry = _update_session(repo, session, base=commit)
     base = str(entry["base"])
-    if not has_python(repo, base):
-        return "skipped: no Python files"
+    if not guarded_languages(repo, base):
+        return "skipped: no supported source files"
     if cached_snapshot(repo, base) is None:
         build_in_background(repo, base, _log_path(repo))
         return f"session base {base[:12]}; building its graph"

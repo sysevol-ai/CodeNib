@@ -395,10 +395,8 @@ def run_cell(
 def run_sweep(cfg: SweepConfig, output_dir: Path, *, resume: bool = True) -> Dict:
     """Run an agent-runner sweep and write per-cell JSON records.
 
-    The CLI in ``scripts/agent_compile`` owns argument parsing and experiment
-    config files; the reusable execution semantics live here so other
-    experiments do not need to copy resume, prebuilt index loading, scoring, or
-    transient failure handling.
+    The reusable execution semantics live here so experiments do not need to
+    copy resume, prebuilt index loading, scoring, or transient failure handling.
     """
     from codenib.eval.agent_runner.prebuilt import (
         has_full_indexes,

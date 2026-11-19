@@ -51,39 +51,39 @@ def detect_changed_files(
                 "git",
                 "diff",
                 "--name-status",
+                "-z",
                 _shorten_ref(base_commit),
                 _shorten_ref(target_commit),
             ],
             cwd=project_root,
-            text=True,
+            encoding="utf-8",
+            errors="surrogateescape",
             stderr=subprocess.DEVNULL,
         )
     except subprocess.CalledProcessError as e:
         logger.error(f"git diff failed: {e}")
         return result
 
-    for line in output.strip().splitlines():
-        parts = line.split("\t")
-        if not parts:
+    # With -z, git prints "<status>\0<path>\0" and, for renames and copies,
+    # "<status>\0<old>\0<new>\0", with no C-quoting of unusual path bytes.
+    fields = iter(output.split("\0"))
+    for status in fields:
+        if not status:
             continue
-
-        status = parts[0]
-        if status == "M" and len(parts) >= 2:
-            path = parts[1]
-            if extensions is None or Path(path).suffix in extensions:
-                result["modified"].append(path)
-        elif status == "A" and len(parts) >= 2:
-            path = parts[1]
-            if extensions is None or Path(path).suffix in extensions:
-                result["added"].append(path)
-        elif status == "D" and len(parts) >= 2:
-            path = parts[1]
-            if extensions is None or Path(path).suffix in extensions:
-                result["deleted"].append(path)
-        elif status.startswith("R") and len(parts) >= 3:
-            old_path, new_path = parts[1], parts[2]
-            if extensions is None or Path(new_path).suffix in extensions:
+        if status[0] in "RC":
+            old_path = next(fields, "")
+            new_path = next(fields, "")
+            if status[0] == "R" and (
+                extensions is None or Path(new_path).suffix in extensions
+            ):
                 result["renamed"].append((old_path, new_path))
+            continue
+        path = next(fields, "")
+        if status not in ("M", "A", "D"):
+            continue
+        if extensions is None or Path(path).suffix in extensions:
+            key = {"M": "modified", "A": "added", "D": "deleted"}[status]
+            result[key].append(path)
 
     return result
 
@@ -163,6 +163,103 @@ def get_changed_line_ranges(
 
         ranges.append((old_s, old_e, new_s, new_e))
     return ranges
+
+
+def get_line_edits(
+    project_root: str,
+    file_path: str,
+    base_commit: str,
+    target_commit: str = "HEAD",
+) -> list[tuple[int, int, int]]:
+    """Each hunk as ``(old_begin, old_end, delta)`` in 0-based old lines.
+
+    ``[old_begin, old_end)`` are the old lines the hunk replaces; an
+    insertion has ``old_begin == old_end``, the index it is inserted before.
+    ``delta`` is how many lines the hunk adds (negative when it removes).
+    Unlike :func:`get_changed_line_ranges`, the positions carry no marker
+    quirk, so they can be summed into the offset of any later line.
+    """
+
+    try:
+        output = subprocess.check_output(
+            [
+                "git",
+                "diff",
+                "-U0",
+                _shorten_ref(base_commit),
+                _shorten_ref(target_commit),
+                "--",
+                file_path,
+            ],
+            cwd=project_root,
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+    except subprocess.CalledProcessError:
+        return []
+    edits: list[tuple[int, int, int]] = []
+    for match in re.finditer(r"@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@", output):
+        old_start = int(match.group(1))
+        old_count = int(match.group(2)) if match.group(2) else 1
+        new_count = int(match.group(4)) if match.group(4) else 1
+        # ``-k,0`` inserts after 1-based line k: before 0-based index k.
+        begin = old_start if old_count == 0 else old_start - 1
+        edits.append((begin, begin + old_count, new_count - old_count))
+    return edits
+
+
+def new_line_ranges(edits: list[tuple[int, int, int]]) -> list[tuple[int, int]]:
+    """The lines each hunk wrote, as inclusive 0-based ranges in the new file.
+
+    A hunk that only removes lines wrote none and gives no range, where
+    :func:`get_changed_line_ranges` names the untouched line above it.
+    """
+
+    ranges: list[tuple[int, int]] = []
+    shift = 0
+    for begin, stop, delta in edits:
+        written = stop - begin + delta
+        if written > 0:
+            ranges.append((begin + shift, begin + shift + written - 1))
+        shift += delta
+    return ranges
+
+
+def shift_of_range(
+    edits: list[tuple[int, int, int]], start: int, end: int
+) -> Optional[int]:
+    """Lines an untouched old range ``[start, end]`` moves by, or ``None``.
+
+    ``None`` means an edit falls inside the range, so it did not simply move.
+    """
+
+    shift = 0
+    for begin, stop, delta in edits:
+        if stop <= start and begin <= start:
+            shift += delta
+        elif begin > end:
+            continue
+        else:
+            return None
+    return shift
+
+
+def shift_of_line(edits: list[tuple[int, int, int]], line: int) -> Optional[int]:
+    """Like :func:`shift_of_range` for one line, but a line inside a hunk
+    that replaces lines one for one keeps its place in the hunk.
+
+    ``None`` only when the line was removed or its hunk changed length.
+    """
+
+    shift = 0
+    for begin, stop, delta in edits:
+        if stop <= line and begin <= line:
+            shift += delta
+        elif begin > line:
+            continue
+        elif delta:
+            return None
+    return shift
 
 
 def read_file_at_revision(

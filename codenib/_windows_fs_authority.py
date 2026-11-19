@@ -42,7 +42,7 @@ FILE_ATTRIBUTE_TAG_INFO = 9
 FILE_ID_INFO = 18
 FILE_ID_EXTD_DIRECTORY_INFO = 19
 FILE_ID_EXTD_DIRECTORY_RESTART_INFO = 20
-FILE_RENAME_INFO = 3
+FILE_RENAME_INFORMATION = 10
 FILE_ID_TYPE = 0
 EXTENDED_FILE_ID_TYPE = 2
 FSCTL_GET_REPARSE_POINT = 0x000900A8
@@ -439,13 +439,6 @@ class WindowsKernelApi:
             wintypes.LPVOID,
         )
         kernel32.DeviceIoControl.restype = wintypes.BOOL
-        kernel32.SetFileInformationByHandle.argtypes = (
-            wintypes.HANDLE,
-            ctypes.c_int,
-            wintypes.LPVOID,
-            wintypes.DWORD,
-        )
-        kernel32.SetFileInformationByHandle.restype = wintypes.BOOL
         kernel32.GetCurrentProcess.argtypes = ()
         kernel32.GetCurrentProcess.restype = wintypes.HANDLE
         kernel32.DuplicateHandle.argtypes = (
@@ -473,6 +466,14 @@ class WindowsKernelApi:
             wintypes.ULONG,
         )
         ntdll.NtCreateFile.restype = ctypes.c_long
+        ntdll.NtSetInformationFile.argtypes = (
+            wintypes.HANDLE,
+            ctypes.POINTER(IO_STATUS_BLOCK_STRUCT),
+            ctypes.c_void_p,
+            wintypes.ULONG,
+            ctypes.c_int,
+        )
+        ntdll.NtSetInformationFile.restype = ctypes.c_long
         ntdll.RtlNtStatusToDosError.argtypes = (wintypes.ULONG,)
         ntdll.RtlNtStatusToDosError.restype = wintypes.ULONG
 
@@ -884,13 +885,20 @@ class WindowsKernelApi:
             encoded,
             len(encoded),
         )
-        if not self.kernel32.SetFileInformationByHandle(
-            source_handle,
-            FILE_RENAME_INFO,
-            buffer,
-            size,
-        ):
-            self._raise_last_error("could not perform no-replace HANDLE rename")
+        # SetFileInformationByHandle fails with ERROR_INVALID_PARAMETER when
+        # RootDirectory is set; the native call resolves the name against it.
+        io_status = self.IO_STATUS_BLOCK()
+        status = int(
+            self.ntdll.NtSetInformationFile(
+                source_handle,
+                ctypes.byref(io_status),
+                buffer,
+                size,
+                FILE_RENAME_INFORMATION,
+            )
+        )
+        if status < 0:
+            self._raise_ntstatus(status, "could not perform no-replace HANDLE rename")
 
 
 @dataclass(frozen=True, slots=True)
@@ -1414,9 +1422,10 @@ def windows_require_publication_api(api: WindowsKernelApi | None = None) -> None
     required = (
         "GetFileInformationByHandleEx",
         "OpenFileById",
-        "SetFileInformationByHandle",
     )
-    if any(not hasattr(selected.kernel32, name) for name in required):
+    if any(not hasattr(selected.kernel32, name) for name in required) or not hasattr(
+        selected.ntdll, "NtSetInformationFile"
+    ):
         raise RuntimeError(
             "atomic directory publication requires Windows FILE_ID HANDLE APIs"
         )

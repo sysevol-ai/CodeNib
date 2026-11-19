@@ -12,8 +12,7 @@ actual invocations; these walks establish neither runtime control flow nor
 complete call coverage.
 
 The traversal uses :class:`RepoDependencySearcher` and BFS. Existing public
-caller/callee names remain aliases for reference direction. ``call_path`` is a
-legacy diagnostic over directed graph paths, not a reference-only call proof.
+caller/callee names remain aliases for reference direction.
 """
 
 from __future__ import annotations
@@ -548,44 +547,6 @@ class DependencyAnalyzer:
                 neighbors.close()
                 return True
         return False
-
-    def call_path(self, from_symbol: str, to_symbol: str) -> DependencyResult:
-        """Legacy directed graph path; may include containment, not runtime calls."""
-        a, a_c = self.code_graph.resolve_symbol(from_symbol)
-        b, b_c = self.code_graph.resolve_symbol(to_symbol)
-        root = self.code_graph.display_name(a) if a else from_symbol
-        res = DependencyResult(root=root, direction="path")
-        if a is None:
-            res.note = f"{from_symbol!r} unresolved; candidates: {a_c}"
-            return res
-        if b is None:
-            res.note = f"{to_symbol!r} unresolved; candidates: {b_c}"
-            return res
-        n2v = self.code_graph.name_to_vertex
-        try:
-            paths = self.code_graph.graph.get_shortest_paths(
-                n2v[a], to=n2v[b], mode="out"
-            )
-        except Exception:  # noqa: BLE001
-            paths = []
-        path = paths[0] if paths else []
-        if not path:
-            res.note = f"no call path from {root} to {self.code_graph.display_name(b)}"
-            return res
-        names = self._names_for_ids(list(path))
-        labels = self._result_labels(names)
-        res.root = labels.get(a, root)
-        for depth, nm in enumerate(names):
-            res.nodes.append(self._node(nm, depth, result_name=labels[nm]))
-            if depth:
-                res.edges.append(
-                    DepEdge(
-                        labels[names[depth - 1]],
-                        labels[nm],
-                        EDGE_TYPE_REFERENCE,
-                    )
-                )
-        return res
 
     # -- internals -----------------------------------------------------
 

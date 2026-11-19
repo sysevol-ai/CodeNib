@@ -28,7 +28,7 @@ skill when:
 - **Structural pattern matching**: Use the `grep` default tool for file-glob
   or regex-based filtering.
 - **Maximum coverage**: When you need both keyword precision and semantic
-  recall, prefer `hybrid_search`.
+  recall, call `bm25_search` as well and combine the results.
 
 ## Parameters
 
