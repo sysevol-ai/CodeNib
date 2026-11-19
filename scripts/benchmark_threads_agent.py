@@ -100,7 +100,37 @@ INSTRUCTIONS = (
     "- Outside contributors are welcome; thank them once, then be specific.\n"
     "- Do not restate the pull request description.\n"
 )
+# Round 3: the same, widened to what reviewers mostly comment on (design,
+# reuse, placement). Fixed before any run on the repositories it was tried on.
+INSTRUCTIONS_BROAD = (
+    "- For a pull request, review it as a maintainer of this repository would. "
+    "Cite file:line.\n"
+    "  - Correctness: whether it does what it claims, and any case it misses.\n"
+    "  - Reuse: search the code for an existing helper, type or pattern that the "
+    "new code duplicates or should use, and name it.\n"
+    "  - Placement: whether code or tests belong elsewhere, judged by where similar "
+    "code and tests already live.\n"
+    "  - Tests: whether the tests cover the change, and any case they miss.\n"
+    "  - Small points only when a maintainer would raise them: naming, a simpler "
+    "form, a misleading comment.\n"
+    "- Outside contributors are welcome; thank them once, then be specific.\n"
+    "- Do not restate the pull request description.\n"
+)
 BOT_RE = re.compile(r"\[bot\]$|^(renovate|dependabot|github-actions)", re.I)
+
+
+def base_ref(git: Path) -> str:
+    """The default branch as fetched: origin/base, or origin/main for older runs."""
+
+    found = subprocess.run(
+        ["git", "rev-parse", "-q", "--verify", "refs/remotes/origin/base"],
+        cwd=git, capture_output=True,
+    )  # fmt: skip
+    return (
+        "refs/remotes/origin/base"
+        if found.returncode == 0
+        else "refs/remotes/origin/main"
+    )
 
 
 def sh(*args: str, cwd: Path | None = None, check: bool = True) -> str:
@@ -144,8 +174,17 @@ def select(args: argparse.Namespace) -> int:
         key="items",
         max_pages=10,
     )
+    # Check candidates in a seeded random order, so stopping early does not
+    # favour one end of the window.
+    items = sorted(items, key=lambda item: item["number"])
+    random.Random(args.seed).shuffle(items)
     rows = []
     for item in items:
+        if (
+            args.max_eligible
+            and sum("excluded" not in r for r in rows) >= args.max_eligible
+        ):
+            break
         number = item["number"]
         author = (item.get("user") or {}).get("login") or ""
         row = {"number": number, "author": author, "title": item.get("title", "")}
@@ -187,6 +226,9 @@ def select(args: argparse.Namespace) -> int:
     chosen = order[: args.n]
     selection = {
         "repo": args.repo,
+        "branch": (client.get(f"repos/{args.repo}") or {}).get(
+            "default_branch", "main"
+        ),
         "merged": args.merged,
         "seed": args.seed,
         "criteria": {
@@ -280,27 +322,35 @@ def fetch(args: argparse.Namespace) -> int:
 
     git = out / "git"
     if not git.exists():
+        reference = ["--reference", args.reference] if args.reference else []
         sh(
-            "git", "clone", "-q", "--no-checkout", "--reference", args.reference,
+            "git", "clone", "-q", "--no-checkout", *reference,
             f"https://github.com/{repo}.git", str(git),
         )  # fmt: skip
+    branch = selection.get("branch", "main")
     refspecs = [f"+refs/pull/{n}/head:refs/pr/{n}" for n in numbers]
-    sh("git", "fetch", "-q", "origin", "+refs/heads/main:refs/remotes/origin/main",
-       *refspecs, cwd=git)  # fmt: skip
+    sh("git", "fetch", "-q", "origin",
+       f"+refs/heads/{branch}:refs/remotes/origin/base", *refspecs, cwd=git)  # fmt: skip
 
     meta = {}
     for number in numbers:
+        # Commits since the pull request forked from the default branch as it
+        # stood when it opened. This holds for squash merges and for merge
+        # commits alike, where the commits end up on the default branch.
+        opened = store.header(number).created_at
+        head = sh("git", "rev-parse", f"refs/pr/{number}", cwd=git).strip()
+        main_then = sh("git", "rev-list", "-1", f"--before={opened}",
+                       base_ref(git), cwd=git).strip()  # fmt: skip
+        base = sh("git", "merge-base", main_then, head, cwd=git).strip()
+        # First parents only: commits that came in by merging the default
+        # branch into the pull request are not heads it ever had.
         commits = sh(
-            "git", "rev-list", "--reverse", "--topo-order",
-            f"refs/remotes/origin/main..refs/pr/{number}", cwd=git,
+            "git", "rev-list", "--reverse", "--first-parent", f"{base}..{head}",
+            cwd=git,
         ).split()  # fmt: skip
         if not commits:
-            meta[str(number)] = {"skip": "no commits outside main"}
+            meta[str(number)] = {"skip": "no commits after the fork point"}
             continue
-        opened = store.header(number).created_at
-        main_then = sh("git", "rev-list", "-1", f"--before={opened}",
-                       "refs/remotes/origin/main", cwd=git).strip()  # fmt: skip
-        base = sh("git", "merge-base", main_then, commits[-1], cwd=git).strip()
         dated = []
         for sha in commits:
             stamp = sh("git", "show", "-s", "--format=%cI", sha, cwd=git).strip()
@@ -360,7 +410,7 @@ def diff_base(git: Path, head: str, t: str) -> str:
     """Where GitHub's diff of ``head`` started at ``t``: its merge base with main."""
 
     main_then = sh("git", "rev-list", "-1", f"--before={t}",
-                   "refs/remotes/origin/main", cwd=git).strip()  # fmt: skip
+                   base_ref(git), cwd=git).strip()  # fmt: skip
     return sh("git", "merge-base", main_then, head, cwd=git).strip()
 
 
@@ -470,6 +520,8 @@ def _feed(full: ThreadStore, store: ThreadStore, number: int, pulls: dict, t: st
 
 
 def replay_pull(out: Path, arm: str, number: int, args, spend: Spend) -> dict:
+    # "codenib.r2" is a repeat of the codenib arm, kept in its own directory.
+    kind = arm.split(".")[0]
     pulls = json.loads((out / "pulls.json").read_text())
     info = pulls.get(str(number), {})
     if "base" not in info:
@@ -487,14 +539,16 @@ def replay_pull(out: Path, arm: str, number: int, args, spend: Spend) -> dict:
     store = ThreadStore(repo, work / "store")
     home = AgentHome(TicketBook(store))
     home.instructions_path.parent.mkdir(parents=True, exist_ok=True)
-    home.instructions_path.write_text(INSTRUCTIONS)
+    home.instructions_path.write_text(
+        INSTRUCTIONS_BROAD if kind == "codenib-broad" else INSTRUCTIONS
+    )
     git = out / "git"
     snapshot = out / "snap" / str(number)
     github = ReplayGitHub(git, info["base"])
     runner = ClaudeRunner(
         model=args.model, max_budget_usd=args.max_budget_usd, timeout=args.timeout * 60
     )
-    if arm == "codenib-commits":
+    if kind == "codenib-commits":
         first = out / "results" / "codenib" / f"{number}.json"
         if not first.exists():
             raise RuntimeError(
@@ -533,7 +587,7 @@ def replay_pull(out: Path, arm: str, number: int, args, spend: Spend) -> dict:
             capped = capped or runs >= MAX_RUNS_PER_PULL
             continue
         clock = lambda t=t: parse(t)  # noqa: E731
-        if arm in ("codenib", "codenib-commits"):
+        if kind in ("codenib", "codenib-commits", "codenib-broad"):
             if home.book.get(number) is None:
                 open_ticket(
                     home.book, number, directory=str(snapshot), checkout=snapshot
@@ -544,7 +598,7 @@ def replay_pull(out: Path, arm: str, number: int, args, spend: Spend) -> dict:
             run = run_ticket(
                 home, ticket, runner, checkout=snapshot, worker="replay",
                 lease_seconds=runner.timeout + 300, client=github, now=clock,
-                **({"review_new_commits": True} if arm == "codenib-commits" else {}),
+                **({"review_new_commits": True} if kind == "codenib-commits" else {}),
             )  # fmt: skip
             record = dataclasses.asdict(run)
             log = home.runs()[-1] if home.runs() else {}
@@ -571,7 +625,7 @@ def replay_pull(out: Path, arm: str, number: int, args, spend: Spend) -> dict:
             wanted = first or bool(news_for_agent(new, set()))
             if not new and not first:
                 continue
-            if arm == "stateless" and not wanted:
+            if kind == "stateless" and not wanted:
                 continue
             bundle = load_bundle(store, number)
             packet = build_packet(bundle, checkout=snapshot)
@@ -1065,6 +1119,9 @@ def main() -> int:
     s.add_argument("--merged", default="2026-10-01..2026-10-31")
     s.add_argument("--n", type=int, default=50)
     s.add_argument("--seed", type=int, default=SEED)
+    s.add_argument(
+        "--max-eligible", type=int, help="stop checking candidates after this many"
+    )
     s.set_defaults(handler=select)
     rf = steps.add_parser("refine")
     rf.add_argument("--out", required=True)
@@ -1072,9 +1129,7 @@ def main() -> int:
     rf.set_defaults(handler=refine)
     f = steps.add_parser("fetch")
     f.add_argument("--out", required=True)
-    f.add_argument(
-        "--reference", required=True, help="a local clone to share objects with"
-    )
+    f.add_argument("--reference", help="a local clone to share objects with")
     f.add_argument("--limit", type=int)
     f.set_defaults(handler=fetch)
     r = steps.add_parser("replay")
@@ -1082,7 +1137,8 @@ def main() -> int:
     r.add_argument(
         "--arm",
         nargs="+",
-        choices=("codenib", "codenib-commits", "stateless", "naive"),
+        help="codenib, codenib-commits, codenib-broad, stateless or naive; "
+        "add .r2, .r3 for a repeat",
         default=["codenib", "stateless"],
     )
     r.add_argument("--pilot", action="store_true", help="only the first pull requests")
