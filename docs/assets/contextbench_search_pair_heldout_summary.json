@@ -1,0 +1,333 @@
+{
+  "scope": "Held-out559: every remaining default-only ContextBench task after the 2026-10-17 known-exposure inventory, the prior failed system32 cohort and independent32, with identity/original-identity/base-commit alias exclusion. Search stage only: unchanged frozen independent32/canonical500 runtime and policies. Uncurated full release, not verified500; absolute scores are not comparable to the 500-task leaderboard numbers.",
+  "population": 559,
+  "population_definition": "All default-config ContextBench full-release tasks outside verified500 left after the 2026-10-17 exposure inventory (623), the earlier system32 cohort and independent32 with ID, original-ID and repository/base-commit alias exclusion (591 before and 559 after independent32). No sampling; every task in the pool was run.",
+  "population_differs_from_verified500": true,
+  "absolute_scores_comparable_to_verified500": false,
+  "runtime_commit": "71e489e5875ca19d73bd15c417b339fb43225439",
+  "design_sha256": "69122ec2794ed2d856a06ca2db18d76278d1b6fc214c669a063ec10fc7593620",
+  "selection_sha256": "ca48eb4e282c1d5651d022a23d6102140b45d2b389cf5a6af34f8c19a2271918",
+  "protocol_sha256": "7315800b0da6a68b101d18bc731575ed7f017919eb03578aedb30f11b7d7c15c",
+  "source_seal_sha256": "6f09f5d6bac878e83c101abbf6ac3f7f0458397ab0860544c5dc4691071fefec",
+  "annotation_access_sha256": "b39905f0c936bdedaf930b6786fb59c8252105e0b935ac39e532eee3f0184a66",
+  "analysis_sha256": "c24690f1f61798acf0cbd7a2d16d055e6612357af24b141cb7f0f4c064bd818a",
+  "independent32_protocol_sha256": "7d8fb04a5664451bb3d2bdac89220b2f1b7ed56b3cfbad247b88a20cb3d662b0",
+  "dataset_revision": "c2855792b006af41c67202d33883fb9d46362853",
+  "dataset_sha256": "2f56535bdc73eb8a68bf4ebb49789d8e9cd4f219ea60df6290b85278aee61ca8",
+  "claude_cli": "2.1.301",
+  "claude_cli_sha256": "bc1aad9982c7b59c7d889ff92595d61cf46e0a6eae074cb551d932a989bcd222",
+  "claude_agent_sdk": "0.2.165",
+  "models": {
+    "haiku": "claude-haiku-5-5",
+    "opus": "claude-opus-5-5"
+  },
+  "arms": {
+    "haiku_native": [
+      "first"
+    ],
+    "haiku_scout_pair": [
+      "first",
+      "scout"
+    ],
+    "opus_native": [
+      "opus"
+    ]
+  },
+  "effort": "medium",
+  "max_turns_per_worker": 20,
+  "requested_output_tokens": 4096,
+  "navigation_token_budget": 2048,
+  "SDK_worker_guards_usd": {
+    "claude-haiku-5-5": 0.08,
+    "claude-opus-5-5": 0.75
+  },
+  "SDK_guard_is_account_cash_cap": false,
+  "API_batch_guard_usd": 180,
+  "billing_route": "anthropic-api",
+  "policy_retries": 0,
+  "replacement_tasks": 0,
+  "repair_calls": 0,
+  "Jev_requests": 0,
+  "Gold_opened_only_after_all_positions_sealed": true,
+  "differences_from_original_drivers": [
+    "case driver adds the independent32 opus_native worker (original issue, Opus 5.5, 0.75 USD SDK guard) after the unchanged first/scout pair; a pair failure does not skip Opus",
+    "dispatcher uses a continuous 8-case pool and retains failed cases as zero instead of stopping at the first failed window",
+    "Claude CLI 2.1.301 is the exact recorded binary (sha256 match) placed first on PATH; /usr/bin/git is 2.43.0 with a different build hash"
+  ],
+  "freeze_amendments": [
+    "attempt 1 aborted on an upstream row with problem_statement=None (archived in freeze-attempt-1-aborted/); such rows are now input-unavailable zero positions for every arm"
+  ],
+  "dispatched_cases": 555,
+  "accepted_cases": 555,
+  "actual_worker_sessions": 1665,
+  "unavailable_tasks_retained_as_zero": [
+    {
+      "instance_id": "SWE-Bench-Pro__python__maintenance__bugfix__788af515",
+      "repo": "ansible/ansible",
+      "reason": "upstream dataset row has problem_statement=None; no issue input exists"
+    },
+    {
+      "instance_id": "SWE-Bench-Pro__python__maintenance__bugfix__3cfd9a02",
+      "repo": "internetarchive/openlibrary",
+      "reason": "declared submodules use git:// URLs that GitHub no longer serves; frozen preparation timed out on 3 attempts"
+    },
+    {
+      "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__b9767445",
+      "repo": "gravitational/teleport",
+      "reason": "declared submodule `e` is private; frozen submodule initialization fails on 3 attempts"
+    },
+    {
+      "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__7df7e1c0",
+      "repo": "sharkdp/bat",
+      "reason": "a declared syntax submodule cannot be fetched; frozen submodule initialization fails on 3 attempts"
+    }
+  ],
+  "language_population": {
+    "c": 36,
+    "cpp": 40,
+    "go": 56,
+    "java": 34,
+    "javascript": 85,
+    "python": 229,
+    "rust": 34,
+    "typescript": 45
+  },
+  "summary": {
+    "haiku_native": {
+      "population": 559,
+      "valid": 555,
+      "macro": {
+        "file": {
+          "recall": 0.724604508990543,
+          "precision": 0.2721378481085571,
+          "f1": 0.34524080044286976
+        },
+        "symbol": {
+          "recall": 0.6468779106165988,
+          "precision": 0.25856684719186,
+          "f1": 0.30596858563017043
+        },
+        "line": {
+          "recall": 0.5153600734885585,
+          "precision": 0.3426211692107806,
+          "f1": 0.3440718555137654
+        }
+      },
+      "line_recall_by_language": {
+        "c": 0.2600829011190346,
+        "cpp": 0.4019551736838785,
+        "go": 0.4544578097903068,
+        "java": 0.37213838557521217,
+        "javascript": 0.37371378661025173,
+        "python": 0.6940860272450479,
+        "rust": 0.3966090514844965,
+        "typescript": 0.452148164070871
+      },
+      "SDK_reported_usd": 3.48891566,
+      "unknown_fee_workers": 0
+    },
+    "haiku_scout_pair": {
+      "population": 559,
+      "valid": 555,
+      "macro": {
+        "file": {
+          "recall": 0.760670740094906,
+          "precision": 0.18973162572119714,
+          "f1": 0.2706687640698811
+        },
+        "symbol": {
+          "recall": 0.6916815246675608,
+          "precision": 0.19879324124412326,
+          "f1": 0.262301765342458
+        },
+        "line": {
+          "recall": 0.5659180613686542,
+          "precision": 0.2878222358620381,
+          "f1": 0.3218460245396231
+        }
+      },
+      "line_recall_by_language": {
+        "c": 0.2984061811147361,
+        "cpp": 0.44496736875605014,
+        "go": 0.49524168803105645,
+        "java": 0.41367938766614815,
+        "javascript": 0.4288446389988119,
+        "python": 0.7588931586416006,
+        "rust": 0.426189982545758,
+        "typescript": 0.47287685053190415
+      },
+      "SDK_reported_usd": 6.92920148,
+      "unknown_fee_workers": 0
+    },
+    "opus_native": {
+      "population": 559,
+      "valid": 555,
+      "macro": {
+        "file": {
+          "recall": 0.7358516326848319,
+          "precision": 0.3384223651781257,
+          "f1": 0.4192652445143555
+        },
+        "symbol": {
+          "recall": 0.6629777242495092,
+          "precision": 0.27455984299689445,
+          "f1": 0.32579105839077604
+        },
+        "line": {
+          "recall": 0.5510087551989304,
+          "precision": 0.3257995298047223,
+          "f1": 0.3450754378328827
+        }
+      },
+      "line_recall_by_language": {
+        "c": 0.2633370784826696,
+        "cpp": 0.40332138358266056,
+        "go": 0.491557536836341,
+        "java": 0.36270116533697727,
+        "javascript": 0.4284256929421943,
+        "python": 0.7338772538541448,
+        "rust": 0.4471840992091613,
+        "typescript": 0.5080779532762252
+      },
+      "SDK_reported_usd": 103.0815037,
+      "unknown_fee_workers": 0
+    }
+  },
+  "paired_line_differences": {
+    "haiku_scout_pair-minus-opus_native": {
+      "recall": {
+        "difference": 0.014909306169723746,
+        "paired_repo_alias_percentile95": [
+          -0.0015581380153137229,
+          0.033436419495916164
+        ]
+      },
+      "precision": {
+        "difference": -0.03797729394268426,
+        "paired_repo_alias_percentile95": [
+          -0.06088598060551717,
+          -0.017225271909224363
+        ]
+      },
+      "f1": {
+        "difference": -0.023229413293259595,
+        "paired_repo_alias_percentile95": [
+          -0.046282114987118206,
+          -0.003813921350816265
+        ]
+      }
+    },
+    "haiku_scout_pair-minus-haiku_native": {
+      "recall": {
+        "difference": 0.05055798788009572,
+        "paired_repo_alias_percentile95": [
+          0.04035975900777413,
+          0.06218598043515532
+        ]
+      },
+      "precision": {
+        "difference": -0.05479893334874253,
+        "paired_repo_alias_percentile95": [
+          -0.06312359907291668,
+          -0.04660165679904405
+        ]
+      },
+      "f1": {
+        "difference": -0.022225830974142297,
+        "paired_repo_alias_percentile95": [
+          -0.035037469331157665,
+          -0.010493033763003399
+        ]
+      }
+    },
+    "haiku_native-minus-opus_native": {
+      "recall": {
+        "difference": -0.03564868171037198,
+        "paired_repo_alias_percentile95": [
+          -0.05102120183182118,
+          -0.017452941303437136
+        ]
+      },
+      "precision": {
+        "difference": 0.016821639406058273,
+        "paired_repo_alias_percentile95": [
+          -0.0005117602906852646,
+          0.03329592586314625
+        ]
+      },
+      "f1": {
+        "difference": -0.0010035823191172969,
+        "paired_repo_alias_percentile95": [
+          -0.013749439951062405,
+          0.010398402761994097
+        ]
+      }
+    }
+  },
+  "bootstrap": {
+    "clusters": 57,
+    "resamples": 10000,
+    "seed": 20261118,
+    "interval": "percentile95unadjusted"
+  },
+  "gates": {
+    "primary_quality_gate": true,
+    "strong_quality_target": true,
+    "fees_complete": true
+  },
+  "primary_quality_gate": "allsourcepositionsvalid+knownfees AND scoutRecall>=OpusRecall-0.02 AND scoutcost<=0.25*Opuscost",
+  "strong_quality_target": "scoutRecall>=OpusRecall AND scoutcost<Opuscost",
+  "precision_diagnostics": {
+    "scope": "Descriptive line-level diagnostics on the 555 executed tasks from the official per-task reports; not a gate.",
+    "mean_selected_lines_per_task": {
+      "haiku_native": 610.0,
+      "haiku_scout_pair": 791.5,
+      "opus_native": 737.8
+    },
+    "mean_annotated_lines_hit_per_task": {
+      "haiku_native": 210.2,
+      "haiku_scout_pair": 234.5,
+      "opus_native": 225.2
+    },
+    "pooled_line_precision": {
+      "haiku_native": 0.3445,
+      "haiku_scout_pair": 0.2962,
+      "opus_native": 0.3053
+    },
+    "mean_selected_files_per_task": {
+      "haiku_native": 16.9,
+      "haiku_scout_pair": 23.7,
+      "opus_native": 12.5
+    },
+    "scout_added_lines_per_task": 181.5,
+    "scout_added_annotated_lines_per_task": 24.3,
+    "scout_added_lines_pooled_precision": 0.134,
+    "tasks_where_scout_added_lines": 552,
+    "tasks_where_scout_added_lines_but_no_annotated_line": 225,
+    "median_SDK_worker_elapsed_seconds": {
+      "haiku_native": 22.742978853173554,
+      "haiku_scout_pair": 45.310524083906785,
+      "opus_native": 35.16440357500687
+    }
+  },
+  "known_new_API_usage_usd": 110.01070518,
+  "comparison_context": {
+    "verified500_pair_minus_opus_line_recall": 0.04237605631799292,
+    "independent32_pair_minus_opus_line_recall": 0.020892210404753413,
+    "note": "Different populations and, for verified500, a frozen Opus control scored earlier; compare rankings and gaps, not absolute scores."
+  },
+  "stable_superiority_over_Opus_established": false,
+  "Pass_at_1_evaluated": false,
+  "official_submission": false,
+  "cash_bill_reconciled": false,
+  "driver_sha256": {
+    "case.py": "cee58f390b4e8c60cd528b6e2b5284f52ff9126101ed016edbc10832daeb3efd",
+    "run.py": "06f2e33bcd046f3922850333154735cae630fac2c01497e19660ae594e0b01fe",
+    "report.py": "aa8d8cbf04dfd96257b5ca6abb9f2c61ba789b7e5c4610805bd67d14748848c6",
+    "postprocess.py": "acd1aaec4116bdd36ec575df9145e1a7917d99d81a6b5ab4865cee9efb09c60f",
+    "freeze.py": "8ffa3febf81de6217c518af45e1a94adebe8aab45810d6fd3b8914ccc18aeba7",
+    "prepare.py": "2ab41c4596123e39ec9a5893fab1ced9bec27cc4af0c6a94dcd4e502a3f0e059"
+  },
+  "source_bodies_Gold_issues_provider_IDs_local_paths_exported": false,
+  "csv_sha256": "1207e515334aa5cb8ba90313c4610a6b6257671c74670ee8253616d3dec76df7"
+}
