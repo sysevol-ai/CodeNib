@@ -18,6 +18,12 @@ Arms differ only in how the agent is woken and what it is handed:
   that can call for a response, the first run reads the whole context, later
   runs read only the news, its own note on the thread and what it already
   said.
+* ``codenib-commits`` the same, plus the rule that a run after new commits
+  is handed what they changed and asked to review it. Its first run is the
+  ``codenib`` arm's first run, whose input is identical, so the two differ
+  only in what the rule changes. The rule was tested on November pull
+  requests and not shipped; this arm needs the ``experiment/review-new-commits``
+  branch (753ae262), where ``run_ticket`` takes ``review_new_commits``.
 * ``stateless`` wakes for the same news, but reads the whole prepared context
   every time and keeps no memory. The context is CodeNib's own budgeted
   packet, so the comparison leaves out what preparing the context saves.
@@ -333,6 +339,22 @@ class ReplayGitHub:
             return []
         return diff_files(self.git, self.base, self.head)
 
+    def get(self, path: str):
+        match = re.search(r"/compare/([0-9a-f]+)\.\.\.([0-9a-f]+)$", path)
+        if not match:
+            return None
+        old, new = match.groups()
+        ahead = (
+            subprocess.run(
+                ["git", "merge-base", "--is-ancestor", old, new], cwd=self.git
+            ).returncode
+            == 0
+        )
+        return {
+            "status": "ahead" if ahead else "diverged",
+            "files": diff_files(self.git, old, new),
+        }
+
 
 def diff_base(git: Path, head: str, t: str) -> str:
     """Where GitHub's diff of ``head`` started at ``t``: its merge base with main."""
@@ -472,6 +494,18 @@ def replay_pull(out: Path, arm: str, number: int, args, spend: Spend) -> dict:
     runner = ClaudeRunner(
         model=args.model, max_budget_usd=args.max_budget_usd, timeout=args.timeout * 60
     )
+    if arm == "codenib-commits":
+        first = out / "results" / "codenib" / f"{number}.json"
+        if not first.exists():
+            raise RuntimeError(
+                "run the codenib arm first; this arm shares its first run"
+            )
+        runs_before = [
+            r for r in json.loads(first.read_text())["records"]
+            if r.get("outcome") != "skipped"
+        ]  # fmt: skip
+        if runs_before:
+            runner = SharedFirstRun(runner, runs_before[0])
     stamps = {ceil_pass(opened)}
     for view_events in [events] + [full.events(r) for r in refs]:
         stamps |= {ceil_pass(e.at) for e in view_events if opened <= e.at <= merged_at}
@@ -499,7 +533,7 @@ def replay_pull(out: Path, arm: str, number: int, args, spend: Spend) -> dict:
             capped = capped or runs >= MAX_RUNS_PER_PULL
             continue
         clock = lambda t=t: parse(t)  # noqa: E731
-        if arm == "codenib":
+        if arm in ("codenib", "codenib-commits"):
             if home.book.get(number) is None:
                 open_ticket(
                     home.book, number, directory=str(snapshot), checkout=snapshot
@@ -510,6 +544,7 @@ def replay_pull(out: Path, arm: str, number: int, args, spend: Spend) -> dict:
             run = run_ticket(
                 home, ticket, runner, checkout=snapshot, worker="replay",
                 lease_seconds=runner.timeout + 300, client=github, now=clock,
+                **({"review_new_commits": True} if arm == "codenib-commits" else {}),
             )  # fmt: skip
             record = dataclasses.asdict(run)
             log = home.runs()[-1] if home.runs() else {}
@@ -519,6 +554,9 @@ def replay_pull(out: Path, arm: str, number: int, args, spend: Spend) -> dict:
             )  # fmt: skip
             if run.message:
                 record["body"] = home.outbox.get(run.message).body
+            record["notes"] = home.notes(number)
+            record["follow_up"] = home.timers().get(str(number))
+            record["shared_first_run"] = getattr(runner, "shared_at", "") == t
             if run.outcome != "skipped":
                 runs += 1
                 spend.add(run.cost_usd)
@@ -585,6 +623,45 @@ def replay_pull(out: Path, arm: str, number: int, args, spend: Spend) -> dict:
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(result, indent=1))
     return result
+
+
+class SharedFirstRun:
+    """Answers the first run with another arm's first run on the same input."""
+
+    def __init__(self, inner: ClaudeRunner, record: dict) -> None:
+        self.inner = inner
+        self.timeout = inner.timeout
+        self.record = record
+        self.shared_at = record["at"]
+
+    def __call__(self, system, prompt, cwd, read_dirs=()):
+        record, self.record = self.record, None
+        if record is None:
+            return self.inner(system, prompt, cwd, read_dirs)
+        follow = record.get("follow_up") or {}
+        hours = 0.0
+        if follow.get("due"):
+            hours = (parse(follow["due"]) - parse(record["at"])).total_seconds() / 3600
+        action = {"reply": "reply", "ask": "ask"}.get(record["outcome"], "nothing")
+        decision = agent_mod.check_decision(
+            {
+                "action": action,
+                "body": record.get("body", ""),
+                "notes": record.get("notes", ""),
+                "follow_up_hours": hours,
+                "follow_up_note": follow.get("note", ""),
+                "reason": record.get("reason") or "",
+            }
+        )
+        return agent_mod.RunResult(
+            decision,
+            "" if decision else "the shared first run gave no decision",
+            record.get("seconds") or 0.0,
+            record.get("cost_usd"),
+            record.get("agent_input_tokens") or 0,
+            record.get("agent_output_tokens") or 0,
+            record.get("turns") or 0,
+        )
 
 
 def _records_after(store: ThreadStore, number: int, position: int) -> list:
@@ -794,17 +871,23 @@ def score(args: argparse.Namespace) -> int:
     full = ThreadStore(selection["repo"], out / "store")
     git = out / "git"
     results = {}
-    for arm in ("codenib", "stateless", "naive"):
+    for arm in ("codenib", "codenib-commits", "stateless", "naive"):
         for path in sorted((out / "results" / arm).glob("*.json")):
             data = json.loads(path.read_text())
             results.setdefault(arm, {})[data["number"]] = data
-    both = sorted(set(results.get("codenib", {})) & set(results.get("stateless", {})))
+    other = args.against
+    both = sorted(set(results.get("codenib", {})) & set(results.get(other, {})))
     if args.exclude_pilot:
         # The pilot calibrated the protocol, so it is reported apart.
         both = [n for n in both if n not in selection["pilot"]]
     elif args.only_pilot:
         both = [n for n in both if n in selection["pilot"]]
-    summary = {"pulls": len(both), "instructions": INSTRUCTIONS, "arms": {}}
+    summary = {
+        "pulls": len(both),
+        "paired_with": other,
+        "instructions": INSTRUCTIONS,
+        "arms": {},
+    }
 
     truth = {}
     changed = {}
@@ -830,7 +913,9 @@ def score(args: argparse.Namespace) -> int:
             names |= {f["filename"] for f in diff_files(git, info["base"], sha)}
         changed[number] = names
 
-    for arm in [a for a in ("codenib", "stateless", "naive") if a in results]:
+    for arm in [
+        a for a in ("codenib", "codenib-commits", "stateless", "naive") if a in results
+    ]:
         numbers = [n for n in both if n in results[arm]]
         rows = [results[arm][n] for n in numbers]
         records = [r for row in rows for r in row["records"]]
@@ -914,7 +999,7 @@ def score(args: argparse.Namespace) -> int:
     pairs = []
     for number in both:
         a = sum(r.get("cost_usd") or 0 for r in results["codenib"][number]["records"])
-        b = sum(r.get("cost_usd") or 0 for r in results["stateless"][number]["records"])
+        b = sum(r.get("cost_usd") or 0 for r in results[other][number]["records"])
         pairs.append((a, b))
     if pairs and sum(p[1] for p in pairs):
         summary["cost_ratio"] = round(
@@ -929,7 +1014,11 @@ def score(args: argparse.Namespace) -> int:
             for r in results["codenib"][number]["records"]
             if r.get("outcome") != "skipped"
         }
-        b = {r["at"]: r for r in results["stateless"][number]["records"]}
+        b = {
+            r["at"]: r
+            for r in results[other][number]["records"]
+            if r.get("outcome") != "skipped"
+        }
         for at in sorted(set(a) & set(b)):
             same.append((number, a[at], b[at]))
     later = [s for s in same if s[1]["at"] != ceil_pass(full.header(s[0]).created_at)]
@@ -937,21 +1026,21 @@ def score(args: argparse.Namespace) -> int:
         summary["same_wakes_after_the_first"] = {
             "wakes": len(later),
             "codenib_cost": round(sum(s[1].get("cost_usd") or 0 for s in later), 3),
-            "stateless_cost": round(sum(s[2].get("cost_usd") or 0 for s in later), 3),
+            "other_cost": round(sum(s[2].get("cost_usd") or 0 for s in later), 3),
             "codenib_prompt_tokens_mean": round(
                 statistics.mean(s[1].get("prompt_tokens") or 0 for s in later)
             ),
-            "stateless_prompt_tokens_mean": round(
+            "other_prompt_tokens_mean": round(
                 statistics.mean(s[2].get("prompt_tokens") or 0 for s in later)
             ),
             "codenib_agent_input_tokens_mean": round(
                 statistics.mean(s[1].get("agent_input_tokens") or 0 for s in later)
             ),
-            "stateless_agent_input_tokens_mean": round(
+            "other_agent_input_tokens_mean": round(
                 statistics.mean(s[2].get("agent_input_tokens") or 0 for s in later)
             ),
             "codenib_drafts": sum(1 for s in later if s[1].get("outcome") == "reply"),
-            "stateless_drafts": sum(1 for s in later if s[2].get("outcome") == "reply"),
+            "other_drafts": sum(1 for s in later if s[2].get("outcome") == "reply"),
         }
         by_pull = {}
         for number, a, b in later:
@@ -993,7 +1082,7 @@ def main() -> int:
     r.add_argument(
         "--arm",
         nargs="+",
-        choices=("codenib", "stateless", "naive"),
+        choices=("codenib", "codenib-commits", "stateless", "naive"),
         default=["codenib", "stateless"],
     )
     r.add_argument("--pilot", action="store_true", help="only the first pull requests")
@@ -1009,13 +1098,18 @@ def main() -> int:
     r.set_defaults(handler=replay)
     j = steps.add_parser("judge")
     j.add_argument("--out", required=True)
-    j.add_argument("--arm", nargs="+", default=["codenib", "stateless", "naive"])
+    j.add_argument(
+        "--arm", nargs="+", default=["codenib", "codenib-commits", "stateless", "naive"]
+    )
     j.add_argument("--model", default="sonnet")
     j.add_argument("--workers", type=int, default=8)
     j.set_defaults(handler=judge)
     c = steps.add_parser("score")
     c.add_argument("--out", required=True)
     c.add_argument("--exclude-pilot", action="store_true")
+    c.add_argument(
+        "--against", default="stateless", help="the arm codenib is paired with"
+    )
     c.add_argument("--only-pilot", action="store_true")
     c.set_defaults(handler=score)
     args = parser.parse_args()
