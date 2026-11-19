@@ -135,7 +135,6 @@ predictable, and the same input gives the same candidates.
 | Sparse | BM25 over chunks | `examples/bm25_retrieve_baseline.py` |
 | Dense | Inner product between query and chunk embeddings | `examples/embedding_retrieve_baseline.py` |
 | Hybrid | Dense and sparse lists merged by RRF or weighted score | `RetrieveRerankPipeline(retrieval_mode="hybrid")` |
-| BM25 → dense cascade | BM25 top 128, rescored by embeddings to the top 50 | `HybridRetrievePipeline` |
 | Sparse-seeded graph | Five BM25 seeds, then k-hop BFS or personalized PageRank over the symbol graph, then an optional rerank | `examples/graph_retrieve_baseline.py` |
 | Dense-seeded graph | Dense top-K, then one hop of reference edges, then filter and rerank | `DenseGraphExpandRerankPipeline` |
 | Retrieve → rerank | Any first stage, then `embedding`, `crossencoder`, `llm` (listwise), or `decisions` (Jev) | `examples/retrieve_rerank.py`, `examples/swerank_retrieve_rerank.py` |

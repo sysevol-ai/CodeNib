@@ -151,8 +151,8 @@ def prepared_repo(codenib_base_first_instance, codenib_base_cache) -> Dict[str, 
     # Normalize the language: codenib-base uses ``language_group`` whose
     # casing is dataset-defined (observed: "Rust"), while both
     # ``build_skill_contexts`` and ``Scenario.key()`` expect canonical
-    # lowercase. Falling back to "python" matches the existing
-    # ``examples/skill_agent_eval.py`` default.
+    # lowercase. Falling back to "python" keeps rows without a language
+    # runnable.
     raw_lang = row.get("language_group") or row.get("language") or "python"
     language = normalize_language(raw_lang) or "python"
 

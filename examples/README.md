@@ -8,14 +8,13 @@ SPDX-License-Identifier: Apache-2.0
 
 Runnable scripts that demonstrate CodeNib's retrieval and agent stacks and
 double as the evaluation harnesses used in the experiments under
-[`docs/experiments/`](../docs/experiments/). They fall into five groups:
+[`docs/experiments/`](../docs/experiments/). They fall into four groups:
 
-1. **Agent (end-to-end)** — the LLM agent loop over the skill/tool registry.
-2. **Retrieval baselines** — pure retrieval pipelines (no agent loop).
-3. **Third-party policy baselines** — Claude, Codex, LocAgent, and OrcaLoca
+1. **Retrieval baselines** — pure retrieval pipelines (no agent loop).
+2. **Third-party policy baselines** — Claude, Codex, LocAgent, and OrcaLoca
    localization.
-4. **Agent integrations** — dependency-free providers for external runtimes.
-5. **Sweeps & utilities** — matrix experiments and helpers.
+3. **Agent integrations** — dependency-free providers for external runtimes.
+4. **Sweeps & utilities** — matrix experiments and helpers.
 
 ## Prerequisites
 
@@ -33,31 +32,7 @@ Most scripts accept `--filter-instance <regex>` to run a single instance and
 
 ---
 
-## 1. Agent (end-to-end)
-
-The agent loop lets an LLM pick CodeNib skills/tools (`bm25_search`,
-`embedding_search`, `codenib_context`, the always-on `read` / `grep` /
-`glob` / `bash` tools, …) and iterate to a localization answer.
-
-| Script | What it shows |
-|--------|---------------|
-| [`skill_agent_aot.py`](skill_agent_aot.py) | **Start here.** Two-phase AoT (ahead-of-time) flow via the public API: `compile_repo()` writes a `RepoManifest` + indexes, then `query()` runs the agent against it. Self-contained — defaults to indexing CodeNib itself with BM25 only. |
-| [`skill_agent.py`](skill_agent.py) | The same two-phase pattern wired **by hand** (`IndexCompiler` + `BM25CodeIndexer` + `AgentRunner`). Drop down to this for custom builder registries / partial rebuilds. |
-| [`skill_agent_eval.py`](skill_agent_eval.py) | Evaluation driver: runs `AgentRunner` with an arbitrary skill subset (`--skills`) over SWE-bench / codenib-base, reporting retrieval accuracy + token usage. Supports `--compile-table` for query-time skill selection (CAR). |
-
-```bash
-# Phase 1 only (no LLM credentials needed):
-python examples/skill_agent_aot.py --no-llm
-
-# Full agent run over one instance with the A2 (bm25 + embedding) subset:
-python examples/skill_agent_eval.py \
-    --skills bm25_search embedding_search \
-    --filter-instance "^astropy__astropy-12907$"
-```
-
----
-
-## 2. Retrieval baselines (no agent)
+## 1. Retrieval baselines (no agent)
 
 Pure retrieval pipelines — fixed strategy, no LLM tool loop — for measuring the
 retrieval floor the agent builds on.
@@ -154,7 +129,7 @@ which is where prebuilt indices get their type.
 
 ---
 
-## 3. Third-party policy baselines (`codenib/clients/`)
+## 2. Third-party policy baselines (`codenib/clients/`)
 
 Read-only localization agents built on **external policies** (not CodeNib's own
 agent stack), scored against the same ground truth as the retrieval baselines
@@ -197,7 +172,7 @@ python examples/orcaloca_loc_agent.py \
 
 ---
 
-## 4. Agent integrations
+## 3. Agent integrations
 
 These examples exercise CodeNib's external-agent providers without installing
 the upstream agent. The production adapters remain under
@@ -224,7 +199,7 @@ revision pins, and compatibility boundaries.
 
 ---
 
-## 5. Sweeps & utilities
+## 4. Sweeps & utilities
 
 | File | Purpose |
 |------|---------|
@@ -233,7 +208,3 @@ revision pins, and compatibility boundaries.
 | [`eval.sh`](eval.sh) | Convenience wrapper around the eval drivers. |
 | [`selected_instance.csv`](selected_instance.csv) | Small fixed instance set used by some sweeps. |
 | [`roadmap_semantic_search_mcp.md`](roadmap_semantic_search_mcp.md) | Design note: semantic search over MCP. |
-
-For the agent-compile (CAR) sweep harness and its configs, see
-[`scripts/agent_compile/`](../scripts/agent_compile/) and
-[`docs/experiments/agent_compile.md`](../docs/experiments/agent_compile.md).

@@ -32,7 +32,6 @@ codenib/
 core/              # C++ decoder backend (libigraph) mirroring CodeGraph/SCIPGraphDecoder
 test/              # Mirrors package structure; uses pytest markers  (CLAUDE.md)
 scripts/           # CLI entry points: dataset collection, embedding, evaluation
-                   #   scripts/agent_compile/ — agent-compile RFC tooling  (CLAUDE.md)
 third_party/       # Git submodules (scip-python)
 ```
 
@@ -142,7 +141,6 @@ Domain rules live next to the code they govern and load on demand:
 | [`codenib/graph/CLAUDE.md`](../codenib/graph/CLAUDE.md) | CodeGraph (igraph), node/edge types, pickle schema versioning, C++ decoder parity |
 | [`codenib/dataset/CLAUDE.md`](../codenib/dataset/CLAUDE.md) | SWE-bench loading, ground-truth extraction, line conversion, test repos |
 | [`test/CLAUDE.md`](../test/CLAUDE.md) | pytest marker tiers, fixture caches, package-shadow gotcha |
-| [`scripts/agent_compile/CLAUDE.md`](../scripts/agent_compile/CLAUDE.md) | Agent-compile RFC tooling, phase lineage, RepoManifest/IndexCompiler |
 
 When you edit code under one of these subtrees, follow its `CLAUDE.md` in
 addition to this file. If a rule changes, update the file nearest the code.
