@@ -17,6 +17,12 @@ resamples. The original failed-zero control position is retained. Different
 models and billing routes, the unknown control fee and prior annotation exposure
 prevent a matched-model efficiency or independent generalization claim.
 
+For a result on unexposed tasks, the same frozen search stage later ran on
+**all 559 remaining default-config tasks**. The pair reached 56.59% line Recall
+against 55.10% for a fresh Opus search (+1.49, interval [−0.16,+3.34]) at 6.7% of
+Opus's search usage, with lower Precision and F1. See
+[Held-out559](#held-out559-every-remaining-task-search-only).
+
 The [1,000 per-task comparison rows](../assets/contextbench_search_pair_verified_500.csv)
 and [summary with hashes, all metric levels and limitations](../assets/contextbench_search_pair_verified_summary.json)
 preserve the original results. Search usage averages $0.01136 per candidate task;
@@ -1730,6 +1736,91 @@ Native issue-resolution outcomes and official submission remain open.
 The scout-versus-repeat comparison changes both the navigation handoff and the
 instruction to seek complementary evidence. It evaluates that whole policy;
 it does not isolate the causal contribution of metadata alone.
+
+### Held-out559: every remaining task, search only
+
+On all 559 ContextBench tasks that were never used to develop, choose or check
+the configuration, the complementary Haiku pair matches a fresh Opus search on
+line Recall at 6.7% of its search cost, with lower Precision and F1. The frozen
+search stage ran once on every remaining default-config task left after
+independent32 reserved its 32 tasks; nothing was sampled out. Each task ran one
+Haiku search, the pair (that same first search plus the scout), and one Opus
+search, all on the original issue. Annotations were opened only after every
+search was sealed.
+
+| Search configuration, all 559 tasks | Line Recall | Line Precision | Line F1 | Recorded search usage |
+| --- | ---: | ---: | ---: | ---: |
+| One Haiku search | 51.54% | 34.26% | 34.41% | $3.49 |
+| CodeNib complementary Haiku pair | 56.59% | 28.78% | 32.18% | $6.93 |
+| Opus search | 55.10% | 32.58% | 34.51% | $103.08 |
+
+The pair is 1.49 Recall points above Opus, 95% repository-cluster interval
+[−0.16,+3.34], and 5.06 points above one Haiku search, [+4.04,+6.22]. Because
+the Opus interval crosses zero, this run shows parity with Opus at much lower
+cost, not that the pair finds more. The margin is smaller than on verified500
+(+4.24) and close to independent32 (+2.09). File and symbol Recall keep the same
+order: pair, then Opus, then one Haiku.
+
+Absolute scores are lower than on verified500 for every configuration because
+these tasks come from the uncurated full release; Opus falls from 72.83% to
+55.10%. Compare rankings and gaps across the two populations, not absolute
+scores.
+
+The pair's Precision is lower because its context is the union of two searches.
+The scout adds about 182 selected lines per task, and 13.4% of them are
+annotated, against 34.5% for the first search's lines. Line F1 is 2.32 points
+below Opus, [−4.63,−0.38]. Verified500 shows the same tradeoff with a wider
+Precision gap (−7.45 points).
+
+| Language | Tasks | One Haiku | Pair | Opus | Pair − Opus |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| C | 36 | 26.01% | 29.84% | 26.33% | +3.51 |
+| C++ | 40 | 40.20% | 44.50% | 40.33% | +4.16 |
+| Go | 56 | 45.45% | 49.52% | 49.16% | +0.37 |
+| Java | 34 | 37.21% | 41.37% | 36.27% | +5.10 |
+| JavaScript | 85 | 37.37% | 42.88% | 42.84% | +0.04 |
+| Python | 229 | 69.41% | 75.89% | 73.39% | +2.50 |
+| Rust | 34 | 39.66% | 42.62% | 44.72% | −2.10 |
+| TypeScript | 45 | 45.21% | 47.29% | 50.81% | −3.52 |
+
+Language slices are descriptive. Python is 41% of the tasks; the unweighted mean
+of the eight language gaps is +1.26 points. The
+[1,677 per-task rows](../assets/contextbench_search_pair_heldout_559.csv) and
+[summary with all metric levels, gates and hashes](../assets/contextbench_search_pair_heldout_summary.json)
+hold the complete results.
+
+??? note "Protocol, unavailable tasks and provenance"
+
+    Runtime `71e489e5`, prompts, models (Haiku 5.5 and Opus 5.5), budgets and the
+    pinned evaluator are unchanged from verified500 and independent32. Protocol
+    `7315800b` allowed no retries, replacements or repairs; all 555 executed cases
+    and 1,665 worker sessions were accepted, with every fee known. Intervals are
+    unadjusted 95% percentiles over 57 repository-alias clusters, 10,000 paired
+    resamples, seed 20261118. The pair passes both predeclared gates: Recall at
+    least Opus minus two points at no more than 25% of Opus usage, and at least
+    Opus Recall at lower usage.
+
+    Four tasks could not run and count as zero for all three configurations:
+
+    | Task | Reason |
+    | --- | --- |
+    | `SWE-Bench-Pro__python__maintenance__bugfix__788af515` | The upstream row has no `problem_statement` |
+    | `SWE-Bench-Pro__python__maintenance__bugfix__3cfd9a02` | Submodules use `git://` URLs that GitHub no longer serves |
+    | `SWE-Bench-Pro__go__maintenance__bugfix__b9767445` | Submodule `e` is private |
+    | `Multi-SWE-Bench__rust__maintenance__bugfix__7df7e1c0` | A syntax submodule can no longer be fetched |
+
+    On the 555 executed tasks, line Recall is 57.00% for the pair, 55.50% for Opus
+    and 51.91% for one Haiku. In 225 of the 552 tasks where the scout added lines,
+    none of its additions were annotated. The pair selects 23.7 files per task,
+    against 12.5 for Opus.
+
+    The run reused the canonical500 case and dispatch drivers with three declared
+    changes: the case driver adds the independent32 Opus worker after the unchanged
+    pair; the dispatcher keeps a failed case as zero instead of stopping; and the
+    exact recorded Claude CLI 2.1.301 binary is placed first on `PATH`. Freezing
+    stopped once on the task with no issue text; that attempt is archived, and the
+    task now counts as zero. Usage is SDK-reported API usage, not a reconciled
+    invoice. Issue resolution was not evaluated.
 
 ### Canonical500 search-pair execution and reproduction
 
