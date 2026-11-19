@@ -32,6 +32,7 @@ class FakeGitHub:
         if path == f"{prefix}/issues/7":
             return {"number": 7, "title": "Crash on empty config", "state": "open",
                     "user": user, "created_at": "2026-01-01T00:00:00Z",
+                    "author_association": "OWNER",
                     "body": "It crashes in `parse_config`, see src/config.py:1"}  # fmt: skip
         if path == f"{prefix}/issues/9":
             return {"number": 9, "title": "Handle empty config", "state": "open",
@@ -52,7 +53,8 @@ class FakeGitHub:
                 ], {"Link": link}  # fmt: skip
             return [
                 {"event": "commented", "id": 3, "user": {"login": "bo", "type": "User"},
-                 "body": "Return an empty dict.", "created_at": "2026-01-02T00:00:00Z"},
+                 "body": "Return an empty dict.", "created_at": "2026-01-02T00:00:00Z",
+                 "author_association": "NONE"},
                 {"event": "cross-referenced", "actor": user,
                  "created_at": "2026-01-03T00:00:01Z",
                  "source": {"issue": {"number": 9, "title": "Handle empty config",
@@ -65,14 +67,15 @@ class FakeGitHub:
                  "author": {"name": "ann", "date": "2026-01-03T00:10:00Z"}},
                 {"event": "reviewed", "id": 40, "user": {"login": "rev", "type": "User"},
                  "state": "CHANGES_REQUESTED", "body": "Please add a test.",
-                 "submitted_at": "2026-01-04T00:00:00Z"},
+                 "submitted_at": "2026-01-04T00:00:00Z", "author_association": "MEMBER"},
             ]  # fmt: skip
         if path == f"{prefix}/pulls/9/comments":
             reviewer = {"login": "rev", "type": "User"}
             hunk = "@@ -1,2 +1,3 @@\n def parse_config(path):\n+    x = 1"
             return [{"id": 60, "user": reviewer, "path": "src/config.py",
                      "line": 2, "body": "Guard here.", "diff_hunk": hunk,
-                     "created_at": "2026-01-04T00:00:01Z"}]  # fmt: skip
+                     "created_at": "2026-01-04T00:00:01Z",
+                     "author_association": "COLLABORATOR"}]  # fmt: skip
         if path == f"{prefix}/pulls/9/commits":
             return [{"sha": "head111",
                      "commit": {"committer": {"date": "2026-01-03T00:10:00Z"}}}]  # fmt: skip

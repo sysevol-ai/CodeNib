@@ -728,6 +728,37 @@ class PatcherBase(SubgraphMgr):
             file_path, old_symbols, self._line_edits[file_path]
         )
 
+        if (
+            self.mode == "symbol"
+            and not old_symbols
+            and not new_symbols
+            and file_path in self.code_graph.name_to_vertex
+        ):
+            # The graph holds this file with no definition, before and after:
+            # every reference in it is made by the file itself. That is a
+            # JavaScript test file, whose tests are callbacks. Keep the
+            # references on untouched lines, moved with the edits, and look
+            # up only the edited lines. Rebuilding the file here would drop
+            # them all and ask the language server for each again. Naive
+            # mode is the baseline that does exactly that, so it rebuilds.
+            self.rebase_outgoing_anchor_lines(
+                file_path, file_path, self._line_edits[file_path]
+            )
+            # The lines the edits wrote. A hunk that only removes lines wrote
+            # none: its tuple in ``hunks`` names the untouched line above.
+            edited = change_mgr.new_line_ranges(self._line_edits[file_path])
+            self.delete_outgoing_in_anchor_ranges(
+                vertex_name=file_path, anchor_file=file_path, ranges=edited
+            )
+            return {
+                "affected_vnames": [file_path] * len(edited),
+                "affected_changed_ranges": [[line_range] for line_range in edited],
+                "added_vnames": [],
+                "file_stats": file_stats,
+                "classified": {},
+                "hunks": hunks,
+            }
+
         if not old_symbols:
             # No old symbols (SCIP didn't index this file) — fall back to
             # full rebuild but still in two rounds so cross-file edges work.
@@ -865,8 +896,12 @@ class PatcherBase(SubgraphMgr):
 
         for attempt in range(1, self.DOCUMENT_SYMBOL_ATTEMPTS + 1):
             raw_symbols = self.lsp_client.document_symbol(abs_file)
-            new_symbols = self.flatten_symbols(file_path, raw_symbols)
-            if new_symbols or not has_untouched_old_symbol:
+            new_symbols = self.flatten_symbols(
+                file_path, self._graph_symbols(file_path, raw_symbols)
+            )
+            # A server that listed anything is ready, even when the graph
+            # keeps none of it (a test file made only of callbacks).
+            if new_symbols or raw_symbols or not has_untouched_old_symbol:
                 return new_symbols
 
             if attempt < self.DOCUMENT_SYMBOL_ATTEMPTS:

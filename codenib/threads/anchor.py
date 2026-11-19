@@ -83,15 +83,15 @@ class AnchorResolver:
         proc = subprocess.run(
             ["git", "-C", str(self.repo), *args],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
             errors="replace",
         )
         return proc.stdout if proc.returncode in (0, 1) else ""
 
     def files(self) -> list[str]:
         if self._files is None:
-            out = self._git("ls-tree", "-r", "--name-only", self.rev)
-            self._files = out.splitlines()
+            out = self._git("ls-tree", "-r", "-z", "--name-only", self.rev)
+            self._files = [path for path in out.split("\0") if path]
             for path in self._files:
                 self._by_name[path.rsplit("/", 1)[-1]].append(path)
         return self._files

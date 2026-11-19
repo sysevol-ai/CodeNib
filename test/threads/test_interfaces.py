@@ -51,8 +51,8 @@ def test_mcp_tools_serve_context_then_only_news(root):
     async def scenario():
         names = [tool.name for tool in await server.list_tools()]
         assert names == [
-            "thread_context", "ticket_open", "ticket_inbox", "tickets_board",
-            "thread_events",
+            "thread_context", "ticket_open", "ticket_inbox", "ticket_claim",
+            "ticket_ack", "tickets_board", "thread_events",
         ]  # fmt: skip
         context = _text(await server.call_tool("thread_context", {"number": 7}))
         assert "# Thread context: acme/widget#7" in context and "It crashes." in context

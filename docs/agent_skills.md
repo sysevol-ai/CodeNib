@@ -6,9 +6,15 @@ SPDX-License-Identifier: Apache-2.0
 
 # Agent Skills
 
-CodeNib's retrieval, reranking, and graph-expansion capabilities are packaged as
-**skills** — self-contained units of metadata + execution logic that an LLM agent can
-select and invoke. Skills live under `codenib/agent/skills/`.
+A skill is one search or navigation step that CodeNib's own agent,
+`AgentRunner`, can call as a tool: search the repository by keyword or meaning,
+list a symbol's callers, or go to a definition. The [Web UI](web_demo.md)'s Ask
+runs this agent with `repository_search`; the evaluation harnesses use the other
+skills. Skills live under `codenib/agent/skills/`.
+
+To give your own coding agent CodeNib's code search, use the
+[MCP server](mcp.md) instead. This page is for running or extending CodeNib's
+agent.
 
 ## How skills are defined
 
@@ -21,8 +27,8 @@ A skill is a package directory containing:
   execution function. `context` is the typed op-context dataclass for the skill's
   type (`RetrieveContext` / `RerankContext` / `TransformContext` / `ExpandContext`);
   `custom` composer skills (`codenib_context`, `bm25_search`,
-  `crossencoder_rerank`, `repository_search`) instead receive a typed
-  `ComposerContexts` bundle (`codenib/agent/skills/context.py`).
+  `repository_search`) instead receive a typed `ComposerContexts` bundle
+  (`codenib/agent/skills/context.py`).
 
 `SkillLoader.load_all(skills_dir, contexts)` scans the directory, parses each
 `config.yaml`, reads `skill.md`, imports the executor, and registers a `SkillMetadata`
@@ -40,7 +46,7 @@ from codenib.agent.skills.registry import SkillRegistry
 registry = SkillRegistry()
 registry.list_skills()       # -> {skill_id: SkillMetadata}
 registry.get("bm25_search")  # -> SkillMetadata | None
-registry.has("llm_rerank")   # -> bool
+registry.has("find_callers")  # -> bool
 ```
 
 ## Exposing skills to an agent
@@ -61,7 +67,7 @@ from codenib.agent.skills.registry import SkillRegistry
 runner = AgentRunner(
     model="gpt-4o",
     registry=SkillRegistry(),
-    allow_skills={"bm25_search", "find_callers", "llm_rerank"},
+    allow_skills={"bm25_search", "find_callers"},
 )
 result = runner.run("How does authentication work in this repo?")
 ```
@@ -121,18 +127,13 @@ exposed, or `include_default_tools=False` to withhold them).
 |-------|------|-------------|
 | `bm25_search` | custom | Fast keyword retrieval (TF-IDF/BM25) over symbol chunks; `names_only=true` returns compact NAME tags (no bodies), with `unified_name` relabeling when a graph is present. |
 | `embedding_search` | retrieval | Semantic vector retrieval that matches code by meaning, not literal tokens. |
-| `hybrid_search` | aggregate | Fuses multiple retrievers (e.g. BM25 + embedding) via weighted score normalization. |
 | `codenib_context` | custom | One-call GraphRAG composer: search seeds + deterministic call-graph expansion into a compact set (graph step toggle: `CODENIB_COMPOSER_NO_GRAPH=1`). |
 | `repository_search` | custom | Repository-wide source retrieval with lexical search and optional semantic reciprocal-rank fusion; excludes supporting material by default. |
 | `find_callers` | expand | Incoming call-graph edges of a symbol (who calls X). |
 | `find_callees` | expand | Outgoing call-graph edges of a symbol (what X calls). |
-| `trace` | expand | Shortest call path between two symbols. |
 | `lsp_route` | expand | Symbol-name semantic navigation over the static symbol graph: ranks endpoint/bridge/provider/type route anchors for a query, optionally with one-hop neighbors. |
 | `lsp_definition` | expand | LSP-compatible go-to-definition for the identifier at an exact source position (repo-relative `file_path`, 1-based `line`, 0-based `character`), served by the runtime's selected provider: an injected live LSP provider, otherwise SCIP occurrences persisted with the graph, otherwise symbol-graph heuristics. |
 | `lsp_references` | expand | LSP-compatible find-references at an exact source position, with optional `include_declaration`; same position contract and provider selection as `lsp_definition`. |
-| `llm_rerank` | rerank | High-precision LLM-judged reranking to refine top results. |
-| `crossencoder_rerank` | custom | Pairwise reranking that scores each query/candidate pair with a cross-encoder; requires a `CrossEncoderContext` in the runner's skill contexts. |
-| `code_to_query` | transform | Packs retrieved code nodes into a reusable follow-up search query. |
 
 ## Navigation skills and the LSP provider
 

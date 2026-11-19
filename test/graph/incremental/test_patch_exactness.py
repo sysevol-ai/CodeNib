@@ -293,3 +293,179 @@ def test_fact_projection_compares_facts_not_vertex_keys(repo):
 
     unchecked = verifier.verify(index_type="symbol_graph", patched=patched)
     assert (unchecked.verified, unchecked.checked) == (False, False)
+
+
+def test_typescript_callbacks_are_not_graph_symbols(repo):
+    # The TypeScript server lists the function passed to describe()/it() as a
+    # symbol, with what is declared in it beneath. The builder defines none of
+    # that. Patching one preact test file added 251 vertices.
+    from codenib.graph.incremental.patcher_ts import PatcherTS
+
+    patcher = PatcherTS(str(repo), CodeGraph(str(repo)), lsp_client=object())
+    symbols = [
+        {"name": "helper", "kind": 12},
+        {
+            "name": "describe('render()') callback",
+            "kind": 12,
+            "children": [
+                {"name": "Tracked", "kind": 5},
+                {"name": "it('works') callback", "kind": 12},
+            ],
+        },
+        {"name": "<function>", "kind": 12},
+        {
+            "name": "Widget",
+            "kind": 5,
+            "children": [
+                {"name": "render", "kind": 6},
+                {"name": "items.map() callback", "kind": 12},
+            ],
+        },
+    ]
+
+    kept = patcher._graph_symbols("a.test.js", symbols)
+
+    assert [symbol["name"] for symbol in kept] == ["helper", "Widget"]
+    assert [child["name"] for child in kept[1]["children"]] == ["render"]
+    # Other languages keep what their server lists.
+    python = PatcherPython(str(repo), CodeGraph(str(repo)), lsp_client=object())
+    assert python._graph_symbols("a.py", symbols) == symbols
+
+
+def test_rust_test_only_modules_are_not_graph_symbols(repo):
+    # rust-analyzer lists what ``#[cfg(test)] mod tests`` holds. The index the
+    # graph is built from leaves code under cfg(test) out.
+    from codenib.graph.incremental.patcher_rust import PatcherRust
+
+    (repo / "src").mkdir()
+    (repo / "src/lib.rs").write_text(
+        "pub fn read() {}\n"
+        "\n"
+        '#[cfg(feature = "std")]\n'
+        "mod io {\n"
+        "    pub fn open() {}\n"
+        "}\n"
+        "\n"
+        "#[cfg(test)]\n"
+        "mod tests {\n"
+        "    fn calc_max() {}\n"
+        "}\n"
+    )
+
+    def symbol(name, kind, line, children=()):
+        return {
+            "name": name,
+            "kind": kind,
+            "range": {"start": {"line": line}, "end": {"line": line + 2}},
+            "children": list(children),
+        }
+
+    symbols = [
+        symbol("read", 12, 0),
+        symbol("io", 2, 3, [symbol("open", 12, 4)]),
+        symbol("tests", 2, 8, [symbol("calc_max", 12, 9)]),
+    ]
+    patcher = PatcherRust(str(repo), CodeGraph(str(repo)), lsp_client=object())
+
+    kept = patcher._graph_symbols("src/lib.rs", symbols)
+
+    # A feature-gated module is built; only the test-only one is dropped.
+    assert [entry["name"] for entry in kept] == ["read", "io"]
+    assert [entry["name"] for entry in kept[1]["children"]] == ["open"]
+
+
+def test_cfg_test_binds_to_the_module_it_annotates(repo):
+    # A module that follows a short test-only one is not test-only: the
+    # attribute above ``mod tests`` is not its attribute.
+    from codenib.graph.incremental.patcher_rust import PatcherRust
+
+    (repo / "lib.rs").write_text(
+        "#[cfg(test)]\n"
+        "mod tests {}\n"
+        "pub mod production {\n"
+        "    pub fn run() {}\n"
+        "}\n"
+        "\n"
+        "/// Checked only under test.\n"
+        "#[cfg(test)]\n"
+        "#[allow(dead_code)]\n"
+        "mod checks {\n"
+        "    fn check() {}\n"
+        "}\n"
+    )
+
+    def symbol(name, kind, start, name_line, children=()):
+        return {
+            "name": name,
+            "kind": kind,
+            "range": {"start": {"line": start}, "end": {"line": name_line + 2}},
+            "selectionRange": {"start": {"line": name_line}},
+            "children": list(children),
+        }
+
+    patcher = PatcherRust(str(repo), CodeGraph(str(repo)), lsp_client=object())
+    # A server may start an item's range at its first attribute or at the
+    # item itself; the attribute is bound to its module either way.
+    for tests_start, checks_start in ((0, 6), (1, 9)):
+        symbols = [
+            symbol("tests", 2, tests_start, 1),
+            symbol("production", 2, 2, 2, [symbol("run", 12, 3, 3)]),
+            symbol("checks", 2, checks_start, 9, [symbol("check", 12, 10, 10)]),
+        ]
+
+        kept = patcher._graph_symbols("lib.rs", symbols)
+
+        assert [entry["name"] for entry in kept] == ["production"]
+        assert [entry["name"] for entry in kept[0]["children"]] == ["run"]
+
+
+class _NoSymbols:
+    """A language server for a file the graph keeps no definition of."""
+
+    def document_symbol(self, path):
+        return []
+
+
+def _symbol_free_file(repo, mode="symbol"):
+    """``a.py`` with no definition, one line of it deleted in the last commit."""
+
+    _commit(repo, {"a.py": "target()\nuntouched()\n# delete me\ntail()\n"}, "base")
+    _commit(repo, {"a.py": "target()\nuntouched()\ntail()\n"}, "delete a line")
+    graph = _graph(repo, [], edges=[("a.py", 0), ("a.py", 3)])
+    patcher = PatcherPython(str(repo), graph, lsp_client=_NoSymbols(), mode=mode)
+    patcher.build_indexes()
+    return graph, patcher
+
+
+def test_deleted_line_does_not_drop_the_reference_beside_it(repo):
+    # A hunk that only removes lines has no new line; the hunk tuple still
+    # names one, the line above the removal. The reference there was not
+    # edited and must stay what the builder found.
+    graph, patcher = _symbol_free_file(repo)
+    assert change_mgr.get_changed_line_ranges(str(repo), "a.py", "HEAD~1") == [
+        (2, 2, 0, 0)
+    ]
+
+    context = patcher._incremental_prepare_vertices("a.py", "HEAD~1")
+
+    assert _anchors(graph, "a.py") == [0, 2]
+    # Nothing was edited, so nothing is looked up again.
+    assert context["affected_vnames"] == []
+    assert context["affected_changed_ranges"] == []
+
+
+def test_new_line_ranges_leave_out_hunks_that_only_remove():
+    # Two lines inserted before 5, line 10 replaced by three, line 20 removed.
+    edits = [(5, 5, 2), (10, 11, 2), (20, 21, -1)]
+
+    assert change_mgr.new_line_ranges(edits) == [(5, 6), (12, 14)]
+
+
+def test_naive_mode_rebuilds_a_file_without_definitions(repo):
+    # Naive mode is the file-granularity baseline: it looks the whole file
+    # up again, so it cannot share the path that keeps untouched references.
+    graph, patcher = _symbol_free_file(repo, mode="naive")
+
+    context = patcher._incremental_prepare_vertices("a.py", "HEAD~1")
+
+    assert context.get("fallback_rebuild") is True

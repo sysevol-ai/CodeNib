@@ -102,3 +102,28 @@ class PatcherTS(PatcherBase):
 
     def flatten_symbols(self, file_path, lsp_symbols):
         return self._flatten_symbols_default(file_path, lsp_symbols)
+
+    def _graph_symbols(self, file_path, symbols):
+        """Drop callbacks and everything declared inside them.
+
+        The TypeScript server lists the function passed to ``describe(...)``
+        or ``it(...)`` as a symbol named ``describe('x') callback``, with the
+        classes and functions declared in it beneath. scip-typescript treats
+        all of that as local and defines none of it. Patching one preact test
+        file added 251 vertices and 12,044 edges no fresh build has.
+        """
+
+        kept = []
+        for symbol in symbols or []:
+            name = str(symbol.get("name", ""))
+            # ``<constructor>`` is a real member; ``<function>`` is anonymous.
+            if name.endswith(" callback") or name in ("<function>", "<unknown>"):
+                continue
+            children = symbol.get("children")
+            if children:
+                symbol = {
+                    **symbol,
+                    "children": self._graph_symbols(file_path, children),
+                }
+            kept.append(symbol)
+        return kept

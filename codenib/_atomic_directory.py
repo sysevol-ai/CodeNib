@@ -871,7 +871,7 @@ class PublicationDirectoryReader:
                 not (allow_empty_root and not roots)
                 and roots.get(marker_name) != "file"
             ):
-                raise RuntimeError(
+                raise DirectoryOwnershipMarkerMissing(
                     "directory ownership root is missing its required marker"
                 )
         if entry_policy is not None:
@@ -3727,6 +3727,10 @@ class DirectoryOrphan:
         return self.reopen(lambda reader: reader.capture_ownership())
 
 
+class DirectoryOwnershipMarkerMissing(RuntimeError):
+    """A captured directory lacks the root file that marks its owner."""
+
+
 class _PreviousOutputIdentityLost(RuntimeError):
     """The moved previous tree can no longer be trusted for rollback."""
 
@@ -5368,6 +5372,7 @@ def _windows_open_child_by_id(
     desired_access: int,
     expected_directory: bool | None,
     resource_owner: _WindowsResourceOwner,
+    by_name: bool = False,
 ) -> tuple[int, _WindowsHandleMetadata]:
     if not entry.file_id:
         raise RuntimeError("Windows directory entry has no reliable FILE_ID")
@@ -5377,11 +5382,21 @@ def _windows_open_child_by_id(
     if expected_directory is not None and is_directory != expected_directory:
         raise ValueError("Windows publication child has the wrong object type")
     handle = resource_owner.acquire(
-        lambda: api.open_by_id(
-            parent_handle,
-            entry.file_id,
-            desired_access=desired_access,
-            is_directory=is_directory,
+        lambda: (
+            api.open_relative(
+                parent_handle,
+                entry.name,
+                desired_access=desired_access,
+                is_directory=is_directory,
+                allow_reparse=False,
+            )
+            if by_name
+            else api.open_by_id(
+                parent_handle,
+                entry.file_id,
+                desired_access=desired_access,
+                is_directory=is_directory,
+            )
         )
     )
     record = resource_owner.record_for_cleanup(handle)
@@ -5712,7 +5727,9 @@ def _scan_windows_owned_directory(
             check_cancelled=check_cancelled,
         )
     ):
-        raise RuntimeError("directory ownership root is missing its required marker")
+        raise DirectoryOwnershipMarkerMissing(
+            "directory ownership root is missing its required marker"
+        )
 
     hasher = hashlib.sha256()
     hasher.update(b"codenib.atomic-directory.v1\x00")
@@ -5839,7 +5856,9 @@ def _scan_windows_owned_directory(
             )
             entry_identities.append((relative, "file", file_identity))
         if entry.name == required_root_file and is_directory:
-            raise RuntimeError("directory ownership root marker is not a regular file")
+            raise DirectoryOwnershipMarkerMissing(
+                "directory ownership root marker is not a regular file"
+            )
         hasher.update(entry_hasher.digest())
     after = api.metadata(handle)
     if _ownership_version_identity(after) != _ownership_version_identity(before):
@@ -6138,15 +6157,22 @@ def _open_windows_publication_authority(
                 )
 
         def rename_callback(source: str, destination: str) -> None:
-            opened_source = open_child(
-                source,
+            entry = _windows_find_child(api, owned_parent_handle, source)
+            if entry is None:
+                raise FileNotFoundError(source)
+            # NTFS refuses a directory-relative rename of a HANDLE opened by
+            # FILE_ID, so open the entry by name and bind it to that FILE_ID.
+            source_handle, _metadata = _windows_open_child_by_id(
+                api,
+                owned_parent_handle,
+                entry,
                 desired_access=_WINDOWS_DELETE
                 | _WINDOWS_FILE_READ_ATTRIBUTES
                 | _WINDOWS_SYNCHRONIZE,
+                expected_directory=True,
+                resource_owner=resources,
+                by_name=True,
             )
-            if opened_source is None:
-                raise FileNotFoundError(source)
-            source_handle, _metadata = opened_source
             source_record = resources.record_for_cleanup(source_handle)
             primary_error: BaseException | None = None
             try:
@@ -6717,7 +6743,9 @@ def _scan_owned_directory(
             check_cancelled=check_cancelled,
         )
     ):
-        raise RuntimeError("directory ownership root is missing its required marker")
+        raise DirectoryOwnershipMarkerMissing(
+            "directory ownership root is missing its required marker"
+        )
 
     hasher = hashlib.sha256()
     hasher.update(b"codenib.atomic-directory.v1\x00")
@@ -6853,7 +6881,9 @@ def _scan_owned_directory(
                 f"directory ownership scan refuses special content: {child_path}"
             )
         if raw_name == required_root_file and not stat.S_ISREG(metadata.st_mode):
-            raise RuntimeError("directory ownership root marker is not a regular file")
+            raise DirectoryOwnershipMarkerMissing(
+                "directory ownership root marker is not a regular file"
+            )
         hasher.update(entry_hasher.digest())
 
     after = os.fstat(descriptor)
@@ -11179,6 +11209,7 @@ def publish_staged_directory(
 __all__ = [
     "DirectoryEntryPolicy",
     "DirectoryOrphan",
+    "DirectoryOwnershipMarkerMissing",
     "PublicationAuthenticatedFile",
     "PublicationDirectoryReader",
     "PublicationFileSnapshot",

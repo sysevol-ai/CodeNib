@@ -50,3 +50,7 @@ from LSP edits.
   symbol table the full build wrote (`pyrefly-symbols.json.gz`). Anything the
   converter needs to resolve a reference into another file must be in that
   table; a field missing from it shows up as edges missing from the patch.
+  The compiler calls it only under `CODENIB_GRAPH_INCREMENTAL=builder`, takes
+  the changed files from the source inventory (never from Git), and must
+  publish the graph and the position index as one generation with full
+  receipts.

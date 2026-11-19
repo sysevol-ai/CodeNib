@@ -55,8 +55,8 @@ Two spans overlap when they are in the same file and their line ranges
 intersect. Predicted spans that overlap an earlier prediction are dropped
 before truncation, so one region cannot fill several of the *k* slots.
 
-The CodeNib agent sweeps (`run_sweep.py`, `run_synthesis_sweep.py`) report
-two scopes:
+Code-block metrics for a CodeNib agent run
+(`codenib/eval/retrieval_eval.py`) have two scopes:
 
 - `answer_blocks`: the spans the agent committed to in its final answer. This
   is the agent's result.
@@ -67,8 +67,7 @@ two scopes:
 Neither scope bounds the other. An agent can answer with a region that it
 found by `grep` and that retrieval never returned.
 
-The `*_loc_agent.py` runners and `skill_agent_eval.py` report file and symbol
-metrics only.
+The `*_loc_agent.py` runners report file and symbol metrics only.
 
 The [grep → Jev result](grep_jev.md) uses macro code-block Recall@5.
 
@@ -187,8 +186,6 @@ produced the published numbers.
 | --- | --- | --- |
 | `examples/{locagent,cosil,orcaloca,claude,codex}_loc_agent.py` | One agent policy, scored with the shared file and symbol metrics | `codenib_base`, `swebench_lite`, `locbench_v1` |
 | `scripts/analysis/compare_agent_integrations.py` | LocAgent or OrcaLoca with the same model and cases, swapping the `native` and `codenib` repository provider | Prepared SWE-bench Lite cases |
-| `examples/skill_agent_eval.py` | The CodeNib agent with any subset of skills | SWE-bench (Lite by default), or Loc-Bench with `--dataset czlll/Loc-Bench_V1`; needs `--eval-instances` |
-| `scripts/agent_compile/run_sweep.py`, `run_synthesis_sweep.py` | CodeNib agent arms from a YAML configuration: skill subsets and pre-loaded context | CodeNib Base, CodeNib Synthesis |
 
 ```bash
 python examples/locagent_loc_agent.py \

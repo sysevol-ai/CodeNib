@@ -16,6 +16,44 @@ All notable user-facing changes are recorded here. CodeNib follows
 - Codex installs the CodeNib plugin with `codex plugin marketplace add` and
   `codex plugin add codenib@codenib`: the five skills plus the MCP server,
   which indexes and serves the checkout Codex opens.
+- Thread tickets can be worked by an agent that runs unattended.
+  `codenib threads inbox N --claim` hands over what is new under a lease and
+  marks nothing read until `codenib threads ack N <delivery>`, so a run that
+  fails gets the same news again once the lease ends. While a claim is open,
+  other workers are turned away with exit status 3. The MCP server adds
+  `ticket_claim` and `ticket_ack`, and `board` shows who holds each ticket.
+- Thread context names each post's author's role in the repository (owner,
+  member, collaborator, contributor, first-time contributor, or not a
+  contributor), so an agent can tell a maintainer's request from a
+  stranger's.
+
+### Fixed
+
+- `codenib threads inbox` could mark an event read without delivering it when
+  a poll appended it while the update was being built. It is now delivered on
+  the next read instead.
+- The change guard no longer lists every test that builds a command-line
+  parser for a change in any command's handler. `set_defaults(handler=...)`
+  names the handler without running it, and is no longer followed as a call.
+
+### Changed
+
+- `codenib guard` reaches Python code that no call names: the special methods
+  an operator runs (`__eq__` for `==`) from code that uses the class, and the
+  methods a call on a value of unknown type may run (`node.as_sql()`), when at
+  most three methods share the name and no built-in or common standard-library
+  type has a method of that name (`append`, `info`). On 68 agent regressions
+  it now lists a broken test for 42, up from 38.
+
+### Removed
+
+- Agent skills that nothing in CodeNib used any more: `hybrid_search`,
+  `llm_rerank`, `crossencoder_rerank`, `code_to_query` and `trace`, and
+  `codenib.model.HybridRetrievePipeline`. Ask, the evaluation harnesses and
+  the LSP studies keep the nine skills they use. Reranking stays available
+  through `RetrieveRerankPipeline`. The agent-compile sweep tooling
+  (`scripts/agent_compile/`, the feedback, Pareto and promotion reports), the
+  skill-agent examples and `scripts/retrieval_ablation/` are removed too.
 
 ## [0.2.6] - 2026-11-14
 

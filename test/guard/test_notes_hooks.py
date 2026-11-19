@@ -8,8 +8,13 @@ from __future__ import annotations
 
 import codecs
 import json
+import os
 import shlex
+import shutil
+import subprocess
+import sys
 import textwrap
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -155,18 +160,48 @@ def test_hook_command_prefers_the_script_beside_the_interpreter(tmp_path, monkey
         script = bin_dir / name
         script.write_text("")
         script.chmod(0o755)
-        command = hooks.hook_command("claude", "stop", str(interpreter))
-        assert command == (
-            f"{shlex.quote(str(script))} guard hook --agent claude --event stop"
-        )
+        for agent in ("claude", "codex"):
+            command = hooks.hook_command(agent, "stop", str(interpreter))
+            # Codex on Windows runs hooks through cmd, which has no single quotes.
+            quoted = (
+                '"' + str(script) + '"'
+                if (agent, platform) == ("codex", "win32")
+                else shlex.quote(str(script))
+            )
+            assert command == f"{quoted} guard hook --agent {agent} --event stop"
         script.unlink()
 
 
 def test_hook_command_keeps_an_explicit_python_as_given(monkeypatch):
     for platform in ("win32", "linux"):
         monkeypatch.setattr(hooks.sys, "platform", platform)
-        command = hooks.hook_command("codex", "stop", "C:/py dir/python.exe")
-        assert command.startswith("'C:/py dir/python.exe' -m codenib guard hook")
+        for agent in ("claude", "codex"):
+            command = hooks.hook_command(agent, "stop", "C:/py dir/python.exe")
+            quoted = (
+                '"C:/py dir/python.exe"'
+                if (agent, platform) == ("codex", "win32")
+                else "'C:/py dir/python.exe'"
+            )
+            assert command.startswith(f"{quoted} -m codenib guard hook")
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="runs the command through cmd")
+@pytest.mark.parametrize("folder", ["with space", "R&D"])
+def test_codex_hook_command_runs_through_cmd(tmp_path, folder):
+    exe = tmp_path / folder / "codenib.exe"
+    exe.parent.mkdir()
+    shutil.copy(Path(os.environ["COMSPEC"]), exe)  # any exe that exits 0 will do
+    (exe.parent / "python.exe").write_text("")
+    command = hooks.hook_command("codex", "stop", str(exe.parent / "python.exe"))
+    # What Codex runs when hooks.json names no shell: COMSPEC /C "<command>"
+    done = subprocess.run(
+        'cmd.exe /C "' + command + '"',
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert done.returncode == 0, done.stderr
 
 
 def test_output_shapes_for_each_agent():
@@ -247,12 +282,17 @@ def test_hook_logs_an_unexpected_error_and_exits_zero(tmp_path, monkeypatch, cap
     assert len(logged) == 1 and "No module named 'igraph'" in logged[0]
 
 
-def test_stop_skips_repositories_without_python(git_repo, tmp_path, monkeypatch):
+def test_stop_skips_repositories_without_supported_source(
+    git_repo, tmp_path, monkeypatch
+):
     monkeypatch.setenv("CODENIB_HOME", str(tmp_path / "home"))
-    git_repo.commit({"app.js": "console.log(1)\n"}, "init")
-    (git_repo.root / "app.js").write_text("console.log(2)\n")
+    git_repo.commit({"app.rb": "puts 1\n"}, "init")
+    (git_repo.root / "app.rb").write_text("puts 2\n")
     payload = {"session_id": "s", "cwd": str(git_repo.root), "stop_hook_active": False}
-    assert hooks.stop("claude", payload) == ("", "skipped: no Python files")
+    assert hooks.stop("claude", payload) == (
+        "",
+        "skipped: no supported source files",
+    )
 
 
 def _reported_session(git_repo, tmp_path, monkeypatch):
@@ -385,10 +425,12 @@ def test_a_failed_build_is_recorded_and_retried_later(git_repo, tmp_path, monkey
     from codenib.guard import snapshot
 
     monkeypatch.setenv("CODENIB_HOME", str(tmp_path / "home"))
-    commit = git_repo.commit({"app.js": "console.log(1)\n"}, "init")
-    with pytest.raises(snapshot.SnapshotError, match="no Python files"):
+    commit = git_repo.commit({"app.rb": "puts 1\n"}, "init")
+    with pytest.raises(snapshot.SnapshotError, match="no source the guard supports"):
         snapshot.build_snapshot(git_repo.root, commit)
-    assert "no Python files" in snapshot.failed_snapshot(git_repo.root, commit)
+    assert "no source the guard supports" in snapshot.failed_snapshot(
+        git_repo.root, commit
+    )
     assert hooks._wait_for_graph(git_repo.root, commit) is False
     marker = snapshot.guard_dir(git_repo.root) / "snapshots" / commit / "failed.json"
     old = marker.stat().st_mtime - snapshot.FAILURE_TTL - 1

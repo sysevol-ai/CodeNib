@@ -484,6 +484,8 @@ class _Converter:
         self.classes_by_file: dict[str, list[_Definition]] = defaultdict(list)
         self.functions_by_file: dict[str, list[_Definition]] = defaultdict(list)
         self.file_modules: dict[str, str] = {}
+        # Files of the project known from a symbol table but not converted.
+        self.project_files: set[str] = set()
         self.occurrences: dict[str, dict[tuple, tuple]] = defaultdict(dict)
         self.stats: Counter = Counter()
 
@@ -918,7 +920,13 @@ class _Converter:
         return []
 
     def external(self, file: Optional[str], qname: str) -> Optional[str]:
-        if not file or file.startswith("/") or file in self.report.files:
+        if (
+            not file
+            or file.startswith("/")
+            or file in self.report.files
+            # A project file that is not being converted is still no library.
+            or file in self.project_files
+        ):
             return None
         module = _module_of_path(file)
         if module is None:
@@ -1350,7 +1358,9 @@ def _binds_receiver(target, receiver: bytes) -> bool:
 # conversion of some files can resolve into the rest.
 
 SYMBOL_TABLE_NAME = "pyrefly-symbols.json.gz"
-_SYMBOL_TABLE_SCHEMA = 1
+# 2 added ``prefix`` and ``files``. A table without them cannot be brought to
+# a later conversion's prefix, so it is refused and its graph is rebuilt.
+_SYMBOL_TABLE_SCHEMA = 2
 
 
 def _symbol_table(converter: "_Converter") -> dict:
@@ -1400,7 +1410,20 @@ def _symbol_table(converter: "_Converter") -> dict:
             for d in rows
         ],
         "aliases": dict(converter.report.aliases),
+        # Symbols start with the project's name and version, and the version
+        # is the commit. A later conversion renames the table's symbols to
+        # its own prefix so one generation never mixes two.
+        "prefix": converter.prefix,
+        # Every converted file, including one that defines nothing the table
+        # lists: a reference into it must not be taken for a library's.
+        "files": sorted(converter.report.files),
     }
+
+
+def _with_prefix(symbol: str, old: str, new: str) -> str:
+    if old and old != new and symbol.startswith(old):
+        return new + symbol[len(old) :]
+    return symbol
 
 
 def _table_modules(table: dict, files: set[str]) -> set[str]:
@@ -1442,7 +1465,7 @@ def _resolve_into(converter: "_Converter", table: dict, replaced: set[str]) -> N
             name_start=row[8],
             name_end=row[9],
             marker=row[10],
-            symbol=row[11],
+            symbol=_with_prefix(row[11], table.get("prefix", ""), converter.prefix),
             params=tuple(row[13]),
             decorators=tuple(row[14]),
         )
@@ -1451,9 +1474,11 @@ def _resolve_into(converter: "_Converter", table: dict, replaced: set[str]) -> N
     for definition, row in zip(rows, table["definitions"], strict=True):
         if row[12] >= 0:
             definition.parent = rows[row[12]]
+    converter.project_files.update(table.get("files", ()))
     for definition in rows:
         if definition.file in replaced or definition.file in converter.report.files:
             continue
+        converter.project_files.add(definition.file)
         converter.registry[definition.qname].append(definition)
         if definition.kind == "module":
             converter.module_files.setdefault(definition.qname, definition.file)
@@ -1481,6 +1506,7 @@ def _merged_table(old: dict, new: dict, replaced: set[str]) -> dict:
     definitions = []
     for index in kept:
         row = list(old["definitions"][index])
+        row[11] = _with_prefix(row[11], old.get("prefix", ""), new.get("prefix", ""))
         row[12] = position.get(row[12], -1)
         definitions.append(row)
     offset = len(definitions)
@@ -1493,6 +1519,10 @@ def _merged_table(old: dict, new: dict, replaced: set[str]) -> dict:
         "schema": _SYMBOL_TABLE_SCHEMA,
         "definitions": definitions,
         "aliases": {**_kept_aliases(old, replaced), **new["aliases"]},
+        "prefix": new.get("prefix", ""),
+        "files": sorted(
+            (set(old.get("files", ())) - replaced) | set(new.get("files", ()))
+        ),
     }
 
 
@@ -1501,6 +1531,11 @@ def read_symbol_table(path: str | Path) -> dict:
         table = json.load(handle)
     if not isinstance(table, dict) or table.get("schema") != _SYMBOL_TABLE_SCHEMA:
         raise ValueError("unsupported pyrefly symbol table")
+    prefix = table.get("prefix")
+    if not isinstance(prefix, str) or not prefix:
+        raise ValueError("pyrefly symbol table does not record its symbol prefix")
+    if not isinstance(table.get("files"), list):
+        raise ValueError("pyrefly symbol table does not record its files")
     return table
 
 

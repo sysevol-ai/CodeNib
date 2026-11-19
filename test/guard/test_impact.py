@@ -269,3 +269,27 @@ def test_code_added_after_a_test_leaves_it_unedited(tmp_path, make_graph, write_
     )
     assert [t.test_id for t in impact.tests] == ["tests/test_shop.py::test_build"]
     assert impact.edited_tests == []
+
+
+def test_reports_name_symbols_by_their_real_path(make_graph, tmp_path):
+    # The builder keys a file by its module: lib/shop/cart.py is "shop/cart.py",
+    # and lib/tests/test_cart.py is "tests/test_cart.py". A test runner and a
+    # note's anchor need the path that exists.
+    nodes = [
+        ("shop/cart.py:total()", "function", "lib/shop/cart.py", 0, 2),
+        ("tests/test_cart.py:test_total()", "function", "lib/tests/test_cart.py", 0, 2),
+    ]
+    graph = make_graph(
+        nodes,
+        [("tests/test_cart.py:test_total()", "shop/cart.py:total()", "reference", 1)],
+    )
+    graph.vs["unified_name"] = [
+        "lib/shop/cart.py:total()",
+        "lib/tests/test_cart.py:test_total()",
+    ]
+
+    impact = ImpactGraph(graph, tmp_path).impact({"lib/shop/cart.py": {2}})
+
+    assert [c.symbol for c in impact.changed] == ["lib/shop/cart.py:total"]
+    assert [t.test_id for t in impact.tests] == ["lib/tests/test_cart.py::test_total"]
+    assert impact.tests[0].path[-1].symbol == "lib/shop/cart.py:total"

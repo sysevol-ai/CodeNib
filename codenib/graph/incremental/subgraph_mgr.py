@@ -661,6 +661,15 @@ class SubgraphMgr(ABC):
     # Subgraph construction (from LSP documentSymbol)
     # ═══════════════════════════════════════════════════════════
 
+    def _graph_symbols(self, file_path: str, symbols: list[dict]) -> list[dict]:
+        """The document symbols of ``file_path`` the graph's builder also defines.
+
+        A language server lists more than a builder indexes. Override to drop
+        what the builder leaves out, so a patch adds no vertex a fresh build
+        would not have. Default keeps everything.
+        """
+        return symbols
+
     def rebuild_file_subgraph(self, file_path: str, symbols: list[dict]) -> list[str]:
         """Add file vertex + symbol vertices + containment edges.
 
@@ -673,6 +682,7 @@ class SubgraphMgr(ABC):
         """
         g = self.code_graph
         g.add_file_node(file_path)
+        symbols = self._graph_symbols(file_path, symbols)
 
         parent_dir = str(Path(file_path).parent)
         if parent_dir != ".":

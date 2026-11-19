@@ -106,9 +106,20 @@ def changed_files(repo: Path, old: str, new: str) -> Optional[set[str]]:
         return set()
     try:
         result = subprocess.run(
-            ["git", "-C", str(repo), "diff", "--name-only", "--no-renames", old, new],
+            [
+                "git",
+                "-C",
+                str(repo),
+                "diff",
+                "--name-only",
+                "-z",
+                "--no-renames",
+                old,
+                new,
+            ],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="surrogateescape",
             timeout=120,
             check=False,
         )
@@ -116,7 +127,7 @@ def changed_files(repo: Path, old: str, new: str) -> Optional[set[str]]:
         return None
     if result.returncode != 0:
         return None
-    return {line.strip() for line in result.stdout.splitlines() if line.strip()}
+    return {path for path in result.stdout.split("\0") if path}
 
 
 def save_snapshot(builder: Any, path: Path, commit: str) -> int:

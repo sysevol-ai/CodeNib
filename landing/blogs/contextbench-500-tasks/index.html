@@ -20,7 +20,7 @@ SPDX-License-Identifier: Apache-2.0
   <meta property="og:locale" content="en_US">
   <meta property="og:url" content="https://codenib.ai/blogs/contextbench-500-tasks/">
   <meta property="article:published_time" content="2026-10-21T20:00:00Z">
-  <meta property="article:modified_time" content="2026-10-23T01:13:43Z">
+  <meta property="article:modified_time" content="2026-11-19T12:00:00Z">
   <meta property="article:section" content="Coding agents">
   <meta property="article:tag" content="ContextBench">
   <meta property="article:tag" content="Code retrieval">
@@ -41,7 +41,7 @@ SPDX-License-Identifier: Apache-2.0
     "description": "Search alone reaches 77.07% line recall. The complete CodeNib agent ranks #1 for line recall and Pass@1 on ContextBench's Agent systems leaderboard as of October 23, 2026 (UTC).",
     "image": "https://codenib.ai/assets/blogs/contextbench-search-handoff.png",
     "datePublished": "2026-10-21T20:00:00Z",
-    "dateModified": "2026-10-23T01:13:43Z",
+    "dateModified": "2026-11-19T12:00:00Z",
     "inLanguage": "en",
     "mainEntityOfPage": "https://codenib.ai/blogs/contextbench-500-tasks/",
     "author": { "@type": "Organization", "name": "CodeNib Team", "url": "https://codenib.ai/" },
@@ -73,7 +73,7 @@ SPDX-License-Identifier: Apache-2.0
         <div class="post-meta">
           <span class="tag">Coding agents</span>
           <time datetime="2026-10-21">October 21, 2026</time>
-          <span>9 min read</span>
+          <span>11 min read</span>
         </div>
         <h1 id="article-title">CodeNib on ContextBench: 77% Line Recall Before Repair</h1>
         <p class="deck">How two search agents find relevant code, how the coordinator routes their work, and how source locations become a handoff to a repair agent.</p>
@@ -91,7 +91,7 @@ SPDX-License-Identifier: Apache-2.0
           <div><dt>Search usage / task</dt><dd>$0.0114<span>Two Haiku workers; model usage only</span></dd></div>
         </dl>
 
-        <p>The search workers use Claude Haiku 5.5; Claude Opus 5.5 handles repair through an adapted mini SWE-agent loop. The <a href="https://github.com/ContextBench/contextbench.github.io/blob/5fddce90e136f73a36ad0e16a5e15205cc18a375/submissions/2026-10-19_codenib-agent-haiku55-opus55/README.md">public submission</a> contains the configuration and evidence. All 500 task annotations had been exposed during development, so the result describes that known population.</p>
+        <p>The search workers use Claude Haiku 5.5; Claude Opus 5.5 handles repair through an adapted mini SWE-agent loop. The <a href="https://github.com/ContextBench/contextbench.github.io/blob/5fddce90e136f73a36ad0e16a5e15205cc18a375/submissions/2026-10-19_codenib-agent-haiku55-opus55/README.md">public submission</a> contains the configuration and evidence. We developed the system on about 105 of these 500 tasks, so the 500-task score is not a held-out result. After freezing the configuration, we ran its search stage on <a href="#held-out">all 559 remaining ContextBench tasks</a>: the pair reached 56.59% line recall against 55.10% for Opus, at 6.7% of Opus’s search cost.</p>
       </div>
 
       <figure class="hero-figure responsive-figure">
@@ -110,6 +110,7 @@ SPDX-License-Identifier: Apache-2.0
           <a href="#why-search">Why this can cover more code</a>
           <a href="#results">Results by task source</a>
           <a href="#cost">Where the cost goes</a>
+          <a href="#held-out">Held-out check</a>
           <a href="#scope">Scope and evidence</a>
         </nav>
 
@@ -201,9 +202,28 @@ SPDX-License-Identifier: Apache-2.0
         <p>In this configuration, making search cheaper on its own would affect a small part of the total. A more useful next question is whether better source selection can reduce the repair work while preserving resolution quality. That needs a controlled repair comparison; these results do not answer it yet.</p>
         <p class="scope-note">The <a href="https://github.com/ContextBench/contextbench.github.io/blob/5fddce90e136f73a36ad0e16a5e15205cc18a375/submissions/2026-10-19_codenib-agent-haiku55-opus55/README.md#complete-system-model-usage">cost accounting</a> uses recorded SDK model-usage values, including caching. It excludes compute, native-test containers and earlier strategy development, and is not a reconciled cash invoice.</p>
 
+        <h2 id="held-out">Held-out check on all 559 remaining tasks</h2>
+        <p>After the configuration was frozen, we ran its search stage once on <strong>every remaining default ContextBench task</strong> that we had not used to develop, choose or check it: 559 tasks from the uncurated full release, with nothing sampled out. Code, prompts, models, budgets and evaluator were unchanged. Each task also got one Haiku search and one Opus search on the same issue. Annotations were opened only after all 1,665 searches were sealed, and there were no retries or replacements.</p>
+        <div class="data-table compact" role="region" tabindex="0" aria-label="Search-only results on all 559 held-out tasks">
+          <table>
+            <caption class="sr-only">Line-level search results, macro averaged over all 559 held-out tasks, with recorded search usage</caption>
+            <thead><tr><th scope="col">Search</th><th scope="col">Recall</th><th scope="col">Precision</th><th scope="col">F1</th><th scope="col">Search usage</th></tr></thead>
+            <tbody>
+              <tr><th scope="row">One Haiku search</th><td>51.54%</td><td>34.26%</td><td>34.41%</td><td>$3.49</td></tr>
+              <tr><th scope="row">CodeNib Haiku pair</th><td><strong>56.59%</strong></td><td>28.78%</td><td>32.18%</td><td>$6.93</td></tr>
+              <tr><th scope="row">Opus search</th><td>55.10%</td><td>32.58%</td><td>34.51%</td><td>$103.08</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>The pair’s recall is <strong>1.49 points above Opus</strong>, with a 95% repository-cluster interval of [−0.16, +3.34], at <strong>6.7%</strong> of Opus’s recorded search usage. It is 5.06 points above one Haiku search [+4.04, +6.22]. So the pair matches Opus recall at a small fraction of the cost. Because the interval crosses zero, this run does not show that it finds more than Opus. The margin is also smaller than the +4.24 points on the 500 tasks.</p>
+        <p>Precision is the cost of the union. The scout adds about 182 selected lines per task, and only about 13% of them are annotated, against 34% for the first search. Line F1 is 2.32 points below Opus [−4.63, −0.38]. That is the same tradeoff as on the 500 tasks, where the precision gap to Opus was wider.</p>
+        <p>Every configuration scores lower here, Opus included (72.83% on the 500, 55.10% here), because the full release is harder and uncurated. Compare the rankings and gaps, not the absolute numbers. Four tasks could not run and count as zero for every configuration: one has no issue text in the dataset, and three have submodules that can no longer be fetched. The <a href="https://docs.codenib.ai/evaluation/contextbench-results/#held-out559-every-remaining-task-search-only">held-out results</a> include the per-language breakdown, the four tasks, and the <a href="https://docs.codenib.ai/assets/contextbench_search_pair_heldout_559.csv">per-task rows</a>.</p>
+
         <h2 id="scope">How to read and verify this result</h2>
         <p>ContextBench <a href="https://github.com/ContextBench/contextbench.github.io/pull/4">merged our submission on October 22, 2026 (UTC)</a> and published the complete agent on the <a href="https://contextbench.github.io/">official leaderboard</a>. As of October 23, 2026 (UTC), CodeNib ranks <strong>#1 in line recall (77.90%) and Pass@1 (77.60%) in Agent systems</strong>. Those ranks describe the complete search-and-repair agent; the 77.07% search-only result is a stage of that pipeline. The <a href="https://github.com/ContextBench/contextbench.github.io/blob/4f979971e04a1fe0a743fbe45e60fa8edf79440d/src/data/agent_results.json">published score snapshot</a> preserves the leaderboard values behind this dated comparison.</p>
-        <p>All 500 task annotations had been exposed during development. Three original development repairs are reused, with their selected-context exports assembled retrospectively; the other 497 retain their first repair executions. Reference fixes, native test patches and grading feedback stayed outside model inputs. Arbitrary shell-output source attribution remains partial, so the context scores describe the selected source supported by the submission's delivery evidence, rather than a complete inventory of everything the solver may have read.</p>
+        <p>The 500-task score is not a held-out result. About 105 of the 500 tasks were our development set: we scored variants on them, examined which annotated lines each one missed, and chose the final configuration from those scores. Three earlier 32-task validation sets were also drawn from the 500, and a native Opus baseline had been scored on all 500 before this run. The models never received annotations: inference ran with the annotation field empty, annotations were loaded only after outputs were sealed, and the prompts contain nothing specific to a task.</p>
+        <p>Two checks use unseen tasks. One is the <a href="#held-out">559-task run above</a>. Before it, 32 tasks were selected from outside the 500, four per language, and scored only after every search had finished. There the pair reached <a href="https://docs.codenib.ai/evaluation/contextbench-results/#independent32-complementary-source-search">40.00% line recall</a>, against 37.91% for native Opus and 33.98% for one Haiku worker. These tasks come from ContextBench's uncurated full release. On <a href="https://docs.codenib.ai/evaluation/contextbench-results/#independent-32-task-validation">32 tasks inside the 500</a> that were not used to develop or choose this configuration, also four per language, the pair reached 69.54% in this run, so most of the drop reflects the harder population rather than tuning.</p>
+        <p>Three original development repairs are reused, with their selected-context exports assembled retrospectively; the other 497 retain their first repair executions. Reference fixes, native test patches and grading feedback stayed outside model inputs. Arbitrary shell-output source attribution remains partial, so the context scores describe the selected source supported by the submission's delivery evidence, rather than a complete inventory of everything the solver may have read.</p>
         <p>The public package includes the exact task list, pinned evaluator and implementation versions, outcome records, usage receipts, and raw search and repair trajectories. Its aggregation and report checks run without model keys or Docker. Replaying those records verifies the submitted accounting; it does not rerun inference or the native tests. See the <a href="https://github.com/ContextBench/contextbench.github.io/blob/5fddce90e136f73a36ad0e16a5e15205cc18a375/submissions/2026-10-19_codenib-agent-haiku55-opus55/REPRODUCE.md">reproduction guide</a> and <a href="https://github.com/ContextBench/contextbench.github.io/blob/5fddce90e136f73a36ad0e16a5e15205cc18a375/submissions/2026-10-19_codenib-agent-haiku55-opus55/REVIEW_NOTES.md">review notes</a> for the full protocol and limitations.</p>
 
         <h2 id="try-codenib">Explore CodeNib</h2>
