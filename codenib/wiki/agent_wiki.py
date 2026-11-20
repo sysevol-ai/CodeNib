@@ -2258,6 +2258,27 @@ def _is_own_private_method(symbol: str, caller: str) -> bool:
     return bool(owner) and leaf.startswith("_") and owner == _symbol_owner(caller)
 
 
+def _journey_starts_at(
+    journey: Mapping[str, Any],
+    evidence: Sequence[EvidenceItem],
+    doors: set[str],
+) -> bool:
+    """Whether a model-chosen journey begins in one of the README's doors.
+
+    True when there are no doors to hold it to. The first stage counts as
+    starting there when any evidence it cites lives in a door file.
+    """
+
+    if not doors:
+        return True
+    stages = [stage for stage in journey.get("stages") or [] if isinstance(stage, dict)]
+    if not stages:
+        return True
+    files = {item.id: item.file.replace("\\", "/") for item in evidence}
+    cited = [files.get(str(item), "") for item in stages[0].get("evidence") or []]
+    return any(file in doors for file in cited)
+
+
 def _journey_flow(journey: Any) -> dict[str, Any] | None:
     """Express the recorded journey as flow steps for the visual fallback.
 
@@ -5162,12 +5183,14 @@ class AgentWiki:
             return None
         vertex = raw_graph.vs[vid]
         target = self._graph_endpoint(vertex)
+        target_file = self._rel(target["file"]) or ""
         known = by_symbol.get(_canonical_symbol(target["label"]))
-        if known is not None:
+        # Evidence names collapse across files (``main()``); reuse it only for
+        # the same definition, not another file's function of that name.
+        if known is not None and known.file.replace("\\", "/") == target_file:
             return known
         attrs = vertex.attributes()
         span = (attrs.get("start_line"), attrs.get("end_line"))
-        target_file = self._rel(target["file"]) or ""
         if not target_file or not all(
             isinstance(value, int) and not isinstance(value, bool) for value in span
         ):
@@ -5417,6 +5440,8 @@ class AgentWiki:
             canonical = _canonical_symbol(target["label"])
             visited.add(canonical)
             item = by_symbol.get(canonical)
+            if item is not None and item.file.replace("\\", "/") != target_file:
+                item = None
             if item is None:
                 start_line, end_line = span[0] + 1, span[1] + 1
                 source = self._wb.source(target_file, start_line, end_line)
@@ -7829,6 +7854,13 @@ class AgentWiki:
             if journey:
                 plan["journey"] = journey
             else:
+                plan.pop("journey", None)
+        elif overview_context and plan.get("journey"):
+            # No path could be traced, so the model chose the stages. When the
+            # README names the doors, a journey that starts elsewhere (a data
+            # generator, a demo) tells the reader the wrong way in.
+            run, linked = self._readme_doors()
+            if not _journey_starts_at(plan["journey"], evidence, {*run, *linked}):
                 plan.pop("journey", None)
         planning_metrics: Dict[str, Any] = {
             "planning_ms": 0.0,
