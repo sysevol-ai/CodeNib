@@ -2258,6 +2258,27 @@ def _is_own_private_method(symbol: str, caller: str) -> bool:
     return bool(owner) and leaf.startswith("_") and owner == _symbol_owner(caller)
 
 
+def _journey_starts_at(
+    journey: Mapping[str, Any],
+    evidence: Sequence[EvidenceItem],
+    doors: set[str],
+) -> bool:
+    """Whether a model-chosen journey begins in one of the README's doors.
+
+    True when there are no doors to hold it to. The first stage counts as
+    starting there when any evidence it cites lives in a door file.
+    """
+
+    if not doors:
+        return True
+    stages = [stage for stage in journey.get("stages") or [] if isinstance(stage, dict)]
+    if not stages:
+        return True
+    files = {item.id: item.file.replace("\\", "/") for item in evidence}
+    cited = [files.get(str(item), "") for item in stages[0].get("evidence") or []]
+    return any(file in doors for file in cited)
+
+
 def _journey_flow(journey: Any) -> dict[str, Any] | None:
     """Express the recorded journey as flow steps for the visual fallback.
 
@@ -7829,6 +7850,13 @@ class AgentWiki:
             if journey:
                 plan["journey"] = journey
             else:
+                plan.pop("journey", None)
+        elif overview_context and plan.get("journey"):
+            # No path could be traced, so the model chose the stages. When the
+            # README names the doors, a journey that starts elsewhere (a data
+            # generator, a demo) tells the reader the wrong way in.
+            run, linked = self._readme_doors()
+            if not _journey_starts_at(plan["journey"], evidence, {*run, *linked}):
                 plan.pop("journey", None)
         planning_metrics: Dict[str, Any] = {
             "planning_ms": 0.0,

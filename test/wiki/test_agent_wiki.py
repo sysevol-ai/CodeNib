@@ -8938,6 +8938,37 @@ def test_stub_bodies_are_recognised_but_real_ones_are_not():
     assert AgentWiki._is_stub_body("def only_signature(self): ...") is False
 
 
+def test_a_model_journey_must_start_at_a_readme_door_when_there_is_one():
+    from codenib.wiki.agent_wiki import _journey_starts_at
+
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="src/run.py",
+            start_line=1,
+            end_line=9,
+            symbol="src/run.py:main()",
+            kind="function",
+            content="x",
+        ),
+        EvidenceItem(
+            id="E2",
+            file="src/gen/crafter.py",
+            start_line=1,
+            end_line=9,
+            symbol="src/gen/crafter.py:main()",
+            kind="function",
+            content="x",
+        ),
+    ]
+    from_run = {"stages": [{"stage": "main", "evidence": ["E1"]}]}
+    from_generator = {"stages": [{"stage": "main", "evidence": ["E2"]}]}
+    assert _journey_starts_at(from_run, evidence, {"src/run.py"})
+    assert not _journey_starts_at(from_generator, evidence, {"src/run.py"})
+    # Without doors the model's journey is held to nothing new.
+    assert _journey_starts_at(from_generator, evidence, set())
+
+
 def test_the_main_path_may_enter_its_own_class_private_method():
     from codenib.wiki.agent_wiki import _is_own_private_method
 
