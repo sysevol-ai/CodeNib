@@ -1,0 +1,319 @@
+/* SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
+ * SPDX-License-Identifier: Apache-2.0 */
+
+/* ---------------------------------------------------------------------------
+   Paper: the light theme, and the default.
+
+   Sheets lie on a drafting table. Lines follow GitDiagram's three weights:
+   3px for frames and the header rule, 2px for boxes and controls, 1px for
+   dividers. A hard shadow takes the element's ink and grows with its size:
+   6px under a frame, 3px under a box or control. Dark keeps its own quieter
+   surfaces: the same rules resolve to hairlines and no shadow there.
+--------------------------------------------------------------------------- */
+:root:not([data-theme="dark"]) {
+  --ink-line: #16191e;
+  --rule-frame: 3px;
+  --rule-box: 2px;
+  --shadow-card: 6px 6px 0 var(--ink-line);
+  --shadow-box: 3px 3px 0 var(--ink-line);
+  --shadow-box-lift: 4px 4px 0 var(--ink-line);
+  --shadow-chip: 2px 2px 0 var(--ink-line);
+  --paper-grid: rgba(22, 25, 30, 0.055);
+}
+[data-theme="dark"] {
+  --ink-line: var(--border-strong);
+  --rule-frame: 1px;
+  --rule-box: 1px;
+  --shadow-card: none;
+  --shadow-box: none;
+  --shadow-box-lift: none;
+  --shadow-chip: none;
+  --paper-grid: transparent;
+}
+
+/* ----- type: GitDiagram's weights ----------------------------------------- */
+:root:not([data-theme="dark"]) :is(h1) {
+  font-weight: var(--fw-display);
+  letter-spacing: var(--tracking-display);
+}
+:root:not([data-theme="dark"]) :is(h2, h3) {
+  font-weight: var(--fw-heading);
+  letter-spacing: var(--tracking-heading);
+}
+:root:not([data-theme="dark"]) .site-header .header-link {
+  font-weight: var(--fw-medium);
+  color: var(--text-primary);
+}
+
+/* ----- the header: a 3px rule, like a sheet's top edge -------------------- */
+:root:not([data-theme="dark"]) .site-header {
+  border-bottom: var(--rule-frame) solid var(--ink-line);
+}
+
+/* ----- controls: 2px ink edge, 3px shadow; they lift on hover, sink on press */
+:root:not([data-theme="dark"]) :is(.btn-primary, .btn-outline, .askbar-collapsed) {
+  border: var(--rule-box) solid var(--ink-line);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-weight: var(--fw-strong);
+  box-shadow: var(--shadow-box);
+  transition: transform 0.08s ease, box-shadow 0.08s ease, background-color 0.13s ease;
+}
+:root:not([data-theme="dark"]) :is(.btn-primary, .btn-outline, .askbar-collapsed):hover {
+  transform: translate(-1px, -1px);
+  border-color: var(--ink-line);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-box-lift);
+  color: var(--text-primary);
+}
+:root:not([data-theme="dark"]) :is(.btn-primary, .btn-outline, .askbar-collapsed):active {
+  transform: translate(3px, 3px);
+  box-shadow: 0 0 0 var(--ink-line);
+}
+:root:not([data-theme="dark"]) .icon-btn {
+  border: var(--rule-box) solid var(--ink-line);
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-chip);
+}
+:root:not([data-theme="dark"]) .icon-btn:hover {
+  border-color: var(--ink-line);
+  transform: translate(-1px, -1px);
+  box-shadow: var(--shadow-box);
+}
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-theme="dark"]) :is(.btn-primary, .btn-outline, .askbar-collapsed, .icon-btn, .repo-card) {
+    transition: none;
+  }
+}
+
+/* ----- text fields: a 2px ink edge on a sheet ------------------------------ */
+:root:not([data-theme="dark"]) :is(.repo-search, .search-box input, .repository-entry-row input, .codemap-symbol) {
+  border: var(--rule-box) solid var(--ink-line);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+:root:not([data-theme="dark"]) :is(.repo-search, .search-box input, .repository-entry-row input, .codemap-symbol):focus {
+  border-color: var(--accent);
+  box-shadow: 3px 3px 0 var(--accent);
+  outline: none;
+}
+
+/* ----- repository cards: sheets with a 2px edge ----------------------------- */
+:root:not([data-theme="dark"]) .repo-card {
+  border: var(--rule-box) solid var(--ink-line);
+  border-radius: 8px;
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-box);
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+:root:not([data-theme="dark"]) .repo-card:hover {
+  border-color: var(--ink-line);
+  transform: translate(-2px, -2px);
+  box-shadow: 5px 5px 0 var(--ink-line);
+}
+:root:not([data-theme="dark"]) .repo-card .repo-card-go {
+  border: var(--rule-box) solid var(--ink-line);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+/* The catalog thumbnail: the repository's map drawn on the drafting grid. */
+:root:not([data-theme="dark"]) .map-thumb {
+  border-bottom: var(--rule-box) solid var(--ink-line);
+  border-radius: 6px 6px 0 0;
+  background-color: var(--bg-subtle);
+  background-image:
+    linear-gradient(var(--paper-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--paper-grid) 1px, transparent 1px);
+  background-size: 16px 16px;
+}
+:root:not([data-theme="dark"]) .map-thumb-line {
+  stroke: rgba(22, 25, 30, 0.22);
+}
+
+/* ----- the home stage: Paper instead of a dark band ------------------------ */
+:root:not([data-theme="dark"]) :is(.home-stage, .home-stage ~ .landing-catalog, .home-stage ~ .preview-footer) {
+  --h-bg: transparent;
+  --h-text: #16191e;
+  --h-soft: #39414b;
+  --h-muted: #5a6470;
+  --h-line: rgba(22, 25, 30, 0.16);
+  --h-line-strong: #16191e;
+  --h-accent: #1d4fd8;
+  --h-trace: #1d4fd8;
+}
+:root:not([data-theme="dark"]) :is(.home-hero h1, .home-example h2) {
+  color: var(--h-text);
+  font-weight: var(--fw-display);
+}
+:root:not([data-theme="dark"]) .home-entry .repository-entry-row input {
+  border: var(--rule-box) solid var(--ink-line);
+  background: var(--bg-surface);
+}
+:root:not([data-theme="dark"]) .home-entry .repository-entry-row .btn-primary,
+:root:not([data-theme="dark"]) .home-entry .repository-entry-row .btn-primary:hover {
+  border-color: var(--ink-line);
+  background: var(--action);
+  color: var(--action-ink);
+}
+:root:not([data-theme="dark"]) .home-map-placeholder {
+  border: var(--rule-frame) solid var(--ink-line);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-card);
+}
+:root:not([data-theme="dark"]) .home-map-tab {
+  border: var(--rule-box) solid var(--ink-line);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-weight: var(--fw-strong);
+  box-shadow: var(--shadow-chip);
+}
+:root:not([data-theme="dark"]) .home-map-tab span {
+  color: var(--text-muted);
+}
+:root:not([data-theme="dark"]) .home-map-tab:hover {
+  border-color: var(--ink-line);
+  color: var(--text-primary);
+}
+:root:not([data-theme="dark"]) .home-map-tab.is-active {
+  border-color: var(--ink-line);
+  background: var(--ink-line);
+  color: #fbfcfd;
+  box-shadow: none;
+  transform: translate(2px, 2px);
+}
+:root:not([data-theme="dark"]) .home-map-tab.is-active span {
+  color: #c6cdd6;
+}
+/* The worked example is a shadow-DOM component themed through properties. */
+:root:not([data-theme="dark"]) .home-example .first-visit-explorer {
+  --bg-surface: #fbfcfd;
+  --bg-muted: #eef1f5;
+  --border-subtle: #c6cdd6;
+  --text-primary: #16191e;
+  --text-secondary: #5a6470;
+  --accent: #1d4fd8;
+  --accent-soft: #e2e9fb;
+  --explore-code-bg: #eef1f5;
+  --explore-code-rule: #c6cdd6;
+  --explore-code-line: #e2e9fb;
+  --explore-code-mark: #1d4fd8;
+  --explore-code-text: #16191e; --explore-code-link: #1d4fd8; --explore-code-note: #5a6470;
+  --explore-hl-keyword: #a3243f; --explore-hl-string: #2b7a5b; --explore-hl-comment: #5a6470;
+  --explore-hl-title: #1d4fd8; --explore-hl-number: #8f4a00;
+}
+
+/* ----- the Wiki map: drawn on the drafting grid ---------------------------- */
+:root:not([data-theme="dark"]) .wiki-graph {
+  --wg-bg: #fbfcfd;
+  --wg-text: #16191e;
+  --wg-soft: #39414b;
+  --wg-muted: #5a6470;
+  --wg-line: rgba(22, 25, 30, 0.14);
+  --wg-call: rgba(22, 25, 30, 0.34);
+  --wg-hot: #1d4fd8;
+  background-image:
+    linear-gradient(var(--paper-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--paper-grid) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+:root:not([data-theme="dark"]) .wiki-graph.is-dense {
+  --wg-call: rgba(22, 25, 30, 0.2);
+}
+:root:not([data-theme="dark"]) .hero-graph,
+:root:not([data-theme="dark"]) .home-map .wiki-graph {
+  border: var(--rule-frame) solid var(--ink-line);
+  border-radius: 8px;
+  box-shadow: var(--shadow-card);
+}
+:root:not([data-theme="dark"]) .home-stage ~ .landing-catalog .landing-catalog-heading h2 {
+  color: var(--h-text);
+  font-weight: var(--fw-display);
+}
+:root:not([data-theme="dark"]) .wiki-graph-controls button {
+  padding: 5px 11px;
+  border: var(--rule-box) solid var(--ink-line);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: var(--fw-strong);
+  box-shadow: var(--shadow-chip);
+}
+:root:not([data-theme="dark"]) .wiki-graph-controls button:hover {
+  border-color: var(--ink-line);
+  color: var(--text-primary);
+  transform: translate(-1px, -1px);
+  box-shadow: var(--shadow-box);
+}
+:root:not([data-theme="dark"]) .wiki-graph-title:hover {
+  color: var(--wg-hot);
+}
+
+/* ----- the main action: filled with the accent, on every entry form ------- */
+:root:not([data-theme="dark"]) .repository-entry-row .btn-primary,
+:root:not([data-theme="dark"]) .repository-entry-row .btn-primary:hover {
+  border-color: var(--ink-line);
+  background: var(--action);
+  color: var(--action-ink);
+}
+/* ----- the Ask bar: a sheet with a 2px edge -------------------------------- */
+:root:not([data-theme="dark"]) .askbar-inner {
+  border: var(--rule-box) solid var(--ink-line);
+  border-radius: 8px;
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-box);
+}
+:root:not([data-theme="dark"]) .askbar-inner:focus-within {
+  border-color: var(--ink-line);
+  box-shadow: 3px 3px 0 var(--accent);
+}
+:root:not([data-theme="dark"]) .askbar-send {
+  border: var(--rule-box) solid var(--ink-line);
+  background: var(--action);
+  color: var(--action-ink);
+}
+:root:not([data-theme="dark"]) .askbar-send:disabled {
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+  border-color: var(--border-strong);
+}
+
+/* ----- the reader: the outline on the table, the map on a gridded sheet, the
+   text on a plain sheet; full-height panes meet at 2px ink rules ----------- */
+:root:not([data-theme="dark"]) .wiki-grid.is-workspace > .wiki-graph {
+  border-left: var(--rule-box) solid var(--ink-line);
+  border-right: var(--rule-box) solid var(--ink-line);
+}
+:root:not([data-theme="dark"]) .wiki-main {
+  background: var(--bg-surface);
+}
+/* On a phone the column is the page: no sheet edge to pad against, so the text
+   stays on the table. */
+@media (max-width: 820px) {
+  :root:not([data-theme="dark"]) .wiki-main {
+    background: transparent;
+  }
+}
+:root:not([data-theme="dark"]) .btn-outline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+}
+:root:not([data-theme="dark"]) select {
+  border: var(--rule-box) solid var(--ink-line);
+  border-radius: 6px;
+  background-color: var(--bg-surface);
+  color: var(--text-primary);
+}
+:root:not([data-theme="dark"]) :is(.toc-toggle, .codegraph-launch) {
+  border: var(--rule-box) solid var(--ink-line);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-chip);
+}

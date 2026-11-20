@@ -10,6 +10,6 @@
       return;
     }
   } catch {}
-  // Dark unless the reader has chosen otherwise: people come here from their editor.
-  document.documentElement.dataset.theme = "dark";
+  // Paper unless the reader has chosen dark.
+  document.documentElement.dataset.theme = "light";
 })();

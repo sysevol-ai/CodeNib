@@ -22,32 +22,32 @@
   --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
-  /* Surfaces: a white page; grey only for fills, never for the page itself. */
-  --bg-page: #ffffff;
-  --bg-surface: #ffffff;
-  --bg-subtle: #f1f3f4;
-  --bg-muted: #f8f9fa;
-  --border-subtle: #dadce0;    /* the 1px hairline that separates sections */
-  --border-strong: #bdc1c6;
+  /* Paper: a drafting table under sheets of paper. Three surfaces step up from
+     the table; grey is for wells, never for the sheet itself. */
+  --bg-page: #e9edf1;          /* the table */
+  --bg-surface: #fbfcfd;       /* a sheet */
+  --bg-subtle: #eef1f5;        /* a well inside a sheet */
+  --bg-muted: #f4f6f8;
+  --border-subtle: #c6cdd6;    /* the 1px divider */
+  --border-strong: #8a939e;
 
-  /* Text: three greys, all readable on white. */
-  --text-primary: #1f1f1f;     /* 16.5:1 */
-  --text-secondary: #3c4043;   /* 10.5:1 */
-  --text-muted: #5f6368;       /* 6.1:1 */
-  --text-faint: #9aa0a6;       /* placeholders and decoration only, not body text */
+  /* Ink: three greys, all readable on the table and the sheet. */
+  --text-primary: #16191e;     /* 15.6:1 on the table */
+  --text-secondary: #39414b;   /* 9.3:1 */
+  --text-muted: #5a6470;       /* 5.2:1 */
+  --text-faint: #8a929c;       /* placeholders and decoration only, not body text */
 
   /* One accent. */
-  --accent: #0b57d0;           /* 6.4:1 */
-  --accent-soft: #e8f0fe;      /* selected rows, active code line */
-  --accent-border: #a8c7fa;
-  --accent-ink: #041e49;      /* text on --accent-soft, 14:1 */
+  --accent: #1d4fd8;           /* 6.0:1 on the table */
+  --accent-soft: #e2e9fb;      /* selected rows, active code line */
+  --accent-border: #a9bcf0;
+  --accent-ink: #0b2463;       /* text on --accent-soft */
   --accent-contrast: #ffffff;
-  /* The filled primary button. It is neutral, like codenib.ai's, so blue stays
-     for links and for what is selected. */
-  --action: #1f1f1f;
-  --action-hover: #000000;
+  /* The filled primary button takes the accent, as on the walkthrough pages. */
+  --action: #1d4fd8;
+  --action-hover: #1a45bd;
   --action-ink: #ffffff;
-  --focus-ring: 0 0 0 3px rgba(11, 87, 208, 0.15);
+  --focus-ring: 0 0 0 3px rgba(29, 79, 216, 0.18);
 
   /* Folded into the accent family: one accent, no extra hues. */
   --indigo-soft: var(--accent-soft);
@@ -57,8 +57,8 @@
   --purple-border: var(--accent-border);
   --purple-text: var(--accent-ink);
 
-  --code-bg: #f8f9fa;
-  --code-line-active: #e8f0fe;
+  --code-bg: #eef1f5;
+  --code-line-active: #e2e9fb;
 
   /* Type scale. */
   --fs-micro: 12px;            /* dense data only: graph chips, line numbers */
@@ -73,12 +73,15 @@
   --lh-tight: 1.1;             /* h1 */
   --lh-heading: 1.2;
   --lh-body: 1.55;
-  --tracking-display: -0.025em;
-  --tracking-heading: -0.01em;
+  --tracking-display: -0.04em;
+  --tracking-heading: -0.02em;
 
-  /* Two weights. */
+  /* Weights, as GitDiagram uses them: body, interface, emphasis, headings, display. */
   --fw-regular: 400;
+  --fw-medium: 500;
   --fw-strong: 600;
+  --fw-heading: 650;
+  --fw-display: 700;
 
   /* Radii: small and few. */
   --radius-sm: 4px;            /* inputs, code blocks, thumbnails */
@@ -5124,8 +5127,12 @@ a.codepanel-name:hover {
 .wiki-catalog-skeleton span:last-child { width: 40%; }
 .library-publish-hint { display: block; margin-top: 12px; font-size: var(--fs-caption); color: var(--accent); }
 
-@media (max-width: 720px) {
+/* The intro runs to 640px, so below 1000px the button follows it instead of
+   sitting on top of it. */
+@media (max-width: 1000px) {
   .browse-intro > .btn-outline { position: static; margin-top: 12px; }
+}
+@media (max-width: 720px) {
   .browse-tabs a { font-size: var(--fs-caption); padding: 8px 10px; }
   .browse-intro { padding-top: 28px; }
   .header-right .agent-setup-link { display: none; }

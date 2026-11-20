@@ -2,6 +2,7 @@ import { lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 
 import "@/app/globals.css";
+import "@/app/paper.css";
 import { githubPathInput } from "@/lib/githubPreview";
 import { routeSegments, useBrowserLocation } from "@/lib/router";
 import {

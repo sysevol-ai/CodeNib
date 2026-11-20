@@ -36,12 +36,12 @@ button:focus-visible, a:focus-visible, .source-scroll:focus-visible { outline: 3
 .answer { display: flex; gap: 9px; margin: 0 24px; font-size: 13px; color: var(--text-secondary, #475569); }
 .answer-marker { color: var(--accent, #2563eb); font-size: 20px; }
 .answer code { font-size: 12px; color: var(--text-primary, #0f172a); }
-.source { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; margin: 0 16px; background: var(--explore-code-bg, #101b2c); border-radius: 6px; color: #e2e8f0; overflow: hidden; }
+.source { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; margin: 0 16px; background: var(--explore-code-bg, #101b2c); border-radius: 6px; color: var(--explore-code-text, #e2e8f0); overflow: hidden; }
 .source-head { display: flex; gap: 8px; justify-content: space-between; align-items: center; padding: 10px 12px; font-size: 11px; border-bottom: 1px solid var(--explore-code-rule, #263244); }
 .source-label { font-family: ui-monospace, monospace; }
 a { color: var(--accent, #2563eb); text-decoration: none; }
 a:hover { text-decoration: underline; }
-.source-link { color: #93c5fd; white-space: nowrap; }
+.source-link { color: var(--explore-code-link, #93c5fd); white-space: nowrap; }
 /* Whole pixels: Safari snaps each row to one, and the band must land on the same rows. */
 .source-scroll { --code-lh: 20px; flex: 1 1 266px; min-height: 266px; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; font-family: ui-monospace, monospace; font-size: var(--code-size, 12px); line-height: var(--code-lh); }
 .source-code { position: relative; display: flex; min-width: max-content; }
@@ -51,13 +51,13 @@ pre { position: relative; margin: 0; padding: 12px 14px 12px 0; font: inherit; t
 .code-line.selected { color: #dbeafe; }
 .code-line.gap { color: #64748b; letter-spacing: .1em; }
 .line-highlight { position: absolute; inset-inline: 0; top: calc(12px + var(--selected-row) * var(--code-lh)); height: var(--code-lh); background: var(--explore-code-line, #1e3a5f); box-shadow: inset 3px 0 var(--explore-code-mark, #60a5fa); }
-.hljs-keyword { color: #ff9da4; }
-.hljs-string { color: #a5d6ff; }
-.hljs-comment { color: #9caec4; }
-.hljs-title, .hljs-built_in { color: #d2a8ff; }
-.hljs-number, .hljs-literal { color: #79c0ff; }
+.hljs-keyword { color: var(--explore-hl-keyword, #ff9da4); }
+.hljs-string { color: var(--explore-hl-string, #a5d6ff); }
+.hljs-comment { color: var(--explore-hl-comment, #9caec4); }
+.hljs-title, .hljs-built_in { color: var(--explore-hl-title, #d2a8ff); }
+.hljs-number, .hljs-literal { color: var(--explore-hl-number, #79c0ff); }
 /* All notes share a grid cell: the longest reserves space at every width. */
-.source-note { display: grid; padding: 8px 12px; border-top: 1px solid var(--explore-code-rule, #263244); color: #b6c2d4; font-size: 11px; }
+.source-note { display: grid; padding: 8px 12px; border-top: 1px solid var(--explore-code-rule, #263244); color: var(--explore-code-note, #b6c2d4); font-size: 11px; }
 .source-note p { grid-area: 1 / 1; visibility: hidden; }
 .source-note p[aria-hidden="false"] { visibility: visible; }
 footer { display: flex; justify-content: space-between; gap: 12px; padding: 16px 24px; align-items: center; flex-wrap: wrap; }
