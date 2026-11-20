@@ -35,6 +35,10 @@ All notable user-facing changes are recorded here. CodeNib follows
 - The change guard no longer lists every test that builds a command-line
   parser for a change in any command's handler. `set_defaults(handler=...)`
   names the handler without running it, and is no longer followed as a call.
+- A Wiki or repository card for a project whose README is in Chinese or
+  Japanese now opens with the README's first paragraph. Words were counted
+  by spaces, so those paragraphs looked too short and a later line that
+  happened to hold spaced-out numbers was shown instead.
 
 ### Changed
 
