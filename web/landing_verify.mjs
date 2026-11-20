@@ -85,12 +85,16 @@ try {
     assert.equal(await page.locator("video").count(), 0);
     assert.ok(await page.locator(".replay-log .line").first().isVisible());
     assert.ok(await page.locator(".replay-log .line.stats").count() === 1);
-    // One dark family: no section inverts to a light background.
-    const lightest = await page.evaluate(() => Math.max(...[...document.querySelectorAll("main section, .cta-block")].map(section => {
-      const [red, green, blue, alpha = 1] = getComputedStyle(section).backgroundColor.match(/[\d.]+/g).map(Number);
-      return alpha ? (red + green + blue) / 3 : 0;
-    })));
-    assert.ok(lightest < 40, "sections must stay in one dark family");
+    // One family per theme: no section inverts against the page it sits on.
+    const furthest = await page.evaluate(() => {
+      const level = (element) => {
+        const [red, green, blue, alpha = 1] = getComputedStyle(element).backgroundColor.match(/[\d.]+/g).map(Number);
+        return alpha ? (red + green + blue) / 3 : null;
+      };
+      const page = level(document.body);
+      return Math.max(0, ...[...document.querySelectorAll("main section, .cta-block")].map(level).filter((value) => value !== null).map((value) => Math.abs(value - page)));
+    });
+    assert.ok(furthest < 40, "sections must stay in the page's own theme");
     // The ranking stays with its scope, away from the hero.
     assert.equal(await page.locator(".stage").getByText("ContextBench").count(), 0);
     assert.match(await page.locator(".proof-band").innerText(), /October 23, 2026 \(UTC\)[\s\S]*not the Wiki or the code graph/);
@@ -188,6 +192,10 @@ try {
     await page.goto(base, { waitUntil: "networkidle" });
     await revealPage(page);
     await page.screenshot({ path: `${output}/landing-${width}.png`, fullPage: true });
+    // The blog is still dark until its figures have Paper versions, so it is
+    // compared with the homepage's dark theme.
+    await page.evaluate(() => localStorage.setItem("cm-theme", "dark"));
+    await page.goto(base, { waitUntil: "networkidle" });
     const pageBackground = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
     for (const path of ["/blogs/", "/blogs/contextbench-500-tasks/"]) {
       await page.goto(`${base}${path}`, { waitUntil: "networkidle" });

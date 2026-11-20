@@ -20,7 +20,7 @@ SPDX-License-Identifier: Apache-2.0
 <meta name="twitter:card" content="summary_large_image">
 <link rel="canonical" href="https://codenib.ai/">
 <link rel="icon" href="assets/codenib-icon.svg" type="image/svg+xml">
-<script>document.documentElement.classList.add("js")</script>
+<script>document.documentElement.classList.add("js");try{document.documentElement.dataset.theme=localStorage.getItem("cm-theme")==="dark"?"dark":"light"}catch(e){document.documentElement.dataset.theme="light"}</script>
 <style>
 /* Fonts: self-hosted Geist (variable) */
 @font-face {
@@ -36,13 +36,60 @@ SPDX-License-Identifier: Apache-2.0
   font-display: swap;
 }
 
-/* One dark family, with the demo's neutral greys and single blue (web/app/globals.css).
-   Surfaces step in brightness; nothing inverts. Blue is kept for what you can act
-   on inside the evidence, so the primary button is near-white. */
+/* Paper by default: sheets on a drafting table, the demo's palette (web/app/paper.css).
+   Lines follow GitDiagram's three weights, 3px frames, 2px boxes and controls, 1px
+   dividers, and a hard shadow takes the element's ink. Dark keeps the quieter family
+   it had: surfaces step in brightness, hairlines, no shadows. Within either theme
+   nothing inverts. */
 :root {
   /* Read by the shared example component (shadow DOM) for its type. */
   --font-geist-sans: "Geist";
   --font-geist-mono: "Geist Mono";
+  color-scheme: light;
+  --bg: #e9edf1;
+  --surface: #fbfcfd;
+  --subtle: #e3e8ed;
+  --line: #c6cdd6;
+  --line-strong: #8a939e;
+  --ink: #16191e;
+  --ink-2: #39414b;
+  --ink-3: #5a6470;
+  --ink-strong: #16191e;
+  --ink-faint: #8a929c;
+  --accent: #1d4fd8;
+  --accent-hover: #1a45bd;
+  --accent-ink: #ffffff;
+  --accent-wash: rgba(29, 79, 216, 0.1);
+  --accent-halo: rgba(29, 79, 216, 0.22);
+  --wash: rgba(22, 25, 30, 0.04);
+  --wash-strong: rgba(22, 25, 30, 0.07);
+  --btn-bg: #1d4fd8;
+  --btn-ink: #ffffff;
+  --btn-bg-hover: #1a45bd;
+  --sim-agent: #c6cdd6;
+  --w-display: 700;
+  --w-heading: 650;
+  --w-strong: 600;
+  --w-medium: 500;
+  --ink-line: #16191e;
+  --rule-frame: 3px;
+  --rule-box: 2px;
+  --shadow-card: 6px 6px 0 var(--ink-line);
+  --shadow-box: 3px 3px 0 var(--ink-line);
+  --shadow-box-lift: 4px 4px 0 var(--ink-line);
+  --shadow-chip: 2px 2px 0 var(--ink-line);
+  --paper-grid: rgba(22, 25, 30, 0.055);
+  /* Page width follows the screen up to where code and text stop gaining. */
+  --wrap: 1600px;
+  --gutter: clamp(18px, 4vw, 64px);
+  --column-gap: clamp(32px, 4.5vw, 72px);
+  --section: clamp(48px, 4.5vw, 72px);
+  --section-lg: clamp(56px, 7.5vw, 112px);
+  --well: #eef1f5;
+  --r-box: 8px;    /* containers */
+  --r-ui: 6px;     /* interactive */
+}
+[data-theme="dark"] {
   color-scheme: dark;
   --bg: #121315;
   --surface: #1a1b1e;
@@ -52,18 +99,33 @@ SPDX-License-Identifier: Apache-2.0
   --ink: #e8eaed;
   --ink-2: #bdc1c6;
   --ink-3: #9aa0a6;
+  --ink-strong: #ffffff;
+  --ink-faint: #80868b;
   --accent: #8ab4f8;
   --accent-hover: #aecbfa;
   --accent-ink: #062e6f;
-  /* Page width follows the screen up to where code and text stop gaining. */
-  --wrap: 1600px;
-  --gutter: clamp(18px, 4vw, 64px);
-  --column-gap: clamp(32px, 4.5vw, 72px);
-  --section: clamp(48px, 4.5vw, 72px);
-  --section-lg: clamp(56px, 7.5vw, 112px);
+  --accent-wash: rgba(138, 180, 248, 0.1);
+  --accent-halo: rgba(138, 180, 248, 0.3);
+  --wash: rgba(255, 255, 255, 0.03);
+  --wash-strong: rgba(255, 255, 255, 0.06);
+  --btn-bg: #e8eaed;
+  --btn-ink: #121315;
+  --btn-bg-hover: #ffffff;
+  --sim-agent: #44484f;
+  --w-display: 570;
+  --w-heading: 570;
+  --w-strong: 560;
+  --w-medium: 520;
   --well: #0e0f11;
-  --r-box: 10px;   /* containers */
-  --r-ui: 6px;     /* interactive */
+  --r-box: 10px;
+  --ink-line: rgba(232, 234, 237, 0.26);
+  --rule-frame: 1px;
+  --rule-box: 1px;
+  --shadow-card: none;
+  --shadow-box: none;
+  --shadow-box-lift: none;
+  --shadow-chip: none;
+  --paper-grid: transparent;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -103,21 +165,21 @@ body > header {
 
 .btn {
   display: inline-flex; align-items: center; gap: 8px;
-  font-size: 14.5px; font-weight: 560; white-space: nowrap;
+  font-size: 14.5px; font-weight: var(--w-strong); white-space: nowrap;
   padding: 9px 18px; border-radius: var(--r-ui);
   transition: background .15s, border-color .15s;
 }
-.btn-primary { background: #e8eaed; color: #121315; }
-.btn-primary:hover { background: #fff; }
+.btn-primary { background: var(--btn-bg); color: var(--btn-ink); }
+.btn-primary:hover { background: var(--btn-bg-hover); }
 .btn-ghost { border: 1px solid var(--line-strong); color: var(--ink); background: var(--surface); }
 .btn-ghost:hover { border-color: var(--ink-3); background: var(--subtle); }
 .btn-lg { font-size: 15.5px; padding: 12px 24px; }
 
 /* ---- hero: question, explanation, calls, source ---- */
 .stage {
-  --h-text: #e8eaed; --h-soft: #bdc1c6; --h-muted: #9aa0a6;
-  --h-line: rgba(232, 234, 237, 0.12); --h-line-strong: rgba(232, 234, 237, 0.26);
-  --h-accent: #8ab4f8; --h-trace: #8ab4f8;
+  --h-text: var(--ink); --h-soft: var(--ink-2); --h-muted: var(--ink-3);
+  --h-line: var(--line); --h-line-strong: var(--ink-line);
+  --h-accent: var(--accent); --h-trace: var(--accent);
   position: relative; overflow: hidden;
   color: var(--h-text);
 }
@@ -129,11 +191,11 @@ body > header {
 }
 /* The copy is shorter than the map, so it sits level with the map's middle. */
 .stage-intro { display: flex; flex-direction: column; justify-content: center; min-width: 0; }
-.stage-intro h1 { margin: 0 0 20px; color: #fff; font-size: clamp(2.5rem, 4.4vw, 4.25rem); font-weight: 570; line-height: 1.04; letter-spacing: -0.04em; text-wrap: balance; }
+.stage-intro h1 { margin: 0 0 20px; color: var(--ink-strong); font-size: clamp(2.5rem, 4.4vw, 4.25rem); font-weight: var(--w-display); line-height: 1.04; letter-spacing: -0.04em; text-wrap: balance; }
 .stage-sub { max-width: 46ch; color: var(--h-soft); font-size: 17px; line-height: 1.65; }
 .stage-ctas { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
 .stage .btn-ghost { background: transparent; border-color: var(--h-line-strong); color: var(--h-text); }
-.stage .btn-ghost:hover { background: rgba(255, 255, 255, 0.06); border-color: var(--h-soft); }
+.stage .btn-ghost:hover { background: var(--wash-strong); border-color: var(--h-soft); }
 .stage-note { margin-top: 12px; color: var(--h-muted); font-size: 13px; }
 .stage-map { --map-height: clamp(440px, 36vw, 600px); display: flex; flex-direction: column; min-width: 0; }
 /* Stands in, at the same size, until the interactive map loads. */
@@ -146,9 +208,9 @@ body > header {
    into the panel they control. */
 .example-band { padding-block: var(--section-lg); background: var(--well); border-block: 1px solid var(--line); }
 .example-tasks { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 32px; }
-.example-tasks button { min-height: 44px; padding: 10px 14px; border: 1px solid var(--h-line); border-radius: var(--r-ui); background: rgba(255, 255, 255, 0.03); color: var(--h-soft); font: inherit; font-size: 14px; line-height: 1.4; cursor: pointer; text-align: left; transition: border-color .15s, background .15s, color .15s; }
-.example-tasks button:hover { border-color: var(--h-line-strong); background: rgba(255, 255, 255, 0.05); color: #fff; }
-.example-tasks button[aria-pressed="true"] { border-color: var(--h-accent); background: rgba(138, 180, 248, 0.1); color: #fff; }
+.example-tasks button { min-height: 44px; padding: 10px 14px; border: 1px solid var(--h-line); border-radius: var(--r-ui); background: var(--wash); color: var(--h-soft); font: inherit; font-size: 14px; line-height: 1.4; cursor: pointer; text-align: left; transition: border-color .15s, background .15s, color .15s; }
+.example-tasks button:hover { border-color: var(--h-line-strong); background: var(--wash-strong); color: var(--ink-strong); }
+.example-tasks button[aria-pressed="true"] { border-color: var(--h-accent); background: var(--accent-wash); color: var(--ink-strong); }
 .example-tasks button:focus-visible { outline: 3px solid var(--h-trace); outline-offset: 3px; }
 html:not(.js) .example-tasks { display: none; }
 .stage-evidence { min-width: 0; display: flex; flex-direction: column; margin-top: 12px; }
@@ -177,6 +239,17 @@ html:not(.js) .example-tasks { display: none; }
    properties it reads. */
 .stage codenib-explorer {
   display: block; flex: 1 1 auto; min-width: 0;
+  --bg-surface: #fbfcfd; --bg-muted: #eef1f5;
+  --border-subtle: #c6cdd6; --text-primary: #16191e;
+  --text-secondary: #39414b; --accent: #1d4fd8; --accent-soft: #e2e9fb;
+  --explore-code-bg: #eef1f5; --explore-code-rule: #c6cdd6;
+  --explore-code-line: #e2e9fb; --explore-code-mark: #1d4fd8;
+  --explore-step-line: #8a939e;
+  --explore-code-text: #16191e; --explore-code-link: #1d4fd8; --explore-code-note: #5a6470;
+  --explore-hl-keyword: #a3243f; --explore-hl-string: #2b7a5b; --explore-hl-comment: #5a6470;
+  --explore-hl-title: #1d4fd8; --explore-hl-number: #8f4a00;
+}
+[data-theme="dark"] .stage codenib-explorer {
   --bg-surface: #1a1b1e; --bg-muted: rgba(255, 255, 255, 0.03);
   --border-subtle: rgba(232, 234, 237, 0.14); --text-primary: #e8eaed;
   --text-secondary: #bdc1c6; --accent: #8ab4f8; --accent-soft: rgba(138, 180, 248, 0.14);
@@ -231,11 +304,11 @@ html:not(.js) .replay-controls, html:not(.js) .lang-toggle { display: none; }
 .replay-graph .g-loc { fill: var(--ink-3); font-size: 11px; }
 .g-edge { fill: none; stroke: var(--accent); stroke-width: 1.2; stroke-opacity: .5; stroke-dasharray: 1; stroke-dashoffset: 0; }
 .g-node circle { fill: var(--well); stroke: var(--accent); stroke-width: 1.5; }
-.g-root circle { fill: var(--accent); stroke: rgba(138, 180, 248, .3); stroke-width: 7; paint-order: stroke; }
-.replay-graph .g-root text { fill: #fff; font-weight: 600; }
+.g-root circle { fill: var(--accent); stroke: var(--accent-halo); stroke-width: 7; paint-order: stroke; }
+.replay-graph .g-root text { fill: var(--ink-strong); font-weight: 600; }
 .replay-graph a:hover text { fill: var(--accent); }
 .replay-graph a:focus-visible { outline: none; }
-.replay-graph a:focus-visible circle { stroke: #fff; }
+.replay-graph a:focus-visible circle { stroke: var(--ink-strong); }
 /* Armed by agent-replay.js, so the full session shows without it. */
 .is-armed .line:not(.is-on) { display: none; }
 .is-armed .g-item { opacity: .1; transition: opacity .35s ease-out; }
@@ -253,10 +326,10 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* ---- sections ---- */
 main > section { padding: var(--section) 0; border-top: 1px solid var(--line); }
-h2 { font-size: clamp(1.9rem, 3.4vw, 3.1rem); font-weight: 570; letter-spacing: -0.035em; line-height: 1.08; }
+h2 { font-size: clamp(1.9rem, 3.4vw, 3.1rem); font-weight: var(--w-display); letter-spacing: -0.035em; line-height: 1.08; }
 /* A heading's second thought steps back, so one line leads. */
 h1 .dim, h2 .dim { display: block; color: var(--ink-3); }
-::selection { background: rgba(138, 180, 248, 0.28); }
+::selection { background: var(--accent-halo); }
 .section-sub { margin-top: 12px; color: var(--ink-2); font-size: 16.5px; max-width: 58ch; }
 /* A heading and its sentence share the row, so neither leaves the other side empty. */
 .section-head { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); column-gap: var(--column-gap); align-items: end; }
@@ -278,8 +351,8 @@ h1 .dim, h2 .dim { display: block; color: var(--ink-3); }
 .sim-rows { list-style: none; }
 .sim-row { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: 0 14px; align-items: center; padding: 20px clamp(16px, 1.6vw, 24px); }
 .sim-row + .sim-row { border-top: 1px solid var(--line); }
-.sim-agent { display: grid; width: 24px; height: 24px; place-items: center; border-radius: 50%; background: #44484f; color: var(--ink); font-size: 12px; font-weight: 700; }
-.sim-title { color: var(--ink); font-size: 16.5px; font-weight: 520; }
+.sim-agent { display: grid; width: 24px; height: 24px; place-items: center; border-radius: 50%; background: var(--sim-agent); color: var(--ink); font-size: 12px; font-weight: 700; }
+.sim-title { color: var(--ink); font-size: 16.5px; font-weight: var(--w-medium); }
 .sim-title code { margin-right: 6px; color: var(--ink-2); font-size: 13.5px; }
 .sim-count { color: var(--ink-3); font-size: 13.5px; font-variant-numeric: tabular-nums; transition: color 0.4s ease; }
 .sim-count.is-unread { color: var(--accent); }
@@ -300,14 +373,14 @@ h1 .dim, h2 .dim { display: block; color: var(--ink-3); }
 .res-panel { display: flex; flex-direction: column; padding-top: clamp(24px, 2.6vw, 36px); }
 .res-panel:first-child { padding-right: var(--column-gap); border-right: 1px solid var(--line); }
 .res-panel:last-child { padding-left: var(--column-gap); }
-.res-panel h3 { max-width: 30ch; font-size: clamp(1.25rem, 1.7vw, 1.6rem); font-weight: 570; letter-spacing: -0.02em; line-height: 1.2; text-wrap: balance; }
+.res-panel h3 { max-width: 30ch; font-size: clamp(1.25rem, 1.7vw, 1.6rem); font-weight: var(--w-heading); letter-spacing: -0.02em; line-height: 1.2; text-wrap: balance; }
 .res-lede { margin-top: 12px; max-width: 54ch; color: var(--ink-2); font-size: 15.5px; }
 .res-lede strong { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
 .res-panel code { font-family: "Geist Mono", ui-monospace, monospace; font-size: 0.92em; color: var(--ink); }
 .res-rows { list-style: none; margin-top: clamp(24px, 2.6vw, 36px); }
 .res-grid { --res-name: 220px; }
 .res-rows li { display: grid; grid-template-columns: var(--res-name) minmax(0, 1fr); column-gap: 24px; align-items: center; }
-.res-name { color: var(--ink); font-size: 16px; font-weight: 560; line-height: 1.3; }
+.res-name { color: var(--ink); font-size: 16px; font-weight: var(--w-strong); line-height: 1.3; }
 .res-name span { display: block; color: var(--ink-3); font-size: 13.5px; font-weight: 400; font-variant-numeric: tabular-nums; }
 .res-plot { position: relative; }
 .res-plot strong { font-weight: 620; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
@@ -341,12 +414,12 @@ h1 .dim, h2 .dim { display: block; color: var(--ink-3); }
 .lang-item { display: grid; grid-template-columns: 34px auto; grid-template-rows: auto auto; column-gap: 14px; align-items: center; padding: 26px clamp(22px, 2.6vw, 38px); }
 .lang-item svg { grid-row: span 2; width: 34px; height: 34px; fill: var(--ink); transition: fill .2s; }
 .lang-item:hover svg { fill: var(--brand); }
-.lang-name { align-self: end; color: var(--ink); font-size: 17px; font-weight: 560; letter-spacing: -0.015em; line-height: 1.25; white-space: nowrap; }
+.lang-name { align-self: end; color: var(--ink); font-size: 17px; font-weight: var(--w-strong); letter-spacing: -0.015em; line-height: 1.25; white-space: nowrap; }
 .lang-tag { align-self: start; color: var(--ink-3); font: 11.5px/1.4 "Geist Mono", ui-monospace, monospace; white-space: nowrap; }
 .lang-graph svg { fill: var(--ink-2); }
 .lang-graph .lang-name { color: var(--ink-2); }
-.lang-search svg { fill: #80868b; }
-.lang-search .lang-name { color: #9aa0a6; }
+.lang-search svg { fill: var(--ink-faint); }
+.lang-search .lang-name { color: var(--ink-3); }
 @keyframes lang-slide { to { transform: translateX(-50%); } }
 .lang-legend { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 24px; margin-top: 16px; }
 .lang-legend ul { display: flex; flex-wrap: wrap; gap: 6px 28px; list-style: none; color: var(--ink-2); font-size: 14px; }
@@ -367,11 +440,11 @@ h1 .dim, h2 .dim { display: block; color: var(--ink-3); }
 .questions-row { display: grid; grid-template-columns: minmax(0, 4fr) minmax(0, 8fr); column-gap: var(--column-gap); align-items: start; }
 .questions-list { max-width: 820px; border-top: 1px solid var(--line-strong); }
 .questions-list details { border-bottom: 1px solid var(--line); }
-.questions-list summary { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 18px 0; color: var(--ink); font-size: clamp(1.05rem, 1.35vw, 1.25rem); font-weight: 520; line-height: 1.3; letter-spacing: -0.01em; cursor: pointer; list-style: none; }
+.questions-list summary { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 18px 0; color: var(--ink); font-size: clamp(1.05rem, 1.35vw, 1.25rem); font-weight: var(--w-medium); line-height: 1.3; letter-spacing: -0.01em; cursor: pointer; list-style: none; }
 .questions-list summary::-webkit-details-marker { display: none; }
 .questions-list summary::after { content: ""; flex: none; width: 15px; height: 15px; background: linear-gradient(var(--ink-2), var(--ink-2)) center / 100% 1.5px no-repeat, linear-gradient(var(--ink-2), var(--ink-2)) center / 1.5px 100% no-repeat; transition: background-size .2s ease; }
 .questions-list details[open] summary::after { background-size: 100% 1.5px, 1.5px 0; }
-.questions-list summary:hover { color: #fff; }
+.questions-list summary:hover { color: var(--ink-strong); }
 .questions-list summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .questions-list p { max-width: 66ch; padding: 0 39px 22px 0; color: var(--ink-2); font-size: 16px; }
 .questions-list code { font-family: "Geist Mono", ui-monospace, monospace; font-size: 0.9em; }
@@ -459,16 +532,71 @@ body > footer { border-top: 1px solid var(--line); }
   .lang-list[aria-hidden="true"] { display: none; }
   .lang-marquee { -webkit-mask-image: none; mask-image: none; }
 }
+
+/* ---- Paper: frames, boxes and controls ---- */
+.for-dark { display: none; }
+[data-theme="dark"] .for-dark { display: block; }
+[data-theme="dark"] .for-light { display: none; }
+.theme-toggle { display: inline-grid; place-items: center; width: 34px; height: 34px; border: var(--rule-box) solid var(--ink-line); border-radius: var(--r-ui); background: var(--surface); color: var(--ink); cursor: pointer; box-shadow: var(--shadow-chip); }
+.theme-toggle svg { width: 16px; height: 16px; }
+.theme-toggle .sun, [data-theme="dark"] .theme-toggle .moon { display: none; }
+[data-theme="dark"] .theme-toggle .sun { display: block; }
+.theme-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+[data-theme="light"] body > header { border-bottom: var(--rule-frame) solid var(--ink-line); }
+[data-theme="light"] body > footer { border-top: var(--rule-frame) solid var(--ink-line); }
+[data-theme="light"] .nav a.link { color: var(--ink); font-weight: var(--w-medium); }
+[data-theme="light"] .btn,
+[data-theme="light"] .repo-entry button { border: var(--rule-box) solid var(--ink-line); box-shadow: var(--shadow-box); transition: transform .08s ease, box-shadow .08s ease, background-color .15s; }
+[data-theme="light"] .btn:hover,
+[data-theme="light"] .repo-entry button:hover { transform: translate(-1px, -1px); box-shadow: var(--shadow-box-lift); }
+[data-theme="light"] .btn:active,
+[data-theme="light"] .repo-entry button:active { transform: translate(3px, 3px); box-shadow: 0 0 0 var(--ink-line); }
+[data-theme="light"] .btn-ghost,
+[data-theme="light"] .stage .btn-ghost,
+[data-theme="light"] .stage .btn-ghost:hover { background: var(--surface); border-color: var(--ink-line); color: var(--ink); }
+[data-theme="light"] .theme-toggle:hover { transform: translate(-1px, -1px); box-shadow: var(--shadow-box); }
+[data-theme="light"] .repo-entry input { border: var(--rule-box) solid var(--ink-line); background: var(--surface); }
+[data-theme="light"] .repo-entry input:focus-visible { outline: none; border-color: var(--accent); box-shadow: 3px 3px 0 var(--accent); }
+/* The question tabs: chips with a 2px edge; the open one is filled with ink. */
+[data-theme="light"] .example-tasks button { border: var(--rule-box) solid var(--ink-line); background: var(--surface); color: var(--ink); box-shadow: var(--shadow-chip); }
+[data-theme="light"] .example-tasks button:hover { background: var(--surface); }
+[data-theme="light"] .example-tasks button[aria-pressed="true"] { border-color: var(--ink-line); background: var(--ink-line); color: #fbfcfd; box-shadow: none; transform: translate(2px, 2px); }
+/* Frames: the map, the terminal, the thread board. */
+[data-theme="light"] #codenib-hero-map .wiki-graph,
+[data-theme="light"] .stage-map-preview img,
+[data-theme="light"] .terminal,
+[data-theme="light"] .thread-sim { border: var(--rule-frame) solid var(--ink-line); border-radius: var(--r-box); box-shadow: var(--shadow-card); }
+[data-theme="light"] .terminal,
+[data-theme="light"] .thread-sim { background: var(--surface); }
+[data-theme="light"] .threads-copy pre { border: var(--rule-box) solid var(--ink-line); }
+/* The hero map, drawn on the drafting grid. */
+[data-theme="light"] #codenib-hero-map .wiki-graph {
+  --wg-bg: #fbfcfd; --wg-text: #16191e; --wg-soft: #39414b; --wg-muted: #5a6470;
+  --wg-line: rgba(22, 25, 30, 0.14); --wg-call: rgba(22, 25, 30, 0.34); --wg-hot: #1d4fd8;
+  background-image: linear-gradient(var(--paper-grid) 1px, transparent 1px), linear-gradient(90deg, var(--paper-grid) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+[data-theme="light"] #codenib-hero-map .wiki-graph.is-dense { --wg-call: rgba(22, 25, 30, 0.2); }
+[data-theme="light"] #codenib-hero-map .wiki-graph-title:hover { color: var(--accent); }
+[data-theme="light"] .home-map-tab { border: var(--rule-box) solid var(--ink-line); border-radius: var(--r-ui); background: var(--surface); color: var(--ink); box-shadow: var(--shadow-chip); }
+[data-theme="light"] .home-map-tab span { color: var(--ink-3); }
+[data-theme="light"] .home-map-tab:hover { border-color: var(--ink-line); color: var(--ink); }
+[data-theme="light"] .home-map-tab.is-active { border-color: var(--ink-line); background: var(--ink-line); color: #fbfcfd; box-shadow: none; transform: translate(2px, 2px); }
+[data-theme="light"] .home-map-tab.is-active span { color: #c6cdd6; }
+@media (prefers-reduced-motion: reduce) {
+  [data-theme="light"] .btn, [data-theme="light"] .repo-entry button, [data-theme="light"] .theme-toggle { transition: none; }
+}
 </style>
 <link rel="stylesheet" href="assets/hero-map/hero-map.css">
-<meta name="theme-color" content="#121315">
+<meta name="theme-color" content="#e9edf1">
 </head>
 <body>
 
 <header>
   <div class="wrap nav">
     <a class="brand" href="/">
-      <img src="assets/codenib-logo-dark.svg" alt="CodeNib">
+      <img class="for-light" src="assets/codenib-logo.svg" alt="CodeNib">
+      <img class="for-dark" src="assets/codenib-logo-dark.svg" alt="CodeNib">
     </a>
     <a class="link" href="/blogs/">Blog</a>
     <a class="link docs-link" href="https://docs.codenib.ai">Docs</a>
@@ -477,6 +605,10 @@ body > footer { border-top: 1px solid var(--line); }
       <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
     </a>
     <a class="link example-link" href="#example-source">Try an example</a>
+    <button class="theme-toggle" type="button" aria-label="Switch to the dark theme" aria-pressed="false">
+      <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M5 19l1.5-1.5M17.5 6.5L19 5"/></svg>
+    </button>
   </div>
 </header>
 
@@ -499,7 +631,7 @@ body > footer { border-top: 1px solid var(--line); }
       <!-- The map's data is captured at build time (web/scripts/capture-landing-maps.mjs),
            so this page makes no request to the demo. -->
       <div id="codenib-hero-map" class="stage-map" data-demo="https://demo.codenib.ai">
-        <a class="stage-map-preview" href="https://demo.codenib.ai/psf__requests"><img src="assets/explore/requests-map.png" width="1104" height="779" alt="A map of the psf/requests Wiki: pages as coloured nodes, joined by the references recorded between its areas."></a>
+        <a class="stage-map-preview" href="https://demo.codenib.ai/psf__requests"><img class="for-light" src="assets/explore/requests-map-paper.png" width="1104" height="779" alt="A map of the psf/requests Wiki: pages as coloured nodes, joined by the references recorded between its areas."><img class="for-dark" src="assets/explore/requests-map.png" width="1104" height="779" alt="A map of the psf/requests Wiki: pages as coloured nodes, joined by the references recorded between its areas."></a>
       </div>
     </div>
     <section class="example-band" aria-labelledby="example-title">
@@ -832,5 +964,25 @@ codenib codegraph init /path/to/your/repo</code></pre>
 </footer>
 
 
+<script>
+(() => {
+  const button = document.querySelector(".theme-toggle");
+  if (!button) return;
+  const sync = () => {
+    const dark = document.documentElement.dataset.theme === "dark";
+    button.setAttribute("aria-label", dark ? "Switch to the Paper theme" : "Switch to the dark theme");
+    button.setAttribute("aria-pressed", String(dark));
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.content = dark ? "#121315" : "#e9edf1";
+  };
+  button.addEventListener("click", () => {
+    const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem("cm-theme", next); } catch (e) {}
+    sync();
+  });
+  sync();
+})();
+</script>
 </body>
 </html>
