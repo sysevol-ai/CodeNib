@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING, Any, Dict, Iterable, List
 
 from ..log_utils import get_logger
 from ..types import is_symbol_node
+from ..utils import is_test_file
 from .builder import Symbol, WikiBuilder
 from .evidence import promotional_phrases
 
@@ -178,13 +179,8 @@ def _read_readme(
     return ""
 
 
-def _readme_entry_files(
-    source_paths: Iterable[str],
-    readme: str,
-    *,
-    limit: int = 12,
-) -> List[str]:
-    """Resolve source paths explicitly named by a repository README."""
+def _readme_path_resolver(source_paths: Iterable[str]):
+    """Return a function mapping a README path to one known source file."""
 
     known = {
         path
@@ -196,27 +192,97 @@ def _readme_entry_files(
     for file in known:
         by_basename[Path(file).name].append(file)
 
-    resolved = []
-    for match in _README_PATH_RE.finditer(readme):
-        candidate = match.group(0).replace("\\", "/").lstrip("./")
-        file = candidate if candidate in known else ""
-        if not file:
-            suffix_matches = [
-                known_file
-                for known_file in known
-                if known_file.endswith("/" + candidate)
-            ]
-            if len(suffix_matches) == 1:
-                file = suffix_matches[0]
-        if not file and "/" not in candidate:
+    def resolve(candidate: str) -> str:
+        candidate = candidate.replace("\\", "/").lstrip("./")
+        if candidate in known:
+            return candidate
+        suffix_matches = [
+            known_file for known_file in known if known_file.endswith("/" + candidate)
+        ]
+        if len(suffix_matches) == 1:
+            return suffix_matches[0]
+        if "/" not in candidate:
             basename_matches = by_basename.get(candidate, [])
             if len(basename_matches) == 1:
-                file = basename_matches[0]
+                return basename_matches[0]
+        return ""
+
+    return resolve
+
+
+def _readme_entry_files(
+    source_paths: Iterable[str],
+    readme: str,
+    *,
+    limit: int = 12,
+) -> List[str]:
+    """Resolve source paths explicitly named by a repository README."""
+
+    resolve = _readme_path_resolver(source_paths)
+    resolved = []
+    for match in _README_PATH_RE.finditer(readme):
+        file = resolve(match.group(0))
         if file and file not in resolved:
             resolved.append(file)
             if len(resolved) >= limit:
                 break
     return resolved
+
+
+# How a README says to run a file: ``python src/run.py``, ``python -m pkg.cli``.
+_README_RUN_RE = re.compile(
+    r"\b(?:python3?|uv\s+run|poetry\s+run|pipenv\s+run|node)\s+"
+    r"(?:-m\s+(?P<module>[A-Za-z_][\w.]*)|(?P<path>(?:\.{0,2}/)?[\w.@+/-]+\.(?:py|m?js)))"
+)
+# Where it links to code: ``[agents.py](src/pkg/agents.py)``, or a GitHub blob URL.
+_README_LINK_RE = re.compile(
+    r"\]\(\s*<?(?P<link>[^)\s>#?]+)" r"|(?P<url>https?://github\.com/[^\s)#?'\">]+)"
+)
+_GITHUB_BLOB_RE = re.compile(r"^https?://github\.com/[^/]+/[^/]+/blob/[^/]+/")
+# Enough to reach the usage section of a long README.
+README_DOOR_CHARS = 60_000
+
+
+def readme_doors(
+    source_paths: Iterable[str], readme: str
+) -> tuple[List[str], List[str]]:
+    """Source files a README tells a reader to run, and those it links to.
+
+    These are the doors the project itself points at. A path that only appears
+    in passing (a license note, a table of headers) is neither, and files under
+    examples, scripts, benchmarks or tests are not doors into the project.
+    """
+
+    resolve = _readme_path_resolver(source_paths)
+
+    def keep(file: str, found: List[str]) -> None:
+        if file and file not in found and not _is_supporting_file(file):
+            if not is_test_file(file):
+                found.append(file)
+
+    run: List[str] = []
+    for match in _README_RUN_RE.finditer(readme):
+        module = match.group("module")
+        candidates = (
+            [
+                module.replace(".", "/") + ".py",
+                module.replace(".", "/") + "/__main__.py",
+            ]
+            if module
+            else [match.group("path")]
+        )
+        for candidate in candidates:
+            keep(resolve(candidate), run)
+    linked: List[str] = []
+    for match in _README_LINK_RE.finditer(readme):
+        target = (match.group("link") or match.group("url") or "").rstrip(".,;:")
+        blob = _GITHUB_BLOB_RE.match(target)
+        if blob:
+            target = target[blob.end() :]
+        elif "://" in target:
+            continue
+        keep(resolve(target), linked)
+    return run, [file for file in linked if file not in run]
 
 
 def _top_symbols(symbols: List[Symbol], limit: int = 70) -> List[Symbol]:

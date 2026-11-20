@@ -124,6 +124,45 @@ def test_a_manifest_entry_point_is_preferred():
     assert _named(graph)[main_path_start(graph, entry_files=["cli.py"])] == "cli"
 
 
+def test_a_readme_door_is_preferred_when_its_path_leaves_the_file():
+    vertices = [
+        ("demo_main", "pkg/browser.py", "function"),
+        ("demo_step", "pkg/browser.py", "function"),
+        ("demo_tool", "pkg/browser.py", "function"),
+        ("Agent.__call__", "pkg/agents.py", "method"),
+        ("Agent.run", "pkg/agents.py", "method"),
+        ("log", "pkg/monitoring.py", "function"),
+        ("run_main", "src/run.py", "function"),
+        ("score", "src/evaluate.py", "function"),
+    ]
+    edges = [
+        (0, 1, EDGE_TYPE_REFERENCE),
+        (1, 2, EDGE_TYPE_REFERENCE),
+        (0, 2, EDGE_TYPE_REFERENCE),
+        (3, 4, EDGE_TYPE_REFERENCE),
+        (4, 5, EDGE_TYPE_REFERENCE),
+        (6, 7, EDGE_TYPE_REFERENCE),
+    ]
+    graph = _graph(vertices, edges)
+    named = _named(graph)
+
+    # A manifest entry whose path never leaves its own file still wins on its
+    # own, as before ...
+    assert named[main_path_start(graph, entry_files=["pkg/browser.py"])] == "demo_main"
+    # ... but a file the README links to, whose path does leave, comes first.
+    linked = main_path_start(
+        graph, entry_files=["pkg/browser.py"], linked_files=["pkg/agents.py"]
+    )
+    assert named[linked] == "Agent.__call__"
+    # A self-contained demo is no door even when the README links to it.
+    assert named[main_path_start(graph, linked_files=["pkg/browser.py"])] != "demo_main"
+    # What the README tells readers to run beats what it links to.
+    run = main_path_start(
+        graph, linked_files=["pkg/agents.py"], run_files=["src/run.py"]
+    )
+    assert named[run] == "run_main"
+
+
 def test_a_project_of_only_cycles_still_has_a_start():
     graph = _graph(
         [("run", "a.py", "function"), ("step", "a.py", "function")],

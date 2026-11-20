@@ -67,10 +67,13 @@ from .importance import (
 )
 from .multimodal import MEDIA_PLAN_VERSION, plan_media_slots
 from .outline import (
+    README_DOOR_CHARS,
     _is_supporting_file,
     _overview_file_score,
     _page_allows_supporting_files,
+    _read_readme,
     generate_outline,
+    readme_doors,
 )
 from .quality import LEANS_ON_EARLIER_SENTENCE
 from .quality import duplicate_prose_blocks as _duplicate_prose_blocks
@@ -2232,6 +2235,27 @@ def _excerpt_window(
         :6
     ]
     return window, marked
+
+
+def _symbol_owner(symbol: str) -> str:
+    """``pkg/agents.py:Agent.run()`` -> ``Agent``; ``""`` for a free function."""
+
+    name = re.sub(r"\([^)]*\)$", "", symbol.rsplit(":", 1)[-1])
+    return name.rsplit(".", 1)[0] if "." in name else ""
+
+
+def _is_own_private_method(symbol: str, caller: str) -> bool:
+    """Whether *symbol* is a private method of *caller*'s own class.
+
+    The main path skips private helpers, but ``Agent.run()`` handing its work
+    to ``self._run_stream()`` is the implementation itself, not a helper beside
+    the path; without it the path wanders off into whatever public call
+    ``run()`` makes next.
+    """
+
+    owner = _symbol_owner(symbol)
+    leaf = re.sub(r"\([^)]*\)$", "", symbol.rsplit(":", 1)[-1]).rsplit(".", 1)[-1]
+    return bool(owner) and leaf.startswith("_") and owner == _symbol_owner(caller)
 
 
 def _journey_flow(journey: Any) -> dict[str, Any] | None:
@@ -5114,6 +5138,7 @@ class AgentWiki:
         *,
         entry_files: set[str],
         next_id: int,
+        doors: tuple[Sequence[str], Sequence[str]] = ((), ()),
     ) -> Optional[EvidenceItem]:
         """Return evidence for the callable where the main path starts.
 
@@ -5127,6 +5152,8 @@ class AgentWiki:
                 relative_path=self._rel,
                 is_test=is_test_file,
                 entry_files=entry_files,
+                run_files=doors[0],
+                linked_files=doors[1],
             )
         except Exception as exc:  # noqa: BLE001 - the path has a fallback
             logger.debug("wiki main path ranking unavailable: %s", exc)
@@ -5163,6 +5190,18 @@ class AgentWiki:
             content=content,
             routes=("entry path",),
         )
+
+    def _readme_doors(self) -> tuple[List[str], List[str]]:
+        """Files the README tells a reader to run, and those it links to."""
+
+        source_reader = getattr(self._bundle, "source_reader", None)
+        if source_reader is None:
+            return [], []
+        try:
+            readme = _read_readme(source_reader, limit=README_DOOR_CHARS)
+            return readme_doors(source_reader.file_paths, readme)
+        except Exception:  # noqa: BLE001 - the README only refines the start
+            return [], []
 
     def _entry_path(
         self,
@@ -5236,6 +5275,7 @@ class AgentWiki:
             by_symbol,
             entry_files=entry_files,
             next_id=len(evidence) + 1,
+            doors=self._readme_doors(),
         )
         if ranked_start is not None:
             if ranked_start.routes == ("entry path",):
@@ -5308,7 +5348,10 @@ class AgentWiki:
                 target = self._graph_endpoint(vertex)
                 if target["kind"].lower() not in _NARRATIVE_CALLABLE_KINDS:
                     continue
-                if not target["label"] or not is_public(target["label"]):
+                if not target["label"] or not (
+                    is_public(target["label"])
+                    or _is_own_private_method(target["label"], current.symbol)
+                ):
                     continue
                 target_file = self._rel(target["file"]) or ""
                 if not target_file or is_test_file(target_file):

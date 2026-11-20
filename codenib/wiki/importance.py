@@ -118,6 +118,8 @@ def main_path_start(
     relative_path: Callable[[str], str | None] = lambda file: file,
     is_test: Callable[[str], bool] = lambda _file: False,
     entry_files: Iterable[str] = (),
+    run_files: Iterable[str] = (),
+    linked_files: Iterable[str] = (),
     max_hops: int = 5,
 ) -> int | None:
     """Return the vertex where the heaviest public call path begins.
@@ -127,6 +129,11 @@ def main_path_start(
     code calls, this walks towards the weightiest callee and adds up what the
     walk passed through. A manifest entry point is preferred when one has a path
     at all, since that is the door a user actually comes in by.
+
+    Ahead of it come the doors the README points at: a file it tells readers to
+    run (*run_files*), then a file it links to (*linked_files*). Either counts
+    only when its walk leaves the file, since a script whose path stays inside
+    itself (a demo's ``main()``) shows that script, not the project.
     """
 
     if graph is None or not graph.vcount() or not graph.ecount():
@@ -135,6 +142,8 @@ def main_path_start(
     if not {"file", "type"} <= attributes:
         return None
     entries = {file.replace("\\", "/") for file in entry_files}
+    runs = {file.replace("\\", "/") for file in run_files}
+    links = {file.replace("\\", "/") for file in linked_files}
     resolved: dict[str, str | None] = {}
 
     def source_file(raw_file: str) -> str | None:
@@ -193,10 +202,13 @@ def main_path_start(
         leaf = re.sub(r"\([^)]*\)$", "", name.rsplit(":", 1)[-1]).rsplit(".", 1)[-1]
         return bool(leaf) and (not leaf.startswith("_") or leaf.startswith("__"))
 
-    def walk_weight(start: int) -> float:
+    def walk(start: int) -> tuple[float, bool]:
+        """The walk's summed weight, and whether it leaves the start's file."""
+
         total = weight[start]
         seen = {start}
         current = start
+        leaves = False
         for _hop in range(max_hops):
             options = [item for item in outgoing.get(current, ()) if item not in seen]
             if not options:
@@ -204,18 +216,22 @@ def main_path_start(
             current = max(options, key=lambda item: (weight[item], -item))
             seen.add(current)
             total += weight[current]
-        return total
+            leaves = leaves or callables[current] != callables[start]
+        return total, leaves
 
     starts = [item for item in outgoing if item not in called and is_public(item)]
     # A cycle can leave a project with no uncalled public function at all.
     starts = starts or [item for item in outgoing if is_public(item)]
     if not starts:
         return None
+    walks = {item: walk(item) for item in starts}
     return max(
         starts,
         key=lambda item: (
+            callables[item] in runs and walks[item][1],
+            callables[item] in links and walks[item][1],
             callables[item] in entries,
-            walk_weight(item),
+            walks[item][0],
             -len(str(graph.vs[item]["unified_name"] or "")),
             -item,
         ),

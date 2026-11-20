@@ -8938,6 +8938,17 @@ def test_stub_bodies_are_recognised_but_real_ones_are_not():
     assert AgentWiki._is_stub_body("def only_signature(self): ...") is False
 
 
+def test_the_main_path_may_enter_its_own_class_private_method():
+    from codenib.wiki.agent_wiki import _is_own_private_method
+
+    run = "src/pkg/agents.py:MultiStepAgent.run()"
+    assert _is_own_private_method("src/pkg/agents.py:MultiStepAgent._run_stream()", run)
+    # Another class's private method, or a private free function, stays out.
+    assert not _is_own_private_method("src/pkg/memory.py:AgentMemory._reset()", run)
+    assert not _is_own_private_method("src/pkg/agents.py:_helper()", run)
+    assert not _is_own_private_method("src/pkg/agents.py:_helper()", "src/pkg/a.py:f()")
+
+
 def test_concrete_override_follows_the_subclass_header_reference():
     from codenib.graph.code_graph import CodeGraph
     from codenib.wiki.agent_wiki import AgentWiki
