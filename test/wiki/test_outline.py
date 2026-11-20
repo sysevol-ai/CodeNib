@@ -20,6 +20,7 @@ from codenib.wiki.outline import (
     _outline_score,
     _page_allows_supporting_files,
     _readme_entry_files,
+    readme_doors,
     _required_top_level_pages,
     _validate_outline,
     generate_outline,
@@ -818,3 +819,30 @@ def test_outline_rejects_generic_concepts_with_unrelated_real_files(tmp_path):
         "indexing",
         "graph",
     ]
+
+
+def test_readme_doors_are_what_it_says_to_run_and_what_it_links_to():
+    paths = [
+        "src/run.py",
+        "src/method/base_method.py",
+        "src/pkg/agents.py",
+        "src/pkg/cli/__main__.py",
+        "examples/demo.py",
+        "tests/test_run.py",
+        "xarray/plot/utils.py",
+    ]
+    readme = (
+        "Run `python src/run.py --config x.yaml` or `python -m pkg.cli`.\n"
+        "Methods implement [the interface](src/method/base_method.py); the loop "
+        "is in [agents.py](https://github.com/o/r/blob/main/src/pkg/agents.py).\n"
+        "Docs: [site](https://example.com/run.py) and "
+        "https://github.com/o/r/blob/main/src/run.py.\n"
+        "Try `python examples/demo.py`. See [tests](tests/test_run.py).\n"
+        "Portions of xarray/plot/utils.py are under another license.\n"
+    )
+
+    run, linked = readme_doors(paths, readme)
+
+    assert run == ["src/run.py", "src/pkg/cli/__main__.py"]
+    # A path named in passing is no door, and neither are examples or tests.
+    assert linked == ["src/method/base_method.py", "src/pkg/agents.py"]
