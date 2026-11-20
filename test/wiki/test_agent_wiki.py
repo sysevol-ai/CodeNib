@@ -8969,6 +8969,54 @@ def test_a_model_journey_must_start_at_a_readme_door_when_there_is_one():
     assert _journey_starts_at(from_generator, evidence, set())
 
 
+def test_the_path_start_is_not_another_files_function_of_the_same_name(monkeypatch):
+    import igraph
+
+    from codenib.wiki import agent_wiki
+    from codenib.wiki.agent_wiki import AgentWiki
+
+    raw = igraph.Graph(directed=True)
+    raw.add_vertex(
+        name="src/run.py:main()",
+        unified_name="src/run.py:main()",
+        type="function",
+        file="src/run.py",
+        start_line=18,
+        end_line=20,
+    )
+    monkeypatch.setattr(agent_wiki, "main_path_start", lambda *a, **k: 0)
+    wiki = SimpleNamespace(
+        _rel=lambda file: file,
+        _graph_endpoint=lambda v: {
+            "label": v["unified_name"],
+            "kind": "function",
+            "file": v["file"],
+        },
+        _wb=SimpleNamespace(
+            source=lambda file, start, end: {
+                "start_line": start,
+                "content": "def main():\n    run()\n    score()\n",
+            }
+        ),
+    )
+    generator = EvidenceItem(
+        id="E6",
+        file="src/gen/crafter.py",
+        start_line=1,
+        end_line=9,
+        symbol="src/gen/crafter.py:main()",
+        kind="function",
+        content="def main(): ...",
+    )
+
+    start = AgentWiki._main_path_evidence(
+        wiki, raw, {"main": generator}, entry_files=set(), next_id=7
+    )
+
+    assert start is not None and start.file == "src/run.py"
+    assert start.routes == ("entry path",) and start.id == "E7"
+
+
 def test_the_main_path_may_enter_its_own_class_private_method():
     from codenib.wiki.agent_wiki import _is_own_private_method
 

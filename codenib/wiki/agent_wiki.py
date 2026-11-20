@@ -5183,12 +5183,14 @@ class AgentWiki:
             return None
         vertex = raw_graph.vs[vid]
         target = self._graph_endpoint(vertex)
+        target_file = self._rel(target["file"]) or ""
         known = by_symbol.get(_canonical_symbol(target["label"]))
-        if known is not None:
+        # Evidence names collapse across files (``main()``); reuse it only for
+        # the same definition, not another file's function of that name.
+        if known is not None and known.file.replace("\\", "/") == target_file:
             return known
         attrs = vertex.attributes()
         span = (attrs.get("start_line"), attrs.get("end_line"))
-        target_file = self._rel(target["file"]) or ""
         if not target_file or not all(
             isinstance(value, int) and not isinstance(value, bool) for value in span
         ):
@@ -5438,6 +5440,8 @@ class AgentWiki:
             canonical = _canonical_symbol(target["label"])
             visited.add(canonical)
             item = by_symbol.get(canonical)
+            if item is not None and item.file.replace("\\", "/") != target_file:
+                item = None
             if item is None:
                 start_line, end_line = span[0] + 1, span[1] + 1
                 source = self._wb.source(target_file, start_line, end_line)
