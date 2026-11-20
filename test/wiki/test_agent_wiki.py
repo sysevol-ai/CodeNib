@@ -8481,7 +8481,7 @@ def test_excerpt_window_centres_on_the_lines_the_section_names():
     assert unmarked == []
 
 
-def test_excerpt_caption_uses_the_admitted_notice_and_marks_lines():
+def test_excerpt_caption_uses_the_admitted_notice_and_leaves_marks_to_anchoring():
     evidence = [
         EvidenceItem(
             id="E1",
@@ -8522,7 +8522,8 @@ def test_excerpt_caption_uses_the_admitted_notice_and_marks_lines():
     }
     rendered = _renderable_plan(plan, evidence, [])
     markdown = _fact_plan_markdown(rendered, evidence, [])
-    assert "```python hl=" in markdown
+    # Marks are left to anchoring, which reads the final caption.
+    assert "```python\n" in markdown and " hl=" not in markdown
     assert (
         "*What to notice:* the Authorization header is deleted before the "
         "redirect. [E1]" in markdown
@@ -8698,7 +8699,8 @@ def test_excerpt_caption_falls_back_when_it_restates_the_claim():
     }
     markdown = _fact_plan_markdown(_renderable_plan(plan, evidence, []), evidence, [])
 
-    assert "```python hl=" in markdown
+    # Marks are left to anchoring, which reads the final caption.
+    assert "```python\n" in markdown and " hl=" not in markdown
     assert "What to notice" not in markdown
     assert "Source excerpt from `SessionRedirectMixin.rebuild_auth()`. [E1]" in markdown
     assert section_sentence_redundancy_report(markdown)["sentence_redundancy_valid"]
