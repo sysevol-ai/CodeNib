@@ -91,6 +91,22 @@ export function wikiPageFromLocation(pathname: string, search: string): string {
   }
 }
 
+/** The walkthrough an address opens and its step, counted from 0; null for a page. */
+export function walkFromLocation(search: string): { id: string; step: number } | null {
+  const params = new URLSearchParams(search);
+  const id = params.get("walk");
+  if (!id) return null;
+  const step = Number(params.get("step"));
+  return { id, step: Number.isInteger(step) && step >= 1 ? step - 1 : 0 };
+}
+
+/** The address of a walkthrough's step; the first step leaves the step out. */
+export function walkLocation(pathname: string, walkId: string, step: number): string {
+  const params = new URLSearchParams({ walk: walkId });
+  if (step > 0) params.set("step", String(step + 1));
+  return `${pathname}?${params}`;
+}
+
 /** A repository's Wiki address: the site root when the site publishes it. */
 export function wikiRoute(repoId: string): string {
   return repoId === homeRepository() ? "/" : `/${encodeURIComponent(repoId)}`;
