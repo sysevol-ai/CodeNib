@@ -35,6 +35,9 @@ export default function WikiToc({
   onPick,
   colors,
   states,
+  walks,
+  activeWalk,
+  onWalk,
 }: {
   pages: WikiPageRef[];
   activeId: string;
@@ -43,6 +46,10 @@ export default function WikiToc({
   colors?: Map<string, string>;
   /** A Wiki being written: each dot shows its page's state, as on the map. */
   states?: Record<string, WikiPageState>;
+  /** Walkthroughs built for this repository, listed after the main pages. */
+  walks?: { id: string; label: string }[];
+  activeWalk?: string;
+  onWalk?: (id: string) => void;
 }) {
   const [choices, setChoices] = useState<Record<string, boolean>>({});
   const [moreChoice, setMoreChoice] = useState<boolean | null>(null);
@@ -115,6 +122,30 @@ export default function WikiToc({
   return (
     <>
       {renderPages(primary)}
+      {walks && walks.length > 0 && onWalk && (
+        <div className="toc-walks">
+          <div className="toc-walks-title" id="toc-walks-title">
+            Walkthroughs
+          </div>
+          <ul className="toc-tree" aria-labelledby="toc-walks-title">
+            {walks.map((walk) => (
+              <li key={walk.id}>
+                <div className="toc-row">
+                  <button
+                    type="button"
+                    className={`toc-link ${walk.id === activeWalk ? "active" : ""}`}
+                    aria-current={walk.id === activeWalk ? "page" : undefined}
+                    title={walk.label}
+                    onClick={() => onWalk(walk.id)}
+                  >
+                    <span className="toc-label">{walk.label}</span>
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {more.length > 0 && (
         <div className="toc-more">
           <button
