@@ -36,6 +36,27 @@ def base(rel: str) -> str:
     return rel.split("/")[-1]
 
 
+def short_names(files: list[str]) -> dict[str, str]:
+    """Each file's shortest trailing path that no other file shares.
+
+    Usually the base name; ``runtime/mod.rs`` and ``task/mod.rs`` keep a
+    folder, so two files never share a zone, a stop label or a link.
+    """
+
+    unique = list(dict.fromkeys(files))
+    out = {}
+    for f in unique:
+        parts = f.split("/")
+        for k in range(1, len(parts) + 1):
+            tail = "/".join(parts[-k:])
+            if not any(
+                g != f and (g == tail or g.endswith("/" + tail)) for g in unique
+            ):
+                break
+        out[f] = tail
+    return out
+
+
 def files_of(page: dict):
     yield from page.get("files") or []
     for ch in page.get("children") or []:
@@ -147,17 +168,18 @@ def walk_layout(path: list[dict], entry_call: str, rmap: RepoMap) -> dict:
 
     area_of_file = rmap.area_of_file
     fns = [p["fn"] for p in path]
+    short = short_names([f["file"] for f in fns])
     stops = [["", entry_call, None, None, True]]
     for f in fns:
         owner, _, member = f["name"].rpartition(".")
-        where = f"{base(f['file'])}:{f['a']}–{f['b']}"
+        where = f"{short[f['file']]}:{f['a']}–{f['b']}"
         stops.append([owner, ("." if owner else "") + member, where, ""])
     segs = [["", ""]]
     zones, cross = [], []
     for i, p in enumerate(path[1:], start=1):
         prev = path[i - 1]["fn"]
         via = p["via"]
-        site = f"{base(prev['file'])}:{via['line'] or prev['a']}"
+        site = f"{short[prev['file']]}:{via['line'] or prev['a']}"
         a1, a2 = area_of_file.get(prev["file"]), area_of_file.get(p["fn"]["file"])
         kind = "dash" if via["kind"] != "call" else ("cross" if a1 != a2 else "")
         label = {"subclass": "subclass", "unrecorded": "not in the index"}.get(
@@ -171,7 +193,7 @@ def walk_layout(path: list[dict], entry_call: str, rmap: RepoMap) -> dict:
         if a1 and a2 and a1 != a2:
             cross.append([a1, a2, rmap.calls.get(f"{a1}>{a2}", 0), i + 1, via["kind"]])
     for i, f in enumerate(fns, start=1):
-        fb = base(f["file"])
+        fb = short[f["file"]]
         area = area_of_file.get(f["file"])
         area_name = next((a["name"] for a in rmap.areas if a["id"] == area), "no area")
         if zones and zones[-1][0] == fb:
@@ -183,7 +205,7 @@ def walk_layout(path: list[dict], entry_call: str, rmap: RepoMap) -> dict:
         a = area_of_file.get(f["file"])
         if a and a not in walk_areas:
             walk_areas.append(a)
-    paths = {base(f["file"]): f["file"] for f in fns}
+    paths = {short[f["file"]]: f["file"] for f in fns}
     return {
         "stops": stops,
         "segs": segs,

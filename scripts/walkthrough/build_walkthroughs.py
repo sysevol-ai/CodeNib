@@ -28,6 +28,10 @@ data dir, a running backend serving its Wiki (``--api``) and
     python scripts/walkthrough/build_walkthroughs.py --repo gin-gonic__gin \\
         --config qa_config.yaml
 
+``--from-overview`` builds one walkthrough per repository from the main path
+its Wiki's Overview traces instead (``overview_path``): no curated question;
+the model names the question from the path. ``--repo`` may repeat.
+
 ``--paths-only N`` chooses each question's path N times and prints them
 (a consistency check; no text, no writes, no key needed for curated
 questions). ``--keep`` also writes each question's raw walk, with its build
@@ -52,24 +56,35 @@ if __package__ in (None, ""):
 from codenib.web.config import load_config  # noqa: E402
 from scripts.walkthrough import progress  # noqa: E402
 from scripts.walkthrough.graph_paths import choose_path, path_names  # noqa: E402
-from scripts.walkthrough.layout import (  # noqa: E402
+from scripts.walkthrough.layout import (
     RepoMap,
-    read_repo_map,
+    read_repo_map,  # noqa: E402
     walk_layout,
     walk_source,
 )
-from scripts.walkthrough.model import (  # noqa: E402
-    DEFAULT_API_BASE,
+from scripts.walkthrough.model import (
+    DEFAULT_API_BASE,  # noqa: E402
     DEFAULT_MODEL,
     KEY_ENV,
     Model,
 )
+from scripts.walkthrough.overview_path import CHOSEN as OVERVIEW_CHOSEN  # noqa: E402
+from scripts.walkthrough.overview_path import (
+    overview_route,  # noqa: E402
+    overview_walk_input,
+    read_overview_stages,
+    resolve_stages,
+)
 from scripts.walkthrough.progress import say  # noqa: E402
-from scripts.walkthrough.repo_index import RepoIndex, load_repo_index  # noqa: E402
+from scripts.walkthrough.repo_index import (
+    RepoIndex,  # noqa: E402
+    load_repo_index,
+    open_registry,
+)
 from scripts.walkthrough.served import merge_parts, write_served  # noqa: E402
-from scripts.walkthrough.steps import (  # noqa: E402
+from scripts.walkthrough.steps import (
     html,
-    page_steps,
+    page_steps,  # noqa: E402
     write_overview,
     write_steps,
 )
@@ -106,13 +121,37 @@ def question_start(ix: RepoIndex, qd: dict) -> tuple[dict, dict]:
 
 
 def build_walk(ix: RepoIndex, rmap: RepoMap, qd: dict, model: Model) -> dict:
-    """One question's walk, written and verified, as a one-walk file."""
+    """One curated question's walk, written and verified, as a one-walk file."""
 
     log: dict = {"calls": [], "checks": []}
     q, start = question_start(ix, qd)
-    question = q["question"]
-    say("question:", question, "| start:", start["name"])
+    say("question:", q["question"], "| start:", start["name"])
     path, chosen = choose_path(ix, q, start, model, log)
+    return compose_walk(ix, rmap, qd["id"], q, path, chosen, model, log)
+
+
+def build_overview_walk(ix: RepoIndex, rmap: RepoMap, api: str, model: Model) -> dict:
+    """The walk along the Overview's main path, as a one-walk file."""
+
+    log: dict = {"calls": [], "checks": []}
+    q, path = overview_walk_input(ix, api, model, log)
+    say("question:", q["question"], "| entry:", q["entry_call"], "| tab:", q["tab"])
+    return compose_walk(ix, rmap, q["id"], q, path, OVERVIEW_CHOSEN, model, log)
+
+
+def compose_walk(
+    ix: RepoIndex,
+    rmap: RepoMap,
+    walk_id: str,
+    q: dict,
+    path: list[dict],
+    chosen: str,
+    model: Model,
+    log: dict,
+) -> dict:
+    """Write, place and verify a walk along a chosen path."""
+
+    question = q["question"]
     say("path:", " -> ".join(path_names(path)))
     lay = walk_layout(path, q["entry_call"], rmap)
     steps_out = write_steps(ix, question, path, lay["paths"], model, log)
@@ -120,7 +159,7 @@ def build_walk(ix: RepoIndex, rmap: RepoMap, qd: dict, model: Model) -> dict:
         lay["stops"][i + 1][3] = st.get("role", "")
     ov = write_overview(question, q["entry_call"], path, steps_out, model, log)
     walk = {
-        "id": qd["id"],
+        "id": walk_id,
         "tab": html(q["tab"]),
         "title": html(ov["title"]),
         "dek": html(ov["dek"]),
@@ -156,6 +195,18 @@ def build_walk(ix: RepoIndex, rmap: RepoMap, qd: dict, model: Model) -> dict:
     return data
 
 
+def overview_path_only(ix: RepoIndex, api: str) -> None:
+    """Print the Overview walk's path, and how it differs from the Overview's."""
+
+    _, stages = read_overview_stages(api, ix.repo_id)
+    if len(stages) < 2:
+        print(f"{ix.repo_id}: no Overview path", flush=True)
+        return
+    path, added = overview_route(ix, resolve_stages(ix, stages))
+    extra = f" ({added} added)" if added else ""
+    print(f"{ix.repo_id}{extra}: " + " -> ".join(path_names(path)), flush=True)
+
+
 def paths_only(ix: RepoIndex, questions: list[dict], reps: int, model: Model) -> None:
     """Choose each question's path ``reps`` times and print one line per run."""
 
@@ -173,7 +224,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         description="Build one repository's code walkthroughs for its Wiki."
     )
     parser.add_argument(
-        "--repo", required=True, help="repository id, e.g. gin-gonic__gin"
+        "--repo",
+        required=True,
+        action="append",
+        help="repository id, e.g. gin-gonic__gin; repeat for several",
+    )
+    parser.add_argument(
+        "--from-overview",
+        action="store_true",
+        help="one walkthrough along the main path of each repository's Overview, "
+        "instead of the curated questions",
     )
     parser.add_argument(
         "--questions",
@@ -230,40 +290,70 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     # The index and Wiki code log freely; progress lines go to stderr instead.
     logging.disable(logging.WARNING)
-    questions = load_questions(args.questions, args.repo)
+    questions = {}
+    if not args.from_overview:
+        questions = {r: load_questions(args.questions, r) for r in args.repo}
     model = Model(args.model, args.model_api_base, think=args.think)
     if not args.paths_only and not os.environ.get(KEY_ENV):
         raise SystemExit(f"set {KEY_ENV} to write walkthrough text")
     cfg = load_config(args.config)
-    ix = load_repo_index(cfg, args.repo)
-    if args.paths_only:
-        paths_only(ix, questions, args.paths_only, model)
-        return 0
-
+    registry = open_registry(cfg)
     out_dir = Path(args.out_dir or Path(os.path.abspath(cfg.data_dir)) / "walkthroughs")
-    keep_dir = out_dir / "build" / args.repo if args.keep else None
+    failed = []
+    for repo_id in args.repo:
+        ix = load_repo_index(cfg, repo_id, registry)
+        try:
+            if args.paths_only and args.from_overview:
+                overview_path_only(ix, args.api)
+            elif args.paths_only:
+                paths_only(ix, questions[repo_id], args.paths_only, model)
+            else:
+                build_repo(ix, args, questions.get(repo_id), model, out_dir)
+        except ValueError as error:
+            # One repository's missing path does not stop the others.
+            say(f"SKIPPED {repo_id}: {error}")
+            failed.append(repo_id)
+    return 1 if failed and len(failed) == len(args.repo) else 0
+
+
+def build_repo(
+    ix: RepoIndex,
+    args: argparse.Namespace,
+    questions: list[dict] | None,
+    model: Model,
+    out_dir: Path,
+) -> None:
+    """Build one repository's walks and write its served file."""
+
+    repo_id = ix.repo_id
+    keep_dir = out_dir / "build" / repo_id if args.keep else None
     log_file = None
     if keep_dir is not None:
         keep_dir.mkdir(parents=True, exist_ok=True)
         log_file = open(keep_dir / "build.log", "w", encoding="utf-8")
         progress.add_log(log_file)
     try:
-        rmap = read_repo_map(ix.outline, args.api, args.repo)
+        rmap = read_repo_map(ix.outline, args.api, repo_id)
         parts = []
-        for qd in questions:
-            say(f"===== {args.repo} {qd['id']}")
-            part = build_walk(ix, rmap, qd, model)
-            if keep_dir is not None:
-                raw = keep_dir / f"{qd['id']}.json"
+        if questions is None:
+            say(f"===== {repo_id} overview")
+            parts.append(build_overview_walk(ix, rmap, args.api, model))
+        else:
+            for qd in questions:
+                say(f"===== {repo_id} {qd['id']}")
+                parts.append(build_walk(ix, rmap, qd, model))
+        if keep_dir is not None:
+            for part in parts:
+                raw = keep_dir / f"{part['walks'][0]['id']}.json"
                 raw.write_text(json.dumps(part, indent=1), encoding="utf-8")
-            parts.append(part)
         target = write_served(merge_parts(parts), out_dir)
-        say("wrote", target, target.stat().st_size, [qd["id"] for qd in questions])
+        say(
+            "wrote", target, target.stat().st_size, [p["walks"][0]["id"] for p in parts]
+        )
     finally:
         if log_file is not None:
             progress.remove_log(log_file)
             log_file.close()
-    return 0
 
 
 if __name__ == "__main__":

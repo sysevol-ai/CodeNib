@@ -67,11 +67,20 @@ SKIP_CALLS = {
 }
 
 
-def load_repo_index(cfg: QAConfig, repo_id: str) -> "RepoIndex":
-    """Open one repository's graph, source and cached Wiki outline."""
+def open_registry(cfg: QAConfig) -> RepoRegistry:
+    """Every indexed repository the config's registry lists, loaded once."""
 
     registry = RepoRegistry(cfg, allow_missing_native_index_authorization=True)
     registry.load_all()
+    return registry
+
+
+def load_repo_index(
+    cfg: QAConfig, repo_id: str, registry: RepoRegistry | None = None
+) -> "RepoIndex":
+    """Open one repository's graph, source and cached Wiki outline."""
+
+    registry = registry or open_registry(cfg)
     bundle = registry.get(repo_id)
     store = SQLiteWikiStore(
         Path(os.path.abspath(cfg.data_dir)) / "wiki_cache" / "wiki.sqlite3"
@@ -167,6 +176,8 @@ class RepoIndex:
                 e.anchor_line is None
                 or str(t["type"]).lower() not in CALLABLE
                 or e.target_vid == vid
+                or t["start_line"] is None  # named, but not placed in a file
+                or not t["file"]
             ):
                 continue
             key = (e.target_vid, e.anchor_line)
@@ -225,7 +236,11 @@ class RepoIndex:
         for v in self.raw.vs:
             if str(v["type"]).lower() != "class" or not v["unified_name"]:
                 continue
+            if v["start_line"] is None or not v["file"]:
+                continue  # a class the index names but does not place
             rel = self.wiki._rel(v["file"])
+            if not rel.endswith((".py", ".pyi")):
+                continue  # bases are read from Python's class line only
             head, k = self.line(rel, v["start_line"] + 1), v["start_line"] + 1
             while (
                 "(" in head

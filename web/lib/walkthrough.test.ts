@@ -126,6 +126,15 @@ describe("walkthrough layout", () => {
     expect(breakName("evaluate()")).toBeNull();
   });
 
+  it("breaks other long names at the arguments, a space or a camelCase hump", () => {
+    expect(breakName("createHydrationRenderer(rendererOptions)")).toEqual([
+      "createHydrationRenderer",
+      "(rendererOptions)",
+    ]);
+    expect(breakName("bat --style=numbers,grid file.txt")).toEqual(["bat --style=numbers,grid", "file.txt"]);
+    expect(breakName("newOTLPInstrumentedAppendable()")).toEqual(["newOTLPInstrumented", "Appendable()"]);
+  });
+
   it("puts every area a walk passes through on the small map, then the largest of the rest", () => {
     const areas = miniAreas(set);
     expect(areas.map((area) => area.id)).toEqual(["tools", "agent-runtime", "execution"]);
@@ -154,6 +163,16 @@ describe("walkthrough code", () => {
     expect(rows[0].hang).toBe(4);
     expect(rows[2].hang).toBe(8);
     expect(rows.map((row) => row.marked)).toEqual([false, true, false]);
+  });
+
+  it("treats leading tabs as four spaces", () => {
+    const tabbed: WalkthroughSet = {
+      ...set,
+      source: { "tree.go": { "1": "\tfunc (n *node) add() {", "2": "\t\tn.size++", "3": "\t}" } },
+    };
+    const rows = codeRows(tabbed, ["tree.go", [[1, 3]], []]);
+    expect(rows.map((row) => row.hang)).toEqual([4, 8, 4]);
+    expect(rows[1].html).not.toContain("\t");
   });
 
   it("says how many lines a gap hides", () => {

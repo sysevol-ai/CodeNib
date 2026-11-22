@@ -97,8 +97,15 @@ function useStoryHeight(walk: Walk) {
     const box = measureRef.current;
     const codes = codeRef.current;
     if (!story || !box || !codes) return;
+    // A source index carries its own head; the slot's head is added once below.
     const tallestOf = (parent: HTMLElement) =>
-      Math.max(0, ...(Array.from(parent.children) as HTMLElement[]).map((block) => block.offsetHeight));
+      Math.max(
+        0,
+        ...(Array.from(parent.children) as HTMLElement[]).map(
+          (block) =>
+            block.offsetHeight - ((block.querySelector(":scope > .walk-slot-head") as HTMLElement | null)?.offsetHeight ?? 0),
+        ),
+      );
     const update = () => {
       const style = getComputedStyle(story);
       const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
@@ -227,12 +234,15 @@ export default function Walkthrough({
               </div>
             ))}
           </div>
-          <div className="walk-measure walk-measure-code" ref={storyHeight.codeRef} aria-hidden="true">
+          {/* inert: the copies of the source index here must not take focus. */}
+          <div className="walk-measure walk-measure-code" ref={storyHeight.codeRef} aria-hidden="true" {...{ inert: "" }}>
             {walk.steps.map((item, k) =>
               item.code ? (
                 <div className="walk-slot" key={k}>
                   <CodeLines set={set} code={item.code} />
                 </div>
+              ) : item.table ? (
+                <SourceIndex key={k} set={set} walk={walk} kind={item.table} hue={hue} onGo={() => undefined} />
               ) : null,
             )}
           </div>
@@ -295,6 +305,12 @@ function Route({
   const W = layout.width;
   // Text stays clear of the file zone's right edge (W - 10) by 8px.
   const fits = (x: number, text: string, font = MONO) => x + measure(text, font) <= W - 18;
+  const clip = (text: string) => {
+    if (fits(64, text)) return text;
+    let keep = text.length - 1;
+    while (keep > 4 && !fits(64, `${text.slice(0, keep)}…`)) keep -= 1;
+    return `${text.slice(0, keep)}…`;
+  };
 
   // The token runs along the step's segments, in the colour of the area it enters.
   useEffect(() => {
@@ -403,6 +419,8 @@ function Route({
     if (!fits(64, info.full)) {
       if (info.owner) lines = [info.owner, info.name];
       else lines = breakName(info.full) ?? lines;
+      // A piece still too wide ends in an ellipsis; the stop's label keeps the name.
+      lines = lines.map((line) => clip(line));
     }
     const area = areaOf(i);
     return (
@@ -426,6 +444,7 @@ function Route({
             : undefined
         }
       >
+        {lines.some((line) => line.endsWith("…")) && <title>{info.full}</title>}
         <circle cx={layout.x} cy={y} r={16} className="ring" />
         {info.end ? (
           <rect x={layout.x - 8} y={y - 8} width={16} height={16} rx={3} className="dot" />

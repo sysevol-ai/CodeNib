@@ -114,7 +114,12 @@ def named_calls(ix: RepoIndex, u: int, dsts: set[int]) -> list[tuple[int, int]]:
 
 
 def leg(
-    ix: RepoIndex, src: int, dsts: set[int], banned: set[int], by_name: bool = False
+    ix: RepoIndex,
+    src: int,
+    dsts: set[int],
+    banned: set[int],
+    by_name: bool = False,
+    limit: int = 40000,
 ) -> list[dict] | None:
     """Cheapest route from src to the first of dsts it reaches, searched until it
     gets there.
@@ -127,7 +132,7 @@ def leg(
 
     d, pv, hp = {src: 0.0}, {src: None}, {src: 0}
     hq, seen, hit = [(0.0, src)], set(), None
-    while hq and len(seen) < 40000:
+    while hq and len(seen) < limit:
         d0, u = heapq.heappop(hq)
         if u in seen:
             continue
