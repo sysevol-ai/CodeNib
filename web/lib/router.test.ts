@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { wikiPageFromLocation, wikiPageLocation, wikiRoute } from "./router";
+import { walkFromLocation, walkLocation, wikiPageFromLocation, wikiPageLocation, wikiRoute } from "./router";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -39,5 +39,23 @@ describe("Wiki addresses", () => {
     expect(wikiPageLocation("/project/page/search-loop/", "graph", true)).toBe(
       "/project/page/graph/",
     );
+  });
+});
+
+describe("walkthrough addresses", () => {
+  it("names the walkthrough and counts its steps from one", () => {
+    expect(walkLocation("/acme__agent", "run", 0)).toBe("/acme__agent?walk=run");
+    expect(walkLocation("/acme__agent", "run", 2)).toBe("/acme__agent?walk=run&step=3");
+    expect(walkFromLocation("?walk=run&step=3")).toEqual({ id: "run", step: 2 });
+    expect(walkFromLocation("?walk=run")).toEqual({ id: "run", step: 0 });
+  });
+
+  it("reads a page address, or a broken step, as no walkthrough step", () => {
+    expect(walkFromLocation("?p=overview")).toBeNull();
+    expect(walkFromLocation("?walk=run&step=zero")).toEqual({ id: "run", step: 0 });
+  });
+
+  it("leaves the walkthrough when a page is picked", () => {
+    expect(wikiPageLocation("/acme__agent", "tools", false)).toBe("/acme__agent?p=tools");
   });
 });

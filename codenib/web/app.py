@@ -78,6 +78,7 @@ from .prerender import (
 from .repo_registry import RepoRegistry
 from .repository_files import bound_source_slice, safe_repo_relative_path
 from .request_limits import RequestBodyLimitMiddleware
+from .walkthroughs import load_walkthroughs
 from .schemas import (
     ChatRequest,
     ChatResponse,
@@ -1495,6 +1496,29 @@ async def threads_overlay(repo_id: str) -> dict:
     if overlay is None:
         raise HTTPException(status_code=404, detail="No thread overlay for this repo")
     return overlay
+
+
+@app.get("/api/repos/{repo_id}/walkthroughs")
+async def walkthroughs(repo_id: str) -> dict:
+    """Code walkthroughs built for this repository's indexed commit.
+
+    Built offline by ``scripts/walkthrough``. A repository without them, or
+    with walkthroughs built from another commit, answers 404 and its Wiki
+    lists none: their line numbers would point at the wrong code.
+    """
+    with _pinned_bundle(repo_id) as bundle:
+        commit = getattr(getattr(bundle, "entry", None), "base_commit", None)
+        data = await _run_pinned_thread(
+            load_walkthroughs, load_config().data_dir, repo_id
+        )
+    if data is None:
+        raise HTTPException(status_code=404, detail="No walkthroughs for this repo")
+    if not _same_commit(data["repo"]["commit"], commit):
+        raise HTTPException(
+            status_code=404,
+            detail="The walkthroughs were built from another commit",
+        )
+    return data
 
 
 @app.get("/api/repos/{repo_id}/wiki/{page_id}/boundary")
