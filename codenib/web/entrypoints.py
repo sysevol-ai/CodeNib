@@ -61,12 +61,15 @@ _MAX_ENTRIES = 24
 class EntryPoint:
     """A repo-relative path the manifest names as an entry, and why."""
 
-    __slots__ = ("path", "kind", "label")
+    __slots__ = ("path", "kind", "label", "root")
 
-    def __init__(self, path: str, kind: str, label: str) -> None:
+    def __init__(self, path: str, kind: str, label: str, root: bool = False) -> None:
         self.path = path
         self.kind = kind  # "package" | "subpath" | "script" | "binary" | "library"
         self.label = label  # what the manifest called it, e.g. "preact/compat"
+        # Declared by the repository's own top-level package rather than by one
+        # member of a workspace (``nu``'s ``src/main.rs``, not a plugin crate).
+        self.root = root
 
     def to_dict(self) -> Dict[str, str]:
         return {"path": self.path, "kind": self.kind, "label": self.label}
@@ -206,11 +209,28 @@ def _package_json_entries(repo_dir: str) -> List[EntryPoint]:
         for binary_name, target in binaries.items():
             add(target, "binary", str(binary_name))
 
+    for entry in entries:
+        entry.root = True
     # A monorepo root (babel, docusaurus, vue) exports nothing itself; each
     # workspace package does. One level only — that is where the packages are.
     if not entries:
-        entries.extend(_npm_workspaces(repo_dir, manifest.get("workspaces")))
+        workspaces = manifest.get("workspaces") or _pnpm_workspaces(repo_dir)
+        entries.extend(_npm_workspaces(repo_dir, workspaces))
     return entries
+
+
+def _pnpm_workspaces(repo_dir: str) -> List[str]:
+    """The package globs a pnpm monorepo lists in ``pnpm-workspace.yaml``."""
+    path = os.path.join(repo_dir, "pnpm-workspace.yaml")
+    try:
+        import yaml
+
+        with open(path, "r", encoding="utf-8") as handle:
+            manifest = yaml.safe_load(handle)
+    except Exception:  # noqa: BLE001 - absent or unreadable means none
+        return []
+    packages = manifest.get("packages") if isinstance(manifest, dict) else None
+    return [item for item in packages or [] if isinstance(item, str)]
 
 
 def _npm_workspaces(repo_dir: str, workspaces: Any) -> List[EntryPoint]:
@@ -261,7 +281,9 @@ def _pyproject_entries(repo_dir: str) -> List[EntryPoint]:
             module = target.split(":", 1)[0].strip()
             resolved = _module_to_file(repo_dir, module)
             if resolved:
-                entries.append(EntryPoint(resolved, "script", str(script_name)))
+                entries.append(
+                    EntryPoint(resolved, "script", str(script_name), root=True)
+                )
 
     # A library declares no scripts — xarray, matplotlib, scikit-learn and sympy
     # all fall in that bucket. Its entry point is the package itself.
@@ -269,7 +291,7 @@ def _pyproject_entries(repo_dir: str) -> List[EntryPoint]:
     if isinstance(name, str) and name:
         package = _module_to_file(repo_dir, name.replace("-", "_"))
         if package:
-            entries.append(EntryPoint(package, "package", name))
+            entries.append(EntryPoint(package, "package", name, root=True))
     return entries
 
 
@@ -308,17 +330,34 @@ def _cargo_entries(repo_dir: str) -> List[EntryPoint]:
         )
         if resolved:
             entries.append(
-                EntryPoint(resolved, "binary", str(binary.get("name") or name))
+                EntryPoint(
+                    resolved, "binary", str(binary.get("name") or name), root=True
+                )
             )
     library = manifest.get("lib")
     if isinstance(library, dict) and isinstance(library.get("path"), str):
         resolved = _resolve_in_repo(repo_dir, library["path"])
         if resolved:
-            entries.append(EntryPoint(resolved, "library", name))
+            entries.append(EntryPoint(resolved, "library", name, root=True))
     # Cargo's conventional targets need no declaration.
     for relative, kind in (("src/main.rs", "binary"), ("src/lib.rs", "library")):
         if _repo_path_is(repo_dir, relative, directory=False):
-            entries.append(EntryPoint(relative, kind, name))
+            entries.append(EntryPoint(relative, kind, name, root=True))
+    # So do binaries under ``src/bin``: ``src/bin/bat/main.rs`` is ``bat``.
+    if _repo_path_is(repo_dir, "src/bin", directory=True):
+        try:
+            children = sorted(os.listdir(os.path.join(repo_dir, "src", "bin")))
+        except OSError:
+            children = []
+        for child in children:
+            target = (
+                f"src/bin/{child}"
+                if child.endswith(".rs")
+                else f"src/bin/{child}/main.rs"
+            )
+            if _repo_path_is(repo_dir, target, directory=False):
+                label = child.removesuffix(".rs")
+                entries.append(EntryPoint(target, "binary", label, root=True))
 
     # A workspace root (tokio, ruff) has no targets of its own — its members do.
     workspace = manifest.get("workspace")
@@ -373,7 +412,9 @@ def _go_entries(repo_dir: str) -> List[EntryPoint]:
         return []
     entries: List[EntryPoint] = []
     if _repo_path_is(repo_dir, "main.go", directory=False):
-        entries.append(EntryPoint("main.go", "binary", os.path.basename(repo_dir)))
+        entries.append(
+            EntryPoint("main.go", "binary", os.path.basename(repo_dir), root=True)
+        )
     cmd_dir = os.path.join(repo_dir, "cmd")
     if not _repo_path_is(repo_dir, "cmd", directory=True):
         return entries
@@ -384,7 +425,7 @@ def _go_entries(repo_dir: str) -> List[EntryPoint]:
     for child in children:
         relative = f"cmd/{child}/main.go"
         if _repo_path_is(repo_dir, relative, directory=False):
-            entries.append(EntryPoint(relative, "binary", child))
+            entries.append(EntryPoint(relative, "binary", child, root=True))
     return entries
 
 

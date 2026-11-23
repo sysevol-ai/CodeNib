@@ -285,6 +285,140 @@ def readme_doors(
     return run, [file for file in linked if file not in run]
 
 
+_README_FENCE_RE = re.compile(
+    r"^(```+|~~~+)[ \t]*(?P<lang>[^\n]*)\n(?P<body>.*?)^\1", re.MULTILINE | re.DOTALL
+)
+# Fences that hold commands, output or configuration rather than code.
+_README_NON_CODE_FENCES = frozenset(
+    {
+        "bash",
+        "bat",
+        "cfg",
+        "cmd",
+        "console",
+        "diff",
+        "dockerfile",
+        "ini",
+        "json",
+        "makefile",
+        "nu",
+        "nushell",
+        "powershell",
+        "ps1",
+        "sh",
+        "shell",
+        "shell-session",
+        "text",
+        "toml",
+        "txt",
+        "yaml",
+        "yml",
+        "zsh",
+    }
+)
+# ``requests.get(``, ``r.GET(``, ``TcpListener::bind(``, ``fmt::print(``.
+_README_CALL_RE = re.compile(
+    r"(?<![\w.:])(?:(?P<owner>[A-Za-z_]\w*)\s*(?:\.|::))?(?P<name>[A-Za-z_]\w*)\s*\("
+)
+_README_DEFINES_RE = re.compile(r"\b(?:def|fn|func|function|class|struct|impl)\s+$")
+# Calls that say nothing about the project: the language's own built-ins.
+_README_CALL_NOISE = frozenset(
+    {
+        "Err",
+        "None",
+        "Ok",
+        "Some",
+        "assert",
+        "await",
+        "dict",
+        "echo",
+        "elif",
+        "float",
+        "for",
+        "func",
+        "if",
+        "import",
+        "int",
+        "isinstance",
+        "len",
+        "let",
+        "list",
+        "main",
+        "print",
+        "println",
+        "range",
+        "require",
+        "return",
+        "set",
+        "str",
+        "super",
+        "switch",
+        "tuple",
+        "type",
+        "while",
+    }
+)
+
+
+def readme_code_words(readme: str) -> set[str]:
+    """Identifiers in a README's code examples (``CodeAgent``, ``get``)."""
+
+    words: set[str] = set()
+    for fence in _README_FENCE_RE.finditer(readme):
+        words.update(re.findall(r"[A-Za-z_][A-Za-z0-9_]{2,}", fence.group("body")))
+    return words
+
+
+def readme_commands(readme: str, programs: Iterable[str]) -> set[str]:
+    """The subcommands a README runs its programs with.
+
+    ``ruff check .`` and ``uvx ruff format`` give ``check`` and ``format``; a
+    flag (``bat --style``) is not a subcommand.
+    """
+
+    names = {re.escape(name) for name in programs if name}
+    if not names:
+        return set()
+    command = re.compile(
+        r"(?:^|[\s/$>])(?:" + "|".join(sorted(names)) + r")\s+([a-z][a-z0-9_-]+)\b",
+        re.MULTILINE,
+    )
+    found: set[str] = set()
+    for fence in _README_FENCE_RE.finditer(readme):
+        found.update(match.group(1) for match in command.finditer(fence.group("body")))
+    return found
+
+
+def readme_calls(readme: str, *, limit: int = 40) -> List[tuple[str, str]]:
+    """The calls a README's code examples make: ``(owner, name)`` pairs.
+
+    The owner is what the call is made on (a module, type or variable) and is
+    "" for a bare call. A definition (``def run(``) is not a call, and nor is a
+    built-in such as ``print(``, unless the project's own module owns it
+    (``fmt::print(``).
+    """
+
+    found: List[tuple[str, str]] = []
+    for fence in _README_FENCE_RE.finditer(readme):
+        language = re.split(r"[\s,{]", fence.group("lang").strip().lower() or " ")[0]
+        if language in _README_NON_CODE_FENCES:
+            continue
+        body = fence.group("body")
+        for match in _README_CALL_RE.finditer(body):
+            owner, name = match.group("owner") or "", match.group("name")
+            if _README_DEFINES_RE.search(
+                body[max(0, match.start() - 12) : match.start()]
+            ):
+                continue
+            if not owner and name in _README_CALL_NOISE:
+                continue
+            if (owner, name) not in found:
+                found.append((owner, name))
+                if len(found) >= limit:
+                    return found
+    return found
+
+
 def _top_symbols(symbols: List[Symbol], limit: int = 70) -> List[Symbol]:
     """Rank symbols by API surface with deterministic ties."""
 

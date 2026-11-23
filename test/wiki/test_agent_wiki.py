@@ -9154,3 +9154,200 @@ def test_focused_editorial_revision_keeps_source_admission_and_call_bounds(
         )
         assert "socket.send" not in json.dumps(result)
     assert len(calls) == 2
+
+
+def _path_wiki(root, functions, calls, readme="", repo="org/proj"):
+    """An AgentWiki over a small recorded call graph and its source.
+
+    ``functions`` are ``(symbol, file, start, end)`` with 0-based lines and
+    ``calls`` are ``(caller, callee, anchor_line)``; each anchor line of the
+    source reads ``callee()``. ``root`` is an empty directory standing in for
+    the checkout, so no manifest declares anything.
+    """
+
+    import igraph
+
+    from codenib.wiki.agent_wiki import AgentWiki
+
+    raw = igraph.Graph(directed=True)
+    index = {}
+    for symbol, file, start, end in functions:
+        index[symbol] = raw.vcount()
+        raw.add_vertex(
+            name=symbol,
+            unified_name=symbol,
+            type="method" if "." in symbol.rsplit(":", 1)[-1] else "function",
+            file=file,
+            start_line=start,
+            end_line=end,
+        )
+    lines = {}
+    for symbol, file, start, end in functions:
+        name = symbol.rsplit(":", 1)[-1]
+        body = lines.setdefault(file, {})
+        body.setdefault(start, f"fn {name} {{")
+        for line in range(start + 1, end + 1):
+            body.setdefault(line, "    let x = 1;")
+    for caller, callee, line in calls:
+        file = raw.vs[index[caller]]["file"]
+        leaf = callee.rsplit(":", 1)[-1].rsplit(".", 1)[-1].split("(")[0]
+        lines[file][line] = f"    {leaf}();"
+        raw.add_edge(
+            index[caller],
+            index[callee],
+            type="reference",
+            anchor_file=file,
+            anchor_line=line,
+        )
+    files = {"README.md": readme}
+    for file, body in lines.items():
+        files[file] = "\n".join(body.get(i, "") for i in range(max(body) + 1))
+
+    class Graph:
+        def get_graph(self):
+            return raw
+
+        def query_range(self, file, start, end):
+            return SimpleNamespace(
+                outgoing=[
+                    SimpleNamespace(
+                        target_vid=edge.target,
+                        anchor_file=edge["anchor_file"],
+                        anchor_line=edge["anchor_line"],
+                    )
+                    for edge in raw.es
+                    if edge["anchor_file"] == file
+                    and start <= edge["anchor_line"] <= end
+                ]
+            )
+
+    reader = SimpleNamespace(
+        file_paths=list(files),
+        captured_relative_path=lambda path: path if path in files else None,
+        read_prefix=lambda path, max_bytes: files[path].encode()[:max_bytes],
+    )
+
+    def source(file, start, end):
+        text = files.get(file, "").split("\n")[start - 1 : end]
+        return {"start_line": start, "content": "\n".join(text)}
+
+    wiki = object.__new__(AgentWiki)
+    wiki._bundle = SimpleNamespace(
+        entry=SimpleNamespace(repo_dir=str(root), repo=repo),
+        source_reader=reader,
+        code_graph=lambda: Graph(),
+    )
+    wiki._wb = SimpleNamespace(source=source)
+    return wiki
+
+
+def test_the_main_path_skips_helpers_and_vendored_code_and_keeps_same_names(
+    tmp_path,
+):
+    functions = [
+        ("src/main.rs:main()", "src/main.rs", 0, 5),
+        ("src/run.rs:run()", "src/run.rs", 0, 10),
+        ("src/debug.rs:report_error()", "src/debug.rs", 0, 12),
+        ("src/a.rs:parse()", "src/a.rs", 0, 6),
+        ("src/b.rs:load()", "src/b.rs", 0, 6),
+        ("deps/zlib/src/inflate.c:inflate()", "deps/zlib/src/inflate.c", 0, 40),
+        ("src/sched/mod.rs:Handle.spawn()", "src/sched/mod.rs", 0, 6),
+        ("src/sched/current.rs:Handle.spawn()", "src/sched/current.rs", 0, 8),
+        ("src/sched/current.rs:schedule()", "src/sched/current.rs", 10, 20),
+        ("src/span.rs:Span.unknown()", "src/span.rs", 0, 2),
+        ("src/queue.rs:push()", "src/queue.rs", 0, 30),
+    ]
+    calls = [
+        ("src/main.rs:main()", "src/run.rs:run()", 2),
+        ("src/run.rs:run()", "src/debug.rs:report_error()", 1),
+        ("src/run.rs:run()", "deps/zlib/src/inflate.c:inflate()", 2),
+        ("src/run.rs:run()", "src/sched/mod.rs:Handle.spawn()", 3),
+        ("src/a.rs:parse()", "src/debug.rs:report_error()", 2),
+        ("src/b.rs:load()", "src/debug.rs:report_error()", 2),
+        ("src/sched/mod.rs:Handle.spawn()", "src/sched/current.rs:Handle.spawn()", 2),
+        ("src/sched/current.rs:Handle.spawn()", "src/sched/current.rs:schedule()", 3),
+        ("src/sched/current.rs:schedule()", "src/span.rs:Span.unknown()", 12),
+        ("src/sched/current.rs:schedule()", "src/queue.rs:push()", 13),
+        ("src/debug.rs:report_error()", "src/queue.rs:push()", 4),
+    ]
+    wiki = _path_wiki(tmp_path, functions, calls)
+
+    _items, _relations, path = wiki._entry_path([], [])
+    # A search that retrieved only the top of run() does not change the path.
+    chunk = EvidenceItem(
+        id="E1",
+        file="src/run.rs",
+        start_line=1,
+        end_line=2,
+        symbol="src/run.rs:run()",
+        kind="function",
+        content="fn run() {\n    report_error();",
+    )
+    retrieved = wiki._entry_path([chunk], [])[2]
+    assert [step["symbol"] for step in retrieved] == [step["symbol"] for step in path]
+
+    assert [step["symbol"] for step in path] == [
+        "src/main.rs:main()",
+        "src/run.rs:run()",
+        "src/sched/mod.rs:Handle.spawn()",
+        # Another file's method of the same name is a different function.
+        "src/sched/current.rs:Handle.spawn()",
+        "src/sched/current.rs:schedule()",
+        "src/queue.rs:push()",
+    ]
+
+
+def test_the_readme_command_picks_the_subcommand_the_path_follows(tmp_path):
+    functions = [
+        ("crates/tool/src/main.rs:main()", "crates/tool/src/main.rs", 0, 5),
+        ("crates/tool/src/lib.rs:run()", "crates/tool/src/lib.rs", 0, 20),
+        ("crates/tool/src/lib.rs:check()", "crates/tool/src/lib.rs", 30, 60),
+        ("crates/tool/src/lib.rs:linter()", "crates/tool/src/lib.rs", 70, 90),
+    ]
+    calls = [
+        ("crates/tool/src/main.rs:main()", "crates/tool/src/lib.rs:run()", 2),
+        ("crates/tool/src/lib.rs:run()", "crates/tool/src/lib.rs:check()", 3),
+        ("crates/tool/src/lib.rs:run()", "crates/tool/src/lib.rs:linter()", 4),
+    ]
+    # Give both subcommands far reach; linter() reaches a little further.
+    for index in range(12):
+        functions.append(
+            (
+                f"crates/core/src/c{index}.rs:f{index}()",
+                f"crates/core/src/c{index}.rs",
+                0,
+                30,
+            )
+        )
+        calls.append(
+            (
+                "crates/tool/src/lib.rs:check()",
+                f"crates/core/src/c{index}.rs:f{index}()",
+                31 + index,
+            )
+        )
+    for index in range(14):
+        functions.append(
+            (
+                f"crates/rules/src/r{index}.rs:g{index}()",
+                f"crates/rules/src/r{index}.rs",
+                0,
+                30,
+            )
+        )
+        calls.append(
+            (
+                "crates/tool/src/lib.rs:linter()",
+                f"crates/rules/src/r{index}.rs:g{index}()",
+                71 + index,
+            )
+        )
+
+    plain = _path_wiki(tmp_path, functions, calls, repo="org/tool")
+    plain = plain._entry_path([], [])[2]
+    readme = "Lint a project:\n\n```shell\ntool check .\n```\n"
+    named = _path_wiki(tmp_path, functions, calls, readme=readme, repo="org/tool")
+    path = named._entry_path([], [])[2]
+
+    assert plain[2]["symbol"].endswith(":linter()")
+    assert path[2]["symbol"].endswith(":check()")

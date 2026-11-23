@@ -26,7 +26,16 @@ import re
 import threading
 from contextlib import contextmanager, nullcontext
 from time import perf_counter, time
-from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence
+from typing import (
+    Any,
+    Callable,
+    Collection,
+    Dict,
+    List,
+    Mapping,
+    Optional,
+    Sequence,
+)
 
 from ..log_utils import get_logger
 from ..repository_summary import readme_summary
@@ -62,8 +71,11 @@ from .importance import (
     TIER_DETAIL,
     TIER_PRIMARY,
     file_weights,
+    is_peripheral_file,
     main_path_start,
+    own_entry_files,
     page_tiers,
+    path_stops,
 )
 from .multimodal import MEDIA_PLAN_VERSION, plan_media_slots
 from .outline import (
@@ -73,6 +85,9 @@ from .outline import (
     _page_allows_supporting_files,
     _read_readme,
     generate_outline,
+    readme_calls,
+    readme_code_words,
+    readme_commands,
     readme_doors,
 )
 from .quality import LEANS_ON_EARLIER_SENTENCE
@@ -2258,6 +2273,16 @@ def _is_own_private_method(symbol: str, caller: str) -> bool:
     return bool(owner) and leaf.startswith("_") and owner == _symbol_owner(caller)
 
 
+def _same_definition(item: EvidenceItem, file: str, span: Sequence[int]) -> bool:
+    """Whether evidence holds exactly one recorded definition (0-based span)."""
+
+    return (
+        item.file.replace("\\", "/") == file
+        and item.start_line == span[0] + 1
+        and item.end_line == span[1] + 1
+    )
+
+
 def _journey_starts_at(
     journey: Mapping[str, Any],
     evidence: Sequence[EvidenceItem],
@@ -2452,6 +2477,14 @@ def _without_path_only_sections(plan: dict[str, Any]) -> dict[str, Any]:
 # Calls can be written without parentheses in these languages, so a line without
 # them says nothing either way.
 _CALLS_WITHOUT_PARENS = frozenset({".rb", ".kt", ".kts", ".swift", ".scala", ".lua"})
+# A test marked where it is defined: ``#[test]``, ``#[tokio::test]``,
+# ``#[cfg(test)]`` or a pytest decorator.
+_TEST_MARKER_LINES = 12
+# A README word steers a hop only to a callee with this much behind it.
+_README_WORD_MIN_REACH = 10
+_TEST_MARKER_RE = re.compile(
+    r"#\[(?:[\w:]+::)?test\b|#\[cfg\(test\)\]|^\s*@pytest\.", re.MULTILINE
+)
 
 
 def _line_invokes(line: str, target_label: str) -> bool:
@@ -5077,15 +5110,17 @@ class AgentWiki:
 
     @staticmethod
     def _concrete_override(
-        raw_graph: Any, method_vid: int
+        raw_graph: Any, method_vid: int, prefer: Collection[str] = ()
     ) -> Optional[tuple[int, int]]:
-        """The one subclass method overriding an unimplemented base method.
+        """The subclass method that carries on from an unimplemented one.
 
         The index has no inheritance edge, but a subclass header
         (``class HTTPAdapter(BaseAdapter):``) records a reference to its base
         anchored on the subclass's own first line. Returns ``(override_vid,
-        subclass_vid)`` when exactly one such subclass defines a method of the
-        same name, else None.
+        subclass_vid)`` for the subclass method of the same name. When several
+        subclasses define one (``CodeAgent._step_stream`` and
+        ``ToolCallingAgent._step_stream``), it is the one subclass named in
+        *prefer*; otherwise None.
         """
 
         def contained_in(vid: int) -> Optional[int]:
@@ -5114,7 +5149,16 @@ class AgentWiki:
             for child in raw_graph.es.select(_source=sub.index):
                 if child["type"] == "contain" and leaf(child.target) == wanted:
                     found.append((child.target, sub.index))
-        return found[0] if len(found) == 1 else None
+        if len(found) <= 1:
+            return found[0] if found else None
+        # Which subclass runs is the caller's choice; the README's examples
+        # say which one a user makes (``CodeAgent(...)``).
+        named = [
+            pair
+            for pair in found
+            if leaf(pair[1]) in prefer and leaf(pair[1]) not in {leaf(method_vid)}
+        ]
+        return named[0] if len(named) == 1 else None
 
     def _anchor_invokes(
         self,
@@ -5152,6 +5196,28 @@ class AgentWiki:
                 return True
         return False
 
+    def _is_test_definition(self, vertex: Any) -> bool:
+        """Whether a callable is marked as a test where it is defined.
+
+        Rust keeps unit tests beside the code (``#[test]``, ``#[tokio::test]``)
+        and Python may mark one with a decorator, so the file's name does not
+        give them away. A recorded definition can begin at the comment above
+        the attribute, so this reads a few lines on either side of its start.
+        """
+
+        file = self._rel(vertex["file"]) or ""
+        start = vertex.attributes().get("start_line")
+        if not file or not isinstance(start, int) or isinstance(start, bool):
+            return False
+        try:
+            source = self._wb.source(
+                file, max(1, start - 1), start + _TEST_MARKER_LINES
+            )
+        except Exception:  # noqa: BLE001 - an unreadable file is not a test
+            return False
+        text = (source or {}).get("content") if isinstance(source, Mapping) else None
+        return bool(text and _TEST_MARKER_RE.search(str(text)))
+
     def _main_path_evidence(
         self,
         raw_graph: Any,
@@ -5160,6 +5226,11 @@ class AgentWiki:
         entry_files: set[str],
         next_id: int,
         doors: tuple[Sequence[str], Sequence[str]] = ((), ()),
+        own_files: set[str] = frozenset(),
+        program_files: set[str] = frozenset(),
+        calls: Sequence[tuple[str, str]] = (),
+        stops: Optional[set[int]] = None,
+        is_test_callable: Optional[Callable[[int], bool]] = None,
     ) -> Optional[EvidenceItem]:
         """Return evidence for the callable where the main path starts.
 
@@ -5173,8 +5244,13 @@ class AgentWiki:
                 relative_path=self._rel,
                 is_test=is_test_file,
                 entry_files=entry_files,
+                own_files=own_files,
+                program_files=program_files,
                 run_files=doors[0],
                 linked_files=doors[1],
+                readme_calls=calls,
+                stops=stops,
+                is_test_callable=is_test_callable,
             )
         except Exception as exc:  # noqa: BLE001 - the path has a fallback
             logger.debug("wiki main path ranking unavailable: %s", exc)
@@ -5184,17 +5260,19 @@ class AgentWiki:
         vertex = raw_graph.vs[vid]
         target = self._graph_endpoint(vertex)
         target_file = self._rel(target["file"]) or ""
-        known = by_symbol.get(_canonical_symbol(target["label"]))
-        # Evidence names collapse across files (``main()``); reuse it only for
-        # the same definition, not another file's function of that name.
-        if known is not None and known.file.replace("\\", "/") == target_file:
-            return known
         attrs = vertex.attributes()
         span = (attrs.get("start_line"), attrs.get("end_line"))
         if not target_file or not all(
             isinstance(value, int) and not isinstance(value, bool) for value in span
         ):
             return None
+        known = by_symbol.get(_canonical_symbol(target["label"]))
+        # Evidence names collapse across files (``main()``); reuse it only for
+        # the same definition, not another file's function of that name, and
+        # only with the definition's own lines, since the path is read from
+        # them and must not change with what a search retrieved.
+        if known is not None and _same_definition(known, target_file, span):
+            return known
         start_line, end_line = span[0] + 1, span[1] + 1
         source = self._wb.source(target_file, start_line, end_line)
         content = _prepare_evidence_content(
@@ -5213,6 +5291,15 @@ class AgentWiki:
             content=content,
             routes=("entry path",),
         )
+
+    def _readme_text(self) -> str:
+        source_reader = getattr(self._bundle, "source_reader", None)
+        if source_reader is None:
+            return ""
+        try:
+            return _read_readme(source_reader, limit=README_DOOR_CHARS)
+        except Exception:  # noqa: BLE001 - the README only refines the path
+            return ""
 
     def _readme_doors(self) -> tuple[List[str], List[str]]:
         """Files the README tells a reader to run, and those it links to."""
@@ -5254,14 +5341,37 @@ class AgentWiki:
             str(getattr(self._bundle.entry, "repo_dir", "") or "")
         )
         entry_files: set[str] = set()
+        own_files: set[str] = set()
+        program_files: set[str] = set()
+        program_names: set[str] = set()
         try:
-            from ..web.entrypoints import entry_point_files
+            from ..web.entrypoints import discover_entry_points
 
-            entry_files = {
-                file.replace("\\", "/") for file in entry_point_files(repo_dir or None)
+            declared = discover_entry_points(repo_dir or None)
+            entry_files = {entry.path.replace("\\", "/") for entry in declared}
+            own_files = {
+                file.replace("\\", "/")
+                for file in own_entry_files(
+                    declared, str(getattr(self._bundle.entry, "repo", "") or "")
+                )
             }
+            programs = [e for e in declared if e.kind in {"binary", "script"}]
+            program_files = {entry.path.replace("\\", "/") for entry in programs}
+            program_names = {str(entry.label) for entry in programs}
         except Exception:  # noqa: BLE001 - manifests are optional
-            entry_files = set()
+            entry_files, own_files, program_files = set(), set(), set()
+        try:
+            stops = path_stops(raw_graph, relative_path=self._rel, is_test=is_test_file)
+        except Exception:  # noqa: BLE001 - without stops the path is as before
+            stops = set()
+        readme = self._readme_text()
+        # The README's examples name the classes a user picks (``CodeAgent``)
+        # and the subcommands they run (``ruff check``).
+        readme_words = readme_code_words(readme)
+        repository = str(getattr(self._bundle.entry, "repo", "") or "")
+        commands = readme_commands(
+            readme, {repository.rsplit("/", 1)[-1], *program_names}
+        )
 
         def leaf_name(symbol: str) -> str:
             name = re.sub(r"\([^)]*\)$", "", symbol.rsplit(":", 1)[-1])
@@ -5279,6 +5389,7 @@ class AgentWiki:
             and item.end_line is not None
             and is_public(item.symbol)
             and not is_test_file(item.file)
+            and not is_peripheral_file(item.file)
         ]
         starts.sort(
             key=lambda item: (
@@ -5299,6 +5410,13 @@ class AgentWiki:
             entry_files=entry_files,
             next_id=len(evidence) + 1,
             doors=self._readme_doors(),
+            own_files=own_files,
+            program_files=program_files,
+            calls=readme_calls(readme),
+            stops=stops,
+            is_test_callable=lambda vertex: self._is_test_definition(
+                raw_graph.vs[vertex]
+            ),
         )
         if ranked_start is not None:
             if ranked_start.routes == ("entry path",):
@@ -5313,7 +5431,9 @@ class AgentWiki:
             {"evidence": current.id, "symbol": current.symbol, "relation": None}
         ]
         new_relations: List[RelationItem] = []
-        visited = {_canonical_symbol(current.symbol)}
+        # Names collapse across files (``Handle.spawn()`` is a method of each
+        # scheduler), so a visited function is its file and its name.
+        visited = {(current.file.replace("\\", "/"), _canonical_symbol(current.symbol))}
         vid_of: dict[str, int] = {}
         for _hop in range(max_hops):
             best = None
@@ -5329,7 +5449,7 @@ class AgentWiki:
                     }
                 base_vid = vid_of.get(current.symbol)
                 override = (
-                    self._concrete_override(raw_graph, base_vid)
+                    self._concrete_override(raw_graph, base_vid, readme_words)
                     if base_vid is not None
                     else None
                 )
@@ -5345,7 +5465,8 @@ class AgentWiki:
                     if (
                         target_file
                         and not is_test_file(target_file)
-                        and _canonical_symbol(target["label"]) not in visited
+                        and (target_file, _canonical_symbol(target["label"]))
+                        not in visited
                         and all(
                             isinstance(value, int) and not isinstance(value, bool)
                             for value in span
@@ -5379,6 +5500,10 @@ class AgentWiki:
                 target_file = self._rel(target["file"]) or ""
                 if not target_file or is_test_file(target_file):
                     continue
+                # The path follows the project's own work: not into vendored
+                # or tooling code, and not into a helper it only uses.
+                if edge.target_vid in stops or is_peripheral_file(target_file):
+                    continue
                 # A reference is not a call: a callback handed along must not
                 # become a step in the main path. An unreadable line stays in.
                 if (
@@ -5400,7 +5525,7 @@ class AgentWiki:
                     except ValueError:
                         continue
                 canonical = _canonical_symbol(target["label"])
-                if canonical in visited:
+                if (target_file, canonical) in visited:
                     continue
                 attrs = vertex.attributes()
                 span = (attrs.get("start_line"), attrs.get("end_line"))
@@ -5425,7 +5550,28 @@ class AgentWiki:
                     )
                 except Exception:  # noqa: BLE001 - degree is a fair fallback
                     reach = raw_graph.degree(edge.target_vid, mode="out")
+                if reach == 0:
+                    # An unimplemented method reaches as far as the subclass
+                    # method the path would carry on into.
+                    override = self._concrete_override(
+                        raw_graph, edge.target_vid, readme_words
+                    )
+                    if override is not None:
+                        reach = max(
+                            0,
+                            len(
+                                raw_graph.neighborhood(override[0], order=2, mode="out")
+                            )
+                            - 1,
+                        )
+                # The README's examples name the command a reader runs (``ruff
+                # check``); among callees that reach far, that one is the path.
+                named = (
+                    reach >= _README_WORD_MIN_REACH
+                    and leaf_name(target["label"]) in commands
+                )
                 score = (
+                    int(named),
                     min(reach, 40),
                     int(target_file != current.file),
                     reach,
@@ -5438,9 +5584,9 @@ class AgentWiki:
                 break
             _score, target, target_file, span, anchor = best
             canonical = _canonical_symbol(target["label"])
-            visited.add(canonical)
+            visited.add((target_file, canonical))
             item = by_symbol.get(canonical)
-            if item is not None and item.file.replace("\\", "/") != target_file:
+            if item is not None and not _same_definition(item, target_file, span):
                 item = None
             if item is None:
                 start_line, end_line = span[0] + 1, span[1] + 1
