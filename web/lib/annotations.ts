@@ -75,6 +75,8 @@ export interface AgentTask {
   diff: {
     branch?: string;
     base?: string;
+    accepted?: string[];
+    rejected?: string[];
     files?: { path: string; added: number; deleted: number }[];
     pages?: { id: string; title?: string; files?: string[] }[];
   };
@@ -191,16 +193,34 @@ export function dispatchTask(repoId: string, annotations: string[]): Promise<Age
   });
 }
 
-export function fetchTaskDiff(repoId: string, taskId: string): Promise<{ patch: string }> {
+export interface DiffHunk {
+  id: string;
+  path: string;
+  header: string;
+  added: number;
+  deleted: number;
+  state: "open" | "accepted" | "rejected";
+  lines: string[];
+}
+
+export function fetchTaskDiff(
+  repoId: string,
+  taskId: string,
+): Promise<{ patch: string; hunks: DiffHunk[] }> {
   return call(`${repoPath(repoId)}/tasks/${taskId}/diff`);
 }
 
+/** Accept or discard the hunks named, or every undecided hunk. */
 export function decideTask(
   repoId: string,
   taskId: string,
   decision: "accept" | "reject",
+  hunks?: string[],
 ): Promise<AgentTask> {
-  return call(`${repoPath(repoId)}/tasks/${taskId}/${decision}`, { method: "POST" });
+  return call(`${repoPath(repoId)}/tasks/${taskId}/${decision}`, {
+    method: "POST",
+    body: JSON.stringify({ hunks: hunks ?? [] }),
+  });
 }
 
 // --- Anchoring -------------------------------------------------------------

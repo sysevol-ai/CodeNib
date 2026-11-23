@@ -38,7 +38,7 @@ from ..annotations.edits import (
     save_page,
 )
 from ..annotations.model import HUMAN_KINDS
-from ..annotations.runner import accept, dispatch, reject, run_task, task_patch
+from ..annotations.runner import accept, dispatch, reject, review, run_task
 
 log = logging.getLogger(__name__)
 
@@ -351,24 +351,36 @@ async def get_task(repo_id: str, task_id: str, request: Request) -> dict:
 
 @router.get("/api/repos/{repo_id}/tasks/{task_id}/diff")
 async def get_task_diff(repo_id: str, task_id: str, request: Request) -> dict:
+    """The diff, and each hunk with whether it was accepted or discarded."""
+
     _authorize(request)
     repo, _ = await asyncio.to_thread(_repo, repo_id)
     try:
-        patch = await asyncio.to_thread(task_patch, repo, task_id)
+        return await asyncio.to_thread(review, repo, task_id)
     except AnnotationError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return {"patch": patch}
+
+
+class HunksIn(BaseModel):
+    hunks: List[str] = Field(default_factory=list, max_length=500)
 
 
 @router.post("/api/repos/{repo_id}/tasks/{task_id}/{decision}")
 async def decide_task(
-    repo_id: str, task_id: str, decision: Literal["accept", "reject"], request: Request
+    repo_id: str,
+    task_id: str,
+    decision: Literal["accept", "reject"],
+    request: Request,
+    body: Optional[HunksIn] = None,
 ) -> dict:
+    """Accept or discard the hunks named, or every undecided hunk."""
+
     _authorize(request)
     repo, _ = await asyncio.to_thread(_repo, repo_id)
     action = accept if decision == "accept" else reject
+    hunks = (body.hunks if body else None) or None
     try:
-        return (await asyncio.to_thread(action, repo, task_id)).to_json()
+        return (await asyncio.to_thread(action, repo, task_id, hunks)).to_json()
     except AnnotationError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
