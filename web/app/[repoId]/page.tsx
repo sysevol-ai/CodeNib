@@ -484,6 +484,7 @@ export default function WikiPageView({
 
   const [repo, setRepo] = useState<RepoInfo | null>(null);
   const [pages, setPages] = useState<WikiPageRef[]>([]);
+  const [repoDocs, setRepoDocs] = useState<{ id: string; title: string; path: string }[]>([]);
   const [activeId, setActiveId] = useState<string>(initialPageId);
   // A walkthrough replaces the map and the reader; the page list stays.
   // Undefined while loading; null when the repository has none.
@@ -591,7 +592,10 @@ export default function WikiPageView({
     });
     fetchWikiTree(repoId)
       .then((t) => {
-        if (!cancelled) setPages(t.pages);
+        if (!cancelled) {
+          setPages(t.pages);
+          setRepoDocs(t.docs ?? []);
+        }
       })
       .catch((e) => {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e));
@@ -1185,6 +1189,7 @@ export default function WikiPageView({
                 onPick={pick}
                 colors={workspace ? wikiGraph.colors : undefined}
                 walks={walkthroughs?.walks.map((item) => ({ id: item.id, label: item.tab }))}
+                docs={repoDocs}
                 activeWalk={walking ? walkAt?.id : undefined}
                 onWalk={(id) => openWalk(id)}
               />
@@ -1414,7 +1419,9 @@ export default function WikiPageView({
                     className="provenance-state"
                     title={page.generation?.model ? `Model: ${page.generation.model}` : undefined}
                   >
-                    {generationMode === "offline"
+                    {generationMode === "document"
+                      ? `From the repository: ${page.generation?.path ?? page.title}`
+                      : generationMode === "offline"
                       ? "Built from the index"
                       : withheldByQualityGuard
                         ? page.grounding?.valid === false

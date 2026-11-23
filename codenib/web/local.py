@@ -164,6 +164,7 @@ def prepare_local_wiki(
         "data_dir": str(data_dir),
         "mode": mode,
         "wiki_agent": agent_wiki,
+        "repo_docs": True,
         "cors_origins": [
             f"http://localhost:{frontend_port}",
             f"http://127.0.0.1:{frontend_port}",
