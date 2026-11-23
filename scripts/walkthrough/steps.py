@@ -7,7 +7,8 @@
 The model writes each step from the function's full source, the call site that
 reaches it and the whole path. Each answer is checked: length limits, the
 lines it marks (kept only when they fall in the shown excerpt), and every
-``file.py:123`` it cites (the line must exist in a file on the path). A failed
+``file.py:123`` or ``tree.go:87`` it cites (the line must exist in a file on the
+path). A failed
 answer is sent back once with the errors; the second answer is kept unless it
 fails more checks, and the errors left are logged.
 """
@@ -36,8 +37,25 @@ STYLE = (
     "- Put identifiers in backticks: `run()`, `self.memory`, `final_answer`.\n"
     "- Only state what the shown source says. If the code only hands something "
     "on, say so.\n"
-    "- Cite lines as file.py:123 when a specific line matters."
+    "- Cite lines as file:line, e.g. sessions.py:123 or tree.go:87, when a "
+    "specific line matters."
 )
+# A line citation: a file name with an extension, a colon, a line number.
+CITE = re.compile(
+    r"((?:[\w.-]+/)*[\w-]+(?:\.[\w-]+)*\.[A-Za-z][A-Za-z0-9]{0,4}):(\d+)\b"
+)
+
+
+def cited_file(paths: dict[str, str], name: str) -> str | None:
+    """The repository path a cited file name means: a name the walk shows, or a
+    base name only one file on the path has."""
+
+    if name in paths:
+        return paths[name]
+    hits = {full for full in paths.values() if full.split("/")[-1] == name}
+    return hits.pop() if len(hits) == 1 else None
+
+
 # How a hop the index did not record was found, as the model is told.
 HOW = {
     "attr": "a call through an attribute, which the index does not record; "
@@ -91,13 +109,31 @@ def _retry(prompt: str, errs: list[str], previous: dict) -> str:
 # ---------- one step ----------
 
 
+def detab(text: str) -> str:
+    """Leading tabs as four spaces each, as the page shows them."""
+
+    tabs = len(text) - len(text.lstrip("\t"))
+    return "    " * tabs + text[tabs:]
+
+
+def _rows(text: str, width: int = 50) -> int:
+    """Rows a shown line takes: wrapped rows hang by its indentation plus four,
+    as the page wraps them."""
+
+    if len(text) <= width:
+        return 1
+    hang = min(len(text) - len(text.lstrip(" ")) + 4, width - 10)
+    return 1 + -(-(len(text) - width) // (width - hang))
+
+
 def excerpt(
     line: LineReader, f: dict, marks: list[int], next_line: int | None = None
 ) -> list[list[int]]:
     """The def line plus each marked line with context, merged, as line ranges.
 
-    The excerpt must fit 14 rows of 50 characters (after the common indent),
-    one more row between ranges. The call that leads on gets two lines of
+    The excerpt must fit 14 rows of 50 characters (after the common indent,
+    with tabs as four spaces and wrapped rows hanging), one more row between
+    ranges. The call that leads on gets two lines of
     context, others one; context shrinks, then marks drop, last first.
     """
 
@@ -115,11 +151,9 @@ def excerpt(
             else:
                 ranges.append([n, n])
         numbers = [n for a, b in ranges for n in range(a, b + 1)]
-        shown = [line(f["file"], n) for n in numbers]
+        shown = [detab(line(f["file"], n)).rstrip() for n in numbers]
         cut = min((len(x) - len(x.lstrip(" ")) for x in shown if x.strip()), default=0)
-        rows = sum(
-            max(1, -(-len(line(f["file"], n).rstrip()[cut:]) // 50)) for n in numbers
-        )
+        rows = sum(_rows(x[cut:]) for x in shown)
         return ranges, rows + len(ranges) - 1
 
     ms = list(marks)
@@ -189,9 +223,9 @@ def check_step(
         errs.append("mark at least one line")
     # Line citations in the prose must exist in a file on the path.
     prose = " ".join(str(st.get(k) or "") for k in ("lead", "idea")) + " " + body
-    for m in re.finditer(r"(\w+\.py):(\d+)", prose):
+    for m in CITE.finditer(prose):
         fname, n = m.group(1), int(m.group(2))
-        full = paths.get(fname)
+        full = cited_file(paths, fname)
         if not full or not line(full, n).strip():
             errs.append(f"{m.group(0)} is not a source line on this path")
     return errs
@@ -366,7 +400,8 @@ def check_overview(o: dict, n_fns: int, n_files: int) -> list[str]:
     for keys in (("title",), ("dek",), ("overview", "title"), ("overview", "lead")):
         v = _field(o, keys)
         for tok in re.findall(counted, str(v or "").lower()):
-            if tok not in allowed and not re.search(r"\w+\.py:" + tok, str(v)):
+            cites = {m.group(2) for m in CITE.finditer(str(v))}
+            if tok not in allowed and tok not in cites:
                 errs.append(
                     f"{'.'.join(keys)} says {tok!r}, but the path has {n_fns} "
                     f"functions in {n_files} files"

@@ -9,8 +9,10 @@ lists each claim the code contradicts or does not establish, with a rewrite
 that keeps only supported claims. A function step is checked against its
 own lines and its caller around the call site (through a subclass hop, the
 function that called the base method), so a claim about consequences can be
-checked. The overview and recap are checked against the start function's
-source and the corrected step texts.
+checked. The overview and recap are checked against every function on the
+path (each cut to its first 120 lines) and the corrected step texts: they
+summarise the whole path, so the start function alone would leave most of
+their claims unsupported.
 """
 
 from __future__ import annotations
@@ -52,6 +54,31 @@ RULES = (
 )
 
 
+# The writing limits (steps.check_step, steps.check_overview); a rewrite may
+# run 15% over before it is refused.
+STEP_LIMITS = {"lead": 160, "body": 220, "idea": 110}
+PART_LIMITS = {"title": 56, "lead": 160, "body": 180, "idea": 110}
+
+
+def _limits_text(limits: dict) -> str:
+    return "Keep the rewrite within " + ", ".join(
+        f"{k} {n} characters" + (" in total" if k == "body" else "")
+        for k, n in limits.items()
+    )
+
+
+def _too_long(fixed: dict, limits: dict, slack: float = 1.15) -> list[str]:
+    """The fields of a rewrite that run over their limit by more than ``slack``."""
+
+    over = []
+    for key, cap in limits.items():
+        value = fixed.get(key)
+        text = " ".join(value) if isinstance(value, list) else str(value or "")
+        if len(text) > cap * slack:
+            over.append(f"{key} {len(text)}/{cap}")
+    return over
+
+
 def _numbered(source: dict, rel: str, a: int, b: int) -> str:
     """Lines a..b of a file on the path, as the build recorded them."""
 
@@ -80,6 +107,40 @@ def _report(problems: list[dict]) -> str:
         f"\n   - [{p.get('verdict')}] {p.get('claim')} :: {p.get('why')}"
         for p in problems
     )
+
+
+def _check(model: Model, prompt: str, limits: dict, k: int) -> tuple[list, dict | None]:
+    """The checker's problems and the rewrite to use, or None to keep the text.
+
+    A rewrite more than 15% over its limits is sent back once to be shortened.
+    If the shorter one still runs over, the first is used when it is at most
+    half again over the limits (a correct, longer text), else the text stays.
+    """
+
+    out = model.check(SYSTEM, prompt + "\n" + _limits_text(limits))
+    probs = out.get("problems") or []
+    fixed = out.get("fixed")
+    if not probs or not isinstance(fixed, dict):
+        return probs, None
+    over = _too_long(fixed, limits)
+    if not over:
+        return probs, fixed
+    again = model.check(
+        SYSTEM,
+        prompt
+        + "\n"
+        + _limits_text(limits)
+        + f"\nYour rewrite ran over ({', '.join(over)}). Return the same JSON with "
+        + "a shorter rewrite that keeps only supported claims:\n"
+        + json.dumps(fixed),
+    )
+    shorter = again.get("fixed")
+    if isinstance(shorter, dict) and not _too_long(shorter, limits):
+        return probs, shorter
+    if not _too_long(fixed, limits, 1.5):
+        return probs, fixed
+    say(f"step {k}: rewrite refused, too long ({', '.join(over)})")
+    return probs, None
 
 
 def verify_walk(walk: dict, source: dict, model: Model) -> list[dict]:
@@ -116,24 +177,31 @@ def verify_walk(walk: dict, source: dict, model: Model) -> list[dict]:
             "idea": plain(st.get("idea")),
         }
         about = stops[st["at"]][0] + stops[st["at"]][1]
-        out = model.check(
-            SYSTEM,
+        probs, fixed = _check(
+            model,
             f"Text of the step about {about}:\n{json.dumps(text, indent=1)}\n\n"
             + "\n\n".join(ctx)
             + "\n\n"
             + RULES,
+            STEP_LIMITS,
+            k,
         )
-        probs = out.get("problems") or []
-        if probs and isinstance(out.get("fixed"), dict):
-            f = out["fixed"]
+        if fixed is not None:
+            f = fixed
             st["lead"] = html(f.get("lead") or text["lead"])
             st["body"] = [html(x) for x in _body(f)]
             st["idea"] = html(f.get("idea") or "")
         report.append({"step": k, "problems": probs})
         say(f"step {k}: {len(probs)} problem(s)" + _report(probs))
 
-    # The overview and recap, against the start function and the corrected steps.
-    sf, sa, sb = _fn_range(walk, fn_steps[0])
+    # The overview and recap, against every function and the corrected steps.
+    functions = []
+    for k in fn_steps:
+        file, a, b = _fn_range(walk, k)
+        functions.append(
+            f"{file}:{a}-{b}:\n{_numbered(source, file, a, min(b, a + 119))}"
+        )
+    all_source = "\n\n".join(functions)
     steps_text = "\n".join(
         f"{k}. {plain(walk['steps'][k]['title'])}: {plain(walk['steps'][k]['lead'])} "
         + " ".join(plain(x) for x in walk["steps"][k].get("body") or [])
@@ -148,16 +216,16 @@ def verify_walk(walk: dict, source: dict, model: Model) -> list[dict]:
             "idea": plain(st.get("idea")),
         }
         part = "overview" if k == 0 else "recap"
-        out = model.check(
-            SYSTEM,
+        probs, fixed = _check(
+            model,
             f"Text of the walkthrough's {part}:\n{json.dumps(text, indent=1)}\n\n"
             f"The steps it summarises:\n{steps_text}\n\n"
-            f"The start function, {sf}:{sa}-{sb}:\n{_numbered(source, sf, sa, sb)}\n\n"
-            + RULES,
+            f"The functions on the path, in order:\n{all_source}\n\n" + RULES,
+            PART_LIMITS,
+            k,
         )
-        probs = out.get("problems") or []
-        if probs and isinstance(out.get("fixed"), dict):
-            f = out["fixed"]
+        if fixed is not None:
+            f = fixed
             st["title"] = html(f.get("title") or text["title"])
             st["lead"] = html(f.get("lead") or text["lead"])
             st["body"] = [html(x) for x in _body(f)]

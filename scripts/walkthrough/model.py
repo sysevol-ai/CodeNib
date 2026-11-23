@@ -62,6 +62,7 @@ class Model:
         temperature: float = 0.2,
         plan: bool = False,
         calls: list | None = None,
+        retried: bool = False,
     ) -> dict:
         """Write text; ``plan=True`` marks a planning decision.
 
@@ -89,17 +90,34 @@ class Model:
                     "s": round(time.time() - t0, 1),
                 }
             )
-        return json.loads(r.choices[0].message.content)
+        try:
+            return json.loads(r.choices[0].message.content)
+        except json.JSONDecodeError:
+            if retried:
+                raise
+            # A cut-off answer: ask once more with room to finish.
+            return self.ask(
+                system, user, int(max_tokens * 1.5), temperature, plan, calls, True
+            )
 
-    def check(self, system: str, user: str) -> dict:
-        """Check text against source: no sampling, a shorter answer."""
+    def check(self, system: str, user: str, max_tokens: int = 900) -> dict:
+        """Check text against source: no sampling, a shorter answer.
+
+        A list of problems with rewrites can outgrow the limit; a cut-off
+        answer is asked for once more with twice the room.
+        """
 
         r = self._complete(
             system,
             user,
             temperature=0,
-            max_tokens=900,
+            max_tokens=max_tokens,
             extra_body={"thinking": {"type": "disabled"}},
             timeout=180,
         )
-        return json.loads(r.choices[0].message.content)
+        try:
+            return json.loads(r.choices[0].message.content)
+        except json.JSONDecodeError:
+            if max_tokens > 900:
+                raise
+            return self.check(system, user, max_tokens * 2)

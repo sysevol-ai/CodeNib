@@ -185,10 +185,25 @@ export function routeLayout(walk: Walk, width: number, target = 560): RouteLayou
 
 /** A long name with no owner breaks at the underscore nearest its middle; null when it has none. */
 export function breakName(name: string): [string, string] | null {
-  const cuts = [...name.matchAll(/_/g)].map((match) => match.index ?? 0).filter((index) => index > 0);
-  if (cuts.length === 0) return null;
-  const cut = cuts.sort((a, b) => Math.abs(a - name.length / 2) - Math.abs(b - name.length / 2))[0];
-  return [name.slice(0, cut), name.slice(cut)];
+  // Where a name reads well split, nearest its middle: the opening of a call's
+  // arguments, a space (a command line), an underscore, or a camelCase hump.
+  const kinds = [/\((?=.)/g, / /g, /_/g, /(?<=[a-z0-9])(?=[A-Z])/g];
+  for (const kind of kinds) {
+    const cuts = [...name.matchAll(kind)]
+      .map((match) => match.index ?? 0)
+      .filter((index) => index > 1 && index < name.length - 2);
+    if (cuts.length === 0) continue;
+    const cut = cuts.sort((a, b) => Math.abs(a - name.length / 2) - Math.abs(b - name.length / 2))[0];
+    if (cut < name.length / 4 || cut > (name.length * 3) / 4) continue;
+    return [name.slice(0, cut).trimEnd(), name.slice(cut).trimStart()];
+  }
+  return null;
+}
+
+/** Leading tabs as four spaces each, so tab-indented code (Go, C) wraps and
+ * drops its shared indentation like space-indented code. */
+export function detab(text: string): string {
+  return text.replace(/^\t+/, (tabs) => "    ".repeat(tabs.length));
 }
 
 export interface CodeRow {
@@ -210,7 +225,7 @@ export function codeRows(set: WalkthroughSet, code: WalkCode): CodeRow[] {
   const lines = set.source[file] ?? {};
   const marks = new Set(mark);
   const shown = show.flatMap(([a, b]) =>
-    Array.from({ length: b - a + 1 }, (_, k) => lines[String(a + k)] ?? ""),
+    Array.from({ length: b - a + 1 }, (_, k) => detab(lines[String(a + k)] ?? "")),
   );
   const indents = shown.filter((text) => text.trim()).map((text) => text.match(/^ */)![0].length);
   const cut = indents.length ? Math.min(...indents) : 0;
@@ -222,7 +237,7 @@ export function codeRows(set: WalkthroughSet, code: WalkCode): CodeRow[] {
       if (hidden > 0) rows.push({ kind: "gap", hidden });
     }
     const text: string[] = [];
-    for (let n = a; n <= b; n += 1) text.push((lines[String(n)] ?? "").slice(cut));
+    for (let n = a; n <= b; n += 1) text.push(detab(lines[String(n)] ?? "").slice(cut));
     highlightRows(text.join("\n"), language).forEach((html, k) => {
       rows.push({
         kind: "line",
