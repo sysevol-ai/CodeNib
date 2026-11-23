@@ -38,6 +38,9 @@ def runtime_config(api_base: str) -> bytes:
     return f"window.__CODENIB_API_BASE__ = {json.dumps(value)};\n".encode("utf-8")
 
 
+_UPSTREAM_TIMEOUT_SECONDS = 600
+
+
 class WikiStaticHandler(SimpleHTTPRequestHandler):
     """Serve the Wiki SPA and proxy its API requests to the local backend."""
 
@@ -135,7 +138,11 @@ class WikiStaticHandler(SimpleHTTPRequestHandler):
             method=self.command,
         )
         try:
-            response = urllib_request.urlopen(request, timeout=90)
+            # A page the local Claude Code is still writing can take minutes;
+            # the API answers when it is done.
+            response = urllib_request.urlopen(
+                request, timeout=_UPSTREAM_TIMEOUT_SECONDS
+            )
         except urllib_error.HTTPError as exc:
             response = exc
         except (OSError, urllib_error.URLError) as exc:
