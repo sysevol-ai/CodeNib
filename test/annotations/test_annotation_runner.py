@@ -273,3 +273,30 @@ def test_changed_ranges_follow_the_base_numbering() -> None:
         "@@ -0,0 +1,2 @@\n+a\n+b\n"
     )
     assert changed_ranges(patch) == {"a.py": [(10, 11)], "new.py": [(1, 1)]}
+
+
+def test_an_annotation_on_code_sends_the_code_not_a_page_section(
+    git_repo: Path, fake_agent
+) -> None:
+    store = AnnotationStore(git_repo)
+    question = store.create(
+        kind="question",
+        text="Why subtract?",
+        on={
+            "page": "math",
+            "path": "calc.py",
+            "start_line": 1,
+            "end_line": 2,
+            "quote": "def add(a, b):\n    return a - b",
+        },
+    )
+    task = dispatch(git_repo, [question.id])
+
+    run_task(git_repo, task.id, agent=fake_agent, page_lookup=lookup)
+
+    prompt = fake_agent.prompt_path.read_text()
+    assert "On the code calc.py:1-2" in prompt
+    assert (
+        "They selected this code:\n```\ndef add(a, b):\n    return a - b\n```" in prompt
+    )
+    assert "The section reads" not in prompt

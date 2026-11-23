@@ -156,9 +156,10 @@ Open the Wiki from the address `codenib wiki` prints. It carries a session key
 (`?session=…`) that annotating needs, so no other page in your browser can
 start your agent.
 
-1. Select words on a page and pick **Ask**, **Change** or **Note** (or press
-   1, 2 or 3). Write what you want. Enter saves a draft; ⌘Enter saves it and
-   sends it.
+1. Select words on a page, or lines of code in the source panel a citation
+   opens, and pick **Ask**, **Change** or **Note** (or press 1, 2 or 3). Write
+   what you want. Enter saves a draft; ⌘Enter saves it and sends it. Lines of
+   code with an open annotation are marked in the source panel's gutter.
 2. Open **Notes** in the header to see the page's annotations, and send the
    drafts you select to Claude Code as one task.
 3. A question comes back as an answer under it, with its code references
