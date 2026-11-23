@@ -24,7 +24,6 @@ from scripts.walkthrough.overview_path import (
     overview_route,
     overview_stages,
     plain_question,
-    resolve_stages,
 )
 from scripts.walkthrough.served import merge_parts, served_form, write_served
 from scripts.walkthrough.steps import (
@@ -505,28 +504,6 @@ class _FakeIndex:
         return ""
 
 
-def test_resolve_stages_tells_same_names_apart_by_file():
-    ix = _FakeIndex(
-        {1: ("main()", "src/server.c"), 2: ("main()", "deps/lua/lua.c")}, {}
-    )
-    assert resolve_stages(ix, [{"name": "main()", "file": "src/server.c"}]) == [1]
-    with pytest.raises(ValueError, match="names 2 functions"):
-        resolve_stages(ix, [{"name": "main()", "file": None}])
-    # Without a file, the call the Overview drew decides.
-    ix = _FakeIndex(
-        {
-            1: ("main()", "main.go"),
-            2: ("main()", "tools/gen.go"),
-            3: ("run()", "cmd.go"),
-        },
-        {1: [(3, 4)]},
-    )
-    stages = [{"name": "main()", "file": None}, {"name": "run()", "file": None}]
-    assert resolve_stages(ix, stages) == [1, 3]
-    with pytest.raises(ValueError, match="no function"):
-        resolve_stages(ix, [{"name": "gone()", "file": None}])
-
-
 def test_overview_route_follows_each_hop_and_counts_added_functions():
     fns = {
         1: ("a()", "m.go"),
@@ -619,3 +596,26 @@ def test_verify_asks_once_for_a_shorter_rewrite_then_falls_back():
     assert _check(checker, "p", STEP_LIMITS, 1) == (probs, None)
     # no problems: nothing to apply
     assert _check(_ScriptedChecker({"problems": []}), "p", STEP_LIMITS, 1) == ([], None)
+
+
+def test_only_the_recorded_main_path_gets_a_walkthrough():
+    from scripts.walkthrough.overview_path import check_recorded
+
+    recorded = [
+        "check()",
+        "check()",
+        "project_files_in_path()",
+        "resolve_scoped_settings()",
+    ]
+    # The journey may skip a stage it could not narrate (a second check()).
+    journey = ["check()", "project_files_in_path()", "resolve_scoped_settings()"]
+    check_recorded([{"name": name, "file": None} for name in journey], recorded)
+    # No recorded path: whatever journey the Overview shows is the model's.
+    with pytest.raises(ValueError, match="records no main path"):
+        check_recorded([{"name": "check()", "file": None}], [])
+    # A page from before the path changed starts, or goes, somewhere else.
+    with pytest.raises(ValueError, match="starts at block_on"):
+        check_recorded([{"name": "block_on()", "file": None}], recorded)
+    detour = ["check()", "show_settings()", "resolve_scoped_settings()"]
+    with pytest.raises(ValueError, match="show_settings"):
+        check_recorded([{"name": name, "file": None} for name in detour], recorded)

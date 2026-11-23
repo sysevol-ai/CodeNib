@@ -111,8 +111,13 @@ class RepoIndex:
         }
         self.by_name: dict[str, list[int]] = {}
         for sym, vid in self.names.items():
-            if str(self.raw.vs[vid]["type"]).lower() in CALLABLE:
-                self.by_name.setdefault(sym.split(":")[-1], []).append(vid)
+            vertex = self.raw.vs[vid]
+            # A callable with no recorded lines has no source to show.
+            if str(vertex["type"]).lower() not in CALLABLE:
+                continue
+            if vertex["start_line"] is None or not vertex["file"]:
+                continue
+            self.by_name.setdefault(sym.split(":")[-1], []).append(vid)
         self._files: dict[str, list[str]] = {}
         self._neighbors: dict[int, list] = {}
         self.classes = self._read_classes()

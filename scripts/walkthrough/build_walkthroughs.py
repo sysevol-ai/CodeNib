@@ -56,35 +56,35 @@ if __package__ in (None, ""):
 from codenib.web.config import load_config  # noqa: E402
 from scripts.walkthrough import progress  # noqa: E402
 from scripts.walkthrough.graph_paths import choose_path, path_names  # noqa: E402
-from scripts.walkthrough.layout import (
+from scripts.walkthrough.layout import (  # noqa: E402
     RepoMap,
-    read_repo_map,  # noqa: E402
+    read_repo_map,
     walk_layout,
     walk_source,
 )
-from scripts.walkthrough.model import (
-    DEFAULT_API_BASE,  # noqa: E402
+from scripts.walkthrough.model import (  # noqa: E402
+    DEFAULT_API_BASE,
     DEFAULT_MODEL,
     KEY_ENV,
     Model,
 )
 from scripts.walkthrough.overview_path import CHOSEN as OVERVIEW_CHOSEN  # noqa: E402
-from scripts.walkthrough.overview_path import (
-    overview_route,  # noqa: E402
+from scripts.walkthrough.overview_path import (  # noqa: E402
+    overview_route,
     overview_walk_input,
     read_overview_stages,
-    resolve_stages,
+    recorded_main_path,
 )
 from scripts.walkthrough.progress import say  # noqa: E402
-from scripts.walkthrough.repo_index import (
-    RepoIndex,  # noqa: E402
+from scripts.walkthrough.repo_index import (  # noqa: E402
+    RepoIndex,
     load_repo_index,
     open_registry,
 )
 from scripts.walkthrough.served import merge_parts, write_served  # noqa: E402
-from scripts.walkthrough.steps import (
+from scripts.walkthrough.steps import (  # noqa: E402
     html,
-    page_steps,  # noqa: E402
+    page_steps,
     write_overview,
     write_steps,
 )
@@ -202,7 +202,7 @@ def overview_path_only(ix: RepoIndex, api: str) -> None:
     if len(stages) < 2:
         print(f"{ix.repo_id}: no Overview path", flush=True)
         return
-    path, added = overview_route(ix, resolve_stages(ix, stages))
+    path, added = overview_route(ix, recorded_main_path(ix))
     extra = f" ({added} added)" if added else ""
     print(f"{ix.repo_id}{extra}: " + " -> ".join(path_names(path)), flush=True)
 

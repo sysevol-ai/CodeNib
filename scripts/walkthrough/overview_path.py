@@ -6,12 +6,17 @@
 
 The Overview traces one main path through the code index, from where a user's
 code enters the repository to where the work is done. That path needs no
-curated question: each of its functions is read from the Overview (its name,
-and its file from the evidence it cites), and each hop is the cheapest chain of
-recorded calls to the next function, usually the one call the Overview drew.
+curated question: the walk follows the same recorded path (traced again from
+the index, so a stage the Overview could not narrate is still a step), and
+each hop is the recorded call between two of its functions.
 The model then writes the question the path answers, what the user's own code
 writes to start it, and a short tab label; those are checked, and replaced by
 plain wording if they fail twice.
+
+Only a path the index records gets a walkthrough. When the index has no main
+path, the Overview's journey (if any) was chosen by the model, and when the
+Overview starts somewhere else than the recorded path does, the page predates
+the path it should show; either way the repository is skipped.
 """
 
 from __future__ import annotations
@@ -72,40 +77,55 @@ def overview_stages(page: dict) -> tuple[str, list[dict]]:
     return str(journey.get("title") or ""), stages
 
 
-def resolve_stages(ix: RepoIndex, stages: list[dict]) -> list[int]:
-    """Each stage's function in the index.
+def _plain_name(name: str) -> str:
+    """``Arc<Handle><Schedule>.schedule()`` -> ``Arc.schedule``."""
 
-    A name several functions share is told apart by the stage's file, then by
-    the call the Overview drew: the one the previous stage calls, or, for the
-    first stage, the one that calls the next. Raises when a name is missing or
-    still ambiguous.
+    return re.sub(r"<[^>]*>", "", name.split(":")[-1]).replace("()", "").strip()
+
+
+def recorded_main_path(ix: RepoIndex) -> list[int]:
+    """The main path the index records, as vertices; [] when there is none.
+
+    It is the path the Overview is built from (``AgentWiki._entry_path``),
+    traced again with no page evidence and no model, so the walk follows
+    exactly the functions the Overview's journey was narrated from.
     """
 
-    cands = []
-    for st in stages:
-        hits = ix.by_name.get(st["name"], [])
-        if st["file"]:
-            hits = [v for v in hits if ix.info(v)["file"] == st["file"]] or [
-                v for v in hits if ix.info(v)["file"].endswith("/" + st["file"])
-            ]
-        if not hits:
-            raise ValueError(f"no function {st['name']} in {st['file'] or 'the index'}")
-        cands.append(hits)
-    vids: list[int] = []
-    for i, hits in enumerate(cands):
-        if len(hits) > 1 and vids:
-            called = {v for v, _, _ in ix.neighbors(vids[-1])}
-            hits = [v for v in hits if v in called] or hits
-        if len(hits) > 1 and i + 1 < len(cands):
-            nxt = set(cands[i + 1])
-            hits = [v for v in hits if nxt & {w for w, _, _ in ix.neighbors(v)}] or hits
-        if len(hits) > 1:
-            files = sorted({ix.info(v)["file"] for v in hits})
-            raise ValueError(
-                f"{stages[i]['name']} names {len(hits)} functions: {files}"
-            )
-        vids.append(hits[0])
-    return vids
+    _items, _relations, path = ix.wiki._entry_path([], [])
+    vids = [ix.names.get(str(step["symbol"])) for step in path]
+    return [vid for vid in vids if vid is not None] if None not in vids else []
+
+
+def check_recorded(stages: list[dict], recorded: list[str]) -> None:
+    """Raise unless the Overview's journey is the recorded main path.
+
+    The journey may leave out stages it could not narrate (a private
+    method, a second function of the same name), so its stages need only
+    appear in the recorded path in order, starting where it starts.
+    """
+
+    if len(recorded) < 3:
+        raise ValueError(
+            "the index records no main path, so the Overview's journey "
+            "(if any) is the model's"
+        )
+    names = [_plain_name(name) for name in recorded]
+    if _plain_name(stages[0]["name"]) != names[0]:
+        raise ValueError(
+            f"the Overview starts at {stages[0]['name']}, but the recorded path "
+            f"starts at {recorded[0]}; regenerate the Overview first"
+        )
+    remaining = iter(names)
+    missing = [
+        stage["name"]
+        for stage in stages
+        if not any(_plain_name(stage["name"]) == name for name in remaining)
+    ]
+    if missing:
+        raise ValueError(
+            f"the Overview's {missing[0]} is not on the recorded path; "
+            "regenerate the Overview first"
+        )
 
 
 def overview_route(ix: RepoIndex, vids: list[int]) -> tuple[list[dict], int]:
@@ -233,14 +253,16 @@ def overview_walk_input(
 ) -> tuple[dict, list[dict]]:
     """The question dict and path for a repository's Overview walk.
 
-    Raises ValueError when the Overview has no path or its functions cannot be
-    found and joined in the index.
+    Raises ValueError when the Overview has no path, its path is not the one
+    the index records, or its functions cannot be found and joined in the
+    index.
     """
 
     title, stages = read_overview_stages(api, ix.repo_id)
     if len(stages) < 2:
         raise ValueError("the Overview has no main path")
-    vids = resolve_stages(ix, stages)
+    vids = recorded_main_path(ix)
+    check_recorded(stages, [ix.info(vid)["name"] for vid in vids])
     path, added = overview_route(ix, vids)
     log["checks"].append(
         {
