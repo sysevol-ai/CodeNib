@@ -249,6 +249,9 @@ class QAConfig:
     # Use the conceptual agent wiki pipeline (outline + per-page generation)
     # instead of the directory-based WikiBuilder.
     wiki_agent: bool = True
+    # Show the repository's README and docs/ Markdown as Wiki pages. On for a
+    # local Wiki (`codenib wiki`), off for the hosted catalog.
+    repo_docs: bool = False
     # Show short LLM-written dependency phrases on graph edges (hover/click).
     # Off by default: each first-seen edge costs one small LLM call (then cached).
     edge_labels: bool = False
@@ -450,6 +453,7 @@ def load_config(
         max_turns=data.get("max_turns", defaults.max_turns),
         max_tokens=data.get("max_tokens", defaults.max_tokens),
         wiki_agent=data.get("wiki_agent", defaults.wiki_agent),
+        repo_docs=bool(data.get("repo_docs", defaults.repo_docs)),
         cors_origins=data.get(
             "cors_origins",
             defaults.cors_origins,

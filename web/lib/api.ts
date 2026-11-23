@@ -160,6 +160,8 @@ export interface WikiPageRef {
 export interface WikiTree {
   repo: string;
   pages: WikiPageRef[];
+  /** A local Wiki's README and docs/ files, served as pages `doc--<path>`. */
+  docs?: { id: string; title: string; path: string }[];
 }
 
 export interface WikiPage {
@@ -176,8 +178,10 @@ export interface WikiPage {
     relations: WikiRelationItem[];
   };
   generation?: {
-    mode: "generated" | "offline" | "degraded";
+    /** "document": the repository's own Markdown file at `path`. */
+    mode: "generated" | "offline" | "degraded" | "document";
     model: string | null;
+    path?: string;
     repaired?: boolean;
     fallback?: "fact_plan" | null;
     renderer?: "fact_plan" | "narrative";

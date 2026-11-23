@@ -54,6 +54,7 @@ from ..wiki.media_generation import (
 )
 from ..wiki.media_storage import load_multimodal_knowledge_bundle
 from ..wiki.narrator import Narrator
+from ..wiki.repo_docs import doc_page, find_docs, is_doc_id
 from ..wiki.repository_visuals import attach_repository_visual, discover_overview_visual
 from ..wiki.sqlite_store import SQLiteWikiStore
 from ..wiki.store import WikiGenerationBusyError
@@ -822,6 +823,10 @@ def _window_stats_for(repo_id: str):
 # task that runs for minutes never holds a bundle generation.
 
 
+def _repo_docs_enabled() -> bool:
+    return bool(getattr(load_config(), "repo_docs", False))
+
+
 def _annotation_repo(repo_id: str) -> tuple:
     with _pinned_bundle(repo_id) as bundle:
         entry = bundle.entry
@@ -830,6 +835,8 @@ def _annotation_repo(repo_id: str) -> tuple:
 
 def _annotation_page(repo_id: str, page_id: str) -> dict | None:
     with _pinned_bundle(repo_id) as bundle:
+        if is_doc_id(page_id) and _repo_docs_enabled():
+            return doc_page(Path(bundle.entry.repo_dir), page_id)
         builder = _wiki(repo_id, bundle)
         cached = getattr(builder, "cached_page", None)
         return cached(page_id) if callable(cached) else builder.page(page_id)
@@ -862,6 +869,18 @@ def _annotation_pages(repo_id: str) -> list[dict]:
             found.append(
                 {"id": ref["id"], "title": ref.get("title"), "citations": cited}
             )
+        if _repo_docs_enabled():
+            # A document cites itself whole, so a change to it reaches its page.
+            for doc in find_docs(Path(bundle.entry.repo_dir)):
+                found.append(
+                    {
+                        "id": doc.id,
+                        "title": doc.title,
+                        "citations": [
+                            {"file": doc.path, "start_line": 1, "end_line": 10**9}
+                        ],
+                    }
+                )
         return found
 
 
@@ -1083,7 +1102,11 @@ async def wiki_tree(repo_id: str, cached_only: bool = False) -> dict:
             pages = pages or []
         else:
             pages = await _run_pinned_thread(builder.page_tree)
-        return {"repo": bundle.entry.repo, "pages": pages}
+        tree = {"repo": bundle.entry.repo, "pages": pages}
+        if _repo_docs_enabled():
+            docs = await _run_pinned_thread(find_docs, Path(bundle.entry.repo_dir))
+            tree["docs"] = [doc.to_json() for doc in docs]
+        return tree
 
 
 @app.get("/api/repos/{repo_id}/wiki/{page_id}")
@@ -1094,7 +1117,12 @@ async def wiki_page(
 ) -> dict:
     with _pinned_bundle(repo_id) as bundle:
         builder = await _run_pinned_thread(_wiki, repo_id, bundle)
-        page = await _run_pinned_thread(builder.page, page_id)
+        if is_doc_id(page_id) and _repo_docs_enabled():
+            page = await _run_pinned_thread(
+                doc_page, Path(bundle.entry.repo_dir), page_id
+            )
+        else:
+            page = await _run_pinned_thread(builder.page, page_id)
         if page is None:
             raise HTTPException(
                 status_code=404,

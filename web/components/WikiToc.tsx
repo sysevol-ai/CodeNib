@@ -16,6 +16,9 @@ const STATE_LABELS: Record<WikiPageState, string> = {
   needs_review: "Withheld after source checks",
 };
 
+// The README and the first few documents show; the rest wait behind a toggle.
+const DOCS_SHOWN = 6;
+
 const CACHE_LABELS = {
   ready: "Cached page",
   cold: "First load will generate this page",
@@ -38,6 +41,7 @@ export default function WikiToc({
   walks,
   activeWalk,
   onWalk,
+  docs,
 }: {
   pages: WikiPageRef[];
   activeId: string;
@@ -50,8 +54,11 @@ export default function WikiToc({
   walks?: { id: string; label: string }[];
   activeWalk?: string;
   onWalk?: (id: string) => void;
+  /** The repository's own README and docs/ files, read as pages. */
+  docs?: { id: string; title: string; path: string }[];
 }) {
   const [choices, setChoices] = useState<Record<string, boolean>>({});
+  const [allDocs, setAllDocs] = useState(false);
   const [moreChoice, setMoreChoice] = useState<boolean | null>(null);
   const { primary, more } = partitionWikiNav(pages);
   const activePath = pagePath(pages, activeId);
@@ -122,6 +129,46 @@ export default function WikiToc({
   return (
     <>
       {renderPages(primary)}
+      {docs && docs.length > 0 && (
+        <div className="toc-walks toc-docs">
+          <div className="toc-walks-title" id="toc-docs-title">
+            Repository docs
+          </div>
+          <ul className="toc-tree" aria-labelledby="toc-docs-title">
+            {(allDocs || docs.length <= DOCS_SHOWN
+              ? docs
+              : docs.filter(
+                  (doc, index) => index < DOCS_SHOWN - 1 || doc.id === activeId,
+                )
+            ).map((doc) => (
+              <li key={doc.id}>
+                <div className="toc-row">
+                  <button
+                    type="button"
+                    className={`toc-link ${doc.id === activeId ? "active" : ""}`}
+                    aria-current={doc.id === activeId ? "page" : undefined}
+                    title={doc.path}
+                    onClick={() => onPick(doc.id)}
+                  >
+                    <span className="toc-label">{doc.title}</span>
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+          {docs.length > DOCS_SHOWN && (
+            <button
+              type="button"
+              className={`toc-more-toggle ${allDocs ? "open" : ""}`}
+              aria-expanded={allDocs}
+              onClick={() => setAllDocs(!allDocs)}
+            >
+              <span aria-hidden="true">›</span>{" "}
+              {allDocs ? "Fewer documents" : `All documents (${docs.length})`}
+            </button>
+          )}
+        </div>
+      )}
       {walks && walks.length > 0 && onWalk && (
         <div className="toc-walks">
           <div className="toc-walks-title" id="toc-walks-title">

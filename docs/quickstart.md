@@ -125,8 +125,10 @@ prepare project-local dependencies such as `node_modules`; run those profiles
 from a clean checkout when that distinction matters. Press `Ctrl-C` once to
 stop both services.
 
-Without a model the pages are built from the code index: lists of files and
-definitions. To have the pages written, add `--generate`. With Claude Code
+The repository's own README and the Markdown files under `docs/` appear as
+pages too, under **Repository docs**, in the order `mkdocs.yml` lists them when
+there is one. Without a model the other pages are built from the code index:
+lists of files and definitions. To have the pages written, add `--generate`. With Claude Code
 installed and signed in, it writes them on your Claude Code plan and needs no
 API key; the Overview comes first and the other pages follow in the background,
 at roughly $0.10 to $0.20 a page:
