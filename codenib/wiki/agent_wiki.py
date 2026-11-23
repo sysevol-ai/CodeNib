@@ -4659,10 +4659,10 @@ class AgentWiki:
 
     def _client(self):
         if self._llm is None:
-            from ..llm.litellm_chat import LiteLLMChat
+            from ..llm.claude_code import chat_for
 
-            self._llm = LiteLLMChat(
-                model=self._model,
+            self._llm = chat_for(
+                self._model,
                 temperature=0.2,
                 max_tokens=4096,
                 api_base=self._api_base,

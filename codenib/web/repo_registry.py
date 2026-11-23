@@ -1615,7 +1615,12 @@ class RepoRegistry:
             bundle = RepoBundle(
                 entry=entry,
                 manifest=manifest,
-                chat_available=find_spec("litellm") is not None,
+                # Ask runs a tool-calling agent; a Claude Code writing model
+                # answers plain completions only, so Ask stays off with it.
+                chat_available=find_spec("litellm") is not None
+                and not str(getattr(self._config, "model", "") or "").startswith(
+                    "claude-code/"
+                ),
                 view_loader=partial(
                     self._load_repo_views,
                     source_binding=source_binding,

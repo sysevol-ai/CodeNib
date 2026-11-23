@@ -1925,7 +1925,31 @@ def _run_wiki(args: argparse.Namespace) -> int:
     audit = bool(args.audit or args.audit_json)
     model_options = _model_options_for_args(args)
     visual_facts_backend = _visual_facts_backend_for_args(args)
-    if (
+    from .llm.claude_code import DEFAULT_MODEL as CLAUDE_CODE_MODEL
+    from .llm.claude_code import available as claude_code_available
+    from .llm.claude_code import is_claude_code_model
+
+    named_model = (
+        args.model
+        or os.environ.get("CODENIB_DEMO_WIKI_MODEL")
+        or os.environ.get("CODENIB_DEMO_MODEL")
+    )
+    if args.agent_wiki and not named_model and not args.model_provider:
+        # No model and no key: write the pages with the person's own Claude Code.
+        if not claude_code_available():
+            raise CLIError(
+                "--generate needs a writing model: install Claude Code and sign "
+                "in, and its pages are written on your Claude Code plan; or "
+                "pass --model with --api-key-env"
+            )
+        args.model = CLAUDE_CODE_MODEL
+    claude_pages = is_claude_code_model(args.model or named_model)
+    if claude_pages and (args.model_provider or args.api_base or args.api_key_env):
+        raise CLIError(
+            "a claude-code/ model runs on the local Claude Code; it takes no "
+            "--model-provider, --api-base or --api-key-env"
+        )
+    if not claude_pages and (
         args.agent_wiki
         or audit
         or args.model
@@ -1942,6 +1966,10 @@ def _run_wiki(args: argparse.Namespace) -> int:
     model_backend = _model_backend_for_args(args, options=model_options)
     if args.model_provider and model_backend is None:
         raise CLIError("--model is required when --model-provider is selected")
+    if claude_pages and model_backend is not None:
+        model_backend = _ResolvedModelBackend(
+            model=model_backend.model, api_base=None, api_key=None, auth_source=None
+        )
 
     if args.no_index:
         manifest_path = resolve_manifest_path(str(repo_path))
@@ -2034,6 +2062,17 @@ def _run_wiki(args: argparse.Namespace) -> int:
             f"{fact_count} artifact(s) -> {destination}"
         )
 
+    if claude_pages and (args.agent_wiki or audit):
+        print(
+            f"Pages are written by your Claude Code ({args.model or named_model}) "
+            "on this machine, on your Claude Code plan; no API key is used."
+        )
+    elif not args.agent_wiki and not audit and claude_code_available():
+        print(
+            "Pages are built from the code index. Add --generate to have your "
+            "Claude Code write them, on your Claude Code plan."
+        )
+
     from .web.launcher import launch_local_wiki
     from .web.local import prepare_local_wiki
 
@@ -2050,6 +2089,9 @@ def _run_wiki(args: argparse.Namespace) -> int:
             embedding_api_key_env=(
                 embedding_route.credential_env if embedding_route else None
             ),
+            # Claude Code writes pages on the person's plan; have them ready
+            # before they are opened instead of making each first visit wait.
+            prewarm=bool(args.agent_wiki and claude_pages and not audit),
         )
     except ValueError as exc:
         raise CLIError(str(exc)) from exc

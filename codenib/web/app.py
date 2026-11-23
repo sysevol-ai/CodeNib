@@ -149,10 +149,10 @@ def _historical_source_slice(
 
 
 def _wiki_llm(config, *, model=None, max_tokens=4096):
-    from ..llm.litellm_chat import LiteLLMChat
+    from ..llm.claude_code import chat_for
 
-    return LiteLLMChat(
-        model=model or config.wiki_generation_model,
+    return chat_for(
+        model or config.wiki_generation_model,
         temperature=0.2,
         max_tokens=max_tokens,
         api_base=getattr(config, "wiki_generation_api_base", None),

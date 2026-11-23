@@ -135,10 +135,10 @@ class Narrator:
 
     def _client(self):
         if self._llm is None:
-            from ..llm.litellm_chat import LiteLLMChat
+            from ..llm.claude_code import chat_for
 
-            self._llm = LiteLLMChat(
-                model=self.model,
+            self._llm = chat_for(
+                self.model,
                 temperature=0.2,
                 max_tokens=500,
                 api_base=self.api_base,
