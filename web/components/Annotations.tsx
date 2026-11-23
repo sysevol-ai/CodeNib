@@ -33,6 +33,7 @@ import {
   type Annotation,
   type AnnotationAnchor,
   type CodeRef,
+  type DiffHunk,
   type HumanKind,
   type Thread,
 } from "@/lib/annotations";
@@ -440,29 +441,90 @@ function codeLabel(ref: CodeRef): string {
   return ref.start_line ? `${ref.path}:${ref.start_line}` : ref.path;
 }
 
-function DiffView({ patch }: { patch: string }) {
-  const lines = patch.split("\n");
+function lineKind(line: string): "add" | "del" | "ctx" | "meta" {
+  if (line.startsWith("+")) return "add";
+  if (line.startsWith("-")) return "del";
+  if (line.startsWith("\\")) return "meta";
+  return "ctx";
+}
+
+const HUNK_STATE: Record<DiffHunk["state"], string> = {
+  open: "",
+  accepted: "Applied",
+  rejected: "Discarded",
+};
+
+/** The diff hunk by hunk: apply or discard each one (a / x on a focused hunk). */
+function HunkReview({
+  hunks,
+  busy,
+  readOnly,
+  onDecide,
+}: {
+  hunks: DiffHunk[];
+  busy: boolean;
+  /** Shown away from the request (a note on another page): states only. */
+  readOnly: boolean;
+  onDecide: (decision: "accept" | "reject", ids: string[]) => void;
+}) {
+  const files: { path: string; hunks: DiffHunk[] }[] = [];
+  for (const hunk of hunks) {
+    const last = files[files.length - 1];
+    if (last && last.path === hunk.path) last.hunks.push(hunk);
+    else files.push({ path: hunk.path, hunks: [hunk] });
+  }
   return (
-    <pre className="cn-diff" aria-label="Diff">
-      {lines.map((line, index) => {
-        const kind = line.startsWith("+++") || line.startsWith("---") || line.startsWith("diff ") || line.startsWith("index ")
-          ? "meta"
-          : line.startsWith("@@")
-            ? "hunk"
-            : line.startsWith("+")
-              ? "add"
-              : line.startsWith("-")
-                ? "del"
-                : "ctx";
-        if (kind === "meta" && !line.startsWith("+++")) return null;
-        return (
-          <span key={index} className={`cn-diff-${kind}`}>
-            {kind === "meta" ? line.replace(/^\+\+\+ b\//, "") : line || " "}
-            {"\n"}
-          </span>
-        );
-      })}
-    </pre>
+    <div className="cn-hunks" aria-label="Diff">
+      {files.map((file) => (
+        <section key={file.path} className="cn-hunk-file">
+          <header className="cn-hunk-path mono">{file.path}</header>
+          {file.hunks.map((hunk) => (
+            <div
+              key={hunk.id}
+              className={`cn-hunk is-${hunk.state}`}
+              tabIndex={hunk.state === "open" && !readOnly ? 0 : -1}
+              aria-label={`Hunk ${hunk.header || file.path}, ${hunk.state === "open" ? "not decided" : HUNK_STATE[hunk.state]}`}
+              onKeyDown={(event) => {
+                if (hunk.state !== "open" || busy || readOnly) return;
+                if (event.key === "a") onDecide("accept", [hunk.id]);
+                if (event.key === "x") onDecide("reject", [hunk.id]);
+              }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="cn-hunk-head">
+                <span className="cn-hunk-range mono">
+                  {hunk.header ? hunk.header.replace(/^(@@[^@]*@@).*$/, "$1") : "whole file"}
+                </span>
+                <span className="cn-add">+{hunk.added}</span>
+                <span className="cn-del">−{hunk.deleted}</span>
+                {hunk.state === "open" ? (
+                  readOnly ? null : (
+                  <>
+                    <button type="button" className="cn-link cn-push" disabled={busy} onClick={() => onDecide("accept", [hunk.id])}>
+                      Apply
+                    </button>
+                    <button type="button" className="cn-link" disabled={busy} onClick={() => onDecide("reject", [hunk.id])}>
+                      Discard
+                    </button>
+                  </>
+                  )
+                ) : (
+                  <span className="cn-status cn-push">{HUNK_STATE[hunk.state]}</span>
+                )}
+              </div>
+              <pre className="cn-diff">
+                {hunk.lines.map((line, index) => (
+                  <span key={index} className={`cn-diff-${lineKind(line)}`}>
+                    {line || " "}
+                    {"\n"}
+                  </span>
+                ))}
+              </pre>
+            </div>
+          ))}
+        </section>
+      ))}
+    </div>
   );
 }
 
@@ -556,7 +618,7 @@ function ThreadCard({
   const { thread, range } = placed;
   const items = [thread.root, ...thread.replies];
   const [diffFor, setDiffFor] = useState<string | null>(null);
-  const [patch, setPatch] = useState<string | null>(null);
+  const [hunks, setHunks] = useState<DiffHunk[] | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const last = items[items.length - 1];
@@ -577,15 +639,25 @@ function ThreadCard({
       setBusy(false);
     }
   };
+  const loadHunks = async (taskId: string) =>
+    setHunks((await fetchTaskDiff(repoId, taskId)).hunks);
   const showDiff = async (taskId: string) => {
     if (diffFor === taskId) {
       setDiffFor(null);
       return;
     }
     setDiffFor(taskId);
-    setPatch(null);
-    await run(async () => setPatch((await fetchTaskDiff(repoId, taskId)).patch));
+    setHunks(null);
+    await run(() => loadHunks(taskId));
   };
+  const decideHunks = (taskId: string, decision: "accept" | "reject", ids?: string[]) =>
+    run(async () => {
+      try {
+        await act.decide(taskId, decision, ids);
+      } finally {
+        if (diffFor === taskId) await loadHunks(taskId);
+      }
+    });
 
   return (
     <article
@@ -721,10 +793,12 @@ function ThreadCard({
                         disabled={busy}
                         onClick={(e) => {
                           e.stopPropagation();
-                          void run(() => act.decide(task.id, "accept"));
+                          void decideHunks(task.id, "accept");
                         }}
                       >
-                        Apply to working tree
+                        {(task.diff.accepted?.length ?? 0) + (task.diff.rejected?.length ?? 0) > 0
+                          ? "Apply the rest"
+                          : "Apply to working tree"}
                       </button>
                       <button
                         type="button"
@@ -732,17 +806,29 @@ function ThreadCard({
                         disabled={busy}
                         onClick={(e) => {
                           e.stopPropagation();
-                          void run(() => act.decide(task.id, "reject"));
+                          void decideHunks(task.id, "reject");
                         }}
                       >
-                        Discard
+                        {(task.diff.accepted?.length ?? 0) + (task.diff.rejected?.length ?? 0) > 0
+                          ? "Discard the rest"
+                          : "Discard"}
                       </button>
                     </>
                   )}
                   {item.status === "applied" && <span className="cn-status is-applied">Applied</span>}
                   {item.status === "rejected" && <span className="cn-status is-rejected">Discarded</span>}
                 </div>
-                {diffFor === task.id && (patch === null ? <p className="cn-meta">Loading the diff…</p> : <DiffView patch={patch} />)}
+                {diffFor === task.id &&
+                  (hunks === null ? (
+                    <p className="cn-meta">Loading the diff…</p>
+                  ) : (
+                    <HunkReview
+                      hunks={hunks}
+                      busy={busy}
+                      readOnly={task.status !== "needs_review" || !item.reply_to}
+                      onDecide={(decision, ids) => void decideHunks(task.id, decision, ids)}
+                    />
+                  ))}
                 {task.diff.pages && task.diff.pages.length > 1 && (
                   <p className="cn-meta">
                     Also on{" "}
@@ -821,7 +907,7 @@ interface Actions {
   reply: (root: Annotation, last: Annotation, text: string, send: boolean) => Promise<void>;
   resolve: (root: Annotation) => Promise<void>;
   reopen: (root: Annotation) => Promise<void>;
-  decide: (taskId: string, decision: "accept" | "reject") => Promise<void>;
+  decide: (taskId: string, decision: "accept" | "reject", hunks?: string[]) => Promise<void>;
 }
 
 // --- The layer the reader mounts ----------------------------------------------
@@ -951,9 +1037,9 @@ export function AnnotationLayer({
       await updateAnnotation(repoId, root.id, { status: root.kind === "note" ? "open" : "draft" });
       await refresh();
     },
-    decide: async (taskId, decision) => {
+    decide: async (taskId, decision, hunks) => {
       try {
-        await decideTask(repoId, taskId, decision);
+        await decideTask(repoId, taskId, decision, hunks);
       } finally {
         await refresh();
       }

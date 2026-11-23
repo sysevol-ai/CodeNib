@@ -650,3 +650,54 @@
   gap: 10px;
   flex-wrap: wrap;
 }
+
+/* --- Reviewing a change hunk by hunk ---------------------------------------- */
+
+.cn-hunks {
+  display: grid;
+  gap: 12px;
+}
+.cn-hunk-file {
+  display: grid;
+  gap: 6px;
+}
+.cn-hunk-path {
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-strong);
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+.cn-hunk {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.cn-hunk:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+.cn-hunk-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  background: var(--bg-subtle);
+  font-size: var(--fs-micro);
+}
+.cn-hunk-range {
+  color: var(--text-muted);
+}
+.cn-hunk .cn-diff {
+  border: 0;
+  border-radius: 0;
+  max-height: 260px;
+}
+.cn-hunk.is-accepted .cn-diff,
+.cn-hunk.is-rejected .cn-diff {
+  opacity: 0.55;
+}
+.cn-hunk.is-rejected .cn-diff-add,
+.cn-hunk.is-rejected .cn-diff-del {
+  text-decoration: line-through;
+}

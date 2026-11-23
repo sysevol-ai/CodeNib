@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from .agents import Agent, AgentRun, add_usage
+from .hunks import all_hunks, parse_patch, patch_for
 from .model import Annotation, AnnotationError, AnnotationStore, utc_now
 from .prompt import RESULT_SCHEMA, SYSTEM_PROMPT, PageLookup, build_prompt
 from .tasks import Task, TaskStore
@@ -439,38 +440,27 @@ def _close_change(repo: Path, task: Task, status: str) -> None:
     _remove_worktree(repo, tasks.run_dir(task.id) / "worktree")
 
 
-def accept(repo: Path, task_id: str) -> Task:
-    """Apply a change's diff to the person's working tree."""
+def review(repo: Path, task_id: str) -> Dict[str, Any]:
+    """A change's diff, hunk by hunk, with what was decided about each."""
 
-    tasks = TaskStore(repo)
-    with tasks.lock:
-        task = tasks.get(task_id)
-        if task.status != "needs_review":
-            raise AnnotationError(
-                f"task {task_id} is {task.status}, not waiting for review"
-            )
-        patch = tasks.run_dir(task.id) / "diff.patch"
-        if not patch.is_file():
-            raise AnnotationError("the diff of this task is gone")
-        completed = subprocess.run(
-            ["git", "-C", str(repo), "apply", "--check", str(patch)],
-            capture_output=True,
-            text=True,
-            check=False,
+    task = TaskStore(repo).get(task_id)
+    patch = task_patch(repo, task_id)
+    accepted = set(task.diff.get("accepted") or [])
+    rejected = set(task.diff.get("rejected") or [])
+    hunks = []
+    for hunk in all_hunks(parse_patch(patch)):
+        state = (
+            "accepted"
+            if hunk.id in accepted
+            else "rejected" if hunk.id in rejected else "open"
         )
-        if completed.returncode != 0:
-            raise AnnotationError(
-                "The change no longer applies to your working tree: "
-                + (completed.stderr.strip().splitlines() or ["conflict"])[0]
-            )
-        _git(repo, "apply", str(patch))
-        _close_change(repo, task, "applied")
-        return tasks.update(task.id, status="done", finished=utc_now())
+        hunks.append({**hunk.to_json(), "state": state, "lines": hunk.lines[:2000]})
+    return {"patch": patch, "hunks": hunks}
 
 
-def reject(repo: Path, task_id: str) -> Task:
-    """Drop a change: its worktree and its branch go, the record stays."""
-
+def _decide(
+    repo: Path, task_id: str, hunks: Optional[Sequence[str]], decision: str
+) -> Task:
     tasks = TaskStore(repo)
     with tasks.lock:
         task = tasks.get(task_id)
@@ -478,6 +468,64 @@ def reject(repo: Path, task_id: str) -> Task:
             raise AnnotationError(
                 f"task {task_id} is {task.status}, not waiting for review"
             )
-        _close_change(repo, task, "rejected")
-        _git(repo, "branch", "-D", branch_name(task.id), check=False)
-        return tasks.update(task.id, status="rejected", finished=utc_now())
+        path = tasks.run_dir(task.id) / "diff.patch"
+        if not path.is_file():
+            raise AnnotationError("the diff of this task is gone")
+        files = parse_patch(path.read_text(encoding="utf-8"))
+        every = [hunk.id for hunk in all_hunks(files)]
+        accepted = list(task.diff.get("accepted") or [])
+        rejected = list(task.diff.get("rejected") or [])
+        undecided = [i for i in every if i not in accepted and i not in rejected]
+        chosen = list(dict.fromkeys(hunks)) if hunks else undecided
+        for hunk_id in chosen:
+            if hunk_id not in every:
+                raise AnnotationError(f"this change has no hunk {hunk_id}")
+            if hunk_id not in undecided:
+                raise AnnotationError(f"hunk {hunk_id} was already decided")
+        if decision == "accept" and chosen:
+            partial = tasks.run_dir(task.id) / f"accept-{len(accepted)}.patch"
+            partial.write_text(patch_for(files, chosen), encoding="utf-8")
+            completed = subprocess.run(
+                ["git", "-C", str(repo), "apply", "--check", "--recount", str(partial)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if completed.returncode != 0:
+                raise AnnotationError(
+                    "The change no longer applies to your working tree: "
+                    + (completed.stderr.strip().splitlines() or ["conflict"])[0]
+                )
+            _git(repo, "apply", "--recount", str(partial))
+            accepted += chosen
+        else:
+            rejected += chosen
+        diff = {**task.diff, "accepted": accepted, "rejected": rejected}
+        if any(i not in accepted and i not in rejected for i in every):
+            return tasks.update(task.id, diff=diff)
+        # Every hunk is decided: the change is applied if any part of it was.
+        _close_change(repo, task, "applied" if accepted else "rejected")
+        if not accepted:
+            _git(repo, "branch", "-D", branch_name(task.id), check=False)
+        return tasks.update(
+            task.id,
+            diff=diff,
+            status="done" if accepted else "rejected",
+            finished=utc_now(),
+        )
+
+
+def accept(repo: Path, task_id: str, hunks: Optional[Sequence[str]] = None) -> Task:
+    """Apply hunks of a change to the working tree; all undecided ones by default."""
+
+    return _decide(repo, task_id, hunks, "accept")
+
+
+def reject(repo: Path, task_id: str, hunks: Optional[Sequence[str]] = None) -> Task:
+    """Discard hunks of a change; all undecided ones by default.
+
+    When nothing of the change was applied, its branch goes too; the record
+    stays.
+    """
+
+    return _decide(repo, task_id, hunks, "reject")

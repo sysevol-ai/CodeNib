@@ -31,7 +31,11 @@ FAKE_AGENT = textwrap.dedent("""
         ids = []
     if os.environ.get("CODENIB_TASK_EDIT") == "1":
         path = Path("calc.py")
-        path.write_text(path.read_text().replace("a - b", "a + b"))
+        text = path.read_text().replace("a - b", "a + b")
+        if mode == "multi":
+            text = text.replace("x * 1", "x * 2")
+            Path("NOTES.md").write_text("new file" + chr(10))
+        path.write_text(text)
     results = []
     for index, annotation_id in enumerate(ids):
         key = "A-" + annotation_id if mode == "mangle" else annotation_id

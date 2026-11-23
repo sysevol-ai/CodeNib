@@ -164,9 +164,9 @@ start your agent.
 3. A question comes back as an answer under it, with its code references
    linked to the source. Reply to ask a follow-up.
 4. A change request runs in a separate git worktree, so your working tree
-   stays as it was. Review the diff in Notes, then apply it to your working
-   tree or discard it. Other pages that cite the changed lines get a short
-   note about the change.
+   stays as it was. Review the diff in Notes hunk by hunk: apply or discard
+   each one (or press `a` or `x` on it), or the rest at once. Other pages that
+   cite the changed lines get a short note about the change.
 5. A note is a standing fact, such as "this path must stay lock-free". It is
    never sent on its own: every later task on the same page includes it, and
    the agent is told not to contradict it.
