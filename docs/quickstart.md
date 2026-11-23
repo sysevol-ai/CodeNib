@@ -170,6 +170,13 @@ start your agent.
 5. A note is a standing fact, such as "this path must stay lock-free". It is
    never sent on its own: every later task on the same page includes it, and
    the agent is told not to contradict it.
+6. **Add to page** puts an answer into the page itself, under its question,
+   at the end of the section it was asked about.
+7. **Edit page** opens the page's Markdown. Your edit is saved as
+   `.codenib/wiki/<page>.md`, and regenerating the Wiki never overwrites it;
+   the page tells you when the generated text has changed since, and
+   **Show the generated page** drops your edit. Editing a repository document,
+   such as the README, saves the file itself.
 
 The agent gets file tools only: it reads and searches the code, and edits it
 for a change. It has no shell or network tools. Claude Code must be installed
@@ -182,6 +189,7 @@ them with your team, or add `.codenib/` to `.gitignore` to keep them local.
 | --- | --- |
 | `.codenib/notes/<id>.md` | One annotation or answer, in the same format as [change guard](guard.md) notes |
 | `.codenib/tasks/<id>.json` | One task: its annotations, status, changed files and token use |
+| `.codenib/wiki/<page>.md` | A page you edited, or one an answer was added to |
 
 Prompts, the agent's output and its worktrees stay outside the repository,
 under `~/.codenib/repositories/`. Set `CODENIB_TASK_MODEL` to pick the Claude

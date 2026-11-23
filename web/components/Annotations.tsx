@@ -21,6 +21,7 @@ import {
   fetchAnnotations,
   fetchTaskDiff,
   findAnchor,
+  foldAnswer,
   isLive,
   linkCodeRefs,
   localSession,
@@ -762,6 +763,26 @@ function ThreadCard({
             {!mine && task && task.usage && usageLine(task.usage) && item.id === task.results[0] && (
               <p className="cn-meta cn-usage">{usageLine(task.usage)}</p>
             )}
+            {!mine && item.kind === "answer" && (
+              <div className="cn-row">
+                {item.status === "applied" ? (
+                  <span className="cn-status is-applied">Added to the page</span>
+                ) : (
+                  <button
+                    type="button"
+                    className="cn-button"
+                    disabled={busy}
+                    title="Add this answer to the page, under its question"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void run(() => act.fold(item));
+                    }}
+                  >
+                    Add to page
+                  </button>
+                )}
+              </div>
+            )}
             {mine && item.status === "failed" && task?.error && <p className="cn-error">{task.error}</p>}
           </section>
         );
@@ -795,6 +816,7 @@ function ThreadCard({
 }
 
 interface Actions {
+  fold: (answer: Annotation) => Promise<void>;
   remove: (id: string) => Promise<void>;
   reply: (root: Annotation, last: Annotation, text: string, send: boolean) => Promise<void>;
   resolve: (root: Annotation) => Promise<void>;
@@ -815,6 +837,7 @@ export function AnnotationLayer({
   onOpenChange,
   onOpenCode,
   onPage,
+  onPageChanged,
 }: {
   repoId: string;
   pageId: string;
@@ -827,6 +850,8 @@ export function AnnotationLayer({
   onOpenChange: (open: boolean) => void;
   onOpenCode: (ref: CodeRef) => void;
   onPage: (pageId: string) => void;
+  /** The page's text changed (an answer was added); reload it. */
+  onPageChanged: () => void;
 }) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
@@ -899,6 +924,11 @@ export function AnnotationLayer({
   };
 
   const act: Actions = {
+    fold: async (answer) => {
+      await foldAnswer(repoId, pageId, answer.id);
+      await refresh();
+      onPageChanged();
+    },
     remove: async (id) => {
       await deleteAnnotation(repoId, id);
       await refresh();

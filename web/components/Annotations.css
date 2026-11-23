@@ -594,3 +594,59 @@
     display: none;
   }
 }
+
+/* --- Editing a page -------------------------------------------------------- */
+
+.cn-editor {
+  display: grid;
+  gap: 10px;
+}
+.cn-editor-bar {
+  position: sticky;
+  top: calc(var(--top-h) + 8px);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+.cn-editor-bar .cn-meta {
+  margin: 0;
+  margin-right: auto;
+}
+.cn-editor-bar code {
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+}
+.cn-editor-text {
+  width: 100%;
+  min-height: 70vh;
+  resize: vertical;
+  padding: 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg-page);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--fs-small);
+  line-height: 1.6;
+  tab-size: 2;
+}
+.cn-editor-text:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+.cn-edit-launch {
+  background: transparent;
+}
+.cn-edited {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}

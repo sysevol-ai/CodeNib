@@ -168,6 +168,8 @@ export interface WikiPage {
   id: string;
   title: string;
   markdown: string;
+  /** A person edited this page; their text replaces the generated one. */
+  edited?: { at: string; path: string; stale: boolean };
   citations: Citation[];
   diagram: string;
   media_slots?: WikiMediaSlot[];

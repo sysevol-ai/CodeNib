@@ -233,3 +233,53 @@ def test_an_interrupted_task_is_marked_failed(client: TestClient, repo: Path) ->
     (stale,) = [t for t in state["tasks"] if t["id"] == task.id]
     assert stale["status"] == "failed" and "interrupted" in stale["error"]
     assert json.loads(json.dumps(state))["annotations"][0]["status"] == "failed"
+
+
+def test_an_answer_is_added_to_its_page_and_edits_save(
+    client: TestClient, repo: Path
+) -> None:
+    question = client.post(
+        "/api/repos/calc/annotations",
+        json={
+            "kind": "question",
+            "text": "Does it add?",
+            "on": {"page": "math", "section": "Add", "quote": "two numbers"},
+        },
+    ).json()
+    done = _wait(
+        client,
+        client.post(
+            "/api/repos/calc/tasks", json={"annotations": [question["id"]]}
+        ).json()["id"],
+    )
+    answer_id = done["results"][0]
+
+    folded = client.post(
+        "/api/repos/calc/pages/math/fold", json={"annotation": answer_id}
+    )
+
+    assert folded.status_code == 200, folded.text
+    assert "**Does it add?**\n\nIt subtracts." in folded.json()["markdown"]
+    state = client.get("/api/repos/calc/annotations", params={"page": "math"}).json()
+    assert {a["id"]: a for a in state["annotations"]}[answer_id]["status"] == "applied"
+    assert (repo / ".codenib" / "wiki" / "math.md").exists()
+
+    source = client.get("/api/repos/calc/pages/math/markdown").json()
+    assert source["edited"] is True
+    stale = client.put(
+        "/api/repos/calc/pages/math/markdown",
+        json={"markdown": "# Math", "base": "old"},
+    )
+    assert stale.status_code == 409
+    saved = client.put(
+        "/api/repos/calc/pages/math/markdown",
+        json={"markdown": "# Math\n\nMine.", "base": source["base"]},
+    )
+    assert saved.json()["markdown"] == "# Math\n\nMine."
+    assert client.delete("/api/repos/calc/pages/math/markdown").json() == {
+        "reverted": True
+    }
+    question_fold = client.post(
+        "/api/repos/calc/pages/math/fold", json={"annotation": question["id"]}
+    )
+    assert question_fold.status_code == 409
