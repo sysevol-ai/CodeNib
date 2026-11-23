@@ -10,8 +10,12 @@ To read it locally:
 
 1. Start it in the background from the repository root with
    `codenib wiki . --no-open`; it indexes the repository and serves the Wiki on
-   http://127.0.0.1:3000. Give the user that address. The pages are derived
-   from the index and need no model.
+   http://127.0.0.1:3000. Give the user the full address it prints after
+   `CodeNib Wiki is ready:`. Its `?session=` key lets them annotate pages: they
+   select words to ask a question, request a change or leave a note, and send
+   questions and changes to their own Claude Code, whose answers come back on
+   the page. Notes and tasks are saved as files under `.codenib/` in the
+   repository. The pages are derived from the index and need no model.
 2. For model-written pages, ask which model to use and how its key is set, then
    add `--generate --model <provider/model> --api-key-env <VARIABLE>`. This
    calls the model once per page, so tell the user it costs money before

@@ -1,0 +1,753 @@
+/* A walkthrough, in the Wiki's reading column.
+   Two sheets: the route with the Wiki map beside it, and a fixed-height narration whose prose and code scroll
+   inside it, so nothing moves between steps. Colour means one thing: the Wiki map area the code lives in. */
+.walk {
+  --walk-sheet: var(--bg-surface);
+  --walk-well: var(--bg-muted);
+  --walk-ink: var(--text-primary);
+  --walk-ink-2: var(--text-secondary);
+  --walk-muted: var(--text-muted);
+  --walk-line: color-mix(in srgb, var(--border-subtle) 55%, var(--border-strong));
+  --walk-grid: color-mix(in srgb, var(--text-primary) 4%, transparent);
+  --walk-none: #80868b;
+  --walk-story-h: 760px;
+  container: walk / inline-size;
+  display: grid;
+  gap: 24px;
+  max-width: 1360px;
+  margin: 0 auto;
+}
+.walk .mono {
+  font-family: var(--font-mono);
+}
+/* A long function name in a heading or a sentence wraps rather than widening a phone's page. */
+.walk :is(h1, h2, p, dd) {
+  overflow-wrap: anywhere;
+}
+.walk code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  color: var(--walk-ink);
+}
+
+.walk-intro {
+  display: grid;
+  gap: 8px;
+  max-width: 780px;
+}
+.walk-intro h1 {
+  margin: 0;
+  font-size: clamp(28px, 2.5vw, 34px);
+  line-height: 1.15;
+  font-weight: var(--fw-strong);
+  letter-spacing: -0.022em;
+  text-wrap: balance;
+}
+.walk-intro h1 code {
+  font-size: 0.9em;
+}
+.walk-dek {
+  margin: 0;
+  max-width: 66ch;
+  font-size: 18px;
+  line-height: 1.6;
+  color: var(--walk-ink);
+}
+.walk-facts {
+  margin: 0;
+  font-size: var(--fs-caption);
+  color: var(--walk-muted);
+}
+
+.walk-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.walk-sheet {
+  min-width: 0;
+  background: var(--walk-sheet);
+  border: 1px solid var(--walk-line);
+  border-radius: var(--radius-lg);
+}
+.walk-figure {
+  container: walkfigure / inline-size;
+  display: grid;
+  gap: 18px;
+  padding: 20px 22px;
+  align-content: start;
+}
+.walk-figure-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.walk-now {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 28px;
+  margin: 0;
+  font-size: var(--fs-caption);
+}
+.walk-now div {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  min-width: 0;
+}
+.walk-now dt {
+  color: var(--walk-muted);
+  white-space: nowrap;
+}
+.walk-now dd {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--walk-ink);
+  font-weight: var(--fw-strong);
+}
+.walk-now dd.mono {
+  font-weight: var(--fw-regular);
+}
+
+.walk-board {
+  min-width: 0;
+  border-radius: var(--radius-md);
+  background-color: var(--walk-well);
+  background-image:
+    linear-gradient(var(--walk-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--walk-grid) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+.walk-route {
+  display: block;
+}
+.walk-route text {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  fill: var(--walk-ink-2);
+}
+.walk-route .zone rect {
+  fill: color-mix(in srgb, var(--area, var(--walk-none)) 7%, var(--walk-sheet));
+  stroke: var(--walk-line);
+  stroke-width: 1.5;
+  transition: stroke 0.2s;
+}
+.walk-route .zone.ext rect {
+  fill: none;
+  stroke: var(--walk-muted);
+  stroke-dasharray: 6 5;
+}
+.walk-route .zone.is-here rect {
+  stroke: var(--area, var(--accent));
+  stroke-width: 2.5;
+}
+.walk-route .zone .file {
+  font-weight: var(--fw-strong);
+  fill: var(--walk-ink);
+}
+.walk-route .zone .chapter {
+  font-family: var(--font-sans);
+  font-weight: 500;
+  fill: var(--walk-muted);
+}
+.walk-route .seg {
+  fill: none;
+  stroke: var(--walk-line);
+  stroke-width: 3;
+  stroke-linecap: round;
+  transition: stroke 0.2s;
+}
+.walk-route .seg.dash {
+  stroke-dasharray: 1 8;
+}
+.walk-route .seg.is-done {
+  stroke: var(--walk-ink-2);
+}
+.walk-route .seg.is-active {
+  stroke: var(--area, var(--accent));
+}
+.walk-route .site {
+  fill: var(--walk-muted);
+}
+.walk-route .site.is-active {
+  fill: var(--walk-ink);
+  font-weight: var(--fw-strong);
+}
+.walk-route .stop {
+  cursor: pointer;
+  outline: none;
+}
+.walk-route .stop.is-inert {
+  cursor: default;
+}
+.walk-route .stop .dot {
+  fill: var(--walk-sheet);
+  stroke: var(--walk-line);
+  stroke-width: 2;
+  transition: fill 0.2s, stroke 0.2s;
+}
+.walk-route .stop.is-done .dot,
+.walk-route .stop.is-active .dot {
+  fill: var(--area, var(--walk-ink));
+  stroke: var(--area, var(--walk-ink));
+}
+.walk-route .stop .ring {
+  fill: none;
+  stroke: var(--area, var(--walk-ink));
+  stroke-width: 2;
+  opacity: 0;
+}
+.walk-route .stop.is-active .ring,
+.walk-route .stop:focus-visible .ring {
+  opacity: 1;
+}
+.walk-route .stop:focus-visible .ring {
+  stroke: var(--accent);
+}
+.walk-route .stop .name {
+  fill: var(--walk-ink);
+}
+.walk-route .stop:not(.is-inert):hover .name {
+  fill: var(--accent);
+}
+.walk-route .stop.is-active .name {
+  font-weight: var(--fw-strong);
+}
+.walk-route .stop.is-future .name {
+  fill: var(--walk-muted);
+}
+.walk-route .token {
+  transition: opacity 0.35s;
+}
+.walk-route .token rect {
+  fill: var(--tok, var(--accent));
+}
+.walk-route .token text {
+  font-family: var(--font-sans);
+  font-weight: var(--fw-strong);
+  fill: #0e1013;
+}
+[data-theme="light"] .walk-route .token rect {
+  fill: color-mix(in srgb, var(--tok, var(--accent)) 80%, #000);
+}
+[data-theme="light"] .walk-route .token text {
+  fill: #ffffff;
+}
+
+.walk-where {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+  padding-top: 4px;
+}
+.walk-minimap {
+  display: block;
+  width: 300px;
+  max-width: 100%;
+  height: auto;
+}
+.walk-minimap text {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  fill: var(--walk-ink-2);
+}
+.walk-minimap .link {
+  stroke: var(--walk-line);
+  fill: none;
+}
+.walk-minimap .link.lit {
+  stroke: var(--walk-muted);
+}
+.walk-minimap .link.on {
+  stroke: var(--area, var(--accent));
+}
+.walk-minimap .area {
+  fill: color-mix(in srgb, var(--area) 12%, var(--walk-sheet));
+  stroke: color-mix(in srgb, var(--area) 55%, var(--walk-sheet));
+  stroke-width: 2;
+  transition: fill 0.2s, stroke 0.2s;
+}
+.walk-minimap .area.lit {
+  fill: color-mix(in srgb, var(--area) 18%, var(--walk-sheet));
+  stroke: var(--area);
+}
+.walk-minimap .area.on {
+  fill: color-mix(in srgb, var(--area) 38%, var(--walk-sheet));
+  stroke: var(--area);
+  stroke-width: 3;
+}
+.walk-minimap .num {
+  font-family: var(--font-mono);
+  fill: var(--walk-muted);
+}
+.walk-minimap .bg {
+  fill: var(--walk-sheet);
+}
+
+.walk-here {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  min-height: 228px;
+}
+.walk-here h2 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0;
+  font-size: var(--fs-body);
+  font-weight: var(--fw-strong);
+}
+.walk-here h2 small {
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-regular);
+  color: var(--walk-muted);
+}
+.walk-here p {
+  margin: 0;
+  max-width: 60ch;
+  color: var(--walk-ink-2);
+}
+.walk-swatch {
+  display: inline-block;
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--area, var(--walk-none));
+  align-self: center;
+}
+.walk-read {
+  display: grid;
+  justify-items: start;
+  gap: 2px;
+}
+.walk-read > span {
+  font-size: var(--fs-caption);
+  color: var(--walk-muted);
+}
+.walk-page-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.walk-story {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+  padding: 22px 22px 20px;
+}
+.walk-measure {
+  position: absolute;
+  top: 0;
+  left: 22px;
+  right: 22px;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+}
+.walk-measure > div {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.walk-measure .walk-prose {
+  flex: none;
+  overflow: visible;
+}
+.walk-measure-code > .walk-slot {
+  display: block;
+  max-height: none;
+  overflow: visible;
+}
+.walk-story h2 {
+  flex: 0 0 auto;
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.25;
+  letter-spacing: -0.012em;
+  font-weight: var(--fw-strong);
+  text-wrap: balance;
+}
+.walk-prose {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  min-height: 0;
+}
+.walk-prose p {
+  margin: 0;
+  color: var(--walk-ink-2);
+}
+.walk-prose p.lead {
+  color: var(--walk-ink);
+}
+.walk-prose p.idea {
+  padding-left: 14px;
+  border-left: 1px solid var(--walk-ink);
+  color: var(--walk-ink);
+}
+.walk-prose.is-clipped {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
+}
+
+.walk-slot {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 420px;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  background: var(--walk-well);
+}
+.walk-slot-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 14px;
+  font-size: var(--fs-caption);
+  color: var(--walk-muted);
+  border-bottom: 1px solid var(--walk-line);
+}
+.walk-slot-head a {
+  color: var(--accent);
+  text-underline-offset: 3px;
+}
+.walk-slot-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+.walk-slot pre {
+  margin: 0;
+  padding: 10px 0;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.5;
+  tab-size: 4;
+  color: var(--walk-ink-2);
+  background: none;
+  border: 0;
+}
+.walk-slot .ln {
+  display: grid;
+  grid-template-columns: 4ch minmax(0, 1fr);
+  column-gap: 14px;
+  padding: 0 16px 0 10px;
+}
+/* A wrapped line continues four columns past its own indentation, the way an editor shows it. */
+.walk-slot .ln .c {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding-left: var(--hang, 4ch);
+  text-indent: calc(-1 * var(--hang, 4ch));
+}
+.walk-slot .ln.m {
+  background: color-mix(in srgb, var(--area-now, var(--accent)) 14%, transparent);
+  color: var(--walk-ink);
+}
+.walk-slot .ln.gap {
+  color: var(--walk-muted);
+}
+.walk-slot .no {
+  text-align: right;
+  color: var(--walk-muted);
+  user-select: none;
+  font-variant-numeric: tabular-nums;
+}
+.walk-slot .hljs-keyword,
+.walk-slot .hljs-built_in,
+.walk-slot .hljs-literal {
+  color: var(--walk-ink);
+  font-weight: var(--fw-strong);
+}
+.walk-slot .hljs-title,
+.walk-slot .hljs-title.function_ {
+  color: var(--accent);
+}
+.walk-slot .hljs-string {
+  color: #7ee0b5;
+}
+[data-theme="light"] .walk-slot .hljs-string {
+  color: #2b7a5b;
+}
+.walk-slot .hljs-comment {
+  color: var(--walk-muted);
+  font-style: italic;
+}
+.walk-slot :is(.hljs-number, .hljs-params, .hljs-variable, .hljs-attr, .hljs-type, .hljs-meta, .hljs-subst) {
+  color: inherit;
+}
+
+.walk-srcs {
+  margin: 0;
+  padding: 4px 0 10px;
+  list-style: none;
+  font-size: var(--fs-caption);
+}
+.walk-srcs .file {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 10px 14px 2px;
+}
+.walk-srcs .file .walk-swatch {
+  width: 8px;
+  height: 8px;
+}
+.walk-srcs .file .mono {
+  font-weight: var(--fw-strong);
+  color: var(--walk-ink);
+}
+.walk-srcs .file .area {
+  color: var(--walk-muted);
+}
+.walk-srcs .row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+}
+.walk-srcs .row:hover {
+  background: color-mix(in srgb, var(--walk-ink) 5%, transparent);
+}
+.walk-srcs .row button {
+  display: grid;
+  grid-template-columns: 2ch minmax(0, 1fr);
+  column-gap: 10px;
+  min-width: 0;
+  padding: 4px 0 4px 30px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  line-height: 1.5;
+  text-align: left;
+  cursor: pointer;
+}
+.walk-srcs .row button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.walk-srcs .row button:hover code,
+.walk-srcs .row button:focus-visible code {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.walk-srcs .n {
+  text-align: right;
+  color: var(--walk-muted);
+  font-variant-numeric: tabular-nums;
+}
+.walk-srcs .what {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--walk-muted);
+}
+.walk-srcs .what > code:first-child {
+  margin-right: 8px;
+}
+.walk-srcs .lines {
+  padding: 4px 14px 4px 12px;
+  font-family: var(--font-mono);
+  color: var(--walk-muted);
+  white-space: nowrap;
+  text-decoration: none;
+  font-variant-numeric: tabular-nums;
+}
+.walk-srcs .lines:hover,
+.walk-srcs .lines:focus-visible {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.walk-controls {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-top: 14px;
+  border-top: 1px solid var(--walk-line);
+}
+.walk-pos {
+  flex: none;
+  margin-right: auto;
+  font-size: var(--fs-caption);
+  color: var(--walk-muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.walk-btn {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  height: 40px;
+  padding: 0 16px;
+  border: 1px solid var(--walk-line);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--walk-ink);
+  font: inherit;
+  font-weight: var(--fw-strong);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.walk-btn:hover:not(:disabled) {
+  border-color: var(--walk-ink-2);
+}
+.walk-btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+}
+.walk-btn.primary:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 88%, #fff);
+}
+/* A long function name in "Next: …" gives way before the button leaves the sheet. */
+.walk-btn-to {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.walk-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.walk-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.walk-foot {
+  max-width: 92ch;
+  margin: 0;
+  font-size: var(--fs-caption);
+  color: var(--walk-muted);
+}
+
+/* The Overview's list of walkthroughs: the Read next rows, each with how long the walk is. */
+.walk-list .wiki-read-next-title {
+  display: grid;
+  gap: 2px;
+}
+.walk-list-meta {
+  font-size: var(--fs-caption);
+  color: var(--text-muted);
+}
+
+/* Side by side once both sheets have room; the narration keeps one height for the whole walk. */
+@container walk (min-width: 900px) {
+  .walk-main {
+    grid-template-columns: minmax(0, 1fr) clamp(440px, 40%, 560px);
+  }
+  .walk-figure {
+    min-height: var(--walk-story-h);
+  }
+  .walk-story {
+    position: sticky;
+    top: calc(var(--top-h) + 16px);
+    height: var(--walk-story-h);
+  }
+  .walk-prose {
+    flex: 1 1 0;
+    overflow-y: auto;
+  }
+  .walk-slot {
+    flex: 0 0 var(--walk-slot-h, 352px);
+    max-height: none;
+  }
+}
+/* The map beside the route once the route keeps room for its names. */
+@container walkfigure (min-width: 600px) {
+  .walk-figure-body {
+    grid-template-columns: minmax(0, 1fr) 300px;
+    gap: 28px;
+  }
+}
+/* Beneath the route, the map and its note sit side by side while both read. */
+@container walkfigure (min-width: 560px) and (max-width: 599px) {
+  .walk-where {
+    grid-template-columns: 300px minmax(0, 1fr);
+  }
+}
+/* On a phone, wrapped code with deep indentation reads worse than a sideways scroll. */
+@container walk (max-width: 640px) {
+  .walk-slot pre {
+    width: max-content;
+    min-width: 100%;
+  }
+  .walk-slot .ln .c {
+    white-space: pre;
+    padding-left: 0;
+    text-indent: 0;
+  }
+}
+@container walk (max-width: 520px) {
+  .walk-figure,
+  .walk-story {
+    padding: 16px;
+  }
+  .walk-btn-to {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .walk * {
+    transition: none !important;
+  }
+}
+
+/* In the Wiki: a walkthrough takes the map's and the reader's room, and the page list stays. */
+.wiki-grid.is-walk {
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (min-width: 821px) {
+  .wiki-grid.is-walk {
+    --rail-left: 244px;
+    grid-template-columns: var(--rail-left) minmax(0, 1fr);
+    padding-inline: 0;
+  }
+  .wiki-grid.is-walk .wiki-toc {
+    width: auto;
+    max-height: calc(100vh - var(--top-h));
+    padding: 20px 12px 20px 18px;
+  }
+  .wiki-grid.is-walk .wiki-main {
+    padding: 28px 24px 120px;
+  }
+}
+.toc-walks {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-subtle);
+}
+.toc-walks-title {
+  padding: 6px 10px;
+  font-size: var(--fs-caption);
+  color: var(--muted);
+}
+.walk-loading {
+  padding: 40px 0;
+}

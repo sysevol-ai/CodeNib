@@ -1743,6 +1743,10 @@ pre {
 [data-theme="dark"] .markdown .hljs {
   color: #c9d1d9;
 }
+/* github.css paints an interpolated expression (`{url!r}`) near-black. */
+[data-theme="dark"] .markdown .hljs-subst {
+  color: #c9d1d9;
+}
 [data-theme="dark"] .markdown .hljs-doctag,
 [data-theme="dark"] .markdown .hljs-keyword,
 [data-theme="dark"] .markdown .hljs-meta .hljs-keyword,
@@ -4491,6 +4495,38 @@ a.codepanel-name:hover {
   color: var(--text-muted);
   letter-spacing: 0.2em;
   user-select: none;
+}
+/* Lines of the cited definition the excerpt leaves out, one click away. */
+.code-block-actions {
+  display: inline-flex;
+  gap: 2px;
+}
+.code-line.is-more {
+  user-select: none;
+}
+.code-more {
+  display: block;
+  width: calc(100% + 32px);
+  margin: 0 -16px;
+  padding: 0 16px;
+  border: 0;
+  /* Neutral, so it never reads as one of the marked lines. */
+  background: color-mix(in srgb, var(--text) 5%, transparent);
+  color: var(--text-muted);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.code-more:hover,
+.code-more:focus-visible {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+}
+.code-more:disabled {
+  cursor: progress;
+}
+.code-more .code-ln {
+  color: inherit;
 }
 
 /* The notice under an excerpt reads as a caption, not a paragraph. */

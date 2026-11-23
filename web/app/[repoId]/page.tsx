@@ -23,6 +23,8 @@ import MainPath from "@/components/MainPath";
 import ReadNext from "@/components/ReadNext";
 import WikiToc from "@/components/WikiToc";
 import WikiGraphPane from "@/components/WikiGraphPane";
+import Walkthrough, { WalkthroughList } from "@/components/Walkthrough";
+import type { WalkthroughSet } from "@/lib/walkthrough";
 import { buildWikiGraph } from "@/lib/wikiGraph";
 import { childPages } from "@/lib/wikiNav";
 import { displaySymbol } from "@/lib/symbols";
@@ -32,7 +34,14 @@ import { ghFileUrl } from "@/lib/github";
 import AskBar from "@/components/AskBar";
 import RelatedVisuals from "@/components/RelatedVisuals";
 import { generatedByHref } from "@/lib/experience";
-import { AppLink, wikiPageFromLocation, wikiPageLocation, wikiRoute } from "@/lib/router";
+import {
+  AppLink,
+  walkFromLocation,
+  walkLocation,
+  wikiPageFromLocation,
+  wikiPageLocation,
+  wikiRoute,
+} from "@/lib/router";
 import { isStaticRuntime, mediaAssetUrl } from "@/lib/runtime";
 import { trialBase } from "@/lib/openrouterTrial";
 import {
@@ -54,6 +63,7 @@ import {
   fetchWikiVisualEvidence,
   fetchWikiPage,
   fetchWikiTree,
+  fetchWalkthroughs,
   isSourceCheckedWikiPage,
   repoRelative,
   shouldWithholdWikiPage,
@@ -70,6 +80,7 @@ import {
   type WikiPageRef,
 } from "@/lib/api";
 
+import { AnnotationLayer, NotesButton, useAnnotations } from "@/components/Annotations";
 const CodePanel = lazy(() => import("@/components/CodePanel"));
 const Codemap = lazy(() => import("@/components/Codemap"));
 const LEADING_VISUAL_WAIT_MS = 5000;
@@ -474,12 +485,19 @@ export default function WikiPageView({
   const [repo, setRepo] = useState<RepoInfo | null>(null);
   const [pages, setPages] = useState<WikiPageRef[]>([]);
   const [activeId, setActiveId] = useState<string>(initialPageId);
+  // A walkthrough replaces the map and the reader; the page list stays.
+  // Undefined while loading; null when the repository has none.
+  const [walkthroughs, setWalkthroughs] = useState<WalkthroughSet | null | undefined>(undefined);
+  const [walkAt, setWalkAt] = useState(() =>
+    typeof window === "undefined" ? null : walkFromLocation(window.location.search),
+  );
   // Picking a page only replaces the address. A navigation the Wiki did not
   // make, such as the CodeNib mark or the browser's Back button, names the
   // page to show in the address it leaves.
   useEffect(() => {
     function follow() {
       setActiveId(wikiPageFromLocation(window.location.pathname, window.location.search));
+      setWalkAt(walkFromLocation(window.location.search));
     }
     window.addEventListener("popstate", follow);
     return () => window.removeEventListener("popstate", follow);
@@ -519,6 +537,11 @@ export default function WikiPageView({
   const [visualEvidence, setVisualEvidence] = useState<WikiVisualEvidence | null>(null);
   const commitCost = commitEvidence(commits, selectedCommit);
   const contentRef = useRef<HTMLDivElement>(null);
+  // Annotations exist only on a local Wiki that `codenib wiki` started; the
+  // backend reports them as a capability and every call carries its session.
+  const annotationsOn = !staticRuntime && !!repo?.capabilities?.annotations;
+  const [notesOpen, setNotesOpen] = useState(false);
+  const notes = useAnnotations(repoId, activeId, annotationsOn);
   // Publish the reading surface once its leading visual has resolved, including
   // an unavailable/error result. Rendering prose first lets a later map or
   // boundary card insert itself above the reader's current paragraph.
@@ -562,6 +585,10 @@ export default function WikiPageView({
       });
     setTocLoading(true);
     setError(null);
+    setWalkthroughs(undefined);
+    fetchWalkthroughs(repoId).then((set) => {
+      if (!cancelled) setWalkthroughs(set);
+    });
     fetchWikiTree(repoId)
       .then((t) => {
         if (!cancelled) setPages(t.pages);
@@ -778,10 +805,18 @@ export default function WikiPageView({
 
   function pick(id: string) {
     setActiveId(id);
+    setWalkAt(null);
     setTocOpen(false);
     const url = wikiPageLocation(window.location.pathname, id, staticRuntime);
     window.history.replaceState(null, "", url);
     window.scrollTo({ top: 0 });
+  }
+
+  function openWalk(id: string, step = 0, scroll = true) {
+    setWalkAt({ id, step });
+    setTocOpen(false);
+    window.history.replaceState(null, "", walkLocation(window.location.pathname, id, step));
+    if (scroll) window.scrollTo({ top: 0 });
   }
 
   // The document carries a `<base href>`, so a bare `#id` link resolves
@@ -828,8 +863,11 @@ export default function WikiPageView({
     return () => document.removeEventListener("keydown", onKey);
   }, [sourceCitation]);
 
+  // An address naming a walkthrough this repository does not have shows the page.
+  const walk = walkAt ? walkthroughs?.walks.find((item) => item.id === walkAt.id) ?? null : null;
+  const walking = !!walkAt && (walkthroughs === undefined || !!walk);
   // Decided before the page list loads, so the reader never jumps on first paint.
-  const workspace = wideEnough && !mapHidden;
+  const workspace = wideEnough && !mapHidden && !walking;
   const wikiGraph = useMemo(
     () => buildWikiGraph(pages, areaMap),
     [pages, areaMap],
@@ -1065,14 +1103,28 @@ export default function WikiPageView({
                 <span>Dependency Map</span>
               </button>
             )}
-            {page && <span className="crumb-sep">/</span>}
-            {page && <span className="crumb-page">{page.title}</span>}
+            {annotationsOn && (
+              <NotesButton model={notes} open={notesOpen} onClick={() => setNotesOpen((o) => !o)} />
+            )}
+            {walking ? (
+              <>
+                <span className="crumb-sep">/</span>
+                <span className="crumb-page">{walk ? `Walkthrough: ${walk.tab}` : "Walkthrough"}</span>
+              </>
+            ) : (
+              page && (
+                <>
+                  <span className="crumb-sep">/</span>
+                  <span className="crumb-page">{page.title}</span>
+                </>
+              )
+            )}
           </nav>
         }
       />
 
       <div
-        className={`wiki-grid${activeId === "overview" ? " is-overview" : ""}${workspace ? " is-workspace" : ""}`}
+        className={`wiki-grid${activeId === "overview" && !walking ? " is-overview" : ""}${workspace ? " is-workspace" : ""}${walking ? " is-walk" : ""}${annotationsOn && notesOpen && !walking ? " has-notes" : ""}`}
         style={
           workspace && readerWidth
             ? ({ "--reader-w": `${readerWidth}px` } as CSSProperties)
@@ -1129,9 +1181,12 @@ export default function WikiPageView({
               )}
               <WikiToc
                 pages={pages}
-                activeId={activeId}
+                activeId={walking ? "" : activeId}
                 onPick={pick}
                 colors={workspace ? wikiGraph.colors : undefined}
+                walks={walkthroughs?.walks.map((item) => ({ id: item.id, label: item.tab }))}
+                activeWalk={walking ? walkAt?.id : undefined}
+                onWalk={(id) => openWalk(id)}
               />
             </>
           )}
@@ -1159,7 +1214,49 @@ export default function WikiPageView({
           />
         )}
 
+        {walking ? (
+          <main className="wiki-main wiki-walk-main" aria-busy={!walk}>
+            {walk && walkthroughs ? (
+              <Walkthrough
+                set={walkthroughs}
+                walk={walk}
+                step={walkAt?.step ?? 0}
+                onGo={(id, step) => openWalk(id, step, id !== walk.id)}
+                onPage={pick}
+                colors={wikiGraph.colors}
+              />
+            ) : (
+              <div className="walk-loading muted" role="status">
+                Loading the walkthrough…
+              </div>
+            )}
+          </main>
+        ) : (
         <main className="wiki-main" aria-busy={!page && !pageError}>
+          {annotationsOn && page && !withheldByQualityGuard && (
+            <AnnotationLayer
+              repoId={repoId}
+              pageId={activeId}
+              pageTitle={page.title}
+              contentRef={contentRef}
+              renderKey={`${page.id}:${page.markdown.length}`}
+              model={notes}
+              open={notesOpen}
+              onOpenChange={setNotesOpen}
+              onOpenCode={(ref) =>
+                setSourceCitation({
+                  file: ref.path,
+                  start_line: ref.start_line ?? 1,
+                  end_line: ref.end_line ?? ref.start_line ?? 1,
+                  node_name: "",
+                  type: "reference",
+                  score: null,
+                  content: null,
+                })
+              }
+              onPage={pick}
+            />
+          )}
           {showPoster && areaMap && (
             <RepoPoster
               repoId={repoId}
@@ -1233,6 +1330,13 @@ export default function WikiPageView({
                       journey={lifted.journey}
                       onPick={pick}
                       renderText={renderStageText}
+                    />
+                  )}
+                  {activeId === "overview" && walkthroughs && (
+                    <WalkthroughList
+                      set={walkthroughs}
+                      colors={wikiGraph.colors}
+                      onOpen={(id) => openWalk(id)}
                     />
                   )}
                   {figureSlots.length > 0 && (
@@ -1507,7 +1611,9 @@ export default function WikiPageView({
               )}
           </div>
         </main>
+        )}
 
+        {!walking && (
         <aside className="wiki-onthispage" data-rail="right">
           <div className="rail-title">On this page</div>
           {headings.length > 0 ? (
@@ -1528,6 +1634,7 @@ export default function WikiPageView({
             <div className="muted small">—</div>
           )}
         </aside>
+        )}
       </div>
 
       {graphOpen && (
@@ -1629,7 +1736,8 @@ export default function WikiPageView({
         </div>
       )}
 
-      {repo && canAsk && (
+      {/* A walkthrough's narration sits where the Ask bar floats; the header keeps Ask. */}
+      {repo && canAsk && !walking && (
         <AskBar
           repoId={repoId} repo={repo.repo} collapsible browserTrial={browserTrial}
           compact={showPoster}

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import re
+import secrets
 import shutil
 import subprocess
 import sys
@@ -18,6 +19,7 @@ import webbrowser
 from pathlib import Path
 from typing import Optional
 
+from .annotations import TOKEN_ENV as ANNOTATION_TOKEN_ENV
 from .local import LocalWiki
 from .ports import validate_local_wiki_ports
 
@@ -174,6 +176,16 @@ def launch_local_wiki(
     env["CODENIB_API_BASE"] = f"http://{_loopback_host(api_host)}:{api_port}"
     env.pop("NEXT_PUBLIC_API_BASE", None)
     env.update(local.runtime_env)
+    # Annotations write into the checkout and start the person's agent, so
+    # they are on only for a loopback API, behind a token the browser gets
+    # from the URL printed below (see ``codenib/web/annotations.py``).
+    session = ""
+    if api_host in ("127.0.0.1", "localhost", "::1"):
+        session = secrets.token_urlsafe(24)
+    backend_env = dict(env)
+    if session:
+        backend_env[ANNOTATION_TOKEN_ENV] = session
+    env.pop(ANNOTATION_TOKEN_ENV, None)
 
     backend: subprocess.Popen | None = None
     frontend_process: subprocess.Popen | None = None
@@ -189,7 +201,7 @@ def launch_local_wiki(
                 "--port",
                 str(api_port),
             ],
-            env=env,
+            env=backend_env,
         )
         _wait_for_http(
             f"http://{_loopback_host(api_host)}:{api_port}/api/health",
@@ -231,8 +243,18 @@ def launch_local_wiki(
         public_url = f"http://{_loopback_host(frontend_host)}:{frontend_port}"
         _wait_for_http(public_url, frontend_process)
         repo_url = f"{public_url}/{local.repo_id}"
-        print(f"\nCodeNib Wiki is ready: {repo_url}")
-        print("Press Ctrl-C to stop.")
+        if session:
+            repo_url += f"?session={session}"
+        # Flushed: run in the background (as the Claude Code plugin does), the
+        # output is a file, and this link carries the annotation session key.
+        print(f"\nCodeNib Wiki is ready: {repo_url}", flush=True)
+        if session:
+            print(
+                "Select words on a page to ask your coding agent about them, "
+                "request a change, or leave a note.",
+                flush=True,
+            )
+        print("Press Ctrl-C to stop.", flush=True)
         if open_browser:
             webbrowser.open(repo_url)
 

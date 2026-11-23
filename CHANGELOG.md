@@ -11,8 +11,26 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 ## [Unreleased]
 
+### Fixed
+
+- A Wiki or repository card for a project whose README is in Chinese or
+  Japanese now opens with the README's first paragraph. Words were counted
+  by spaces, so those paragraphs looked too short and a later line that
+  happened to hold spaced-out numbers was shown instead.
+
+## [0.2.7] - 2026-11-23
+
 ### Added
 
+- A local Wiki is where you work with your coding agent. Select words on a
+  page to ask a question, request a change or leave a note; questions and
+  change requests go to your own Claude Code, and its answers come back next
+  to the words you selected. A change runs in a separate git worktree and
+  reaches your working tree only when you apply its diff from the page, and
+  other pages that cite the changed lines get a note about it. Annotations
+  and tasks are files under `.codenib/notes/` and `.codenib/tasks/`.
+  `codenib wiki` prints the address with a session key that annotating
+  needs, and the Claude Code plugin's `/codenib:wiki` hands it over.
 - Codex installs the CodeNib plugin with `codex plugin marketplace add` and
   `codex plugin add codenib@codenib`: the five skills plus the MCP server,
   which indexes and serves the checkout Codex opens.
@@ -26,19 +44,25 @@ All notable user-facing changes are recorded here. CodeNib follows
   member, collaborator, contributor, first-time contributor, or not a
   contributor), so an agent can tell a maintainer's request from a
   stranger's.
-
-### Fixed
-
-- `codenib threads inbox` could mark an event read without delivering it when
-  a poll appended it while the update was being built. It is now delivered on
-  the next read instead.
-- The change guard no longer lists every test that builds a command-line
-  parser for a change in any command's handler. `set_defaults(handler=...)`
-  names the handler without running it, and is no longer followed as a call.
-- A Wiki or repository card for a project whose README is in Chinese or
-  Japanese now opens with the README's first paragraph. Words were counted
-  by spaces, so those paragraphs looked too short and a later line that
-  happened to hold spaced-out numbers was shown instead.
+- `codenib guard` covers Go, Rust, JavaScript and TypeScript as well as
+  Python, reaches an override from a call made through its base class, and
+  `codenib guard check --markdown` prints what a change reaches as a
+  pull-request comment for reviewers.
+- Wiki pages end with the open issues that point at the code they cite, the
+  pull requests that change it and the changes that last touched it, and the
+  Wiki map marks where that activity is. `codenib threads overlay` builds
+  the join from git and the stored thread logs, without a model or a graph.
+- An MCP server started with `--defer-graph` keeps answering from the graph it
+  has after a source edit and names the files changed since it was built,
+  instead of dropping the graph until a rebuild finishes.
+- With `CODENIB_GRAPH_INCREMENTAL=builder`, a stale Python graph is patched by
+  rebuilding only the changed files with its own builder instead of being
+  rebuilt in full.
+- A full graph build reports when the graph is cut off from its source.
+- The Wiki shows code walkthroughs where they have been built: one question
+  followed through the code, one function per step.
+- Optional contextual BM25 indexing, a SeeRepo graph adapter, and native
+  runs with official scoring for SWE-QA, SWE-QA-Pro and CORE-Bench.
 
 ### Changed
 
@@ -48,6 +72,34 @@ All notable user-facing changes are recorded here. CodeNib follows
   most three methods share the name and no built-in or common standard-library
   type has a method of that name (`append`, `info`). On 68 agent regressions
   it now lists a broken test for 42, up from 38.
+- The Overview's main path starts where the README points, or in the
+  project's own code, and stops at the function that does the work instead
+  of a small helper.
+- A code excerpt marks the lines its note names, and readers can widen it.
+- A repository address with no Wiki behind it now says so and offers a way
+  on.
+
+### Fixed
+
+- `codenib threads inbox` could mark an event read without delivering it when
+  a poll appended it while the update was being built. It is now delivered on
+  the next read instead.
+- The change guard no longer lists every test that builds a command-line
+  parser for a change in any command's handler. `set_defaults(handler=...)`
+  names the handler without running it, and is no longer followed as a call.
+- On Windows: git output is decoded as UTF-8, the Codex hook command is
+  quoted, the guard and guardian hooks and file locks work, batch commands
+  and tsconfig globs resolve, and a no-replace rename works.
+- Paths with unusual characters are read from git with `-z`, so they are no
+  longer C-quoted.
+- The language-server client sends its shutdown handshake where
+  `os.set_blocking` is missing.
+- Calls made inside `index.js` and `index.ts` files are decoded, imports
+  resolve from nested roots, and patching a graph keeps what the build found
+  and never adds what the builder does not define.
+- Guard notes hash anchors in files that start with a byte-order mark and
+  reject malformed anchor lists.
+- `codenib export` says why it cannot prepare an output directory.
 
 ### Removed
 
@@ -718,7 +770,9 @@ All notable user-facing changes are recorded here. CodeNib follows
 - Prepared secretless PyPI publishing through a dedicated GitHub Actions OIDC
   workflow.
 
-[Unreleased]: https://github.com/sysevol-ai/CodeNib/compare/v0.2.5...HEAD
+[Unreleased]: https://github.com/sysevol-ai/CodeNib/compare/v0.2.7...HEAD
+[0.2.7]: https://github.com/sysevol-ai/CodeNib/compare/v0.2.6...v0.2.7
+[0.2.6]: https://github.com/sysevol-ai/CodeNib/compare/v0.2.5...v0.2.6
 [0.2.5]: https://github.com/sysevol-ai/CodeNib/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/sysevol-ai/CodeNib/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/sysevol-ai/CodeNib/compare/v0.2.2...v0.2.3

@@ -86,3 +86,34 @@ export function highlightSource(code: string, language?: string): string {
     return escapeHtml(code);
   }
 }
+
+/**
+ * Highlight *code* as one piece, then split the markup into lines.
+ *
+ * Highlighting line by line loses what a construct spanning lines means: the
+ * second line of a docstring is read as code and its "or" and "for" are
+ * coloured as keywords. Each returned line closes the spans still open at its
+ * end and the next line reopens them, so every line is well-formed markup.
+ */
+export function highlightRows(code: string, language?: string): string[] {
+  const html = highlightSource(code, language);
+  const rows: string[] = [];
+  const open: string[] = [];
+  let current = "";
+  for (const token of html.match(/<span[^>]*>|<\/span>|\n|[^<\n]+|</g) || []) {
+    if (token === "\n") {
+      rows.push(current + "</span>".repeat(open.length));
+      current = open.join("");
+    } else if (token.startsWith("<span")) {
+      open.push(token);
+      current += token;
+    } else if (token === "</span>") {
+      open.pop();
+      current += token;
+    } else {
+      current += token;
+    }
+  }
+  rows.push(current + "</span>".repeat(open.length));
+  return rows;
+}

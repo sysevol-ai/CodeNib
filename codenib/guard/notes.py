@@ -38,6 +38,11 @@ import yaml
 
 NOTES_DIR = Path(".codenib") / "notes"
 KINDS = ("decision", "gotcha", "invariant", "contract", "note")
+# Wiki annotations share this directory (``codenib.annotations``). These kinds
+# are conversation, a question or a change request and the agent's reply, not
+# facts about the code, so the guard leaves them out.
+CONVERSATION_KINDS = ("question", "change", "answer", "summary")
+_NOTE_KEYS = {"kind", "anchors", "created", "source"}
 _FRONT_MATTER = re.compile(r"\A---\n(.*?)\n---\n?(.*)\Z", re.DOTALL)
 
 
@@ -63,6 +68,9 @@ class Note:
     anchors: List[Anchor] = field(default_factory=list)
     created: str = ""
     source: str = ""  # optional link to where the knowledge came from
+    # Front matter keys the guard does not use, such as a Wiki annotation's
+    # id and status; kept as they are when the note is rewritten.
+    extra: Dict[str, object] = field(default_factory=dict)
 
     @property
     def title(self) -> str:
@@ -150,6 +158,7 @@ def load_note(repo: Path, path: Path) -> Note:
         anchors=anchors,
         created=str(meta.get("created") or ""),
         source=str(meta.get("source") or ""),
+        extra={k: v for k, v in meta.items() if k not in _NOTE_KEYS},
     )
 
 
@@ -160,19 +169,27 @@ def load_notes(repo: Path) -> Tuple[List[Note], List[str]]:
     directory = repo / NOTES_DIR
     for path in sorted(directory.glob("*.md")) if directory.is_dir() else ():
         try:
-            notes.append(load_note(repo, path.relative_to(repo)))
+            note = load_note(repo, path.relative_to(repo))
         except (OSError, NoteError, yaml.YAMLError) as exc:
             errors.append(str(exc))
+            continue
+        if note.kind not in CONVERSATION_KINDS:
+            notes.append(note)
     return notes, errors
 
 
 def _dump(note: Note) -> str:
-    meta: Dict[str, object] = {"kind": note.kind}
+    meta: Dict[str, object] = {}
+    if "id" in note.extra:
+        meta["id"] = note.extra["id"]
+    meta["kind"] = note.kind
     meta["anchors"] = [{"symbol": a.symbol, "sha256": a.sha256} for a in note.anchors]
     if note.created:
         meta["created"] = note.created
     if note.source:
         meta["source"] = note.source
+    for key, value in note.extra.items():
+        meta.setdefault(key, value)
     front = yaml.safe_dump(meta, sort_keys=False, allow_unicode=True).strip()
     return f"---\n{front}\n---\n{note.text.strip()}\n"
 

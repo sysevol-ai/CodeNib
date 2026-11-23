@@ -1,4 +1,5 @@
 import type { SourceDefinition } from "./sourceExcerpt";
+import type { WalkthroughSet } from "./walkthrough";
 import { apiBase, isStaticRuntime, staticDataUrl } from "./runtime";
 
 export const API_BASE = apiBase();
@@ -1033,5 +1034,34 @@ export function fetchCodeActivity(repoId: string): Promise<CodeActivityOverlay |
       return null;
     });
   codeActivityRequests.set(repoId, request);
+  return request;
+}
+
+const walkthroughRequests = new Map<string, Promise<WalkthroughSet | null>>();
+
+/**
+ * The repository's prebuilt walkthroughs, or null when it has none, they were
+ * built from another commit, or they cannot be read. A published (static) Wiki
+ * carries none yet.
+ */
+export function fetchWalkthroughs(repoId: string): Promise<WalkthroughSet | null> {
+  if (isStaticRuntime()) return Promise.resolve(null);
+  const cached = walkthroughRequests.get(repoId);
+  if (cached) return cached;
+  const request = fetch(`${API_BASE}/api/repos/${encodeURIComponent(repoId)}/walkthroughs`)
+    .then(async (res) => {
+      if (!res.ok) {
+        // Only 404 says there are none; another status may pass.
+        if (res.status !== 404) walkthroughRequests.delete(repoId);
+        return null;
+      }
+      const set = (await res.json()) as WalkthroughSet;
+      return set?.version === 1 && Array.isArray(set.walks) && set.walks.length > 0 ? set : null;
+    })
+    .catch(() => {
+      walkthroughRequests.delete(repoId);
+      return null;
+    });
+  walkthroughRequests.set(repoId, request);
   return request;
 }
