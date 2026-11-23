@@ -59,6 +59,7 @@ from ..wiki.sqlite_store import SQLiteWikiStore
 from ..wiki.store import WikiGenerationBusyError
 from ..wiki.story import derive_story_from_markdown
 from ..wiki.visual_ir import page_visual_contract_report
+from . import annotations as wiki_annotations
 from .card_summary import card_summary
 from .config import load_config
 from .experience import router as experience_router
@@ -78,7 +79,6 @@ from .prerender import (
 from .repo_registry import RepoRegistry
 from .repository_files import bound_source_slice, safe_repo_relative_path
 from .request_limits import RequestBodyLimitMiddleware
-from .walkthroughs import load_walkthroughs
 from .schemas import (
     ChatRequest,
     ChatResponse,
@@ -92,6 +92,7 @@ from .share import SITE_DESCRIPTION, SITE_TITLE, _repo_for, public_origin
 from .share import router as share_router
 from .source_definition import attach_definition
 from .visitor_wikis import router as visitor_wiki_router
+from .walkthroughs import load_walkthroughs
 
 _WIKI_MEDIA_TYPES = {
     ".jpeg": "image/jpeg",
@@ -229,6 +230,7 @@ app = FastAPI(title="CodeNib Code QA", lifespan=lifespan)
 app.include_router(visitor_wiki_router)
 app.include_router(experience_router)
 app.include_router(share_router)
+app.include_router(wiki_annotations.router)
 
 app.add_middleware(RequestBodyLimitMiddleware)
 app.add_middleware(
@@ -813,6 +815,63 @@ def _window_stats_for(repo_id: str):
         return _window_stats_for_bundle(repo_id, bundle)
 
 
+# Wiki annotations (local only) -------------------------------------------
+#
+# The annotation routes live in ``annotations.py``; they reach the checkout and
+# the cached pages through these three functions. Each takes its own pin, so a
+# task that runs for minutes never holds a bundle generation.
+
+
+def _annotation_repo(repo_id: str) -> tuple:
+    with _pinned_bundle(repo_id) as bundle:
+        entry = bundle.entry
+        return Path(entry.repo_dir), entry.repo
+
+
+def _annotation_page(repo_id: str, page_id: str) -> dict | None:
+    with _pinned_bundle(repo_id) as bundle:
+        builder = _wiki(repo_id, bundle)
+        cached = getattr(builder, "cached_page", None)
+        return cached(page_id) if callable(cached) else builder.page(page_id)
+
+
+def _annotation_pages(repo_id: str) -> list[dict]:
+    with _pinned_bundle(repo_id) as bundle:
+        builder = _wiki(repo_id, bundle)
+        tree_of = getattr(builder, "cached_page_tree", None)
+        tree = (tree_of() if callable(tree_of) else builder.page_tree()) or []
+        cached = getattr(builder, "cached_page", None)
+        found: list[dict] = []
+        stack = list(tree)
+        while stack:
+            ref = stack.pop(0)
+            stack.extend(ref.get("children") or [])
+            page = cached(ref["id"]) if callable(cached) else builder.page(ref["id"])
+            if not page:
+                continue
+            cited = [
+                {
+                    "file": str(c["file"]),
+                    "start_line": c.get("start_line"),
+                    "end_line": c.get("end_line"),
+                    "type": c.get("type"),
+                }
+                for c in page.get("citations") or []
+                if c.get("file")
+            ]
+            found.append(
+                {"id": ref["id"], "title": ref.get("title"), "citations": cited}
+            )
+        return found
+
+
+wiki_annotations.configure(
+    wiki_annotations.RepoAccess(
+        repo=_annotation_repo, page=_annotation_page, pages=_annotation_pages
+    )
+)
+
+
 @app.get("/api/health")
 async def health() -> dict:
     registry = getattr(app.state, "registry", None)
@@ -830,7 +889,11 @@ async def list_repos() -> list[RepoInfo]:
     async def decorate(info: RepoInfo, bundle=None) -> RepoInfo:
         # Surface the global edge-label toggle per repo so the UI can gate the
         # feature, then derive window figures from that same generation.
-        info.capabilities = {**info.capabilities, "edge_labels": edge_on}
+        info.capabilities = {
+            **info.capabilities,
+            "edge_labels": edge_on,
+            "annotations": wiki_annotations.enabled(),
+        }
         # The card's one-line summary comes from the cached Overview, then the
         # manifest or README; reading it never starts page generation.
         try:

@@ -48,7 +48,7 @@ your path and uses `uvx`; without uv, it tells you to upgrade.
 | `/codenib:impact` | Lists the tests a change can reach, with call paths, and runs them (preview, Python only) |
 | `/codenib:thread` | Reads a GitHub issue or pull request in one step: discussion, review comments, failing checks, linked threads and the code they point at (preview, CodeNib 0.2.6) |
 | `/codenib:setup` | Installs CodeNib and the language providers, and builds the search index and code graph |
-| `/codenib:wiki` | Opens the repository's Wiki locally, or sets up publishing it on GitHub Pages |
+| `/codenib:wiki` | Opens the repository's Wiki locally, where you can annotate pages and send questions and change requests to your Claude Code, or sets up publishing it on GitHub Pages |
 
 The agent uses `explain`, `impact` and `thread` on its own when a question
 fits; `setup` and `wiki` run only when you ask. In Codex the skills are named
@@ -88,7 +88,11 @@ The MCP server reads the checkout and writes CodeNib's index under
 installed, the plugin runs it through `uvx`, which downloads the `codenib`
 package from PyPI. `/codenib:setup` installs CodeNib and language indexers only
 when you run it. `/codenib:wiki` sends source to a model provider only when you
-choose model-written pages and give it a key. `/codenib:thread` reads the
+choose model-written pages and give it a key. In a local Wiki, a question or
+change request you send runs your own `claude` CLI on this machine, with file
+tools only; a change runs in a separate git worktree and reaches your working
+tree only when you apply it. Notes and tasks are saved under `.codenib/` in the
+repository. `/codenib:thread` reads the
 issue or pull request from GitHub with your `GH_TOKEN` or signed-in `gh`, and
 keeps what it read under `~/.codenib/threads`. What people wrote in the thread
 reaches the agent, as it would if the agent read GitHub itself. The plugin has

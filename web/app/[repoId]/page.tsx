@@ -80,6 +80,7 @@ import {
   type WikiPageRef,
 } from "@/lib/api";
 
+import { AnnotationLayer, NotesButton, useAnnotations } from "@/components/Annotations";
 const CodePanel = lazy(() => import("@/components/CodePanel"));
 const Codemap = lazy(() => import("@/components/Codemap"));
 const LEADING_VISUAL_WAIT_MS = 5000;
@@ -536,6 +537,11 @@ export default function WikiPageView({
   const [visualEvidence, setVisualEvidence] = useState<WikiVisualEvidence | null>(null);
   const commitCost = commitEvidence(commits, selectedCommit);
   const contentRef = useRef<HTMLDivElement>(null);
+  // Annotations exist only on a local Wiki that `codenib wiki` started; the
+  // backend reports them as a capability and every call carries its session.
+  const annotationsOn = !staticRuntime && !!repo?.capabilities?.annotations;
+  const [notesOpen, setNotesOpen] = useState(false);
+  const notes = useAnnotations(repoId, activeId, annotationsOn);
   // Publish the reading surface once its leading visual has resolved, including
   // an unavailable/error result. Rendering prose first lets a later map or
   // boundary card insert itself above the reader's current paragraph.
@@ -1097,6 +1103,9 @@ export default function WikiPageView({
                 <span>Dependency Map</span>
               </button>
             )}
+            {annotationsOn && (
+              <NotesButton model={notes} open={notesOpen} onClick={() => setNotesOpen((o) => !o)} />
+            )}
             {walking ? (
               <>
                 <span className="crumb-sep">/</span>
@@ -1115,7 +1124,7 @@ export default function WikiPageView({
       />
 
       <div
-        className={`wiki-grid${activeId === "overview" && !walking ? " is-overview" : ""}${workspace ? " is-workspace" : ""}${walking ? " is-walk" : ""}`}
+        className={`wiki-grid${activeId === "overview" && !walking ? " is-overview" : ""}${workspace ? " is-workspace" : ""}${walking ? " is-walk" : ""}${annotationsOn && notesOpen && !walking ? " has-notes" : ""}`}
         style={
           workspace && readerWidth
             ? ({ "--reader-w": `${readerWidth}px` } as CSSProperties)
@@ -1224,6 +1233,30 @@ export default function WikiPageView({
           </main>
         ) : (
         <main className="wiki-main" aria-busy={!page && !pageError}>
+          {annotationsOn && page && !withheldByQualityGuard && (
+            <AnnotationLayer
+              repoId={repoId}
+              pageId={activeId}
+              pageTitle={page.title}
+              contentRef={contentRef}
+              renderKey={`${page.id}:${page.markdown.length}`}
+              model={notes}
+              open={notesOpen}
+              onOpenChange={setNotesOpen}
+              onOpenCode={(ref) =>
+                setSourceCitation({
+                  file: ref.path,
+                  start_line: ref.start_line ?? 1,
+                  end_line: ref.end_line ?? ref.start_line ?? 1,
+                  node_name: "",
+                  type: "reference",
+                  score: null,
+                  content: null,
+                })
+              }
+              onPage={pick}
+            />
+          )}
           {showPoster && areaMap && (
             <RepoPoster
               repoId={repoId}
