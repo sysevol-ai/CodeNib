@@ -50,6 +50,8 @@ export interface Annotation {
   files: CodeRef[];
   created: string;
   updated: string;
+  /** Where the code it sits on stands now (code annotations only). */
+  anchor_state?: "current" | "moved" | "changed" | "detached" | null;
 }
 
 export interface TaskUsage {
@@ -398,6 +400,56 @@ export function anchorFromCodeSelection(range: Range, page: string): AnnotationA
     end_line: endLine,
     quote: quote.slice(0, 2000),
   };
+}
+
+// Words too common to say two passages are about the same thing.
+const STOPWORDS = new Set(
+  "a an and are as at be by for from has in into is it its of on or that the then this to was were which with".split(" "),
+);
+
+const words = (text: string) =>
+  new Set(
+    (text.toLowerCase().match(/[\p{L}\p{N}_]+/gu) ?? []).filter(
+      (word) => word.length > 1 && !STOPWORDS.has(word),
+    ),
+  );
+
+/** How alike two passages are: the Dice overlap of their words (0 to 1). */
+export function passageSimilarity(a: string, b: string): number {
+  const left = words(a);
+  const right = words(b);
+  if (!left.size || !right.size) return 0;
+  let shared = 0;
+  for (const word of left) if (right.has(word)) shared += 1;
+  return (2 * shared) / (left.size + right.size);
+}
+
+/**
+ * Find an anchor's words; when the page was rewritten and they are gone,
+ * fall back to the passage most like the one the person annotated.
+ */
+export function placeAnchor(
+  root: Element,
+  anchor: AnnotationAnchor,
+): { range: Range; moved: boolean } | null {
+  const exact = findAnchor(root, anchor);
+  if (exact) return { range: exact, moved: false };
+  const before = squash(anchor.block || anchor.quote || "");
+  if (!before) return null;
+  let best: Element | null = null;
+  let score = 0;
+  for (const block of Array.from(root.querySelectorAll(BLOCK_SELECTOR))) {
+    if (block.querySelector(BLOCK_SELECTOR)) continue; // the innermost passages only
+    const similarity = passageSimilarity(before, block.textContent ?? "");
+    if (similarity > score) {
+      best = block;
+      score = similarity;
+    }
+  }
+  if (!best || score < 0.5) return null;
+  const range = document.createRange();
+  range.selectNodeContents(best);
+  return { range, moved: true };
 }
 
 /** The block element a found range sits in, to scroll to or align beside. */

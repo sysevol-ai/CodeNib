@@ -300,3 +300,21 @@ def test_an_annotation_on_code_sends_the_code_not_a_page_section(
         "They selected this code:\n```\ndef add(a, b):\n    return a - b\n```" in prompt
     )
     assert "The section reads" not in prompt
+
+
+def test_the_agent_hears_when_annotated_code_changed_or_is_gone(
+    git_repo: Path, fake_agent
+) -> None:
+    store = AnnotationStore(git_repo)
+    on = {"page": "math", "path": "calc.py", "start_line": 1, "end_line": 1}
+    changed = store.create(kind="question", text="A?", on={**on, "quote": "x"})
+    store.update(changed.id, anchor_state="changed")
+    gone = store.create(kind="question", text="B?", on={**on, "quote": "y"})
+    store.update(gone.id, anchor_state="detached")
+    task = dispatch(git_repo, [changed.id, gone.id])
+
+    run_task(git_repo, task.id, agent=fake_agent, page_lookup=lookup)
+
+    prompt = fake_agent.prompt_path.read_text()
+    assert "edited since they selected it" in prompt
+    assert "That code is no longer in the file." in prompt

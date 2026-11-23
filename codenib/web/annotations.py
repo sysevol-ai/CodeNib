@@ -30,6 +30,7 @@ from pydantic import BaseModel, Field
 
 from ..annotations import AnnotationError, AnnotationStore, TaskStore
 from ..annotations.agents import agent_for, detect_agents
+from ..annotations.anchoring import context, follow, head_commit, locate
 from ..annotations.edits import (
     apply_edit,
     fold_into,
@@ -67,6 +68,8 @@ class RepoAccess:
 _access: Optional[RepoAccess] = None
 _running: set = set()
 _running_lock = threading.Lock()
+#: Annotations already located against unchanged files (see anchoring.follow).
+_anchor_cache: Dict[str, tuple] = {}
 
 
 def configure(access: RepoAccess) -> None:
@@ -160,7 +163,8 @@ class TaskIn(BaseModel):
 def _state(repo: Path, page: Optional[str]) -> Dict[str, Any]:
     _recover(repo)
     store, tasks = AnnotationStore(repo), TaskStore(repo)
-    annotations = store.list(page)
+    # Code moves under its annotations; follow it before showing them.
+    annotations = follow(store, store.list(page), _anchor_cache)
     task_ids = {a.task for a in annotations if a.task}
     recent = tasks.list()
     shown = [t for t in recent if page is None or t.id in task_ids][-20:]
@@ -189,15 +193,39 @@ async def create_annotation(repo_id: str, body: AnnotationIn, request: Request) 
     _authorize(request)
     repo, _ = await asyncio.to_thread(_repo, repo_id)
     store = AnnotationStore(repo)
-    try:
-        annotation = await asyncio.to_thread(
-            lambda: store.create(
-                kind=body.kind,
-                text=body.text,
-                on=body.on,
-                reply_to=body.reply_to or "",
-            )
+
+    def create() -> Any:
+        on = dict(body.on)
+        state = ""
+        if on.get("path"):
+            # The panel shows the indexed code; anchor to the working tree.
+            on["commit"] = head_commit(repo)
+            found = locate(repo, on)
+            if found is not None and found.state != "detached":
+                on.update(
+                    path=found.path,
+                    start_line=found.start_line,
+                    end_line=found.end_line,
+                )
+                # Remember the neighbours, to tell this code from copies of it.
+                source = (repo / found.path).read_text(
+                    encoding="utf-8", errors="replace"
+                )
+                on["before"], on["after"] = context(
+                    source.splitlines(), found.start_line, found.end_line
+                )
+                state = "current"
+            elif found is not None:
+                state = "detached"
+        annotation = store.create(
+            kind=body.kind, text=body.text, on=on, reply_to=body.reply_to or ""
         )
+        if state:
+            annotation = store.update(annotation.id, anchor_state=state)
+        return annotation
+
+    try:
+        annotation = await asyncio.to_thread(create)
     except AnnotationError as exc:
         raise _fail(exc) from exc
     return annotation.to_json()
