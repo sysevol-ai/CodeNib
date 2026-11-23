@@ -125,6 +125,18 @@ prepare project-local dependencies such as `node_modules`; run those profiles
 from a clean checkout when that distinction matters. Press `Ctrl-C` once to
 stop both services.
 
+Without a model the pages are built from the code index: lists of files and
+definitions. To have the pages written, add `--generate`. With Claude Code
+installed and signed in, it writes them on your Claude Code plan and needs no
+API key; the Overview comes first and the other pages follow in the background,
+at roughly $0.10 to $0.20 a page:
+
+```bash
+codenib wiki . --generate
+```
+
+To write them with another model, add `--model` and `--api-key-env`.
+
 Use different ports or keep the browser closed when needed:
 
 ```bash

@@ -1926,6 +1926,103 @@ def test_wiki_generate_resolves_openai_route(
     assert "runtime-secret" not in str(captured)
 
 
+def _bm25_manifest(tmp_path: Path) -> Path:
+    from codenib.compiler.manifest import IndexEntry
+
+    (tmp_path / "sample.py").write_text("def sample():\n    return 1\n")
+    manifest_path = tmp_path / "repo_manifest.json"
+    _current_manifest_with_fresh_index(
+        tmp_path,
+        IndexEntry(
+            index_type="bm25",
+            path=str(tmp_path / "bm25"),
+            built_at="2026-08-04T00:00:00+00:00",
+            built_at_epoch=0.0,
+            status="fresh",
+        ),
+    ).save(manifest_path)
+    return manifest_path
+
+
+@pytest.mark.parametrize("installed", [True, False])
+def test_wiki_generate_without_a_model_uses_claude_code(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    installed: bool,
+) -> None:
+    manifest_path = _bm25_manifest(tmp_path)
+    for name in ("CODENIB_DEMO_WIKI_MODEL", "CODENIB_DEMO_MODEL"):
+        monkeypatch.delenv(name, raising=False)
+    captured = {}
+    checked = []
+    monkeypatch.setattr(
+        cli, "_check_module", lambda module: checked.append(module) or True
+    )
+    monkeypatch.setattr(cli, "resolve_manifest_path", lambda _value: manifest_path)
+    monkeypatch.setattr("codenib.llm.claude_code.available", lambda: installed)
+
+    def prepare(*_args, **kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(runtime_env={})
+
+    monkeypatch.setattr("codenib.web.local.prepare_local_wiki", prepare)
+    monkeypatch.setattr(
+        "codenib.web.launcher.launch_local_wiki", lambda *_args, **_kwargs: 0
+    )
+
+    argv = ["wiki", str(tmp_path), "--no-index", "--generate", "--no-open"]
+    if not installed:
+        assert cli.run(argv) != 0
+        assert "install Claude Code" in capsys.readouterr().err
+        return
+    assert cli.run(argv) == 0
+    assert captured["model"] == "claude-code/sonnet"
+    assert captured["api_key_env"] is None and captured["api_base"] is None
+    assert captured["prewarm"] is True
+    assert "litellm" not in checked  # no LiteLLM needed for Claude Code pages
+    assert "written by your Claude Code" in capsys.readouterr().out
+
+
+def test_wiki_without_generate_suggests_claude_code(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    manifest_path = _bm25_manifest(tmp_path)
+    captured = {}
+    monkeypatch.setattr(cli, "_check_module", lambda _module: True)
+    monkeypatch.setattr(cli, "resolve_manifest_path", lambda _value: manifest_path)
+    monkeypatch.setattr("codenib.llm.claude_code.available", lambda: True)
+    monkeypatch.setattr(
+        "codenib.web.local.prepare_local_wiki",
+        lambda *_a, **kwargs: captured.update(kwargs) or SimpleNamespace(),
+    )
+    monkeypatch.setattr(
+        "codenib.web.launcher.launch_local_wiki", lambda *_args, **_kwargs: 0
+    )
+
+    assert cli.run(["wiki", str(tmp_path), "--no-index", "--no-open"]) == 0
+    assert (
+        "Add --generate to have your Claude Code write them" in capsys.readouterr().out
+    )
+    assert captured["prewarm"] is False
+    rejected = cli.run(
+        [
+            "wiki",
+            str(tmp_path),
+            "--no-index",
+            "--generate",
+            "--model",
+            "claude-code/opus",
+            "--api-key-env",
+            "X",
+            "--no-open",
+        ]
+    )
+    assert rejected != 0
+
+
 def test_wiki_visual_facts_publish_current_indexed_commit(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

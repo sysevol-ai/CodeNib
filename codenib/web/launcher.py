@@ -6,16 +6,20 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import secrets
 import shutil
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import webbrowser
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Optional
 
@@ -137,6 +141,58 @@ def _ensure_frontend_dependencies(frontend_dir: Path, *, install: bool) -> None:
         ) from exc
 
 
+def _page_order(tree: list) -> list[str]:
+    """Overview first, then top-level pages, then the pages under them."""
+
+    roots = [page for page in tree if isinstance(page, dict) and page.get("id")]
+    ids = [str(page["id"]) for page in roots]
+    for page in roots:
+        ids.extend(
+            str(child["id"])
+            for child in page.get("children") or []
+            if isinstance(child, dict) and child.get("id")
+        )
+    ordered = ["overview"] if "overview" in ids else []
+    return ordered + [page for page in dict.fromkeys(ids) if page != "overview"]
+
+
+def prewarm_pages(api_base: str, repo_id: str, *, workers: int = 2) -> tuple:
+    """Ask the API for every page so each is written before it is opened.
+
+    Returns ``(written, total)``. A page that fails is left for the reader to
+    open, which tries again.
+    """
+
+    base = f"{api_base}/api/repos/{urllib.parse.quote(repo_id, safe='')}/wiki"
+
+    def get(url: str, timeout: float) -> bool:
+        try:
+            with urllib.request.urlopen(url, timeout=timeout) as response:
+                return 200 <= response.status < 300
+        except (OSError, urllib.error.URLError):
+            return False
+
+    try:
+        with urllib.request.urlopen(base, timeout=900) as response:
+            tree = json.loads(response.read().decode("utf-8")).get("pages") or []
+    except (OSError, ValueError, urllib.error.URLError):
+        return (0, 0)
+    pages = _page_order(tree)
+    if not pages:
+        return (0, 0)
+    written = 1 if get(f"{base}/{pages[0]}?materialize_media=false", 900) else 0
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        results = pool.map(
+            lambda page: get(
+                f"{base}/{urllib.parse.quote(page, safe='')}?materialize_media=false",
+                900,
+            ),
+            pages[1:],
+        )
+        written += sum(1 for ok in results if ok)
+    return (written, len(pages))
+
+
 def launch_local_wiki(
     local: LocalWiki,
     *,
@@ -255,6 +311,22 @@ def launch_local_wiki(
                 flush=True,
             )
         print("Press Ctrl-C to stop.", flush=True)
+        if local.prewarm:
+
+            def warm() -> None:
+                written, total = prewarm_pages(
+                    f"http://{_loopback_host(api_host)}:{api_port}", local.repo_id
+                )
+                if total:
+                    print(f"Wrote {written} of {total} Wiki pages.", flush=True)
+
+            print(
+                "Writing the Overview first, then the other pages, in the background.",
+                flush=True,
+            )
+            threading.Thread(
+                target=warm, name="codenib-wiki-prewarm", daemon=True
+            ).start()
         if open_browser:
             webbrowser.open(repo_url)
 

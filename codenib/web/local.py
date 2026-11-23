@@ -38,6 +38,9 @@ class LocalWiki:
     config_path: Path
     repo_id: str
     runtime_env: dict[str, str] = field(default_factory=dict, repr=False)
+    #: Write every page in the background once the Wiki is up, rather than
+    #: when someone first opens it.
+    prewarm: bool = False
 
 
 def _repo_id(name: str) -> str:
@@ -79,6 +82,7 @@ def prepare_local_wiki(
     api_key_env: str | None = None,
     embedding_api_key_env: str | None = None,
     model_options: Mapping[str, Any] | None = None,
+    prewarm: bool = False,
 ) -> LocalWiki:
     """Write the registry and config consumed by the existing Wiki service."""
     repo_path = lexical_repository_path(repo_path)
@@ -209,6 +213,7 @@ def prepare_local_wiki(
         config_path=config_path,
         repo_id=repo_id,
         runtime_env=runtime_env,
+        prewarm=prewarm,
     )
 
 
