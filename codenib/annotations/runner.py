@@ -348,16 +348,25 @@ def run_task(
             else:
                 store.update(annotation.id, status="needs_review")
         origin_pages = {a.page for a in inputs}
+        origin = next(iter(sorted(p for p in origin_pages if p)), "")
+        origin_title = origin
+        if origin:
+            try:
+                origin_title = str((page_lookup(origin) or {}).get("title") or origin)
+            except Exception:  # noqa: BLE001 - the id is still a usable link
+                pass
         for page in diff.get("pages") or []:
             if page.get("id") in origin_pages:
                 continue
-            files = ", ".join(sorted(page.get("files") or [])) or "its code"
-            origin = next(iter(sorted(p for p in origin_pages if p)), "")
+            files = ", ".join(f"`{f}`" for f in sorted(page.get("files") or []))
+            where = f"[{origin_title}](?p={origin})" if origin else "another page"
+            # The note points back to the request; the diff is reviewed there.
             note = store.create(
                 kind="summary",
                 text=(
-                    f"A change requested on page `{origin}` edits {files}, which "
-                    "this page cites. Review it before it is applied."
+                    f"A change requested on {where} edits lines of "
+                    f"{files or 'the code'} that this page cites. Review it on "
+                    "that page before it is applied."
                 ),
                 on={"page": str(page["id"])},
                 author="agent",

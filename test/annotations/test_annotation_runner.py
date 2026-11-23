@@ -118,6 +118,9 @@ def test_change_runs_in_a_worktree_until_accepted(git_repo: Path, fake_agent) ->
     assert store.get(change.id).status == "needs_review"
     kinds = sorted((store.get(i).kind, store.get(i).page) for i in done.results)
     assert kinds == [("summary", "api"), ("summary", "math")]
+    (elsewhere,) = [store.get(i) for i in done.results if store.get(i).page == "api"]
+    assert elsewhere.text.startswith("A change requested on [Math helpers](?p=math)")
+    assert elsewhere.reply_to == ""  # reviewed on the page that asked for it
 
     accepted = accept(git_repo, task.id)
 

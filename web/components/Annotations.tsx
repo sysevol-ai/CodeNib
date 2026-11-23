@@ -712,7 +712,7 @@ function ThreadCard({
                   <button type="button" className="cn-button" onClick={(e) => { e.stopPropagation(); void showDiff(task.id); }}>
                     {diffFor === task.id ? "Hide diff" : "View diff"}
                   </button>
-                  {task.status === "needs_review" && (
+                  {task.status === "needs_review" && item.reply_to && (
                     <>
                       <button
                         type="button"
