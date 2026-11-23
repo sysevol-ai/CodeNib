@@ -17,6 +17,7 @@ export default function HighlightedCode({
   definition,
   highlightLine,
   highlightEnd,
+  noted,
 }: {
   code: string;
   file?: string | null;
@@ -26,6 +27,8 @@ export default function HighlightedCode({
   highlightLine?: number | null;
   /** 1-based end of the spotlight; defaults to highlightLine (a single line). */
   highlightEnd?: number | null;
+  /** 1-based lines that carry an open annotation, marked in the gutter. */
+  noted?: ReadonlySet<number>;
 }) {
   const rows = code ? excerptRows(code, startLine, definition) : { lines: [], numbers: [] };
   const html = highlightSource(rows.lines.join("\n"), languageForFile(file));
@@ -57,7 +60,12 @@ export default function HighlightedCode({
           <div
             key={i}
             className={
-              line == null ? "hl-gutter-gap" : spotlit[i] ? "hl-gutter-on" : undefined
+              [
+                line == null ? "hl-gutter-gap" : spotlit[i] ? "hl-gutter-on" : "",
+                line != null && noted?.has(line) ? "hl-gutter-noted" : "",
+              ]
+                .filter(Boolean)
+                .join(" ") || undefined
             }
           >
             {line ?? "⋯"}

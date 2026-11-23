@@ -545,6 +545,18 @@ export default function WikiPageView({
   const annotationsOn = !staticRuntime && !!repo?.capabilities?.annotations;
   const [notesOpen, setNotesOpen] = useState(false);
   const notes = useAnnotations(repoId, activeId, annotationsOn);
+  // Lines of code that carry an open annotation, marked in the source panel.
+  const notedLines = useMemo(() => {
+    const lines = new Map<string, Set<number>>();
+    for (const note of notes.annotations) {
+      const { path, start_line: from, end_line: to } = note.on;
+      if (!path || !from || note.author !== "human" || note.status === "resolved") continue;
+      const set = lines.get(path) ?? new Set<number>();
+      for (let line = from; line <= (to ?? from) && line < from + 500; line += 1) set.add(line);
+      lines.set(path, set);
+    }
+    return lines;
+  }, [notes.annotations]);
   // People write the Wiki: edit a page in place; a saved edit reloads it.
   const [editing, setEditing] = useState(false);
   const [pageVersion, setPageVersion] = useState(0);
@@ -1274,6 +1286,7 @@ export default function WikiPageView({
               open={notesOpen}
               onOpenChange={setNotesOpen}
               onPageChanged={() => setPageVersion((v) => v + 1)}
+              onCodeAnnotated={() => setSourceCitation(null)}
               onOpenCode={(ref) =>
                 setSourceCitation({
                   file: ref.path,
@@ -1794,6 +1807,7 @@ export default function WikiPageView({
                   citations={[sourceCitation]}
                   repo={repo?.repo}
                   commit={repo?.base_commit}
+                  notedLines={notedLines}
                 />
               </Suspense>
             </div>

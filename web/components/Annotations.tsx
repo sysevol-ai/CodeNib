@@ -13,6 +13,7 @@ import Markdown from "@/components/Markdown";
 import {
   AnnotationApiError,
   anchorBlock,
+  anchorFromCodeSelection,
   anchorFromSelection,
   createAnnotation,
   decideTask,
@@ -249,11 +250,17 @@ function SelectionComposer({
 
   useEffect(() => {
     function pick() {
-      const element = root.current?.querySelector(".wiki-story");
       const selection = window.getSelection();
-      if (!element || !selection || selection.rangeCount === 0) return;
+      if (!selection || selection.rangeCount === 0) return;
       const range = selection.getRangeAt(0);
-      const anchor = anchorFromSelection(element, range, pageId);
+      // Code in the source panel, or the words of the page.
+      const inCode = range.startContainer.parentElement?.closest(".source-modal .hl-code");
+      const element = root.current?.querySelector(".wiki-story");
+      const anchor = inCode
+        ? anchorFromCodeSelection(range, pageId)
+        : element
+          ? anchorFromSelection(element, range, pageId)
+          : null;
       if (!anchor) return;
       const box = range.getBoundingClientRect();
       setPending({
@@ -380,7 +387,17 @@ function SelectionComposer({
               </button>
             ))}
           </div>
-          <blockquote className="cn-quote">{pending.anchor.quote}</blockquote>
+          {pending.anchor.path ? (
+            <div className="cn-code-anchor">
+              <span className="mono">
+                {pending.anchor.path}:{pending.anchor.start_line}
+                {pending.anchor.end_line !== pending.anchor.start_line ? `-${pending.anchor.end_line}` : ""}
+              </span>
+              <pre className="cn-code-quote">{pending.anchor.quote}</pre>
+            </div>
+          ) : (
+            <blockquote className="cn-quote">{pending.anchor.quote}</blockquote>
+          )}
           <textarea
             ref={textarea}
             autoFocus
@@ -666,7 +683,27 @@ function ThreadCard({
       onClick={onSelect}
       aria-label={`${KIND_LABEL[thread.root.kind]}: ${thread.root.text.slice(0, 60)}`}
     >
-      {thread.root.on.quote ? (
+      {thread.root.on.path ? (
+        <div className="cn-code-anchor">
+          <button
+            type="button"
+            className="cn-file mono"
+            onClick={(event) => {
+              event.stopPropagation();
+              onOpenCode({
+                path: thread.root.on.path!,
+                start_line: thread.root.on.start_line,
+                end_line: thread.root.on.end_line,
+              });
+            }}
+            title="Open this code"
+          >
+            {thread.root.on.path}:{thread.root.on.start_line}
+            {thread.root.on.end_line !== thread.root.on.start_line ? `-${thread.root.on.end_line}` : ""}
+          </button>
+          {thread.root.on.quote && <pre className="cn-code-quote">{thread.root.on.quote}</pre>}
+        </div>
+      ) : thread.root.on.quote ? (
         <button
           type="button"
           className={`cn-quote cn-quote-link${range ? "" : " is-detached"}`}
@@ -679,7 +716,9 @@ function ThreadCard({
           {thread.root.on.quote}
         </button>
       ) : null}
-      {!range && thread.root.on.quote && <p className="cn-detached">Not found on this page anymore.</p>}
+      {!range && thread.root.on.quote && !thread.root.on.path && (
+        <p className="cn-detached">Not found on this page anymore.</p>
+      )}
       {items.map((item) => {
         const task = item.task ? tasks.get(item.task) : undefined;
         const mine = item.author === "human";
@@ -924,6 +963,7 @@ export function AnnotationLayer({
   onOpenCode,
   onPage,
   onPageChanged,
+  onCodeAnnotated,
 }: {
   repoId: string;
   pageId: string;
@@ -938,6 +978,8 @@ export function AnnotationLayer({
   onPage: (pageId: string) => void;
   /** The page's text changed (an answer was added); reload it. */
   onPageChanged: () => void;
+  /** Code in the source panel was annotated: close the panel to show Notes. */
+  onCodeAnnotated?: () => void;
 }) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
@@ -1048,6 +1090,7 @@ export function AnnotationLayer({
 
   const onSave = async (kind: HumanKind, text: string, anchor: AnnotationAnchor, sendNow: boolean) => {
     const created = await createAnnotation(repoId, { kind, text, on: anchor });
+    if (anchor.path) onCodeAnnotated?.();
     setActiveId(created.id);
     onOpenChange(true);
     await refresh();
@@ -1064,8 +1107,9 @@ export function AnnotationLayer({
 
   const openThreads = placed.filter((p) => p.thread.root.status !== "resolved");
   const resolved = placed.filter((p) => p.thread.root.status === "resolved");
-  const pageLevel = openThreads.filter((p) => !p.thread.root.on.quote);
-  const quoted = openThreads.filter((p) => p.thread.root.on.quote);
+  const pageLevel = openThreads.filter((p) => !p.thread.root.on.quote && !p.thread.root.on.path);
+  const onCode = openThreads.filter((p) => p.thread.root.on.path);
+  const quoted = openThreads.filter((p) => p.thread.root.on.quote && !p.thread.root.on.path);
   const renderThread = (p: Placed) => (
     <ThreadCard
       key={p.thread.root.id}
@@ -1166,6 +1210,12 @@ export function AnnotationLayer({
                   </>
                 )}
                 {quoted.map(renderThread)}
+                {onCode.length > 0 && (
+                  <>
+                    <h3 className="cn-group">On the code</h3>
+                    {onCode.map(renderThread)}
+                  </>
+                )}
                 {model.ready && openThreads.length === 0 && (
                   <div className="cn-empty">
                     <p>

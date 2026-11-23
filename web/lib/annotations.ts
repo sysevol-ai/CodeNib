@@ -358,6 +358,48 @@ export function findAnchor(root: Element, anchor: AnnotationAnchor): Range | nul
   return range;
 }
 
+/**
+ * Describe a selection inside a source fragment: its file, the lines it
+ * covers (read from the fragment's gutter) and the selected code.
+ */
+export function anchorFromCodeSelection(range: Range, page: string): AnnotationAnchor | null {
+  if (range.collapsed) return null;
+  const start = range.startContainer.parentElement?.closest(".hl-code");
+  const end = range.endContainer.parentElement?.closest(".hl-code");
+  if (!start || start !== end) return null;
+  const code = start.querySelector("pre.hl-pre code");
+  const path = start.closest<HTMLElement>("[data-path]")?.dataset.path;
+  if (!code || !path || !code.contains(range.startContainer)) return null;
+  const quote = range.toString().replace(/\s+$/, "");
+  if (!quote.trim()) return null;
+  const rowOf = (node: Node, offset: number) => {
+    const before = document.createRange();
+    before.selectNodeContents(code);
+    before.setEnd(node, offset);
+    return before.toString().split("\n").length - 1;
+  };
+  const numbers = Array.from(start.querySelectorAll(".hl-gutter > div")).map((row) => {
+    const value = Number.parseInt(row.textContent ?? "", 10);
+    return Number.isFinite(value) ? value : null;
+  });
+  let first = rowOf(range.startContainer, range.startOffset);
+  let last = rowOf(range.endContainer, range.endOffset);
+  // A selection that ends at the start of a line does not cover that line.
+  if (last > first && range.toString().endsWith("\n")) last -= 1;
+  while (first < numbers.length && numbers[first] == null) first += 1;
+  while (last >= 0 && numbers[last] == null) last -= 1;
+  const startLine = numbers[first];
+  const endLine = numbers[last];
+  if (startLine == null || endLine == null || endLine < startLine) return null;
+  return {
+    page,
+    path,
+    start_line: startLine,
+    end_line: endLine,
+    quote: quote.slice(0, 2000),
+  };
+}
+
 /** The block element a found range sits in, to scroll to or align beside. */
 export function anchorBlock(root: Element, range: Range): Element {
   return blockOf(range.startContainer, root);

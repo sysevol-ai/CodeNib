@@ -14,7 +14,8 @@
 .cn-picker,
 .cn-composer {
   position: fixed;
-  z-index: 950;
+  /* Above the source panel (1100), so code can be annotated in place. */
+  z-index: 1200;
   font-size: var(--fs-small);
   color: var(--text-primary);
   background: var(--bg-surface);
@@ -700,4 +701,32 @@
 .cn-hunk.is-rejected .cn-diff-add,
 .cn-hunk.is-rejected .cn-diff-del {
   text-decoration: line-through;
+}
+
+/* --- Annotations on code ---------------------------------------------------- */
+
+.cn-code-anchor {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+}
+.cn-code-quote {
+  margin: 0;
+  width: 100%;
+  max-height: 7.5em;
+  overflow: hidden;
+  padding: 6px 10px;
+  border-left: 2px solid var(--accent);
+  background: var(--code-bg);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  line-height: 1.5;
+  white-space: pre;
+}
+
+/* A line of code with an open annotation: a mark in the source gutter. */
+.hl-gutter-noted {
+  box-shadow: inset 2px 0 0 var(--accent);
+  color: var(--accent);
 }
