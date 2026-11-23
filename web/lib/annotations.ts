@@ -417,3 +417,45 @@ export function usageLine(usage: TaskUsage): string {
   if (usage.duration_ms) parts.push(`${Math.round(usage.duration_ms / 1000)} s`);
   return parts.join(" · ");
 }
+
+// --- People write the Wiki ------------------------------------------------
+
+export interface PageSource {
+  markdown: string;
+  /** The version the editor opened; saving refuses a page changed since. */
+  base: string;
+  /** "document": the repository file itself; "page": a Wiki page edit. */
+  kind: "document" | "page";
+  path: string;
+  edited: boolean;
+}
+
+const pagePath = (repoId: string, pageId: string) =>
+  `${repoPath(repoId)}/pages/${encodeURIComponent(pageId)}`;
+
+export function fetchPageSource(repoId: string, pageId: string): Promise<PageSource> {
+  return call(`${pagePath(repoId, pageId)}/markdown`);
+}
+
+export function savePageSource(
+  repoId: string,
+  pageId: string,
+  markdown: string,
+  base: string,
+): Promise<PageSource> {
+  return call(`${pagePath(repoId, pageId)}/markdown`, {
+    method: "PUT",
+    body: JSON.stringify({ markdown, base }),
+  });
+}
+
+export function revertPage(repoId: string, pageId: string): Promise<{ reverted: boolean }> {
+  return call(`${pagePath(repoId, pageId)}/markdown`, { method: "DELETE" });
+}
+
+export function foldAnswer(repoId: string, pageId: string, annotation: string): Promise<PageSource> {
+  return call(`${pagePath(repoId, pageId)}/fold`, {
+    method: "POST",
+    body: JSON.stringify({ annotation }),
+  });
+}

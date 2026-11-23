@@ -30,6 +30,13 @@ from pydantic import BaseModel, Field
 
 from ..annotations import AnnotationError, AnnotationStore, TaskStore
 from ..annotations.agents import agent_for, detect_agents
+from ..annotations.edits import (
+    apply_edit,
+    fold_into,
+    page_source,
+    revert_page,
+    save_page,
+)
 from ..annotations.model import HUMAN_KINDS
 from ..annotations.runner import accept, dispatch, reject, run_task, task_patch
 
@@ -296,7 +303,9 @@ def _start(repo_id: str, repo: Path, name: str, task_id: str, agent_name: str) -
                 repo,
                 task_id,
                 agent=agent,
-                page_lookup=lambda page_id: access.page(repo_id, page_id),
+                page_lookup=lambda page_id: apply_edit(
+                    repo, page_id, access.page(repo_id, page_id)
+                ),
                 pages_citing=_pages_citing(repo_id),
                 repo_name=name,
             )
@@ -360,5 +369,94 @@ async def decide_task(
     action = accept if decision == "accept" else reject
     try:
         return (await asyncio.to_thread(action, repo, task_id)).to_json()
+    except AnnotationError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+# --- People write the Wiki -------------------------------------------------
+
+
+class MarkdownIn(BaseModel):
+    markdown: str = Field(min_length=1, max_length=400_000)
+    base: str = Field(default="", max_length=64)
+
+
+class FoldIn(BaseModel):
+    annotation: str = Field(min_length=26, max_length=26)
+
+
+def _generated(repo_id: str, page_id: str) -> Optional[Dict[str, Any]]:
+    assert _access is not None
+    return _access.page(repo_id, page_id)
+
+
+@router.get("/api/repos/{repo_id}/pages/{page_id}/markdown")
+async def get_page_markdown(repo_id: str, page_id: str, request: Request) -> dict:
+    _authorize(request)
+    repo, _ = await asyncio.to_thread(_repo, repo_id)
+    try:
+        page = await asyncio.to_thread(_generated, repo_id, page_id)
+        return await asyncio.to_thread(page_source, repo, page_id, page)
+    except (AnnotationError, OSError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.put("/api/repos/{repo_id}/pages/{page_id}/markdown")
+async def put_page_markdown(
+    repo_id: str, page_id: str, body: MarkdownIn, request: Request
+) -> dict:
+    _authorize(request)
+    repo, _ = await asyncio.to_thread(_repo, repo_id)
+    try:
+        page = await asyncio.to_thread(_generated, repo_id, page_id)
+        return await asyncio.to_thread(
+            save_page, repo, page_id, page, body.markdown, body.base
+        )
+    except AnnotationError as exc:
+        status = 409 if "changed since" in str(exc) else 400
+        raise HTTPException(status_code=status, detail=str(exc)) from exc
+
+
+@router.delete("/api/repos/{repo_id}/pages/{page_id}/markdown")
+async def delete_page_markdown(repo_id: str, page_id: str, request: Request) -> dict:
+    _authorize(request)
+    repo, _ = await asyncio.to_thread(_repo, repo_id)
+    try:
+        reverted = await asyncio.to_thread(revert_page, repo, page_id)
+    except AnnotationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"reverted": reverted}
+
+
+@router.post("/api/repos/{repo_id}/pages/{page_id}/fold")
+async def fold_answer(
+    repo_id: str, page_id: str, body: FoldIn, request: Request
+) -> dict:
+    """Add an agent's answer to the page, under the question it answers."""
+
+    _authorize(request)
+    repo, _ = await asyncio.to_thread(_repo, repo_id)
+    store = AnnotationStore(repo)
+
+    def fold() -> dict:
+        answer = store.get(body.annotation)
+        if answer.author != "agent" or answer.kind != "answer":
+            raise AnnotationError("only an agent's answer can be added to a page")
+        question = store.get(answer.reply_to) if answer.reply_to else None
+        page = _generated(repo_id, page_id)
+        current = page_source(repo, page_id, page)
+        markdown = fold_into(
+            current["markdown"],
+            section=str(answer.on.get("section") or ""),
+            quote=str(answer.on.get("quote") or ""),
+            question=question.text if question else "Answer",
+            answer=answer.text,
+        )
+        saved = save_page(repo, page_id, page, markdown, current["base"])
+        store.update(answer.id, status="applied")
+        return saved
+
+    try:
+        return await asyncio.to_thread(fold)
     except AnnotationError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc

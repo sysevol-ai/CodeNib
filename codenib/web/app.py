@@ -39,6 +39,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
+from ..annotations.edits import apply_edit
 from ..log_utils import get_logger
 from ..repository_filters import repository_path_is_visible
 from ..repository_source_selection import RepositorySourceSelection
@@ -1162,6 +1163,14 @@ async def wiki_page(
                 page,
                 bundle,
             )
+        if _repo_docs_enabled() and entry is not None:
+            # A person's edit of this page replaces the generated text.
+            edited = apply_edit(Path(entry.repo_dir), page_id, page)
+            if edited is not page:
+                page = {
+                    **edited,
+                    "story": derive_story_from_markdown(str(edited["markdown"])),
+                }
         if "visual_quality" not in page:
             page = {**page, "visual_quality": page_visual_contract_report(page)}
         if "generation" not in page:

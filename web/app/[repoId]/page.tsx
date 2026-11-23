@@ -81,7 +81,9 @@ import {
 } from "@/lib/api";
 
 import { AnnotationLayer, NotesButton, useAnnotations } from "@/components/Annotations";
+import { revertPage } from "@/lib/annotations";
 const CodePanel = lazy(() => import("@/components/CodePanel"));
+const PageEditor = lazy(() => import("@/components/PageEditor"));
 const Codemap = lazy(() => import("@/components/Codemap"));
 const LEADING_VISUAL_WAIT_MS = 5000;
 
@@ -543,6 +545,11 @@ export default function WikiPageView({
   const annotationsOn = !staticRuntime && !!repo?.capabilities?.annotations;
   const [notesOpen, setNotesOpen] = useState(false);
   const notes = useAnnotations(repoId, activeId, annotationsOn);
+  // People write the Wiki: edit a page in place; a saved edit reloads it.
+  const [editing, setEditing] = useState(false);
+  const [pageVersion, setPageVersion] = useState(0);
+  const shownPage = useRef({ repoId, activeId });
+  useEffect(() => setEditing(false), [repoId, activeId]);
   // Publish the reading surface once its leading visual has resolved, including
   // an unavailable/error result. Rendering prose first lets a later map or
   // boundary card insert itself above the reader's current paragraph.
@@ -610,10 +617,17 @@ export default function WikiPageView({
 
   useEffect(() => {
     let cancelled = false;
-    setPage(null);
+    // A reload of the same page (after an edit) keeps it on screen until the
+    // new text arrives; moving to another page clears it.
+    const reload =
+      shownPage.current.repoId === repoId && shownPage.current.activeId === activeId && pageVersion > 0;
+    shownPage.current = { repoId, activeId };
+    if (!reload) {
+      setPage(null);
+      setSourceCitation(null);
+    }
     setPageError(null);
-    setSourceCitation(null);
-    fetchWikiPage(repoId, activeId)
+    fetchWikiPage(repoId, activeId, { refresh: pageVersion > 0 })
       .then((p) => !cancelled && setPage(p))
       .catch(
         (e) =>
@@ -622,7 +636,7 @@ export default function WikiPageView({
     return () => {
       cancelled = true;
     };
-  }, [repoId, activeId]);
+  }, [repoId, activeId, pageVersion]);
 
   useEffect(() => {
     setPageLoadSeconds(0);
@@ -1110,6 +1124,17 @@ export default function WikiPageView({
             {annotationsOn && (
               <NotesButton model={notes} open={notesOpen} onClick={() => setNotesOpen((o) => !o)} />
             )}
+            {annotationsOn && !notes.needsSession && page && !walking && (
+              <button
+                type="button"
+                className="cn-launch cn-edit-launch"
+                aria-pressed={editing}
+                onClick={() => setEditing((on) => !on)}
+                title="Edit this page's Markdown"
+              >
+                {editing ? "Editing" : "Edit page"}
+              </button>
+            )}
             {walking ? (
               <>
                 <span className="crumb-sep">/</span>
@@ -1248,6 +1273,7 @@ export default function WikiPageView({
               model={notes}
               open={notesOpen}
               onOpenChange={setNotesOpen}
+              onPageChanged={() => setPageVersion((v) => v + 1)}
               onOpenCode={(ref) =>
                 setSourceCitation({
                   file: ref.path,
@@ -1276,7 +1302,19 @@ export default function WikiPageView({
             />
           )}
           <div className="wiki-content" ref={contentRef}>
-              {page && !withheldByQualityGuard && (
+              {editing && page && (
+                <Suspense fallback={<div className="muted">Opening the editor…</div>}>
+                  <PageEditor
+                    repoId={repoId}
+                    pageId={activeId}
+                    onDone={(saved) => {
+                      setEditing(false);
+                      if (saved) setPageVersion((v) => v + 1);
+                    }}
+                  />
+                </Suspense>
+              )}
+              {page && !withheldByQualityGuard && !editing && (
                 <div className="wiki-story">
                   {wikiMarkdown.lead && !showPoster && (
                     <Markdown
@@ -1433,6 +1471,26 @@ export default function WikiPageView({
                             ? "Built from the index"
                             : "Written by a model, not yet checked against source"}
                   </span>
+                  {page.edited && (
+                    <span className="cn-edited">
+                      <span>
+                        Edited by you
+                        {page.edited.stale ? "; the generated page has changed since" : ""}
+                      </span>
+                      {annotationsOn && (
+                        <button
+                          type="button"
+                          className="cn-link"
+                          onClick={async () => {
+                            await revertPage(repoId, activeId);
+                            setPageVersion((v) => v + 1);
+                          }}
+                        >
+                          Show the generated page
+                        </button>
+                      )}
+                    </span>
+                  )}
                   {page.grounding && (
                     // The reader gets counts they can check; the pipeline's
                     // routes, review score, and visual audit stay in the
