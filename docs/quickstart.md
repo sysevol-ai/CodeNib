@@ -131,6 +131,49 @@ Use different ports or keep the browser closed when needed:
 codenib wiki . --port 3100 --api-port 8100 --no-open
 ```
 
+## Ask Your Agent From The Wiki
+
+A local Wiki is also where you work with your coding agent. Select words on a
+page to ask about them, request a change, or leave a note. Questions and
+change requests go to your own Claude Code, and its answers come back next to
+the words you selected.
+
+Open the Wiki from the address `codenib wiki` prints. It carries a session key
+(`?session=…`) that annotating needs, so no other page in your browser can
+start your agent.
+
+1. Select words on a page and pick **Ask**, **Change** or **Note** (or press
+   1, 2 or 3). Write what you want. Enter saves a draft; ⌘Enter saves it and
+   sends it.
+2. Open **Notes** in the header to see the page's annotations, and send the
+   drafts you select to Claude Code as one task.
+3. A question comes back as an answer under it, with its code references
+   linked to the source. Reply to ask a follow-up.
+4. A change request runs in a separate git worktree, so your working tree
+   stays as it was. Review the diff in Notes, then apply it to your working
+   tree or discard it. Other pages that cite the changed lines get a short
+   note about the change.
+5. A note is a standing fact, such as "this path must stay lock-free". It is
+   never sent on its own: every later task on the same page includes it, and
+   the agent is told not to contradict it.
+
+The agent gets file tools only: it reads and searches the code, and edits it
+for a change. It has no shell or network tools. Claude Code must be installed
+and signed in; CodeNib never asks for an API key.
+
+Annotations and tasks are plain files in the repository. Commit them to share
+them with your team, or add `.codenib/` to `.gitignore` to keep them local.
+
+| Path | Holds |
+| --- | --- |
+| `.codenib/notes/<id>.md` | One annotation or answer, in the same format as [change guard](guard.md) notes |
+| `.codenib/tasks/<id>.json` | One task: its annotations, status, changed files and token use |
+
+Prompts, the agent's output and its worktrees stay outside the repository,
+under `~/.codenib/repositories/`. Set `CODENIB_TASK_MODEL` to pick the Claude
+model for tasks, and `CODENIB_TASK_MAX_BUDGET_USD` to cap what one task may
+spend.
+
 ## Reuse An Existing Index
 
 The default command compares the repository with its existing manifest and
