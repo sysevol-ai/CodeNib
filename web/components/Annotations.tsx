@@ -37,6 +37,7 @@ import {
   type DiffHunk,
   type HumanKind,
   type Thread,
+  type WorktreeStatus,
 } from "@/lib/annotations";
 import "./Annotations.css";
 
@@ -90,6 +91,7 @@ export interface AnnotationsModel {
   annotations: Annotation[];
   tasks: AgentTask[];
   agents: AgentInfo[];
+  worktree: WorktreeStatus | null;
   refresh: () => Promise<void>;
 }
 
@@ -97,6 +99,7 @@ export function useAnnotations(repoId: string, pageId: string, enabled: boolean)
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [tasks, setTasks] = useState<AgentTask[]>([]);
   const [agents, setAgents] = useState<AgentInfo[]>([]);
+  const [worktree, setWorktree] = useState<WorktreeStatus | null>(null);
   const [ready, setReady] = useState(false);
   const [needsSession, setNeedsSession] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -111,6 +114,7 @@ export function useAnnotations(repoId: string, pageId: string, enabled: boolean)
       setAnnotations(state.annotations);
       setTasks(state.tasks);
       setAgents(state.agents);
+      setWorktree(state.worktree ?? null);
       setNeedsSession(false);
       setError(null);
     } catch (failure) {
@@ -134,13 +138,16 @@ export function useAnnotations(repoId: string, pageId: string, enabled: boolean)
   }, [refresh, enabled]);
 
   const live = tasks.some(isLive);
+  // A running task is watched closely; a local Wiki that follows its working
+  // tree is checked now and then, to notice files changing under it.
+  const following = worktree !== null;
   useEffect(() => {
-    if (!live) return;
-    const timer = window.setInterval(() => void refresh(), 1500);
+    if (!live && !following) return;
+    const timer = window.setInterval(() => void refresh(), live || worktree?.state === "updating" ? 1500 : 5000);
     return () => window.clearInterval(timer);
-  }, [live, refresh]);
+  }, [live, following, worktree?.state, refresh]);
 
-  return { ready, needsSession, error, annotations, tasks, agents, refresh };
+  return { ready, needsSession, error, annotations, tasks, agents, worktree, refresh };
 }
 
 // --- Highlights ---------------------------------------------------------------
@@ -1040,6 +1047,14 @@ export function AnnotationLayer({
     setFailure(null);
   }, [pageId]);
 
+  // When the Wiki caught up with changed files, show the page as it is now.
+  const updatedAt = model.worktree?.updated_at ?? "";
+  const seenUpdate = useRef(updatedAt);
+  useEffect(() => {
+    if (updatedAt && updatedAt !== seenUpdate.current) onPageChanged();
+    seenUpdate.current = updatedAt;
+  }, [updatedAt, onPageChanged]);
+
   useEffect(() => {
     if (!live) return;
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
@@ -1212,6 +1227,20 @@ export function AnnotationLayer({
                   </span>
                 )}
               </div>
+              {model.worktree?.state === "updating" && (
+                <div className="cn-live" role="status">
+                  <span className="cn-spinner" aria-hidden />
+                  <span>
+                    Updating the Wiki for {model.worktree.changed.length || "your"} changed{" "}
+                    {model.worktree.changed.length === 1 ? "file" : "files"}
+                  </span>
+                </div>
+              )}
+              {model.worktree?.state === "failed" && (
+                <p className="cn-error cn-pad" role="alert">
+                  The Wiki could not catch up with your changed files: {model.worktree.error}
+                </p>
+              )}
               {live && (
                 <div className="cn-live" role="status">
                   <span className="cn-spinner" aria-hidden />

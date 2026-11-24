@@ -1980,6 +1980,8 @@ def test_wiki_generate_without_a_model_uses_claude_code(
     assert captured["model"] == "claude-code/sonnet"
     assert captured["api_key_env"] is None and captured["api_base"] is None
     assert captured["prewarm"] is True
+    reindex = captured["reindex_argv"]
+    assert reindex[1:4] == ["-m", "codenib", "index"] and reindex[4] == str(tmp_path)
     assert "litellm" not in checked  # no LiteLLM needed for Claude Code pages
     assert "written by your Claude Code" in capsys.readouterr().out
 

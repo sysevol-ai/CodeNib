@@ -156,8 +156,20 @@ def save_snapshot(builder: Any, path: Path, commit: str) -> int:
     return len(pages)
 
 
-def carry_forward(builder: Any, path: Path, repo: Path, commit: str) -> CarryForward:
-    """Copy the snapshot's unaffected pages under ``commit``'s cache key."""
+def carry_forward(
+    builder: Any,
+    path: Path,
+    repo: Path,
+    commit: str,
+    *,
+    changed: Optional[set[str]] = None,
+) -> CarryForward:
+    """Copy the snapshot's unaffected pages under the builder's cache key.
+
+    ``changed`` names the files that changed since the snapshot when Git
+    cannot (edits in the working tree that are not committed); otherwise Git
+    compares the snapshot's commit with ``commit``.
+    """
 
     result = CarryForward()
     if not path.is_file():
@@ -175,7 +187,8 @@ def carry_forward(builder: Any, path: Path, repo: Path, commit: str) -> CarryFor
     if snapshot.get("prompt_versions") != _prompt_versions():
         result.reason = "the Wiki prompts changed"
         return result
-    changed = changed_files(repo, result.previous_commit, commit)
+    if changed is None:
+        changed = changed_files(repo, result.previous_commit, commit)
     if changed is None:
         result.reason = (
             f"Git cannot compare {result.previous_commit[:12]} with {commit[:12]}"

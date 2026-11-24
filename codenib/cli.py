@@ -1896,6 +1896,32 @@ def _manifest_embedding_route(
         raise CLIError(str(exc)) from exc
 
 
+def _reindex_argv(
+    repo_path: Path,
+    views: Sequence[str],
+    languages: Sequence[str],
+    args: argparse.Namespace,
+) -> list[str]:
+    """The `codenib index` run that brings the Wiki's views up to date."""
+
+    argv = [sys.executable, "-m", "codenib", "index", str(repo_path)]
+    for view in views:
+        argv += ["--view", view]
+    for language in languages:
+        argv += ["--language", language]
+    for flag, name in (
+        ("--embedding-provider", "embedding_provider"),
+        ("--embedding-model", "embedding_model"),
+        ("--embedding-dimension", "embedding_dimension"),
+        ("--embedding-endpoint", "embedding_endpoint"),
+        ("--embedding-api-key-env", "embedding_api_key_env"),
+    ):
+        value = getattr(args, name, None)
+        if value:
+            argv += [flag, str(value)]
+    return argv
+
+
 def _run_wiki(args: argparse.Namespace) -> int:
     try:
         args.port, args.api_port = validate_local_wiki_ports(
@@ -2092,6 +2118,8 @@ def _run_wiki(args: argparse.Namespace) -> int:
             # Claude Code writes pages on the person's plan; have them ready
             # before they are opened instead of making each first visit wait.
             prewarm=bool(args.agent_wiki and claude_pages and not audit),
+            # Follow the working tree: re-run this indexing when files change.
+            reindex_argv=_reindex_argv(repo_path, views, languages, args),
         )
     except ValueError as exc:
         raise CLIError(str(exc)) from exc
