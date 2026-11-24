@@ -84,6 +84,8 @@ export default function Header({
       <AppLink href="/" className="brand">
         <img className="brand-logo for-light" src={assetUrl("/codenib-logo.svg")} alt="CodeNib" width={101} height={32} />
         <img className="brand-logo for-dark" src={assetUrl("/codenib-logo-dark.svg")} alt="CodeNib" width={101} height={32} />
+        {/* A phone keeps the nib alone, so the page's own controls fit. */}
+        <img className="brand-mark" src={assetUrl("/codenib-icon.svg")} alt="CodeNib" width={23} height={28} />
       </AppLink>
       {center}
       <div className="header-right">

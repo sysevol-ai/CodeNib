@@ -286,6 +286,28 @@ pre {
     height: 28px;
   }
 }
+.site-header .brand .brand-mark {
+  display: none;
+  height: 28px;
+  width: auto;
+}
+/* On a phone the wordmark takes the room the Notes and menu buttons need. */
+@media (max-width: 480px) {
+  .site-header .brand .brand-logo.for-light,
+  .site-header .brand .brand-logo.for-dark,
+  [data-theme="dark"] .site-header .brand .brand-logo.for-dark {
+    display: none;
+  }
+  .site-header .brand .brand-mark {
+    display: block;
+  }
+}
+/* The narrowest phones: the nib already leads home, where the Wikis are. */
+@media (max-width: 359px) {
+  .site-header .header-right .header-link {
+    display: none;
+  }
+}
 .site-header .header-right {
   margin-left: auto;
   display: flex;
