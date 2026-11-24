@@ -203,8 +203,9 @@ try {
       assert.match(await page.locator(".cn-usage").innerText(), /4 turns · 9\.4k tokens · \$0\.030 · 6 s/);
 
       // Edit page opens the page's Markdown, and Esc leaves the page as it was.
+      // The box stays empty and disabled until the Markdown arrives.
       await page.getByRole("button", { name: "Edit page" }).click();
-      await page.locator(".cn-editor-text").waitFor();
+      await page.locator(".cn-editor-text:enabled").waitFor();
       assert.match(await page.locator(".cn-editor-text").inputValue(), /The runtime starts a loop/);
       assert.match(await page.locator(".cn-editor-bar").innerText(), /\.codenib\/wiki\/runtime\.md/);
       await page.locator(".cn-editor-text").press("Escape");
@@ -233,6 +234,41 @@ try {
       await stranger.getByRole("button", { name: /^Notes/ }).click();
       assert.match(await stranger.locator(".cn-drawer").innerText(), /printed in your terminal/);
       await stranger.context().close();
+
+      // The hosted Wiki never offers page edits: not while its notes load
+      // slowly, and not when they fail to load.
+      for (const notes of ["slow", "failed"]) {
+        const hosted = await browser.newContext({ viewport: { width, height: 900 }, serviceWorkers: "block" });
+        await hosted.addInitScript(() => {
+          window.__editOffered = false;
+          new MutationObserver(() => {
+            if (window.document.querySelector(".cn-edit-launch")) window.__editOffered = true;
+          }).observe(window.document, { childList: true, subtree: true });
+        });
+        await hosted.route("**/api/**", async (route) => {
+          const url = new URL(route.request().url());
+          if (url.pathname === `${path}/annotations`) {
+            await delay(800);
+            if (notes === "failed") return route.fulfill({ status: 503, json: { detail: "down" } });
+            return route.fulfill({ json: { annotations: [], tasks: [], kinds: ["question", "change", "note"],
+              agents: [{ id: "claude-code", name: "Claude Code", available: true, hosted: true }], mode: "hosted" } });
+          }
+          if (url.pathname === "/api/repos") return route.fulfill({ json: [repo] });
+          if (url.pathname === `${path}/wiki`) return route.fulfill({ json: tree });
+          if (url.pathname.startsWith(`${path}/wiki/`) && !url.pathname.endsWith("/boundary")) {
+            return route.fulfill({ json: document("runtime") });
+          }
+          return route.fulfill({ status: 404, json: {} });
+        });
+        const visitor = await hosted.newPage();
+        await visitor.goto(`${base}/${repo.id}?p=runtime`, { waitUntil: "domcontentloaded" });
+        await visitor.locator(".wiki-story").waitFor();
+        await visitor.getByRole("button", { name: /^Notes/ }).waitFor();
+        await delay(1500);
+        const offered = await visitor.evaluate(() => window.__editOffered);
+        assert.equal(offered, false, `${label}: page editing offered on the hosted Wiki (${notes} notes)`);
+        await hosted.close();
+      }
 
       assert.ok(fake.state.keys.includes(KEY) && fake.state.keys.includes(null));
       assert.deepEqual(errors, []);
