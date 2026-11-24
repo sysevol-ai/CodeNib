@@ -746,6 +746,29 @@ def generate_outline(
     Returns ``{"pages": [...]}``. On a model/parse failure returns
     ``{"pages": [], "raw": <text>, "error": <msg>}`` so callers can inspect.
     """
+    from ..llm.usage import current_wiki_page_context
+
+    token = current_wiki_page_context.set("outline")
+    try:
+        return _generate_outline_inner(
+            bundle,
+            model,
+            max_tokens=max_tokens,
+            llm=llm,
+            concise=concise,
+        )
+    finally:
+        current_wiki_page_context.reset(token)
+
+
+def _generate_outline_inner(
+    bundle: Any,
+    model: str,
+    max_tokens: int = 16000,
+    *,
+    llm: Any = None,
+    concise: bool = False,
+) -> Dict[str, Any]:
     wb = WikiBuilder(bundle)
     symbols = list(wb._symbols())
     core_symbols = [

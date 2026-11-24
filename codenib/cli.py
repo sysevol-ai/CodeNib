@@ -1560,13 +1560,32 @@ def _run_pages_build(args: argparse.Namespace) -> int:
             )
         else:
             print(f"Wiki: writing every page ({carried.reason}).")
+    carried_rewritten = (
+        len(carried.rewritten)
+        if (not args.full and carried and carried.outline_reused)
+        else None
+    )
+    carried_total = (
+        (len(carried.reused) + len(carried.rewritten))
+        if (not args.full and carried and carried.outline_reused)
+        else None
+    )
     report = _audit_local_wiki(
         local,
         parts,
         progress=_pages_progress_printer(model_backend.model, workers=args.workers),
         workers=args.workers,
+        rewritten_pages=carried_rewritten,
+        total_pages=carried_total,
     )
     _print_wiki_audit(report, verdict=False)
+    if getattr(args, "usage_json", None) and "usage" in report:
+        usage_path = Path(args.usage_json)
+        usage_path.parent.mkdir(parents=True, exist_ok=True)
+        usage_path.write_text(
+            json.dumps(report["usage"], indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
     details = [item for item in report.get("details") or [] if isinstance(item, dict)]
     ready = {str(item.get("id")) for item in details if item.get("ready")}
     expected = int(report.get("expected_pages") or 0)
@@ -1720,6 +1739,7 @@ def _local_agent_wiki(local):
     """Load the prepared local runtime; return its bundle, model and builder."""
 
     from .llm.litellm_chat import LiteLLMChat
+    from .llm.usage import UsageTracker
     from .web.config import load_config
     from .web.native_authority import authorize_local_manifest_vector
     from .web.repo_registry import RepoRegistry
@@ -1747,6 +1767,7 @@ def _local_agent_wiki(local):
             f"prepared repository {local.repo_id!r} was not loaded for auditing"
         )
     model = config.wiki_generation_model
+    tracker = UsageTracker()
     client = LiteLLMChat(
         model=model,
         temperature=0.2,
@@ -1754,6 +1775,7 @@ def _local_agent_wiki(local):
         api_base=config.wiki_generation_api_base,
         api_key=config.wiki_generation_api_key,
         extra_kwargs=config.wiki_generation_options,
+        usage_tracker=tracker,
     )
     builder = AgentWiki(
         bundle,
@@ -1769,7 +1791,13 @@ def _local_agent_wiki(local):
 
 
 def _audit_local_wiki(
-    local, builder_parts=None, progress=None, workers: int = 1
+    local,
+    builder_parts=None,
+    progress=None,
+    workers: int = 1,
+    *,
+    rewritten_pages: int | None = None,
+    total_pages: int | None = None,
 ) -> dict[str, object]:
     """Audit the prepared local Wiki, generating every page it still lacks."""
 
@@ -1777,12 +1805,34 @@ def _audit_local_wiki(
 
     bundle, model, builder = builder_parts or _local_agent_wiki(local)
     report = audit_wiki(builder, progress=progress, workers=workers)
-    return {
+    result: dict[str, object] = {
         "repository": bundle.entry.repo,
         "commit": bundle.entry.base_commit,
         "model": model,
         **report,
     }
+    llm = getattr(builder, "_llm", None)
+    tracker = getattr(llm, "usage_tracker", None)
+    if tracker is not None:
+        details = [
+            item for item in report.get("details") or [] if isinstance(item, dict)
+        ]
+        left_out = [str(item["id"]) for item in details if not item.get("ready")]
+        result["usage"] = tracker.summary(
+            wall_clock_seconds=report.get("wall_clock_seconds"),
+            total_pages=(
+                total_pages
+                if total_pages is not None
+                else int(report.get("expected_pages") or 0)
+            ),
+            rewritten_pages=(
+                rewritten_pages
+                if rewritten_pages is not None
+                else int(report.get("generated_pages") or 0)
+            ),
+            left_out_pages=left_out,
+        )
+    return result
 
 
 _DEFAULT_PAGES_WORKERS = 4
@@ -1874,6 +1924,11 @@ def _print_wiki_audit(
         print(f"  FAIL {detail.get('id')}: {failures}{suffix}")
     if verdict:
         print("Result: PASS" if report.get("passed") else "Result: FAIL")
+    usage = report.get("usage")
+    if isinstance(usage, dict) and usage:
+        from .llm.usage import format_usage_summary
+
+        print(format_usage_summary(usage))
 
 
 def _manifest_embedding_route(
@@ -2126,6 +2181,13 @@ def _run_wiki(args: argparse.Namespace) -> int:
     if audit:
         report = _audit_local_wiki(local)
         _print_wiki_audit(report, as_json=args.audit_json)
+        if getattr(args, "usage_json", None) and "usage" in report:
+            usage_path = Path(args.usage_json)
+            usage_path.parent.mkdir(parents=True, exist_ok=True)
+            usage_path.write_text(
+                json.dumps(report["usage"], indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
         return 0 if report.get("passed") else 1
     try:
         return launch_local_wiki(
@@ -3959,6 +4021,10 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="run the Wiki audit and print its complete JSON report",
     )
+    wiki_parser.add_argument(
+        "--usage-json",
+        help="path to write the usage summary JSON",
+    )
     wiki_parser.set_defaults(handler=_run_wiki)
 
     export_parser = subparsers.add_parser(
@@ -4232,6 +4298,10 @@ def build_parser() -> argparse.ArgumentParser:
     pages_build.add_argument("--api-key-env")
     pages_build.add_argument(
         "--model-option", action="append", default=[], metavar="KEY=VALUE"
+    )
+    pages_build.add_argument(
+        "--usage-json",
+        help="path to write the usage summary JSON",
     )
     pages_build.set_defaults(handler=_run_pages_build)
 

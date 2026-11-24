@@ -439,6 +439,7 @@ runs:
         PYTHONUNBUFFERED: "1"
       run: |
         set -euo pipefail
+        usage_file="$RUNNER_TEMP/wiki-usage.json"
         command=(
           codenib pages build "$INPUT_REPOSITORY_PATH"
           --site-output "$SITE_OUTPUT"
@@ -446,6 +447,7 @@ runs:
           --frontend-dir "$FRONTEND_OUTPUT"
           --repository "$REPOSITORY"
           --model "$WIKI_MODEL"
+          --usage-json "$usage_file"
         )
         if [[ -n "$INPUT_SITE_URL" ]]; then
           command+=(--site-url "$INPUT_SITE_URL")
@@ -458,6 +460,24 @@ runs:
         fi
         status=0
         "${command[@]}" || status=$?
+        if [[ -f "$usage_file" && -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+          python -c "
+        import json, os
+        from pathlib import Path
+        from codenib.llm.usage import format_usage_markdown
+
+        p = Path(os.environ['RUNNER_TEMP']) / 'wiki-usage.json'
+        summary_path = os.environ.get('GITHUB_STEP_SUMMARY')
+        if p.exists() and summary_path:
+            try:
+                data = json.loads(p.read_text(encoding='utf-8'))
+                md = format_usage_markdown(data)
+                with open(summary_path, 'a', encoding='utf-8') as f:
+                    f.write(md + '\n')
+            except Exception as exc:
+                print(f'Warning: failed to render step summary: {exc}')
+        " || true
+        fi
         if [[ $status -eq 3 ]]; then
           # Stop here, so nothing is deployed and the last published Wiki stays.
           echo "::error title=CodeNib Wiki::The Wiki did not pass its checks, so nothing was published. The last published Wiki stays as it is; run the workflow again, or with full-rebuild."
