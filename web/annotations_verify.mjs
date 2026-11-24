@@ -128,7 +128,11 @@ try {
   for (const [engineName, engine] of [["chromium", chromium], ["webkit", webkit]]) {
     browser = await engine.launch();
     for (const width of [1440, 1280, 1024, 390]) {
-      const context = await browser.newContext({ viewport: { width, height: 900 }, reducedMotion: "reduce" });
+      // The app's service worker (pwa_verify.mjs) is off here: WebKit sends a
+      // controlled page's requests past Playwright's routes, around the fake API.
+      const context = await browser.newContext({
+        viewport: { width, height: 900 }, reducedMotion: "reduce", serviceWorkers: "block",
+      });
       context.setDefaultTimeout(10000);
       const page = await context.newPage(), errors = [], unexpected = [];
       page.on("pageerror", (error) => errors.push(error.message));
@@ -211,7 +215,9 @@ try {
       await page.locator('.wiki-main[aria-busy="false"] .wiki-story').waitFor();
       await page.getByRole("button", { name: /^Notes/ }).click();
       await page.locator(".cn-drawer .cn-item.is-agent").waitFor();
-      const stranger = await (await browser.newContext({ viewport: { width, height: 900 } })).newPage();
+      const stranger = await (await browser.newContext({
+        viewport: { width, height: 900 }, serviceWorkers: "block",
+      })).newPage();
       await stranger.context().route("**/api/**", async (route) => {
         const url = new URL(route.request().url());
         if (await fake.handle(route, url, route.request())) return;

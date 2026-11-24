@@ -5,6 +5,7 @@ import { AppLink } from "@/lib/router";
 import { assetUrl, guardHome, homeRepository } from "@/lib/runtime";
 import { AGENT_SETUP_URL } from "@/components/AgentSetup";
 import { recordExperience } from "@/lib/experience";
+import { syncThemeColor } from "@/lib/pwa";
 
 function ThemeToggle() {
   const [theme, setTheme] = useState<"light" | "dark">("light");
@@ -15,6 +16,7 @@ function ThemeToggle() {
   function toggle() {
     const next = theme === "dark" ? "light" : "dark";
     document.documentElement.dataset.theme = next;
+    syncThemeColor(next);
     try {
       localStorage.setItem("cm-theme", next);
     } catch {}

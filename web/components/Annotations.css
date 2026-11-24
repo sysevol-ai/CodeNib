@@ -250,6 +250,9 @@
   width: min(420px, 100vw);
   display: flex;
   flex-direction: column;
+  /* Clear of the notch on a phone on its side, and of the home indicator. */
+  padding-right: var(--safe-right);
+  padding-bottom: var(--safe-bottom);
   background: var(--bg-surface);
   border-left: 1px solid var(--border-subtle);
   box-shadow: var(--shadow-pop);
@@ -547,8 +550,10 @@
 @media (max-width: 820px) {
   .cn-drawer {
     top: auto;
-    height: min(70vh, 560px);
+    /* The bottom sheet keeps its reading height above the home indicator. */
+    height: calc(min(70vh, 560px) + var(--safe-bottom));
     width: 100vw;
+    padding-left: var(--safe-left);
     border-left: 0;
     border-top: 1px solid var(--border-subtle);
   }

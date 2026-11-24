@@ -77,6 +77,43 @@ def test_static_server_uses_same_origin_api_and_falls_back_to_spa(tmp_path):
     assert "ready" in asset
 
 
+def test_static_server_serves_the_installed_app_files(tmp_path):
+    """The manifest and service worker are revalidated on every load."""
+
+    (tmp_path / "index.html").write_text("<title>CodeNib Wiki</title>")
+    (tmp_path / "manifest.webmanifest").write_text('{"name": "CodeNib Wiki"}')
+    (tmp_path / "sw.js").write_text("self.addEventListener('fetch', () => {});")
+    server = build_server(
+        tmp_path,
+        api_base="http://127.0.0.1:8123/",
+        host="127.0.0.1",
+        port=0,
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_port}"
+    try:
+        with urllib.request.urlopen(f"{base}/manifest.webmanifest") as response:
+            manifest = json.loads(response.read())
+            manifest_type = response.headers["Content-Type"]
+            manifest_cache = response.headers["Cache-Control"]
+        with urllib.request.urlopen(f"{base}/sw.js") as response:
+            worker = response.read().decode()
+            worker_type = response.headers["Content-Type"]
+            worker_cache = response.headers["Cache-Control"]
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+    assert manifest == {"name": "CodeNib Wiki"}
+    assert manifest_type == "application/manifest+json"
+    assert manifest_cache == "no-cache"
+    assert "addEventListener" in worker
+    assert "javascript" in worker_type  # text/ or application/, by Python version
+    assert worker_cache == "no-cache"
+
+
 def test_static_server_proxies_api_for_remote_browser(tmp_path):
     class APIHandler(BaseHTTPRequestHandler):
         def do_GET(self):  # noqa: N802 - stdlib handler contract
