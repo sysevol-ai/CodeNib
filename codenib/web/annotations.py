@@ -70,6 +70,13 @@ _running: set = set()
 _running_lock = threading.Lock()
 #: Annotations already located against unchanged files (see anchoring.follow).
 _anchor_cache: Dict[str, tuple] = {}
+#: The local Wiki's working-tree follower, when there is one.
+_worktree: Any = None
+
+
+def set_worktree(follower: Any) -> None:
+    global _worktree
+    _worktree = follower
 
 
 def configure(access: RepoAccess) -> None:
@@ -176,6 +183,7 @@ def _state(repo: Path, page: Optional[str]) -> Dict[str, Any]:
         "tasks": [t.to_json() for t in shown],
         "agents": detect_agents(),
         "kinds": list(HUMAN_KINDS),
+        "worktree": _worktree.status() if _worktree is not None else None,
     }
 
 

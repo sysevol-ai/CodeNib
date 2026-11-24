@@ -93,10 +93,19 @@ export interface AgentInfo {
   install: string;
 }
 
+export interface WorktreeStatus {
+  /** The local Wiki following its working tree: up to date, updating, or failed. */
+  state: "current" | "updating" | "failed";
+  error: string;
+  updated_at: string;
+  changed: string[];
+}
+
 export interface AnnotationState {
   annotations: Annotation[];
   tasks: AgentTask[];
   agents: AgentInfo[];
+  worktree?: WorktreeStatus | null;
 }
 
 const SESSION_KEY = "codenib-local-session";

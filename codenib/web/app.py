@@ -95,6 +95,7 @@ from .share import router as share_router
 from .source_definition import attach_definition
 from .visitor_wikis import router as visitor_wiki_router
 from .walkthroughs import load_walkthroughs
+from .worktree import WorktreeFollower
 
 _WIKI_MEDIA_TYPES = {
     ".jpeg": "image/jpeg",
@@ -175,6 +176,59 @@ def _wiki_narrator(config):
     )
 
 
+def _start_worktree_follower(config, registry):
+    """For a local Wiki, keep the served repository on its working tree."""
+
+    argv = list(getattr(config, "reindex_argv", None) or [])
+    infos = registry.list_infos() if argv else []
+    if len(infos) != 1:
+        return None
+    repo_id = infos[0].id
+    bundle = registry.get(repo_id)
+    repo_dir = getattr(getattr(bundle, "entry", None), "repo_dir", None)
+    if not repo_dir:
+        return None
+    data_dir = Path(os.path.abspath(config.data_dir))
+    snapshot = data_dir / "carry-forward-worktree.json"
+
+    def save_pages() -> None:
+        # Keep the written pages, to carry the unaffected ones forward.
+        if not getattr(config, "wiki_agent", False):
+            return
+        from ..wiki.carry_forward import save_snapshot
+
+        try:
+            save_snapshot(_wiki(repo_id), snapshot, "")
+        except (ValueError, OSError) as exc:
+            logger.info("No written pages to carry forward: %s", exc)
+            snapshot.unlink(missing_ok=True)
+
+    def publish(changed) -> None:
+        registry.refresh(repo_id)
+        if getattr(config, "wiki_agent", False) and snapshot.is_file():
+            from ..wiki.carry_forward import carry_forward
+
+            carried = carry_forward(
+                _wiki(repo_id), snapshot, Path(repo_dir), "", changed=set(changed)
+            )
+            logger.info(
+                "Kept %d written page(s); %d will be written again",
+                len(carried.reused),
+                len(carried.rewritten),
+            )
+
+    follower = WorktreeFollower(
+        Path(repo_dir),
+        argv,
+        on_updated=publish,
+        before_update=save_pages,
+        log_path=data_dir / "reindex.log",
+    )
+    wiki_annotations.set_worktree(follower)
+    logger.info("Following the working tree of %s", repo_dir)
+    return follower.start()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     config = load_config()
@@ -213,8 +267,12 @@ async def lifespan(app: FastAPI):
             app.state.narrator.cache_dir,
         )
         logger.info("Ready: %d repo(s) available", len(registry.list_infos()))
+        app.state.worktree = _start_worktree_follower(config, registry)
         yield
     finally:
+        follower = getattr(app.state, "worktree", None)
+        if follower is not None:
+            follower.stop()
         visitor_wikis = getattr(app.state, "visitor_wikis", None)
         if visitor_wikis is not None:
             visitor_wikis.close()

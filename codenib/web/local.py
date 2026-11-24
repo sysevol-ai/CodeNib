@@ -12,7 +12,7 @@ import re
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 import yaml
 
@@ -83,6 +83,7 @@ def prepare_local_wiki(
     embedding_api_key_env: str | None = None,
     model_options: Mapping[str, Any] | None = None,
     prewarm: bool = False,
+    reindex_argv: Sequence[str] = (),
 ) -> LocalWiki:
     """Write the registry and config consumed by the existing Wiki service."""
     repo_path = lexical_repository_path(repo_path)
@@ -165,6 +166,7 @@ def prepare_local_wiki(
         "mode": mode,
         "wiki_agent": agent_wiki,
         "repo_docs": True,
+        "reindex_argv": list(reindex_argv),
         "cors_origins": [
             f"http://localhost:{frontend_port}",
             f"http://127.0.0.1:{frontend_port}",

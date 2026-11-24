@@ -139,6 +139,11 @@ codenib wiki . --generate
 
 To write them with another model, add `--model` and `--api-key-env`.
 
+The Wiki follows your working tree. When files change (an applied change, or
+an edit in your editor) it updates its index within a few seconds, and the
+pages whose code changed are written again the next time they are opened;
+the others are kept.
+
 Use different ports or keep the browser closed when needed:
 
 ```bash
