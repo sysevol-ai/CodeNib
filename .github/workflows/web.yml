@@ -81,3 +81,8 @@ jobs:
 
       - name: Verify homepage first paint with delayed and failed styles
         run: node landing_loading_verify.mjs
+
+      - name: Verify the installable app, offline page and phone safe areas
+        run: node pwa_verify.mjs
+        env:
+          PWA_ENGINES: chromium

@@ -39,6 +39,7 @@ def runtime_config(api_base: str) -> bytes:
 
 
 _UPSTREAM_TIMEOUT_SECONDS = 600
+_REVALIDATED_PATHS = {"/", "/index.html", "/sw.js", "/manifest.webmanifest"}
 
 
 class WikiStaticHandler(SimpleHTTPRequestHandler):
@@ -46,6 +47,11 @@ class WikiStaticHandler(SimpleHTTPRequestHandler):
 
     api_base = ""
     browser_api_base = ""
+    # Python before 3.12 does not know the web app manifest's media type.
+    extensions_map = {
+        **SimpleHTTPRequestHandler.extensions_map,
+        ".webmanifest": "application/manifest+json",
+    }
 
     def do_GET(self) -> None:  # noqa: N802 - stdlib handler contract
         request_path = urlsplit(self.path).path
@@ -222,7 +228,9 @@ class WikiStaticHandler(SimpleHTTPRequestHandler):
         request_path = urlsplit(self.path).path
         if request_path.startswith("/assets/"):
             self.send_header("Cache-Control", "public, max-age=31536000, immutable")
-        elif request_path == "/index.html" or request_path == "/":
+        elif request_path in _REVALIDATED_PATHS:
+            # The app shell, and what installs it, are checked on every load
+            # so a new build reaches an installed app at once.
             self.send_header("Cache-Control", "no-cache")
         super().end_headers()
 
