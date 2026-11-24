@@ -180,6 +180,8 @@ def _start_worktree_follower(config, registry):
     """For a local Wiki, keep the served repository on its working tree."""
 
     argv = list(getattr(config, "reindex_argv", None) or [])
+    if wiki_annotations.hosted_enabled():
+        argv = []  # a hosted checkout is shared and never re-indexed in place
     infos = registry.list_infos() if argv else []
     if len(infos) != 1:
         return None
@@ -945,7 +947,10 @@ def _annotation_pages(repo_id: str) -> list[dict]:
 
 wiki_annotations.configure(
     wiki_annotations.RepoAccess(
-        repo=_annotation_repo, page=_annotation_page, pages=_annotation_pages
+        repo=_annotation_repo,
+        page=_annotation_page,
+        pages=_annotation_pages,
+        state_root=lambda: Path(os.path.abspath(load_config().data_dir)),
     )
 )
 
@@ -970,7 +975,9 @@ async def list_repos() -> list[RepoInfo]:
         info.capabilities = {
             **info.capabilities,
             "edge_labels": edge_on,
-            "annotations": wiki_annotations.enabled(),
+            "annotations": wiki_annotations.enabled()
+            or wiki_annotations.hosted_enabled(),
+            "annotations_hosted": wiki_annotations.hosted_enabled(),
         }
         # The card's one-line summary comes from the cached Overview, then the
         # manifest or README; reading it never starts page generation.
