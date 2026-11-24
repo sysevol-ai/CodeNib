@@ -6,18 +6,24 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
+import secrets
 import shutil
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import webbrowser
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Optional
 
+from .annotations import TOKEN_ENV as ANNOTATION_TOKEN_ENV
 from .local import LocalWiki
 from .ports import validate_local_wiki_ports
 
@@ -135,6 +141,58 @@ def _ensure_frontend_dependencies(frontend_dir: Path, *, install: bool) -> None:
         ) from exc
 
 
+def _page_order(tree: list) -> list[str]:
+    """Overview first, then top-level pages, then the pages under them."""
+
+    roots = [page for page in tree if isinstance(page, dict) and page.get("id")]
+    ids = [str(page["id"]) for page in roots]
+    for page in roots:
+        ids.extend(
+            str(child["id"])
+            for child in page.get("children") or []
+            if isinstance(child, dict) and child.get("id")
+        )
+    ordered = ["overview"] if "overview" in ids else []
+    return ordered + [page for page in dict.fromkeys(ids) if page != "overview"]
+
+
+def prewarm_pages(api_base: str, repo_id: str, *, workers: int = 2) -> tuple:
+    """Ask the API for every page so each is written before it is opened.
+
+    Returns ``(written, total)``. A page that fails is left for the reader to
+    open, which tries again.
+    """
+
+    base = f"{api_base}/api/repos/{urllib.parse.quote(repo_id, safe='')}/wiki"
+
+    def get(url: str, timeout: float) -> bool:
+        try:
+            with urllib.request.urlopen(url, timeout=timeout) as response:
+                return 200 <= response.status < 300
+        except (OSError, urllib.error.URLError):
+            return False
+
+    try:
+        with urllib.request.urlopen(base, timeout=900) as response:
+            tree = json.loads(response.read().decode("utf-8")).get("pages") or []
+    except (OSError, ValueError, urllib.error.URLError):
+        return (0, 0)
+    pages = _page_order(tree)
+    if not pages:
+        return (0, 0)
+    written = 1 if get(f"{base}/{pages[0]}?materialize_media=false", 900) else 0
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        results = pool.map(
+            lambda page: get(
+                f"{base}/{urllib.parse.quote(page, safe='')}?materialize_media=false",
+                900,
+            ),
+            pages[1:],
+        )
+        written += sum(1 for ok in results if ok)
+    return (written, len(pages))
+
+
 def launch_local_wiki(
     local: LocalWiki,
     *,
@@ -174,6 +232,16 @@ def launch_local_wiki(
     env["CODENIB_API_BASE"] = f"http://{_loopback_host(api_host)}:{api_port}"
     env.pop("NEXT_PUBLIC_API_BASE", None)
     env.update(local.runtime_env)
+    # Annotations write into the checkout and start the person's agent, so
+    # they are on only for a loopback API, behind a token the browser gets
+    # from the URL printed below (see ``codenib/web/annotations.py``).
+    session = ""
+    if api_host in ("127.0.0.1", "localhost", "::1"):
+        session = secrets.token_urlsafe(24)
+    backend_env = dict(env)
+    if session:
+        backend_env[ANNOTATION_TOKEN_ENV] = session
+    env.pop(ANNOTATION_TOKEN_ENV, None)
 
     backend: subprocess.Popen | None = None
     frontend_process: subprocess.Popen | None = None
@@ -189,7 +257,7 @@ def launch_local_wiki(
                 "--port",
                 str(api_port),
             ],
-            env=env,
+            env=backend_env,
         )
         _wait_for_http(
             f"http://{_loopback_host(api_host)}:{api_port}/api/health",
@@ -231,8 +299,34 @@ def launch_local_wiki(
         public_url = f"http://{_loopback_host(frontend_host)}:{frontend_port}"
         _wait_for_http(public_url, frontend_process)
         repo_url = f"{public_url}/{local.repo_id}"
-        print(f"\nCodeNib Wiki is ready: {repo_url}")
-        print("Press Ctrl-C to stop.")
+        if session:
+            repo_url += f"?session={session}"
+        # Flushed: run in the background (as the Claude Code plugin does), the
+        # output is a file, and this link carries the annotation session key.
+        print(f"\nCodeNib Wiki is ready: {repo_url}", flush=True)
+        if session:
+            print(
+                "Select words on a page to ask your coding agent about them, "
+                "request a change, or leave a note.",
+                flush=True,
+            )
+        print("Press Ctrl-C to stop.", flush=True)
+        if local.prewarm:
+
+            def warm() -> None:
+                written, total = prewarm_pages(
+                    f"http://{_loopback_host(api_host)}:{api_port}", local.repo_id
+                )
+                if total:
+                    print(f"Wrote {written} of {total} Wiki pages.", flush=True)
+
+            print(
+                "Writing the Overview first, then the other pages, in the background.",
+                flush=True,
+            )
+            threading.Thread(
+                target=warm, name="codenib-wiki-prewarm", daemon=True
+            ).start()
         if open_browser:
             webbrowser.open(repo_url)
 

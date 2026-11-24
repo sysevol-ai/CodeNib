@@ -15,8 +15,11 @@ from codenib.wiki.importance import (
     TIER_MORE,
     TIER_PRIMARY,
     file_weights,
+    is_peripheral_file,
     main_path_start,
+    own_entry_files,
     page_tiers,
+    path_stops,
 )
 
 
@@ -77,7 +80,7 @@ def _named(graph):
     return graph.vs["unified_name"]
 
 
-def test_main_path_starts_where_the_heaviest_public_path_begins():
+def test_among_starts_with_a_reason_the_heaviest_public_path_wins():
     vertices = [
         ("get", "api.py", "function"),
         ("Session.request", "sessions.py", "method"),
@@ -100,37 +103,103 @@ def test_main_path_starts_where_the_heaviest_public_path_begins():
     ]
     graph = _graph(vertices, edges)
 
-    start = main_path_start(graph, is_test=lambda file: file.startswith("tests/"))
+    start = main_path_start(
+        graph,
+        is_test=lambda file: file.startswith("tests/"),
+        program_files=["api.py", "misc.py"],
+    )
 
     assert _named(graph)[start] == "get"
+    # Without a reason to start anywhere, the heaviest path is no answer.
+    assert main_path_start(graph, is_test=lambda f: f.startswith("tests/")) is None
 
 
-def test_a_manifest_entry_point_is_preferred():
+def test_a_declared_program_is_preferred():
     vertices = [
         ("api", "api.py", "function"),
         ("core", "core.py", "function"),
         ("deep", "core.py", "function"),
         ("cli", "cli.py", "function"),
         ("small", "cli.py", "function"),
+        ("smaller", "cli.py", "function"),
     ]
     edges = [
         (0, 1, EDGE_TYPE_REFERENCE),
         (1, 2, EDGE_TYPE_REFERENCE),
         (3, 4, EDGE_TYPE_REFERENCE),
+        (4, 5, EDGE_TYPE_REFERENCE),
     ]
     graph = _graph(vertices, edges)
+    both = ["api.py", "cli.py"]
 
-    assert _named(graph)[main_path_start(graph)] == "api"
-    assert _named(graph)[main_path_start(graph, entry_files=["cli.py"])] == "cli"
+    assert _named(graph)[main_path_start(graph, program_files=both)] == "api"
+    preferred = main_path_start(graph, program_files=both, own_files=["cli.py"])
+    assert _named(graph)[preferred] == "cli"
+
+
+def test_a_readme_door_is_preferred_when_its_path_leaves_the_file():
+    vertices = [
+        ("demo_main", "pkg/browser.py", "function"),
+        ("demo_step", "pkg/browser.py", "function"),
+        ("demo_tool", "pkg/browser.py", "function"),
+        ("Agent.__call__", "pkg/agents.py", "method"),
+        ("Agent.run", "pkg/agents.py", "method"),
+        ("log", "pkg/monitoring.py", "function"),
+        ("run_main", "src/run.py", "function"),
+        ("score", "src/evaluate.py", "function"),
+        ("report", "src/report.py", "function"),
+    ]
+    edges = [
+        (0, 1, EDGE_TYPE_REFERENCE),
+        (1, 2, EDGE_TYPE_REFERENCE),
+        (3, 4, EDGE_TYPE_REFERENCE),
+        (4, 5, EDGE_TYPE_REFERENCE),
+        (6, 7, EDGE_TYPE_REFERENCE),
+        (7, 8, EDGE_TYPE_REFERENCE),
+    ]
+    graph = _graph(vertices, edges)
+    named = _named(graph)
+
+    # A declared program whose path never leaves its own file still wins on
+    # its own, as before ...
+    assert (
+        named[main_path_start(graph, program_files=["pkg/browser.py"])] == "demo_main"
+    )
+    # ... but a file the README links to, whose path does leave, comes first.
+    linked = main_path_start(
+        graph, program_files=["pkg/browser.py"], linked_files=["pkg/agents.py"]
+    )
+    assert named[linked] == "Agent.__call__"
+    # A self-contained demo is no door even when the README links to it, and
+    # once the README names doors nothing else is one either.
+    assert (
+        main_path_start(
+            graph, program_files=["pkg/browser.py"], linked_files=["pkg/browser.py"]
+        )
+        is None
+    )
+    # What the README tells readers to run beats what it links to.
+    run = main_path_start(
+        graph, linked_files=["pkg/agents.py"], run_files=["src/run.py"]
+    )
+    assert named[run] == "run_main"
 
 
 def test_a_project_of_only_cycles_still_has_a_start():
     graph = _graph(
-        [("run", "a.py", "function"), ("step", "a.py", "function")],
-        [(0, 1, EDGE_TYPE_REFERENCE), (1, 0, EDGE_TYPE_REFERENCE)],
+        [
+            ("run", "a.py", "function"),
+            ("step", "a.py", "function"),
+            ("act", "a.py", "function"),
+        ],
+        [
+            (0, 1, EDGE_TYPE_REFERENCE),
+            (1, 2, EDGE_TYPE_REFERENCE),
+            (2, 0, EDGE_TYPE_REFERENCE),
+        ],
     )
 
-    assert main_path_start(graph) in {0, 1}
+    assert main_path_start(graph, program_files=["a.py"]) in {0, 1, 2}
 
 
 def test_no_start_without_recorded_calls():
@@ -268,3 +337,179 @@ def test_a_graph_failure_falls_back_to_outline_order(tmp_path):
 
     assert tree[1]["tier"] == TIER_PRIMARY
     assert tree[1]["children"][0]["tier"] == TIER_DETAIL
+
+
+def test_peripheral_files_are_the_code_around_the_project():
+    for file in (
+        "deps/lua/src/lua.c",
+        "sklearn/externals/array_api_extra/_funcs.py",
+        "examples/chat.rs",
+        "tokio-test/src/lib.rs",
+        "crates/ruff_dev/src/main.rs",
+        "crates/nu-test-support/src/harness/mod.rs",
+        "benches/spawn.rs",
+        "ci/numpydoc-public-api.py",
+        "src/jq_test.c",
+        "crates/ty_vendored/build.rs",
+        "sklearn/utils/_compat.pyi",
+    ):
+        assert is_peripheral_file(file), file
+    for file in (
+        "deps/deps.go",
+        "src/requests/api.py",
+        "tokio/src/task/spawn.rs",
+        "crates/ruff/src/main.rs",
+        "packages/babel-generator/src/printer.ts",
+        "latest.py",
+    ):
+        assert not is_peripheral_file(file), file
+
+
+def _stops_graph():
+    vertices = [
+        ("main", "src/main.c", "function"),
+        ("serve", "src/server.c", "function"),
+        ("_serverAssert", "src/debug.c", "function"),
+        ("unknown", "src/span.c", "function"),
+        ("free_all", "src/mem.c", "function"),
+    ]
+    callers = [(f"caller{index}", f"src/c{index}.c", "function") for index in range(8)]
+    vertices += callers
+    edges = [
+        (0, 1, EDGE_TYPE_REFERENCE),
+        (1, 2, EDGE_TYPE_REFERENCE),
+        (1, 3, EDGE_TYPE_REFERENCE),
+        (5, 2, EDGE_TYPE_REFERENCE),
+        (6, 2, EDGE_TYPE_REFERENCE),
+        (2, 4, EDGE_TYPE_REFERENCE),
+    ]
+    # free_all() is called from every caller file: a helper everything uses.
+    edges += [(5 + index, 4, EDGE_TYPE_REFERENCE) for index in range(8)]
+    graph = _graph(vertices, edges)
+    graph.vs["start_line"] = [0, 0, 0, 0, 0] + [0] * 8
+    graph.vs["end_line"] = [30, 40, 20, 2, 25] + [10] * 8
+    return graph
+
+
+def test_a_path_stops_before_helpers_failure_reports_and_tiny_leaves():
+    graph = _stops_graph()
+    named = _named(graph)
+
+    stops = {named[vertex] for vertex in path_stops(graph)}
+
+    assert stops == {"free_all", "_serverAssert", "unknown"}
+
+
+def test_a_start_is_never_in_vendored_code_and_needs_a_reason():
+    vertices = [
+        ("main", "deps/lua/src/lua.c", "function"),
+        ("lua_close", "deps/lua/src/lstate.c", "function"),
+        ("close_state", "deps/lua/src/lstate.c", "function"),
+        ("main", "src/server.c", "function"),
+        ("initServer", "src/server.c", "function"),
+        ("aeMain", "src/ae.c", "function"),
+        ("xaddCommand", "src/t_stream.c", "function"),
+        ("streamAppend", "src/t_stream.c", "function"),
+        ("lpAppend", "src/listpack.c", "function"),
+    ]
+    edges = [
+        (0, 1, EDGE_TYPE_REFERENCE),
+        (1, 2, EDGE_TYPE_REFERENCE),
+        (3, 4, EDGE_TYPE_REFERENCE),
+        (4, 5, EDGE_TYPE_REFERENCE),
+        (6, 7, EDGE_TYPE_REFERENCE),
+        (7, 8, EDGE_TYPE_REFERENCE),
+    ]
+    graph = _graph(vertices, edges)
+
+    start = main_path_start(graph)
+
+    assert graph.vs[start]["file"] == "src/server.c"
+    # Without the program, a command handler the code never calls has no
+    # reason to be the way in.
+    graph.vs[3]["file"] = "examples/server.c"
+    assert main_path_start(graph) is None
+
+
+def test_a_call_in_the_readme_examples_starts_the_path():
+    vertices = [
+        ("api.py:get()", "src/pkg/api.py", "function"),
+        ("api.py:request()", "src/pkg/api.py", "function"),
+        ("sessions.py:Session.send()", "src/pkg/sessions.py", "method"),
+        ("cookies.py:Jar.get()", "src/pkg/cookies.py", "method"),
+        ("util.py:heavy()", "src/pkg/util.py", "function"),
+        ("util.py:heavier()", "src/pkg/util.py", "function"),
+        ("util.py:heaviest()", "src/pkg/core.py", "function"),
+    ]
+    edges = [
+        (0, 1, EDGE_TYPE_REFERENCE),
+        (1, 2, EDGE_TYPE_REFERENCE),
+        (2, 3, EDGE_TYPE_REFERENCE),
+        (4, 5, EDGE_TYPE_REFERENCE),
+        (5, 6, EDGE_TYPE_REFERENCE),
+        (4, 6, EDGE_TYPE_REFERENCE),
+    ]
+    graph = _graph(vertices, edges)
+
+    start = main_path_start(graph, readme_calls=[("pkg", "get")])
+
+    # ``pkg.get(`` is the module's function, not ``Jar.get()``.
+    assert _named(graph)[start] == "api.py:get()"
+
+
+def test_a_test_beside_the_code_is_turned_away():
+    vertices = [
+        ("lib.rs:wakes_local()", "tokio/src/task/local.rs", "function"),
+        ("lib.rs:build()", "tokio/src/runtime/builder.rs", "function"),
+        ("lib.rs:launch()", "tokio/src/runtime/worker.rs", "function"),
+        ("lib.rs:spawn()", "tokio/src/task/spawn.rs", "function"),
+        ("lib.rs:spawn_inner()", "tokio/src/task/spawn.rs", "function"),
+        ("lib.rs:schedule()", "tokio/src/runtime/handle.rs", "function"),
+    ]
+    edges = [
+        (0, 1, EDGE_TYPE_REFERENCE),
+        (1, 2, EDGE_TYPE_REFERENCE),
+        (3, 4, EDGE_TYPE_REFERENCE),
+        (4, 5, EDGE_TYPE_REFERENCE),
+    ]
+    graph = _graph(vertices, edges)
+    programs = ["tokio/src/task/local.rs", "tokio/src/task/spawn.rs"]
+
+    first = main_path_start(graph, program_files=programs)
+    second = main_path_start(
+        graph, program_files=programs, is_test_callable=lambda vertex: vertex == first
+    )
+    assert first is not None
+    assert second not in (None, first)
+
+
+def test_the_package_named_after_the_repository_owns_the_entry():
+    entry = SimpleNamespace
+    entries = [
+        entry(path="crates/mdtest/src/lib.rs", label="mdtest", root=False),
+        entry(path="crates/ruff/src/lib.rs", label="ruff", root=False),
+        entry(path="crates/ruff_dev/src/main.rs", label="ruff_dev", root=False),
+    ]
+    assert own_entry_files(entries, "astral-sh/ruff") == {"crates/ruff/src/lib.rs"}
+    nushell = [
+        entry(path="src/main.rs", label="nu", root=True),
+        entry(path="crates/nu_plugin_inc/src/main.rs", label="inc", root=False),
+    ]
+    assert own_entry_files(nushell, "nushell/nushell") == {"src/main.rs"}
+
+
+def test_a_libraries_side_programs_are_no_reason_to_start():
+    vertices = [
+        ("volint.py:main()", "astropy/io/votable/volint.py", "function"),
+        ("table.py:parse()", "astropy/io/votable/table.py", "function"),
+        ("tree.py:check()", "astropy/io/votable/tree.py", "function"),
+    ]
+    edges = [(0, 1, EDGE_TYPE_REFERENCE), (1, 2, EDGE_TYPE_REFERENCE)]
+    graph = _graph(vertices, edges)
+    scripts = ["astropy/io/votable/volint.py"]
+
+    assert main_path_start(graph, program_files=scripts) == 0
+    library = main_path_start(
+        graph, program_files=scripts, own_files=["astropy/__init__.py"]
+    )
+    assert library is None

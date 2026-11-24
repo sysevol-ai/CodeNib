@@ -125,11 +125,88 @@ prepare project-local dependencies such as `node_modules`; run those profiles
 from a clean checkout when that distinction matters. Press `Ctrl-C` once to
 stop both services.
 
+The repository's own README and the Markdown files under `docs/` appear as
+pages too, under **Repository docs**, in the order `mkdocs.yml` lists them when
+there is one. Without a model the other pages are built from the code index:
+lists of files and definitions. To have the pages written, add `--generate`. With Claude Code
+installed and signed in, it writes them on your Claude Code plan and needs no
+API key; the Overview comes first and the other pages follow in the background,
+at roughly $0.10 to $0.20 a page:
+
+```bash
+codenib wiki . --generate
+```
+
+To write them with another model, add `--model` and `--api-key-env`.
+
+The Wiki follows your working tree. When files change (an applied change, or
+an edit in your editor) it updates its index within a few seconds, and the
+pages whose code changed are written again the next time they are opened;
+the others are kept.
+
 Use different ports or keep the browser closed when needed:
 
 ```bash
 codenib wiki . --port 3100 --api-port 8100 --no-open
 ```
+
+## Ask Your Agent From The Wiki
+
+A local Wiki is also where you work with your coding agent. Select words on a
+page to ask about them, request a change, or leave a note. Questions and
+change requests go to your own Claude Code, and its answers come back next to
+the words you selected.
+
+Open the Wiki from the address `codenib wiki` prints. It carries a session key
+(`?session=…`) that annotating needs, so no other page in your browser can
+start your agent.
+
+1. Select words on a page, or lines of code in the source panel a citation
+   opens, and pick **Ask**, **Change** or **Note** (or press 1, 2 or 3). Write
+   what you want. Enter saves a draft; ⌘Enter saves it and sends it. Lines of
+   code with an open annotation are marked in the source panel's gutter.
+2. Open **Notes** in the header to see the page's annotations, and send the
+   drafts you select to Claude Code as one task.
+3. A question comes back as an answer under it, with its code references
+   linked to the source. Reply to ask a follow-up.
+4. A change request runs in a separate git worktree, so your working tree
+   stays as it was. Review the diff in Notes hunk by hunk: apply or discard
+   each one (or press `a` or `x` on it), or the rest at once. Other pages that
+   cite the changed lines get a short note about the change.
+5. A note is a standing fact, such as "this path must stay lock-free". It is
+   never sent on its own: every later task on the same page includes it, and
+   the agent is told not to contradict it.
+6. **Add to page** puts an answer into the page itself, under its question,
+   at the end of the section it was asked about.
+7. **Edit page** opens the page's Markdown. Your edit is saved as
+   `.codenib/wiki/<page>.md`, and regenerating the Wiki never overwrites it;
+   the page tells you when the generated text has changed since, and
+   **Show the generated page** drops your edit. Editing a repository document,
+   such as the README, saves the file itself.
+
+Annotations follow what they sit on. When code moves, its annotations move
+with it; when it is edited, they follow the closest match and say the code
+changed; when it is deleted, they keep their last place and say the code is
+gone. Words on a page that a refresh rewrote are shown on the closest
+passage.
+
+The agent gets file tools only: it reads and searches the code, and edits it
+for a change. It has no shell or network tools. Claude Code must be installed
+and signed in; CodeNib never asks for an API key.
+
+Annotations and tasks are plain files in the repository. Commit them to share
+them with your team, or add `.codenib/` to `.gitignore` to keep them local.
+
+| Path | Holds |
+| --- | --- |
+| `.codenib/notes/<id>.md` | One annotation or answer, in the same format as [change guard](guard.md) notes |
+| `.codenib/tasks/<id>.json` | One task: its annotations, status, changed files and token use |
+| `.codenib/wiki/<page>.md` | A page you edited, or one an answer was added to |
+
+Prompts, the agent's output and its worktrees stay outside the repository,
+under `~/.codenib/repositories/`. Set `CODENIB_TASK_MODEL` to pick the Claude
+model for tasks, and `CODENIB_TASK_MAX_BUDGET_USD` to cap what one task may
+spend.
 
 ## Reuse An Existing Index
 

@@ -313,3 +313,48 @@ def test_a_broken_or_absent_manifest_yields_nothing(tmp_path):
     _write(tmp_path, "package.json", "{ this is not json")
     _write(tmp_path, "pyproject.toml", "[project\nname = broken")
     assert discover_entry_points(str(tmp_path)) == []
+
+
+def test_root_package_targets_are_marked_and_src_bin_binaries_found(tmp_path):
+    _write(tmp_path, "src/lib.rs")
+    _write(tmp_path, "src/bin/bat/main.rs")
+    _write(tmp_path, "src/bin/helper.rs")
+    _write(tmp_path, "crates/plugin/src/main.rs")
+    _write(
+        tmp_path,
+        "Cargo.toml",
+        '[package]\nname = "bat"\n[workspace]\nmembers = ["crates/*"]\n',
+    )
+
+    entries = {e.path: e for e in discover_entry_points(str(tmp_path))}
+
+    assert (
+        entries["src/bin/bat/main.rs"].kind,
+        entries["src/bin/bat/main.rs"].label,
+    ) == (
+        "binary",
+        "bat",
+    )
+    assert entries["src/bin/helper.rs"].label == "helper"
+    assert entries["src/lib.rs"].root and entries["src/bin/bat/main.rs"].root
+    # A workspace member is declared by the workspace, not the root package.
+    assert not entries["crates/plugin/src/main.rs"].root
+    # The flag stays out of the API's view of an entry.
+    assert "root" not in entries["src/lib.rs"].to_dict()
+
+
+def test_pnpm_workspaces_are_walked_when_the_root_exports_nothing(tmp_path):
+    _write(tmp_path, "packages/site/bin/site.mjs")
+    _write(
+        tmp_path,
+        "packages/site/package.json",
+        json.dumps({"name": "@site/core", "bin": {"site": "bin/site.mjs"}}),
+    )
+    _write(tmp_path, "package.json", json.dumps({"name": "root", "private": True}))
+    _write(tmp_path, "pnpm-workspace.yaml", "packages:\n  - 'packages/*'\n")
+
+    entries = discover_entry_points(str(tmp_path))
+
+    assert [(e.path, e.kind, e.label, e.root) for e in entries] == [
+        ("packages/site/bin/site.mjs", "binary", "site", False)
+    ]

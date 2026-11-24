@@ -20,12 +20,14 @@ function Fragment({
   repo,
   commit,
   active,
+  noted,
 }: {
   repoId: string;
   c: Citation;
   repo?: string;
   commit?: string;
   active: boolean;
+  noted?: ReadonlySet<number>;
 }) {
   const rel = repoRelative(c.file);
   const [code, setCode] = useState("");
@@ -74,7 +76,7 @@ function Fragment({
   const symbol = (c.node_name || "").split(":").pop() || rel.split("/").pop() || rel;
   const loc = `${rel}${c.start_line != null ? `:${c.start_line}-${c.end_line}` : ""}`;
   return (
-    <div className={`frag ${active ? "active" : ""}`}>
+    <div className={`frag ${active ? "active" : ""}`} data-path={rel}>
       <div className="frag-head mono">
         <span className="frag-name">{symbol}</span>
         {gh ? (
@@ -92,7 +94,7 @@ function Fragment({
           Source preview is unavailable.{gh ? " Open the source link above." : ""}
         </p>
       ) : (
-        <HighlightedCode code={code} file={rel} startLine={start} definition={definition} />
+        <HighlightedCode code={code} file={rel} startLine={start} definition={definition} noted={noted} />
       )}
     </div>
   );
@@ -113,6 +115,7 @@ export default function CodePanel({
   onSelect,
   onVisibleChange,
   scrollSignal,
+  notedLines,
 }: {
   repoId: string;
   citations: Citation[];
@@ -125,6 +128,8 @@ export default function CodePanel({
   onVisibleChange?: (i: number) => void;
   /** Bumped by the parent on every selection; each bump re-scrolls to active. */
   scrollSignal?: number;
+  /** Lines with an open annotation, by repository path. */
+  notedLines?: ReadonlyMap<string, ReadonlySet<number>>;
 }) {
   const refs = codeRefs(citations);
   const [internal, setInternal] = useState(0);
@@ -313,7 +318,14 @@ export default function CodePanel({
               fragEls.current[i] = el;
             }}
           >
-            <Fragment repoId={repoId} c={c} repo={repo} commit={commit} active={i === active} />
+            <Fragment
+              repoId={repoId}
+              c={c}
+              repo={repo}
+              commit={commit}
+              active={i === active}
+              noted={notedLines?.get(repoRelative(c.file))}
+            />
           </div>
         ))}
       </div>

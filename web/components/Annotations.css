@@ -1,0 +1,762 @@
+/* Wiki annotations: the selection picker and composer, the marked words on the
+   page, and the Notes drawer. One colour means one thing here: the accent marks
+   what a person annotated; status words stay neutral text. */
+
+::highlight(codenib-annotation) {
+  background-color: color-mix(in srgb, var(--accent) 22%, transparent);
+}
+::highlight(codenib-annotation-active) {
+  background-color: color-mix(in srgb, var(--accent) 42%, transparent);
+}
+
+/* --- Picker and composer ------------------------------------------------ */
+
+.cn-picker,
+.cn-composer {
+  position: fixed;
+  /* Above the source panel (1100), so code can be annotated in place. */
+  z-index: 1200;
+  font-size: var(--fs-small);
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-pop);
+}
+
+.cn-picker {
+  display: flex;
+  padding: 3px;
+  gap: 2px;
+}
+.cn-picker button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--fs-small);
+  cursor: pointer;
+}
+.cn-picker button:hover,
+.cn-picker button:focus-visible {
+  background: var(--bg-subtle);
+  outline: none;
+}
+.cn-picker kbd {
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  color: var(--text-muted);
+}
+
+.cn-composer {
+  width: 360px;
+  max-width: calc(100vw - 24px);
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.cn-composer-kinds {
+  display: flex;
+  gap: 4px;
+}
+.cn-composer-kinds button {
+  padding: 3px 9px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--fs-caption);
+  cursor: pointer;
+}
+.cn-composer-kinds button[aria-selected="true"] {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+
+.cn-quote {
+  margin: 0;
+  padding: 0 0 0 10px;
+  border-left: 2px solid var(--accent);
+  color: var(--text-secondary);
+  font-size: var(--fs-caption);
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.cn-composer textarea,
+.cn-reply textarea,
+.cn-key input {
+  width: 100%;
+  resize: vertical;
+  min-height: 64px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg-page);
+  color: var(--text-primary);
+  font-size: var(--fs-small);
+  line-height: 1.5;
+}
+.cn-composer textarea:focus,
+.cn-reply textarea:focus,
+.cn-key input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+
+.cn-composer-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.cn-hint {
+  margin-right: auto;
+  color: var(--text-muted);
+  font-size: var(--fs-micro);
+}
+
+.cn-button {
+  padding: 5px 11px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--fs-caption);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.cn-button:hover:not(:disabled) {
+  background: var(--bg-subtle);
+}
+.cn-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.cn-primary {
+  border-color: var(--action);
+  background: var(--action);
+  color: var(--action-ink);
+}
+.cn-primary:hover:not(:disabled) {
+  background: var(--action-hover);
+}
+
+.cn-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-size: var(--fs-caption);
+  cursor: pointer;
+}
+.cn-link:hover {
+  text-decoration: underline;
+}
+
+.cn-error {
+  margin: 0;
+  color: #f28b82;
+  font-size: var(--fs-caption);
+}
+:root:not([data-theme="dark"]) .cn-error {
+  color: #b3261e;
+}
+
+/* --- Header button ------------------------------------------------------- */
+
+/* Styled like the Dependency Map button beside it, but it stays on a phone:
+   annotating is the reason a local Wiki is open. */
+.cn-launch {
+  margin-left: 10px;
+  flex: none;
+  font-size: var(--fs-caption);
+  font-family: inherit;
+  padding: 3px 9px;
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent);
+  cursor: pointer;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.cn-launch:hover {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--accent-border));
+}
+.cn-launch.is-open {
+  border-color: var(--accent);
+}
+@media (max-width: 820px) {
+  .cn-launch {
+    margin-left: 6px;
+  }
+}
+
+.cn-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-faint);
+  flex: none;
+}
+.cn-dot.is-on {
+  background: var(--accent);
+}
+.cn-dot.is-review {
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.cn-spinner {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  border: 1.5px solid var(--border-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: cn-spin 0.9s linear infinite;
+  display: inline-block;
+}
+@keyframes cn-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cn-spinner {
+    animation-duration: 3s;
+  }
+}
+
+/* --- Drawer -------------------------------------------------------------- */
+
+.cn-drawer {
+  position: fixed;
+  top: var(--top-h);
+  right: 0;
+  bottom: 0;
+  z-index: 900;
+  width: min(420px, 100vw);
+  display: flex;
+  flex-direction: column;
+  /* Clear of the notch on a phone on its side, and of the home indicator. */
+  padding-right: var(--safe-right);
+  padding-bottom: var(--safe-bottom);
+  background: var(--bg-surface);
+  border-left: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-pop);
+  font-size: var(--fs-small);
+}
+
+.cn-drawer-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.cn-drawer-head h2 {
+  margin: 0;
+  font-size: var(--fs-h4);
+  font-weight: var(--fw-strong);
+  letter-spacing: var(--tracking-heading);
+}
+.cn-close {
+  border: 0;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+.cn-close:hover {
+  color: var(--text-primary);
+}
+
+.cn-meta {
+  margin: 2px 0 0;
+  color: var(--text-muted);
+  font-size: var(--fs-caption);
+}
+
+.cn-agent,
+.cn-live,
+.cn-dispatch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: var(--fs-caption);
+}
+.cn-agent code,
+.cn-empty code {
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+}
+.cn-live {
+  color: var(--text-primary);
+}
+.cn-dispatch {
+  justify-content: space-between;
+  color: var(--text-primary);
+}
+
+.cn-threads {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 24px;
+}
+.cn-pad {
+  margin: 12px 20px 0;
+  display: block;
+}
+.cn-group {
+  margin: 16px 20px 0;
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-strong);
+  color: var(--text-secondary);
+}
+
+.cn-empty {
+  padding: 20px;
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+.cn-empty p {
+  margin: 0;
+}
+
+/* A thread is a run of items between hairlines, never a box in a box. */
+.cn-thread {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border-subtle);
+  display: grid;
+  gap: 10px;
+  cursor: default;
+}
+.cn-thread.is-active {
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.cn-thread.is-resolved {
+  opacity: 0.7;
+}
+
+.cn-quote-link {
+  text-align: left;
+  border-top: 0;
+  border-right: 0;
+  border-bottom: 0;
+  background: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+.cn-quote-link:hover {
+  color: var(--text-primary);
+}
+.cn-quote-link.is-detached {
+  border-left-color: var(--border-strong);
+}
+.cn-detached {
+  margin: -4px 0 0;
+  color: var(--text-muted);
+  font-size: var(--fs-micro);
+}
+
+.cn-item {
+  display: grid;
+  gap: 6px;
+}
+.cn-item.is-agent {
+  padding-left: 12px;
+  border-left: 1px solid var(--border-strong);
+}
+.cn-item-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-caption);
+}
+.cn-item-head input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+.cn-kind {
+  font-weight: var(--fw-strong);
+  color: var(--text-primary);
+}
+.cn-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+}
+.cn-status::before {
+  content: "·";
+  color: var(--text-faint);
+}
+.cn-status.is-dispatched::before {
+  content: none;
+}
+.cn-push {
+  margin-left: auto;
+}
+
+.cn-text {
+  margin: 0;
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
+.cn-answer {
+  font-size: var(--fs-small);
+  line-height: 1.55;
+}
+.cn-answer > :first-child {
+  margin-top: 0;
+}
+.cn-answer > :last-child {
+  margin-bottom: 0;
+}
+.cn-answer p,
+.cn-answer ul,
+.cn-answer ol {
+  margin: 0 0 8px;
+}
+.cn-answer h1,
+.cn-answer h2,
+.cn-answer h3,
+.cn-answer h4 {
+  font-size: var(--fs-small);
+  margin: 10px 0 4px;
+}
+.cn-answer pre {
+  font-size: var(--fs-micro);
+  overflow-x: auto;
+}
+
+.cn-files {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+}
+.cn-file {
+  padding: 1px 6px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-subtle);
+  color: var(--text-secondary);
+  font-size: var(--fs-micro);
+  cursor: pointer;
+}
+.cn-file:hover {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+.cn-change {
+  display: grid;
+  gap: 8px;
+}
+.cn-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.cn-add {
+  color: #81c995;
+}
+.cn-del {
+  color: #f28b82;
+}
+:root:not([data-theme="dark"]) .cn-add {
+  color: #137333;
+}
+:root:not([data-theme="dark"]) .cn-del {
+  color: #b3261e;
+}
+
+.cn-diff {
+  margin: 0;
+  max-height: 360px;
+  overflow: auto;
+  padding: 8px 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--code-bg);
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  line-height: 1.5;
+}
+.cn-diff span {
+  display: block;
+  padding: 0 10px;
+  white-space: pre;
+}
+.cn-diff-meta {
+  color: var(--text-primary);
+  font-weight: var(--fw-strong);
+  padding-top: 4px !important;
+}
+.cn-diff-hunk {
+  color: var(--text-muted);
+}
+.cn-diff-add {
+  background: color-mix(in srgb, #81c995 14%, transparent);
+}
+.cn-diff-del {
+  background: color-mix(in srgb, #f28b82 14%, transparent);
+}
+
+.cn-usage {
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+}
+
+.cn-thread-foot {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.cn-thread-foot:empty {
+  display: none;
+}
+.cn-reply {
+  flex: 1 1 100%;
+  display: grid;
+  gap: 8px;
+}
+
+@media (max-width: 820px) {
+  .cn-drawer {
+    top: auto;
+    /* The bottom sheet keeps its reading height above the home indicator. */
+    height: calc(min(70vh, 560px) + var(--safe-bottom));
+    width: 100vw;
+    padding-left: var(--safe-left);
+    border-left: 0;
+    border-top: 1px solid var(--border-subtle);
+  }
+}
+
+/* An agent's answer reads like the Wiki, a size down to fit the drawer. */
+.cn-answer .markdown {
+  font-size: var(--fs-small);
+  line-height: 1.55;
+}
+.cn-answer .markdown :is(p, li) {
+  font-size: inherit;
+}
+.cn-answer .markdown :not(pre) > code {
+  font-size: 0.86em;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+.cn-answer .markdown ul,
+.cn-answer .markdown ol {
+  padding-left: 18px;
+}
+
+/* --- Room for the drawer ------------------------------------------------- */
+/* On a wide screen the drawer takes its width from the page instead of
+   covering the text a person is annotating; the map steps aside while it is
+   open and comes back when it closes. */
+@media (min-width: 1100px) {
+  .wiki-grid.has-notes {
+    padding-right: calc(420px + var(--wiki-gutter));
+    grid-template-columns: var(--rail-left) minmax(0, 1fr);
+  }
+  .wiki-grid.has-notes > .wiki-onthispage {
+    display: none;
+  }
+  .wiki-grid.is-workspace.has-notes {
+    padding-right: 420px;
+    grid-template-columns: var(--rail-left) minmax(0, 1fr);
+  }
+  .wiki-grid.is-workspace.has-notes > .wiki-graph {
+    display: none;
+  }
+}
+
+/* --- Editing a page -------------------------------------------------------- */
+
+.cn-editor {
+  display: grid;
+  gap: 10px;
+}
+.cn-editor-bar {
+  position: sticky;
+  top: calc(var(--top-h) + 8px);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+.cn-editor-bar .cn-meta {
+  margin: 0;
+  margin-right: auto;
+}
+.cn-editor-bar code {
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+}
+.cn-editor-text {
+  width: 100%;
+  min-height: 70vh;
+  resize: vertical;
+  padding: 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg-page);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--fs-small);
+  line-height: 1.6;
+  tab-size: 2;
+}
+.cn-editor-text:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+.cn-edit-launch {
+  background: transparent;
+}
+.cn-edited {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* --- Reviewing a change hunk by hunk ---------------------------------------- */
+
+.cn-hunks {
+  display: grid;
+  gap: 12px;
+}
+.cn-hunk-file {
+  display: grid;
+  gap: 6px;
+}
+.cn-hunk-path {
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-strong);
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+.cn-hunk {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.cn-hunk:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+.cn-hunk-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  background: var(--bg-subtle);
+  font-size: var(--fs-micro);
+}
+.cn-hunk-range {
+  color: var(--text-muted);
+}
+.cn-hunk .cn-diff {
+  border: 0;
+  border-radius: 0;
+  max-height: 260px;
+}
+.cn-hunk.is-accepted .cn-diff,
+.cn-hunk.is-rejected .cn-diff {
+  opacity: 0.55;
+}
+.cn-hunk.is-rejected .cn-diff-add,
+.cn-hunk.is-rejected .cn-diff-del {
+  text-decoration: line-through;
+}
+
+/* --- Annotations on code ---------------------------------------------------- */
+
+.cn-code-anchor {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+}
+.cn-code-quote {
+  margin: 0;
+  width: 100%;
+  max-height: 7.5em;
+  overflow: hidden;
+  padding: 6px 10px;
+  border-left: 2px solid var(--accent);
+  background: var(--code-bg);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  line-height: 1.5;
+  white-space: pre;
+}
+
+/* A line of code with an open annotation: a mark in the source gutter. */
+.hl-gutter-noted {
+  box-shadow: inset 2px 0 0 var(--accent);
+  color: var(--accent);
+}
+
+/* The hosted Wiki asks for the visitor's key before the first run. */
+.cn-key {
+  display: grid;
+  gap: 8px;
+  margin: 12px 20px;
+  padding: 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+}
+.cn-key label {
+  font-size: var(--fs-small);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.cn-key input {
+  min-height: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+.cn-key .cn-meta a {
+  color: inherit;
+  text-decoration: underline;
+}

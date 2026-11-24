@@ -38,11 +38,20 @@ def runtime_config(api_base: str) -> bytes:
     return f"window.__CODENIB_API_BASE__ = {json.dumps(value)};\n".encode("utf-8")
 
 
+_UPSTREAM_TIMEOUT_SECONDS = 600
+_REVALIDATED_PATHS = {"/", "/index.html", "/sw.js", "/manifest.webmanifest"}
+
+
 class WikiStaticHandler(SimpleHTTPRequestHandler):
     """Serve the Wiki SPA and proxy its API requests to the local backend."""
 
     api_base = ""
     browser_api_base = ""
+    # Python before 3.12 does not know the web app manifest's media type.
+    extensions_map = {
+        **SimpleHTTPRequestHandler.extensions_map,
+        ".webmanifest": "application/manifest+json",
+    }
 
     def do_GET(self) -> None:  # noqa: N802 - stdlib handler contract
         request_path = urlsplit(self.path).path
@@ -135,7 +144,11 @@ class WikiStaticHandler(SimpleHTTPRequestHandler):
             method=self.command,
         )
         try:
-            response = urllib_request.urlopen(request, timeout=90)
+            # A page the local Claude Code is still writing can take minutes;
+            # the API answers when it is done.
+            response = urllib_request.urlopen(
+                request, timeout=_UPSTREAM_TIMEOUT_SECONDS
+            )
         except urllib_error.HTTPError as exc:
             response = exc
         except (OSError, urllib_error.URLError) as exc:
@@ -215,7 +228,9 @@ class WikiStaticHandler(SimpleHTTPRequestHandler):
         request_path = urlsplit(self.path).path
         if request_path.startswith("/assets/"):
             self.send_header("Cache-Control", "public, max-age=31536000, immutable")
-        elif request_path == "/index.html" or request_path == "/":
+        elif request_path in _REVALIDATED_PATHS:
+            # The app shell, and what installs it, are checked on every load
+            # so a new build reaches an installed app at once.
             self.send_header("Cache-Control", "no-cache")
         super().end_headers()
 

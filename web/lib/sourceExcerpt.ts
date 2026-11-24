@@ -74,3 +74,67 @@ export function segmentRows(text: string, starts: number[]): ExcerptRows | null 
   }
   return segment === starts.length - 1 ? { lines, numbers } : null;
 }
+
+/** The definition an excerpt was cut from, loadable on demand. */
+export interface ExcerptSource {
+  /** First and last file line of the definition (1-based, inclusive). */
+  start: number;
+  end: number;
+  /** The definition's lines, from `start`; null when unavailable. */
+  load: () => Promise<string[] | null>;
+}
+
+/** A row of an excerpt being widened: a source line, or lines still hidden. */
+export type ExcerptLayoutRow =
+  | { kind: "line"; number: number }
+  | { kind: "more"; where: "above" | "gap" | "below"; from: number; to: number };
+
+/**
+ * Rows for the excerpt's own lines plus those a reader revealed. Each run of
+ * hidden lines inside the definition becomes one "more" row: above the first
+ * line shown, between two shown lines, or below the last. Without a known
+ * definition only the gaps between shown lines are rows.
+ */
+export function excerptLayout(
+  shown: Iterable<number>,
+  range?: { start: number; end: number } | null,
+): ExcerptLayoutRow[] {
+  const lines = [...new Set(shown)].sort((a, b) => a - b);
+  const rows: ExcerptLayoutRow[] = [];
+  if (!lines.length) return rows;
+  if (range && lines[0] > range.start) {
+    rows.push({ kind: "more", where: "above", from: range.start, to: lines[0] - 1 });
+  }
+  lines.forEach((number, index) => {
+    const previous = lines[index - 1];
+    if (previous != null && number > previous + 1) {
+      rows.push({ kind: "more", where: "gap", from: previous + 1, to: number - 1 });
+    }
+    rows.push({ kind: "line", number });
+  });
+  const last = lines[lines.length - 1];
+  if (range && last < range.end) {
+    rows.push({ kind: "more", where: "below", from: last + 1, to: range.end });
+  }
+  return rows;
+}
+
+/** Lines revealed at once; a remainder this close to it is revealed whole. */
+export const REVEAL_STEP = 20;
+
+/**
+ * The lines one click on a "more" row reveals: all of them when few remain,
+ * otherwise the next REVEAL_STEP next to the code already shown. A gap opens
+ * from its lower end, the context just above the lines the excerpt is about.
+ */
+export function revealLines(
+  row: Extract<ExcerptLayoutRow, { kind: "more" }>,
+  step = REVEAL_STEP,
+): number[] {
+  let { from, to } = row;
+  if (to - from + 1 > step + step / 2) {
+    if (row.where === "below") to = from + step - 1;
+    else from = to - step + 1;
+  }
+  return Array.from({ length: to - from + 1 }, (_, index) => from + index);
+}

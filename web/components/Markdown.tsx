@@ -21,11 +21,12 @@ import { breakableCode } from "@/lib/breakable";
 import { stripEmoji } from "@/lib/landing";
 import { cleanTemplateArguments, displaySymbol, tidyInteractionRows } from "@/lib/symbols";
 import {
+  fetchSource,
   repoRelative,
   type Citation,
   type WikiRelationItem,
 } from "@/lib/api";
-import { parseSegmentStarts } from "@/lib/sourceExcerpt";
+import { parseSegmentStarts, type ExcerptSource } from "@/lib/sourceExcerpt";
 
 // Mermaid (~1MB) is only needed when a diagram actually appears; load it on
 // demand so it never weighs down pages that have none (wiki strips diagrams).
@@ -46,6 +47,34 @@ function parseHighlightLines(meta: string): Set<number> {
     }
   }
   return lines;
+}
+
+/** The definition an excerpt fence names with `cite=E3`, loadable on demand.
+ *  A served Wiki reads it from the pinned source; a static or saved Wiki
+ *  carries it in the citation. */
+function excerptSource(
+  meta: string,
+  citations: Citation[] | undefined,
+  repoId: string | undefined,
+): ExcerptSource | null {
+  const cite = /(?:^|\s)cite=E(\d+)/.exec(meta || "");
+  const c = cite ? citations?.[Number(cite[1]) - 1] : undefined;
+  if (!c?.file || c.start_line == null || c.end_line == null) return null;
+  const { file, start_line: start, end_line: end, content } = c;
+  const lines = (text: string) => text.replace(/\n$/, "").split("\n");
+  return {
+    start,
+    end,
+    load: async () => {
+      if (repoId && !isStaticRuntime()) {
+        try {
+          const slice = await fetchSource(repoId, repoRelative(file), start, end);
+          if (slice.start_line === start) return lines(slice.content);
+        } catch {}
+      }
+      return typeof content === "string" && content ? lines(content) : null;
+    },
+  };
 }
 
 /** Is this rendered child one of our citation references? */
@@ -467,6 +496,7 @@ export default function Markdown({
                   language={lang}
                   highlightLines={parseHighlightLines(meta)}
                   segmentStarts={parseSegmentStarts(meta)}
+                  source={excerptSource(meta, citations, repoId)}
                 />
               </Suspense>
             );

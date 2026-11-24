@@ -39,6 +39,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
+from ..annotations.edits import apply_edit
 from ..log_utils import get_logger
 from ..repository_filters import repository_path_is_visible
 from ..repository_source_selection import RepositorySourceSelection
@@ -54,11 +55,13 @@ from ..wiki.media_generation import (
 )
 from ..wiki.media_storage import load_multimodal_knowledge_bundle
 from ..wiki.narrator import Narrator
+from ..wiki.repo_docs import doc_page, find_docs, is_doc_id
 from ..wiki.repository_visuals import attach_repository_visual, discover_overview_visual
 from ..wiki.sqlite_store import SQLiteWikiStore
 from ..wiki.store import WikiGenerationBusyError
 from ..wiki.story import derive_story_from_markdown
 from ..wiki.visual_ir import page_visual_contract_report
+from . import annotations as wiki_annotations
 from .card_summary import card_summary
 from .config import load_config
 from .experience import router as experience_router
@@ -91,6 +94,8 @@ from .share import SITE_DESCRIPTION, SITE_TITLE, _repo_for, public_origin
 from .share import router as share_router
 from .source_definition import attach_definition
 from .visitor_wikis import router as visitor_wiki_router
+from .walkthroughs import load_walkthroughs
+from .worktree import WorktreeFollower
 
 _WIKI_MEDIA_TYPES = {
     ".jpeg": "image/jpeg",
@@ -147,10 +152,10 @@ def _historical_source_slice(
 
 
 def _wiki_llm(config, *, model=None, max_tokens=4096):
-    from ..llm.litellm_chat import LiteLLMChat
+    from ..llm.claude_code import chat_for
 
-    return LiteLLMChat(
-        model=model or config.wiki_generation_model,
+    return chat_for(
+        model or config.wiki_generation_model,
         temperature=0.2,
         max_tokens=max_tokens,
         api_base=getattr(config, "wiki_generation_api_base", None),
@@ -169,6 +174,61 @@ def _wiki_narrator(config):
         api_key=getattr(config, "wiki_generation_api_key", None),
         model_options=getattr(config, "wiki_generation_options", {}),
     )
+
+
+def _start_worktree_follower(config, registry):
+    """For a local Wiki, keep the served repository on its working tree."""
+
+    argv = list(getattr(config, "reindex_argv", None) or [])
+    if wiki_annotations.hosted_enabled():
+        argv = []  # a hosted checkout is shared and never re-indexed in place
+    infos = registry.list_infos() if argv else []
+    if len(infos) != 1:
+        return None
+    repo_id = infos[0].id
+    bundle = registry.get(repo_id)
+    repo_dir = getattr(getattr(bundle, "entry", None), "repo_dir", None)
+    if not repo_dir:
+        return None
+    data_dir = Path(os.path.abspath(config.data_dir))
+    snapshot = data_dir / "carry-forward-worktree.json"
+
+    def save_pages() -> None:
+        # Keep the written pages, to carry the unaffected ones forward.
+        if not getattr(config, "wiki_agent", False):
+            return
+        from ..wiki.carry_forward import save_snapshot
+
+        try:
+            save_snapshot(_wiki(repo_id), snapshot, "")
+        except (ValueError, OSError) as exc:
+            logger.info("No written pages to carry forward: %s", exc)
+            snapshot.unlink(missing_ok=True)
+
+    def publish(changed) -> None:
+        registry.refresh(repo_id)
+        if getattr(config, "wiki_agent", False) and snapshot.is_file():
+            from ..wiki.carry_forward import carry_forward
+
+            carried = carry_forward(
+                _wiki(repo_id), snapshot, Path(repo_dir), "", changed=set(changed)
+            )
+            logger.info(
+                "Kept %d written page(s); %d will be written again",
+                len(carried.reused),
+                len(carried.rewritten),
+            )
+
+    follower = WorktreeFollower(
+        Path(repo_dir),
+        argv,
+        on_updated=publish,
+        before_update=save_pages,
+        log_path=data_dir / "reindex.log",
+    )
+    wiki_annotations.set_worktree(follower)
+    logger.info("Following the working tree of %s", repo_dir)
+    return follower.start()
 
 
 @asynccontextmanager
@@ -209,8 +269,12 @@ async def lifespan(app: FastAPI):
             app.state.narrator.cache_dir,
         )
         logger.info("Ready: %d repo(s) available", len(registry.list_infos()))
+        app.state.worktree = _start_worktree_follower(config, registry)
         yield
     finally:
+        follower = getattr(app.state, "worktree", None)
+        if follower is not None:
+            follower.stop()
         visitor_wikis = getattr(app.state, "visitor_wikis", None)
         if visitor_wikis is not None:
             visitor_wikis.close()
@@ -228,6 +292,7 @@ app = FastAPI(title="CodeNib Code QA", lifespan=lifespan)
 app.include_router(visitor_wiki_router)
 app.include_router(experience_router)
 app.include_router(share_router)
+app.include_router(wiki_annotations.router)
 
 app.add_middleware(RequestBodyLimitMiddleware)
 app.add_middleware(
@@ -812,6 +877,84 @@ def _window_stats_for(repo_id: str):
         return _window_stats_for_bundle(repo_id, bundle)
 
 
+# Wiki annotations (local only) -------------------------------------------
+#
+# The annotation routes live in ``annotations.py``; they reach the checkout and
+# the cached pages through these three functions. Each takes its own pin, so a
+# task that runs for minutes never holds a bundle generation.
+
+
+def _repo_docs_enabled() -> bool:
+    return bool(getattr(load_config(), "repo_docs", False))
+
+
+def _annotation_repo(repo_id: str) -> tuple:
+    with _pinned_bundle(repo_id) as bundle:
+        entry = bundle.entry
+        return Path(entry.repo_dir), entry.repo
+
+
+def _annotation_page(repo_id: str, page_id: str) -> dict | None:
+    with _pinned_bundle(repo_id) as bundle:
+        if is_doc_id(page_id) and _repo_docs_enabled():
+            return doc_page(Path(bundle.entry.repo_dir), page_id)
+        builder = _wiki(repo_id, bundle)
+        cached = getattr(builder, "cached_page", None)
+        return cached(page_id) if callable(cached) else builder.page(page_id)
+
+
+def _annotation_pages(repo_id: str) -> list[dict]:
+    with _pinned_bundle(repo_id) as bundle:
+        builder = _wiki(repo_id, bundle)
+        tree_of = getattr(builder, "cached_page_tree", None)
+        tree = (tree_of() if callable(tree_of) else builder.page_tree()) or []
+        cached = getattr(builder, "cached_page", None)
+        found: list[dict] = []
+        stack = list(tree)
+        while stack:
+            ref = stack.pop(0)
+            stack.extend(ref.get("children") or [])
+            page = cached(ref["id"]) if callable(cached) else builder.page(ref["id"])
+            if not page:
+                continue
+            cited = [
+                {
+                    "file": str(c["file"]),
+                    "start_line": c.get("start_line"),
+                    "end_line": c.get("end_line"),
+                    "type": c.get("type"),
+                }
+                for c in page.get("citations") or []
+                if c.get("file")
+            ]
+            found.append(
+                {"id": ref["id"], "title": ref.get("title"), "citations": cited}
+            )
+        if _repo_docs_enabled():
+            # A document cites itself whole, so a change to it reaches its page.
+            for doc in find_docs(Path(bundle.entry.repo_dir)):
+                found.append(
+                    {
+                        "id": doc.id,
+                        "title": doc.title,
+                        "citations": [
+                            {"file": doc.path, "start_line": 1, "end_line": 10**9}
+                        ],
+                    }
+                )
+        return found
+
+
+wiki_annotations.configure(
+    wiki_annotations.RepoAccess(
+        repo=_annotation_repo,
+        page=_annotation_page,
+        pages=_annotation_pages,
+        state_root=lambda: Path(os.path.abspath(load_config().data_dir)),
+    )
+)
+
+
 @app.get("/api/health")
 async def health() -> dict:
     registry = getattr(app.state, "registry", None)
@@ -829,7 +972,13 @@ async def list_repos() -> list[RepoInfo]:
     async def decorate(info: RepoInfo, bundle=None) -> RepoInfo:
         # Surface the global edge-label toggle per repo so the UI can gate the
         # feature, then derive window figures from that same generation.
-        info.capabilities = {**info.capabilities, "edge_labels": edge_on}
+        info.capabilities = {
+            **info.capabilities,
+            "edge_labels": edge_on,
+            "annotations": wiki_annotations.enabled()
+            or wiki_annotations.hosted_enabled(),
+            "annotations_hosted": wiki_annotations.hosted_enabled(),
+        }
         # The card's one-line summary comes from the cached Overview, then the
         # manifest or README; reading it never starts page generation.
         try:
@@ -1019,7 +1168,11 @@ async def wiki_tree(repo_id: str, cached_only: bool = False) -> dict:
             pages = pages or []
         else:
             pages = await _run_pinned_thread(builder.page_tree)
-        return {"repo": bundle.entry.repo, "pages": pages}
+        tree = {"repo": bundle.entry.repo, "pages": pages}
+        if _repo_docs_enabled():
+            docs = await _run_pinned_thread(find_docs, Path(bundle.entry.repo_dir))
+            tree["docs"] = [doc.to_json() for doc in docs]
+        return tree
 
 
 @app.get("/api/repos/{repo_id}/wiki/{page_id}")
@@ -1030,7 +1183,12 @@ async def wiki_page(
 ) -> dict:
     with _pinned_bundle(repo_id) as bundle:
         builder = await _run_pinned_thread(_wiki, repo_id, bundle)
-        page = await _run_pinned_thread(builder.page, page_id)
+        if is_doc_id(page_id) and _repo_docs_enabled():
+            page = await _run_pinned_thread(
+                doc_page, Path(bundle.entry.repo_dir), page_id
+            )
+        else:
+            page = await _run_pinned_thread(builder.page, page_id)
         if page is None:
             raise HTTPException(
                 status_code=404,
@@ -1070,6 +1228,14 @@ async def wiki_page(
                 page,
                 bundle,
             )
+        if _repo_docs_enabled() and entry is not None:
+            # A person's edit of this page replaces the generated text.
+            edited = apply_edit(Path(entry.repo_dir), page_id, page)
+            if edited is not page:
+                page = {
+                    **edited,
+                    "story": derive_story_from_markdown(str(edited["markdown"])),
+                }
         if "visual_quality" not in page:
             page = {**page, "visual_quality": page_visual_contract_report(page)}
         if "generation" not in page:
@@ -1495,6 +1661,29 @@ async def threads_overlay(repo_id: str) -> dict:
     if overlay is None:
         raise HTTPException(status_code=404, detail="No thread overlay for this repo")
     return overlay
+
+
+@app.get("/api/repos/{repo_id}/walkthroughs")
+async def walkthroughs(repo_id: str) -> dict:
+    """Code walkthroughs built for this repository's indexed commit.
+
+    Built offline by ``scripts/walkthrough``. A repository without them, or
+    with walkthroughs built from another commit, answers 404 and its Wiki
+    lists none: their line numbers would point at the wrong code.
+    """
+    with _pinned_bundle(repo_id) as bundle:
+        commit = getattr(getattr(bundle, "entry", None), "base_commit", None)
+        data = await _run_pinned_thread(
+            load_walkthroughs, load_config().data_dir, repo_id
+        )
+    if data is None:
+        raise HTTPException(status_code=404, detail="No walkthroughs for this repo")
+    if not _same_commit(data["repo"]["commit"], commit):
+        raise HTTPException(
+            status_code=404,
+            detail="The walkthroughs were built from another commit",
+        )
+    return data
 
 
 @app.get("/api/repos/{repo_id}/wiki/{page_id}/boundary")
