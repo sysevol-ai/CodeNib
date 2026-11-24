@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { linkCodeRefs, squash, threadsOf, usageLine, type Annotation } from "./annotations";
+import { linkCodeRefs, passageSimilarity, squash, threadsOf, usageLine, type Annotation } from "./annotations";
 
 function note(id: string, extra: Partial<Annotation> = {}): Annotation {
   return {
@@ -67,5 +67,14 @@ describe("usageLine", () => {
 describe("squash", () => {
   it("collapses whitespace the way the page text is compared", () => {
     expect(squash("  hands it\n to an   adapter ")).toBe("hands it to an adapter");
+  });
+});
+
+describe("passageSimilarity", () => {
+  it("scores the words two passages share, ignoring common ones", () => {
+    expect(passageSimilarity("Session send picks the adapter", "Session send picks the adapter")).toBe(1);
+    expect(passageSimilarity("send picks an adapter by URL", "send then picks the adapter for each URL")).toBeGreaterThan(0.5);
+    expect(passageSimilarity("send picks an adapter", "cookies are merged into jars")).toBe(0);
+    expect(passageSimilarity("", "anything")).toBe(0);
   });
 });

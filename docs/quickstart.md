@@ -179,6 +179,12 @@ start your agent.
    **Show the generated page** drops your edit. Editing a repository document,
    such as the README, saves the file itself.
 
+Annotations follow what they sit on. When code moves, its annotations move
+with it; when it is edited, they follow the closest match and say the code
+changed; when it is deleted, they keep their last place and say the code is
+gone. Words on a page that a refresh rewrote are shown on the closest
+passage.
+
 The agent gets file tools only: it reads and searches the code, and edits it
 for a change. It has no shell or network tools. Claude Code must be installed
 and signed in; CodeNib never asks for an API key.

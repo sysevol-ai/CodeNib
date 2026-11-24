@@ -21,11 +21,11 @@ import {
   dispatchTask,
   fetchAnnotations,
   fetchTaskDiff,
-  findAnchor,
   foldAnswer,
   isLive,
   linkCodeRefs,
   localSession,
+  placeAnchor,
   threadsOf,
   updateAnnotation,
   usageLine,
@@ -69,6 +69,12 @@ const PLACEHOLDER: Record<HumanKind, string> = {
   question: "What do you want to know about this?",
   change: "What should change in the code?",
   note: "A fact later tasks must respect, e.g. “this path must stay lock-free”.",
+};
+
+const ANCHOR_NOTE: Record<string, string> = {
+  moved: "Moved with the code.",
+  changed: "The code was edited since; following the closest match.",
+  detached: "This code is no longer in the file.",
 };
 
 const HIGHLIGHT = "codenib-annotation";
@@ -142,6 +148,8 @@ export function useAnnotations(repoId: string, pageId: string, enabled: boolean)
 interface Placed {
   thread: Thread;
   range: Range | null;
+  /** The annotated words were rewritten; this is the closest passage. */
+  moved?: boolean;
 }
 
 function supportsHighlights(): boolean {
@@ -156,16 +164,38 @@ function usePlacedThreads(
   renderKey: string,
 ): Placed[] {
   const [placed, setPlaced] = useState<Placed[]>([]);
+  // The page's text can re-render after it first appears (the Overview swaps
+  // its lead once the map loads); a range into replaced nodes collapses, so
+  // place the threads again whenever the text changes.
+  const [domVersion, setDomVersion] = useState(0);
+  useEffect(() => {
+    const element = root.current;
+    if (!element || typeof MutationObserver === "undefined") return;
+    let frame = 0;
+    const observer = new MutationObserver(() => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = 0;
+        setDomVersion((v) => v + 1);
+      });
+    });
+    observer.observe(element, { childList: true, subtree: true, characterData: true });
+    return () => {
+      observer.disconnect();
+      if (frame) window.cancelAnimationFrame(frame);
+    };
+  }, [root, renderKey]);
   useLayoutEffect(() => {
     const element = root.current?.querySelector(".wiki-story") ?? root.current;
     if (!element) {
       setPlaced(threads.map((thread) => ({ thread, range: null })));
       return;
     }
-    const found = threads.map((thread) => ({
-      thread,
-      range: thread.root.on.quote ? findAnchor(element, thread.root.on) : null,
-    }));
+    const found = threads.map((thread) => {
+      const place =
+        thread.root.on.quote && !thread.root.on.path ? placeAnchor(element, thread.root.on) : null;
+      return { thread, range: place?.range ?? null, moved: place?.moved ?? false };
+    });
     found.sort((a, b) => {
       if (a.range && b.range) return a.range.compareBoundaryPoints(Range.START_TO_START, b.range);
       if (a.range) return -1;
@@ -173,7 +203,7 @@ function usePlacedThreads(
       return a.thread.root.created.localeCompare(b.thread.root.created);
     });
     setPlaced(found);
-  }, [root, threads, renderKey]);
+  }, [root, threads, renderKey, domVersion]);
 
   useEffect(() => {
     if (!supportsHighlights()) return;
@@ -702,6 +732,11 @@ function ThreadCard({
             {thread.root.on.end_line !== thread.root.on.start_line ? `-${thread.root.on.end_line}` : ""}
           </button>
           {thread.root.on.quote && <pre className="cn-code-quote">{thread.root.on.quote}</pre>}
+          {thread.root.anchor_state && thread.root.anchor_state !== "current" && (
+            <p className={`cn-detached is-${thread.root.anchor_state}`}>
+              {ANCHOR_NOTE[thread.root.anchor_state]}
+            </p>
+          )}
         </div>
       ) : thread.root.on.quote ? (
         <button
@@ -718,6 +753,9 @@ function ThreadCard({
       ) : null}
       {!range && thread.root.on.quote && !thread.root.on.path && (
         <p className="cn-detached">Not found on this page anymore.</p>
+      )}
+      {range && placed.moved && (
+        <p className="cn-detached">These words were rewritten; shown on the closest passage.</p>
       )}
       {items.map((item) => {
         const task = item.task ? tasks.get(item.task) : undefined;

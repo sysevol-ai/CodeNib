@@ -231,6 +231,13 @@ def build_prompt(
                 + (f":{span}-{end}" if span and end else "")
             )
         quote = annotation.on.get("quote")
+        if on_code and annotation.anchor_state == "changed":
+            lines.append(
+                "The code there has been edited since they selected it; the "
+                "lines above are where the closest match is now."
+            )
+        elif on_code and annotation.anchor_state == "detached":
+            lines.append("That code is no longer in the file.")
         if quote and on_code:
             lines.append(
                 "They selected this code:\n```\n" + _clip(quote, 1500) + "\n```"

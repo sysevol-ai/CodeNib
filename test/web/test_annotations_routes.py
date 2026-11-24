@@ -283,3 +283,31 @@ def test_an_answer_is_added_to_its_page_and_edits_save(
         "/api/repos/calc/pages/math/fold", json={"annotation": question["id"]}
     )
     assert question_fold.status_code == 409
+
+
+def test_an_annotation_on_code_is_anchored_to_the_working_tree(
+    client: TestClient, repo: Path
+) -> None:
+    (repo / "calc.py").write_text("# added above\ndef add(a, b):\n    return a - b\n")
+    created = client.post(
+        "/api/repos/calc/annotations",
+        json={
+            "kind": "question",
+            "text": "Why?",
+            "on": {
+                "page": "math",
+                "path": "calc.py",
+                "start_line": 2,
+                "end_line": 2,
+                "quote": "return a - b",
+            },
+        },
+    ).json()
+    assert created["on"]["start_line"] == 3  # where the code is now
+    assert created["anchor_state"] == "current"
+    assert len(created["on"]["commit"]) == 40
+
+    (repo / "calc.py").write_text("def add(a, b):\n    return a - b\n")
+    listed = client.get("/api/repos/calc/annotations").json()["annotations"]
+    (mine,) = [a for a in listed if a["id"] == created["id"]]
+    assert (mine["anchor_state"], mine["on"]["start_line"]) == ("moved", 2)
