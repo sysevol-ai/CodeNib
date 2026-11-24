@@ -1136,7 +1136,7 @@ export default function WikiPageView({
             {annotationsOn && (
               <NotesButton model={notes} open={notesOpen} onClick={() => setNotesOpen((o) => !o)} />
             )}
-            {annotationsOn && !notes.needsSession && !notes.hosted && page && !walking && (
+            {annotationsOn && notes.local && !notes.needsSession && page && !walking && (
               <button
                 type="button"
                 className="cn-launch cn-edit-launch"
@@ -1490,7 +1490,7 @@ export default function WikiPageView({
                         Edited by you
                         {page.edited.stale ? "; the generated page has changed since" : ""}
                       </span>
-                      {annotationsOn && !notes.hosted && (
+                      {annotationsOn && notes.local && (
                         <button
                           type="button"
                           className="cn-link"

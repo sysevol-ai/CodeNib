@@ -97,6 +97,8 @@ export interface AnnotationsModel {
   agents: AgentInfo[];
   /** The public Wiki: annotations kept per browser, runs on the visitor's key. */
   hosted: boolean;
+  /** The person's own checkout: pages may be edited. False until the server says so. */
+  local: boolean;
   worktree: WorktreeStatus | null;
   refresh: () => Promise<void>;
 }
@@ -106,7 +108,9 @@ export function useAnnotations(repoId: string, pageId: string, enabled: boolean)
   const [tasks, setTasks] = useState<AgentTask[]>([]);
   const [agents, setAgents] = useState<AgentInfo[]>([]);
   const [worktree, setWorktree] = useState<WorktreeStatus | null>(null);
-  const [hosted, setHosted] = useState(false);
+  // Unknown until the server answers, so nothing local-only shows on the
+  // hosted Wiki while its state loads (or when it fails to).
+  const [mode, setMode] = useState<"local" | "hosted" | null>(null);
   const [ready, setReady] = useState(false);
   const [needsSession, setNeedsSession] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -122,7 +126,7 @@ export function useAnnotations(repoId: string, pageId: string, enabled: boolean)
       setTasks(state.tasks);
       setAgents(state.agents);
       setWorktree(state.worktree ?? null);
-      setHosted(state.mode === "hosted");
+      setMode(state.mode === "hosted" ? "hosted" : "local");
       setNeedsSession(false);
       setError(null);
     } catch (failure) {
@@ -155,7 +159,9 @@ export function useAnnotations(repoId: string, pageId: string, enabled: boolean)
     return () => window.clearInterval(timer);
   }, [live, following, worktree?.state, refresh]);
 
-  return { ready, needsSession, error, annotations, tasks, agents, hosted, worktree, refresh };
+  const hosted = mode === "hosted";
+  const local = mode === "local";
+  return { ready, needsSession, error, annotations, tasks, agents, hosted, local, worktree, refresh };
 }
 
 // --- Highlights ---------------------------------------------------------------
