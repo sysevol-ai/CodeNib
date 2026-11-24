@@ -19,6 +19,10 @@ import {
   decideTask,
   deleteAnnotation,
   dispatchTask,
+  fetchTaskPatch,
+  keyProvider,
+  providerKey,
+  setProviderKey,
   fetchAnnotations,
   fetchTaskDiff,
   foldAnswer,
@@ -91,6 +95,8 @@ export interface AnnotationsModel {
   annotations: Annotation[];
   tasks: AgentTask[];
   agents: AgentInfo[];
+  /** The public Wiki: annotations kept per browser, runs on the visitor's key. */
+  hosted: boolean;
   worktree: WorktreeStatus | null;
   refresh: () => Promise<void>;
 }
@@ -100,6 +106,7 @@ export function useAnnotations(repoId: string, pageId: string, enabled: boolean)
   const [tasks, setTasks] = useState<AgentTask[]>([]);
   const [agents, setAgents] = useState<AgentInfo[]>([]);
   const [worktree, setWorktree] = useState<WorktreeStatus | null>(null);
+  const [hosted, setHosted] = useState(false);
   const [ready, setReady] = useState(false);
   const [needsSession, setNeedsSession] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -115,6 +122,7 @@ export function useAnnotations(repoId: string, pageId: string, enabled: boolean)
       setTasks(state.tasks);
       setAgents(state.agents);
       setWorktree(state.worktree ?? null);
+      setHosted(state.mode === "hosted");
       setNeedsSession(false);
       setError(null);
     } catch (failure) {
@@ -147,7 +155,7 @@ export function useAnnotations(repoId: string, pageId: string, enabled: boolean)
     return () => window.clearInterval(timer);
   }, [live, following, worktree?.state, refresh]);
 
-  return { ready, needsSession, error, annotations, tasks, agents, worktree, refresh };
+  return { ready, needsSession, error, annotations, tasks, agents, hosted, worktree, refresh };
 }
 
 // --- Highlights ---------------------------------------------------------------
@@ -507,20 +515,25 @@ const HUNK_STATE: Record<DiffHunk["state"], string> = {
   accepted: "Applied",
   rejected: "Discarded",
 };
+// On the hosted Wiki a kept hunk goes into the patch the person downloads.
+const HOSTED_HUNK_STATE: Record<DiffHunk["state"], string> = { ...HUNK_STATE, accepted: "Kept" };
 
 /** The diff hunk by hunk: apply or discard each one (a / x on a focused hunk). */
 function HunkReview({
   hunks,
   busy,
   readOnly,
+  hosted = false,
   onDecide,
 }: {
   hunks: DiffHunk[];
   busy: boolean;
   /** Shown away from the request (a note on another page): states only. */
   readOnly: boolean;
+  hosted?: boolean;
   onDecide: (decision: "accept" | "reject", ids: string[]) => void;
 }) {
+  const states = hosted ? HOSTED_HUNK_STATE : HUNK_STATE;
   const files: { path: string; hunks: DiffHunk[] }[] = [];
   for (const hunk of hunks) {
     const last = files[files.length - 1];
@@ -537,7 +550,7 @@ function HunkReview({
               key={hunk.id}
               className={`cn-hunk is-${hunk.state}`}
               tabIndex={hunk.state === "open" && !readOnly ? 0 : -1}
-              aria-label={`Hunk ${hunk.header || file.path}, ${hunk.state === "open" ? "not decided" : HUNK_STATE[hunk.state]}`}
+              aria-label={`Hunk ${hunk.header || file.path}, ${hunk.state === "open" ? "not decided" : states[hunk.state]}`}
               onKeyDown={(event) => {
                 if (hunk.state !== "open" || busy || readOnly) return;
                 if (event.key === "a") onDecide("accept", [hunk.id]);
@@ -555,7 +568,7 @@ function HunkReview({
                   readOnly ? null : (
                   <>
                     <button type="button" className="cn-link cn-push" disabled={busy} onClick={() => onDecide("accept", [hunk.id])}>
-                      Apply
+                      {hosted ? "Keep" : "Apply"}
                     </button>
                     <button type="button" className="cn-link" disabled={busy} onClick={() => onDecide("reject", [hunk.id])}>
                       Discard
@@ -563,7 +576,7 @@ function HunkReview({
                   </>
                   )
                 ) : (
-                  <span className="cn-status cn-push">{HUNK_STATE[hunk.state]}</span>
+                  <span className="cn-status cn-push">{states[hunk.state]}</span>
                 )}
               </div>
               <pre className="cn-diff">
@@ -579,6 +592,64 @@ function HunkReview({
         </section>
       ))}
     </div>
+  );
+}
+
+/** Ask for the visitor's key once per tab, before the first run. */
+function KeyPrompt({
+  count,
+  agentName,
+  busy,
+  onKey,
+  onCancel,
+}: {
+  count: number;
+  agentName: string;
+  busy: boolean;
+  onKey: (key: string) => void;
+  onCancel: () => void;
+}) {
+  const [value, setValue] = useState("");
+  const provider = keyProvider(value);
+  return (
+    <form
+      className="cn-key"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (provider) onKey(value.trim());
+      }}
+    >
+      <label htmlFor="cn-provider-key">
+        Your OpenRouter or Anthropic API key, to send {count === 1 ? "this" : `these ${count}`} to {agentName}
+      </label>
+      <input
+        id="cn-provider-key"
+        type="password"
+        autoComplete="off"
+        spellCheck={false}
+        autoFocus
+        value={value}
+        placeholder="sk-or-… or sk-ant-…"
+        onChange={(event) => setValue(event.target.value)}
+      />
+      <p className="cn-meta">
+        It goes with each request, pays for that run only and is never saved on our side; this tab keeps it until
+        you close it. Get one at{" "}
+        <a href="https://openrouter.ai/settings/keys" target="_blank" rel="noopener noreferrer">
+          openrouter.ai
+        </a>
+        , with a credit limit.
+      </p>
+      <div className="cn-composer-actions">
+        {value && !provider && <span className="cn-hint">Keys start with sk-or- or sk-ant-</span>}
+        <button type="button" className="cn-button" onClick={onCancel}>
+          Not now
+        </button>
+        <button type="submit" className="cn-button cn-primary" disabled={!provider || busy}>
+          Send
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -647,6 +718,7 @@ function ThreadCard({
   selected,
   agentName,
   repoId,
+  hosted,
   now,
   onSelect,
   onToggle,
@@ -661,6 +733,7 @@ function ThreadCard({
   selected: boolean;
   agentName: string;
   repoId: string;
+  hosted: boolean;
   now: number;
   onSelect: () => void;
   onToggle: (on: boolean) => void;
@@ -692,6 +765,17 @@ function ThreadCard({
     } finally {
       setBusy(false);
     }
+  };
+  const download = async (taskId: string) => {
+    const { name, text } = await fetchTaskPatch(repoId, taskId);
+    const url = URL.createObjectURL(new Blob([text], { type: "text/x-diff" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = name;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
   const loadHunks = async (taskId: string) =>
     setHunks((await fetchTaskDiff(repoId, taskId)).hunks);
@@ -869,7 +953,21 @@ function ThreadCard({
                   <button type="button" className="cn-button" onClick={(e) => { e.stopPropagation(); void showDiff(task.id); }}>
                     {diffFor === task.id ? "Hide diff" : "View diff"}
                   </button>
-                  {task.status === "needs_review" && item.reply_to && (
+                  {hosted && item.reply_to && (task.status === "needs_review" || item.status === "applied") && (
+                    <button
+                      type="button"
+                      className="cn-button cn-primary"
+                      disabled={busy}
+                      title="The change without the hunks you discarded; apply it with git apply"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void run(() => download(task.id));
+                      }}
+                    >
+                      Download patch
+                    </button>
+                  )}
+                  {task.status === "needs_review" && item.reply_to && !hosted && (
                     <>
                       <button
                         type="button"
@@ -899,7 +997,20 @@ function ThreadCard({
                       </button>
                     </>
                   )}
-                  {item.status === "applied" && <span className="cn-status is-applied">Applied</span>}
+                  {hosted && task.status === "needs_review" && item.reply_to && (
+                    <button
+                      type="button"
+                      className="cn-button"
+                      disabled={busy}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void decideHunks(task.id, "reject");
+                      }}
+                    >
+                      Discard
+                    </button>
+                  )}
+                  {item.status === "applied" && <span className="cn-status is-applied">{hosted ? "Kept" : "Applied"}</span>}
                   {item.status === "rejected" && <span className="cn-status is-rejected">Discarded</span>}
                 </div>
                 {diffFor === task.id &&
@@ -909,6 +1020,7 @@ function ThreadCard({
                     <HunkReview
                       hunks={hunks}
                       busy={busy}
+                      hosted={hosted}
                       readOnly={task.status !== "needs_review" || !item.reply_to}
                       onDecide={(decision, ids) => void decideHunks(task.id, decision, ids)}
                     />
@@ -933,7 +1045,7 @@ function ThreadCard({
             {!mine && task && task.usage && usageLine(task.usage) && item.id === task.results[0] && (
               <p className="cn-meta cn-usage">{usageLine(task.usage)}</p>
             )}
-            {!mine && item.kind === "answer" && (
+            {!mine && item.kind === "answer" && !hosted && (
               <div className="cn-row">
                 {item.status === "applied" ? (
                   <span className="cn-status is-applied">Added to the page</span>
@@ -1033,8 +1145,11 @@ export function AnnotationLayer({
   const [showResolved, setShowResolved] = useState(false);
   const [pageNote, setPageNote] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
-  const { annotations, tasks, agents, refresh } = model;
+  const { annotations, tasks, agents, refresh, hosted } = model;
   const agent = agents[0];
+  // Drafts waiting for the visitor's key before they can be sent.
+  const [awaitingKey, setAwaitingKey] = useState<string[] | null>(null);
+  const [hasKey, setHasKey] = useState(() => !!providerKey());
   const agentName = agent?.name ?? "Claude Code";
   const threads = useMemo(() => threadsOf(annotations), [annotations]);
   const placed = usePlacedThreads(contentRef, threads, activeId, `${renderKey}:${pageId}`);
@@ -1089,15 +1204,28 @@ export function AnnotationLayer({
     .filter((item): item is Annotation => !!item);
   const chosen = sendable.filter((item) => !excluded.has(item.id));
 
-  const send = async (ids: string[]) => {
+  const send = async (ids: string[], key: string = providerKey()) => {
     if (!ids.length) return;
+    if (hosted && !key) {
+      setAwaitingKey(ids);
+      onOpenChange(true);
+      return;
+    }
     setSending(true);
     setFailure(null);
     try {
-      await dispatchTask(repoId, ids);
+      await dispatchTask(repoId, ids, hosted ? key : undefined);
       setExcluded(new Set());
+      setAwaitingKey(null);
     } catch (error) {
-      setFailure(error instanceof Error ? error.message : String(error));
+      const message = error instanceof Error ? error.message : String(error);
+      setFailure(message);
+      // A refused key is forgotten and asked for again.
+      if (hosted && error instanceof AnnotationApiError && (error.status === 400 || error.status === 402) && /key/i.test(message)) {
+        setProviderKey("");
+        setHasKey(false);
+        setAwaitingKey(ids);
+      }
     } finally {
       setSending(false);
       await refresh();
@@ -1172,6 +1300,7 @@ export function AnnotationLayer({
       selected={!excluded.has([p.thread.root, ...p.thread.replies].slice(-1)[0].id)}
       agentName={agentName}
       repoId={repoId}
+      hosted={hosted}
       now={now}
       onSelect={() => setActiveId(p.thread.root.id)}
       onToggle={(on) => {
@@ -1217,7 +1346,34 @@ export function AnnotationLayer({
             <>
               <div className="cn-agent">
                 <span className={`cn-dot${agent?.available ? " is-on" : ""}`} aria-hidden />
-                {agent?.available ? (
+                {hosted ? (
+                  <span>
+                    {agent?.available ? (
+                      <>
+                        <strong>{agentName}</strong> answers here, on your own OpenRouter or Anthropic key
+                        {agent?.budget_usd ? `, up to $${agent.budget_usd.toFixed(2)} a request` : ""}. Changes come
+                        back as a patch.
+                      </>
+                    ) : (
+                      <>{agentName} is not available on this server right now. Notes still save.</>
+                    )}
+                    {hasKey && (
+                      <>
+                        {" "}
+                        <button
+                          type="button"
+                          className="cn-link"
+                          onClick={() => {
+                            setProviderKey("");
+                            setHasKey(false);
+                          }}
+                        >
+                          Forget key
+                        </button>
+                      </>
+                    )}
+                  </span>
+                ) : agent?.available ? (
                   <span>
                     Tasks run on your <strong>{agentName}</strong>, in a worktree for changes
                   </span>
@@ -1268,6 +1424,19 @@ export function AnnotationLayer({
                 <p className="cn-error cn-pad" role="alert">
                   {failure || model.error}
                 </p>
+              )}
+              {hosted && awaitingKey && (
+                <KeyPrompt
+                  count={awaitingKey.length}
+                  agentName={agentName}
+                  busy={sending}
+                  onCancel={() => setAwaitingKey(null)}
+                  onKey={(key) => {
+                    setProviderKey(key);
+                    setHasKey(true);
+                    void send(awaitingKey, key);
+                  }}
+                />
               )}
               <div className="cn-threads">
                 {pageLevel.length > 0 && (

@@ -63,10 +63,14 @@ class Task:
 
 
 class TaskStore:
-    def __init__(self, repo: Path | str):
+    def __init__(self, repo: Path | str, state: Path | str | None = None):
         self.repo = Path(repo)
-        self.directory = self.repo / TASKS_DIR
-        self.lock = repo_lock(self.repo)
+        # See AnnotationStore: a visitor's tasks live in their own folder.
+        self.state = Path(state) if state is not None else None
+        self.directory = (
+            self.state / "tasks" if self.state is not None else self.repo / TASKS_DIR
+        )
+        self.lock = repo_lock(self.state if self.state is not None else self.repo)
 
     def _path(self, task_id: str) -> Path:
         if not is_id(task_id):
@@ -78,6 +82,8 @@ class TaskStore:
 
         if not is_id(task_id):
             raise AnnotationError(f"bad task id {task_id!r}")
+        if self.state is not None:
+            return self.state / "runs" / task_id
         return repo_state_dir(self.repo) / "tasks" / task_id
 
     def get(self, task_id: str) -> Task:

@@ -90,7 +90,11 @@ export interface AgentInfo {
   id: string;
   name: string;
   available: boolean;
-  install: string;
+  install?: string;
+  /** The hosted Wiki: Claude Code runs on the server, on the visitor's key. */
+  hosted?: boolean;
+  /** The most one hosted run spends of that key. */
+  budget_usd?: number;
 }
 
 export interface WorktreeStatus {
@@ -105,6 +109,8 @@ export interface AnnotationState {
   annotations: Annotation[];
   tasks: AgentTask[];
   agents: AgentInfo[];
+  /** "hosted": the public Wiki, one folder per visitor on the server. */
+  mode?: "local" | "hosted";
   worktree?: WorktreeStatus | null;
 }
 
@@ -136,6 +142,62 @@ export function localSession(): string | null {
   return session || null;
 }
 
+const VISITOR_KEY = "codenib-visitor";
+let visitor: string | null = null;
+
+/**
+ * This browser's key on the hosted Wiki: its annotations are kept under it.
+ * Random, made on first use, kept for this origin. Anyone holding it sees
+ * this browser's annotations, so it never leaves the browser except to us.
+ */
+export function visitorKey(): string {
+  if (visitor) return visitor;
+  try {
+    visitor = window.localStorage.getItem(VISITOR_KEY);
+  } catch {
+    visitor = null;
+  }
+  if (!visitor || !/^[A-Za-z0-9_-]{32,128}$/.test(visitor)) {
+    const bytes = crypto.getRandomValues(new Uint8Array(32));
+    visitor = btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    try {
+      window.localStorage.setItem(VISITOR_KEY, visitor);
+    } catch {
+      // A private window keeps annotations for this tab only.
+    }
+  }
+  return visitor;
+}
+
+const PROVIDER_KEY = "codenib-provider-key";
+
+/** The visitor's OpenRouter or Anthropic key, kept by this tab until it closes. */
+export function providerKey(): string {
+  try {
+    return window.sessionStorage.getItem(PROVIDER_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export function setProviderKey(key: string): void {
+  try {
+    if (key) window.sessionStorage.setItem(PROVIDER_KEY, key);
+    else window.sessionStorage.removeItem(PROVIDER_KEY);
+  } catch {
+    // Without storage the key is asked for again next time.
+  }
+}
+
+/** Which provider a pasted key belongs to, or null when it is neither. */
+export function keyProvider(key: string): "OpenRouter" | "Anthropic" | null {
+  const value = key.trim();
+  if (!/^[\x21-\x7e]{20,512}$/.test(value)) return null;
+  if (value.startsWith("sk-or-")) return "OpenRouter";
+  if (value.startsWith("sk-ant-")) return "Anthropic";
+  return null;
+}
+
 export class AnnotationApiError extends Error {
   constructor(
     message: string,
@@ -145,10 +207,11 @@ export class AnnotationApiError extends Error {
   }
 }
 
-async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
+async function send(path: string, init: RequestInit = {}): Promise<Response> {
   const key = localSession();
   const headers = new Headers(init.headers);
   if (key) headers.set("X-CodeNib-Session", key);
+  else headers.set("X-CodeNib-Visitor", visitorKey());
   if (init.body) headers.set("Content-Type", "application/json");
   const response = await fetch(`${API_BASE}${path}`, { ...init, headers });
   if (!response.ok) {
@@ -162,7 +225,11 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
     }
     throw new AnnotationApiError(detail, response.status);
   }
-  return (await response.json()) as T;
+  return response;
+}
+
+async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
+  return (await (await send(path, init)).json()) as T;
 }
 
 const repoPath = (repoId: string) => `/api/repos/${encodeURIComponent(repoId)}`;
@@ -197,11 +264,21 @@ export function deleteAnnotation(repoId: string, id: string): Promise<{ deleted:
   return call(`${repoPath(repoId)}/annotations/${id}`, { method: "DELETE" });
 }
 
-export function dispatchTask(repoId: string, annotations: string[]): Promise<AgentTask> {
+/** Send drafts to the agent; on the hosted Wiki, with the visitor's key. */
+export function dispatchTask(repoId: string, annotations: string[], key?: string): Promise<AgentTask> {
   return call(`${repoPath(repoId)}/tasks`, {
     method: "POST",
     body: JSON.stringify({ annotations, agent: "claude-code" }),
+    headers: key ? { Authorization: `Bearer ${key}` } : undefined,
   });
+}
+
+/** A change without its discarded hunks, as a file for `git apply`. */
+export async function fetchTaskPatch(repoId: string, taskId: string): Promise<{ name: string; text: string }> {
+  const response = await send(`${repoPath(repoId)}/tasks/${taskId}/patch`);
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const name = /filename="([^"]+)"/.exec(disposition)?.[1] ?? `codenib-${taskId.toLowerCase()}.patch`;
+  return { name, text: await response.text() };
 }
 
 export interface DiffHunk {

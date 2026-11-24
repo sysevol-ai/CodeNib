@@ -333,12 +333,20 @@ def repo_lock(repo: Path) -> threading.RLock:
 
 
 class AnnotationStore:
-    """Annotations of one repository, read from and written to its notes dir."""
+    """Annotations of one repository, read from and written to its notes dir.
 
-    def __init__(self, repo: Path | str):
+    ``state`` keeps them outside the repository instead (``<state>/notes``):
+    the hosted Wiki serves one shared checkout and keeps each visitor's
+    annotations in a folder of their own.
+    """
+
+    def __init__(self, repo: Path | str, state: Path | str | None = None):
         self.repo = Path(repo)
-        self.directory = self.repo / NOTES_DIR
-        self.lock = repo_lock(self.repo)
+        self.state = Path(state) if state is not None else None
+        self.directory = (
+            self.state / "notes" if self.state is not None else self.repo / NOTES_DIR
+        )
+        self.lock = repo_lock(self.state if self.state is not None else self.repo)
 
     def _path(self, annotation_id: str) -> Path:
         if not is_id(annotation_id):

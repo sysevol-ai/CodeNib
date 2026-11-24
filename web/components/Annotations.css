@@ -93,7 +93,8 @@
 }
 
 .cn-composer textarea,
-.cn-reply textarea {
+.cn-reply textarea,
+.cn-key input {
   width: 100%;
   resize: vertical;
   min-height: 64px;
@@ -106,7 +107,8 @@
   line-height: 1.5;
 }
 .cn-composer textarea:focus,
-.cn-reply textarea:focus {
+.cn-reply textarea:focus,
+.cn-key input:focus {
   outline: none;
   border-color: var(--accent);
   box-shadow: var(--focus-ring);
@@ -729,4 +731,27 @@
 .hl-gutter-noted {
   box-shadow: inset 2px 0 0 var(--accent);
   color: var(--accent);
+}
+
+/* The hosted Wiki asks for the visitor's key before the first run. */
+.cn-key {
+  display: grid;
+  gap: 8px;
+  margin: 12px 20px;
+  padding: 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+}
+.cn-key label {
+  font-size: var(--fs-small);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.cn-key input {
+  min-height: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+.cn-key .cn-meta a {
+  color: inherit;
+  text-decoration: underline;
 }

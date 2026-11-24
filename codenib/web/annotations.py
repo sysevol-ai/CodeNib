@@ -1,31 +1,41 @@
 # SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 #
 # SPDX-License-Identifier: Apache-2.0
-"""Wiki annotations over HTTP, for the local Wiki only.
+"""Wiki annotations over HTTP: on the person's machine, or hosted.
 
-These routes write files into the person's repository and start their coding
-agent, so they exist only when ``codenib wiki`` launched this server on the
-person's machine: the launcher sets ``CODENIB_LOCAL_SESSION_TOKEN`` and opens
-the browser with that token. A request needs the token in the
+Local: these routes write files into the person's repository and start their
+coding agent, so they exist only when ``codenib wiki`` launched this server
+on the person's machine: the launcher sets ``CODENIB_LOCAL_SESSION_TOKEN`` and
+opens the browser with that token. A request needs the token in the
 ``X-CodeNib-Session`` header and a loopback ``Host``. A custom header makes a
 cross-site request preflight, which CORS refuses, and the ``Host`` check
-stops DNS rebinding. The public demo never sets the token, so the routes
-answer 404 there.
+stops DNS rebinding.
+
+Hosted (``CODENIB_HOSTED_ANNOTATIONS=1``, the public demo): the served
+checkout is shared and read-only. Each browser holds a random visitor key
+(``X-CodeNib-Visitor``) and its annotations and tasks live in a folder of
+their own on the server. Questions and changes run Claude Code in a container
+on the visitor's own OpenRouter or Anthropic key (``Authorization: Bearer``),
+sent with each task and never stored; a change is taken away as a patch.
+Page edits stay local-only for now.
 """
 
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import hmac
 import logging
 import os
+import re
 import subprocess
 import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Literal, Optional
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from ..annotations import AnnotationError, AnnotationStore, TaskStore
@@ -39,12 +49,35 @@ from ..annotations.edits import (
     save_page,
 )
 from ..annotations.model import HUMAN_KINDS
-from ..annotations.runner import accept, dispatch, reject, review, run_task
+from ..annotations.runner import (
+    accept,
+    dispatch,
+    kept_patch,
+    reject,
+    review,
+    run_task,
+)
+from ..annotations.sandbox import (
+    DEFAULT_BUDGET_USD,
+    SandboxedClaude,
+)
+from ..annotations.sandbox import available as sandbox_available
+from ..annotations.sandbox import (
+    check_key,
+    provider_of,
+)
 
 log = logging.getLogger(__name__)
 
 TOKEN_ENV = "CODENIB_LOCAL_SESSION_TOKEN"
 HEADER = "x-codenib-session"
+HOSTED_ENV = "CODENIB_HOSTED_ANNOTATIONS"
+VISITOR_HEADER = "x-codenib-visitor"
+_VISITOR = re.compile(r"\A[A-Za-z0-9_-]{32,128}\Z")
+#: Hosted runs at once on this server, and per hour; each visitor runs one.
+HOSTED_MAX_RUNNING = int(os.environ.get("CODENIB_HOSTED_MAX_TASKS", "2") or 2)
+HOSTED_MAX_PER_HOUR = int(os.environ.get("CODENIB_HOSTED_TASKS_PER_HOUR", "60") or 60)
+HOSTED_MAX_ANNOTATIONS = 500
 _LOOPBACK = {"127.0.0.1", "localhost", "::1"}
 
 router = APIRouter()
@@ -63,6 +96,23 @@ class RepoAccess:
     #: repo id -> [{"id", "title", "citations": [{"file", "start_line",
     #: "end_line"}]}] for every page
     pages: Callable[[str], List[Dict[str, Any]]]
+    #: Where hosted visitors' folders live (the server's data dir).
+    state_root: Optional[Callable[[], Path]] = None
+
+
+@dataclass(frozen=True)
+class Space:
+    """The code annotations sit on, and where they are kept."""
+
+    repo_id: str
+    repo: Path
+    name: str
+    #: None: in the repository (local); else a hosted visitor's folder.
+    state: Optional[Path] = None
+
+    @property
+    def hosted(self) -> bool:
+        return self.state is not None
 
 
 _access: Optional[RepoAccess] = None
@@ -86,6 +136,48 @@ def configure(access: RepoAccess) -> None:
 
 def enabled() -> bool:
     return bool(os.environ.get(TOKEN_ENV, "").strip())
+
+
+def hosted_enabled() -> bool:
+    """The public Wiki lets visitors annotate, on their own keys."""
+
+    if enabled():
+        return False
+    return os.environ.get(HOSTED_ENV, "").strip().lower() in {"1", "true", "yes"}
+
+
+_hosted_runs: List[float] = []
+
+
+def _visitor_folder(repo_id: str, visitor: str) -> Path:
+    assert _access is not None and _access.state_root is not None
+    digest = hashlib.sha256(visitor.encode()).hexdigest()[:32]
+    safe_repo = re.sub(r"[^A-Za-z0-9_.-]", "_", repo_id)[:120]
+    return Path(_access.state_root()) / "hosted-annotations" / safe_repo / digest
+
+
+async def _space(request: Request, repo_id: str) -> Space:
+    """Who may annotate this repository, and where their annotations go."""
+
+    if hosted_enabled() and _access is not None and _access.state_root:
+        visitor = request.headers.get(VISITOR_HEADER, "")
+        if not _VISITOR.match(visitor):
+            raise HTTPException(
+                status_code=401, detail="This browser has no visitor key yet"
+            )
+        repo, name = await asyncio.to_thread(_repo, repo_id)
+        return Space(repo_id, repo, name, _visitor_folder(repo_id, visitor))
+    _authorize(request)
+    repo, name = await asyncio.to_thread(_repo, repo_id)
+    return Space(repo_id, repo, name)
+
+
+def _local_only(space: Space) -> None:
+    if space.hosted:
+        raise HTTPException(
+            status_code=403,
+            detail="Editing Wiki pages needs the Wiki on your machine for now",
+        )
 
 
 def _authorize(request: Request) -> None:
@@ -128,11 +220,11 @@ def _fail(exc: AnnotationError) -> HTTPException:
     return HTTPException(status_code=400, detail=str(exc))
 
 
-def _recover(repo: Path) -> None:
+def _recover(repo: Path, state: Optional[Path] = None) -> None:
     """A task this process is not running was cut off by a restart."""
 
-    tasks = TaskStore(repo)
-    store = AnnotationStore(repo)
+    tasks = TaskStore(repo, state)
+    store = AnnotationStore(repo, state)
     for task in tasks.list():
         if task.status not in ("queued", "running"):
             continue
@@ -167,9 +259,22 @@ class TaskIn(BaseModel):
     agent: str = "claude-code"
 
 
-def _state(repo: Path, page: Optional[str]) -> Dict[str, Any]:
-    _recover(repo)
-    store, tasks = AnnotationStore(repo), TaskStore(repo)
+def _hosted_agents() -> List[Dict[str, Any]]:
+    return [
+        {
+            "id": "claude-code",
+            "name": "Claude Code",
+            "available": sandbox_available(),
+            "hosted": True,
+            "budget_usd": DEFAULT_BUDGET_USD,
+        }
+    ]
+
+
+def _state(space: Space, page: Optional[str]) -> Dict[str, Any]:
+    repo = space.repo
+    _recover(repo, space.state)
+    store, tasks = AnnotationStore(repo, space.state), TaskStore(repo, space.state)
     # Code moves under its annotations; follow it before showing them.
     annotations = follow(store, store.list(page), _anchor_cache)
     task_ids = {a.task for a in annotations if a.task}
@@ -181,9 +286,12 @@ def _state(repo: Path, page: Optional[str]) -> Dict[str, Any]:
     return {
         "annotations": [a.to_json() for a in annotations],
         "tasks": [t.to_json() for t in shown],
-        "agents": detect_agents(),
+        "agents": _hosted_agents() if space.hosted else detect_agents(),
         "kinds": list(HUMAN_KINDS),
-        "worktree": _worktree.status() if _worktree is not None else None,
+        "mode": "hosted" if space.hosted else "local",
+        "worktree": (
+            _worktree.status() if _worktree is not None and not space.hosted else None
+        ),
     }
 
 
@@ -191,18 +299,22 @@ def _state(repo: Path, page: Optional[str]) -> Dict[str, Any]:
 async def list_annotations(
     repo_id: str, request: Request, page: Optional[str] = None
 ) -> dict:
-    _authorize(request)
-    repo, _ = await asyncio.to_thread(_repo, repo_id)
-    return await asyncio.to_thread(_state, repo, page)
+    space = await _space(request, repo_id)
+    return await asyncio.to_thread(_state, space, page)
 
 
 @router.post("/api/repos/{repo_id}/annotations")
 async def create_annotation(repo_id: str, body: AnnotationIn, request: Request) -> dict:
-    _authorize(request)
-    repo, _ = await asyncio.to_thread(_repo, repo_id)
-    store = AnnotationStore(repo)
+    space = await _space(request, repo_id)
+    repo = space.repo
+    store = AnnotationStore(repo, space.state)
 
     def create() -> Any:
+        if space.hosted and len(store.list()) >= HOSTED_MAX_ANNOTATIONS:
+            raise AnnotationError(
+                f"This browser has {HOSTED_MAX_ANNOTATIONS} annotations on this "
+                "Wiki; resolve or delete some first"
+            )
         on = dict(body.on)
         state = ""
         if on.get("path"):
@@ -243,9 +355,8 @@ async def create_annotation(repo_id: str, body: AnnotationIn, request: Request) 
 async def update_annotation(
     repo_id: str, annotation_id: str, body: AnnotationPatch, request: Request
 ) -> dict:
-    _authorize(request)
-    repo, _ = await asyncio.to_thread(_repo, repo_id)
-    store = AnnotationStore(repo)
+    space = await _space(request, repo_id)
+    store = AnnotationStore(space.repo, space.state)
     changes = body.model_dump(exclude_none=True)
 
     def apply() -> dict:
@@ -264,9 +375,8 @@ async def update_annotation(
 
 @router.delete("/api/repos/{repo_id}/annotations/{annotation_id}")
 async def delete_annotation(repo_id: str, annotation_id: str, request: Request) -> dict:
-    _authorize(request)
-    repo, _ = await asyncio.to_thread(_repo, repo_id)
-    store = AnnotationStore(repo)
+    space = await _space(request, repo_id)
+    store = AnnotationStore(space.repo, space.state)
 
     def remove() -> None:
         current = store.get(annotation_id)
@@ -328,10 +438,10 @@ def _pages_citing(
     return find
 
 
-def _start(repo_id: str, repo: Path, name: str, task_id: str, agent_name: str) -> None:
+def _start(space: Space, task_id: str, agent: Any) -> None:
     assert _access is not None
     access = _access
-    agent = agent_for(agent_name)
+    repo, repo_id = space.repo, space.repo_id
 
     def work() -> None:
         try:
@@ -343,9 +453,14 @@ def _start(repo_id: str, repo: Path, name: str, task_id: str, agent_name: str) -
                     repo, page_id, access.page(repo_id, page_id)
                 ),
                 pages_citing=_pages_citing(repo_id),
-                repo_name=name,
+                repo_name=space.name,
+                state=space.state,
+                shared=space.hosted,
             )
         finally:
+            forget = getattr(agent, "forget_key", None)
+            if callable(forget):
+                forget()
             with _running_lock:
                 _running.discard(task_id)
 
@@ -354,33 +469,84 @@ def _start(repo_id: str, repo: Path, name: str, task_id: str, agent_name: str) -
     threading.Thread(target=work, name=f"codenib-task-{task_id}", daemon=True).start()
 
 
+def _hosted_agent(request: Request) -> SandboxedClaude:
+    """The visitor's key, checked, in an agent that forgets it after the run."""
+
+    header = request.headers.get("authorization", "")
+    key = header[7:].strip() if header.lower().startswith("bearer ") else ""
+    if not key:
+        raise HTTPException(
+            status_code=402,
+            detail="Add your OpenRouter or Anthropic key to send this to Claude Code",
+        )
+    try:
+        provider_of(key)
+    except AnnotationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not sandbox_available():
+        raise HTTPException(
+            status_code=503, detail="This server cannot run Claude Code right now"
+        )
+    with _running_lock:
+        now = time.monotonic()
+        _hosted_runs[:] = [t for t in _hosted_runs if now - t < 3600]
+        if len(_hosted_runs) >= HOSTED_MAX_PER_HOUR:
+            raise HTTPException(
+                status_code=429,
+                detail="The hosted Wiki is busy; try again in a few minutes",
+                headers={"Retry-After": "300"},
+            )
+        if len(_running) >= HOSTED_MAX_RUNNING:
+            raise HTTPException(
+                status_code=429,
+                detail="Claude Code is answering other visitors; try again in a minute",
+                headers={"Retry-After": "60"},
+            )
+    try:
+        provider = check_key(key)
+    except AnnotationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return SandboxedClaude(key, provider=provider)
+
+
 @router.post("/api/repos/{repo_id}/tasks")
 async def create_task(repo_id: str, body: TaskIn, request: Request) -> dict:
-    _authorize(request)
-    repo, name = await asyncio.to_thread(_repo, repo_id)
-    if body.agent != "claude-code" and not os.environ.get("CODENIB_TASK_AGENT_COMMAND"):
+    space = await _space(request, repo_id)
+    repo = space.repo
+    if body.agent != "claude-code" and (
+        space.hosted or not os.environ.get("CODENIB_TASK_AGENT_COMMAND")
+    ):
         raise HTTPException(
             status_code=400, detail=f"No adapter for {body.agent!r} yet"
         )
+    agent: Any = None
+    if space.hosted:
+        agent = await asyncio.to_thread(_hosted_agent, request)
 
     def begin() -> dict:
-        _recover(repo)
-        task = dispatch(repo, body.annotations, agent=body.agent)
-        _start(repo_id, repo, name, task.id, body.agent)
+        _recover(repo, space.state)
+        task = dispatch(repo, body.annotations, agent=body.agent, state=space.state)
+        if space.hosted:
+            with _running_lock:
+                _hosted_runs.append(time.monotonic())
+        _start(space, task.id, agent or agent_for(body.agent))
         return task.to_json()
 
     try:
         return await asyncio.to_thread(begin)
     except AnnotationError as exc:
+        if agent is not None:
+            agent.forget_key()
         raise _fail(exc) from exc
 
 
 @router.get("/api/repos/{repo_id}/tasks/{task_id}")
 async def get_task(repo_id: str, task_id: str, request: Request) -> dict:
-    _authorize(request)
-    repo, _ = await asyncio.to_thread(_repo, repo_id)
+    space = await _space(request, repo_id)
     try:
-        return (await asyncio.to_thread(TaskStore(repo).get, task_id)).to_json()
+        return (
+            await asyncio.to_thread(TaskStore(space.repo, space.state).get, task_id)
+        ).to_json()
     except AnnotationError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -389,12 +555,35 @@ async def get_task(repo_id: str, task_id: str, request: Request) -> dict:
 async def get_task_diff(repo_id: str, task_id: str, request: Request) -> dict:
     """The diff, and each hunk with whether it was accepted or discarded."""
 
-    _authorize(request)
-    repo, _ = await asyncio.to_thread(_repo, repo_id)
+    space = await _space(request, repo_id)
     try:
-        return await asyncio.to_thread(review, repo, task_id)
+        return await asyncio.to_thread(review, space.repo, task_id, space.state)
     except AnnotationError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/api/repos/{repo_id}/tasks/{task_id}/patch")
+async def get_task_patch(repo_id: str, task_id: str, request: Request) -> Response:
+    """The change, without discarded hunks, as a file for ``git apply``."""
+
+    space = await _space(request, repo_id)
+    try:
+        patch = await asyncio.to_thread(kept_patch, space.repo, task_id, space.state)
+    except AnnotationError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if not patch:
+        raise HTTPException(status_code=404, detail="This task changed no code")
+    name = re.sub(r"[^A-Za-z0-9_.-]", "-", space.repo_id)[:60]
+    return Response(
+        patch,
+        media_type="text/x-diff; charset=utf-8",
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="codenib-{name}-{task_id.lower()}.patch"'
+            ),
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 class HunksIn(BaseModel):
@@ -411,12 +600,15 @@ async def decide_task(
 ) -> dict:
     """Accept or discard the hunks named, or every undecided hunk."""
 
-    _authorize(request)
-    repo, _ = await asyncio.to_thread(_repo, repo_id)
+    space = await _space(request, repo_id)
     action = accept if decision == "accept" else reject
     hunks = (body.hunks if body else None) or None
     try:
-        return (await asyncio.to_thread(action, repo, task_id, hunks)).to_json()
+        return (
+            await asyncio.to_thread(
+                action, space.repo, task_id, hunks, space.state, space.hosted
+            )
+        ).to_json()
     except AnnotationError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
@@ -440,8 +632,9 @@ def _generated(repo_id: str, page_id: str) -> Optional[Dict[str, Any]]:
 
 @router.get("/api/repos/{repo_id}/pages/{page_id}/markdown")
 async def get_page_markdown(repo_id: str, page_id: str, request: Request) -> dict:
-    _authorize(request)
-    repo, _ = await asyncio.to_thread(_repo, repo_id)
+    space = await _space(request, repo_id)
+    _local_only(space)
+    repo = space.repo
     try:
         page = await asyncio.to_thread(_generated, repo_id, page_id)
         return await asyncio.to_thread(page_source, repo, page_id, page)
@@ -453,8 +646,9 @@ async def get_page_markdown(repo_id: str, page_id: str, request: Request) -> dic
 async def put_page_markdown(
     repo_id: str, page_id: str, body: MarkdownIn, request: Request
 ) -> dict:
-    _authorize(request)
-    repo, _ = await asyncio.to_thread(_repo, repo_id)
+    space = await _space(request, repo_id)
+    _local_only(space)
+    repo = space.repo
     try:
         page = await asyncio.to_thread(_generated, repo_id, page_id)
         return await asyncio.to_thread(
@@ -467,8 +661,9 @@ async def put_page_markdown(
 
 @router.delete("/api/repos/{repo_id}/pages/{page_id}/markdown")
 async def delete_page_markdown(repo_id: str, page_id: str, request: Request) -> dict:
-    _authorize(request)
-    repo, _ = await asyncio.to_thread(_repo, repo_id)
+    space = await _space(request, repo_id)
+    _local_only(space)
+    repo = space.repo
     try:
         reverted = await asyncio.to_thread(revert_page, repo, page_id)
     except AnnotationError as exc:
@@ -482,8 +677,9 @@ async def fold_answer(
 ) -> dict:
     """Add an agent's answer to the page, under the question it answers."""
 
-    _authorize(request)
-    repo, _ = await asyncio.to_thread(_repo, repo_id)
+    space = await _space(request, repo_id)
+    _local_only(space)
+    repo = space.repo
     store = AnnotationStore(repo)
 
     def fold() -> dict:
