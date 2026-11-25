@@ -1779,6 +1779,160 @@ def test_wiki_media_redacts_evidence_after_generation_failure(tmp_path, monkeypa
     assert "server-only secret" not in str(public_page)
 
 
+def _media_memo_setup(tmp_path, monkeypatch):
+    """Count real materializations behind a page memo with app.state caches."""
+
+    calls = []
+    config = SimpleNamespace(data_dir=str(tmp_path))
+    monkeypatch.setattr(web_app, "load_config", lambda: config)
+    monkeypatch.setattr(
+        web_app, "image_generator_from_config", lambda _config: object()
+    )
+    monkeypatch.setattr(web_app.app.state, "wiki_media_pages", {}, raising=False)
+
+    def materialize(page, **kwargs):
+        calls.append(kwargs)
+        slots = [
+            {**slot, "asset": {"uri": f"asset-{len(calls)}.svg"}}
+            for slot in page["media_slots"]
+        ]
+        return {**page, "media_slots": slots}
+
+    monkeypatch.setattr(web_app, "materialize_media_slots", materialize)
+    return calls
+
+
+def _media_page(text="Runtime flow."):
+    return {
+        "id": "overview",
+        "markdown": text,
+        "media_slots": [{"id": "overview-image", "kind": "image"}],
+    }
+
+
+def test_wiki_media_is_materialized_once_per_generation(tmp_path, monkeypatch):
+    calls = _media_memo_setup(tmp_path, monkeypatch)
+
+    class Reader:
+        def read_session(self):
+            raise AssertionError("materialize_media_slots opens the session")
+
+    bundle = SimpleNamespace(source_reader=Reader())
+
+    first = web_app._materialize_wiki_media("demo", "overview", _media_page(), bundle)
+    first["media_slots"][0]["asset"]["uri"] = "changed by a caller"
+    again = web_app._materialize_wiki_media("demo", "overview", _media_page(), bundle)
+
+    assert len(calls) == 1
+    # The evidence reads share the source reader's session.
+    assert calls[0]["evidence_session"] == bundle.source_reader.read_session
+    assert again["media_slots"][0]["asset"]["uri"] == "asset-1.svg"
+
+    # New page text or a new bundle generation materializes again.
+    edited = web_app._materialize_wiki_media(
+        "demo", "overview", _media_page("Edited flow."), bundle
+    )
+    assert edited["media_slots"][0]["asset"]["uri"] == "asset-2.svg"
+    newer = SimpleNamespace(source_reader=None)
+    rebuilt = web_app._materialize_wiki_media(
+        "demo", "overview", _media_page("Edited flow."), newer
+    )
+    assert rebuilt["media_slots"][0]["asset"]["uri"] == "asset-3.svg"
+    assert calls[2]["evidence_session"] is None
+    assert len(web_app.app.state.wiki_media_pages) == 1
+
+
+def test_wiki_media_failure_is_not_kept(tmp_path, monkeypatch):
+    calls = _media_memo_setup(tmp_path, monkeypatch)
+    materialize = web_app.materialize_media_slots
+    failures = [ValueError("generator unavailable")]
+
+    def flaky(page, **kwargs):
+        if failures:
+            raise failures.pop()
+        return materialize(page, **kwargs)
+
+    monkeypatch.setattr(web_app, "materialize_media_slots", flaky)
+    bundle = SimpleNamespace(source_reader=None)
+
+    failed = web_app._materialize_wiki_media("demo", "overview", _media_page(), bundle)
+    retried = web_app._materialize_wiki_media("demo", "overview", _media_page(), bundle)
+
+    assert "asset" not in failed["media_slots"][0]
+    assert retried["media_slots"][0]["asset"]["uri"] == "asset-1.svg"
+    assert len(calls) == 1
+
+
+def test_wiki_media_cold_views_materialize_once(tmp_path, monkeypatch):
+    calls = _media_memo_setup(tmp_path, monkeypatch)
+    materialize = web_app.materialize_media_slots
+    entered = threading.Event()
+    release = threading.Event()
+
+    def slow(page, **kwargs):
+        entered.set()
+        assert release.wait(5)
+        return materialize(page, **kwargs)
+
+    monkeypatch.setattr(web_app, "materialize_media_slots", slow)
+    bundle = SimpleNamespace(source_reader=None)
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        views = [
+            pool.submit(
+                web_app._materialize_wiki_media,
+                "demo",
+                "overview",
+                _media_page(),
+                bundle,
+            )
+            for _ in range(4)
+        ]
+        assert entered.wait(5)
+        release.set()
+        pages = [view.result(timeout=5) for view in views]
+
+    assert len(calls) == 1
+    assert {page["media_slots"][0]["asset"]["uri"] for page in pages} == {"asset-1.svg"}
+
+
+def test_overview_visual_is_found_once_per_generation(tmp_path, monkeypatch):
+    found = []
+    sessions = []
+
+    class Reader:
+        def read_session(self):
+            sessions.append("open")
+            return contextmanager(lambda: (yield self))()
+
+    def discover(repo_dir, *, repository, source_reader):
+        found.append((repo_dir, repository, source_reader))
+        assert sessions, "discovery must read inside one source session"
+        return SimpleNamespace(path="docs/map.png", payload=b"x" * size[0])
+
+    size = [16]
+    monkeypatch.setattr(web_app, "discover_overview_visual", discover)
+    monkeypatch.setattr(web_app.app.state, "overview_visuals", {}, raising=False)
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(repo="owner/demo", repo_dir=str(tmp_path)),
+        source_reader=Reader(),
+    )
+
+    first = web_app._overview_visual("demo", bundle)
+    again = web_app._overview_visual("demo", bundle)
+
+    assert again is first
+    assert len(found) == 1 and len(sessions) == 1
+    assert found[0] == (str(tmp_path), "owner/demo", bundle.source_reader)
+
+    # A large image is read again each time rather than held in memory.
+    size[0] = web_app._MAX_CACHED_VISUAL_BYTES + 1
+    newer = SimpleNamespace(entry=bundle.entry, source_reader=Reader())
+    web_app._overview_visual("demo", newer)
+    web_app._overview_visual("demo", newer)
+    assert len(found) == 3
+
+
 def test_wiki_page_graph_reports_why_the_graph_is_unavailable(monkeypatch):
     class Builder:
         def page_citations(self, page_id):
