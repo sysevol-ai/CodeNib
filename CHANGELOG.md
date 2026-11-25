@@ -11,6 +11,18 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 ## [Unreleased]
 
+### Added
+
+- `codenib threads agent` keeps an agent on a repository. Each pass, run from
+  cron or with `--every`, polls the threads it follows, opens tickets for
+  changed pull requests or issues (`--watch`), and runs Claude Code only where
+  there is news, a follow-up it set for itself is due, or a thread it has not
+  read. Claude Code can only read the clone and the pull request's diff; it
+  never holds the GitHub token. Its replies and questions go to an outbox
+  that a maintainer reads, then sends (`send`), drops (`discard`) or answers
+  (`answer`). It keeps a note per thread and a log of every run, and a failed
+  run marks nothing read, so the next pass tries again.
+
 ### Fixed
 
 - A Wiki or repository card for a project whose README is in Chinese or

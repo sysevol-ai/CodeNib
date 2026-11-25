@@ -204,6 +204,7 @@ codenib threads context 812     # write THREAD_CONTEXT.md before the agent start
 codenib threads open 812        # or start a ticket that remembers what it read
 codenib threads inbox 812       # later: only what is new
 codenib threads board           # all tickets, and other work on the same code
+codenib threads agent run --watch pulls   # an agent that stays on the repo and drafts replies
 ```
 
 When several agents work on one repository, each ticket is sent only the

@@ -1,0 +1,214 @@
+<!doctype html>
+<!--
+SPDX-FileCopyrightText: 2026 CodeNib Contributors
+SPDX-License-Identifier: Apache-2.0
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>What Memory Buys an Always-On Agent — CodeNib</title>
+  <meta name="description" content="We replayed 76 merged pull requests from five repositories through an always-on review agent, with and without memory. Memory halved the cost and cut its drafts by 59%, and it raised 22% fewer of the points reviewers went on to make.">
+  <meta name="author" content="CodeNib Team">
+  <meta property="og:title" content="What Memory Buys an Always-On Agent">
+  <meta property="og:description" content="76 merged pull requests from five repositories, replayed through an always-on review agent: memory halved the cost and cut drafts by 59%, at the price of 22% fewer reviewer points raised first.">
+  <meta property="og:image" content="https://codenib.ai/assets/blogs/agent-wake.png">
+  <meta property="og:image:width" content="1264">
+  <meta property="og:image:height" content="674">
+  <meta property="og:image:alt" content="One pass of an always-on review agent. Code reads what changed on a pull request; a label, a passing check, a bot comment and a review request are read without waking the model, while a maintainer's review comment and a new commit wake it. The agent is handed its note on the thread, what it said there before, only the news and the diff, runs once with read-only tools, and files a reply, a question or nothing; a maintainer sends replies. Measured on 76 merged pull requests from five repositories against an agent that rereads everything and keeps no memory: 0.52 times the cost, 0.41 times the drafts, 0.78 times the reviewer points raised first.">
+  <meta property="og:type" content="article">
+  <meta property="og:locale" content="en_US">
+  <meta property="og:url" content="https://codenib.ai/blogs/what-memory-buys-an-always-on-agent/">
+  <meta property="article:published_time" content="2026-11-19T20:00:00Z">
+  <meta property="article:modified_time" content="2026-11-19T20:00:00Z">
+  <meta property="article:section" content="Coding agents">
+  <meta property="article:tag" content="Always-on agents">
+  <meta property="article:tag" content="Code review">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="What Memory Buys an Always-On Agent">
+  <meta name="twitter:description" content="76 merged pull requests from five repositories, replayed through an always-on review agent: memory halved the cost and cut drafts by 59%, at the price of 22% fewer reviewer points raised first.">
+  <meta name="twitter:image" content="https://codenib.ai/assets/blogs/agent-wake.png">
+  <meta name="twitter:image:alt" content="One pass of an always-on review agent: code decides whether the news asks for a response, the model gets its note, what it said and the news, runs read-only and files a draft for a maintainer. Measured on 76 pull requests: 0.52 times the cost, 0.41 times the drafts and 0.78 times the reviewer points raised first of an agent with no memory.">
+  <link rel="canonical" href="https://codenib.ai/blogs/what-memory-buys-an-always-on-agent/">
+  <link rel="icon" href="/assets/codenib-icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/assets/blogs.css">
+  <link rel="stylesheet" href="/assets/blogs/contextbench-results.css">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BlogPosting",
+    "headline": "What Memory Buys an Always-On Agent",
+    "description": "76 merged pull requests from five repositories, replayed through an always-on review agent: memory halved the cost and cut drafts by 59%, at the price of 22% fewer reviewer points raised first.",
+    "image": "https://codenib.ai/assets/blogs/agent-wake.png",
+    "datePublished": "2026-11-19T20:00:00Z",
+    "dateModified": "2026-11-19T20:00:00Z",
+    "inLanguage": "en",
+    "mainEntityOfPage": "https://codenib.ai/blogs/what-memory-buys-an-always-on-agent/",
+    "author": { "@type": "Organization", "name": "CodeNib Team", "url": "https://codenib.ai/" },
+    "publisher": {
+      "@type": "Organization", "name": "CodeNib", "url": "https://codenib.ai/",
+      "logo": { "@type": "ImageObject", "url": "https://codenib.ai/assets/codenib-icon.svg" }
+    }
+  }
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <header class="site-header">
+    <div class="wrap nav">
+      <a class="brand" href="/" aria-label="CodeNib home"><img src="/assets/codenib-logo-dark.svg" alt="CodeNib"></a>
+      <a class="nav-link" href="/blogs/" aria-current="page">Blog</a>
+      <a class="nav-link nav-docs" href="https://docs.codenib.ai/">Docs</a>
+      <a class="nav-link" href="https://demo.codenib.ai/">Demo</a>
+      <a class="nav-link nav-github" href="https://github.com/sysevol-ai/CodeNib" aria-label="Source on GitHub">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+      </a>
+    </div>
+  </header>
+
+  <main id="main-content">
+    <article aria-labelledby="article-title">
+      <header class="article-head wrap">
+        <a class="back" href="/blogs/"><span aria-hidden="true">←</span> All posts</a>
+        <div class="post-meta">
+          <span class="tag">Coding agents</span>
+          <time datetime="2026-11-19">November 19, 2026</time>
+          <span>8 min read</span>
+        </div>
+        <h1 id="article-title">What Memory Buys an Always-On Agent</h1>
+        <p class="deck">We replayed 76 merged pull requests from five repositories through an always-on review agent, with memory and without. Remembering what it had read and said halved the cost and cut its drafts by 59%. It also raised 22% fewer of the points reviewers went on to make, and reviewing more often did not win them back.</p>
+      </header>
+
+      <div class="article-body article-lead">
+        <p>An always-on agent is asleep most of the time. Anthropic's guide <a href="https://claude.com/resources/articles/building-always-on-agents">Building always-on agents</a> describes what surrounds its loop: an inbox of events, timers, memory, permissions and an outbox. Each time it wakes, it has to work out what it is looking at again, and what it should say. What it pays for that, in tokens and in messages to people, decides whether anyone leaves it on.</p>
+        <p>We built those parts for GitHub issues and pull requests as <code>codenib threads agent</code>, and then measured what its memory is worth. Replayed over the life of <strong>76 merged pull requests</strong>, against the same agent with no memory, it cost <strong>0.52×</strong> as much and filed <strong>0.41×</strong> as many drafts. It raised <strong>0.78×</strong> as many of the points the human reviewers later made.</p>
+      </div>
+
+      <figure class="hero-figure responsive-figure phone-drawn">
+        <picture>
+          <source media="(max-width: 900px)" srcset="/assets/blogs/agent-wake-narrow.svg" width="464" height="1218">
+          <img src="/assets/blogs/agent-wake.svg" width="1264" height="674" alt="Left: six things that changed on a pull request since the last pass. A label, a passing check, a bot comment and a review request are read without waking the model; a maintainer's review comment and a new commit wake it. In the replays, 42% of passes with a change woke no model. Right: the agent is handed its note on the thread, what it said there before, only the news, and the diff saved to a file. Claude Code runs once with read-only tools in the clone and no GitHub token, and ends with a reply for the outbox, a question, or nothing; nothing is posted until a maintainer sends it. Measured on 76 merged pull requests from five repositories against an agent that rereads everything and keeps no memory: 0.52 times the cost, 0.41 times the drafts and 0.78 times the reviewer points raised first.">
+        </picture>
+        <figcaption>Figure 1. One pass on a made-up pull request. Four of the six changes wake no model. The two that do reach the agent with its own note on the thread and what it said there before. The bottom line is measured.</figcaption>
+        <a class="diagram-open" href="/assets/blogs/agent-wake.svg">Open the full-size diagram <span aria-hidden="true">↗</span></a>
+      </figure>
+
+      <div class="article-body before-figure">
+        <h2 id="agent">An agent that sleeps between passes</h2>
+        <p>The agent runs as a pass, every 15 minutes from cron. A pass fetches what changed on the issues and pull requests it follows. Code, not a model, then decides whether the news asks for a response: a label, a passing check, a bot comment or a merge does not. Only when something does is Claude Code woken, with read-only tools in a clone of the repository. Whatever it concludes, a reply, a question or nothing, is filed for a maintainer, and only then is the news marked read.</p>
+        <div class="data-table compact stacks" role="region" tabindex="0" aria-label="How the agent provides each part of an always-on agent">
+          <table>
+            <caption class="sr-only">The parts of an always-on agent and how codenib threads agent provides each</caption>
+            <thead><tr><th scope="col">Part</th><th scope="col">In <code>codenib threads agent</code></th></tr></thead>
+            <tbody>
+              <tr><th scope="row">Event inbox</th><td data-label="How">Each thread is a stored list of events. A run claims the news under a lease and marks it read only when it is done, so a run that fails gets the same news again.</td></tr>
+              <tr><th scope="row">Timers</th><td data-label="How">The agent can ask to be woken in a number of hours, for example to see whether CI passed. A maintainer's answer to its question wakes it too.</td></tr>
+              <tr><th scope="row">Memory</th><td data-label="How">A note per thread that the agent rewrites each run, the maintainers' standing instructions, and what it already said on the thread.</td></tr>
+              <tr><th scope="row">Permissions</th><td data-label="How">Read, search and list files in the clone and the saved diff. No shell, no writes, no network, and never the GitHub token.</td></tr>
+              <tr><th scope="row">Outbox</th><td data-label="How">At most one waiting draft per thread. Nothing reaches GitHub until a maintainer sends it.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Memory is the part this post measures. On every wake after the first, the agent is handed its own note on the thread, the last things it said there, and only what changed since. The alternative is the agent most people would write first: wake it, give it the whole thread, and let it work everything out again.</p>
+
+        <h2 id="replay">Replaying a pull request from open to merge</h2>
+        <p>To measure that without posting anything, we replayed history. A pull request is replayed from the moment it opened to its merge, one pass per 15 minutes of its life. Before each pass the agent's store holds only the events that existed by then. The code it reads is a snapshot of the pull request's base with no history, and the diff it sees is the diff of the head at that time. No later commit, review or merge can leak in.</p>
+        <p>The pull requests are 76 merged ones from five repositories: <code>astral-sh/ruff</code> (36), and ten each from <code>pandas-dev/pandas</code>, <code>prometheus/prometheus</code>, <code>vitejs/vite</code> and <code>tokio-rs/tokio</code>. Every one had an inline review from someone other than its author. Two agents ran each replay with Claude Sonnet 5.5 and the same tools, instructions and wakes:</p>
+        <ul>
+          <li><strong>The CodeNib agent</strong>, as shipped.</li>
+          <li><strong>A stateless agent</strong>, woken by the same news, that reads the whole prepared thread every time and keeps no notes. Its context is CodeNib's own budgeted document, so the comparison leaves out what preparing the thread saves.</li>
+        </ul>
+        <p>Two numbers are simple: what the runs cost, and how many drafts each agent filed for a maintainer. The third asks whether a draft helped. For each point a human reviewer made, a judge model decides, without knowing which agent wrote the drafts, whether an earlier draft had raised the same point. Naming the same file is not enough. Judged twice, the same pairs got the same verdict 140 times in 142.</p>
+      </div>
+
+      <figure class="hero-figure responsive-figure in-article phone-drawn">
+        <picture>
+          <source media="(max-width: 900px)" srcset="/assets/blogs/agent-results-narrow.svg" width="464" height="812">
+          <img src="/assets/blogs/agent-results.svg" width="1264" height="314" loading="lazy" alt="Over 76 replayed pull requests, the CodeNib agent cost $11.08 against $21.52 for the stateless agent, 0.52 times; filed 102 drafts against 249, 0.41 times; and raised 36.5 reviewer points before the reviewer did, against 47, 0.78 times, with a 95% interval of 0.60 to 0.97.">
+        </picture>
+        <figcaption>Figure 2. Totals over the 76 pull requests. The CodeNib agent ran each of the four newer repositories twice and its figures there are the mean of the two. Intervals are 95% bootstrap intervals over pull requests.</figcaption>
+        <a class="diagram-open" href="/assets/blogs/agent-results.svg">Open the full-size diagram <span aria-hidden="true">↗</span></a>
+      </figure>
+
+      <div class="article-body continued before-figure">
+        <h2 id="results">Half the cost, two drafts in five</h2>
+        <p>With memory, the 76 pull requests cost <strong>$11.08</strong> against <strong>$21.52</strong>, about 15 cents per pull request over its whole life against 28. The agent filed <strong>102</strong> drafts against <strong>249</strong>. The two savings have different causes.</p>
+
+        <h3 id="rereads">It rereads less code</h3>
+        <p>The obvious saving is the thread: a stateless agent is sent the whole thread again on every wake. That turns out to be the small part. On the same later wakes in <code>ruff</code>, our prompt was about 1,200 tokens against 2,300. The agent's own input, its tool calls included, was <strong>9,000</strong> tokens against <strong>24,600</strong>, and it took 2.2 turns against 3.3. An agent that knows nothing on waking opens the diff and the code again to rebuild what it knew. A note that says what was asked, what was checked and what is left saves that rereading.</p>
+
+        <h3 id="once">It says things once</h3>
+        <p>The stateless agent wrote a new review on 31% of the later wakes in <code>ruff</code>, the CodeNib agent on 4%. Without a record of what it had said, a new commit or comment looks like a pull request it has not reviewed. In <code>ruff</code>, 11 of the 36 pull requests got three or more drafts from the stateless agent, and one got that many from the CodeNib agent.</p>
+
+        <h3 id="wakes">Code decides when to wake</h3>
+        <p>Across all five repositories, <strong>42%</strong> of the passes in which something changed had nothing that asked for a response: labels, review requests, passing checks, bot comments, a merge. Those passes are read by code and wake no model. The share ranged from 27% in <code>vite</code> to 57% in <code>tokio</code>, and was 30% in <code>ruff</code>. There we also ran an agent woken by any change at all, the simplest loop to write. The CodeNib agent cost 0.37× as much as that one, and filed 0.27× as many drafts.</p>
+
+        <h2 id="price">What memory costs</h2>
+        <p>The CodeNib agent raised <strong>36.5</strong> of the reviewers' points first, against <strong>47</strong> for the stateless agent: 0.78×, with a 95% interval of 0.60 to 0.97. That is a real loss, and it holds per draft the other way round: each CodeNib draft carried 0.36 of a reviewer's points, each stateless draft 0.19. The gap is not spread evenly. Most of it is in <code>pandas</code>, and most of it is one kind of point.</p>
+        <div class="data-table compact stacks" role="region" tabindex="0" aria-label="Reviewer points by kind, and how many each agent raised first">
+          <table>
+            <caption class="sr-only">The 205 reviewer points by kind, with how many each agent raised before the reviewer did</caption>
+            <thead><tr><th scope="col">What the reviewer said</th><th scope="col">Points</th><th scope="col">CodeNib first</th><th scope="col">Stateless first</th></tr></thead>
+            <tbody>
+              <tr><th scope="row">Idiom<small>use an existing helper, simplify, naming, wording</small></th><td data-label="Points">64</td><td data-label="CodeNib first">7</td><td data-label="Stateless first">7</td></tr>
+              <tr><th scope="row">Design<small>where code belongs, a different approach</small></th><td data-label="Points">61</td><td data-label="CodeNib first">11</td><td data-label="Stateless first">19</td></tr>
+              <tr><th scope="row">Tests<small>a missing test, or where it lives</small></th><td data-label="Points">36</td><td data-label="CodeNib first">11</td><td data-label="Stateless first">14</td></tr>
+              <tr><th scope="row">Question<small>asks for an explanation</small></th><td data-label="Points">23</td><td data-label="CodeNib first">4</td><td data-label="Stateless first">1</td></tr>
+              <tr><th scope="row">Bug<small>a case that fails, wrong output</small></th><td data-label="Points">21</td><td data-label="CodeNib first">5</td><td data-label="Stateless first">6</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>The points come from the first run of each agent and were sorted into kinds by a model. Six in ten are about design and idiom: where code belongs, which existing helper to use, what a simpler form would be. Those are a maintainer's judgment about the project, and both agents raised few of them. The stateless agent's lead is mostly design points. In <code>pandas</code>, half of its extra points came from its third to fifth review of the same pull request, and the other half from first reviews that happened to differ.</p>
+
+        <h2 id="fixes">Two fixes that did not help</h2>
+        <p>Before reading too much into any one count, we ran the same agent twice. On the four newer repositories it raised 24 points the first time and 21 the second. On 32 <code>ruff</code> pull requests from November it raised 12 and then 10. A difference of a few points between two variants is within that spread.</p>
+        <p><strong>Reviewing new commits on their own.</strong> If the CodeNib agent stays quiet after its first review, perhaps it should review each new push. We gave it the diff of the new commits alone and asked it to review them like the first version. On the 32 November <code>ruff</code> pull requests, which we had not used before, it cost 29% more and filed 50 drafts against 42. It raised 10 points first against 12. The same agent without the rule had also raised 10 on its second run. The rule bought more drafts and nothing else, and we did not ship it.</p>
+        <p><strong>Wider instructions.</strong> Since most points are design and idiom, we told the agent to look for both: search for an existing helper the new code duplicates, check where similar code and tests live. On the four newer repositories, each run twice, it raised 1.5 points more, with an interval of −6.5 to +10.0, at the same cost. Telling the agent what reviewers care about did not change what it found.</p>
+      </div>
+
+      <figure class="hero-figure responsive-figure in-article phone-drawn">
+        <picture>
+          <source media="(max-width: 900px)" srcset="/assets/blogs/agent-samples-narrow.svg" width="464" height="792">
+          <img src="/assets/blogs/agent-samples.svg" width="1264" height="420" loading="lazy" alt="On 25 pull requests with 43 reviewer points, one first-look review raised 10.25 points before the reviewer did, on average. Any of two raised 13.7, any of three 16.0 and any of four 18.0. Three reviews merged into one draft raised 13 of the 17 they found together: +2.75 over one review, 95% interval −0.5 to +6.5.">
+        </picture>
+        <figcaption>Figure 3. Twenty-five pull requests no earlier replay had used. Each point on the line counts what any of that many independent reviews raised; the teal point is three of them merged into one draft.</figcaption>
+        <a class="diagram-open" href="/assets/blogs/agent-samples.svg">Open the full-size diagram <span aria-hidden="true">↗</span></a>
+      </figure>
+
+      <div class="article-body continued">
+        <h2 id="samples">Coverage comes from samples</h2>
+        <p>What the stateless agent does differently is review the same pull request again and again. Each review is a sample of what the model might notice, and the samples differ. On 25 pull requests none of the earlier replays had used, we gave the first look's exact input to four independent reviews. One review raised 10.25 of 43 reviewer points on average, any of two 13.7, any of four 18.0.</p>
+        <p>A stateless agent collects those samples by posting each one. The alternative is to take them all at the first look and merge them. Three reviews merged into one draft raised <strong>13</strong> points, of the 17 the three found between them, in a draft 14% longer than a single review. That is 2.75 points more than one review, with an interval of −0.5 to +6.5: a direction, not yet a result. The first look then costs about four times as much, roughly what memory saves over the life of a pull request.</p>
+
+        <h2 id="takeaways">What we take from it</h2>
+        <ul>
+          <li><strong>Decide wakes in code.</strong> Four passes in ten had nothing to respond to. A model should only see news that asks something of it.</li>
+          <li><strong>Give the agent its notes and its own words.</strong> Without them it rereads the code on every wake and says the same thing again. With them it costs half as much and files fewer than half the drafts.</li>
+          <li><strong>Treat each review as a sample.</strong> Reviewing more often finds more, one message at a time. Several reviews at the first look, merged, may find the same in one message.</li>
+          <li><strong>Replay before you ship.</strong> History replayed without leaks, a judge blind to the variant, and every variant run twice. Two of our three ideas looked good until they were measured.</li>
+        </ul>
+
+        <h2 id="try">Try it</h2>
+        <p><code>codenib threads agent</code> ships in the next CodeNib release. It needs Git, Claude Code, and a GitHub token in <code>GH_TOKEN</code> or a signed-in <code>gh</code>. Run it inside a clone, from cron every 15 minutes:</p>
+        <pre><code>codenib threads agent run --watch pulls   # one pass: poll, wake the agent where needed
+codenib threads agent outbox              # the drafts and questions waiting for you
+codenib threads agent send ID             # post one draft as a comment
+codenib threads agent status              # tickets, follow-ups and what the runs cost</code></pre>
+        <p>The agent drafts and a maintainer sends, so nothing reaches GitHub on its own. On CodeNib's own repository its first pass ran once on each of the four open pull requests, for $0.20 in all, and a pass with nothing new made nine GitHub requests and no model call. Every command and option is in the <a href="https://docs.codenib.ai/threads/#keep-an-agent-on-the-repository">thread guide</a>.</p>
+        <p class="scope-note">Replays ran with Claude Sonnet 5.5 through Claude Code, one pass per 15 minutes from opening to merge, and nothing was posted. Pull requests were merged between October 1 and November 18, 2026, changed at most 30 files and 1,500 lines, were open at most 14 days, and had an inline review from someone other than the author. Only those never force-pushed, stacked or rebased were kept, so the replay knows what each one held at every moment; that leaves out teams that rebase as they review. Costs are as Claude Code reported them. The judge is the same model, and a point counts as raised if an earlier draft made it, whether or not a maintainer would have sent that draft. The reviewers' points are what they chose to write, so a correct point no reviewer made scores nothing. The per pull request rows, the summary, the selection rules and the script to reproduce them are in the <a href="https://docs.codenib.ai/threads/#how-well-the-agent-works">thread guide</a>.</p>
+      </div>
+    </article>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-row">
+      <a class="footer-brand" href="/" aria-label="CodeNib home"><img src="/assets/codenib-icon.svg" alt=""><span>codenib.ai</span></a>
+      <a href="/blogs/">Blog</a>
+      <a href="https://docs.codenib.ai/">Docs</a>
+      <a href="https://demo.codenib.ai/">Demo</a>
+      <a href="https://github.com/sysevol-ai/CodeNib">GitHub</a>
+      <span>© 2026 CodeNib</span>
+    </div>
+  </footer>
+</body>
+</html>

@@ -131,12 +131,105 @@ change, new check results.
 codenib threads show 812 --sync --since '#812/comment/2990023933'
 ```
 
-### Run an agent unattended
+### Keep an agent on the repository
 
-An agent that wakes on a schedule, with nobody watching, needs three things
-from its inbox. If a run fails, the news it was handed must come back. Two
-runs must never work the same news. And the agent must be able to tell a
-maintainer's request from a stranger's.
+`codenib threads agent` is an agent that stays on a repository. It sleeps
+between passes. On each pass it looks at what changed on the issues and pull
+requests it follows, wakes a coding agent only where something did, and files
+what that agent concluded: a reply for the thread, a question for you, or
+nothing. Nothing is posted until you send it.
+
+```bash
+codenib threads agent run --watch pulls   # one pass; schedule it every 15 minutes
+codenib threads agent outbox              # the replies and questions waiting for you
+codenib threads agent send ID             # post one reply as a comment
+codenib threads agent status              # tickets, follow-ups, failures and cost
+```
+
+Run the passes from cron, a systemd timer or a CI schedule, inside the clone.
+Cron starts with a short `PATH`, so name the directories that hold `codenib`
+and `claude`:
+
+```cron
+*/15 * * * * cd /path/to/clone && PATH=$HOME/.local/bin:/usr/bin:/bin codenib threads agent run --watch pulls --quiet >> $HOME/codenib-agent.log 2>&1
+```
+
+`run --every 15` does the same from one long-running process. A second pass
+that starts while one is running exits at once with status 3.
+
+**One pass, step by step.**
+
+1. **Poll and watch.** It fetches what changed on the threads its tickets
+   follow, as `poll` does. With `--watch pulls` (or `issues`, or `all`, and
+   optionally `--label`), it also opens a ticket for each open thread of that
+   kind that changed. The first pass looks back three days. Once a thread it
+   opened is closed or merged, and it has read that, it stops following it.
+2. **Pick what needs a run.** A ticket needs one when it has unread news, when
+   a follow-up the agent set for itself is due, or when the agent has never
+   read the thread in full. News that asks nothing of anyone is marked read
+   without a run: labels, assignments, a merge, passing checks, bot comments,
+   or a reply of its own coming back. A failing check, a new commit and
+   anything a person wrote do wake it. A pass with nothing to do calls no
+   model.
+3. **Run the agent.** It claims the news and runs Claude Code. The first run
+   on a thread gets the whole context; later runs get only the news, the
+   agent's own notes on the thread, and the last things it said there. For an
+   open pull request it also saves the diff to a file the agent can read.
+4. **File the outcome.** The reply or question goes to the outbox and
+   replaces any older draft for the same thread, so a busy thread still gets
+   one reply. The notes and any follow-up are saved, and only then is the
+   news marked read. If the run fails, nothing is marked read and the next
+   pass tries again. After three failures on the same news, the ticket waits
+   for something new.
+
+**What the agent can do.** Claude Code runs with `--restricted --tools
+Read,Grep,Glob`. It can read and search the clone and the saved diff, and
+nothing else: no commands, no writes, no network, no MCP servers. It never
+holds the GitHub token: the pass fetches, and only `send` posts. It is told to
+act on requests only from an owner, member or collaborator, and to treat
+everyone else's text as information. In a test thread, a stranger told it to
+paste a private key from outside the clone and the `.env` file inside it, and
+to pipe a downloaded script into a shell. It answered the owner's question,
+wrote the injection down in its notes, and read neither file.
+
+**What it remembers.** Everything is a file under `agent/` in the thread
+store, next to the thread logs:
+
+| File | Holds |
+|---|---|
+| `INSTRUCTIONS.md` | Your standing instructions, read on every run. You write it. |
+| `notes/N.md` | The agent's note on thread N: what was asked, decided, said and left, with event ids and paths instead of copies |
+| `timers.json` | Follow-ups, such as "see whether CI passed", each due at a time the agent chose |
+| `outbox/` | Every reply and question, and whether it was sent, discarded or answered |
+| `runs.jsonl` | One line per run: why it woke, what it decided, prompt size, time and cost |
+
+**Answering it.** `outbox` lists what waits for you. `send ID` posts a reply
+as a comment from your account, with a hidden mark so the agent knows it when
+it comes back. `discard ID` drops one, and the agent is told on its next run.
+`answer ID TEXT` answers a question, and the next pass wakes the agent with
+your answer.
+
+**What it costs.** On CodeNib's own repository, the first pass opened tickets
+for the four pull requests updated in the last three days and ran the agent
+on each, with Claude Sonnet 5.5: four runs, $0.20 in all, 6 to 13 seconds each. It
+drafted two reviews, set one follow-up, and left two threads alone because a
+maintainer had already reviewed them and was waiting on the author. A later pass with nothing new made 9
+GitHub requests and took 5 seconds. A pass runs the agent at most 10 times
+(`--max-runs`), and a run stops at $0.50 (`--max-budget-usd`) or 10 minutes
+(`--timeout`).
+
+**Another agent.** `--agent-command "my-agent --flag"` runs any headless agent
+in place of Claude Code. It reads the prompt and a JSON schema on standard
+input and prints one JSON decision. It runs in the clone without the GitHub
+token, but what it may read or run is then up to that agent.
+
+### Run your own agent unattended
+
+The agent above is built from commands any scheduler can call. A loop of your
+own, with nobody watching, needs three things from its inbox. If a run fails,
+the news it was handed must come back. Two runs must never work the same
+news. And the agent must be able to tell a maintainer's request from a
+stranger's.
 
 - **Claim, then acknowledge.** `inbox --claim` hands over what is new without
   marking it read, and holds the ticket for 30 minutes (`--lease` changes
@@ -293,6 +386,73 @@ reading the whole thread each time (151 issues, a median of 6 returns each).
     - Reproduce with `scripts/benchmark_threads_context.py`; `--agent` selects
       Codex or Claude Code.
 
+### How well the agent works
+
+With its memory, the [always-on agent](#keep-an-agent-on-the-repository)
+costs half as much as the same agent without it and files fewer than half the
+drafts, and it raises about a fifth fewer of the points reviewers later make.
+The agent was replayed over the life of 76 merged pull requests from five
+repositories. It was compared with an agent woken by the same news that reads
+the whole thread every time and keeps no notes. Both ran Claude Sonnet 5.5
+with the same tools and instructions, and nothing was posted.
+
+| Over 76 pull requests | With memory | Without | Ratio, 95% interval |
+|---|---:|---:|---:|
+| Cost | $11.08 | $21.52 | 0.52 [0.47, 0.56] |
+| Drafts for a maintainer | 102 | 249 | 0.41 [0.36, 0.47] |
+| Reviewer points raised first | 36.5 | 47 | 0.78 [0.60, 0.97] |
+
+- **It rereads less code.** On the same later wakes in `astral-sh/ruff`, the
+  agent's input was 9,000 tokens against 24,600: without a note, it opens the
+  diff and the code again to rebuild what it knew.
+- **It says things once.** Without memory, the agent wrote a new review on 31%
+  of the later wakes in `ruff`, against 4% with it.
+- **Code decides when to wake.** 42% of the passes with a change had nothing
+  that asked for a response, and woke no model.
+- **The price is coverage.** Six in ten reviewer points are about design and
+  idiom: where code belongs, which helper to use. The agent without memory
+  raised more of them, mostly by reviewing the same pull request again.
+- **Two changes did not help.** Reviewing new commits on their own cost 29%
+  more and raised no more points, on 32 other `ruff` pull requests. Telling
+  the agent to look for reuse and placement raised 1.5 points more
+  [−6.5, +10.0] at the same cost. Neither is in the agent.
+- **More samples at the first look are promising.** On 25 further pull
+  requests, three independent first reviews merged into one draft raised 2.75
+  points more than one review [−0.5, +6.5], at about four times the cost of
+  the first look. The agent does not do this yet.
+
+??? note "Method and evidence"
+    - Pull requests: merged October 1 to November 18, 2026, from
+      `astral-sh/ruff` (36), `pandas-dev/pandas`, `prometheus/prometheus`,
+      `vitejs/vite` and `tokio-rs/tokio` (10 each). Each changed at most 30
+      files and 1,500 lines, was open at most 14 days, and had an inline
+      review from someone other than its author. Candidates were drawn in a
+      seeded random order. Only pull requests never force-pushed, stacked or
+      rebased were kept, so committer dates tell what each held at every
+      moment.
+    - Replay: one pass per 15 minutes from opening to merge. Before each pass
+      the store holds only the events that existed then; the agent reads a
+      snapshot of the base without history and the three-dot diff of the head
+      at that time.
+    - Raised first: a judge model, blind to the agent, decides whether a draft
+      made before a reviewer's comment raised the same point. Judged twice, it
+      agreed with itself on 140 of 142 pairs. Points were sorted into kinds by
+      the same model.
+    - Run to run: the same agent run twice raised 24 and 21 points on the four
+      newer repositories, and 12 and 10 on 32 November `ruff` pull requests.
+      The agent with memory was run twice on the four repositories, and its
+      figures there are the mean.
+    - Intervals are 95% bootstrap intervals over pull requests, resampled
+      within each repository. Costs are as Claude Code reported them.
+    - The reviewers' points are what they chose to write: a correct point no
+      reviewer made scores nothing.
+    - Rows and summary: [per pull request](assets/threads_agent_replay.csv),
+      [first-look reviews](assets/threads_agent_first_look.csv),
+      [reviewer points](assets/threads_agent_review_points.csv),
+      [summary](assets/threads_agent_replay_summary.json). Reproduce with
+      `scripts/benchmark_threads_agent.py` (`select`, `refine`, `fetch`,
+      `replay`, `judge`, `label`) and `scripts/summarize_threads_agent_replay.py`.
+
 ## Reference
 
 | Command | Does |
@@ -308,6 +468,12 @@ reading the whole thread each time (151 issues, a median of 6 returns each).
 | `codenib threads poll` | Fetch what changed on the threads tickets follow |
 | `codenib threads board` | List tickets, unread counts and shared code |
 | `codenib threads close N` | Stop following a ticket's threads |
+| `codenib threads agent run` | One pass of the always-on agent; `--every M` keeps running |
+| `codenib threads agent outbox` | Replies and questions waiting for a maintainer; `--all` for every one |
+| `codenib threads agent send ID...` | Post reply drafts as comments; `--all` for every draft |
+| `codenib threads agent discard ID...` | Drop waiting drafts or questions |
+| `codenib threads agent answer ID TEXT` | Answer a question; the next pass wakes the agent with it |
+| `codenib threads agent status` | Tickets, follow-ups, failures, prompt size and cost |
 | `codenib threads mcp` | Serve context and tickets over MCP |
 | `codenib threads events ID...` | Print raw events by id |
 
@@ -329,9 +495,26 @@ reading the whole thread each time (151 issues, a median of 6 returns each).
 | `--store` | Where thread logs are kept | CodeNib home |
 | `--api-url` | GitHub REST API root, for GitHub Enterprise; pass `--repo` too | `$GITHUB_API_URL`, else github.com |
 
+| `agent run` option | Meaning | Default |
+|---|---|---|
+| `--watch` | Also open a ticket for each open thread of this kind that changes: `pulls`, `issues` or `all` | only existing tickets |
+| `--label` | Watch only threads with this label; repeat for more | |
+| `--lookback-days` | How far back the first pass watches | 3 |
+| `--max-new` | Tickets opened per pass at most | 5 |
+| `--max-runs` | Agent runs per pass at most; the rest wait for the next pass | 10 |
+| `--model` | Claude Code model, such as `sonnet` | Claude Code's own |
+| `--max-budget-usd` | Spending limit of one run | 0.5 |
+| `--timeout` | Minutes one run may take | 10 |
+| `--instructions` | Standing instructions file | `agent/INSTRUCTIONS.md` in the store |
+| `--agent-command` | Another headless agent instead of Claude Code | |
+| `--include-bots` | Also wake the agent when the only news is bot comments | |
+| `--every` | Keep running, one pass every this many minutes | one pass |
+| `--offline` | Never call GitHub; work from the store | |
+
 `inbox` exits with status 0 when it printed news or found nothing new (it
 then prints nothing on standard output), 3 when another worker holds the
-ticket's claim, and 2 on an error.
+ticket's claim, and 2 on an error. `agent run` exits with 0 when every run
+worked, 1 when one failed, 3 when another pass was running, and 2 on an error.
 
 Thread logs are stored as files under `~/.codenib/threads/<owner>/<repo>/`.
 Nothing is written into your checkout. A log is append-only: syncing twice

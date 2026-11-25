@@ -1,0 +1,272 @@
+{
+ "model": "Claude Sonnet 5.5 (claude-sonnet-5-5) through Claude Code",
+ "judge": "the same model, blind to the arm",
+ "codenib_vs_stateless_five_repositories": {
+  "pull_requests": 76,
+  "repositories": 5,
+  "cost_usd": {
+   "codenib": 11.083,
+   "stateless": 21.519,
+   "ratio": 0.515,
+   "ratio_ci95": [
+    0.475,
+    0.56
+   ],
+   "difference": -10.436,
+   "difference_ci95": [
+    -13.126,
+    -8.07
+   ]
+  },
+  "drafts": {
+   "codenib": 102.0,
+   "stateless": 249.0,
+   "ratio": 0.41,
+   "ratio_ci95": [
+    0.358,
+    0.471
+   ],
+   "difference": -147.0,
+   "difference_ci95": [
+    -188.5,
+    -111.0
+   ]
+  },
+  "raised_first": {
+   "codenib": 36.5,
+   "stateless": 47.0,
+   "ratio": 0.777,
+   "ratio_ci95": [
+    0.604,
+    0.972
+   ],
+   "difference": -10.5,
+   "difference_ci95": [
+    -21.0,
+    -1.0
+   ]
+  }
+ },
+ "codenib_vs_naive_ruff_october": {
+  "pull_requests": 36,
+  "repositories": 1,
+  "cost_usd": {
+   "codenib": 4.715,
+   "naive": 12.807,
+   "ratio": 0.368,
+   "ratio_ci95": [
+    0.329,
+    0.415
+   ],
+   "difference": -8.092,
+   "difference_ci95": [
+    -10.451,
+    -5.991
+   ]
+  },
+  "drafts": {
+   "codenib": 30.0,
+   "naive": 111.0,
+   "ratio": 0.27,
+   "ratio_ci95": [
+    0.198,
+    0.356
+   ],
+   "difference": -81.0,
+   "difference_ci95": [
+    -112.0,
+    -54.0
+   ]
+  },
+  "raised_first": {
+   "codenib": 14.0,
+   "naive": 24.0,
+   "ratio": 0.583,
+   "ratio_ci95": [
+    0.312,
+    1.0
+   ],
+   "difference": -10.0,
+   "difference_ci95": [
+    -21.0,
+    0.0
+   ]
+  }
+ },
+ "passes_read_without_waking_the_agent": {
+  "passes_with_a_change": 869,
+  "passes_with_news_for_the_agent": 507,
+  "share_read_without_a_run": 0.417
+ },
+ "new_commit_rule_ruff_november": {
+  "pull_requests": 32,
+  "repositories": 1,
+  "cost_usd": {
+   "codenib-commits": 6.823,
+   "codenib": 5.285,
+   "ratio": 1.291,
+   "ratio_ci95": [
+    1.178,
+    1.399
+   ],
+   "difference": 1.539,
+   "difference_ci95": [
+    0.823,
+    2.373
+   ]
+  },
+  "drafts": {
+   "codenib-commits": 50.0,
+   "codenib": 42.0,
+   "ratio": 1.19,
+   "ratio_ci95": [
+    0.952,
+    1.486
+   ],
+   "difference": 8.0,
+   "difference_ci95": [
+    -2.0,
+    19.0
+   ]
+  },
+  "raised_first": {
+   "codenib-commits": 10.0,
+   "codenib": 12.0,
+   "ratio": 0.833,
+   "ratio_ci95": [
+    0.571,
+    1.0
+   ],
+   "difference": -2.0,
+   "difference_ci95": [
+    -5.0,
+    0.0
+   ]
+  }
+ },
+ "broader_instructions_four_repositories": {
+  "pull_requests": 40,
+  "repositories": 4,
+  "cost_usd": {
+   "codenib-broad": 6.365,
+   "codenib": 6.368,
+   "ratio": 1.0,
+   "ratio_ci95": [
+    0.973,
+    1.031
+   ],
+   "difference": -0.003,
+   "difference_ci95": [
+    -0.181,
+    0.191
+   ]
+  },
+  "drafts": {
+   "codenib-broad": 75.0,
+   "codenib": 72.0,
+   "ratio": 1.042,
+   "ratio_ci95": [
+    0.938,
+    1.151
+   ],
+   "difference": 3.0,
+   "difference_ci95": [
+    -4.5,
+    11.0
+   ]
+  },
+  "raised_first": {
+   "codenib-broad": 24.0,
+   "codenib": 22.5,
+   "ratio": 1.067,
+   "ratio_ci95": [
+    0.761,
+    1.864
+   ],
+   "difference": 1.5,
+   "difference_ci95": [
+    -6.5,
+    10.0
+   ]
+  }
+ },
+ "same_arm_twice": {
+  "ruff-november": {
+   "raised_first": [
+    12,
+    10
+   ],
+   "drafts": [
+    42,
+    37
+   ],
+   "cost_usd": [
+    5.28,
+    5.16
+   ]
+  },
+  "four-repositories": {
+   "raised_first": [
+    24,
+    21
+   ],
+   "drafts": [
+    71,
+    73
+   ],
+   "cost_usd": [
+    6.49,
+    6.25
+   ]
+  }
+ },
+ "first_look_sampling": {
+  "pull_requests": 25,
+  "reviewer_points": 43,
+  "raised_by_any_of_k_reviews": {
+   "1": 10.25,
+   "2": 13.67,
+   "3": 16.0,
+   "4": 18.0
+  },
+  "raised_by_the_union_of_reviews_1_to_3": 17,
+  "raised_by_their_merge": 13,
+  "merge_minus_one_review": 2.75,
+  "merge_minus_one_review_ci95": [
+   -0.5,
+   6.5
+  ]
+ },
+ "reviewer_points_by_kind": {
+  "points": 205,
+  "found_by_running_code": 8,
+  "kinds": {
+   "test": {
+    "points": 36,
+    "codenib": 11,
+    "stateless": 14
+   },
+   "design": {
+    "points": 61,
+    "codenib": 11,
+    "stateless": 19
+   },
+   "question": {
+    "points": 23,
+    "codenib": 4,
+    "stateless": 1
+   },
+   "idiom": {
+    "points": 64,
+    "codenib": 7,
+    "stateless": 7
+   },
+   "bug": {
+    "points": 21,
+    "codenib": 5,
+    "stateless": 6
+   }
+  },
+  "note": "raised first by the first run of each arm"
+ }
+}
