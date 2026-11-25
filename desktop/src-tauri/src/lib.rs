@@ -427,6 +427,7 @@ fn start_backend(app: &AppHandle, config: &RepoConfig) -> Result<(), String> {
     if let Some(writer) = config.writer() {
         command.args(["--writer", writer]);
     }
+    begin_log(&config.path, &format!("{:?}", command).replace('"', ""));
     let mut child = command
         .current_dir(&repo)
         .stdin(Stdio::null())
@@ -455,12 +456,80 @@ fn start_backend(app: &AppHandle, config: &RepoConfig) -> Result<(), String> {
     Ok(())
 }
 
+/// Where a repository's service output is kept:
+/// ~/Library/Logs/CodeNib/<folder>-<hash>.log, one file per repository.
+fn log_file(path: &str) -> Option<PathBuf> {
+    use std::hash::{Hash, Hasher};
+    let home = std::env::var("HOME").ok()?;
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    path.hash(&mut hasher);
+    let name: String = repo_name(path)
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    Some(
+        Path::new(&home)
+            .join("Library/Logs/CodeNib")
+            .join(format!("{name}-{:08x}.log", hasher.finish() as u32)),
+    )
+}
+
+/// A line as it goes into the log: never with the session key in it.
+fn loggable(line: &str) -> String {
+    match line.find("session=") {
+        Some(at) => {
+            let rest = &line[at + "session=".len()..];
+            let end = rest
+                .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '-'))
+                .unwrap_or(rest.len());
+            format!("{}session=…{}", &line[..at], &rest[end..])
+        }
+        None => line.to_owned(),
+    }
+}
+
+/// Start a fresh log for a service that is starting.
+fn begin_log(path: &str, argv: &str) {
+    let Some(file) = log_file(path) else { return };
+    if let Some(folder) = file.parent() {
+        let _ = std::fs::create_dir_all(folder);
+    }
+    let started = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let _ = std::fs::write(
+        &file,
+        format!("# started at unix time {started}\n# {argv}\n"),
+    );
+}
+
+fn append_log(path: &str, line: &str) {
+    use std::io::Write;
+    if let Some(file) = log_file(path) {
+        if let Ok(mut out) = std::fs::OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open(file)
+        {
+            let _ = writeln!(out, "{}", loggable(line));
+        }
+    }
+}
+
 /// Read a service's output: progress lines while it starts, and its address.
 fn watch<R: Read + Send + 'static>(app: AppHandle, path: String, stream: Option<R>) {
     let Some(stream) = stream else { return };
     thread::spawn(move || {
         for line in BufReader::new(stream).lines().map_while(Result::ok) {
             let line = line.trim_end().to_owned();
+            append_log(&path, &line);
             if line.is_empty() {
                 continue;
             }
@@ -517,10 +586,23 @@ fn supervise(app: AppHandle, path: String) {
                     backend.status = Status::Failed;
                     let tail = backend.lines.iter().rev().take(4).rev().cloned();
                     let tail: Vec<String> = tail.collect();
+                    append_log(&path, &format!("# CodeNib stopped ({status})"));
+                    let log = log_file(&path)
+                        .map(|file| {
+                            format!(
+                                " Log: {}",
+                                file.display().to_string().replacen(
+                                    &std::env::var("HOME").unwrap_or_default(),
+                                    "~",
+                                    1
+                                )
+                            )
+                        })
+                        .unwrap_or_default();
                     backend.error = if tail.is_empty() {
-                        format!("CodeNib stopped ({status})")
+                        format!("CodeNib stopped ({status}).{log}")
                     } else {
-                        format!("CodeNib stopped ({status}): {}", tail.join(" · "))
+                        format!("CodeNib stopped ({status}): {}.{log}", tail.join(" · "))
                     };
                     true
                 }
@@ -1103,6 +1185,20 @@ mod tests {
         assert!(!forwardable("/api/../etc"));
         assert!(!forwardable("http://example.com/api/x"));
         assert!(!forwardable("/api/x y"));
+    }
+
+    #[test]
+    fn logs_never_keep_the_session_key() {
+        assert_eq!(
+            loggable("CodeNib Wiki is ready: http://127.0.0.1:3190/repo?session=abc_DEF-1"),
+            "CodeNib Wiki is ready: http://127.0.0.1:3190/repo?session=…"
+        );
+        assert_eq!(loggable("x?session=k&y=1"), "x?session=…&y=1");
+        assert_eq!(loggable("Views:"), "Views:");
+        let file = log_file("/Users/me/code/my repo").unwrap();
+        assert!(file
+            .to_string_lossy()
+            .contains("Library/Logs/CodeNib/my_repo-"));
     }
 
     #[test]
