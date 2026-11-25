@@ -254,10 +254,15 @@ class _StructuredClaudeCode:
 
 
 def chat_for(model: str, **kwargs: Any) -> Any:
-    """The chat client for a model: Claude Code for ``claude-code/*``."""
+    """The chat client for a model: Claude Code for ``claude-code/*``, Codex
+    for ``codex/*``, LiteLLM otherwise."""
 
     if is_claude_code_model(model):
         return ClaudeCodeChat(model, **kwargs)
+    from . import codex_cli
+
+    if codex_cli.is_codex_model(model):
+        return codex_cli.chat_for(model, **kwargs)
     from .litellm_chat import LiteLLMChat
 
     return LiteLLMChat(model=model, **kwargs)

@@ -10,7 +10,6 @@ Base code chunker class with common functionality.
 
 import json
 import os
-import sys
 import threading
 from abc import ABC, abstractmethod
 from collections import namedtuple
@@ -21,6 +20,7 @@ from tree_sitter import Parser, Query, QueryCursor
 from tree_sitter_language_pack import get_language
 
 from ..log_utils import get_logger
+from ..parser_errors import ParserUnavailableError, explain_parser_failure
 
 logger = get_logger(__name__)
 
@@ -98,8 +98,9 @@ class BaseCodeChunker(ABC):
                 language,
             )
         except Exception as e:
-            logger.error("Error loading %s parser: %s", language, e)
-            sys.exit(1)
+            reason = explain_parser_failure(language, e)
+            logger.error("%s", reason)
+            raise ParserUnavailableError(reason) from e
 
     @classmethod
     def _get_tree_sitter_language(cls, language: str):
