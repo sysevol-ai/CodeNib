@@ -934,3 +934,61 @@ button.sb-service:hover {
   background: var(--nib-soft);
   color: var(--nib);
 }
+
+/* ---------- walkthrough words ---------- */
+.walk-overview {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 720px;
+  font-size: 16px;
+  line-height: 26px;
+  color: var(--ink-2);
+}
+
+.walk-overview p {
+  margin: 0;
+}
+
+.walk-cta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  max-width: 720px;
+  margin: 4px 0 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--nib-line);
+  border-radius: 10px;
+  background: var(--nib-soft);
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--ink-2);
+}
+
+.walk-cta p {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.walk-clock {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-ink);
+}
+
+.walk-text {
+  font-size: 15px;
+  line-height: 25px;
+  color: var(--ink-2);
+}
+
+.walk-text p {
+  margin: 0 0 8px;
+}
+
+.walk-recap strong {
+  color: var(--ink);
+}

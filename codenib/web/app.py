@@ -45,52 +45,39 @@ from ..log_utils import get_logger
 from ..repository_filters import repository_path_is_visible
 from ..repository_source_selection import RepositorySourceSelection
 from ..wiki import WikiBuilder
-from ..wiki.flowchart import drop_flow_duplicate_interactions, qualify_flow_caption
+from ..wiki.flowchart import (drop_flow_duplicate_interactions,
+                              qualify_flow_caption)
 from ..wiki.media_context import visual_document_contexts
 from ..wiki.media_evidence import build_media_evidence_pack
-from ..wiki.media_generation import (
-    image_generator_from_config,
-    materialize_media_slots,
-    read_generated_media_asset,
-    redact_media_evidence_packs,
-)
+from ..wiki.media_generation import (image_generator_from_config,
+                                     materialize_media_slots,
+                                     read_generated_media_asset,
+                                     redact_media_evidence_packs)
 from ..wiki.media_storage import load_multimodal_knowledge_bundle
 from ..wiki.narrator import Narrator
 from ..wiki.repo_docs import doc_page, find_docs, is_doc_id
-from ..wiki.repository_visuals import attach_repository_visual, discover_overview_visual
+from ..wiki.repository_visuals import (attach_repository_visual,
+                                       discover_overview_visual)
 from ..wiki.sqlite_store import SQLiteWikiStore
 from ..wiki.store import WikiGenerationBusyError
 from ..wiki.story import derive_story_from_markdown
 from ..wiki.visual_ir import page_visual_contract_report
 from . import annotations as wiki_annotations
+from . import walk_narration
 from .card_summary import card_summary
 from .config import load_config
 from .experience import router as experience_router
 from .index_status import build_repo_index_status
 from .native_authority import authorize_local_manifest_vector
 from .ports import argparse_tcp_port
-from .prerender import (
-    attr,
-    outline_pages,
-    page_body,
-    page_description,
-    page_route,
-    robots,
-    sitemap,
-    standalone_document,
-)
+from .prerender import (attr, outline_pages, page_body, page_description,
+                        page_route, robots, sitemap, standalone_document)
 from .repo_registry import RepoRegistry
 from .repository_files import bound_source_slice, safe_repo_relative_path
 from .request_limits import RequestBodyLimitMiddleware
-from .schemas import (
-    ChatRequest,
-    ChatResponse,
-    EdgeLabelRequest,
-    EdgeLabelResponse,
-    RepoIndexStatus,
-    RepoInfo,
-    agent_result_to_response,
-)
+from .schemas import (ChatRequest, ChatResponse, EdgeLabelRequest,
+                      EdgeLabelResponse, RepoIndexStatus, RepoInfo,
+                      agent_result_to_response)
 from .share import SITE_DESCRIPTION, SITE_TITLE, _repo_for, public_origin
 from .share import router as share_router
 from .source_definition import attach_definition
@@ -296,6 +283,7 @@ app.include_router(visitor_wiki_router)
 app.include_router(experience_router)
 app.include_router(share_router)
 app.include_router(wiki_annotations.router)
+app.include_router(walk_narration.router)
 
 app.add_middleware(RequestBodyLimitMiddleware)
 app.add_middleware(
