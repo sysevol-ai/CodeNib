@@ -1,4 +1,5 @@
 ---
+name: wiki
 description: Open this repository's CodeNib Wiki in a browser, or set the repository up to publish its Wiki on GitHub Pages.
 disable-model-invocation: true
 ---

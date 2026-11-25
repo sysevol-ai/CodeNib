@@ -1,4 +1,5 @@
 ---
+name: thread
 description: Read a GitHub issue or pull request in one step, with its discussion, review comments, failing checks, linked threads and the code they point at. Use before working on an issue or pull request given by number, when asked what a thread decided or why its checks fail, or when returning to a thread to see what changed.
 ---
 

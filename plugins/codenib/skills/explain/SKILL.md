@@ -1,4 +1,5 @@
 ---
+name: explain
 description: Explain how something in this repository works, where it is implemented, or what calls it, with every claim tied to source lines. Use for "how does X work", "where is X handled", "who calls X" and "what does changing X affect" questions about the current codebase.
 ---
 
