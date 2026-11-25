@@ -20,25 +20,28 @@ cleanup() {
   rm -rf "$WORK"
 }
 trap cleanup EXIT
+# The Overview names the repository folder, so a distinctive name proves the
+# page was built for this repository.
+REPO="$WORK/bundle-smoke-repository"
 
-mkdir -p "$WORK/repo/pkg"
-cat > "$WORK/repo/pkg/store.py" <<'PY'
+mkdir -p "$REPO/pkg"
+cat > "$REPO/pkg/store.py" <<'PY'
 class Store:
     def put(self, key, value):
         self.items = {**getattr(self, "items", {}), key: value}
 PY
-printf '# tiny\n\nA bundle smoke repository.\n' > "$WORK/repo/README.md"
-git -C "$WORK/repo" init --quiet
-git -C "$WORK/repo" add .
-git -C "$WORK/repo" -c user.name=smoke -c user.email=smoke@example.invalid commit --quiet -m init
+printf '# tiny\n\nA bundle smoke repository.\n' > "$REPO/README.md"
+git -C "$REPO" init --quiet
+git -C "$REPO" add .
+git -C "$REPO" -c user.name=smoke -c user.email=smoke@example.invalid commit --quiet -m init
 
 PORT=38471
 API=38472
 (
-  cd "$WORK/repo"
+  cd "$REPO"
   exec env -i HOME="$WORK/home" PATH="$APP/Contents/Resources/python/bin:/usr/bin:/bin" \
     PYTHONNOUSERSITE=1 PYTHONDONTWRITEBYTECODE=1 \
-    "$PY" -m codenib wiki "$WORK/repo" --no-open --port "$PORT" --api-port "$API"
+    "$PY" -m codenib wiki "$REPO" --no-open --port "$PORT" --api-port "$API"
 ) > "$LOG" 2>&1 &
 PID=$!
 
@@ -54,9 +57,9 @@ echo "Wiki ready: $URL"
 
 SESSION="${URL##*session=}"
 REPO_ID="$(curl --fail --silent "http://127.0.0.1:$PORT/api/repos" | "$PY" -c 'import json,sys; print(json.load(sys.stdin)[0]["id"])')"
-curl --fail --silent "http://127.0.0.1:$PORT/api/repos/$REPO_ID/wiki/overview" | grep -q "bundle smoke repository"
+curl --fail --silent "http://127.0.0.1:$PORT/api/repos/$REPO_ID/wiki/overview" | grep -qi "bundle-smoke-repository"
 curl --fail --silent -X POST "http://127.0.0.1:$PORT/api/repos/$REPO_ID/annotations" \
   -H "Content-Type: application/json" -H "X-CodeNib-Session: $SESSION" \
   -d '{"kind":"note","text":"bundle smoke note","on":{"page":"overview","quote":"tiny"}}' > /dev/null
-grep -rq "bundle smoke note" "$WORK/repo/.codenib/notes"
+grep -rq "bundle smoke note" "$REPO/.codenib/notes"
 echo "bundled CodeNib served the Wiki and saved a note"
