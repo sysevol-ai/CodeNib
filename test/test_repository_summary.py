@@ -118,3 +118,31 @@ def test_readme_summary_keeps_a_wrapped_line_that_opens_with_a_link():
     summary = readme_summary(text, limit=600)
     assert summary.startswith("The project converts external benchmarks into Harbor's")
     assert summary.endswith("harbor monorepo.")
+
+
+def test_readme_summary_reads_a_chinese_opening_paragraph():
+    # Chinese has no spaces between words. Counting words by spaces skipped
+    # the opening paragraph and picked a later one only because its numbers
+    # and units are spaced out.
+    text = (
+        "# weather_kit\n\n"
+        "把气象站的原始读数整理成**可查询、可绘图**的时间序列 —— "
+        "帮助研究者比较不同站点的数据。\n\n"
+        "这个项目回答下面几个问题：\n\n"
+        "1. 两个站点的温差有多大？\n\n"
+        "### 实验\n"
+        "结论：误差范围 0.2-0.5 K，采样间隔约 10 min (docs/notes.md)。\n"
+    )
+    assert readme_summary(text).startswith(
+        "把气象站的原始读数整理成可查询、可绘图的时间序列"
+    )
+
+
+def test_readme_summary_skips_a_chinese_paragraph_that_introduces_a_list():
+    text = "# 项目\n\n这个工具支持下面这些常见的数据格式和输出方式：\n\n- 第一种\n"
+    assert readme_summary(text) == ""
+
+
+def test_readme_summary_joins_wrapped_chinese_lines_without_a_space():
+    text = "# 项目\n\n这个工具读取代码仓库，\n生成带行号引用的说明文档。\n"
+    assert readme_summary(text) == "这个工具读取代码仓库，生成带行号引用的说明文档。"

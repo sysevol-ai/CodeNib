@@ -85,6 +85,25 @@ _LINK_ONLY_LINE = re.compile(
 )
 
 
+# Chinese and Japanese put no spaces between words, so splitting on spaces
+# counted a whole Chinese paragraph as two or three words and skipped it.
+# Kana and Han ideographs, which are counted two to a word:
+_CJK_CHAR = re.compile(r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]")
+# The same scripts with their punctuation, which a wrapped line joins without
+# a space.
+_CJK_TEXT = re.compile(
+    r"[\u3000-\u303f\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff"
+    r"\uff00-\uffef]"
+)
+
+
+def _word_count(text: str) -> int:
+    """Count words, taking every two Chinese or Japanese characters as one."""
+
+    cjk = len(_CJK_CHAR.findall(text))
+    return len(_CJK_CHAR.sub(" ", text).split()) + (cjk + 1) // 2
+
+
 def _plain_text(line: str) -> str:
     line = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", line)
     # Reference-style links: [text][ref] and the collapsed [ref][] form.
@@ -97,7 +116,7 @@ def _descriptive_heading(line: str) -> str:
     heading = _plain_text(line.lstrip("#").strip())
     normalized = re.sub(r"[^a-z0-9]+", " ", heading.lower()).strip()
     if (
-        len(heading.split()) >= 4
+        _word_count(heading) >= 4
         and normalized not in _README_SECTION_TITLES
         and not _README_SKIP.search(heading)
     ):
@@ -113,7 +132,12 @@ def readme_summary(text: str, limit: int = 160) -> str:
 
     def flush_paragraph() -> None:
         if paragraph:
-            candidates.append(" ".join(paragraph))
+            joined = paragraph[0]
+            for line in paragraph[1:]:
+                # A line break inside Chinese or Japanese text is not a space.
+                cjk_break = _CJK_TEXT.match(joined[-1]) and _CJK_TEXT.match(line[0])
+                joined += ("" if cjk_break else " ") + line
+            candidates.append(joined)
             paragraph.clear()
 
     in_fence = False
@@ -161,7 +185,11 @@ def readme_summary(text: str, limit: int = 160) -> str:
     flush_paragraph()
 
     for line in candidates:
-        if line.endswith(":") or len(line.split()) < 6 or _README_SKIP.search(line):
+        if (
+            line.endswith((":", "："))
+            or _word_count(line) < 6
+            or _README_SKIP.search(line)
+        ):
             continue
         if _README_NOISE.search(line):
             continue
