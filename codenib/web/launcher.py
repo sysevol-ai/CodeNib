@@ -242,6 +242,9 @@ def launch_local_wiki(
     if session:
         backend_env[ANNOTATION_TOKEN_ENV] = session
     env.pop(ANNOTATION_TOKEN_ENV, None)
+    # The frontend opens on the repositories served here, not the hosted
+    # landing; the source frontend's dev server reads this variable.
+    env["CODENIB_LOCAL_WIKI"] = "1"
 
     backend: subprocess.Popen | None = None
     frontend_process: subprocess.Popen | None = None
@@ -278,6 +281,7 @@ def launch_local_wiki(
                     frontend_host,
                     "--port",
                     str(frontend_port),
+                    "--local",
                 ],
                 env=env,
             )

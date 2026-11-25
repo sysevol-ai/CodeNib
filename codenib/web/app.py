@@ -45,19 +45,19 @@ from ..log_utils import get_logger
 from ..repository_filters import repository_path_is_visible
 from ..repository_source_selection import RepositorySourceSelection
 from ..wiki import WikiBuilder
-from ..wiki.flowchart import drop_flow_duplicate_interactions, qualify_flow_caption
+from ..wiki.flowchart import (drop_flow_duplicate_interactions,
+                              qualify_flow_caption)
 from ..wiki.media_context import visual_document_contexts
 from ..wiki.media_evidence import build_media_evidence_pack
-from ..wiki.media_generation import (
-    image_generator_from_config,
-    materialize_media_slots,
-    read_generated_media_asset,
-    redact_media_evidence_packs,
-)
+from ..wiki.media_generation import (image_generator_from_config,
+                                     materialize_media_slots,
+                                     read_generated_media_asset,
+                                     redact_media_evidence_packs)
 from ..wiki.media_storage import load_multimodal_knowledge_bundle
 from ..wiki.narrator import Narrator
 from ..wiki.repo_docs import doc_page, find_docs, is_doc_id
-from ..wiki.repository_visuals import attach_repository_visual, discover_overview_visual
+from ..wiki.repository_visuals import (attach_repository_visual,
+                                       discover_overview_visual)
 from ..wiki.sqlite_store import SQLiteWikiStore
 from ..wiki.store import WikiGenerationBusyError
 from ..wiki.story import derive_story_from_markdown
@@ -69,33 +69,19 @@ from .experience import router as experience_router
 from .index_status import build_repo_index_status
 from .native_authority import authorize_local_manifest_vector
 from .ports import argparse_tcp_port
-from .prerender import (
-    attr,
-    outline_pages,
-    page_body,
-    page_description,
-    page_route,
-    robots,
-    sitemap,
-    standalone_document,
-)
+from .prerender import (attr, outline_pages, page_body, page_description,
+                        page_route, robots, sitemap, standalone_document)
 from .repo_registry import RepoRegistry
 from .repository_files import bound_source_slice, safe_repo_relative_path
 from .request_limits import RequestBodyLimitMiddleware
-from .schemas import (
-    ChatRequest,
-    ChatResponse,
-    EdgeLabelRequest,
-    EdgeLabelResponse,
-    RepoIndexStatus,
-    RepoInfo,
-    agent_result_to_response,
-)
+from .schemas import (ChatRequest, ChatResponse, EdgeLabelRequest,
+                      EdgeLabelResponse, RepoIndexStatus, RepoInfo,
+                      agent_result_to_response)
 from .share import SITE_DESCRIPTION, SITE_TITLE, _repo_for, public_origin
 from .share import router as share_router
 from .source_definition import attach_definition
 from .visitor_wikis import router as visitor_wiki_router
-from .walkthroughs import load_walkthroughs
+from .walkthroughs import load_walkthroughs, walkthrough_path
 from .worktree import WorktreeFollower
 
 _WIKI_MEDIA_TYPES = {
@@ -604,6 +590,39 @@ def _wiki_visual_evidence_path(bundle) -> Path | None:
     if not root.is_dir():
         return None
     return root / ".codenib" / "multimodal-knowledge.json"
+
+
+def _optional_artifacts(repo_id: str, bundle) -> dict[str, bool]:
+    """Whether a repository's optional artifacts exist at all.
+
+    Walkthroughs, visual evidence and the code-activity overlay are built
+    separately, and each route answers 404 without one. Saying up front that
+    a file is absent lets the Wiki skip the request, which a browser would
+    otherwise report as an error. A present file is still validated by its
+    own route.
+    """
+
+    from ..threads.log_store import ThreadStore
+    from ..threads.wiki_overlay import OVERLAY_FILE
+
+    found = {"walkthroughs": False, "visual_evidence": False, "code_activity": False}
+    try:
+        path = walkthrough_path(load_config().data_dir, repo_id)
+        found["walkthroughs"] = bool(path and path.is_file())
+    except OSError:
+        pass
+    try:
+        evidence = _wiki_visual_evidence_path(bundle)
+        found["visual_evidence"] = bool(evidence and evidence.is_file())
+    except OSError:
+        pass
+    repo = getattr(getattr(bundle, "entry", None), "repo", None)
+    if repo:
+        try:
+            found["code_activity"] = (ThreadStore(repo).dir / OVERLAY_FILE).is_file()
+        except (OSError, ValueError):
+            pass
+    return found
 
 
 def _load_wiki_visual_evidence(bundle) -> dict | None:
@@ -1128,6 +1147,15 @@ async def list_repos() -> list[RepoInfo]:
                 )
         except Exception:  # noqa: BLE001 - a summary must not break the list
             info.summary = getattr(info, "summary", "")
+        try:
+            artifacts = await asyncio.to_thread(
+                _optional_artifacts,
+                info.id,
+                bundle if bundle is not None else _bundle(info.id),
+            )
+            info.capabilities = {**info.capabilities, **artifacts}
+        except Exception:  # noqa: BLE001 - unknown means the Wiki still asks
+            pass
         try:
             if bundle is None:
                 info.incremental = await asyncio.to_thread(

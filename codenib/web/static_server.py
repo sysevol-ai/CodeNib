@@ -33,9 +33,15 @@ _MAX_PROXY_REQUEST_BYTES = MAX_REQUEST_BODY_BYTES
 _MAX_PROXY_RESPONSE_BYTES = MAX_PROXY_RESPONSE_BYTES
 
 
-def runtime_config(api_base: str) -> bytes:
+def runtime_config(api_base: str, *, local: bool = False) -> bytes:
     value = api_base.rstrip("/")
-    return f"window.__CODENIB_API_BASE__ = {json.dumps(value)};\n".encode("utf-8")
+    text = f"window.__CODENIB_API_BASE__ = {json.dumps(value)};\n"
+    if local:
+        # A Wiki that `codenib wiki` serves on this machine: its home is the
+        # repositories it serves, never the hosted landing.
+        runtime = {"mode": "api", "basePath": "/", "local": True}
+        text += f"window.__CODENIB_RUNTIME__ = Object.freeze({json.dumps(runtime)});\n"
+    return text.encode("utf-8")
 
 
 _UPSTREAM_TIMEOUT_SECONDS = 600
@@ -47,6 +53,7 @@ class WikiStaticHandler(SimpleHTTPRequestHandler):
 
     api_base = ""
     browser_api_base = ""
+    local = False
     # Python before 3.12 does not know the web app manifest's media type.
     extensions_map = {
         **SimpleHTTPRequestHandler.extensions_map,
@@ -59,7 +66,7 @@ class WikiStaticHandler(SimpleHTTPRequestHandler):
             self._proxy_api_request()
             return
         if request_path == "/runtime-config.js":
-            body = runtime_config(self.browser_api_base)
+            body = runtime_config(self.browser_api_base, local=self.local)
             self.send_response(200)
             self.send_header("Content-Type", "text/javascript; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
@@ -246,6 +253,7 @@ def build_server(
     browser_api_base: str = "",
     host: str,
     port: int,
+    local: bool = False,
 ) -> ThreadingHTTPServer:
     root = directory.expanduser().resolve()
     if not (root / "index.html").is_file():
@@ -256,6 +264,7 @@ def build_server(
         {
             "api_base": api_base.rstrip("/"),
             "browser_api_base": browser_api_base.rstrip("/"),
+            "local": local,
         },
     )
     handler = partial(handler_type, directory=str(root))
@@ -269,6 +278,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--browser-api-base", default="")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=argparse_tcp_port, default=3000)
+    parser.add_argument(
+        "--local",
+        action="store_true",
+        help="serve the Wiki of `codenib wiki`: its home is the local repositories",
+    )
     return parser.parse_args(argv)
 
 
@@ -281,6 +295,7 @@ def main(argv: list[str] | None = None) -> int:
         browser_api_base=args.browser_api_base,
         host=args.host,
         port=args.port,
+        local=args.local,
     )
     try:
         server.serve_forever()

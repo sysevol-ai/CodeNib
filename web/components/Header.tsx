@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { AppLink } from "@/lib/router";
-import { assetUrl, guardHome, homeRepository } from "@/lib/runtime";
+import { assetUrl, guardHome, homeRepository, isLocalWiki } from "@/lib/runtime";
 import { AGENT_SETUP_URL } from "@/components/AgentSetup";
 import { recordExperience } from "@/lib/experience";
 import { syncThemeColor } from "@/lib/pwa";
@@ -90,7 +90,8 @@ export default function Header({
       {center}
       <div className="header-right">
         {guardHome() && <AppLink className="header-link" href="/guard">Guard cases</AppLink>}
-        {!home && (
+        {/* A local Wiki's home already lists its repositories. */}
+        {!home && !isLocalWiki() && (
           <AppLink className="header-link" href="/browse">{guardHome() ? "Wikis" : "Browse"}</AppLink>
         )}
         <a className="header-link agent-setup-link" href={AGENT_SETUP_URL} target="_blank" rel="noreferrer" onClick={() => recordExperience("agent_setup_open")}>

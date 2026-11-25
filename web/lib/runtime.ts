@@ -11,6 +11,8 @@ declare global {
       home?: "wiki" | "guard";
       // A static export publishes one repository's Wiki at the site root.
       homeRepository?: string;
+      // Served by `codenib wiki` on this machine: home is its repositories.
+      local?: boolean;
     };
   }
 }
@@ -32,6 +34,15 @@ export function appBasePath(): string {
 export function apiBase(): string {
   if (typeof window === "undefined") return "";
   return (window.__CODENIB_API_BASE__ ?? "").replace(/\/+$/, "");
+}
+
+/** A Wiki that `codenib wiki` serves on this machine, not the hosted site. */
+export function isLocalWiki(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    window.__CODENIB_RUNTIME__?.mode !== "static" &&
+    window.__CODENIB_RUNTIME__?.local === true
+  );
 }
 
 export function guardHome(): boolean {

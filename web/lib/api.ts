@@ -148,6 +148,22 @@ export async function fetchRepos(
   }
 }
 
+/**
+ * True when the backend said this repository has no such optional artifact
+ * (walkthroughs, visual evidence, the code-activity overlay). Its route would
+ * answer 404, which the browser reports as an error, so the Wiki skips the
+ * request. An unknown answer, or a list that could not be read, still asks.
+ */
+export async function knownAbsent(repoId: string, artifact: string): Promise<boolean> {
+  if (isStaticRuntime()) return false;
+  try {
+    const repo = (await fetchRepos()).find((item) => item.id === repoId);
+    return repo?.capabilities?.[artifact] === false;
+  } catch {
+    return false;
+  }
+}
+
 export interface WikiPageRef {
   id: string;
   title: string;
@@ -582,6 +598,7 @@ export async function fetchWikiVisualEvidence(
   opts: { signal?: AbortSignal } = {},
 ): Promise<WikiVisualEvidence | null> {
   if (isStaticRuntime()) return null;
+  if (await knownAbsent(repoId, "visual_evidence")) return null;
   const response = await fetch(
     `${API_BASE}/api/repos/${encodeURIComponent(repoId)}/visual-evidence`,
     { signal: opts.signal },
@@ -1022,8 +1039,10 @@ export function fetchCodeActivity(repoId: string): Promise<CodeActivityOverlay |
   const url = isStaticRuntime()
     ? staticDataUrl("repos", repoId, "threads.json")
     : `${API_BASE}/api/repos/${encodeURIComponent(repoId)}/threads`;
-  const request = fetch(url)
+  const request = knownAbsent(repoId, "code_activity")
+    .then((absent) => (absent ? null : fetch(url)))
     .then(async (res) => {
+      if (!res) return null;
       if (!res.ok) {
         // Only 404 says there is no overlay; another status may pass.
         if (res.status !== 404) codeActivityRequests.delete(repoId);
@@ -1054,8 +1073,12 @@ export function fetchWalkthroughs(repoId: string): Promise<WalkthroughSet | null
   if (isStaticRuntime()) return Promise.resolve(null);
   const cached = walkthroughRequests.get(repoId);
   if (cached) return cached;
-  const request = fetch(`${API_BASE}/api/repos/${encodeURIComponent(repoId)}/walkthroughs`)
+  const request = knownAbsent(repoId, "walkthroughs")
+    .then((absent) =>
+      absent ? null : fetch(`${API_BASE}/api/repos/${encodeURIComponent(repoId)}/walkthroughs`),
+    )
     .then(async (res) => {
+      if (!res) return null;
       if (!res.ok) {
         // Only 404 says there are none; another status may pass.
         if (res.status !== 404) walkthroughRequests.delete(repoId);

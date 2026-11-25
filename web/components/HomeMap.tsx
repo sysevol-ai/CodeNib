@@ -76,14 +76,17 @@ export function loadRepoMap(id: string): Promise<Loaded> {
 /** The home page's live map: one indexed repository at a time, drawn the way
  *  its Wiki draws it. */
 export default function HomeMap({ repos }: { repos: RepoInfo[] }) {
-  const available = HOME_MAP_REPOS.filter(
-    (item) => repos.length === 0 || repos.some((repo) => repo.id === item.id),
-  );
-  const [selected, setSelected] = useState(available[0]?.id ?? HOME_MAP_REPOS[0].id);
+  // Only repositories this backend serves: a map is never requested for a
+  // repository it does not have.
+  const available = HOME_MAP_REPOS.filter((item) => repos.some((repo) => repo.id === item.id));
+  const [chosen, setSelected] = useState<string | null>(null);
+  const selected =
+    chosen && available.some((item) => item.id === chosen) ? chosen : (available[0]?.id ?? null);
   const [loaded, setLoaded] = useState<LoadedGraph | null>(null);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
+    if (!selected) return;
     let cancelled = false;
     setFailed(false);
     loadRepoGraph(selected)
@@ -109,6 +112,18 @@ export default function HomeMap({ repos }: { repos: RepoInfo[] }) {
 
   const repo = repos.find((item) => item.id === selected) ?? null;
   const showing = loaded && loaded.id === selected ? loaded : null;
+
+  // Before the repository list arrives, or when none of the prepared maps is
+  // served here, there is nothing to draw.
+  if (!selected) {
+    return repos.length ? null : (
+      <div className="home-map">
+        <div className="home-map-placeholder" role="status">
+          <span>Loading the map…</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="home-map">
